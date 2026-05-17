@@ -57,9 +57,9 @@ A potential C11.b sibling bullet covering NIP-07 + NIP-55 may be added in the M1
 
 ## The capability boundary
 
-This bullet is a load-bearing demonstration of the bible's capability pattern (aim.md §6 doctrine 11: "capabilities, not callbacks"). The KeyringCapability **reports** (here is the stored bytes; persistence succeeded/failed). It does **not decide** (whether to retry, whether to fall back to a different storage backend, whether to surface a UI prompt). The framework decides; the capability executes.
+This bullet is a load-bearing demonstration of cardinal doctrine **D7** ("capabilities report; never decide policy" — `docs/product-spec/overview-and-dx.md` §1.5 D7). The KeyringCapability **reports** (here is the stored bytes; persistence succeeded/failed). It does **not decide** (whether to retry, whether to fall back to a different storage backend, whether to surface a UI prompt). The framework decides; the capability executes.
 
-The test's assertion that no plaintext nsec crosses FFI is the structural witness for `aim.md` §6 doctrine 5 (bounded native state) and for the implicit "secrets stay in Rust" rule — the platform layer never sees the unencrypted key material because every read/write of the key goes through the in-Rust `IdentityModule::sign` function.
+The test's assertion that no plaintext nsec crosses FFI is the structural witness for **D6** ("errors never cross FFI as exceptions"; `overview-and-dx.md` §1.5 D6) and for **D5** (bounded native state: the platform layer never sees unencrypted key material because every read/write of the key goes through the in-Rust `IdentityModule::sign` function).
 
 ## Cross-references
 

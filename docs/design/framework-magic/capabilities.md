@@ -56,6 +56,8 @@ C13 is the canonical instance of cardinal doctrine **D1**. The doctrine clause's
 
 C13 also intersects D4 (single writer per fact; caches derive). The "fact" is the projection (Alice's display name); the "caches" are every timeline cell, profile chip, thread author marker rendering that name. The in-place refinement is the derivation.
 
+C13 is delivered in practice by **D8** (reactivity contract: composite reverse index · ≤60Hz/view · working-set bounded). The projection cache's composite reverse index (`docs/design/reactivity/loop-and-reverse-index.md` ADR-0001) is what makes `on_projection_changed` fire only for the views that mention Alice, not for every view in the store.
+
 ## Cross-references
 
 - `docs/design/view-catalog/profile-timeline-thread-reactions.md` — the concrete view-module catalog with each view's payload shape.

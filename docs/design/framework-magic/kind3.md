@@ -19,7 +19,7 @@ When a kind:3 event lands for the active account's pubkey *and* the replaceable-
 
 **App writes:** nothing. The "following timeline" view's spec does not name authors — the view module consumes the active account's follow-set internally. The app's only contact with this surface is opening `FollowingTimelineView { /* no fields */ }` and reading its `Payload.items`.
 
-**Failure mode prevented:** the canonical NDK-era bug: app code listens for kind:3 events, manually closes its open subscriptions, re-derives author lists, re-issues REQs, and either races itself (REQ ordering vs. local-state ordering) or leaks the old REQ. This contract structurally forbids that pattern: the view module never sees the kind:3 directly, and the app never issues a REQ. Specifically discharges aim.md §6 doctrine 6 ("subscriptions auto-group, auto-close, auto-dedup, auto-buffer; the developer never writes grouping/dedup/cleanup code") for the follow-list-change case.
+**Failure mode prevented:** the canonical NDK-era bug: app code listens for kind:3 events, manually closes its open subscriptions, re-derives author lists, re-issues REQs, and either races itself (REQ ordering vs. local-state ordering) or leaks the old REQ. This contract structurally forbids that pattern: the view module never sees the kind:3 directly, and the app never issues a REQ. Specifically discharges **D3** (outbox routing automatic; see `docs/product-spec/overview-and-dx.md` §1.5 D3) and the auto-group/auto-close property of **C8** for the follow-list-change case.
 
 **Test:** `c5_kind3_change_recompiles_follow_dependent_subs` in `crates/nmp-testing/tests/framework_magic_contract.rs`. The test:
 

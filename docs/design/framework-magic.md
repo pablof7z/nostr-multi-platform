@@ -1,8 +1,8 @@
 # Design: Framework Magic Contract — Things That Just Work
 
-> **Status:** Draft (initial structure). Research-fold commit fills `TBD-from-research(...)` markers from `docs/research/applesauce/event-store-query-builders.md` and `docs/research/ndk/kind3-auto-tracking.md` when they land.
+> **Status:** Draft. Research citations folded in from `docs/research/applesauce/event-store-query-builders.md` and `docs/research/ndk/kind3-auto-tracking.md`. Doctrine wording aligned with `docs/product-spec/overview-and-dx.md` §1.5 (D0–D8 canonical set).
 > **Date:** 2026-05-18.
-> **Source directives:** `docs/plan/scope-adjustments-2026-05-18.md` "Framework magic contract" section; `docs/aim.md` §6 doctrines 1–12; `docs/product-spec/overview-and-dx.md` §1.5 (cardinal doctrines D0–D5) + §3.3 (bug-class extinction); `docs/product-spec/subsystems.md` §7.1–§7.8.
+> **Source directives:** `docs/plan/scope-adjustments-2026-05-18.md` "Framework magic contract" section; `docs/product-spec/overview-and-dx.md` §1.5 (cardinal doctrines D0–D8) + §3.3 (bug-class extinction); `docs/product-spec/subsystems.md` §7.1–§7.8.
 > **Companion test file:** `crates/nmp-testing/tests/framework_magic_contract.rs` (one test per contract bullet plus a coverage meta-test; layout in [test-scaffolding.md](framework-magic/test-scaffolding.md)).
 > **Scope:** Enumerate every behavior the framework guarantees so the application does not have to author code for it. The user directive is explicit: *"apps shouldn't have to care or know about these operations happening in the background, things should just work."* This document is the contract; the test suite is the proof; the milestone implementations are the substrate.
 
@@ -72,17 +72,15 @@ Every milestone owner adds a **"framework-magic delta"** subsection to their exi
 
 The orchestrator's heartbeat triage rule includes a "framework-magic regression" gate: any milestone landing that *removes* a bullet without an ADR fails review.
 
-## Open items resolved by the research-fold commit
+## Research citations (resolved)
 
-The following are `TBD-from-research(...)` markers in the sub-files; the research-fold commit replaces them with file:line refs and concrete API shapes. They are listed here so the orchestrator can sequence the work:
+The following items were pending research; citations are now concrete per `docs/research/ndk/kind3-auto-tracking.md` and `docs/research/applesauce/event-store-query-builders.md`:
 
-- `kind3.md` §3 — `TBD-from-research(ndk/kind3-auto-tracking.md)`: NDK's exact mechanism for kind:3 → open-subscription recompile (event listener path, refcount handoff, race window).
-- `kind3.md` §4 — `TBD-from-research(applesauce/event-store-query-builders.md)`: Applesauce's query-builder pattern that makes `WhoFollows(active_user)` reactive without app code.
-- `outbox.md` §2 — `TBD-from-research(ndk/kind3-auto-tracking.md)`: how NDK rebinds in-flight REQs when an author's mailbox arrives mid-subscription.
-- `subs.md` §3 — `TBD-from-research(applesauce/event-store-query-builders.md)`: Applesauce's logical-vs-wire subscription split file:line refs (for cross-validation against `docs/design/subscription-compilation/intro.md` §2).
-- `sync.md` §4 — `TBD-from-research(applesauce/event-store-query-builders.md)`: Applesauce's coverage/watermark equivalent and how a query-builder reads it.
-
-None of the above blocks the *initial* structure of this contract; they refine evidence and citations in the research-fold commit. The framework-magic contract's bullets, tests, and milestone bindings are stable now.
+- `kind3.md` §3 — NDK's session layer opens a long-lived REQ for active-user events (including kind:3) at `sessions/src/store.ts:184-194`; kind:3 is processed in `handleContactListEvent` at `store.ts:492-512`, which updates `session.followSet`. Core NDK has **no** automatic open-subscription rewire on follow-list change; Svelte gets it via runes (`subscription.svelte.ts:164-177`), React requires explicit deps (`subscribe.ts:110`). NMP's kernel fills this gap with `Trigger::FollowListChanged` (C5).
+- `kind3.md` §4 — Applesauce's query-builder magic is `EventModels.model(Constructor, ...args)` at `event-models.ts:50-86`, backed by `share({resetOnRefCountZero: timer(60_000)})`. The `OutboxModel` composition at `models/outbox.ts:14-24` uses `switchMap` into per-contact `ReplaceableModel(kind:10002)` instances — when a kind:3 arrives, `ContactsModel` re-emits, `OutboxModel` switchMaps the new contact list, and every downstream relay-set consumer updates automatically. NMP's `ViewModule.dependencies()` + `Trigger::FollowListChanged` is the analog.
+- `outbox.md` §2 — NDK's relay auto-add on NIP-65 arrival is `refreshRelayConnections` at `core/src/ndk/index.ts:458-471` + `subscription/index.ts:787-812`. It **only adds** relays (never removes) and is triggered by NIP-65, not kind:3. NMP's wire-emitter diff (CLOSE + REQ delta) is strictly more correct.
+- `subs.md` §3 — Applesauce's logical-vs-wire split: `EventModels.model()` at `event-models.ts:50-86` is the logical layer (one shared pipeline per `(constructor, args)` hash); the underlying `EventStore.insert$` / `remove$` streams are the wire layer. NMP's `LogicalInterest` (`subscription-compilation/intro.md` §2.1) covers the same split.
+- `sync.md` §4 — Applesauce's watermark equivalent is the `claimLatest` / `claimEvents` refcount pair (`observable/claim-latest.ts`, `claim-events.ts`) plus the `EventMemory` LRU touch on claim (`event-memory.ts:188`). Coverage-awareness is implicit in the `eventLoader` fallback (`event-store.ts:102-104`): if the event is not in memory and the loader returns nothing, the miss is treated as authoritative for that pointer. NMP's explicit `(filter_sig, relay)` watermark is a more precise analog.
 
 ## Non-goals
 
