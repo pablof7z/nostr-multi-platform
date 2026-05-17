@@ -22,13 +22,15 @@
 
 ## High-level decisions
 
-- **Cardinal doctrine (D0–D5).** Every PR is reviewed against this rubric. A change that makes any doctrine harder to enforce is rewritten or rejected.
-  - **D0** Kernel never grows app nouns (proven by the M11 podcast rebuild and the existing fixture-todo-core)
-  - **D1** Best-effort rendering: placeholders → in-place refinement, never withhold known data
-  - **D2** Reactivity contract: composite reverse index · ≤60 Hz/view · working-set bounded
-  - **D3** Errors never cross FFI — become `toast: Option<String>` state fields
-  - **D4** One writer per fact
-  - **D5** Capabilities report, never decide policy
+- **Cardinal doctrine (D0–D5).** Canonical wording from [`docs/product-spec/overview-and-dx.md` §1.5](docs/product-spec/overview-and-dx.md). Every PR is reviewed against this rubric. A change that makes any doctrine harder to enforce is rewritten or rejected. Conflicts between doctrines resolve in the order listed.
+  - **D0** Kernel + extension modules — no app nouns in `nmp-core` (proven by the M11 podcast rebuild and the existing fixture-todo-core).
+  - **D1** Best-effort rendering — render now, refine in place. Placeholders are part of the type contract; the API has no "spinner gating cached content" pattern.
+  - **D2** Negentropy first, REQ second. NIP-77 reconciliation with durable watermarks is the default backfill; live REQ is the tailing path. (See M4.)
+  - **D3** Outbox routing is automatic; manual relay selection is the opt-out. Reads route per author write relays; publishes route to author write relays + tagged recipients' inbox relays. (See M2.)
+  - **D4** Single writer per fact; caches derive. Five cache layers exist; one writer per fact; cache invalidation is not a concept in the public API.
+  - **D5** Snapshots bounded by what's open. `AppState` carries the projection through currently-open views, not the underlying event store.
+
+  Three additional load-bearing rules are not D-numbered but are equally binding (RMP-bible invariants from [`docs/aim.md` §2](docs/aim.md)): **errors never cross FFI** (operational failures become `toast: Option<String>` state fields), **capabilities report; never decide policy** (native bridges execute and report; Rust decides retry/recovery), and the **reactivity contract** (composite reverse index · ≤60 Hz/view · working-set bounded; ADR-0001..0004).
 - **Architecture (RMP bible, non-negotiable).** Elm-style (`AppState` + `KernelAction` + `handle_message`) on a single actor thread. `dispatch()` is fire-and-forget. Monotonic `rev: u64`. Snapshot semantics by default; granular updates as optimization. See `docs/aim.md` for the full distillation.
 - **App-extension kernel boundary** (ADR-0009). NMP is a kernel + five extension trait families (`DomainModule`, `ViewModule`, `ActionModule`, `CapabilityModule`, `IdentityModule`). Per-app concrete enums generated at the FFI boundary via `nmp gen modules` (ADR-0010). Apps assemble themselves from `nmp-core` + protocol modules + their own `<app>-core` crate.
 - **DMs (was M9) and Wallet (was M12) deferred to post-v1.** Documented in `docs/plan/scope-adjustments-2026-05-18.md`. M11.5 Highlighter takes their slot.
