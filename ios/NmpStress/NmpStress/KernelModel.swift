@@ -91,6 +91,7 @@ final class KernelModel: ObservableObject {
         authorViewCache = [:]
         threadViewCache = [:]
         appMetrics = AppRuntimeMetrics()
+        lastLogicalInterestSummary = ""
         kernel.start(visibleLimit: visibleLimit, emitHz: emitHz)
         isRunning = true
         if let diagnosticFirehoseTag {
@@ -108,6 +109,14 @@ final class KernelModel: ObservableObject {
 
     func openThread(eventID: String) {
         kernel.openThread(eventID: eventID)
+    }
+
+    func claimProfile(pubkey: String, consumerID: String) {
+        kernel.claimProfile(pubkey: pubkey, consumerID: consumerID)
+    }
+
+    func releaseProfile(pubkey: String, consumerID: String) {
+        kernel.releaseProfile(pubkey: pubkey, consumerID: consumerID)
     }
 
     func closeAuthor(pubkey: String) {

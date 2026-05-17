@@ -8,7 +8,9 @@ struct TimelineRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Button(action: openAuthor) {
-                RemoteAvatar(
+                ProfileInterestAvatar(
+                    pubkey: item.authorPubkey,
+                    consumerID: "timeline-row:\(item.id)",
                     url: item.authorPictureUrl,
                     initials: item.authorAvatarInitials,
                     color: item.authorAvatarColor,
@@ -159,7 +161,9 @@ struct ThreadNoteRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
-            RemoteAvatar(
+            ProfileInterestAvatar(
+                pubkey: item.authorPubkey,
+                consumerID: "thread-note:\(item.id)",
                 url: item.authorPictureUrl,
                 initials: item.authorAvatarInitials,
                 color: item.authorAvatarColor,

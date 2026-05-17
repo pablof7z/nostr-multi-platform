@@ -44,6 +44,34 @@ struct RemoteAvatar: View {
     }
 }
 
+struct ProfileInterestAvatar: View {
+    @EnvironmentObject private var model: KernelModel
+
+    let pubkey: String
+    let consumerID: String
+    let url: String?
+    let initials: String
+    let color: String
+    let source: String
+    let size: CGFloat
+
+    var body: some View {
+        RemoteAvatar(
+            url: url,
+            initials: initials,
+            color: color,
+            source: source,
+            size: size
+        )
+        .onAppear {
+            model.claimProfile(pubkey: pubkey, consumerID: consumerID)
+        }
+        .onDisappear {
+            model.releaseProfile(pubkey: pubkey, consumerID: consumerID)
+        }
+    }
+}
+
 struct DiagnosticRow: View {
     let title: String
     let value: String

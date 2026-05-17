@@ -47,6 +47,22 @@ final class KernelHandle {
         tag.withCString { nmp_app_open_firehose_tag(raw, $0) }
     }
 
+    func claimProfile(pubkey: String, consumerID: String) {
+        pubkey.withCString { pubkeyPointer in
+            consumerID.withCString { consumerPointer in
+                nmp_app_claim_profile(raw, pubkeyPointer, consumerPointer)
+            }
+        }
+    }
+
+    func releaseProfile(pubkey: String, consumerID: String) {
+        pubkey.withCString { pubkeyPointer in
+            consumerID.withCString { consumerPointer in
+                nmp_app_release_profile(raw, pubkeyPointer, consumerPointer)
+            }
+        }
+    }
+
     func closeAuthor(pubkey: String) {
         pubkey.withCString { nmp_app_close_author(raw, $0) }
     }
