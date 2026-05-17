@@ -411,6 +411,46 @@ This is lossless: the `FullState` snapshot includes every open view's current pa
 
 ---
 
+## 7.4 The three-tier data model (ADR-0005 codifies the boundary)
+
+Data lives in three derived tiers; only the bottom is source of truth.
+
+```
+┌──────────────────────────────────────────────────────────┐
+│   Tier 3: Platform shadow (TTL, domain-keyed)            │
+│   - profiles: [PubKey: ProfileView]                      │
+│   - reactionSummaries: [EventId: ReactionSummary]        │
+│   - timelines: [SpecHash: TimelineView]                  │
+│   - Read by components via wrappers (useProfile, etc.)   │
+│   - Evicts on refcount=0 after 30s grace                 │
+│   - Not persisted; rebuilt from Rust on cold start       │
+└──────────────────────▲───────────────────────────────────┘
+                       │ ViewBatch / FullState via FFI
+┌──────────────────────┴───────────────────────────────────┐
+│   Tier 2: Rust working set + projections                 │
+│   - Hot events resident in memory (LRU-bounded)          │
+│   - Projection caches (author_display, reaction_summary) │
+│   - Reverse index (composite-keyed)                      │
+│   - View payloads in actor's view registry               │
+└──────────────────────▲───────────────────────────────────┘
+                       │ EventStore reads
+┌──────────────────────┴───────────────────────────────────┐
+│   Tier 1: Rust durable storage (source of truth)         │
+│   - LMDB / SQLite / IndexedDB / nostrdb                  │
+│   - All events ever cached, replaceable supersession     │
+│     enforced, NIP-40 expiration scheduled, kind:5        │
+│     tombstones, sync watermarks                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+Properties:
+
+- **Tier 1** is the only persisted layer. Tier 2 is rebuilt from Tier 1 on actor restart. Tier 3 is rebuilt from Tier 2 on app restart.
+- **Tier 2 is bounded** (working-set policy, ADR-0003). The reverse index keys on attributes, not bodies, so it can cover unbounded Tier-1 events.
+- **Tier 3 is TTL-bounded** (ADR-0005). The platform shadow holds only domain entries with active component interest.
+- **Reads flow up; updates flow down.** Component reads happen entirely in Tier 3 — no FFI on the read path. Updates from relays land in Tier 1, propagate to Tier 2 working set + projections, then to Tier 3 via `ViewBatch`.
+- **Subscription lifecycle is refcounted per tier.** Component refcount in Tier 3 drives `OpenView`/`CloseView` to Rust; Rust's claim count in Tier 2 drives planner REQ subscriptions to relays; relay REQs on the wire are the bottom of the stack.
+
 ## 7.5 Working-set discipline (ADR-0003)
 
 The `EventStore` holds a **bounded hot working set** in memory; cold events live in the durable storage backend. The reverse index covers both.

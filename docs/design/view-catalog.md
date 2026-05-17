@@ -55,6 +55,30 @@ For each kind below, the catalog documents:
 
 ---
 
+## 1.1 Platform cache key (per ADR-0005)
+
+The per-platform wrapper layer organizes the shadow as typed domain-keyed dictionaries, not as a flat `[ViewId: ViewPayload]` map. Each view kind below declares a **platform cache key** — either a single domain identifier (pubkey, event id) or a spec hash for view kinds with richer parameters.
+
+| View kind | Platform cache key | Wrapper API (illustrative) |
+|---|---|---|
+| Profile | pubkey | `useProfile(pubkey)` / `@Profile` |
+| Contacts | pubkey | `useContacts(pubkey)` |
+| Mailboxes | pubkey | `useMailboxes(pubkey)` |
+| Mutes | active account pubkey | `useMutes()` |
+| Blossom servers | pubkey | `useBlossomServers(pubkey)` |
+| Timeline | spec hash | `useTimeline(spec)` |
+| Thread | root event id | `useThread(rootEventId)` |
+| Replies | target event id | `useReplies(targetEventId)` |
+| Reactions | target event coord | `useReactions(target)` |
+| Conversation list | active account pubkey | `useConversationList()` |
+| Conversation | peer pubkey or group id | `useConversation(peer)` |
+| Zap history | active account pubkey | `useZapHistory()` |
+| Wallet balance | wallet id | `useWallet()` |
+| WoT rank | pubkey | `useWotRank(pubkey)` |
+| Search | spec hash | `useSearch(query)` |
+
+`ViewId` is an internal FFI token; component code never sees it. Wrappers refcount per key, dispatch `OpenView`/`CloseView` to Rust, and enforce a 30s eviction grace period matching Rust-side view warmth.
+
 ## 2. View kinds — full enumeration
 
 | # | Kind | Detailed in this doc? | Phase |
