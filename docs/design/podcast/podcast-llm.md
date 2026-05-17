@@ -260,7 +260,13 @@ For `rig.rs` routes, the same shape: `rig::completion::StreamingChat` yields a `
 - `podcast.llm.anthropic_api_key`
 - `podcast.llm.local_base_url`
 
-**M11 provider configuration.** Because rig.rs is required in M11 (see §K), the API key must be reachable in M11. In M11 the key is injected via environment variable (`NMP_LLM_API_KEY` / `NMP_LLM_PROVIDER` / `NMP_LLM_BASE_URL`) at test time. The `KeyValueStoreCapability` bridge reads env vars at boot and writes them into the appropriate `podcast.llm.*` keys; `select_route()` reads `SettingsRecord.llm_preferred_route` which is itself populated from the KV store. When `NMP_LLM_PROVIDER` is set, the bootstrap overwrites `llm_preferred_route` to `Rig { provider, model }` before the first action runs, so CI selects the rig route without any UI interaction. The Settings UI for end-user key entry is post-M11. On the iOS device in production, Apple Intelligence is the default and requires no key.
+**M11 provider configuration.** Because rig.rs is required in M11 (see §K), the API key must be reachable in M11. In M11 the key is injected via environment variables at test time:
+- `NMP_LLM_PROVIDER` — `openai` | `anthropic` | `local`
+- `NMP_LLM_MODEL` — e.g. `gpt-4o-mini` (default for OpenAI if unset)
+- `NMP_LLM_API_KEY` — provider API key
+- `NMP_LLM_BASE_URL` — required only for `local`
+
+The `KeyValueStoreCapability` bridge reads these vars at boot and writes them into the `podcast.llm.*` keys; the bootstrap also overwrites `SettingsRecord.llm_preferred_route` to `Rig { provider, model }`, so `select_route()` picks the rig path without any UI interaction. The Settings UI for end-user key entry is post-M11. On the iOS device in production, Apple Intelligence is the default and requires no key.
 
 Reads happen at action boot only. Per RMP bible commandment #2, keys never cross FFI as part of dispatch — they live on the platform side; the bridge resolves and injects them when executing the capability.
 

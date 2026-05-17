@@ -44,10 +44,10 @@ After splitting, `ios/NmpPodcast/Views/` will contain **29 Swift files** (20 ori
 
 The split is verified by two mechanisms:
 
-1. **Text-reconstruct diff** — concatenate the split files in section order and diff against the original source:
+1. **Text-reconstruct diff** — concatenate both split files in section order and diff against the originals:
 
     ```bash
-    # Reconstruct DiscoverView from its split files (section order matches MARK: order)
+    # DiscoverView reconstruct
     cat ios/NmpPodcast/Views/Library/DiscoverView.swift \
         ios/NmpPodcast/Views/Library/DiscoverViewSections.swift \
         ios/NmpPodcast/Views/Library/DiscoverViewDataLoading.swift \
@@ -56,17 +56,24 @@ The split is verified by two mechanisms:
         ios/NmpPodcast/Views/Library/DiscoverCategoriesViews.swift \
         ios/NmpPodcast/Views/Library/TopicSearchView.swift \
       | grep -v '^import\|^$' > /tmp/discover_reconstituted.swift
-    # Diff against original (strip imports/blank lines to avoid per-file header noise)
     diff <(grep -v '^import\|^$' ../podcast/PodcastApp/Views/Library/DiscoverView.swift) \
-         /tmp/discover_reconstituted.swift
-    # Expected: empty (zero diff)
+         /tmp/discover_reconstituted.swift   # Expected: empty
+
+    # PlayerSheet reconstruct
+    cat ios/NmpPodcast/Views/Player/PlayerSheet.swift \
+        ios/NmpPodcast/Views/Player/PlayerSheetControls.swift \
+        ios/NmpPodcast/Views/Player/PlayerSheetInsight.swift \
+        ios/NmpPodcast/Views/Player/PlayerToasts.swift \
+      | grep -v '^import\|^$' > /tmp/player_reconstituted.swift
+    diff <(grep -v '^import\|^$' ../podcast/PodcastApp/Views/Player/PlayerSheet.swift) \
+         /tmp/player_reconstituted.swift   # Expected: empty
     ```
 
-2. **Build + screenshot gate** — after splitting, the reference app must build and produce identical screenshots:
+2. **Build + screenshot gate** — after splitting, the reference app must build and the screenshot diff tool must show zero regression against the pre-split baseline:
 
     ```bash
     xcodebuild -scheme PodcastApp -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build
-    just screenshot-diff --baseline-only   # re-captures; diff against pre-split baseline must be empty
+    just screenshot-diff --fail-on-gate   # compares candidate against existing reference; must pass
     ```
 
 Both checks run before the Step 0 commit lands on master.
