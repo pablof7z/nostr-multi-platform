@@ -12,7 +12,7 @@
 3. **Auto-close.** A wire REQ with no remaining logical consumers is CLOSE'd. One-shot interests (those without a live tail, only an `until` upper bound) are CLOSE'd on EOSE.
 4. **Buffered batching.** Inbound events for one view are batched into a single `ViewBatch` per actor tick at ≤60Hz; backpressure drops batches in favor of a single `FullState` catch-up. The platform's reactive primitive sees one re-render per tick, not per event.
 
-**Framework does:** the subscription-compilation pipeline (`docs/design/subscription-compilation/compiler.md`) for dedup and coalesce; the wire-emitter's diff (compiler §3 final stage) for auto-close on plan changes; the view registry's refcount drop for auto-close on consumer loss; `docs/design/reactivity/scheduling-and-data-model.md` for the per-tick batching; the FullState backpressure fallback at `subsystems.md` §7.2 line 69. The hard cap of 60Hz is the budget in `subsystems.md` §7.16 table row "ViewBatch frequency under hashtag firehose".
+**Framework does:** the subscription-compilation pipeline (`docs/design/subscription-compilation/compiler.md`) for dedup and coalesce; the wire-emitter's diff (compiler §3 final stage) for auto-close on plan changes; the view registry's refcount drop for auto-close on consumer loss; `docs/design/reactivity/scheduling-and-data-model.md` for the per-tick batching; the FullState backpressure fallback at `subsystems.md` §7.2 line 69. The ≤60Hz cap is D8 (reactivity contract per `docs/product-spec/overview-and-dx.md` §1.5 D8; budget validated by ADR-0002 in `docs/design/reactivity/scheduling-and-data-model.md` §7.2).
 
 **App writes:** nothing. The app opens views; it does not name a REQ. The reactivity scheduling is invisible — the platform's `useTimeline()` rune/observable emits at the framework's batched cadence regardless of relay throughput.
 
@@ -31,7 +31,7 @@
 
 The four properties (dedup / coalesce / close / batch) are observable as one contract from the app's perspective: *the app opens N views, the framework opens ≤N REQs, the framework closes them at the right moment, the framework caps emit cadence.* Splitting into four bullets would suggest the app might experience them separately; it does not. The four sub-paths of the test are the four conditions the single contract bullet asserts.
 
-The reason this is C8 and not bundled with C6/C7 is that C6/C7 govern *which relay* a REQ targets; C8 governs *how many REQs and at what cadence* regardless of the relay. D5 (snapshots bounded by what's open) covers the view-scoped auto-close; `aim.md` §6 doctrine 6 covers the auto-group/dedup/buffer properties. The ≤60Hz emit cap derives from RMP bible invariant 9 ("No high-frequency FFI loops") + ADR-0002 (`docs/design/reactivity/scheduling-and-data-model.md` §7.2), not from D5's definition. Different milestone responsibility from C6/C7.
+The reason this is C8 and not bundled with C6/C7 is that C6/C7 govern *which relay* a REQ targets; C8 governs *how many REQs and at what cadence* regardless of the relay. D5 (snapshots bounded by what's open) covers the view-scoped auto-close property; D8 (reactivity contract: composite reverse index · ≤60 Hz/view · working-set bounded) covers the ≤60Hz emit cap, per `docs/product-spec/overview-and-dx.md` §1.5 D8. Different milestone responsibility from C6/C7.
 
 ## Cross-references to the existing test surface
 
