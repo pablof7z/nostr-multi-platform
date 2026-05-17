@@ -67,6 +67,25 @@ pub enum InterestScope {
     Global,
 }
 
+/// A parameterized-replaceable event coordinate: the triple that uniquely
+/// identifies an addressable event (kinds 10000–19999, 30000–39999) across
+/// all relays. Equivalent to the `naddr` bech32 encoding without the relay hint.
+///
+/// Helper constructors (proposed in `nmp-nip19`):
+///   `NaddrCoord::from_naddr_bech32(s: &str) -> Result<Self, Nip19Error>`
+///   `fn to_naddr_bech32(&self, relay_hint: Option<&RelayUrl>) -> String`
+///
+/// Used in D8 substrate invariant: the composite reverse index extends to
+/// address pointers so view modules for NIP-22 thread comments and
+/// MetaTimelineViewModule highlights share one REQ per relay.
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd,
+         Serialize, Deserialize)]
+pub struct NaddrCoord {
+    pub pubkey: Pubkey,   // author of the addressed event
+    pub kind:   u32,      // addressable kind (matches BTreeSet<u32> shape)
+    pub d_tag:  String,   // the `d` tag value; empty string for kind:0
+}
+
 pub struct InterestShape {
     pub authors:    BTreeSet<Pubkey>,        // empty = wildcard
     pub kinds:      BTreeSet<u32>,           // empty = wildcard (rare)
@@ -75,6 +94,17 @@ pub struct InterestShape {
     pub until:      Option<UnixSeconds>,
     pub limit:      Option<u32>,
     pub event_ids:  BTreeSet<EventId>,       // for pointer/thread hydration
+    /// Parameterized-replaceable event coordinates for address-pointer hydration.
+    /// Non-empty when a view needs to resolve a specific `naddr` (e.g. a NIP-23
+    /// article in ThreadViewModule or MetaTimelineViewModule). The compiler routes
+    /// each coordinate to the addressed author's write relays (Stage 1 Outbox
+    /// direction keyed on `NaddrCoord::pubkey`). See §3.3 Rule 8 and §7.
+    /// Rationale: T21 research (NDK `$metaSubscribe` / svelte subscription
+    /// grouping — `docs/research/ndk/subscription-compilation.md` §Grouping)
+    /// shows filter-key-set identity drives merge eligibility; adding `addresses`
+    /// as a first-class field gives the merge lattice a stable key to union on
+    /// rather than encoding coords into opaque `#a` tag strings.
+    pub addresses:  BTreeSet<NaddrCoord>,    // empty = no address-pointer hydration
 }
 
 pub enum InterestLifecycle {
@@ -111,6 +141,24 @@ Concrete examples for the existing seed-timeline path:
 - `AuthorView { pubkey }` returns three interests: kind:10002 (Indexer fallback policy, see §3), kind:0 (one-shot), and `{ authors: [pubkey], kinds: {1, 6}, limit: 100 }` (Tailing).
 - `ProfileClaim { pubkey }` (the refcounted UI path from `crates/nmp-core/src/kernel/requests.rs:202-237`) returns one interest: `{ authors: [pubkey], kinds: {0}, limit: 1, lifecycle: OneShot }`.
 - `ThreadView { event_id }` returns up to two interests: `{ ids: [...] }` for context, `{ kinds: {1, 6}, tags: { #e: [...] } }` for replies.
+- `ThreadViewModule` for a NIP-22 comment thread on a NIP-23 article returns an additional hydration interest:
+  `{ addresses: {NaddrCoord { pubkey: article_pk, kind: 30023, d_tag: "slug" }}, kinds: {30023}, lifecycle: OneShot }`.
+- `MetaTimelineViewModule` highlights-of-article registers the same coordinate:
+  `{ addresses: {NaddrCoord { pubkey: article_pk, kind: 30023, d_tag: "slug" }}, lifecycle: OneShot }`.
+
+**Worked example — address-pointer dedup across ThreadView and MetaTimeline:**
+
+```
+ThreadViewModule for kind:1111 comment on kind:30023 article →
+  hydrate interest { addresses: {(article_pk, 30023, "slug")} }
+MetaTimelineViewModule highlights-of-article →
+  hydrate interest { addresses: {(article_pk, 30023, "slug")} }
+Compiler Stage 1: both coords resolve to article_pk's write relays.
+Compiler Stage 3: Rule 7 (§3.3) unions the address sets (identical here).
+Result: ONE REQ per relay carrying { #a: ["30023:<article_pk>:slug"] }.
+```
+
+This is the D8 substrate invariant applied to address pointers: the composite reverse index, when extended to `NaddrCoord`, deduplicates across views without any view-module coordination.
 
 The seed-bootstrap path (`crates/nmp-core/src/kernel/requests.rs:50-106`) becomes one `LogicalInterest` per concern registered by **protocol modules** (`nmp-nip01`, `nmp-nip02`) at their start handlers — not by `nmp-core` directly (D0: the kernel must not know social-graph concepts such as follows, profiles, or contact lists). `nmp-core`'s `ActorStart` handler only fires the compile trigger; the interest set stays empty until modules register. The `open_author` view and profile-claim path similarly move to `nmp-nip01`-provided view modules. The compiler produces wire artifacts from whatever interests modules declare.
 

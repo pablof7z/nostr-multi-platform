@@ -282,6 +282,15 @@ The bug-extinction #7 test ([`docs/plan/m6-signers-write.md`](../../plan/m6-sign
 - The publish-fanout step in `PublishWithOverride::reduce` is `AwaitCapability { request: CapabilityRequest::Publish { ... }, next_step }` per the `ActionTransition` enum in `docs/design/kernel-substrate.md` §4. The kernel owns the publish attempts and reports per-relay outcomes back into the next `reduce`.
 - The local store insert happens *before* the publish step (optimistic insert), with rollback on `PartiallyFailed` if `required_success_count` is not met. This matches the "atomic with reversibility" reading of doctrine D4 (single writer per fact).
 
+## 7.5.1 Address-pointer routing on the publish path
+
+When an event references a `NaddrCoord` (via an `#a` tag, e.g. a NIP-22 kind:1111 comment on a NIP-23 article), the publish routing follows `PublicWithNotifications`:
+
+- The **author's own write relays** receive the event (standard D3 outbox rule).
+- If the addressed event's author is `#p`-tagged, their **inbox relays** are added via the existing `notify: Vec<Pubkey>` path in `PublishPrivacy::PublicWithNotifications`.
+
+The publish planner does **not** require a new routing variant for address pointers — the `#p` inbox lane already covers the notification path. What M2 adds is the *subscription-side* routing: `InterestShape::addresses` causes Stage 1 to resolve each `NaddrCoord::pubkey` as an Outbox direction (the addressed author's write relays), routing the REQ to where the article lives. The publish fan-out is unchanged.
+
 ## 7.6 What M2 does not cover (deferred)
 
 - **Action ledger schema** — `docs/design/kernel-substrate.md` §4 is the design; M6 implements.

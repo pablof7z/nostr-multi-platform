@@ -109,8 +109,9 @@ Two `InterestShape`s `A` and `B` are **mergeable on relay R** iff:
 5. `A.limit` and `B.limit`: mergeable iff both are absent. If either has a `limit`, **do not merge** — broadening would mask the limit's intent.
 6. `A.lifecycle == B.lifecycle`. Tailing and one-shot do not merge (one-shot would never close).
 7. `A.event_ids` and `B.event_ids`: merge by union, capped at the relay's per-filter `ids` limit.
+8. **Rule 8 (address-pointer union).** `A.addresses` and `B.addresses` merge by `A.addresses ∪ B.addresses`, provided their other constraints (`authors`, `kinds`, `tags`, time, lifecycle) merge per Rules 1–7. Overlapping coordinates with differing time or lifecycle constraints do **not** merge — the compiler emits per-address sub-shapes so each `NaddrCoord`'s routing is independent. The union cap is the relay's per-filter `#a` value limit (default 1000). Address routing uses `NaddrCoord::pubkey` as the `AuthorRouting` input (Outbox direction, Stage 1), so the relays chosen are the addressed author's write relays — the same path as an `authors`-bearing filter for that pubkey.
 
-When mergeable, the merged shape is `{ authors: A.authors ∪ B.authors, ... }`. The merged interest tracks both originating `InterestId`s so per-event dispatch back to consumers stays correct.
+When mergeable, the merged shape is `{ authors: A.authors ∪ B.authors, addresses: A.addresses ∪ B.addresses, ... }`. The merged interest tracks both originating `InterestId`s so per-event dispatch back to consumers stays correct.
 
 When not mergeable, the two interests get distinct sub-shapes on the same relay, producing two distinct REQs. That is fine and expected.
 
