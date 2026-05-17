@@ -15,9 +15,11 @@ One `lmdb::Environment` per app data directory. Sub-databases:
 | `idx_ptag_time` | NMP | `target_pubkey[32] ‖ created_at_desc_be[8] ‖ event_id[32]` | `kind_be[4]` | mentions / notifications |
 | `idx_kind_time` | NMP | `kind_be[4] ‖ created_at_desc_be[8] ‖ event_id[32]` | empty | global-by-kind backfills |
 | `idx_expires` | NMP | `expires_at_be[8] ‖ event_id[32]` | empty | NIP-40 reaper |
-| `tombstones` | NMP | `target_event_id[32]` | CBOR `TombstoneRow` | persists past delete |
+| `tombstones` | NMP | `target_event_id[32]` | CBOR `TombstoneRow` | persists past delete (event-id keyed) |
+| `tombstones_addr` | NMP | `pubkey[32] ‖ kind_be[4] ‖ dtag_len_be[2] ‖ dtag_bytes` | CBOR `TombstoneRow` | address tombstones for kind:5 `a` tags that arrive before the target event |
 | `provenance` | NMP | `event_id[32]` | CBOR `ProvenanceRow` | per-relay sidecar (master doc §9) |
 | `watermarks` | NMP | `filter_hash[32] ‖ relay_url_bytes` | CBOR `WatermarkRow` | M4 NIP-77 sync state |
+| `idx_watermark_relay` | NMP | `relay_url_bytes ‖ filter_hash[32]` | empty | relay-first secondary; enables O(matching rows) `list_watermarks_for_relay` |
 | `claims_meta` | NMP | `claimer_id_be[8]` | CBOR `Vec<EventId>` | pinned set per ClaimerId; rebuilt on restart from open views |
 | `domain_<ns>_data` | NMP, per `DomainModule` | module-defined | module-defined | one sub-db per registered namespace |
 | `domain_<ns>_idx_<name>` | NMP, per `DomainModule` index | `index_key ‖ primary_key` | empty | secondary indexes per `DomainIndex` |
@@ -75,6 +77,8 @@ Populated **only** for events that have an `expiration` tag at insert (NIP-40). 
 
 ## 4. Tombstones
 
+### 4.1 Event-id tombstones (`tombstones` sub-db)
+
 Key: `target_event_id[32]` → CBOR `TombstoneRow`:
 
 ```rust
@@ -89,15 +93,43 @@ struct TombstoneRow {
 }
 ```
 
-Insert pre-check: before any new event hits the primary store, `tombstones.contains_key(event.id)` is consulted. A hit yields `InsertOutcome::Tombstoned { target_kind5_id }` and the event is dropped. This is the "later re-insertion is suppressed" behavior of §7.1.
+Insert pre-check: before any new event hits the primary store, `tombstones.contains_key(event.id)` is consulted. A hit yields:
+
+```rust
+InsertOutcome::Tombstoned {
+    id: event.id,
+    kind5_event_id: row.kind5_event_id,  // None if NIP40Expiry or AdminPurge
+    origin: row.origin,
+}
+```
+
+and the event is dropped. This is the "later re-insertion is suppressed" behavior of §7.1.
 
 Foreign kind:5 (where the kind:5 author did not author all targets) is **stored** as an ordinary event (so other clients can render the delete intent) but **does not** write a `TombstoneRow` for any of its targets — per §7.1 "foreign kind:5 ignored". The kind:5 event itself goes through the normal insert path including secondaries.
 
+### 4.2 Address tombstones (`tombstones_addr` sub-db)
+
+Key: `pubkey[32] ‖ kind_be[4] ‖ dtag_len_be[2] ‖ dtag_bytes` → CBOR `TombstoneRow`.
+
+A kind:5 event may reference targets via `a` tags (NIP-09 §Address) of the form `<kind>:<pubkey>:<d-tag>`. If the target parameterized replaceable does not yet exist in the store at the time the kind:5 arrives, the event-id tombstone cannot be written (there is no id to key on). Instead, the store writes an address tombstone keyed by `(pubkey, kind, d-tag)`.
+
+On insert of any parameterized replaceable (kinds 30000–39999), the insert pre-check also queries `tombstones_addr.get(pubkey ‖ kind ‖ dtag)`. A hit suppresses the insert and writes an event-id tombstone for the incoming event's id (so future re-insertions of the same id are also caught by the fast `tombstones` lookup). The `InsertOutcome::Tombstoned` returned to the caller has `kind5_event_id = row.kind5_event_id` and `origin = Kind5`.
+
+Address tombstone rows share the same `TombstoneRow` shape, so the export format and diagnostics bridge handle them uniformly.
+
 ## 5. Watermarks
 
-Key: `filter_hash[32] ‖ relay_url_bytes` — variable-length, exact-key lookups only. `filter_hash` is BLAKE3 of the canonical filter encoding (see `lmdb/watermarks.md` §3 for the canonicalisation algorithm).
+Primary key: `filter_hash[32] ‖ relay_url_bytes` — variable-length, exact-key lookups only. `filter_hash` is BLAKE3 of the canonical filter encoding (see `lmdb/watermarks.md` §3 for the canonicalisation algorithm).
 
-Value: CBOR `WatermarkRow` (same shape as the trait type in [`trait.md`](trait.md) §2).
+Value: CBOR `WatermarkRow` (same shape as the trait type in [`trait/types.md`](trait/types.md)).
+
+### 5.1 `idx_watermark_relay` (relay-first secondary)
+
+Key: `relay_url_bytes ‖ filter_hash[32]` → empty value.
+
+Written in the same `RwTxn` as every `write_watermark` call. Enables `list_watermarks_for_relay(relay)` in O(matching rows) by prefix-scanning on `relay_url_bytes`. Without this secondary, the scan would be O(all watermarks) because the primary key is `filter_hash`-first.
+
+Note: the relay URL is variable-length and comes *before* the fixed-width `filter_hash`, so a prefix scan on the URL finds all `(relay, filter)` pairs for that relay. The `filter_hash` suffix makes each key unique.
 
 ## 6. Provenance
 

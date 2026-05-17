@@ -53,7 +53,26 @@ for_each_backend!(insert_returns_insert_outcome, |h: &mut StoreHarness| {
 });
 ```
 
-Plus a static-assertion-style test ensuring no other public function on `EventStore` writes to the primary store (compile-time check by inspecting trait method list via a build script — deferred to v1.x; v1 covers via review).
+Plus a runtime-instrumented test enforcing that `insert()` is the only path that writes to the primary `events` sub-db. The test uses a `WriteCounting<S>` newtype that wraps any `EventStore` and intercepts every write; at teardown it asserts that all writes to the primary sub-db originated from `insert()` call frames (verified via a `AtomicBool` flag set on entry to `insert` and checked inside the write interceptor).
+
+```rust
+// crates/nmp-testing/tests/store_insert_path.rs
+struct WriteCounting<S: EventStore> {
+    inner: S,
+    in_insert: Arc<AtomicBool>,
+    illegal_primary_writes: Arc<AtomicUsize>,
+}
+
+// ...wraps every EventStore method; every put() to the primary sub-db checks
+// in_insert; increments illegal_primary_writes if false.
+for_each_backend!(only_insert_writes_primary, |h: &mut StoreHarness| {
+    let wc = WriteCounting::wrap(h.take_store());
+    // Exercise every non-insert method that could conceivably write.
+    let _ = wc.delete_by_filter(DeleteFilter::ByIdList(vec![]));
+    let _ = wc.gc_step(GcBudget { max_events_per_step: 0, max_duration_ms: 0 });
+    assert_eq!(wc.illegal_primary_writes.load(Ordering::SeqCst), 0);
+});
+```
 
 ### 2.2 Signature verification (§7.1 row "Signature/delegation validity")
 
@@ -110,6 +129,49 @@ File: `crates/nmp-testing/tests/store_kind5_foreign.rs`
 - Insert kind:5 by Bob referencing Alice's kind:1.
 - Assert: kind:1 is still present in primary (Bob can't delete Alice's event); the kind:5 event itself is stored (so other clients can see it); no tombstone row was written.
 
+### 2.7a Kind:5 `a`-tag delete arriving before the target event
+
+File: `crates/nmp-testing/tests/store_kind5_addr_tombstone.rs`
+
+Tests the `tombstones_addr` sub-db path (see [`keys.md`](keys.md) §4.2):
+
+```rust
+for_each_backend!(a_tag_delete_before_event_suppresses_reinsert, |h: &mut StoreHarness| {
+    // Build a kind:5 that references a kind:30023 by address (not yet in store).
+    let d_tag = "my-article";
+    let addr = format!("30023:{}:{}", h.keys.public_key(), d_tag);
+    let kind5 = h.signed(EventBuilder::new(Kind::from(5), "", vec![
+        Tag::parse(vec!["a", &addr]).unwrap(),
+    ]));
+    let outcome5 = h.store.insert(kind5.clone(), &"wss://t/".into(), 0).unwrap();
+    // The kind:5 itself should be stored (for other clients to render).
+    assert!(matches!(outcome5, InsertOutcome::Inserted { .. } | InsertOutcome::Duplicate { .. }));
+
+    // Now insert the target parameterized replaceable event.
+    let article = h.signed(EventBuilder::new(Kind::from(30023), "hello", vec![
+        Tag::parse(vec!["d", d_tag]).unwrap(),
+    ]));
+    let article_id = article.id.to_bytes();
+    let outcome_article = h.store.insert(article, &"wss://t/".into(), 0).unwrap();
+    // Must be suppressed because the address tombstone matches.
+    assert!(
+        matches!(outcome_article, InsertOutcome::Tombstoned { origin: TombstoneOrigin::Kind5, .. }),
+        "expected Tombstoned, got {outcome_article:?}"
+    );
+    assert!(h.store.get_by_id(&article_id).unwrap().is_none(), "article must not be stored");
+
+    // Confirm that a subsequent re-insertion of the same article is also suppressed
+    // (the address tombstone should have promoted an event-id tombstone for the specific id).
+    let article2 = h.signed_with_id(article_id, EventBuilder::new(Kind::from(30023), "hello", vec![
+        Tag::parse(vec!["d", d_tag]).unwrap(),
+    ]));
+    let outcome2 = h.store.insert(article2, &"wss://t/".into(), 0).unwrap();
+    assert!(matches!(outcome2, InsertOutcome::Tombstoned { .. }));
+});
+```
+
+Restart variant: `h.restart()` between the kind:5 insert and the article insert — assert the address tombstone survives the restart.
+
 ### 2.8 NIP-40 expiration scheduling (§7.1 row "NIP-40 expiration")
 
 File: `crates/nmp-testing/tests/store_nip40_expiration.rs`
@@ -160,6 +222,43 @@ File: `crates/nmp-testing/tests/store_domain_migration.rs`
 - Close store; register `TestModuleV2` with `SCHEMA_VERSION = 2` and one migration v1→v2 that writes one key; open store; assert migration ran and key exists.
 - Close; register `TestModuleV3` with `SCHEMA_VERSION = 3` and a deliberately failing migration v2→v3; open store; assert `Effect::DomainSchemaTooNew { namespace: "test_module" }` (under degraded-mode rules) and `_meta` still at v2.
 - Close; remove the failing migration; reopen — assert successful catch-up to v3 (idempotent retry).
+
+### 2.12a Migration atomicity / crash-recovery (watermarks.md §4.2)
+
+File: `crates/nmp-testing/tests/store_domain_migration.rs` (extended section)
+
+Tests the single-`RwTxn` atomicity invariant for migration steps: verifies that a simulated crash (i.e., aborting the write transaction mid-migration) leaves the `_meta` version unchanged and the store in a retryable state.
+
+```rust
+#[cfg(feature = "lmdb-backend")]
+#[test]
+fn migration_crash_leaves_version_unchanged() {
+    // Use a FailingMigration that panics after writing data but before commit.
+    // We catch the unwind and re-open the store.
+    let dir = tempfile::tempdir().unwrap();
+    let result = std::panic::catch_unwind(|| {
+        let store = LmdbEventStore::open(dir.path()).unwrap();
+        let migrations = vec![DomainMigration {
+            from_version: 0,
+            to_version: 1,
+            apply: Box::new(|tx| {
+                tx.put(b"key", b"value")?;
+                panic!("simulated crash after data write, before commit");
+            }),
+        }];
+        let _ = store.run_migrations("test_ns", 1, &migrations);
+    });
+    assert!(result.is_err(), "expected panic");
+
+    // Re-open: version must still be 0 (data write was not committed).
+    let store2 = LmdbEventStore::open(dir.path()).unwrap();
+    let version = store2.read_meta_schema_version_raw("test_ns").unwrap().unwrap_or(0);
+    assert_eq!(version, 0, "version must not be bumped after a crashed migration");
+    // The data write must also be absent (rolled back with the transaction).
+    let handle = store2.domain_open("test_ns").unwrap();
+    assert!(handle.get(b"key").unwrap().is_none());
+}
+```
 
 ### 2.13 Domain isolation (`kernel-substrate.md` §8)
 

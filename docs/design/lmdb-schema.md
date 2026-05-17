@@ -64,7 +64,7 @@ Each file is bounded ≤ 300 LOC per AGENTS.md. The trait module is read by the 
 
 See [`lmdb/trait.md`](lmdb/trait.md) for the exact `pub trait EventStore` signature with all required methods, return types, and the `StoreError` enum. Summary:
 
-- **Reads:** `get_by_id`, `scan_by_author_kind`, `scan_by_kind_dtag`, `scan_by_etag`, `scan_by_ptag`, `scan_by_kind_time`, `scan_expiring_before`. All `scan_*` methods return a streaming `EventIter` so the planner pages without materialising. Cache-coverage queries take a `WatermarkKey` and answer authoritatively.
+- **Reads:** `get_by_id`, `scan_by_author_kind`, `get_param_replaceable`, `scan_by_kind_dtag`, `scan_by_etag`, `scan_by_ptag`, `scan_by_kind_time`, `scan_expiring_before`. All `scan_*` methods return a streaming `EventIter` so the planner pages without materialising. Cache-coverage queries via `coverage(WatermarkKey)` return a `Coverage` enum (`CompleteAsOf`, `PartialUpTo`, `Unknown`) used by the M2 planner.
 - **Writes:** `insert(event, RelayUrl)` returns `InsertOutcome` matching §7.1's table. `delete_by_filter` for foreign-relay cleanups. `tombstones_for` for replay.
 - **Watermarks / sync:** `read_watermark`, `write_watermark`, `list_watermarks_for_relay`.
 - **GC:** `claim(ClaimerId, &[EventId])`, `release(ClaimerId)`, `hot_set_hint(&[EventId])`, `gc_step(GcBudget) -> GcReport`.
@@ -79,16 +79,17 @@ See [`lmdb/trait.md`](lmdb/trait.md) for the exact `pub trait EventStore` signat
 Full byte layout for primary + every secondary in [`lmdb/keys.md`](lmdb/keys.md). At a glance:
 
 - Primary `events`: `event_id[32]` → `Event` (CBOR via `nostr` crate's serialization). Owned by `nostr-lmdb`.
-- Secondary `idx_author_kind`: `pubkey[32] || kind_be[4] || created_at_be[8] || event_id[32]` → empty. NMP-owned.
-- Secondary `idx_kind_dtag`: `kind_be[4] || dtag_len_be[2] || dtag_bytes || pubkey[32]` → `event_id[32]`. NMP-owned. Parameterized replaceable address lookup.
-- Secondary `idx_etag_time`, `idx_ptag_time`: `tag_value[32] || created_at_desc_be[8] || event_id[32]` → empty. NMP-owned. `created_at_desc = u64::MAX - created_at` so a forward LMDB scan is newest-first.
+- Secondary `idx_author_kind`: `pubkey[32] || kind_be[4] || created_at_desc_be[8] || event_id[32]` → empty. NMP-owned. `created_at_desc_be = (u64::MAX - created_at).to_be_bytes()` for newest-first forward scans.
+- Secondary `idx_kind_dtag`: `kind_be[4] || pubkey[32] || dtag_len_be[2] || dtag_bytes` → `event_id[32]`. NMP-owned. Parameterized replaceable address lookup. The `pubkey` field comes before `d-tag` bytes so all entries for a `(kind, pubkey)` pair are contiguous for `scan_by_kind_dtag`.
+- Secondary `idx_etag_time`, `idx_ptag_time`: `tag_value[32] || created_at_desc_be[8] || event_id[32]` → `kind_be[4]`. NMP-owned. Value holds kind so reaction views can filter without a primary fetch.
 - Secondary `idx_kind_time`: `kind_be[4] || created_at_desc_be[8] || event_id[32]` → empty.
 - Secondary `idx_expires`: `expires_at_be[8] || event_id[32]` → empty. Scanned by the NIP-40 reaper.
-- `tombstones`: `target_id[32]` → `TombstoneRow { kind5_event_id, deleter_pubkey, deleted_at, sources: Vec<RelayUrl> }` (CBOR).
+- `tombstones`: `target_id[32]` → CBOR `TombstoneRow { kind5_event_id: Option<[u8;32]>, origin: TombstoneOrigin, deleter_pubkey: Option<[u8;32]>, deleted_at, sources: Vec<RelayUrl> }`.
+- `tombstones_addr`: `pubkey[32] || kind_be[4] || dtag_len_be[2] || dtag_bytes` → CBOR `TombstoneRow`. For kind:5 `a`-tag deletes arriving before the target event exists (see [`lmdb/keys.md`](lmdb/keys.md) §4.2).
 
-`created_at_be` is big-endian so byte order matches numeric order; `created_at_desc_be = u64::MAX - created_at` then big-endian for newest-first scans without `MDB_LAST + MDB_PREV`.
+All integer fields in keys are big-endian so LMDB's byte-wise comparator matches numeric order. `created_at_desc_be = (u64::MAX - created_at).to_be_bytes()` produces newest-first forward scans without `MDB_LAST + MDB_PREV`.
 
-All secondaries are maintained inside the same `RwTxn` as the primary write — atomicity is achieved by LMDB transactionality, not by post-hoc reconciliation.
+All secondaries are maintained inside the same `RwTxn` as the primary write — atomicity is achieved by LMDB transactionality, not by post-hoc reconciliation. This requires NMP and `nostr-lmdb` to share a single `lmdb::Environment`; the decision is in ADR-0011 (`docs/decisions/0011-lmdb-env-sharing.md`).
 
 ## 5. Watermark table
 
@@ -135,7 +136,7 @@ hot_resident = {e | e is in claim_pinned}
 cold = stored_events \ hot_resident
 ```
 
-`hot_resident` lives in a `lru::LruCache<EventId, Arc<Event>>` capped at the configured hot ceiling (default 10,000) plus an unbounded pinned overlay holding events with non-zero claim count. `cold` lives only on disk; lookup pays one LMDB `get` (memory-mapped — typically already in OS page cache for recently-evicted items).
+`hot_resident` lives in a `lru::LruCache<EventId, Arc<Event>>` capped at the configured hot ceiling (default 10,000) plus a bounded pinned overlay holding events with non-zero claim count. The pinned overlay has two ceilings: per-view (`max_claim_per_view`, default 1 000) and global (`max_pinned_total`, default 20 000). `claim()` returns `StoreError::OverPinned` if either ceiling would be breached; see [`lmdb/gc.md`](lmdb/gc.md) §2 for enforcement details. `cold` lives only on disk; lookup pays one LMDB `get` (memory-mapped — typically already in OS page cache for recently-evicted items).
 
 **Eviction algorithm.** On any insert that pushes the LRU over its ceiling, the oldest non-pinned entry is dropped. `gc_step()` is called periodically by the actor (default every 60 s and on memory pressure callbacks from `MemoryWarningCapability`): it (a) reaps NIP-40 expired events using `idx_expires`, (b) trims the LRU to `target_hot_size`, (c) deletes tombstones older than `tombstone_retention` (default 90 days) whose target event is absent from the store, (d) returns a `GcReport` for diagnostics.
 
@@ -147,7 +148,9 @@ The `insert()` path implements exactly the §7.1 invariants:
 
 - **Replaceable (kinds 0, 3, 10000–19999).** Look up the existing event for `(pubkey, kind)` in `idx_author_kind` (most recent suffix). If incoming `created_at` is newer, replace; if equal, keep lexicographically smallest `id`; else drop. Replacement deletes the old primary row and all secondary entries in the same `RwTxn`.
 - **Parameterized replaceable (30000–39999).** Same algorithm keyed on `(pubkey, kind, d-tag)` via `idx_kind_dtag` (which holds `event_id` as value so we don't need a separate `idx_author_kind_dtag`; the dtag prefix is unique per author by Nostr semantics — see [`lmdb/keys.md`](lmdb/keys.md) §3.2 for the per-author scoping note).
-- **Kind:5 self-delete.** Verify signature, scan referenced `e` and `a` tags, for each target `e_id` that is authored by the deleter or whose `a` address matches `(deleter_pubkey, kind, d-tag)`: delete the primary + all secondaries + write the tombstone row. Tombstone timestamp = `max(existing.deleted_at, kind5.created_at)`. Re-insert of the deleted event id is suppressed at insert time by a `tombstones.contains(event_id)` check.
+- **Kind:5 self-delete.** Verify signature, scan referenced `e` and `a` tags.
+  - For `e` tags: if the target event exists in the store and was authored by the deleter, delete the primary + all secondaries + write an event-id tombstone row. Tombstone timestamp = `max(existing.deleted_at, kind5.created_at)`. Re-insert of the deleted event id is suppressed by a `tombstones.contains(event_id)` check at insert time, returning `InsertOutcome::Tombstoned { id, kind5_event_id: Some(kind5.id), origin: Kind5 }`.
+  - For `a` tags (address format `<kind>:<pubkey>:<d-tag>`): if the target parameterized replaceable exists, same as `e` tag path. If it does **not** yet exist, write an address tombstone in `tombstones_addr` keyed by `(pubkey, kind, d-tag)`. When the target event is later inserted, the address tombstone match suppresses it and promotes an event-id tombstone for fast future lookups (see [`lmdb/keys.md`](lmdb/keys.md) §4.2).
 - **Foreign kind:5.** A kind:5 referencing events not authored by the kind:5's `pubkey` is ignored (per spec) — the event is *still stored* as a kind:5 (so other clients can render it / dedup it), but it has no side effect on the targets. The tombstone row is **not** written.
 - **NIP-40 expiration.** On insert, parse `expiration` tag; if present, write `idx_expires`. On `gc_step()`, scan `idx_expires` for keys with `expires_at_be ≤ now`, delete them like kind:5 (full primary + secondaries + tombstone marker noting `kind: Expired`).
 
@@ -215,7 +218,7 @@ Each gate is measurable; any miss revises the design via an ADR before M3 is dec
 
 ## 13. Open questions for ADR after review
 
-1. **`nostr-lmdb` LMDB environment sharing.** Can we open the same `lmdb::Environment` for both `NostrLMDB`'s sub-databases and our own NMP sub-databases (provenance, watermarks, claims, domain rows)? If yes, we get atomic cross-sub-db transactions for free (a single `RwTxn` covers event + provenance + secondary indexes). If `nostr-lmdb` insists on opening its own `Environment`, we lose that and the insert path needs a two-phase write with crash-recovery logic. Investigate before implementation — may require an upstream PR exposing `Environment` access.
+1. **`nostr-lmdb` LMDB environment sharing.** ~~Can we open the same `lmdb::Environment` for both `NostrLMDB`'s sub-databases and our own NMP sub-databases?~~ **Resolved by ADR-0011** (`docs/decisions/0011-lmdb-env-sharing.md`): NMP owns the `lmdb::Environment` and injects it into `nostr-lmdb` via an upstream PR (or an interim fork). This gives atomic cross-sub-db transactions for free. See ADR-0011 for the fallback plan if the upstream PR is rejected.
 2. **Watermark `filter_hash` canonicalisation.** Two `Filter`s that are semantically identical but field-ordered differently must hash the same. The canonicalisation rule (likely: sort all tag-value arrays, sort kinds, sort authors, lexicographic field order before BLAKE3) needs to be specified once and shared with the planner so cache-coverage lookups hit. Candidate: a single `fn canonical_filter_hash(&Filter) -> [u8; 32]` in `nmp-core::store::watermarks`.
 3. **Projection cache durability.** Currently in-memory in the existing kernel (`kernel/mod.rs:293` `profiles: HashMap`). Do we persist projection caches as a `DomainModule` or rebuild from events at cold-start? Rebuild is simpler and avoids cache-staleness bugs but adds startup cost; persistence is faster but requires invalidation logic on kind:0 replacement. Recommended default: rebuild on cold-start, measure, decide whether to add the persistence layer in M3.x or M4.
 4. **Domain-module per-record encoding.** CBOR via `serde_cbor` vs serde-json vs bincode. CBOR is upstream-compatible (matches `nostr` crate); bincode is faster but stratifies the format. Default: CBOR for cross-language readability; revisit if benchmarks show >5% insert-time cost.

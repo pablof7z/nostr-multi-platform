@@ -34,15 +34,55 @@ pub(crate) struct HotSet {
     pinned: HashMap<EventId, u32>,                   // event_id → refcount
     // Reverse map for cheap release().
     by_claimer: HashMap<ClaimerId, SmallVec<[EventId; 8]>>,
+    // Per-view ceiling registered by register_view_cover().
+    view_budgets: HashMap<ClaimerId, usize>,
     target_hot_size: usize,
+    // Ceilings (enforced on every claim() call — D8 / ADR-0001..0004).
+    max_claim_per_view: usize,   // default 1_000; callers may lower via register_view_cover
+    max_pinned_total: usize,     // default 20_000; hard cap on pinned.len()
 }
 
 impl HotSet {
-    pub fn claim(&mut self, c: ClaimerId, ids: &[EventId]) {
+    /// Record the budget for a view before its first claim. If not called, the
+    /// default `max_claim_per_view` applies. Calling it again with a lower budget
+    /// after claims have already been issued does *not* retroactively reject them;
+    /// the lower ceiling applies to future claim() calls.
+    pub fn register_view_cover(&mut self, c: ClaimerId, budget: usize) {
+        self.view_budgets.insert(c, budget);
+    }
+
+    /// Pin `ids` for `c`. Returns `StoreError::OverPinned` if the per-claimer
+    /// budget or the global `max_pinned_total` ceiling would be exceeded.
+    /// On rejection, the state is unchanged (all-or-nothing per call).
+    pub fn claim(&mut self, c: ClaimerId, ids: &[EventId]) -> Result<(), StoreError> {
+        let per_view_ceiling = self.view_budgets
+            .get(&c)
+            .copied()
+            .unwrap_or(self.max_claim_per_view);
+        let current_for_claimer = self.by_claimer.get(&c).map_or(0, |v| v.len());
+        let new_total_for_claimer = current_for_claimer + ids.len();
+        if new_total_for_claimer > per_view_ceiling {
+            return Err(StoreError::OverPinned {
+                claimer: c,
+                requested: new_total_for_claimer,
+                ceiling: per_view_ceiling,
+            });
+        }
+        let new_global = self.pinned.len() + ids.iter()
+            .filter(|id| !self.pinned.contains_key(*id))
+            .count();
+        if new_global > self.max_pinned_total {
+            return Err(StoreError::OverPinned {
+                claimer: c,
+                requested: new_global,
+                ceiling: self.max_pinned_total,
+            });
+        }
         for id in ids {
             *self.pinned.entry(*id).or_insert(0) += 1;
         }
         self.by_claimer.entry(c).or_default().extend_from_slice(ids);
+        Ok(())
     }
 
     pub fn release(&mut self, c: ClaimerId) {
@@ -54,6 +94,7 @@ impl HotSet {
                 }
             }
         }
+        self.view_budgets.remove(&c);
     }
 
     pub fn touch(&mut self, id: EventId, e: Arc<nostr::Event>) {
@@ -74,13 +115,23 @@ impl HotSet {
                 }
             };
             for (id, e) in skipped.drain(..) { self.lru.put(id, e); }
-            if evicted.is_none() { break; }           // every entry is pinned
+            // If every LRU entry is pinned, the overflow will not be resolved by
+            // trim() alone. The working-set budget enforcement in claim() is the
+            // primary defence; trim() stopping here is intentional, not a silent
+            // acceptance of unbounded growth.
+            if evicted.is_none() { break; }
         }
     }
 }
 ```
 
 `target_hot_size` is set from `AppConfig::hot_event_ceiling` (default 10,000) and may be lowered by `MemoryWarningCapability` events (iOS app suspend or low-memory warning → halve the ceiling, run `gc_step()` once, restore after the warning clears).
+
+**Ceiling defaults** (see `StoreError::OverPinned` in [`trait/types.md`](trait/types.md)):
+- `max_claim_per_view`: 1 000 events per claimer. A view that tries to pin more returns `OverPinned`; the actor surfaces this as `Effect::ViewOverPinned` and releases the claim.
+- `max_pinned_total`: 20 000 events globally. Prevents many moderate-sized views from collectively overwhelming the working set (D8 / ADR-0003 gate).
+
+These defaults allow 100 active views × 200 pins each = 20 000 globally, within the ADR-0003 §5 memory accounting (10k LRU + 20k pinned overlay ≈ 90 MB, under the 100 MB gate).
 
 ## 3. `gc_step()` algorithm
 
@@ -128,8 +179,9 @@ The kernel actor holds `view_claims: HashMap<ViewId, ClaimerId>`. On `open_view(
 
 1. The view module's `dependencies(spec)` is consulted (per `kernel-substrate.md` §3).
 2. The composite reverse-index resolves the dependency set to a (small, bounded) set of currently-known event ids — the *view cover*.
-3. `store.claim(claimer_id, &cover_ids)` pins those events in hot.
-4. As events arrive matching the dependency, the actor calls `store.claim(claimer_id, &[new_id])` incrementally (claim is idempotent under increment).
+3. `store.register_view_cover(claimer_id, cover_budget)` registers the budget ceiling for this view. `cover_budget` is `spec.max_cover_size()` (a per-view-module constant; defaults to 200 if unspecified).
+4. `store.claim(claimer_id, &cover_ids)` pins those events in hot. Returns `StoreError::OverPinned` if the registered budget is exceeded; the actor releases the claim and surfaces `Effect::ViewOverPinned`.
+5. As events arrive matching the dependency, the actor calls `store.claim(claimer_id, &[new_id])` incrementally (claim is idempotent under increment).
 
 On `close_view(view_id)`:
 
@@ -147,7 +199,7 @@ Components measured:
 | Source | Approx bytes | Notes |
 |---|---|---|
 | Hot LRU (10k × Arc<Event>) | ~30 MB | average kind:1 event with content ~800 B, profile/contacts can be 4–8 KB each; mix-weighted average ~3 KB; the `Arc` is shared with view module payloads so the same body isn't duplicated |
-| Claim refcount maps (10k entries) | ~0.5 MB | `HashMap<EventId, u32>` + reverse `by_claimer` |
+| Claim refcount maps (≤20k pinned + 10k LRU entries) | ~1 MB | `HashMap<EventId, u32>` + reverse `by_claimer` + `view_budgets`; global ceiling 20k pins keeps this bounded |
 | Reverse index in-memory (composite keys for 100 views) | ~5 MB | from ADR-0001 — bounded by `~broad_axes_guardrail` per ADR-0001 |
 | Projection caches (author display, reaction counts) | ~10 MB | LRU-bounded by referenced-view count per ADR-0003 |
 | LMDB page cache (kernel-owned, *not* counted toward RSS budget) | 0 | OS-paged, evicted under pressure; counts against system memory but not app working set |
@@ -167,6 +219,7 @@ The 1M-events-on-disk dimension does **not** appear in the budget because LMDB d
 | LRU evicted a still-pinned event (bug) | `trim()` would have skipped it; if observed, log + invariant violation | Pin reinstated from `claims_meta`; fire `tracing::error!`; flagged as critical bug class to investigate |
 | `gc_step()` over-budget | `start.elapsed() > max_duration_ms` mid-loop | Break out of current loop early; remaining work picked up next call (no state corruption — every reaped event is its own transaction) |
 | `release()` called for unknown `ClaimerId` | `by_claimer.remove` returns None | Silent no-op; logged at debug; not a bug (idempotent close) |
+| `claim()` exceeds per-view or global ceiling | Per-view: `by_claimer[c].len() + ids.len() > view_budgets[c]`; global: `pinned.len() + new_unique > max_pinned_total` | Return `StoreError::OverPinned`; state unchanged; actor surfaces `Effect::ViewOverPinned` and calls `release(claimer_id)` |
 | Memory warning during heavy insert burst | iOS `didReceiveMemoryWarning` → `MemoryWarningCapability` event | Actor lowers `target_hot_size` to 5k, runs `gc_step({max_events_per_step:5000, max_duration_ms:200})` once; restored after the warning clears |
 
 ## 7. Diagnostics integration (ADR-0007)

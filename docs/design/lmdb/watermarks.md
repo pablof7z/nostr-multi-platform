@@ -147,7 +147,6 @@ pub fn open(path: &Path, modules: &ModuleRegistry) -> Result<Self, StoreError> {
         for step in steps {
             store.run_migration_step(namespace, step)?;
             applied = step.to_version;
-            store.write_meta_schema_version(namespace, applied)?;
         }
         if applied < target {
             return Err(StoreError::MigrationFailed { /* missing step */ });
@@ -160,7 +159,9 @@ pub fn open(path: &Path, modules: &ModuleRegistry) -> Result<Self, StoreError> {
 }
 ```
 
-Each `run_migration_step` opens its own `RwTxn`, calls `step.apply(&mut migration_tx)`, drains `migration_tx.writes()` into the relevant sub-db, and commits. Either the whole step lands atomically or LMDB rolls it back on commit failure.
+**Atomicity invariant:** each `run_migration_step` opens a single `RwTxn` that covers **both** the migration data writes (`step.apply(&mut migration_tx)`) **and** the `_meta` version bump (`write_meta_schema_version(namespace, step.to_version)`). Both writes commit together or neither does. This means a process crash between the data write and the version bump is impossible — if the commit never happened, the version stays at `current` and the migration is retried cleanly on the next startup.
+
+Separating the writes into two transactions (data, then version) would be a TOCTOU bug: a crash after the data write but before the version write would cause the migration to re-run on restart, potentially corrupting already-migrated data. The single-`RwTxn` design prevents this.
 
 ### 4.3 Rollback semantics
 

@@ -1,144 +1,15 @@
 # LMDB sub-design: `EventStore` trait
 
-> Part of [`docs/design/lmdb-schema.md`](../lmdb-schema.md). This file fixes the trait surface; the master doc fixes the decision.
+> Part of [`docs/design/lmdb-schema.md`](../lmdb-schema.md).
+> Supporting types are in [`trait/types.md`](trait/types.md) (extracted to keep this file ≤ 300 LOC).
 
 ## 1. Crate placement
 
 `crates/nmp-core/src/store/events.rs` (filename note: `trait` is a Rust keyword, so the file is named `events.rs` and exposes `pub trait EventStore`). Re-exported from `nmp_core::store::EventStore`. The actor (`crates/nmp-core/src/actor.rs`) holds the store as `store: Box<dyn EventStore>`; backends are constructed by the factory in `store/mod.rs::open_event_store(&AppConfig) -> Result<Box<dyn EventStore>, StoreError>`.
 
-## 2. Supporting types
+All types referenced below (`InsertOutcome`, `TombstoneRow`, `WatermarkKey`, `ClaimerId`, `StoreError`, etc.) are defined in [`trait/types.md`](trait/types.md) and live in `crates/nmp-core/src/store/types.rs`.
 
-```rust
-use std::sync::Arc;
-
-pub type EventId = [u8; 32];
-pub type PubKey = [u8; 32];
-pub type RelayUrl = String;
-
-#[derive(Clone, Debug)]
-pub struct StoredEvent {
-    pub raw: Arc<nostr::Event>,         // upstream nostr crate type
-    pub received_at_ms: u64,            // wall-clock first arrival across all relays
-}
-
-#[derive(Clone, Debug)]
-pub struct ProvenanceEntry {
-    pub relay_url: RelayUrl,
-    pub first_seen_ms: u64,
-    pub last_seen_ms: u64,
-    pub primary: bool,                  // first observed relay (deterministic)
-}
-
-#[derive(Clone, Debug)]
-pub enum InsertOutcome {
-    /// Fresh insert; secondary indexes written.
-    Inserted { id: EventId, sources_after: u32 },
-    /// Duplicate id; provenance updated, primary untouched.
-    Duplicate { id: EventId, sources_after: u32 },
-    /// Replaceable supersession: this event replaced an older one.
-    Replaced { new_id: EventId, replaced_id: EventId },
-    /// Replaceable supersession: incoming was older, dropped.
-    Superseded { id: EventId, current_id: EventId },
-    /// Suppressed because target is tombstoned.
-    Tombstoned { id: EventId, target_kind5_id: EventId },
-    /// Signature / delegation / structural validity failed.
-    Rejected { id: EventId, reason: RejectReason },
-    /// Ephemeral kind: delivered to live consumers, not stored.
-    Ephemeral { id: EventId },
-}
-
-#[derive(Clone, Debug)]
-pub enum RejectReason {
-    BadSignature,
-    BadDelegation(String),
-    Malformed(String),
-    ExpiredOnArrival,                   // NIP-40 expiration already in the past
-}
-
-#[derive(Clone, Debug)]
-pub struct TombstoneRow {
-    pub target_id: EventId,
-    pub kind5_event_id: Option<EventId>, // None for NIP-40 expiry tombstones
-    pub deleter_pubkey: Option<PubKey>,
-    pub deleted_at: u64,                 // unix seconds
-    pub sources: Vec<RelayUrl>,
-    pub origin: TombstoneOrigin,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum TombstoneOrigin { Kind5, NIP40Expiry, AdminPurge }
-
-#[derive(Clone, Debug)]
-pub struct WatermarkKey {
-    pub filter_hash: [u8; 32],
-    pub relay_url: RelayUrl,
-}
-
-#[derive(Clone, Debug)]
-pub struct WatermarkRow {
-    pub key: WatermarkKey,
-    pub synced_up_to: u64,               // unix seconds
-    pub last_sync_method: SyncMethod,
-    pub last_negentropy_state: Option<Vec<u8>>,
-    pub bytes_saved_vs_req: u64,
-    pub updated_at: u64,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum SyncMethod { Negentropy, ReqScan, Manual }
-
-#[derive(Clone, Copy, Debug)]
-pub struct ClaimerId(pub u64);           // opaque view-handle id from the actor
-
-#[derive(Clone, Copy, Debug)]
-pub struct GcBudget {
-    pub max_events_per_step: usize,
-    pub max_duration_ms: u32,
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct GcReport {
-    pub expired_reaped: usize,
-    pub lru_evicted: usize,
-    pub tombstones_purged: usize,
-    pub duration_ms: u32,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum DumpFormat { Jsonl, Cbor }
-
-#[derive(Clone, Debug, Default)]
-pub struct DumpStats {
-    pub events: u64,
-    pub tombstones: u64,
-    pub watermarks: u64,
-    pub domain_rows: u64,
-    pub bytes_written: u64,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum StoreError {
-    #[error("backend i/o: {0}")] Io(String),
-    #[error("backend corruption: {0}")] Corrupt(String),
-    #[error("encoding: {0}")] Encoding(String),
-    #[error("schema too new: {namespace} on-disk={on_disk} expected={expected}")]
-    SchemaTooNew { namespace: String, on_disk: u32, expected: u32 },
-    #[error("schema migration failed: {namespace} v{from}->v{to}: {reason}")]
-    MigrationFailed { namespace: String, from: u32, to: u32, reason: String },
-    #[error("unknown namespace: {0}")] UnknownNamespace(String),
-}
-```
-
-The store iterates lazily for scans:
-
-```rust
-pub trait EventIter: Iterator<Item = Result<StoredEvent, StoreError>> + Send {}
-impl<T: Iterator<Item = Result<StoredEvent, StoreError>> + Send> EventIter for T {}
-```
-
-`StoredEvent::raw` is `Arc<nostr::Event>` so the hot LRU can hold reference-counted copies without cloning the event body on each `get_by_id`.
-
-## 3. The trait
+## 2. The trait
 
 ```rust
 pub trait EventStore: Send + Sync {
@@ -147,7 +18,8 @@ pub trait EventStore: Send + Sync {
     /// Primary lookup. Returns Ok(None) if absent; tombstones do not count as "present".
     fn get_by_id(&self, id: &EventId) -> Result<Option<StoredEvent>, StoreError>;
 
-    /// `idx_author_kind` scan, newest-first. `kinds` empty = any kind.
+    /// `idx_author_kind` scan, newest-first.
+    /// `kinds` must be non-empty; callers wanting any-kind use `scan_by_kind_time` instead.
     fn scan_by_author_kind<'a>(
         &'a self,
         author: &PubKey,
@@ -166,7 +38,18 @@ pub trait EventStore: Send + Sync {
         d_tag: &[u8],
     ) -> Result<Option<StoredEvent>, StoreError>;
 
+    /// `idx_kind_dtag` scan, newest-first over all d-tags for `(pubkey, kind)`.
+    /// Used to enumerate all parameterized replaceables for a given `(author, kind)` pair
+    /// — for example, listing all of an author's NIP-23 long-form articles (kind:30023).
+    fn scan_by_kind_dtag<'a>(
+        &'a self,
+        pubkey: &PubKey,
+        kind: u32,
+        limit: usize,
+    ) -> Result<Box<dyn EventIter + 'a>, StoreError>;
+
     /// `idx_etag_time` scan, newest-first. Used by reaction / repost / thread views.
+    /// `kinds` must be non-empty; pass `&[7]` for reactions, `&[6]` for reposts, etc.
     fn scan_by_etag<'a>(
         &'a self,
         target: &EventId,
@@ -175,6 +58,7 @@ pub trait EventStore: Send + Sync {
     ) -> Result<Box<dyn EventIter + 'a>, StoreError>;
 
     /// `idx_ptag_time` scan, newest-first. Used by notifications / mention views.
+    /// `kinds` must be non-empty.
     fn scan_by_ptag<'a>(
         &'a self,
         target: &PubKey,
@@ -182,8 +66,8 @@ pub trait EventStore: Send + Sync {
         limit: usize,
     ) -> Result<Box<dyn EventIter + 'a>, StoreError>;
 
-    /// `idx_kind_time` scan, newest-first. Used by timeline backfills.
-    /// `kinds` empty = any kind (parity with `scan_by_author_kind`).
+    /// `idx_kind_time` scan, newest-first. Pass `kinds = &[]` to scan all kinds
+    /// (the only scan method that accepts an empty kinds slice).
     fn scan_by_kind_time<'a>(
         &'a self,
         kinds: &[u32],
@@ -225,6 +109,15 @@ pub trait EventStore: Send + Sync {
 
     fn read_watermark(&self, key: &WatermarkKey) -> Result<Option<WatermarkRow>, StoreError>;
     fn write_watermark(&self, row: WatermarkRow) -> Result<(), StoreError>;
+
+    /// Returns the coverage classification for a `(filter, relay)` pair
+    /// based on the stored watermark row and the configured staleness window.
+    /// Used by the M2 subscription planner to decide whether a cache miss is
+    /// authoritative (no need to fetch) or requires a new REQ.
+    fn coverage(&self, key: &WatermarkKey) -> Result<Coverage, StoreError>;
+
+    /// Iterate watermarks for a specific relay. O(matching rows) — backed by the
+    /// `idx_watermark_relay` secondary index (see [`keys.md`](keys.md) §5).
     fn list_watermarks_for_relay<'a>(
         &'a self,
         relay_url: &str,
@@ -232,7 +125,23 @@ pub trait EventStore: Send + Sync {
 
     // ─────── Hot-set / claims (GC) ───────
 
-    /// Register a claim: caller pins `ids` against eviction until `release`.
+    /// Register the maximum number of events this view is allowed to pin at once.
+    /// Must be called before `claim()` for a given `claimer`. If not called,
+    /// the store applies a default per-view ceiling of `max_claim_per_view` events
+    /// (see [`gc.md`](gc.md) §2 — default 1 000).
+    ///
+    /// Enforcement: `claim()` counts the current per-claimer set size; if adding
+    /// `ids` would exceed this budget OR the global `max_pinned_total` ceiling,
+    /// it returns `Err(StoreError::OverPinned { ... })` without modifying state.
+    /// The caller is responsible for releasing stale claims first.
+    ///
+    /// Rationale: D8 (reactivity contract) requires that the kernel's working-set
+    /// is bounded at all times. An unbounded pin overlay would let a misbehaving
+    /// view module inflate memory without limit (ADR-0001..0004).
+    fn register_view_cover(&self, claimer: ClaimerId, cover_budget: usize) -> Result<(), StoreError>;
+
+    /// Pin `ids` against eviction until `release()`. Returns `StoreError::OverPinned`
+    /// if adding `ids` would exceed the per-claimer budget or the global ceiling.
     fn claim(&self, claimer: ClaimerId, ids: &[EventId]) -> Result<(), StoreError>;
     fn release(&self, claimer: ClaimerId) -> Result<(), StoreError>;
 
@@ -258,7 +167,17 @@ pub trait EventStore: Send + Sync {
 
 `DeleteFilter` mirrors the limited subset of admin operations the kernel needs (by-relay-only events, by-author, by-id-list, by-kind range); it is **not** a pass-through to `nostr::Filter` — we intentionally do not expose arbitrary remote filters as a delete vector.
 
-## 4. `DomainHandle`
+`Coverage` (returned by `coverage()`):
+
+```rust
+pub enum Coverage {
+    CompleteAsOf(u64),  // fully synced; a cache miss is authoritative "doesn't exist"
+    PartialUpTo(u64),   // synced up to timestamp but row is stale — fetch is needed
+    Unknown,            // no watermark; always fetch
+}
+```
+
+## 3. `DomainHandle`
 
 ```rust
 pub struct DomainHandle<'env> {
@@ -279,20 +198,21 @@ impl<'env> DomainHandle<'env> {
 
 A handle is module-scoped; the kernel does not give a `DraftsModule` handle to `SettingsModule` (per `kernel-substrate.md` §8 "Domain stores are isolated"). The handle is `'env`-bounded so it cannot outlive the LMDB environment.
 
-## 5. Error semantics (doctrine D3)
+## 4. Error semantics (doctrine D6)
 
 The trait returns `Result<T, StoreError>`. The actor's wrapper functions map them as:
 
 - `Io / Corrupt` at startup → panic (we cannot run without a store; surfaces to platform shell as a process restart).
 - `Io / Corrupt` mid-run → `Effect::StoreDegraded { details }` published on the diagnostics bridge (ADR-0007); the affected operation returns the closest-fit graceful default (empty iterator, drop-write); the next gc_step retries.
-- `Encoding` → `tracing::error!` with the offending key/namespace; the action that triggered it fails with a `toast: Some("internal storage error; please restart")` per D3.
+- `Encoding` → `tracing::error!` with the offending key/namespace; the action that triggered it fails with a `toast: Some("internal storage error; please restart")`.
 - `SchemaTooNew` at startup → publish `Effect::DomainSchemaTooNew { namespace }`, the affected module starts in degraded mode (its actions reject with `ActionRejection::ModuleUnavailable`), rest of the kernel runs.
 - `MigrationFailed` → same as above, plus a one-time toast on first action attempt.
 - `UnknownNamespace` → programming error; assert in debug, log + drop in release.
+- `OverPinned` → the caller (actor) surfaces this as `Effect::ViewOverPinned { claimer }` and then calls `release(claimer)` to drop the offending claim, keeping the working set bounded per D8.
 
-No `StoreError` ever crosses FFI. The `AppUpdate` carries only successful state + optional `toast: Option<String>`.
+No `StoreError` ever crosses FFI (D6). The `AppUpdate` carries only successful state + optional `toast: Option<String>`.
 
-## 6. Two backends in v1
+## 5. Two backends in v1
 
 ```rust
 // In-memory backend, kept for tests + web-pre-M15.
