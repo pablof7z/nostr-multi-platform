@@ -189,11 +189,13 @@ Notes on the algorithm:
 - **Step 1's override validation order** (derive base set first, validate override as subset)
   ensures the privacy constraint is always checked — the override cannot bypass the
   `PrivateToRecipients` fail-closed check by returning early before validation.
-- **Step 3(b)'s `Indexer` source check** is the structural enforcement of bug-extinction #4
-  ([`docs/plan/m9-messaging.md`](../../plan/m9-messaging.md) — "DM to public: no API path
-  can send a DM to a non-inbox relay"). Compare: NDK gotcha `a912a2c2`
-  (`docs/research/ndk/gotchas.md`) shows that outbox bootstrap timing can leave inbox relays
-  empty at first query — NMP's fail-closed here is intentional rather than "retry later."
+- **Step 3(b)'s `UserConfigured`-indexer-fallback check** is the structural enforcement of
+  bug-extinction #4 ([`docs/plan/m9-messaging.md`](../../plan/m9-messaging.md) — "DM to
+  public: no API path can send a DM to a non-inbox relay"). An inbox sourced from
+  `RoutingSource::UserConfigured` where the relay carries `UserConfiguredCategory::Indexer`
+  means we have no NIP-65-declared inbox — fail-closed is correct. Compare: NDK gotcha
+  `a912a2c2` (`docs/research/ndk/gotchas.md`) shows bootstrap timing can leave inbox relays
+  empty at first query — NMP's fail-closed is intentional rather than "retry later."
 - **`required_success_count: usize`** prevents overflow when `recipients.len()` is large. The
   `u8` type in the original draft was wrong (max 255 recipients before silent truncation). For
   `PrivateToRecipients`, the per-recipient `RecipientDelivery` set is what the ledger actually
