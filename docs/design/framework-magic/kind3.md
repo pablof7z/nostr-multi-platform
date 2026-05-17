@@ -42,17 +42,19 @@ C1 is a storage-layer invariant. C5 is a planner-layer reactive guarantee. The f
 
 ## 3. NDK reference path
 
-The user's directive in `scope-adjustments-2026-05-18.md` says: *"NDK reference: how NDK auto-follows kind:3 changes and re-routes its open subs. (Captured in M2 research wave; agents fan out.)"*
+The user's directive in `scope-adjustments-2026-05-18.md` says: *"NDK reference: how NDK auto-follows kind:3 changes and re-routes its open subs."*
 
-The mechanism NDK uses is documented in the parallel research file `docs/research/ndk/kind3-auto-tracking.md` (pending agent landing). The contract here does not depend on NDK's specific code path; it depends on the *property* NDK demonstrates: that a kind:3 replacement re-shapes the open-REQ set without the application observing protocol churn.
+Research conclusion (`docs/research/ndk/kind3-auto-tracking.md`): **NDK has no unified kind:3 → open-subscription rewire in core.** The session package (`@nostr-dev-kit/sessions`) opens a long-lived REQ on the active user's pubkey at `sessions/src/store.ts:184-194` and updates `session.followSet` on each newer kind:3 via `handleContactListEvent` at `store.ts:492-512`. However, this state write does not mutate any open subscription's `authors` filter — filters are immutable after `ndk.subscribe()` returns. Svelte gets implicit rewire via runes (`svelte/src/lib/builders/subscription.svelte.ts:164-177`); React requires explicit dependency declaration (`react/src/subscribe/hooks/subscribe.ts:110`). NMP is in the same position as React: the framework-glue must actively observe the follow-list signal and trigger `Trigger::FollowListChanged` (step 2 above) to replace the full-teardown + rebuild pattern with a delta patch.
 
-`TBD-from-research(ndk/kind3-auto-tracking.md)`: insert file:line ref to NDK's listener and the exact race-window it closes (specifically: what happens if a kind:3 arrives mid-EOSE on a follow-derived REQ). The contract is satisfied by *any* mechanism that produces the observable behavior in C5; NDK's path is one existence proof.
+The race window NDK Svelte has: `restart()` at `subscription.svelte.ts:117` does `stop()` then a fresh `ndk.subscribe()` — events arriving between the CLOSE and the new REQ's EOSE are missed or re-fetched. NMP's wire-emitter delta-patch (CLOSE only the removed-author slices, open new slices for added authors) avoids this window entirely.
 
 ## 4. Applesauce reference path
 
-`scope-adjustments-2026-05-18.md` also says: *"Applesauce reference: the 'event store query builder' magic that makes subscriptions auto-update without the app touching them. Highest-priority NDK/Applesauce lesson per user."*
+Research conclusion (`docs/research/applesauce/event-store-query-builders.md`): the "magic" is emergent from four composing mechanisms — typed replaceable-event memory, per-model `share()` with hash-keyed dedup, refcount-based `claim()` GC anchoring, and `switchMap`-into-per-element-subscriptions for the outbox model.
 
-`TBD-from-research(applesauce/event-store-query-builders.md)`: cite the query-builder API shape that lets a consumer phrase `"things kind:1 by people I follow"` once and get a stream that re-evaluates on every kind:3 change. Applesauce's mechanism is a builder that registers itself as a dependent of the kind:3 projection; the contract's `ViewModule.dependencies()` is the NMP analog (`docs/design/kernel-substrate.md` §3 lines 131–132). The research-fold commit cross-validates that the analog covers Applesauce's pattern fully.
+The specific API that produces `"things kind:1 by people I follow"` reactivity is `EventModels.model(OutboxModel, user, opts)` at `event-models.ts:50-86`. When kind:3 arrives for `user`, `ReplaceableModel({kind:3, pubkey:user})` re-emits (`models/base.ts:136-143`), `ContactsModel(user)` maps to a `ProfilePointer[]`, and `OutboxModel` switchMaps each pointer into its `store.replaceable({kind:10002, pubkey})` — so adding/removing a contact spawns/terminates exactly the inner sub for that contact's mailbox with zero app involvement (`models/outbox.ts:14-24`, `observable/relay-selection.ts:19-49`).
+
+NMP's analog: `ViewModule.dependencies()` declares `kind 3` as a structural dependency (`docs/design/kernel-substrate.md` §3 lines 131–132); `Trigger::FollowListChanged` fires instead of a switchMap re-subscription; the compiler re-runs `interests()` and emits a CLOSE/REQ delta. The contract's observable — follow-set change causes exactly the right wire delta without app code — is the same; the mechanism is an actor-owned trigger rather than RxJS switchMap.
 
 ## 5. Interaction with NIP-65 (kind:10002)
 

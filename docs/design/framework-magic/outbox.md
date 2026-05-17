@@ -21,7 +21,7 @@ Both bullets in this chapter discharge cardinal doctrine **D3** ("outbox routing
 2. Open `TimelineView { authors: <1000 pubkeys>, kinds: [1, 6] }` through the actor's public dispatch surface.
 3. Read the wire-emission audit log (exposed via `DebugDiagnostics`) and assert: relay count = union; per-relay author partition = subset semantics; sub-shape merge = one REQ per relay; plan-id stable on re-compile.
 4. Ingest a new kind:10002 for one author moving them off relay-1 onto relay-4; assert exactly one CLOSE-and-REQ pair fires for the affected slice; no churn for the unmoved authors.
-5. `TBD-from-research(ndk/kind3-auto-tracking.md)`: cross-check that the in-flight REQ for the moved author rebinds without losing the live tail across the CLOSE/REOPEN boundary.
+5. **NDK comparison for step 4:** NDK's `refreshRelayConnections` (`core/src/ndk/index.ts:458-471`, `subscription/index.ts:787-812`) only *adds* relays and never removes stale ones. NMP's wire-emitter diff emits CLOSE for the stale slice and a new REQ for the author's updated relay, covering the window with `since: last_seen_for_author`. The test asserts no events are missed during the transition.
 
 The "via the public view path" framing matters: M2's test exercises the compiler directly; the framework-magic test exercises the contract surface (open a view, watch the wire). Both must pass.
 

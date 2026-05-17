@@ -54,10 +54,10 @@ The two are paired in one chapter rather than split because their tests share th
 ## Cross-references
 
 - `docs/design/lmdb/watermarks.md` for the storage schema and the 32-distinct-relay cap.
-- `docs/design/subscription-compilation/compiler.md` Stage X for the planner's watermark consultation in the compile pipeline. (TBD: confirm Stage number in research-fold; the compiler file specifies it.)
+- `docs/design/subscription-compilation/compiler.md` for the planner's watermark consultation in the compile pipeline (the stage that consults coverage before issuing historical REQ; the compiler file names the stage).
 - The "shared relay policy between sync and live REQ" lesson from `ndk-applesauce-lessons.md` §6 last paragraph is implicit in the per-relay watermark — both engines key by the same `(filter_sig, relay_url)` pair, so they cannot disagree on the relay universe.
 
-`TBD-from-research(applesauce/event-store-query-builders.md)`: cite Applesauce's coverage/watermark equivalent and the API by which a query-builder reads it. NMP's `WatermarksSummary` (`subsystems.md` §7.8 line 287) is the analogous app-visible surface; the research-fold commit verifies the surface covers the same diagnostic needs.
+**Applesauce coverage/watermark equivalent** (`docs/research/applesauce/event-store-query-builders.md`): Applesauce's coverage model is implicit rather than explicit. It relies on the `eventLoader` fallback at `event-store.ts:102-104`: if a pointer is not in memory and the loader returns nothing, the miss is treated as authoritative for that event id. For timelines, `TimelineModel` does not track per-relay coverage — it trusts the store's contents. NMP's explicit `(filter_sig, relay_url)` watermark (`subsystems.md` §7.8`) is strictly more expressive: it distinguishes "relay synced up to T" from "relay has unknown coverage." The app-visible `WatermarksSummary` surface (`subsystems.md` §7.8 line 287) has no Applesauce analog — NMP adds this for diagnostic and sync-engine needs that Applesauce leaves to the app.
 
 ## What this chapter does not cover
 

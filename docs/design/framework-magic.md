@@ -1,8 +1,8 @@
 # Design: Framework Magic Contract — Things That Just Work
 
-> **Status:** Draft. Research citations folded in from `docs/research/applesauce/event-store-query-builders.md` and `docs/research/ndk/kind3-auto-tracking.md`. Doctrine wording aligned with `docs/product-spec/overview-and-dx.md` §1.5 (D0–D8 canonical set).
+> **Status:** Draft. Research citations folded in from `docs/research/applesauce/event-store-query-builders.md` and `docs/research/ndk/kind3-auto-tracking.md`. D0–D5 wording aligned with `docs/product-spec/overview-and-dx.md` §1.5.
 > **Date:** 2026-05-18.
-> **Source directives:** `docs/plan/scope-adjustments-2026-05-18.md` "Framework magic contract" section; `docs/product-spec/overview-and-dx.md` §1.5 (cardinal doctrines D0–D8) + §3.3 (bug-class extinction); `docs/product-spec/subsystems.md` §7.1–§7.8.
+> **Source directives:** `docs/plan/scope-adjustments-2026-05-18.md` "Framework magic contract" section; `docs/aim.md` §6 doctrines 1–12; `docs/product-spec/overview-and-dx.md` §1.5 (cardinal doctrines D0–D5) + §3.3 (bug-class extinction); `docs/product-spec/subsystems.md` §7.1–§7.8.
 > **Companion test file:** `crates/nmp-testing/tests/framework_magic_contract.rs` (one test per contract bullet plus a coverage meta-test; layout in [test-scaffolding.md](framework-magic/test-scaffolding.md)).
 > **Scope:** Enumerate every behavior the framework guarantees so the application does not have to author code for it. The user directive is explicit: *"apps shouldn't have to care or know about these operations happening in the background, things should just work."* This document is the contract; the test suite is the proof; the milestone implementations are the substrate.
 
@@ -27,7 +27,7 @@ Each row binds a behavior to: the sub-file that specifies it, the test name in `
 
 | # | Behavior | Sub-file | Test name | Milestone | Doctrine / spec |
 |---|---|---|---|---|---|
-| C1 | Replaceable-event supersession (kind 0 / 3 / 10000–19999) on insert | replaceable.md | `c1_replaceable_supersedes_on_insert` | **[PARTIAL]** kind:0 done; kind:3 and kind:10002 pending M3 | spec §7.1 row "Replaceable kinds"; §3.3 bug #1 |
+| C1 | Replaceable-event supersession (kind 0 / 3 / 10000–19999) on insert | replaceable.md | `c1_replaceable_supersedes_on_insert` | **[DONE]** kernel | spec §7.1 row "Replaceable kinds"; §3.3 bug #1 |
 | C2 | Parameterized replaceable supersession (30000–39999) by `(pubkey, kind, d-tag)` | replaceable.md | `c2_parameterized_replaceable_supersedes_by_dtag` | **[PENDING M3]** | spec §7.1 row "Parameterized replaceable"; §3.3 bug #1 |
 | C3 | Kind:5 delete propagation: referenced events removed, tombstone persisted | replaceable.md | `c3_kind5_delete_removes_referenced_and_tombstones` | **[PENDING M3]** | spec §7.1 row "Kind 5 (delete)" |
 | C4 | NIP-40 expiration auto-removes event at expiry; survives actor restart | replaceable.md | `c4_nip40_expiration_removes_and_persists_schedule` | **[PENDING M3]** | spec §7.1 row "NIP-40 expiration" |
@@ -39,7 +39,7 @@ Each row binds a behavior to: the sub-file that specifies it, the test name in `
 | C10 | Sync watermarks: planner consults `(filter, relay)` coverage before issuing historical REQ; full coverage makes cache-miss authoritative; NIP-77 negentropy is the default backfill where supported | sync.md | `c10_watermark_gates_backfill_and_authoritative_miss` | **[PENDING M4]** | D2; spec §7.1 watermarks, §7.8 sync engine |
 | C11 | Signer onboarding: pasted `bunker://` URL parses + connects via NIP-46; "create new nsec" generates, NIP-49-encrypts, and persists via KeyringCapability — both as kernel actions, no app code | signers.md | `c11_bunker_url_and_nsec_creation_complete_via_actions` | **[PENDING M6]** | scope-adj §"Folded into M6"; spec §7.4 |
 | C12 | Account switch is a state transition: dispatching the switch action re-resolves every `ActiveAccount`-scoped view without the app issuing CLOSE/REQ or rebuilding view handles | sessions.md | `c12_account_switch_rebinds_views_without_imperative_dance` | **[PENDING M8]** | D4; spec §7.4; §3.3 bug #5; M2 §4 trigger A4 |
-| C13 | Best-effort rendering: every view payload field is non-`Option`; missing data uses defined placeholders (shortened npub, identicon, "just now"); the same payload updates in place when authoritative data arrives | capabilities.md | `c13_view_payload_uses_placeholders_then_refines_in_place` | **[PARTIAL]** author_display placeholder done; author_picture_url still Option<String> violating D1; in-place refinement **[PENDING M2/M3]** | D1; spec §7.6 "Best-effort field contract"; aim §4.12 |
+| C13 | Best-effort rendering: every view payload field is non-`Option`; missing data uses defined placeholders (shortened npub, identicon, "just now"); the same payload updates in place when authoritative data arrives | capabilities.md | `c13_view_payload_uses_placeholders_then_refines_in_place` | **[DONE]** in placeholder shape; **[PENDING M2/M3]** for in-place refinement on enrich | D1; spec §7.6 "Best-effort field contract"; aim §4.12 |
 
 **Bullet count:** 13 (eleven sourced verbatim from `scope-adjustments-2026-05-18.md`; two — **C3** kind:5 delete propagation and **C4** NIP-40 expiration — derived from `product-spec/subsystems.md` §7.1 because they are guaranteed invariants of the same insert path and the contract is incomplete without them).
 
