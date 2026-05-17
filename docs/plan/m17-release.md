@@ -1,6 +1,6 @@
 # M17 — v1 release
 
-> Part of the [Build & Validation Plan](../plan.md). Arc 3 — wallet/WoT + cross-platform + release.
+> Part of the [Build & Validation Plan](../plan.md). Arc 3 — WoT + cross-platform + release (M12 Wallet deferred post-v1).
 
 **Scope.**
 

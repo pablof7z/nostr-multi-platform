@@ -1,6 +1,6 @@
 # M13 — Web-of-Trust
 
-> Part of the [Build & Validation Plan](../plan.md). Arc 3 — wallet/WoT + cross-platform + release.
+> Part of the [Build & Validation Plan](../plan.md). Arc 3 — WoT + cross-platform + release (M12 Wallet deferred post-v1).
 
 **Demo product:** Twitter slice gets a "score-filtered timeline" toggle. With it on, low-WoT-score authors are de-prioritized; toggling off restores chronological order.
 

@@ -1,6 +1,6 @@
 # M15 — Cross-platform: Android + Desktop + Web
 
-> Part of the [Build & Validation Plan](../plan.md). Arc 3 — wallet/WoT + cross-platform + release.
+> Part of the [Build & Validation Plan](../plan.md). Arc 3 — WoT + cross-platform + release (M12 Wallet deferred post-v1).
 
 **Demo product:** Same Twitter slice and (where capabilities allow) podcast slice running on Android (Compose), Desktop (iced), and Web (wasm + React/Solid TBD). Cross-platform consistency test passes — same scripted scenario produces byte-identical `AppState` JSON on all four platforms.
 
@@ -12,7 +12,7 @@
 - Compose shell mirroring the iOS SwiftUI shell.
 - `KeychainCapability` Android impl via `EncryptedSharedPreferences`.
 - `nmp-nip55` Amber external-signer capability module.
-- Android `FirebaseMessagingService` integration with `nmp-nip17-nse` for DM push.
+- Android `FirebaseMessagingService` integration with `nmp-nip17-nse` for DM push (activates once M9 DMs land post-v1).
 
 **Desktop port (~2 weeks):**
 

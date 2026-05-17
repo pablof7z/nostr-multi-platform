@@ -1,6 +1,6 @@
 # M14 — UniFFI migration
 
-> Part of the [Build & Validation Plan](../plan.md). Arc 3 — wallet/WoT + cross-platform + release.
+> Part of the [Build & Validation Plan](../plan.md). Arc 3 — WoT + cross-platform + release (M12 Wallet deferred post-v1).
 
 **Demo product:** iOS app, podcast app, and (incoming) Android/Desktop/Web shells all bind to the kernel via UniFFI-generated bindings produced by `nmp gen modules`, not raw C FFI.
 

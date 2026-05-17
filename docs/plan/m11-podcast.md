@@ -58,7 +58,7 @@ Swift `ViewModels/` **disappear** — they become Rust ViewModules whose output 
 
 **Step 3 — protocol module integration:**
 
-- `nmp-podcast` is **not a v1 deliverable** unless a real published NIP is selected during M11 design (e.g. NIP-54 or a successor) and the choice is recorded in `docs/design/podcast-app-rebuild.md`. Until then, the podcast app uses RSS + Podcast 2.0 namespaces (chapters, transcripts, value-for-value) via `podcast-feeds`, and Nostr is the **social overlay only** — kind:1 discussion threads referencing the episode URL/GUID, kind:7 reactions, NIP-57 zaps. The decision is locked in M11 step-0; no `NIP-XX` placeholders allowed in code or in plans past that point.
+- `nmp-podcast` is **not a v1 deliverable** unless a real published NIP is selected during M11 design (e.g. NIP-54 or a successor) and the choice is recorded in `docs/design/podcast-app-rebuild.md`. Until then, the podcast app uses RSS + Podcast 2.0 namespaces (chapters, transcripts, value-for-value) via `podcast-feeds`, and Nostr is the **social overlay only** — kind:1 discussion threads referencing the episode URL/GUID, kind:7 reactions. (NIP-57 zaps are post-v1 per [post-v1.md](post-v1.md) and are not in scope for M11.) The decision is locked in M11 step-0; no `NIP-XX` placeholders allowed in code or in plans past that point.
 
 **Step 4 — wire each copied Swift view to its Rust view module:**
 
