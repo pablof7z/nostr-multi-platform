@@ -352,48 +352,25 @@ visible_limit.clamp(1, 500) as usize  // c_uint → usize
 
 ---
 
-## 4. Acceptable & Justified Findings (No Action Required)
+## 4. Justified Findings (No code change, no auditability gap)
 
 | Finding | Classification | Justification |
 |---------|---|---|
-| 3 unsafe blocks in ffi.rs (F1, F2, F3) | Documentation gap | Standard FFI pattern; pointers validated by caller contract. Safety comments recommended for future audits but code is correct. |
-| allow(unreachable_patterns) in relay_worker.rs (F4) | Documentation gap | Defensive programming for third-party enum evolution. Code is correct; add comment for clarity. |
-| 14 integer casts (count→metric types) (F6–F14) | Acceptable | All bounded by design constraints; no overflow risk. Casts are intentional and safe. |
-| 2 expect() calls in kernel/status.rs (F15, F16) | Acceptable | Invariant maintained by construction (relay HashMap initialized for all roles in `Kernel::new()`). |
+| 14 integer casts (count→metric types) (F6–F14) | Justified | All bounded by design constraints (metrics counters, working-set bounds); no overflow risk. Casts are intentional and safe. |
+| 2 expect() calls in kernel/status.rs (F15, F16) | Justified | Invariant maintained by construction (relay HashMap initialized for all roles in `Kernel::new()`). |
 | ProfileCard.placeholder in iOS (D1 evidence) | Design compliance | Correct implementation of D1 (best-effort rendering); refinement in place. |
 | Error strings in JSON payloads (D3 evidence) | Design compliance | D3-compliant: errors as advisory data, not FFI codes. No control flow decisions at boundary. |
 
 ---
 
-## 5. Recommended Next Actions
+## 5. Must-Fix Items for M10.5 (mandatory)
 
-### Documentation-Only Improvements (Recommended for M10.5)
+Per the M10.5 zero-shortcut posture (no "for later", no "ADR escape" for files in scope), the following are **required cleanup** before the M10.5 empirical exit gate:
 
-These are **not bugs**; the code is correct. Adding safety comments improves auditability and prevents future misclassification:
+1. **Add SAFETY comments to ffi.rs unsafe blocks** (F1, F2, F3) — `crates/nmp-core/src/ffi.rs` lines 75, 275, 284. The unsafe code is correct; missing safety comments are themselves auditability debt and violate the M10.5 zero-debt posture for the FFI surface. Suggested text in the findings section above.
+2. **Add clarifying comment to relay_worker.rs#242** (F4) — explain why `#[allow(unreachable_patterns)]` is defensive against future tungstenite enum evolution.
 
-1. **Add safety comments to ffi.rs unsafe blocks** (F1, F2, F3)
-   - Files: `crates/nmp-core/src/ffi.rs` (3 locations: lines 75, 275, 284)
-   - Effort: 5 min
-   - Impact: Documents FFI contract; improves future audits
-   - Recommended text:
-     - Line 75: `// safe: caller guarantees app is valid, allocated by nmp_app_new()`
-     - Line 275: `// safe: caller guarantees non-null app is a valid NmpApp pointer`
-     - Line 284: `// safe: caller guarantees ptr is a valid null-terminated C string; to_str() validates UTF-8`
-
-2. **Add code comment to relay_worker.rs#242** (F4)
-   - Files: `crates/nmp-core/src/relay_worker.rs` (line 242)
-   - Effort: 2 min
-   - Impact: Clarifies defensive intent
-   - Recommended text: `// Stream type may have additional TLS variants in future tungstenite versions`
-
-### No Action Required
-
-- All integer casts (F6–F14) are bounded and intentional; no comments needed.
-- Both expect() calls (F15, F16) are justified by invariants; no action needed.
-- All Swift iOS code is clean (9 files audited; 0 findings).
-- All cardinal doctrines (D0–D5) are compliant; no design changes needed.
-
----
+These must land in a single PR titled `m10.5(ffi): add SAFETY comments + clarify defensive pattern`. Tracked as a TaskList task.
 
 ## 6. Metrics
 
@@ -405,30 +382,26 @@ These are **not bugs**; the code is correct. Adding safety comments improves aud
 | Total LOC scanned | 6,559 | ✓ |
 | Blocking debt markers (TODO/FIXME/XXX/HACK/panic!/unimplemented!/todo!) | 0 | ✓ Clean |
 | Code bugs found | 0 | ✓ No bugs |
-| Unsafe blocks without safety comments | 3 | ⚠️ Documentation gap |
+| Unsafe blocks without safety comments | 3 | ⚠️ **Must-fix for M10.5** |
 | Integer casts | 14 | ✓ Justified |
 | Cardinal doctrine violations | 0 | ✓ Compliant |
 | **Post-Audit Actions** | | |
 | Critical bugs | 0 | ✓ |
-| Code changes required | 0 | ✓ |
-| Documentation improvements (optional) | 3 | → Recommended |
+| Required code changes (safety comments) | 4 | **Must-fix for M10.5** |
 
 ---
 
 ## 7. Conclusion
 
-The FFI and iOS bridge code is **production-ready for M10.5**. 
+The FFI and iOS bridge code is **clean of blocking debt markers** (TODO/FIXME/unimplemented/panic). All 20 code inspection findings are either justified by design or actionable as documentation cleanup. All cardinal doctrines (D0–D5) are upheld.
 
-**Code Quality:** Zero bugs. All 20 code inspection findings are acceptable or justified by design. All cardinal doctrines (D0–D5) are upheld.
+**This audit is necessary but not sufficient for M10.5 exit.** M10.5 exit requires (per `docs/plan.md` §M10.5):
+- Stress harness scenarios passing on simulator and iPhone 12
+- All M1–M10 perf reports re-run with no > 5 % regression
+- Instruments-recorded zero leaks over 10-min canonical workflow
+- UI-scripted scenarios passing (Sonnet-agent + XCUITest)
+- `docs/ffi-surface.md` reviewed and tagged
+- Doctrine review signed in writing in `docs/perf/m10.5/doctrine-review.md`
 
-**Recommendation:** The 3 safety comments in ffi.rs are optional but recommended for auditability and preventing future misclassification.
-
-**M10.5 Exit Criteria:** ✅ **READY**
-
-- ✅ Zero blocking debt markers
-- ✅ Zero code bugs
-- ✅ All doctrines compliant
-- ✅ iOS bridge code clean (9 files, 0 findings)
-- ✅ Unsafe blocks are correct (documentation gap only)
-
-**Audit Sign-Off:** Ready for iOS empirical proof phase (M10.5).
+**Audit status:** ✅ static-debt baseline established. The 4 must-fix items above are tracked.
+**M10.5 exit status:** ❌ pending empirical proof + must-fix cleanup.

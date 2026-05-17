@@ -360,7 +360,7 @@ Each milestone has: **demo product**, **scope (what gets built)**, **subsystem d
 - **Profile-Guided Optimization sweep** on the kernel hot paths surfaced by Time Profiler; document tradeoffs taken.
 - **All M1–M10 perf reports re-run** on the final FFI surface to confirm no regressions.
 - **FFI surface documentation audit** in `docs/ffi-surface.md` — every exported type, function, capability trait, and ownership/lifetime invariant called out; reviewed against `RMP-ARCHITECTURE-BIBLE.md` commandments and ADR-0010.
-- **Zero open `TODO`/`FIXME`/`XXX`/`unimplemented!()`** in `crates/nmp-core/src/ffi.rs`, `crates/nmp-core/src/actor.rs`, `crates/nmp-core/src/relay.rs`, `crates/nmp-core/src/kernel/**`, and the iOS bridge sources (`ios/NmpStress/NmpStress/KernelBridge.swift`, `KernelModel.swift`). Each pre-existing one is either resolved or has an ADR justifying the deferral with a tracking issue.
+- **Zero open `TODO`/`FIXME`/`XXX`/`unimplemented!()`** in `crates/nmp-core/src/ffi.rs`, `crates/nmp-core/src/actor.rs`, `crates/nmp-core/src/relay.rs`, `crates/nmp-core/src/kernel/**`, and the iOS bridge sources (`ios/NmpStress/NmpStress/KernelBridge.swift`, `KernelModel.swift`). Hard zero — no deferral escape, no "tracking issue" carve-out. Every pre-existing one is resolved in M10.5. If something genuinely cannot be done in M10.5 because it belongs to a later milestone (e.g. NIP-65 outbox work), then it is not a TODO/FIXME in the scoped files — it lives as a milestone task in `docs/plan.md`, not as a code marker.
 
 **Subsystem deliverables.**
 
@@ -441,7 +441,7 @@ Swift `ViewModels/` **disappear** — they become Rust ViewModules whose output 
 
 **Step 3 — protocol module integration:**
 
-- `nmp-podcast` (Nostr podcast NIP integration where it exists — NIP-XX podcast feed events, value-for-value zaps, episode discussion threads). Where Nostr coverage is incomplete, the app uses RSS via `podcast-feeds` and Nostr for social overlay (zaps, discussions, recommendations from the WoT subsystem).
+- `nmp-podcast` is **not a v1 deliverable** unless a real published NIP is selected during M11 design (e.g. NIP-54 or a successor) and the choice is recorded in `docs/design/podcast-app-rebuild.md`. Until then, the podcast app uses RSS + Podcast 2.0 namespaces (chapters, transcripts, value-for-value) via `podcast-feeds`, and Nostr is the **social overlay only** — kind:1 discussion threads referencing the episode URL/GUID, kind:7 reactions, NIP-57 zaps. The decision is locked in M11 step-0; no `NIP-XX` placeholders allowed in code or in plans past that point.
 
 **Step 4 — wire each copied Swift view to its Rust view module:**
 
