@@ -140,3 +140,20 @@ pub(crate) fn selected_scenarios(selected: Option<&str>) -> Vec<&'static str> {
         }
     }
 }
+
+/// M1 live scenarios: only `cold_start` and `profile_thrashing` are
+/// implemented in live mode.  Other scenarios require features that belong to
+/// later milestones (LMDB, NIP-77, NIP-65, NSE, multi-account).
+pub(crate) fn selected_live_scenarios(selected: Option<&str>) -> Vec<&'static str> {
+    let all = vec!["cold_start", "profile_thrashing"];
+    match selected {
+        Some("all") | None => all,
+        Some(name) if all.contains(&name) => {
+            vec![all.into_iter().find(|item| *item == name).unwrap()]
+        }
+        Some(name) => {
+            eprintln!("unknown live scenario `{name}` (M1 supports: cold_start, profile_thrashing)");
+            std::process::exit(64);
+        }
+    }
+}

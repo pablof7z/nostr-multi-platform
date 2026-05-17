@@ -335,6 +335,8 @@ impl Kernel {
         while let Some(message) = self.deferred_outbound.pop_front() {
             requests.push(message);
         }
+        // Check time-gated timeline open (contacts_deadline may have elapsed).
+        requests.extend(self.maybe_open_timeline());
         if self.author_request_pending {
             requests.extend(self.author_requests());
         }

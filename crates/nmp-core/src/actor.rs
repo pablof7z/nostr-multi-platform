@@ -8,7 +8,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 #[derive(Debug)]
-pub(crate) enum ActorCommand {
+pub enum ActorCommand {
     Start { visible_limit: usize, emit_hz: u32 },
     Configure { visible_limit: usize, emit_hz: u32 },
     OpenAuthor { pubkey: String },
@@ -33,7 +33,7 @@ struct RelayControl {
     tx: Sender<RelayCommand>,
 }
 
-pub(crate) fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) {
+pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) {
     let (actor_tx, actor_rx) = mpsc::channel();
     bridge_commands(command_rx, actor_tx.clone());
     let (relay_tx, relay_rx) = mpsc::channel();
@@ -52,6 +52,11 @@ pub(crate) fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<St
         let message = match next_actor_msg(&actor_rx, &kernel, running, last_emit, emit_hz) {
             Ok(Some(message)) => message,
             Ok(None) => {
+                // Flush any time-gated view requests (e.g. contacts_deadline).
+                let pending = kernel.pending_view_requests();
+                if !pending.is_empty() {
+                    send_all_outbound(&relay_controls, &mut kernel, pending);
+                }
                 emit_now(&mut kernel, running, &update_tx, &mut last_emit);
                 continue;
             }
@@ -264,6 +269,16 @@ fn next_actor_msg(
             return Ok(None);
         }
         return match actor_rx.recv_timeout(wait) {
+            Ok(message) => Ok(Some(message)),
+            Err(RecvTimeoutError::Timeout) => Ok(None),
+            Err(RecvTimeoutError::Disconnected) => Err(()),
+        };
+    }
+
+    if running {
+        // Poll at 250 ms so time-based kernel gates (e.g. contacts_deadline)
+        // are checked even when no relay messages arrive.
+        return match actor_rx.recv_timeout(Duration::from_millis(250)) {
             Ok(message) => Ok(Some(message)),
             Err(RecvTimeoutError::Timeout) => Ok(None),
             Err(RecvTimeoutError::Disconnected) => Err(()),

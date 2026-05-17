@@ -275,6 +275,7 @@ dependencies = [
 name = "nmp-testing"
 version = "0.1.0"
 dependencies = [
+ "nmp-core",
  "serde",
  "serde_json",
 ]
