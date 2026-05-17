@@ -99,10 +99,11 @@ pub struct InterestShape {
     /// article in ThreadViewModule or MetaTimelineViewModule). The compiler routes
     /// each coordinate to the addressed author's write relays (Stage 1 Outbox
     /// direction keyed on `NaddrCoord::pubkey`). See §3.3 Rule 8 and §7.
-    /// Rationale: NDK filter-fingerprinting (`docs/research/ndk/subscription-compilation.md`
-    /// §Grouping) shows that filter-key-set identity drives merge eligibility.
-    /// Adding `addresses` as a first-class field gives the merge lattice a stable
-    /// key to union on, rather than encoding coords into opaque `#a` tag strings.
+    /// Rationale: T21 research (NDK `$metaSubscribe` / svelte subscription
+    /// grouping — `docs/research/ndk/subscription-compilation.md` §Grouping)
+    /// shows filter-key-set identity drives merge eligibility; adding `addresses`
+    /// as a first-class field gives the merge lattice a stable key to union on
+    /// rather than encoding coords into opaque `#a` tag strings.
     pub addresses:  BTreeSet<NaddrCoord>,    // empty = no address-pointer hydration
 }
 
@@ -153,13 +154,13 @@ ThreadViewModule for kind:1111 comment on kind:30023 article →
 MetaTimelineViewModule highlights-of-article →
   hydrate interest { addresses: {(article_pk, 30023, "slug")} }
 Compiler Stage 1: both coords resolve to article_pk's write relays.
-Compiler Stage 3: Rule 8 (§3.3) unions the address sets (identical here).
+Compiler Stage 3: Rule 7 (§3.3) unions the address sets (identical here).
 Result: ONE REQ per relay carrying { #a: ["30023:<article_pk>:slug"] }.
 ```
 
 This is the D8 substrate invariant applied to address pointers: the composite reverse index, when extended to `NaddrCoord`, deduplicates across views without any view-module coordination.
 
-The seed-bootstrap path (`crates/nmp-core/src/kernel/requests.rs:50-106`) becomes one `LogicalInterest` per concern registered by **protocol modules** (`nmp-nip01`, `nmp-nip02`) at their start handlers — not by `nmp-core` directly (D0: the kernel must not know social-graph concepts such as follows, profiles, or contact lists). `nmp-core`'s `ActorStart` handler only fires the compile trigger; the interest set stays empty until modules register. The `open_author` view and profile-claim path similarly move to `nmp-nip01`-provided view modules. The compiler produces wire artifacts from whatever interests modules declare.
+The seed-bootstrap path (`crates/nmp-core/src/kernel/requests.rs:50-106`) becomes one `LogicalInterest` per concern, registered at actor `Start` rather than emitted as raw REQs. The compiler produces the wire artifacts.
 
 ### 2.3 Account scope binding
 
