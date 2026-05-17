@@ -9,7 +9,7 @@ This chapter holds four bullets, all of which discharge `docs/product-spec/overv
 
 **Statement.** Any kind in `{0, 3, 10000..=19999}` arriving at the event store automatically supersedes the prior event with the same `(pubkey, kind)`; the prior event becomes unreachable through the public read path.
 
-**Framework does:** the insert-time supersession at `docs/product-spec/subsystems.md` §7.1 row "Replaceable kinds (0, 3, 10000-19999)". Mechanism: compare `(pubkey, kind)` against the existing entry, keep newest `created_at`, tie-break by lexicographically smallest `id`. The current in-memory store enforces this for kind:0 / kind:3 / kind:10002 today (kind:3 via `seed_contacts.insert` at `crates/nmp-core/src/kernel/ingest.rs:206`; kind:10002 via the `should_replace` branch at `crates/nmp-core/src/kernel/ingest.rs:218-222`). M3 graduates the rule into the LMDB-backed `EventStore` trait (`docs/design/lmdb/trait.md`).
+**Framework does:** the insert-time supersession at `docs/product-spec/subsystems.md` §7.1 row "Replaceable kinds (0, 3, 10000-19999)". Mechanism: compare `(pubkey, kind)` against the existing entry, keep newest `created_at`, tie-break by lexicographically smallest `id`. The current in-memory kernel partially enforces this: kind:0 (`ingest_profile` at `crates/nmp-core/src/kernel/ingest.rs:166-184`) applies both the `created_at` check and the `id` tie-break correctly; kind:10002 (`ingest_relay_list` at `crates/nmp-core/src/kernel/ingest.rs:218-222`) uses `>=` with no tie-break; kind:3 (`ingest_contacts` at `crates/nmp-core/src/kernel/ingest.rs:206`) uses unconditional overwrite with no monotonicity guard or tie-break. The full canonical rule (strict monotonic + `id` tie-break for all replaceable kinds) lands in M3's LMDB-backed `EventStore` trait (`docs/design/lmdb/trait.md`).
 
 **App writes:** nothing. The app calls `ProfileView::open(pubkey)`; the view's payload reflects the latest kind:0 the store has, with no app-side comparison of `created_at`.
 
@@ -17,7 +17,7 @@ This chapter holds four bullets, all of which discharge `docs/product-spec/overv
 
 **Test:** `c1_replaceable_supersedes_on_insert`. The test inserts kind:0 #1 at `created_at=T`, then kind:0 #2 at `T+1` with same pubkey; asserts `ProfileView` payload reflects #2 and that a subsequent insert at `T-1` is rejected (no payload re-emit, no event store change). Tie-break path: two inserts at the same `T` with different ids — the lexicographically-smaller-id event wins, deterministic across runs.
 
-**Milestone owner:** **[DONE]** for in-memory kernel (verified by `crates/nmp-core` kernel tests today, ref the existing `should_replace` branch). Test runs **not** ignored from day one; LMDB graduation in M3 must preserve the same observable, so the test stays green across M3.
+**Milestone owner:** **[PARTIAL]** — kind:0 supersession with tie-break is [DONE] (in-memory kernel, `crates/nmp-core` tests). Kind:3 and kind:10002 supersession lack the canonical tie-break and in kind:3's case lack the monotonicity guard; both graduate to full enforcement in M3's LMDB `EventStore` trait. The C1 test runs against the in-memory kernel from day one but is scoped to kind:0 until M3; a `#[cfg(feature = "m3_lmdb")]` gate in the test enables the full kind:3 and kind:10002 sub-paths on M3 landing.
 
 ---
 
@@ -55,7 +55,7 @@ This chapter holds four bullets, all of which discharge `docs/product-spec/overv
 4. Inserts a kind:5 by Bob referencing `e1`; asserts the tombstone is *not* upgraded (cross-author kind:5 has no effect).
 5. Restart the store (M3 path) and re-insert `e1`; assert tombstone is still in force.
 
-**Milestone owner:** **[PENDING M3]**. Test checked in as `#[ignore = "pending M3 tombstone persistence"]`. The in-memory kernel today does not enforce tombstone persistence across restart; M3's LMDB schema (`docs/design/lmdb/keys.md`) is where the tombstone subdatabase lands. Steps 1–4 of the test can pass against the in-memory kernel; step 5 requires M3.
+**Milestone owner:** **[PENDING M3]**. Test checked in as `#[ignore = "pending M3 kind5 + tombstone persistence"]`. The current kernel (`crates/nmp-core/src/kernel/ingest.rs`) does not handle kind:5 events — they are silently ignored in the `match event.kind` dispatch at line 160. No tombstone logic exists in the in-memory path. All five sub-paths of the test require M3's kind:5 handler and LMDB tombstone subdatabase (`docs/design/lmdb/keys.md`).
 
 ---
 
@@ -63,7 +63,7 @@ This chapter holds four bullets, all of which discharge `docs/product-spec/overv
 
 **Statement.** An event carrying a NIP-40 `expiration` tag is automatically removed from the store at the expiration timestamp; the schedule survives actor restart.
 
-**Framework does:** §7.1 row "NIP-40 expiration": schedule a tokio timer to remove the event at the expiration timestamp; on actor restart, scan the persisted store and re-schedule. M3 implements the persistent rescan; the in-memory kernel can run the timer but loses schedules on restart.
+**Framework does:** §7.1 row "NIP-40 expiration": schedule a timer to remove the event at the expiration timestamp; on actor restart, scan the persisted store and re-schedule any surviving expiration. M3 implements both the timer scheduling and the persistent rescan; the current in-memory kernel does not parse NIP-40 `expiration` tags at all.
 
 **App writes:** nothing. Same `on_event_removed` path as C3.
 
@@ -77,7 +77,7 @@ This chapter holds four bullets, all of which discharge `docs/product-spec/overv
 4. Insert another event with expiration at +120s.
 5. Simulate actor restart (drop the actor, instantiate from persisted store); assert the +120s schedule is re-armed by the rescan; advance clock to +130s; assert removal fires.
 
-**Milestone owner:** **[PENDING M3]**. Test checked in as `#[ignore = "pending M3 expiration persistence"]`. Steps 1–3 are testable today (timer-only); step 5 needs M3.
+**Milestone owner:** **[PENDING M3]**. Test checked in as `#[ignore = "pending M3 NIP-40 + expiration persistence"]`. The current kernel does not parse or schedule NIP-40 `expiration` tags — ingested events with expiration are stored without a removal schedule. All five sub-paths require M3's expiration manager and timer-rescan logic; no sub-path is testable against the current in-memory kernel.
 
 ---
 
