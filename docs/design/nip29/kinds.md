@@ -43,7 +43,7 @@ Highlighter overloads kind:11 as **two distinct event shapes** with the same wir
 - **Owner:** `nmp-nip29::GroupDiscussion` DomainModule; projected by `GroupDiscussions` ViewModule
 - **Replaceable:** no
 - **Emitted by:** `PostDiscussion` ActionModule
-- **Notes:** Replies on a discussion that carry an `["h", group_id]` tag are `nmp-nip29::GroupComment` records per §4's unifying ownership rule (every h-tagged event is `nmp-nip29`'s, regardless of kind). Only kind:1111 replies *without* an `h` tag fall to `nmp-nip22`. In practice, Highlighter's discussion-reply composer always attaches the room's `h` tag, so in-room replies are NIP-29-routed end-to-end. The `t=discussion` marker is recognised by both Highlighter and 0xchat-style clients but is NOT in the NIP-29 spec; document the convention in the M11.5 exit-gate report and consider proposing it upstream.
+- **Notes:** Discussion replies in Highlighter today are NIP-22 kind:1111 comments scoped via `E`/`e` tags to the discussion event — **they do NOT carry an `h` tag** (verified against `app/core/src/comments.rs::publish_comment` and `Communities/DiscussionDetailView.swift::artifactRef = .event(id: discussion.eventId, kind: 11)`). Per the unifying rule in §4, that makes them ordinary `nmp-nip22::Comment` records (not `nmp-nip29::GroupComment`), routed per the author's NIP-65 write relays — *not* host-pinned. The discussion view's reply-thread join is a cross-crate composition done in `highlighter-core` (per `nip29-crate.md` §6's `DiscussionsWithReplyCounts`), reading from `nmp-nip22`'s public comment stream filtered to the discussion's event id. **M11.5 must preserve this behavior** to keep historical replies visible and to match the copied UI's publish path. (A future iteration could add an `h` tag to in-room comments to make them group-private, but that's a Highlighter UX decision, not an M11.5 deliverable.) The `t=discussion` marker is recognised by both Highlighter and 0xchat-style clients but is NOT in the NIP-29 spec; document the convention in the M11.5 exit-gate report and consider proposing it upstream.
 
 **Kind 11 — Group artifact share** (without `["t","discussion"]`, with catalog tags)
 
@@ -89,7 +89,7 @@ NIP-29 explicitly allows **any kind** with an `h` tag to be a group event. The `
 
 ### 2.3 Moderation (admin-signed, 9000–9009)
 
-All require `["h", <group_id>]` and are signed by a current admin (member of the latest 39001). The relay validates signer membership in 39001 *before* republishing the corresponding 39000/39001/39002.
+All require `["h", <group_id>]` and are signed by a current admin (member of the latest 39001) — **with one exception: kind 9007 (create-group)** has no admin requirement because it's the event that *establishes* the group; the signer becomes the founding admin, materialised as the initial 39001 the relay emits in response. Every other 9000-series kind is admin-only. The relay validates signer membership in 39001 *before* republishing the corresponding 39000/39001/39002.
 
 #### Kind 9000 — Put user
 
