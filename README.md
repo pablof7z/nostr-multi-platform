@@ -8,17 +8,21 @@
 
 ## TL;DR — where we are
 
+> Full per-milestone status in [`docs/plan/status.md`](docs/plan/status.md); per-milestone scope in `docs/plan/m*.md`.
+
 - **M0 (kernel substrate + non-Nostr fixture):** ✅ DONE.
-- **M1 (read-only Twitter slice on live iOS):** 🟡 hardening (firehose-bench `live` mode + iPhone-12 baseline in flight).
-- **M2 (subscription compilation + outbox routing + NIP-65):** design landed; 8 codex-flagged issues being addressed (T13).
-- **M3 (LMDB persistence + insert invariants + claim GC):** design landed; 10 codex-flagged issues being addressed (T14).
-- **M4 (NIP-77 negentropy sync), M5 (NIP-42 auth), M6 (sessions + signers + write), M7 (interaction loop), M8 (multi-session):** designs pending after M2/M3 hardens.
+- **M1 (read-only Twitter slice on live iOS):** 🟡 hardening (firehose-bench `live` mode + iPhone-12 baseline in flight via `m1-hardener`).
+- **M2 (subscription compilation + outbox + NIP-65):** design landed + codex-reviewed; 10 issues being addressed in T13.
+- **M3 (LMDB + insert invariants + claim GC):** design landed + codex-reviewed; 12 issues pending fix in T14.
+- **M4–M8 (negentropy, NIP-42, signers+write, interaction loop, multi-session):** scoped, pending design after M2/M3 lock.
 - **M10 (Blossom + long-running capabilities):** pending.
 - **M10.5 (FFI hardening + iOS empirical proof):** design landed; **hard gate before M11**.
-- **M11 (rebuild of `/Users/pablofernandez/src/podcast` on NMP):** design landed; pixel-parity UI copy + Rust-backed business logic + `rig.rs` LLM + RAG + podcast-feeds; awaits M10.5 empirical pass before impl starts.
-- **M11.5 (rebuild of `/Users/pablofernandez/Work/hl/app` Highlighter on NMP + `nmp-nip29` crate):** designed in flight (T18).
-- **M13 (Web-of-Trust), M14 (UniFFI migration), M15 (Android+Desktop+Web), M16 (CLI+starter+recipes), M17 (v1 release):** pending.
-- **Framework-magic contract** (kind:3 auto-tracking, `bunker://` URL onboarding, new-nsec creation, outbox-by-default-on-publish, etc.): designed ([docs/design/framework-magic.md](docs/design/framework-magic.md)) with 13 behaviors and 14 named tests in `crates/nmp-testing/tests/framework_magic_contract.rs`.
+- **M11 (rebuild of `/Users/pablofernandez/src/podcast` on NMP):** design landed (13 sub-docs, codex-reviewed clean after 5 iterations); awaits M10.5 empirical pass.
+- **M11.5 (rebuild of `/Users/pablofernandez/Work/hl/app` Highlighter + `nmp-nip29` crate):** design in flight (T18).
+- **M13 (WoT), M14 (UniFFI), M15 (cross-platform), M16 (CLI), M17 (v1 release):** scoped, pending.
+- **Framework-magic contract** (kind:3 auto-tracking, `bunker://` onboarding, new-nsec creation, outbox-by-default-on-publish, etc.): designed at [`docs/design/framework-magic.md`](docs/design/framework-magic.md) with 13 behaviors and 14 named tests in `crates/nmp-testing/tests/framework_magic_contract.rs`. Reconciliation pass T19 in flight to align with canonical D0–D5.
+- **Plan structure:** `docs/plan.md` is the index; per-milestone files under `docs/plan/m*.md` (≤300 LOC each). Scope shifts captured in [`docs/plan/scope-adjustments-2026-05-18.md`](docs/plan/scope-adjustments-2026-05-18.md) — DMs (was M9) and Wallet (was M12) deferred to post-v1 (see [`docs/plan/post-v1.md`](docs/plan/post-v1.md)).
+- **Research foundation:** NDK + Applesauce deep-dives at [`docs/research/ndk/`](docs/research/ndk/) and [`docs/research/applesauce/`](docs/research/applesauce/) — outbox routing, kind:3 auto-tracking gap, subscription compilation, signers, gotchas, missing features.
 
 ## High-level decisions
 
