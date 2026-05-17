@@ -49,7 +49,7 @@ Apps consume `nmp-nip29` by adding it to their `nmp.toml` enabled-modules list, 
 
 Per the advisor checkpoint and verified against the Highlighter `app/core/src/{groups,chat,discussions}.rs` public surfaces, the crate produces **three** of the five substrate trait families (per `crates/nmp-core/src/substrate/mod.rs`):
 
-### 3.1 `DomainModule` impls (6)
+### 3.1 `DomainModule` impls (7)
 
 These are the persistent record shapes the crate owns. Each is the truth source for its kind range; views project off them.
 
@@ -61,7 +61,7 @@ These are the persistent record shapes the crate owns. Each is the truth source 
 | `GroupRoles` | 39003 | `(host_relay_url, group_id)` | The relay's declared role list (optional; not all relays publish 39003). |
 | `GroupChatMessage` | 9 (when `h` present) | `(host_relay_url, group_id, event_id)` | Flat chat message. The `h` tag is the in-group key. |
 | `GroupDiscussion` | 11 (when `h` present and `t=discussion` marker) | `(host_relay_url, group_id, event_id)` | Threaded discussion root. Replies are NIP-22 kind:1111 owned by `nmp-nip22` but cross-referenced. |
-| `GroupModerationEvent` | 9000–9009, 9021, 9022 | `(host_relay_url, group_id, event_id)` | Audit trail of admin-side actions. Not directly user-rendered; used by the moderation view + as evidence in dispute / forensic UI. |
+| `GroupModerationEvent` | 9000–9009, 9021, 9022 | `(host_relay_url, group_id, event_id)` | Audit trail of admin-side actions. Not directly user-rendered; used by the moderation view + as evidence in dispute / forensic UI. Schema in `moderation.md` §5. |
 
 ### 3.2 `ViewModule` impls (6)
 
@@ -76,7 +76,7 @@ These are the projections the UI consumes. Each declares `LogicalInterest`s the 
 | `GroupMembers` | `(host_relay_url, group_id)` | Members + admins, joined with their NIP-01 profiles (cross-crate join with `nmp-nip01`). |
 | `GroupExplorer` | `(host_relay_url, optional filter)` | List of all publicly-discoverable groups (39000 events without the `hidden` marker) on a given host relay. |
 
-### 3.3 `ActionModule` impls (10)
+### 3.3 `ActionModule` impls (11)
 
 These are the writes. Each is an admin- or user-initiated event that NMP's `PublishPlanner` (M2 §7) routes per the host-relay-pin contract.
 
@@ -90,6 +90,7 @@ These are the writes. Each is an admin- or user-initiated event that NMP's `Publ
 | `RemoveUser` | 9001 | signer must be in 39001 | Host relay only. |
 | `CreateInvite` | 9009 (multi-fan-out per `MAX_CODES_PER_INVITE_EVENT`) | signer must be in 39001 | Host relay only. |
 | `DeleteEvent` | 9005 | signer must be in 39001 | Host relay only. |
+| `DeleteGroup` | 9008 | signer must be in 39001 (and ideally the original 9007 signer; see `kinds.md` §2.3) | Host relay only. |
 | `PostChatMessage` | 9 with `h` | signer = author (must be in 39002 if `restricted`) | Host relay only. |
 | `PostDiscussion` | 11 with `h` + `t=discussion` | same as above | Host relay only. |
 
@@ -99,7 +100,7 @@ These are the writes. Each is an admin- or user-initiated event that NMP's `Publ
 - **No `IdentityModule`.** Groups don't change the user's identity model; M6/M8 covers identity.
 - **No new persistence schema.** Per ADR-0010 + M3, all domain records persist via the kernel's LMDB tables keyed by their composite keys. The crate declares migrations in standard NMP shape.
 
-**Total: 3 trait families touched (Domain, View, Action), 22 module impls total** (6 + 6 + 10). This is the return-statistic for the design pass.
+**Total: 3 trait families touched (Domain, View, Action), 24 module impls total** (7 + 6 + 11). This is the return-statistic for the design pass.
 
 ## 4. The load-bearing constraint: host-relay-pin
 

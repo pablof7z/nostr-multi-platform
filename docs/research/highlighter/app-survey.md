@@ -78,7 +78,7 @@ These delete-or-port-to-kernel in M11.5; they are the ones NMP's substrate repla
 | `nip46.rs` | 576 | Bunker signer client | **Delete.** NMP's M6 surface includes bunker; if NDK's helper is richer, we may keep this as reference until M6 lands. |
 | `discovery.rs`, `recommendations.rs`, `search.rs` | varies | App-level projections (room explorer, "who you should follow", search index) | **Port as `ViewModule`s** in `highlighter-core` (the app's own extension crate). |
 
-**Bottom line:** ~6,800 LOC of `app/core/src/` (`client.rs` + `subscriptions.rs` + `nostr_runtime.rs` + `outbox.rs` + small infra) **deletes outright** because NMP's substrate provides that machinery once, framework-wide. That deletion is the single biggest validation of the M11.5 doctrine claim.
+**Bottom line:** ~6,000 LOC of `app/core/src/` (`client.rs` + `subscriptions.rs` + `nostr_runtime.rs` + `outbox.rs` + small infra) **deletes outright** because NMP's substrate provides that machinery once, framework-wide. That deletion is the single biggest validation of the M11.5 doctrine claim.
 
 ## 4. iOS surface — feature-folder map
 
@@ -125,7 +125,7 @@ The Swift layer also has:
 | Layer | Action |
 |---|---|
 | Rust core, ~13,100 LOC of protocol + view logic | **Port** as `ViewModule` / `ActionModule` impls in extension crates (`nmp-nip29`, `nmp-nip84`, `nmp-nip23`, `nmp-nip51`, `nmp-nip78`, plus `highlighter-core` for app-specific projections) |
-| Rust core, ~6,800 LOC of infra (`client`, `subscriptions`, `nostr_runtime`, `outbox`) | **Delete** — NMP substrate replaces this once, framework-wide |
+| Rust core, ~6,000 LOC of infra (`client`, `subscriptions`, `nostr_runtime`, `outbox`) | **Delete** — NMP substrate replaces this once, framework-wide |
 | iOS app, all 142 Swift files | **Copy verbatim** (M11 step-0) → **rewire** data sources to generated NMP wrappers (M11 step-4) |
 | Android + Desktop apps | **Out of scope** for M11.5; covered by M15 cross-platform |
 
