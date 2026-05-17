@@ -345,6 +345,32 @@ fn address_pointer_dedup_across_thread_and_meta_subscribe() {
 }
 ```
 
+### Assertion 5 — Address-pointer dedup across ThreadView and MetaTimeline
+
+> "Two views registering the same `NaddrCoord` emit ONE REQ per relay (Rule 8 address-pointer union, D8 invariant)."
+
+```rust
+#[test]
+fn address_pointer_dedup_across_thread_and_meta_subscribe() {
+    let mut h = PlannerHarness::new();
+    let pk = pubkey("article_author");
+    h.ingest_nip65(&pk, ["wss://article-relay.example"]);
+    let coord = NaddrCoord { pubkey: pk, kind: 30023, d_tag: "my-post".into() };
+    let mk = || LogicalInterest {
+        scope: InterestScope::Global,
+        shape: InterestShape { addresses: [coord.clone()].into(),
+                               kinds: [30023].into(), ..Default::default() },
+        lifecycle: InterestLifecycle::OneShot, ..Default::default()
+    };
+    h.register_interest(mk()); // ThreadViewModule hydration
+    h.register_interest(mk()); // MetaTimelineViewModule hydration
+    let plan = h.compile().expect("compile");
+    assert_eq!(plan.per_relay.len(), 1);
+    assert_eq!(plan.per_relay[0].sub_shapes.len(), 1,
+        "Rule 8 must merge identical address sets into one SubShape");
+}
+```
+
 ## 9.3 The `PlannerHarness`
 
 The test harness is itself part of `nmp-testing`:
