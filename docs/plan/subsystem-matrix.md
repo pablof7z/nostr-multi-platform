@@ -20,6 +20,8 @@ Cross-reference of which milestone delivers which user-specified concern.
 
 ## NIP support roadmap at v1
 
+> Note: M9 (NIP-17 DMs) and M12 (Wallet) were deferred to post-v1 per [scope-adjustments-2026-05-18](scope-adjustments-2026-05-18.md). NIP-29 is now v1 via [M11.5](m11.5-highlighter.md).
+
 | NIP | Module | Milestone | Status |
 |---|---|---|---|
 | 01 | nmp-nip01 | [M1](m1-twitter-slice.md), [M6](m6-signers-write.md) | partial (reads in M1; writes in M6) |
@@ -29,23 +31,24 @@ Cross-reference of which milestone delivers which user-specified concern.
 | 07 | nmp-nip07 | [M15](m15-cross-platform.md) | web-only browser signer |
 | 09 | nmp-nip01 | [M3](m3-persistence.md) | kind:5 deletes (full handling) |
 | 10 | nmp-nip10 | [M7](m7-interaction-loop.md) | reply markers in thread building |
-| 17 | nmp-nip17 | [M9](m9-messaging.md) | DMs |
+| 17 | nmp-nip17 | [post-v1](post-v1.md) | DMs — deferred |
 | 19 | nmp-nip19 | [M1](m1-twitter-slice.md) | bech32 utility used throughout |
 | 23 | not v1 | — | long-form reader is post-v1 |
 | 25 | nmp-nip25 | [M7](m7-interaction-loop.md) | reactions |
+| 29 | nmp-nip29 | [M11.5](m11.5-highlighter.md) | groups (Highlighter rebuild) |
 | 40 | nmp-nip01 | [M3](m3-persistence.md) | expiration scheduling |
 | 42 | nmp-nip42 | [M5](m5-nip42.md) | relay auth |
-| 44 | nmp-nip17 | [M9](m9-messaging.md) | encryption (via NIP-17) |
+| 44 | nmp-nip17 | [post-v1](post-v1.md) | encryption via NIP-17 — deferred |
 | 46 | nmp-nip46 | [M6](m6-signers-write.md) | bunker signer |
-| 47 | nmp-nwc | [M12](m12-wallet.md) | wallet connect |
+| 47 | nmp-nwc | [post-v1](post-v1.md) | wallet connect — deferred |
 | 49 | nmp-nip01 / nmp-nip46 | [M6](m6-signers-write.md) | encrypted-key import |
 | 55 | nmp-nip55 | [M15](m15-cross-platform.md) | Android Amber bridge |
-| 57 | nmp-nip57 | [M12](m12-wallet.md) | zaps |
-| 59 | nmp-nip17 | [M9](m9-messaging.md) | gift wrap (via NIP-17) |
-| 60 | nmp-nip60 | [M12](m12-wallet.md) | Cashu |
-| 61 | nmp-nip61 | [M12](m12-wallet.md) | nutzaps |
+| 57 | nmp-nip57 | [post-v1](post-v1.md) | zaps — deferred |
+| 59 | nmp-nip17 | [post-v1](post-v1.md) | gift wrap via NIP-17 — deferred |
+| 60 | nmp-nip60 | [post-v1](post-v1.md) | Cashu — deferred |
+| 61 | nmp-nip61 | [post-v1](post-v1.md) | nutzaps — deferred |
 | 65 | nmp-nip65 | [M2](m2-subscription-compilation.md) | mailboxes + outbox |
 | 77 | nmp-nip77 | [M4](m4-negentropy.md) | negentropy |
 | Blossom BUD-01/02 | nmp-blossom | [M10](m10-blossom.md) | media |
 
-NIPs not in v1 (e.g., NIP-29 groups, NIP-23 long-form, NIP-71 video) become post-v1 extension modules; the kernel boundary makes them additive.
+NIPs not in v1 (e.g., NIP-23 long-form, NIP-71 video) become post-v1 extension modules; the kernel boundary makes them additive.

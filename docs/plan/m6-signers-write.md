@@ -10,11 +10,13 @@
 
 - `IdentityModule::HumanAccount` with local-key signer (raw nsec, NIP-49 encrypted).
 - `IdentityModule::ExternalSigner` with NIP-46 (Nostr Connect / bunker) signer.
+- **NIP-46 `bunker://` URL parsing + connection flow**: a pasted `bunker://` URL is a first-class signer onboarding path; the framework wires the rendezvous (per 2026-05-18 scope adjustments).
+- **Create new nsec flow**: generate, encrypt (NIP-49), and store via `KeychainCapability`. User-initiated through a single action; no app needs to roll its own (per 2026-05-18 scope adjustments).
 - `KeychainCapability` real implementation: encrypted nsec storage via iOS Keychain, app-private access group.
 - Action ledger in `nmp-core::kernel::ledger`: durable rows with ULID action IDs, status transitions, retry/cancel, restart recovery.
 - Action atomicity contract: a `SendNote` action's publish to relays and local store insert happen as one actor message; partial failure rolls back.
 - `nmp-nip01::SendNoteActionModule` as the first write-path action.
-- Login UX (single nsec field for now; multi-step onboarding deferred to [M16](m16-cli-starter.md)).
+- Login UX: paste nsec, paste `bunker://`, or generate new nsec — all three flows in M6.
 
 **Exit gate.**
 
