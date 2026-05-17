@@ -25,7 +25,7 @@ path = "tests/m2_subscription_compilation_audit.rs"
 
 ## 9.2 What the test asserts
 
-Four assertions corresponding to the four M2 exit-gate bullets in [`docs/plan/m2-subscription-compilation.md`](../../plan/m2-subscription-compilation.md):
+Four assertions corresponding to the four M2 exit-gate bullets in [`docs/plan/m2-subscription-compilation.md`](../../plan/m2-subscription-compilation.md), plus one substrate-invariant assertion (Assertion 5) covering D8 address-pointer dedup added by T24:
 
 ### Assertion 1 — Bug-extinction #3 surface check
 

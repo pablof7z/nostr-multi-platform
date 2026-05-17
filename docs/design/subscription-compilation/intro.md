@@ -99,11 +99,10 @@ pub struct InterestShape {
     /// article in ThreadViewModule or MetaTimelineViewModule). The compiler routes
     /// each coordinate to the addressed author's write relays (Stage 1 Outbox
     /// direction keyed on `NaddrCoord::pubkey`). See §3.3 Rule 8 and §7.
-    /// Rationale: T21 research (NDK `$metaSubscribe` / svelte subscription
-    /// grouping — `docs/research/ndk/subscription-compilation.md` §Grouping)
-    /// shows filter-key-set identity drives merge eligibility; adding `addresses`
-    /// as a first-class field gives the merge lattice a stable key to union on
-    /// rather than encoding coords into opaque `#a` tag strings.
+    /// Rationale: NDK filter-fingerprinting (`docs/research/ndk/subscription-compilation.md`
+    /// §Grouping) shows that filter-key-set identity drives merge eligibility.
+    /// Adding `addresses` as a first-class field gives the merge lattice a stable
+    /// key to union on, rather than encoding coords into opaque `#a` tag strings.
     pub addresses:  BTreeSet<NaddrCoord>,    // empty = no address-pointer hydration
 }
 
