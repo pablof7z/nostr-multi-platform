@@ -52,50 +52,54 @@
 
 ### Phase 1 — Event store + planner
 
-**Scope.**
+Per ADR-0006, Phase 1 opens with a **vertical slice** before the broader scope lands. The slice proves the architecture end-to-end against a real relay with running code, not modeled budgets.
 
-- `EventStore` with all insert invariants from spec §7.1:
-  - Replaceable kinds 0/3/10000–19999 supersession.
-  - Parameterized replaceable 30000–39999 supersession by `(pubkey, kind, d-tag)`.
-  - Kind-5 delete handling + tombstone persistence.
-  - NIP-40 expiration scheduling.
-  - Dedup with provenance merge.
-- Storage backend abstraction; LMDB (native) and IndexedDB (web) backends.
+**1a. Vertical slice (the walking skeleton).** Per ADR-0006 §"The vertical slice":
+
+- Desktop iced shell with an `Avatar { pubkey }` component using `useProfile(pubkey)`.
+- Manually-written wrapper implementing the ADR-0005 refcounted domain-keyed pattern.
+- Minimal nmp-core actor handling `OpenView`/`CloseView` for the Profile view kind only.
+- In-memory EventStore with kind:0 replaceable supersession + composite reverse index keyed by `(kind, author)`.
+- One WebSocket connection via `nostr-sdk` to one hardcoded relay; REQ/CLOSE driven by view lifecycle.
+- No LMDB, no FFI (desktop links rlib directly), no outbox, no negentropy, no other view kinds — those layer in after.
+
+Exit gate for the slice: per ADR-0006 §"Exit gate for the slice" — manual demo + slice-scoped firehose-bench `live` runs.
+
+**1b. Broader Phase 1 scope, layered on top of the slice.**
+
+- LMDB and IndexedDB backends; swap from in-memory via `Box<dyn EventStore>`.
+- Full insert invariants from spec §7.1 (parameterized replaceable, kind-5 delete, NIP-40 expiration, dedup with provenance merge).
 - Claim-based GC.
-- Sync watermarks table (durable schema) — read-write API stubs, populated by Phase 2 sync engine.
-- `nmp-gossip` (using `nostr-gossip` crate) — outbox routing for both reads and writes per spec §7.3.
+- Sync watermarks table (read/write API; populated by Phase 2 sync engine).
+- `nmp-gossip` outbox routing for both reads and writes per spec §7.3.
 - Subscription planner with coalescing, auto-close, EOSE detection, ≤60Hz buffering, reconnect re-establishment.
 - Live REQ tail working end-to-end against `MockRelay`.
-- **Reverse index + projections architecture** from `docs/design/reactivity.md` (§3–§6) — required because the planner can't be benchmarked without the reactive machinery sitting on top.
-- **`reactivity-bench` stress harness** from `docs/design/reactivity.md` §10 — a standalone binary in `nmp-testing` that pre-populates a store, opens views, replays event streams, and reports per-event lookup, recompute, and emission costs.
+- Reverse index + projections architecture from `docs/design/reactivity.md` (§3–§6) — the slice already includes composite keys; broader Phase 1 fills in the projection caches.
+- **`reactivity-bench` stress harness** — already built (run 002 validated the model). Promoted to pre-merge CI per recommendations.
+- **`firehose-bench` capture + replay infrastructure** — already built; live mode unblocks scenario by scenario as adapters land.
 
 **Prerequisite design docs.**
 
-- `docs/design/reactivity.md` — reviewed and accepted before code lands. The reverse-index + projection-cache decisions in §3 and §6 of that doc are the load-bearing reactive contract; the harness in §10 is how we validate them.
-- `docs/design/view-catalog.md` — reviewed for the Phase 1 view kinds (Profile, Contacts, Mailboxes, Timeline, Thread, Replies, Reactions, Search) so the planner contract aligns with what the views need.
+- `docs/design/reactivity.md` — reviewed and accepted (rev 1, post run 001).
+- `docs/design/view-catalog.md` — reviewed for Phase 1 view kinds.
+- `docs/design/firehose-bench.md` — reviewed; runtime adapters track against §6 phasing.
 
-**Out of scope.** No actions yet. View payload types defined but actions to open/close views deferred to Phase 4 — Phase 1 ships them as a Rust-only API consumed by the harness.
+**Exit gate (full Phase 1, not just the slice).**
 
-**Exit gate.**
+- All bug-extinction tests pass (per `product-spec.md` §3.3).
+- Replaceable event correctness verified.
+- Provenance correctness verified.
+- Reactivity harness gates (per `reactivity.md` §10.3 rev 1):
+  - Lookup p99 ≤ 100 µs (run 002: passed).
+  - Per-view recompute p99 ≤ 1 ms (run 002: passed).
+  - ≤ 60 deltas/sec/view (run 002: passed across all scenarios).
+  - False-wakeup rate ≤ 0.10 (run 002: 0 in quiet_idle, 1.00 candidates/delta).
+  - Working-set memory ≤ 100 MB at 100 active views (run 002: ~20 MB modeled).
+  - Zero per-event allocations after warmup (run 002: passed via counting allocator).
+- **Firehose-bench live mode unblocked for cold_start + profile_thrashing** against a real relay, measured numbers (not modeled) within budgets.
+- Unit-test coverage on composite reverse index, coalescer, and domain-keyed wrapper lifecycle (per Phase 1 recommendation from firehose-bench run 001).
 
-- Bug-extinction tests pass against `MockRelay`:
-  - #1 (stale replaceable): inject newer kind-0, assert older one is gone.
-  - #2 (leaked subscription): open + close view, assert REQ is CLOSE'd, claims dropped.
-  - #3 (publish to wrong relays): cannot be triggered through any public API; explicit override path logs a warning.
-  - #4 (DM to public): not applicable yet (Phase 5), but the relay-set-resolution code path that DMs will use already refuses non-inbox relays for `p`-tagged-only events.
-  - #6 (cache miss without fallback): planner refuses to open a view if no fallback registered AND no relays resolvable.
-  - #8 (concurrent identical filters → one REQ): asserted by counting MockRelay REQ frames.
-- Replaceable event correctness: inject 100 randomized kind-0 events with shuffled `created_at`, assert final state is the newest by `(created_at, id)`.
-- Provenance: an event arriving from 3 relays appears once in the store with all 3 relays in its provenance set.
-- **Reactivity harness gates** (per `docs/design/reactivity.md` §10.3 rev 1, post run 001):
-  - Reverse-index lookup p99 ≤ 100µs (validated by run 001 at sub-µs).
-  - Per-view incremental recompute p99 ≤ 1ms (validated by run 001 at ≤ 10µs).
-  - Delta emission ≤ 60 deltas/sec/**per view** (per ADR-0002; absolute gate replaced).
-  - False-wakeup rate ≤ 0.10, candidates per delta ≤ 1.25 (per ADR-0001; new gates).
-  - Working-set memory ≤ 100 MB at 100 active views / 10k hot events / 1M cached on disk (per ADR-0003; rescoped from total-events memory).
-  - Zero per-event allocations on the steady-state path after 1,000-event warmup, verified by counting allocator (per ADR-0004).
-
-**Regression tests added.** `tests/event_store_invariants.rs`, `tests/planner_coalesce.rs`, `tests/outbox_routing.rs`, `tests/reverse_index.rs`, `bin/reactivity-bench/scenarios/*`.
+**Regression tests added.** `tests/event_store_invariants.rs`, `tests/planner_coalesce.rs`, `tests/outbox_routing.rs`, `tests/reverse_index.rs`, `tests/coalescer.rs`, `tests/wrapper_lifecycle.rs`, `bin/reactivity-bench/scenarios/*`, `bin/firehose-bench/scenarios/cold_start.rs`, `bin/firehose-bench/scenarios/profile_thrashing.rs`.
 
 ### Phase 2 — Sync engine (negentropy first-class)
 
@@ -384,12 +388,46 @@ ADRs already adopted:
 - **ADR-0003:** Memory budget is working-set, not total cached events. Adopted 2026-05-17 from reactivity-bench run 001.
 - **ADR-0004:** Allocation measurement plumbed via counting allocator (verifies zero-per-event invariant). Adopted 2026-05-17 from reactivity-bench run 001.
 - **ADR-0005:** Platform shadow is domain-keyed, not `ViewId`-keyed. Refcounted component wrappers (`useProfile`, `@Profile`, `rememberProfile`) generated per platform manage subscription lifecycle behind the domain-keyed API. `ViewId` remains an internal FFI token only.
+- **ADR-0006:** Vertical-slice-first delivery for Phase 1. Kind:0 profile-metadata path runs end-to-end (desktop component → wrapper → actor → in-memory store → real relay → back) before the broader Phase 1 scope (LMDB, outbox, full view kinds, FFI to iOS/Android) layers on top. Adopted 2026-05-17 from the firehose-bench run that revealed the live mode was blocked on real runtime adapters.
 
 The ADRs are the durable record of why design decisions exist. New ADRs land alongside any new harness run that revises a design.
 
 ### The harness-first pattern
 
 Every design doc has measurable gates. Gates run on the reactivity-bench harness (or a sibling for non-reactivity subsystems). Failures revise the design *before* implementation. Pre-implementation measurement is cheaper than post-implementation rework. Run 001 of reactivity-bench established the pattern: the reverse-index direction was validated (100×–1000× headroom), one design refinement landed (composite keys), and two budget bugs surfaced (per-view delta, working-set memory) — all before any view-kind code shipped.
+
+### Modeled budget contract vs runtime evidence
+
+Two distinct claims about the same harness:
+
+- **Modeled budget contract.** Replay mode runs deterministic synthetic workloads through a model of the runtime (modeled relay sockets, modeled storage, modeled UniFFI marshaling). Passing here proves the budgets are internally consistent and the harness scaffolding is sound. It does **not** prove the real runtime hits those budgets.
+- **Runtime evidence.** Live mode (or replay mode against a real adapter substituted for a modeled segment) runs against actual LMDB, actual WebSockets, actual UniFFI marshaling. Passing here is real evidence.
+
+Today's firehose-bench replay passes establish the contract. The vertical slice (ADR-0006) is what produces the first runtime evidence. Each subsequent phase replaces another modeled segment with a real adapter and graduates the corresponding firehose-bench scenarios from "modeled" to "measured."
+
+Reports in `docs/perf/firehose-bench/` track which scenarios are measured vs modeled at each run. Live runs are explicitly tagged. CI runs replay against the current set of real adapters plus models for the rest; the boundary moves rightward as phases land.
+
+### CI / pre-merge hygiene
+
+The recommended CI gates as of Phase 1:
+
+- `cargo fmt --all -- --check` (formatting).
+- `cargo test --workspace` (all crates pass unit + integration).
+- `cargo run -p nmp-testing --bin reactivity-bench --release -- --standard --fail-on-gate` (reactivity gates).
+- `cargo run -p nmp-testing --bin firehose-bench --release -- replay --standard --fail-on-gate` (firehose gates against the current model+adapter mix).
+- `git diff --check` (whitespace / conflict markers).
+
+Live firehose runs are not in pre-merge CI (they would block on relay flakes); they run nightly or on-demand and produce reports tagged `live` in `docs/perf/firehose-bench/`.
+
+### Unit-test guidance from firehose-bench run 001
+
+Beyond integration tests, Phase 1 explicitly carries unit-test coverage for:
+
+- **Composite reverse index** — composite-key matching, false-wakeup rate measurement, broad-axis guardrail warnings.
+- **Coalescer** — per-view-kind merge rules (`UpdatedMany`, range-merged `Inserted`, `EmojiAdjusted` summing, etc.) preserve semantic equivalence to N un-coalesced deltas.
+- **Domain-keyed wrapper lifecycle** — refcount transitions, grace-period cancellation, eviction correctness, idempotent `Open`/`Close` calls.
+
+These three areas had the highest concentration of subtle invariants in the design docs; they get the highest test density.
 
 ---
 

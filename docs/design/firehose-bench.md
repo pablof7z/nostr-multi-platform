@@ -8,6 +8,18 @@
 
 ---
 
+## 0. Modeled budget contract vs runtime evidence
+
+The harness has two distinct values, both legitimate, often conflated:
+
+**Modeled budget contract** — the harness's deterministic replay mode runs synthetic workloads through a *model* of the runtime: simulated relay sockets, simulated storage, simulated UniFFI marshaling, simulated NSE. Passing the gates here proves the budgets are internally consistent and the harness scaffolding works. It does **not** prove the real runtime hits those budgets.
+
+**Runtime evidence** — live mode (or replay mode where modeled segments have been swapped for real adapters) runs against actual LMDB, actual WebSockets, actual UniFFI, actual NSE. Passing here is real evidence the architecture meets its budgets.
+
+As of Phase 1 of the build plan, the harness is at the contract stage: replay passes, live correctly reports `blocked` because the real adapters don't exist. The vertical slice (ADR-0006) produces the first runtime evidence by replacing the modeled relay socket, the modeled storage, and the modeled wrapper with real ones for the Profile path. Each subsequent phase replaces another modeled segment.
+
+The harness reports tag each scenario as `modeled` or `measured` so the boundary is always visible. CI runs the current mix. The goal across the phases is to move every scenario from `modeled` to `measured`.
+
 ## 1. Why this exists
 
 `reactivity-bench` proved the algorithmic core scales: reverse-index lookup, view recompute, delta emission. It is synthetic — single Rust process, no relays, no disk, no real-world event distribution, no FFI.
