@@ -234,7 +234,7 @@ pub enum ActionTransition<Step, Output> {
 - Final domain writes (insert the signed event into the store, append to a domain table, etc.).
 - Whether user approval is required (for sensitive actions).
 
-**Atomicity** (doctrine guarantee): the kernel ensures `module.reduce(...)` and any resulting store writes happen as one actor message. There is no "publish succeeded but local insert failed" state; either both happen or both roll back, and the ledger row reflects the actual outcome.
+**Atomicity** (doctrine guarantee): the kernel ensures `module.reduce(...)`, ledger transitions, and local store writes happen as one actor message. External effects such as relay publishes cannot be rolled back after a relay accepts them, so publish steps must be ledger-correlated and restart-recoverable: a "publish accepted but local insert failed" path becomes an explicit failed/recovery ledger state, not silent divergence.
 
 **Example:**
 

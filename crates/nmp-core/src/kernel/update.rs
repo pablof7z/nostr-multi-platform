@@ -1,0 +1,308 @@
+use super::*;
+
+impl Kernel {
+    pub(crate) fn make_update(&mut self, running: bool) -> String {
+        let emit_started = Instant::now();
+        self.rev = self.rev.saturating_add(1);
+        self.update_sequence = self.update_sequence.saturating_add(1);
+
+        let batch_events = self.events_since_last_update;
+        self.max_events_per_update = self.max_events_per_update.max(batch_events);
+        let last_event_to_emit_ms = self
+            .last_event_at
+            .map(|last_event_at| emit_started.duration_since(last_event_at).as_millis());
+        if let Some(value) = last_event_to_emit_ms {
+            self.max_event_to_emit_ms = self.max_event_to_emit_ms.max(value);
+        }
+
+        let items = self.visible_items();
+        let (inserted, updated, removed) = diff_items(&self.last_emitted_items, &items);
+        self.last_emitted_items = items.clone();
+
+        let visible_profiled_items = items
+            .iter()
+            .filter(|item| item.author_avatar_source == "kind0")
+            .count();
+        let visible_placeholder_avatar_items = items.len().saturating_sub(visible_profiled_items);
+        let counters = self.total_counters();
+        let mut update = KernelUpdate {
+            rev: self.rev,
+            update_kind: "ViewBatch",
+            running,
+            relay_url: CONTENT_RELAY_URL,
+            test_npub: TEST_NPUB,
+            profile: self.profile_card(),
+            items,
+            author_view: self.author_view(),
+            thread_view: self.thread_view(),
+            inserted: inserted.clone(),
+            updated: updated.clone(),
+            removed: removed.clone(),
+            metrics: Metrics {
+                generated_events: counters.events_rx,
+                note_events: self.events.values().filter(|event| event.kind == 1).count() as u64,
+                profile_events: self.profiles.len() as u64,
+                duplicate_events: self
+                    .events
+                    .values()
+                    .filter(|event| event.relay_count > 1)
+                    .count() as u64,
+                delete_events: 0,
+                stored_events: self.events.len() + self.profiles.len() + self.seed_contacts.len(),
+                tombstones: 0,
+                visible_items: self.last_emitted_items.len(),
+                visible_profiled_items,
+                visible_placeholder_avatar_items,
+                open_views: self.logical_interests().len() as u32,
+                events_since_last_update: self.events_since_last_update,
+                diagnostic_firehose_events: self.diagnostic_firehose_events,
+                inserted_count: inserted.len(),
+                updated_count: updated.len(),
+                removed_count: removed.len(),
+                events_per_second_configured: 0,
+                emit_hz_configured: DEFAULT_EMIT_HZ,
+                update_sequence: self.update_sequence,
+                estimated_store_bytes: self.estimated_store_bytes(),
+                payload_bytes: 0,
+                store_to_payload_ratio: 0.0,
+                actor_queue_depth: 0,
+                frames_rx: counters.frames_rx,
+                events_rx: counters.events_rx,
+                eose_rx: counters.eose_rx,
+                notices_rx: counters.notices_rx,
+                closed_rx: counters.closed_rx,
+                bytes_rx: counters.bytes_rx,
+                bytes_tx: counters.bytes_tx,
+                contacts_authors: self.seed_contacts.values().map(Vec::len).sum(),
+                timeline_authors: self.timeline_authors.len(),
+                first_event_ms: self.elapsed_ms(self.first_event_at),
+                target_profile_loaded_ms: self.elapsed_ms(self.target_profile_loaded_at),
+                timeline_opened_ms: self.elapsed_ms(self.timeline_opened_at),
+                timeline_first_item_ms: self.elapsed_ms(self.timeline_first_item_at),
+                update_emitted_ms: self.elapsed_ms(Some(emit_started)),
+                last_event_to_emit_ms,
+                max_event_to_emit_ms: self.max_event_to_emit_ms,
+                max_events_per_update: self.max_events_per_update,
+            },
+            relay_status: self.relay_status(),
+            relay_statuses: self.relay_statuses(),
+            logical_interests: self.logical_interests(),
+            wire_subscriptions: self.wire_subscriptions(),
+            logs: self.logs.iter().cloned().collect(),
+        };
+
+        let first = serde_json::to_string(&update).unwrap_or_else(|_| "{}".to_string());
+        update.metrics.payload_bytes = first.len();
+        update.metrics.store_to_payload_ratio = ratio(
+            update.metrics.estimated_store_bytes,
+            update.metrics.payload_bytes,
+        );
+        if batch_events > 0 || !inserted.is_empty() || !updated.is_empty() || !removed.is_empty() {
+            self.log(format!(
+                "NMP_PERF rust_update rev={} batch_events={} inserted={} updated={} removed={} visible={} payload_bytes={} event_to_emit_ms={} max_event_to_emit_ms={}",
+                self.rev,
+                batch_events,
+                inserted.len(),
+                updated.len(),
+                removed.len(),
+                self.last_emitted_items.len(),
+                update.metrics.payload_bytes,
+                last_event_to_emit_ms
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "none".to_string()),
+                self.max_event_to_emit_ms
+            ));
+        }
+        self.events_since_last_update = 0;
+        self.changed_since_emit = false;
+        serde_json::to_string(&update).unwrap_or(first)
+    }
+
+    pub(super) fn visible_items(&self) -> Vec<TimelineItem> {
+        self.timeline
+            .iter()
+            .filter_map(|id| self.events.get(id))
+            .take(self.visible_limit)
+            .map(|event| self.timeline_item(event))
+            .collect()
+    }
+
+    pub(super) fn timeline_item(&self, event: &StoredEvent) -> TimelineItem {
+        let profile = self.profiles.get(&event.author);
+        TimelineItem {
+            id: event.id.clone(),
+            author_pubkey: event.author.clone(),
+            author_display: profile
+                .map(|profile| profile.display.clone())
+                .filter(|display| !display.is_empty())
+                .unwrap_or_else(|| short_pubkey_display(&event.author)),
+            author_picture_url: profile.and_then(|profile| profile.picture_url.clone()),
+            author_avatar_initials: profile
+                .map(|profile| profile.avatar_initials.clone())
+                .unwrap_or_else(|| "..".to_string()),
+            author_avatar_color: profile
+                .map(|profile| profile.avatar_color.clone())
+                .unwrap_or_else(|| avatar_color(&event.author)),
+            author_avatar_source: if profile.is_some() {
+                "kind0".to_string()
+            } else {
+                "placeholder".to_string()
+            },
+            content: truncate(&event.content, 1_200),
+            content_preview: if event.kind == 6 && event.content.trim().is_empty() {
+                "Repost".to_string()
+            } else {
+                truncate(&event.content.replace('\n', " "), 180)
+            },
+            created_at_display: format_timestamp(event.created_at),
+            relay_count: event.relay_count,
+        }
+    }
+
+    pub(super) fn profile_card(&self) -> ProfileCard {
+        self.profile_card_for(
+            TEST_PUBKEY,
+            Some(TEST_NPUB),
+            "Waiting for kind:0 from indexer",
+        )
+    }
+
+    pub(super) fn profile_card_for(
+        &self,
+        pubkey: &str,
+        npub: Option<&str>,
+        placeholder_about: &str,
+    ) -> ProfileCard {
+        let profile = self.profiles.get(pubkey);
+        ProfileCard {
+            pubkey: pubkey.to_string(),
+            npub: npub.unwrap_or(pubkey).to_string(),
+            display: profile
+                .map(|profile| profile.display.clone())
+                .filter(|display| !display.is_empty())
+                .unwrap_or_else(|| short_pubkey_display(pubkey)),
+            picture_url: profile.and_then(|profile| profile.picture_url.clone()),
+            nip05: profile
+                .map(|profile| profile.nip05.clone())
+                .unwrap_or_default(),
+            about: profile
+                .map(|profile| truncate(&profile.about.replace('\n', " "), 220))
+                .unwrap_or_else(|| placeholder_about.to_string()),
+            avatar_initials: profile
+                .map(|profile| profile.avatar_initials.clone())
+                .unwrap_or_else(|| "..".to_string()),
+            avatar_color: profile
+                .map(|profile| profile.avatar_color.clone())
+                .unwrap_or_else(|| avatar_color(pubkey)),
+            source: if profile.is_some() {
+                "kind0".to_string()
+            } else {
+                "placeholder".to_string()
+            },
+        }
+    }
+
+    pub(super) fn author_view(&self) -> Option<AuthorViewPayload> {
+        let pubkey = &self.selected_author.as_ref()?.key;
+        let items = self.author_items(pubkey);
+        let state = if self.author_request_pending {
+            "queued"
+        } else if items.is_empty() {
+            "opening"
+        } else {
+            "ready"
+        };
+
+        Some(AuthorViewPayload {
+            pubkey: pubkey.clone(),
+            state: state.to_string(),
+            profile: self.profile_card_for(pubkey, None, "Waiting for selected author kind:0"),
+            note_count: items.len(),
+            items,
+        })
+    }
+
+    pub(super) fn author_items(&self, pubkey: &str) -> Vec<TimelineItem> {
+        let mut events = self
+            .events
+            .values()
+            .filter(|event| event.author == pubkey && matches!(event.kind, 1 | 6))
+            .collect::<Vec<_>>();
+        events.sort_by(|left, right| {
+            right
+                .created_at
+                .cmp(&left.created_at)
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        events
+            .into_iter()
+            .take(100)
+            .map(|event| self.timeline_item(event))
+            .collect()
+    }
+
+    pub(super) fn thread_view(&self) -> Option<ThreadViewPayload> {
+        let focused_id = &self.selected_thread.as_ref()?.key;
+        let root_id = self
+            .thread_root_id(focused_id)
+            .unwrap_or_else(|| focused_id.clone());
+        let items = self.thread_items(focused_id, &root_id);
+        let focused_index = items.iter().position(|item| item.id == *focused_id);
+        let previous_count = focused_index.unwrap_or(0);
+        let next_count = focused_index
+            .map(|index| items.len().saturating_sub(index + 1))
+            .unwrap_or(0);
+        let state = if self.thread_request_pending {
+            "queued"
+        } else if items.is_empty() {
+            "opening"
+        } else {
+            "ready"
+        };
+
+        Some(ThreadViewPayload {
+            focused_event_id: focused_id.clone(),
+            root_event_id: root_id,
+            state: state.to_string(),
+            items,
+            previous_count,
+            next_count,
+        })
+    }
+
+    pub(super) fn thread_items(&self, focused_id: &str, root_id: &str) -> Vec<TimelineItem> {
+        let mut ids = BTreeSet::new();
+        ids.insert(focused_id.to_string());
+        ids.insert(root_id.to_string());
+        if let Some(focused) = self.events.get(focused_id) {
+            ids.extend(referenced_event_ids(focused));
+        }
+
+        let mut events = self
+            .events
+            .values()
+            .filter(|event| {
+                ids.contains(&event.id)
+                    || event_references(event, root_id)
+                    || event_references(event, focused_id)
+            })
+            .collect::<Vec<_>>();
+        events.sort_by(|left, right| {
+            left.created_at
+                .cmp(&right.created_at)
+                .then_with(|| left.id.cmp(&right.id))
+        });
+        events
+            .into_iter()
+            .take(250)
+            .map(|event| self.timeline_item(event))
+            .collect()
+    }
+
+    pub(super) fn thread_root_id(&self, focused_id: &str) -> Option<String> {
+        let event = self.events.get(focused_id)?;
+        root_event_id(event)
+            .or_else(|| first_event_ref(event))
+            .or_else(|| Some(focused_id.to_string()))
+    }
+}

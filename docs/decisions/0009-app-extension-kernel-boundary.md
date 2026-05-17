@@ -93,7 +93,7 @@ The doctrines from `product-spec.md` §1.5 (D1 best-effort rendering, D2 negentr
 
 Verified by:
 
-1. The kernel-substrate prototype (Phase 1a.1) ships with a tiny non-Nostr fixture module (one DomainModule + one ViewModule + one ActionModule) that compiles, runs on desktop iced, and contains no Nostr concepts.
+1. The kernel-substrate prototype (Phase 1a.1) ships with a tiny non-Nostr fixture module demonstrating all five trait families. It compiles, runs in a reference shell, and contains no Nostr concepts.
 2. The Twitter clone (Phase 1a.2 onward) is implemented entirely as extension modules over `nmp-core` + protocol modules. `nmp-core` does not gain any of: `Profile`, `Timeline`, `Thread`, `Reactions`, `Conversation`, `Tweet`, `Compose` types or actions.
 3. A future hypothetical Highlighter-lite module can be added without changes to `nmp-core`. (Not built in v1; the design must support it.)
 

@@ -1,0 +1,422 @@
+{
+  "tool": "reactivity-bench",
+  "started_at_unix": 1779043675,
+  "scale": "standard",
+  "scenarios": [
+    {
+      "name": "quiet_idle",
+      "prepopulate_events": 10000,
+      "replay_events": 1000,
+      "event_rate_per_sec": 1,
+      "open_views": 10,
+      "store_events": 10944,
+      "interested_events": 950,
+      "deltas": 104,
+      "batches": 104,
+      "duration_ms": 0,
+      "lookup_p50_ns": 83,
+      "lookup_p99_ns": 167,
+      "recompute_p50_ns": 41,
+      "recompute_p99_ns": 42,
+      "max_batch_hz": 0.104,
+      "deltas_per_sec": 0.104,
+      "estimated_memory_bytes": 1460695,
+      "steady_state_allocations_measured": false,
+      "steady_state_allocations_per_event": null,
+      "gates": [
+        {
+          "name": "lookup_p99_ns",
+          "measured": 167.0,
+          "budget": 100000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "recompute_p99_ns",
+          "measured": 42.0,
+          "budget": 1000000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "view_batch_hz",
+          "measured": 0.104,
+          "budget": 60.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "deltas_per_sec",
+          "measured": 0.104,
+          "budget": 1000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "estimated_memory_bytes",
+          "measured": 1460695.0,
+          "budget": 104857600.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "steady_state_allocations",
+          "measured": null,
+          "budget": 0.0,
+          "passed": false,
+          "note": "not measured by this baseline harness"
+        }
+      ],
+      "passed": false,
+      "notes": []
+    },
+    {
+      "name": "following_timeline_scroll",
+      "prepopulate_events": 100000,
+      "replay_events": 10000,
+      "event_rate_per_sec": 100,
+      "open_views": 1,
+      "store_events": 109497,
+      "interested_events": 9741,
+      "deltas": 4965,
+      "batches": 3980,
+      "duration_ms": 3,
+      "lookup_p50_ns": 42,
+      "lookup_p99_ns": 125,
+      "recompute_p50_ns": 42,
+      "recompute_p99_ns": 84,
+      "max_batch_hz": 39.8,
+      "deltas_per_sec": 49.65,
+      "estimated_memory_bytes": 14560454,
+      "steady_state_allocations_measured": false,
+      "steady_state_allocations_per_event": null,
+      "gates": [
+        {
+          "name": "lookup_p99_ns",
+          "measured": 125.0,
+          "budget": 100000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "recompute_p99_ns",
+          "measured": 84.0,
+          "budget": 1000000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "view_batch_hz",
+          "measured": 39.8,
+          "budget": 60.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "deltas_per_sec",
+          "measured": 49.65,
+          "budget": 1000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "estimated_memory_bytes",
+          "measured": 14560454.0,
+          "budget": 104857600.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "steady_state_allocations",
+          "measured": null,
+          "budget": 0.0,
+          "passed": false,
+          "note": "not measured by this baseline harness"
+        }
+      ],
+      "passed": false,
+      "notes": []
+    },
+    {
+      "name": "hashtag_firehose",
+      "prepopulate_events": 1000000,
+      "replay_events": 20000,
+      "event_rate_per_sec": 2000,
+      "open_views": 1,
+      "store_events": 1020000,
+      "interested_events": 20000,
+      "deltas": 20000,
+      "batches": 589,
+      "duration_ms": 14,
+      "lookup_p50_ns": 41,
+      "lookup_p99_ns": 42,
+      "recompute_p50_ns": 41,
+      "recompute_p99_ns": 42,
+      "max_batch_hz": 58.9,
+      "deltas_per_sec": 2000.0,
+      "estimated_memory_bytes": 130800236,
+      "steady_state_allocations_measured": false,
+      "steady_state_allocations_per_event": null,
+      "gates": [
+        {
+          "name": "lookup_p99_ns",
+          "measured": 42.0,
+          "budget": 100000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "recompute_p99_ns",
+          "measured": 42.0,
+          "budget": 1000000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "view_batch_hz",
+          "measured": 58.9,
+          "budget": 60.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "deltas_per_sec",
+          "measured": 2000.0,
+          "budget": 1000.0,
+          "passed": false,
+          "note": null
+        },
+        {
+          "name": "estimated_memory_bytes",
+          "measured": 130800236.0,
+          "budget": 104857600.0,
+          "passed": false,
+          "note": null
+        },
+        {
+          "name": "steady_state_allocations",
+          "measured": null,
+          "budget": 0.0,
+          "passed": false,
+          "note": "not measured by this baseline harness"
+        }
+      ],
+      "passed": false,
+      "notes": [
+        "catch_all views considered on every insert: 1"
+      ]
+    },
+    {
+      "name": "profile_fanout",
+      "prepopulate_events": 10000,
+      "replay_events": 5000,
+      "event_rate_per_sec": 100,
+      "open_views": 50,
+      "store_events": 14900,
+      "interested_events": 5000,
+      "deltas": 168978,
+      "batches": 2500,
+      "duration_ms": 15,
+      "lookup_p50_ns": 209,
+      "lookup_p99_ns": 3958,
+      "recompute_p50_ns": 2292,
+      "recompute_p99_ns": 3125,
+      "max_batch_hz": 50.0,
+      "deltas_per_sec": 3379.56,
+      "estimated_memory_bytes": 2744576,
+      "steady_state_allocations_measured": false,
+      "steady_state_allocations_per_event": null,
+      "gates": [
+        {
+          "name": "lookup_p99_ns",
+          "measured": 3958.0,
+          "budget": 100000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "recompute_p99_ns",
+          "measured": 3125.0,
+          "budget": 1000000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "view_batch_hz",
+          "measured": 50.0,
+          "budget": 60.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "deltas_per_sec",
+          "measured": 3379.56,
+          "budget": 1000.0,
+          "passed": false,
+          "note": null
+        },
+        {
+          "name": "estimated_memory_bytes",
+          "measured": 2744576.0,
+          "budget": 104857600.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "steady_state_allocations",
+          "measured": null,
+          "budget": 0.0,
+          "passed": false,
+          "note": "not measured by this baseline harness"
+        }
+      ],
+      "passed": false,
+      "notes": [
+        "shared author kind:0 fan-out touched 5000 timeline views"
+      ]
+    },
+    {
+      "name": "thread_blowup",
+      "prepopulate_events": 10000,
+      "replay_events": 5500,
+      "event_rate_per_sec": 500,
+      "open_views": 2,
+      "store_events": 15500,
+      "interested_events": 5500,
+      "deltas": 10500,
+      "batches": 612,
+      "duration_ms": 0,
+      "lookup_p50_ns": 42,
+      "lookup_p99_ns": 42,
+      "recompute_p50_ns": 41,
+      "recompute_p99_ns": 42,
+      "max_batch_hz": 55.63636363636363,
+      "deltas_per_sec": 954.5454545454545,
+      "estimated_memory_bytes": 1375304,
+      "steady_state_allocations_measured": false,
+      "steady_state_allocations_per_event": null,
+      "gates": [
+        {
+          "name": "lookup_p99_ns",
+          "measured": 42.0,
+          "budget": 100000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "recompute_p99_ns",
+          "measured": 42.0,
+          "budget": 1000000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "view_batch_hz",
+          "measured": 55.63636363636363,
+          "budget": 60.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "deltas_per_sec",
+          "measured": 954.5454545454545,
+          "budget": 1000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "estimated_memory_bytes",
+          "measured": 1375304.0,
+          "budget": 104857600.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "steady_state_allocations",
+          "measured": null,
+          "budget": 0.0,
+          "passed": false,
+          "note": "not measured by this baseline harness"
+        }
+      ],
+      "passed": false,
+      "notes": [
+        "thread state after replay: replies=500, reactions=10000"
+      ]
+    },
+    {
+      "name": "account_switch",
+      "prepopulate_events": 10000,
+      "replay_events": 10,
+      "event_rate_per_sec": 10,
+      "open_views": 5,
+      "store_events": 10010,
+      "interested_events": 10,
+      "deltas": 1,
+      "batches": 1,
+      "duration_ms": 0,
+      "lookup_p50_ns": 125,
+      "lookup_p99_ns": 250,
+      "recompute_p50_ns": 0,
+      "recompute_p99_ns": 584,
+      "max_batch_hz": 1.0,
+      "deltas_per_sec": 1.0,
+      "estimated_memory_bytes": 1288060,
+      "steady_state_allocations_measured": false,
+      "steady_state_allocations_per_event": null,
+      "gates": [
+        {
+          "name": "lookup_p99_ns",
+          "measured": 250.0,
+          "budget": 100000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "recompute_p99_ns",
+          "measured": 584.0,
+          "budget": 1000000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "view_batch_hz",
+          "measured": 1.0,
+          "budget": 60.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "deltas_per_sec",
+          "measured": 1.0,
+          "budget": 1000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "estimated_memory_bytes",
+          "measured": 1288060.0,
+          "budget": 104857600.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "steady_state_allocations",
+          "measured": null,
+          "budget": 0.0,
+          "passed": false,
+          "note": "not measured by this baseline harness"
+        }
+      ],
+      "passed": false,
+      "notes": [
+        "account switch path registered/deregistered views and emitted 1 deltas (1.00/sec)"
+      ]
+    }
+  ],
+  "overall_passed": false,
+  "caveats": [
+    "Allocation counts are not measured yet; use dhat or a counting allocator before treating the zero-allocation gate as proven.",
+    "Memory is an estimate based on store/index/view structure sizes, not resident set size."
+  ]
+}

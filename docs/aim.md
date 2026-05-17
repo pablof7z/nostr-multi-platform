@@ -10,7 +10,7 @@ This document is the cold-start context for a brand-new working session. Read it
 
 We are designing a **Rust multiplatform framework for building Nostr applications** that ships a single Rust core consumed identically by iOS (SwiftUI), Android (Jetpack Compose), desktop (iced or Tauri), and web (wasm). The core owns all protocol logic, all state, all caching, all relay management, all signing orchestration, all derived views. Platform code is a thin rendering shell.
 
-The framing concern is one sentence: **make it nearly impossible to build a broken Nostr application.** Today, building a Nostr client involves dozens of subtle correctness pitfalls — stale replaceable events, lost subscriptions, wrong relays for wrong events, race conditions between local state and relay state, leaked signing operations, multi-account state desync. The framework's job is to make each of those classes of bug *structurally impossible* — not "documented as a footgun," not "caught by a linter at dev time," but ruled out by the type system, the architecture, and the public API surface.
+The framing concern is one sentence: **make it nearly impossible to build a broken Nostr application.** Today, building a Nostr client involves dozens of subtle correctness pitfalls — stale replaceable events, lost subscriptions, wrong relays for wrong events, race conditions between local state and relay state, leaked signing operations, multi-account state desync. The framework's job is to make each of those classes of bug structurally impossible through the safe app-kernel and FFI API: not merely documented as a footgun or caught by a linter, but ruled out by the type system, actor ownership, and public API surface. Lower-level Rust escape hatches, when they exist for internal subsystems or tests, must be explicitly named, instrumented, and covered by regression tests.
 
 The success criterion is qualitative: **a developer should be able to one-shot a working Nostr application** — login, timeline, compose, profile, DMs, wallet — using the framework's CLI scaffold and a few hundred lines of platform UI code, and have it ship with sane defaults on all four platforms without the developer ever touching relay routing, cache invalidation, replaceable-event semantics, or subscription lifecycle. If they don't go out of their way to defeat the framework, the app will be correct.
 
@@ -92,7 +92,11 @@ These crates are **dependencies, not forks**. The framework's job is to compose 
 
 ## 4. High-level functionality being synthesized
 
-Two existing libraries in the broader Nostr ecosystem — one in TypeScript, one in TypeScript with an RxJS bent — have, between them, every high-level feature a polished Nostr client framework needs. This Rust framework is a deliberate synthesis of both. The functionality below is not invented by us; it has been validated in production at scale, and our work is to translate it into Rust + RMP idiom.
+Two existing TypeScript libraries in the broader Nostr ecosystem, **NDK** and **Applesauce**, have between them many of the high-level patterns a polished Nostr client framework needs. This Rust framework is a deliberate synthesis of the useful lessons from both. The functionality below is not invented from scratch; our work is to translate the right pieces into Rust + RMP idiom.
+
+The translation is selective. Applesauce is a strong reference for reactive event stores, derived models, fallback loaders, action runners, relay adapters, and product-layer packages, but its RxJS streams, mutable symbol metadata, and browser-first API surface are not the architecture we ship. NDK is a strong reference for relay pools, cache adapters, subscription grouping, per-relay provenance, sessions, sync, wallet, Blossom, WoT, and messaging modules, but NMP should avoid growing one monolithic cache trait or embedding product policy in the v1 kernel.
+
+The architectural delta is the core idea of this project: use the Rust Nostr SDK family for protocol primitives, then build a new Rust application kernel above it. We are not forking the Rust SDK and we are not porting Applesauce or NDK APIs. We are creating the missing multiplatform app layer: actor-owned state, bounded FFI projections, canonical store semantics, subscription and action lifecycle, storage/metrics/test harnesses, and extension seams for later product modules.
 
 ### 4.1 Reactive single source of truth ("EventStore")
 
@@ -104,7 +108,7 @@ A **fallback event loader** is a single user-provided async function the store c
 
 A **claim-based GC system** tracks which subscriptions reference which events. When subscriptions drop, claims drop. A `prune()` pass collects events with no active claims. Memory does not grow without bound; this is automatic.
 
-In our Rust framing, this event store is **the substantive content of `AppState`**. The RMP bible says `AppState` is a single struct the UI needs to render. The event store is the natural shape of that struct for a Nostr app. The two are the same object.
+In our Rust framing, the actor owns the event store as internal substrate. `AppState` is not the store; it is the bounded UI projection of currently open views plus small app metadata. The full event store never crosses FFI.
 
 ### 4.2 Reactive models / derived views
 
@@ -170,7 +174,7 @@ A **scaffolding CLI** (`<framework> init`) generates a complete starter project:
 
 ## 5. Crate layout
 
-The repository is a Cargo workspace plus per-platform shells. Working layout:
+The repository is a Cargo workspace plus per-platform shells. The layout below is the long-term workspace shape. v1 publishes only the kernel subset described in `docs/plan.md`; product crates remain placeholders or later milestones until the kernel proves its invariants.
 
 ```
 <framework>/

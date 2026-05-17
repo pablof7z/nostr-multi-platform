@@ -1,0 +1,9 @@
+[package]
+name = "nmp-app-fixture"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+nmp-core = { path = "../../../crates/nmp-core" }
+fixture_todo_core = { package = "fixture-todo-core", path = "../../../crates/fixture-todo-core" }

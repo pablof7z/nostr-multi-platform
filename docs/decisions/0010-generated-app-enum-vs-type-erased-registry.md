@@ -181,7 +181,7 @@ If a future need for runtime module loading emerges (e.g., shipping a Highlighte
 
 ## Validation
 
-- Phase 1a.1 (kernel substrate prototype) generates a tiny `nmp-app-fixture` crate with one DomainModule + one ViewModule + one ActionModule. UniFFI bindings compile and round-trip a dispatch on desktop.
+- Phase 1a.1 (kernel substrate prototype) generates a tiny `nmp-app-fixture` crate with one module set demonstrating DomainModule, ViewModule, ActionModule, CapabilityModule, and IdentityModule. Bindings compile and round-trip a dispatch in the reference shell.
 - Phase 1a.2 (Profile module on desktop) generates `nmp-app-twitter` with `nmp-core` + `nmp-nip01` + `twitter-core`. UniFFI bindings compile.
 - Phase 1a.3 (iOS port) consumes the same generated crate via xcframework. iOS Swift code sees typed enums.
 - Bindings drift detection in CI: regenerate, diff, fail on mismatch.
