@@ -1,8 +1,8 @@
 # Design: Framework Magic Contract — Things That Just Work
 
-> **Status:** Draft. Research citations folded in from `docs/research/applesauce/event-store-query-builders.md` and `docs/research/ndk/kind3-auto-tracking.md`. Doctrine wording aligned with `docs/product-spec/overview-and-dx.md` §1.5 (D0–D8 canonical set).
+> **Status:** Draft. Research citations folded in from `docs/research/applesauce/event-store-query-builders.md` and `docs/research/ndk/kind3-auto-tracking.md`. D0–D5 wording aligned with `docs/product-spec/overview-and-dx.md` §1.5.
 > **Date:** 2026-05-18.
-> **Source directives:** `docs/plan/scope-adjustments-2026-05-18.md` "Framework magic contract" section; `docs/product-spec/overview-and-dx.md` §1.5 (cardinal doctrines D0–D8) + §3.3 (bug-class extinction); `docs/product-spec/subsystems.md` §7.1–§7.8.
+> **Source directives:** `docs/plan/scope-adjustments-2026-05-18.md` "Framework magic contract" section; `docs/aim.md` §6 doctrines 1–12; `docs/product-spec/overview-and-dx.md` §1.5 (cardinal doctrines D0–D5) + §3.3 (bug-class extinction); `docs/product-spec/subsystems.md` §7.1–§7.8.
 > **Companion test file:** `crates/nmp-testing/tests/framework_magic_contract.rs` (one test per contract bullet plus a coverage meta-test; layout in [test-scaffolding.md](framework-magic/test-scaffolding.md)).
 > **Scope:** Enumerate every behavior the framework guarantees so the application does not have to author code for it. The user directive is explicit: *"apps shouldn't have to care or know about these operations happening in the background, things should just work."* This document is the contract; the test suite is the proof; the milestone implementations are the substrate.
 
