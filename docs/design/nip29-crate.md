@@ -49,7 +49,7 @@ Apps consume `nmp-nip29` by adding it to their `nmp.toml` enabled-modules list, 
 
 Per the advisor checkpoint and verified against the Highlighter `app/core/src/{groups,chat,discussions}.rs` public surfaces, the crate produces **three** of the five substrate trait families (per `crates/nmp-core/src/substrate/mod.rs`):
 
-### 3.1 `DomainModule` impls (12)
+### 3.1 `DomainModule` impls (13)
 
 These are the persistent record shapes the crate owns. Each is the truth source for its kind range; views project off them. **The unifying rule: any event carrying an `["h", group_id]` tag is a group event and lives in `nmp-nip29`, regardless of its kind.** The kind is the dispatch, the `h` tag is the ownership.
 
@@ -63,6 +63,7 @@ These are the persistent record shapes the crate owns. Each is the truth source 
 | `GroupDiscussion` | 11 (when `h` present and `["t","discussion"]` marker) | `(host_relay_url, group_id, event_id)` | Threaded discussion *roots only*. Replies today are public NIP-22 kind:1111 *without* `h`, owned by `nmp-nip22` (verified per `kinds.md` §2.1 against Highlighter's `comments.rs::publish_comment`). `nmp-nip29::GroupComment` exists for *future* h-tagged in-room comments (Highlighter post-M11.5 may attach `h` to in-room composers; until then `GroupComment` is forward-looking and not consumed by the M11.5 Highlighter rebuild). |
 | `GroupArtifact` | 11 (when `h` present and *no* `t=discussion` marker — Highlighter's "share an article/podcast/book into a room" event per `artifacts.rs::publish`) | `(host_relay_url, group_id, event_id)` | The "Suggest an artifact" / Room Library source events. Distinct from `GroupDiscussion` by the absence of `t=discussion`; the artifact reference is in catalog tags (`r`/`i`/`a` per Highlighter's `web/src/lib/ndk/artifacts.ts` convention). |
 | `GroupRepost` | 16 (when `h` present) | `(host_relay_url, group_id, event_id)` | NIP-18 generic repost scoped into the group. The "share an existing highlight into a community" path (`highlights.rs::share_to_community`, `highlights.rs::publish_and_share`). |
+| `GroupHighlight` | 9802 (when `h` present) | `(host_relay_url, group_id, event_id)` | NIP-84 highlight published *directly into* a room (rather than published to the author's write relays and then reposted). Per `subscriptions.rs::Room` + `highlights.rs::query_for_group`, Highlighter's room subscription includes kind:9802 with `#h`. Per the unifying rule, h-tagged 9802 lives in `nmp-nip29`; the non-`h` (public) 9802 stays in `nmp-nip84`. |
 | `GroupReaction` | 7 (when `h` present) | `(host_relay_url, group_id, event_id)` | NIP-25 reaction to an event inside a group. The h-tagged variant lives here rather than in `nmp-nip25` because (a) routing is host-pin, (b) the same h-tag-is-the-ownership rule applies, (c) `nmp-nip25` stays unaware of any group concept. The non-`h` (public) reaction stays in `nmp-nip25`. |
 | `GroupComment` | 1111 (when `h` present) | `(host_relay_url, group_id, event_id)` | NIP-22 comment scoped into a group. Same justification as `GroupReaction`. The non-`h` (public) comment stays in `nmp-nip22`. |
 | `GroupModerationEvent` | 9000–9009, 9021, 9022 | `(host_relay_url, group_id, event_id)` | Audit trail of admin-side actions. **Audit-only** — see `moderation.md` §5 for the strict separation from canonical 39001/39002 mutation. |
@@ -78,7 +79,7 @@ These are the projections the UI consumes. Each declares `LogicalInterest`s the 
 | `GroupHome` | `(host_relay_url, group_id)` | Single-group landing page: metadata + admin/member counts + recent chat + recent discussions + member preview. |
 | `GroupChat` | `(host_relay_url, group_id)` | Ordered ascending kind:9 messages in one group. |
 | `GroupDiscussions` | `(host_relay_url, group_id)` | List of kind:11 *discussion-marked* roots in one group, ordered by *root* `created_at` (descending). Reply-count + latest-reply-timestamp ordering require a cross-crate join with `nmp-nip22` (since today's replies are non-h NIP-22 comments per §3.1's `GroupDiscussion` note), so they live in `highlighter-core::DiscussionsWithReplyCounts` per §6. The bare protocol view stays root-only and crate-isolated. |
-| `GroupArtifacts` | `(host_relay_url, group_id)` | List of `GroupArtifact` records (kind:11 without `t=discussion`) + `GroupRepost` records (kind:16 with `h`) — both are "things shared into the room library", projected together. The Room Library UI in `Communities/RoomLibrary*Card.swift` consumes this. |
+| `GroupArtifacts` | `(host_relay_url, group_id)` | List of `GroupArtifact` records (kind:11 without `t=discussion`) + `GroupRepost` records (kind:16 with `h`) + `GroupHighlight` records (kind:9802 with `h`, the in-room highlight path per `subscriptions.rs::Room` + `highlights.rs::query_for_group`) — all three are "things shared into the room library", projected together. The Room Library UI in `Communities/RoomLibrary*Card.swift` consumes this. |
 | `GroupMembers` | `(host_relay_url, group_id)` | Members + admins. Hydration with NIP-01 profiles is a cross-crate join performed in `highlighter-core` per §6. |
 | `GroupExplorer` | `(host_relay_url, optional filter)` | List of all publicly-discoverable groups (39000 events without the `hidden` marker) on a given host relay. |
 
@@ -110,7 +111,7 @@ These are the writes. Each is an admin- or user-initiated event that NMP's `Publ
 - **No `IdentityModule`.** Groups don't change the user's identity model; M6/M8 covers identity.
 - **No new persistence schema.** Per ADR-0010 + M3, all domain records persist via the kernel's LMDB tables keyed by their composite keys. The crate declares migrations in standard NMP shape.
 
-**Total: 3 trait families touched (Domain, View, Action), 34 module impls total** (12 + 7 + 15). This is the return-statistic for the design pass.
+**Total: 3 trait families touched (Domain, View, Action), 35 module impls total** (13 + 7 + 15). This is the return-statistic for the design pass.
 
 ## 4. The load-bearing constraint: host-relay-pin
 
@@ -161,7 +162,7 @@ For kind:16 (generic repost): the *h-tagged* repost is owned by `nmp-nip29::Grou
 
 **In M11.5 scope:**
 
-- All 12 `DomainModule` impls per §3.1
+- All 13 `DomainModule` impls per §3.1
 - All 7 `ViewModule` impls per §3.2 (with host-relay-pin routing fully wired through the M2 compiler)
 - All 15 `ActionModule` impls per §3.3 (with host-relay-pin routing fully wired through the M2 publish planner)
 - Full ingest pipeline: 39000–39003 trusted because they're relay-signed; 9000–9022 audited into the moderation trail (audit-only — canonical 39001/39002 flip on the relay's republished snapshot); outbound `previous`-tag attachment per `moderation.md` §2 (ingest preserves the tags but does *not* re-validate)
@@ -177,7 +178,7 @@ For kind:16 (generic repost): the *h-tagged* repost is owned by `nmp-nip29::Grou
 ## 8. Open questions for follow-up ADRs
 
 1. **Where does the host-relay-pin routing rule live in the planner?** Two viable shapes: (a) `nmp-nip29` returns a typed `RelayPinnedInterest` that the compiler's outer dispatch handles, vs (b) the compiler grows a generic "honor pin-hints from any crate" mechanism and `nmp-nip29` participates via a trait. (b) is cleaner long-term (other relay-pinned NIPs may emerge) but (a) ships M11.5 faster. ADR needed.
-2. **Trust model for relay-signed metadata.** Today we accept any 39000 from the host relay. If the host relay rotates keys mid-life, do we re-fetch or accept the new pubkey silently? See `moderation.md` §4 for the dimensions; ADR needed for the policy.
+2. **Trust model for relay-signed metadata.** Resolved: M11.5 ships policy A (NIP-11 strict) when NIP-11 declares a relay pubkey, otherwise B (TOFU per `(host_relay_url, group_id)`). Policy C (accept-any-from-host) is explicitly rejected — codex review surfaced a P1 spoofing vector where any host relay also accepting parameterized writes lets a malicious user forge a 39001/39002 admitting themselves as admin. See `moderation.md` §4. The remaining ADR-level question is rotation UX (silent accept on first warning vs explicit prompt); deferred to post-M11.5.
 3. **`JoinedGroups` aggregation across multiple host relays.** A user may be in groups on `groups.0xchat.com` + `relay.highlighter.com` + `relay29.fiatjaf.com` simultaneously. The view runs against the union; the M2 compiler must produce one plan per host relay. Confirm in an ADR that the planner handles this without a per-crate scatter-gather helper.
 4. **Membership-as-security-boundary in projections.** A private group's chat is read-restricted to members. Today we render whatever 39002 says we are; if 39002 hasn't arrived yet we may render nothing. Do we explicitly *gate* the projection on a known-membership state, or do we let best-effort-rendering (D1) handle the empty case naturally? Bias: D1.
 5. **Invite-code redemption UX vs JoinRequest.** The 9021 with a `code` tag is the redemption path. The current Highlighter onboarding lets the user paste a code before any signer is installed. Does the redemption action defer until a signer exists, or do we mint a fresh local key and redeem immediately? Cross-cuts M6 (signer flows). ADR-level question.

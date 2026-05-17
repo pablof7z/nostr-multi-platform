@@ -70,15 +70,26 @@ The 39000–39003 events are signed by the relay's keypair. NMP must answer: whi
 
 A is the strongest, requires NIP-11 to be reliable + relays to set their `pubkey` field correctly (many don't). B is robust to NIP-11 absence but introduces a user-facing prompt on key rotation. C is the easiest, doesn't require NIP-11, but a malicious relay can lie about who signed if our wire-level checks miss something subtle.
 
-### 4.3 The proposed M11.5 default and open question
+### 4.3 The M11.5 default
 
-**Bias: C for M11.5**, with an ADR noting the upgrade path to B. The reasoning:
+**Ship B (TOFU) by default, with A (NIP-11 strict) auto-promotion when NIP-11 declares a pubkey.** Earlier drafts of this doc and `kinds.md` §2.4 leaned C; reconsidered after codex flagged the spoofing risk:
 
-- Connection-layer integrity (TLS to the relay) is the same trust we already place in every other Nostr operation.
-- A relay that's lying about its own metadata signer is a relay we shouldn't be talking to at all — there's no recovery story.
-- B + the rotation prompt complicates onboarding without measurable safety gain for the typical user.
+> Any host relay that also accepts ordinary parameterized events would forward a user-signed kind:39001 carrying the room's `d` tag if it accepts the write. Since `GroupAdmins`/`GroupMembers` are derived *only* from these snapshots, accepting any signer-from-host-relay lets a malicious user spoof admin/membership state simply by signing and pushing a kind:39001. TLS authenticates the connection, not `event.pubkey`.
 
-But this is an **ADR-level question** explicitly listed in `../nip29-crate.md` §8 question 2. Surface the decision in the M11.5 design review; ship C in code with B-ready hooks so a future ADR can switch without re-architecture.
+Policy B (TOFU) defeats the spoof: the first 39000–39003 we see for `(host_relay_url, group_id)` records `(group_id, signer_pubkey)`; subsequent metadata events for the same group from a *different* signer are rejected with a typed `MetadataSignerChanged` error until the user explicitly accepts a rotation. Policy A (NIP-11 strict) is even tighter — accept only metadata signed by the relay's declared NIP-11 `pubkey` — and is the auto-upgrade path when NIP-11 declares a pubkey.
+
+The ingest hook for 39000–39003 enforces:
+
+1. If NIP-11 declares a `pubkey` for the relay: require `event.pubkey == nip11.pubkey` (policy A).
+2. Else, if `(group_id, signer)` is in the TOFU cache: require `event.pubkey == cached_signer` (policy B steady state).
+3. Else (cold TOFU): record `(group_id, event.pubkey)` as the cached signer for this group (policy B initial pin), accept the event.
+4. On any signer mismatch under (1) or (2): reject the event, surface `MetadataSignerChanged` to the UI's diagnostics lane, leave canonical state unchanged.
+
+The TOFU cache is per-`(host_relay_url, group_id)` (NOT per-host), persisted via M3 LMDB, and survives session restarts. A rotation prompt UX is post-M11.5; for M11.5 the typed error is sufficient (developer-facing on the diagnostics surface; user-facing as a passive "group metadata signer changed" toast).
+
+The `nip29_metadata_signer_trust_*` test in `moderation.md` §7 asserts: **(a)** policy A accepts and policy B initial-pins when NIP-11 pubkey is absent, **(b)** subsequent events with the same signer are accepted, **(c)** events with a different signer are rejected with `MetadataSignerChanged`, **(d)** the canonical `GroupAdmins`/`GroupMembers` are *not* mutated by a rejected event.
+
+Bootstrap-host discovery (`routing.md` §4.3) already requires policy A's NIP-11+39000 signer match before caching a host candidate — the moderation policy here governs subsequent ingest of already-pinned hosts.
 
 ## 5. The moderation audit trail (audit-only; does not mutate canonical membership)
 
@@ -144,7 +155,7 @@ These extend the routing tests in `routing.md` §8:
 5. `nip29_moderation_event_audited_into_domain_record` — an ingested 9000 produces a `ModerationEvent` audit record with correct actor/target/reason fields **and does not mutate `GroupAdmins`/`GroupMembers`**.
 6. `nip29_canonical_membership_updates_only_from_relay_snapshot` — an ingested 9000 *without* a follow-up 39002 leaves `GroupMembers` unchanged; the same scenario with the relay's reflected 39002 arriving causes `GroupMembers` to flip exactly once. The companion to test 5.
 7. `nip29_private_group_projection_empties_on_membership_loss` — a `GroupChat` projection that previously rendered content empties + raises the diagnostic when the latest 39002 no longer contains the current user.
-8. `nip29_metadata_signer_trust_accepts_any_pubkey_from_host_relay` — the C trust model: a 39000 signed by any pubkey is accepted if it arrived via the host relay's WebSocket. (When the ADR-decided trust model is A or B, this test changes; the test naming captures the policy.)
+8. `nip29_metadata_signer_trust_pins_and_rejects_rotation` — the A/B trust model: a 39000 carrying a fresh signer pubkey is accepted on first sight (TOFU initial pin); subsequent 39000-39003 for the same `(host_relay_url, group_id)` with a *different* signer is rejected with `MetadataSignerChanged` and does not mutate `GroupAdmins`/`GroupMembers`. When NIP-11 declares a relay pubkey, the test variant `nip29_metadata_signer_strict_nip11_match` asserts the strict-A policy (only the NIP-11-declared pubkey accepted, no TOFU even on cold cache).
 
 These eight complete the M11.5 exit-gate audit for the moderation half of `nmp-nip29`.
 
