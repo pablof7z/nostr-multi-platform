@@ -155,4 +155,4 @@ Listed at one bullet per coherent feature so the count reflects the real scope o
 
 The split (34 N29 / 6 adjacent / 32 independent) confirms the survey's claim that NIP-29 is one slice of Highlighter, not the whole app — but it's the *new* slice that justifies the M11.5 milestone existing at all. The 34 N29-bearing features are the surface area `nmp-nip29` must support; the 6 adjacent features are the dual-routing test cases that prove the host-relay-pin design integrates cleanly with NMP's existing outbox planner.
 
-The 33 independent features confirm M11.5 needs every protocol crate planned through M10 (nip01/02/22/23/25/51/65/68/78/84, plus blossom, plus the bunker signer surface from M6) to be in place. M11.5 cannot start before M10 ends; the brief already reflects this (M11.5 follows M11 in the ladder).
+The 32 independent features confirm M11.5 needs every protocol crate planned through M10 (nip01/02/22/23/25/51/65/68/78/84, plus blossom, plus the bunker signer surface from M6) to be in place. M11.5 cannot start before M10 ends; the brief already reflects this (M11.5 follows M11 in the ladder).

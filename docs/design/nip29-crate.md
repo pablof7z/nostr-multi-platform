@@ -49,7 +49,7 @@ Apps consume `nmp-nip29` by adding it to their `nmp.toml` enabled-modules list, 
 
 Per the advisor checkpoint and verified against the Highlighter `app/core/src/{groups,chat,discussions}.rs` public surfaces, the crate produces **three** of the five substrate trait families (per `crates/nmp-core/src/substrate/mod.rs`):
 
-### 3.1 `DomainModule` impls (7)
+### 3.1 `DomainModule` impls (9)
 
 These are the persistent record shapes the crate owns. Each is the truth source for its kind range; views project off them.
 
@@ -60,10 +60,12 @@ These are the persistent record shapes the crate owns. Each is the truth source 
 | `GroupMembers` | 39002 | `(host_relay_url, group_id)` | The member set; replaceable on every 9000/9001 → 39002 republish. |
 | `GroupRoles` | 39003 | `(host_relay_url, group_id)` | The relay's declared role list (optional; not all relays publish 39003). |
 | `GroupChatMessage` | 9 (when `h` present) | `(host_relay_url, group_id, event_id)` | Flat chat message. The `h` tag is the in-group key. |
-| `GroupDiscussion` | 11 (when `h` present and `t=discussion` marker) | `(host_relay_url, group_id, event_id)` | Threaded discussion root. Replies are NIP-22 kind:1111 owned by `nmp-nip22` but cross-referenced. |
+| `GroupDiscussion` | 11 (when `h` present and `["t","discussion"]` marker) | `(host_relay_url, group_id, event_id)` | Threaded discussion root. Replies are NIP-22 kind:1111 owned by `nmp-nip22` but cross-referenced. |
+| `GroupArtifact` | 11 (when `h` present and *no* `t=discussion` marker — Highlighter's "share an article/podcast/book into a room" event per `artifacts.rs::publish`) | `(host_relay_url, group_id, event_id)` | The "Suggest an artifact" / Room Library source events. Distinct from `GroupDiscussion` by the absence of `t=discussion`; the artifact reference is in catalog tags (`r`/`i`/`a` per Highlighter's `web/src/lib/ndk/artifacts.ts` convention). Tagged as Highlighter convention in `kinds.md` §2.1 — `nmp-nip29` ships ingest because the wire-level discriminator (`t=discussion` present/absent) is structural enough to model at the protocol-crate level. |
+| `GroupRepost` | 16 (when `h` present) | `(host_relay_url, group_id, event_id)` | NIP-18 generic repost scoped into the group. The "share an existing highlight into a community" path (`highlights.rs::share_to_community`, `highlights.rs::publish_and_share`). Lives in `nmp-nip29` rather than a separate `nmp-nip18` crate because (a) `nmp-nip18` doesn't exist yet, (b) the routing concern is the `h`-tag, not the kind, (c) the surface is small (one DomainModule + one Action). A future `nmp-nip18` extraction would lift the non-`h` repost case out. |
 | `GroupModerationEvent` | 9000–9009, 9021, 9022 | `(host_relay_url, group_id, event_id)` | Audit trail of admin-side actions. Not directly user-rendered; used by the moderation view + as evidence in dispute / forensic UI. Schema in `moderation.md` §5. |
 
-### 3.2 `ViewModule` impls (6)
+### 3.2 `ViewModule` impls (7)
 
 These are the projections the UI consumes. Each declares `LogicalInterest`s the M2 compiler turns into wire-level REQs, with routing pinned to the host relay per `routing.md`.
 
@@ -72,13 +74,14 @@ These are the projections the UI consumes. Each declares `LogicalInterest`s the 
 | `JoinedGroups` | `(current_pubkey, host_relay_url)` | The "communities I'm in" list — derived from any 39001/39002 containing `current_pubkey` across all host relays the user has joined groups on. The hardest view to design — see `routing.md` §4 on cross-relay aggregation. |
 | `GroupHome` | `(host_relay_url, group_id)` | Single-group landing page: metadata + admin/member counts + recent chat + recent discussions + member preview. |
 | `GroupChat` | `(host_relay_url, group_id)` | Ordered ascending kind:9 messages in one group. |
-| `GroupDiscussions` | `(host_relay_url, group_id)` | List of kind:11 discussion roots in one group, ordered by latest-reply timestamp (joined with NIP-22 comment counts from `nmp-nip22`). |
-| `GroupMembers` | `(host_relay_url, group_id)` | Members + admins, joined with their NIP-01 profiles (cross-crate join with `nmp-nip01`). |
+| `GroupDiscussions` | `(host_relay_url, group_id)` | List of kind:11 *discussion-marked* roots in one group, ordered by latest-reply timestamp. |
+| `GroupArtifacts` | `(host_relay_url, group_id)` | List of `GroupArtifact` records (kind:11 without `t=discussion`) + `GroupRepost` records (kind:16 with `h`) — both are "things shared into the room library", projected together. The Room Library UI in `Communities/RoomLibrary*Card.swift` consumes this. |
+| `GroupMembers` | `(host_relay_url, group_id)` | Members + admins. Hydration with NIP-01 profiles is a cross-crate join performed in `highlighter-core` per §6. |
 | `GroupExplorer` | `(host_relay_url, optional filter)` | List of all publicly-discoverable groups (39000 events without the `hidden` marker) on a given host relay. |
 
-### 3.3 `ActionModule` impls (11)
+### 3.3 `ActionModule` impls (13)
 
-These are the writes. Each is an admin- or user-initiated event that NMP's `PublishPlanner` (M2 §7) routes per the host-relay-pin contract.
+These are the writes. Each is an admin- or user-initiated event that NMP's `PublishPlanner` (M2 §7) routes per the host-relay-pin contract. Every action below carries a typed `nmp-nip29::GroupId { host_relay_url, local_id }` input so the publisher never has to derive the host from a bare string `h` value.
 
 | `ActionModule` | Emits kind(s) | Auth | Routing |
 |---|---|---|---|
@@ -92,7 +95,9 @@ These are the writes. Each is an admin- or user-initiated event that NMP's `Publ
 | `DeleteEvent` | 9005 | signer must be in 39001 | Host relay only. |
 | `DeleteGroup` | 9008 | signer must be in 39001 (and ideally the original 9007 signer; see `kinds.md` §2.3) | Host relay only. |
 | `PostChatMessage` | 9 with `h` | signer = author (must be in 39002 if `restricted`) | Host relay only. |
-| `PostDiscussion` | 11 with `h` + `t=discussion` | same as above | Host relay only. |
+| `PostDiscussion` | 11 with `h` + `["t","discussion"]` | same as above | Host relay only. |
+| `PostArtifact` | 11 with `h` and *no* `t=discussion` marker, carrying catalog reference tags per `kinds.md` §2.1 | same as above | Host relay only. |
+| `ShareEventIntoGroup` | 16 with `h` referencing an existing event (by `e` tag) | signer = re-sharer (in 39002 if `restricted`) | Host relay only. **The second write of the `publish-and-share` composed flow** described in `routing.md` §6; the *first* write (the kind:9802 highlight itself) lives in `nmp-nip84`. |
 
 ### 3.4 What `nmp-nip29` does **not** ship
 
@@ -100,7 +105,7 @@ These are the writes. Each is an admin- or user-initiated event that NMP's `Publ
 - **No `IdentityModule`.** Groups don't change the user's identity model; M6/M8 covers identity.
 - **No new persistence schema.** Per ADR-0010 + M3, all domain records persist via the kernel's LMDB tables keyed by their composite keys. The crate declares migrations in standard NMP shape.
 
-**Total: 3 trait families touched (Domain, View, Action), 24 module impls total** (7 + 6 + 11). This is the return-statistic for the design pass.
+**Total: 3 trait families touched (Domain, View, Action), 29 module impls total** (9 + 7 + 13). This is the return-statistic for the design pass.
 
 ## 4. The load-bearing constraint: host-relay-pin
 
@@ -151,9 +156,9 @@ This is also why kind:16 (generic repost) gets its own home: if it lives in `nmp
 
 **In M11.5 scope:**
 
-- All 6 `DomainModule` impls
-- All 6 `ViewModule` impls (with host-relay-pin routing fully wired through the M2 compiler)
-- All 10 `ActionModule` impls (with host-relay-pin routing fully wired through the M2 publish planner)
+- All 9 `DomainModule` impls per §3.1
+- All 7 `ViewModule` impls per §3.2 (with host-relay-pin routing fully wired through the M2 compiler)
+- All 13 `ActionModule` impls per §3.3 (with host-relay-pin routing fully wired through the M2 publish planner)
 - Full ingest pipeline: 39000–39003 trusted because they're relay-signed; 9000–9022 audited into the moderation trail; `previous`-tag validation per `moderation.md`
 - Highlighter UI parity for every NIP-29-bearing and NIP-29-adjacent feature in `feature-inventory.md` §§ 1–2
 

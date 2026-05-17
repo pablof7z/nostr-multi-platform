@@ -68,14 +68,18 @@ Issue the 39001/39002 subscription on every relay in the user's pool. Reject: mo
 
 The framework maintains a `JoinedHostsCache` of `(pubkey, host_relay_url, group_id)` rows. The `JoinedGroups` view's dependency is the cross-product `(current_pubkey, host_relay_url)` for every host_relay in the cache, producing one `RelayPinnedInterest` per host relay for the 39001/39002 subscriptions.
 
-The cache is **populated from four independent sources**, any of which is sufficient to discover a host relay:
+The cache is **populated from three trusted sources** (each gives a verified host_relay_url), plus a **bootstrap discovery channel** that produces *candidates* that must be verified before they enter the cache:
 
-1. **Own writes** — every `h`-tagged event the user publishes (any kind: 9, 11, 9021, 9022, …) records `(self_pubkey, host_relay_url, group_id)`. Covers the "user joined a group themselves" case.
-2. **Invite-link redemption** — an invite URI carries the host relay in NIP-29's `<host>'<group-id>` format, so the redeem action knows the host before any cache exists; the redeem itself becomes source (1) once the kind:9021 fires.
-3. **Bootstrap ingest of any 39001/39002 the user appears in, from any connected relay** — when *any* relay in the user's pool happens to forward a 39001 or 39002 that contains the user's pubkey, the cache records the originating relay as a host candidate for that group_id. This covers the "admin added me directly via kind:9000 while I was offline, then I reconnect and a friendly relay forwards the resulting 39002" case, **and** the "user restored their account on a new device" case (the user's previous host-relay connections re-establish via NIP-65 + any indexer that happens to know about their group memberships). The mechanism: an indexer-style probe at session-open issues a kind-only filter `kinds: [39001, 39002], #p: [self_pubkey]` against the active relay pool. Any hit records the originating relay into the cache.
-4. **Explicit user import** — pasting a NIP-29 group URI (e.g. from a friend) into the app's "join a community" surface records the host_relay before any wire activity.
+1. **Own writes (trusted)** — every `h`-tagged event the user publishes (any kind: 9, 11, 9021, 9022, …) records `(self_pubkey, host_relay_url, group_id)` where `host_relay_url` is the relay the publish was routed to. The publish was routed by the planner's host-relay-pin rule, so the cache entry is correct by construction.
+2. **Invite-link redemption (trusted)** — an invite URI carries the host relay in NIP-29's `<host>'<group-id>` format, so the redeem action knows the host before any cache exists; the redeem itself becomes source (1) once the kind:9021 fires.
+3. **Explicit user import (trusted)** — pasting a NIP-29 group URI (e.g. from a friend) into the app's "join a community" surface records the host_relay before any wire activity.
+4. **Bootstrap candidate discovery (untrusted; needs verification)** — at session open, issue an indexer-style probe with filter `kinds: [39001, 39002], #p: [self_pubkey]` against the active relay pool. Each hit gives a *group_id candidate* (from the event's `d` tag) but **does not** identify the host relay (the relay that forwarded the event may be an indexer/cache, not the host). For each candidate group_id, the framework then re-issues a *targeted* `kinds: [39000], #d: [candidate_group_id]` filter; the relay that returns the freshest 39000 — *and which declares NIP-29 support in its NIP-11 document* — is recorded as the verified host and the cache entry materialises.
 
-Source (3) is the one that prevents the silent-miss failure mode for users who become members via 9000 add or after device-restore. The probe is bounded: it runs once at session open + on every `kind:0/3/10002` update for self, and dedups against the cache.
+Without the NIP-11 verification step in (4), a general indexer (e.g. `purplepag.es`) that happens to forward a 39002 would be poisonously cached as the host, breaking subsequent host-pinned writes. The two-step verify-via-NIP-11-and-39000-republish is what makes the bootstrap path safe.
+
+The verification step is bounded: at most one extra round-trip per *candidate group_id* discovered in source (4), deduped across sessions, results persisted (M3 LMDB) so the verify only happens on first discovery.
+
+Source (4) is the channel that prevents the silent-miss failure mode for users who become members via 9000 add or after device-restore. The probe in source (4) runs once at session open + on every `kind:0/3/10002` update for self, and dedups against the cache.
 
 The cache is persisted (M3 LMDB), shared across app instances of the same account.
 
