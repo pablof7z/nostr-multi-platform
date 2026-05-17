@@ -8,7 +8,26 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
-_(none — resolved or none open)_
+### PD-002 — Remote branch divergence: `origin/claude/review-rmp-spec-8a7VX` vs `origin/master`
+
+**Decision (autonomous):** continuing all work on `master`. Will not touch `claude/review-rmp-spec-8a7VX` without your direction.
+
+**Background:** at session start, `git status` reported:
+> Current branch: master
+> Main branch (you will usually use this for PRs): claude/review-rmp-spec-8a7VX
+
+The remote HEAD is `origin/claude/review-rmp-spec-8a7VX` (GitHub default). All orchestrator + agent work this session has gone to `master`. The two branches diverged: T19 framework-magic-reconciler accidentally pushed its commits (`c53ed1e`, `76769d9`, `175632b`, `209dee8`) to `claude/review-rmp-spec-8a7VX` (because the worktree was created from that branch). I detected this on T19's completion notification and cherry-picked those commits onto `master` (`1a897e8`, `7f5944e`, `a52acfc`).
+
+**The orphan branch is now stale.** It contains a parallel history with semantically-equivalent commits up through the doctrine expansion, but lacks everything master has past `ea3d40e` (M1 PASS, meta-subscribe research, M2 fixes, README updates, T19 cherry-picks themselves, etc.). Approximately 20+ commits.
+
+**Options:**
+- **(a)** Merge `master` into `claude/review-rmp-spec-8a7VX` (fast-forward-able if I rebase the orphan onto master first). Keeps the remote-default branch name with all-the-things.
+- **(b)** Set GitHub default to `master` and delete `claude/review-rmp-spec-8a7VX`. Cleaner; breaks any URLs / external references to that branch name.
+- **(c)** Leave both — `claude/review-rmp-spec-8a7VX` stays as a historical snapshot of pre-session state; master is the active branch.
+
+**Recommendation:** (a). Preserves all branch references, no rename impact, keeps the historical name. If you prefer (b) it's a one-liner.
+
+**While you decide:** all agents have been instructed (and the heartbeat reinforces) to push to `master`. Future T19-style accidents will be caught faster — I added a `git branch --show-current` check to spot drift earlier.
 
 ---
 
