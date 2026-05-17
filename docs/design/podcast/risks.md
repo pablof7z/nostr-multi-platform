@@ -22,7 +22,7 @@
 - **Severity**: Medium-High.
 - **Why**: The reference app's entire LLM surface uses `FoundationModels.LanguageModelSession`. On iOS we route through `AppleIntelligenceCapability` (free, on-device). On Android/Desktop/Web (post-M11) we must route through `rig.rs`, which means: a provider, an API key, network calls, cost. The UX divergence is real — Ask becomes a fundamentally different feature off-iOS.
 - **Mitigation**:
-  1. M11 ships iOS only — divergence is theoretical until M15.
+  1. M11 ships iOS only **and** requires the rig.rs path to land and be CI-tested against a real LLM endpoint (see `podcast-llm.md` §K). Divergence across platforms is real post-M11, but the rig.rs path is demonstrated in M11, not deferred to M15.
   2. The router lives in Rust (`podcast-llm/src/router.rs`) so the policy is centrally testable.
   3. Document divergence + behavioral expectations in `docs/perf/m15/cross-platform.md` (deferred).
   4. Settings surface (post-M11) lets the user pick "Local (Apple)" / "OpenAI" / "Anthropic" / "Local (Ollama URL)" — same code path, different routing.
