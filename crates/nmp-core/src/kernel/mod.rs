@@ -8,8 +8,7 @@ mod update;
 
 use crate::relay::{
     OutboundMessage, RelayRole, CONTENT_RELAY_URL, DEFAULT_EMIT_HZ, FIATJAF_PUBKEY,
-    INDEXER_RELAY_URL, JB55_PUBKEY, PROFILE_REQ_BATCH, TEST_NPUB, TEST_PUBKEY,
-    TIMELINE_AUTHOR_LIMIT,
+    INDEXER_RELAY_URL, JB55_PUBKEY, TEST_NPUB, TEST_PUBKEY, TIMELINE_AUTHOR_LIMIT,
 };
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
@@ -313,9 +312,9 @@ pub(crate) struct Kernel {
     seed_contacts: HashMap<String, Vec<String>>,
     author_relay_lists: HashMap<String, AuthorRelayList>,
     timeline_authors: BTreeSet<String>,
+    profile_claims: HashMap<String, BTreeSet<String>>,
     requested_profiles: HashSet<String>,
     pending_profiles: BTreeSet<String>,
-    profile_req_inflight: bool,
     profile_req_seq: u64,
     timeline_requested: bool,
     contacts_deadline: Option<Instant>,
@@ -366,9 +365,9 @@ impl Kernel {
             seed_contacts: HashMap::new(),
             author_relay_lists: HashMap::new(),
             timeline_authors: BTreeSet::new(),
+            profile_claims: HashMap::new(),
             requested_profiles: HashSet::new(),
             pending_profiles: BTreeSet::new(),
-            profile_req_inflight: false,
             profile_req_seq: 0,
             timeline_requested: false,
             contacts_deadline: None,

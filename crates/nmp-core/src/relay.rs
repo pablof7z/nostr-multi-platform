@@ -3,7 +3,6 @@ pub(crate) const INDEXER_RELAY_URL: &str = "wss://purplepag.es";
 pub(crate) const DEFAULT_VISIBLE_LIMIT: usize = 80;
 pub(crate) const DEFAULT_EMIT_HZ: u32 = 4;
 pub(crate) const TIMELINE_AUTHOR_LIMIT: usize = 500;
-pub(crate) const PROFILE_REQ_BATCH: usize = 80;
 pub(crate) const TEST_NPUB: &str =
     "npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft";
 pub(crate) const TEST_PUBKEY: &str =

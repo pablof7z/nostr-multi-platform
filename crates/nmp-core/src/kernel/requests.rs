@@ -22,7 +22,6 @@ impl Kernel {
         relay.connection = "backing_off".to_string();
         relay.last_error = Some(truncate(&error, 160));
         relay.reconnect_count = relay.reconnect_count.saturating_add(1);
-        self.profile_req_inflight = false;
         self.thread_ids_inflight = false;
         self.thread_replies_inflight = false;
         self.changed_since_emit = true;
@@ -200,6 +199,69 @@ impl Kernel {
         }
     }
 
+    pub(crate) fn claim_profile(
+        &mut self,
+        pubkey: String,
+        consumer_id: String,
+        can_send: bool,
+    ) -> Vec<OutboundMessage> {
+        let (inserted, refcount) = {
+            let consumers = self.profile_claims.entry(pubkey.clone()).or_default();
+            let inserted = consumers.insert(consumer_id.clone());
+            (inserted, consumers.len())
+        };
+        if inserted {
+            self.log(format!(
+                "claim profile {} consumer {} ref {}",
+                short_hex(&pubkey),
+                truncate(&consumer_id, 80),
+                refcount
+            ));
+        }
+        self.changed_since_emit = true;
+
+        if self.profiles.contains_key(&pubkey)
+            || self.requested_profiles.contains(&pubkey)
+            || self.pending_profiles.contains(&pubkey)
+        {
+            return Vec::new();
+        }
+
+        if can_send {
+            self.profile_claim_request(pubkey)
+        } else {
+            self.pending_profiles.insert(pubkey);
+            self.log("profile claim queued until indexer connects");
+            Vec::new()
+        }
+    }
+
+    pub(crate) fn release_profile(
+        &mut self,
+        pubkey: &str,
+        consumer_id: &str,
+    ) -> Vec<OutboundMessage> {
+        let mut remove_claim = false;
+        let mut remaining = 0;
+        if let Some(consumers) = self.profile_claims.get_mut(pubkey) {
+            consumers.remove(consumer_id);
+            remaining = consumers.len();
+            remove_claim = consumers.is_empty();
+        }
+        if remove_claim {
+            self.profile_claims.remove(pubkey);
+            self.pending_profiles.remove(pubkey);
+        }
+        self.changed_since_emit = true;
+        self.log(format!(
+            "release profile {} consumer {} ref {}",
+            short_hex(pubkey),
+            truncate(consumer_id, 80),
+            remaining
+        ));
+        Vec::new()
+    }
+
     pub(crate) fn close_author(&mut self, pubkey: &str) -> Vec<OutboundMessage> {
         let Some(interest) = self.selected_author.as_mut() else {
             return Vec::new();
@@ -287,6 +349,7 @@ impl Kernel {
         {
             requests.extend(self.firehose_requests());
         }
+        requests.extend(self.pending_profile_claim_requests());
         requests.extend(self.maybe_open_thread_hydration());
         requests
     }
@@ -305,6 +368,36 @@ impl Kernel {
             &format!("diag-firehose-{}", self.diagnostic_firehose_seq),
             &format!("diagnostic hashtag firehose #{tag}"),
             json!({"kinds":[1],"#t":[tag],"limit":500}),
+        )]
+    }
+
+    pub(super) fn pending_profile_claim_requests(&mut self) -> Vec<OutboundMessage> {
+        let authors = self.pending_profiles.iter().cloned().collect::<Vec<_>>();
+        let mut requests = Vec::new();
+        for author in authors {
+            if self.profile_claims.contains_key(&author)
+                && !self.profiles.contains_key(&author)
+                && !self.requested_profiles.contains(&author)
+            {
+                requests.extend(self.profile_claim_request(author));
+            } else {
+                self.pending_profiles.remove(&author);
+            }
+        }
+        requests
+    }
+
+    pub(super) fn profile_claim_request(&mut self, pubkey: String) -> Vec<OutboundMessage> {
+        self.pending_profiles.remove(&pubkey);
+        if self.profiles.contains_key(&pubkey) || !self.requested_profiles.insert(pubkey.clone()) {
+            return Vec::new();
+        }
+        self.profile_req_seq = self.profile_req_seq.saturating_add(1);
+        vec![self.req(
+            RelayRole::Indexer,
+            &format!("profile-claim-{}", self.profile_req_seq),
+            &format!("claimed UI profile {}", short_hex(&pubkey)),
+            json!({"kinds":[0],"authors":[pubkey],"limit":1}),
         )]
     }
 

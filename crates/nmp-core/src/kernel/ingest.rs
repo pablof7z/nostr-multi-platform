@@ -69,9 +69,6 @@ impl Kernel {
                     };
                     sub.eose_at = Some(Instant::now());
                 }
-                if sub_id.starts_with("profiles-") {
-                    self.profile_req_inflight = false;
-                }
                 if sub_id.starts_with("thread-ids-") {
                     self.thread_ids_inflight = false;
                 }
@@ -112,9 +109,6 @@ impl Kernel {
                 if let Some(sub) = self.wire_subs.get_mut(sub_id) {
                     sub.state = "closed_by_relay".to_string();
                     sub.close_reason = reason.clone();
-                }
-                if sub_id.starts_with("profiles-") {
-                    self.profile_req_inflight = false;
                 }
                 if sub_id.starts_with("thread-ids-") {
                     self.thread_ids_inflight = false;
@@ -269,11 +263,6 @@ impl Kernel {
             self.sort_timeline();
             self.timeline_first_item_at.get_or_insert_with(Instant::now);
         }
-        if !self.profiles.contains_key(&event.pubkey)
-            && !self.requested_profiles.contains(&event.pubkey)
-        {
-            self.pending_profiles.insert(event.pubkey);
-        }
     }
 
     pub(super) fn should_store_event(&self, sub_id: &str, event: &NostrEvent) -> bool {
@@ -371,28 +360,7 @@ impl Kernel {
             ));
         }
 
-        if !self.pending_profiles.is_empty() && !self.profile_req_inflight {
-            let authors = self
-                .pending_profiles
-                .iter()
-                .take(PROFILE_REQ_BATCH)
-                .cloned()
-                .collect::<Vec<_>>();
-            for author in &authors {
-                self.requested_profiles.insert(author.clone());
-                self.pending_profiles.remove(author);
-            }
-            self.profile_req_seq = self.profile_req_seq.saturating_add(1);
-            self.profile_req_inflight = true;
-            let sub_id = format!("profiles-{}", self.profile_req_seq);
-            requests.push(self.req(
-                RelayRole::Indexer,
-                &sub_id,
-                "visible timeline kind:0 profiles via indexer",
-                json!({"kinds":[0],"authors":authors,"limit":PROFILE_REQ_BATCH}),
-            ));
-        }
-
+        requests.extend(self.pending_profile_claim_requests());
         requests
     }
 

@@ -71,51 +71,54 @@ impl Kernel {
             },
             warming_until_ms: None,
         });
-        let timeline_authors = self
-            .timeline
-            .iter()
-            .filter_map(|id| self.events.get(id))
-            .map(|event| event.author.clone())
-            .collect::<BTreeSet<_>>();
-        let visible_authors = self
-            .visible_items()
-            .into_iter()
-            .map(|item| item.author_pubkey)
-            .collect::<BTreeSet<_>>();
-        if !timeline_authors.is_empty() {
-            let visible_loaded = visible_authors
+        if !self.profile_claims.is_empty() {
+            let claimed_authors = self.profile_claims.keys().cloned().collect::<BTreeSet<_>>();
+            let claim_count = self
+                .profile_claims
+                .values()
+                .map(BTreeSet::len)
+                .sum::<usize>();
+            let loaded = claimed_authors
                 .iter()
                 .filter(|pubkey| self.profiles.contains_key(*pubkey))
                 .count();
-            let timeline_loaded = timeline_authors
+            let pending = claimed_authors
                 .iter()
-                .filter(|pubkey| self.profiles.contains_key(*pubkey))
+                .filter(|pubkey| self.pending_profiles.contains(*pubkey))
                 .count();
-            let timeline_missing = timeline_authors.len().saturating_sub(timeline_loaded);
-            let state = if timeline_missing == 0 {
+            let requested = claimed_authors
+                .iter()
+                .filter(|pubkey| self.requested_profiles.contains(*pubkey))
+                .count();
+            let active_reqs = self
+                .wire_subs
+                .values()
+                .filter(|sub| {
+                    sub.id.starts_with("profile-claim-")
+                        && !matches!(sub.state.as_str(), "closed" | "closed_by_relay")
+                })
+                .count();
+            let missing = claimed_authors.len().saturating_sub(loaded);
+            let state = if missing == 0 {
                 "complete"
-            } else if self.profile_req_inflight {
+            } else if active_reqs > 0 {
                 "loading"
-            } else if !self.pending_profiles.is_empty() {
+            } else if pending > 0 {
                 "queued"
             } else {
                 "tailing"
             };
             interests.push(LogicalInterestStatus {
                 key: format!(
-                    "TimelineAuthorProfiles({} visible / {} timeline authors)",
-                    visible_authors.len(),
-                    timeline_authors.len()
+                    "UIProfileClaims({claim_count} components / {} pubkeys)",
+                    claimed_authors.len()
                 ),
                 state: state.to_string(),
-                refcount: visible_authors.len().min(u32::MAX as usize) as u32,
+                refcount: claim_count.min(u32::MAX as usize) as u32,
                 relay_urls: vec![INDEXER_RELAY_URL.to_string()],
                 cache_coverage: format!(
-                    "visible {visible_loaded}/{} loaded, timeline {timeline_loaded}/{} loaded, {} pending, {} requested",
-                    visible_authors.len(),
-                    timeline_authors.len(),
-                    self.pending_profiles.len(),
-                    self.requested_profiles.len()
+                    "{loaded}/{} loaded, {pending} pending, {requested} requested, {active_reqs} active REQs",
+                    claimed_authors.len()
                 ),
                 warming_until_ms: None,
             });
