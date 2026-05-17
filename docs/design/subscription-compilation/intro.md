@@ -154,7 +154,7 @@ ThreadViewModule for kind:1111 comment on kind:30023 article →
 MetaTimelineViewModule highlights-of-article →
   hydrate interest { addresses: {(article_pk, 30023, "slug")} }
 Compiler Stage 1: both coords resolve to article_pk's write relays.
-Compiler Stage 3: Rule 7 (§3.3) unions the address sets (identical here).
+Compiler Stage 3: Rule 8 (§3.3) unions the address sets (identical here).
 Result: ONE REQ per relay carrying { #a: ["30023:<article_pk>:slug"] }.
 ```
 
