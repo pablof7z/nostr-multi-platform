@@ -80,9 +80,15 @@ A is the strongest, requires NIP-11 to be reliable + relays to set their `pubkey
 
 But this is an **ADR-level question** explicitly listed in `../nip29-crate.md` §8 question 2. Surface the decision in the M11.5 design review; ship C in code with B-ready hooks so a future ADR can switch without re-architecture.
 
-## 5. The moderation audit trail
+## 5. The moderation audit trail (audit-only; does not mutate canonical membership)
 
-Every 9000–9009 + 9021 + 9022 ingested is preserved in `nmp-nip29::GroupModerationEvent` for the lifetime of the group's records, plus 30 days for tombstoned groups (the M3 LMDB retention policy applies). This serves three audiences:
+**Canonical membership state is *only* derived from the relay-signed 39001/39002 snapshots**, never from user-signed 9000/9001 events. The relay is the trust anchor (§1); its 39001/39002 are the authoritative state; user-signed moderation events are *requests* to mutate that state, evaluated by the relay before being reflected back in an updated 39001/39002. A client that applied 9000/9001 side-effects directly to `GroupAdmins`/`GroupMembers` would be trusting user signatures over relay signatures, inverting the NIP's trust model.
+
+Every 9000–9009 + 9021 + 9022 ingested is preserved in `nmp-nip29::GroupModerationEvent` for the lifetime of the group's records, plus 30 days for tombstoned groups (the M3 LMDB retention policy applies). **This audit record is the *only* persistent effect** of ingesting a user-signed moderation event — the `GroupAdmins`/`GroupMembers` DomainRecords stay strictly downstream of the relay's 39001/39002.
+
+This separation also handles the race where a 9000 arrives via subscription stream before the corresponding 39002 update: the audit record materialises immediately; the canonical membership flips when (and only when) the relay's republished 39002 arrives. If the relay rejects the 9000 (e.g. signer not actually an admin), no 39002 update follows and membership stays unchanged — exactly the desired behavior.
+
+The audit trail serves three audiences:
 
 - **Admins reviewing past actions** ("who removed user X and when?")
 - **Members investigating membership disputes** ("when did I get kicked? was a reason given?")

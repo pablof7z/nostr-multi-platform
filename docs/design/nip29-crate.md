@@ -150,7 +150,7 @@ Why this works: the kernel's composite-key reverse index (`crates/nmp-core/src/s
 
 `nmp-nip29` ships its own non-hydrated views (`GroupChat`, `GroupDiscussions`, `GroupHome`, etc.) that are useful on their own (debugging UIs, tests, headless clients) without any cross-crate joins. The hydrated variants are app-level conveniences.
 
-This is also why kind:16 (generic repost) gets its own home: if it lives in `nmp-nip18`, `nmp-nip29` doesn't import it; the cross-protocol "list artifacts shared into this group" view is composed in `highlighter-core`. If `nmp-nip18` doesn't yet exist when M11.5 starts, the simplest interim is to put kind:16 ingest in `highlighter-core` itself; the ADR-0011 RelayPinnedInterest still routes correctly because the `h` tag is what matters, not which crate owns the kind.
+For kind:16 (generic repost): the *h-tagged* repost is owned by `nmp-nip29::GroupRepost` in M11.5, because the routing is host-pin and no separate `nmp-nip18` crate exists yet (per §3.1). A future `nmp-nip18` extraction would lift only the *non-h* repost case out; the h-tagged variant stays in `nmp-nip29` either way because routing is the discriminator. `highlighter-core` never grows kind:16 ingest in any state — the consistency contract is firm.
 
 ## 7. What's deferred vs in-scope
 

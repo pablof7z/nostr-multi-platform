@@ -73,11 +73,18 @@ The cache is **populated from three trusted sources** (each gives a verified hos
 1. **Own writes (trusted)** — every `h`-tagged event the user publishes (any kind: 9, 11, 9021, 9022, …) records `(self_pubkey, host_relay_url, group_id)` where `host_relay_url` is the relay the publish was routed to. The publish was routed by the planner's host-relay-pin rule, so the cache entry is correct by construction.
 2. **Invite-link redemption (trusted)** — an invite URI carries the host relay in NIP-29's `<host>'<group-id>` format, so the redeem action knows the host before any cache exists; the redeem itself becomes source (1) once the kind:9021 fires.
 3. **Explicit user import (trusted)** — pasting a NIP-29 group URI (e.g. from a friend) into the app's "join a community" surface records the host_relay before any wire activity.
-4. **Bootstrap candidate discovery (untrusted; needs verification)** — at session open, issue an indexer-style probe with filter `kinds: [39001, 39002], #p: [self_pubkey]` against the active relay pool. Each hit gives a *group_id candidate* (from the event's `d` tag) but **does not** identify the host relay (the relay that forwarded the event may be an indexer/cache, not the host). For each candidate group_id, the framework then re-issues a *targeted* `kinds: [39000], #d: [candidate_group_id]` filter; the relay that returns the freshest 39000 — *and which declares NIP-29 support in its NIP-11 document* — is recorded as the verified host and the cache entry materialises.
+4. **Bootstrap candidate discovery (untrusted; needs signer-identity verification)** — at session open, issue an indexer-style probe with filter `kinds: [39001, 39002], #p: [self_pubkey]` against the active relay pool. Each hit gives a *group_id candidate* (from the event's `d` tag) but **does not** identify the host relay (the relay that forwarded the event may be an indexer/cache, not the host). For each candidate group_id, the framework then re-issues a *targeted* `kinds: [39000], #d: [candidate_group_id]` filter on a per-relay basis. A candidate relay `R` is accepted as the verified host **iff all three hold**:
+   - `R`'s NIP-11 document declares NIP-29 support (29 in `supported_nips`)
+   - `R`'s NIP-11 document declares a `pubkey` field
+   - The 39000 returned by `R` for the candidate group_id is signed by *that exact pubkey*
+   
+   If any of the three fails, `R` is rejected as a host candidate (it may still be a fine indexer for discovering further candidates). The cache entry only materialises after this three-way match.
 
-Without the NIP-11 verification step in (4), a general indexer (e.g. `purplepag.es`) that happens to forward a 39002 would be poisonously cached as the host, breaking subsequent host-pinned writes. The two-step verify-via-NIP-11-and-39000-republish is what makes the bootstrap path safe.
+Without the signer-identity match in (4), a general indexer (e.g. `purplepag.es`) that happens to forward a 39002 — or even an indexer that *also* forwards the host's 39000 verbatim — would be poisonously cached as the host, breaking subsequent host-pinned writes. The signer-identity match is what distinguishes "this relay produces 39000s for this group" from "this relay merely caches them".
 
-The verification step is bounded: at most one extra round-trip per *candidate group_id* discovered in source (4), deduped across sessions, results persisted (M3 LMDB) so the verify only happens on first discovery.
+Relays without a NIP-11 `pubkey` field cannot be auto-verified as hosts even if they are the actual host; their groups need explicit user import via source (3) or invite-link redemption via source (2). This is a deliberate trade-off: cheap auto-discovery for well-behaved relays, manual flow for the rest.
+
+The verification step is bounded: at most one NIP-11 fetch + one 39000 round-trip per *candidate group_id* discovered in source (4), deduped across sessions, results persisted (M3 LMDB) so the verify only happens on first discovery.
 
 Source (4) is the channel that prevents the silent-miss failure mode for users who become members via 9000 add or after device-restore. The probe in source (4) runs once at session open + on every `kind:0/3/10002` update for self, and dedups against the cache.
 
@@ -100,7 +107,9 @@ The "h-tag override is exclusive" is non-negotiable: publishing a group chat mes
 How the planner resolves the host relay from the `h` tag value:
 
 - For NIP-29-native publishes invoked via an `nmp-nip29::ActionModule`, the action's input includes the full `GroupId { host_relay_url, local_id }`. The publisher trusts the action.
-- For cross-crate publishes that happen to carry an `h` tag (e.g. `nmp-nip84::PublishHighlightAndShare` from `feature-inventory.md` §2.1), the cross-crate action must declare a typed `share_to: GroupId` parameter, never just an `h_tag_value: String`. This is enforced by code review + by the fact that `nmp-nip84` will take a typed `nmp-nip29::GroupId` import in its `ShareTo` action input. **No string-typed `h` tags pass through the planner without a `GroupId` carrier.**
+- For cross-protocol "publish in protocol X, then host-pin share into a group" flows (e.g. publish-and-share-highlight per `feature-inventory.md` §2.1), the *composing action lives in `highlighter-core`*, not in the X protocol crate. `nmp-nip84::PublishHighlight` stays group-unaware (it knows nothing about NIP-29); the composing action `highlighter-core::PublishHighlightAndShareToGroup` invokes `nmp-nip84::PublishHighlight` for the kind:9802 leg, awaits its `ActionId`, then invokes `nmp-nip29::ShareEventIntoGroup` (which takes a typed `GroupId`) for the kind:16 host-pinned leg. **No protocol crate ever imports another protocol crate's `GroupId` or any other NIP-specific type; sequencing happens at the app layer.**
+
+This means **no string-typed `h` tags pass through the planner without a `GroupId` carrier** — but the carrier is held by the `nmp-nip29` action, not by a foreign protocol action. The planner sees only typed action inputs.
 
 ## 6. The "publish-and-share" dual-route problem (the load-bearing test case)
 
@@ -109,13 +118,13 @@ The Highlighter `publish_and_share` (`highlights.rs:22-83`) is the cleanest exam
 1. Publish a kind:9802 highlight to the user's NIP-65 write relays.
 2. Publish a kind:16 generic repost with `["h", target_group_id]` to the target group's host relay.
 
-Today Highlighter does this with two raw `client.send_event(&e)` calls in sequence. In NMP, the `ActionModule` definition has a *single* `dispatch()` entry point. M11.5's recommended design is:
+Today Highlighter does this with two raw `client.send_event(&e)` calls in sequence. In NMP, the `ActionModule` definition has a *single* `dispatch()` entry point. M11.5's design is:
 
-- `nmp-nip84::PublishHighlight` is the simple kind:9802 publish, routes per author's write relays.
-- `nmp-nip29::ShareEventIntoGroup { event_ref, group_id, relay_hint }` is the kind:16 share, routes pinned to the host relay.
-- A higher-level UI action ("share this new highlight into a community") composes the two as a sequential plan: the second action waits on the first action's `ActionId` to confirm before firing. The kernel's ActionLedger (planned M7) already supports sequential dependencies between actions; this is a use case for that.
+- `nmp-nip84::PublishHighlight` is the simple kind:9802 publish, routes per author's write relays. **Group-unaware** — it imports nothing from `nmp-nip29` and knows no `GroupId` type.
+- `nmp-nip29::ShareEventIntoGroup { event_ref, group_id: GroupId }` is the kind:16 host-pinned share. **Highlight-unaware** — it imports nothing from `nmp-nip84` and knows no `Highlight` type.
+- `highlighter-core::PublishHighlightAndShareToGroup { draft, target_group: GroupId }` is the composing action that lives at the *app* layer. It invokes `nmp-nip84::PublishHighlight` first, awaits the resulting `ActionId`, then invokes `nmp-nip29::ShareEventIntoGroup { event_ref: <first_action_event_id>, group_id: <target_group> }`. The kernel's ActionLedger (planned M7) supports sequential dependencies between actions; this is a textbook use case.
 
-This composition is **how cross-protocol surfaces stay clean in NMP**: each protocol crate owns its own write path with its own routing rule; cross-protocol flows are sequenced at the action layer, not by special-casing inside any single crate.
+This composition is **how cross-protocol surfaces stay clean in NMP**: each protocol crate owns its own write path with its own routing rule, neither importing the other; the cross-protocol sequencing lives in the app's own extension crate. **Protocol crates never import each other.**
 
 ## 7. Auth: the host relay is the only relay that needs NIP-42 for this crate
 

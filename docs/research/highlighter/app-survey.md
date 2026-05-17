@@ -37,7 +37,8 @@ LOC counts from `wc -l` on each file as of the checkout snapshot. The table grou
 | `groups.rs` | 820 | NIP-29 group metadata, membership, room creation, invite mint, join request | **NIP-29.** Kinds 9007 (create-group), 9000 (put-user), 9002 (edit-metadata), 9009 (create-invite), 9021 (join-request), 39000 (metadata), 39001 (admins), 39002 (members) |
 | `chat.rs` | 292 | NIP-29 chat (`kind:9` scoped by `["h", group_id]` tag) | **NIP-29.** Kind 9. |
 | `discussions.rs` | 361 | NIP-29 threaded discussions inside a group (`kind:11` marked `["t","discussion"]`) | **NIP-29.** Kind 11 (note: kind 11 is widely used elsewhere; the `t=discussion` marker is Highlighter convention layered on NIP-29 routing). |
-| `highlights.rs` | 1,347 | NIP-84 highlights + cross-group sharing via kind:16 generic repost | NIP-84 (kind 9802) + NIP-18 (kind 16). The repost path is the NIP-29-adjacent bridge: a highlight gets reposted *into* a NIP-29 group via its `["h", group_id]` tag. |
+| `artifacts.rs` | 1,046 | **NIP-29 artifact share** — kind:11 (no `t=discussion`) with catalog reference tags (`r`/`i`/`a`). Build + publish + query + URL-normalize + source-detect (article/podcast/book/youtube). The Room Library data path: every "Suggest an artifact to a room" turns into one of these. | **NIP-29 (Highlighter convention).** Same kind:11 as discussions, distinguished structurally by the absence of `t=discussion` and the presence of a catalog tag. Owned by `nmp-nip29::GroupArtifact` per the design doc. |
+| `highlights.rs` | 1,347 | NIP-84 highlights + cross-group sharing via kind:16 generic repost | NIP-84 (kind 9802) + NIP-18 (kind 16). The repost path is the NIP-29-adjacent bridge: a highlight gets reposted *into* a NIP-29 group via its `["h", group_id]` tag. The kind:16 with `h` lives in `nmp-nip29::GroupRepost` per the design doc; the kind:9802 highlight itself lives in `nmp-nip84`. |
 | `articles.rs` | 324 | NIP-23 long-form (kind:30023) reading + reading-feed projection | NIP-23. |
 | `reads.rs` | 580 | "Reads" — what the user is reading, projection of articles + podcasts + books + reading lists | NIP-23 + Podcast 2.0 + non-Nostr book lookups. |
 | `bookmarks.rs` | 303 | NIP-51 bookmark sets (kind:10003) | NIP-51. |
@@ -57,7 +58,7 @@ LOC counts from `wc -l` on each file as of the checkout snapshot. The table grou
 | `isbn_lookup.rs` | 395 | ISBN → book metadata (non-Nostr; uses an external book DB API) | n/a (HTTP). |
 | `recent_books.rs` | 511 | Books recently captured in highlights, projected from ISBN-tagged highlights | n/a (derived). |
 
-**NIP-29 footprint:** ~1,500 LOC of the ~19,900-LOC core (≈7.6 %). The bulk of Highlighter is **non-NIP-29**. This matters for scope-honesty: M11.5 introduces `nmp-nip29` as a crate but the *Highlighter rebuild* exercises every protocol crate (`nmp-nip01`, `nmp-nip02`, `nmp-nip23`, `nmp-nip51`, `nmp-nip65`, `nmp-nip78`, `nmp-nip84`, `nmp-blossom`) plus the new `nmp-nip29`. Most of those exist (or will, after M2–M10).
+**NIP-29 footprint:** ~2,550 LOC of the ~19,900-LOC core (≈12.8 %) once `artifacts.rs` is counted alongside `groups.rs` + `chat.rs` + `discussions.rs` + the kind:16 path inside `highlights.rs`. Still the minority of the core, but materially larger than a first reading suggests. The bulk of Highlighter is **non-NIP-29**. This matters for scope-honesty: M11.5 introduces `nmp-nip29` as a crate but the *Highlighter rebuild* exercises every protocol crate (`nmp-nip01`, `nmp-nip02`, `nmp-nip23`, `nmp-nip51`, `nmp-nip65`, `nmp-nip78`, `nmp-nip84`, `nmp-blossom`) plus the new `nmp-nip29`. Most of those exist (or will, after M2–M10).
 
 ### 3.2 Infrastructure-layer modules
 
