@@ -11,16 +11,16 @@
 > Full per-milestone status in [`docs/plan/status.md`](docs/plan/status.md); per-milestone scope in `docs/plan/m*.md`.
 
 - **M0 (kernel substrate + non-Nostr fixture):** ✅ DONE.
-- **M1 (read-only Twitter slice on live iOS):** 🟡 hardening (firehose-bench `live` mode + iPhone-12 baseline in flight via `m1-hardener`).
-- **M2 (subscription compilation + outbox + NIP-65):** design landed + codex-reviewed; 10 issues being addressed in T13.
-- **M3 (LMDB + insert invariants + claim GC):** design landed + codex-reviewed; 12 issues pending fix in T14.
+- **M1 (read-only Twitter slice on live iOS):** ✅ DONE *(commit `701d0e5`)*. Live firehose-bench cold_start (first item 258 ms, filled timeline 3 587 ms — both within gate budgets ≤ 800 ms / ≤ 5 s) and profile_thrashing (dedup_ratio 0.0, zero leaked subscriptions over 10 min, relay reconnects clean) PASS against real primal + purplepag.es relays. Codex review ([`b0ae439.md`](docs/perf/codex-reviews/b0ae439.md)) flagged 5 issues (D0 violation on public `ActorCommand`, D8 regression on idle-tick snapshot, false-pass leak gate, baseline overclaim, file-size) — tracked as **T23**. Memory RSS + platform debounce dispatch-rate deferred (**T22** → M10.5 + M14).
+- **M2 (subscription compilation + outbox + NIP-65):** design landed + codex round-1 fixes shipped (commit `5ff0ac5`, T13). Further codex review pending.
+- **M3 (LMDB + insert invariants + claim GC):** design landed + codex-reviewed; 12 issues being addressed in T14 (in flight).
 - **M4–M8 (negentropy, NIP-42, signers+write, interaction loop, multi-session):** scoped, pending design after M2/M3 lock.
 - **M10 (Blossom + long-running capabilities):** pending.
 - **M10.5 (FFI hardening + iOS empirical proof):** design landed; **hard gate before M11**.
 - **M11 (rebuild of `/Users/pablofernandez/src/podcast` on NMP):** design landed (13 sub-docs, codex-reviewed clean after 5 iterations); awaits M10.5 empirical pass.
 - **M11.5 (rebuild of `/Users/pablofernandez/Work/hl/app` Highlighter + `nmp-nip29` crate):** design in flight (T18).
 - **M13 (WoT), M14 (UniFFI), M15 (cross-platform), M16 (CLI), M17 (v1 release):** scoped, pending.
-- **Framework-magic contract** (kind:3 auto-tracking, `bunker://` onboarding, new-nsec creation, outbox-by-default-on-publish, etc.): designed at [`docs/design/framework-magic.md`](docs/design/framework-magic.md) with 13 behaviors and 14 named tests in `crates/nmp-testing/tests/framework_magic_contract.rs`. Reconciliation pass T19 in flight to align with canonical D0–D5.
+- **Framework-magic contract** (kind:3 auto-tracking, `bunker://` onboarding, new-nsec creation, outbox-by-default-on-publish, etc.): designed at [`docs/design/framework-magic.md`](docs/design/framework-magic.md) with 13 behaviors named. Reconciliation pass T19 in flight to align with canonical D0–D8 and to replace `TBD-from-research` markers with concrete refs. The companion `crates/nmp-testing/tests/framework_magic_contract.rs` test file is *planned* — it will land alongside the implementation of the first contract behaviors (M2 owns C5–C8; M3 owns C1–C4; M6 owns C11; M8 owns C12).
 - **Plan structure:** `docs/plan.md` is the index; per-milestone files under `docs/plan/m*.md` (≤300 LOC each). Scope shifts captured in [`docs/plan/scope-adjustments-2026-05-18.md`](docs/plan/scope-adjustments-2026-05-18.md) — DMs (was M9) and Wallet (was M12) deferred to post-v1 (see [`docs/plan/post-v1.md`](docs/plan/post-v1.md)).
 - **Research foundation:** NDK + Applesauce deep-dives at [`docs/research/ndk/`](docs/research/ndk/) and [`docs/research/applesauce/`](docs/research/applesauce/) — outbox routing, kind:3 auto-tracking gap, subscription compilation, signers, gotchas, missing features.
 
