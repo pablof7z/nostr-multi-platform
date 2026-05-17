@@ -26,7 +26,9 @@ The framework treats common Nostr-correctness failures (stale replaceable events
 
 ## 1.5 Cardinal doctrines
 
-Six named principles that subsume the rest of this spec. Every API decision answers to at least one of these; conflicts between them resolve in the order listed.
+Nine named principles that subsume the rest of this spec. Every API decision answers to at least one of these; conflicts between them resolve in the order listed.
+
+**Two kinds of doctrine.** D0–D5 are *policy* doctrines — they govern user-facing semantics (what the framework promises, what it forbids). D6–D8 are *substrate invariants* — they govern how the runtime is allowed to be implemented (what crosses FFI, how state changes propagate, what the hot path can do). Both kinds are equally binding; their distinction is the kind of review they enforce. Policy review flags "this API choice violates a user-facing principle"; substrate review flags "this implementation choice will leak across FFI / hide policy on the native side / degrade reactivity."
 
 ### D0. Kernel + extension modules — no app nouns in `nmp-core`
 
@@ -77,6 +79,43 @@ The "single source of truth" doctrine does not mean one cache — there are five
 ### D5. Snapshots bounded by what's open
 
 What crosses FFI is the projection through currently-open views, not the underlying event store. `AppState` carries small screen-shaped data plus a map of `ViewId → ViewPayload` for views currently in use. Closing a view evicts its payload from the snapshot. The event store itself never crosses FFI. See §6.2 and the FFI architecture appendix (§A1).
+
+### D6. Errors never cross FFI as exceptions
+
+Operational failures surface as `toast: Option<String>` state fields, never as exceptions or `Result<T, E>` across the FFI boundary. Long-running operations expose `busy` flags that clear on completion regardless of outcome. Native `dispatch` calls never need `try` / `catch`; native reconciler callbacks never receive a Rust error type.
+
+This rules out, by construction:
+
+- Swift / Kotlin code wrapping framework calls in `do { try }` or `try { } catch`.
+- Per-operation error-type proliferation across UniFFI.
+- Silent failure: every error has at least one observable state field carrying its consequences (a toast, a `busy` flag clearing, a diagnostic record per ADR-0007).
+
+Per RMP bible invariant #2 (`docs/aim.md` §2).
+
+### D7. Capabilities report; never decide policy
+
+Native bridges (Keychain, NIP-46 bunker, BGTask scheduler, `AVPlayer`, NIP-07 web extension, FilePicker, Blossom upload, etc.) execute platform APIs and report raw events back into the kernel. They never decide *whether to retry*, *whether an error is recoverable*, *which relay to publish to*, *which encryption scheme to negotiate*, *what state should become*, or *whether a duplicate request is a no-op*. Policy is Rust's; capabilities are reports.
+
+This rules out, by construction:
+
+- Capability bridges holding cached state beyond transient OS handles (Keychain handle, audio session token, network monitor, push registration).
+- Native code making decisions that the kernel should reproduce identically across platforms.
+- Capability lifecycles that aren't idempotent: start / stop / restart of any bridge must be safe N times.
+
+Per RMP bible cardinal rule #6 (`docs/aim.md` §2) and idempotence invariant #7.
+
+### D8. Reactivity contract: composite reverse index · ≤60 Hz/view · working-set bounded
+
+The substrate that delivers D1, D2, D4, D5 in practice. Every inserted event participates in a composite reverse index that names the views interested in it; view recompute is bounded to ≤60 deltas per second per view; the working set is hot-resident with claim-pinned overlays. Allocations after warmup are linear in active-view count, never in cached-event count. False-wakeup rate ≤ 0.10 candidates per delta.
+
+This rules out, by construction:
+
+- Per-event allocations on the hot path after warmup.
+- Wakeups proportional to event volume instead of view count.
+- Memory growth that tracks history depth instead of working set.
+- A view re-rendering at greater than 60 Hz regardless of upstream burst.
+
+Per ADRs 0001 (composite dependency keys), 0002 (per-view delta budget), 0003 (working-set memory), and 0004 (allocation measurement), all in `docs/decisions/`. Validated continuously by `reactivity-bench` (`crates/nmp-testing/bin/reactivity-bench/`).
 
 ---
 
