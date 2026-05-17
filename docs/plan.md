@@ -28,43 +28,43 @@
 
 **Scope.**
 
-- Cargo workspace with the crate roster from spec §4.1.
-- `nmp-core` actor skeleton: single OS thread + flume channel + tokio runtime for async I/O.
-- Empty `AppState`, empty `AppAction`, empty `AppUpdate` types with `rev: u64`.
-- `nmp-ffi` with `FfiApp` `uniffi::Object`, `AppReconciler` callback interface, generated Swift + Kotlin bindings checked in.
-- `nmp-wasm` skeleton with wasm-bindgen wrapper.
-- `nmp-testing` skeleton with `MockRelay` re-export and snapshot helpers.
-- `justfile` recipes: `rust-build-host`, `gen-bindings`, `run-ios`, `run-android`, `run-desktop`, `run-web`, `test`.
-- CI lane on GitHub Actions: build all four targets, run unit tests, regenerate bindings and diff.
+- Cargo workspace with the kernel + codegen crate roster from spec §4.1 (kernel crates only; protocol modules and app modules come in later phases).
+- `nmp-core` kernel skeleton: actor on one OS thread + flume channel + tokio runtime; empty `KernelAction` / `AppState` / `AppUpdate` types with `rev: u64`; module registry stubs.
+- `nmp-codegen` skeleton: parses `nmp.toml`, produces a no-op `nmp-app-empty` crate with empty composed enums.
+- `nmp-ffi` building blocks (UniFFI primitives the generated crate will use).
+- `nmp-wasm` skeleton with wasm-bindgen building blocks.
+- `nmp-testing` skeleton with `MockRelay` re-export, snapshot helpers, and a `TestHarness` stub.
+- `justfile` recipes: `rust-build-host`, `gen-modules`, `gen-bindings`, `run-desktop`, `test`, `fmt`.
+- CI on GitHub Actions: `cargo fmt --check`, `cargo test --workspace`, codegen determinism check.
 - Nix flake.
 
-**Out of scope.** No event handling, no relay code, no views, no actions.
+**Out of scope.** No extension modules yet (those land in 1a.1); no event handling; no relay code; no FFI targets beyond determinism check (iOS / Android / web compile in later phases).
 
 **Exit gate.**
 
-- A no-op `FullState(AppState::default())` snapshot round-trips through Swift, Kotlin, TypeScript without panic.
-- `rev` ordering test: emit 10 updates rapidly; receiver applies in order, drops stales.
+- The kernel actor starts and stops cleanly under `cargo test`.
+- `nmp gen modules` invoked against an empty `nmp.toml` produces a working `nmp-app-empty` crate that compiles.
+- Round-trip determinism: `nmp gen modules` produces byte-identical output on repeat invocations.
 - `cargo test --workspace` passes on Linux + macOS.
-- `just gen-bindings` produces deterministic output (committed bindings match regenerated bindings).
-- Cold build of all four platforms ≤ 5 minutes on CI.
 
-**Regression test added.** `tests/ffi_round_trip.rs`: rev ordering + bindings drift check.
+**Regression test added.** `tests/kernel_lifecycle.rs` (actor start/stop), `tests/codegen_determinism.rs` (deterministic output).
 
-### Phase 1 — Event store + planner
+### Phase 1 — Kernel substrate + Twitter demo on iOS
 
-Per ADR-0006 and ADR-0008, Phase 1 opens with a **vertical slice that grows into a demoable iOS Twitter clone** before broader scope lands. The slice proves the architecture end-to-end against a real relay (primal) with running code, not modeled budgets.
+Per ADR-0006 (slice discipline), ADR-0008 (Twitter clone iOS target), ADR-0009 (kernel + extension modules), and ADR-0010 (generated app enum), Phase 1 grows the kernel substrate first, then layers Nostr protocol modules and the Twitter clone on top. Every sub-phase has running code at its exit gate.
 
-**1a. Vertical slice, six sub-phases.** Per ADR-0008 §"Sub-phase plan":
+**1a. Eight sub-phases (~12–15 weeks total).**
 
-- **1a.0** Skeleton — workspace, actor scaffolding, empty AppState/Action/Update. ~3–5 days.
-- **1a.1** Desktop Profile slice — iced shell, in-memory store, primal relay, Profile view kind, `useProfile` wrapper (the original ADR-0006 slice). ~1 week.
-- **1a.2** iOS port of Profile slice — UniFFI + xcframework + SwiftUI shell + `AppManager`. ~2 weeks (UniFFI / Xcode surprises front-loaded here).
-- **1a.3** LMDB + Contacts + seed-driven Timeline — multiple `Contacts` views (one per seed dev account) union into the timeline's author set; real breadth from launch without requiring login. ~1.5 weeks.
-- **1a.4** Login + Signer + Compose — local-key signer, Keychain storage, `SendNote` action with atomicity; optional "Home" timeline switch to logged-in user's own follows. ~1.5 weeks.
-- **1a.5** Reactions + Thread + Reply — like/react, thread tree, reply composer. ~1 week.
-- **1a.6** Profile screen + diagnostics + polish — author-tap navigation, pagination, ADR-0007 diagnostics screen, error states. ~1 week.
+- **1a.0** Foundations — workspace, kernel actor scaffolding, `nmp-codegen` skeleton, empty `KernelAction`/`AppUpdate` types, headless test harness. ~3–5 days.
+- **1a.1** **Kernel substrate prototype + non-Nostr fixture** — the five extension trait families (`DomainModule`, `ViewModule`, `ActionModule`, `CapabilityModule`, `IdentityModule`); composite reverse index; delta buffer with coalescing; claim-based GC; codegen producing a working `nmp-app-fixture` crate from a `fixture-todo-core` app module that implements all five trait families; desktop iced shell rendering a TODO list. ~2 weeks. **Proves: kernel substrate works for non-Nostr-shaped data; codegen pipeline functional.**
+- **1a.2** First Nostr protocol module + desktop avatar slice — `nmp-nip01` (Event, Filter, Keys, Profile `ViewModule`); `useProfile` wrapper; primal connection via `nostr-sdk`; desktop iced avatar demo. The original ADR-0006 slice, now built on the kernel substrate from 1a.1. ~1 week.
+- **1a.3** iOS port of the avatar slice — UniFFI binding pipeline; xcframework build; SwiftUI shell; `AppManager`; generated iOS wrappers (`useProfile` Swift binding); `KeychainCapability` minimal. ~2 weeks (UniFFI / Xcode surprises front-loaded here).
+- **1a.4** LMDB + Contacts + seed-driven Timeline — LMDB backend swap via `Box<dyn EventStore>`; `nmp-nip02` Contacts view module; `nmp-nip01::TimelineViewModule`; multiple Contacts views (one per seed dev account) union into the timeline's author set; real breadth from launch without requiring login. ~1.5 weeks.
+- **1a.5** Login + Signer + Compose — `IdentityModule::HumanAccount` (local-key signer); `KeychainCapability` real impl; `nmp-nip01::SendNoteActionModule` with atomicity; iOS login UI + compose sheet; optional "Home" timeline switch to logged-in user's own follows. ~1.5 weeks.
+- **1a.6** Reactions + Thread + Reply — `nmp-nip25` (Reactions view module + React action); `nmp-nip10` (Thread view module with reply-marker handling); `SendNote` action extended for replies; iOS interaction loop. ~1 week.
+- **1a.7** Profile screen + diagnostics + polish + second fixture — author-tap → profile screen with author-filtered Timeline; pagination; ADR-0007 diagnostics screen; second non-Nostr fixture module (small notes app) demonstrating boundary breadth; pull-to-refresh; error states. ~1–2 weeks.
 
-The desktop iced binary built in 1a.1 stays alive through 1a.6 as a non-FFI **reference target** — running the same actor without UniFFI to disambiguate "is it architecture or is it the toolchain?" debugging.
+The desktop iced binary built in 1a.2 stays alive through 1a.7 as a non-FFI **reference target** — running the same kernel + modules without UniFFI to disambiguate "is it architecture or is it the toolchain?" debugging.
 
 Exit gate for the slice: per ADR-0008 §"Sub-phase plan" exit gates plus the broader Phase 1 exit gate below.
 
@@ -393,7 +393,9 @@ ADRs already adopted:
 - **ADR-0005:** Platform shadow is domain-keyed, not `ViewId`-keyed. Refcounted component wrappers (`useProfile`, `@Profile`, `rememberProfile`) generated per platform manage subscription lifecycle behind the domain-keyed API. `ViewId` remains an internal FFI token only.
 - **ADR-0006:** Vertical-slice-first delivery for Phase 1. Kind:0 profile-metadata path runs end-to-end (desktop component → wrapper → actor → in-memory store → real relay → back) before the broader Phase 1 scope (LMDB, outbox, full view kinds, FFI to iOS/Android) layers on top. Adopted 2026-05-17 from the firehose-bench run that revealed the live mode was blocked on real runtime adapters.
 - **ADR-0007:** Relay/subscription diagnostics and non-Nostr data use the same actor-owned `AppUpdate` bridge, but with explicit diagnostic/domain records instead of raw callbacks or fake Nostr events. Adopted 2026-05-17 to clarify network visibility and capability/domain-data flow before expanding the vertical slice.
-- **ADR-0008:** Phase 1a demo target is a simple Twitter-clone iOS app pulling from primal, with seed-driven timeline discovery (union of follow lists of hardcoded dev accounts) as the unauthenticated default. Six sub-phases, each a walking skeleton. Desktop iced reference target preserved alongside iOS for UniFFI-vs-architecture debugging. Supersedes ADR-0006 in choice of demo target only; discipline preserved.
+- **ADR-0008:** Phase 1a demo target is a simple Twitter-clone iOS app pulling from primal, with seed-driven timeline discovery (union of follow lists of hardcoded dev accounts) as the unauthenticated default. Sub-phases, each a walking skeleton. Desktop iced reference target preserved alongside iOS for UniFFI-vs-architecture debugging. Supersedes ADR-0006 in choice of demo target only; discipline preserved. Modified by ADR-0009.
+- **ADR-0009:** App extension kernel boundary. NMP is reframed as a Nostr-native app kernel with five extension trait families (`DomainModule`, `ViewModule`, `ActionModule`, `CapabilityModule`, `IdentityModule`). The kernel owns substrate; protocol modules and app crates own nouns. Closed enums in the API are replaced by per-app generated enums (see ADR-0010). Phase 1a restructured to build the kernel substrate (with a non-Nostr fixture module) before the first Nostr protocol module. Adopted 2026-05-17 from `docs/design/app-extension-kernel.md`.
+- **ADR-0010:** Per-app concrete enums generated at the FFI boundary. `nmp gen modules` reads `nmp.toml`, resolves the chosen module set, and produces a `nmp-app-<name>` crate exposing typed `AppAction` / `AppUpdate` / `ViewSpec` / capability traits via UniFFI. Compile-time type safety end-to-end; per-platform idiomatic enums; tree-shaking of unused modules. Codegen is critical-path v1 infrastructure.
 
 The ADRs are the durable record of why design decisions exist. New ADRs land alongside any new harness run that revises a design.
 
@@ -418,6 +420,7 @@ The recommended CI gates as of Phase 1:
 
 - `cargo fmt --all -- --check` (formatting).
 - `cargo test --workspace` (all crates pass unit + integration).
+- `nmp gen modules --check` (codegen determinism — fails if regenerating would produce a diff against the checked-in `nmp-app-<name>/` output).
 - `cargo run -p nmp-testing --bin reactivity-bench --release -- --standard --fail-on-gate` (reactivity gates).
 - `cargo run -p nmp-testing --bin firehose-bench --release -- replay --standard --fail-on-gate` (firehose gates against the current model+adapter mix).
 - `git diff --check` (whitespace / conflict markers).

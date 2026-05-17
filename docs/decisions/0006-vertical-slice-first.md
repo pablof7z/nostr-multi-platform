@@ -1,7 +1,8 @@
 # ADR 0006: Vertical-slice-first delivery for Phase 1
 
 **Date:** 2026-05-17
-**Status:** accepted
+**Status:** accepted (discipline preserved; positioning modified by ADR-0009)
+**Modified by:** ADR-0009 (the slice is now built on top of the kernel substrate; the kind:0 path is a Profile `ViewModule` in `nmp-nip01`, not a built-in feature of `nmp-core`)
 
 ## Context
 

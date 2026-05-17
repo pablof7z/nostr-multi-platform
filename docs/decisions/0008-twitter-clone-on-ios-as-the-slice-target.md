@@ -1,9 +1,10 @@
 # ADR 0008: Twitter-clone on iOS as the Phase 1a demo target
 
 **Date:** 2026-05-17
-**Status:** accepted
+**Status:** accepted (positioning modified by ADR-0009)
 **Supersedes (in part):** ADR-0006 (in choice of demo target only — discipline preserved)
 **Relates to:** ADR-0005 (domain-keyed shadow), ADR-0007 (diagnostics bridge)
+**Modified by:** ADR-0009 — the Twitter clone is now built as **the first canonical extension module set** (`twitter-core` app crate on top of `nmp-nip01` / `nmp-nip02` / `nmp-nip10` / `nmp-nip25` protocol modules), not as a built-in feature of `nmp-core`. Sub-phase plan adjusted: 1a.0 (foundations) is followed by 1a.1 (**kernel substrate + non-Nostr fixture module**) BEFORE 1a.2 (first Nostr protocol module + desktop avatar slice). Twitter clone features layer on from 1a.4 onward.
 
 ## Context
 

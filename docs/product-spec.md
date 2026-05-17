@@ -10,15 +10,35 @@
 
 ## 1. Product summary
 
-A Cargo workspace shipping a single Rust core, FFI bindings for Swift/Kotlin/TypeScript, a wasm target, a scaffolding CLI, and reference platform shells for iOS, Android, desktop, and web. It composes the `rust-nostr` crate family plus an OS keyring crate, a NIP-46 connect crate, a NIP-47 NWC crate, a Blossom crate, and a relay-builder into an opinionated application framework. The framework owns: protocol state, caching, relay routing (NIP-65 outbox), subscription lifecycle, signing orchestration, derived views, sessions, wallets, NIP-17 messaging, NIP-77 negentropy sync, web-of-trust, and developer guardrails. Platform code renders state and dispatches user intents — nothing else.
+A Cargo workspace shipping a Nostr-native **app kernel** (`nmp-core`), a set of reusable **Nostr protocol modules** (`nmp-nip01`, `nmp-nip17`, `nmp-nip29`, `nmp-nip65`, `nmp-blossom`, `nmp-nwc`, ...), an **extension trait substrate** that lets app crates define their own typed view modules, action modules, domain modules, capability modules, and identity scopes, a **codegen tool** (`nmp gen modules`) that produces per-app concrete enums and platform-shadow wrappers, FFI bindings for Swift/Kotlin/TypeScript, a wasm target, a scaffolding CLI, and reference platform shells for iOS, Android, desktop, and web.
 
-The framework treats common Nostr-correctness failures (stale replaceable events, lost subscriptions, mis-routed publishes, double-publication, multi-account desync, leaked secrets across FFI, naive cache invalidation, withheld cached data, blocking-on-fetch UI patterns) as **product defects in the framework** rather than as developer mistakes. The public API is designed so that the wrong thing is hard to type.
+The kernel composes the `rust-nostr` crate family plus an OS keyring crate, a NIP-46 connect crate, a NIP-47 NWC crate, a Blossom crate, and a relay-builder into a substrate. Protocol modules and app crates layer on top.
+
+The kernel owns: actor runtime, verified event store, subscription planner, relay routing pipeline, signer/session plumbing, durable action ledger, domain-store substrate, typed view registry, capability bridge, platform-shadow + codegen machinery, diagnostics, and test harnesses.
+
+The kernel does **not** own: Profile, Timeline, Thread, Reactions, Conversation, Wallet, DM, Blossom, or any other domain concept. Those live in reusable protocol modules (or in app crates for app-specific concepts).
+
+Platform code renders state and dispatches user intents — nothing else.
+
+The framework treats common Nostr-correctness failures (stale replaceable events, lost subscriptions, mis-routed publishes, double-publication, multi-account desync, leaked secrets across FFI, naive cache invalidation, withheld cached data, blocking-on-fetch UI patterns) as **product defects in the framework** rather than as developer mistakes. The public API is designed so that the wrong thing is hard to type — at every layer, kernel through app modules.
+
+See `docs/design/app-extension-kernel.md`, `docs/design/kernel-substrate.md`, ADR-0009 (kernel boundary), and ADR-0010 (generated app enum) for the architectural ground truth.
 
 ---
 
 ## 1.5 Cardinal doctrines
 
-Five named principles that subsume the rest of this spec. Every API decision answers to at least one of these; conflicts between them resolve in the order listed.
+Six named principles that subsume the rest of this spec. Every API decision answers to at least one of these; conflicts between them resolve in the order listed.
+
+### D0. Kernel + extension modules — no app nouns in `nmp-core`
+
+Per ADR-0009, NMP is a Nostr-native app kernel plus extension modules. The kernel provides substrate (actor, store, planner, ledger, registries, codegen). Apps and protocol modules contribute typed variants via the five trait families (`ViewModule`, `ActionModule`, `DomainModule`, `CapabilityModule`, `IdentityModule`). The rule: if implementing a real app requires adding domain nouns to `nmp-core`, the kernel boundary is wrong and the kernel must change, not the app.
+
+This rules out, structurally:
+
+- `nmp-core` becoming a junk drawer of every consumer's domain concepts.
+- App-specific business logic in Swift / Kotlin / TS shells.
+- Closed enums at the FFI that prevent new modules from contributing typed actions / views / capabilities.
 
 ### D1. Best-effort rendering — render now, refine in place
 
@@ -155,25 +175,58 @@ A scripted action sequence (defined in `crates/nmp-testing`) run against the sta
 
 ### 4.1 Workspace
 
-The on-disk layout from `aim.md` §5 is canonical. Concretely, v1 ships the following crates as published artifacts on crates.io:
+The on-disk layout from `aim.md` §5 is canonical, restructured per ADR-0009 into kernel / protocol-modules / app-modules / generated-per-app layers. Concretely, v1 ships the following crates as published artifacts on crates.io:
+
+**Kernel crates (the substrate):**
 
 | Crate | Role | FFI? |
 |---|---|---|
-| `nmp-core` | Actor, `AppState`, `AppAction`, `AppUpdate`, event store, planner, sessions, outbox routing | Pure Rust |
-| `nmp-ffi` | UniFFI scaffolding, `FfiApp`, `AppReconciler`, capability traits | UniFFI |
-| `nmp-wasm` | wasm-bindgen wrapper | wasm-bindgen |
-| `nmp-actions` | Built-in actions catalog | Pure Rust |
-| `nmp-views` | Derived view types and view-handle protocol | Pure Rust |
-| `nmp-wot` | Web-of-trust graph + filter | Pure Rust |
-| `nmp-sync` | NIP-77 negentropy sync | Pure Rust |
-| `nmp-wallet` | NIP-47/57/60/61 unified wallet | Pure Rust |
-| `nmp-messages` | NIP-17 conversation layer | Pure Rust |
-| `nmp-blossom` | Blossom client wrapper | Pure Rust |
-| `nmp-guardrails` | Debug-build runtime checks | Pure Rust |
-| `nmp-metrics` | Performance instrumentation (counters, budgets, exposed via `AppState.debug`) | Pure Rust |
-| `nmp-testing` | Mock relay, factories, simulated time, perf-replay harness | Pure Rust |
-| `nmp-nse` | Decrypt-only crate for iOS NSE + Android push (see §7.14) | UniFFI, minimal |
-| `nmp-cli` | Scaffolding tool | Binary |
+| `nmp-core` | Actor, kernel state, event store, planner, action ledger, view registry, domain-store substrate, capability bridge, identity-scope plumbing, reverse index, projection cache | Pure Rust |
+| `nmp-codegen` | `nmp gen modules` implementation: reads `nmp.toml`, produces per-app concrete enums and platform-shadow wrappers | Binary + library |
+| `nmp-ffi` | UniFFI scaffolding building blocks used by generated per-app crates | UniFFI |
+| `nmp-wasm` | wasm-bindgen building blocks used by generated per-app crates | wasm-bindgen |
+| `nmp-guardrails` | Debug-build runtime checks (kernel-level; modules add their own) | Pure Rust |
+| `nmp-metrics` | Performance instrumentation | Pure Rust |
+| `nmp-testing` | Mock relay, factories, simulated time, perf-replay harness, module-test harness | Pure Rust |
+
+**Nostr protocol modules (reusable across apps):**
+
+| Crate | Role | Notes |
+|---|---|---|
+| `nmp-nip01` | Event types, Filter, Keys, Profile / Contacts / Timeline view modules, SendNote / DeleteEvent action modules | Required by virtually every Nostr app |
+| `nmp-nip02` | Re-exports / convenience over NIP-01's Contacts view | |
+| `nmp-nip10` | Reply-marker handling for thread building | |
+| `nmp-nip19` | bech32 entities (npub, note, nevent, naddr); utility module, no traits | |
+| `nmp-nip25` | Reactions view module + React action module | |
+| `nmp-nip65` | Mailboxes view module + outbox routing helper | |
+| `nmp-nip77` | Sync engine with watermarks (per spec §7.8) | |
+| `nmp-nip46` | NIP-46 / Nostr Connect signer module | Implements `IdentityModule::ExternalSigner` |
+| `nmp-nip07` | NIP-07 browser signer (web only) | |
+| `nmp-nip17` | Conversation view module + SendDm action + NSE companion crate | Includes `nmp-nip17-nse` for iOS NSE / Android push |
+| `nmp-blossom` | Blossom upload action + upload-status view module | |
+| `nmp-nwc` | NIP-47 Nostr Wallet Connect module | |
+| `nmp-nip57` | Lightning zaps action module | |
+| `nmp-nip60` | Cashu wallet module | |
+| `nmp-nip61` | Nutzap action module | |
+| `nmp-nip55` | Android external signer (Amber) capability module | |
+| `nmp-wot` | Web-of-trust module: graph load action + score projection + filter view module | |
+
+**App scaffolding:**
+
+| Crate | Role |
+|---|---|
+| `nmp-cli` | Scaffolding tool (`nmp init`, `nmp add module`, `nmp gen modules`, `nmp doctor`) |
+
+**App crates (per-app; not framework-owned):**
+
+| Crate | Role |
+|---|---|
+| `twitter-core` (Phase 1a Twitter demo) | App-specific view / action / domain modules for the Twitter clone |
+| `fixture-todo-core` (Phase 1a.1 kernel-boundary fixture) | A tiny non-Nostr-shaped fixture proving the kernel substrate works for arbitrary domains |
+| `nmp-app-twitter` (generated) | Per-app FFI crate produced by `nmp gen modules`; not hand-written |
+| `nmp-app-fixture` (generated) | Same, for the fixture |
+
+The kernel and the protocol modules are framework deliverables. The app crates and the generated per-app crates are NOT in the framework workspace — they live in the consuming app's repo (or `apps/` directory for the Twitter demo and fixture, which the framework ships as reference implementations).
 
 The CLI is also published to npm as `@nmp/cli` for non-Rust developers, wrapping the same binary via npx.
 
@@ -293,21 +346,32 @@ Concrete list, exhaustive:
 
 ## 6. The framework API surface
 
-This section specifies what the developer sees. Implementation lives behind it.
+This section specifies what the developer sees. Per ADR-0009 and ADR-0010, the surface is split between the kernel (stable, generic) and the per-app generated layer (concrete, app-specific). App developers interact primarily with the generated layer.
 
-### 6.1 The App handle
+### 6.0 The two layers
 
-`FfiApp` (Swift/Kotlin) / `NmpApp` (TS) is the single object created at startup. Per RMP bible, it is a `uniffi::Object` constructed once per process.
+| Layer | Stability | Surface | Defined by |
+|---|---|---|---|
+| Kernel (`nmp-core` + `nmp-ffi`) | Stable across all apps | Generic `FfiApp` constructor, dispatch primitive, reconciler trait, capability bridge skeleton | The framework |
+| Per-app generated (`nmp-app-<name>`) | Per-app concrete | Typed `AppAction`, `AppUpdate`, `ViewSpec`, `Capability*` enums; typed wrappers (`useProfile`, `@Timeline`, `useTodoList`, ...) | `nmp gen modules` from `nmp.toml` |
+
+App code on the platform side sees only the generated layer. App code in Rust touches the kernel APIs directly when implementing a `ViewModule` / `ActionModule` etc., otherwise goes through the generated layer.
+
+### 6.1 The App handle (generated per-app)
+
+`FfiApp` is the single `uniffi::Object` per app, exposed by the generated `nmp-app-<name>` crate. The kernel ships `nmp_core::FfiAppCore`; the generated crate wraps it and surfaces the per-app typed enums.
 
 ```rust
+// In the generated nmp-app-<name> crate. Generated, not hand-written.
+
 #[derive(uniffi::Object)]
-pub struct FfiApp { /* opaque */ }
+pub struct FfiApp { core: Arc<nmp_core::FfiAppCore>, /* opaque */ }
 
 #[uniffi::export]
 impl FfiApp {
-    /// Construct the app. Spawns the actor thread. Loads persisted sessions.
-    /// `config` carries data directory, default relays, storage backend choice,
-    /// feature flags. Infallible at the FFI boundary; catastrophic failure panics.
+    /// Construct the app. Spawns the actor thread. Loads persisted state.
+    /// Registers all modules declared in nmp.toml. Infallible at the FFI
+    /// boundary; catastrophic failure panics.
     #[uniffi::constructor]
     pub fn new(config: AppConfig) -> Arc<Self>;
 
@@ -319,20 +383,22 @@ impl FfiApp {
     pub fn dispatch(&self, action: AppAction);
 
     /// Start the update listener. Must be called exactly once per process.
-    /// The reconciler is invoked from a background thread; native must hop.
     pub fn listen_for_updates(&self, reconciler: Arc<dyn AppReconciler>);
 
-    /// Register platform capabilities. Each setter is idempotent and safe to
-    /// call multiple times. See §6.5.
-    pub fn set_keyring(&self, keyring: Arc<dyn KeyringCapability>);
-    pub fn set_push(&self, push: Arc<dyn PushCapability>);
-    pub fn set_external_signer(&self, signer: Arc<dyn ExternalSignerCapability>);
-    pub fn set_network_monitor(&self, mon: Arc<dyn NetworkMonitorCapability>);
-    pub fn set_blob_picker(&self, picker: Arc<dyn BlobPickerCapability>);
+    /// Register platform capabilities. Generated setters per capability module
+    /// declared in nmp.toml. Each setter is idempotent.
+    pub fn set_keyring(&self, capability: Arc<dyn KeyringCapability>);
+    pub fn set_push(&self, capability: Arc<dyn PushCapability>);
+    pub fn set_external_signer(&self, capability: Arc<dyn ExternalSignerCapability>);
+    pub fn set_network_monitor(&self, capability: Arc<dyn NetworkMonitorCapability>);
+    pub fn set_file_picker(&self, capability: Arc<dyn FilePickerCapability>);
+    // ... one setter per CapabilityModule declared in nmp.toml.
 }
 ```
 
-`AppConfig` is a `uniffi::Record` containing only platform-resolved primitives (paths, lists of relay URLs, feature-flag booleans). No `Arc<dyn ...>` types in the config — capabilities are registered separately via setters so each can be bridged on its own schedule.
+The `AppAction`, `AppState`, `AppReconciler`, and `AppUpdate` types are all generated from the registered modules per ADR-0010. See §6.3, §6.4, and §6.5 for the generated shapes.
+
+`AppConfig` is a `uniffi::Record` containing only platform-resolved primitives (paths, lists of relay URLs, feature-flag booleans). Capability handles are set separately via the setters above so each can be bridged on its own schedule.
 
 ### 6.2 AppState
 
@@ -364,65 +430,57 @@ pub struct AppState {
 
 **Platform shadow is reorganized by domain key, not `ViewId` (ADR-0005).** While the FFI delivers `AppState.views` as a `HashMap<ViewId, ViewPayload>`, the per-platform wrapper layer (generated by `nmp gen`) reorganizes the shadow into typed domain-keyed dictionaries — `profiles: [PubKey: ProfileView]`, `reactionSummaries: [EventId: ReactionSummary]`, `conversations: [PubKey: ConversationView]`, etc. — so components read by domain concept (pubkey, event id) rather than by framework handle. `ViewId` remains an internal token used by the FFI; component code never sees it. Refcounted wrappers (`useProfile`, `@Profile`, `rememberProfile`) manage subscription lifecycle behind the domain-keyed API. See ADR-0005 for the per-view-kind cache-key table.
 
-### 6.3 AppAction
+### 6.3 AppAction (generated per-app)
 
-`AppAction` is a flat `uniffi::Enum` of every user intent and lifecycle event. v1 catalog (illustrative; the actions crate may add domain-specific variants):
+`AppAction` is the generated per-app concrete enum produced by `nmp gen modules` per ADR-0010. It composes the kernel's lifecycle variants with one variant per registered module containing that module's typed action enum.
+
+Illustrative shape for the Twitter clone with `nmp.toml` listing `[nmp-core, nmp-nip01, nmp-nip02, nmp-nip10, nmp-nip25, nmp-nip65, twitter-core]`:
 
 ```rust
+// AUTO-GENERATED in nmp-app-twitter/src/action.rs.
+
 #[derive(Clone, uniffi::Enum)]
 pub enum AppAction {
-    // Lifecycle
+    // Kernel lifecycle (always present)
+    Kernel(KernelAction),
+
+    // Protocol module actions
+    Nip01(nmp_nip01::Action),       // SendNote, DeleteEvent, OpenProfileView, OpenTimelineView, ...
+    Nip02(nmp_nip02::Action),       // OpenContactsView, ...
+    Nip10(nmp_nip10::Action),       // (no actions; thread building lives in views)
+    Nip25(nmp_nip25::Action),       // React, OpenReactionsView, ...
+    Nip65(nmp_nip65::Action),       // OpenMailboxesView, RefreshOutboxRouting, ...
+
+    // App module actions
+    Twitter(twitter_core::Action),  // ToggleTimelineMode { mode }, OpenComposeSheet, ...
+}
+
+#[derive(Clone, uniffi::Enum)]
+pub enum KernelAction {
+    // Lifecycle (always available)
     Bootstrap,
     Foreground,
     Background,
     NetworkChanged { online: bool },
 
-    // Sessions
-    AddAccountPrivateKey { nsec_or_ncryptsec: String, passphrase: Option<String> },
-    AddAccountBunker { connect_uri: String },
-    AddAccountExternal { kind: ExternalSignerKind },
-    ActivateAccount { pubkey: String },
-    RemoveAccount { pubkey: String, wipe: bool },
+    // Sessions / identity
+    AddIdentity { module: String, descriptor: Vec<u8> },
+    ActivateIdentity { id: IdentityId },
+    RemoveIdentity { id: IdentityId, wipe: bool },
 
     // Routing
     Navigate { screen: Screen },
     Pop,
     PopToRoot,
 
-    // Views
+    // View lifecycle (generic, dispatches to the correct ViewModule)
     OpenView { id: ViewId, spec: ViewSpec },
     CloseView { id: ViewId },
     RefreshView { id: ViewId },
+    AdvanceCursor { id: ViewId },
 
-    // Writes (delegated to nmp-actions)
-    SendNote { content: String, mentions: Vec<String>, reply_to: Option<EventCoord> },
-    React { target: EventCoord, emoji: String },
-    Repost { target: EventCoord },
-    Quote { target: EventCoord, comment: String },
-    FollowUser { pubkey: String },
-    UnfollowUser { pubkey: String },
-    MuteUser { pubkey: String },
-    UpdateProfile { patch: ProfilePatch },
-    PublishLongForm { article: ArticleDraft },
-    SendDm { recipient: String, body: String, attachments: Vec<BlobRef> },
-    OpenConversation { peer: String },
-    MarkConversationRead { peer: String, up_to: u64 },
-
-    // Wallet
-    AttachWallet { config: WalletConfig },
-    DetachWallet,
-    Zap { target: ZapTarget, sats: u64, comment: String },
-    AcceptNutzap { id: String },
-
-    // Media
-    UploadBlob { source: BlobSource, server: Option<String> },
-    CancelUpload { id: String },
-
-    // Sync
-    RunSync { spec: SyncSpec },
-
-    // Outbox
-    OverrideRelaysForNext { relays: Vec<String> },
+    // Action lifecycle (generic, dispatches to the correct ActionModule)
+    CancelAction { id: ActionId },
 
     // Diagnostics
     ClearToast,
@@ -430,23 +488,45 @@ pub enum AppAction {
 }
 ```
 
-Doctrine:
+Each module's `Action` enum is owned by that module (e.g. `nmp_nip01::Action::SendNote { content, reply_to }`, `nmp_nip25::Action::React { target, emoji }`, `twitter_core::Action::ToggleTimelineMode { mode }`).
+
+The kernel's `dispatch` routes by variant discriminant: `Kernel(...)` goes to internal handlers; `Nip01(...)` is serialized and forwarded to the NIP-01 module's registered dispatcher per ADR-0010's mechanism.
+
+**Doctrine (unchanged):**
 
 - Variants describe **user intent**, not desired state mutations.
 - Each variant is constructible without side effects from native code.
 - No variant carries an `Arc<dyn Trait>` or callback — capabilities are bridged separately.
-- A `tag()` method (`pub fn tag(&self) -> &'static str`) returns a log-safe label that never reveals secrets (mnemonics, nsec, plaintext DMs).
+- A `tag()` method returns a log-safe label that never reveals secrets (mnemonics, nsec, plaintext DMs). Each module's action enum implements its own `tag()`; the generated outer enum dispatches.
 
-### 6.4 AppUpdate
+**Adding a new action variant.** Add the variant to the relevant module's `Action` enum, regenerate (`nmp gen modules`), bindings update. No changes to `nmp-core`.
 
-`AppUpdate` is the outbound stream. Bible doctrine: snapshots by default; granular variants only where profiling warrants. v1 starts with:
+### 6.4 AppUpdate (generated per-app)
+
+`AppUpdate` is the outbound stream. Like `AppAction`, it is generated per-app from the registered modules per ADR-0010.
 
 ```rust
+// AUTO-GENERATED in nmp-app-twitter/src/update.rs.
+
 #[derive(Clone, uniffi::Enum)]
 pub enum AppUpdate {
-    FullState(AppState),                    // primary path; carries rev internally
-    ViewBatch { rev: u64, views: Vec<ViewDelta> },   // optimization for hot views
-    SideEffect { rev: u64, effect: Effect },        // see below
+    FullState(AppState),
+    ViewBatch { rev: u64, views: Vec<ViewDelta> },
+    SideEffect { rev: u64, effect: Effect },
+}
+
+#[derive(Clone, uniffi::Enum)]
+pub enum ViewDelta {
+    // One variant per ViewModule registered (kernel + protocol + app)
+    Nip01Profile { id: ViewId, delta: nmp_nip01::ProfileDelta },
+    Nip01Timeline { id: ViewId, delta: nmp_nip01::TimelineDelta },
+    Nip01Thread { id: ViewId, delta: nmp_nip01::ThreadDelta },
+    Nip02Contacts { id: ViewId, delta: nmp_nip02::ContactsDelta },
+    Nip25Reactions { id: ViewId, delta: nmp_nip25::ReactionsDelta },
+    Nip65Mailboxes { id: ViewId, delta: nmp_nip65::MailboxesDelta },
+    TwitterCompose { id: ViewId, delta: twitter_core::ComposeDelta },
+    // ...
+    FullReplace { id: ViewId, payload: ViewPayload },
 }
 
 #[derive(Clone, uniffi::Enum)]
@@ -455,19 +535,27 @@ pub enum Effect {
     BunkerPairingReady { qr: String, uri: String, expires_at: u64 },
     NipAuthChallenge { relay: String, challenge: String },
     DiagnosticReady { path: String },
+    // Modules can contribute SideEffect variants via codegen
+    Nip17(nmp_nip17::SideEffect),
+    Blossom(nmp_blossom::SideEffect),
+    // ...
 }
 ```
 
-Decisions captured here for `aim.md` §7.1:
+The `ViewPayload` enum (used by `FullReplace`) is similarly generated with one variant per ViewModule.
 
-- **Default is `FullState`.** First-class.
-- **`ViewBatch` exists from day one** because view churn dominates Nostr UI updates and full-state churn would burn CPU on serialization. The planner emits at ≤ 60Hz aggregated.
-- **`SideEffect` is reserved for ephemeral, non-state data** (pairing URIs that should not persist in `AppState`, NIP-42 auth challenges, generated diagnostic blobs).
+Decisions:
+
+- **`FullState` and `ViewBatch` together from day one** per ADR-0002. Per-view delta budget ≤ 60/sec/view; coalesced at flush per ADR's coalescing rules.
+- **`SideEffect`** carries ephemeral non-state data (pairing URIs, auth challenges, diagnostic file paths). Modules contribute their own `SideEffect` variants via codegen.
 - All update variants carry a monotonic `rev` and platforms enforce the stale guard.
+- The platform shadow is reorganized by domain key per ADR-0005; generated wrappers (`useProfile`, `useTimeline`, etc.) route the appropriate `ViewDelta` variants into typed per-domain dictionaries on the platform side.
 
-### 6.5 Capabilities
+### 6.5 Capabilities (CapabilityModule trait)
 
-Each capability is a Rust trait with `#[uniffi::export(callback_interface)]`. Native implements it; Rust calls it. Bible-pure: native reports raw data, Rust decides policy. v1 capabilities:
+Per `kernel-substrate.md` §5, each capability is a `CapabilityModule` declared by a kernel or extension crate. The generated per-app crate exposes one `uniffi::callback_interface` per declared capability. Native implements those interfaces; Rust calls them. Bible-pure: native reports raw data, Rust decides policy.
+
+v1 kernel-provided capability families:
 
 ```rust
 #[uniffi::export(callback_interface)]
@@ -502,15 +590,21 @@ pub trait BlobPickerCapability: Send + Sync + 'static {
 }
 ```
 
-Each capability is **idempotent** (`start` after `start` is a no-op) and **bounded** (the trait surface is minimal; no native code decides policy). Capabilities can be added in additional minor versions; doing so does not break existing apps because all setters are optional.
+Each capability is **idempotent** (`start` after `start` is a no-op) and **bounded** (the trait surface is minimal; no native code decides policy).
 
-### 6.6 Subscriptions / views
+**App modules can declare additional capabilities** by implementing `CapabilityModule`. Examples: `OcrCapability` (Highlighter), `HealthKitCapability` (Cut Tracker), `PodcastDownloadCapability` (podcast app). Codegen produces the callback interface; the platform implements it; the kernel routes results into the actor.
+
+### 6.6 Subscriptions / views (ViewModule trait)
 
 Decision captured here for `aim.md` §7.2 and §7.3:
 
-**Views are opened via `dispatch(OpenView)` with a platform-generated `ViewId`, and updates arrive as `ViewBatch` entries keyed by that id.** Materialization is lazy in `nmp-core` — view payloads live in the actor and are projected into `ViewSnapshots`/`ViewBatch` on every change.
+**Views are owned by `ViewModule` implementations** per `kernel-substrate.md` §3. Each ViewModule declares its Spec, Payload, Delta, Key, and reactive lifecycle hooks. The kernel maintains the view registry and routes events / projections to the right modules via the composite reverse index (ADR-0001).
+
+**Views are opened via `dispatch(KernelAction::OpenView { id, spec })` with a platform-generated `ViewId`**, and updates arrive as `ViewBatch` entries keyed by that id. The `ViewSpec` enum is generated per-app (ADR-0010) with one variant per registered ViewModule. Materialization is lazy in `nmp-core` — view payloads live in the actor and are projected into `ViewBatch` on every change.
 
 The component-facing API on each platform is *not* `ViewId`-based. Per ADR-0005, generated wrappers (`useProfile(pubkey)`, `@Profile`, `rememberProfile(pubkey)`, etc.) expose a refcounted, domain-keyed surface that translates component mount/unmount into `OpenView`/`CloseView` dispatches and writes incoming payloads into typed domain-keyed dictionaries on the platform side. App developers think in domain concepts; the framework handles subscription lifecycle and refcounted sharing behind the wrapper.
+
+**Adding a new view kind.** Implement `ViewModule` in a crate (kernel-internal, protocol module, or app module). Add the module to `nmp.toml`. Regenerate (`nmp gen modules`). The `ViewSpec`, `ViewDelta`, and per-platform wrapper update automatically.
 
 Rationale vs. opaque `ViewHandle` reference types:
 
@@ -526,6 +620,14 @@ Optimization escape hatch: a future `ViewHandle` opaque type can be added as an 
 ---
 
 ## 7. Subsystem specifications
+
+> **Layering note (per ADR-0009).** The subsystems below describe **contracts**, not necessarily code locations.
+>
+> - **Kernel-owned (in `nmp-core`):** EventStore (§7.1), subscription planner (§7.2), action ledger (kernel half of §7.5), reverse index + projection cache + delta buffer (in `reactivity.md`), domain-store substrate, capability bridge.
+> - **Packaged as protocol modules:** Outbox routing (§7.3) → `nmp-nip65`. Sessions / signers (§7.4) → kernel-owned plumbing + per-signer-kind modules (`nmp-nip46`, `nmp-nip07`, `nmp-nip55`). Actions catalog (§7.5) → individual `ActionModule` impls in protocol modules (`nmp-nip01`, `nmp-nip25`, `nmp-nip17`, ...). Views (§7.6) → individual `ViewModule` impls; see `view-catalog.md` for the catalog as reference modules. Web of Trust (§7.7) → `nmp-wot`. Sync engine (§7.8) → `nmp-nip77`. Wallet (§7.9) → `nmp-nwc`, `nmp-nip57`, `nmp-nip60`, `nmp-nip61`. Messaging (§7.10) → `nmp-nip17` + `nmp-nip17-nse`. Blossom (§7.11) → `nmp-blossom`. Guardrails (§7.12) → `nmp-guardrails`. Testing (§7.13) → `nmp-testing`. Performance instrumentation (§7.16) → `nmp-metrics`. NSE (§7.14) → `nmp-nip17-nse`. Offline action queue (§7.15) → kernel-owned half of the action ledger.
+>
+> The contracts below remain accurate; only the code location shifts to the appropriate module. An app that wants all of these features depends on the kernel plus those modules; an app that doesn't need DMs simply omits `nmp-nip17` and the corresponding capability traits are not generated.
+
 
 ### 7.1 EventStore
 
@@ -1045,51 +1147,60 @@ CI lanes (GitHub Actions):
 
 ## 12. Phasing
 
-Two-arc plan: **infrastructure first, then a real app that stress-proofs it, then a perf pass.** Detailed plan in `docs/plan.md`. The summary table below.
+Three-arc plan per ADR-0009 (kernel-first), ADR-0010 (generated app enum), ADR-0006 (vertical-slice discipline), and ADR-0008 (Twitter clone iOS as the demo target, repositioned as the first extension module). Detailed sub-phase plan in `docs/plan.md`.
 
-### Arc 1 — Infrastructure
-
-| Phase | Scope | Exit gate |
-|---|---|---|
-| 0. Foundations | Workspace, `nmp-core` actor skeleton, `AppState`/`AppAction`/`AppUpdate` shells, `nmp-ffi` round-trip, generated bindings, headless test harness | A `FullState` snapshot crosses Swift/Kotlin/TS; `rev` ordering enforced; CI green on all four platforms |
-| 1. Event store + planner | EventStore with all insert invariants (replaceable, delete, expiration, dedup, provenance), claim-based GC, sync watermarks table, gossip cache, outbox routing default, subscription planner with coalescing/auto-close/buffering | Bug-extinction tests #1, #2, #3, #4, #6, #8 (§3.3) pass against `MockRelay` |
-| 2. Sync engine | NIP-77 negentropy as the default backfill path, watermark-driven planner decisions, foreground/view-open/reconnect triggers, capability negotiation, bytes-saved instrumentation | Cold open of a profile cold-syncs via NIP-77; bytes-saved ≥ 95% vs equivalent REQ on 10k-event backfill |
-| 3. Sessions + signers + actions | Multi-account, local-key + NIP-46 signers, the full action catalog from §6.3, offline action queue with durable storage, action atomicity (publish + store-insert as one actor message) | Bug-extinction tests #5, #7, #9, #10 pass; offline-queue replay test passes |
-| 4. Views + best-effort rendering | View kinds (profile, contacts, timeline, thread, replies, reactions, conversation list, conversation), pre-formatted display fields, non-optional placeholder contract, `ViewBatch` deltas, view warmth | Best-effort doctrine enforced in tests: posts render without kind:0 present; cached kind:0 always served; in-place refinement on arrival |
-| 5. Messaging | NIP-17 conversation layer over NIP-44/NIP-59, NSE crate (`nmp-nse`) with bounded memory, background decryption | DM round-trip on iOS + Android with NSE; memory budget respected |
-| 6. Wallet + WoT + Blossom | NWC, zaps, Cashu, nutzaps; WoT subsystem; Blossom client | Pay/receive zap; WoT toggle reorders timeline visibly; Blossom upload/download |
-| 7. Web | `nmp-wasm`, web shell, OPFS+IndexedDB backend, capability bridges for web (NIP-07, file pickers, browser storage) | Cross-platform consistency tests pass on web |
-
-### Arc 2 — Proof app + perf
+### Arc 1 — Kernel substrate + Twitter demo on iOS
 
 | Phase | Scope | Exit gate |
 |---|---|---|
-| 8. Proof app | Build `nmp-proof` (§4.5) on all four platforms; performance overlay; scripted scenarios for cross-platform consistency tests | Proof app launches and exercises every subsystem on every platform; consistency tests pass |
-| 9. Performance pass | Run proof app on real devices (mid-range iOS, mid-range Android, Linux desktop, modern web browsers); collect counters; address budget regressions; tune planner, ViewBatch deltas, marshaling | All §7.16 budgets met on reference devices; performance report published to `docs/perf/v1.md` |
+| 0. Foundations | Workspace, `nmp-core` actor skeleton, `nmp-codegen` skeleton, kernel `AppState` / `KernelAction` / `AppUpdate` shells, headless test harness | Kernel actor starts/stops cleanly; codegen produces a no-op `nmp-app-empty` crate that compiles; CI green |
+| 1. **Kernel substrate prototype + fixture** | All five extension trait families (`DomainModule`, `ViewModule`, `ActionModule`, `CapabilityModule`, `IdentityModule`); composite reverse index; delta buffer with coalescing; claim-based GC; one fixture app module (`fixture-todo-core`) implementing one of each trait family; desktop iced shell | Fixture TODO app runs on desktop; codegen produces working `nmp-app-fixture` crate; the fixture proves the kernel boundary for non-Nostr-shaped data |
+| 2. **First Nostr protocol module + desktop avatar slice** | `nmp-nip01` (Event, Filter, Keys, Profile view module); `useProfile` wrapper; primal connection via `nostr-sdk`; desktop iced avatar demo | Avatar slice runs on desktop against primal; ADR-0006 slice exit gate met |
+| 3. **iOS port of the avatar slice** | UniFFI binding pipeline; xcframework; SwiftUI shell; `AppManager`; generated iOS wrappers; `KeychainCapability` minimal | iOS avatar demo runs against primal; cross-platform consistency between desktop and iOS verified |
+| 4. **Persistence + multi-module composition** | LMDB backend; `nmp-nip02` (Contacts); `nmp-nip01::TimelineViewModule`; seed-driven Timeline; projection cache populated from real kind:0 inserts | Seed-driven timeline runs on iOS; cold start with primed LMDB ≤ 1.5s; reactivity-bench passes against real code |
+| 5. **Signer + Compose** | `IdentityModule::HumanAccount` (local-key); `KeychainCapability` real impl; `nmp-nip01::SendNoteActionModule`; iOS login + compose UI; optional "Home" mode swap | New install → log in → compose → published to primal + locally inserted atomically; action atomicity test passing |
+| 6. **Interaction loop** | `nmp-nip25` (Reactions); `nmp-nip10` (Thread); React + Reply action modules; tap-to-thread navigation on iOS | Like / reply / thread navigation all working on iOS; orphan handling correct |
+| 7. **Profile screen + diagnostics + polish + second fixture** | Author-tap → profile screen with author-filtered Timeline; pagination; ADR-0007 diagnostics screen; second non-Nostr fixture module (small notes app) demonstrating boundary breadth | Full Twitter-clone demo flow works on iOS; firehose-bench live `cold_start` + `profile_thrashing` + `sustained_firehose` within budgets; non-Nostr fixture demonstrates kernel boundary |
 
-### Arc 3 — Release
+### Arc 2 — Broader protocol modules + remaining platforms
 
 | Phase | Scope | Exit gate |
 |---|---|---|
-| 10. CLI + starter app + docs | `nmp init`, `nmp doctor`, `nmp gen *`, minimal starter app polish, recipe book, NIP support matrix | §3 success criteria reproducible from published docs alone |
-| 11. v1 release | Tagged release on crates.io and npm; bindings published; example apps deployed | Public availability |
+| 8. Sync + outbox modules | `nmp-nip77` sync engine (now an `ActionModule` + planner integration); `nmp-nip65` outbox routing; full insert invariants (parameterized replaceable, kind-5 delete, NIP-40 expiration, full dedup); offline-action durability | Cold open of a profile cold-syncs via NIP-77; bytes-saved ≥ 95% vs REQ; outbox routing tested with synthetic multi-relay scenarios |
+| 9. Messaging | `nmp-nip17` conversation module + `nmp-nip17-nse` companion crate | DM end-to-end on iOS with NSE; NSE memory budget met |
+| 10. Wallet + WoT + Blossom | `nmp-nwc`, `nmp-nip57`, `nmp-nip60`, `nmp-nip61`, `nmp-blossom`, `nmp-wot` | Pay/receive zap; WoT toggle reorders timeline; Blossom upload/download |
+| 11. Android port | UniFFI Kotlin bindings; cargo-ndk + Gradle pipeline; Compose shell; `nmp-nip55` Amber bridge capability; cross-platform consistency on Android | Android app runs against primal with the same scripted scenarios as iOS |
+| 12. Web port | `nmp-wasm`; web shell (React or Solid TBD); IndexedDB backend; `nmp-nip07` capability | Web app runs the same demo; cross-platform consistency passes on web |
 
-**Naming** (`aim.md` §7.7) must be resolved before Phase 11.
+### Arc 3 — Proof, perf, release
 
-Each phase ends with a regression test added to `nmp-testing` that locks in the gate. Subsequent phases must not break prior gates.
+| Phase | Scope | Exit gate |
+|---|---|---|
+| 13. Proof app | `nmp-proof` (a richer kitchen-sink app distinct from the Twitter demo) on all four platforms; performance overlay | All §7.16 budgets met on real reference devices; performance report published |
+| 14. Performance pass | Soak runs; firehose-bench live across full scenario set; tune | No platform shows jank under workloads; `docs/perf/v1.md` published |
+| 15. CLI + starter app + docs | `nmp init`, `nmp add module`, `nmp doctor`, starter app polish, recipe book, NIP support matrix | §3 success criteria reproducible from docs alone |
+| 16. v1 release | Tagged release on crates.io + npm; bindings published | Public availability |
+
+**Naming** (`aim.md` §7.7) must be resolved before Phase 16.
+
+Each phase ends with a regression test added to `nmp-testing` that locks in the gate. Subsequent phases must not regress prior gates. The kernel substrate (Phase 1) is the foundation; every later module builds against the same trait surface.
 
 ---
 
 ## 13. Open questions remaining
 
-These are not resolved in this spec and require further design before implementation:
+Resolved since the original draft:
+
+- ~~6. Pluggable view kinds~~ — **resolved** by ADR-0009 + ADR-0010. Project-specific view kinds are first-class via the `ViewModule` trait; codegen produces per-app concrete `ViewSpec` enums.
+
+Still open:
 
 1. **Web persistence semantics.** OPFS vs IndexedDB tradeoffs; how do we expose the picker; what happens on Safari without OPFS.
-2. **Wallet UI contract for NIP-60.** Cashu mint trust / proof state visibility in `WalletState`.
+2. **Wallet UI contract for NIP-60.** Cashu mint trust / proof state visibility in the wallet module's view payload.
 3. **Signer policy for sub-actions.** When an action composes multiple sub-actions each requiring signing (e.g., publishing a note and a relay-list update in one user step), how is the bunker prompted — one prompt or N?
-4. **Migration story between minor versions.** AppState shape evolution: schema-versioned snapshots, or schemaless / additive only?
+4. **Migration story between minor versions.** Generated app-enum shape evolution: when a kernel update adds new `KernelAction` variants, how do existing app bindings cope? Probably resolved by additive-only enum extension + re-codegen; needs validation.
 5. **Telemetry.** Do we ship optional, off-by-default telemetry into the framework for debugging? (Default proposal: no; consumer adds it.)
-6. **Pluggable view kinds.** Are project-specific `ViewSpec` variants first-class (enum extension is awkward in Rust), or are they added by string-keyed payloads with consumer-side decoding?
+6. **Cross-module schema migrations.** When Module A's schema migration depends on Module B's, how are they sequenced? Sketched in `kernel-substrate.md` as a "migration manifest" but needs design.
 7. **Final name.** `aim.md` §7.7 remains open.
 
 These questions are tractable in the design phase and do not block the rest of this spec.
@@ -1109,9 +1220,16 @@ These questions are tractable in the design phase and do not block the rest of t
 - **Reconciler.** `AppReconciler` callback trait. Receives `AppUpdate`s on a background thread; the platform shim hops to the UI thread.
 - **View.** A pre-built derived projection of `EventStore` contents. Opened by `OpenView` action; payload arrives via `AppState.views` / `ViewBatch`.
 - **Capability bridge.** Synonym for capability; the RMP bible's term.
-- **ViewSpec / ViewPayload.** The opened-view descriptor and the materialized data.
+- **ViewSpec / ViewPayload.** The opened-view descriptor and the materialized data. Per ADR-0010, the per-app `ViewSpec` enum is generated by `nmp gen modules`; each registered `ViewModule` contributes one variant.
 - **Watermark.** A `(filter, relay) → time` record indicating how much of that filter we have already reconciled from that relay. The basis of sync-first backfill (§7.1, §7.8).
 - **Best-effort rendering.** Doctrine D1: render what's available, refine in place; never withhold cached data; never block on fetches.
+- **Kernel substrate.** The five extension trait families (`DomainModule`, `ViewModule`, `ActionModule`, `CapabilityModule`, `IdentityModule`) defined in `nmp-core` and consumed by every extension module. See `docs/design/kernel-substrate.md`.
+- **Extension module.** A crate that implements one or more of the kernel substrate traits. May be a kernel-internal module, a reusable Nostr protocol module (`nmp-nip01`, `nmp-nip17`, ...), or an app-specific core crate (`twitter-core`, `highlighter-core`, ...).
+- **Per-app crate (`nmp-app-<name>`).** The generated crate produced by `nmp gen modules` that assembles a chosen module set into concrete `AppAction` / `AppUpdate` / `ViewSpec` enums and the UniFFI bindings. App developers build their iOS / Android / web shell against this crate, not against `nmp-core` directly.
+- **Codegen.** The `nmp gen modules` step that produces `nmp-app-<name>/` from `nmp.toml`. Critical-path infrastructure per ADR-0010.
+- **Protocol module.** An extension crate scoped to a specific NIP or Nostr protocol concept (`nmp-nip01`, `nmp-nip17`, `nmp-nip29`, `nmp-blossom`, `nmp-nwc`, ...). Reusable across apps; ships in the framework workspace.
+- **App module / app core crate.** An extension crate scoped to a specific application's domain (`twitter-core`, `highlighter-core`, ...). Lives in the consuming app's repo; not framework-owned.
+- **Doctrine D0.** Kernel + extension modules; no app nouns in `nmp-core` (§1.5).
 
 ---
 

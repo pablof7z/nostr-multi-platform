@@ -1,19 +1,21 @@
-# Design: View Catalog
+# Design: Reference Nostr View Modules Catalog
 
-> **Audience:** Framework contributors building view kinds. Each view kind in this catalog is a Rust module in `crates/nmp-views/`.
+> **Audience:** Framework contributors building reference Nostr protocol modules. Each entry below is a `ViewModule` (per `kernel-substrate.md` §3) shipped in a reusable protocol crate (`nmp-nip01`, `nmp-nip02`, `nmp-nip10`, `nmp-nip25`, `nmp-nip65`, `nmp-nip17`, ...). Apps consume them by adding the crate to `nmp.toml`.
 
-> **Status:** Draft. Five view kinds detailed here as templates; remaining 10 stubbed for completion during Phase 4 of the build plan.
+> **Status:** rev 2 — reframed per ADR-0009. The view kinds below are not in `nmp-core`; they are reusable Nostr-protocol extension modules. The "view-kind" terminology is preserved for continuity, but each kind lives in its protocol module.
 
-> **Prerequisites:** `product-spec.md` §7.6 (Views, with the `TimelineItem` example and best-effort field contract), `reactivity.md` (the per-view-kind contract in §4).
+> **Prerequisites:** `product-spec.md` §7.6 (Views API surface, doctrine D1 best-effort rendering), `reactivity.md` (the `ViewModule` contract in §4), `kernel-substrate.md` §3 (ViewModule trait), ADR-0005 (domain-keyed shadow), ADR-0010 (per-app generated `ViewSpec`).
 
 ---
 
 ## 1. Per-view-kind template
 
-Every view kind in `crates/nmp-views/` follows this shape:
+Every reference Nostr view module lives in a `nmp-nip*` crate and implements `ViewModule` per `kernel-substrate.md` §3. The protocol-module location for each view kind is given in the catalog index in §2.
+
+Each module's source file follows this shape:
 
 ```
-crates/nmp-views/src/<kind>.rs
+crates/nmp-<protocol>/src/views/<kind>.rs
 ```
 
 with these public items:
@@ -81,23 +83,27 @@ The per-platform wrapper layer organizes the shadow as typed domain-keyed dictio
 
 ## 2. View kinds — full enumeration
 
-| # | Kind | Detailed in this doc? | Phase |
-|---|---|---|---|
-| 1 | Profile | yes (§3) | 1 |
-| 2 | Contacts | stub (§9) | 1 |
-| 3 | Mailboxes | stub (§9) | 1 |
-| 4 | Mutes | stub (§9) | 2 |
-| 5 | Blossom servers | stub (§9) | 6 |
-| 6 | Timeline | yes (§4) | 1 |
-| 7 | Thread | yes (§5) | 1 |
-| 8 | Replies | stub (§9) | 1 |
-| 9 | Reactions | yes (§6) | 1 |
-| 10 | Conversation list | stub (§9) | 5 |
-| 11 | Conversation | yes (§7) | 5 |
-| 12 | Zap history | stub (§9) | 6 |
-| 13 | Wallet balance | stub (§9) | 6 |
-| 14 | WoT rank | stub (§9) | 6 |
-| 15 | Search | stub (§9) — heavy `catch_all_filter` | 1 |
+The "Protocol module" column shows which `nmp-nip*` crate owns this view kind. Apps consume these by adding the crate to `nmp.toml`.
+
+| # | Kind | Protocol module | Detailed in this doc? | Phase |
+|---|---|---|---|---|
+| 1 | Profile | `nmp-nip01` | yes (§3) | 2 (kernel-boundary slice on top of nmp-nip01) |
+| 2 | Contacts | `nmp-nip02` (re-export over nmp-nip01) | stub (§9) | 4 |
+| 3 | Mailboxes | `nmp-nip65` | stub (§9) | 8 |
+| 4 | Mutes | `nmp-nip01` | stub (§9) | 9 |
+| 5 | Blossom servers | `nmp-blossom` | stub (§9) | 10 |
+| 6 | Timeline | `nmp-nip01` | yes (§4) | 4 |
+| 7 | Thread | `nmp-nip10` | yes (§5) | 6 |
+| 8 | Replies | `nmp-nip10` | stub (§9) | 6 |
+| 9 | Reactions | `nmp-nip25` | yes (§6) | 6 |
+| 10 | Conversation list | `nmp-nip17` | stub (§9) | 9 |
+| 11 | Conversation | `nmp-nip17` | yes (§7) | 9 |
+| 12 | Zap history | `nmp-nip57` | stub (§9) | 10 |
+| 13 | Wallet balance | `nmp-nwc` (or `nmp-nip60` for Cashu) | stub (§9) | 10 |
+| 14 | WoT rank | `nmp-wot` | stub (§9) | 10 |
+| 15 | Search | TBD — needs its own protocol module or lives as a generic utility | stub (§9) — heavy `catch_all_filter` | 4 |
+
+The phase numbers refer to `plan.md`'s post-ADR-0009 phasing. Each view kind ships when its containing protocol module ships.
 
 The five detailed entries cover the structural patterns that the stubbed kinds will follow.
 
