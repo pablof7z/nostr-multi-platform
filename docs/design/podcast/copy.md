@@ -284,7 +284,7 @@ The pixel-parity gate enforces these invariants after Step 0 lands:
 
 - `cp -R` commit lands.
 - `just gen-ios && just build-ios` succeeds (build only — app shows empty data everywhere).
-- `just screenshot-diff --baseline-only` runs without errors and populates `docs/perf/m11/parity-screenshots/reference/` from `../podcast`.
+- `just screenshot-diff --baseline-only` runs without errors and populates `docs/perf/m11/parity-screenshots/reference/` from `../podcast`. Then `just screenshot-diff --fail-on-gate` passes (candidate = reference at Step 0; the gate confirms zero regression from the split).
 - `grep -RnE '// MARK: NMP-WIRE — TODO' ios/NmpPodcast/Views/ | wc -l` is the work-remaining counter for Step 7.
 
 ---

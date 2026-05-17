@@ -61,7 +61,7 @@ pub enum LlmRoute {
 pub enum RigProvider {
     OpenAI,
     Anthropic,
-    Local { base_url: Url, model: String },
+    Local { base_url: Url },   // model comes from LlmRoute::RigProvider.model
 }
 
 pub fn select_route(settings: &SettingsRecord, capabilities: &CapabilityAvailability) -> LlmRoute {
@@ -262,9 +262,9 @@ For `rig.rs` routes, the same shape: `rig::completion::StreamingChat` yields a `
 
 **M11 provider configuration.** Because rig.rs is required in M11 (see §K), the API key must be reachable in M11. In M11 the key is injected via environment variables at test time:
 - `NMP_LLM_PROVIDER` — `openai` | `anthropic` | `local`
-- `NMP_LLM_MODEL` — e.g. `gpt-4o-mini` (default for OpenAI if unset)
-- `NMP_LLM_API_KEY` — provider API key
-- `NMP_LLM_BASE_URL` — required only for `local`
+- `NMP_LLM_MODEL` — e.g. `gpt-4o-mini`; populates `LlmRoute::RigProvider.model` for all providers (OpenAI, Anthropic, and Local); default `gpt-4o-mini` when unset with OpenAI
+- `NMP_LLM_API_KEY` — provider API key (OpenAI/Anthropic)
+- `NMP_LLM_BASE_URL` — required only for `local`; populates `RigProvider::Local { base_url }`
 
 The `KeyValueStoreCapability` bridge reads these vars at boot and writes them into the `podcast.llm.*` keys; the bootstrap also overwrites `SettingsRecord.llm_preferred_route` to `Rig { provider, model }`, so `select_route()` picks the rig path without any UI interaction. The Settings UI for end-user key entry is post-M11. On the iOS device in production, Apple Intelligence is the default and requires no key.
 
