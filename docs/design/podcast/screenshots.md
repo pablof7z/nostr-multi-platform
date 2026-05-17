@@ -150,7 +150,7 @@ Each screen pins a specific fixture (none / `lex-1-ep` / `lex-3-eps` / `multi-po
 
 ```bash
 # Capture reference baseline (one-shot, after Step 0 lands).
-just screenshot-diff --baseline
+just screenshot-diff --baseline-only
 
 # Compare candidate against reference (CI default).
 just screenshot-diff
