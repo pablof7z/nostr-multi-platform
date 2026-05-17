@@ -73,9 +73,9 @@
 
 ### 2.2 Cross-protocol reactions / comments inside rooms
 
-- **[N29-adj]** NIP-25 reactions on group artifacts — a like on a shared artifact inside a room is a kind:7 carrying an `["h", group_id]` tag, which makes it a group event and routes host-relay-only per `routing.md` §5 (the h-tag override is exclusive). Reactions on the *underlying* artifact outside any group context still route per the author's NIP-65 write relays — the same user can publicly react to an article and separately react to it in a private room context, producing two distinct kind:7 events with different routing.
-- **[N29-adj]** NIP-22 comments on group artifacts — kind:1111 comments carrying `["h", group_id]` route host-relay-only (same rule as reactions). Comments on the underlying artifact without an `h` tag route per author write relays. The dual-routing here is the cleanest illustration of the host-relay-pin's exclusivity rule.
-- **[N29-adj]** Group-scoped comment threads on artifacts — discussion view embeds the host-pinned kind:1111 comments scoped to the artifact's `A:`/`E:`/`I:` reference *within the group context* (`Comments/` consumed inside `RoomStore.swift::commentsByReference`).
+- **[N29-adj]** In-group kind:7 reactions on group artifacts — a like on a shared artifact inside a room is a kind:7 carrying an `["h", group_id]` tag. Per the unifying ownership rule (`kinds.md` §4), this is a NIP-29 event owned by `nmp-nip29::GroupReaction` and emitted by `nmp-nip29::ReactInGroup`; routes host-relay-only. The same user reacting to the *underlying* artifact outside any group context produces a separate non-`h` kind:7 owned by `nmp-nip25` that routes per the author's NIP-65 write relays.
+- **[N29-adj]** In-group kind:1111 comments on group artifacts — same pattern: `["h", group_id]` makes them `nmp-nip29::GroupComment` / `nmp-nip29::CommentInGroup`, host-relay-pinned. Comments on the underlying artifact without an `h` tag are public NIP-22 and stay in `nmp-nip22`.
+- **[N29-adj]** Group-scoped comment threads on artifacts — discussion view embeds the host-pinned `GroupComment` records scoped to the artifact's `A:`/`E:`/`I:` reference *within the group context* (`Comments/` consumed inside `RoomStore.swift::commentsByReference`).
 
 ## 3. NIP-29-independent features (full app parity surface)
 

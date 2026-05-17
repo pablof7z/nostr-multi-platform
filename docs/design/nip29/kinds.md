@@ -204,10 +204,22 @@ The `p` tag is used in four distinct ways across this kind set:
 - **Emitted by:** `ShareEventIntoGroup` ActionModule; also the second leg of the `publish-and-share` composed flow described in `routing.md` §6
 - **Notes:** This is NIP-18 generic repost, scoped into a group by the `h` tag. `nmp-nip29` owns this DomainModule in M11.5 because (a) no separate `nmp-nip18` crate exists yet, (b) the routing concern is the `h` tag, not the kind, (c) the surface is one domain + one action. A future `nmp-nip18` extraction would lift the *non-`h`* repost case out, leaving `nmp-nip29` owning only the `h`-tagged variant.
 
-## 4. Kinds the framework explicitly does **not** model in `nmp-nip29`
+## 4. The unifying ownership rule
 
-- **kind:1 (text note) with an `h` tag.** Some relays accept kind:1 inside groups; we treat that as kind:9-equivalent for projection but do not actively emit kind:1 from `nmp-nip29` actions. UI rendering: same as chat.
-- **kind:7 (reaction) with an `h` tag.** Owned by `nmp-nip25` (which knows the h-tag override rule per `routing.md` §5); `nmp-nip29` provides a typed `GroupId` carrier for `nmp-nip25`'s reaction action when the reaction is in-group.
-- **kind:1111 (NIP-22 comment) with an `h` tag.** Owned by `nmp-nip22` (same arrangement as kind:7); cross-protocol composition of "discussions + their reply counts" happens in `highlighter-core` per `nip29-crate.md` §6.
+**Any event carrying an `["h", group_id]` tag is a NIP-29 group event and lives in `nmp-nip29`, regardless of its kind.** The `h` tag is the ownership discriminator; the kind is just the dispatch.
 
-The "owned by another crate" pattern is the framework's standard isolation: each NIP gets its own crate; cross-protocol UIs (a group artifact card showing reactions + comments + highlights) compose at the *app* layer via the kernel's composite-key reverse index without any crate growing knowledge of any other.
+This applies to:
+
+- **kind:7 (reaction) with an `h` tag** → `GroupReaction` DomainModule + `ReactInGroup` ActionModule in `nmp-nip29`. The non-`h` (public) reaction stays in `nmp-nip25`.
+- **kind:1111 (NIP-22 comment) with an `h` tag** → `GroupComment` DomainModule + `CommentInGroup` ActionModule in `nmp-nip29`. The non-`h` (public) comment stays in `nmp-nip22`.
+- **kind:16 (generic repost) with an `h` tag** → `GroupRepost` DomainModule + `ShareEventIntoGroup` ActionModule in `nmp-nip29` (per §2.2). The non-`h` repost would live in a future `nmp-nip18`.
+- **kind:11 with `h`** (both `t=discussion` and artifact-share variants) → `nmp-nip29` per §2.1.
+- **kind:9 with `h`** → `nmp-nip29` per §2.1.
+
+The "owned by another crate" pattern still applies to the non-`h` variants of these kinds (`nmp-nip25` for public reactions, `nmp-nip22` for public comments, future `nmp-nip18` for public reposts), keeping protocol-crate isolation intact: `nmp-nip25` knows nothing about groups; `nmp-nip29` knows nothing about public reactions.
+
+The only kind we explicitly **don't** model in `nmp-nip29` despite being able to carry an `h` tag:
+
+- **kind:1 (text note) with an `h` tag.** Some relays accept kind:1 inside groups; we treat that as kind:9-equivalent for projection but do not actively emit kind:1 from `nmp-nip29` actions. UI rendering: same as chat. Kept out of `nmp-nip29`'s action surface to avoid ambiguity with public kind:1 owned by the app's social crate; ingest is best-effort.
+
+**Custom kinds with `h` tags** (livestreams, polls, files, future NIPs) follow the generic `GroupContextEvent` fallback per §2.1's "Future / extensibility" note — apps that ship custom group event kinds layer their own DomainModules without modifying `nmp-nip29`, because the `h`-tag-is-the-ownership rule is structural and works for any kind.
