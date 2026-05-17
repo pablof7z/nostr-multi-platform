@@ -9,8 +9,8 @@ must-fix list, and conclusion.
 
 ### Finding F1: Unsafe FFI Pointer Dereference — `ffi.rs:75`
 
-**File:** `crates/nmp-core/src/ffi.rs:73–79`  
-**Severity:** Medium (correct code, documentation gap)  
+**File:** `crates/nmp-core/src/ffi.rs:73–79`
+**Severity:** Medium (correct code, documentation gap)
 **Type:** Unsafe without safety comment
 
 ```rust
@@ -33,7 +33,7 @@ unsafe { drop(Box::from_raw(app)); }
 
 ### Finding F2: Unsafe Pointer Dereference — `ffi.rs:275`
 
-**File:** `crates/nmp-core/src/ffi.rs:271–277`  
+**File:** `crates/nmp-core/src/ffi.rs:271–277`
 **Severity:** Medium (correct code, documentation gap)
 
 ```rust
@@ -54,7 +54,7 @@ Some(unsafe { &*app })
 
 ### Finding F3: Unsafe C String Conversion — `ffi.rs:284`
 
-**File:** `crates/nmp-core/src/ffi.rs:279–290`  
+**File:** `crates/nmp-core/src/ffi.rs:279–290`
 **Severity:** Low (standard C FFI pattern, validated downstream)
 
 ```rust
@@ -74,7 +74,7 @@ unsafe { CStr::from_ptr(ptr) }
 
 ### Finding F4: Allow Dead Code Suppression — `relay_worker.rs:242`
 
-**File:** `crates/nmp-core/src/relay_worker.rs:240–245`  
+**File:** `crates/nmp-core/src/relay_worker.rs:240–245`
 **Severity:** Low (defensive programming, clarity gap)
 
 ```rust
@@ -110,7 +110,7 @@ refcount: claim_count.min(u32::MAX as usize) as u32,
 
 ### Finding F6–F10: Count-to-Metric Casts
 
-**Files:** `kernel/update.rs:43–56` (5 casts), `kernel/nostr.rs:85` (1 cast).  
+**Files:** `kernel/update.rs:43–56` (5 casts), `kernel/nostr.rs:85` (1 cast).
 **Severity:** Low — bounded by working-set design constraints.
 
 **Classification:** **ACCEPTABLE**. Max 5,000 events (ADR-0001), max 500
@@ -122,7 +122,7 @@ visible (FFI clamp). No overflow risk.
 
 ### Finding F11–F12: Relay Counter Saturation Casts
 
-**Files:** `kernel/ingest.rs:13,20`, `kernel/requests.rs:572`.  
+**Files:** `kernel/ingest.rs:13,20`, `kernel/requests.rs:572`.
 **Severity:** Low — safe saturation arithmetic.
 
 ```rust

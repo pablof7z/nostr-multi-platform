@@ -1,8 +1,8 @@
 # FFI & iOS Bridge Debt Inventory (M10.5 Audit)
 
-**Audit Date:** 2026-05-18  
-**Scope:** Rust FFI boundary + iOS bridge code paths  
-**Files Scanned:** 19 Rust modules + 9 Swift files (5,184 LOC Rust, 1,375 LOC Swift)  
+**Audit Date:** 2026-05-18
+**Scope:** Rust FFI boundary + iOS bridge code paths
+**Files Scanned:** 19 Rust modules + 9 Swift files (5,184 LOC Rust, 1,375 LOC Swift)
 **Exit Criteria:** All findings classified; doctrine violations identified and severity-ranked
 
 ---
@@ -121,5 +121,5 @@ requires (per `docs/plan.md` §M10.5):
 - Doctrine review signed in writing in `docs/perf/m10.5/doctrine-review.md`
 
 **Audit status:** ✅ static-debt baseline established. The 4 must-fix
-items above are tracked.  
+items above are tracked.
 **M10.5 exit status:** ❌ pending empirical proof + must-fix cleanup.

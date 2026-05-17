@@ -245,11 +245,11 @@ Full D0–D5 line-item-to-scenario mapping in
 | Doctrine | Proven by |
 |---|---|
 | **D0** kernel never grows app nouns | debt-inventory §3 D0 audit + S6 (the kernel does not grow capability variants under churn) |
-| **D1** best-effort rendering with placeholders | S3 (snapshot pressure) + S10 (long suspend) — placeholder-then-refine path |
+| **D1** best-effort rendering with placeholders | S3 (snapshot pressure) + S4 (reconciler back-pressure) + code proof (ProfileCard.placeholder) |
 | **D2** ≤60Hz/view, working-set bound | S2, S3, S8 — emit-rate cap, planner dedup |
 | **D3** errors never cross FFI | S7 (exhaustion) + §7.2 (toast bridge) |
 | **D4** one writer per fact | S1, S5 — refcount only mutated on actor thread; reentrancy under same single-writer rule |
-| **D5** snapshots bounded by what's open | S1 (refcount drives eviction) + S3 (full-state size scales with open views, not store) |
+| **D5** capabilities report, never decide | CapabilityModule code proof + S6 (relay capability lifecycle storms) |
 
 ## 9. CI integration
 
