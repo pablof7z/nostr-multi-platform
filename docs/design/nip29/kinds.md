@@ -43,7 +43,7 @@ Highlighter overloads kind:11 as **two distinct event shapes** with the same wir
 - **Owner:** `nmp-nip29::GroupDiscussion` DomainModule; projected by `GroupDiscussions` ViewModule
 - **Replaceable:** no
 - **Emitted by:** `PostDiscussion` ActionModule
-- **Notes:** Replies are NIP-22 kind:1111 owned by `nmp-nip22`, cross-referenced by the discussion's event id. The `t=discussion` marker is recognised by both Highlighter and 0xchat-style clients but is NOT in the NIP-29 spec; document the convention in the M11.5 exit-gate report and consider proposing it upstream.
+- **Notes:** Replies on a discussion that carry an `["h", group_id]` tag are `nmp-nip29::GroupComment` records per §4's unifying ownership rule (every h-tagged event is `nmp-nip29`'s, regardless of kind). Only kind:1111 replies *without* an `h` tag fall to `nmp-nip22`. In practice, Highlighter's discussion-reply composer always attaches the room's `h` tag, so in-room replies are NIP-29-routed end-to-end. The `t=discussion` marker is recognised by both Highlighter and 0xchat-style clients but is NOT in the NIP-29 spec; document the convention in the M11.5 exit-gate report and consider proposing it upstream.
 
 **Kind 11 — Group artifact share** (without `["t","discussion"]`, with catalog tags)
 
@@ -94,9 +94,9 @@ All require `["h", <group_id>]` and are signed by a current admin (member of the
 #### Kind 9000 — Put user
 
 - **Required tags:** `["h", <group_id>]`, `["p", <target_pubkey_hex>]`
-- **Optional tags:** `["p", <pubkey>, <role_name>]` (3-element form to grant a role like "admin", "secretary"); `["reason", <text>]`
+- **Optional tags:** `["role", <role_name>]` (sibling tag, Highlighter convention — `groups.rs::create_invite_codes` neighbours and `nip29-crate.md` §3.3 both use the sibling-tag form `["role","admin"]`); `["reason", <text>]`. **Note:** The NIP-29 spec also allows the role name as a third element on the `p` tag (`["p", <pubkey>, <role_name>]`); for emit, we use the sibling `role` tag form because it matches Highlighter's existing client and relay29's expectations, but ingest accepts both wire formats and normalizes to the same in-memory shape.
 - **Routing:** host relay (pin)
-- **Effect:** target pubkey added to 39002 (and to 39001 if a role tag is present).
+- **Effect:** target pubkey added to 39002 (and to 39001 if a role tag is present in either form).
 - **Owner:** emitted by `PutUser` ActionModule.
 
 #### Kind 9001 — Remove user

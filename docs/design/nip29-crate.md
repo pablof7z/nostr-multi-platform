@@ -49,7 +49,7 @@ Apps consume `nmp-nip29` by adding it to their `nmp.toml` enabled-modules list, 
 
 Per the advisor checkpoint and verified against the Highlighter `app/core/src/{groups,chat,discussions}.rs` public surfaces, the crate produces **three** of the five substrate trait families (per `crates/nmp-core/src/substrate/mod.rs`):
 
-### 3.1 `DomainModule` impls (11)
+### 3.1 `DomainModule` impls (12)
 
 These are the persistent record shapes the crate owns. Each is the truth source for its kind range; views project off them. **The unifying rule: any event carrying an `["h", group_id]` tag is a group event and lives in `nmp-nip29`, regardless of its kind.** The kind is the dispatch, the `h` tag is the ownership.
 
@@ -66,6 +66,7 @@ These are the persistent record shapes the crate owns. Each is the truth source 
 | `GroupReaction` | 7 (when `h` present) | `(host_relay_url, group_id, event_id)` | NIP-25 reaction to an event inside a group. The h-tagged variant lives here rather than in `nmp-nip25` because (a) routing is host-pin, (b) the same h-tag-is-the-ownership rule applies, (c) `nmp-nip25` stays unaware of any group concept. The non-`h` (public) reaction stays in `nmp-nip25`. |
 | `GroupComment` | 1111 (when `h` present) | `(host_relay_url, group_id, event_id)` | NIP-22 comment scoped into a group. Same justification as `GroupReaction`. The non-`h` (public) comment stays in `nmp-nip22`. |
 | `GroupModerationEvent` | 9000–9009, 9021, 9022 | `(host_relay_url, group_id, event_id)` | Audit trail of admin-side actions. **Audit-only** — see `moderation.md` §5 for the strict separation from canonical 39001/39002 mutation. |
+| `GroupContextEvent` | any other kind carrying an `h` tag (livestreams, polls, files, future NIPs) | `(host_relay_url, group_id, event_id, kind)` | Generic fallback ingest for unknown h-tagged kinds. Apps that ship custom group event kinds layer their own DomainModules over the same kind range *without modifying `nmp-nip29`*; the fallback exists so unrecognised kinds aren't silently dropped. Not user-rendered by default; apps that want to render unknown kinds either consume this record directly or register a higher-priority DomainModule for that kind. |
 
 ### 3.2 `ViewModule` impls (7)
 
@@ -109,7 +110,7 @@ These are the writes. Each is an admin- or user-initiated event that NMP's `Publ
 - **No `IdentityModule`.** Groups don't change the user's identity model; M6/M8 covers identity.
 - **No new persistence schema.** Per ADR-0010 + M3, all domain records persist via the kernel's LMDB tables keyed by their composite keys. The crate declares migrations in standard NMP shape.
 
-**Total: 3 trait families touched (Domain, View, Action), 33 module impls total** (11 + 7 + 15). This is the return-statistic for the design pass.
+**Total: 3 trait families touched (Domain, View, Action), 34 module impls total** (12 + 7 + 15). This is the return-statistic for the design pass.
 
 ## 4. The load-bearing constraint: host-relay-pin
 
@@ -147,8 +148,8 @@ The user surfaces the UI consumes need joins against three other crates. Per the
 | Composed view (lives in `highlighter-core`) | Composes | Mechanism |
 |---|---|---|
 | `HydratedGroupChat` | `nmp-nip29::GroupChat` + `nmp-nip01::Profile` for each author | composite-key dependency tracking at the substrate level (ADR-0001) — `highlighter-core::HydratedGroupChat::dependencies()` enumerates both; the kernel reverse-index handles the join with no protocol-crate awareness |
-| `DiscussionsWithReplyCounts` | `nmp-nip29::GroupDiscussions` + `nmp-nip22::Comment { e: <discussion_id> }` per discussion root | same pattern; the comment count + latest-reply ordering happens in `highlighter-core`'s `project()` |
-| `GroupArtifactLanes` | `nmp-nip29::GroupHome` (which surfaces the kind:16 reposts tagged with the room's `h`) + `nmp-nip84::Highlight` deref'd via the repost's `e` tag + the original artifact via the highlight's reference | same pattern; the deref chain happens in `highlighter-core`'s projection |
+| `DiscussionsWithReplyCounts` | `nmp-nip29::GroupDiscussions` + `nmp-nip29::GroupComment { e: <discussion_id> }` per discussion root | h-tagged comments live in `nmp-nip29::GroupComment` per the unifying ownership rule; the comment-count + latest-reply ordering join happens in `highlighter-core`'s `project()` |
+| `GroupArtifactLanes` | `nmp-nip29::GroupArtifacts` (which already surfaces both kind:11 artifact shares + kind:16 reposts per §3.2) + `nmp-nip84::Highlight` deref'd from each share/repost's referenced event (`e` tag → `nmp-nip84::Highlight` for highlight reposts; `r`/`i`/`a` catalog tag → external artifact lookup for native artifact shares) | the deref chain happens in `highlighter-core`'s projection; `GroupArtifacts` is what subscribes (and therefore what makes the lanes update on new shares) |
 
 Why this works: the kernel's composite-key reverse index (`crates/nmp-core/src/substrate/view.rs::ViewDependencies`) is generic — it doesn't care which crate owns which DomainModule. An app-level ViewModule can declare dependencies on records owned by any protocol crate the app has registered. The protocol crates stay protocol-only; cross-protocol composition is the app's job.
 
@@ -160,7 +161,7 @@ For kind:16 (generic repost): the *h-tagged* repost is owned by `nmp-nip29::Grou
 
 **In M11.5 scope:**
 
-- All 11 `DomainModule` impls per §3.1
+- All 12 `DomainModule` impls per §3.1
 - All 7 `ViewModule` impls per §3.2 (with host-relay-pin routing fully wired through the M2 compiler)
 - All 15 `ActionModule` impls per §3.3 (with host-relay-pin routing fully wired through the M2 publish planner)
 - Full ingest pipeline: 39000–39003 trusted because they're relay-signed; 9000–9022 audited into the moderation trail (audit-only — canonical 39001/39002 flip on the relay's republished snapshot); outbound `previous`-tag attachment per `moderation.md` §2 (ingest preserves the tags but does *not* re-validate)
