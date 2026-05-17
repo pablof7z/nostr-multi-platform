@@ -2,7 +2,7 @@
 
 > **Audience:** Framework contributors (not app developers). App developers see only the public surface in `product-spec.md` §6.4, §6.6, §7.6.
 
-> **Status:** Draft. Decisions here are proposals; the open questions in the last section are gated on the stress harness (next step at the bottom).
+> **Status:** rev 1 — incorporating findings from reactivity-bench run 001 (2026-05-17). See `docs/perf/reactivity-bench/2026-05-17-run-001.md` for the measurement report. Decisions: ADR-0001 (composite keys), ADR-0002 (per-view delta budget), ADR-0003 (working-set memory), ADR-0004 (allocation measurement).
 
 > **Prerequisites:** `product-spec.md` §6.2 (`AppState`), §6.4 (`AppUpdate`), §6.6 (Subscriptions/views), §7.2 (planner), §7.6 (Views), Appendix A1 (FFI architecture).
 
@@ -74,22 +74,42 @@ All three live on the single actor thread. No locks, no atomics; just sequential
 
 When an event arrives, the actor needs to know which views care about it. Naive answer: run every view's filter against every event. That's O(views × inserts), unworkable at firehose scale.
 
-### 3.2 The decision: reverse index by event attributes
+### 3.2 The decision: composite-keyed reverse index (ADR-0001)
 
-The store maintains a reverse index from event attributes to interested views:
+The store maintains a reverse index keyed primarily by **composite** event attributes, not by independent axes. Independent-axis buckets exist only for views with genuinely broad filters; using them produces a debug-build guardrail warning.
 
 ```rust
 pub struct ReverseIndex {
+    // Primary (composite) keys — preferred for almost all views
+    by_kind_author: HashMap<(u16, PubKey), HashSet<ViewId>>,
+    by_kind_e_tag: HashMap<(u16, EventId), HashSet<ViewId>>,
+    by_kind_p_tag: HashMap<(u16, PubKey), HashSet<ViewId>>,
+    by_kind_author_d: HashMap<(u16, PubKey, String), HashSet<ViewId>>,
+    by_kind_d_tag: HashMap<(u16, String), HashSet<ViewId>>,
+
+    // Broad (single-axis) keys — guardrailed; for search / hashtag-scan only
     by_kind: HashMap<u16, HashSet<ViewId>>,
     by_author: HashMap<PubKey, HashSet<ViewId>>,
     by_e_tag: HashMap<EventId, HashSet<ViewId>>,
     by_p_tag: HashMap<PubKey, HashSet<ViewId>>,
     by_d_tag: HashMap<String, HashSet<ViewId>>,
-    by_kind_author: HashMap<(u16, PubKey), HashSet<ViewId>>,
-    by_kind_author_d: HashMap<(u16, PubKey, String), HashSet<ViewId>>,
+
     catch_all: HashSet<ViewId>,
 }
 ```
+
+When a view opens, the registry picks the **most specific** index that covers its dependencies:
+
+| View shape (from `Dependencies`) | Indexes used |
+|---|---|
+| kinds + authors | `by_kind_author[(k, a)]` for each k×a |
+| kinds + e-tag refs | `by_kind_e_tag[(k, e)]` |
+| kinds + p-tag refs | `by_kind_p_tag[(k, p)]` |
+| kinds + authors + d-tag refs | `by_kind_author_d[(k, a, d)]` |
+| kinds + d-tag refs only | `by_kind_d_tag[(k, d)]` |
+| kinds only | `by_kind[k]` — broad-cost flag |
+| authors only | `by_author[a]` — broad-cost flag |
+| no constraint | `catch_all` — guardrail warning |
 
 Each view, when opened, registers a `Dependencies` declaration:
 
@@ -100,40 +120,45 @@ pub struct Dependencies {
     pub e_tag_refs: Vec<EventId>,
     pub p_tag_refs: Vec<PubKey>,
     pub d_tag_refs: Vec<String>,
-    pub kind_author_pairs: Vec<(u16, PubKey)>,         // for replaceable supersession
-    pub kind_author_d_triples: Vec<(u16, PubKey, String)>, // for parameterized replaceable
     pub catch_all_filter: Option<Filter>,                // expensive — see §3.4
 }
 ```
 
-The registry calls `index.register(view_id, deps)` on open, `index.deregister(view_id)` on close.
+The registry computes the most-specific composite registration internally; the view doesn't enumerate cartesian products itself.
+
+**Why composite-first:** reactivity-bench run 001 measured 98% false-wakeup rate in quiet_idle and 49% in following_timeline_scroll under the v0 design (which unioned independent axis buckets). Conjunctive composite keys eliminate the false wakes. The cost is registration-size growth (kinds × authors cartesian product), bounded by working-set memory budget.
 
 ### 3.3 Lookup on insert
 
-When an event arrives:
+When an event arrives, compute its **tuple signature** — every composite-key tuple this event implies — and look up each. Union the small resulting sets.
 
 ```rust
 fn lookup(&self, event: &Event) -> HashSet<ViewId> {
     let mut hits = HashSet::new();
-    hits.extend(self.by_kind.get(&event.kind).into_iter().flatten().copied());
-    hits.extend(self.by_author.get(&event.pubkey).into_iter().flatten().copied());
+
+    // Composite (primary) lookups
     hits.extend(self.by_kind_author.get(&(event.kind, event.pubkey)).into_iter().flatten().copied());
     if let Some(d) = event.d_tag() {
-        hits.extend(self.by_kind_author_d.get(&(event.kind, event.pubkey, d)).into_iter().flatten().copied());
-        hits.extend(self.by_d_tag.get(&d).into_iter().flatten().copied());
+        hits.extend(self.by_kind_author_d.get(&(event.kind, event.pubkey, d.clone())).into_iter().flatten().copied());
+        hits.extend(self.by_kind_d_tag.get(&(event.kind, d)).into_iter().flatten().copied());
     }
     for e_ref in event.e_tags() {
-        hits.extend(self.by_e_tag.get(e_ref).into_iter().flatten().copied());
+        hits.extend(self.by_kind_e_tag.get(&(event.kind, e_ref)).into_iter().flatten().copied());
     }
     for p_ref in event.p_tags() {
-        hits.extend(self.by_p_tag.get(p_ref).into_iter().flatten().copied());
+        hits.extend(self.by_kind_p_tag.get(&(event.kind, p_ref)).into_iter().flatten().copied());
     }
+
+    // Broad (guardrailed) lookups — empty for well-shaped apps
+    hits.extend(self.by_kind.get(&event.kind).into_iter().flatten().copied());
+    hits.extend(self.by_author.get(&event.pubkey).into_iter().flatten().copied());
     hits.extend(&self.catch_all);
+
     hits
 }
 ```
 
-Cost: O(1) per attribute lookup plus O(catch_all). For an event with K e-tags and P p-tags, that's O(K + P + |catch_all|) which is typically tiny (1–5 lookups, near-empty catch_all in well-designed apps).
+Cost: O(K + P) composite lookups plus O(|broad indexes used|) plus O(|catch_all|). For an event with K e-tags and P p-tags in a well-shaped app, that's a handful of HashMap probes. Reactivity-bench run 001 measured p99 lookup at 84 ns to 1,083 ns — far below the 100 µs gate.
 
 ### 3.4 The catch-all slow path
 
@@ -332,7 +357,7 @@ All `on_event_inserted` / `on_event_removed` / `on_projection_changed` calls hap
 
 No view code spawns tokio tasks. No view code awaits. If a view needs async work (e.g., fetching a NIP-05 record to verify a domain), it returns immediately and the actor schedules a separate `CoreMsg` to handle the async completion.
 
-### 7.2 Delta buffer
+### 7.2 Delta buffer with within-view coalescing (ADR-0002)
 
 ```rust
 pub struct DeltaBuffer {
@@ -345,10 +370,34 @@ pub struct DeltaBuffer {
 After processing each `CoreMsg`, the actor checks if a flush is due:
 
 - **Time-based:** `now - last_flush >= flush_interval` (default 16ms = ~60Hz).
-- **Size-based:** `deltas.len() >= max_buffered_deltas` (default 256).
+- **Size-based:** `deltas.len() >= max_buffered_deltas` (default 256 pre-coalesce).
 - **Forced:** certain messages (account switch, view open) force an immediate flush.
 
-On flush, the actor emits one `AppUpdate::ViewBatch { rev, views: deltas.drain() }`. If `pending_full_state` is true, emit `AppUpdate::FullState` instead and discard the buffered deltas.
+On flush, the actor **coalesces by view id, applying per-view-kind merge rules**, then emits one `AppUpdate::ViewBatch { rev, views: coalesced_deltas }`. If `pending_full_state` is true, emit `AppUpdate::FullState` instead and discard the buffered deltas.
+
+```rust
+fn flush(&mut self) -> AppUpdate {
+    self.deltas.sort_by_key(|d| d.view_id());
+    let mut out = Vec::new();
+    for (view_id, group) in self.deltas.drain(..).chunk_by(|a, b| a.view_id() == b.view_id()) {
+        out.extend(coalesce(view_id, group.collect()));
+    }
+    self.last_flush = Instant::now();
+    AppUpdate::ViewBatch { rev: ..., views: out }
+}
+```
+
+Per-view-kind coalescing rules (full enumeration per kind in `view-catalog.md`):
+
+| View kind | Rule |
+|---|---|
+| Timeline | Consecutive `Inserted { at, items }` at adjacent positions merge. `Updated { id, item }` for different ids with shared author projection collapse to one `UpdatedMany { ids, patch: AuthorPatch }`. `Removed { ids }` accumulate. |
+| Reactions | N `EmojiAdjusted { emoji, delta }` for same emoji → one with summed delta. Different emojis stay separate. |
+| Conversation | Consecutive `Appended { messages }` merge. |
+| Profile | `Replaced { payload }` later supersedes earlier within tick. |
+| Thread | Multiple `NodeInserted` accumulate; `RootUpdated` later supersedes earlier. |
+
+Per-view delta budget: ≤ 60 deltas/sec/view (matches the 60Hz flush). Total `ViewBatch` size scales with active view count; no absolute ceiling.
 
 ### 7.3 Backpressure
 
@@ -361,6 +410,36 @@ If the reconciler callback latency (measured via metrics) exceeds 100ms p99, the
 This is lossless: the `FullState` snapshot includes every open view's current payload, so the platform's shadow ends up in the same state it would have via deltas.
 
 ---
+
+## 7.5 Working-set discipline (ADR-0003)
+
+The `EventStore` holds a **bounded hot working set** in memory; cold events live in the durable storage backend. The reverse index covers both.
+
+Working-set policy:
+
+- **Hot:** events referenced by any open view's claim set, plus a configurable recency window (default: most recent 5,000 events globally).
+- **Cold:** everything else, on disk only.
+- **Eviction:** LRU among hot events not currently claimed. Claimed events are never evicted.
+
+The reverse index keys on attributes, not bodies, so it can cover unbounded cached events. Lookup returns view ids immediately. When a delta needs to be constructed from a cold event, the body is loaded synchronously from the storage backend.
+
+Projection caches (`author_display`, `reaction_summary`, etc.) are LRU-bounded by **referenced-view count** — only pubkeys/events referenced by some open view stay in cache. A profile rendered once and dismissed evicts; reappearance re-hydrates from the store.
+
+The working-set memory budget (≤ 100 MB at 100 active views, 10k hot events) is what reactivity-bench gates against. Total cached events on disk is unbounded.
+
+## 7.6 Allocation discipline (ADR-0004)
+
+The harness binary uses a counting allocator (custom `GlobalAlloc` wrapper or `dhat`) to verify the zero-allocation-per-event steady-state invariant.
+
+Steady-state is defined as: after a 1,000-event warmup window. First-time path allocations (view registration, projection-cache miss) are exempt.
+
+The harness reports per-scenario:
+
+- Total allocations.
+- Allocations attributable to insert → lookup → recompute → buffer-push path.
+- Peak heap.
+
+A scenario fails the gate if any per-event allocation appears post-warmup.
 
 ## 8. What this design rules out
 
@@ -411,17 +490,19 @@ A headless Rust binary (`nmp-testing/bin/reactivity-bench`) that:
 5. **Thread blow-up.** 1 thread view, the root event has 500 replies + 5000 reactions; measure incremental vs full rebuild.
 6. **Account switch.** 10 accounts, each with active views; switch between them; measure teardown + setup time.
 
-### 10.3 Gates on harness results
+### 10.3 Gates on harness results (rev 1, post run 001)
 
-The Phase 1 exit gate (per `plan.md`) should be extended:
+Refined per ADR-0001 through ADR-0004:
 
-- Reverse-index lookup p99 ≤ 100µs at 100k events / 50 views.
-- Per-view incremental recompute p99 ≤ 1ms.
-- `ViewBatch` emission rate stays ≤ 60Hz under hashtag firehose with cumulative delta count ≤ 1000/sec.
-- Memory footprint of reverse index + projection caches ≤ 100MB at 100k events / 100 views.
-- No allocations per-event on the steady-state path (verified by `dhat` or similar).
+- **Reverse-index lookup p99 ≤ 100µs** at 100k events / 50 views. (Run 001: validated at 84 ns – 1,083 ns.)
+- **Per-view incremental recompute p99 ≤ 1ms.** (Run 001: validated at ≤ 9,625 ns.)
+- **Delta emission ≤ 60 deltas/sec/view** under all scenarios. (Per-view, not absolute. ADR-0002.)
+- **False-wakeup rate ≤ 0.10** across all scenarios. (ADR-0001 gate. Run 001: 98%/49% under v0; expected near-zero under composite-key model.)
+- **Candidates per delta ≤ 1.25.** (Sister metric to false-wake rate.)
+- **Working-set memory ≤ 100 MB** at 100 active views / 10k hot events / 1M cached on disk. (ADR-0003.)
+- **Zero per-event allocations on the steady-state path** after 1,000-event warmup, verified by counting allocator. (ADR-0004.)
 
-If any gate fails, the design choices in §3–§6 get revisited before Phase 1 proceeds further.
+If any gate fails, the design choices in §3–§7 get revisited before Phase 1 proceeds further. Each gate failure surfaces a write-up in `docs/perf/reactivity-bench/<date>-run-<n>.md` plus an ADR when a design change is adopted.
 
 ### 10.4 Where the harness lives
 

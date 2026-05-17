@@ -87,12 +87,13 @@
   - #8 (concurrent identical filters → one REQ): asserted by counting MockRelay REQ frames.
 - Replaceable event correctness: inject 100 randomized kind-0 events with shuffled `created_at`, assert final state is the newest by `(created_at, id)`.
 - Provenance: an event arriving from 3 relays appears once in the store with all 3 relays in its provenance set.
-- **Reactivity harness gates** (per `docs/design/reactivity.md` §10.3):
-  - Reverse-index lookup p99 ≤ 100µs at 100k events / 50 views.
-  - Per-view incremental recompute p99 ≤ 1ms.
-  - `ViewBatch` emission rate ≤ 60Hz under hashtag firehose, cumulative delta count ≤ 1000/sec.
-  - Memory footprint of reverse index + projection caches ≤ 100MB at 100k events / 100 views.
-  - No allocations per-event on the steady-state path (verified by `dhat` or similar).
+- **Reactivity harness gates** (per `docs/design/reactivity.md` §10.3 rev 1, post run 001):
+  - Reverse-index lookup p99 ≤ 100µs (validated by run 001 at sub-µs).
+  - Per-view incremental recompute p99 ≤ 1ms (validated by run 001 at ≤ 10µs).
+  - Delta emission ≤ 60 deltas/sec/**per view** (per ADR-0002; absolute gate replaced).
+  - False-wakeup rate ≤ 0.10, candidates per delta ≤ 1.25 (per ADR-0001; new gates).
+  - Working-set memory ≤ 100 MB at 100 active views / 10k hot events / 1M cached on disk (per ADR-0003; rescoped from total-events memory).
+  - Zero per-event allocations on the steady-state path after 1,000-event warmup, verified by counting allocator (per ADR-0004).
 
 **Regression tests added.** `tests/event_store_invariants.rs`, `tests/planner_coalesce.rs`, `tests/outbox_routing.rs`, `tests/reverse_index.rs`, `bin/reactivity-bench/scenarios/*`.
 
@@ -361,7 +362,7 @@ Status: proposed | accepted | superseded
 ## Alternatives considered
 ```
 
-Initial ADRs to write at the start of Phase 0:
+Initial ADRs to write at the start of Phase 0 (from the spec itself):
 
 1. Snapshots + ViewBatch from day one (vs snapshot-only MVP).
 2. Negentropy promoted to engine, not feature.
@@ -370,7 +371,18 @@ Initial ADRs to write at the start of Phase 0:
 5. Proof app is a v1 release gate.
 6. Starter app stays minimal even though we have a richer proof app.
 
-These six decisions are the load-bearing ones from this spec; the ADRs are the durable record of why.
+ADRs already adopted from harness runs:
+
+- **ADR-0001:** Composite dependency keys (composite-first reverse index, broad axes guardrailed). Adopted 2026-05-17 from reactivity-bench run 001.
+- **ADR-0002:** Delta-volume budget is per-view (60/view/sec), not absolute. Adopted 2026-05-17 from reactivity-bench run 001.
+- **ADR-0003:** Memory budget is working-set, not total cached events. Adopted 2026-05-17 from reactivity-bench run 001.
+- **ADR-0004:** Allocation measurement plumbed via counting allocator (verifies zero-per-event invariant). Adopted 2026-05-17 from reactivity-bench run 001.
+
+The ADRs are the durable record of why design decisions exist. New ADRs land alongside any new harness run that revises a design.
+
+### The harness-first pattern
+
+Every design doc has measurable gates. Gates run on the reactivity-bench harness (or a sibling for non-reactivity subsystems). Failures revise the design *before* implementation. Pre-implementation measurement is cheaper than post-implementation rework. Run 001 of reactivity-bench established the pattern: the reverse-index direction was validated (100×–1000× headroom), one design refinement landed (composite keys), and two budget bugs surfaced (per-view delta, working-set memory) — all before any view-kind code shipped.
 
 ---
 
