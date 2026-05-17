@@ -1,7 +1,7 @@
 # Step 8 — M11 exit-gate verification
 
 > Parent: [`../podcast-app-rebuild.md`](../podcast-app-rebuild.md).
-> Reference: `docs/plan.md` §M11 "Exit gate (kernel boundary)" + "Exit gate (product fidelity)" + "Stress + perf gates".
+> Reference: [`docs/plan/m11-podcast.md`](../../plan/m11-podcast.md) "Exit gate (kernel boundary)" + "Exit gate (product fidelity)" + "Stress + perf gates".
 
 Every M11 exit-gate bullet maps to a single, named evidence artifact. This doc is the cross-reference. The artifacts live under `docs/perf/m11/` and are produced by gates the design above has already specified.
 

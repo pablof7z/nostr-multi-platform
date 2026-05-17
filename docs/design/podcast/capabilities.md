@@ -5,7 +5,7 @@
 
 M11 adds **nine** new `CapabilityModule`s to the kernel's reusable set. Each is generic (no podcast nouns in request or result types) so a future Pika-like, Highlighter, or messaging app could reuse them. Each is **idempotent** (start/stop/restart safe per RMP bible commandment #7) and has **bounded native state** (the bridge holds only the OS handle; no caches, no derived state, no policy).
 
-Six were named in `docs/plan.md` §M11; three (`TranscriptionCapability`, `VoiceRecordingCapability`, `AppleIntelligenceCapability`) are added here because parity demands them — without them the rebuild routes around the entire on-device Apple Intelligence + Speech stack that the reference app depends on.
+Six were named in [`docs/plan/m11-podcast.md`](../../plan/m11-podcast.md); three (`TranscriptionCapability`, `VoiceRecordingCapability`, `AppleIntelligenceCapability`) are added here because parity demands them — without them the rebuild routes around the entire on-device Apple Intelligence + Speech stack that the reference app depends on.
 
 ---
 

@@ -175,7 +175,7 @@ The view's `reduce` consumes three input streams:
 2. `CompiledPlan` re-emissions — every plan recompile produces a `(plan_id, relay_url) → authors` projection that this view subscribes to. The compiler exposes this projection as `RelayAuthorCoverage` in the kernel's projection cache (per `docs/design/reactivity/view-deltas-and-projections.md`).
 3. `ProvenanceRelayFact` records — feeds the rolling 60-second counter for `provenance_count_last_minute`.
 
-This is the M2 exit-gate diagnostic listed in `docs/plan.md` line 130 ("Reverse-relay-coverage view for diagnostics: 'this relay is serving N authors of our timeline.'").
+This is the M2 exit-gate diagnostic listed in [`docs/plan/m2-subscription-compilation.md`](../../plan/m2-subscription-compilation.md) ("Reverse-relay-coverage view for diagnostics: 'this relay is serving N authors of our timeline.'").
 
 ## 8.3 Cardinality and emission cadence
 
@@ -185,4 +185,4 @@ Emission cadence follows ADR-0007's diagnostic-view rule: material-transition im
 
 ## 8.4 Why it lives in diagnostics, not in product UI
 
-Per `docs/aim.md` §4.4 ("the developer does not pick relays per operation; the framework does") and ADR-0007's domain-of-diagnostics separation, end-user product UIs do not show "relay X is serving 12 authors." That is operator/debug surface. Normal apps consume the `LogicalInterestStatus` summaries; `RelayCoveragePayload` is for the diagnostics screen (proof iOS app screenshot in `docs/perf/m2/outbox-routing.md` per `docs/plan.md` line 139).
+Per `docs/aim.md` §4.4 ("the developer does not pick relays per operation; the framework does") and ADR-0007's domain-of-diagnostics separation, end-user product UIs do not show "relay X is serving 12 authors." That is operator/debug surface. Normal apps consume the `LogicalInterestStatus` summaries; `RelayCoveragePayload` is for the diagnostics screen (proof iOS app screenshot in `docs/perf/m2/outbox-routing.md` per [`docs/plan/m2-subscription-compilation.md`](../../plan/m2-subscription-compilation.md)).

@@ -130,7 +130,7 @@ Inputs: a signed `event`, a `PublishPrivacy` mode, an optional `PublishOverride`
 Notes on the algorithm:
 
 - **Step 2's "no indexer fallback for writes"** is the structural enforcement of the doctrine `docs/product-spec/subsystems.md` §7.3 line 99: "fall back to indexer set for reads only; do not publish to indexers." A failed Step 2 surfaces in the action ledger as `Failed { reason: NoAuthorRelays }`, which the UI renders as a toast per ADR-0007's `SideEffect` lane.
-- **Step 3(b)'s `Indexer` check** is the structural enforcement of bug-extinction #4 (`docs/plan.md` line 306 — "DM to public: no API path can send a DM to a non-inbox relay"). Indexer-sourced inbox means we have no NIP-65-declared inbox; for private events that is fail-closed. The recipient gets nothing rather than getting a public broadcast.
+- **Step 3(b)'s `Indexer` check** is the structural enforcement of bug-extinction #4 ([`docs/plan/m9-messaging.md`](../../plan/m9-messaging.md) — "DM to public: no API path can send a DM to a non-inbox relay"). Indexer-sourced inbox means we have no NIP-65-declared inbox; for private events that is fail-closed. The recipient gets nothing rather than getting a public broadcast.
 - **`required_success_count`** is the threshold below which the ledger marks the publish `PartiallyFailed`. The default ⅓-of-fan-out is tunable per `AppConfig.publish_quorum_ratio`.
 
 ## 7.4 The `PublishOverride` escape hatch
@@ -188,7 +188,7 @@ impl ActionModule for PublishWithOverride {
 }
 ```
 
-The override action's existence is what test #2 in the bug-extinction list (`docs/plan.md` line 134) asserts: "no public API path lets the developer specify relays for a publish; explicit override action exists and produces a debug warning." The `PublishWithOverride` variant is the *only* `AppAction` that carries a relay set; the audit string is required (compile-time non-optional); the warning fires unconditionally on dispatch.
+The override action's existence is what test #2 in the bug-extinction list ([`docs/plan/m2-subscription-compilation.md`](../../plan/m2-subscription-compilation.md)) asserts: "no public API path lets the developer specify relays for a publish; explicit override action exists and produces a debug warning." The `PublishWithOverride` variant is the *only* `AppAction` that carries a relay set; the audit string is required (compile-time non-optional); the warning fires unconditionally on dispatch.
 
 ### Diagnostic shape
 
@@ -209,7 +209,7 @@ This is the SideEffect-lane payload per ADR-0007. The platform diagnostic UI ren
 
 Per `docs/design/kernel-substrate.md` §4 ("Atomicity"): the action ledger ensures the action's local store insert (for the signed event) happens in the same actor message as the ledger transition. The publish plan's per-relay attempts are *not* atomic with the local insert — relays may NACK over a long window — but the ledger correlates them.
 
-The bug-extinction #7 test (`docs/plan.md` line 234) — "publish OK / store fail and store OK / publish fail both roll back atomically" — runs against the M6 implementation. The seam M2 lands here must make that test possible. Specifically:
+The bug-extinction #7 test ([`docs/plan/m6-signers-write.md`](../../plan/m6-signers-write.md)) — "publish OK / store fail and store OK / publish fail both roll back atomically" — runs against the M6 implementation. The seam M2 lands here must make that test possible. Specifically:
 
 - The publish-fanout step in `PublishWithOverride::reduce` is `AwaitCapability { request: CapabilityRequest::Publish { ... }, next_step }` per the `ActionTransition` enum in `docs/design/kernel-substrate.md` §4. The kernel owns the publish attempts and reports per-relay outcomes back into the next `reduce`.
 - The local store insert happens *before* the publish step (optimistic insert), with rollback on `PartiallyFailed` if `required_success_count` is not met. This matches the "atomic with reversibility" reading of doctrine D4 (single writer per fact).

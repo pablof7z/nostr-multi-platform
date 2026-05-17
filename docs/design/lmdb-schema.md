@@ -4,7 +4,7 @@
 > **Status:** rev 0 — proposed; opens ADR slot for any open-question resolution.
 > **Companion docs:** [`lmdb/trait.md`](lmdb/trait.md), [`lmdb/keys.md`](lmdb/keys.md), [`lmdb/gc.md`](lmdb/gc.md), [`lmdb/watermarks.md`](lmdb/watermarks.md), [`lmdb/tests.md`](lmdb/tests.md).
 > **Prerequisites:** `docs/product-spec/subsystems.md` §7.1 (insert invariants), `docs/decisions/0003-working-set-memory.md` (GC policy intent), `docs/decisions/0009-app-extension-kernel-boundary.md` (DomainModule storage), `docs/design/kernel-substrate.md` §2 (DomainModule trait).
-> **Plan reference:** [`docs/plan.md`](../plan.md) §M3.
+> **Plan reference:** [`docs/plan/m3-persistence.md`](../plan/m3-persistence.md).
 
 ---
 

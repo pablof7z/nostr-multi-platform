@@ -174,7 +174,7 @@ A **scaffolding CLI** (`<framework> init`) generates a complete starter project:
 
 ## 5. Crate layout
 
-The repository is a Cargo workspace plus per-platform shells. The layout below is the long-term workspace shape. v1 publishes only the kernel subset described in `docs/plan.md`; product crates remain placeholders or later milestones until the kernel proves its invariants.
+The repository is a Cargo workspace plus per-platform shells. The layout below is the long-term workspace shape. v1 publishes only the kernel subset described in [`docs/plan.md`](plan.md); product crates remain placeholders or later milestones until the kernel proves its invariants.
 
 ```
 <framework>/

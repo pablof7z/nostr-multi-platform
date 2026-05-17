@@ -3,7 +3,7 @@
 > **Status:** Proposed (M11 prep)
 > **Date:** 2026-05-18
 > **Scope:** How M11 rebuilds `/Users/pablofernandez/src/podcast` on NMP — kernel-boundary proof + pixel-perfect UI parity.
-> **Prerequisites:** `docs/plan.md` §M11, `docs/aim.md`, `docs/design/app-extension-kernel.md`, `docs/design/kernel-substrate.md`, `docs/decisions/0009`, `docs/decisions/0010`, `crates/fixture-todo-core/src/lib.rs`.
+> **Prerequisites:** [`docs/plan/m11-podcast.md`](../plan/m11-podcast.md), `docs/aim.md`, `docs/design/app-extension-kernel.md`, `docs/design/kernel-substrate.md`, `docs/decisions/0009`, `docs/decisions/0010`, `crates/fixture-todo-core/src/lib.rs`.
 > **Companion docs:** under `docs/design/podcast/` — split per AGENTS.md ≤ 500 LOC ceiling.
 
 ---
@@ -14,7 +14,7 @@ A **pixel-perfect rebuild** of the canonical Swift podcast app at `/Users/pablof
 
 **This is M11's load-bearing kernel-boundary check.** If the kernel needs even one podcast noun to make it work, the boundary is wrong and we go back to fix it. The exit gate is dual: (a) `nmp-core` gains zero podcast nouns, verified by grep + manual review; (b) screenshot diff vs `../podcast` is ≤ 1 px on every screen, font-rendering exceptions whitelisted.
 
-**Scope clarification (additive vs strict parity).** `docs/plan.md` §M11 lists `ImportOpml` as an action. The reference Swift app has no OPML import (`AddPodcastView` is a single-URL form, `LibraryView` lists subscribed podcasts only). M11 ships `ImportOpml` as **a Rust-only `ActionModule` with no UI entry point** — no button, no new view, no change to any copied Swift file. Adding a UI element for OPML import to any `Views/` file would violate the pixel-parity gate (see [`copy.md`](podcast/copy.md) §Invariants). The action is callable only via the kernel's external API (e.g., a CLI or post-M11 Settings entry); it is deferred to post-M11 for any UI surface. All other M11 features map 1:1 to an existing Swift surface.
+**Scope clarification (additive vs strict parity).** [`docs/plan/m11-podcast.md`](../plan/m11-podcast.md) lists `ImportOpml` as an action. The reference Swift app has no OPML import (`AddPodcastView` is a single-URL form, `LibraryView` lists subscribed podcasts only). M11 ships `ImportOpml` as **a Rust-only `ActionModule` with no UI entry point** — no button, no new view, no change to any copied Swift file. Adding a UI element for OPML import to any `Views/` file would violate the pixel-parity gate (see [`copy.md`](podcast/copy.md) §Invariants). The action is callable only via the kernel's external API (e.g., a CLI or post-M11 Settings entry); it is deferred to post-M11 for any UI surface. All other M11 features map 1:1 to an existing Swift surface.
 
 **Multiplatform-ready.** Although M11 ships only the iPhone target, every extension crate is pure Rust and compiles to wasm32 + android targets (capabilities aside). Android/Desktop/Web shells are explicitly post-M11; the design must not foreclose them.
 
@@ -152,7 +152,7 @@ Each step ends with: workspace `cargo test --workspace` green; the per-step scre
 ## 8. Out of scope for M11
 
 - Android / Desktop / Web targets — post-M14 (UniFFI migration) and M15 (cross-platform).
-- Nostr social overlay (NIP-XX podcast events, V4V zaps, comment threads). Listed in `docs/plan.md` §M11 as opportunistic; deferred to a `nmp-podcast` Nostr protocol module post-M11.
+- Nostr social overlay (NIP-XX podcast events, V4V zaps, comment threads). Listed in [`docs/plan/m11-podcast.md`](../plan/m11-podcast.md) as opportunistic; deferred to a `nmp-podcast` Nostr protocol module post-M11.
 - Watch / CarPlay / Widgets / Live Activities / Siri intents — none exist in `../podcast`; out of scope.
 - NIP-46 bunker signing, Web-of-Trust scoring of podcast recommendations — out of scope (the reference app has no Nostr).
 - iCloud sync of subscriptions — out of scope (the reference app uses local SwiftData only).

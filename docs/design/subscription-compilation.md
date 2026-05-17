@@ -2,7 +2,7 @@
 
 > **Status:** Draft (M2 design + impl-prep).
 > **Date:** 2026-05-18.
-> **Companion docs:** `docs/plan.md` §M2; `docs/aim.md` §4.4–§4.5; `docs/design/ndk-applesauce-lessons.md` §7; ADR-0007 (diagnostic lanes); `docs/design/kernel-substrate.md` §3 (`ViewModule`) and §4 (`ActionModule`); `docs/product-spec/subsystems.md` §7.2–§7.3.
+> **Companion docs:** [`docs/plan/m2-subscription-compilation.md`](../plan/m2-subscription-compilation.md); `docs/aim.md` §4.4–§4.5; `docs/design/ndk-applesauce-lessons.md` §7; ADR-0007 (diagnostic lanes); `docs/design/kernel-substrate.md` §3 (`ViewModule`) and §4 (`ActionModule`); `docs/product-spec/subsystems.md` §7.2–§7.3.
 > **Scope:** Replace the "hardcoded two-role relay set" planner in `crates/nmp-core/src/kernel/{requests,ingest,mod}.rs` with a **subscription compilation stage** that turns logical interests into per-relay plans driven by NIP-65 mailboxes, and graduates outbox routing to a first-class planner subsystem. v1 is in-memory; M3 plugs it into LMDB. This is a design doc; no implementation lands in this PR.
 
 This document is split into focused sub-files to stay under the 500 LOC ceiling (`AGENTS.md`).

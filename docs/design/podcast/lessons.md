@@ -43,7 +43,7 @@ so all iOS builds share one tree. Set in `justfile` recipes that invoke `xcodebu
 git worktree remove --force "$WT" && git branch -D "$BR" || true
 ```
 
-on completion (`docs/plan.md` §4 "Worktree hygiene" already mentions this; we make it a documented contract in `tools/agent-worktree.sh`).
+on completion ([`docs/plan/parallelization.md`](../../plan/parallelization.md) "Worktree hygiene" already mentions this; we make it a documented contract in `tools/agent-worktree.sh`).
 
 These three together cap the on-disk footprint at the single-tree size, not the worktree-count multiple.
 

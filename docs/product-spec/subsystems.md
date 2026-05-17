@@ -148,7 +148,7 @@ pub trait Action: Send + Sync + 'static {
 }
 ```
 
-Built-in actions (long-term product catalog): the AppAction variants listed in §6.3 each map to one Action implementation. v1 ships only the generic kernel actions named in `docs/plan.md`. Custom actions are first-class via a sister crate pattern (apps add their own actions crate that depends on `nmp-actions`).
+Built-in actions (long-term product catalog): the AppAction variants listed in §6.3 each map to one Action implementation. v1 ships only the generic kernel actions named in [`docs/plan.md`](../plan.md). Custom actions are first-class via a sister crate pattern (apps add their own actions crate that depends on `nmp-actions`).
 
 Atomicity invariant: an action's local event-store commit, side-effect intent, and ledger transition happen as actor messages with one parent action id. The action future runs on the tokio runtime, but all state mutation happens in `handle_message`. There is no public API that lets a developer publish, upload, sign, or issue an NWC request without a renderable action-ledger row.
 

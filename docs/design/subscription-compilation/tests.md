@@ -1,7 +1,7 @@
 # Subscription Compilation §9 — Wire-Frame Audit Gate
 
 > Parent: `docs/design/subscription-compilation.md`.
-> Read first: `docs/plan.md` lines 134–137 (M2 exit gates); `docs/design/firehose-bench.md` (the modeled bench harness this test does *not* duplicate).
+> Read first: [`docs/plan/m2-subscription-compilation.md`](../../plan/m2-subscription-compilation.md) (M2 exit gates); `docs/design/firehose-bench.md` (the modeled bench harness this test does *not* duplicate).
 
 The M2 exit gate is a single integration test that asserts on the *shape and identity* of the compiler's wire output, not on perf budgets. It is the structural-correctness counterpart to firehose-bench's perf-correctness suite.
 
@@ -21,11 +21,11 @@ name = "m2_subscription_compilation_audit"
 path = "tests/m2_subscription_compilation_audit.rs"
 ```
 
-`cargo test -p nmp-testing --test m2_subscription_compilation_audit` is the M2 exit-gate invocation. CI adds this to the `cargo test --workspace` pre-merge gate per `docs/plan.md` §6.
+`cargo test -p nmp-testing --test m2_subscription_compilation_audit` is the M2 exit-gate invocation. CI adds this to the `cargo test --workspace` pre-merge gate per [`docs/plan/ci-hygiene.md`](../../plan/ci-hygiene.md).
 
 ## 9.2 What the test asserts
 
-Four assertions corresponding to the four M2 exit-gate bullets in `docs/plan.md` lines 134–137:
+Four assertions corresponding to the four M2 exit-gate bullets in [`docs/plan/m2-subscription-compilation.md`](../../plan/m2-subscription-compilation.md):
 
 ### Assertion 1 — Bug-extinction #3 surface check
 
@@ -258,7 +258,7 @@ The harness is the *minimum* surface required for the four assertions above. It 
 
 By design (these belong to other M2 gates or later milestones):
 
-- **Real wire frames against a relay.** This is `firehose-bench live` per `docs/plan.md` line 110; the audit test is offline and synthetic.
+- **Real wire frames against a relay.** This is `firehose-bench live` per [`docs/plan/m1-twitter-slice.md`](../../plan/m1-twitter-slice.md) (M1 exit gate "Firehose-bench live cold_start"); the audit test is offline and synthetic.
 - **Wire-emitter diff correctness across two plans.** That is a separate unit test inside `nmp-core::kernel::wire`, not the milestone-exit gate.
 - **NIP-77 watermarks.** M4.
 - **Per-account auth state.** M5.

@@ -51,7 +51,7 @@ impl FfiApp {
 
 `AppState` is a `uniffi::Record`. It is the entire UI's source of truth. It is cloned across FFI on every `FullState` update.
 
-Top-level shape (long-term, illustrative; v1 contains the kernel fields needed by `docs/plan.md` and keeps product subsystems absent or empty):
+Top-level shape (long-term, illustrative; v1 contains the kernel fields needed by [`docs/plan.md`](../plan.md) and keeps product subsystems absent or empty):
 
 ```rust
 #[derive(Clone, uniffi::Record)]

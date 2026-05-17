@@ -105,7 +105,7 @@ CI lanes (GitHub Actions):
 
 ## 12. Phasing
 
-Three-arc plan: **kernel infrastructure first, product modules second, then scaffolding/proof/performance/release.** Detailed plan in `docs/plan.md`. The summary table below.
+Three-arc plan: **kernel infrastructure first, product modules second, then scaffolding/proof/performance/release.** Detailed plan in [`docs/plan.md`](../plan.md). The summary table below.
 
 ### Arc 1 — Infrastructure
 
