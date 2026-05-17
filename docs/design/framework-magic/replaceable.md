@@ -9,7 +9,7 @@ This chapter holds four bullets, all of which discharge `docs/product-spec/overv
 
 **Statement.** Any kind in `{0, 3, 10000..=19999}` arriving at the event store automatically supersedes the prior event with the same `(pubkey, kind)`; the prior event becomes unreachable through the public read path.
 
-**Framework does:** the insert-time supersession at `docs/product-spec/subsystems.md` §7.1 row "Replaceable kinds (0, 3, 10000-19999)". Mechanism: compare `(pubkey, kind)` against the existing entry, keep newest `created_at`, tie-break by lexicographically smallest `id`. The current in-memory kernel partially enforces this: kind:0 (`ingest_profile` at `crates/nmp-core/src/kernel/ingest.rs:187-185`) applies both the `created_at` check and the `id` tie-break correctly; kind:10002 (`ingest_relay_list` at `crates/nmp-core/src/kernel/ingest.rs:218-222`) uses `>=` with no tie-break; kind:3 (`ingest_contacts` at `crates/nmp-core/src/kernel/ingest.rs:206`) uses unconditional overwrite with no monotonicity guard or tie-break. The full canonical rule (strict monotonic + `id` tie-break for all replaceable kinds) lands in M3's LMDB-backed `EventStore` trait (`docs/design/lmdb/trait.md`).
+**Framework does:** the insert-time supersession at `docs/product-spec/subsystems.md` §7.1 row "Replaceable kinds (0, 3, 10000-19999)". Mechanism: compare `(pubkey, kind)` against the existing entry, keep newest `created_at`, tie-break by lexicographically smallest `id`. The current in-memory kernel partially enforces this: kind:0 (`ingest_profile` at `crates/nmp-core/src/kernel/ingest.rs:166-184`) applies both the `created_at` check and the `id` tie-break correctly; kind:10002 (`ingest_relay_list` at `crates/nmp-core/src/kernel/ingest.rs:218-222`) uses `>=` with no tie-break; kind:3 (`ingest_contacts` at `crates/nmp-core/src/kernel/ingest.rs:206`) uses unconditional overwrite with no monotonicity guard or tie-break. The full canonical rule (strict monotonic + `id` tie-break for all replaceable kinds) lands in M3's LMDB-backed `EventStore` trait (`docs/design/lmdb/trait.md`).
 
 **App writes:** nothing. The app calls `ProfileView::open(pubkey)`; the view's payload reflects the latest kind:0 the store has, with no app-side comparison of `created_at`.
 
@@ -63,7 +63,7 @@ This chapter holds four bullets, all of which discharge `docs/product-spec/overv
 
 **Statement.** An event carrying a NIP-40 `expiration` tag is automatically removed from the store at the expiration timestamp; the schedule survives actor restart.
 
-**Framework does:** §7.1 row "NIP-40 expiration": schedule a tokio timer to remove the event at the expiration timestamp; on actor restart, scan the persisted store and re-schedule. M3 implements the persistent rescan; the in-memory kernel can run the timer but loses schedules on restart.
+**Framework does:** §7.1 row "NIP-40 expiration": schedule a timer to remove the event at the expiration timestamp; on actor restart, scan the persisted store and re-schedule any surviving expiration. M3 implements both the timer scheduling and the persistent rescan; the current in-memory kernel does not parse NIP-40 `expiration` tags at all.
 
 **App writes:** nothing. Same `on_event_removed` path as C3.
 
