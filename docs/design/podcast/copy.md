@@ -38,7 +38,7 @@ Source MARK sections:
 
 ### 0a.3 Updated file count after split
 
-After splitting, `ios/NmpPodcast/Views/` will contain **27 Swift files** (20 original + 7 split-out siblings), all ≤ 300 LOC soft. The copy step commit message notes the split explicitly. The inventory.md `Views` section and `find … | wc -l` verification are updated accordingly.
+After splitting, `ios/NmpPodcast/Views/` will contain **29 Swift files** (20 original + 6 DiscoverView siblings + 3 PlayerSheet siblings). Three additional files exceed the 300 LOC soft limit but stay below the 500 LOC hard limit: `AskView.swift` (322), `DiscoveryCards.swift` (302), and `ChaptersPanel.swift` (324) — justified in §0a.3 as soft-limit exceptions. The copy step commit message notes the split and exceptions explicitly. The inventory.md `Views` section and `find … | wc -l` verification are updated accordingly.
 
 ### 0a.4 Invariant: no logic change during split
 

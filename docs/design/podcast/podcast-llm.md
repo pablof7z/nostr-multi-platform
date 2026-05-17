@@ -256,9 +256,11 @@ For `rig.rs` routes, the same shape: `rig::completion::StreamingChat` yields a `
 
 `KeyValueStoreCapability` (see [`capabilities.md`](capabilities.md)) hosts:
 
-- `podcast.llm.openai_api_key` (set via Settings view post-M11; not in M11 UI surface; M11 uses AppleIntelligence-only on iOS, fallback prompts in Settings if Apple Intelligence unavailable).
-- `podcast.llm.anthropic_api_key`.
-- `podcast.llm.local_base_url`.
+- `podcast.llm.openai_api_key`
+- `podcast.llm.anthropic_api_key`
+- `podcast.llm.local_base_url`
+
+**M11 provider configuration.** Because rig.rs is required in M11 (see §K), the API key must be reachable in M11. In M11 the key is injected via environment variable (`NMP_LLM_API_KEY` / `NMP_LLM_PROVIDER` / `NMP_LLM_BASE_URL`) at test time, read by the `KeyValueStoreCapability` bridge at boot. The Settings UI for end-user key entry is post-M11; the test harness does not need a Settings view. On the iOS device in production, Apple Intelligence is the default and requires no key; rig.rs is used in CI tests and on non-Apple platforms.
 
 Reads happen at action boot only. Per RMP bible commandment #2, keys never cross FFI as part of dispatch — they live on the platform side; the bridge resolves and injects them when executing the capability.
 

@@ -146,6 +146,6 @@ Each `.swift` view file is `cp -R`'d into `ios/NmpPodcast/Views/` with the same 
 ## I. Verification protocol
 
 After Step 0 (copy + split):
-- `find ios/NmpPodcast/Views -name '*.swift' | wc -l` = 27 (20 original + 7 split-out siblings from DiscoverView × 4 and PlayerSheet × 3; see [`copy.md`](copy.md) §0a).
+- `find ios/NmpPodcast/Views -name '*.swift' | wc -l` = 29 (20 original + 6 DiscoverView siblings + 3 PlayerSheet siblings; `AskView.swift` 322, `DiscoveryCards.swift` 302, `ChaptersPanel.swift` 324 are soft-limit exceptions; see [`copy.md`](copy.md) §0a).
 - `find ios/NmpPodcast -path '*/Models/*' -o -path '*/Services/*' -o -path '*/ViewModels/*'` = 0 hits.
 - `grep -RnE 'import SwiftData' ios/NmpPodcast` = 0 hits (SwiftData replaced by LMDB/Rust persistence).
