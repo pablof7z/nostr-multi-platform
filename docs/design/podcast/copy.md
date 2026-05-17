@@ -9,7 +9,7 @@
 
 Two files in `../podcast/PodcastApp/Views/` exceed the 500 LOC hard limit (`DiscoverView.swift` 898 LOC; `PlayerSheet.swift` 642 LOC). Both exceed the 300 LOC soft limit. **The right time to split them is during the copy step** — we split and copy atomically in one commit, not as a separate refactor PR. The rendered UI is unchanged (same `View` bodies, same `@ViewBuilder` sections); only the file boundaries move.
 
-### 0a.1 `DiscoverView.swift` (898 LOC → 7 sibling files, each ≤ 300 LOC)
+### 0a.1 `DiscoverView.swift` (898 LOC → 1 coordinator + 6 split-out siblings)
 
 Source MARK sections (per `grep -n "MARK:" DiscoverView.swift`):
 
@@ -25,7 +25,7 @@ Source MARK sections (per `grep -n "MARK:" DiscoverView.swift`):
 
 Rendering is preserved: `DiscoverView.body` calls the same `heroSection`, `forYouSection`, etc. names; Swift sees them via the `extension DiscoverView` in `DiscoverViewSections.swift`. The `cp -R` in §2 is replaced with `cp -R` of the reference tree **then** this split applied before the commit.
 
-### 0a.2 `PlayerSheet.swift` (642 LOC → 4 sibling files, each ≤ 300 LOC)
+### 0a.2 `PlayerSheet.swift` (642 LOC → 1 core + 3 split-out siblings)
 
 Source MARK sections:
 
@@ -38,20 +38,38 @@ Source MARK sections:
 
 ### 0a.3 Updated file count after split
 
-After splitting, `ios/NmpPodcast/Views/` will contain **29 Swift files** (20 original + 6 DiscoverView siblings + 3 PlayerSheet siblings). Three additional files exceed the 300 LOC soft limit but stay below the 500 LOC hard limit: `AskView.swift` (322), `DiscoveryCards.swift` (302), and `ChaptersPanel.swift` (324) — justified in §0a.3 as soft-limit exceptions. The copy step commit message notes the split and exceptions explicitly. The inventory.md `Views` section and `find … | wc -l` verification are updated accordingly.
+After splitting, `ios/NmpPodcast/Views/` will contain **29 Swift files** (20 original + 6 DiscoverView split-out siblings + 3 PlayerSheet split-out siblings). Three additional files from the original 20 exceed the 300 LOC soft limit but stay below the 500 LOC hard limit: `AskView.swift` (322), `DiscoveryCards.swift` (302), and `ChaptersPanel.swift` (324) — these lack clean `MARK:` section boundaries that admit file-splits without introducing shared-state wiring; they are carried as soft-limit exceptions, accepted by the codex reviewer, and noted in the copy step commit message. The inventory.md `Views` section and `find … | wc -l` verification are updated accordingly.
 
 ### 0a.4 Invariant: no logic change during split
 
-The Swift compiler must accept the split with zero behavior change — verified by:
+The split is verified by two mechanisms:
 
-```bash
-# Before split: build succeeds
-xcodebuild -scheme PodcastApp -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build
-# Apply split, rebuild:
-xcodebuild -scheme PodcastApp -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build
-# Diffs must be empty (no view body changed):
-git diff --stat HEAD | grep Views/
-```
+1. **Text-reconstruct diff** — concatenate the split files in section order and diff against the original source:
+
+    ```bash
+    # Reconstruct DiscoverView from its split files (section order matches MARK: order)
+    cat ios/NmpPodcast/Views/Library/DiscoverView.swift \
+        ios/NmpPodcast/Views/Library/DiscoverViewSections.swift \
+        ios/NmpPodcast/Views/Library/DiscoverViewDataLoading.swift \
+        ios/NmpPodcast/Views/Library/DiscoverSearchSupport.swift \
+        ios/NmpPodcast/Views/Library/AllTrendingView.swift \
+        ios/NmpPodcast/Views/Library/DiscoverCategoriesViews.swift \
+        ios/NmpPodcast/Views/Library/TopicSearchView.swift \
+      | grep -v '^import\|^$' > /tmp/discover_reconstituted.swift
+    # Diff against original (strip imports/blank lines to avoid per-file header noise)
+    diff <(grep -v '^import\|^$' ../podcast/PodcastApp/Views/Library/DiscoverView.swift) \
+         /tmp/discover_reconstituted.swift
+    # Expected: empty (zero diff)
+    ```
+
+2. **Build + screenshot gate** — after splitting, the reference app must build and produce identical screenshots:
+
+    ```bash
+    xcodebuild -scheme PodcastApp -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build
+    just screenshot-diff --baseline-only   # re-captures; diff against pre-split baseline must be empty
+    ```
+
+Both checks run before the Step 0 commit lands on master.
 
 ---
 
