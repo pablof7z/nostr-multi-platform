@@ -78,7 +78,7 @@ The cache is **populated from three trusted sources** (each gives a verified hos
    - `R`'s NIP-11 document declares a `pubkey` field
    - The 39000 returned by `R` for the candidate group_id is signed by *that exact NIP-11 pubkey*
    - The 39001 *or* 39002 returned by `R` for the candidate group_id contains the user's pubkey, signed by the same NIP-11 pubkey
-   
+
    If any of the four fails, `R` is rejected as a host candidate for this user-membership claim (it may still be a fine indexer for discovering further candidates; or it may host a *different* group that happens to share the local_id). The cache entry only materialises after this four-way match.
 
 Without the membership check in (4), two hosts that reuse the same `local_id` would both pass the signer-identity check, and the cache would record whichever responded first — likely the wrong group. With the membership check, only the host whose membership snapshot actually contains the user can win, which is exactly the group the user is a member of.

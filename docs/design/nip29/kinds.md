@@ -14,7 +14,7 @@ NIP-29 segregates kinds into three populations by *signer authority* and *routin
 | **Moderation** | 9000–9009 | a current admin | host relay (pin) | regular (audit trail) |
 | **Group metadata** | 39000–39003 | the **relay** | host relay (pin) — only ever exists there | parameterized-replaceable on `d = group_id` |
 
-This is the structure the `DomainModule` impls follow (per `../nip29-crate.md` §3.1). The kernel's ingest path validates signer authority *before* the module sees the event; see `moderation.md` for the validation rules.
+This is the structure the `DomainModule` impls follow (per `../nip29-crate.md` §3.1). The kernel's generic ingest pipeline dispatches events to `nmp-nip29`'s own ingest hook; that hook (not the kernel) does the NIP-29-specific work: structural validation, audit-trail materialisation, and routing of unknown h-tagged kinds to the `GroupContextEvent` fallback. Authority validation for admin actions is a *publish-time* (action-dispatch) concern, not an ingest-time concern — see `moderation.md` §3. Ingest never drops a 9000-9022 for "wrong signer"; it records the audit event regardless and lets the relay's reflected 39001/39002 (or absence thereof) tell the canonical story.
 
 ## 2. Full catalog
 
@@ -185,13 +185,15 @@ The `previous` tag is per-event optional; see `moderation.md` §2.
 
 The `code` tag appears on both 9009 (mint side) and 9021 (redeem side).
 
-The `p` tag is used in four distinct ways across this kind set:
+The `p` tag is used in three distinct ways across this kind set:
 
-- on 9000/9001/9005: targets of moderation actions
+- on 9000/9001: targets of user-targeting moderation actions
 - on 39001/39002: enumerates the admin/member set
 - on user-sent group events (kind 9, 11): mentions, NIP-10-style
 
-`nmp-nip29` ingest preserves all `p`-tag-bearing events in their owning DomainRecord; the View modules know which interpretation applies in their context.
+The `e` tag carries the target for event-targeting moderation: kind 9005 (delete-event) uses `["e", <event_id>]`, not `["p", ...]`. The `ModerationEvent` parser must look for `target_event_id` (from `e`) for 9005 and `target_pubkey` (from `p`) for 9000/9001.
+
+`nmp-nip29` ingest preserves all `p`-tag and `e`-tag bearing events in their owning DomainRecord; the View modules know which interpretation applies in their context.
 
 #### Kind 16 — Generic repost into a group
 

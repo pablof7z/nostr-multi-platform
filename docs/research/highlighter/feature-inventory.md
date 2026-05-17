@@ -61,7 +61,7 @@
 
 - **[N29]** Artifact detail — view of a shared artifact (article / book / podcast / web bookmark) inside the room context, with member highlights overlaid (`Communities/ArtifactDetailView.swift` + `RoomLibraryArticleCardView`, `RoomLibraryBookCardView`, `RoomLibraryPodcastCardView`).
 - **[N29]** Room library lanes — the room home view's "what people are reading here" lanes per artifact type (`Communities/RoomLanesView.swift`, `RoomHomeView.swift`).
-- **[N29]** Artifact registry per room — derived from kind:16 reposts of NIP-84 highlights tagged with the room's `h`; the `artifacts.rs` projection groups highlights by their reference (`a` tag for articles, `i` tag for ISBNs, `r` tag for podcast URLs).
+- **[N29]** Artifact registry per room — primarily derived from **kind:11 artifact-share events** (no `t=discussion` marker) tagged with the room's `h`, carrying catalog reference tags (`r` for articles/podcasts/web bookmarks, `i` for ISBNs, `a` for NIP-23 long-form coords) — verified per `artifacts.rs::query_for_group`. Highlight reposts into the room (kind:16 with `h`) are a separate, secondary share-into-room path (the `publish_and_share` flow). Both paths surface together in `nmp-nip29::GroupArtifacts` ViewModule.
 
 ## 2. NIP-29-adjacent features
 
