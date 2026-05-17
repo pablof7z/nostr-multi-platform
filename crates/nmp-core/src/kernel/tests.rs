@@ -104,6 +104,49 @@ fn close_author_refcounts_and_closes_view_subscriptions() {
 }
 
 #[test]
+fn profile_claims_are_ui_driven_and_deduped_by_pubkey() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    let first = kernel.claim_profile(
+        FIATJAF_PUBKEY.to_string(),
+        "timeline-row:first".to_string(),
+        true,
+    );
+    let second = kernel.claim_profile(
+        FIATJAF_PUBKEY.to_string(),
+        "timeline-row:second".to_string(),
+        true,
+    );
+
+    assert_eq!(first.len(), 1);
+    assert!(second.is_empty());
+    assert!(first[0].text.contains("\"profile-claim-1\""));
+    assert!(first[0].text.contains("\"kinds\":[0]"));
+    assert!(first[0].text.contains(FIATJAF_PUBKEY));
+    assert_eq!(
+        kernel
+            .profile_claims
+            .get(FIATJAF_PUBKEY)
+            .map(|claims| claims.len()),
+        Some(2)
+    );
+
+    let first_release = kernel.release_profile(FIATJAF_PUBKEY, "timeline-row:first");
+    assert!(first_release.is_empty());
+    assert_eq!(
+        kernel
+            .profile_claims
+            .get(FIATJAF_PUBKEY)
+            .map(|claims| claims.len()),
+        Some(1)
+    );
+
+    let second_release = kernel.release_profile(FIATJAF_PUBKEY, "timeline-row:second");
+    assert!(second_release.is_empty());
+    assert!(!kernel.profile_claims.contains_key(FIATJAF_PUBKEY));
+}
+
+#[test]
 fn parse_relay_list_splits_nip65_markers() {
     let parsed = parse_relay_list(
         123,
