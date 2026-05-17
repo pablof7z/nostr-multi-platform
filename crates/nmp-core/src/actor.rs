@@ -14,6 +14,8 @@ pub(crate) enum ActorCommand {
     OpenAuthor { pubkey: String },
     OpenThread { event_id: String },
     OpenFirehoseTag { tag: String },
+    ClaimProfile { pubkey: String, consumer_id: String },
+    ReleaseProfile { pubkey: String, consumer_id: String },
     CloseAuthor { pubkey: String },
     CloseThread { event_id: String },
     Stop,
@@ -102,6 +104,22 @@ pub(crate) fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<St
                     }
                     ActorCommand::OpenFirehoseTag { tag } => {
                         let outbound = kernel.open_firehose_tag(tag, relays_ready);
+                        emit_now(&mut kernel, running, &update_tx, &mut last_emit);
+                        outbound
+                    }
+                    ActorCommand::ClaimProfile {
+                        pubkey,
+                        consumer_id,
+                    } => {
+                        let outbound = kernel.claim_profile(pubkey, consumer_id, relays_ready);
+                        emit_now(&mut kernel, running, &update_tx, &mut last_emit);
+                        outbound
+                    }
+                    ActorCommand::ReleaseProfile {
+                        pubkey,
+                        consumer_id,
+                    } => {
+                        let outbound = kernel.release_profile(&pubkey, &consumer_id);
                         emit_now(&mut kernel, running, &update_tx, &mut last_emit);
                         outbound
                     }

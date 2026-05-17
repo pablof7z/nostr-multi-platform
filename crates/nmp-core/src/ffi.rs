@@ -189,6 +189,56 @@ pub extern "C" fn nmp_app_open_firehose_tag(app: *mut NmpApp, tag: *const c_char
 }
 
 #[no_mangle]
+pub extern "C" fn nmp_app_claim_profile(
+    app: *mut NmpApp,
+    pubkey: *const c_char,
+    consumer_id: *const c_char,
+) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let Some(pubkey) = c_string_argument(pubkey) else {
+        return;
+    };
+    let Some(consumer_id) = c_string_argument(consumer_id) else {
+        return;
+    };
+    if !is_hex_pubkey(&pubkey) {
+        return;
+    }
+
+    let _ = app.tx.send(ActorCommand::ClaimProfile {
+        pubkey,
+        consumer_id,
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn nmp_app_release_profile(
+    app: *mut NmpApp,
+    pubkey: *const c_char,
+    consumer_id: *const c_char,
+) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let Some(pubkey) = c_string_argument(pubkey) else {
+        return;
+    };
+    let Some(consumer_id) = c_string_argument(consumer_id) else {
+        return;
+    };
+    if !is_hex_pubkey(&pubkey) {
+        return;
+    }
+
+    let _ = app.tx.send(ActorCommand::ReleaseProfile {
+        pubkey,
+        consumer_id,
+    });
+}
+
+#[no_mangle]
 pub extern "C" fn nmp_app_close_author(app: *mut NmpApp, pubkey: *const c_char) {
     let Some(app) = app_ref(app) else {
         return;
