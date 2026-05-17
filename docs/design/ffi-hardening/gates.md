@@ -133,6 +133,19 @@ firehose-bench rerun, not by this design doc).
 | Catch-up bandwidth vs steady-state | `<=` | 3× | 3× |
 | Post-resume state snapshot equals control | `==` | byte-equal (relevant payloads) | byte-equal |
 
+### G-S11. Memory RSS instrumentation — iPhone 12 baseline
+
+*M1 RSS-measurement deferral honored here (T22). Simulator column is the Linux Rust-harness
+CI regression check; iPhone 12 column is the load-bearing gate.*
+
+| Metric | Op | Sim threshold (Linux Rust harness) | iPhone 12 threshold |
+|---|---|---|---|
+| RSS at stabilisation (100 active views) | `<=` | 100 MiB (ADR-0003 working-set gate) | 150 MiB |
+| RSS growth slope post-warmup (first 30 s) | `<=` | 0 bytes/sec | 0 bytes/sec |
+| Post-shutdown RSS delta | `<=` | 5 MiB | 10 MiB |
+| Instruments → Leaks count | `==` | 0 | 0 |
+| RSS sample interval | `==` | 5 s | 5 s |
+
 ---
 
 ## §G.1 Aggregate gates (apply across all scenarios)

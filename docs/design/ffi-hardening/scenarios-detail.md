@@ -209,7 +209,9 @@ Rust harness for regression detection.
 normally; the RSS probe fires on a 5-s `DispatchSourceTimer` on a background serial queue.
 
 **Assertions.**
-1. RSS at 100 active views ≤ **200 MB** (ADR-0003 working-set gate).
+1. RSS at 100 active views ≤ **100 MB** on simulator / **150 MB** on iPhone 12 (ADR-0003
+   working-set gate of ≤ 100 MB at 100 active views / 10k hot events; iPhone 12 gets
+   50 MB headroom for OS overhead per G-S11).
 2. RSS growth slope over the 10-min scroll ≤ **0 bytes/sec** post-warmup (first 30 s).
 3. Post-shutdown RSS delta ≤ **10 MB** (no retained-by-cycle leak surviving shutdown).
 4. Instruments → Leaks count = 0 throughout.

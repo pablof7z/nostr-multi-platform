@@ -1,6 +1,6 @@
 # FFI hardening — scenarios (§3)
 
-Ten named failure modes. Each entry: setup, assertion, threading target,
+Eleven named failure modes. Each entry: setup, assertion, threading target,
 runner (Rust harness / XCUITest / Sonnet-agent), and numeric threshold.
 Numeric thresholds are quoted here for clarity; the canonical exit-gate
 table lives in [`gates.md`](./gates.md).
@@ -182,6 +182,6 @@ when the callback fires (race window).
 
 ---
 
-Scenarios S6–S10 (capability storms, error exhaustion, planner DOS,
-relay flap, long suspend) are in
+Scenarios S6–S11 (capability storms, error exhaustion, planner DOS,
+relay flap, long suspend, memory RSS instrumentation) are in
 [`scenarios-detail.md`](./scenarios-detail.md).
