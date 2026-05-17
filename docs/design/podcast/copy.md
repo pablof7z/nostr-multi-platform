@@ -5,6 +5,56 @@
 
 ---
 
+## 0a. Pre-copy split plan — large Swift view files
+
+Two files in `../podcast/PodcastApp/Views/` exceed the 500 LOC hard limit (`DiscoverView.swift` 898 LOC; `PlayerSheet.swift` 642 LOC). Both exceed the 300 LOC soft limit. **The right time to split them is during the copy step** — we split and copy atomically in one commit, not as a separate refactor PR. The rendered UI is unchanged (same `View` bodies, same `@ViewBuilder` sections); only the file boundaries move.
+
+### 0a.1 `DiscoverView.swift` (898 LOC → 7 sibling files, each ≤ 300 LOC)
+
+Source MARK sections (per `grep -n "MARK:" DiscoverView.swift`):
+
+| MARK section | Lines | Destination file |
+|---|---:|---|
+| Main struct + `body` + env/state vars | ~130 | `DiscoverView.swift` (coordinator only) |
+| Hero, ForYou, Trending, Categories, Topics, AddByURL, SearchResults `@ViewBuilder` vars | ~259 | `DiscoverViewSections.swift` (extension on `DiscoverView`) |
+| Data Loading (`loadData`, `loadTrending`, `loadRecommendations`, `loadUserTopics`, `performSearch`) | ~153 | `DiscoverViewDataLoading.swift` (extension on `DiscoverView`) |
+| `PodcastSearchRow`, `EpisodeSearchRow` | ~87 | `DiscoverSearchSupport.swift` |
+| `AllTrendingView` | ~72 | `AllTrendingView.swift` |
+| `AllCategoriesView`, `CategoryDetailView` | ~130 | `DiscoverCategoriesViews.swift` |
+| `TopicSearchView` | ~68 | `TopicSearchView.swift` |
+
+Rendering is preserved: `DiscoverView.body` calls the same `heroSection`, `forYouSection`, etc. names; Swift sees them via the `extension DiscoverView` in `DiscoverViewSections.swift`. The `cp -R` in §2 is replaced with `cp -R` of the reference tree **then** this split applied before the commit.
+
+### 0a.2 `PlayerSheet.swift` (642 LOC → 4 sibling files, each ≤ 300 LOC)
+
+Source MARK sections:
+
+| MARK section | Lines | Destination file |
+|---|---:|---|
+| Main struct + `body` + Background + Drag Indicator + Header + Summary + Chapters sections | ~210 | `PlayerSheet.swift` (core layout) |
+| Controls Bar + Capture Button + Toast Overlays | ~151 | `PlayerSheetControls.swift` (extension on `PlayerSheet`) |
+| Gestures + Helpers + Insight Capture | ~181 | `PlayerSheetInsight.swift` (extension on `PlayerSheet`) |
+| `InsightErrorToast`, `InsightSavedToast` | ~34 | `PlayerToasts.swift` |
+
+### 0a.3 Updated file count after split
+
+After splitting, `ios/NmpPodcast/Views/` will contain **27 Swift files** (20 original + 7 split-out siblings), all ≤ 300 LOC soft. The copy step commit message notes the split explicitly. The inventory.md `Views` section and `find … | wc -l` verification are updated accordingly.
+
+### 0a.4 Invariant: no logic change during split
+
+The Swift compiler must accept the split with zero behavior change — verified by:
+
+```bash
+# Before split: build succeeds
+xcodebuild -scheme PodcastApp -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build
+# Apply split, rebuild:
+xcodebuild -scheme PodcastApp -destination 'platform=iOS Simulator,name=iPhone 16 Pro' build
+# Diffs must be empty (no view body changed):
+git diff --stat HEAD | grep Views/
+```
+
+---
+
 ## 1. Why this step exists
 
 The biggest threat to M11 is **gradual UI drift**: each port lane "improves" the Swift code in subtle ways (better naming, tighter view structure, "cleaner" gestures) until the rebuild no longer looks like the original. We prevent this structurally by **copying the views verbatim, committing, and adding screenshot diff gates from line 1**. Any subsequent change to a Swift view that breaks the screenshot diff requires explicit whitelisting in `docs/perf/m11/parity-screenshots.md` with a reason.
@@ -137,27 +187,30 @@ docs/perf/m11/parity-screenshots/
 
 20 reference screens cover every UI surface in the Swift app (Discover has 5 sub-states; PlayerSheet has 3). Per AGENTS.md the screens are listed individually in `manifest.toml`, not enumerated in a wall-of-text.
 
-### 5.3 Capture script (Rust)
+### 5.3 Capture and diff pipeline
 
-`crates/nmp-testing/bin/screenshot-diff/main.rs` — drives the reference and the rebuild simulators in parallel via `mcp__xcode` and `xcrun simctl`, scripts the named scenario, captures `xcrun simctl io booted screenshot`, runs `compare -metric MAE ref.png cand.png diff.png`, emits a `manifest.toml`-driven pass/fail.
+Screenshots are captured via the `NmpPodcastScreenshotTests` XCUITest target (see [`screenshots.md`](screenshots.md) §3 for the full spec). The diff step is a shell script `scripts/compare-screenshots.sh` that wraps ImageMagick `compare -metric MAE`. The orchestration:
 
-```rust
-// pseudocode
-for screen in manifest.screens {
-    boot_sim(REFERENCE_SIM, screen.bundle_id_reference)?;
-    drive_scenario(REFERENCE_SIM, &screen.scenario)?;
-    snap(REFERENCE_SIM, &screen.reference_path)?;
+```bash
+# 1. Run XCUITest on reference app — extracts PNGs from xcresult
+xcodebuild test -scheme NmpPodcastScreenshots -testPlan ReferenceScreenshots \
+  -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=26.5' \
+  -resultBundlePath build/ref.xcresult
+xcrun xcresulttool export --type file --id ATTACHMENT_ID --output docs/perf/m11/parity-screenshots/reference/
 
-    boot_sim(CANDIDATE_SIM, screen.bundle_id_candidate)?;
-    drive_scenario(CANDIDATE_SIM, &screen.scenario)?;
-    snap(CANDIDATE_SIM, &screen.candidate_path)?;
+# 2. Run XCUITest on rebuild
+xcodebuild test -scheme NmpPodcastScreenshots -testPlan CandidateScreenshots \
+  -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=26.5' \
+  -resultBundlePath build/cand.xcresult
+xcrun xcresulttool export --type file --id ATTACHMENT_ID --output docs/perf/m11/parity-screenshots/candidate/
 
-    let mae = run_compare(&screen.reference_path, &screen.candidate_path, &screen.diff_path)?;
-    if mae > screen.threshold_mae {
-        return Err(ParityError::AboveThreshold { screen: screen.id, mae });
-    }
-}
+# 3. Diff (keep this step; ImageMagick compare -MAE is the gate)
+for screen in manifest.screens:
+    compare -metric MAE ref/{screen}.png cand/{screen}.png diff/{screen}.png
+    if MAE > threshold_mae: FAIL
 ```
+
+The Rust binary at `crates/nmp-testing/bin/screenshot-diff/main.rs` wraps steps 1–3, reading thresholds from `manifest.toml` and emitting a pass/fail summary. `mcp__xcode` tools are development-time inspection aids only — not invoked in CI (see [`screenshots.md`](screenshots.md) §3).
 
 ### 5.4 Threshold policy
 
@@ -192,6 +245,15 @@ We do **not** copy `Info.plist` verbatim. We copy the **visual** keys (`UIAppFon
 - `PODCAST_INDEX_API_KEY` / `_SECRET`: omitted from Info.plist (replaced by `KeyValueStoreCapability` read at boot, env-var fallback retained).
 
 ---
+
+## 6b. Invariants — what must not change in the copied Views/
+
+The pixel-parity gate enforces these invariants after Step 0 lands:
+
+- **No new UI elements.** Any Swift file in `ios/NmpPodcast/Views/` that adds a UI element not present in the corresponding `../podcast/PodcastApp/Views/` file is a pixel-parity violation. Reviewers must reject such PRs; the screenshot diff will catch it mechanically.
+- **OPML import has no UI entry point in M11.** `ImportOpml` is a Rust-only `ActionModule`. No button, label, or menu item for OPML import appears in any copied view. Adding one is a parity violation; defer to post-M11.
+- **`AddPodcastView.swift` stays a single-URL form**, exactly as in the reference app. No file-picker, no paste-OPML textarea.
+- **`// MARK: NMP-WIRE — TODO` blocks are the only allowed change** to a view file before it is wired. Any other source change requires an explicit ADR + a parity-screenshots.md note with reviewer sign-off.
 
 ## 7. Acceptance for Step 0
 

@@ -270,3 +270,16 @@ Reads happen at action boot only. Per RMP bible commandment #2, keys never cross
 - Router test table: each route selected per `(settings, capabilities)` combo.
 - Streaming integration test: `MockLlmCapability` emits tokens at a chosen cadence; assert `AskViewModule` deltas coalesce to ≤ 30 Hz; assert final `ChatTurn` content is the concatenation; assert citations parsed correctly.
 - Failure-mode test: capability emits `Error { reason: "rate_limit" }` mid-stream → `ChatTurn` commits with `is_error: true` and the `toast` field is set per doctrine D3.
+
+## K. rig.rs path — M11 required (not deferred)
+
+The rig.rs route through `rig-core` is **required to land and pass its end-to-end test in M11**. It is not deferred to M15 or any later milestone. Rationale: M11 is the kernel-boundary check; the rig.rs path is the proof that `podcast-llm` is genuinely multiplatform — not an iOS wrapper around Apple Intelligence with a Rust veneer.
+
+**M11 acceptance for rig.rs:**
+
+1. `just demo-ask-stream --route rig` runs against a real (non-Apple-Intelligence) LLM endpoint (OpenAI, Anthropic, or a local `ollama` instance) and streams a full answer for a test question over a fixture corpus.
+2. First-token latency ≤ 1500 ms on Wi-Fi (same gate as the Apple Intelligence path; documented in `docs/perf/m11/ask-streaming.md`).
+3. `crates/nmp-testing/tests/action_ask_streaming.rs` runs with `rig-core` as the provider (not `MockLlmCapability`) and passes.
+4. The integration test is in CI (`m11-gates.yml`) — not behind a `#[cfg(feature = "rig-e2e")]` that is never set in CI.
+
+Apple Intelligence remains the default iOS route. The rig.rs path is the non-Apple route that M11 must demonstrate. Both routes share the same action shape — the only difference is `select_route()`'s return value.

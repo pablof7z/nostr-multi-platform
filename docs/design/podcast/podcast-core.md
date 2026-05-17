@@ -228,10 +228,12 @@ pub type GuestId = ulid::Ulid;
 pub type GuestContentId = ulid::Ulid;
 pub type InsightId = ulid::Ulid;
 pub type QueueEntryId = ulid::Ulid;
-pub type EmbeddingId = ulid::Ulid;   // re-exported from podcast-rag
+pub type EmbeddingId = ulid::Ulid;   // defined here in podcast-core; podcast-rag depends on podcast-core (one-way)
 ```
 
 UUIDv7 would also work; ulid chosen to match existing `nmp-core` convention.
+
+**`EmbeddingId` ownership (ADR note).** `EmbeddingId` is defined in `podcast-core`, not in `podcast-rag`. This breaks any potential import cycle: `podcast-rag` already depends on `podcast-core` (one-way); `podcast-core` must not depend on `podcast-rag`. `podcast-rag` action modules return `Indexed { embedding_id: EmbeddingId }` events; `podcast-core` consumes those events to backfill `TranscriptChunkRecord.embedding_id`, `InsightRecord.embedding_id`, and `GuestContentRecord.embedding_id`. The writer of all three fields is always `podcast-core`; `podcast-rag` only produces and returns `EmbeddingId` values — it never writes a `*Record`.
 
 ---
 

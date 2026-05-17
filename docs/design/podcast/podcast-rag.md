@@ -127,9 +127,12 @@ Target chunk length: 30 s ± 10 s; max 1 paragraph (3-5 sentences). This matches
 ```rust
 pub struct IndexChunk { pub chunk_id: ChunkId }
 pub enum IndexChunkOutput { Indexed { embedding_id: EmbeddingId } }
+// EmbeddingId is defined in podcast-core (one-way dep: podcast-rag → podcast-core).
+// podcast-rag returns EmbeddingId values; it never writes TranscriptChunkRecord.
+// podcast-core consumes the Indexed event and writes TranscriptChunkRecord.embedding_id.
 ```
 
-Step: load chunk text → `AwaitCapability(EmbeddingCapability::Embed { text })` → write to `chunk_vectors` + `chunk_metadata`. On success: backfill `TranscriptChunkRecord.embedding_id`.
+Step: load chunk text → `AwaitCapability(EmbeddingCapability::Embed { text })` → write to `chunk_vectors` + `chunk_metadata` → emit `Indexed { embedding_id }`. The calling `podcast-core` action (`EnqueueTranscription` chain) writes `embedding_id` back to `TranscriptChunkRecord`.
 
 ### D.2 `IndexInsight`, `IndexGuestContent`
 

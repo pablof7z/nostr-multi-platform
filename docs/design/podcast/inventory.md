@@ -105,7 +105,13 @@ Each `.swift` view file is `cp -R`'d into `ios/NmpPodcast/Views/` with the same 
 |---|---:|---|---|---|
 | `Views/Library/ActivityView.swift` | 287 | `useActivity()` | `ActivityViewModule { stats, episodes: [EpisodeStatusRow] }` (filter-aware) | `ProcessingQueue::CancelJob` |
 | `Views/Library/AddPodcastView.swift` | 89 | `useAddPodcastForm()` | local state | `PodcastFeeds::FetchFeed { url }` → on success `Podcast::Subscribe { podcast_id }` |
-| `Views/Library/DiscoverView.swift` | 898 | `useDiscover(search_text)` | `DiscoverViewModule { hero, recommendations, trending, categories, topics, search_results }` (split into nested view modules — see [`wiring.md`](wiring.md) §Library) | `PodcastFeeds::Search`, `PodcastRag::GetRecommendations`, `Podcast::Subscribe`, etc. |
+| `Views/Library/DiscoverView.swift` | 130 | `useDiscover(search_text)` | `DiscoverViewModule { hero, recommendations, trending, categories, topics, search_results }` (split into nested view modules — see [`wiring.md`](wiring.md) §Library) | `PodcastFeeds::Search`, `PodcastRag::GetRecommendations`, `Podcast::Subscribe`, etc. |
+| `Views/Library/DiscoverViewSections.swift` | ~259 | (extension on `DiscoverView`) | all 7 `@ViewBuilder` section vars (Hero, ForYou, Trending, Categories, Topics, AddByURL, SearchResults) | — |
+| `Views/Library/DiscoverViewDataLoading.swift` | ~153 | (extension on `DiscoverView`) | data-loading methods (loadTrending, loadRecommendations, etc.) | — |
+| `Views/Library/DiscoverSearchSupport.swift` | ~87 | none | `PodcastSearchRow`, `EpisodeSearchRow` presentational cells | — |
+| `Views/Library/AllTrendingView.swift` | ~72 | `useDiscoverTrending()` | `AllTrendingView` detail screen | — |
+| `Views/Library/DiscoverCategoriesViews.swift` | ~130 | none | `AllCategoriesView`, `CategoryDetailView` detail screens | — |
+| `Views/Library/TopicSearchView.swift` | ~68 | none | `TopicSearchView` detail screen | — |
 | `Views/Library/EpisodeDetailView.swift` | 247 | `useEpisodeDetail(episode_id)` | `EpisodeDetailViewModule { header, summary?, description?, insights: [InsightCardPayload] }` | `Podcast::Play`, `Podcast::DeleteInsight` |
 | `Views/Library/LibraryView.swift` | 120 | `useLibrary()` | `LibraryViewModule { podcasts: [PodcastRowPayload] }` | `Podcast::Unsubscribe`, `Podcast::RefreshAllFeeds` |
 | `Views/Library/PodcastDetailSheet.swift` | 173 | `usePodcastSheet(podcast_index_id)` | `PodcastSheetViewModule { metadata, is_already_subscribed }` | `Podcast::Subscribe` |
@@ -117,7 +123,10 @@ Each `.swift` view file is `cp -R`'d into `ios/NmpPodcast/Views/` with the same 
 | Swift file | LOC | NMP wrapper | Reads | Dispatches |
 |---|---:|---|---|---|
 | `Views/Player/MiniPlayer.swift` | 170 | `useNowPlaying()` | `NowPlayingViewModule { episode_id, podcast_id, title, podcast_title, artwork_url, progress_pct, state }` | `Podcast::Pause`, `Podcast::Resume`, `Podcast::SkipForward`, `Podcast::SkipBack`, `Podcast::Seek` |
-| `Views/Player/PlayerSheet.swift` | 642 | `usePlayerSheet()` | `PlayerSheetViewModule { episode, summary?, chapters, guests, capture_state }` | `Podcast::Seek`, `Podcast::SetRate`, `Insight::StartRecording`, `Insight::StopRecording { episode_id, capture_time_s }`, opens `ChaptersPanel`, `TranscriptView`, `GuestAgentSheet` |
+| `Views/Player/PlayerSheet.swift` | ~210 | `usePlayerSheet()` | `PlayerSheetViewModule { episode, summary?, chapters, guests, capture_state }` | `Podcast::Seek`, `Podcast::SetRate`, `Insight::StartRecording`, `Insight::StopRecording { episode_id, capture_time_s }`, opens `ChaptersPanel`, `TranscriptView`, `GuestAgentSheet` |
+| `Views/Player/PlayerSheetControls.swift` | ~151 | (extension on `PlayerSheet`) | Controls Bar, Capture Button, Toast Overlays | — |
+| `Views/Player/PlayerSheetInsight.swift` | ~181 | (extension on `PlayerSheet`) | Gestures, Helpers, Insight Capture | — |
+| `Views/Player/PlayerToasts.swift` | ~34 | none | `InsightErrorToast`, `InsightSavedToast` | — |
 | `Views/Player/ChaptersPanel.swift` | 324 | `useChapters(episode_id)` | `ChaptersViewModule { chapters, current_index?, is_extracting }` | `Podcast::Seek { to: chapter.start_s }`, `PodcastLlm::FindRelevantTimestamp { query }` |
 | `Views/Player/GuestAgentSheet.swift` | 297 | `useGuestAgent(guest_id, episode_id)` | `GuestAgentViewModule { guest, messages, suggested: [...] }` | `PodcastLlm::EnrichGuest`, `PodcastLlm::AskGuest { guest_id, query }` |
 | `Views/Player/TranscriptView.swift` | 214 | `useTranscript(episode_id)` | `TranscriptViewModule { chunks, current_chunk?, is_transcribing, is_summarizing, summary? }` | `Podcast::Seek { to: chunk.start_s }`, `Podcast::EnqueueTranscription` |
@@ -130,13 +139,13 @@ Each `.swift` view file is `cp -R`'d into `ios/NmpPodcast/Views/` with the same 
 
 ## H. Counts
 
-- **Swift files staying Swift (UI):** 18 (`Views/*.swift` minus none) + 3 utility/shell (`PodcastApp.swift`, `ContentView.swift`, two `Bridge/*.swift` ports).
+- **Swift files staying Swift (UI):** 20 (`Views/*.swift`; verified by `find /Users/pablofernandez/src/podcast/PodcastApp/Views -name '*.swift' | wc -l` = 20) + 3 utility/shell (`PodcastApp.swift`, `ContentView.swift`, two `Bridge/*.swift` ports).
 - **Swift files moving to Rust:** 8 models + 14 services + 1 utility (`RSSParser`) + 1 config = **24 files / ~3,165 LOC** moving to Rust.
 - **Swift files deleted entirely (no replacement needed):** `Services/ServiceContainer.swift` (54 LOC; replaced by the kernel actor + generated wrappers).
 
 ## I. Verification protocol
 
-After Step 0 (copy):
-- `find ios/NmpPodcast/Views -name '*.swift' | wc -l` = 18.
+After Step 0 (copy + split):
+- `find ios/NmpPodcast/Views -name '*.swift' | wc -l` = 27 (20 original + 7 split-out siblings from DiscoverView × 4 and PlayerSheet × 3; see [`copy.md`](copy.md) §0a).
 - `find ios/NmpPodcast -path '*/Models/*' -o -path '*/Services/*' -o -path '*/ViewModels/*'` = 0 hits.
 - `grep -RnE 'import SwiftData' ios/NmpPodcast` = 0 hits (SwiftData replaced by LMDB/Rust persistence).

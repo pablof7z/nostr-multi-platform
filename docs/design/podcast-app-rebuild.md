@@ -14,7 +14,7 @@ A **pixel-perfect rebuild** of the canonical Swift podcast app at `/Users/pablof
 
 **This is M11's load-bearing kernel-boundary check.** If the kernel needs even one podcast noun to make it work, the boundary is wrong and we go back to fix it. The exit gate is dual: (a) `nmp-core` gains zero podcast nouns, verified by grep + manual review; (b) screenshot diff vs `../podcast` is ≤ 1 px on every screen, font-rendering exceptions whitelisted.
 
-**Scope clarification (additive vs strict parity).** `docs/plan.md` §M11 lists `ImportOpml` as an action. The reference Swift app has no OPML import (`AddPodcastView` is a single-URL form, `LibraryView` lists subscribed podcasts only). M11 ships `ImportOpml` as **additive beyond strict parity** — implementable purely in Rust (no new Swift UI required beyond a button in `AddPodcastView`), so it does not threaten parity. The parity screenshot harness whitelists views that did not exist in `../podcast`. All other M11 features map 1:1 to a Swift surface.
+**Scope clarification (additive vs strict parity).** `docs/plan.md` §M11 lists `ImportOpml` as an action. The reference Swift app has no OPML import (`AddPodcastView` is a single-URL form, `LibraryView` lists subscribed podcasts only). M11 ships `ImportOpml` as **a Rust-only `ActionModule` with no UI entry point** — no button, no new view, no change to any copied Swift file. Adding a UI element for OPML import to any `Views/` file would violate the pixel-parity gate (see [`copy.md`](podcast/copy.md) §Invariants). The action is callable only via the kernel's external API (e.g., a CLI or post-M11 Settings entry); it is deferred to post-M11 for any UI surface. All other M11 features map 1:1 to an existing Swift surface.
 
 **Multiplatform-ready.** Although M11 ships only the iPhone target, every extension crate is pure Rust and compiles to wasm32 + android targets (capabilities aside). Android/Desktop/Web shells are explicitly post-M11; the design must not foreclose them.
 
@@ -144,7 +144,7 @@ Each step ends with: workspace `cargo test --workspace` green; the per-step scre
 ## 7. Reference Swift surface — totals
 
 - **47 Swift files**, **8,793 LOC** under `/Users/pablofernandez/src/podcast/PodcastApp/`.
-- Of which: **18 view files** stay Swift (UI), **14 services + 8 models + 0 view models** move to Rust (the Swift `ViewModels/` directory exists but is empty in the canonical app — view models are inlined as `@State` inside views or read directly from `@Observable` services).
+- Of which: **20 view files** stay Swift (UI) (`find /Users/pablofernandez/src/podcast/PodcastApp/Views -name '*.swift' | wc -l` = 20), **14 services + 8 models + 0 view models** move to Rust (the Swift `ViewModels/` directory exists but is empty in the canonical app — view models are inlined as `@State` inside views or read directly from `@Observable` services).
 - Full per-file table: [`inventory.md`](podcast/inventory.md).
 
 ---

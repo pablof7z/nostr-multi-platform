@@ -76,8 +76,8 @@ final class AudioPlaybackBridgeImpl: NSObject, AudioPlaybackBridge {
 
 ### Idempotency proof (RMP bible #7)
 
-- `Load { url_a } → Load { url_a }` → no-op when current `currentEpisode == url_a` and state ≠ `Idle`. When state is `Idle`, second call wins (clean reload).
-- `Load { url_a } → Load { url_b }` → first item torn down (KVO removed, observer removed, `AVPlayer` released), second item set up. Tests cover this exact sequence on app suspend/resume.
+- `Load { url_a } → Load { url_a }` → the bridge executes every `Load` unconditionally: it tears down the current item (KVO removed, observer removed, `AVPlayer` released) and sets up a fresh `AVPlayer`. Coalescing duplicate-URL loads is the **Rust kernel's responsibility** (`podcast-core::player` ActionModule checks whether the requested episode is already loaded before dispatching `AudioRequest::Load`; the bridge never short-circuits on its own).
+- `Load { url_a } → Load { url_b }` → first item torn down, second item set up. Tests cover this exact sequence on app suspend/resume.
 - `Stop → Stop` → idempotent (already idle).
 - `Pause → Pause` → idempotent.
 - App suspend/resume: `AVAudioSession` is configured with `.spokenAudio` mode and `.playback` category; `setActive(true)` is called inside `setupAudioSession()` on every `Load`. Interruption notifications (`AVAudioSession.interruptionNotification`) feed back into the bridge as `.stateChanged(.paused)` or `.stateChanged(.playing)`.

@@ -62,9 +62,40 @@ mae_threshold = 0.001      # ≈ 0.1% pixel variance allowed for SF Symbols anti
 
 ---
 
-## 3. Scenario language
+## 3. Screenshot harness — XCUITest target
 
-Each screen has a `scenario` block: a small DSL that's the same on both apps.
+**Automation surface: XCUITest, not MCP tools.**
+
+The harness is a dedicated `NmpPodcastScreenshotTests` XCUITest target in `ios/NmpPodcast/NmpPodcastScreenshotTests/`. It drives both the reference app and the rebuild via standard XCTest APIs:
+
+- **UI interaction**: `XCUIApplication`, `XCUIElement`, `tap()`, `swipeUp()`, `typeText()` — all standard XCUITest.
+- **Screenshot capture**: `XCUIScreen.main.screenshot()` (returns `XCUIScreenshot`); raw PNG is written via `XCTAttachment` to the test result bundle, then extracted by the harness runner.
+- **Diff step**: a shell script `scripts/compare-screenshots.sh` invokes `compare -metric MAE ref.png cand.png diff.png` (ImageMagick). This is the gating step — unchanged from the original design.
+
+```swift
+// ios/NmpPodcast/NmpPodcastScreenshotTests/ParityScreen.swift (excerpt)
+class FeedEmptyParityTest: XCTestCase {
+    func testFeedEmptyParity() throws {
+        let app = XCUIApplication(bundleIdentifier: bundleId)
+        app.launchArguments = ["--reset-state", "--pin-time", "2026-05-18T12:00:00Z",
+                               "--disable-animations"]
+        app.launch()
+        app.tabBars.buttons["Feed"].tap()
+        XCTAssertTrue(app.staticTexts["No Episodes"].waitForExistence(timeout: 10))
+        let screenshot = XCUIScreen.main.screenshot()
+        let attachment = XCTAttachment(screenshot: screenshot)
+        attachment.name = "01-feed-empty"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+}
+```
+
+`xcrun xcodebuild test -scheme NmpPodcastScreenshots -destination '...'` produces the `.xcresult` bundle; `xcrun xcresulttool export attachments` extracts the PNGs. The same XCUITest structure runs against both `com.podcast.app` (reference) and `com.example.nmppodcast` (rebuild) in separate runs, driven by the `bundleId` parameter.
+
+### Scenario manifest
+
+The `manifest.toml` describes the screens and thresholds. Each screen entry maps to one `XCTestCase` method:
 
 ```toml
 [[screens]]
@@ -74,30 +105,16 @@ reference_bundle_id = "com.podcast.app"
 candidate_bundle_id = "com.example.nmppodcast"
 simulator = "iPhone 16 Pro, iOS 26.5"
 threshold_mae = 0
-scenario = """
-launch_clean
-tap_tab "Feed"
-wait_until_visible accessibility_label="No Episodes"
-snapshot
-"""
+xctest_method = "testFeedEmptyParity"
 ```
 
-The DSL primitives are implemented in `crates/nmp-testing/bin/screenshot-diff/scenario.rs`. They wrap `xcrun simctl io` / `xcrun simctl spawn` and an Accessibility-Inspector-style XPath query against the running app's window hierarchy (via `mcp__xcode__describe_ui`).
+### Animation suppression
 
-Supported primitives:
+`--disable-animations` launch arg → the target `AppDelegate` calls `UIView.setAnimationsEnabled(false)` at startup. Reduce Motion is also forced via `simctl status_bar override` before launch.
 
-- `launch_clean` — `xcrun simctl uninstall booted <bundle>` + reinstall + launch.
-- `launch` — launch existing install.
-- `tap_tab "<name>"` — find tab bar item with label, tap.
-- `tap accessibility_id="<id>"` — generic tap by AX id.
-- `swipe direction="<up|down|left|right>" amount=<int>`.
-- `wait_until_visible <accessibility_label=...|text=...>` — poll up to 10 s.
-- `wait <ms>` — fixed sleep (used sparingly).
-- `seed_data fixture="<path>"` — populates the app's SwiftData/Rust LMDB with a known JSON fixture (so screens with content are reproducible). Two fixture loaders, one per app.
-- `snapshot` — `xcrun simctl io booted screenshot <out>.png`.
-- `pin_time iso8601="2026-05-18T12:00:00Z"` — `simctl status_bar override` + freezes the app's `now()` clock via launch arg.
+### Role of MCP tools (development-time inspection only)
 
-Animations are disabled via the simulator's "Reduce Motion" accessibility setting (`UIAccessibilityIsReduceMotionEnabled = true`) and `UIView.areAnimationsEnabled = false` injected via a launch arg.
+`mcp__xcode__describe_ui`, `mcp__xcode__screenshot`, and sibling tools are **development-time inspection aids** used by engineers iterating on scenarios in Claude Code sessions. They are not part of the gate's automation surface and are never invoked in CI. The CI pipeline runs `xcodebuild test` only.
 
 ---
 
