@@ -389,6 +389,7 @@ ADRs already adopted:
 - **ADR-0004:** Allocation measurement plumbed via counting allocator (verifies zero-per-event invariant). Adopted 2026-05-17 from reactivity-bench run 001.
 - **ADR-0005:** Platform shadow is domain-keyed, not `ViewId`-keyed. Refcounted component wrappers (`useProfile`, `@Profile`, `rememberProfile`) generated per platform manage subscription lifecycle behind the domain-keyed API. `ViewId` remains an internal FFI token only.
 - **ADR-0006:** Vertical-slice-first delivery for Phase 1. Kind:0 profile-metadata path runs end-to-end (desktop component → wrapper → actor → in-memory store → real relay → back) before the broader Phase 1 scope (LMDB, outbox, full view kinds, FFI to iOS/Android) layers on top. Adopted 2026-05-17 from the firehose-bench run that revealed the live mode was blocked on real runtime adapters.
+- **ADR-0007:** Relay/subscription diagnostics and non-Nostr data use the same actor-owned `AppUpdate` bridge, but with explicit diagnostic/domain records instead of raw callbacks or fake Nostr events. Adopted 2026-05-17 to clarify network visibility and capability/domain-data flow before expanding the vertical slice.
 
 The ADRs are the durable record of why design decisions exist. New ADRs land alongside any new harness run that revises a design.
 
