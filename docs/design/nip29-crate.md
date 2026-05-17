@@ -131,17 +131,21 @@ This is the breaking change versus Highlighter's existing core, which treats `gr
 
 For UI surfaces that need a flat string (URLs, deep links, share cards), `nmp-nip29::GroupId` provides `to_uri()` / `from_uri()` round-tripping into the NIP-29 spec format `<host>'<local-id>` (e.g. `groups.nostr.com'abcdef`).
 
-## 6. Cross-crate joins (the hard part of being a "Nostr-shaped" crate)
+## 6. Cross-crate joins (resolved at the app layer, not inside `nmp-nip29`)
 
-`nmp-nip29` is not self-contained. The user surfaces it ships need joins against three other crates:
+The user surfaces the UI consumes need joins against three other crates. Per the M11.5 exit gate (`nmp-nip29` must not import any other `nmp-nip*` crate), the joins live **in `highlighter-core`** (the app's own extension crate), where they compose `nmp-nip29`'s views with views from other protocol crates using only the kernel-level composite-key reverse index:
 
-| Join | Need | Mechanism |
+| Composed view (lives in `highlighter-core`) | Composes | Mechanism |
 |---|---|---|
-| `GroupChat` × `nmp-nip01::Profile` | render author names + pictures on chat messages | declare `nmp-nip01::Profile { pubkey }` as a satellite dependency in `GroupChat::dependencies()` (ADR-0001 composite-key dependency tracking, no special-casing required) |
-| `GroupDiscussions` × `nmp-nip22::Comment` | render reply counts + ordering by latest-reply timestamp | `GroupDiscussions::dependencies()` includes `nmp-nip22::Comment { e: <discussion_id> }` for each discussion root; the join happens in the view's `project()` method |
-| `GroupHome` × `nmp-nip84::Highlight` | render the "library lanes" of artifacts shared into the group via kind:16 reposts | `GroupHome::dependencies()` includes `nmp-nip18::Repost { h: <group_id> }` (kind:16 repost depends on a new tiny crate or lives in `nmp-nip29`'s artifact module — TBD); the projection deref's to the highlighted artifact via the repost's `e` tag |
+| `HydratedGroupChat` | `nmp-nip29::GroupChat` + `nmp-nip01::Profile` for each author | composite-key dependency tracking at the substrate level (ADR-0001) — `highlighter-core::HydratedGroupChat::dependencies()` enumerates both; the kernel reverse-index handles the join with no protocol-crate awareness |
+| `DiscussionsWithReplyCounts` | `nmp-nip29::GroupDiscussions` + `nmp-nip22::Comment { e: <discussion_id> }` per discussion root | same pattern; the comment count + latest-reply ordering happens in `highlighter-core`'s `project()` |
+| `GroupArtifactLanes` | `nmp-nip29::GroupHome` (which surfaces the kind:16 reposts tagged with the room's `h`) + `nmp-nip84::Highlight` deref'd via the repost's `e` tag + the original artifact via the highlight's reference | same pattern; the deref chain happens in `highlighter-core`'s projection |
 
-These joins are the *reason* substrate exists. They cost the crate ~zero special-casing because composite-key reverse index already handles them (per `crates/nmp-core/src/substrate/view.rs::ViewDependencies`).
+Why this works: the kernel's composite-key reverse index (`crates/nmp-core/src/substrate/view.rs::ViewDependencies`) is generic — it doesn't care which crate owns which DomainModule. An app-level ViewModule can declare dependencies on records owned by any protocol crate the app has registered. The protocol crates stay protocol-only; cross-protocol composition is the app's job.
+
+`nmp-nip29` ships its own non-hydrated views (`GroupChat`, `GroupDiscussions`, `GroupHome`, etc.) that are useful on their own (debugging UIs, tests, headless clients) without any cross-crate joins. The hydrated variants are app-level conveniences.
+
+This is also why kind:16 (generic repost) gets its own home: if it lives in `nmp-nip18`, `nmp-nip29` doesn't import it; the cross-protocol "list artifacts shared into this group" view is composed in `highlighter-core`. If `nmp-nip18` doesn't yet exist when M11.5 starts, the simplest interim is to put kind:16 ingest in `highlighter-core` itself; the ADR-0011 RelayPinnedInterest still routes correctly because the `h` tag is what matters, not which crate owns the kind.
 
 ## 7. What's deferred vs in-scope
 

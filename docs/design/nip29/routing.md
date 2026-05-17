@@ -64,15 +64,20 @@ Have the user manually declare which host relays they care about (similar to NIP
 
 Issue the 39001/39002 subscription on every relay in the user's pool. Reject: most relays don't host the user's groups; this is bandwidth + work waste, and a privacy leak (every connected relay learns the user's pubkey-of-interest).
 
-### 4.3 Strategy C — per-host-relay registry derived from user's writes ✅
+### 4.3 Strategy C — per-host-relay registry, multi-sourced ✅
 
-The framework discovers the user's host relays by tracking where the user has published events with an `h` tag. Each unique `h`-tagged publish records `(pubkey, host_relay_url, group_id)` in a small `nmp-nip29::JoinedHostsCache` table. The `JoinedGroups` view's dependency is the cross-product `(current_pubkey, host_relay_url)` for every host_relay in the cache, producing one `RelayPinnedInterest` per host relay for the 39001/39002 subscriptions.
+The framework maintains a `JoinedHostsCache` of `(pubkey, host_relay_url, group_id)` rows. The `JoinedGroups` view's dependency is the cross-product `(current_pubkey, host_relay_url)` for every host_relay in the cache, producing one `RelayPinnedInterest` per host relay for the 39001/39002 subscriptions.
 
-This means the first time the user joins a group on `relay29.fiatjaf.com`, their JoinRequest write hits `relay29.fiatjaf.com` (via the pin), the cache records "this user has touched `relay29.fiatjaf.com` for groups", and subsequent `JoinedGroups` view re-renders include `relay29.fiatjaf.com` in the fan-out automatically. **First-time discovery of a host relay is the side-effect of joining; no separate setup step.**
+The cache is **populated from four independent sources**, any of which is sufficient to discover a host relay:
 
-For onboarding from an invite link, the link itself carries the host relay (NIP-29 URI format `<host>'<group-id>`), so the redeem action knows the host before any cache exists.
+1. **Own writes** — every `h`-tagged event the user publishes (any kind: 9, 11, 9021, 9022, …) records `(self_pubkey, host_relay_url, group_id)`. Covers the "user joined a group themselves" case.
+2. **Invite-link redemption** — an invite URI carries the host relay in NIP-29's `<host>'<group-id>` format, so the redeem action knows the host before any cache exists; the redeem itself becomes source (1) once the kind:9021 fires.
+3. **Bootstrap ingest of any 39001/39002 the user appears in, from any connected relay** — when *any* relay in the user's pool happens to forward a 39001 or 39002 that contains the user's pubkey, the cache records the originating relay as a host candidate for that group_id. This covers the "admin added me directly via kind:9000 while I was offline, then I reconnect and a friendly relay forwards the resulting 39002" case, **and** the "user restored their account on a new device" case (the user's previous host-relay connections re-establish via NIP-65 + any indexer that happens to know about their group memberships). The mechanism: an indexer-style probe at session-open issues a kind-only filter `kinds: [39001, 39002], #p: [self_pubkey]` against the active relay pool. Any hit records the originating relay into the cache.
+4. **Explicit user import** — pasting a NIP-29 group URI (e.g. from a friend) into the app's "join a community" surface records the host_relay before any wire activity.
 
-The cache can be persisted (M3 LMDB), shared across app instances of the same account.
+Source (3) is the one that prevents the silent-miss failure mode for users who become members via 9000 add or after device-restore. The probe is bounded: it runs once at session open + on every `kind:0/3/10002` update for self, and dedups against the cache.
+
+The cache is persisted (M3 LMDB), shared across app instances of the same account.
 
 ## 5. Publish-planner integration: the `h`-tag override
 

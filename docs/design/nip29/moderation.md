@@ -112,9 +112,20 @@ A `private` group's 39000 is hidden from non-members. A `restricted` group rejec
 
 But what about the *client-side rendering*? If we somehow obtain a fragment of a private group's chat (e.g. from a stale cache before a membership change), do we render it?
 
-**`nmp-nip29` projection rule:** A `ViewModule` for a group whose latest known 39002 does **not** include the current user's pubkey projects an **empty result + a "you are not (or no longer) a member of this group" diagnostic**. The cache's stale events for that group are kept for 24 hours then evicted, in case membership is restored. This prevents the "I got kicked but still see chat" rendering bug.
+**`nmp-nip29` projection rule (private-group gate only):** A `ViewModule` for a **private** group (39000 carries the `private` marker tag) whose latest known 39002 does **not** include the current user's pubkey projects an **empty result + a "you are not (or no longer) a member of this group" diagnostic**. The cache's stale events for that group are kept for 24 hours then evicted, in case membership is restored. This prevents the "I got kicked from a private group but still see its chat" rendering bug.
 
-The rule is enforced in `GroupChat`, `GroupDiscussions`, `GroupMembers`, and `GroupHome`. The `JoinedGroups` view is exempt (it needs to *show* groups whose membership state is changing). The `GroupExplorer` view is exempt for public groups (any user can browse them).
+**Public groups are not gated.** A public group's metadata, members, admins, and discussions are visible to anyone — that's what `public` means in NIP-29. The room-preview flow (`feature-inventory.md` §1.1: "Preview sheet — read-only peek at name/about/picture/member count/admins before joining") requires this; gating public groups on membership would break preview.
+
+The rule mapping per visibility:
+
+| 39000 visibility | `GroupHome`/`GroupChat`/`GroupDiscussions`/`GroupMembers` rendering |
+|---|---|
+| `public` (default; absence of `private` marker) | always render whatever is cached, regardless of current-user membership |
+| `private` | render only if current user is in latest 39002 (or 39001); else render empty + member-required diagnostic |
+
+The `JoinedGroups` view is exempt either way (it needs to *show* groups whose membership state is changing). The `GroupExplorer` view filters to non-`hidden` groups but does not apply the membership gate (it's the discovery surface).
+
+For `restricted` groups (public-readable, member-only-writable), the gate does **not** apply to read views; the gate applies only to *write* `ActionModule`s, which pre-validate that the signer is a member before publishing.
 
 ## 7. Tests this layer requires (M11.5 exit gate, moderation half)
 
