@@ -239,6 +239,7 @@ fn set_read_timeout(socket: &mut RelaySocket, duration: Duration) {
             let tcp = stream.get_ref();
             let _ = tcp.set_read_timeout(Some(duration));
         }
+        // Stream type may have additional TLS variants in future tungstenite versions.
         #[allow(unreachable_patterns)]
         _ => {}
     }

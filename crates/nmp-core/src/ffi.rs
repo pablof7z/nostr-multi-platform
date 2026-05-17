@@ -72,6 +72,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
 #[no_mangle]
 pub extern "C" fn nmp_app_free(app: *mut NmpApp) {
     if !app.is_null() {
+        // SAFETY: caller guarantees app is a valid pointer allocated by nmp_app_new().
         unsafe {
             drop(Box::from_raw(app));
         }
@@ -272,6 +273,7 @@ fn app_ref<'a>(app: *mut NmpApp) -> Option<&'a NmpApp> {
     if app.is_null() {
         None
     } else {
+        // SAFETY: caller guarantees non-null app is a valid NmpApp pointer.
         Some(unsafe { &*app })
     }
 }
@@ -281,6 +283,8 @@ fn c_string_argument(ptr: *const c_char) -> Option<String> {
         return None;
     }
 
+    // SAFETY: caller guarantees ptr is a valid null-terminated C string.
+    // Validation: to_str() will reject invalid UTF-8.
     unsafe { CStr::from_ptr(ptr) }
         .to_str()
         .ok()
