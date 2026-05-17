@@ -18,7 +18,7 @@ The contract enumerates 13 such operations. Each is bound to:
 
 ## 2. Doctrine alignment
 
-The 13 contract bullets map onto the cardinal doctrines (D0–D5 in `product-spec/overview-and-dx.md` §1.5) and onto the older `aim.md` §6 doctrines 1–12. The mapping is intentionally many-to-many — a single behavior may discharge multiple doctrines, and a single doctrine may require several behaviors to be fully discharged.
+The 13 contract bullets map onto the cardinal doctrines (D0–D8 in `product-spec/overview-and-dx.md` §1.5). The mapping is intentionally many-to-many — a single behavior may discharge multiple doctrines, and a single doctrine may require several behaviors to be fully discharged.
 
 | Cardinal doctrine | Contract bullets it requires |
 |---|---|
@@ -27,9 +27,10 @@ The 13 contract bullets map onto the cardinal doctrines (D0–D5 in `product-spe
 | **D2** negentropy first, REQ second | C10 (watermarks + NIP-77 backfill) |
 | **D3** outbox routing is automatic | C5 (kind:3 → recompile), C6 (read fan-out), C7 (write fan-out + private fail-closed) |
 | **D4** single writer per fact; caches derive | C9 (provenance merge), C12 (account switch as state), C13 (refinement is a re-render, not a re-fetch) |
-| **D5** snapshots bounded by what's open | C8 (view-scoped subscriptions auto-close when views close; payload set bounded to open views; ≤60Hz emit cadence is an RMP bible invariant 9 + ADR-0002 budget, not the D5 definition itself) |
-
-The older `aim.md` §6 doctrines map similarly: doctrines 4 (replaceable invariants) → C1/C2/C3; doctrine 5 (outbox auto, manual is opt-out) → C5/C6/C7; doctrine 6 (subs auto-group/auto-close/auto-dedup/auto-buffer) → C8; doctrine 7 (sessions are state, switching is an action) → C11/C12; doctrine 10 (provenance preserved) → C9.
+| **D5** snapshots bounded by what's open | C8 (view-scoped subscriptions auto-close when views close; payload set bounded to open views) |
+| **D6** errors never cross FFI as exceptions | C7 (publish fail → `PublishPlanError` state, not exception); C11 (signer errors → ledger state); implicitly all 13 via the actor's toast-surface design |
+| **D7** capabilities report; never decide policy | C11 (KeyringCapability reports bytes, framework decides retry/activation) |
+| **D8** reactivity contract: composite reverse index · ≤60 Hz/view · working-set bounded | C8 sub-path 4 (≤60Hz emit cap); C13 (in-place refinement via projection cache) |
 
 The bug-extinction list in `product-spec/overview-and-dx.md` §3.3 (10 bug classes) is the negative formulation of the same surface: each contract bullet rules out at least one bug class structurally.
 
