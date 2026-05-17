@@ -10,9 +10,55 @@
 
 ## 1. Product summary
 
-A Cargo workspace shipping a single Rust core, FFI bindings for Swift/Kotlin/TypeScript, a wasm target, a scaffolding CLI, and reference platform shells for iOS, Android, desktop, and web. It composes the `rust-nostr` crate family plus an OS keyring crate, a NIP-46 connect crate, a NIP-47 NWC crate, a Blossom crate, and a relay-builder into an opinionated application framework. The framework owns: protocol state, caching, relay routing (NIP-65 outbox), subscription lifecycle, signing orchestration, derived views, sessions, wallets, NIP-17 messaging, NIP-77 sync, web-of-trust, and developer guardrails. Platform code renders state and dispatches user intents — nothing else.
+A Cargo workspace shipping a single Rust core, FFI bindings for Swift/Kotlin/TypeScript, a wasm target, a scaffolding CLI, and reference platform shells for iOS, Android, desktop, and web. It composes the `rust-nostr` crate family plus an OS keyring crate, a NIP-46 connect crate, a NIP-47 NWC crate, a Blossom crate, and a relay-builder into an opinionated application framework. The framework owns: protocol state, caching, relay routing (NIP-65 outbox), subscription lifecycle, signing orchestration, derived views, sessions, wallets, NIP-17 messaging, NIP-77 negentropy sync, web-of-trust, and developer guardrails. Platform code renders state and dispatches user intents — nothing else.
 
-The framework treats common Nostr-correctness failures (stale replaceable events, lost subscriptions, mis-routed publishes, double-publication, multi-account desync, leaked secrets across FFI, naive cache invalidation) as **product defects in the framework** rather than as developer mistakes. The public API is designed so that the wrong thing is hard to type.
+The framework treats common Nostr-correctness failures (stale replaceable events, lost subscriptions, mis-routed publishes, double-publication, multi-account desync, leaked secrets across FFI, naive cache invalidation, withheld cached data, blocking-on-fetch UI patterns) as **product defects in the framework** rather than as developer mistakes. The public API is designed so that the wrong thing is hard to type.
+
+---
+
+## 1.5 Cardinal doctrines
+
+Five named principles that subsume the rest of this spec. Every API decision answers to at least one of these; conflicts between them resolve in the order listed.
+
+### D1. Best-effort rendering — render now, refine in place
+
+Apps built with this framework **never withhold cached data and never block on fetches**. Every view payload field carries a value, not a "loading" status. Missing display names default to a shortened npub; missing pictures default to a deterministic identicon URI; missing timestamps default to "now". When a more authoritative value (e.g., the author's kind:0) arrives later, the view payload updates in place and the affected cell re-renders. The UI never sees a spinner gating already-renderable content.
+
+The doctrine is enforced by the view payload **types**: display fields are non-`Option`, placeholders are part of the type contract, and freshness is exposed (when relevant) as an optional badge hint, not a render gate. There is no `if has_profile { render } else { spinner }` pattern available in the API — the framework does not provide one.
+
+This rules out, by construction, the most common Nostr-client failure modes:
+
+- Hiding a post because the author's profile hasn't loaded yet.
+- Replacing cached profile metadata with a spinner because "we might have something newer."
+- Refusing to render threads because the root event isn't in cache.
+- Profile-picture flicker between cached and placeholder.
+
+### D2. Negentropy first, REQ second
+
+NIP-77 negentropy reconciliation is the framework's **default backfill mechanism**. Every (filter, relay) pair the app touches is treated as a tracked sync target with a watermark. When a subscription needs historical data, the planner consults the watermark and prefers sync over REQ scanning. REQ falls back only when the relay does not support NIP-77.
+
+This is not a feature you opt into. It is the engine. See §7.8.
+
+### D3. Outbox routing is automatic; manual relay selection is the opt-out
+
+Per NIP-65, every read and write is automatically routed to the relevant relays without the developer specifying them. Subscriptions with `authors` filters route to those authors' write relays; publishes go to the author's write relays plus tagged recipients' inbox relays; discovery falls back to a configurable indexer set.
+
+The developer **never picks relays per operation**. If they catch themselves doing so, either they want the explicit override path (`OverrideRelaysForNext`, used only for testing and bunker pairing), or the framework has a bug.
+
+This rules out, by construction:
+
+- Posts to relays the author hasn't declared as write relays.
+- DMs leaked to public relays.
+- Reads against a default relay set that misses an author's actual relays.
+- Hand-rolled fan-out logic in app code.
+
+### D4. Single writer per fact; caches derive
+
+The "single source of truth" doctrine does not mean one cache — there are five layers (durable event store, in-memory working set, view payloads, gossip cache, platform reactive shadow). It means **one writer per fact**, and every downstream cache derives from the writer mechanically. Cache invalidation is not a concept in the public API. Recomputation happens in the actor; the platform receives new derived state.
+
+### D5. Snapshots bounded by what's open
+
+What crosses FFI is the projection through currently-open views, not the underlying event store. `AppState` carries small screen-shaped data plus a map of `ViewId → ViewPayload` for views currently in use. Closing a view evicts its payload from the snapshot. The event store itself never crosses FFI. See §6.2 and the FFI architecture appendix (§A1).
 
 ---
 
@@ -124,7 +170,8 @@ The on-disk layout from `aim.md` §5 is canonical. Concretely, v1 ships the foll
 | `nmp-messages` | NIP-17 conversation layer | Pure Rust |
 | `nmp-blossom` | Blossom client wrapper | Pure Rust |
 | `nmp-guardrails` | Debug-build runtime checks | Pure Rust |
-| `nmp-testing` | Mock relay, factories, simulated time | Pure Rust |
+| `nmp-metrics` | Performance instrumentation (counters, budgets, exposed via `AppState.debug`) | Pure Rust |
+| `nmp-testing` | Mock relay, factories, simulated time, perf-replay harness | Pure Rust |
 | `nmp-nse` | Decrypt-only crate for iOS NSE + Android push (see §7.14) | UniFFI, minimal |
 | `nmp-cli` | Scaffolding tool | Binary |
 
@@ -141,6 +188,29 @@ The CLI scaffolds a complete starter project. Behavior is detailed in §8.
 ### 4.4 Examples
 
 `examples/chat-{ios,android,desktop,web}` track the starter app but include richer features (groups via NIP-29, zaps end-to-end, Blossom uploads, NIP-46 bunker pairing) and serve as the canonical "what does production-grade integration look like" reference for each platform.
+
+### 4.5 The proof app (`nmp-proof`)
+
+A kitchen-sink stress-test app, built using the framework, on all four platforms. It is **not** the starter app — the starter stays minimal so newcomers can read it. The proof app exists to validate the framework at scale and to gate v1 release.
+
+Feature set:
+
+- Multi-account login (3 signer kinds), 5 simultaneous accounts visible in a switcher.
+- Following timeline subscribed to a user with 1,000+ follows.
+- Hashtag firehose subscribed to a high-throughput tag (e.g., `#nostr`).
+- Thread view rendering a controversial event with hundreds of replies + reactions + zaps.
+- Search over the local store.
+- DM inbox with 50+ active conversations (NIP-17 gift-wrapped).
+- Long-form reader (NIP-23).
+- Wallet operations: NWC + Cashu + zaps in both directions + nutzap claim.
+- Blossom upload + view.
+- Background sync via NIP-77 negentropy on foreground.
+- Web-of-trust toggle visibly reordering the timeline.
+- Offline queue: airplane mode → compose → reconnect → publishes land.
+
+The proof app also ships a **performance overlay** (toggleable, debug-build default-on) rendering the live counters and budgets from §7.16. The overlay is implemented entirely in platform code reading from `AppState.debug` — no Rust-side UI logic.
+
+The proof app is the substrate for cross-platform consistency tests (§3.5): the same scripted action sequence runs against the proof app on all four platforms and `AppState` JSON snapshots must match.
 
 ### 4.5 Documentation set
 
@@ -474,7 +544,24 @@ Storage backend is configurable via `AppConfig.storage_backend` (LMDB default fo
 
 GC: a claim-based collector tracks `view_id → Vec<event_id>` references. View close drops claims. A periodic `prune()` removes events with zero claims that are also absent from declared "pinned" sets (sessions' contact-list events, sessions' relay-list events).
 
-Fallback loader: a `FallbackLoader` trait the actor calls on cache miss. Default implementation queries open relays; users can override via `AppConfig` to add custom sources (CDN cache, local mirror, etc.).
+**Sync watermarks.** The store maintains a per-`(filter_signature, relay_url)` table:
+
+```
+watermarks {
+  filter_sig: Hash,            // canonicalized filter
+  relay_url: String,
+  synced_up_to: u64,           // unix seconds; "we have everything matching this filter on this relay up to T"
+  last_sync_method: SyncMethod, // Negentropy | ReqScan | Manual
+  bytes_saved_vs_req: u64,     // cumulative, for diagnostics
+  updated_at: u64,
+}
+```
+
+Watermarks are durable. On startup they are loaded into the actor; they survive app restarts. The planner (§7.2) consults them before issuing any backfill, and the sync engine (§7.8) updates them after every reconciliation.
+
+A cache-miss query against a fully-synced `(filter, relay)` pair is **authoritative**: the answer is "this event does not exist on that relay." A cache-miss against an unsynced pair triggers either a sync (if NIP-77 supported) or a fallback fetch.
+
+Fallback loader: a `FallbackLoader` trait the actor calls on cache miss for events not covered by sync watermarks. Default implementation queries open relays; users can override via `AppConfig` to add custom sources (CDN cache, local mirror, etc.).
 
 ### 7.2 Subscription planner
 
@@ -482,24 +569,44 @@ Owns the mapping from `ViewSpec` → `Vec<Filter>` → `Vec<RelayUrl>` → on-th
 
 Behaviors:
 
+- **Sync-first backfill.** Before issuing a REQ for historical data, the planner consults sync watermarks (§7.1). If the `(filter, relay)` pair is fully synced past the requested window, no wire traffic; serve from cache. If partial, run an incremental negentropy reconciliation against the gap. If never synced and the relay supports NIP-77, run an initial reconciliation. Only when NIP-77 is unsupported does the planner fall back to filter-based REQ scanning.
+- **Live tail via REQ.** Negentropy is for historical/backfill data. Live subscriptions (no `until` upper bound) use REQ with `since = now()` against the same relay set. Sync handles "what happened before"; REQ handles "what happens next."
 - **Coalescing.** Filters that are equal or subsumable into a single broader filter share one REQ per relay. The planner maintains a filter-graph and recomputes on view open/close.
 - **Auto-close.** REQs without consumers are CLOSE'd. One-shot filters (those with no live subscribers, only an `until` upper bound) are CLOSE'd on EOSE.
 - **Buffering.** Inbound events are batched to ≤ 60Hz per view (configurable). Batches turn into one `ViewBatch` per tick.
 - **Backpressure.** If platform-side rendering falls behind, the planner drops `ViewBatch` updates in favor of a single `FullState` catch-up. View payload semantics make this lossless.
-- **Reconnect.** On relay reconnect, all active REQs are re-sent transparently. View payloads do not reset.
+- **Reconnect.** On relay reconnect, the planner first runs an incremental negentropy top-up from the watermark, then re-establishes live REQs. View payloads do not reset; the gap between disconnect and reconnect is filled by sync.
 
 ### 7.3 Outbox routing
 
-Default behavior for every action and subscription: route by NIP-65.
+Per doctrine D3, NIP-65 routing is the default for every read and write. The developer does not specify relays per operation. This subsystem is the implementation.
 
-Resolution algorithm:
+**Resolution algorithm.**
 
-- **Subscription with `authors` filter.** Resolve each pubkey's write relays via the gossip cache; fetch the kind-10002 if unknown; union the resulting relay sets; deduplicate.
-- **Subscription with no `authors` filter.** Use the active session's read relays.
-- **Publish.** Send to the author's write relays. If the event is a DM or has `p` tags representing notification recipients, also send to those recipients' inbox relays.
-- **Override.** `OverrideRelaysForNext { relays }` action sets a one-shot override consumed by the next publish action. Used for testing, bunker pairing flows, and developer escape hatches.
+| Operation | Relay set |
+|---|---|
+| Subscription with `authors` filter | Union of each pubkey's write relays (kind-10002), deduplicated. Pubkeys without known mailboxes trigger an opportunistic kind-10002 fetch from indexer relays. |
+| Subscription with `p` tag filter or notifications | Union of each tagged pubkey's inbox relays. |
+| Subscription with neither | Active session's read relays. |
+| Publish of any signed event | Author's write relays. |
+| Publish with `p` tags (DMs, mentions, reactions) | Author's write relays **plus** each tagged pubkey's inbox relays. |
+| DM (NIP-17 gift-wrapped) | **Only** the recipient's inbox relays. Never the author's write relays. Never the active session's "default" relays. |
+| Discovery (kind-10002 fetch for unknown pubkeys) | Configurable indexer relay set (default: a curated list of high-coverage relays). |
 
-The gossip cache is the `nostr-gossip` crate; backend selection (in-memory vs SQLite) follows the storage backend choice.
+**Why this prevents specific failure modes.**
+
+- "Publish leaked to wrong relays" → impossible at the API level. The developer cannot supply a relay list to `SendNote`. They can only override via the explicit one-shot `OverrideRelaysForNext` action, which is debug-flagged in logs.
+- "DM accidentally public" → impossible. The DM publish path consults only inbox relays; there is no code path that takes both a gift-wrapped event and the author's write relays.
+- "Reads missing an author's actual relays" → impossible if the author's kind-10002 is reachable; opportunistically fetched on first contact.
+- "Hand-rolled fan-out logic" → no API surface for it.
+
+**Per-pubkey relay-list lifecycle.**
+
+- First contact with an unknown pubkey → enqueue kind-10002 fetch from indexer relays.
+- Fresher kind-10002 arrives → invalidate dependent subscriptions, recompute relay sets, re-issue REQs as needed.
+- Kind-10002 missing for a pubkey after N seconds → fall back to indexer set for reads only; do not publish to indexers.
+
+The gossip cache is the `nostr-gossip` crate; backend selection (in-memory vs SQLite) follows the storage backend choice. Watermarks (§7.1) intersect with outbox: a sync watermark is keyed by `(filter, relay)` and naturally tracks per-author per-relay coverage.
 
 ### 7.4 Sessions
 
@@ -577,7 +684,52 @@ Atomicity invariant: an action's published events and the corresponding `EventSt
 
 Each payload type carries **pre-formatted** display strings (timestamps in user locale, npub-shortened forms, sat amounts). Per bible doctrine: no platform-side formatting.
 
-View warmth: a view stays cached for 30 seconds after its last claim is dropped (configurable). Re-opening within the window costs zero relay traffic.
+**Best-effort field contract (per doctrine D1).** Every display-bearing field in every view payload is **non-optional** and has a defined placeholder when the underlying data is missing:
+
+| Field | Placeholder when missing |
+|---|---|
+| Display name | Shortened npub: `npub1abc…xyz` |
+| Picture URL | Deterministic identicon URI derived from pubkey |
+| NIP-05 verified domain | empty string (UI conditionally renders a checkmark only when non-empty) |
+| Timestamp string | "just now" |
+| Reaction count | 0 |
+| Zap total | 0 sats |
+| Content body (if missing) | empty string (the item still renders; only the body region is blank) |
+
+When the underlying data arrives — kind:0 for an author, kind-9735 zap receipts for a note, the actual decrypted body for a DM — the view payload updates in place, the platform's reactive primitive detects the change, and only the affected cell re-renders. No spinner is ever shown for already-rendered cells.
+
+**Stale freshness is exposed, not gated.** Each enriched-from-cache field may optionally carry a sibling field `xxx_freshness: FreshnessHint` (recent, hours_old, days_old, never_verified). UI may choose to render a small badge. The framework never withholds the underlying value based on freshness.
+
+**Concrete example: lean timeline payload.**
+
+```rust
+#[derive(Clone, uniffi::Record)]
+pub struct TimelineView {
+    pub cursor: Cursor,
+    pub items: Vec<TimelineItem>,
+    pub has_more: bool,
+}
+
+#[derive(Clone, uniffi::Record)]
+pub struct TimelineItem {
+    pub id: String,                   // event id hex
+    pub author_pubkey: String,
+    pub author_display: String,       // never empty; npub-shortened if no kind:0
+    pub author_picture: String,       // never empty; identicon URI if no kind:0
+    pub author_nip05_domain: String,  // empty if not verified
+    pub content_preview: String,      // pre-truncated for list display
+    pub created_at_display: String,   // pre-formatted, locale-aware
+    pub reaction_summary: ReactionSummary,
+    pub zap_sats_total: u64,
+    pub reply_count: u32,
+    pub repost_of: Option<EventCoord>,
+    pub quote_of: Option<EventCoord>,
+}
+```
+
+`TimelineItem` is a flat summary. The full event content, raw tags, signature, and provenance live in the event store inside Rust and do not cross FFI. This matches the precedent set by the bible's reference implementation (Pika): chat list is summaries; current chat loads full content on demand.
+
+View warmth: a view stays cached for 30 seconds after its last claim is dropped (configurable). Re-opening within the window costs zero relay traffic and zero re-sync.
 
 ### 7.7 Web of Trust
 
@@ -589,9 +741,32 @@ View warmth: a view stays cached for 30 seconds after its last claim is dropped 
 
 Computation is incremental; updates to follow lists update scores without recomputing from scratch.
 
-### 7.8 NIP-77 Negentropy sync
+### 7.8 Sync engine (NIP-77 negentropy as first-class infrastructure)
 
-`nmp-sync` exposes a high-level API:
+Per doctrine D2, negentropy is the default backfill mechanism. The sync engine is not a feature you opt into; it is the engine the planner runs on top of.
+
+**Position in the stack.**
+
+```
+View opens → Planner consults watermarks → Sync engine reconciles gap → EventStore inserts → ViewBatch emits
+                                ↓ (fallback)
+                                REQ scan
+```
+
+**Watermarks as a first-class type.** The engine reads and writes the `watermarks` table introduced in §7.1. A watermark answers two questions:
+
+- Has this `(filter, relay)` pair ever been synced?
+- If so, up to what timestamp?
+
+Answers to those questions inform every backfill, every fallback-loader decision, and every "is this cache miss authoritative?" check.
+
+**Three triggers, all built-in.**
+
+1. **App foreground.** On `AppAction::Foreground`, the engine schedules an incremental sync for the active user's home filter (kind:1, kind:6, kind:7 matching followed authors) against their write relays. Runs in the tokio runtime; emits `SyncState` updates as it progresses; no UI blocking.
+2. **View open.** When a view opens whose filter has a gap (per watermark), the engine reconciles the gap before — and concurrently with — the live REQ tail. Progress is visible in `SyncState`; the view payload streams in as events land.
+3. **Relay reconnect.** On reconnect, the engine resumes from the watermark before re-establishing live REQs. The gap between disconnect and reconnect is filled by sync, not by re-fetching from scratch.
+
+**Manual sync as an action.** `AppAction::RunSync { spec }` lets apps trigger arbitrary reconciliations (e.g., "sync this user's last 30 days of articles"). Same engine, different trigger.
 
 ```rust
 pub struct SyncSpec {
@@ -603,7 +778,21 @@ pub struct SyncSpec {
 }
 ```
 
-`RunSync { spec }` action triggers; progress flows through `SyncState`; completion materializes as either an `Effect::SyncComplete` or a follow-up action depending on `on_completion`. Background sync is a scheduled action driven by app foregrounding and configurable cadence.
+**Per-relay capability negotiation.** Not every relay implements NIP-77. The engine maintains a per-relay support flag, probed lazily on first contact. Unsupported relays cause the planner to fall back to REQ scanning for that relay only — other relays in the same fan-out still use sync.
+
+**Instrumentation.** Every reconciliation reports bytes-on-the-wire vs. equivalent-REQ-bytes (estimated). The aggregate is exposed in `DebugDiagnostics.sync_savings` and rendered in the proof app's performance overlay.
+
+**SyncState in AppState.** Visible to UI:
+
+```rust
+pub struct SyncState {
+    pub active: Vec<SyncJob>,     // currently-running reconciliations
+    pub last_completed: Option<SyncJobReport>,
+    pub watermarks_summary: WatermarksSummary,  // coverage stats per relay
+}
+```
+
+UI rendering is optional — most apps will not show sync activity directly — but the data is there for proof-mode dashboards and for power-user surfaces.
 
 ### 7.9 Wallet
 
@@ -698,6 +887,48 @@ Mechanism:
 - `created_at` on the event is fixed at the time of original dispatch, not at the time of eventual publish — preserving causal order.
 
 The queue is visible via `OutboxState.pending` and `OutboxState.failed`; users can clear failed entries via a diagnostic action.
+
+### 7.16 Performance instrumentation (`nmp-metrics`)
+
+A framework subsystem, not an afterthought. The proof app (§4.6, §12) is the primary consumer; production apps can also surface the same dashboard behind a debug flag.
+
+**Always-on counters** (release builds), zero or near-zero overhead:
+
+- FFI calls per second (dispatch / reconcile).
+- FFI payload size histogram (bytes per `AppUpdate`).
+- Snapshot frequency: `FullState` vs `ViewBatch` per second.
+- Active view count.
+- Per-view payload byte budget vs actual.
+- Sync watermarks coverage (per relay: % of opened filters fully synced).
+- Sync bytes-saved vs equivalent-REQ-bytes, cumulative.
+- Cache hit rate (event store reads served without relay traffic).
+- Actor message queue depth (high water mark + current).
+- Outstanding subscriptions per relay.
+
+**Debug-build instrumentation**, higher cost:
+
+- `AppState` clone duration p50/p99.
+- View recompute duration per view per emit.
+- Tokio runtime stats (active tasks, blocking calls).
+- Memory footprint of the actor's working set.
+- Per-platform marshaling time (recorded by the reconciler).
+
+Exposed via `AppState.debug` in debug builds; accessible via the `EmitDiagnosticSnapshot` action in release builds (writes a JSON snapshot to a path returned via `Effect::DiagnosticReady`). The proof app renders this live as an in-app overlay.
+
+**Budgets** (initial targets; revised after Phase 9 measurement on real devices):
+
+| Metric | Budget |
+|---|---|
+| `FullState` payload | ≤ 64 KB |
+| `ViewBatch` payload | ≤ 32 KB |
+| Per-`AppUpdate` marshaling (Rust→native) p99 | ≤ 4 ms |
+| `ViewBatch` frequency under hashtag firehose | ≤ 60 Hz |
+| Actor queue depth, steady-state | < 16 |
+| Memory footprint (timeline of 1k authors, 10k events cached) | ≤ 200 MB |
+| Sync bytes-saved on 10k-event backfill | ≥ 95% vs REQ |
+| Cold-start to first painted timeline frame | ≤ 1.5 s on mid-range mobile |
+
+Exceeding any budget in the proof app is treated as a framework defect, tracked as a bug.
 
 ---
 
@@ -810,20 +1041,38 @@ CI lanes (GitHub Actions):
 
 ## 12. Phasing
 
-Phase plans live in `docs/design/`; this spec stipulates only the ordering and gating between phases. Implementation does not begin before §7 of `aim.md` is fully resolved in design docs.
+Two-arc plan: **infrastructure first, then a real app that stress-proofs it, then a perf pass.** Detailed plan in `docs/plan.md`. The summary table below.
 
-| Phase | Scope | Gating exit criterion |
+### Arc 1 — Infrastructure
+
+| Phase | Scope | Exit gate |
 |---|---|---|
-| 0. Foundations | Workspace scaffold, `nmp-core` skeleton, actor + AppState/Action/Update shells, `nmp-ffi`, generated bindings round-trip, headless integration test runs | A `FullState` snapshot crosses Swift, Kotlin, TS without panic. |
-| 1. Event store + views | EventStore with all insert invariants, planner, outbox, profile/timeline/contacts views | Demo: subscribe to a timeline, see live events, see replaceable updates supersede correctly. |
-| 2. Sessions + writes | Multi-account, signers (local + bunker first), actions catalog covering write paths | Demo: log in, post a note, post a reply, react, follow/unfollow. |
-| 3. Messaging | NIP-17 conversation layer, NSE crate | Demo: end-to-end DM between two simulated users in the test harness. |
-| 4. Wallet | NWC + zaps + Cashu/nutzaps | Demo: pay a zap; receive a zap receipt; see balance update. |
-| 5. Sync + WoT | NIP-77 sync action, WoT subsystem | Demo: backfill a fresh device from a single relay; WoT filter visibly reorders timeline. |
-| 6. Web | `nmp-wasm`, web starter shell, OPFS/IndexedDB backend | Cross-platform consistency tests pass on web. |
-| 7. CLI + starter | `nmp init` produces the full four-platform starter; `nmp doctor`; `nmp gen *` | The §3 success criteria are reproducible by a developer following only the published docs. |
+| 0. Foundations | Workspace, `nmp-core` actor skeleton, `AppState`/`AppAction`/`AppUpdate` shells, `nmp-ffi` round-trip, generated bindings, headless test harness | A `FullState` snapshot crosses Swift/Kotlin/TS; `rev` ordering enforced; CI green on all four platforms |
+| 1. Event store + planner | EventStore with all insert invariants (replaceable, delete, expiration, dedup, provenance), claim-based GC, sync watermarks table, gossip cache, outbox routing default, subscription planner with coalescing/auto-close/buffering | Bug-extinction tests #1, #2, #3, #4, #6, #8 (§3.3) pass against `MockRelay` |
+| 2. Sync engine | NIP-77 negentropy as the default backfill path, watermark-driven planner decisions, foreground/view-open/reconnect triggers, capability negotiation, bytes-saved instrumentation | Cold open of a profile cold-syncs via NIP-77; bytes-saved ≥ 95% vs equivalent REQ on 10k-event backfill |
+| 3. Sessions + signers + actions | Multi-account, local-key + NIP-46 signers, the full action catalog from §6.3, offline action queue with durable storage, action atomicity (publish + store-insert as one actor message) | Bug-extinction tests #5, #7, #9, #10 pass; offline-queue replay test passes |
+| 4. Views + best-effort rendering | View kinds (profile, contacts, timeline, thread, replies, reactions, conversation list, conversation), pre-formatted display fields, non-optional placeholder contract, `ViewBatch` deltas, view warmth | Best-effort doctrine enforced in tests: posts render without kind:0 present; cached kind:0 always served; in-place refinement on arrival |
+| 5. Messaging | NIP-17 conversation layer over NIP-44/NIP-59, NSE crate (`nmp-nse`) with bounded memory, background decryption | DM round-trip on iOS + Android with NSE; memory budget respected |
+| 6. Wallet + WoT + Blossom | NWC, zaps, Cashu, nutzaps; WoT subsystem; Blossom client | Pay/receive zap; WoT toggle reorders timeline visibly; Blossom upload/download |
+| 7. Web | `nmp-wasm`, web shell, OPFS+IndexedDB backend, capability bridges for web (NIP-07, file pickers, browser storage) | Cross-platform consistency tests pass on web |
 
-Each phase ends with a tagged minor release on crates.io once §7.7 of `aim.md` is resolved and naming is final.
+### Arc 2 — Proof app + perf
+
+| Phase | Scope | Exit gate |
+|---|---|---|
+| 8. Proof app | Build `nmp-proof` (§4.5) on all four platforms; performance overlay; scripted scenarios for cross-platform consistency tests | Proof app launches and exercises every subsystem on every platform; consistency tests pass |
+| 9. Performance pass | Run proof app on real devices (mid-range iOS, mid-range Android, Linux desktop, modern web browsers); collect counters; address budget regressions; tune planner, ViewBatch deltas, marshaling | All §7.16 budgets met on reference devices; performance report published to `docs/perf/v1.md` |
+
+### Arc 3 — Release
+
+| Phase | Scope | Exit gate |
+|---|---|---|
+| 10. CLI + starter app + docs | `nmp init`, `nmp doctor`, `nmp gen *`, minimal starter app polish, recipe book, NIP support matrix | §3 success criteria reproducible from published docs alone |
+| 11. v1 release | Tagged release on crates.io and npm; bindings published; example apps deployed | Public availability |
+
+**Naming** (`aim.md` §7.7) must be resolved before Phase 11.
+
+Each phase ends with a regression test added to `nmp-testing` that locks in the gate. Subsequent phases must not break prior gates.
 
 ---
 
@@ -857,3 +1106,86 @@ These questions are tractable in the design phase and do not block the rest of t
 - **View.** A pre-built derived projection of `EventStore` contents. Opened by `OpenView` action; payload arrives via `AppState.views` / `ViewBatch`.
 - **Capability bridge.** Synonym for capability; the RMP bible's term.
 - **ViewSpec / ViewPayload.** The opened-view descriptor and the materialized data.
+- **Watermark.** A `(filter, relay) → time` record indicating how much of that filter we have already reconciled from that relay. The basis of sync-first backfill (§7.1, §7.8).
+- **Best-effort rendering.** Doctrine D1: render what's available, refine in place; never withhold cached data; never block on fetches.
+
+---
+
+## Appendix A. FFI architecture in detail
+
+### A1. Why snapshots + ViewBatch (and not other patterns)
+
+The bible mandates snapshots over FFI. For a Nostr client with timelines of thousands of events, naive full-snapshots are wasteful. We deviate as follows:
+
+**`AppState` is bounded by what's open.** It does not contain the event store, the gossip cache, the working set, or anything proportional to the local cache size. It contains:
+
+- Small screen-shaped state (router, session, busy flags, toast, wallet balance summary).
+- A `HashMap<ViewId, ViewPayload>` populated only for currently-open views.
+- Paginated view payloads (each bounded by the UI's actual rendering capacity).
+
+The event store, gossip cache, sync watermarks, working set, and signer state all live in the actor and **never cross FFI**.
+
+**Two outbound channels, one ordering.** `AppUpdate` carries either a full snapshot or a batch of view deltas. Both carry a monotonic `rev`. Platforms apply only updates with `rev > last_applied`; out-of-order delivery is impossible to render. Mixing `FullState` and `ViewBatch` is safe: a `FullState` at rev=N supersedes any pending `ViewBatch` with rev<N.
+
+**The planner batches at ≤60Hz.** 500 reactions arriving in 100ms become ≤6 batched deltas, not 500 callbacks. Bible commandment 9 (no high-frequency FFI loops) is honored by construction.
+
+**Escape hatch for ultra-high-frequency surfaces.** NIP-77 sync progress, live media decode, anything kHz-rate uses a shared-atomic + UI-thread polling pattern (declared in spec, not used by default). It is a deliberate exit from TEA-purity for surfaces where the marshaling cost would dominate.
+
+### A2. Alternatives considered
+
+Three serious alternatives to snapshots+ViewBatch were evaluated. Each is used in production by other apps. Each was rejected (or deferred) for specific reasons.
+
+| Alternative | Used by | Why rejected for v1 |
+|---|---|---|
+| **Reactive shared SQLite.** Rust writes; both sides hold read handles; reactive query libraries (GRDB / SQLDelight / Drift) re-run queries on table writes. | 1Password (Op core), Linear, Notion mobile, most local-first apps | Surrenders doctrine. Platforms now write queries, which is display-shaping logic. Pre-formatting (timestamps, npubs, sats) either moves into native (D-violation) or materializes as columns at write time (extra schema). Web fragments — wasm SQLite doesn't share with JS the way native does. Cross-platform consistency tests get harder (per-platform query results vs byte-diffable JSON). |
+| **Local relay / localhost IPC.** Rust runs an in-process Nostr relay (e.g. `LocalRelay` from `nostr-relay-builder`); platform talks Nostr over WebSocket to it. | Some Tauri apps; Citrine-style Android setups conceptually | WebSocket+JSON tax for in-process IPC. Outbox routing semantics get weird (the "relay" is local but represents many remote relays). The framework's value-add (views, actions, sessions as state) gets obscured behind a protocol that wasn't designed for it. |
+| **Shared memory + signal.** Rust writes to mmap'd or shared heap; platform reads via raw pointers; FFI carries only "key X changed." | Game engines; Flutter+Skia for graphics state | Memory safety across FFI is hellish. Unsuitable for Swift/Kotlin idioms. Not portable to web. |
+
+**The "hybrid for v2" possibility.** If Phase 9 measurement shows marshaling cost as the bottleneck on bulk-scrolling views (timeline, conversation history, search), the deliberate v2 escape is:
+
+1. Framework owns a SQLite schema.
+2. Framework scaffolds typed, parameterized reactive query bindings per platform via the CLI; platforms call `viewModel.timeline(authors).asFlow()` rather than writing SQL.
+3. Schema, indexes, formatting (materialized display columns), and invalidation are owned entirely by Rust.
+4. Snapshots + ViewBatch retained for small screen-shaped state and small-payload views; reactive queries used for bulk-scrolling views.
+5. Web continues with message-passing (wasm SQLite doesn't bridge to JS reactively).
+
+This is a v2 decision gated on Phase 9 data. v1 ships with snapshots+ViewBatch only.
+
+### A3. Why `ViewBatch` from day one (vs. snapshot-only MVP)
+
+The bible's stated default is "start with `FullState` everywhere; add granular updates only when profiling demands." We deviate because:
+
+- Nostr timeline shape is fundamentally chatty: a single popular event arriving triggers reaction, repost, and zap-receipt events at hundreds per second.
+- Full-state churn under that load is wasteful per individual update and harmful in aggregate.
+- The marginal complexity of `ViewBatch` is small: it's a typed delta enum over the already-existing view payload types.
+- Retrofitting `ViewBatch` later would invalidate every platform shim and reconciler implementation.
+
+Both channels (`FullState` and `ViewBatch`) ship in v1. `FullState` remains the canonical fallback for coarse changes and the recovery path for platform-side state drift.
+
+---
+
+## Appendix B. Glossary of NIPs referenced
+
+| NIP | Purpose | Where it appears |
+|---|---|---|
+| 01 | Base protocol, replaceable events | §7.1 |
+| 05 | DNS-based identifiers | §7.6 |
+| 07 | Browser signer | §7.4 |
+| 09 | Deletion events | §7.1 |
+| 17 | Private DMs | §7.10 |
+| 19 | bech32 entities | §7.12 |
+| 23 | Long-form content | §4.5 (proof app) |
+| 25 | Reactions | §6.3, §7.6 |
+| 40 | Expiration | §7.1 |
+| 42 | Auth | §6.4 |
+| 44 | Encryption | §7.10 |
+| 46 | Nostr Connect / bunker | §7.4 |
+| 47 | Wallet Connect | §7.9 |
+| 49 | Encrypted private key | §7.4 |
+| 55 | Android external signer | §7.4 |
+| 57 | Lightning zaps | §7.9 |
+| 59 | Gift wrap | §7.10 |
+| 60 | Cashu wallets | §7.9 |
+| 61 | Nutzaps | §7.9 |
+| 65 | Relay-list metadata (outbox) | §7.3 |
+| 77 | Negentropy | §7.8 |
