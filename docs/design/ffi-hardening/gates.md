@@ -94,7 +94,7 @@ firehose-bench rerun, not by this design doc).
 | Metric | Op | Sim threshold | iPhone 12 threshold |
 |---|---|---|---|
 | Crashes / signals across full input matrix | `==` | 0 | 0 |
-| Use-after-free probe (free → call) crashes | `==` | 0 | 0 |
+| Crashes on NULL app pointer calls | `==` | 0 | 0 |
 | Toast field populated on every silent-no-op path | `==` | 100 % of validation-fail paths | 100 % |
 | Toast strings non-empty + actionable (regex match) | `==` | 100 % | 100 % |
 | Instruments-Allocations delta over full matrix | `==` | 0 (no leak per error path) | 0 |
@@ -179,10 +179,21 @@ Each line item names the artifact that proves it.
   every author with placeholder text in emit N, emit M > N where
   the kind:0 arrived must contain the resolved text and an
   unchanged `id`.
-- ✅ **Stress proof (long path):** S10 (long suspend) — on resume
-  the catch-up rendering does not stall on missing profiles; the
-  timeline renders with placeholders immediately.
+- ✅ **Stress proof (back-pressure path):** S4 (reconciler
+  back-pressure) — on stall release, the timeline renders with
+  placeholders immediately, not spinner-blocked. Emit ordering is
+  monotonic; no frame is dropped.
+- ✅ **Code proof:** iOS `ProfileCard.placeholder(pubkey:)` renders
+  immediately from `debt-inventory.md` §3 D1 audit; no spinner, no
+  `nil` guard blocking render.
 - 📝 **Sign-off:** doctrine-review.md § D1.
+
+> **Note on S10.** S10 (long suspend) would provide additional D1
+> evidence for the resume path, but S10 is conditional on M3+M4
+> (persistence + watermarks), which are not complete at M10.5 close.
+> S10 is deferred to M11.5 or whenever M3+M4 land; it is not used as
+> doctrine sign-off evidence here. D1 is signed off on S3 + S4 + code
+> proof above.
 
 ### D2. Reactivity contract — composite reverse index, ≤60Hz/view, working-set bound
 
@@ -228,16 +239,28 @@ Each line item names the artifact that proves it.
   prod).
 - 📝 **Sign-off:** doctrine-review.md § D4.
 
-### D5. Snapshots bounded by what's open
+### D5. Capabilities report, never decide
 
-- ✅ **Stress proof:** S1 (mount/unmount) — refcount drops to
-  zero ⇒ associated view payload evicted from snapshot.
-- ✅ **Stress proof:** S3 (snapshot pressure) — payload size
-  scales with `open_view_count`, not with `stored_events`
-  count (100 k events ⇒ payload < 2 MiB because only views are
-  open, not the full store).
-- ✅ **Stress proof:** S8 (planner DOS) — peak RSS bounded by
-  open-view count even under 10 k concurrent OpenViews.
+Canonical (plan.md:9): capabilities surface position events to the
+iOS layer; **no policy decisions are made at the bridge**.
+
+- ✅ **Code proof:** `CapabilityModule` trait (`substrate/capability.rs`)
+  defines typed `Request`/`Result` pairs — modules *report* capability
+  results back to the platform; they never decide what to do with them.
+  The `callback_interface_name()` entry point delivers results to the
+  iOS layer as data, not as control signals.
+- ✅ **Capability evidence (M10.5 surface):** The relay-role capability
+  (content + indexer) is the only active module today. `RelayStatus` is
+  emitted as an update field — the kernel reports relay position; iOS
+  renders it. No routing decisions are made at the bridge.
+- ✅ **M11 prep evidence:** Both `AudioPlaybackCapability` and
+  `EmbeddingCapability` (planned for M11) follow the same pattern: the
+  kernel emits position/ready events back to the platform; the platform
+  renders them. No capability module will acquire routing authority.
+- ✅ **Stress proof:** S6 (capability lifecycle storms) — 1,000
+  start/stop/restart cycles verify the relay capability lifecycle without
+  any module gaining decision authority; all `RelayControl` entries are
+  closed after every Stop.
 - 📝 **Sign-off:** doctrine-review.md § D5.
 
 ---
@@ -253,11 +276,11 @@ M10.5, not as part of this design. The structure is:
 | Doctrine | Status | Evidence | Reviewer | Date |
 |---|---|---|---|---|
 | D0 | PASS | debt-inventory §3 D0 + S6 metrics.json | <name> | <date> |
-| D1 | PASS | S3 + S10 metrics.json + S3/screenshots | <name> | <date> |
+| D1 | PASS | S3 + S4 metrics.json + S3/screenshots (placeholder-then-refine path) | <name> | <date> |
 | D2 | PASS | S2/S3/S8 metrics.json | <name> | <date> |
 | D3 | PASS | S7 metrics.json + toast-bridge merge SHA | <name> | <date> |
 | D4 | PASS | debt-inventory §3 D4 + S5/S1 metrics.json | <name> | <date> |
-| D5 | PASS | S1/S3/S8 metrics.json | <name> | <date> |
+| D5 | PASS | debt-inventory §3 D5 + S6 metrics.json + capability.rs code review | <name> | <date> |
 
 ## Notes
 <any caveats, deferrals, follow-ups>

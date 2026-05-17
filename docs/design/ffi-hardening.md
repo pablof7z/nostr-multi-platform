@@ -33,7 +33,7 @@ single line of the M11 podcast app is written.
 
 ### 1.2 Non-goals
 
-- **Changing the FFI shape.** The current surface (13 raw `extern "C"`
+- **Changing the FFI shape.** The current surface (14 raw `extern "C"`
   functions in `crates/nmp-core/src/ffi.rs`, JSON-string update callback) is
   what we harden. Migrating to UniFFI + per-app generated enums per
   ADR-0010 is **M14**, not M10.5.
@@ -48,7 +48,7 @@ single line of the M11 podcast app is written.
 
 ## 2. FFI surface inventory
 
-The current FFI surface is **13 exported C symbols** in
+The current FFI surface is **14 exported C symbols** in
 `crates/nmp-core/src/ffi.rs` (lines 44–268) plus **one callback type**
 (`UpdateCallback` at line 10). Every symbol below must have its
 ownership, lifetime, thread-safety, and null-handling rules documented
@@ -98,32 +98,11 @@ type UpdateCallback = extern "C" fn(*mut c_void, *const c_char);
 
 ### 2.2 Threading topology (current)
 
-```
-                      ┌──────────────────────────┐
-caller thread ──────► │ nmp_app_*() FFI entry    │
-                      └────────┬─────────────────┘
-                               ▼   (mpsc::Sender<ActorCommand>)
-                      ┌──────────────────────────┐
-                      │ Actor OS thread          │  ◄─── (mpsc) ── RelayWorker N
-                      │ - owns Kernel state      │
-                      │ - bridges commands+relays│
-                      └────────┬─────────────────┘
-                               ▼   (mpsc::Sender<String> JSON)
-                      ┌──────────────────────────┐
-                      │ Listener OS thread       │
-                      │ - invokes UpdateCallback │
-                      └────────┬─────────────────┘
-                               ▼   (extern "C" fn, *const c_char)
-                      ┌──────────────────────────┐
-                      │ caller-supplied callback │
-                      │ (Swift hops to MainActor)│
-                      └──────────────────────────┘
-```
-
-Five thread classes total per `NmpApp` instance: caller, actor, listener,
-N×relay-worker, and tokio-pool (currently unused for the FFI surface; relay
-workers use `tungstenite` synchronously). Every harness scenario in §3
-explicitly names which thread it stresses.
+See [`ffi-hardening/harness.md`](./ffi-hardening/harness.md) §0 for
+the full threading topology diagram. Summary: five thread classes per
+`NmpApp` instance — caller, actor, listener, N×relay-worker, and a
+tokio-pool (currently unused). Every scenario in §3 names which thread
+it stresses.
 
 ## 3. Failure modes
 
@@ -308,7 +287,12 @@ Three tiers, defined in [`ffi-hardening/ci.md`](./ffi-hardening/ci.md):
    as supported (Swift will inevitably do it via Combine pipelines);
    the actor's mpsc Sender is `Send + Sync` and the test proves it
    works.
+5. **Handle registry for freed-pointer safety (M14).** Calling `nmp_app_*`
+   after `nmp_app_free` is undefined behavior; no handle registry exists
+   to make it recoverable. S7 excludes freed-pointer probes for this reason.
+   M14 UniFFI migration replaces raw pointers with typed handles, eliminating
+   the UB class. Until then, caller must not call after free.
 
 ---
 
-**Next:** open the five sub-docs in order: scenarios, harness, gates, ci.
+**Next:** open the sub-docs in order: scenarios, harness, gates, ci.
