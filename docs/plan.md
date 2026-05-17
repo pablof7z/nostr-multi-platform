@@ -2,9 +2,11 @@
 
 > Companion to `docs/product-spec.md` (what we ship) and the design docs in `docs/design/` (how each subsystem works). This document defines **the single ladder of milestones**, each one a runnable product that proves a specific architectural claim with real (not modeled) evidence.
 
-> **Three arcs:** Kernel substrate + Nostr social stack (M0–M10) → kernel-boundary proof with a non-social-domain app (M11) → wallet/WoT + cross-platform + release (M12–M17).
+> **Four arcs:** Kernel substrate + Nostr social stack (M0–M10) → FFI hardening + iOS empirical proof (M10.5) → kernel-boundary proof with a non-social-domain app (M11, the **`../podcast` rebuild on NMP**) → wallet/WoT + cross-platform + release (M12–M17).
 
-> **Each milestone is gated.** Every milestone ends with: a runnable artifact, automated tests in `nmp-testing`, a measured-numbers report in `docs/perf/m<N>/`, and an explicit ADR if a design decision was revised in flight. No silent endings.
+> **Each milestone is gated.** Every milestone ends with: a runnable artifact, automated tests in `nmp-testing`, a measured-numbers report in `docs/perf/m<N>/`, and an explicit ADR if a design decision was revised in flight. **No silent endings.** **No "for later" carve-outs** — if a slice is in the milestone scope, it ships in that milestone, or the milestone is not done.
+
+> **The doctrine is final** (`docs/product-spec.md` §1.5): D0 kernel never grows app nouns · D1 best-effort rendering with placeholders · D2 reactivity contract (composite reverse index, ≤60Hz/view, working-set bound) · D3 errors never cross FFI · D4 one writer per fact · D5 capabilities report, never decide. Every PR is reviewed against this rubric; a change that makes any doctrine harder to enforce is rewritten or rejected.
 
 ---
 
@@ -48,8 +50,10 @@ Honest accounting before forecasting forward.
 - Blossom and media-capability lifecycle (long-running, resumable, background) were one bullet under Phase 6.
 - No milestone proved the kernel boundary for a fundamentally non-social product.
 - The plan didn't reflect that M0 and M1 are largely done.
+- **No dedicated FFI hardening + iOS empirical proof gate before the kernel-boundary proof.** The prior M11 implicitly assumed the FFI surface was ready; this rewrite makes it a separate milestone (M10.5).
+- **M11 was generic.** This rewrite ties it concretely to `/Users/pablofernandez/src/podcast` (the fully-functional Swift app) as the rebuild target, with copy-first UI fidelity and an explicit view-by-view module mapping.
 
-The plan below is a single ladder of seventeen milestones (M0–M17), each producing a runnable artifact, ordered so that each milestone strictly adds capabilities to the prior demoable product.
+The plan below is a single ladder of eighteen milestones (M0–M17, with M10.5 inserted as the FFI gate), each producing a runnable artifact, ordered so that each milestone strictly adds capabilities to the prior demoable product.
 
 ---
 
@@ -334,48 +338,146 @@ Each milestone has: **demo product**, **scope (what gets built)**, **subsystem d
 
 ---
 
-### M11 — Podcast app (the kernel-boundary proof in a non-social domain)
+### M10.5 — FFI hardening + iOS empirical proof *(hard gate before M11 starts)*
 
-**Demo product:** A podcast app built entirely as an extension-module set, sharing nothing app-specific with `nmp-core`. Subscribes to podcast feeds. Downloads episodes. Plays them with background audio. Resumes playback position across app launches. Pulls feed updates via Nostr where available, RSS where not.
+**Demo product:** The iOS Twitter slice from M1–M10 subjected to a published, exhaustive stress harness on the iOS simulator and a real iPhone 12. The kernel↔FFI↔SwiftUI path is proven, in measured numbers, to be **rock-solid and demonstrably performant** before a single line of the podcast app is written.
 
-**This is the load-bearing kernel-boundary check.** If the kernel needs even one podcast noun to make this work, the boundary is wrong and we go back to fix it.
+**Why this milestone exists separately.** Every milestone M1–M10 has run iOS measurements, but each in service of its own feature. M10.5 is the dedicated *FFI surface* hardening pass — finding and fixing every shape of FFI bug that a non-social-domain consumer (M11 podcast app) would otherwise discover the hard way. This is also the milestone where we delete every shortcut and "TODO: revisit" comment in the FFI layer.
 
 **Scope.**
 
-**Subsystem deliverables (extension modules — not in `nmp-core`):**
+- **Stress harness** (`crates/nmp-testing/bin/ffi-stress` + `ios/NmpStress/StressUITests/`):
+  - Mount/unmount churn: 1000 view-handle wrappers cycled per second for 10 minutes; assert zero leaks (via Instruments leak instrument scripted run).
+  - Dispatch flood: 10k `dispatch(...)` calls per second from Swift across multiple threads; assert no dropped messages, no main-thread block > 16 ms.
+  - Snapshot pressure: `AppUpdate::FullState` with 100k events forced; measure marshal time, allocations, and that the reconciler stays ≤ 60 Hz via batching.
+  - Reconciler back-pressure: deliberately stall the Swift main thread for 250 ms; assert no actor stall, deltas accumulate and replay correctly when the main thread resumes.
+  - Reentrancy: dispatch from inside a reconciler callback (a known footgun); assert ordered, deadlock-free.
+  - Capability lifecycle storms: start/stop/restart each registered capability 1000 times; assert idempotency per RMP bible.
+  - Error-shape exhaustion: every typed FFI error path exercised; assert each one becomes a `toast: Option<String>` state field, never a thrown exception across the boundary (D3).
+- **Real-device measurement on iPhone 12** (one full battery of `firehose-bench live` against primal, all 8 scenarios from `docs/design/firehose-bench.md` §3); produces `docs/perf/m10.5/iphone12-baseline.md` with hardware-tagged numbers.
+- **Simulator-driven UI test fleet** (parallel Sonnet agents via the `mcp__xcode` and `BrowserAgent`/`QATester` skills) exercising the app from the outside — boot sim, launch app, tap, scroll, swipe, kill-relaunch — capturing screenshots and assertions per scripted scenario. Every M1–M10 user-visible feature gets a UI test; failures block the milestone.
+- **Memory + leak audit** with Xcode Instruments (Leaks, Allocations, Time Profiler) on canonical workflows; zero retained-by-cycle leaks; allocations after warmup linear-or-better in active-view count, never in cached-event count.
+- **Profile-Guided Optimization sweep** on the kernel hot paths surfaced by Time Profiler; document tradeoffs taken.
+- **All M1–M10 perf reports re-run** on the final FFI surface to confirm no regressions.
+- **FFI surface documentation audit** in `docs/ffi-surface.md` — every exported type, function, capability trait, and ownership/lifetime invariant called out; reviewed against `RMP-ARCHITECTURE-BIBLE.md` commandments and ADR-0010.
+- **Zero open `TODO`/`FIXME`/`XXX`/`unimplemented!()`** in `crates/nmp-core/src/ffi.rs`, `crates/nmp-core/src/actor.rs`, `crates/nmp-core/src/relay.rs`, `crates/nmp-core/src/kernel/**`, and the iOS bridge sources (`ios/NmpStress/NmpStress/KernelBridge.swift`, `KernelModel.swift`). Each pre-existing one is either resolved or has an ADR justifying the deferral with a tracking issue.
 
-- `podcast-core` app crate:
-  - `DomainModule`s: `Podcast`, `Episode`, `Transcript`, `PlayerState`, `Subscription`.
-  - `ViewModule`s: `PodcastLibrary`, `EpisodeDetail`, `NowPlaying`, `EpisodeQueue`.
-  - `ActionModule`s: `SubscribePodcast`, `RefreshFeed`, `DownloadEpisode`, `Play`, `Pause`, `Seek`, `MarkPlayed`, `ImportRss`.
-  - `IdentityModule::AppLocal` if anonymous subscription syncing across devices is wanted.
+**Subsystem deliverables.**
 
-**Subsystem deliverables (capabilities added to the kernel's reusable set):**
+- `crates/nmp-testing/bin/ffi-stress` — new bench binary.
+- `ios/NmpStress/StressUITests` — XCUITest target driven by both XCTest and (where relevant) a scripted Sonnet-agent runner.
+- `docs/design/ffi-hardening.md` — design doc enumerating every FFI failure mode and how the harness exercises it.
+- `docs/ffi-surface.md` — the canonical FFI surface reference.
+- `docs/perf/m10.5/` — measured numbers from simulator, M-series Mac, iPhone 12; plus screenshots from the Sonnet-driven UI runs.
 
-- `AudioPlaybackCapability`: kernel asks the platform to play a URL or local file; platform reports position events + state transitions back. iOS implementation via `AVPlayer` + background-audio entitlement.
-- `BackgroundWorkCapability`: kernel registers periodic background tasks (feed refresh, scheduled downloads); platform implements via BGTask scheduler (iOS) / WorkManager (Android).
+**Exit gate.**
+
+- All stress-harness scenarios pass on simulator and iPhone 12 with the numeric thresholds enumerated in `docs/design/ffi-hardening.md` §exit-gate.
+- All M1–M10 perf reports re-run cleanly on the post-M10.5 binaries; no regression > 5 % on any p99 number.
+- Instruments-recorded Leaks count = 0 over the 10-minute canonical workflow.
+- Every UI-scripted scenario (Sonnet-agent and XCUITest) passes on a fresh boot of the iPhone 16 Pro simulator and on iPhone 12 hardware.
+- `docs/ffi-surface.md` reviewed and tagged.
+- Doctrine review (D0–D5) signed off on the FFI surface in writing in `docs/perf/m10.5/doctrine-review.md`.
+
+**Runnable artifact.** Same iOS Twitter app, now load-bearing. Report bundle in `docs/perf/m10.5/`.
+
+---
+
+### M11 — Podcast app (the `../podcast` rebuild on NMP — the kernel-boundary proof)
+
+**Demo product:** A 1:1 rebuild of `/Users/pablofernandez/src/podcast` (the fully-functional Swift app, 20 SwiftUI views, ~8.8k LOC of Swift) running on NMP. **UI is pixel-identical** to the reference Swift app; **all business logic, LLM, audio orchestration, downloads, transcripts, RAG, recommendations** are in Rust extension modules driving the kernel.
+
+**This is the load-bearing kernel-boundary check.** If the kernel needs even one podcast noun to make this work, the boundary is wrong and we go back to fix it.
+
+**Reference inputs** (read before scoping):
+
+- `/Users/pablofernandez/src/podcast/` — canonical Swift implementation. Source of truth for UI and feature behavior. **Every view in `PodcastApp/Views/` is copied verbatim into `ios/NmpPodcast/Views/`** as step 1; only the data source is rewired.
+- `/Users/pablofernandez/src/podcast-rmp/` — prior WIP RMP rewrite (incomplete). **Not a code source** but a lessons source: read its `RMP-ARCHITECTURE-BIBLE.md`, `FINAL_PLAN.md`, `docs/plans/iphone-feature-parity-plan.md`, and `docs/plans/iphone-feature-parity-checklist.md` before scoping. That repo's `AGENTS.md` is the working guide for any agent touching that tree.
+- `/Users/pablofernandez/src/podcast/docs/plans/` — original feature design docs (podcast-app-design, discovery-tab-redesign, insights-feature-design).
+
+**Reference inventory of the Swift app** (so the scope is explicit, not vibes):
+
+| Swift `Views/` group | Files | NMP target |
+|---|---|---|
+| `Ask/` | AskView.swift | `ask-core` ActionModule + ViewModule wrapping `rig.rs` LLM call |
+| `Components/` | CachedAsyncImage, DiscoveryCards | reusable Swift components, ported as-is; image cache backed by NMP Blossom-aware capability |
+| `Feed/` | FeedView, EpisodeRow | `podcast-core::FeedViewModule` + `EpisodeRowViewModule` |
+| `Insights/` | InsightsView | `insights-core` ViewModule + ActionModule (uses RAG via `rig.rs`) |
+| `Library/` | ActivityView, AddPodcastView, DiscoverView, EpisodeDetailView, LibraryView, PodcastDetailSheet, PodcastDetailView, QueueView | `podcast-core` ViewModules + ActionModules |
+| `Player/` | ChaptersPanel, GuestAgentSheet, MiniPlayer, PlayerSheet, TranscriptView | `player-core` ViewModule + `AudioPlaybackCapability` |
+| `Settings/` | SettingsView | `settings-core` ActionModule (mostly capability invocations) |
+
+Swift `Services/` (AIService, AudioService, DownloadService, GuestEnrichmentService, ImageCache, InsightService, PodcastIndexService, PodcastService, ProcessingQueue, RAGService, RecommendationService, ServiceContainer, TranscriptionService, VectorDatabase) **all move to Rust** as ActionModules + ProjectionCaches + capability bridges; Swift loses its Services/ directory entirely.
+
+Swift `Models/` (AITypes, Chapter, Episode, Guest, Insight, Podcast, Settings, Transcript) **all move to Rust** as DomainRecords inside `podcast-core` and sibling crates.
+
+Swift `ViewModels/` **disappear** — they become Rust ViewModules whose output crosses FFI as typed ViewBatch deltas.
+
+**Scope.**
+
+**Step 0 — copy step (UI-fidelity invariant lock):**
+
+- Copy every file in `/Users/pablofernandez/src/podcast/PodcastApp/Views/` into `ios/NmpPodcast/NmpPodcast/Views/` verbatim. Commit immediately. No edits except the minimum needed to compile against placeholder data sources (`// MARK: NMP-WIRE` markers).
+- Copy `Resources/Assets.xcassets` and `Info.plist` (sanitized) verbatim.
+- The result compiles and renders against stubbed data; UI is visually identical to `../podcast` per a side-by-side simulator screenshot diff (≤ 1 px tolerance, font-rendering exceptions documented).
+
+**Step 1 — domain + view modules in Rust** (per the table above):
+
+- `apps/podcast/podcast-core/` — main app crate. `DomainModule`s: `Podcast`, `Episode`, `Transcript`, `Chapter`, `Guest`, `Insight`, `Subscription`, `PlayerState`, `QueueEntry`, `Activity`.
+- `apps/podcast/podcast-core/` — `ViewModule`s: `PodcastLibrary`, `EpisodeDetail`, `NowPlaying`, `EpisodeQueue`, `Discover`, `Insights`, `Activity`, `PodcastDetail`, `Feed`, `EpisodeRow`, `Chapters`, `Transcript`, `MiniPlayer`, `PlayerSheet`, `GuestAgent`, `Ask`, `Settings`.
+- `apps/podcast/podcast-core/` — `ActionModule`s: `SubscribePodcast`, `UnsubscribePodcast`, `RefreshFeed`, `DownloadEpisode`, `CancelDownload`, `Play`, `Pause`, `Seek`, `SkipForward`, `SkipBack`, `MarkPlayed`, `EnqueueEpisode`, `ReorderQueue`, `ImportRss`, `ImportOpml`, `AskQuestion`, `EnrichGuest`, `RunInsight`, `SearchPodcasts`.
+- `apps/podcast/podcast-llm/` — LLM-driven actions via `rig.rs`: `AskQuestion`, `EnrichGuest`, `RunInsight`. Uses the kernel's capability bridge for HTTP + key storage.
+- `apps/podcast/podcast-rag/` — RAG + vector DB store; uses a swappable `EmbeddingCapability` and a Rust-side vector store (sqlite-vss or qdrant-client).
+- `apps/podcast/podcast-feeds/` — RSS + Atom + JSON Feed + Podcast 2.0 namespaces parsing; transcripts; chapters; value-for-value. Pure Rust; pulls via `HttpCapability`.
+
+**Step 2 — capabilities added to the kernel's reusable set** (these are general, not podcast-specific):
+
+- `AudioPlaybackCapability`: play URL or local file; report position events + state transitions back; iOS impl via `AVPlayer` + background-audio entitlement + lock-screen `MPNowPlayingInfoCenter`/`MPRemoteCommandCenter`.
+- `BackgroundWorkCapability`: register periodic background tasks; iOS impl via `BGTaskScheduler`.
 - `LocalNotificationCapability`: extended for episode-available alerts.
-- `HttpCapability`: extended for podcast feed fetch (long-running streaming response).
+- `HttpCapability`: long-running streaming response support (RSS, transcripts).
+- `EmbeddingCapability`: callable embedding model; kernel-owned policy, platform-owned execution (CoreML on iOS, ONNX or remote API as fallback).
+- `KeyValueStoreCapability`: typed persistent KV (for saved playback position when persistence-by-store is overkill).
 
-**Subsystem deliverables (protocol modules):**
+**Step 3 — protocol module integration:**
 
-- `nmp-podcast` (or whatever the Nostr podcast NIP is called, e.g. NIP-XX for podcast feed events): parsed feed events. If no NIP, the app uses RSS via the action ledger to fetch + parse, storing entries as domain records.
+- `nmp-podcast` (Nostr podcast NIP integration where it exists — NIP-XX podcast feed events, value-for-value zaps, episode discussion threads). Where Nostr coverage is incomplete, the app uses RSS via `podcast-feeds` and Nostr for social overlay (zaps, discussions, recommendations from the WoT subsystem).
+
+**Step 4 — wire each copied Swift view to its Rust view module:**
+
+- Replace stubbed data with the generated wrapper hooks (`@PodcastLibrary`, `@NowPlaying`, etc. — produced by `nmp gen modules`).
+- The Swift file shape stays the same; only the data source changes.
+- After every Library/Feed/Player/Insights/Ask/Settings group is wired, run the side-by-side screenshot diff again.
 
 **Exit gate (kernel boundary).**
 
-- **`nmp-core` gains zero podcast nouns.** No `Podcast`, `Episode`, `Transcript`, `Player`, `Feed` types added to the kernel. Verified by grep + manual review at the commit.
-- **The capability families added in M11 are general** (audio playback, background work, local notifications, HTTP). Their request/response shapes are not podcast-specific.
-- **Reactivity behavior is identical** to the social demo — composite-key dependencies, delta coalescing, claim-based GC, ADR-0007 diagnostics all work for podcast view modules.
+- **`nmp-core` gains zero podcast nouns.** No `Podcast`, `Episode`, `Transcript`, `Chapter`, `Player`, `Feed`, `Insight`, `Guest` types added to the kernel. Verified by grep + manual review at the commit.
+- **The capability families added in M11 are general** (audio playback, background work, local notifications, HTTP, embedding, KV-store). Their request/response shapes are not podcast-specific.
+- **Reactivity behavior is identical** to the Twitter slice — composite-key dependencies, delta coalescing, claim-based GC, ADR-0007 diagnostics all work for podcast view modules.
+- **No app-state leaks across the boundary in either direction:** no Nostr type appears in `podcast-core`'s public surface; no podcast type appears in `nmp-core`'s public surface.
 
-**Exit gate (product).**
+**Exit gate (product fidelity to `../podcast`).**
 
-- Subscribe to 5 real podcasts (use any well-known Nostr-podcast feeds if available, plus RSS imports).
-- Download an episode in the background while the app is suspended.
-- Play it with background audio while the iPhone is locked.
-- Resume playback at the correct position after a kill-relaunch.
-- Push notification on a new episode arrival.
+- **UI parity:** side-by-side screenshot of every screen in `../podcast` vs `ios/NmpPodcast` matches at ≤ 1 px tolerance (font/rendering differences whitelisted explicitly in `docs/perf/m11/parity-screenshots.md`).
+- **Feature parity:** every user flow exercised in `/Users/pablofernandez/src/podcast/Tests/` (or its equivalent on the canonical Swift app) reproduced as a scripted Sonnet-agent run on `ios/NmpPodcast`. No "feature dropped" footnotes.
+- **Subscribe to 10 real podcasts** spanning RSS + (where available) Nostr feeds; library populates correctly.
+- **Download an episode in the background** while the app is suspended; resumable on relaunch.
+- **Play with background audio** while the iPhone is locked; lock-screen artwork, scrubber, skip/seek controls all functional.
+- **Resume playback at the correct position** after a kill-relaunch.
+- **Push notification on a new episode arrival.**
+- **Ask a question** about an episode; answer streams in via `rig.rs` LLM with the transcript as RAG context.
+- **Insights** view generates a structured episode summary on demand.
+- **Guest enrichment** populates guest cards via external lookup, identical to the Swift impl behavior.
 
-**Runnable artifact.** A second iOS app (`ios/NmpPodcast`) — distinct binary, same Rust kernel, different module set. Report in `docs/perf/m11/podcast-app.md` documenting the kernel-boundary verification.
+**Stress + perf gates.**
+
+- Library of 100 podcasts × 50 episodes (5k episodes total) scrolls at 60 fps on iPhone 12.
+- Player UI updates every 250 ms during playback without visible jank.
+- Download queue with 20 concurrent downloads keeps the UI responsive.
+- LLM ask flow streams first token in ≤ 1500 ms over Wi-Fi; full answer in ≤ 8 s for an average-length episode (measured).
+- Battery drain during 1 hour of background playback ≤ Swift baseline + 10 %.
+
+**Runnable artifact.** `ios/NmpPodcast` — distinct binary, same Rust kernel, different module set, **same UI as `../podcast`**. Report in `docs/perf/m11/podcast-app.md` documenting kernel-boundary verification, parity screenshots, and the perf measurements above.
 
 ---
 
@@ -546,6 +648,8 @@ Cross-reference of which milestone delivers which user-specified concern.
 | **NDK-style subscription aggregation** | M2 | Per `docs/design/ndk-applesauce-lessons.md` §7, the planner becomes a subscription compiler. Logical interests → per-relay plans → wire REQs, semantics-preserving merge/split. |
 | **Reactivity as planned** | M0–M7 | Already validated by reactivity-bench run 002 against the model; M1 runs the same code path against real iOS; subsequent milestones add view modules that exercise the contract under varied loads. |
 | **Non-Nostr data bridge** | M0 (substrate), M10 (long-running capabilities), M11 (podcast app proves it in production) | DomainModule trait + ADR-0007 bridge lanes; first proven by fixture-todo-core; production proof in podcast app. |
+| **FFI hardening + empirical iOS proof** | M10.5 | Dedicated stress harness, real-device measurement, simulator-driven Sonnet-agent UI suite; hard gate before M11. |
+| **UI parity to `../podcast`** | M11 (copy step) | Every Swift view copied verbatim, screenshot-diff gated. |
 | **NIP-42 auth** | M5 | Per-relay auth state machine; integrates with diagnostics; works with both local-key and NIP-46 signers. |
 | **Blossom** | M10 | Upload + download with resumable progress; long-running capability lifecycle. |
 | **Multi-session clients** | M8 | Per-account view-spec scoping; account switcher; isolation tests. |
@@ -593,10 +697,15 @@ The ladder above is the **dependency order** — what must precede what — not 
 - **M2 (outbox), M3 (LMDB), M4 (negentropy)** can pipeline tightly: M3 + M4 are almost mechanically pluggable once M2's compiled-plan abstraction exists.
 - **M5 (NIP-42)** is independent of M3/M4 and can be done alongside.
 - **M6 (signer + write path) is a serialization point** — most downstream milestones (M7, M8, M9, M10, M12) depend on it. Land this fast.
+- **M10.5 (FFI hardening)** is itself parallelizable: the stress harness, the iPhone-12 perf rerun, the UI-script Sonnet-agent fleet, and the FFI surface audit are four independent workstreams.
+- **M11 (podcast app)** starts only after M10.5 passes. Its own internal parallelism is wide: the copy step + each `*-core` Rust extension crate + each view-wiring batch can be split across agents (one per view group: Library, Feed, Player, Insights, Ask, Settings, Components, plus one agent per LLM/RAG/feeds module).
 - **M15 (Android + Desktop + Web)** is three parallel tracks once M14 (UniFFI) lands.
-- **M11 (podcast app)** can begin as soon as M10 (Blossom + long-running capabilities) is in good shape, even if M12/M13 haven't started.
 
-A team of two could run M5 alongside the M2–M4 sequence with no integration risk.
+A team of two could run M5 alongside the M2–M4 sequence with no integration risk. With parallel-agent execution (this session's mode), the practical limit is conflict surface: independent crates, independent docs, and independent platform shells fan out cleanly; shared mutable files (e.g. `nmp.toml`, the codegen output, `Cargo.toml`) serialize.
+
+### Worktree hygiene
+
+Every parallel worker that mutates source operates in its own git worktree under `.claude/worktrees/`. **On merge, the worktree is removed** (`git worktree remove --force` + branch cleanup) by the worker before the parent acknowledges done — otherwise DerivedData and `target/` clones blow out the disk fast. The known precedent is podcast-rmp's `~/Library/Developer/Xcode/DerivedData/Podcastr-*` sprawl; we share `CARGO_TARGET_DIR` and `-derivedDataPath` across worktrees from the start to avoid it.
 
 ---
 
