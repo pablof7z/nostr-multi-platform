@@ -94,7 +94,9 @@ Emitted from `ingest_relay_list` (`crates/nmp-core/src/kernel/ingest.rs:209-233`
 
 Compiler effect: re-runs Stages 1–4 for every interest that touches `pubkey` either as a member of `shape.authors` or as a member of `shape.tags[#p]`. Other interests stay assigned to their current plan-id slot; the merged plan-id changes (because the mailbox snapshot's `created_at` for `pubkey` advanced) but its `per_relay` content may be identical.
 
-Outbox routing implication: if `pubkey` was previously routed to the indexer fallback set (Stage 2 read-fallback), the compiler now reassigns to the author's declared write relays. The wire-emitter closes the indexer REQ for that author's slice and opens a new REQ on the declared relays. ADR-0007 diagnostics reflect the route source flipping from `Indexer` to `Nip65`.
+Outbox routing implication: if `pubkey` was previously routed to the indexer fallback set (Stage 2 read-fallback), the compiler now reassigns to the author's declared write relays. The wire-emitter closes the indexer REQ for that author's slice and opens a new REQ on the declared relays. ADR-0007 diagnostics reflect the route source flipping from `UserConfigured::Indexer` to `Nip65`.
+
+Comparison with NDK: `refreshRelayConnections` (`docs/research/ndk/outbox.md` §"Live subscription refresh", `core/src/subscription/index.ts:787-812`) **only adds** newly-discovered relays on kind:10002 arrival — it never removes the stale indexer route. NMP's compiler must close the stale REQ and open the new one in the same diff pass; the wire-emitter's diff semantics guarantee this. The `a912a2c2` timing race (`docs/research/ndk/gotchas.md`) documents that outbox bootstrap timing can leave relay lists empty — NMP handles this by staying on the indexer fallback until A1 fires, rather than blocking the interest registration.
 
 ### A2 — ViewOpened
 
@@ -139,6 +141,11 @@ M5 wires this fully. M2 only models the trigger so the compiler's data-flow shap
 ### A10 — SignerAvailable
 
 M6+ trigger. Some interests (private DMs in M9, NIP-42 challenge response in M5) only become routable once a signer is loaded for their account. M2 records the trigger shape; behaviour is no-op pre-M6.
+
+Implementation note: **signer must be bound before emitting `SignerAvailable`** — NDK gotcha
+`a14c7a78` (`docs/research/ndk/gotchas.md`) documents that setting `activePubkey` before
+binding the signer causes reactive consumers to run with no-signer or stale-signer. NMP's
+actor must bind the signer to the `SessionState` synchronously before emitting this trigger.
 
 ## 4.3 Trigger ordering and idempotence
 

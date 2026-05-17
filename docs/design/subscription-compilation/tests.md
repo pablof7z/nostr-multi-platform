@@ -31,12 +31,14 @@ Four assertions corresponding to the four M2 exit-gate bullets in [`docs/plan/m2
 
 > "No public API path lets the developer specify relays for a publish; explicit override action exists and produces a debug warning."
 
-> **Codegen dependency.** The test below introspects an `AppActionMeta` reflection
-> helper that lives in the per-app generated crate (ADR-0010). It does not exist
-> yet; ADR-0010's codegen must emit it before this assertion can compile. M2's
-> implementation PR is responsible for adding that emission. Until then the test
-> body below is the design contract; the implementing PR can choose either to
-> generate `AppActionMeta` or to back-stop with a `proc-macro`-driven enum walker.
+> **Codegen dependency (M2 impl-PR gate).** The test below introspects an
+> `AppActionMeta` reflection helper that lives in the per-app generated crate
+> (ADR-0010). `AppActionMeta` does not exist yet — it is a M2 implementation-PR
+> deliverable. ADR-0010's codegen must emit it before this assertion can compile.
+> The M2 impl PR must either (a) add `AppActionMeta` emission to the codegen tool
+> (`nmp-gen modules`), or (b) provide a `proc-macro`-driven enum walker as a
+> fallback. This test is intentionally marked `#[ignore]` in CI until the codegen
+> dependency lands; the ignore comment must name the tracking ADR and impl-PR.
 
 ```rust
 #[test]
@@ -190,7 +192,7 @@ fn four_lanes_stay_distinct_in_diagnostic_payload() {
     // Set up evidence in all four lanes for the same relay url.
     let url: RelayUrl = "wss://r.example".into();
     harness.ingest_nip65(&author, [url.clone()]);              // Nip65 fact
-    harness.observe_hint(&author, url.clone(),                 // Hint fact
+    harness.observe_hint(&author, url.clone(),                 // Hint fact (with subject: Pubkey)
         HintSource::EventTag { event_id: eid("e1"), tag: TagKey::E, position: 2 });
     harness.observe_provenance(&author, url.clone(), eid("e2")); // Provenance fact
     harness.user_configured_relay(url.clone(),                 // UserConfigured fact
@@ -199,24 +201,39 @@ fn four_lanes_stay_distinct_in_diagnostic_payload() {
     let coverage = harness.open_view::<RelayCoverageView>(
         RelayCoverageSpec { relay_url: url.clone() });
 
-    assert_eq!(coverage.by_lane.nip65, 1);
-    assert_eq!(coverage.by_lane.hint,  1);
-    assert_eq!(coverage.by_lane.user_configured, 1);
+    // Assert all four lane counts are non-zero — this is the structural guarantee.
+    // If any count is zero, the reducer is not consuming that lane's fact stream.
+    assert!(coverage.by_lane.nip65 >= 1,
+        "NIP-65 lane must be non-zero: reducer is not consuming Nip65RelayFact stream");
+    assert!(coverage.by_lane.hint >= 1,
+        "Hint lane must be non-zero: reducer is not consuming HintRelayFact stream \
+         (check that HintRelayFact.subject is set and the reducer reads it)");
+    assert!(coverage.by_lane.user_configured >= 1,
+        "UserConfigured lane must be non-zero: reducer is not consuming UserConfiguredRelayFact stream");
     // Provenance count is the rolling 60s counter; alice's event landed once.
-    assert_eq!(coverage.provenance_count_last_minute, 1);
+    assert!(coverage.provenance_count_last_minute >= 1,
+        "Provenance lane must be non-zero: reducer is not consuming ProvenanceRelayFact stream");
+
+    // Exact counts (lanes must be distinct, not collapsed):
+    assert_eq!(coverage.by_lane.nip65, 1, "NIP-65 count wrong");
+    assert_eq!(coverage.by_lane.hint,  1, "Hint count wrong");
+    assert_eq!(coverage.by_lane.user_configured, 1, "UserConfigured count wrong");
+    assert_eq!(coverage.provenance_count_last_minute, 1, "Provenance count wrong");
 
     // Structural: no compiler output collapses lanes.
     let plan = harness.compile().unwrap();
     let alice_assignment = plan.per_relay.iter()
         .find(|rp| rp.relay_url == url).unwrap();
     // role_tags is a SET, not a single value — lanes are preserved.
-    assert!(alice_assignment.role_tags.len() >= 1);
+    assert!(alice_assignment.role_tags.len() >= 1,
+        "role_tags should record at least one routing reason for this relay");
     assert!(matches!(alice_assignment.role_tags.iter().next().unwrap(),
-        RoutingSource::Nip65 | RoutingSource::UserConfigured));
+        RoutingSource::Nip65 | RoutingSource::UserConfigured),
+        "routing source must be a known lane discriminant, not a collapsed 'relays' field");
 }
 ```
 
-This assertion encodes the doctrine: a single relay may be in the plan for multiple reasons; the plan must say which reasons, not collapse them.
+This assertion encodes the doctrine: a single relay may be in the plan for multiple reasons; the plan must say which reasons, not collapse them. The explicit non-zero checks (before the exact-count checks) catch the failure mode where a reducer is wired but receives no facts — a silent count-stays-at-zero bug that the original `assert_eq!(count, 1)` alone would catch, but which is clearer with an explicit "lane not consumed" message.
 
 ## 9.3 The `PlannerHarness`
 

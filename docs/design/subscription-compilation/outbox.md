@@ -7,6 +7,13 @@ This section defines the **publish-side seam** the M2 milestone lands so the M6 
 
 This is the framing the parent index calls out as "design seam now, first concrete consumer in M6." Without this seam, M6 risks reinventing outbox routing inline.
 
+Contrast with Applesauce: `ActionContext.publish(event, relays?)` passes outbox resolution
+responsibility to each action (`docs/research/applesauce/outbox.md` §7 lines 116-138). Any
+Applesauce action can pass any relay list. NMP's structural guarantee is stronger — D3
+(outbox routing automatic; `docs/product-spec/overview-and-dx.md` §1.5): no normal publish
+action carries a relay field, and `Nip65PublishPlanner` structurally excludes the indexer
+parameter from its publish resolution path.
+
 ## 7.1 The `PublishPlanner` trait
 
 ```rust
@@ -28,8 +35,21 @@ pub trait PublishPlanner: Send + Sync {
 pub struct PublishPlan {
     pub plan_id: PublishPlanId,                // hashes event coords + chosen relays
     pub assignments: Vec<PublishAssignment>,
-    pub required_success_count: u8,            // ledger acceptance threshold
+    /// Ledger acceptance threshold: `usize` (not `u8`) so large recipient lists
+    /// cannot overflow. For public events this is `max(1, ceil(N/3))`; for private
+    /// this equals the per-recipient delivery requirements count.
+    pub required_success_count: usize,
+    /// For `PrivateToRecipients`: one entry per recipient with their specific
+    /// inbox relay set and success threshold. The ledger fails the publish if
+    /// any recipient has zero successful deliveries.
+    pub per_recipient: Vec<RecipientDelivery>,  // empty for Public/PublicWithNotifications
     pub deadline_ms: u64,
+}
+
+pub struct RecipientDelivery {
+    pub recipient: Pubkey,
+    pub inbox_relays: BTreeSet<RelayUrl>,
+    pub required_success_count: usize,          // must be ≥ 1
 }
 
 pub struct PublishAssignment {
@@ -83,7 +103,11 @@ The trait is consumed by the action ledger (per `docs/design/kernel-substrate.md
 pub struct Nip65PublishPlanner<'a> {
     pub mailbox_cache:    &'a dyn MailboxCache,
     pub user_configured:  &'a UserConfiguredRelays,
-    pub indexer_set:      &'a [RelayUrl],
+    // intentionally no `indexer_set` field: publish NEVER falls back to indexers (D3).
+    // The indexer set is a read-only discovery mechanism (§3.2). Publishing to an
+    // indexer the author has not declared as a write relay violates D3 (outbox routing
+    // automatic — `docs/product-spec/overview-and-dx.md` §1.5) and the invariant at
+    // `docs/product-spec/subsystems.md` §7.3 line 99.
     pub active_account:   Option<AccountId>,
 }
 
@@ -100,25 +124,46 @@ This is the only `PublishPlanner` impl shipped in v1. The trait exists so a futu
 
 Inputs: a signed `event`, a `PublishPrivacy` mode, an optional `PublishOverride`.
 
+The algorithm deliberately does **not** accept an indexer set. Indexers are read-only
+discovery infrastructure (compiler Stage 2, §3.2). A publish planner that accepted an
+indexer argument would make it too easy to accidentally route writes to indexers.
+Compare: Applesauce's `ActionContext.publish(event, relays?)` is caller-responsibility —
+any action can pass any relays (`docs/research/applesauce/outbox.md` §7 lines 116-138).
+NMP's planner is structural: publish resolution and read-fallback are separate code paths.
+
 ```
 1. If `override_` is Some:
-     return plan from override (see §7.4); set every PublishRouteReason::Override.
-2. Resolve author write relays:
-     author_outbox = resolve_author_outbox(cache, user_configured, indexer, event.pubkey)
+     a. Derive the allowed base set first (steps 2-3 without override).
+     b. For PrivateToRecipients: validate that override_relays ⊆ declared inboxes.
+        If any override relay is not a declared inbox, return Err(OverrideRejected).
+     c. Apply the override (narrow the base set to override_relays).
+     d. Set every PublishRouteReason::Override; continue to step 4.
+2. Resolve author write relays (no indexer fallback):
+     author_outbox = resolve_author_outbox_no_indexer(cache, user_configured, event.pubkey)
      If author_outbox.relays is empty:
-         return Err(NoAuthorRelays { ... })  // never fall back to indexer for writes
+         return Err(NoAuthorRelays { ... })  // fail; do not fall back to indexer
 3. Match on privacy:
    a. Public:
         assignments = [each author_outbox.relays → AuthorWriteRelay { lane }]
-        required_success_count = max(1, ceil(N/3))   // configurable
+        required_success_count = max(1, ceil(N/3))   // configurable via AppConfig
    b. PrivateToRecipients { recipients }:
         For each recipient r:
-            inbox = resolve_author_inbox(cache, user_configured, indexer, r)
-            If inbox.source == Indexer or inbox.relays is empty:
+            inbox = resolve_author_inbox(cache, user_configured, r)
+            // no indexer arg — NDK gotcha a912a2c2: bootstrap timing race means
+            // we may not have inbox relays yet; fail-closed is correct for privacy
+            If inbox.source == RoutingSource::Indexer or inbox.relays is empty:
                 return Err(PrivateRecipientUnroutable { recipient: r })
         assignments = union(each recipient's inbox.relays → RecipientInbox { recipient, lane })
-        // intentionally NO author-write inclusion: private events do not go to public outbox
-        required_success_count = recipients.len() as u8  // at least one per recipient
+        // intentionally NO author-write inclusion: private events must not go to public outbox
+        // per-recipient delivery requirements: one requirement per recipient
+        per_recipient_required = recipients.iter().map(|r| {
+            RecipientDelivery {
+                recipient: r.clone(),
+                inbox_relays: recipient_inboxes[r].clone(),
+                required_success_count: 1usize,  // usize, not u8 — avoid overflow for large recipient lists
+            }
+        }).collect()
+        required_success_count = per_recipient_required.len()  // all recipients must receive
    c. PublicWithNotifications { notify }:
         assignments = author_outbox ∪ union(each notify pubkey's inbox)
         required_success_count = max(1, ceil(author_outbox.len() / 3))
@@ -129,9 +174,23 @@ Inputs: a signed `event`, a `PublishPrivacy` mode, an optional `PublishOverride`
 
 Notes on the algorithm:
 
-- **Step 2's "no indexer fallback for writes"** is the structural enforcement of the doctrine `docs/product-spec/subsystems.md` §7.3 line 99: "fall back to indexer set for reads only; do not publish to indexers." A failed Step 2 surfaces in the action ledger as `Failed { reason: NoAuthorRelays }`, which the UI renders as a toast per ADR-0007's `SideEffect` lane.
-- **Step 3(b)'s `Indexer` check** is the structural enforcement of bug-extinction #4 ([`docs/plan/m9-messaging.md`](../../plan/m9-messaging.md) — "DM to public: no API path can send a DM to a non-inbox relay"). Indexer-sourced inbox means we have no NIP-65-declared inbox; for private events that is fail-closed. The recipient gets nothing rather than getting a public broadcast.
-- **`required_success_count`** is the threshold below which the ledger marks the publish `PartiallyFailed`. The default ⅓-of-fan-out is tunable per `AppConfig.publish_quorum_ratio`.
+- **Step 2's `resolve_author_outbox_no_indexer`** is the structural enforcement of D3 and
+  `docs/product-spec/subsystems.md` §7.3 line 99: "fall back to indexer set for reads only;
+  do not publish to indexers." The function signature deliberately omits the indexer set so
+  the caller cannot accidentally pass it. A failed Step 2 surfaces as `Failed { reason:
+  NoAuthorRelays }` in the action ledger, rendered as a toast per ADR-0007's `SideEffect` lane.
+- **Step 1's override validation order** (derive base set first, validate override as subset)
+  ensures the privacy constraint is always checked — the override cannot bypass the
+  `PrivateToRecipients` fail-closed check by returning early before validation.
+- **Step 3(b)'s `Indexer` source check** is the structural enforcement of bug-extinction #4
+  ([`docs/plan/m9-messaging.md`](../../plan/m9-messaging.md) — "DM to public: no API path
+  can send a DM to a non-inbox relay"). Compare: NDK gotcha `a912a2c2`
+  (`docs/research/ndk/gotchas.md`) shows that outbox bootstrap timing can leave inbox relays
+  empty at first query — NMP's fail-closed here is intentional rather than "retry later."
+- **`required_success_count: usize`** prevents overflow when `recipients.len()` is large. The
+  `u8` type in the original draft was wrong (max 255 recipients before silent truncation). For
+  `PrivateToRecipients`, the per-recipient `RecipientDelivery` set is what the ledger actually
+  consults; `required_success_count` is the aggregate guard.
 
 ## 7.4 The `PublishOverride` escape hatch
 

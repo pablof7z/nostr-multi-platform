@@ -3,7 +3,16 @@
 > Parent: `docs/design/subscription-compilation.md`.
 > Read first: `docs/design/kernel-substrate.md` §3 (`ViewModule`) for the trait this crate implements; `docs/design/app-extension-kernel.md` §3 layering table — `nmp-nip65` is a **protocol module**, not an app module.
 
-`nmp-nip65` is the first NMP protocol module (per the v1 reference-modules list in `docs/design/kernel-substrate.md` §11) whose job is *not* to expose product views. It exists primarily as **the canonical source of the mailbox cache** the compiler consults. It contributes one `ViewModule` (for app-side rendering of "this user's relay list") and a small public API the compiler imports directly without going through the FFI surface.
+`nmp-nip65` is the first NMP protocol module (per the v1 reference-modules list in `docs/design/kernel-substrate.md` §11) whose job is *not* to expose product views. It contributes one `ViewModule` (for app-side rendering of "this user's relay list") and implements the NIP-65 parsing logic. It is **not** the canonical source of the mailbox cache — that trait lives in `nmp-core` to avoid a dependency cycle.
+
+**Crate dependency resolution (D0):** `nmp-core::kernel::planner` must consume the mailbox
+cache, but it cannot import from `nmp-nip65` (that would create a cycle: `nmp-nip65` →
+`nmp-core` → `nmp-nip65`). Resolution: the `MailboxCache` trait and associated types
+(`MailboxSnapshot`, `CachePutResult`) live in `nmp-core::substrate::mailbox` (or a tiny
+zero-dependency `nmp-mailbox-types` crate). `nmp-nip65` implements the trait via
+`InMemoryMailboxCache` and registers the kind:10002 ingest handler; `nmp-core` declares the
+trait and consumes it — no cycle. This is consistent with D0: the kernel defines the seam,
+the module fills it.
 
 ## 6.1 File structure
 
@@ -98,10 +107,15 @@ impl ViewModule for MailboxesView {
     fn on_event_inserted(ctx: &ViewContext, st: &mut Self::State, ev: &Event)
         -> Option<Self::Delta>
     {
+        // D4: single writer per fact. The canonical mailbox write path is
+        // `ingest_relay_list` → `MailboxCache::put`. This view MUST NOT re-parse
+        // kind:10002 tags independently — doing so would make two writers for the
+        // same fact (the cache writer and the view's parse). Instead, read the
+        // canonical snapshot from the cache that was already updated by ingest.
         if ev.kind != 10002 || ev.pubkey != st.pubkey { return None; }
-        let parsed = parse::parse_relay_list(ev.created_at, &ev.tags);
-        if parsed.created_at < st.created_at { return None; }
-        *st = MailboxesPayload::from_parsed(st.pubkey.clone(), parsed);
+        let snapshot = ctx.mailbox_cache().get(&st.pubkey)?;
+        if snapshot.created_at <= st.created_at { return None; }
+        *st = MailboxesPayload::from_snapshot(st.pubkey.clone(), Some(snapshot));
         Some(st.clone())
     }
 
@@ -116,8 +130,12 @@ The view exists so platform code can render "alice@example uses these relays" us
 
 ## 6.3 Public surface (compiler-facing, not FFI-facing)
 
+The `MailboxCache` trait and its associated types live in **`nmp-core::substrate::mailbox`**
+to break the dependency cycle (see §6.1 intro). `nmp-nip65` provides the `InMemoryMailboxCache`
+implementation; `nmp-core::kernel::planner` consumes only the trait, never the concrete type.
+
 ```rust
-// crates/nmp-nip65/src/cache.rs
+// crates/nmp-core/src/substrate/mailbox.rs  ← trait lives here, not in nmp-nip65
 
 pub trait MailboxCache: Send + Sync {
     fn get(&self, pubkey: &Pubkey) -> Option<MailboxSnapshot>;
@@ -130,6 +148,10 @@ pub trait MailboxCache: Send + Sync {
 pub enum CachePutResult {
     Inserted,
     ReplacedNewer { prior_created_at: UnixSeconds },
+    /// NIP-01 tie-break: equal `created_at` keeps the event with the lexicographically
+    /// lower event id, per Applesauce gotcha `90d525af`
+    /// (`docs/research/applesauce/gotchas.md` §G1). Two clients producing kind:10002
+    /// in the same second must not silently disagree on the stored version.
     RejectedStale { current_created_at: UnixSeconds },
 }
 
@@ -142,6 +164,10 @@ pub struct MailboxSnapshot {
     pub both:  Vec<RelayUrl>,
     pub seen_from: Vec<RelayUrl>,          // ProvenanceRelayFact seed
 }
+```
+
+```rust
+// crates/nmp-nip65/src/cache.rs  ← concrete impl lives here
 
 pub struct InMemoryMailboxCache { /* HashMap<Pubkey, MailboxSnapshot> */ }
 impl MailboxCache for InMemoryMailboxCache { /* ... */ }
@@ -169,6 +195,13 @@ pub fn resolve_author_inbox(
 
 These are the two pure functions [compiler.md](compiler.md) Stage 1 calls per author. They return `AuthorRouting` with the `RoutingSource` tag set per the four-lane discipline ([diagnostics.md](diagnostics.md) §5.2). Test fixtures live in `crates/nmp-nip65/src/tests/routing.rs`; the same fixtures plug into the audit gate (§9).
 
+The `resolve_author_outbox_no_indexer` variant used by the publish planner (§7) intentionally
+omits the indexer set parameter — compare NDK's `chooseRelayCombinationForPubkeys`
+(`docs/research/ndk/outbox.md` §"Big picture" → `core/src/outbox/index.ts:45`) which is
+the nearest equivalent for reads, and Applesauce's `OutboxModel` which delegates relay
+resolution to every caller rather than enforcing publish-vs-read separation
+(`docs/research/applesauce/outbox.md` §7 lines 116-138).
+
 ```rust
 // crates/nmp-nip65/src/parse.rs
 
@@ -191,15 +224,22 @@ By design, to keep the kernel boundary clean (per `docs/design/app-extension-ker
 
 `nmp-nip65` consumes:
 
-- `nmp-core::substrate::{ViewModule, ViewContext, InterestContext, LogicalInterest, ...}` — kernel trait surface.
-- `nmp-core::kernel::projections` — for reading kind:10002 events out of the event store (the compiler's input).
+- `nmp-core::substrate::{ViewModule, ViewContext, InterestContext, LogicalInterest,
+  MailboxCache, MailboxSnapshot, CachePutResult, ...}` — kernel trait surface including the
+  mailbox types (trait lives in core, not in this crate).
+- `nmp-core::kernel::projections` — for reading kind:10002 events out of the event store.
 
 `nmp-nip65` is consumed by:
 
-- `nmp-core::kernel::planner` — for `MailboxCache`, `resolve_author_outbox/inbox`, `parse_relay_list`.
-- Future `nmp-nip01::UpdateRelayList` (M6).
-- Future `nmp-nip17` (M9) — DM publish path imports `resolve_author_inbox` for recipient lookups.
-- The per-app generated enum — `MailboxesView` becomes one variant of `ViewSpec` in `nmp-app-<name>` per ADR-0010.
+- The per-app generated enum — `MailboxesView` becomes one variant of `ViewSpec` in
+  `nmp-app-<name>` per ADR-0010.
+- Future `nmp-nip01::UpdateRelayList` (M6) — imports `parse::parse_relay_list` for validation.
+- Future `nmp-nip17` (M9) — DM publish path imports `routing::resolve_author_inbox`.
+
+`nmp-nip65` is **not** consumed by `nmp-core::kernel::planner`. The planner imports
+`nmp-core::substrate::mailbox::{MailboxCache, ...}` directly (no nmp-nip65 dep). The
+concrete `InMemoryMailboxCache` is injected at app startup via `AppConfig`; the planner
+receives a `&dyn MailboxCache` reference.
 
 ## 6.6 Cargo manifest sketch
 

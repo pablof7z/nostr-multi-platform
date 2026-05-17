@@ -58,7 +58,11 @@ pub struct AuthorRouting {
     pub author: Pubkey,
     pub direction: RoutingDirection,        // Outbox or Inbox
     pub relays: BTreeSet<RelayUrl>,         // resolved write/read/both
-    pub source: RoutingSource,              // Nip65 | UserConfigured | Indexer | Hint
+    pub source: RoutingSource,              // Nip65 | UserConfigured | Hint
+    // Note: there is no RoutingSource::Indexer variant — indexer fallback is
+    // modeled as UserConfigured { category: Indexer } (see diagnostics.md §5.0).
+    // This keeps the four-lane discipline strict: indexers are a sub-category of
+    // user-configured, not a fifth lane.
     pub freshness_ms: Option<u64>,          // age of the kind:10002 record
 }
 
@@ -86,7 +90,7 @@ The indexer set is a kernel-configured `Vec<RelayUrl>` (default: a small curated
 Two distinct behaviours:
 
 1. **Mailbox probe.** For every author with `mailbox_cache.get(author) == None`, the compiler emits a `IndexerProbe { author }` side effect on the plan. The probe registers as its own short-lived `LogicalInterest { shape: { kinds: [10002], authors: [author], limit: 1 }, lifecycle: OneShot, scope: Global }`. Recompilation triggers (§4 trigger A1) re-route the original interest once the kind:10002 lands.
-2. **Read fallback.** For a `RoutingDirection::Outbox` interest whose author has no known mailboxes, the compiler routes the interest to the indexer set **as read-only fallback**. Per `docs/product-spec/subsystems.md` §7.3 line 99: "fall back to indexer set for reads only; do not publish to indexers." The `RoutingSource::Indexer` tag on the resulting `AuthorRouting` flows through to the diagnostic surface so the four-lane view (§5) can render "author X is being served by indexer Y because we have no mailbox for them."
+2. **Read fallback.** For a `RoutingDirection::Outbox` interest whose author has no known mailboxes, the compiler routes the interest to the indexer set **as read-only fallback**. Per `docs/product-spec/subsystems.md` §7.3 line 99: "fall back to indexer set for reads only; do not publish to indexers." The resulting `AuthorRouting` carries `source: RoutingSource::UserConfigured` with a `UserConfiguredRelayFact { category: UserConfiguredCategory::Indexer }` record flowing to the diagnostic surface. The four-lane view (§5) renders "author X is being served by indexer Y because we have no mailbox for them" by examining the `category` subcategory — the Indexer is a sub-category of lane 4 (User-configured), not a fifth lane.
 
 Bounded: a single author's indexer probe is enqueued at most once per `compiler_probe_window_secs` (default 60s) to prevent thundering-herd probes if a screen of N rows all claim the same unknown pubkey.
 
@@ -112,6 +116,13 @@ When not mergeable, the two interests get distinct sub-shapes on the same relay,
 
 Open question 2 in the parent index (`subscription-compilation.md`) covers the `limit`-only corner case formally.
 
+The NMP merge lattice is simpler than Applesauce's `selectOptimalRelays` greedy set-cover
+(`docs/research/applesauce/outbox.md` §3, `relay-selection.ts:14-93`): Applesauce optimizes
+the number of relay connections by picking a minimum covering set across all contacts. NMP's
+Stage 3 merges shapes per relay but does not eliminate relays — the set-cover optimization
+(capping to `maxConnections`) is a future extension. For M2, every declared write relay gets
+a REQ; relay-count optimization is open question 8 (future ADR).
+
 ### Per-relay output
 
 ```rust
@@ -134,14 +145,20 @@ The wire-emitter renders each `SubShape` as exactly one `REQ` on `relay_url` wit
 
 `plan_id` is the **stable identity** the platform observes for diagnostic continuity. It answers: "did this recompilation actually change anything observable?"
 
-Definition (this design picks the "interest-set + mailbox-snapshot" formulation; open question 1 in the parent index notes the alternative):
+Definition: **hash only mailboxes referenced by the current interest set**, not the whole
+cache. This resolves open question 1 in the parent index — choosing this scope means that
+an unrelated author's kind:10002 arriving does not churn plan-ids for unrelated interests.
 
 ```
+// referenced_pubkeys = union of all shape.authors and shape.tags[#p] across interest_set
+referenced_pubkeys = interest_set.iter()
+    .flat_map(|i| i.shape.authors.iter().chain(i.shape.tags.get("#p").unwrap_or(&[])))
+    .collect::<BTreeSet<Pubkey>>();
+
 plan_id = blake3(
     sorted(interest_set.iter().map(|i| (i.id, i.shape, i.scope, i.lifecycle))),
-    sorted(mailbox_snapshot.iter().map(|(pk, ml)| (pk, ml.created_at,
-                                                    sorted(ml.write),
-                                                    sorted(ml.read)))),
+    sorted(referenced_pubkeys.iter().filter_map(|pk| mailbox_cache.get(pk))
+              .map(|ml| (ml.pubkey, ml.created_at, sorted(ml.write), sorted(ml.read)))),
     INDEXER_SET_VERSION,
     USER_CONFIGURED_RELAYS_VERSION,
     MERGE_LATTICE_VERSION,
@@ -152,7 +169,13 @@ Properties:
 
 - **Recompilation with no change ⇒ same plan-id.** If `ingest_relay_list` (`crates/nmp-core/src/kernel/ingest.rs:218-221`) deduplicates and decides not to replace a stale mailbox, no plan-id churn.
 - **Adding an interest changes plan-id even if no new wire REQ results.** Two interests can merge into the same SubShape; the plan-id changes because the *interest set* changed. The platform diagnostic correctly reports "logical-interest count went up; wire-sub count did not."
-- **A new kind:10002 for a covered author changes plan-id.** Even if the author's new write relays overlap entirely with the old set (e.g. relay added then removed), the snapshot's `created_at` advanced, so the hash changes. ADR-0007 diagnostics will reflect this; the wire-emitter's diff will be a no-op if the actual relay assignment is unchanged.
+- **A new kind:10002 for a referenced author changes plan-id.** The hash only covers mailboxes for authors the current interest set touches, so a kind:10002 for an unrelated pubkey (not in any active interest's `authors` or `#p`) does not churn plan-ids.
+- **A new kind:10002 for an unreferenced author does NOT change plan-id.** This is the key
+  difference from hashing the whole snapshot. The wire-emitter's diff is unaffected. This
+  property is critical for D8 (reactivity contract — §1.5): recompilation work must be bounded
+  by what's open, not by the size of the total mailbox cache. Hashing only referenced mailboxes
+  ensures recompile cost scales with `|interest_set| × |referenced_authors|`, not with the
+  entire cache.
 - **Indexer set change changes plan-id.** Operator config edits surface immediately.
 
 The `plan_id` is stored on `CompiledPlan` and rendered into `LogicalInterestStatus` (extending the record at `crates/nmp-core/src/kernel/mod.rs:147-154` with `plan_id: String, plan_generation: u64`). Tests in §9 assert plan-id stability across no-op recompilations.
@@ -163,11 +186,11 @@ This is the binding contract: each function in `crates/nmp-core/src/kernel/reque
 
 | Current function (file:line) | M2 replacement |
 |---|---|
-| `startup_requests` (requests.rs:50-106) | Becomes `register_startup_interests()`: pushes 4 `LogicalInterest`s into the registry (seed timeline; account kind:0; account kind:10002; seed contacts kind:3). The compiler runs once and produces wire REQs. The TEST_PUBKEY-specific bootstrap (line 71-82) becomes an `InterestScope::Global` interest with hardcoded indexer routing flagged `RoutingSource::UserConfigured` (it is operator-debug seed data). |
+| `startup_requests` (requests.rs:50-106) | **Relocated outside `nmp-core` per D0.** The seed timeline / kind:0 / kind:10002 / kind:3 bootstrap is social graph knowledge — not kernel substrate. It moves to `nmp-nip01` / `nmp-nip02` / the demo app's startup sequence. `nmp-core` only executes interests registered by modules; it does not hard-code which interests those are. The TEST_PUBKEY-specific bootstrap (line 71-82) moves to the demo app (or a test fixture in `nmp-testing`). The kernel's `ActorStart` handler calls `compiler.recompile(Trigger::Startup)`, which is a no-op until a module registers interests. |
 | `open_author` (requests.rs:118-140) | Registers three `LogicalInterest`s scoped `ActiveAccount` (kind:10002, kind:0, kinds:1+6 for author); calls `compiler.recompile(Trigger::ViewOpen)`. Refcount stays — but it lives on `InterestId` now, not on `ViewInterest { key, refcount }`. The `can_send` gate disappears: the compiler always produces a plan; the wire-emitter is the only thing that may queue deferrals. |
 | `open_thread` (requests.rs:142-168) | Registers a `Thread { event_id }` view-module spec; the view module returns interests with `event_ids` and `#e`-tag shapes. Hydration cascade in `prepare_thread_requests` (requests.rs:441-466) becomes part of the view module's `reduce` returning new interests when new event ids surface. |
 | `open_firehose_tag` (requests.rs:170-200) | Registers one `LogicalInterest { shape: { kinds: [1], tags: { #t: [tag] } }, scope: ActiveAccount, lifecycle: Tailing }`. Routes to active-account read relays per §3.1 table. |
-| `claim_profile` / `release_profile` (requests.rs:202-263) | Registers/unregisters one `LogicalInterest { shape: { authors: [pk], kinds: [0], limit: 1 }, lifecycle: OneShot }` per claim. Refcount of distinct consumers becomes the `InterestId` claim set inside the registry. **Dedup of (pk, kinds=[0]) across N timeline rows yields one merged SubShape and one wire REQ** — this is what bug-extinction "1000 avatars do not produce 1000 REQs" verifies (already true today via dedup; the compiler preserves it). |
+| `claim_profile` / `release_profile` (requests.rs:202-263) | Registers/unregisters one `LogicalInterest { shape: { authors: [pk], kinds: [0], limit: 1 }, lifecycle: OneShot }` per claim. Refcount of distinct consumers becomes the `InterestId` claim set inside the registry. **Dedup of (pk, kinds=[0]) across N timeline rows yields one merged SubShape and one wire REQ** — this is what bug-extinction "1000 avatars do not produce 1000 REQs" verifies. The refcount must be an integer counter, not a boolean presence flag — Applesauce gotcha `75ef7d5f` (`docs/research/applesauce/gotchas.md` §G2) shows the boolean model causes leaks when two consumers share a claim and one unsubscribes. |
 | `close_author` / `close_thread` (requests.rs:265-311) | Drop interests by `InterestId`; recompile with `Trigger::ViewClose`. Wire-emitter closes orphaned REQs. The "warm-close" grace from the view-warmth doctrine (`docs/design/kernel-substrate.md` §3 "lifecycle") is the compiler's, not the view's — interests stay registered for the warmth window after their last claim. |
 | `close_subscriptions_with_prefixes` (requests.rs:313-331) | **Deleted.** The wire-emitter closes by `WireSubId`, which is the compiler's diff output. String-prefix matching of sub-ids is a 2026-05-period scaffold that the compiler removes. |
 | `pending_view_requests` (requests.rs:333-355) | Becomes `compiler.flush_deferred_for_relay(role, url)`: called when a relay reconnects (§4 trigger A3). The compiler resubmits its current plan against that relay's slot. |
@@ -181,7 +204,7 @@ This is the binding contract: each function in `crates/nmp-core/src/kernel/reque
 | `ingest_relay_list` (ingest.rs:209-233) | Stays, but emits a `Trigger::Nip65Arrived { pubkey }` event (§4 trigger A1) on a material update. Becomes the producer side of the recompilation cycle. |
 | `ingest_profile` / `ingest_contacts` / `ingest_timeline_event` (ingest.rs:166-279) | Unchanged in storage shape. Their relevance to compilation is that they feed the view modules' projections (per `docs/design/reactivity/view-deltas-and-projections.md`). |
 | `should_store_event` (ingest.rs:268-279) | Unchanged. Per-sub-id string filtering goes away when sub-ids become `c{plan}-r{relay}-s{shape}`, but the predicate switches to "is this event id covered by an active interest?" — a `compiler.is_covered(event)` call. |
-| `maybe_open_timeline` (ingest.rs:329-365) | The "seed-contacts arrive → open union timeline" logic becomes a small `TimelineSeedModule`: it watches `seed_contacts` projection and registers a `Timeline { authors: union }` interest once the seed cohort is complete. |
+| `maybe_open_timeline` (ingest.rs:329-365) | The "seed-contacts arrive → open union timeline" logic moves to `nmp-nip02` (follows/contacts module), not to an `nmp-core` helper. D0: `nmp-core` must not know the social graph. The contacts module watches the kind:3 projection and registers a `Timeline { authors: union }` interest on behalf of whichever view asked for it. |
 
 What this migration does **not** do (deferred per parent index open questions 3, 6, 7):
 
@@ -189,5 +212,8 @@ What this migration does **not** do (deferred per parent index open questions 3,
 - It does not implement LMDB persistence for the mailbox cache — M3.
 - It does not implement NIP-77 watermarks — M4.
 - It does not add a per-author indexer-fallback ledger row — open question 3.
+- It does not move social bootstrap (follow-list timeline, account kind:0/3/10002 fetches)
+  into `nmp-core` — those are module concerns (D0). The impl PR for M2 must register those
+  interests from `nmp-nip01`/`nmp-nip02` or the demo app, not from the kernel actor directly.
 
 The compiler is **in-memory v1** by design. The mailbox cache is the existing `HashMap<String, AuthorRelayList>` (`crates/nmp-core/src/kernel/mod.rs:313`); it just gets a new consumer.

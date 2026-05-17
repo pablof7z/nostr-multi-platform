@@ -34,7 +34,11 @@ This document is split into focused sub-files to stay under the 500 LOC ceiling 
 
 These remain to be resolved by ADRs after design review, not in this design pass.
 
-1. **Plan-id stability under perturbation.** The intro/compiler picks "logical-interest set + author-mailbox snapshot ⇒ plan-id." That ties plan-id to mailbox membership, so a single new kind:10002 arrival reshuffles plan-ids for every interest including that author. An alternative scopes plan-id to the *logical-interest set only* and tracks per-relay assignment as a separate stable identifier. Pick one in an ADR; the test contracts in §9 assume the former.
+1. **Plan-id stability under perturbation.** ~~RESOLVED~~ — `compiler.md` §3.4 now hashes
+   only mailboxes for pubkeys referenced by the current interest set, not the whole snapshot.
+   This scopes plan-id churn to authors actually in active interests. An arriving kind:10002
+   for an unrelated pubkey does NOT churn plan-ids (D8: recompile cost must be bounded by
+   what's open). The test contracts in §9 are written against this formulation.
 2. **Filter-merge lattice formal-isation.** §3 step 3 lists which filter fields are safely mergeable across logical interests (`authors`, `kinds`, `since`, `until`, `limit`, tag operators). It does not yet specify the merge algebra for the corner case where two interests differ only in `limit` but agree on authors and kinds. Worth an ADR-level note before the lattice is coded; `docs/product-spec/subsystems.md` §7.2 promises "a formal merge lattice for `limit`, `since`, `until`, multi-filter arrays, and tag operators."
 3. **Per-author indexer-fallback ledger row?** Today the compiler treats indexer fallback as an inline relay assignment. If the kind:10002 fetch is its own durable action (M6 ledger), the fallback becomes a tracked action with retry/cancel semantics. Cleaner for diagnostics; heavier for M2. Defer.
 4. **Read-relay vs write-relay use for subscriptions on the same author.** NIP-65 defines write relays (outbox) for the author's own events and read relays (inbox) for events directed *at* the author. For a `Timeline { authors: [...] }` we want write relays. For a `Notifications { p: [author] }` we want inbox relays. The compiler distinguishes them by filter shape (`authors` vs `#p`), matching the `docs/product-spec/subsystems.md` §7.3 routing table. Document a corner case: kind-1 filtered by both `authors` and `#p` is rare but real (replies to the author from the author). Pick a precedence in an ADR; current bias is `authors` wins (write relays).

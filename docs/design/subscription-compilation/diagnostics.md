@@ -5,6 +5,13 @@
 
 The compiler's routing decisions are the most subtle correctness surface in the M2 milestone. They are also the easiest to silently get wrong (`docs/design/ndk-applesauce-lessons.md` §3, "automatic behaviour also needs strong tests"). Diagnostics make the four sources of relay knowledge legible — separately, never collapsed.
 
+**Indexer fallback is lane 4 (User-configured), not a fifth lane.** The kernel-configured
+indexer set is an operator policy choice expressed as `UserConfiguredCategory::Indexer` (see
+§5.1 Lane 4). Keeping it inside lane 4 preserves the four-lane discipline and ensures that
+the diagnostic UI always sees exactly four columns, regardless of whether an author is
+being served via NIP-65, hints, provenance, or any subcategory of user-configured (including
+indexers). This resolves the ambiguity at prior diagnostics.md lines 15, 116, 157.
+
 ## 5.0 The four lanes
 
 Per `docs/design/ndk-applesauce-lessons.md` §4 (lines 39–46) and `docs/aim.md` §6 doctrine 10 ("provenance preserved"), the four relay-fact lanes are:
@@ -59,6 +66,10 @@ Emitted whenever `ingest_relay_list` (`crates/nmp-core/src/kernel/ingest.rs:209-
 
 ```rust
 pub struct HintRelayFact {
+    /// The pubkey this hint is associated with — the event author for EventTag hints,
+    /// the pointer's subject for Nip19 hints. Required for the coverage reducer to
+    /// count how many authors are served via hints (see §8.2 by_lane.hint counter).
+    pub subject: Pubkey,
     pub relay_url: RelayUrl,
     pub source: HintSource,
     pub freshness_ms: u64,                     // monotonic from observation
@@ -71,6 +82,11 @@ pub enum HintSource {
     UserConfig  { config_path: String },        // for hints injected via config
 }
 ```
+
+The `subject` field is the author identity key for the coverage reducer's `by_lane.hint`
+counter (§8.2). Without it, the reverse-relay-coverage view cannot answer "how many distinct
+authors are routed via hints to relay R?" — the assertion in `tests.md:202` that
+`coverage.by_lane.hint == 1` would be untestable.
 
 Emitted by the pointer loader (post-M2; for M2 the field exists but is rarely populated — only `e`/`a`-tag third-slot hints from thread-view hydration fill it). Per-event hints are de-duplicated; an event whose `e` tag contains a hint URL produces one `HintRelayFact` per (relay_url, source) pair.
 
@@ -102,7 +118,12 @@ pub struct UserConfiguredRelayFact {
 pub enum UserConfiguredCategory {
     AccountRead,                                // user's own read relays (overrides NIP-65 read)
     AccountWrite,                               // user's own write relays
-    Indexer,                                    // kernel indexer set member
+    /// Kernel-configured indexer relay (e.g. purplepag.es). This is the sub-category that
+    /// represents indexer fallback routing in diagnostics — NOT a fifth lane. The indexer
+    /// set is a policy choice that lives inside lane 4 (User-configured). D3: the operator
+    /// configured the indexer set; the kernel applies it as policy for reads when NIP-65
+    /// mailboxes are unknown. Never for writes.
+    Indexer,
     Debug,                                      // operator-injected for testing
 }
 ```
@@ -156,9 +177,12 @@ pub struct RelayCoveragePayload {
 
 pub struct ByLaneCounts {
     pub nip65: u32,             // authors for whom relay is in their NIP-65 set
-    pub hint: u32,              // authors for whom we routed here via hints
-    pub user_configured: u32,   // authors served via user-config
-    pub indexer_fallback: u32,  // authors with no mailbox, served via indexer
+    pub hint: u32,              // authors for whom we routed here via hints (requires subject: Pubkey on HintRelayFact)
+    pub user_configured: u32,   // authors served via any UserConfigured sub-category
+    /// Sub-count of `user_configured` where `category == Indexer`. Not a fifth lane —
+    /// these are already counted in `user_configured`. Exposed separately so the diagnostic
+    /// UI can show "12 via user-config (including 8 indexer fallback)" without a lane split.
+    pub indexer_fallback: u32,
 }
 
 // `ViewModule::dependencies` returns:
@@ -169,11 +193,15 @@ pub struct ByLaneCounts {
 
 ## 8.2 Implementation outline
 
-The view's `reduce` consumes three input streams:
+The view's `reduce` consumes **all four** input streams — one per lane. All four must be
+wired so the test assertions at `tests.md:202` that check `by_lane.hint` and
+`by_lane.user_configured` are actually backed by live data:
 
 1. `Nip65RelayFact` records — increments/decrements `by_lane.nip65` per (relay_url, pubkey) membership.
-2. `CompiledPlan` re-emissions — every plan recompile produces a `(plan_id, relay_url) → authors` projection that this view subscribes to. The compiler exposes this projection as `RelayAuthorCoverage` in the kernel's projection cache (per `docs/design/reactivity/view-deltas-and-projections.md`).
-3. `ProvenanceRelayFact` records — feeds the rolling 60-second counter for `provenance_count_last_minute`.
+2. `HintRelayFact` records — increments/decrements `by_lane.hint` per (relay_url, subject) pair. The `subject: Pubkey` field (§5.1 Lane 2) is the author identity; without it this counter cannot be maintained.
+3. `UserConfiguredRelayFact` records — increments/decrements `by_lane.user_configured` per (relay_url) membership. Records with `category == Indexer` contribute to `by_lane.indexer_fallback` (a sub-count of `user_configured`); the UI can show both the aggregate and the Indexer-specific sub-total.
+4. `CompiledPlan` re-emissions — every plan recompile produces a `(plan_id, relay_url) → authors` projection this view subscribes to. The compiler exposes this as `RelayAuthorCoverage` in the projection cache.
+5. `ProvenanceRelayFact` records — feeds the rolling 60-second counter for `provenance_count_last_minute`.
 
 This is the M2 exit-gate diagnostic listed in [`docs/plan/m2-subscription-compilation.md`](../../plan/m2-subscription-compilation.md) ("Reverse-relay-coverage view for diagnostics: 'this relay is serving N authors of our timeline.'").
 
