@@ -144,7 +144,7 @@ All require `["h", <group_id>]` and are signed by a current admin (member of the
 
 ### 2.4 Group metadata (relay-signed, parameterized-replaceable, 39000–39003)
 
-These are the most unusual events in Nostr — they're signed by the relay's own keypair, not by any user. The kernel's normal "verify signature against author pubkey" path applies, but the *authority* check is "does the signer pubkey match the host relay's declared identity?" (per NIP-11 `pubkey` or by pinned trust; see `moderation.md` §4).
+These are the most unusual events in Nostr — they're signed by the relay's own keypair, not by any user. The kernel's normal "verify signature against author pubkey" path applies, but the *authority* check is **policy-dependent** per the trust model selected in `moderation.md` §4. M11.5 ships **policy C** (best-effort): a 39000-39003 is accepted iff it arrived via the host relay's WebSocket, regardless of signer pubkey. Policies A (NIP-11 identity match) and B (TOFU on first-seen pubkey) are documented in `moderation.md` §4 as alternatives an ADR may select; the code shape is structured so a future policy change does not require ingest rework. The `nip29_metadata_signer_trust_accepts_any_pubkey_from_host_relay` test in `moderation.md` §7 asserts the C policy. (Note: `routing.md` §4.3's bootstrap-host signer-identity verification is a separate concern from ingest-time metadata trust — bootstrap discovery needs the strictest possible matching because the relay isn't yet known to be the host; ingest of an already-pinned host's events uses the looser policy because the host is already authenticated by its WebSocket identity.)
 
 All four kinds share:
 
