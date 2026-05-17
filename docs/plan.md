@@ -52,18 +52,21 @@
 
 ### Phase 1 — Event store + planner
 
-Per ADR-0006, Phase 1 opens with a **vertical slice** before the broader scope lands. The slice proves the architecture end-to-end against a real relay with running code, not modeled budgets.
+Per ADR-0006 and ADR-0008, Phase 1 opens with a **vertical slice that grows into a demoable iOS Twitter clone** before broader scope lands. The slice proves the architecture end-to-end against a real relay (primal) with running code, not modeled budgets.
 
-**1a. Vertical slice (the walking skeleton).** Per ADR-0006 §"The vertical slice":
+**1a. Vertical slice, six sub-phases.** Per ADR-0008 §"Sub-phase plan":
 
-- Desktop iced shell with an `Avatar { pubkey }` component using `useProfile(pubkey)`.
-- Manually-written wrapper implementing the ADR-0005 refcounted domain-keyed pattern.
-- Minimal nmp-core actor handling `OpenView`/`CloseView` for the Profile view kind only.
-- In-memory EventStore with kind:0 replaceable supersession + composite reverse index keyed by `(kind, author)`.
-- One WebSocket connection via `nostr-sdk` to one hardcoded relay; REQ/CLOSE driven by view lifecycle.
-- No LMDB, no FFI (desktop links rlib directly), no outbox, no negentropy, no other view kinds — those layer in after.
+- **1a.0** Skeleton — workspace, actor scaffolding, empty AppState/Action/Update. ~3–5 days.
+- **1a.1** Desktop Profile slice — iced shell, in-memory store, primal relay, Profile view kind, `useProfile` wrapper (the original ADR-0006 slice). ~1 week.
+- **1a.2** iOS port of Profile slice — UniFFI + xcframework + SwiftUI shell + `AppManager`. ~2 weeks (UniFFI / Xcode surprises front-loaded here).
+- **1a.3** LMDB + Contacts + seed-driven Timeline — multiple `Contacts` views (one per seed dev account) union into the timeline's author set; real breadth from launch without requiring login. ~1.5 weeks.
+- **1a.4** Login + Signer + Compose — local-key signer, Keychain storage, `SendNote` action with atomicity; optional "Home" timeline switch to logged-in user's own follows. ~1.5 weeks.
+- **1a.5** Reactions + Thread + Reply — like/react, thread tree, reply composer. ~1 week.
+- **1a.6** Profile screen + diagnostics + polish — author-tap navigation, pagination, ADR-0007 diagnostics screen, error states. ~1 week.
 
-Exit gate for the slice: per ADR-0006 §"Exit gate for the slice" — manual demo + slice-scoped firehose-bench `live` runs.
+The desktop iced binary built in 1a.1 stays alive through 1a.6 as a non-FFI **reference target** — running the same actor without UniFFI to disambiguate "is it architecture or is it the toolchain?" debugging.
+
+Exit gate for the slice: per ADR-0008 §"Sub-phase plan" exit gates plus the broader Phase 1 exit gate below.
 
 **1b. Broader Phase 1 scope, layered on top of the slice.**
 
@@ -390,6 +393,7 @@ ADRs already adopted:
 - **ADR-0005:** Platform shadow is domain-keyed, not `ViewId`-keyed. Refcounted component wrappers (`useProfile`, `@Profile`, `rememberProfile`) generated per platform manage subscription lifecycle behind the domain-keyed API. `ViewId` remains an internal FFI token only.
 - **ADR-0006:** Vertical-slice-first delivery for Phase 1. Kind:0 profile-metadata path runs end-to-end (desktop component → wrapper → actor → in-memory store → real relay → back) before the broader Phase 1 scope (LMDB, outbox, full view kinds, FFI to iOS/Android) layers on top. Adopted 2026-05-17 from the firehose-bench run that revealed the live mode was blocked on real runtime adapters.
 - **ADR-0007:** Relay/subscription diagnostics and non-Nostr data use the same actor-owned `AppUpdate` bridge, but with explicit diagnostic/domain records instead of raw callbacks or fake Nostr events. Adopted 2026-05-17 to clarify network visibility and capability/domain-data flow before expanding the vertical slice.
+- **ADR-0008:** Phase 1a demo target is a simple Twitter-clone iOS app pulling from primal, with seed-driven timeline discovery (union of follow lists of hardcoded dev accounts) as the unauthenticated default. Six sub-phases, each a walking skeleton. Desktop iced reference target preserved alongside iOS for UniFFI-vs-architecture debugging. Supersedes ADR-0006 in choice of demo target only; discipline preserved.
 
 The ADRs are the durable record of why design decisions exist. New ADRs land alongside any new harness run that revises a design.
 
