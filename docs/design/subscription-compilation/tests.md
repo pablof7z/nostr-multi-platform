@@ -33,12 +33,15 @@ Four assertions corresponding to the four M2 exit-gate bullets in [`docs/plan/m2
 
 > **Codegen dependency (M2 impl-PR gate).** The test below introspects an
 > `AppActionMeta` reflection helper that lives in the per-app generated crate
-> (ADR-0010). `AppActionMeta` does not exist yet — it is a M2 implementation-PR
+> (ADR-0010). `AppActionMeta` does not exist yet — it is a hard M2 implementation-PR
 > deliverable. ADR-0010's codegen must emit it before this assertion can compile.
 > The M2 impl PR must either (a) add `AppActionMeta` emission to the codegen tool
 > (`nmp-gen modules`), or (b) provide a `proc-macro`-driven enum walker as a
-> fallback. This test is intentionally marked `#[ignore]` in CI until the codegen
-> dependency lands; the ignore comment must name the tracking ADR and impl-PR.
+> fallback. The test is **not** `#[ignore]` in the final M2 gate (per §9.5 — the
+> audit test must never be skipped). The impl PR is blocked from merging until
+> `AppActionMeta` compiles. If the codegen work is not yet started, the M2 impl PR
+> is split: Part A (compiler + planner) can merge first; Part B (codegen + audit
+> test) merges when `AppActionMeta` is ready.
 
 ```rust
 #[test]
@@ -145,10 +148,13 @@ fn late_nip65_arrival_reroutes_without_churn() {
     let plan_v1 = harness.compile().unwrap();
 
     // The author should be routed via indexer fallback.
+    // Indexer fallback is UserConfigured { category: Indexer } — not a RoutingSource::Indexer
+    // variant (which does not exist; see compiler.md §3.1 and diagnostics.md §5.0).
     let alice_relay_v1 = plan_v1.per_relay.iter()
         .find(|rp| rp.sub_shapes[0].shape.authors.contains(&target))
         .expect("alice routed somewhere");
-    assert!(alice_relay_v1.role_tags.contains(&RoutingSource::Indexer));
+    assert!(alice_relay_v1.role_tags.iter().any(|s| matches!(s, RoutingSource::UserConfigured)),
+        "before NIP-65 lands, alice must route via UserConfigured (indexer fallback)");
 
     // Now alice's kind:10002 arrives.
     harness.ingest_nip65(&target, ["wss://alice-relay.example"]);

@@ -81,7 +81,7 @@ Direction is decided by the interest's filter shape per `docs/product-spec/subsy
 | Both populated | Outbox primarily; Inbox interests split (see §3.3) | both |
 | Neither populated | (handled by stage 3 as "use active-account read relays") | — |
 
-`docs/product-spec/subsystems.md` §7.3 specifies one explicit override: DMs (NIP-17 gift-wraps, M9) fail closed if recipient inbox relays are missing. The compiler enforces this by refusing to produce a plan for an interest tagged `privacy = FailClosed` if any tagged-pubkey inbox lookup returns `Indexer` source. §7 details the publish-side enforcement.
+`docs/product-spec/subsystems.md` §7.3 specifies one explicit override: DMs (NIP-17 gift-wraps, M9) fail closed if recipient inbox relays are missing. The compiler enforces this by refusing to produce a plan for an interest tagged `privacy = FailClosed` if any tagged-pubkey inbox lookup has empty relays or was sourced from `UserConfigured { category: Indexer }` (meaning no NIP-65-declared inbox exists). §7 details the publish-side enforcement.
 
 ## 3.2 Stage 2 — Indexer fallback for unknown mailboxes
 

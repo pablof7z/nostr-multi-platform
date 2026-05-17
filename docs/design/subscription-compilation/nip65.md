@@ -24,8 +24,8 @@ crates/nmp-nip65/
 │   ├── lib.rs              # re-exports + crate-level documentation
 │   ├── module.rs           # impl ViewModule for MailboxesView
 │   ├── parse.rs            # kind:10002 tag parsing (extracted from kernel)
-│   ├── cache.rs            # MailboxCache trait + InMemory impl
-│   ├── routing.rs          # AuthorRouting, RoutingSource, mailbox lookup API
+│   ├── cache.rs            # InMemoryMailboxCache impl only (trait is in nmp-core::substrate::mailbox)
+│   ├── routing.rs          # resolve_author_outbox / resolve_author_inbox public API
 │   └── tests/
 │       ├── parse.rs        # round-trip + edge-case tag parsing
 │       ├── routing.rs      # mailbox → relay-set resolution scenarios

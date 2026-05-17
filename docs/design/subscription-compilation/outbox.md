@@ -74,7 +74,8 @@ pub enum PrivacyRole {
 #[derive(Clone, Debug)]
 pub enum PublishPrivacy {
     /// Public events (kind:1, kind:0, kind:3, kind:10002, kind:7, ...).
-    /// Falls back to indexer set if author has no write relays.
+    /// Fails with `NoAuthorRelays` if the author has no declared write relays.
+    /// Does NOT fall back to indexers (D3) — publishes must reach only declared write relays.
     Public,
     /// Private/gift-wrapped events (kind:1059 wrapping NIP-44). Fails closed
     /// if any recipient has no inbox relays.
@@ -151,7 +152,13 @@ NMP's planner is structural: publish resolution and read-fallback are separate c
             inbox = resolve_author_inbox(cache, user_configured, r)
             // no indexer arg — NDK gotcha a912a2c2: bootstrap timing race means
             // we may not have inbox relays yet; fail-closed is correct for privacy
-            If inbox.source == RoutingSource::Indexer or inbox.relays is empty:
+            // Check for unroutable inbox: either no relays at all, or the only
+            // routing source was indexer fallback (UserConfigured::Indexer means
+            // we have no declared inbox — a privacy-fail-closed condition).
+            let inbox_from_indexer = matches!(
+                inbox.source, RoutingSource::UserConfigured
+            ) && user_configured.is_indexer_relay(&inbox.relays);
+            If inbox.relays.is_empty() || inbox_from_indexer:
                 return Err(PrivateRecipientUnroutable { recipient: r })
         assignments = union(each recipient's inbox.relays → RecipientInbox { recipient, lane })
         // intentionally NO author-write inclusion: private events must not go to public outbox

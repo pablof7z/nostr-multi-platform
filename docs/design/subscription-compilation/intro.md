@@ -112,7 +112,7 @@ Concrete examples for the existing seed-timeline path:
 - `ProfileClaim { pubkey }` (the refcounted UI path from `crates/nmp-core/src/kernel/requests.rs:202-237`) returns one interest: `{ authors: [pubkey], kinds: {0}, limit: 1, lifecycle: OneShot }`.
 - `ThreadView { event_id }` returns up to two interests: `{ ids: [...] }` for context, `{ kinds: {1, 6}, tags: { #e: [...] } }` for replies.
 
-The seed-bootstrap path (`crates/nmp-core/src/kernel/requests.rs:50-106`) becomes one `LogicalInterest` per concern, registered at actor `Start` rather than emitted as raw REQs. The compiler produces the wire artifacts.
+The seed-bootstrap path (`crates/nmp-core/src/kernel/requests.rs:50-106`) becomes one `LogicalInterest` per concern registered by **protocol modules** (`nmp-nip01`, `nmp-nip02`) at their start handlers — not by `nmp-core` directly (D0: the kernel must not know social-graph concepts such as follows, profiles, or contact lists). `nmp-core`'s `ActorStart` handler only fires the compile trigger; the interest set stays empty until modules register. The `open_author` view and profile-claim path similarly move to `nmp-nip01`-provided view modules. The compiler produces wire artifacts from whatever interests modules declare.
 
 ### 2.3 Account scope binding
 

@@ -134,7 +134,7 @@ Emitted on `Trigger::UserConfiguredRelaysChanged` / `Trigger::IndexerSetChanged`
 
 The compiler may *use* facts from multiple lanes to compute a routing decision; it may **not** present them as one. Concretely:
 
-- **Routing decision** (`AuthorRouting.source` from [compiler.md](compiler.md) §3.1): records *which lane* the relay set was derived from. Single-valued; one of `Nip65 | Hint | Indexer | UserConfigured`. The author may have facts in three lanes; the compiler picks one, says so, and the other lane records remain visible.
+- **Routing decision** (`AuthorRouting.source` from [compiler.md](compiler.md) §3.1): records *which lane* the relay set was derived from. Single-valued; one of `Nip65 | Hint | UserConfigured`. There is no `Indexer` variant — indexer fallback routing is `UserConfigured` with the relay's `UserConfiguredCategory::Indexer` sub-category visible in the `UserConfiguredRelayFact` record. The author may have facts in three lanes; the compiler picks one, says so, and the other lane records remain visible.
 - **`RelayPlan.role_tags`** is a `BTreeSet<RoutingSource>` because a single relay may be in the plan for multiple reasons (e.g. NIP-65 for author A + user-configured fallback for everyone). The set discriminates, it does not collapse.
 - **The platform diagnostic view** receives all four lanes as separate `ViewBatch` records. The UI may render them in one screen with four side-by-side columns, but the data path is four lanes.
 
