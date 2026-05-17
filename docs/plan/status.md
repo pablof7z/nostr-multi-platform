@@ -39,7 +39,7 @@ Honest accounting before forecasting forward.
 - Subscription compilation (the load-bearing NDK/Applesauce lesson) wasn't elevated as its own milestone.
 - Blossom and media-capability lifecycle (long-running, resumable, background) were one bullet under Phase 6.
 - No milestone proved the kernel boundary for a fundamentally non-social product.
-- The plan didn't reflect that M0 and M1 are largely done.
+- The plan didn't reflect that M0 and M1 are largely done (M1 is now ✅ DONE — two exit-gate items deferred to M10.5 and M14 per T22; see m1-twitter-slice.md §Deferred).
 - **No dedicated FFI hardening + iOS empirical proof gate before the kernel-boundary proof.** The prior M11 implicitly assumed the FFI surface was ready; this rewrite makes it a separate milestone (M10.5).
 - **M11 was generic.** This rewrite ties it concretely to `/Users/pablofernandez/src/podcast` (the fully-functional Swift app) as the rebuild target, with copy-first UI fidelity and an explicit view-by-view module mapping.
 

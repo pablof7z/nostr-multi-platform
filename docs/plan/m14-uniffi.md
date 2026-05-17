@@ -19,5 +19,6 @@
 - iOS app builds and runs against UniFFI-generated bindings; no raw C FFI in the app target.
 - Cross-platform consistency test (next milestone) is unblocked because the FFI shape is now identical across platforms.
 - Codegen determinism: repeated runs produce byte-identical output.
+- Platform debounce dispatch-rate gate (deferred from M1 per T22): with the M14 generated wrapper (ADR-0005 refcounted component wrapper) in place, validate that mount/unmount churn at 1000/sec for 60 s produces dispatch rate (OpenView + CloseView combined) ≤ 60% of mount rate. The grace-period absorption (30 s by default) is what makes this gate green; without it the wrapper is doing pass-through and the dedup belongs purely to the kernel.
 
 **Runnable artifact.** iOS Twitter + iOS Podcast apps both using UniFFI. Report in `docs/perf/m14/uniffi-migration.md`.

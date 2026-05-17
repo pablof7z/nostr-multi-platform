@@ -1,4 +1,4 @@
-# FFI hardening — scenarios S6–S10
+# FFI hardening — scenarios S6–S11
 
 See [`scenarios.md`](./scenarios.md) for S1–S5 and conventions.
 Numeric thresholds are in [`gates.md`](./gates.md).
@@ -178,3 +178,46 @@ during pause); listener (idle during pause).
 **Runner.** Rust harness only (XCUITest cannot SIGSTOP the actor).
 
 **Numeric gate.** See gates.md §G-S10.
+
+---
+
+## S11. Memory RSS instrumentation — iPhone 12 baseline
+
+*This scenario is the M1 RSS-measurement deferral (T22) being honored in M10.5.*
+
+**The bug shape.** Profile-thrashing and mount/unmount-churn scenarios (S1, S2) assert
+RSS bounds but M1 shipped without OS-level instrumentation to measure them. Without a
+real RSS reading, the bounds are aspirational, not gated.
+
+**Setup.** On iPhone 12 hardware (not simulator — the baseline is device-specific), run
+the canonical workflow in three phases via the Instruments command-line runner:
+
+1. **Cold start.** Boot app, load seed timeline (pablof7z + fiatjaf + jb55 union),
+   let it stabilise for 30 s. Record RSS at stabilisation.
+2. **10-minute sustained scroll.** Automate continuous scroll at ≈ 3 items/sec
+   (XCUITest `swipe` loop) keeping roughly 100 profile views live at any moment.
+   Sample RSS every 5 s via `mach_task_basic_info.resident_size`.
+3. **Post-shutdown delta.** Stop the kernel (simulate app background), wait 10 s,
+   resume and read RSS again.
+
+**Instrumentation.** `mach_task_basic_info` via a thin Swift shim injected into
+`NmpStress`; readings appended to the in-memory metrics channel already present in
+`KernelMetrics`. Linux CI runs the equivalent via `/proc/self/status VmRSS` in the
+Rust harness for regression detection.
+
+**Threading.** Main thread runs XCUITest scroll driver; actor + relay workers run
+normally; the RSS probe fires on a 5-s `DispatchSourceTimer` on a background serial queue.
+
+**Assertions.**
+1. RSS at 100 active views ≤ **200 MB** (ADR-0003 working-set gate).
+2. RSS growth slope over the 10-min scroll ≤ **0 bytes/sec** post-warmup (first 30 s).
+3. Post-shutdown RSS delta ≤ **10 MB** (no retained-by-cycle leak surviving shutdown).
+4. Instruments → Leaks count = 0 throughout.
+
+**Output.** RSS time-series appended to `docs/perf/m10.5/iphone12-baseline.md`
+alongside the rest of the iPhone 12 firehose-bench numbers.
+
+**Runner.** XCUITest on iPhone 12 hardware (mandatory); Rust harness Linux-side for
+CI regression tracking.
+
+**Numeric gate.** See gates.md §G-S11.
