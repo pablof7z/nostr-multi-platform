@@ -110,7 +110,7 @@ pub struct ModerationEvent {
 }
 ```
 
-The ingest path materialises these *in addition to* applying the side-effects to the canonical 39001/39002 records — they're independent.
+The ingest path materialises this audit record **and only this audit record** for any 9000-9022. It does **not** apply side-effects to the canonical 39001/39002 records — those flip only when the relay's own republished 39001/39002 arrives (per §5 first paragraph).
 
 ## 6. Membership-as-security-boundary in projections
 
