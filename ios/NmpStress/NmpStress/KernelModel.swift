@@ -26,6 +26,7 @@ final class KernelModel: ObservableObject {
     private var authorViewCache: [String: ProjectionCacheEntry<AuthorViewPayload>] = [:]
     private var threadViewCache: [String: ProjectionCacheEntry<ThreadViewPayload>] = [:]
     private let projectionCacheTTL: TimeInterval = 60
+    private var lastLogicalInterestSummary = ""
 
     init() {
         let environment = ProcessInfo.processInfo.environment
@@ -154,6 +155,13 @@ final class KernelModel: ObservableObject {
             threadViewCache[threadView.focusedEventId] = ProjectionCacheEntry(value: threadView, storedAt: Date())
         }
         purgeProjectionCaches()
+        let logicalInterestSummary = update.logicalInterests
+            .map { "\($0.key)=\($0.state)[\($0.cacheCoverage)]" }
+            .joined(separator: " | ")
+        if logicalInterestSummary != lastLogicalInterestSummary {
+            lastLogicalInterestSummary = logicalInterestSummary
+            print("NMP_DIAG logical_interests rev=\(update.rev) \(logicalInterestSummary)")
+        }
         let applyMicros = applyStart.duration(to: .now).microseconds
         let callbackToAppliedMicros = result.callbackReceivedAt.duration(to: .now).microseconds
         appMetrics.record(

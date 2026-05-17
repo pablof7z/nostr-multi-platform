@@ -71,18 +71,28 @@ impl Kernel {
             },
             warming_until_ms: None,
         });
+        let timeline_authors = self
+            .timeline
+            .iter()
+            .filter_map(|id| self.events.get(id))
+            .map(|event| event.author.clone())
+            .collect::<BTreeSet<_>>();
         let visible_authors = self
             .visible_items()
             .into_iter()
             .map(|item| item.author_pubkey)
             .collect::<BTreeSet<_>>();
-        if !visible_authors.is_empty() {
-            let loaded = visible_authors
+        if !timeline_authors.is_empty() {
+            let visible_loaded = visible_authors
                 .iter()
                 .filter(|pubkey| self.profiles.contains_key(*pubkey))
                 .count();
-            let missing = visible_authors.len().saturating_sub(loaded);
-            let state = if missing == 0 {
+            let timeline_loaded = timeline_authors
+                .iter()
+                .filter(|pubkey| self.profiles.contains_key(*pubkey))
+                .count();
+            let timeline_missing = timeline_authors.len().saturating_sub(timeline_loaded);
+            let state = if timeline_missing == 0 {
                 "complete"
             } else if self.profile_req_inflight {
                 "loading"
@@ -93,14 +103,17 @@ impl Kernel {
             };
             interests.push(LogicalInterestStatus {
                 key: format!(
-                    "TimelineAuthorProfiles({} visible authors)",
-                    visible_authors.len()
+                    "TimelineAuthorProfiles({} visible / {} timeline authors)",
+                    visible_authors.len(),
+                    timeline_authors.len()
                 ),
                 state: state.to_string(),
                 refcount: visible_authors.len().min(u32::MAX as usize) as u32,
                 relay_urls: vec![INDEXER_RELAY_URL.to_string()],
                 cache_coverage: format!(
-                    "{loaded} loaded, {missing} missing, {} pending, {} requested",
+                    "visible {visible_loaded}/{} loaded, timeline {timeline_loaded}/{} loaded, {} pending, {} requested",
+                    visible_authors.len(),
+                    timeline_authors.len(),
                     self.pending_profiles.len(),
                     self.requested_profiles.len()
                 ),
