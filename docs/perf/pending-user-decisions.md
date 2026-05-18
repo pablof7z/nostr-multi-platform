@@ -631,6 +631,13 @@ The three FIX-FORWARD correctness items from e895c09 have been applied in commit
 
 All three covered by new tests. `cargo test --workspace` green. Remaining items in PD-025 (6711b01 quiet-period retry, 8f7bbad iOS bridge decode logging) remain open.
 
+### Update — PD-025 Findings 4-5 RESOLVED (2026-05-18, HB59)
+
+- **Finding 5 (6711b01 quiet-period retry stall):** ✅ LANDED at `86b279c` — T127 coverage verified complete; `pd025_finding5_quiet_period_retry_fires_on_actor_tick` added as named regression anchor in `kernel/publish_engine_tests.rs`. 4-step contract (submit fail → relay quiet → actor tick → retry fires) fully pinned. LifecycleEvent(Foreground) wake path documented in test comment.
+- **Finding 4 (8f7bbad iOS bridge silent decode):** ✅ LANDED at `a94bc35` + `b15e5f2`. Chirp KernelBridge.swift: unknown-tag and t=update silent drops now log via `kbLog.error`/`kbLog.debug` with payload prefix. Toast impossible by design (toast surface driven by the snapshot that failed; logged reasoning in commit). Android KernelModel: `decodeSnapshot()` unwraps T103 envelope and logs all failure paths via `Log.e(TAG, …)` — fixes the silent `ignoreUnknownKeys` default-rev=0 regression that prevented UI updates. Pulse/NmpStress retired (HB50); no action on retired bridges.
+
+**PD-025 STATUS: ALL FINDINGS RESOLVED.** Findings 1-3 at `9360faa`, findings 4-5 at `a94bc35`+`b15e5f2`+`86b279c`.
+
 
 ## PD-023 / PD-026 number collision RESOLVED
 
