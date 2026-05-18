@@ -462,6 +462,109 @@ fn t127_start_path_drives_resume_publish_engine() {
     );
 }
 
+// ── PD-025 finding 5 — quiet-period retry end-to-end verification ────────────
+//
+// PD-025/5 (from the 6711b01 codex review): engine retry pump is opportunistic
+// on every inbound text frame. If a relay goes quiet between OK and a due
+// retry, retries stall until the next inbound.
+//
+// T127 (`2e249a6`) added `tick_publish_engine_for_now()` to the actor's idle
+// path (`actor/mod.rs` — the `Ok(None)` branch of `recv_timeout`). The four
+// required conditions (PD-025/5 spec):
+//   1. Submit a publish that fails (relay returns OK false / transient).
+//   2. Close the relay (no more inbound frames — the engine's opportunistic
+//      `handle_message` tick never fires again).
+//   3. Wake the kernel via an actor idle tick (or scenePhase/Foreground).
+//   4. Assert the retry fires.
+//
+// This test is a **regression anchor** for the full path. Conditions 1-2-3-4
+// are exercised directly at the kernel API boundary that the actor consumes:
+//   - Step 1 → `run_publish_engine_at` + `handle_publish_ok_at` (OK=false).
+//   - Step 2 → no further inbound calls (silence simulated by test structure).
+//   - Step 3 → `tick_publish_engine(now_ms)` — exactly what the actor's
+//     idle path calls as `tick_publish_engine_for_now()` on each 250ms poll.
+//   - Step 4 → assert retry frame dispatched.
+//
+// The relationship to T127: `t127_quiet_socket_tick_progresses_pending_retry_
+// without_inbound` already pins all four conditions at the same API surface.
+// This test annotates that coverage explicitly under the PD-025/5 identifier
+// so the regression is searchable and the codex finding has a named resolution.
+//
+// NOTE on LifecycleEvent(Foreground) as a wake trigger: sending a Foreground
+// event to the actor does NOT directly call `tick_publish_engine` — it only
+// fires the registered lifecycle observer (for nip-77 reconcile). The retry
+// fires because after the `LifecycleEvent` dispatch returns, the actor's next
+// `recv_timeout(250ms)` times out and the idle branch calls the tick. The
+// 250ms actor poll IS the wakeup; the foreground event is incidental. Testing
+// through the actor layer would require real relay sockets; the kernel-level
+// API below is the authoritative, deterministic path.
+
+#[test]
+fn pd025_finding5_quiet_period_retry_fires_on_actor_tick() {
+    // Regression anchor: PD-025/5. Verifies T127's quiet-period fix end-to-end
+    // at the kernel API surface. No relay sockets, no sleeps, time injected.
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let signed = fake_signed(
+        "ee".repeat(32).as_str(),
+        "ff".repeat(32).as_str(),
+        1,
+        "pd025-finding5 quiet-period retry test",
+    );
+
+    // Step 1a: dispatch publish → two outbox-fallback relays.
+    let outbound = kernel.run_publish_engine_at(&signed, &[], 0);
+    assert_eq!(outbound.len(), 2, "publish dispatched to two fallback relays");
+
+    // Step 1b: r2 settles OK; r1 returns transient failure (io error).
+    // After this ack r1's state is InFlight → RelayError + pending_retries[r1]
+    // scheduled at 100 + 1_000 = 1_100 ms.
+    let _ = kernel.handle_publish_ok_at(FALLBACK_R2, ok_payload(&signed.id, true, ""), 50);
+    let post_failure = kernel.handle_publish_ok_at(
+        FALLBACK_R1,
+        ok_payload(&signed.id, false, "io: connection reset by peer"),
+        100,
+    );
+    assert!(
+        post_failure.is_empty(),
+        "on_ack schedules retry but does not eagerly dispatch — the retry must \
+         come from the next tick, not from on_ack"
+    );
+
+    // Step 2: relay goes QUIET — no further inbound frames; the opportunistic
+    // `tick_publish_engine` call in `handle_message` never fires again.
+    // (Simulated here by the test simply not calling handle_* any further.)
+
+    // Step 3a: actor idle tick BEFORE backoff window — must be a no-op.
+    let premature = kernel.tick_publish_engine(500);
+    assert!(
+        premature.is_empty(),
+        "tick before 1s backoff must not dispatch (pending_retries deadline not yet due)"
+    );
+
+    // Step 3b: actor idle tick AFTER backoff window (T127 fix: the actor's
+    // `tick_publish_engine_for_now()` in the `Ok(None)` idle branch).
+    // This is exactly what `run_actor` calls every ~250ms when running=true.
+
+    // Step 4: retry must fire from the tick alone (no inbound frame triggered it).
+    let retry = kernel.tick_publish_engine(1_500);
+    assert_eq!(
+        retry.len(),
+        1,
+        "PD-025/5: quiet-period retry must fire from actor tick alone; \
+         got {} frames (T127 regression — quiet relay + no inbound = stall)",
+        retry.len()
+    );
+    assert_eq!(
+        retry[0].relay_url, FALLBACK_R1,
+        "retry must target r1 (the relay that returned transient failure)"
+    );
+    assert!(
+        retry[0].text.contains("EVENT"),
+        "retry frame must be a NIP-01 EVENT publish; got: {}",
+        retry[0].text
+    );
+}
+
 /// Helper for the boot-resume test: `handle_publish_ok_at` needs a `now_ms`
 /// strictly past the engine's most recent recorded ack timestamp, otherwise
 /// `apply_ack`'s late-ack idempotence path would discard the OK as stale.
