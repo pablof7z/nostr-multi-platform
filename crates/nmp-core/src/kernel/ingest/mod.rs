@@ -82,7 +82,12 @@ impl Kernel {
                     relay.counters.eose_rx = relay.counters.eose_rx.saturating_add(1);
                 }
                 if let Some(sub) = self.wire_subs.get_mut(sub_id) {
-                    sub.state = if sub_id == "seed-timeline" || sub_id.starts_with("diag-firehose-")
+                    // T105: the follow-feed (seed-timeline) is now per-relay
+                    // (`seed-timeline-<short-hash>`). Both the legacy id and
+                    // its per-relay variants stay live after EOSE.
+                    sub.state = if sub_id == "seed-timeline"
+                        || sub_id.starts_with("seed-timeline-")
+                        || sub_id.starts_with("diag-firehose-")
                     {
                         "live".to_string()
                     } else {
@@ -102,7 +107,10 @@ impl Kernel {
                 if sub_id.starts_with(crate::kernel::discovery::ONESHOT_SUB_PREFIX) {
                     self.complete_unknown_oneshot(sub_id);
                 }
-                if sub_id != "seed-timeline" && !sub_id.starts_with("diag-firehose-") {
+                if sub_id != "seed-timeline"
+                    && !sub_id.starts_with("seed-timeline-")
+                    && !sub_id.starts_with("diag-firehose-")
+                {
                     // T105: CLOSE must travel back to the same socket the REQ
                     // went out on — the transport pool is URL-keyed, so a
                     // role-only close would target the bootstrap socket and

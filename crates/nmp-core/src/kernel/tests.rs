@@ -8,7 +8,12 @@ fn open_author_emits_profile_and_note_reqs() {
 
     let requests = kernel.open_author(FIATJAF_PUBKEY.to_string(), true);
 
-    assert_eq!(requests.len(), 3);
+    // T105: cold-start (no cached kind:10002 for FIATJAF) → all three
+    // request kinds fan out to the BOOTSTRAP_DISCOVERY_RELAYS seeds. With
+    // two seeds: 2 author-relays + 2 author-profile (indexer lane) +
+    // 2 author-notes (content lane) = 6 frames.
+    let n_seeds = crate::relay::BOOTSTRAP_DISCOVERY_RELAYS.len();
+    assert_eq!(requests.len(), 3 * n_seeds);
     let joined = requests
         .iter()
         .map(|request| request.text.as_str())
@@ -20,14 +25,60 @@ fn open_author_emits_profile_and_note_reqs() {
     assert!(requests
         .iter()
         .any(|request| request.role == RelayRole::Content));
-    assert!(joined.contains("\"author-relays-1\""));
-    assert!(joined.contains("\"author-profile-1\""));
-    assert!(joined.contains("\"author-notes-1\""));
+    assert!(joined.contains("\"author-relays-1-"));
+    assert!(joined.contains("\"author-profile-1-"));
+    assert!(joined.contains("\"author-notes-1-"));
     assert!(joined.contains("\"kinds\":[10002]"));
     assert!(joined.contains("\"kinds\":[0]"));
     assert!(joined.contains("\"kinds\":[1,6]"));
     assert!(joined.contains(FIATJAF_PUBKEY));
     assert!(!kernel.author_request_pending);
+    // T105: every frame carries a resolved relay_url, NOT a constant.
+    for r in &requests {
+        assert!(
+            crate::relay::BOOTSTRAP_DISCOVERY_RELAYS.contains(&r.relay_url.as_str()),
+            "cold-start author REQ targets bootstrap seed, got {}",
+            r.relay_url
+        );
+    }
+}
+
+#[test]
+fn open_author_with_cached_nip65_routes_notes_to_resolved_write_relays() {
+    // T105: when the selected author has a cached kind:10002, the kind:1/6
+    // notes REQ MUST target their resolved write relays (NOT the bootstrap
+    // constants). This is the D3 enforcement bullet at the per-author scope.
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.author_relay_lists.insert(
+        FIATJAF_PUBKEY.to_string(),
+        crate::kernel::types::AuthorRelayList {
+            event_id: "x".to_string(),
+            created_at: 1,
+            read_relays: vec![],
+            write_relays: vec![
+                "wss://fiatjaf.write".to_string(),
+                "wss://fiatjaf.archive".to_string(),
+            ],
+            both_relays: vec![],
+        },
+    );
+
+    let requests = kernel.open_author(FIATJAF_PUBKEY.to_string(), true);
+    let notes: Vec<_> = requests
+        .iter()
+        .filter(|r| r.text.contains("\"kinds\":[1,6]"))
+        .collect();
+    assert_eq!(notes.len(), 2, "one notes REQ per resolved write relay");
+    let urls: std::collections::BTreeSet<_> =
+        notes.iter().map(|r| r.relay_url.clone()).collect();
+    assert!(urls.contains("wss://fiatjaf.write"));
+    assert!(urls.contains("wss://fiatjaf.archive"));
+    for r in notes {
+        assert!(
+            !crate::relay::BOOTSTRAP_DISCOVERY_RELAYS.contains(&r.relay_url.as_str()),
+            "warm author notes REQ MUST NOT route to bootstrap constant"
+        );
+    }
 }
 
 #[test]
@@ -119,11 +170,25 @@ fn profile_claims_are_ui_driven_and_deduped_by_pubkey() {
         true,
     );
 
-    assert_eq!(first.len(), 1);
+    // T105: cold-start claim fans out to each bootstrap discovery seed.
+    let n_seeds = crate::relay::BOOTSTRAP_DISCOVERY_RELAYS.len();
+    assert_eq!(first.len(), n_seeds);
     assert!(second.is_empty());
-    assert!(first[0].text.contains("\"profile-claim-1\""));
-    assert!(first[0].text.contains("\"kinds\":[0]"));
-    assert!(first[0].text.contains(FIATJAF_PUBKEY));
+    let joined = first
+        .iter()
+        .map(|r| r.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("\"profile-claim-1-"));
+    assert!(joined.contains("\"kinds\":[0]"));
+    assert!(joined.contains(FIATJAF_PUBKEY));
+    for r in &first {
+        assert!(
+            crate::relay::BOOTSTRAP_DISCOVERY_RELAYS.contains(&r.relay_url.as_str()),
+            "cold-start profile claim routes to bootstrap, got {}",
+            r.relay_url
+        );
+    }
     assert_eq!(
         kernel
             .profile_claims

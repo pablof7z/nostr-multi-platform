@@ -20,6 +20,16 @@
 //! wire-emitter's `emit_req(relay_url, sub_id, filter)` call.
 
 use super::super::*;
+use std::hash::{Hash, Hasher};
+
+/// Stable 8-hex-char suffix for a relay URL — used to disambiguate fan-out
+/// sub-ids across resolved relays so the `wire_subs` map (keyed by sub-id)
+/// does not collapse N per-relay subscriptions onto one row.
+fn relay_tag(relay_url: &str) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    relay_url.hash(&mut hasher);
+    format!("{:08x}", (hasher.finish() & 0xFFFF_FFFF))
+}
 
 impl Kernel {
     pub(crate) fn open_author(&mut self, pubkey: String, can_send: bool) -> Vec<OutboundMessage> {
@@ -204,12 +214,23 @@ impl Kernel {
             return Vec::new();
         }
         self.profile_req_seq = self.profile_req_seq.saturating_add(1);
-        vec![self.req(
-            RelayRole::Indexer,
-            &format!("profile-claim-{}", self.profile_req_seq),
-            &format!("claimed UI profile {}", short_hex(&pubkey)),
-            json!({"kinds":[0],"authors":[pubkey],"limit":1}),
-        )]
+        let seq = self.profile_req_seq;
+        // T105: kind:0 is a discovery fetch. If the author's NIP-65 is cached
+        // their declared write relays are the right place to read kind:0 (the
+        // author published it there); otherwise the bootstrap discovery seed
+        // serves the cold-start lookup. Fan out one REQ per resolved relay.
+        let mut requests = Vec::new();
+        for relay_url in self.author_write_relays(&pubkey) {
+            let tag = relay_tag(&relay_url);
+            requests.push(self.req_for_relay(
+                RelayRole::Indexer,
+                relay_url,
+                &format!("profile-claim-{seq}-{tag}"),
+                &format!("claimed UI profile {}", short_hex(&pubkey)),
+                json!({"kinds":[0],"authors":[pubkey.clone()],"limit":1}),
+            ));
+        }
+        requests
     }
 
     pub(crate) fn author_requests(&mut self) -> Vec<OutboundMessage> {
@@ -225,26 +246,45 @@ impl Kernel {
         self.author_request_pending = false;
         self.author_view_seq = self.author_view_seq.saturating_add(1);
         self.requested_profiles.insert(pubkey.clone());
-        let mut requests = vec![
-            self.req(
+        let seq = self.author_view_seq;
+
+        // T105: kind:10002 + kind:0 are discovery fetches — the author's own
+        // relay list is what we're trying to learn, so they leave on the
+        // bootstrap discovery seeds (one per indexer-lane bootstrap relay).
+        // kind:1/6 (the author's notes) MUST go to the author's resolved
+        // NIP-65 write relays — this is the outbox direction; the author
+        // publishes there. If we don't yet have their kind:10002 cached,
+        // the bootstrap seed serves the cold-start fetch and the A1
+        // recompilation trigger re-emits onto resolved relays after
+        // ingest_relay_list lands the author's kind:10002.
+        let mut requests = Vec::new();
+        for seed in crate::relay::BOOTSTRAP_DISCOVERY_RELAYS {
+            let tag = relay_tag(seed);
+            requests.push(self.req_for_relay(
                 RelayRole::Indexer,
-                &format!("author-relays-{}", self.author_view_seq),
+                (*seed).to_string(),
+                &format!("author-relays-{seq}-{tag}"),
                 &format!("selected author NIP-65 {}", short_hex(&pubkey)),
                 json!({"kinds":[10002],"authors":[pubkey.clone()],"limit":1}),
-            ),
-            self.req(
+            ));
+            requests.push(self.req_for_relay(
                 RelayRole::Indexer,
-                &format!("author-profile-{}", self.author_view_seq),
+                (*seed).to_string(),
+                &format!("author-profile-{seq}-{tag}"),
                 &format!("selected author kind:0 {}", short_hex(&pubkey)),
                 json!({"kinds":[0],"authors":[pubkey.clone()],"limit":1}),
-            ),
-            self.req(
+            ));
+        }
+        for relay_url in self.author_write_relays(&pubkey) {
+            let tag = relay_tag(&relay_url);
+            requests.push(self.req_for_relay(
                 RelayRole::Content,
-                &format!("author-notes-{}", self.author_view_seq),
+                relay_url,
+                &format!("author-notes-{seq}-{tag}"),
                 &format!("selected author notes {}", short_hex(&pubkey)),
-                json!({"kinds":[1,6],"authors":[pubkey],"limit":100}),
-            ),
-        ];
+                json!({"kinds":[1,6],"authors":[pubkey.clone()],"limit":100}),
+            ));
+        }
         requests.append(&mut self.maybe_open_thread_hydration());
         requests
     }

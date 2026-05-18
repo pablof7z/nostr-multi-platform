@@ -5,6 +5,18 @@
 
 use super::super::*;
 use super::event_short_id;
+use std::hash::{Hash, Hasher};
+
+/// Stable per-relay sub-id for the follow-feed REQ. The `seed-timeline-`
+/// prefix is recognized as a long-lived (post-EOSE keep-alive) subscription
+/// in `ingest::handle_text`. The hash suffix is a deterministic 8-char tag
+/// over the relay URL — same URL → same sub-id across runs, so wire-sub
+/// identity in the diagnostic surface is stable.
+fn timeline_sub_id_for(relay_url: &str) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    relay_url.hash(&mut hasher);
+    format!("seed-timeline-{:08x}", (hasher.finish() & 0xFFFF_FFFF))
+}
 
 impl Kernel {
     /// Ingest a kind:1 or kind:6 event into the local read-cache and timeline.
@@ -199,19 +211,36 @@ impl Kernel {
                 }
             }
             self.timeline_authors = authors;
-            let authors = self.timeline_authors.iter().cloned().collect::<Vec<_>>();
+            let authors_vec = self.timeline_authors.iter().cloned().collect::<Vec<_>>();
             self.timeline_requested = true;
             self.timeline_opened_at = Some(Instant::now());
+
+            // T105: partition the follow set by each author's NIP-65 write
+            // relays — one REQ per resolved relay, carrying only the authors
+            // that relay actually serves. Cold-start authors (no cached
+            // kind:10002) land on the bootstrap discovery seed; the A1
+            // recompilation trigger re-emits the timeline onto resolved
+            // relays once kind:10002 arrives (see `ingest_relay_list`).
+            let partition = self.partition_authors_by_write_relays(&authors_vec);
             self.log(format!(
-                "opening seed timeline with {} authors",
-                self.timeline_authors.len()
+                "opening seed timeline: {} authors fanned out over {} relay(s)",
+                authors_vec.len(),
+                partition.len()
             ));
-            requests.push(self.req(
-                RelayRole::Content,
-                "seed-timeline",
-                "seed union timeline kinds:1,6",
-                json!({"kinds":[1,6],"authors":authors,"limit":200}),
-            ));
+
+            // Stable sub-id per relay: `seed-timeline-<short-hash>`. The
+            // bare `seed-timeline` id is reserved for the unpartitioned
+            // legacy path and would now conflict across relays.
+            for (relay_url, served_authors) in partition {
+                let sub_id = timeline_sub_id_for(&relay_url);
+                requests.push(self.req_for_relay(
+                    RelayRole::Content,
+                    relay_url,
+                    &sub_id,
+                    "seed union timeline kinds:1,6 (NIP-65 outbox)",
+                    json!({"kinds":[1,6],"authors":served_authors,"limit":200}),
+                ));
+            }
         }
 
         requests.extend(self.pending_profile_claim_requests());
