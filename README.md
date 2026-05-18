@@ -14,8 +14,8 @@
 - **M1 (read-only Twitter slice on live iOS):** ✅ DONE (`701d0e5` — firehose-bench `live` cold_start 258ms first-item / 3587ms filled-timeline; profile_thrashing 0 leaked subs).
 - **M2 (subscription compilation + outbox + NIP-65):** ✅ planner + 5-case partition + Rule 9 group-id merge on master. 5 rounds of codex follow-up landed. Address-pointer support.
 - **M3 (LMDB + insert invariants + claim GC):** ✅ EventStore trait + MemEventStore (sole writer per D4) + LmdbEventStore skeleton + verify_and_persist outcome gating for kind:0/3/10002 + kernel/mod.rs split 561→179 + kernel/ingest.rs split into 5 files (`83a964e`). 38 nmp-core tests passing.
-- **M4 (NIP-77 negentropy):** 🟡 in flight (`m4-nip77-impl`).
-- **M5 (NIP-42 relay auth):** 🟡 in flight (`m5-nip42-impl`).
+- **M4 (NIP-77 negentropy):** ✅ LANDED (`076173d` — `crates/nmp-nip77/` reconciler + wire + capability + capability_domain).
+- **M5 (NIP-42 relay auth):** ✅ LANDED (`e69c3a4` — `crates/nmp-nip42/` state + parsers + builder + driver).
 - **M6 (sessions + signers):** ✅ LANDED (`9944bed` — `crates/nmp-signers/` with Signer trait + Local/Nip46/Nip07 + AccountManager + kind:3 auto-rewire). ADR-0015 captures design. Sessions research synthesis at `docs/research/sessions/synthesis.md` informed the design (AccountPublic/AccountSecret split, signer-mismatch post-conditions, bunker:// strict-hex parser).
 - **M7 (publishing pipeline):** ✅ LANDED (`08fc01f` — Publish action + per-relay state machine + NIP-65 auto-route + durable retry queue + PublishStatusView).
 - **M8 (subscription lifecycle / RelayManager):** ✅ LANDED (`9ca90c9` — registry + trigger inbox + wire emitter + connection pool + auth gate).
