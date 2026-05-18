@@ -9,8 +9,9 @@
 //! pool) drive the RPC, while tests can stub it out completely.
 //!
 //! `Nip46SignerHandle` is the **pre-handshake** form: it carries a parsed
-//! `bunker://` URI + local ephemeral keys, and exposes `complete(transport)`
-//! which performs the connect RPC and returns the upgraded `Nip46Signer`.
+//! `bunker://` URI + local ephemeral keys.  Once the caller has completed the
+//! connect / get_public_key RPC handshake, `complete(transport, pubkey)` returns
+//! the upgraded `Nip46Signer`.
 //!
 //! ## Design choices
 //!
@@ -25,10 +26,9 @@
 //!   request id (nanoid-equivalent: 11-byte hex) and registers a one-shot
 //!   `Sender` in `Nip46Signer::pending`.  The transport delivers responses by
 //!   their id; we resolve and drop.
-//! - **Reconnect**: `Nip46Transport::reconnect_hint()` lets the kernel signal
-//!   that the underlying subscription was rebuilt (e.g. websocket dropped and
-//!   reconnected); the signer can re-send any in-flight requests.  This is
-//!   the applesauce `e6d5613b` pattern.
+//! - **Reconnect**: `Nip46Transport::reconnect_hint()` is reserved for the
+//!   kernel-side reconnect path.  This scaffold does not yet replay in-flight
+//!   requests after a subscription rebuild.
 
 mod mapper;
 
@@ -56,7 +56,8 @@ pub struct Nip46Rpc {
     pub id: String,
     /// JSON-encoded request body (NIP-46 RPC envelope: `{id, method, params}`).
     pub body_json: String,
-    /// Encrypted payload to publish (kind:24133) to `relays`.
+    /// Payload body to publish as kind:24133 after the transport applies
+    /// NIP-46 encryption.
     pub encrypted_payload: String,
     /// Target relays (mirrors what `bunker://?relay=...` declared).
     pub relays: Vec<String>,
@@ -84,8 +85,9 @@ pub trait Nip46Transport: Send + Sync + std::fmt::Debug {
 /// Pre-handshake handle for a NIP-46 connection.
 ///
 /// Produced by [`Nip46SignerHandle::from_bunker_uri`].  Carries the parsed
-/// bunker URI + local ephemeral keys.  Call `complete()` once the kernel is
-/// ready to dispatch the connect RPC and `await` the remote ack.
+/// bunker URI + local ephemeral keys.  Call `complete()` after the kernel has
+/// completed the connect / get_public_key handshake and learned the remote user
+/// pubkey.
 #[derive(Debug)]
 pub struct Nip46SignerHandle {
     uri: BunkerUri,

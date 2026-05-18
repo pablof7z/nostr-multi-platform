@@ -4,9 +4,8 @@
 //! into this workspace.  This module ships the trait shape + serialization
 //! payload so the wasm follow-up is a pure additive change (no API churn).
 //!
-//! Non-wasm builds compile to a `NotReady`-everywhere stub so the `Signer`
-//! trait is fully implemented and code that holds `dyn Signer` can pass NIP-07
-//! through without conditional compilation everywhere.
+//! Non-wasm builds keep the payload + trait shape available.  Operations return
+//! `Unsupported`; `pubkey()` requires a cached pubkey from a prior payload.
 
 use nmp_core::substrate::{SignedEvent, UnsignedEvent};
 use nostr::PublicKey;
@@ -27,9 +26,8 @@ pub struct Nip07Signer {
 }
 
 impl Nip07Signer {
-    /// Construct an empty NIP-07 signer (no cached pubkey).  On a wasm build
-    /// the first `pubkey()` call would invoke `window.nostr.getPublicKey()`;
-    /// here it panics (callers must always check `nip07_supported()` first).
+    /// Construct an empty NIP-07 signer (no cached pubkey).  This value cannot
+    /// satisfy `pubkey()` until a wasm handshake or cached payload supplies one.
     pub fn new() -> Self {
         Self { cached_pubkey: None }
     }

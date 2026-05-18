@@ -6,7 +6,7 @@
 
 ## Context
 
-M6 (per `docs/plan/m6-signers-write.md`) requires three signer kinds: local nsec, NIP-46 bunker, and NIP-07 browser extension. Task #43 additionally requires a multi-account `IdentityModule` and kind:3 auto-rewire — work that strictly belongs to M8 but is folded into M6 here because the kernel reactivity for active-account changes needs to be in place before the M5 NIP-42 auth path can route challenges to the *right* signer (the same active account).
+M6 (per `docs/plan/m6-signers-write.md`) requires three signer kinds: local nsec, NIP-46 bunker, and NIP-07 browser extension. Task #43 additionally requires a multi-account `AccountManager` and kind:3 rewire observer — work that strictly belongs to M8 but is folded into M6 here because the kernel reactivity for active-account changes needs to be in place before the M5 NIP-42 auth path can route challenges to the *right* signer (the same active account).
 
 Two upstream research families inform the design:
 
@@ -19,16 +19,16 @@ Two upstream research families inform the design:
 
 ### Crate boundary (D0)
 
-Signers live in a **new sibling crate `nmp-signers`**, not in `nmp-core`. Per D0, `nmp-core` must not grow app nouns; identity/signer materials are policy + capability bridges, and the kernel only sees them via the `IdentityModule` trait which `nmp-core::substrate` defines but does not implement.
+Signers live in a **new sibling crate `nmp-signers`**, not in `nmp-core`. Per D0, `nmp-core` must not grow app nouns; identity/signer materials are policy + capability bridges, and the kernel should see them through the existing `IdentityModule` boundary when the integration lands.
 
-`nmp-signers` depends on `nmp-core` (for the `IdentityModule` trait + the kernel side of kind:3 auto-rewire) and on `nostr = 0.44` (for NIP-49, NIP-04, NIP-44 primitives only — we do not adopt `nostr::NostrSigner` as our public trait).
+`nmp-signers` depends on `nmp-core` (for `UnsignedEvent` / `SignedEvent`) and on `nostr = 0.44` (for NIP-49, NIP-04, NIP-44 primitives only — we do not adopt `nostr::NostrSigner` as our public trait).
 
 ### Signer trait
 
 ```rust
 pub trait Signer: Send + Sync + Debug {
     fn backend(&self) -> SignerBackend;
-    fn pubkey(&self) -> Result<PublicKey, SignerError>;     // sync; placeholder ok per D1
+    fn pubkey(&self) -> PublicKey;     // sync after construction/restore
     fn sign(&self, unsigned: UnsignedEvent) -> SignerOp<SignedEvent>;
     fn nip04(&self) -> Option<&dyn Nip04>;
     fn nip44(&self) -> Option<&dyn Nip44>;
@@ -41,7 +41,7 @@ Rationale:
 1. **Synchronous `pubkey()`** — applesauce-style cached pubkey. NDK explicitly caches the result of the first `getPublicKey()` call (commit `0867a502`). Sync access satisfies D1 (no spinners on already-known facts) and D8 (the hot path never awaits to know who is active).
 2. **`SignerOp<T>`** is our own non-`BoxedFuture` thunk type: a value the actor can poll, cancel, and serialize for retry. Maps to a `oneshot::Receiver`-style channel; the kernel pumps it on its own thread (D7 — capability reports back to policy). Avoids forcing Tokio into the kernel.
 3. **Optional `nip04`/`nip44`** namespaces (applesauce shape) — Local signer implements both; Nip07 returns whatever the extension exposes; Nip46 negotiates and may return both, one, or neither.
-4. **`SignerPayload`** is a stable, serializable type (`{kind: "local"|"nip46"|"nip07", body: ...}`); persisted by `IdentityModule::store_account`.
+4. **`SignerPayload`** is a stable, serializable type (`{kind: "local"|"nip46"|"nip07", body: ...}`); intended to be stored by the account persistence layer.
 
 ### Three impls (M6)
 
@@ -83,11 +83,11 @@ When the active account flips:
 2. Kernel re-derives interest set against the new active account's `follows` (kind:3) and `relayList` (kind:10002).
 3. New subscriptions open via the existing planner.
 
-Implementation: the `IdentityModule` exposes an `ActiveChangeObserver` callback hook; the kernel registers itself on construction. The kernel listens for kind:3 / kind:10002 events on the active account and reactively re-derives `seed_contacts` + `author_relay_lists`. This is the D3 "outbox automatic" path applied to identity transitions.
+Implementation: `AccountManager` exposes an `ActiveChangeObserver` callback hook. This commit adds `Kind3RewireObserver`, which stages active-account rewire requests for a future kernel integration to drain and translate into kind:3 / kind:10002 subscription rebuilds.
 
 ### bunker:// URL parsing
 
-`Nip46Signer::parse_bunker_uri(&str) -> Result<BunkerUri, BunkerParseError>` is the canonical parser. Format per NIP-46:
+`parse_bunker_uri(&str) -> Result<BunkerUri, BunkerParseError>` is the canonical parser. Format per NIP-46:
 
 ```
 bunker://<remote-pubkey-hex>?relay=<wss-url>&relay=<wss-url>&secret=<optional>
@@ -104,7 +104,7 @@ The parser is **the** target of the 1000-URI fuzz suite (`fuzz/bunker_uri.rs`), 
 
 ### Reactivity (D8)
 
-`IdentityModule::switch_active` is one actor message. The kernel batches the resulting subscription close/open into a single delta. View payloads scoped to the active account (e.g. "your follows timeline") flip in one snapshot — no transient empty state, no double subscription, no per-event allocation beyond what the existing planner already amortizes.
+`AccountManager::switch_active` is intended to be invoked from one actor message. The kernel integration must batch the resulting subscription close/open into a single delta. View payloads scoped to the active account (e.g. "your follows timeline") should flip in one snapshot — no transient empty state, no double subscription, no per-event allocation beyond what the existing planner already amortizes.
 
 ### FFI (D6)
 
@@ -114,13 +114,13 @@ The parser is **the** target of the 1000-URI fuzz suite (`fuzz/bunker_uri.rs`), 
 
 - **No async trait** — we use a sync `pubkey()` + `SignerOp` for `sign/encrypt/decrypt`. Rationale: the kernel actor loop is not Tokio-based today, and the M6 demo doesn't justify pulling in an executor. If a future signer kind genuinely needs `async fn` ergonomics, we add an `AsyncSignerAdapter` rather than retrofit the whole trait.
 - **No per-account queue inside `Signer`** — the actor is already the single serializer (D4 — single writer per fact). The queue applesauce builds is for browsers; in Rust the actor model gives us the same property for free.
-- **No proxy-signer indirection** — the active signer is queried via `IdentityModule::signer_active()` at the point of need. Less indirection; same correctness because the actor is single-threaded.
+- **No proxy-signer indirection** — the active signer is queried via `AccountManager::signer_active()` at the point of need. Less indirection; same correctness when the manager is owned by the actor.
 
 ## Trade-offs accepted
 
 - **NIP-07 wasm impl is a stub** — full wasm bindings deferred. The trait + payload shape are stable; the wasm target lift can land later as a pure additive change.
-- **NIP-46 reconnect/relay-switching** is wired as a TODO in the impl, behind a documented `Nip46Signer::switch_relays` future-work hook. The 2026-05-18 scope adjustments call out NIP-46 reconnect as M6 work; the bunker:// **parsing** (the M6 first-class onboarding path) lands here, but the kernel-relay-pool integration for the long-lived 24133 subscription will follow when the live NIP-46 demo is wired.
-- **`KeychainCapability` is stubbed** — M6 plan calls for real iOS Keychain via `keyring-rs`. The signer accepts a `KeychainCapability` trait so the real impl can drop in via dependency injection without changing this code.
+- **NIP-46 reconnect/relay-switching** is not implemented in this commit. The 2026-05-18 scope adjustments call out NIP-46 reconnect as M6 work; the bunker:// **parsing** (the M6 first-class onboarding path) lands here, but the kernel-relay-pool integration for the long-lived 24133 subscription will follow when the live NIP-46 demo is wired.
+- **`KeychainCapability` is not wired here** — M6 plan calls for real iOS Keychain via `keyring-rs`; this commit only lands storage-shaped signer payloads.
 
 ## Synthesis reconciliation (post-`docs/research/sessions/synthesis.md`)
 
@@ -165,7 +165,7 @@ Where they diverge, this section names the divergence + rationale.
    `IdentityId` type alias is `String` today and accepts ULIDs without an
    API change; switching the keying inside `AccountManager.accounts` from
    `pubkey_hex` to ULID is a contained 30-line change.  Documented as
-   PD-003 in `docs/perf/pending-user-decisions.md` so it doesn't slip.
+   PD-004 in `docs/perf/pending-user-decisions.md` so it doesn't slip.
 
 7. **Extend `IdentityError`** (§1.1) — `nmp-core::substrate::identity::IdentityError`
    currently has 2 variants.  Our `SignerError` (in `nmp-signers`) already
@@ -262,6 +262,6 @@ current-commit change required.
 
 - ADR-0007 (diagnostics and non-Nostr domain data) — toast-style error surfacing.
 - ADR-0009 (app-extension-kernel boundary) — `IdentityModule` is one of the canonical extension trait shapes.
-- `docs/plan/m5-nip42.md` — auth challenge routes through `IdentityModule::signer_active()`.
-- `docs/plan/m7-interaction-loop.md` — write-path actions consume `IdentityModule::signer_active()` to sign.
+- `docs/plan/m5-nip42.md` — auth challenge routing needs the active signer bridge.
+- `docs/plan/m7-interaction-loop.md` — write-path actions consume the active signer to sign.
 - `docs/plan/m8-multi-account.md` — multi-account UX builds on this manager.
