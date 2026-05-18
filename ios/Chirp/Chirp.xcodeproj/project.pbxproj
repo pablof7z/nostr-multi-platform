@@ -13,6 +13,7 @@
 		192CF49D1BB3B5A4799329E4 /* ChirpApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E58C0EC2EAF4941E587B9B94 /* ChirpApp.swift */; };
 		2355CCF12E5CA31216977162 /* SmokeScenariosTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31B7447F6D5C5E1571BF6A03 /* SmokeScenariosTests.swift */; };
 		28DDB51A3E188547CD78D215 /* ChirpTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40C90EE715FD709B3C9BDCC /* ChirpTheme.swift */; };
+		4A7A67B2FEBC3B7EABC7238C /* ModularBlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67A34B7B420737B321187E2F /* ModularBlockView.swift */; };
 		5A64FFA65566FF2762F1A8B7 /* WalletView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 900229FDEE3330B7264E8A33 /* WalletView.swift */; };
 		683374BB2BBCDF65807EEFC8 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C88FE40DE954EED68068786 /* DiagnosticsView.swift */; };
 		68379E6C144BFF7F0D9395CE /* KernelBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B303905AEF1833128E7C6BC /* KernelBridge.swift */; };
@@ -20,10 +21,10 @@
 		82CC2009FF54F2B7DAD35B06 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D32D744B5446C909E7AEEB8F /* OnboardingView.swift */; };
 		941DFB06BDE709CE4871CABE /* AccountAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EB771E148A6FCB120C2ADCF /* AccountAvatar.swift */; };
 		998745C91A2392EBF235E258 /* KeychainCapability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50F5B25557B2147731A5F75C /* KeychainCapability.swift */; };
+		9E808639BB9728758172B8C0 /* WireSubscriptionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C06D858D226689DC1A99E44 /* WireSubscriptionDetailView.swift */; };
 		9E910ED32775EBC4511B2F90 /* ThreadScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C01000494AC737F8F8E286D /* ThreadScreen.swift */; };
 		A4D78531938555278B719582 /* AccountsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F9E4580C1A561577607FE7A /* AccountsView.swift */; };
 		B38A5D94A5C43305C226EE4B /* RelayDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CD04CA5EB5E534F616BC342 /* RelayDetailView.swift */; };
-		326E219F6E13488EBFE98D5D /* WireSubscriptionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB7C30D3089B46CE95A8789E /* WireSubscriptionDetailView.swift */; };
 		BA5D10F42934B36256492BCC /* NotificationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C79DFA56568C01E3AE76955E /* NotificationsView.swift */; };
 		C5A3FCE92DF36AD33D083F83 /* SettingsHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BA43E598F11A1CE9FEC7D6F /* SettingsHubView.swift */; };
 		D08889E779C6991EF8540EAC /* ThreadNoteRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF4D140423145993963B8F23 /* ThreadNoteRow.swift */; };
@@ -31,6 +32,7 @@
 		E6AF81962D62F30FDB2F4F35 /* NoteRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6ADE8B08D5ABD0EA510EDC /* NoteRowView.swift */; };
 		EA0318372F152947A645ADC8 /* ProfileNoteRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C170D9BAEF17D256061902E9 /* ProfileNoteRow.swift */; };
 		EADA12AFFA8D08461F19DFA7 /* NoteContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ED689DD9659151162F819BC /* NoteContentView.swift */; };
+		F92DA1B7A5EF8D796F674546 /* TimelineBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4E597BC58FFF686CC596A91 /* TimelineBlock.swift */; };
 		FD278220A9E454AE75608FE8 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABF5AA8E2264637D1CA3BCA4 /* SearchView.swift */; };
 		FDD2055AA0756C779D63C6C4 /* NmpPulseCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = D54123F5D11729471B341A4E /* NmpPulseCapabilities.swift */; };
 		FF5483FCDF48B8892ABE5F53 /* ChirpUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25460F5E697F421F8C7BE89E /* ChirpUITests.swift */; };
@@ -54,6 +56,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		0C06D858D226689DC1A99E44 /* WireSubscriptionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WireSubscriptionDetailView.swift; sourceTree = "<group>"; };
 		1B303905AEF1833128E7C6BC /* KernelBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KernelBridge.swift; sourceTree = "<group>"; };
 		1ED689DD9659151162F819BC /* NoteContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteContentView.swift; sourceTree = "<group>"; };
 		25460F5E697F421F8C7BE89E /* ChirpUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChirpUITests.swift; sourceTree = "<group>"; };
@@ -66,6 +69,7 @@
 		50F5B25557B2147731A5F75C /* KeychainCapability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainCapability.swift; sourceTree = "<group>"; };
 		5EB771E148A6FCB120C2ADCF /* AccountAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountAvatar.swift; sourceTree = "<group>"; };
 		6642DD3D8D6000AC2E047C03 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		67A34B7B420737B321187E2F /* ModularBlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModularBlockView.swift; sourceTree = "<group>"; };
 		7BA43E598F11A1CE9FEC7D6F /* SettingsHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsHubView.swift; sourceTree = "<group>"; };
 		7D6ADE8B08D5ABD0EA510EDC /* NoteRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteRowView.swift; sourceTree = "<group>"; };
 		886A82F866183EB8C3674AD1 /* NmpCore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NmpCore.h; sourceTree = "<group>"; };
@@ -73,13 +77,13 @@
 		900229FDEE3330B7264E8A33 /* WalletView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletView.swift; sourceTree = "<group>"; };
 		985298ED1B842E892A6FA759 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		9CD04CA5EB5E534F616BC342 /* RelayDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayDetailView.swift; sourceTree = "<group>"; };
-		EB7C30D3089B46CE95A8789E /* WireSubscriptionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WireSubscriptionDetailView.swift; sourceTree = "<group>"; };
 		ABF5AA8E2264637D1CA3BCA4 /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
 		BE212C39877A658DFB0C98FA /* Chirp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Chirp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BF4D140423145993963B8F23 /* ThreadNoteRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadNoteRow.swift; sourceTree = "<group>"; };
 		C170D9BAEF17D256061902E9 /* ProfileNoteRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileNoteRow.swift; sourceTree = "<group>"; };
 		C239DE349111247765A86A53 /* ComposeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeView.swift; sourceTree = "<group>"; };
 		C40C90EE715FD709B3C9BDCC /* ChirpTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChirpTheme.swift; sourceTree = "<group>"; };
+		C4E597BC58FFF686CC596A91 /* TimelineBlock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineBlock.swift; sourceTree = "<group>"; };
 		C79DFA56568C01E3AE76955E /* NotificationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsView.swift; sourceTree = "<group>"; };
 		CF9F1342DAEFAF5D00A119FA /* ChirpTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ChirpTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D32D744B5446C909E7AEEB8F /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
@@ -93,6 +97,7 @@
 			isa = PBXGroup;
 			children = (
 				5EB771E148A6FCB120C2ADCF /* AccountAvatar.swift */,
+				67A34B7B420737B321187E2F /* ModularBlockView.swift */,
 				1ED689DD9659151162F819BC /* NoteContentView.swift */,
 				7D6ADE8B08D5ABD0EA510EDC /* NoteRowView.swift */,
 				C170D9BAEF17D256061902E9 /* ProfileNoteRow.swift */,
@@ -130,11 +135,11 @@
 				D32D744B5446C909E7AEEB8F /* OnboardingView.swift */,
 				985298ED1B842E892A6FA759 /* ProfileView.swift */,
 				9CD04CA5EB5E534F616BC342 /* RelayDetailView.swift */,
-				EB7C30D3089B46CE95A8789E /* WireSubscriptionDetailView.swift */,
 				ABF5AA8E2264637D1CA3BCA4 /* SearchView.swift */,
 				7BA43E598F11A1CE9FEC7D6F /* SettingsHubView.swift */,
 				2C01000494AC737F8F8E286D /* ThreadScreen.swift */,
 				900229FDEE3330B7264E8A33 /* WalletView.swift */,
+				0C06D858D226689DC1A99E44 /* WireSubscriptionDetailView.swift */,
 			);
 			path = Features;
 			sourceTree = "<group>";
@@ -193,6 +198,7 @@
 				1B303905AEF1833128E7C6BC /* KernelBridge.swift */,
 				3808C5C6482C44109C442925 /* KernelModel.swift */,
 				886A82F866183EB8C3674AD1 /* NmpCore.h */,
+				C4E597BC58FFF686CC596A91 /* TimelineBlock.swift */,
 			);
 			path = Bridge;
 			sourceTree = "<group>";
@@ -339,6 +345,7 @@
 				68379E6C144BFF7F0D9395CE /* KernelBridge.swift in Sources */,
 				D93F87FAB4BDD5BB307789C0 /* KernelModel.swift in Sources */,
 				998745C91A2392EBF235E258 /* KeychainCapability.swift in Sources */,
+				4A7A67B2FEBC3B7EABC7238C /* ModularBlockView.swift in Sources */,
 				FDD2055AA0756C779D63C6C4 /* NmpPulseCapabilities.swift in Sources */,
 				EADA12AFFA8D08461F19DFA7 /* NoteContentView.swift in Sources */,
 				E6AF81962D62F30FDB2F4F35 /* NoteRowView.swift in Sources */,
@@ -347,13 +354,14 @@
 				EA0318372F152947A645ADC8 /* ProfileNoteRow.swift in Sources */,
 				072991FD6319A37D692C27E4 /* ProfileView.swift in Sources */,
 				B38A5D94A5C43305C226EE4B /* RelayDetailView.swift in Sources */,
-				326E219F6E13488EBFE98D5D /* WireSubscriptionDetailView.swift in Sources */,
 				72E6C28DE61F97428F972267 /* RootShell.swift in Sources */,
 				FD278220A9E454AE75608FE8 /* SearchView.swift in Sources */,
 				C5A3FCE92DF36AD33D083F83 /* SettingsHubView.swift in Sources */,
 				D08889E779C6991EF8540EAC /* ThreadNoteRow.swift in Sources */,
 				9E910ED32775EBC4511B2F90 /* ThreadScreen.swift in Sources */,
+				F92DA1B7A5EF8D796F674546 /* TimelineBlock.swift in Sources */,
 				5A64FFA65566FF2762F1A8B7 /* WalletView.swift in Sources */,
+				9E808639BB9728758172B8C0 /* WireSubscriptionDetailView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -385,15 +393,13 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = (
+				LIBRARY_SEARCH_PATHS = (
+					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/debug",
+					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/release",
 					"$(SRCROOT)/../../target/aarch64-apple-ios/debug",
 					"$(SRCROOT)/../../target/aarch64-apple-ios/release",
 				);
-				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]" = (
-					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/debug",
-					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/release",
-				);
-				OTHER_LDFLAGS = "$(inherited) -lnmp_signer_broker -lnmp_core";
+				OTHER_LDFLAGS = "$(inherited) -lnmp_app_chirp -lnmp_signer_broker -lnmp_core";
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.Chirp;
 				PRODUCT_NAME = Chirp;
 				SDKROOT = iphoneos;
@@ -573,15 +579,13 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = (
+				LIBRARY_SEARCH_PATHS = (
+					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/debug",
+					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/release",
 					"$(SRCROOT)/../../target/aarch64-apple-ios/debug",
 					"$(SRCROOT)/../../target/aarch64-apple-ios/release",
 				);
-				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]" = (
-					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/debug",
-					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/release",
-				);
-				OTHER_LDFLAGS = "$(inherited) -lnmp_signer_broker -lnmp_core";
+				OTHER_LDFLAGS = "$(inherited) -lnmp_app_chirp -lnmp_signer_broker -lnmp_core";
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.Chirp;
 				PRODUCT_NAME = Chirp;
 				SDKROOT = iphoneos;
