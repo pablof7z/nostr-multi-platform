@@ -62,6 +62,7 @@
 		9575EB88561FBB88F8B45576 /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36F475D240D9B55AF07219A2 /* Settings.swift */; };
 		9A0302F2D08D4A02429367FE /* SettingsRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3647EAE9232A09505BD71611 /* SettingsRow.swift */; };
 		9A5320D51B2A3C89A7883E03 /* ScreenshotAnnotationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ABB233FF40ED546481C8DD0 /* ScreenshotAnnotationView.swift */; };
+		9D48A671CD3F1936396EA76A /* DataExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BD4526F63A3AF0D64757A0B /* DataExport.swift */; };
 		A0C8378C5651F2170C6F746E /* LibraryGridCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C2AA911C953E2865C439960 /* LibraryGridCell.swift */; };
 		A1EC5A28116EBE1908CF48A2 /* ShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91C0D6DA90EECE55A1770658 /* ShareSheet.swift */; };
 		A275710C9A8CA0037D814D70 /* EpisodeRowSwipeActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 118796C04B5ED1992ECEF74A /* EpisodeRowSwipeActions.swift */; };
@@ -84,6 +85,7 @@
 		C1EC97449A656BD39ABEC428 /* ClippingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9E03353CEFE261FF8A2CDC4 /* ClippingsView.swift */; };
 		C3062FA0087760466705C0CA /* RevealableAPIKeyField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77DE1B492367E1D5029FB5E3 /* RevealableAPIKeyField.swift */; };
 		C4572E8686F8CC99DA3819B8 /* CachedAsyncImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7938D8691892120A40D2CB1F /* CachedAsyncImage.swift */; };
+		C62D7612478FEEC02EC4B704 /* OPMLExport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7EC18E7CF63B2DE685AF386 /* OPMLExport.swift */; };
 		D08B6354BB9D54EA333C6658 /* OnboardingReadyPage.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3E030AFFA2B6EBAD72D3E98 /* OnboardingReadyPage.swift */; };
 		D212D061616CC1E60A5B6FFC /* AppLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BB411528890B70F46F72A69 /* AppLogger.swift */; };
 		D2ED1AF52E49CBFA0C27633F /* NotificationSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 686244FF9C4BDDD489568356 /* NotificationSettingsView.swift */; };
@@ -166,6 +168,7 @@
 		632F47D2DA4A877F540A994D /* OnboardingPages.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPages.swift; sourceTree = "<group>"; };
 		6799E4EE97688AA89E4A0870 /* AppTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTheme.swift; sourceTree = "<group>"; };
 		686244FF9C4BDDD489568356 /* NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsView.swift; sourceTree = "<group>"; };
+		6BD4526F63A3AF0D64757A0B /* DataExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataExport.swift; sourceTree = "<group>"; };
 		6C32A04D456E621CE8E59CBA /* NoteListRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteListRow.swift; sourceTree = "<group>"; };
 		6C527E86870FC31E8E9E457D /* PodcastrShims.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PodcastrShims.swift; sourceTree = "<group>"; };
 		6D018F8098E7FDC1CBE6C439 /* ElevenLabsCredentialStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ElevenLabsCredentialStore.swift; sourceTree = "<group>"; };
@@ -209,6 +212,7 @@
 		C1F5D7F016EDADBB260EF036 /* RootView+DeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "RootView+DeepLink.swift"; sourceTree = "<group>"; };
 		C3E030AFFA2B6EBAD72D3E98 /* OnboardingReadyPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingReadyPage.swift; sourceTree = "<group>"; };
 		C46D69B8D3B19D131F1A74C9 /* BYOKCredentialImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BYOKCredentialImporter.swift; sourceTree = "<group>"; };
+		C7EC18E7CF63B2DE685AF386 /* OPMLExport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OPMLExport.swift; sourceTree = "<group>"; };
 		CA99FEA8F1EAAB6C751C0DE4 /* OnboardingElevenLabsPage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingElevenLabsPage.swift; sourceTree = "<group>"; };
 		CB7AC3AAF2E3FC3BC95CC925 /* DateExtensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateExtensions.swift; sourceTree = "<group>"; };
 		CCC132EC9F0EC31C6578608F /* OnboardingSubscribePage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingSubscribePage.swift; sourceTree = "<group>"; };
@@ -268,11 +272,13 @@
 				1FE6AE9A4DD31735347BDF02 /* BYOKConnectService.swift */,
 				C46D69B8D3B19D131F1A74C9 /* BYOKCredentialImporter.swift */,
 				DAE649E7C0335D5A31B1E3C1 /* BYOKModels.swift */,
+				6BD4526F63A3AF0D64757A0B /* DataExport.swift */,
 				6D018F8098E7FDC1CBE6C439 /* ElevenLabsCredentialStore.swift */,
 				B6E187E7E4FE934557780313 /* KeychainStore.swift */,
 				AF4B10F72CADB6E687C4BCDF /* LLMProvider.swift */,
 				FFC2CECDA5D9A72F0283F31F /* OllamaCredentialStore.swift */,
 				09A355026C2C5A81286D13CB /* OpenRouterCredentialStore.swift */,
+				C7EC18E7CF63B2DE685AF386 /* OPMLExport.swift */,
 				AC200FE80D14FE0F8124FDEA /* PerplexityCredentialStore.swift */,
 				36F475D240D9B55AF07219A2 /* Settings.swift */,
 				8F4CB4916B0910C7B3CBE8A2 /* Settings+Embeddings.swift */,
@@ -605,6 +611,7 @@
 				BA1F96DE6385E1A6D327225C /* CategoriesRecomputeSheet.swift in Sources */,
 				C1EC97449A656BD39ABEC428 /* ClippingsView.swift in Sources */,
 				1B7E6385630CA9E64AAA45DA /* Config.swift in Sources */,
+				9D48A671CD3F1936396EA76A /* DataExport.swift in Sources */,
 				84C59271E36255D7C80AB876 /* DataExportView.swift in Sources */,
 				0FEA1A584ECEAE67505F9020 /* DataStorageSettingsView.swift in Sources */,
 				BEED796D0D43501B0490DFB6 /* DateExtensions.swift in Sources */,
@@ -641,6 +648,7 @@
 				7A1618CE60982EC8BAE8E6AD /* NoteListRow.swift in Sources */,
 				D2ED1AF52E49CBFA0C27633F /* NotificationSettingsView.swift in Sources */,
 				EEC7A93EABC1C33A7CE81F3E /* NumberExtensions.swift in Sources */,
+				C62D7612478FEEC02EC4B704 /* OPMLExport.swift in Sources */,
 				83DE2D4292568C110C7B2B8D /* OllamaCredentialStore.swift in Sources */,
 				E7DAAFA94CE07A22D958DECA /* OnboardingAISetupPage.swift in Sources */,
 				AF818A20F446794213157758 /* OnboardingElevenLabsPage.swift in Sources */,
