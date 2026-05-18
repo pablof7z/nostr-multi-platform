@@ -79,27 +79,35 @@ impl Kernel {
         &mut self,
         signed: &SignedEvent,
         p_tags: &[String],
+        target: PublishTarget,
     ) -> Vec<OutboundMessage> {
-        self.run_publish_engine_at(signed, p_tags, now_epoch_ms())
+        self.run_publish_engine_at(signed, p_tags, target, now_epoch_ms())
     }
 
     /// Time-injected variant for deterministic tests. Production callers use
     /// `run_publish_engine` (which captures `SystemTime::now()`).
+    ///
+    /// `target` selects the relay-resolution mode (D3): `Auto` defers to the
+    /// `Nip65OutboxResolver` (kind:10002 outbox); `Explicit { relays }` is the
+    /// named opt-out and routes the verbatim event to exactly those relays.
     pub(crate) fn run_publish_engine_at(
         &mut self,
         signed: &SignedEvent,
         _p_tags: &[String],
+        target: PublishTarget,
         now_ms: u64,
     ) -> Vec<OutboundMessage> {
         let handle = signed.id.clone();
         let action = PublishAction::Publish {
             handle: handle.clone(),
             event: signed.clone(),
-            // D3: Auto target — the engine's `Nip65OutboxResolver` reads
-            // kind:10002 from the shared event store. `_p_tags` is the
-            // legacy parameter; the engine recomputes `#p` tags from
-            // `event.unsigned.tags` itself, so we don't pass it through.
-            target: PublishTarget::Auto,
+            // D3: `target` is `Auto` for every existing caller (the engine's
+            // `Nip65OutboxResolver` reads kind:10002 from the shared event
+            // store) or the `Explicit` opt-out for Marmot group/gift-wrap
+            // routing. `_p_tags` is the legacy parameter; the engine
+            // recomputes `#p` tags from `event.unsigned.tags` itself, so we
+            // don't pass it through.
+            target,
         };
         let event_id = signed.id.clone();
         let kind = signed.unsigned.kind;

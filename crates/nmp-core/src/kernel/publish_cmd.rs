@@ -20,6 +20,7 @@
 //! `actor/commands/publish.rs` stays untouched.
 
 use super::*;
+use crate::publish::PublishTarget;
 use crate::substrate::SignedEvent;
 
 impl Kernel {
@@ -36,7 +37,24 @@ impl Kernel {
         signed: &SignedEvent,
         p_tags: &[String],
     ) -> Vec<OutboundMessage> {
-        self.run_publish_engine(signed, p_tags)
+        self.run_publish_engine(signed, p_tags, PublishTarget::Auto)
+    }
+
+    /// Publish a signed event to an EXPLICIT relay set — the named D3 opt-out
+    /// (`PublishTarget::Explicit`). The verbatim event is routed to exactly
+    /// `target`'s relays, bypassing the NIP-65 outbox resolver; everything
+    /// else (retry / ack / reauth lifecycle, D6 toast contract) is identical
+    /// to [`Kernel::publish_signed`]. `PublishTarget::Auto` callers reach the
+    /// resolver unchanged via [`Kernel::publish_signed`]; this sibling exists
+    /// so Marmot can pin kind:445 group messages / kind:1059 gift-wraps to
+    /// relays the author's own kind:10002 outbox does not cover.
+    pub(crate) fn publish_signed_to(
+        &mut self,
+        signed: &SignedEvent,
+        p_tags: &[String],
+        target: PublishTarget,
+    ) -> Vec<OutboundMessage> {
+        self.run_publish_engine(signed, p_tags, target)
     }
 
     /// Latest kind:3 follow set for `author_hex` (hex pubkeys from `p` tags),

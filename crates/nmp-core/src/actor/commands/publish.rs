@@ -78,12 +78,23 @@ pub(crate) fn publish_unsigned_event(
 /// supported. Marmot is the first consumer; the capability is generic (D0 —
 /// no MLS/Marmot nouns in the kernel).
 ///
+/// **Relay targeting.** `relays` selects the D3 routing mode:
+/// - empty slice → `PublishTarget::Auto`: route via the author's NIP-65
+///   kind:10002 outbox (the existing back-compat behavior — `kind:30443/443`
+///   key-packages take this path).
+/// - non-empty → `PublishTarget::Explicit { relays }`: the named D3 opt-out.
+///   The verbatim signed event is dispatched to **exactly** these relays,
+///   bypassing the outbox resolver. Marmot uses this for kind:445 group
+///   messages (pinned GROUP relay) and kind:1059 gift-wraps (recipient inbox
+///   relays) — relays the author's own kind:10002 does not cover.
+///
 /// D6 — a signature/id verification failure is surfaced as a toast (error
 /// becomes kernel state, never a silent no-op) and produces no outbound
 /// frames and no publish-queue entry. The forged event is dropped.
 pub(crate) fn publish_signed_event(
     kernel: &mut Kernel,
     raw: crate::store::RawEvent,
+    relays: &[crate::publish::RelayUrl],
 ) -> Vec<OutboundMessage> {
     // Reuse the store's verification gate: serializes to NIP-01 canonical
     // JSON, parses with the `nostr` crate, and checks BOTH the event-id hash
@@ -113,7 +124,19 @@ pub(crate) fn publish_signed_event(
             created_at: raw.created_at,
         },
     };
-    kernel.publish_signed(&signed, &[])
+    // Empty `relays` → Auto (NIP-65 outbox, the back-compat path). Non-empty
+    // → the named D3 Explicit opt-out, routed to exactly those relays.
+    if relays.is_empty() {
+        kernel.publish_signed(&signed, &[])
+    } else {
+        kernel.publish_signed_to(
+            &signed,
+            &[],
+            crate::publish::PublishTarget::Explicit {
+                relays: relays.to_vec(),
+            },
+        )
+    }
 }
 
 pub(crate) fn publish_note(

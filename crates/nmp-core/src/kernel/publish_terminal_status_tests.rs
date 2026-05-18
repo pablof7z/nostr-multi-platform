@@ -106,7 +106,7 @@ fn t128_all_relays_ack_flips_status_to_ok_with_full_outcome_map() {
         1,
         "all-ack t128",
     );
-    let outbound = kernel.run_publish_engine_at(&signed, &[], 1_000);
+    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 1_000);
     assert_eq!(outbound.len(), 2, "two NIP-65 write relays expected");
 
     // Immediately after `run_publish_engine_at` (no acks yet) the entry
@@ -180,7 +180,7 @@ fn t128_all_relays_give_up_flips_status_to_failed_with_failure_reasons() {
         1,
         "all-fail t128",
     );
-    let outbound = kernel.run_publish_engine_at(&signed, &[], 0);
+    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 0);
     assert_eq!(outbound.len(), 2);
 
     // Helper closure: drive a single relay through three transient acks +
@@ -257,7 +257,7 @@ fn t128_partial_success_reports_ok_with_mixed_outcome_map() {
         1,
         "partial t128",
     );
-    let outbound = kernel.run_publish_engine_at(&signed, &[], 0);
+    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 0);
     assert_eq!(outbound.len(), 2);
 
     // r1 settles OK on attempt 1.
@@ -327,7 +327,7 @@ fn t128_late_ack_after_terminal_does_not_re_flip_status() {
         1,
         "idempotence t128",
     );
-    let _ = kernel.run_publish_engine_at(&signed, &[], 0);
+    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 0);
 
     // Settle both relays.
     let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, true, ""), 10);
@@ -367,7 +367,7 @@ fn t128_terminal_status_survives_snapshot_round_trip_to_wire_json() {
         1,
         "wire-shape t128",
     );
-    let _ = kernel.run_publish_engine_at(&signed, &[], 0);
+    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 0);
     let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, true, ""), 10);
     let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, true, ""), 20);
 

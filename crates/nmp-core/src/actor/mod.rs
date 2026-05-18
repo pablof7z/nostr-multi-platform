@@ -148,7 +148,14 @@ pub enum ActorCommand {
     /// account: the signature already exists and routing keys off the event's
     /// own pubkey. Generic capability (D0); Marmot/MDK group events are the
     /// first consumer but the kernel has no protocol nouns.
-    PublishSignedEvent(crate::store::RawEvent),
+    ///
+    /// `relays` selects the D3 routing mode: empty → `PublishTarget::Auto`
+    /// (NIP-65 outbox, back-compat); non-empty → the named `Explicit` opt-out,
+    /// dispatched to exactly those relays (Marmot kind:445 / kind:1059).
+    PublishSignedEvent {
+        raw: crate::store::RawEvent,
+        relays: Vec<crate::publish::RelayUrl>,
+    },
     /// T66a publish — kind:7 reaction to `target_event_id`.
     React {
         target_event_id: String,

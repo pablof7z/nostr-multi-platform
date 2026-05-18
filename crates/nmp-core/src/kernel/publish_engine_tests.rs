@@ -106,7 +106,7 @@ fn t117_successful_multi_relay_publish_lands_in_engine_recent_ok() {
         1,
         "hello t117",
     );
-    let outbound = kernel.run_publish_engine_at(&signed, &[], 1_000);
+    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 1_000);
     // Author has kind:10002 → resolver routes to declared write relays.
     let urls: std::collections::BTreeSet<String> =
         outbound.iter().map(|m| m.relay_url.clone()).collect();
@@ -151,7 +151,7 @@ fn t117_auth_required_on_one_relay_reauths_and_other_unaffected() {
         1,
         "auth-required test",
     );
-    let outbound = kernel.run_publish_engine_at(&signed, &[], 0);
+    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 0);
     assert_eq!(outbound.len(), 2);
 
     // r1: AUTH-REQUIRED on attempt 1 (no retry frames flushed yet — the
@@ -211,7 +211,7 @@ fn t117_transient_failure_retries_with_1s_4s_backoff_then_gives_up() {
         1,
         "transient test",
     );
-    let outbound = kernel.run_publish_engine_at(&signed, &[], 0);
+    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 0);
     assert_eq!(outbound.len(), 2);
 
     // r2: settle immediately so the engine isn't tracking it any more.
@@ -282,7 +282,7 @@ fn t117_actor_restart_with_pending_resumes_from_pending_retries() {
     {
         let mut kernel_a = Kernel::with_publish_store(DEFAULT_VISIBLE_LIMIT, Arc::clone(&publish_store));
         seed_kind10002(&mut kernel_a, &author, &[WRITE_R1, WRITE_R2]);
-        let outbound = kernel_a.run_publish_engine_at(&signed, &[], 0);
+        let outbound = kernel_a.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 0);
         assert_eq!(outbound.len(), 2);
         // r2 settles OK; r1 transient → pending_retries[r1] = 0 + 1_000 = 1_000.
         let _ = kernel_a.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, true, ""), 10);
@@ -377,7 +377,7 @@ fn t127_quiet_socket_tick_progresses_pending_retry_without_inbound() {
         1,
         "quiet-socket tick test",
     );
-    let outbound = kernel.run_publish_engine_at(&signed, &[], 0);
+    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 0);
     assert_eq!(outbound.len(), 2, "two NIP-65 write relays expected");
 
     // r2 settles immediately so the engine isn't tracking it any more —
@@ -460,7 +460,7 @@ fn t127_start_path_drives_resume_publish_engine() {
     {
         let mut kernel_a = Kernel::with_publish_store(DEFAULT_VISIBLE_LIMIT, Arc::clone(&publish_store));
         seed_kind10002(&mut kernel_a, &author, &[WRITE_R1, WRITE_R2]);
-        let outbound = kernel_a.run_publish_engine_at(&signed, &[], 0);
+        let outbound = kernel_a.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 0);
         assert_eq!(outbound.len(), 2);
         let _ = kernel_a.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, true, ""), 10);
         let _ = kernel_a.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, false, "io: down"), 100);
@@ -561,7 +561,7 @@ fn pd025_finding5_quiet_period_retry_fires_on_actor_tick() {
     );
 
     // Step 1a: dispatch publish → two NIP-65 write relays.
-    let outbound = kernel.run_publish_engine_at(&signed, &[], 0);
+    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 0);
     assert_eq!(outbound.len(), 2, "publish dispatched to two NIP-65 write relays");
 
     // Step 1b: r2 settles OK; r1 returns transient failure (io error).
@@ -635,7 +635,7 @@ fn t_publish_resolver_unroutable_author_no_kind10002_produces_no_targets() {
         1,
         "unroutable author publish test",
     );
-    let outbound = kernel.run_publish_engine_at(&signed, &[], 0);
+    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 0);
     assert!(
         outbound.is_empty(),
         "author with no kind:10002 must produce zero outbound frames (NoTargets, fail-closed); \

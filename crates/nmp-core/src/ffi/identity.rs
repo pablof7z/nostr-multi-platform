@@ -170,13 +170,108 @@ pub extern "C" fn nmp_app_publish_signed_event(app: *mut NmpApp, event_json: *co
     };
     match serde_json::from_str::<crate::store::RawEvent>(&json) {
         Ok(raw) => {
-            let _ = app.tx.send(ActorCommand::PublishSignedEvent(raw));
+            // Auto target (NIP-65 outbox) — empty `relays`. Back-compat:
+            // this symbol's behavior is byte-identical to before the
+            // explicit-target variant landed.
+            let _ = app.tx.send(ActorCommand::PublishSignedEvent {
+                raw,
+                relays: Vec::new(),
+            });
         }
         Err(_) => {
             // D6 — surface the decode failure as a toast (error becomes state,
             // never a silent no-op across FFI). Signature/id verification
             // happens on the actor side (`commands::publish_signed_event`);
             // here we only guard the JSON-shape decode.
+            let _ = app.tx.send(ActorCommand::ShowToast {
+                message: "Failed to decode signed event payload".to_string(),
+            });
+        }
+    }
+}
+
+/// Explicit-relay-target sibling of [`nmp_app_publish_signed_event`] — route a
+/// fully-formed, externally-signed event verbatim to a **specific** relay set
+/// (the named D3 opt-out, `PublishTarget::Explicit`) instead of the author's
+/// NIP-65 kind:10002 outbox.
+///
+/// Same verbatim/no-re-sign/no-active-account semantics as the Auto sibling:
+/// the kernel's signer is **never** consulted, Schnorr signature + event-id
+/// hash are still verified via the same `store::VerifiedEvent::try_from_raw`
+/// gate, and `id`/`sig`/`pubkey`/`tags`/`content` are carried through
+/// unchanged. The only difference is relay resolution: the verbatim event is
+/// dispatched to exactly the relays in `relays_json`, bypassing the outbox
+/// resolver. Marmot is the first consumer (kind:445 group messages → the
+/// pinned GROUP relay; kind:1059 gift-wraps → recipient inbox relays);
+/// kind:30443/443 key-packages keep using the Auto sibling. Generic
+/// capability — no MLS/Marmot nouns in the kernel (D0).
+///
+/// `event_json` is the standard flat NIP-01 event object (identical schema to
+/// the Auto sibling):
+/// ```json
+/// {"id":"<64-hex>","pubkey":"<64-hex>","created_at":<u64>,
+///  "kind":<u32>,"tags":[["e","…"],…],"content":"…","sig":"<128-hex>"}
+/// ```
+///
+/// `relays_json` is a **JSON array of relay-URL strings**, e.g.
+/// `["wss://relay.example/","wss://other.example/"]`:
+/// - **null pointer / non-UTF-8 / empty array `[]`** → behaves **exactly**
+///   like [`nmp_app_publish_signed_event`] (`PublishTarget::Auto`, NIP-65
+///   outbox). This is the documented Auto-fallback.
+/// - **non-empty array of strings** → `PublishTarget::Explicit { relays }`;
+///   the verbatim event is dispatched to exactly those relays.
+/// - **malformed JSON / not a JSON array / non-string elements** → a
+///   `ShowToast` `"Failed to decode signed event relay targets"` is enqueued
+///   and **no publish occurs** (mirrors the `event_json` malformed-decode
+///   contract — error becomes kernel state, never a silent no-op).
+///
+/// **Return / error contract** (mirrors the Auto sibling exactly): returns
+/// `()`, fire-and-forget via the actor channel. D6 — no panic crosses FFI:
+/// - null app / null `event_json` / non-UTF-8 `event_json` → silent no-op.
+/// - malformed `event_json` → `ShowToast` `"Failed to decode signed event
+///   payload"`, no publish.
+/// - malformed `relays_json` (per above) → `ShowToast` `"Failed to decode
+///   signed event relay targets"`, no publish.
+/// - structurally-parsed but **invalid signature or id mismatch** → the actor
+///   surfaces `"signed event rejected: <reason>"` as a toast. No outbound
+///   frame, no publish-queue entry — the forged/garbled event is dropped.
+/// - valid signed event → routed + dispatched verbatim to the resolved relay
+///   set (explicit or, on Auto-fallback, the NIP-65 outbox); `id`/`sig` bytes
+///   carried through unchanged.
+#[no_mangle]
+pub extern "C" fn nmp_app_publish_signed_event_to(
+    app: *mut NmpApp,
+    event_json: *const c_char,
+    relays_json: *const c_char,
+) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let Some(json) = c_string_argument(event_json) else {
+        return;
+    };
+    // null / non-UTF-8 `relays_json` → Auto fallback (empty relay set).
+    let relays: Vec<crate::publish::RelayUrl> = match c_string_argument(relays_json) {
+        None => Vec::new(),
+        Some(raw_relays) => match serde_json::from_str::<Vec<String>>(&raw_relays) {
+            // Empty array → Auto fallback. Non-empty → Explicit.
+            Ok(list) => list,
+            Err(_) => {
+                // Malformed / not a JSON string array → toast, no publish.
+                let _ = app.tx.send(ActorCommand::ShowToast {
+                    message: "Failed to decode signed event relay targets".to_string(),
+                });
+                return;
+            }
+        },
+    };
+    match serde_json::from_str::<crate::store::RawEvent>(&json) {
+        Ok(raw) => {
+            let _ = app
+                .tx
+                .send(ActorCommand::PublishSignedEvent { raw, relays });
+        }
+        Err(_) => {
             let _ = app.tx.send(ActorCommand::ShowToast {
                 message: "Failed to decode signed event payload".to_string(),
             });
