@@ -18,6 +18,46 @@ fn toast_no_account(kernel: &mut Kernel, action: &str) -> Vec<OutboundMessage> {
     Vec::new()
 }
 
+/// Generic, kind-agnostic publish path.
+///
+/// Takes an `UnsignedEvent` already built by any protocol-crate builder
+/// (`nmp_nip23::Article`, `nmp_nip01::Note`, `nmp_reactions::Reaction`, …),
+/// signs it with the active account's keys, and routes the signed event
+/// through the existing NIP-65 outbox resolver (D3 automatic routing).
+///
+/// This is the **kernel-side dispatcher** for the per-NIP builders — it
+/// doesn't know the kind, doesn't decode tags, doesn't construct any wire
+/// shape. The kernel signs + publishes; the per-NIP crates own the wire
+/// form. That keeps `nmp-core` D0-clean (no app nouns, no protocol decoders)
+/// while unblocking every builder we've landed.
+///
+/// **Pubkey provenance.** The caller's `unsigned.pubkey` is **ignored** —
+/// signing derives the pubkey from the active identity's keys and writes it
+/// onto the returned `SignedEvent`. There is no path for an app to publish
+/// under another author's identity through this command.
+///
+/// Stepping stone, not destination. The doctrine path is per-protocol-crate
+/// `ActionModule` impls that own the full Build → Sign → Publish pipeline
+/// (`kind-wrappers.md` §8 Phase 1). Once those land kind-by-kind, this
+/// generic command deprecates gracefully — typed `AppAction::NmpNipNN(...)`
+/// dispatches replace it.
+pub(crate) fn publish_unsigned_event(
+    identity: &IdentityRuntime,
+    kernel: &mut Kernel,
+    unsigned: UnsignedEvent,
+) -> Vec<OutboundMessage> {
+    if identity.active_pubkey().is_none() {
+        return toast_no_account(kernel, "publish");
+    }
+    match sign_active(identity, &unsigned) {
+        Ok(signed) => kernel.publish_signed(&signed, &[]),
+        Err(reason) => {
+            kernel.set_last_error_toast(Some(reason));
+            Vec::new()
+        }
+    }
+}
+
 pub(crate) fn publish_note(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,

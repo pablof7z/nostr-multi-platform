@@ -117,6 +117,49 @@ fn publish_note_signs_and_enqueues_via_outbox_fallback() {
 }
 
 #[test]
+fn publish_unsigned_event_without_account_toasts_and_no_outbound() {
+    let (id, mut kernel) = fresh();
+    let unsigned = crate::substrate::UnsignedEvent {
+        pubkey: String::new(), // ignored by signer; irrelevant when no account
+        kind: 30023,
+        tags: vec![vec!["d".into(), "x".into()]],
+        content: "body".into(),
+        created_at: 0,
+    };
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned);
+    assert!(outbound.is_empty());
+    assert!(kernel
+        .last_error_toast_snapshot()
+        .is_some_and(|t| t.contains("no active account")));
+}
+
+#[test]
+fn publish_unsigned_event_signs_and_publishes_arbitrary_kind() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    // Construct a generic kind:30023 (NIP-23 article) UnsignedEvent inline —
+    // no per-kind kernel logic; the kernel just signs + publishes.
+    let unsigned = crate::substrate::UnsignedEvent {
+        pubkey: "ignored-by-signer".into(),
+        kind: 30023,
+        tags: vec![
+            vec!["d".into(), "test-article".into()],
+            vec!["title".into(), "Hello".into()],
+        ],
+        content: "# body".into(),
+        created_at: 1_700_000_000,
+    };
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned);
+    assert!(!outbound.is_empty());
+    assert!(outbound[0].text.contains("\"kind\":30023"));
+    assert!(outbound[0].text.contains("\"d\""));
+    assert!(outbound[0].text.contains("test-article"));
+    let q = kernel.publish_queue_snapshot();
+    assert_eq!(q.last().unwrap().kind, 30023);
+    assert_eq!(q.last().unwrap().status, "accepted_locally");
+}
+
+#[test]
 fn react_builds_kind7_with_e_tag() {
     let (mut id, mut kernel) = fresh();
     sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);

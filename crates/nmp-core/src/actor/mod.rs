@@ -77,6 +77,15 @@ pub enum ActorCommand {
         content: String,
         reply_to_id: Option<String>,
     },
+    /// Generic, kind-agnostic publish — take an `UnsignedEvent` already built
+    /// by any protocol-crate builder (`nmp_nip23::Article`, `nmp_nip01::Note`,
+    /// `nmp_reactions::Reaction`, …), sign with the active account's keys,
+    /// and route through the NIP-65 outbox resolver (D3). The kernel does
+    /// not inspect the kind — that's the protocol crate's concern (D0).
+    ///
+    /// Stepping stone toward per-protocol-crate `ActionModule` impls
+    /// (`kind-wrappers.md` §8 Phase 1); deprecates kind-by-kind as those land.
+    PublishUnsignedEvent(crate::substrate::UnsignedEvent),
     /// T66a publish — kind:7 reaction to `target_event_id`.
     React {
         target_event_id: String,

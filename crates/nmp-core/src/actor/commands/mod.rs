@@ -30,5 +30,5 @@ mod tests;
 pub(super) use identity::{
     create_account, remove_account, sign_in_bunker, sign_in_nsec, switch_active, IdentityRuntime,
 };
-pub(super) use publish::{follow, open_timeline, publish_note, react};
+pub(super) use publish::{follow, open_timeline, publish_note, publish_unsigned_event, react};
 pub(super) use relays::{add_relay, remove_relay};

@@ -82,6 +82,32 @@ pub extern "C" fn nmp_app_publish_note(
     });
 }
 
+/// Generic publish entrypoint — sign + publish an `UnsignedEvent` already
+/// constructed by any protocol-crate builder
+/// (`nmp_nip23::Article`, `nmp_nip01::Note`, `nmp_reactions::Reaction`, …).
+///
+/// `unsigned_json` is the JSON serialization of [`crate::substrate::UnsignedEvent`]
+/// (fields: `pubkey`, `kind`, `tags`, `content`, `created_at`). The caller's
+/// `pubkey` is ignored — signing derives the pubkey from the active identity's
+/// keys. Malformed JSON is silently dropped at the FFI boundary (D6 — errors
+/// surface as state via subsequent toasts, never as panics across FFI).
+#[no_mangle]
+pub extern "C" fn nmp_app_publish_unsigned_event(
+    app: *mut NmpApp,
+    unsigned_json: *const c_char,
+) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let Some(json) = c_string_argument(unsigned_json) else {
+        return;
+    };
+    let Ok(unsigned) = serde_json::from_str::<crate::substrate::UnsignedEvent>(&json) else {
+        return;
+    };
+    let _ = app.tx.send(ActorCommand::PublishUnsignedEvent(unsigned));
+}
+
 #[no_mangle]
 pub extern "C" fn nmp_app_react(
     app: *mut NmpApp,
