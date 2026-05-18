@@ -8,6 +8,7 @@ mod events;
 mod outcomes;
 mod watermark;
 mod gc;
+mod query;
 mod errors;
 
 // ─── Re-exports ───────────────────────────────────────────────────────────────
@@ -17,4 +18,5 @@ pub use events::{RawEvent, VerifiedEvent, StoredEvent};
 pub use outcomes::{InsertOutcome, RejectReason, TombstoneRow, TombstoneOrigin, ProvenanceEntry};
 pub use watermark::{WatermarkKey, WatermarkRow, SyncMethod, Coverage};
 pub use gc::{ClaimerId, GcBudget, GcReport, DeleteFilter, DumpFormat, DumpStats};
+pub use query::StoreQuery;
 pub use errors::{StoreError, VerifyError};

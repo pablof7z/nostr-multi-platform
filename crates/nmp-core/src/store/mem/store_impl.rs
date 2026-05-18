@@ -3,11 +3,13 @@
 //! Pure delegation — all logic lives in the sub-modules. This file exists so
 //! `mod.rs` stays under 200 LOC (Article I hard ceiling).
 
+use std::ops::ControlFlow;
+
 use super::{domain, gc, insert, query, MemEventStore};
 use crate::store::events::{DomainHandle, EventIter, EventStore};
 use crate::store::types::{
     ClaimerId, Coverage, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport,
-    InsertOutcome, ProvenanceEntry, PubKey, RelayUrl, StoredEvent,
+    InsertOutcome, ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent,
     TombstoneRow, VerifiedEvent, WatermarkKey, WatermarkRow,
 };
 use crate::store::StoreError;
@@ -75,6 +77,15 @@ impl EventStore for MemEventStore {
         limit: usize,
     ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
         query::scan_by_kind_time(self, kinds, since, until, limit)
+    }
+
+    fn query_visit(
+        &self,
+        q: &StoreQuery,
+        limit: usize,
+        visitor: &mut dyn FnMut(&StoredEvent) -> ControlFlow<()>,
+    ) -> Result<(), StoreError> {
+        query::query_visit(self, q, limit, visitor)
     }
 
     fn scan_expiring_before<'a>(

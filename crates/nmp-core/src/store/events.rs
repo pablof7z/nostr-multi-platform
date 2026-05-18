@@ -4,11 +4,12 @@
 //! See `docs/design/lmdb/trait.md` for the full specification.
 
 use std::collections::HashMap;
+use std::ops::ControlFlow;
 use std::sync::{Arc, Mutex};
 
 use super::types::{
     ClaimerId, Coverage, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport,
-    InsertOutcome, ProvenanceEntry, PubKey, RelayUrl, StoredEvent, TombstoneRow,
+    InsertOutcome, ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, TombstoneRow,
     VerifiedEvent, WatermarkKey, WatermarkRow,
 };
 use super::StoreError;
@@ -204,6 +205,66 @@ pub trait EventStore: Send + Sync {
         until: Option<u64>,
         limit: usize,
     ) -> Result<Box<dyn EventIter + 'a>, StoreError>;
+
+    /// Streaming query: invoke `visitor` once per matching event, newest-first,
+    /// up to `limit` events. The visitor returns [`ControlFlow::Break`] to stop
+    /// the scan early without materializing the remaining results.
+    ///
+    /// The visitor receives `&StoredEvent` by reference — no per-event clone or
+    /// result-vector allocation occurs on the visit path (D8: working set
+    /// bounded, zero per-event alloc after warmup). This default implementation
+    /// routes through the matching `scan_by_*` index (so the index logic is not
+    /// duplicated); backends may override it to avoid the scan's intermediate
+    /// result buffer entirely (see `MemEventStore`).
+    ///
+    /// Design: `docs/design/nostrdb-notedeck-lessons.md` §2.3 (`ndb_query_visit`).
+    fn query_visit(
+        &self,
+        query: &StoreQuery,
+        limit: usize,
+        visitor: &mut dyn FnMut(&StoredEvent) -> ControlFlow<()>,
+    ) -> Result<(), StoreError> {
+        let iter: Box<dyn EventIter + '_> = match query {
+            StoreQuery::AuthorKind { author, kinds, since, until } => {
+                self.scan_by_author_kind(author, kinds, *since, *until, limit)?
+            }
+            StoreQuery::KindTime { kinds, since, until } => {
+                self.scan_by_kind_time(kinds, *since, *until, limit)?
+            }
+            StoreQuery::KindDtag { kind, d_tag, since, until } => {
+                self.scan_by_kind_dtag(*kind, d_tag, *since, *until, limit)?
+            }
+            StoreQuery::Etag { target, kinds } => {
+                self.scan_by_etag(target, kinds, limit)?
+            }
+            StoreQuery::Ptag { target, kinds } => {
+                self.scan_by_ptag(target, kinds, limit)?
+            }
+        };
+        for item in iter {
+            let ev = item?;
+            if let ControlFlow::Break(()) = (visitor)(&ev) {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    /// Vec-returning query — a thin wrapper over [`query_visit`](Self::query_visit)
+    /// so the index logic lives in exactly one place. Materializes matched
+    /// events into a `Vec`, newest-first, capped at `limit`.
+    fn query(
+        &self,
+        query: &StoreQuery,
+        limit: usize,
+    ) -> Result<Vec<StoredEvent>, StoreError> {
+        let mut out: Vec<StoredEvent> = Vec::new();
+        self.query_visit(query, limit, &mut |ev| {
+            out.push(ev.clone());
+            ControlFlow::Continue(())
+        })?;
+        Ok(out)
+    }
 
     /// `idx_expires` scan, ascending — used by the NIP-40 reaper.
     fn scan_expiring_before<'a>(

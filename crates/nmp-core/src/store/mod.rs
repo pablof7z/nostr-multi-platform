@@ -24,8 +24,9 @@ pub use lmdb::LmdbEventStore;
 pub use mem::MemEventStore;
 pub use types::{
     ClaimerId, Coverage, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport,
-    InsertOutcome, ProvenanceEntry, PubKey, RawEvent, RejectReason, RelayUrl, StoredEvent,
-    SyncMethod, TombstoneOrigin, TombstoneRow, VerifiedEvent, WatermarkKey, WatermarkRow,
+    InsertOutcome, ProvenanceEntry, PubKey, RawEvent, RejectReason, RelayUrl, StoreQuery,
+    StoredEvent, SyncMethod, TombstoneOrigin, TombstoneRow, VerifiedEvent, WatermarkKey,
+    WatermarkRow,
 };
 
 // Re-export error types from types (defined there to avoid circular imports).

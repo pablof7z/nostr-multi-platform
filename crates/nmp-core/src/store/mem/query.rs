@@ -2,11 +2,13 @@
 //!
 //! These are pure reads; all state mutation lives in `insert.rs` and `gc.rs`.
 
+use std::ops::ControlFlow;
+
 use super::{bytes_to_hex, MemEventStore};
 use crate::store::events::EventIter;
 use crate::store::types::{
-    Coverage, DumpFormat, DumpStats, EventId, ProvenanceEntry, PubKey, StoredEvent,
-    TombstoneRow, WatermarkKey, WatermarkRow,
+    Coverage, DumpFormat, DumpStats, EventId, ProvenanceEntry, PubKey, StoreQuery,
+    StoredEvent, TombstoneRow, WatermarkKey, WatermarkRow,
 };
 use crate::store::StoreError;
 
@@ -188,6 +190,78 @@ pub(super) fn scan_by_kind_time<'a>(
     });
     results.truncate(limit);
     Ok(Box::new(results.into_iter().map(Ok)))
+}
+
+/// Predicate: does `ev` match `query`? Mirrors the per-index `filter`
+/// closures in the `scan_by_*` functions so `query_visit` exercises exactly
+/// the same matching logic (no duplicated index semantics).
+fn matches(ev: &StoredEvent, query: &StoreQuery) -> bool {
+    let in_range = |since: Option<u64>, until: Option<u64>| {
+        since.is_none_or(|s| ev.raw.created_at >= s)
+            && until.is_none_or(|u| ev.raw.created_at <= u)
+    };
+    match query {
+        StoreQuery::AuthorKind { author, kinds, since, until } => {
+            ev.raw.pubkey == bytes_to_hex(author)
+                && kinds.contains(&ev.raw.kind)
+                && in_range(*since, *until)
+        }
+        StoreQuery::KindTime { kinds, since, until } => {
+            (kinds.is_empty() || kinds.contains(&ev.raw.kind))
+                && in_range(*since, *until)
+        }
+        StoreQuery::KindDtag { kind, d_tag, since, until } => {
+            let want = String::from_utf8_lossy(d_tag).into_owned();
+            ev.raw.kind == *kind
+                && ev.raw
+                    .d_tag()
+                    .map(|d| String::from_utf8_lossy(&d).into_owned() == want)
+                    .unwrap_or(false)
+                && in_range(*since, *until)
+        }
+        StoreQuery::Etag { target, kinds } => {
+            kinds.contains(&ev.raw.kind)
+                && ev.raw.e_tags().contains(&bytes_to_hex(target))
+        }
+        StoreQuery::Ptag { target, kinds } => {
+            kinds.contains(&ev.raw.kind)
+                && ev.raw.p_tags().contains(&bytes_to_hex(target))
+        }
+    }
+}
+
+/// Optimized visitor scan for the memory backend.
+///
+/// The only allocation is a one-time `Vec<&StoredEvent>` of *references* used
+/// to apply the newest-first ordering the index would provide on disk. The
+/// visit path itself performs **zero per-event allocation** — the visitor
+/// receives a borrow of the stored event and the scan stops the instant the
+/// visitor returns [`ControlFlow::Break`] (D8: bounded working set, no
+/// per-event alloc after warmup).
+pub(super) fn query_visit(
+    store: &MemEventStore,
+    query: &StoreQuery,
+    limit: usize,
+    visitor: &mut dyn FnMut(&StoredEvent) -> ControlFlow<()>,
+) -> Result<(), StoreError> {
+    if limit == 0 {
+        return Ok(());
+    }
+    let st = store.lock()?;
+    // Prep alloc (one Vec of borrows), not a per-event clone.
+    let mut matched: Vec<&StoredEvent> =
+        st.events.values().filter(|ev| matches(ev, query)).collect();
+    matched.sort_by(|a, b| {
+        b.raw.created_at
+            .cmp(&a.raw.created_at)
+            .then(a.raw.id.cmp(&b.raw.id))
+    });
+    for ev in matched.into_iter().take(limit) {
+        if let ControlFlow::Break(()) = visitor(ev) {
+            break;
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn scan_expiring_before<'a>(

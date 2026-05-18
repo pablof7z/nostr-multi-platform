@@ -78,6 +78,25 @@ pub trait EventStore: Send + Sync {
         limit: usize,
     ) -> Result<Box<dyn EventIter + 'a>, StoreError>;
 
+    /// Streaming query: invoke `visitor` per matching event, newest-first, up
+    /// to `limit`. The visitor returns `ControlFlow::Break` to stop the scan
+    /// early. The visitor receives `&StoredEvent` — no per-event clone or
+    /// result-vec allocation on the visit path (D8). Default impl routes
+    /// through the matching `scan_by_*` index; backends may override to skip
+    /// the scan's intermediate buffer (MemEventStore does).
+    /// Design: `docs/design/nostrdb-notedeck-lessons.md` §2.3.
+    fn query_visit(
+        &self,
+        query: &StoreQuery,
+        limit: usize,
+        visitor: &mut dyn FnMut(&StoredEvent) -> ControlFlow<()>,
+    ) -> Result<(), StoreError> { /* default: scan_by_* + visit */ }
+
+    /// Vec-returning query — a thin wrapper over `query_visit` so the index
+    /// logic lives in exactly one place.
+    fn query(&self, query: &StoreQuery, limit: usize)
+        -> Result<Vec<StoredEvent>, StoreError> { /* default: collect via query_visit */ }
+
     /// `idx_expires` scan, ascending — used by the NIP-40 reaper.
     fn scan_expiring_before<'a>(
         &'a self,
