@@ -13,12 +13,16 @@
 //! installs this observer at startup; tests can install a no-op or instrumented
 //! observer.
 
+mod active_account_reactor;
 mod manager;
 mod rewire;
 
 #[cfg(test)]
 mod tests;
 
+pub use active_account_reactor::{
+    bundle_for, ActiveAccountReactor, ActiveSwitch, ActiveSwitchCommand,
+};
 pub use manager::{
     AccountError, AccountManager, ActiveChangeEvent, ActiveChangeObserver, IdentityId,
 };

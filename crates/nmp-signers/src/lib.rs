@@ -26,8 +26,9 @@ pub mod signers;
 
 pub use bunker::{parse_bunker_uri, BunkerParseError, BunkerUri, MAX_BUNKER_URI_LEN};
 pub use identity::{
-    AccountError, AccountManager, ActiveChangeEvent, ActiveChangeObserver, IdentityId,
-    Kind3RewireEvent, Kind3RewireObserver,
+    bundle_for, AccountError, AccountManager, ActiveAccountReactor, ActiveChangeEvent,
+    ActiveChangeObserver, ActiveSwitch, ActiveSwitchCommand, IdentityId, Kind3RewireEvent,
+    Kind3RewireObserver,
 };
 pub use signers::{
     LocalKeySigner, Nip04, Nip44, Nip46Rpc, Nip46Signer, Nip46SignerHandle, Nip46Transport,
