@@ -21,8 +21,9 @@ mod tick;
 
 use commands::{IdentityRuntime, WalletRuntime};
 pub(crate) use commands::{
-    new_observer_slot as new_lifecycle_observer_slot, LifecycleObserverRegistration,
-    LifecycleObserverSlot,
+    new_event_observer_slot, new_observer_slot as new_lifecycle_observer_slot, notify_observers,
+    register_c_observer, register_rust_observer, unregister_observer, KernelEventObserverSlot,
+    LifecycleObserverRegistration, LifecycleObserverSlot,
 };
 // `pub` (not `pub(crate)`) so the `lib.rs` test-support re-export reaches
 // integration tests outside the crate. The `actor` module itself is
@@ -33,6 +34,17 @@ pub(crate) use commands::{
 // clean.
 #[allow(unused_imports)]
 pub use commands::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
+// T146 — re-export the kernel event observer types so external Rust callers
+// (per-app crates such as `nmp-app-chirp`) can implement and register
+// `KernelEventObserver`s through the gated `pub use actor::{...}` in
+// `lib.rs`. The FFI shape (`KernelEventObserverFn` /
+// `KernelEventObserverRegistration` / `KernelEventObserverId`) is also
+// surfaced so Swift / Kotlin bindings can use the C-ABI channel.
+#[allow(unused_imports)]
+pub use commands::{
+    KernelEventObserver, KernelEventObserverFn, KernelEventObserverId,
+    KernelEventObserverRegistration,
+};
 use dispatch::{dispatch_command, handle_relay_event};
 
 use crate::kernel::LifecyclePhase;
@@ -203,8 +215,9 @@ pub(super) struct RelayControl {
 
 /// Backwards-compatible entry point: spawn the actor without a lifecycle
 /// observer. Existing tests and the `nmp-core::testing` facade call this
-/// shape. The FFI surface uses [`run_actor_with_lifecycle_observer`]
-/// instead so the shell can register a phase-transition callback.
+/// shape. The FFI surface uses [`run_actor_with_observers`] instead so the
+/// shell can register a phase-transition callback + kernel event
+/// observers.
 ///
 /// `#[allow(dead_code)]` because callers live behind the
 /// `cfg(any(test, feature = "test-support"))` gate (the `testing` facade in
@@ -212,22 +225,49 @@ pub(super) struct RelayControl {
 /// `--tests` or the `test-support` feature would otherwise warn.
 #[allow(dead_code)]
 pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) {
-    run_actor_with_lifecycle_observer(command_rx, update_tx, new_lifecycle_observer_slot());
+    run_actor_with_observers(
+        command_rx,
+        update_tx,
+        new_lifecycle_observer_slot(),
+        new_event_observer_slot(),
+    );
 }
 
-/// T118 / G3 — actor entry point that accepts a shared lifecycle observer
-/// slot. The FFI (`ffi/lifecycle.rs::nmp_app_set_lifecycle_callback`)
-/// shares the SAME `Arc<Mutex<…>>` so registrations from the Swift bridge
-/// are visible to the actor thread without crossing the FFI on each event.
+/// T118 / G3 backwards-compatible entry point. Spawns the actor with a
+/// lifecycle observer but no kernel event observer slot — the latter
+/// defaults to an empty slot (nothing fans out, zero overhead). New
+/// integrations should prefer [`run_actor_with_observers`] so kernel-event
+/// fan-out is wired.
+#[allow(dead_code)]
+pub fn run_actor_with_lifecycle_observer(
+    command_rx: Receiver<ActorCommand>,
+    update_tx: Sender<String>,
+    lifecycle_observer: LifecycleObserverSlot,
+) {
+    run_actor_with_observers(
+        command_rx,
+        update_tx,
+        lifecycle_observer,
+        new_event_observer_slot(),
+    );
+}
+
+/// T118 / G3 + T146 — actor entry point that accepts BOTH the lifecycle
+/// observer slot and the kernel event observer slot. The FFI
+/// (`ffi/lifecycle.rs::nmp_app_set_lifecycle_callback`,
+/// `ffi/event_observer.rs::nmp_app_register_event_observer`) shares the SAME
+/// `Arc<Mutex<…>>` instances so registrations from outside the actor are
+/// visible without crossing the FFI on each event.
 ///
 /// Dual-channel priority design: `command_rx` is drained via `try_recv` at
 /// the top of every iteration so UI commands are NEVER dropped under relay
 /// event flood. Relay events use a separate channel read with
 /// `recv_timeout(compute_wait(…))` so emit-hz cadence is respected.
-pub fn run_actor_with_lifecycle_observer(
+pub fn run_actor_with_observers(
     command_rx: Receiver<ActorCommand>,
     update_tx: Sender<String>,
     lifecycle_observer: LifecycleObserverSlot,
+    event_observers: KernelEventObserverSlot,
 ) {
     // Dual-channel design: relay events get their own dedicated channel.
     // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.
@@ -245,6 +285,13 @@ pub fn run_actor_with_lifecycle_observer(
     // command replaces the kernel; we re-bind there so the counter stays
     // visible (the underlying `Arc<AtomicU64>` survives Reset).
     kernel.set_dispatch_drops_handle(Arc::clone(&dispatch_drops));
+    // T146 — bind the shared kernel event observer slot. The kernel calls
+    // `notify_event_observers` after every `EventStore::insert` returning
+    // `Inserted | Replaced` (see `kernel/ingest/timeline.rs`). Per-app
+    // crates (e.g. `nmp-app-chirp`) clone this slot via
+    // `NmpApp::register_event_observer` to register typed observers.
+    // Survives `Reset` the same way the drop counter does.
+    kernel.set_event_observers_handle(Arc::clone(&event_observers));
     let mut identity = IdentityRuntime::new();
     let mut wallet = WalletRuntime::new();
     // T105: URL-keyed transport pool. One socket per resolved relay URL;

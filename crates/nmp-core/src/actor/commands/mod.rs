@@ -45,6 +45,7 @@
 //! through the remote signer is a documented follow-up
 //! (TODO(nip46-nip42) in `identity.rs:sync_kernel`).
 
+mod event_observer;
 mod identity;
 mod lifecycle;
 mod publish;
@@ -67,6 +68,18 @@ pub(crate) use lifecycle::{
 // `commands` is crate-private (`mod commands;`), so external Rust code only
 // sees these through the gated `pub use` in lib.rs.
 pub use lifecycle::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
+// T146 — kernel event observer slot. Re-exported up the actor module chain so
+// `ffi/event_observer.rs` and the per-app crate registration path (via
+// `NmpApp::kernel_event_observers`) reach the same `Arc<Mutex<…>>` instance
+// the kernel holds for fan-out.
+pub(crate) use event_observer::{
+    new_event_observer_slot, notify_observers, register_c_observer, register_rust_observer,
+    unregister_observer, KernelEventObserverSlot,
+};
+pub use event_observer::{
+    KernelEventObserver, KernelEventObserverFn, KernelEventObserverId,
+    KernelEventObserverRegistration,
+};
 pub(super) use publish::{follow, open_timeline, publish_note, publish_unsigned_event, react};
 pub(super) use relays::{add_relay, remove_relay};
 pub(super) use wallet::{

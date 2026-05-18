@@ -45,9 +45,9 @@ pub use ffi::{
     nmp_app_inject_pre_verified_events, nmp_app_inject_signed_events,
     nmp_app_lifecycle_background, nmp_app_lifecycle_foreground, nmp_app_new, nmp_app_open_author,
     nmp_app_open_firehose_tag, nmp_app_open_thread, nmp_app_open_uri,
-    nmp_app_publish_unsigned_event, nmp_app_release_profile, nmp_app_set_capability_callback,
-    nmp_app_set_lifecycle_callback, nmp_app_set_update_callback, nmp_app_signin_nsec,
-    nmp_app_start,
+    nmp_app_publish_unsigned_event, nmp_app_register_event_observer, nmp_app_release_profile,
+    nmp_app_set_capability_callback, nmp_app_set_lifecycle_callback, nmp_app_set_update_callback,
+    nmp_app_signin_nsec, nmp_app_start, nmp_app_unregister_event_observer,
 };
 
 // android-ffi: expose the full FFI surface via Rust paths. nmp-android-ffi
@@ -79,6 +79,8 @@ pub use ffi::{
     nmp_app_publish_note,
     nmp_app_publish_unsigned_event,
     nmp_app_react,
+    // T146 — kernel event observer FFI for Android JNI.
+    nmp_app_register_event_observer,
     nmp_app_release_profile,
     nmp_app_remove_account,
     nmp_app_remove_relay,
@@ -91,6 +93,7 @@ pub use ffi::{
     nmp_app_stop,
     nmp_app_switch_active,
     nmp_app_unfollow,
+    nmp_app_unregister_event_observer,
     nmp_app_wallet_connect,
     nmp_app_wallet_disconnect,
     nmp_app_wallet_pay_invoice,
@@ -102,6 +105,17 @@ pub use ffi::{
 // crate-private, so this is the only Rust-side surface for the wire shape.
 #[cfg(any(test, feature = "test-support"))]
 pub use actor::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
+
+// T146 — kernel event observer surface exposed to per-app Rust crates
+// (`nmp-app-chirp`, future `nmp-app-podcast`, …). Apps register typed
+// `Arc<dyn KernelEventObserver>`s via [`NmpApp::register_event_observer`].
+// The FFI shape (`KernelEventObserverFn` etc.) is the C-ABI channel
+// Swift / Kotlin bridges use directly through
+// `nmp_app_register_event_observer`.
+pub use actor::{
+    KernelEventObserver, KernelEventObserverFn, KernelEventObserverId,
+    KernelEventObserverRegistration,
+};
 
 /// Test-support facade: gives live-bench binaries access to the actor
 /// internals without exposing domain nouns in the stable `nmp-core` API.

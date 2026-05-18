@@ -139,7 +139,23 @@ impl Kernel {
             content: event.content,
             relay_count: 1,
         };
+        // D0 — kernel emits, per-app crates compose. ADR-0009. Build the
+        // FFI-stable `KernelEvent` from the freshly-cached `StoredEvent`
+        // before either is moved into `self.events` so the fan-out has
+        // exactly the same fields the projection would see on snapshot.
+        // T146 — observer fan-out fires for every event that reaches the
+        // in-memory read-cache; duplicates / supersessions return earlier
+        // in this function and never call `notify_event_observers`.
+        let kernel_event = crate::substrate::KernelEvent {
+            id: cached.id.clone(),
+            author: cached.author.clone(),
+            kind: cached.kind,
+            created_at: cached.created_at,
+            tags: cached.tags.clone(),
+            content: cached.content.clone(),
+        };
         self.events.insert(event.id.clone(), cached);
+        self.notify_event_observers(&kernel_event);
         if sub_id.starts_with("diag-firehose-") {
             self.diagnostic_firehose_events = self.diagnostic_firehose_events.saturating_add(1);
         }
