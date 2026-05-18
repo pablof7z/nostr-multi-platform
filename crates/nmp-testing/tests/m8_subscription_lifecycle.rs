@@ -18,6 +18,7 @@
 use std::collections::BTreeSet;
 
 use nmp_core::planner::{
+    InMemoryMailboxCache,
     InterestId,
     InterestLifecycle,
     InterestScope,
@@ -76,6 +77,26 @@ fn mailboxes_for(authors: &[&str], write_relays: &[&str]) -> Vec<(String, nmp_co
             )
         })
         .collect()
+}
+
+/// T132 helper — build a `MailboxCache` populated with one author/relay pair.
+///
+/// The lifecycle no longer owns the cache; callers construct one (in tests)
+/// and pass it into `recompile_and_diff` / `drain_tick`. In production the
+/// kernel passes its `KernelMailboxes` adapter, but here the
+/// `InMemoryMailboxCache` is the polymorphism seam.
+fn cache_with(author: &str, write_relays: &[&str]) -> InMemoryMailboxCache {
+    use nmp_core::planner::MailboxSnapshot;
+    let mut c = InMemoryMailboxCache::new();
+    c.put(
+        pubkey(author),
+        MailboxSnapshot {
+            write_relays: write_relays.iter().map(|r| r.to_string()).collect(),
+            read_relays: vec![],
+            both_relays: vec![],
+        },
+    );
+    c
 }
 
 // ─── Test 1 — wire-frame emission ────────────────────────────────────────────
@@ -174,9 +195,11 @@ fn reconnect_replays_current_plan_without_recompile() {
         lifecycle.registry_mut().push(i.clone());
     }
 
-    // Initial compile + emit.
-    lifecycle.set_mailbox(pubkey("alice"), &["wss://relay.damus.io"]);
-    let _initial = lifecycle.recompile_and_diff().expect("initial compile");
+    // Initial compile + emit. T132: caller-owned mailbox cache.
+    let mailboxes = cache_with("alice", &["wss://relay.damus.io"]);
+    let _initial = lifecycle
+        .recompile_and_diff(&mailboxes)
+        .expect("initial compile");
     let baseline_compile_count = lifecycle.compile_count();
 
     // Trigger reconnect — must replay current plan to that relay without
@@ -204,7 +227,7 @@ fn reconnect_replays_current_plan_without_recompile() {
 fn trigger_inbox_coalesces_within_one_tick() {
     let mut lifecycle = SubscriptionLifecycle::new();
     lifecycle.registry_mut().push(interest(1, &["alice"], InterestLifecycle::Tailing));
-    lifecycle.set_mailbox(pubkey("alice"), &["wss://relay.damus.io"]);
+    let mailboxes = cache_with("alice", &["wss://relay.damus.io"]);
 
     let baseline = lifecycle.compile_count();
 
@@ -216,7 +239,7 @@ fn trigger_inbox_coalesces_within_one_tick() {
     }
 
     // One tick drain coalesces them all into one compile pass.
-    let _frames = lifecycle.drain_tick();
+    let _frames = lifecycle.drain_tick(&mailboxes);
 
     assert_eq!(
         lifecycle.compile_count(),
@@ -226,7 +249,7 @@ fn trigger_inbox_coalesces_within_one_tick() {
     );
 
     // Subsequent tick with empty inbox does not compile.
-    let _empty = lifecycle.drain_tick();
+    let _empty = lifecycle.drain_tick(&mailboxes);
     assert_eq!(
         lifecycle.compile_count(),
         baseline + 1,
@@ -240,9 +263,9 @@ fn trigger_inbox_coalesces_within_one_tick() {
 fn oneshot_lifecycle_closes_on_eose() {
     let mut lifecycle = SubscriptionLifecycle::new();
     lifecycle.registry_mut().push(interest(1, &["alice"], InterestLifecycle::OneShot));
-    lifecycle.set_mailbox(pubkey("alice"), &["wss://relay.damus.io"]);
+    let mailboxes = cache_with("alice", &["wss://relay.damus.io"]);
 
-    let initial = lifecycle.recompile_and_diff().expect("compile");
+    let initial = lifecycle.recompile_and_diff(&mailboxes).expect("compile");
     let opened_sub_id = initial
         .iter()
         .find_map(|f| match f {
@@ -270,9 +293,9 @@ fn bounded_time_lifecycle_closes_at_deadline() {
         &["alice"],
         InterestLifecycle::BoundedTime { until_ms: 0 },
     ));
-    lifecycle.set_mailbox(pubkey("alice"), &["wss://relay.damus.io"]);
+    let mailboxes = cache_with("alice", &["wss://relay.damus.io"]);
 
-    let initial = lifecycle.recompile_and_diff().expect("compile");
+    let initial = lifecycle.recompile_and_diff(&mailboxes).expect("compile");
     let opened: Vec<_> = initial
         .iter()
         .filter_map(|f| match f {
@@ -325,17 +348,19 @@ fn send_path_defers_outbound_when_pool_disconnected() {
 fn auth_paused_relay_holds_reqs_until_authenticated() {
     let mut lifecycle = SubscriptionLifecycle::new();
     lifecycle.registry_mut().push(interest(1, &["alice"], InterestLifecycle::Tailing));
-    lifecycle.set_mailbox(pubkey("alice"), &["wss://relay.damus.io"]);
+    let mailboxes = cache_with("alice", &["wss://relay.damus.io"]);
 
     // Auth challenge arrives BEFORE the first compile.
     lifecycle.enqueue_trigger(CompileTrigger::RelayAuthStateChanged {
         url: "wss://relay.damus.io".to_string(),
         state: RelayAuthState::ChallengeReceived,
     });
-    let _drain = lifecycle.drain_tick();
+    let _drain = lifecycle.drain_tick(&mailboxes);
 
     // Now compile — REQs that would target the paused relay must be withheld.
-    let frames_during_pause = lifecycle.recompile_and_diff().expect("compile");
+    let frames_during_pause = lifecycle
+        .recompile_and_diff(&mailboxes)
+        .expect("compile");
     let reqs_to_paused: Vec<_> = frames_during_pause
         .iter()
         .filter(|f| matches!(f, WireFrame::Req { relay_url, .. } if relay_url == "wss://relay.damus.io"))

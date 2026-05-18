@@ -8,9 +8,24 @@
 //!
 //! Design: `docs/design/framework-magic/`
 
-use nmp_core::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
+use nmp_core::planner::{
+    InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
+    LogicalInterest, MailboxSnapshot,
+};
 use nmp_core::subs::{AccountId, CompileTrigger, InvalidateReason, RelayAuthState, SubscriptionLifecycle, WireFrame};
 use nmp_testing::store_harness::{StoreHarness, ALICE_HEX};
+
+/// T132 helper — populate a mailbox cache with one (author, write_relays) pair.
+fn put_mailbox(cache: &mut InMemoryMailboxCache, author: &str, write_relays: &[&str]) {
+    cache.put(
+        pubkey(author),
+        MailboxSnapshot {
+            write_relays: write_relays.iter().map(|r| r.to_string()).collect(),
+            read_relays: vec![],
+            both_relays: vec![],
+        },
+    );
+}
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -64,14 +79,19 @@ fn oneshot_interest(id: u64, authors: &[&str]) -> LogicalInterest {
 fn c5_kind3_change_recompiles_follow_dependent_subs() {
     let mut lc = SubscriptionLifecycle::new();
 
+    // T132: the lifecycle no longer owns the mailbox cache. The test owns one
+    // and passes it in; in production the kernel passes its `KernelMailboxes`
+    // adapter (a borrow of `author_relay_lists`).
+    let mut mailboxes = InMemoryMailboxCache::new();
+
     // Author alice's mailbox is known.
-    lc.set_mailbox(pubkey("alice"), &["wss://r1/"]);
+    put_mailbox(&mut mailboxes, "alice", &["wss://r1/"]);
 
     // Register a follow-list interest for alice.
     lc.registry_mut().push(tailing_interest(1, &["alice"]));
 
     // First compile — expect a REQ for alice at wss://r1/.
-    let frames1 = lc.recompile_and_diff().expect("first compile");
+    let frames1 = lc.recompile_and_diff(&mailboxes).expect("first compile");
     let req_urls1: Vec<_> = frames1
         .iter()
         .filter_map(|f| if let WireFrame::Req { relay_url, .. } = f { Some(relay_url.as_str()) } else { None })
@@ -88,7 +108,7 @@ fn c5_kind3_change_recompiles_follow_dependent_subs() {
     let _ = h.insert_raw(kind3, "wss://r1/", 2_000_000);
 
     // "bob" has a mailbox — wire it so the recompile finds a route.
-    lc.set_mailbox(pubkey("bob"), &["wss://r2/"]);
+    put_mailbox(&mut mailboxes, "bob", &["wss://r2/"]);
 
     // Expand the follow-list interest to include bob (synthetic stand-in for
     // the M11 ViewModule rebuild; the trigger does not rewrite registry
@@ -103,7 +123,7 @@ fn c5_kind3_change_recompiles_follow_dependent_subs() {
     });
 
     // drain_tick must recompile and emit the new REQ diff.
-    let frames2 = lc.drain_tick();
+    let frames2 = lc.drain_tick(&mailboxes);
     assert_eq!(lc.compile_count(), 2, "drain_tick must recompile on trigger");
 
     let req_urls2: Vec<_> = frames2
@@ -133,7 +153,8 @@ fn c5_kind3_change_recompiles_follow_dependent_subs() {
 fn c8_subscriptions_coalesce_autoclose_and_buffer() {
     // --- 1. Coalesce: 3 triggers → 1 compile --------------------------------
     let mut lc = SubscriptionLifecycle::new();
-    lc.set_mailbox(pubkey("alice"), &["wss://r1/"]);
+    let mut mailboxes = InMemoryMailboxCache::new();
+    put_mailbox(&mut mailboxes, "alice", &["wss://r1/"]);
     lc.registry_mut().push(tailing_interest(1, &["alice"]));
 
     for _ in 0..3 {
@@ -141,20 +162,21 @@ fn c8_subscriptions_coalesce_autoclose_and_buffer() {
             reason: InvalidateReason::TestForceRecompile,
         });
     }
-    let _frames = lc.drain_tick();
+    let _frames = lc.drain_tick(&mailboxes);
     assert_eq!(lc.compile_count(), 1, "3 triggers in one tick must produce exactly 1 compile");
 
     // --- 2. Empty-tick is a no-op -------------------------------------------
-    let frames_empty = lc.drain_tick();
+    let frames_empty = lc.drain_tick(&mailboxes);
     assert!(frames_empty.is_empty(), "empty tick must emit no frames");
     assert_eq!(lc.compile_count(), 1, "empty tick must not compile");
 
     // --- 3. Auto-close (OneShot) on EOSE ------------------------------------
     let mut lc2 = SubscriptionLifecycle::new();
-    lc2.set_mailbox(pubkey("carol"), &["wss://rc/"]);
+    let mut mailboxes2 = InMemoryMailboxCache::new();
+    put_mailbox(&mut mailboxes2, "carol", &["wss://rc/"]);
     lc2.registry_mut().push(oneshot_interest(10, &["carol"]));
 
-    let open_frames = lc2.recompile_and_diff().expect("oneshot open");
+    let open_frames = lc2.recompile_and_diff(&mailboxes2).expect("oneshot open");
     // Exactly one REQ must be emitted.
     let req: Vec<_> = open_frames
         .iter()
@@ -177,7 +199,8 @@ fn c8_subscriptions_coalesce_autoclose_and_buffer() {
 
     // --- 4. Auth-buffer: REQs held while relay is auth-paused --------------
     let mut lc3 = SubscriptionLifecycle::new();
-    lc3.set_mailbox(pubkey("dave"), &["wss://rd/"]);
+    let mut mailboxes3 = InMemoryMailboxCache::new();
+    put_mailbox(&mut mailboxes3, "dave", &["wss://rd/"]);
     lc3.registry_mut().push(tailing_interest(20, &["dave"]));
 
     // Mark the relay as auth-challenged BEFORE the first compile.
@@ -186,7 +209,9 @@ fn c8_subscriptions_coalesce_autoclose_and_buffer() {
         RelayAuthState::ChallengeReceived,
     );
 
-    let frames_paused = lc3.recompile_and_diff().expect("auth-paused compile");
+    let frames_paused = lc3
+        .recompile_and_diff(&mailboxes3)
+        .expect("auth-paused compile");
     // All REQs for wss://rd/ must be held in the auth buffer, so no REQ frames
     // should appear in the returned diff.
     let reqs_to_rd: Vec<_> = frames_paused

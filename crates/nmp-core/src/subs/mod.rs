@@ -36,8 +36,7 @@ use auth_gate::AuthGate;
 use lifecycle_gate::LifecycleGate;
 
 use crate::planner::{
-    CompiledPlan, InMemoryMailboxCache, InterestId, MailboxSnapshot, PlannerError, RelayUrl,
-    SubscriptionCompiler,
+    CompiledPlan, InterestId, MailboxCache, PlannerError, RelayUrl, SubscriptionCompiler,
 };
 
 /// Post-compile plan-mutation hook (M4 negentropy coverage gate).
@@ -81,7 +80,6 @@ pub use wire::{plan_diff, WireFrame};
 pub struct SubscriptionLifecycle {
     registry: InterestRegistry,
     inbox: TriggerInbox,
-    mailboxes: InMemoryMailboxCache,
     indexer_relays: Vec<RelayUrl>,
     /// The plan currently believed-to-be-live on the wire.
     current_plan: Option<CompiledPlan>,
@@ -104,12 +102,18 @@ impl Default for SubscriptionLifecycle {
 }
 
 impl SubscriptionLifecycle {
-    /// Construct an empty lifecycle with no mailboxes and a default indexer set.
+    /// Construct an empty lifecycle with a default indexer set.
+    ///
+    /// T132: the lifecycle no longer owns a mailbox cache. The caller passes a
+    /// `&dyn MailboxCache` into `recompile_and_diff` / `drain_tick`, sourced
+    /// from the kernel's `author_relay_lists` (via `KernelMailboxes`) in
+    /// production, or an `InMemoryMailboxCache` constructed inline in tests.
+    /// This eliminates the dual source-of-truth seam the planner-side cache
+    /// previously created (T105 made `Kernel::author_relay_lists` authoritative).
     pub fn new() -> Self {
         Self {
             registry: InterestRegistry::new(),
             inbox: TriggerInbox::new(),
-            mailboxes: InMemoryMailboxCache::new(),
             indexer_relays: vec!["wss://purplepag.es".to_string()],
             current_plan: None,
             lifecycle_gate: LifecycleGate::new(),
@@ -135,17 +139,6 @@ impl SubscriptionLifecycle {
         &mut self.registry
     }
 
-    /// Register or replace the mailbox entry for `pubkey` (test helper /
-    /// M2-phase-2 path).
-    pub fn set_mailbox(&mut self, pubkey: String, write_relays: &[&str]) {
-        let snapshot = MailboxSnapshot {
-            write_relays: write_relays.iter().map(|r| r.to_string()).collect(),
-            read_relays: vec![],
-            both_relays: vec![],
-        };
-        self.mailboxes.put(pubkey, snapshot);
-    }
-
     /// Compile counter (one increment per planner invocation).
     pub fn compile_count(&self) -> u64 {
         self.compile_count
@@ -156,13 +149,23 @@ impl SubscriptionLifecycle {
         self.inbox.enqueue(trigger);
     }
 
-    /// Recompile from current registry + mailbox state, diff against the
-    /// last-compiled plan, and return the WireFrame delta. Updates the
-    /// lifecycle gate; diverts REQs targeting auth-paused relays into the
-    /// pending-auth buffer.
-    pub fn recompile_and_diff(&mut self) -> Result<Vec<WireFrame>, PlannerError> {
+    /// Recompile from current registry + caller-supplied mailbox state, diff
+    /// against the last-compiled plan, and return the WireFrame delta.
+    ///
+    /// T132: the mailbox cache is no longer owned by the lifecycle. The kernel
+    /// passes its `KernelMailboxes` adapter (a view onto `author_relay_lists`,
+    /// populated by `ingest_relay_list` from real kind:10002 events); tests
+    /// pass a local `InMemoryMailboxCache`. This eliminates the dual-source
+    /// hazard the planner-side cache previously created.
+    ///
+    /// Updates the lifecycle gate; diverts REQs targeting auth-paused relays
+    /// into the pending-auth buffer.
+    pub fn recompile_and_diff(
+        &mut self,
+        mailbox_cache: &dyn MailboxCache,
+    ) -> Result<Vec<WireFrame>, PlannerError> {
         let interests = self.registry.iter_active();
-        let compiler = SubscriptionCompiler::new(&self.mailboxes, &self.indexer_relays);
+        let compiler = SubscriptionCompiler::new(mailbox_cache, &self.indexer_relays);
         let mut plan = compiler.compile(&interests)?;
         self.compile_count = self.compile_count.saturating_add(1);
 
@@ -189,7 +192,11 @@ impl SubscriptionLifecycle {
 
     /// Drain the trigger inbox at a tick boundary. Per D8, all triggers
     /// collapse into at most one compile pass; an empty inbox is a no-op.
-    pub fn drain_tick(&mut self) -> Vec<WireFrame> {
+    ///
+    /// T132: the caller supplies the mailbox cache for the same reason
+    /// [`Self::recompile_and_diff`] does — the lifecycle is no longer the
+    /// owner of mailbox state.
+    pub fn drain_tick(&mut self, mailbox_cache: &dyn MailboxCache) -> Vec<WireFrame> {
         let triggers = self.inbox.drain_coalesced();
         if triggers.is_empty() {
             return Vec::new();
@@ -202,7 +209,7 @@ impl SubscriptionLifecycle {
                 let _ = self.auth_gate.record_transition(url.clone(), state.clone());
             }
         }
-        self.recompile_and_diff().unwrap_or_default()
+        self.recompile_and_diff(mailbox_cache).unwrap_or_default()
     }
 
     /// A5 — relay-reconnected. Per recompilation.md §4.2: replay current plan
@@ -270,6 +277,7 @@ impl SubscriptionLifecycle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::planner::InMemoryMailboxCache;
 
     #[test]
     fn empty_lifecycle_starts_with_zero_compiles() {
@@ -281,7 +289,8 @@ mod tests {
     #[test]
     fn empty_tick_does_not_compile() {
         let mut l = SubscriptionLifecycle::new();
-        let frames = l.drain_tick();
+        let mailboxes = InMemoryMailboxCache::new();
+        let frames = l.drain_tick(&mailboxes);
         assert!(frames.is_empty());
         assert_eq!(l.compile_count(), 0);
     }

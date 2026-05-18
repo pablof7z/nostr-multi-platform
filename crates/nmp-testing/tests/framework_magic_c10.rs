@@ -14,11 +14,13 @@ use std::sync::Arc;
 
 use nmp_core::planner::{
     canonical_filter_hash,
+    InMemoryMailboxCache,
     InterestId,
     InterestLifecycle,
     InterestScope,
     InterestShape,
     LogicalInterest,
+    MailboxSnapshot,
 };
 use nmp_core::store::{EventStore, MemEventStore, SyncMethod, WatermarkKey, WatermarkRow};
 use nmp_core::subs::{SubscriptionLifecycle, WireFrame};
@@ -120,7 +122,18 @@ fn c10_watermark_gates_backfill_and_authoritative_miss() {
     let caps = Arc::new(InMemoryCapabilityCache::new());
 
     let mut lifecycle = SubscriptionLifecycle::new();
-    lifecycle.set_mailbox(author.clone(), &[relay_url.as_str()]);
+    // T132: the lifecycle no longer owns a mailbox cache; the test owns one
+    // and passes it through `recompile_and_diff`. In production this is the
+    // kernel's `KernelMailboxes` adapter (a borrow of `author_relay_lists`).
+    let mut mailboxes = InMemoryMailboxCache::new();
+    mailboxes.put(
+        author.clone(),
+        MailboxSnapshot {
+            write_relays: vec![relay_url.clone()],
+            read_relays: vec![],
+            both_relays: vec![],
+        },
+    );
     let store_for_hook = Arc::clone(&store);
     let caps_for_hook = Arc::clone(&caps);
     lifecycle.set_coverage_hook(Arc::new(move |plan| {
@@ -129,7 +142,7 @@ fn c10_watermark_gates_backfill_and_authoritative_miss() {
     lifecycle.registry_mut().push(interest);
 
     // ── Step 1: unsynced + no capability → REQ flies ────────────────────────
-    let frames = lifecycle.recompile_and_diff().expect("compile #1");
+    let frames = lifecycle.recompile_and_diff(&mailboxes).expect("compile #1");
     let reqs_step1 = frames
         .iter()
         .filter(|f| matches!(f, WireFrame::Req { .. }))
@@ -155,7 +168,7 @@ fn c10_watermark_gates_backfill_and_authoritative_miss() {
         })
         .unwrap();
 
-    let frames = lifecycle.recompile_and_diff().expect("compile #2");
+    let frames = lifecycle.recompile_and_diff(&mailboxes).expect("compile #2");
     let closes_step2 = frames
         .iter()
         .filter(|f| matches!(f, WireFrame::Close { .. }))
@@ -190,7 +203,7 @@ fn c10_watermark_gates_backfill_and_authoritative_miss() {
         RelayCapabilities { supports_nip77: true },
     );
 
-    let frames = lifecycle.recompile_and_diff().expect("compile #3");
+    let frames = lifecycle.recompile_and_diff(&mailboxes).expect("compile #3");
     let req_jsons_step3: Vec<_> = frames
         .iter()
         .filter_map(|f| match f {
@@ -214,7 +227,7 @@ fn c10_watermark_gates_backfill_and_authoritative_miss() {
         relay_url.as_str(),
         RelayCapabilities { supports_nip77: false },
     );
-    let frames = lifecycle.recompile_and_diff().expect("compile #4");
+    let frames = lifecycle.recompile_and_diff(&mailboxes).expect("compile #4");
     let req_jsons_step4: Vec<_> = frames
         .iter()
         .filter_map(|f| match f {
