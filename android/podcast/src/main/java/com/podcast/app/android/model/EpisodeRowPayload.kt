@@ -11,6 +11,10 @@ import kotlinx.serialization.Serializable
  * still decodes and the model keeps its prior value (D1). camelCase Kotlin
  * ↔ snake_case JSON via the parent `Json { namingStrategy = SnakeCase }`.
  * No derived state — D8 verbatim mirror.
+ *
+ * T-podcast-android-7: added [audioUrl] projected from the RSS enclosure
+ * element by Rust. Empty string = no audio available; UI must gate playback
+ * on this being non-empty (D6 honest state — no silent no-op).
  */
 @Serializable
 data class EpisodeRowPayload(
@@ -27,6 +31,8 @@ data class EpisodeRowPayload(
     val hasInsights: Boolean = false,
     val insightsCount: Long = 0,
     val isPlaying: Boolean = false,
+    /** The streaming audio URL from the RSS enclosure element. Empty = no audio (D1 default). */
+    val audioUrl: String = "",
 )
 
 /**

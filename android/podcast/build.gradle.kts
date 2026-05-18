@@ -29,8 +29,8 @@ android {
         applicationId = "com.podcast.app.android"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "0.3.0-T-podcast-android-6"
+        versionCode = 6
+        versionName = "0.3.0-T-podcast-android-7"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
 
@@ -91,6 +91,12 @@ dependencies {
     // OkHttp downloads RSS bytes; bridge.ingestBytes passes them to Rust parser.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    // T-podcast-android-7: ExoPlayer / media3 for real audio playback.
+    // Kept in :podcast only — :app and :gallery are not affected.
+    val media3Version = "1.4.1"
+    implementation("androidx.media3:media3-exoplayer:$media3Version")
+    implementation("androidx.media3:media3-session:$media3Version")
+    implementation("androidx.media3:media3-ui:$media3Version")
 }
 
 // Delegate native build to :app's cargoNdk task — the .so is shared between
