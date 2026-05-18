@@ -19,6 +19,18 @@
 //! closes by WireSubId (compiler diff output), not string-prefix matching.
 
 use super::super::*;
+use std::hash::{Hash, Hasher};
+
+/// Deterministic 8-char tag over `relay_url` for thread hydration sub-ids.
+///
+/// Same URL → same suffix across runs, so wire-sub identity in the diagnostic
+/// surface is stable and `close_subscriptions_with_prefixes` still matches
+/// the `thread-ids-` / `thread-replies-` prefixes used in `close_thread`.
+fn relay_short(relay_url: &str) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    relay_url.hash(&mut hasher);
+    format!("{:08x}", hasher.finish() & 0xFFFF_FFFF)
+}
 
 impl Kernel {
     pub(crate) fn open_thread(&mut self, event_id: String, can_send: bool) -> Vec<OutboundMessage> {
@@ -130,12 +142,24 @@ impl Kernel {
             }
             self.thread_view_seq = self.thread_view_seq.saturating_add(1);
             self.thread_ids_inflight = true;
-            requests.push(self.req(
-                RelayRole::Content,
-                &format!("thread-ids-{}", self.thread_view_seq),
-                "thread context ids",
-                json!({"ids":ids,"limit":20}),
-            ));
+            // T121 / codex R1: partition the id set by each id's
+            // original-event author's NIP-65 write relays. Ids whose authors
+            // aren't yet in the local store fall through to the cold-start
+            // bootstrap discovery seed. Mirrors T105's outbox partition
+            // pattern (see `partition_authors_by_write_relays` for the
+            // author-set analogue).
+            let partition = self.partition_ids_by_author_write_relays(&ids);
+            let seq = self.thread_view_seq;
+            for (relay_url, served_ids) in partition {
+                let sub_id = format!("thread-ids-{}-{}", seq, relay_short(&relay_url));
+                requests.push(self.req_for_relay(
+                    RelayRole::Content,
+                    relay_url,
+                    &sub_id,
+                    "thread context ids (NIP-65 outbox)",
+                    json!({"ids":served_ids,"limit":20}),
+                ));
+            }
         }
 
         if !self.pending_thread_reply_targets.is_empty() && !self.thread_replies_inflight {
@@ -151,12 +175,25 @@ impl Kernel {
             }
             self.thread_view_seq = self.thread_view_seq.saturating_add(1);
             self.thread_replies_inflight = true;
-            requests.push(self.req(
-                RelayRole::Content,
-                &format!("thread-replies-{}", self.thread_view_seq),
-                "thread recursive replies",
-                json!({"kinds":[1,6],"#e":ids,"limit":200}),
-            ));
+            // T121 / codex R1: route the `#e` recursive-replies REQ to the
+            // root event author's resolved write relays (per-id partition).
+            // Reply authors write to their own relays of course; routing to
+            // the root author's relays is the deliberate compromise — the
+            // root's relays usually carry the thread context rather than
+            // fanning to every participant. Unknown-author ids fall back to
+            // bootstrap (cold-start discovery).
+            let partition = self.partition_ids_by_author_write_relays(&ids);
+            let seq = self.thread_view_seq;
+            for (relay_url, served_ids) in partition {
+                let sub_id = format!("thread-replies-{}-{}", seq, relay_short(&relay_url));
+                requests.push(self.req_for_relay(
+                    RelayRole::Content,
+                    relay_url,
+                    &sub_id,
+                    "thread recursive replies (NIP-65 outbox)",
+                    json!({"kinds":[1,6],"#e":served_ids,"limit":200}),
+                ));
+            }
         }
 
         requests

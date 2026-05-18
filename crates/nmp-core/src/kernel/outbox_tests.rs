@@ -321,3 +321,169 @@ fn publish_fans_out_to_author_write_relays_via_outbox() {
         assert!(m.text.starts_with("[\"EVENT\""), "frame is an EVENT");
     }
 }
+
+// ── T121: thread hydration outbox (codex R1) ─────────────────────────────────
+//
+// The thread hydration path (`maybe_open_thread_hydration`) fills in missing
+// parent/root events from `#e` id refs. Pre-T121 it fanned out to the
+// bootstrap discovery seed; T121 routes each id to its **original-event
+// author's** NIP-65 write relays (resolved via the in-kernel `events` cache),
+// with the bootstrap seed reserved for the cold-start path where the local
+// store has no record of who wrote a given id. This pins the wire-level
+// behaviour.
+
+const CHARLIE: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+
+fn id_for(prefix: char) -> String {
+    std::iter::repeat(prefix).take(64).collect()
+}
+
+#[test]
+fn t121_thread_hydration_routes_ids_by_resolved_author_write_relays() {
+    // Three authors A, B, C — A has kind:10002 → relay1, B → relay2, and C
+    // has NO cached kind:10002 (cold-start). Three events (one per author)
+    // are seeded into the kernel's `events` cache so the hydration path can
+    // resolve id → author. Hydration is issued for [id_A, id_B, id_C]; the
+    // expectation:
+    //   * relay1 receives a REQ carrying [id_A]
+    //   * relay2 receives a REQ carrying [id_B]
+    //   * each BOOTSTRAP_DISCOVERY_RELAYS seed receives a REQ carrying [id_C]
+    //     (the cold-start fallback for an author with no resolved write set).
+    // No REQ leaves on a relay that does not own the id it carries.
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    install_relay_list(&mut kernel, ALICE, &["wss://relay1/"], &[], &[]);
+    install_relay_list(&mut kernel, BOB, &["wss://relay2/"], &[], &[]);
+    // CHARLIE intentionally has no kind:10002 cached → cold-start path.
+
+    let id_a = id_for('a');
+    let id_b = id_for('b');
+    let id_c = id_for('c');
+
+    // Seed the kernel's events cache so `partition_ids_by_author_write_relays`
+    // can resolve each id to its author. The `relay_count`/`created_at`
+    // fields are immaterial to the routing decision — only `author` is read.
+    for (id, author) in [
+        (&id_a, ALICE),
+        (&id_b, BOB),
+        (&id_c, CHARLIE),
+    ] {
+        kernel.events.insert(
+            id.clone(),
+            StoredEvent {
+                id: id.clone(),
+                author: author.to_string(),
+                kind: 1,
+                created_at: 1_000,
+                tags: vec![],
+                content: String::new(),
+                relay_count: 1,
+            },
+        );
+    }
+
+    // Enqueue the three ids directly onto the hydration queue and drive the
+    // wire-level emitter. This is the same code path `prepare_thread_requests`
+    // invokes after walking parent/root refs, but isolated to the exact id
+    // set under test (no confounding focused/root traversal).
+    kernel.pending_thread_ids.insert(id_a.clone());
+    kernel.pending_thread_ids.insert(id_b.clone());
+    kernel.pending_thread_ids.insert(id_c.clone());
+
+    let requests = kernel.maybe_open_thread_hydration();
+
+    // Partition the emitted REQs by their relay_url. The thread-ids- prefix
+    // gates the assertion: thread-replies- is gated by an empty
+    // `pending_thread_reply_targets` so this exercise only fires the ids leg.
+    let ids_reqs: Vec<&OutboundMessage> = requests
+        .iter()
+        .filter(|r| r.text.contains("thread-ids-"))
+        .collect();
+    assert!(
+        !ids_reqs.is_empty(),
+        "hydration must emit at least one REQ for the seeded id set"
+    );
+
+    // (1) Every REQ carries an explicit relay_url — never an empty string.
+    for r in &ids_reqs {
+        assert!(
+            !r.relay_url.is_empty(),
+            "T121: every hydration OutboundMessage has an explicit relay_url"
+        );
+    }
+
+    // (2) The expected URL set is exactly relay1 + relay2 + BOOTSTRAP seeds.
+    //     (Two bootstrap seeds today: damus.io + nos.lol. The cold-start id
+    //     emits one REQ per seed because `bootstrap_discovery_relays()` is
+    //     the seed-list itself, not a single fallback URL.)
+    let urls: std::collections::BTreeSet<String> =
+        ids_reqs.iter().map(|r| r.relay_url.clone()).collect();
+    assert!(
+        urls.contains("wss://relay1/"),
+        "alice's resolved write relay must be a routing target; got {urls:?}"
+    );
+    assert!(
+        urls.contains("wss://relay2/"),
+        "bob's resolved write relay must be a routing target; got {urls:?}"
+    );
+    for seed in BOOTSTRAP_DISCOVERY_RELAYS {
+        assert!(
+            urls.contains(*seed),
+            "uncached-author id must fall back to bootstrap seed {seed}; \
+             got {urls:?}"
+        );
+    }
+    // No unexpected leakage onto other resolved relays.
+    let expected: std::collections::BTreeSet<String> = [
+        "wss://relay1/".to_string(),
+        "wss://relay2/".to_string(),
+    ]
+    .into_iter()
+    .chain(BOOTSTRAP_DISCOVERY_RELAYS.iter().map(|s| s.to_string()))
+    .collect();
+    assert_eq!(
+        urls, expected,
+        "hydration URL set must be exactly the resolved write relays plus \
+         the cold-start bootstrap seeds"
+    );
+
+    // (3) D3 enforcement: relay1 carries ONLY id_a, relay2 carries ONLY id_b,
+    //     bootstrap seeds carry ONLY id_c. A leak (id_a on relay2, or id_b
+    //     on bootstrap when bob's write relay is resolved, etc.) is the
+    //     pre-T121 bug this task closes.
+    for r in &ids_reqs {
+        let carries_a = r.text.contains(&id_a);
+        let carries_b = r.text.contains(&id_b);
+        let carries_c = r.text.contains(&id_c);
+        match r.relay_url.as_str() {
+            "wss://relay1/" => {
+                assert!(carries_a, "relay1 must carry id_a; text={}", r.text);
+                assert!(!carries_b, "relay1 must NOT carry id_b; text={}", r.text);
+                assert!(!carries_c, "relay1 must NOT carry id_c; text={}", r.text);
+            }
+            "wss://relay2/" => {
+                assert!(carries_b, "relay2 must carry id_b; text={}", r.text);
+                assert!(!carries_a, "relay2 must NOT carry id_a; text={}", r.text);
+                assert!(!carries_c, "relay2 must NOT carry id_c; text={}", r.text);
+            }
+            url if BOOTSTRAP_DISCOVERY_RELAYS.contains(&url) => {
+                assert!(
+                    carries_c,
+                    "bootstrap seed must carry id_c (uncached author); text={}",
+                    r.text
+                );
+                assert!(
+                    !carries_a,
+                    "bootstrap seed must NOT carry id_a (alice resolved); text={}",
+                    r.text
+                );
+                assert!(
+                    !carries_b,
+                    "bootstrap seed must NOT carry id_b (bob resolved); text={}",
+                    r.text
+                );
+            }
+            other => panic!("unexpected hydration relay {other}"),
+        }
+    }
+}

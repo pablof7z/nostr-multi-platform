@@ -115,19 +115,51 @@ fn open_thread_emits_context_and_reply_reqs() {
 
     let requests = kernel.open_thread(focused_id.to_string(), true);
 
-    assert_eq!(requests.len(), 2);
+    // T121: thread hydration now partitions ids by the original-event
+    // author's NIP-65 write relays. The focused event's author has no
+    // cached kind:10002, so the cold-start path fans the ids and reply
+    // targets across both BOOTSTRAP_DISCOVERY_RELAYS seeds — one REQ per
+    // seed per leg (ids + replies) = 4 REQs.
+    let ids_reqs: Vec<&OutboundMessage> = requests
+        .iter()
+        .filter(|r| r.text.contains("\"thread-ids-"))
+        .collect();
+    let reply_reqs: Vec<&OutboundMessage> = requests
+        .iter()
+        .filter(|r| r.text.contains("\"thread-replies-"))
+        .collect();
+    assert_eq!(
+        ids_reqs.len(),
+        crate::relay::BOOTSTRAP_DISCOVERY_RELAYS.len(),
+        "expected one thread-ids REQ per bootstrap seed; got {requests:?}"
+    );
+    assert_eq!(
+        reply_reqs.len(),
+        crate::relay::BOOTSTRAP_DISCOVERY_RELAYS.len(),
+        "expected one thread-replies REQ per bootstrap seed; got {requests:?}"
+    );
+
     let joined = requests
         .iter()
         .map(|request| request.text.as_str())
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(joined.contains("\"thread-ids-1\""));
-    assert!(joined.contains("\"thread-replies-2\""));
+    assert!(joined.contains("thread-ids-1-"));
+    assert!(joined.contains("thread-replies-2-"));
     assert!(joined.contains(focused_id));
     assert!(joined.contains(root_id));
     assert!(joined.contains(previous_id));
     assert!(joined.contains("\"#e\""));
     assert!(!kernel.thread_request_pending);
+
+    // Every REQ targets a bootstrap discovery seed (uncached author path).
+    for r in &requests {
+        assert!(
+            crate::relay::BOOTSTRAP_DISCOVERY_RELAYS.contains(&r.relay_url.as_str()),
+            "uncached-author hydration must route to a bootstrap seed; got {}",
+            r.relay_url
+        );
+    }
 }
 
 #[test]

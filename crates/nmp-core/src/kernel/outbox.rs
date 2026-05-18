@@ -129,6 +129,48 @@ impl Kernel {
             .all(|a| self.author_relay_lists.contains_key(a))
     }
 
+    /// Partition `ids` by their **original-event author's** NIP-65 write
+    /// relays — the thread hydration outbox path (T121, codex R1).
+    ///
+    /// For each id, look up the cached event in `self.events`. If found, route
+    /// the id to every relay in the author's resolved write set. If the id is
+    /// not in the local store (i.e. we have no record of who wrote it), route
+    /// it to every [`BOOTSTRAP_DISCOVERY_RELAYS`] seed — the cold-start
+    /// discovery path: that's the only socket we can ask "who wrote this id?"
+    /// on without violating D3.
+    ///
+    /// D3 (outbox automatic): reply threads should not depend on bootstrap
+    /// relays carrying the conversation — the original author's write relays
+    /// are the canonical home of both their own event and (heuristically) the
+    /// kind:1/6 replies that reference it via `#e`. Reply authors of course
+    /// write to *their own* relays; routing reply-fetch to the root author's
+    /// relays is a deliberate compromise: it converges on whichever relays
+    /// already serve the thread context rather than fanning to every
+    /// participant. See codex review R1 of T105 keystone for the rationale.
+    ///
+    /// Empty input yields an empty map (caller emits nothing).
+    pub(crate) fn partition_ids_by_author_write_relays(
+        &self,
+        ids: &[String],
+    ) -> BTreeMap<String, Vec<String>> {
+        let mut by_relay: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for id in ids {
+            let relays = match self.events.get(id) {
+                Some(event) => self.author_write_relays(&event.author),
+                None => Self::bootstrap_discovery_relays(),
+            };
+            for relay in relays {
+                by_relay.entry(relay).or_default().push(id.clone());
+            }
+        }
+        // Stable id order within each relay slice (plan-id stability / D8).
+        for ids in by_relay.values_mut() {
+            ids.sort();
+            ids.dedup();
+        }
+        by_relay
+    }
+
     /// T132 — borrow `author_relay_lists` as a planner-facing [`MailboxCache`].
     ///
     /// The returned adapter is the single bridge between the kernel's
