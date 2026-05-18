@@ -7,3 +7,8 @@
 .claude/
 .codex-review*/
 .codex-worktrees/
+
+# Chirp Xcode build output
+ios/Chirp/build/
+ios/Chirp/Chirp.xcodeproj/xcuserdata/
+ios/Chirp/Chirp.xcodeproj/project.xcworkspace/xcuserdata/

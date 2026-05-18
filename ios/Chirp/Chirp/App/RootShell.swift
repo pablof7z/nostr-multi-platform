@@ -1,0 +1,112 @@
+import SwiftUI
+
+// ─────────────────────────────────────────────────────────────────────────
+// FROZEN NAVIGATION CONTRACT — do not edit in Phase 2.
+//
+// Every feature screen is its own file under Features/. Phase-2 agents
+// replace the BODY of their assigned feature file; they do not touch this
+// shell, ChirpRoute, or each other's files.
+//
+// Navigation: one NavigationStack per tab. Any screen pushes a typed
+// `ChirpRoute`; destinations are resolved centrally here so Profile/Thread
+// work identically from any tab without cross-file coupling.
+// ─────────────────────────────────────────────────────────────────────────
+
+/// Typed navigation routes. Push with `router.path.append(.profile(pk))`.
+enum ChirpRoute: Hashable {
+    case profile(pubkey: String)
+    case thread(eventID: String)
+}
+
+/// Per-tab navigation path holder injected into the environment.
+@MainActor
+final class ChirpRouter: ObservableObject {
+    @Published var path = NavigationPath()
+    func push(_ r: ChirpRoute) { path.append(r) }
+    func popToRoot() { path = NavigationPath() }
+}
+
+enum ChirpTab: Hashable { case home, search, notifications, wallet, settings }
+
+struct RootShell: View {
+    @EnvironmentObject private var model: KernelModel
+    @State private var tab: ChirpTab = .home
+
+    var body: some View {
+        Group {
+            if model.hasActiveAccount {
+                mainTabs
+            } else {
+                OnboardingView()
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+        }
+        .animation(.smooth(duration: 0.4), value: model.hasActiveAccount)
+        .overlay(alignment: .top) { toast }
+    }
+
+    private var mainTabs: some View {
+        TabView(selection: $tab) {
+            tabStack { HomeFeedView() }
+                .tabItem { Label("Home", systemImage: "house.fill") }
+                .tag(ChirpTab.home)
+
+            tabStack { SearchView() }
+                .tabItem { Label("Search", systemImage: "magnifyingglass") }
+                .tag(ChirpTab.search)
+
+            tabStack { NotificationsView() }
+                .tabItem { Label("Activity", systemImage: "bell.fill") }
+                .tag(ChirpTab.notifications)
+
+            tabStack { WalletView() }
+                .tabItem { Label("Wallet", systemImage: "bolt.fill") }
+                .tag(ChirpTab.wallet)
+
+            tabStack { SettingsHubView() }
+                .tabItem { Label("Settings", systemImage: "gearshape.fill") }
+                .tag(ChirpTab.settings)
+        }
+    }
+
+    /// Wraps a tab root in its own NavigationStack + the shared route
+    /// destination map + a per-tab router in the environment.
+    @ViewBuilder
+    private func tabStack<Root: View>(@ViewBuilder _ root: () -> Root) -> some View {
+        TabStack(root: root())
+    }
+
+    @ViewBuilder
+    private var toast: some View {
+        if let msg = model.lastErrorToast {
+            Text(msg)
+                .font(ChirpFont.callout).foregroundStyle(.white)
+                .padding(.horizontal, ChirpSpace.l).padding(.vertical, ChirpSpace.m)
+                .background(.red.opacity(0.92), in: Capsule())
+                .padding(.top, 8)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .onTapGesture { model.clearErrorToast() }
+                .task {
+                    try? await Task.sleep(for: .seconds(4))
+                    model.clearErrorToast()
+                }
+        }
+    }
+}
+
+private struct TabStack<Root: View>: View {
+    let root: Root
+    @StateObject private var router = ChirpRouter()
+    var body: some View {
+        NavigationStack(path: $router.path) {
+            root
+                .navigationDestination(for: ChirpRoute.self) { route in
+                    switch route {
+                    case .profile(let pk): ProfileView(pubkey: pk)
+                    case .thread(let id): ThreadScreen(eventID: id)
+                    }
+                }
+        }
+        .environmentObject(router)
+    }
+}
