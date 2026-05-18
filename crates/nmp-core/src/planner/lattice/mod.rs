@@ -2,6 +2,10 @@
 //! design. Only shapes that pass all eight rules are merged; otherwise the
 //! caller emits two distinct REQs.
 //!
+//! ## Module structure
+//!
+//! - `rules` — the 8 individual rule functions (pub(super)).
+//!
 //! Design: `docs/design/subscription-compilation/compiler.md` §3.3
 //! Doctrine: D8 (zero per-event allocs on the hot path after warmup).
 //!
@@ -15,7 +19,13 @@
 //! 7. `event_ids` — union, capped.
 //! 8. `addresses` — union, capped; requires other fields mergeable per 1–7.
 
-use super::interest::{InterestLifecycle, InterestShape};
+mod rules;
+
+use crate::planner::interest::{InterestLifecycle, InterestShape};
+use rules::{
+    rule1_kinds, rule2_tags, rule3_since, rule4_until, rule5_limit, rule6_lifecycle,
+    rule7_event_ids, rule8_addresses,
+};
 
 /// Per-relay cap for merged value sets (tags, ids, addresses).
 /// This mirrors the relay default of 1000 per filter.
@@ -36,7 +46,12 @@ pub enum MergeOutcome {
 /// Neither `a` nor `b` is modified on refusal.
 ///
 /// Design: §3.3 Rules 1–8
-pub fn merge(a: &InterestShape, b: &InterestShape, lifecycle_a: &InterestLifecycle, lifecycle_b: &InterestLifecycle) -> MergeOutcome {
+pub fn merge(
+    a: &InterestShape,
+    b: &InterestShape,
+    lifecycle_a: &InterestLifecycle,
+    lifecycle_b: &InterestLifecycle,
+) -> MergeOutcome {
     // Rule 6 first — cheapest check, prune early.
     if !rule6_lifecycle(lifecycle_a, lifecycle_b) {
         return MergeOutcome::Refused;
@@ -95,131 +110,6 @@ pub fn merge(a: &InterestShape, b: &InterestShape, lifecycle_a: &InterestLifecyc
     })
 }
 
-// ─── Individual rules ─────────────────────────────────────────────────────────
-
-/// Rule 1 — `kinds` merge.
-///
-/// Mergeable iff `a.kinds == b.kinds` OR one is empty (wildcard absorbs).
-/// Returns the merged kinds set, or `None` to refuse.
-fn rule1_kinds(
-    a: &InterestShape,
-    b: &InterestShape,
-) -> Option<std::collections::BTreeSet<u32>> {
-    if a.kinds == b.kinds {
-        Some(a.kinds.clone())
-    } else if a.kinds.is_empty() {
-        // a is wildcard — wildcard absorbs
-        Some(b.kinds.clone())
-    } else if b.kinds.is_empty() {
-        Some(a.kinds.clone())
-    } else {
-        // Both non-empty but different — refuse (merging would widen kinds)
-        None
-    }
-}
-
-/// Rule 2 — `tags` merge.
-///
-/// Mergeable iff both shapes have the same tag key dimensions, AND the union
-/// of values per dimension stays under `limit`.
-fn rule2_tags(
-    a: &InterestShape,
-    b: &InterestShape,
-    limit: usize,
-) -> Option<std::collections::BTreeMap<super::interest::TagKey, std::collections::BTreeSet<String>>> {
-    // Keys must be identical (same dimensions)
-    if a.tags.keys().ne(b.tags.keys()) {
-        return None;
-    }
-
-    let mut merged = std::collections::BTreeMap::new();
-    for (key, av) in &a.tags {
-        let bv = b.tags.get(key)?; // key must exist in b (already checked above)
-        let union: std::collections::BTreeSet<String> = av.union(bv).cloned().collect();
-        if union.len() > limit {
-            return None;
-        }
-        merged.insert(key.clone(), union);
-    }
-    Some(merged)
-}
-
-/// Rule 3 — `since` merge.
-///
-/// Returns `min(a.since, b.since)` iff both are `Some` or both are `None`.
-/// Mixed (one bounded, one unbounded) returns `None` (refuse).
-fn rule3_since(a: &InterestShape, b: &InterestShape) -> Option<Option<u64>> {
-    match (a.since, b.since) {
-        (None, None) => Some(None),
-        (Some(sa), Some(sb)) => Some(Some(sa.min(sb))),
-        _ => None, // Mixed — refuse
-    }
-}
-
-/// Rule 4 — `until` merge.
-///
-/// Returns `max(a.until, b.until)` iff both are `Some` or both are `None`.
-/// Mixed returns `None` (refuse).
-fn rule4_until(a: &InterestShape, b: &InterestShape) -> Option<Option<u64>> {
-    match (a.until, b.until) {
-        (None, None) => Some(None),
-        (Some(ua), Some(ub)) => Some(Some(ua.max(ub))),
-        _ => None, // Mixed — refuse
-    }
-}
-
-/// Rule 5 — `limit` merge.
-///
-/// Mergeable iff both limits are absent. If either has a limit, refuse
-/// (broadening would mask the limit's intent).
-fn rule5_limit(a: &InterestShape, b: &InterestShape) -> bool {
-    a.limit.is_none() && b.limit.is_none()
-}
-
-/// Rule 6 — `lifecycle` merge.
-///
-/// Tailing and one-shot must not merge (one-shot would never close the tailing
-/// subscription). Both lifecycles must be identical.
-fn rule6_lifecycle(a: &InterestLifecycle, b: &InterestLifecycle) -> bool {
-    a == b
-}
-
-/// Rule 7 — `event_ids` merge by union.
-///
-/// Returns `None` if the union would exceed `limit`.
-fn rule7_event_ids(
-    a: &InterestShape,
-    b: &InterestShape,
-    limit: usize,
-) -> Option<std::collections::BTreeSet<super::interest::EventId>> {
-    let union: std::collections::BTreeSet<_> = a.event_ids.union(&b.event_ids).cloned().collect();
-    if union.len() > limit {
-        None
-    } else {
-        Some(union)
-    }
-}
-
-/// Rule 8 — `addresses` merge by union.
-///
-/// Merges the address-pointer sets. Returns `None` if the union exceeds `limit`.
-/// The other constraints (authors, kinds, time, lifecycle) must have been
-/// checked by Rules 1–7 before reaching this point — the method does not
-/// re-check them.
-fn rule8_addresses(
-    a: &InterestShape,
-    b: &InterestShape,
-    limit: usize,
-) -> Option<std::collections::BTreeSet<super::interest::NaddrCoord>> {
-    let union: std::collections::BTreeSet<_> =
-        a.addresses.union(&b.addresses).cloned().collect();
-    if union.len() > limit {
-        None
-    } else {
-        Some(union)
-    }
-}
-
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -261,11 +151,47 @@ mod tests {
 
     #[test]
     fn rule1_wildcard_absorbs_specific() {
-        // a is wildcard (empty), b is specific — result is b's kinds
+        // a is wildcard (empty), b is specific — result MUST be wildcard (empty),
+        // NOT b.kinds. Returning b.kinds would narrow the merged subscription,
+        // causing the relay to miss kinds that the wildcard side intended to match.
         let a = InterestShape::default(); // kinds = empty (wildcard)
         let b = shape_with_kinds(&[1, 6]);
         let r = merge(&a, &b, &tailing(), &tailing());
-        assert!(matches!(r, MergeOutcome::Merged(ref s) if s.kinds == b.kinds));
+        assert!(
+            matches!(r, MergeOutcome::Merged(ref s) if s.kinds.is_empty()),
+            "wildcard ∪ {{1,6}} must be wildcard (empty set), not {{1,6}}"
+        );
+    }
+
+    #[test]
+    fn wildcard_unions_with_anything_stays_wildcard() {
+        // Negative-direction: wildcard merged with ANY concrete set must stay wildcard.
+        // This is the correctness test the T30 codex review flagged as missing.
+        let wildcard = InterestShape::default(); // kinds = empty
+        for concrete_kinds in [
+            vec![1u32],
+            vec![6],
+            vec![1, 6],
+            vec![0, 1, 3, 4, 5, 6, 7, 9, 10, 30023],
+        ] {
+            let concrete = shape_with_kinds(&concrete_kinds);
+            let r_ab = merge(&wildcard, &concrete, &tailing(), &tailing());
+            let r_ba = merge(&concrete, &wildcard, &tailing(), &tailing());
+            assert!(
+                matches!(r_ab, MergeOutcome::Merged(ref s) if s.kinds.is_empty()),
+                "wildcard ∪ {:?} must be wildcard (a=wildcard)", concrete_kinds
+            );
+            assert!(
+                matches!(r_ba, MergeOutcome::Merged(ref s) if s.kinds.is_empty()),
+                "wildcard ∪ {:?} must be wildcard (b=wildcard)", concrete_kinds
+            );
+        }
+        // wildcard ∪ wildcard = wildcard
+        let r = merge(&wildcard, &wildcard, &tailing(), &tailing());
+        assert!(
+            matches!(r, MergeOutcome::Merged(ref s) if s.kinds.is_empty()),
+            "wildcard ∪ wildcard must be wildcard"
+        );
     }
 
     // ── Rule 2 — tags ────────────────────────────────────────────────────────
@@ -292,7 +218,7 @@ mod tests {
     fn rule2_different_tag_dimensions_refuse() {
         let mut tags_a = BTreeMap::new();
         tags_a.insert("t".to_string(), ["bitcoin".to_string()].into_iter().collect::<BTreeSet<_>>());
-        let tags_b = BTreeMap::new(); // no #t dimension
+        let tags_b = BTreeMap::new();
         let a = InterestShape { tags: tags_a, ..Default::default() };
         let b = InterestShape { tags: tags_b, ..Default::default() };
         assert_eq!(merge(&a, &b, &tailing(), &tailing()), MergeOutcome::Refused);
@@ -400,7 +326,6 @@ mod tests {
 
     #[test]
     fn rule7_event_ids_cap_refuse() {
-        // Build two sets whose union exceeds DEFAULT_VALUE_LIMIT (1000)
         let ids_a: BTreeSet<String> = (0u32..600).map(|i| format!("{i:064x}")).collect();
         let ids_b: BTreeSet<String> = (500u32..1100).map(|i| format!("{i:064x}")).collect();
         let a = InterestShape { event_ids: ids_a, ..Default::default() };
@@ -412,16 +337,8 @@ mod tests {
 
     #[test]
     fn rule8_address_union_merges() {
-        let coord_a = NaddrCoord {
-            pubkey: "a".repeat(64),
-            kind: 30023,
-            d_tag: "post-a".to_string(),
-        };
-        let coord_b = NaddrCoord {
-            pubkey: "b".repeat(64),
-            kind: 30023,
-            d_tag: "post-b".to_string(),
-        };
+        let coord_a = NaddrCoord { pubkey: "a".repeat(64), kind: 30023, d_tag: "post-a".to_string() };
+        let coord_b = NaddrCoord { pubkey: "b".repeat(64), kind: 30023, d_tag: "post-b".to_string() };
         let a = InterestShape {
             kinds: [30023].into_iter().collect(),
             addresses: [coord_a.clone()].into_iter().collect(),
@@ -443,12 +360,7 @@ mod tests {
 
     #[test]
     fn rule8_address_dedup_identical_coord() {
-        // Two interests for the exact same NaddrCoord should merge into one.
-        let coord = NaddrCoord {
-            pubkey: "a".repeat(64),
-            kind: 30023,
-            d_tag: "my-post".to_string(),
-        };
+        let coord = NaddrCoord { pubkey: "a".repeat(64), kind: 30023, d_tag: "my-post".to_string() };
         let a = InterestShape {
             kinds: [30023].into_iter().collect(),
             addresses: [coord.clone()].into_iter().collect(),
@@ -457,7 +369,6 @@ mod tests {
         let b = a.clone();
         let r = merge(&a, &b, &one_shot(), &one_shot());
         if let MergeOutcome::Merged(s) = r {
-            // BTreeSet deduplicates; should still be one coord.
             assert_eq!(s.addresses.len(), 1);
         } else {
             panic!("expected Merged");
@@ -466,12 +377,7 @@ mod tests {
 
     #[test]
     fn rule8_addresses_respect_other_rules() {
-        // If lifecycle differs, Rule 6 fires first — addresses are irrelevant.
-        let coord = NaddrCoord {
-            pubkey: "a".repeat(64),
-            kind: 30023,
-            d_tag: "post".to_string(),
-        };
+        let coord = NaddrCoord { pubkey: "a".repeat(64), kind: 30023, d_tag: "post".to_string() };
         let a = InterestShape {
             kinds: [30023].into_iter().collect(),
             addresses: [coord.clone()].into_iter().collect(),

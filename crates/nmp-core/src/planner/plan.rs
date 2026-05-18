@@ -9,6 +9,37 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::interest::{InterestId, InterestShape, RelayUrl};
 
+// ─── UserConfiguredCategory ──────────────────────────────────────────────────
+
+/// Sub-category for `RoutingSource::UserConfigured`.
+///
+/// Indexer fallback is NOT a fifth diagnostic lane — it is `UserConfigured`
+/// with sub-category `Indexer`. This preserves the four-lane discipline
+/// (`docs/design/subscription-compilation/diagnostics.md` §5.0 + §5.1 Lane 4)
+/// so the diagnostic UI always sees exactly four columns regardless of whether
+/// an author is served via NIP-65, hints, provenance, or any user-configured
+/// sub-category.
+///
+/// `ByLaneCounts::indexer_fallback` in the coverage view exposes the indexer
+/// sub-count WITHOUT splitting lane 4 — it is a sub-count of `user_configured`,
+/// not an extra lane.
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+pub enum UserConfiguredCategory {
+    /// User's own read relays (overrides NIP-65 read for the active account).
+    AccountRead,
+    /// User's own write relays.
+    AccountWrite,
+    /// Kernel-configured indexer relay (e.g. purplepag.es).
+    ///
+    /// This is the sub-category that represents indexer fallback routing in
+    /// diagnostics — it is lane 4 (User-configured), not a fifth lane. The
+    /// indexer set is an operator policy choice applied by the kernel when
+    /// NIP-65 mailboxes are unknown. Never used for writes (D3).
+    Indexer,
+    /// Operator-injected relay for debug/testing purposes.
+    Debug,
+}
+
 // ─── RoutingSource ───────────────────────────────────────────────────────────
 
 /// Why a relay was included in the plan.
@@ -18,19 +49,26 @@ use super::interest::{InterestId, InterestShape, RelayUrl};
 /// preserving all reasons — the four-lane diagnostic discipline requires that
 /// lanes are never collapsed.
 ///
+/// **Indexer fallback** is represented as `UserConfigured(UserConfiguredCategory::Indexer)`,
+/// NOT as a separate variant. There are exactly four lanes in the diagnostic model
+/// (NIP-65 / Hint / Provenance / User-configured); the indexer is a sub-category
+/// of lane 4. See `docs/design/subscription-compilation/diagnostics.md` §5.0.
+///
 /// Design: `docs/design/subscription-compilation/diagnostics.md` §5.2
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
 pub enum RoutingSource {
-    /// Resolved from the author's published kind:10002 relay list.
+    /// Resolved from the author's published kind:10002 relay list (lane 1).
     Nip65,
-    /// Resolved from a user-configured relay set.
-    UserConfigured,
-    /// Resolved from indexer fallback (no mailbox known for the author).
-    Indexer,
-    /// Resolved from a routing hint embedded in an event tag.
+    /// Resolved from a routing hint embedded in an event tag (lane 2).
     Hint,
-    /// Observed as the provenance relay for a prior event.
+    /// Observed as the provenance relay for a prior event (lane 3).
     Provenance,
+    /// Resolved from a user-configured or operator-policy relay set (lane 4).
+    ///
+    /// Includes indexer fallback as `UserConfigured(UserConfiguredCategory::Indexer)`.
+    /// The sub-category is carried here so that `RelayPlan::role_tags` remains
+    /// self-describing without consulting a separate fact stream.
+    UserConfigured(UserConfiguredCategory),
 }
 
 // ─── SubShape ────────────────────────────────────────────────────────────────
@@ -41,7 +79,7 @@ pub enum RoutingSource {
 /// frame. The `canonical_filter_hash` provides stable identity for ADR-0007
 /// `WireSubscriptionStatus` records across re-emissions.
 ///
-/// # TODO(wire-emitter)
+/// # Wire-emitter lifecycle field
 /// Add `lifecycle: InterestLifecycle` to this struct when the wire-emitter lands.
 /// The compiler already computes lifecycle during the Stage 3 greedy merge;
 /// lifecycle equality is enforced by Rule 6 before any two shapes are merged.

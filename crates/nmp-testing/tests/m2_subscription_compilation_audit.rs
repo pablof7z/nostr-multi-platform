@@ -13,12 +13,20 @@
 //! Design: `docs/design/subscription-compilation/tests.md`
 //! Doctrine: D3 (routing automatic), D6 (errors internal), D8 (zero allocs).
 
+// Import through the planner's public API surface — submodule paths are
+// pub(crate) and must not be named from an external crate.
 use nmp_core::planner::{
-    compiler::{InMemoryMailboxCache, MailboxSnapshot, SubscriptionCompiler},
-    interest::{
-        InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest, NaddrCoord,
-    },
-    plan::RoutingSource,
+    InMemoryMailboxCache,
+    MailboxSnapshot,
+    SubscriptionCompiler,
+    InterestId,
+    InterestLifecycle,
+    InterestScope,
+    InterestShape,
+    LogicalInterest,
+    NaddrCoord,
+    RoutingSource,
+    UserConfiguredCategory,
 };
 use std::collections::BTreeSet;
 
@@ -84,7 +92,8 @@ fn interest_id(n: u64) -> InterestId {
 /// Design: `docs/design/subscription-compilation/tests.md` §9.2 Assertion 2.
 #[test]
 fn timeline_compiles_to_per_relay_union() {
-    let authors = make_authors_with_overlapping_mailboxes(300);
+    // Design spec §9.2 Assertion 2 states 1000 authors as the boundary.
+    let authors = make_authors_with_overlapping_mailboxes(1000);
 
     let mut cache = InMemoryMailboxCache::new();
     for (pk, mb) in &authors {
@@ -222,6 +231,29 @@ fn address_pointer_dedup_across_two_interests() {
         1,
         "Rule 8 must merge identical address sets into one SubShape"
     );
+
+    // Assert: merged sub-shape contains the union of both interests' address sets.
+    // (Both interests had the same coord, so the union is that one coord.)
+    let sub = &relay_plan.sub_shapes[0];
+    assert!(
+        sub.shape.addresses.contains(&coord),
+        "merged SubShape must contain the NaddrCoord from both interests"
+    );
+    assert_eq!(
+        sub.shape.addresses.len(),
+        1,
+        "dedup: merged address set must have exactly one coord (union of two identical sets)"
+    );
+
+    // Assert: both originating interests are tracked in the merged plan output.
+    // D8 invariant: the reverse index must account for all claim holders.
+    let mut tracked_ids: Vec<u64> = sub.originating_interests.iter().map(|id| id.0).collect();
+    tracked_ids.sort();
+    assert_eq!(
+        tracked_ids,
+        vec![10, 11],
+        "both originating InterestIds must be recorded in the merged SubShape"
+    );
 }
 
 // ─── Fallback to indexer set when no mailbox known ───────────────────────────
@@ -253,9 +285,11 @@ fn unknown_author_falls_back_to_indexer() {
         "unknown author must fall back to indexer relay"
     );
     let rp = &plan.per_relay["wss://purplepag.es"];
+    // Indexer fallback is lane 4 (UserConfigured/Indexer) per diagnostics.md §5.0 + ADR-0007.
+    // There is NO RoutingSource::Indexer variant — indexer is a subcategory of UserConfigured.
     assert!(
-        rp.role_tags.contains(&RoutingSource::Indexer),
-        "routing source for indexer fallback must be Indexer"
+        rp.role_tags.contains(&RoutingSource::UserConfigured(UserConfiguredCategory::Indexer)),
+        "routing source for indexer fallback must be UserConfigured(Indexer), not a fifth lane"
     );
 }
 
@@ -421,3 +455,6 @@ fn plan_id_changes_when_interest_set_changes() {
         "adding an interest must change plan_id even if wire REQs merge"
     );
 }
+
+// Plan-id referenced-pubkeys-only tests live in m2_plan_id_stability.rs
+// to keep this file under the 500-LOC hard limit.

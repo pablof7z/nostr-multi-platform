@@ -1,0 +1,191 @@
+//! The subscription compiler: 4-stage pipeline from `Vec<LogicalInterest>`
+//! to `CompiledPlan`.
+//!
+//! ## Pipeline stages
+//!
+//! 1. **Resolve authors → mailboxes** — consult `MailboxCache` (phase 1 stub:
+//!    `EmptyMailboxCache`; real impl in `nmp-nip65`).
+//! 2. **Indexer fallback** — authors with no known mailbox route to the
+//!    configured indexer set.
+//! 3. **Per-relay shape merge** — group by relay URL; merge compatible shapes
+//!    with `lattice::merge()` (Rules 1–8). Author sets are partitioned per
+//!    relay — only authors that declared a relay appear in its sub-shape.
+//! 4. **Plan-id binding** — deterministic hash → stable `plan_id`.
+//!
+//! ## Module structure
+//!
+//! - `mailbox`   — `MailboxCache` trait + `MailboxSnapshot` + phase-1 impls.
+//! - `plan_id`   — `CompileContext` + `compute_plan_id` (FNV-1a hash).
+//! - `partition` — `RelayEntry` + `partition_interest` (Stage 1+2).
+//!
+//! Design: `docs/design/subscription-compilation/compiler.md` §3
+//! Doctrine: D3 (outbox routing automatic), D6 (errors never cross FFI),
+//!           D8 (zero per-event allocs after warmup).
+
+mod mailbox;
+mod partition;
+mod plan_id;
+
+pub use mailbox::{EmptyMailboxCache, InMemoryMailboxCache, MailboxCache, MailboxSnapshot};
+pub use plan_id::CompileContext;
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use crate::planner::{
+    interest::{InterestId, InterestLifecycle, InterestShape, LogicalInterest, RelayUrl},
+    lattice::{merge, MergeOutcome},
+    plan::{CompiledPlan, PlannerError, RelayPlan, RoutingSource, SubShape},
+};
+use partition::{partition_interest, RelayEntry};
+use plan_id::compute_plan_id;
+
+/// Version of the merge lattice — bump when Rule semantics change.
+const MERGE_LATTICE_VERSION: u8 = 1;
+
+// ─── SubscriptionCompiler ────────────────────────────────────────────────────
+
+/// The subscription compiler.
+///
+/// Holds a reference to the mailbox cache and indexer relay set. Both may be
+/// updated between compilations (the compiler always reads the current state).
+///
+/// ## Direction table (§3.1 / §3.2)
+///
+/// | Interest shape          | Direction | Relay source                                     |
+/// |-------------------------|-----------|--------------------------------------------------|
+/// | Has `authors`           | Outbox    | author's write relays via NIP-65 (or indexer)    |
+/// | Has `#p` tag values     | Inbox     | tagged pubkey's read relays (post-v1 DMs/notifs) |
+/// | Has `addresses`         | Outbox    | coord.pubkey's write relays                      |
+/// | No author/addr/p        | Read      | active-account read relays (hashtag firehose)    |
+pub struct SubscriptionCompiler<'a> {
+    mailbox_cache: &'a dyn MailboxCache,
+    indexer_relays: &'a [RelayUrl],
+    /// Active account read relays — for no-author/no-address interests.
+    /// Phase 1: empty → falls through to indexer set.
+    /// Phase 2: populated from active account's kind:10002 read-relays.
+    active_account_read_relays: &'a [RelayUrl],
+}
+
+impl<'a> SubscriptionCompiler<'a> {
+    /// Construct a compiler bound to a mailbox cache and indexer set.
+    pub fn new(mailbox_cache: &'a dyn MailboxCache, indexer_relays: &'a [RelayUrl]) -> Self {
+        Self { mailbox_cache, indexer_relays, active_account_read_relays: &[] }
+    }
+
+    /// Construct with explicit active-account read relays.
+    ///
+    /// When `active_account_read_relays` is non-empty, no-author interests
+    /// (hashtag firehose, global search) route to those relays instead of the
+    /// indexer set, using `RoutingSource::UserConfigured(AccountRead)`.
+    pub fn with_active_account_read_relays(
+        mailbox_cache: &'a dyn MailboxCache,
+        indexer_relays: &'a [RelayUrl],
+        active_account_read_relays: &'a [RelayUrl],
+    ) -> Self {
+        Self { mailbox_cache, indexer_relays, active_account_read_relays }
+    }
+
+    /// Compile a set of logical interests into a `CompiledPlan`.
+    ///
+    /// Equivalent to `compile_with_context(interests, &CompileContext::default())`.
+    /// Use `compile_with_context` when tracking policy version counters.
+    ///
+    /// # EventStore coverage
+    /// Phase 2 / M3 wiring point (not yet consulted):
+    /// ```text
+    /// // Phase 2: let coverage = event_store.coverage(&watermark_key)?;
+    /// // Use coverage to skip REQs whose time-range is fully cached locally.
+    /// ```
+    pub fn compile(
+        &self,
+        interests: &[LogicalInterest],
+    ) -> Result<CompiledPlan, PlannerError> {
+        self.compile_with_context(interests, &CompileContext::default())
+    }
+
+    /// Compile with explicit versioning context for plan-id stability.
+    ///
+    /// Callers that track `indexer_set_version` / `user_config_version` should
+    /// use this form so plan-ids invalidate correctly on policy changes.
+    pub fn compile_with_context(
+        &self,
+        interests: &[LogicalInterest],
+        ctx: &CompileContext,
+    ) -> Result<CompiledPlan, PlannerError> {
+        // ── Stages 1 + 2: author-partitioned relay entry collection ──────────
+        let mut relay_entries: BTreeMap<RelayUrl, Vec<RelayEntry>> = BTreeMap::new();
+        for interest in interests {
+            partition_interest(
+                interest,
+                self.mailbox_cache,
+                self.indexer_relays,
+                self.active_account_read_relays,
+                &mut relay_entries,
+            );
+        }
+
+        // ── Stage 3: Per-relay shape merge ──────────────────────────────────
+        let mut per_relay: BTreeMap<RelayUrl, RelayPlan> = BTreeMap::new();
+        for (relay_url, entries) in relay_entries {
+            let mut role_tags: BTreeSet<RoutingSource> = BTreeSet::new();
+            let mut resolved: Vec<(InterestShape, InterestLifecycle, RoutingSource, InterestId)> =
+                entries
+                    .into_iter()
+                    .map(|entry| {
+                        let source = entry.source.clone();
+                        role_tags.insert(source);
+                        entry.into_shape()
+                    })
+                    .collect();
+
+            let mut sub_shapes: Vec<(InterestShape, InterestLifecycle, Vec<InterestId>)> =
+                Vec::new();
+            for (shape, lifecycle, _source, interest_id) in resolved.drain(..) {
+                let mut merged = false;
+                for (existing_shape, existing_lifecycle, existing_ids) in sub_shapes.iter_mut() {
+                    if let MergeOutcome::Merged(new_shape) =
+                        merge(&existing_shape.clone(), &shape, existing_lifecycle, &lifecycle)
+                    {
+                        *existing_shape = new_shape;
+                        existing_ids.push(interest_id.clone());
+                        merged = true;
+                        break;
+                    }
+                }
+                if !merged {
+                    sub_shapes.push((shape, lifecycle, vec![interest_id]));
+                }
+            }
+
+            let relay_sub_shapes: Vec<SubShape> = sub_shapes
+                .into_iter()
+                .map(|(shape, _lifecycle, ids)| {
+                    let hash = simple_shape_hash(&shape);
+                    SubShape { shape, originating_interests: ids, canonical_filter_hash: hash }
+                })
+                .collect();
+
+            per_relay.insert(
+                relay_url.clone(),
+                RelayPlan { relay_url, role_tags, sub_shapes: relay_sub_shapes },
+            );
+        }
+
+        // ── Stage 4: Plan-id binding ──────────────────────────────────────────
+        let plan_id = compute_plan_id(interests, self.mailbox_cache, ctx, MERGE_LATTICE_VERSION);
+        Ok(CompiledPlan { plan_id, per_relay })
+    }
+}
+
+// ─── Canonical filter hash ────────────────────────────────────────────────────
+
+fn simple_shape_hash(shape: &InterestShape) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut h = DefaultHasher::new();
+    if let Ok(json) = serde_json::to_string(shape) {
+        json.hash(&mut h);
+    }
+    format!("{:08x}", h.finish() & 0xffff_ffff)
+}

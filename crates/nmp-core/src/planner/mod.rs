@@ -34,20 +34,35 @@
 //!
 //! Design: `docs/design/subscription-compilation/`
 
-pub mod compiler;
-pub mod interest;
-pub mod lattice;
-pub mod plan;
+pub(crate) mod compiler;
+pub(crate) mod interest;
+pub(crate) mod lattice;
+pub(crate) mod plan;
 
-// ─── Convenience re-exports ──────────────────────────────────────────────────
+// ─── Public API surface ──────────────────────────────────────────────────────
+//
+// Only the items below cross the crate boundary. Internals (RelayEntry,
+// partition_interest, FnvHasher, rule*_* functions, etc.) stay module-private.
+// `lattice::merge` is re-exported for the nmp-testing audit gate; all others
+// are consumed by crate-internal callers (kernel, actor).
 
 pub use compiler::{
-    EmptyMailboxCache, InMemoryMailboxCache, MailboxCache, MailboxSnapshot,
+    CompileContext,
+    EmptyMailboxCache,
+    InMemoryMailboxCache,
+    MailboxCache,
+    MailboxSnapshot,
     SubscriptionCompiler,
 };
 pub use interest::{
-    EventId, HintSource, InterestId, InterestLifecycle, InterestScope, InterestShape,
-    LogicalInterest, NaddrCoord, Pubkey, RelayHint, RelayUrl, TagKey, UnixSeconds,
+    InterestId,
+    InterestLifecycle,
+    InterestScope,
+    InterestShape,
+    LogicalInterest,
+    NaddrCoord,
+    Pubkey,
+    RelayUrl,
 };
-pub use lattice::{merge, MergeOutcome};
-pub use plan::{CompiledPlan, PlannerError, RelayPlan, RoutingSource, SubShape};
+pub use lattice::MergeOutcome;
+pub use plan::{CompiledPlan, PlannerError, RelayPlan, RoutingSource, SubShape, UserConfiguredCategory};

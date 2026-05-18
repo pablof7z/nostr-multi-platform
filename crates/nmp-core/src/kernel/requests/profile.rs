@@ -1,6 +1,6 @@
 //! Profile, author, and diagnostic-firehose request builders.
 //!
-//! # TODO(M2-migration)
+//! # M2 migration plan (compiler.md §3.5)
 //! Per `docs/design/subscription-compilation/compiler.md` §3.5, these request
 //! builders are scheduled for replacement by `SubscriptionCompiler`-driven
 //! interest registration once the wire-emitter, InterestRegistry, and

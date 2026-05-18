@@ -57,8 +57,8 @@ pub struct NaddrCoord {
     pub d_tag: String,
 }
 
-// TODO(nmp-nip19): add NaddrCoord::from_naddr_bech32 / to_naddr_bech32 helpers
-// once the nmp-nip19 crate (bech32 codec) lands in the workspace. Both helpers
+// Phase 2 (nmp-nip19): NaddrCoord::from_naddr_bech32 / to_naddr_bech32 helpers
+// land when the nmp-nip19 bech32 codec crate joins the workspace. Both helpers
 // are needed for the ThreadViewModule and MetaTimelineViewModule address-pointer
 // loaders to accept user-facing naddr strings from the Swift/Kotlin FFI surface.
 
