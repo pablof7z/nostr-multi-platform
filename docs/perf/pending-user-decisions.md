@@ -8,6 +8,20 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
+### PD-016 (resolved 2026-05-18 autonomously) — T62 lifecycle re-plan: A11 needs no dedicated drain_tick arm
+
+**Decision (autonomous, T62 / followlist-trigger):** The task specification called for "lifecycle handler re-plan" as a deliverable alongside the trigger variant and ingest fan. After reviewing the `drain_tick` implementation in `crates/nmp-core/src/subs/mod.rs`, A11 `FollowListChanged` does NOT need a dedicated side-effecting arm analogous to the `RelayAuthStateChanged → auth_gate.record_transition` arm.
+
+**Rationale:** `FollowListChanged` is a pure recompile trigger — it carries no gate state (no per-relay buffer, no auth state machine, no pending queue). The existing `drain_tick` flow is: drain inbox → apply any `RelayAuthStateChanged` side effects → call `recompile_and_diff()`. A11 falls through the auth-state arm correctly (it is not `RelayAuthStateChanged`) and is handled by the unconditional `recompile_and_diff()` call. The `requires_recompile()` method returns `true` for A11 via the default `!matches!(RelayReconnected {..})` negative match — no exhaustive match needs updating.
+
+**"Lifecycle re-plan" delivered as:** (a) the seam-gap doc-comment in `contacts.rs` explaining that `drain_tick` must be called at tick boundaries and that the compile/registry machinery is dormant until M11; (b) the unit test `follow_list_changed_requires_recompile` in `trigger.rs` confirming the trigger participates in the recompile path.
+
+**If the user disagrees:** add an explicit `CompileTrigger::FollowListChanged { .. } => { /* no-op side effect */ }` arm in `drain_tick` for documentation purposes. This is stylistically optional — it does not change runtime behaviour.
+
+### PD-017 (resolved 2026-05-18 autonomously) — T62 task claim skipped: TaskGet/TaskUpdate not available
+
+**Decision (autonomous, T62):** TaskGet and TaskUpdate tools were not available in this session (ToolSearch returned no matching schemas). Task #61 was therefore not formally claimed via `TaskUpdate in_progress`. The task description was read from the user's message directly. The commit message records "task #61 claim skipped — TaskGet/TaskUpdate not available as tools in this session." No functional impact on the deliverable.
+
 ### PD-015 (resolved 2026-05-18 autonomously, recommendation-accepted) — Recursion depth default = 4 in nmp-content
 
 **Decision (autonomous):** accepted the content-rendering designer's recommendation (in `docs/design/content-rendering.md` §12). `RenderContext::max_depth = 4` by default, configurable per app. Beyond depth 4 the embed card MUST collapse to a "see full thread" link rather than recurse. nmp-content-impl (T78, currently in flight) was sent this directive via SendMessage.
