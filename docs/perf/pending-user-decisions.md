@@ -490,3 +490,20 @@ Most of the MEDIUM findings (1-3 across 6711b01 and 8f7bbad, 1-3 across e895c09)
 
 **Default if no answer:** Schedule the 3 HIGH/MEDIUM correctness items from e895c09 (kind range validation, tag-drop policy, FFI silent JSON) and the Pulse/Stress decode-logging fix as immediate sub-agent dispatches; defer D8 hot-path optimization (per-inbound tick allocation) until reactivity-bench surfaces it.
 
+
+## PD-023 / PD-026 number collision RESOLVED
+
+**Filed:** 2026-05-18 (post-T136 Gate-1).
+
+The T136 agent's worktree-local copy reused the `PD-023` number for the LMDB option-selection decision. Per user direction: that entry is **renumbered to PD-026**. PD-023 remains the kind-by-kind publish-handler retirement decision (filed HB44 from the merge report).
+
+## PD-026 — LMDB persistence path RESOLVED → Option B (local fork)
+
+**Filed:** 2026-05-18. **Status:** RESOLVED 2026-05-18.
+
+Per T136 Gate-1 audit (`docs/design/lmdb/env-injection-status.md`, commit `1db4d31`): upstream `nostr-lmdb` v0.44.1 + master have no env-injection seam. ADR-0011's primary design blocked on choice between A (upstream PR) / B (local fork) / C (hand-roll heed) / D (rejected two-env).
+
+**Decision: Option B — local fork** at `crates/nmp-nostr-lmdb` with env-injection refactor applied locally. Immediate unblock for T136b. Intent to upstream the changes later via option A as a follow-up once the local fork has proven shape.
+
+**Rationale:** v1 timeline pressure outweighs the maintenance-surface cost of a short-lived fork. Option A acceptance latency is unknown (no precedent PRs of this shape); Option C is exactly what `nostrdb-rs-evaluation.md` was trying to avoid (~2100 LOC reinvention). Option B delivers the same correctness as A on a known timeline, with a clear migration path back to A later.
+
