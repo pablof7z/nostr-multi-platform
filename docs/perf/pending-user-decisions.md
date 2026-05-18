@@ -12,7 +12,14 @@ Format: one entry per decision. Surface every entry in every status update until
 
 User is asleep; decision made per autonomous-mode rule. Pattern-match: user has consistently chosen the cleanest long-term option over surgical/fast (PD-027 → substrate-types extract; PD-028 → ADR-first). Option A (trait seam, ~1-2 hr) is the recommended-clean choice; matches LSP-style backend pluggability; aligns `DomainHandle` with `EventStore` (also a trait); generalizes to future M2 hot-path (T140). Worktree agent dispatched at HB57.
 
-If user disagrees: Option B (opaque backend trait inside enum) is a ~30-min surgical alternative; revert this decision and rerun the rebase under B by replacing the dispatched agent's instructions.
+**HB62 (2026-05-18) update — AGENT STALLED, work RESCUED:** Agent `a369821d` stalled after re-rebasing 3 commits onto master (no progress for 600s → stream watchdog terminated). Final commits durably preserved on **`origin/t141-rescue` branch (tip `5474316`)**:
+- `c60a329` substrate-types extract + DomainBackend trait seam
+- `9064f3f` explicit M7 ingest arms for kinds 7/1111/9735
+- `5474316` PD-029 RESOLVED doc
+
+Agent's final log line ("Wait — 1081 not 1238?") suggests a **test-count REGRESSION** from the substrate-types extract — the agent noticed and was investigating when killed. **DO NOT BLINDLY MERGE `t141-rescue`** — a follow-up agent must investigate the regression first. Filed as T155 in TaskList.
+
+If user disagrees with Option A: Option B (opaque backend trait inside enum) is a ~30-min surgical alternative; revert this decision and rerun under B by replacing the dispatched agent's instructions.
 
 ---
 
