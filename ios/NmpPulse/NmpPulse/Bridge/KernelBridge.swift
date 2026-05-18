@@ -211,7 +211,10 @@ struct ProfileCard: Decodable, Equatable {
     let pubkey: String
     let npub: String
     let display: String
-    let pictureUrl: String?
+    // ADR-0017 / D1: the kernel always emits a non-empty picture URL (a real
+    // kind:0 URL or a deterministic `identicon:` placeholder), so this is a
+    // non-optional `String` — the FFI contract no longer permits null.
+    let pictureUrl: String
     let nip05: String
     let about: String
     let avatarInitials: String
@@ -223,7 +226,9 @@ struct TimelineItem: Decodable, Identifiable, Equatable, Hashable {
     let id: String
     let authorPubkey: String
     let authorDisplay: String
-    let authorPictureUrl: String?
+    // ADR-0017 / D1: always a non-empty `String` (real URL or `identicon:`
+    // placeholder); the FFI contract no longer permits null/loading.
+    let authorPictureUrl: String
     let authorAvatarInitials: String
     let authorAvatarColor: String
     let content: String

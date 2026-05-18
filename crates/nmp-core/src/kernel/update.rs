@@ -137,9 +137,13 @@ impl Kernel {
         let profile = self.profiles.get(&event.author);
         // D1: author_picture_url is always non-empty.  Use the kind:0 URL when
         // available; fall back to a deterministic identicon URI otherwise.
-        let author_picture_url = profile
+        // ADR-0017: the source discriminator MUST track the same selection the
+        // URL did — a profile that exists but carries no picture still resolves
+        // to the placeholder, so it is reported as `placeholder`, not `kind0`.
+        let real_picture = profile
             .and_then(|p| p.picture_url.as_deref())
-            .filter(|url| !url.is_empty())
+            .filter(|url| !url.is_empty());
+        let author_picture_url = real_picture
             .map(str::to_owned)
             .unwrap_or_else(|| picture_placeholder(&event.author));
         TimelineItem {
@@ -156,7 +160,7 @@ impl Kernel {
             author_avatar_color: profile
                 .map(|profile| profile.avatar_color.clone())
                 .unwrap_or_else(|| avatar_color(&event.author)),
-            author_avatar_source: if profile.is_some() {
+            author_avatar_source: if real_picture.is_some() {
                 "kind0".to_string()
             } else {
                 "placeholder".to_string()
@@ -189,9 +193,11 @@ impl Kernel {
         let profile = self.profiles.get(pubkey);
         // D1: picture_url is always non-empty.  Use the kind:0 URL when
         // available; fall back to a deterministic identicon URI otherwise.
-        let picture_url = profile
+        // ADR-0017: `source` MUST track the same selection the URL did.
+        let real_picture = profile
             .and_then(|p| p.picture_url.as_deref())
-            .filter(|url| !url.is_empty())
+            .filter(|url| !url.is_empty());
+        let picture_url = real_picture
             .map(str::to_owned)
             .unwrap_or_else(|| picture_placeholder(pubkey));
         ProfileCard {
@@ -214,7 +220,7 @@ impl Kernel {
             avatar_color: profile
                 .map(|profile| profile.avatar_color.clone())
                 .unwrap_or_else(|| avatar_color(pubkey)),
-            source: if profile.is_some() {
+            source: if real_picture.is_some() {
                 "kind0".to_string()
             } else {
                 "placeholder".to_string()

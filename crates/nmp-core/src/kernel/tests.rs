@@ -389,6 +389,77 @@ fn c13_kernel_timeline_item_d1_picture_url_placeholder_and_refinement() {
     assert_eq!(item_with_profile.id, item_no_profile.id);
 }
 
+/// ADR-0017 — `author_avatar_source` must track the *actual* picture-url
+/// selection, not merely whether a kind:0 profile exists.
+///
+/// A profile that arrived with no picture (empty/absent `picture_url`) still
+/// emits the deterministic identicon placeholder, so the discriminator must be
+/// `"placeholder"`, never `"kind0"`.  Same invariant for `ProfileCard.source`.
+///
+/// Design: `docs/product-spec/overview-and-dx.md` §1.5 (D1), ADR-0017.
+#[test]
+fn d1_avatar_source_reflects_picture_selection_not_profile_presence() {
+    use crate::store::VerifiedEvent;
+    use crate::substrate::placeholder::picture_placeholder;
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    let raw_note = crate::store::RawEvent {
+        id: C13_ID.to_string(),
+        pubkey: C13_PK.to_string(),
+        created_at: 1_000,
+        kind: 1,
+        tags: vec![],
+        content: "no-picture profile note".to_string(),
+        sig: "a".repeat(128),
+    };
+    kernel.ingest_pre_verified_event(
+        crate::relay::RelayRole::Content,
+        "diag-firehose-stress",
+        VerifiedEvent::from_raw_unchecked(raw_note),
+    );
+    kernel.sort_timeline_deferred();
+
+    // Profile present but carrying NO picture (None) — and a second probe with
+    // an explicit empty string — must both fall back to the identicon and be
+    // reported as `placeholder`, not `kind0`.
+    for picture in [None, Some(String::new())] {
+        kernel.profiles.insert(C13_PK.to_string(), Profile {
+            event_id: C13_KIND0_ID.to_string(),
+            created_at: 2_000,
+            display: "c13".to_string(),
+            picture_url: picture.clone(),
+            nip05: String::new(),
+            about: String::new(),
+            avatar_initials: "c1".to_string(),
+            avatar_color: avatar_color(C13_PK),
+        });
+
+        let event = kernel.events.get(C13_ID).expect("event must be in cache");
+        let item = kernel.timeline_item(event);
+        assert_eq!(
+            item.author_picture_url,
+            picture_placeholder(C13_PK),
+            "profile without picture must emit the identicon placeholder ({picture:?})"
+        );
+        assert_eq!(
+            item.author_avatar_source, "placeholder",
+            "ADR-0017: source must reflect placeholder selection, not kind:0 presence ({picture:?})"
+        );
+
+        let card = kernel.profile_card_for(C13_PK, None, "about");
+        assert_eq!(
+            card.picture_url,
+            picture_placeholder(C13_PK),
+            "ProfileCard without picture must emit the identicon placeholder ({picture:?})"
+        );
+        assert_eq!(
+            card.source, "placeholder",
+            "ADR-0017: ProfileCard.source must reflect placeholder selection ({picture:?})"
+        );
+    }
+}
+
 /// P2 — kind:10002 empty relay list clears the cache entry.
 ///
 /// When a canonical *newer* kind:10002 carries an empty relay list, the author
