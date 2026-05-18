@@ -36,7 +36,8 @@ pub(crate) struct PublishQueueEntry {
     pub(crate) event_id: String,
     pub(crate) kind: u32,
     pub(crate) target_relays: usize,
-    /// `"accepted_locally"` | `"pending_relays_unknown"`.
+    /// `"accepted_locally"` | `"pending_relays_unknown"` | `"duplicate"` |
+    /// `"store_error"`.
     pub(crate) status: String,
 }
 

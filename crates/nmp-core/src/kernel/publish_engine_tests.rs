@@ -1,6 +1,6 @@
 //! T117 integration tests — kernel publish path goes through `PublishEngine`.
 //!
-//! These tests drive `Kernel::publish_signed` end-to-end:
+//! These tests drive the kernel's engine seam directly:
 //! - The engine's `Nip65OutboxResolver` resolves relays from the kernel's
 //!   event store (no kind:10002 yet → `DEFAULT_INDEXER_FALLBACK` per D3).
 //! - The engine pushes per-relay `EVENT` frames into the `QueueDispatcher`,

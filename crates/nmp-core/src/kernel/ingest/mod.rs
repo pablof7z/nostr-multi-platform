@@ -35,7 +35,7 @@ impl Kernel {
                 relay.counters.bytes_rx = relay.counters.bytes_rx.saturating_add(text.len() as u64);
                 let mut outbound = self.handle_text(role, relay_url, &text);
                 // T117: opportunistic publish-engine retry pump. Every
-                // inbound frame ticks the engine so transient retries fire
+                // inbound text frame ticks the engine so transient retries fire
                 // as soon as their backoff is due, bounded by inbound
                 // traffic frequency. The dedicated actor-tick path is a
                 // follow-up (T114 is concurrently touching actor mechanics).

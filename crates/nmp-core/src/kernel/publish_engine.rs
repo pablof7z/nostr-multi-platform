@@ -262,7 +262,7 @@ impl Kernel {
 
     /// Drive the publish engine's wall-clock retries. Called from
     /// `kernel::ingest::handle_message` opportunistically (every inbound
-    /// relay frame ticks the engine, so the live path bounds retry latency
+    /// relay text frame ticks the engine, so the live path bounds retry latency
     /// by inbound traffic). Tests inject `now_ms` directly.
     pub(crate) fn tick_publish_engine(&mut self, now_ms: u64) -> Vec<OutboundMessage> {
         self.publish_engine.tick(now_ms);
@@ -325,4 +325,3 @@ impl Kernel {
         self.publish_engine.snapshot()
     }
 }
-
