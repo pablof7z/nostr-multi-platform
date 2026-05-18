@@ -14,7 +14,7 @@
 //! to the platform debounce layer, deferred to M14 per T22.  This scenario
 //! verifies the kernel-side dedup invariant only.
 
-use super::{drain, metric, open_sub_count, wait_connected, wait_update, Scenario};
+use super::{drain, drain_until, metric, open_sub_count, wait_connected, wait_update, Scenario};
 use crate::report::ScenarioMetrics;
 use crate::scenarios::{finish_scenario, gate_eq, gate_max, gate_min};
 use nmp_core::testing::{spawn_actor, ActorCommand};
@@ -94,9 +94,11 @@ pub(crate) fn profile_thrashing() -> Scenario {
         }
     }
 
-    // Allow the actor a moment to process remaining commands, then snapshot.
-    std::thread::sleep(Duration::from_millis(300));
-    let final_update = drain(&rx);
+    // Wait up to 5 s for the actor to push its final snapshot after the burst
+    // quiesces.  The old 300 ms sleep raced the actor: drain() would return
+    // None if the snapshot hadn't arrived yet, triggering the usize::MAX
+    // sentinel and a false overall_passed=false (run 1779077038-live).
+    let final_update = drain_until(&rx, Duration::from_secs(5));
 
     // Guard: a missing or unparsable final snapshot must fail the gate rather
     // than silently saturating-sub to zero (false-pass risk per codex T23/P3).
