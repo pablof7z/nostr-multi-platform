@@ -89,8 +89,12 @@ pub extern "C" fn nmp_app_publish_note(
 /// `unsigned_json` is the JSON serialization of [`crate::substrate::UnsignedEvent`]
 /// (fields: `pubkey`, `kind`, `tags`, `content`, `created_at`). The caller's
 /// `pubkey` is ignored — signing derives the pubkey from the active identity's
-/// keys. Malformed JSON is silently dropped at the FFI boundary (D6 — errors
-/// surface as state via subsequent toasts, never as panics across FFI).
+/// keys.
+///
+/// D6 — malformed JSON is never silently dropped. A [`ActorCommand::ShowToast`]
+/// is enqueued so the error surfaces as kernel snapshot state, not a silent
+/// no-op. This closes the codex-batch finding from review `e895c09` (Finding 3:
+/// FFI silent malformed JSON at `ffi/identity.rs:105`).
 #[no_mangle]
 pub extern "C" fn nmp_app_publish_unsigned_event(
     app: *mut NmpApp,
@@ -102,10 +106,19 @@ pub extern "C" fn nmp_app_publish_unsigned_event(
     let Some(json) = c_string_argument(unsigned_json) else {
         return;
     };
-    let Ok(unsigned) = serde_json::from_str::<crate::substrate::UnsignedEvent>(&json) else {
-        return;
-    };
-    let _ = app.tx.send(ActorCommand::PublishUnsignedEvent(unsigned));
+    match serde_json::from_str::<crate::substrate::UnsignedEvent>(&json) {
+        Ok(unsigned) => {
+            let _ = app.tx.send(ActorCommand::PublishUnsignedEvent(unsigned));
+        }
+        Err(_) => {
+            // D6 — surface the decode failure as a toast (error becomes state,
+            // never a silent no-op across FFI). The FFI layer only has a channel
+            // sender, so we delegate to the actor via ShowToast.
+            let _ = app.tx.send(ActorCommand::ShowToast {
+                message: "Failed to decode action payload".to_string(),
+            });
+        }
+    }
 }
 
 #[no_mangle]

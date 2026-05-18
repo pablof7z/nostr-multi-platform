@@ -241,6 +241,14 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(Vec::new())
         }
+        ActorCommand::ShowToast { message } => {
+            // D6 — FFI-boundary validation errors reach the kernel as state
+            // via this command. The FFI layer only has a channel sender; this
+            // arm is the single path from the FFI to `set_last_error_toast`.
+            kernel.set_last_error_toast(Some(message));
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            Some(Vec::new())
+        }
         ActorCommand::Stop => {
             *running = false;
             *startup_sent = false;

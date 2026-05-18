@@ -49,6 +49,13 @@ pub use timeline::{
     nmp_app_open_uri, nmp_app_release_profile,
 };
 
+// test-support: expose identity / publish / relay-edit FFI entry-points so
+// integration tests can call them through the rlib without extern "C" blocks.
+// The symbols remain `#[no_mangle] extern "C"` in `identity`; this `pub use`
+// is only consumed under the test/test-support gate.
+#[cfg(any(test, feature = "test-support"))]
+pub use identity::{nmp_app_publish_unsigned_event, nmp_app_signin_nsec};
+
 // android-ffi: expose all FFI entry-points via Rust paths so nmp-android-ffi
 // can call them through the rlib. These re-exports are the ONLY thing that
 // makes rustc include the symbol bodies in CGU files for the cdylib.

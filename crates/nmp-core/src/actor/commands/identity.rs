@@ -123,13 +123,47 @@ impl IdentityRuntime {
 /// Build an `AuthSignerFn`-shaped closure over a fixed `Keys`. Mirrors the
 /// `nmp-signers::LocalKeySigner::sign_now` recipe exactly (same `nostr`
 /// primitives) — kept here because D0 forbids importing `nmp-signers`.
+///
+/// # Correctness gates (D6 — errors become state, never silent truncation)
+///
+/// * **Kind range** — `unsigned.kind` is a `u32` wire type. Nostr only defines
+///   kinds in `[0, 65535]` (u16 range). A value above `u16::MAX` would silently
+///   wrap (e.g. 65559 → 23) without this check, publishing as the wrong kind.
+///   We return `Err` so the caller surfaces a toast.
+///
+/// * **Malformed tags** — `Tag::parse` may reject a tag row (e.g. empty slice,
+///   unknown tag type that the `nostr` crate refuses). Silent `filter_map` drops
+///   are a correctness hazard for a kind-agnostic publish pass-through; a
+///   protocol crate may rely on every tag it built being present in the signed
+///   event. We count failures and hard-fail with a toast wording that names the
+///   count so the caller can diagnose the source.
 pub(super) fn sign_with(keys: &Keys, unsigned: &UnsignedEvent) -> Result<SignedEvent, String> {
+    // Finding 1: validate kind is within the Nostr-defined u16 range before
+    // casting. kind:65559 → kind:23 would be a silent correctness violation.
+    if unsigned.kind > u16::MAX as u32 {
+        return Err(format!(
+            "invalid kind {}: must be in range [0, 65535]",
+            unsigned.kind
+        ));
+    }
     let kind = Kind::from_u16(unsigned.kind as u16);
-    let tags = unsigned
-        .tags
-        .iter()
-        .filter_map(|t| Tag::parse(t).ok())
-        .collect::<Vec<_>>();
+
+    // Finding 2: hard-fail on any malformed tag rather than silently dropping
+    // it. The caller is responsible for building well-formed tags; silent
+    // drops would produce a signed event that differs from the caller's intent
+    // (D6 — correctness hazard for kind-agnostic publish pass-through).
+    let mut tags = Vec::with_capacity(unsigned.tags.len());
+    let mut malformed = 0usize;
+    for t in &unsigned.tags {
+        match Tag::parse(t) {
+            Ok(tag) => tags.push(tag),
+            Err(_) => malformed += 1,
+        }
+    }
+    if malformed > 0 {
+        return Err(format!("Dropped {malformed} malformed tag(s)"));
+    }
+
     let event = EventBuilder::new(kind, &unsigned.content)
         .tags(tags)
         .custom_created_at(Timestamp::from(unsigned.created_at))
