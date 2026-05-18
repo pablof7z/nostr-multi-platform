@@ -377,18 +377,144 @@ final class UserIdentityStore {
         return "\(full.prefix(10))…\(full.suffix(6))"
     }
 
+    /// Last login/import failure copy surfaced to the UI. Stub never errors.
+    private(set) var loginError: String? = nil
+
+    /// Active signer instance. Nil in the stub (no key configured) — the
+    /// verbatim views only check for nil and pass it through to the uploader.
+    private(set) var signer: (any NostrSigner)? = nil
+
+    /// Live NIP-46 connection state surfaced by NostrConnectView /
+    /// Nip46ConnectCard. Stub stays `.idle`.
+    private(set) var remoteSignerState: RemoteSignerState = .idle
+
+    /// Cached kind-0 profile fields. Nil in the stub so UserProfileDisplay
+    /// falls back to the deterministic generated profile.
+    var profileDisplayName: String? = nil
+    var profileName: String? = nil
+    var profileAbout: String? = nil
+    var profilePicture: String? = nil
+
+    /// True when the active signer is a remote (NIP-46) signer.
+    var isRemoteSigner: Bool { mode == .remoteSigner }
+
     func start() {}
+
+    /// Clears the active identity (stub no-op; resets cached profile fields).
+    func clearIdentity() {
+        profileDisplayName = nil
+        profileName = nil
+        profileAbout = nil
+        profilePicture = nil
+    }
+
+    /// Imports an nsec local key. Stub rejects — no keychain in the NMP path.
+    func importNsec(_ nsec: String) throws {
+        throw UserIdentityError.noIdentity
+    }
+
+    /// Signs + publishes the kind-0 profile event. Stub throws so the
+    /// verbatim EditProfileView surfaces its retry banner.
+    @discardableResult
+    func publishProfile(
+        name: String,
+        displayName: String,
+        about: String,
+        picture: String
+    ) async throws -> SignedNostrEvent {
+        throw UserIdentityError.noIdentity
+    }
+
+    /// Connects a remote (bunker) signer from a `bunker://` URI. Stub no-op.
+    func connectRemoteSigner(uri: String) async {}
+
+    /// Tears down the active remote signer connection. Stub no-op.
+    func disconnectRemoteSigner() async {}
+
+    /// Begins a NIP-46 `nostrconnect://` pairing. Stub never invokes `onURI`.
+    func connectViaNostrConnect(
+        relay: URL?,
+        onURI: @escaping @Sendable (String) -> Void
+    ) async {}
 }
 
-// MARK: - UserProfileDisplay
+// MARK: - UserIdentityError
 
-struct UserProfileDisplay {
-    var displayName: String
-    var slug: String   // non-optional in Podcastr API
-    var pictureURL: URL?
+enum UserIdentityError: LocalizedError {
+    case noIdentity
 
-    static func from(identity: UserIdentityStore) -> UserProfileDisplay? {
-        nil
+    var errorDescription: String? {
+        switch self {
+        case .noIdentity: return "No identity is configured on this device."
+        }
+    }
+}
+
+// MARK: - RemoteSignerState
+
+/// Mirrors Podcastr's `RemoteSignerState` (Services/UserIdentityStore.swift)
+/// byte-for-byte so the verbatim NostrConnectView / Nip46ConnectCard switch
+/// statements compile unchanged.
+enum RemoteSignerState: Sendable, Equatable {
+    case idle
+    case connecting
+    case reconnecting
+    /// The bunker replied with an `auth_url` challenge — the user must approve in a
+    /// browser. The connect call itself is still suspended; `connected(...)` follows
+    /// once the bunker delivers the real `ack`.
+    case awaitingAuthorization(URL)
+    case connected(String)            // associated value: user pubkey hex
+    case failed(String)               // error message
+}
+
+// MARK: - NostrSigner / SignedNostrEvent (Blossom signing hand-off)
+
+/// Opaque signer handle. The verbatim views never call methods on it — they
+/// only check `signer != nil` and forward it to `BlossomUploading.upload`.
+protocol NostrSigner: Sendable {}
+
+/// Result of a successful kind-0 publish. The verbatim EditProfileView
+/// discards the value (`_ = try await identity.publishProfile(...)`).
+struct SignedNostrEvent: Sendable {}
+
+// MARK: - BlossomUploading / BlossomUploader
+
+/// Photo upload protocol used by the verbatim ChangePhotoSheet.
+protocol BlossomUploading: Sendable {
+    func upload(data: Data, contentType: String, signer: any NostrSigner) async throws -> URL
+}
+
+/// Default uploader. Stub throws — Blossom upload binds to the Rust kernel
+/// in a later slice; the verbatim view surfaces the failure state.
+final class BlossomUploader: BlossomUploading {
+    init() {}
+
+    func upload(data: Data, contentType: String, signer: any NostrSigner) async throws -> URL {
+        throw UserIdentityError.noIdentity
+    }
+}
+
+// MARK: - Data(hexString:)
+
+extension Data {
+    /// Decodes a hex string into bytes. Returns nil on odd length or any
+    /// non-hex character. Provided by NDKSwiftCore in Podcastr; reimplemented
+    /// here so the verbatim Identity views (AccountDetailsView fingerprint,
+    /// Nip46ConnectCard pubkey check) resolve.
+    init?(hexString: String) {
+        let chars = Array(hexString)
+        guard chars.count % 2 == 0 else { return nil }
+        var bytes = [UInt8]()
+        bytes.reserveCapacity(chars.count / 2)
+        var index = chars.startIndex
+        while index < chars.endIndex {
+            guard let hi = chars[index].hexDigitValue,
+                  let lo = chars[chars.index(after: index)].hexDigitValue
+            else { return nil }
+            bytes.append(UInt8(hi << 4 | lo))
+            index = chars.index(index, offsetBy: 2)
+        }
+        self.init(bytes)
     }
 }
 
@@ -532,6 +658,22 @@ enum DeepLinkHandler {
     static func episodeGUIDURL(guid: String, startTime: TimeInterval) -> URL? {
         guard !guid.isEmpty else { return nil }
         return URL(string: "podcastr://e/\(guid)?t=\(Int(startTime))")
+    }
+
+    /// Builds an `podcastr://friend/add` URL suitable for sharing in an invite
+    /// message. Body matches Podcastr's `DeepLinkHandler.friendInviteURL`
+    /// verbatim so the verbatim AgentIdentityQRView share path is unchanged.
+    static func friendInviteURL(npub: String, name: String?) -> URL? {
+        var components = URLComponents()
+        components.scheme = "podcastr"
+        components.host = "friend"
+        components.path = "/add"
+        var items: [URLQueryItem] = [URLQueryItem(name: "npub", value: npub)]
+        if let name, !name.isEmpty {
+            items.append(URLQueryItem(name: "name", value: name))
+        }
+        components.queryItems = items
+        return components.url
     }
 }
 
@@ -924,18 +1066,8 @@ final class EpisodeDownloadStore {
 // stubs here keep the verbatim SettingsView body byte-for-byte while the
 // NavigationLink pushes a recognisable placeholder, not a crash.
 
-/// T-podcast-ios-verbatim-4: Identity root screen. Own verbatim iteration.
-struct IdentityRootView: View {
-    var body: some View {
-        ContentUnavailableView(
-            "Identity",
-            systemImage: "person.crop.circle",
-            description: Text("Identity screen restores in T-podcast-ios-verbatim-4.")
-        )
-        .navigationTitle("Identity")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
+// T-podcast-ios-verbatim-4: IdentityRootView is now restored verbatim at
+// Features/Identity/IdentityRootView.swift — the stub destination is removed.
 
 /// T-podcast-ios-verbatim-N: Categories list. Own verbatim iteration.
 struct CategoriesListView: View {
