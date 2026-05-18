@@ -121,7 +121,7 @@ fn nprofile_rejects_garbage() {
 
 #[test]
 fn nprofile_unknown_tlv_ignored() {
-    use bech32::{Bech32m, Hrp};
+    use bech32::Bech32m;
     let data = NprofileData { pubkey: FIATJAF_HEX.into(), relays: vec![] };
     let bech = encode_nprofile(&data).unwrap();
     let (hrp, mut bytes) = bech32::decode(&bech).unwrap();
