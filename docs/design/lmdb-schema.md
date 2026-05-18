@@ -72,7 +72,7 @@ See [`lmdb/trait.md`](lmdb/trait.md) for the exact `pub trait EventStore` signat
 - **Migration:** `run_migrations(&[DomainMigration])` runs at startup, transactional per migration.
 - **Export:** `dump(out: &mut dyn Write, format: DumpFormat) -> Result<DumpStats>`.
 
-**Error semantics.** All methods return `Result<T, StoreError>`. Per doctrine D3, store errors do **not** cross FFI — the actor maps every variant to either (a) a typed `Effect` (e.g. `StoreCorrupt`, surfaces via diagnostics + toast), (b) a `tracing::warn!` log + degraded state, or (c) a panic at startup if the LMDB environment refuses to open. The trait itself uses `Result` since it is internal to the actor process.
+**Error semantics.** All methods return `Result<T, StoreError>`. Per doctrine D6, store errors do **not** cross FFI — the actor maps every variant to either (a) a typed `Effect` (e.g. `StoreCorrupt`, surfaces via diagnostics + toast), (b) a `tracing::warn!` log + degraded state, or (c) a panic at startup if the LMDB environment refuses to open. The trait itself uses `Result` since it is internal to the actor process.
 
 ## 4. Key encoding
 
@@ -80,7 +80,8 @@ Full byte layout for primary + every secondary in [`lmdb/keys.md`](lmdb/keys.md)
 
 - Primary `events`: `event_id[32]` → `Event` (CBOR via `nostr` crate's serialization). Owned by `nostr-lmdb`.
 - Secondary `idx_author_kind`: `pubkey[32] || kind_be[4] || created_at_desc_be[8] || event_id[32]` → empty. NMP-owned. `created_at_desc_be = (u64::MAX - created_at).to_be_bytes()` for newest-first forward scans.
-- Secondary `idx_kind_dtag`: `kind_be[4] || pubkey[32] || dtag_len_be[2] || dtag_bytes` → `event_id[32]`. NMP-owned. Parameterized replaceable address lookup. The `pubkey` field comes before `d-tag` bytes so all entries for a `(kind, pubkey)` pair are contiguous for `scan_by_kind_dtag`.
+- Secondary `idx_kind_dtag`: `kind_be[4] || pubkey[32] || dtag_len_be[2] || dtag_bytes` → `event_id[32]`. NMP-owned. Parameterized replaceable exact-key lookup (by author).
+- Secondary `idx_kind_dtag_time`: `kind_be[4] || dtag_len_be[2] || dtag_bytes || created_at_desc_be[8] || event_id[32]` → empty. NMP-owned. Newest-first scan across all authors for a `(kind, d_tag)` pair; used by `scan_by_kind_dtag`.
 - Secondary `idx_etag_time`, `idx_ptag_time`: `tag_value[32] || created_at_desc_be[8] || event_id[32]` → `kind_be[4]`. NMP-owned. Value holds kind so reaction views can filter without a primary fetch.
 - Secondary `idx_kind_time`: `kind_be[4] || created_at_desc_be[8] || event_id[32]` → empty.
 - Secondary `idx_expires`: `expires_at_be[8] || event_id[32]` → empty. Scanned by the NIP-40 reaper.

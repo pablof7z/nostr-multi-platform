@@ -10,7 +10,8 @@ One `lmdb::Environment` per app data directory. Sub-databases:
 |---|---|---|---|---|
 | (multiple) | `nostr-lmdb` | upstream | upstream | event primary, internal filter indexes, kind:5 suppression |
 | `idx_author_kind` | NMP | `pubkey[32] ‖ kind_be[4] ‖ created_at_desc_be[8] ‖ event_id[32]` | empty | newest-first scans for `(author, kinds[])` |
-| `idx_kind_dtag` | NMP | `kind_be[4] ‖ pubkey[32] ‖ dtag_len_be[2] ‖ dtag_bytes` | `event_id[32]` | parameterized replaceable address lookup |
+| `idx_kind_dtag` | NMP | `kind_be[4] ‖ pubkey[32] ‖ dtag_len_be[2] ‖ dtag_bytes` | `event_id[32]` | parameterized replaceable exact-key lookup (by author) |
+| `idx_kind_dtag_time` | NMP | `kind_be[4] ‖ dtag_len_be[2] ‖ dtag_bytes ‖ created_at_desc_be[8] ‖ event_id[32]` | empty | newest-first scan by `(kind, d_tag)` across all authors |
 | `idx_etag_time` | NMP | `target_event_id[32] ‖ created_at_desc_be[8] ‖ event_id[32]` | `kind_be[4]` | reaction/reply/thread view scans |
 | `idx_ptag_time` | NMP | `target_pubkey[32] ‖ created_at_desc_be[8] ‖ event_id[32]` | `kind_be[4]` | mentions / notifications |
 | `idx_kind_time` | NMP | `kind_be[4] ‖ created_at_desc_be[8] ‖ event_id[32]` | empty | global-by-kind backfills |
@@ -20,7 +21,7 @@ One `lmdb::Environment` per app data directory. Sub-databases:
 | `provenance` | NMP | `event_id[32]` | CBOR `ProvenanceRow` | per-relay sidecar (master doc §9) |
 | `watermarks` | NMP | `filter_hash[32] ‖ relay_url_bytes` | CBOR `WatermarkRow` | M4 NIP-77 sync state |
 | `idx_watermark_relay` | NMP | `relay_url_bytes ‖ filter_hash[32]` | empty | relay-first secondary; enables O(matching rows) `list_watermarks_for_relay` |
-| `claims_meta` | NMP | `claimer_id_be[8]` | CBOR `Vec<EventId>` | pinned set per ClaimerId; rebuilt on restart from open views |
+| `claims_meta` | NMP | `claimer_id_be[8]` | CBOR `BTreeSet<EventId>` | pinned set per ClaimerId (deduped); rebuilt on restart from open views |
 | `domain_<ns>_data` | NMP, per `DomainModule` | module-defined | module-defined | one sub-db per registered namespace |
 | `domain_<ns>_idx_<name>` | NMP, per `DomainModule` index | `index_key ‖ primary_key` | empty | secondary indexes per `DomainIndex` |
 | `_meta` | NMP | string namespace | `{ schema_version: u32, opened_with_nmp_version: String }` | migration tracking |
@@ -55,7 +56,17 @@ The d-tag bytes go last so two events with the same `(kind, pubkey)` but differe
 
 The value is the `event_id`; the primary event itself lives in the `nostr-lmdb` events sub-db. On supersession, the old event-id is fetched from this row, both primary and old `idx_*` rows are deleted, and the value is overwritten with the new id.
 
-### 3.3 `idx_etag_time` and `idx_ptag_time`
+### 3.3 `idx_kind_dtag_time` (parameterized replaceable — time-ordered)
+
+Key: `kind_be[4] ‖ dtag_len_be[2] ‖ dtag_bytes ‖ created_at_desc_be[8] ‖ event_id[32]` → empty.
+
+Enables newest-first scans across **all authors** for a `(kind, d_tag)` pair — the use case is "find the most recent article with slug `my-post` across all authors" (kind:30023 global search). This is distinct from `idx_kind_dtag` which is exact-key by author.
+
+Write cost: 2 extra LMDB writes per parameterized-replaceable insert (one for `idx_kind_dtag` + one for `idx_kind_dtag_time`). Only events in 30000–39999 range generate this entry; overhead is proportional to parameterized-replaceable volume.
+
+Scan recipe: `range(kind_be ‖ dtag_len_be ‖ dtag_bytes ‖ ..)` forward — yields newest-first thanks to `created_at_desc_be`.
+
+### 3.4 `idx_etag_time` and `idx_ptag_time`
 
 Key: `target[32] ‖ created_at_desc_be[8] ‖ event_id[32]` → `kind_be[4]`.
 
@@ -63,13 +74,13 @@ The value holds the kind so a reactions view can filter `(kinds == 7)` during sc
 
 On insert, the kernel walks the event's `tags`: every `e` tag value goes into `idx_etag_time` and every `p` tag value goes into `idx_ptag_time`. Tag values must be 32-byte hex (validated at insert time); non-conformant tags are silently skipped from indexing (they are still stored in the event body).
 
-### 3.4 `idx_kind_time`
+### 3.5 `idx_kind_time`
 
 Key: `kind_be[4] ‖ created_at_desc_be[8] ‖ event_id[32]` → empty.
 
 Used by *global-by-kind* backfills (e.g. "recent kind:0 across all authors" during diagnostics). Heavy index — populated for **all** kinds by default but the implementation may skip kinds in a configurable deny-list to keep write amplification down (default deny-list: kind:1 if config flag `index_kind1_globally=false`, which it is by default; M2's planner does not need a global kind:1 scan).
 
-### 3.5 `idx_expires`
+### 3.6 `idx_expires`
 
 Key: `expires_at_be[8] ‖ event_id[32]` → empty.
 

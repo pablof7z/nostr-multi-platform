@@ -38,13 +38,15 @@ pub trait EventStore: Send + Sync {
         d_tag: &[u8],
     ) -> Result<Option<StoredEvent>, StoreError>;
 
-    /// `idx_kind_dtag` scan, newest-first over all d-tags for `(pubkey, kind)`.
-    /// Used to enumerate all parameterized replaceables for a given `(author, kind)` pair
-    /// — for example, listing all of an author's NIP-23 long-form articles (kind:30023).
+    /// `idx_kind_dtag_time` scan, newest-first across all authors for `(kind, d_tag)`.
+    /// Used for global parameterized-replaceable discovery (e.g. "recent articles with slug X").
+    /// To list all replaceables by a specific author use `scan_by_author_kind` instead.
     fn scan_by_kind_dtag<'a>(
         &'a self,
-        pubkey: &PubKey,
         kind: u32,
+        d_tag: &[u8],
+        since: Option<u64>,
+        until: Option<u64>,
         limit: usize,
     ) -> Result<Box<dyn EventIter + 'a>, StoreError>;
 

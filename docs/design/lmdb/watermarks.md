@@ -29,18 +29,19 @@ pub struct WatermarkRow {
 Per §7.1 of the spec: "A cache-miss query against a fully-synced `(filter, relay)` pair is **authoritative**." The store implements this via the read path:
 
 ```rust
-pub fn coverage(&self, key: &WatermarkKey, now_s: u64) -> Coverage {
-    match self.read_watermark(key) {
-        Ok(Some(row)) if row.synced_up_to >= now_s.saturating_sub(self.cfg.coverage_staleness_secs) =>
-            Coverage::CompleteAsOf(row.synced_up_to),
-        Ok(Some(row)) => Coverage::PartialUpTo(row.synced_up_to),
-        Ok(None) => Coverage::Unknown,
-        Err(_) => Coverage::Unknown,  // degraded; do not lie about completeness
+pub fn coverage(&self, key: &WatermarkKey) -> Result<Coverage, StoreError> {
+    let now_s = unix_now();
+    match self.read_watermark(key)? {
+        Some(row) if row.synced_up_to >= now_s.saturating_sub(self.cfg.coverage_staleness_secs) =>
+            Ok(Coverage::CompleteAsOf(row.synced_up_to)),
+        Some(row) => Ok(Coverage::PartialUpTo(row.synced_up_to)),
+        None => Ok(Coverage::Unknown),
     }
+    // On I/O error the `?` propagates; callers treat Err as Unknown (do not lie about completeness).
 }
 ```
 
-`coverage_staleness_secs` defaults to 300 s — a row that hasn't been re-confirmed in 5 minutes is treated as partial. The planner uses this signal to decide whether a missing-event query is "doesn't exist" (CompleteAsOf) or "need to fetch" (PartialUpTo / Unknown).
+`now_s` is derived internally from the system clock — callers do not need to supply it. `coverage_staleness_secs` defaults to 300 s — a row that hasn't been re-confirmed in 5 minutes is treated as partial. The planner uses this signal to decide whether a missing-event query is "doesn't exist" (CompleteAsOf) or "need to fetch" (PartialUpTo / Unknown).
 
 ### 1.2 Restart hydration
 
