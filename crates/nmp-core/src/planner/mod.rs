@@ -32,6 +32,29 @@
 //! - **D8** — the hot path (merge lattice) uses only stack-allocated comparisons
 //!   after the initial interest registration.
 //!
+//! ## Plan-id determinism vs. post-compile mutators
+//!
+//! `plan_id` (and `SubShape::canonical_filter_hash`) is content-addressed over
+//! the **interest set + mailbox snapshot + lattice version** only — never over
+//! runtime state. Post-compile passes that bump `since` therefore split into
+//! two camps:
+//!
+//! - **Coverage gate (M4 / NIP-77)**: mutating `since` changes what content
+//!   the relay should send (skipping authoritative ranges already on disk).
+//!   The wire-emitter MUST see a new sub-id so the new REQ goes out — the
+//!   hook calls [`plan::SubShape::recompute_hash`] after each mutation.
+//! - **`addSinceFromCache` (T129)**: bumping `since` is a no-data-loss floor
+//!   — every event the relay would have sent below `watermark + 1` is
+//!   already on disk; not seeing them again is the *point*. The wire-emitter
+//!   MUST NOT see a new sub-id (else every recompile churns CLOSE+REQ as
+//!   the watermark advances). The rewrite therefore leaves
+//!   `canonical_filter_hash` alone and is applied AFTER the hash is computed.
+//!
+//! Both rules collapse to the same invariant: `canonical_filter_hash` reflects
+//! "what does this filter mean structurally?", not "what's currently on the
+//! wire?". The wire-emitter's diff is the only place runtime state crosses
+//! into the emitted frames.
+//!
 //! Design: `docs/design/subscription-compilation/`
 
 pub(crate) mod compiler;

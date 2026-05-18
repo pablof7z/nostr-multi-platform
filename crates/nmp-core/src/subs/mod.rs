@@ -25,6 +25,8 @@ pub(crate) mod lifecycle_gate;
 pub(crate) mod oneshot;
 pub(crate) mod pool;
 pub(crate) mod registry;
+#[cfg(test)]
+mod since_rewrite_tests;
 pub(crate) mod sub_key;
 pub(crate) mod trigger;
 pub(crate) mod unknown_ids;
@@ -36,7 +38,8 @@ use auth_gate::AuthGate;
 use lifecycle_gate::LifecycleGate;
 
 use crate::planner::{
-    CompiledPlan, InterestId, MailboxCache, PlannerError, RelayUrl, SubscriptionCompiler,
+    CompiledPlan, InterestId, InterestShape, MailboxCache, PlannerError, RelayUrl,
+    SubscriptionCompiler,
 };
 
 /// Post-compile plan-mutation hook (M4 negentropy coverage gate).
@@ -54,6 +57,23 @@ use crate::planner::{
 /// keeping coverage-gate / NIP-77 vocabulary out of `nmp-core` per D0
 /// ("kernel never grows app nouns").
 pub type PlanCoverageHook = Arc<dyn Fn(&mut CompiledPlan) + Send + Sync>;
+
+/// T129 watermark resolver — returns the most-recent stored `created_at`
+/// (unix seconds) for events matching `shape`, or `None` when the store has
+/// no matching events.
+///
+/// Installed by the kernel via [`SubscriptionLifecycle::set_watermark_fn`].
+/// The kernel is the only legitimate caller — view modules and tests inject a
+/// stub closure. The kernel-side closure translates the shape into a
+/// `StoreQuery` (`AuthorKind` when authors+kinds are scoped, otherwise
+/// `KindTime`) and invokes `EventStore::query_visit` with `limit = 1`, which
+/// early-stops at the newest stored match on the relevant secondary index.
+///
+/// The trait-object signature keeps `nmp-core::subs` independent of any
+/// concrete store type (D8: zero per-emit alloc, dispatch is a single vtable
+/// lookup; the closure itself reuses the index buffers underlying
+/// `query_visit`).
+pub type WatermarkFn = Arc<dyn Fn(&InterestShape) -> Option<u64> + Send + Sync>;
 
 pub use inbox::TriggerInbox;
 pub use oneshot::{OneshotApi, OneshotToken};
@@ -93,6 +113,13 @@ pub struct SubscriptionLifecycle {
     /// Set via [`Self::set_coverage_hook`]; absent by default so the kernel
     /// links cleanly without any NIP-77 dependency.
     coverage_hook: Option<PlanCoverageHook>,
+    /// T129 — optional watermark resolver. Installed by the kernel from the
+    /// `EventStore` at startup; tests inject a stub closure. When set,
+    /// [`Self::recompile_and_diff`] rewrites each non-ephemeral sub-shape's
+    /// `since` to `max(existing_since, watermark + 1)` so the relay REQ does
+    /// not re-fetch events already on disk. See module doc on [`WatermarkFn`]
+    /// and the seam rationale documented in `planner/mod.rs`.
+    watermark_fn: Option<WatermarkFn>,
 }
 
 impl Default for SubscriptionLifecycle {
@@ -120,6 +147,7 @@ impl SubscriptionLifecycle {
             auth_gate: AuthGate::new(),
             compile_count: 0,
             coverage_hook: None,
+            watermark_fn: None,
         }
     }
 
@@ -131,6 +159,23 @@ impl SubscriptionLifecycle {
     /// `nmp-testing` contract test that exercises this seam end-to-end.
     pub fn set_coverage_hook(&mut self, hook: PlanCoverageHook) {
         self.coverage_hook = Some(hook);
+    }
+
+    /// T129 — install (or replace) the watermark resolver used by
+    /// `addSinceFromCache`-style rewrites. The kernel constructs the closure
+    /// at startup by capturing the `EventStore` handle and translating each
+    /// `InterestShape` into a `StoreQuery` (`AuthorKind` when authors+kinds
+    /// are scoped, otherwise `KindTime`); tests inject a deterministic stub.
+    /// Without a resolver installed the rewrite is a no-op (legacy lifecycle
+    /// tests stay green).
+    ///
+    /// The resolver is invoked synchronously inside `recompile_and_diff` and
+    /// must therefore be cheap — implementations are expected to call
+    /// `EventStore::query_visit` with `limit = 1`, which early-stops at the
+    /// newest stored match on the relevant secondary index (no per-emit
+    /// allocation; D8).
+    pub fn set_watermark_fn(&mut self, f: WatermarkFn) {
+        self.watermark_fn = Some(f);
     }
 
     /// Mutable access to the registry — view modules push interests through
@@ -176,6 +221,18 @@ impl SubscriptionLifecycle {
         // plan flows through unchanged.
         if let Some(hook) = self.coverage_hook.as_ref() {
             hook(&mut plan);
+        }
+
+        // T129 — addSinceFromCache: rewrite each non-ephemeral shape's
+        // `since` to `max(existing_since, watermark + 1)` so a freshly-opened
+        // REQ does not re-fetch events the cache already has. Runs AFTER the
+        // coverage hook so the two passes compose monotonically: coverage may
+        // bump `since`, the watermark rewrite then raises it further if the
+        // store has even fresher events. We intentionally do NOT recompute
+        // `canonical_filter_hash` here — sub_id stability is the feature
+        // (`planner/mod.rs::canonical_filter_hash` docs the rationale).
+        if let Some(wm) = self.watermark_fn.as_ref() {
+            apply_watermark_rewrite(&mut plan, wm.as_ref());
         }
 
         let prior = self.current_plan.as_ref();
@@ -271,6 +328,50 @@ impl SubscriptionLifecycle {
     #[allow(dead_code)]
     pub(crate) fn set_indexer_relays(&mut self, relays: Vec<RelayUrl>) {
         self.indexer_relays = relays;
+    }
+}
+
+// ─── T129 watermark rewrite ──────────────────────────────────────────────────
+
+/// Returns `true` when every kind in `shape.kinds` is in the ephemeral range
+/// 20000..30000 (per NIP-01 §3 ephemerals). Empty `kinds` is "wildcard" and
+/// is NOT considered ephemeral — persistent kinds may match, so the rewrite
+/// still applies. Mirrors the carve-out NDK added in commit `5afbd245`.
+fn shape_is_ephemeral_only(shape: &InterestShape) -> bool {
+    !shape.kinds.is_empty() && shape.kinds.iter().all(|k| (20000..30000).contains(k))
+}
+
+/// In-place rewrite of every non-ephemeral sub-shape's `since` to
+/// `max(existing_since, watermark + 1)`.
+///
+/// The rewrite is purely a value mutation — `canonical_filter_hash` is left
+/// untouched so the wire-emitter's diff treats a re-opened sub as the same
+/// `sub_id` it had before (the watermark moves between recompiles, but the
+/// REQ is only emitted on the first compile that introduces the shape).
+/// This matches NDK's `opts.addSinceFromCache` once-at-sub-open semantics
+/// (`core/src/subscription/index.ts:537`).
+///
+/// D8: walks the plan tree exactly once; no per-shape allocation beyond the
+/// one closure call into the resolver (which itself is responsible for
+/// reusing its index buffers via `query_visit(limit=1)`).
+fn apply_watermark_rewrite(
+    plan: &mut CompiledPlan,
+    watermark_fn: &(dyn Fn(&InterestShape) -> Option<u64> + Send + Sync),
+) {
+    for relay_plan in plan.per_relay.values_mut() {
+        for sub_shape in relay_plan.sub_shapes.iter_mut() {
+            if shape_is_ephemeral_only(&sub_shape.shape) {
+                continue;
+            }
+            let Some(watermark) = watermark_fn(&sub_shape.shape) else {
+                continue;
+            };
+            let floor = watermark.saturating_add(1);
+            sub_shape.shape.since = Some(match sub_shape.shape.since {
+                Some(existing) if existing >= floor => existing,
+                _ => floor,
+            });
+        }
     }
 }
 
