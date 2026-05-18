@@ -49,6 +49,7 @@ struct HomeFeedView: View {
         .scrollContentBackground(.hidden)
         .background(ChirpColor.bg)
         .animation(.smooth, value: model.items.count)
+        .accessibilityIdentifier("timeline-list")
         .refreshable {
             model.openTimeline()
         }

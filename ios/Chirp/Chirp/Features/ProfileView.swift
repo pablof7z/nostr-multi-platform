@@ -32,6 +32,7 @@ struct ProfileView: View {
                 notesSection
             }
         }
+        .accessibilityIdentifier("profile-detail-list")
         .background(ChirpColor.bg.ignoresSafeArea())
         .navigationTitle(profile?.display ?? "Profile")
         .navigationBarTitleDisplayMode(.inline)
@@ -187,10 +188,16 @@ struct ProfileView: View {
             .frame(minHeight: 260)
         } else {
             LazyVStack(spacing: 0) {
-                ChirpSectionHeader(title: "Posts")
-                    .padding(.horizontal, ChirpSpace.l)
-                    .padding(.vertical, ChirpSpace.m)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack {
+                    ChirpSectionHeader(title: "Posts")
+                    Spacer()
+                    Text("\(model.items.count)")
+                        .font(ChirpFont.callout)
+                        .foregroundStyle(ChirpColor.textTertiary)
+                        .accessibilityIdentifier("profile-notes-count-value")
+                }
+                .padding(.horizontal, ChirpSpace.l)
+                .padding(.vertical, ChirpSpace.m)
 
                 ForEach(model.items) { item in
                     ProfileNoteRow(

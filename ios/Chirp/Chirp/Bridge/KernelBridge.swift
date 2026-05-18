@@ -3,11 +3,7 @@ import os.log
 
 private let kbLog = Logger(subsystem: "com.example.Chirp", category: "KernelBridge")
 
-/// Thin C-FFI wrapper around the `nmp_core` static library. Mirrors
-/// `ios/NmpStress/NmpStress/KernelBridge.swift` (which is the established
-/// pattern). Pulse currently consumes only the timeline-reading surface; the
-/// publish / sign-in / multi-account FFI is filed as T66a (see
-/// `ios/NmpPulse/README.md`).
+/// Thin C-FFI wrapper around the `nmp_core` static library.
 final class KernelHandle {
     private let raw: UnsafeMutableRawPointer
     private var updateSink: KernelUpdateSink?
@@ -21,7 +17,7 @@ final class KernelHandle {
         nmp_app_free(raw)
     }
 
-    func listen(_ handler: @escaping (KernelUpdate) -> Void) {
+    func listen(_ handler: @escaping (KernelUpdateResult) -> Void) {
         let sink = KernelUpdateSink(handler: handler)
         updateSink = sink
         nmp_app_set_update_callback(raw, Unmanaged.passUnretained(sink).toOpaque(), nmpUpdateCallback)
@@ -31,8 +27,16 @@ final class KernelHandle {
         nmp_app_start(raw, 0, visibleLimit, emitHz)
     }
 
+    func configure(visibleLimit: UInt32, emitHz: UInt32) {
+        nmp_app_configure(raw, 0, visibleLimit, emitHz)
+    }
+
     func stop() {
         nmp_app_stop(raw)
+    }
+
+    func reset() {
+        nmp_app_reset(raw)
     }
 
     func openAuthor(pubkey: String) {
@@ -41,6 +45,10 @@ final class KernelHandle {
 
     func openThread(eventID: String) {
         eventID.withCString { nmp_app_open_thread(raw, $0) }
+    }
+
+    func openFirehose(tag: String) {
+        tag.withCString { nmp_app_open_firehose_tag(raw, $0) }
     }
 
     func claimProfile(pubkey: String, consumerID: String) {
@@ -60,10 +68,6 @@ final class KernelHandle {
     }
 
     // ── T66a identity / publish / multi-account / relay-edit ──────────────
-    //
-    // All fire-and-forget: outcomes arrive on the next snapshot via the
-    // KernelUpdate `accounts` / `publishQueue` / `lastErrorToast` fields
-    // (D6 — the FFI never returns a value or throws).
 
     func signInNsec(_ secret: String) {
         secret.withCString { nmp_app_signin_nsec(raw, $0) }
@@ -129,7 +133,7 @@ final class KernelHandle {
         nmp_app_open_timeline(raw)
     }
 
-    // ── NIP-47 Wallet Connect ────────────────────────────────────────────────
+    // ── NIP-47 Wallet Connect ─────────────────────────────────────────────
 
     func walletConnect(uri: String) {
         uri.withCString { nmp_app_wallet_connect(raw, $0) }
@@ -152,7 +156,8 @@ final class KernelHandle {
         }
     }
 
-    fileprivate static func decode(pointer: UnsafePointer<CChar>) -> KernelUpdate? {
+    fileprivate static func decode(pointer: UnsafePointer<CChar>) -> KernelUpdateResult? {
+        let start = ContinuousClock.now
         let payload = String(cString: pointer)
         let data = Data(payload.utf8)
         guard let outer = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -171,9 +176,15 @@ final class KernelHandle {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         do {
-            let result = try decoder.decode(KernelUpdate.self, from: innerData)
-            kbLog.info("decoded ok rev=\(result.rev) activeAccount=\(result.activeAccount ?? "nil")")
-            return result
+            let update = try decoder.decode(KernelUpdate.self, from: innerData)
+            let duration = start.duration(to: .now)
+            kbLog.info("decoded ok rev=\(update.rev) activeAccount=\(update.activeAccount ?? "nil")")
+            return KernelUpdateResult(
+                update: update,
+                payloadBytes: data.count,
+                callbackReceivedAt: start,
+                decodeMicros: duration.microseconds
+            )
         } catch {
             kbLog.error("decode error: \(error.localizedDescription)")
             if let preview = String(data: innerData.prefix(500), encoding: .utf8) {
@@ -185,35 +196,50 @@ final class KernelHandle {
 }
 
 private final class KernelUpdateSink {
-    let handler: (KernelUpdate) -> Void
-    init(handler: @escaping (KernelUpdate) -> Void) {
+    let handler: (KernelUpdateResult) -> Void
+    init(handler: @escaping (KernelUpdateResult) -> Void) {
         self.handler = handler
     }
 }
 
 private let nmpUpdateCallback: NmpUpdateCallback = { context, pointer in
     guard let context, let pointer else { return }
-    guard let update = KernelHandle.decode(pointer: pointer) else { return }
+    guard let result = KernelHandle.decode(pointer: pointer) else { return }
     let sink = Unmanaged<KernelUpdateSink>.fromOpaque(context).takeUnretainedValue()
-    sink.handler(update)
+    sink.handler(result)
 }
 
-// ─── Decoded snapshot shape ────────────────────────────────────────────────
-//
-// Pulse uses a tighter subset of the NmpStress KernelUpdate. The kernel
-// emits ALL these fields; Pulse just doesn't reference the metrics-heavy
-// ones. If the kernel ever stops emitting one, JSON decode fails closed
-// (the @Published model stays at its prior value) — no field is required.
+// ─── Swift-side timing wrapper ────────────────────────────────────────────
+
+struct KernelUpdateResult {
+    let update: KernelUpdate
+    let payloadBytes: Int
+    let callbackReceivedAt: ContinuousClock.Instant
+    let decodeMicros: Int
+}
+
+// ─── Decoded snapshot shape ───────────────────────────────────────────────
 
 struct KernelUpdate: Decodable {
     let rev: UInt64
+    let updateKind: String?
     let running: Bool
     let relayUrl: String
     let testNpub: String
     let profile: ProfileCard
     let items: [TimelineItem]
-    let metrics: KernelMetricsLite
+    // Delta tracking — optional so older snapshots without these still decode.
+    let inserted: [TimelineItem]?
+    let updated: [TimelineItem]?
+    let removed: [String]?
+    let metrics: KernelMetrics
+    // Single-relay backwards compat field alongside the array.
+    let relayStatus: RelayStatus?
     let relayStatuses: [RelayStatus]
+    // Perf diagnostics — optional so old kernels still decode (D1).
+    let logicalInterests: [LogicalInterestStatus]?
+    let wireSubscriptions: [WireSubscriptionStatus]?
+    let logs: [String]?
     // T66a projections. Optional so a kernel that elides one (or an older
     // build) still decodes — the model keeps its prior value (D1).
     let threadView: ThreadView?
@@ -225,6 +251,33 @@ struct KernelUpdate: Decodable {
     // NIP-47 wallet projection. Optional so older kernels still decode (D1).
     let walletStatus: WalletStatusData?
 }
+
+// ─── Perf-diagnostic types ────────────────────────────────────────────────
+
+struct LogicalInterestStatus: Decodable, Identifiable, Equatable {
+    var id: String { key }
+    let key: String
+    let state: String
+    let refcount: UInt32
+    let relayUrls: [String]
+    let cacheCoverage: String
+    let warmingUntilMs: UInt64?
+}
+
+struct WireSubscriptionStatus: Decodable, Identifiable, Equatable {
+    var id: String { wireId }
+    let wireId: String
+    let relayUrl: String
+    let filterSummary: String
+    let state: String
+    let logicalConsumerCount: UInt32
+    let openedAtMs: UInt64
+    let lastEventAtMs: UInt64?
+    let eoseAtMs: UInt64?
+    let closeReason: String?
+}
+
+// ─── Domain types shared across the UI ───────────────────────────────────
 
 struct ThreadView: Decodable, Equatable {
     let focusedEventId: String
@@ -248,27 +301,8 @@ struct PublishQueueEntry: Decodable, Identifiable, Equatable {
     let eventId: String
     let kind: UInt32
     let targetRelays: Int
-    /// T128 lifecycle: `"accepted_locally"` (in-flight) → `"ok"` (at least
-    /// one relay accepted; partial success surfaced via `relayOutcomes`)
-    /// or `"failed"` (every relay reached FailedAfterRetries).
     let status: String
-    /// Per-relay terminal verdicts; absent while the publish is in-flight.
-    /// Decoded leniently so older kernel builds (pre-T128) still decode.
-    let relayOutcomes: [RelayAckOutcome]?
     var id: String { eventId }
-
-    /// Convenience: per-relay outcomes, treating an absent list as empty.
-    var outcomes: [RelayAckOutcome] { relayOutcomes ?? [] }
-}
-
-/// One relay's terminal verdict for a publish (T128). `DiagnosticsView`
-/// already colours `"ok"` / `"failed"` via `statusColor`, so the per-relay
-/// detail is wire-available for the row even before a UX refresh lands.
-struct RelayAckOutcome: Decodable, Equatable {
-    let relayUrl: String
-    let status: String
-    let message: String?
-    var reason: String { message ?? "" }
 }
 
 struct RelayEditRow: Decodable, Identifiable, Equatable {
@@ -288,7 +322,6 @@ struct WalletStatusData: Decodable, Equatable {
     var isReady: Bool { status == "ready" }
     var isConnected: Bool { status == "connecting" || status == "ready" }
 
-    /// Balance in sats (rounded down from msats).
     var balanceSats: UInt64? {
         balanceMsats.map { $0 / 1000 }
     }
@@ -319,11 +352,50 @@ struct TimelineItem: Decodable, Identifiable, Equatable, Hashable {
     let relayCount: UInt32
 }
 
-struct KernelMetricsLite: Decodable {
+/// Full kernel metrics (matches nmp_core snapshot output). Timing fields are
+/// optional because they are only populated once the relevant milestone is
+/// reached (e.g., `firstEventMs` is nil until the first event arrives).
+struct KernelMetrics: Decodable {
+    let generatedEvents: UInt64
+    let noteEvents: UInt64
+    let profileEvents: UInt64
+    let duplicateEvents: UInt64
+    let deleteEvents: UInt64
     let storedEvents: Int
+    let tombstones: Int
     let visibleItems: Int
-    let eventsRx: UInt64
+    let visibleProfiledItems: Int
+    let visiblePlaceholderAvatarItems: Int
+    let openViews: UInt32
+    let eventsSinceLastUpdate: UInt64
+    let diagnosticFirehoseEvents: UInt64
+    let insertedCount: Int
+    let updatedCount: Int
+    let removedCount: Int
+    let eventsPerSecondConfigured: UInt32
+    let emitHzConfigured: UInt32
     let updateSequence: UInt64
+    let estimatedStoreBytes: Int
+    let payloadBytes: Int
+    let storeToPayloadRatio: Double
+    let actorQueueDepth: UInt32
+    let framesRx: UInt64
+    let eventsRx: UInt64
+    let eoseRx: UInt64
+    let noticesRx: UInt64
+    let closedRx: UInt64
+    let bytesRx: UInt64
+    let bytesTx: UInt64
+    let contactsAuthors: Int
+    let timelineAuthors: Int
+    let firstEventMs: UInt64?
+    let targetProfileLoadedMs: UInt64?
+    let timelineOpenedMs: UInt64?
+    let timelineFirstItemMs: UInt64?
+    let updateEmittedMs: UInt64?
+    let lastEventToEmitMs: UInt64?
+    let maxEventToEmitMs: UInt64
+    let maxEventsPerUpdate: UInt64
 }
 
 struct RelayStatus: Decodable, Equatable, Identifiable {
@@ -332,6 +404,20 @@ struct RelayStatus: Decodable, Equatable, Identifiable {
     let relayUrl: String
     let connection: String
     let auth: String
+    let nip77Negentropy: String?
     let activeWireSubscriptions: Int
     let reconnectCount: UInt32
+    let lastConnectedAtMs: UInt64?
+    let lastEventAtMs: UInt64?
+    let lastNotice: String?
+    let lastError: String?
+    let bytesRx: UInt64?
+    let bytesTx: UInt64?
+}
+
+extension Duration {
+    var microseconds: Int {
+        let parts = components
+        return Int(parts.seconds) * 1_000_000 + Int(parts.attoseconds / 1_000_000_000_000)
+    }
 }

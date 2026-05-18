@@ -1,24 +1,19 @@
 import XCTest
-@testable import NmpPulse
+@testable import Chirp
 
-/// T66c — e2e smoke scenarios that exercise the *hard parts* of the kernel
-/// through the real FFI surface, the same code path the SwiftUI screens drive.
+/// E2E smoke scenarios that exercise the hard parts of the kernel through the
+/// real FFI surface, the same code path the SwiftUI screens drive. Ported from
+/// `ios/NmpPulse/NmpPulseTests/SmokeScenariosTests.swift` (now deleted) so
+/// that coverage lives against real user-facing behavior in Chirp rather than
+/// an isolated test harness.
 ///
-/// These are unit-test-bundle tests (the only test target `project.yml`
-/// defines is `NmpPulseCapabilityTests`, a `bundle.unit-test` — there is no
-/// UI-testing target and `project.yml` is out of scope for this task). So the
-/// scenarios drive `KernelModel` directly rather than tapping SwiftUI views.
-/// The companion `docs/perf/pulse/smoke/README.md` documents the matching
-/// xcode-MCP simulator walkthrough + screenshots.
-///
-/// They hit real relays (`relay.primal.net` + `purplepag.es` — the kernel's
+/// These hit real relays (`relay.primal.net` + `purplepag.es` — the kernel's
 /// fixed `RelayRole::all()` pair) so, like the Rust `#[ignore]` smoke suite,
-/// they are gated behind `NMP_SMOKE=1` and skipped otherwise. A skipped
-/// scenario is honest non-execution, never a fake pass.
+/// they are gated behind `NMP_SMOKE=1` and skipped otherwise.
 ///
 /// Two design choices forced by empirically-observed crashes (both are
-/// REPORT-finding gaps documented in the smoke README; `crates/**` is
-/// off-limits this task so neither is fixed in Rust here):
+/// REPORT-finding gaps; `crates/**` is off-limits so neither is fixed in
+/// Rust here):
 ///
 ///  1. **Process-shared kernel.** `nmp_app_new()` → `nmp_app_free()` →
 ///     `nmp_app_new()` in one process SEGVs when relay sockets were live

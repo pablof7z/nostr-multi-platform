@@ -79,6 +79,7 @@ struct ThreadScreen: View {
                         }
                     )
                     .id(item.id)
+                    .accessibilityIdentifier(isFocused ? "thread-focused-note" : "thread-note-\(item.id.prefix(8))")
 
                     // Thread connector line between non-focused notes
                     if item.id != thread.items.last?.id {
@@ -103,6 +104,7 @@ struct ThreadScreen: View {
                 Spacer(minLength: ChirpSpace.xxl)
             }
         }
+        .accessibilityIdentifier("thread-detail-list")
         .onAppear {
             // Scroll to focused event once view appears
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {

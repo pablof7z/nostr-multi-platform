@@ -1,7 +1,5 @@
 import SwiftUI
 
-// OWNER: Phase-2 Agent D — Diagnostics console (REAL kernel data).
-
 struct DiagnosticsView: View {
     @EnvironmentObject private var model: KernelModel
     @State private var copiedNpub = false
@@ -10,14 +8,19 @@ struct DiagnosticsView: View {
         ScrollView {
             VStack(spacing: ChirpSpace.xl) {
                 kernelSection
+                perfSection
                 metricsSection
                 relaySection
+                logicalInterestsSection
+                wireSubscriptionsSection
                 publishQueueSection
                 accountSection
+                runtimeLogSection
             }
             .padding(.horizontal, ChirpSpace.l)
             .padding(.vertical, ChirpSpace.xl)
         }
+        .accessibilityIdentifier("diagnostics-list")
         .background(Color(.systemBackground))
         .navigationTitle("Diagnostics")
         .navigationBarTitleDisplayMode(.large)
@@ -42,6 +45,16 @@ struct DiagnosticsView: View {
                                 .foregroundStyle(model.isRunning ? ChirpColor.positive : ChirpColor.like)
                         }
                         .animation(.easeInOut(duration: 0.3), value: model.isRunning)
+                    }
+
+                    DiagDivider()
+
+                    DiagRow(label: "Connection") {
+                        let conn = model.relayStatuses.first?.connection.uppercased() ?? "STARTING"
+                        Text(conn)
+                            .font(ChirpFont.callout.weight(.semibold))
+                            .foregroundStyle(connectionColor(conn))
+                            .accessibilityIdentifier("relay-state-value")
                     }
 
                     DiagDivider()
@@ -82,7 +95,7 @@ struct DiagnosticsView: View {
 
                     DiagDivider()
 
-                    DiagRow(label: "Update Sequence") {
+                    DiagRow(label: "Update Seq") {
                         if let seq = model.metrics?.updateSequence {
                             Text("\(seq)")
                                 .font(ChirpFont.mono)
@@ -105,6 +118,97 @@ struct DiagnosticsView: View {
                             .foregroundStyle(ChirpColor.textSecondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
+                    }
+                }
+            }
+        }
+    }
+
+    private func connectionColor(_ conn: String) -> Color {
+        let s = conn.lowercased()
+        if s == "connected" { return ChirpColor.positive }
+        if s.contains("connect") { return ChirpColor.zap }
+        return ChirpColor.like
+    }
+
+    // ── Swift-side timing (NmpStress perf goals) ──────────────────────────
+
+    private var perfSection: some View {
+        VStack(alignment: .leading, spacing: ChirpSpace.m) {
+            ChirpSectionHeader(title: "Performance")
+            GlassCard {
+                VStack(spacing: 0) {
+                    DiagRow(label: "Events Rx") {
+                        Text(model.metrics.map { "\($0.eventsRx)" } ?? "—")
+                            .font(ChirpFont.mono)
+                            .foregroundStyle(ChirpColor.textPrimary)
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                            .accessibilityIdentifier("metric-events-value")
+                    }
+
+                    DiagDivider()
+
+                    DiagRow(label: "Visible") {
+                        Text(model.metrics.map { "\($0.visibleItems)" } ?? "—")
+                            .font(ChirpFont.mono)
+                            .foregroundStyle(ChirpColor.textPrimary)
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                            .accessibilityIdentifier("metric-visible-value")
+                    }
+
+                    DiagDivider()
+
+                    DiagRow(label: "Bytes Rx") {
+                        let value = model.metrics.map { formatBytes(Int64($0.bytesRx)) } ?? "—"
+                        Text(value)
+                            .font(ChirpFont.mono)
+                            .foregroundStyle(ChirpColor.textSecondary)
+                            .accessibilityIdentifier("metric-rx-value")
+                    }
+
+                    DiagDivider()
+
+                    DiagRow(label: "First Event") {
+                        let value = model.metrics?.firstEventMs.map { "\($0) ms" } ?? "-"
+                        Text(value)
+                            .font(ChirpFont.mono)
+                            .foregroundStyle(ChirpColor.textSecondary)
+                            .accessibilityIdentifier("metric-first-ms-value")
+                    }
+
+                    DiagDivider()
+
+                    DiagRow(label: "Max Apply") {
+                        Text("\(model.appMetrics.maxApplyMicros) us")
+                            .font(ChirpFont.mono)
+                            .foregroundStyle(ChirpColor.textSecondary)
+                            .accessibilityIdentifier("metric-apply-us-value")
+                    }
+
+                    DiagDivider()
+
+                    DiagRow(label: "Decode") {
+                        Text("\(model.appMetrics.lastDecodeMicros) us")
+                            .font(ChirpFont.mono)
+                            .foregroundStyle(ChirpColor.textTertiary)
+                    }
+
+                    DiagDivider()
+
+                    DiagRow(label: "cb→screen") {
+                        Text("\(model.appMetrics.lastCallbackToAppliedMicros) us")
+                            .font(ChirpFont.mono)
+                            .foregroundStyle(ChirpColor.textTertiary)
+                    }
+
+                    DiagDivider()
+
+                    DiagRow(label: "Queue Depth") {
+                        Text(model.metrics.map { "\($0.actorQueueDepth)" } ?? "—")
+                            .font(ChirpFont.mono)
+                            .foregroundStyle(ChirpColor.textTertiary)
                     }
                 }
             }
@@ -135,6 +239,26 @@ struct DiagnosticsView: View {
                         value: m.eventsRx.formatted(.number.notation(.compactName)),
                         icon: "arrow.down.circle",
                         color: ChirpColor.positive
+                    )
+                }
+                HStack(spacing: ChirpSpace.m) {
+                    MetricTile(
+                        label: "Note Events",
+                        value: m.noteEvents.formatted(.number.notation(.compactName)),
+                        icon: "doc.text",
+                        color: ChirpColor.textSecondary
+                    )
+                    MetricTile(
+                        label: "Queue Depth",
+                        value: "\(m.actorQueueDepth)",
+                        icon: "tray.full",
+                        color: m.actorQueueDepth > 100 ? ChirpColor.like : ChirpColor.textTertiary
+                    )
+                    MetricTile(
+                        label: "Payload",
+                        value: formatBytes(Int64(m.payloadBytes)),
+                        icon: "doc.zipper",
+                        color: ChirpColor.textSecondary
                     )
                 }
                 .animation(.smooth(duration: 0.25), value: m.storedEvents)
@@ -179,6 +303,94 @@ struct DiagnosticsView: View {
                     }
                 }
             }
+        }
+    }
+
+    // ── Logical interests (NmpStress perf goal) ───────────────────────────
+
+    @ViewBuilder
+    private var logicalInterestsSection: some View {
+        if !model.logicalInterests.isEmpty {
+            VStack(alignment: .leading, spacing: ChirpSpace.m) {
+                ChirpSectionHeader(title: "Logical Interests (\(model.logicalInterests.count))")
+                GlassCard {
+                    VStack(spacing: 0) {
+                        ForEach(Array(model.logicalInterests.enumerated()), id: \.element.id) { index, interest in
+                            VStack(alignment: .leading, spacing: ChirpSpace.xs) {
+                                Text(interest.key)
+                                    .font(ChirpFont.mono)
+                                    .foregroundStyle(ChirpColor.textPrimary)
+                                    .lineLimit(1)
+                                HStack(spacing: ChirpSpace.s) {
+                                    DiagChip(label: interest.state, color: interestStateColor(interest.state))
+                                    DiagChip(label: "ref \(interest.refcount)", color: ChirpColor.textTertiary)
+                                    DiagChip(label: interest.cacheCoverage, color: ChirpColor.accent)
+                                }
+                            }
+                            .padding(.vertical, ChirpSpace.s)
+                            if index < model.logicalInterests.count - 1 {
+                                DiagDivider()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func interestStateColor(_ state: String) -> Color {
+        switch state {
+        case "active", "warming": return ChirpColor.positive
+        case "idle": return ChirpColor.textTertiary
+        default: return ChirpColor.zap
+        }
+    }
+
+    // ── Wire subscriptions (NmpStress perf goal) ──────────────────────────
+
+    @ViewBuilder
+    private var wireSubscriptionsSection: some View {
+        if !model.wireSubscriptions.isEmpty {
+            VStack(alignment: .leading, spacing: ChirpSpace.m) {
+                ChirpSectionHeader(title: "Wire Subscriptions (\(model.wireSubscriptions.count))")
+                GlassCard {
+                    VStack(spacing: 0) {
+                        ForEach(Array(model.wireSubscriptions.enumerated()), id: \.element.id) { index, sub in
+                            VStack(alignment: .leading, spacing: ChirpSpace.xs) {
+                                HStack {
+                                    Text(sub.wireId)
+                                        .font(ChirpFont.mono)
+                                        .foregroundStyle(ChirpColor.textPrimary)
+                                        .lineLimit(1)
+                                    Spacer(minLength: 0)
+                                    DiagChip(label: sub.state, color: subStateColor(sub.state))
+                                }
+                                Text(sub.filterSummary)
+                                    .font(ChirpFont.caption)
+                                    .foregroundStyle(ChirpColor.textSecondary)
+                                    .lineLimit(2)
+                                Text(sub.relayUrl)
+                                    .font(ChirpFont.caption)
+                                    .foregroundStyle(ChirpColor.textTertiary)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                            .padding(.vertical, ChirpSpace.s)
+                            if index < model.wireSubscriptions.count - 1 {
+                                DiagDivider()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func subStateColor(_ state: String) -> Color {
+        switch state {
+        case "open", "active": return ChirpColor.positive
+        case "closed": return ChirpColor.textTertiary
+        default: return ChirpColor.zap
         }
     }
 
@@ -234,7 +446,6 @@ struct DiagnosticsView: View {
                             }
                         }
 
-                        // Npub copyable row
                         VStack(alignment: .leading, spacing: ChirpSpace.xs) {
                             Text("npub")
                                 .font(.caption.weight(.semibold))
@@ -281,6 +492,35 @@ struct DiagnosticsView: View {
                 }
             }
         }
+    }
+
+    // ── Runtime log (NmpStress perf goal) ────────────────────────────────
+
+    @ViewBuilder
+    private var runtimeLogSection: some View {
+        if !model.logs.isEmpty {
+            VStack(alignment: .leading, spacing: ChirpSpace.m) {
+                ChirpSectionHeader(title: "Runtime Log (\(model.logs.count))")
+                GlassCard {
+                    VStack(alignment: .leading, spacing: ChirpSpace.xs) {
+                        ForEach(model.logs.reversed().prefix(50), id: \.self) { entry in
+                            Text(entry)
+                                .font(ChirpFont.mono)
+                                .foregroundStyle(ChirpColor.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    // ── Byte formatter ────────────────────────────────────────────────────
+
+    private func formatBytes(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .binary)
     }
 }
 
@@ -347,7 +587,6 @@ private struct DiagRelayRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: ChirpSpace.xs) {
             HStack(alignment: .center, spacing: ChirpSpace.s) {
-                // Connection dot
                 Circle()
                     .fill(connectionColor)
                     .frame(width: 8, height: 8)
@@ -361,7 +600,6 @@ private struct DiagRelayRow: View {
 
                 Spacer(minLength: 0)
 
-                // Role chip
                 Text(relay.role.capitalized)
                     .font(.system(.caption2, design: .rounded).weight(.bold))
                     .foregroundStyle(roleColor)
@@ -377,6 +615,19 @@ private struct DiagRelayRow: View {
                 if relay.reconnectCount > 0 {
                     DiagChip(label: "↩ \(relay.reconnectCount)", color: ChirpColor.zap)
                 }
+            }
+
+            if let notice = relay.lastNotice {
+                Text(notice)
+                    .font(ChirpFont.caption)
+                    .foregroundStyle(ChirpColor.textTertiary)
+                    .lineLimit(2)
+            }
+            if let error = relay.lastError {
+                Text(error)
+                    .font(ChirpFont.caption)
+                    .foregroundStyle(ChirpColor.like)
+                    .lineLimit(2)
             }
         }
         .padding(.vertical, ChirpSpace.s)
@@ -440,7 +691,6 @@ private struct DiagPublishRow: View {
                     .foregroundStyle(ChirpColor.textSecondary)
             }
             Spacer()
-            // Status badge
             Text(entry.status.capitalized)
                 .font(.system(.caption2, design: .rounded).weight(.semibold))
                 .foregroundStyle(statusColor(entry.status))

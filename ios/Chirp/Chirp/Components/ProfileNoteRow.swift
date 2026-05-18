@@ -64,5 +64,6 @@ struct ProfileNoteRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("profile-thread-link")
     }
 }

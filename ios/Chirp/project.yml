@@ -35,8 +35,42 @@ targets:
           - $(SRCROOT)/../../target/aarch64-apple-ios/release
         OTHER_LDFLAGS: "$(inherited) -lnmp_core"
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+
+  ChirpTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ChirpTests
+    dependencies:
+      # Host in the Chirp app so the test bundle inherits the app's keychain
+      # entitlement context (SecItem* requires it on the iOS simulator).
+      - target: Chirp
+    settings:
+      base:
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Chirp.app/Chirp"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.ChirpTests
+        GENERATE_INFOPLIST_FILE: YES
+
+  ChirpUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: ChirpUITests
+    dependencies:
+      - target: Chirp
+    settings:
+      base:
+        TEST_TARGET_NAME: Chirp
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.ChirpUITests
+        GENERATE_INFOPLIST_FILE: YES
+
 schemes:
   Chirp:
     build:
       targets:
         Chirp: all
+    test:
+      targets:
+        - ChirpTests
+        - ChirpUITests

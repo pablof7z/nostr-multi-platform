@@ -82,6 +82,7 @@ struct NoteRowView: View {
             )
         }
         .buttonStyle(.borderless)
+        .accessibilityIdentifier("timeline-author-link")
     }
 
     // ── Author name + truncated pubkey + timestamp ────────────────────────
