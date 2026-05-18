@@ -24,4 +24,20 @@ void nmp_app_release_profile(void *app, const char *pubkey, const char *consumer
 void nmp_app_close_author(void *app, const char *pubkey);
 void nmp_app_close_thread(void *app, const char *event_id);
 
+// T66a — identity / publish / multi-account / relay-edit. None return a
+// value; outcomes (incl. validation failures) arrive via the snapshot's
+// last_error_toast / accounts / publish_queue fields (D6).
+void nmp_app_signin_nsec(void *app, const char *secret);
+void nmp_app_signin_bunker(void *app, const char *uri);
+void nmp_app_create_new_account(void *app);
+void nmp_app_switch_active(void *app, const char *identity_id);
+void nmp_app_remove_account(void *app, const char *identity_id);
+void nmp_app_publish_note(void *app, const char *content, const char *reply_to_id_or_null);
+void nmp_app_react(void *app, const char *target_event_id, const char *reaction);
+void nmp_app_follow(void *app, const char *pubkey);
+void nmp_app_unfollow(void *app, const char *pubkey);
+void nmp_app_add_relay(void *app, const char *url, const char *role);
+void nmp_app_remove_relay(void *app, const char *url);
+void nmp_app_open_timeline(void *app);
+
 #endif

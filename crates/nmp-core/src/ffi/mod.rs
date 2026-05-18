@@ -1,3 +1,9 @@
+//! Path-A raw C FFI surface. `mod.rs` carries the lifecycle + read-side
+//! wrappers; `identity` carries the T66a identity / publish / multi-account
+//! / relay-edit wrappers (split to keep each file under the 500-LOC cap).
+
+mod identity;
+
 use crate::actor::{run_actor, ActorCommand};
 use crate::kernel::{is_hex_id, is_hex_pubkey};
 use crate::relay::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
@@ -400,7 +406,7 @@ pub extern "C" fn nmp_app_inject_signed_events(
     let _ = app.tx.send(ActorCommand::IngestPreVerifiedEvents(events));
 }
 
-fn app_ref<'a>(app: *mut NmpApp) -> Option<&'a NmpApp> {
+pub(crate) fn app_ref<'a>(app: *mut NmpApp) -> Option<&'a NmpApp> {
     if app.is_null() {
         None
     } else {
@@ -409,7 +415,7 @@ fn app_ref<'a>(app: *mut NmpApp) -> Option<&'a NmpApp> {
     }
 }
 
-fn c_string_argument(ptr: *const c_char) -> Option<String> {
+pub(crate) fn c_string_argument(ptr: *const c_char) -> Option<String> {
     if ptr.is_null() {
         return None;
     }
@@ -422,6 +428,24 @@ fn c_string_argument(ptr: *const c_char) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
+}
+
+/// Optional-string FFI argument. Unlike `c_string_argument` (which collapses
+/// NULL / empty / whitespace to `None` for a REQUIRED arg and the caller
+/// drops the call), this returns `Some(value)` for non-empty content and
+/// `None` for absent — so a NULL `reply_to_id` means "top-level note" rather
+/// than "drop the publish". Build-doc §1.1 contract.
+pub(crate) fn c_optional_string_argument(ptr: *const c_char) -> Option<String> {
+    if ptr.is_null() {
+        return None;
+    }
+    // SAFETY: caller guarantees ptr is a valid null-terminated C string.
+    let value = unsafe { CStr::from_ptr(ptr) }.to_str().ok()?.trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_owned())
+    }
 }
 
 fn clamp_visible(visible_limit: c_uint) -> usize {

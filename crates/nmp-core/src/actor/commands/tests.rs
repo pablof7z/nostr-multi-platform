@@ -1,0 +1,186 @@
+//! T66a command-path unit tests.
+//!
+//! Each test drives the public command handlers against a real `Kernel` +
+//! `IdentityRuntime` (no mocks) and asserts on the snapshot projections the
+//! FFI surfaces — exactly what the SwiftUI screens read.
+
+use super::*;
+use crate::kernel::Kernel;
+use crate::relay::DEFAULT_VISIBLE_LIMIT;
+
+const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
+const SECOND_HEX: &str = "0000000000000000000000000000000000000000000000000000000000000abc";
+
+fn fresh() -> (IdentityRuntime, Kernel) {
+    (IdentityRuntime::new(), Kernel::new(DEFAULT_VISIBLE_LIMIT))
+}
+
+#[test]
+fn sign_in_nsec_adds_active_account_and_projects_it() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    let (accounts, active) = kernel.account_snapshot();
+    assert_eq!(accounts.len(), 1);
+    assert_eq!(accounts[0].status, "active");
+    assert_eq!(accounts[0].signer_kind, "local");
+    assert!(active.is_some());
+    assert_eq!(active, Some(&accounts[0].id));
+    assert!(accounts[0].npub.starts_with("npub1"));
+}
+
+#[test]
+fn sign_in_nsec_rejects_garbage_with_toast() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_nsec(&mut id, &mut kernel, "not-a-key", false);
+    assert!(kernel.account_snapshot().0.is_empty());
+    assert!(kernel
+        .last_error_toast_snapshot()
+        .is_some_and(|t| t.contains("invalid secret key")));
+}
+
+#[test]
+fn create_account_generates_fresh_active_key() {
+    let (mut id, mut kernel) = fresh();
+    create_account(&mut id, &mut kernel, false);
+    assert_eq!(kernel.account_snapshot().0.len(), 1);
+    assert!(id.active_pubkey().is_some());
+}
+
+#[test]
+fn switch_active_flips_status_synchronously() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    create_account(&mut id, &mut kernel, false);
+    let first_id = kernel.account_snapshot().0[0].id.clone();
+    let second_active = id.active_pubkey().unwrap();
+    assert_ne!(first_id, second_active);
+
+    switch_active(&mut id, &mut kernel, &first_id, false);
+    let (accounts, active) = kernel.account_snapshot();
+    assert_eq!(active, Some(&first_id));
+    let first = accounts.iter().find(|a| a.id == first_id).unwrap();
+    assert_eq!(first.status, "active");
+    let second = accounts.iter().find(|a| a.id == second_active).unwrap();
+    assert_eq!(second.status, "idle");
+}
+
+#[test]
+fn switch_to_unknown_account_toasts_and_no_op() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    let before = id.active_pubkey();
+    switch_active(&mut id, &mut kernel, SECOND_HEX, false);
+    assert_eq!(id.active_pubkey(), before);
+    assert!(kernel
+        .last_error_toast_snapshot()
+        .is_some_and(|t| t.contains("account not found")));
+}
+
+#[test]
+fn remove_active_account_clears_active_slot() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    let only = kernel.account_snapshot().0[0].id.clone();
+    remove_account(&mut id, &mut kernel, &only);
+    let (accounts, active) = kernel.account_snapshot();
+    assert!(accounts.is_empty());
+    assert!(active.is_none());
+}
+
+#[test]
+fn publish_note_without_account_toasts_and_no_outbound() {
+    let (id, mut kernel) = fresh();
+    let outbound = publish_note(&id, &mut kernel, "hello pulse", None);
+    assert!(outbound.is_empty());
+    assert!(kernel
+        .last_error_toast_snapshot()
+        .is_some_and(|t| t.contains("no active account")));
+}
+
+#[test]
+fn publish_note_signs_and_enqueues_via_outbox_fallback() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    let outbound = publish_note(&id, &mut kernel, "hello pulse e2e", None);
+    // No kind:10002 yet → resolver returns the indexer fallback, so the
+    // event still goes out and is queued as accepted_locally (D1/D3).
+    assert!(!outbound.is_empty());
+    assert!(outbound[0].text.starts_with("[\"EVENT\""));
+    let q = kernel.publish_queue_snapshot();
+    assert_eq!(q.len(), 1);
+    assert_eq!(q[0].kind, 1);
+    assert_eq!(q[0].status, "accepted_locally");
+    assert!(q[0].target_relays >= 1);
+}
+
+#[test]
+fn react_builds_kind7_with_e_tag() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    let target = "a".repeat(64);
+    let outbound = react(&id, &mut kernel, &target, "❤");
+    assert!(!outbound.is_empty());
+    assert!(outbound[0].text.contains("\"kind\":7"));
+    assert!(outbound[0].text.contains(&target));
+    assert_eq!(kernel.publish_queue_snapshot().last().unwrap().kind, 7);
+}
+
+#[test]
+fn follow_publishes_kind3_with_p_tag() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    let target = "b".repeat(64);
+    let outbound = follow(&id, &mut kernel, &target, true);
+    assert!(!outbound.is_empty());
+    assert!(outbound[0].text.contains("\"kind\":3"));
+    assert!(outbound[0].text.contains(&target));
+}
+
+#[test]
+fn add_and_remove_relay_edits_projection() {
+    let (_id, mut kernel) = fresh();
+    add_relay(&mut kernel, "wss://relay.damus.io", "both");
+    add_relay(&mut kernel, "wss://nos.lol", "write");
+    assert_eq!(kernel.relay_edit_rows_snapshot().len(), 2);
+    add_relay(&mut kernel, "http://bad", "read");
+    assert_eq!(kernel.relay_edit_rows_snapshot().len(), 2);
+    assert!(kernel
+        .last_error_toast_snapshot()
+        .is_some_and(|t| t.contains("invalid relay URL")));
+    remove_relay(&mut kernel, "wss://nos.lol");
+    assert_eq!(kernel.relay_edit_rows_snapshot().len(), 1);
+    assert_eq!(kernel.relay_edit_rows_snapshot()[0].url, "wss://relay.damus.io");
+}
+
+#[test]
+fn sign_in_bunker_parses_uri_but_defers_transport() {
+    let (_id, mut kernel) = fresh();
+    let pk = "c".repeat(64);
+    sign_in_bunker(&mut kernel, &format!("bunker://{pk}?relay=wss://r.example"));
+    assert!(kernel
+        .last_error_toast_snapshot()
+        .is_some_and(|t| t.contains("NIP-46 transport is not wired")));
+}
+
+#[test]
+fn sign_in_bunker_rejects_malformed_uri() {
+    let (_id, mut kernel) = fresh();
+    sign_in_bunker(&mut kernel, "bunker://nope");
+    assert!(kernel
+        .last_error_toast_snapshot()
+        .is_some_and(|t| t.contains("invalid bunker")));
+}
+
+#[test]
+fn snapshot_json_carries_new_projections() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    publish_note(&id, &mut kernel, "json shape check", None);
+    add_relay(&mut kernel, "wss://relay.damus.io", "both");
+    let json = kernel.make_update(true);
+    assert!(json.contains("\"accounts\""));
+    assert!(json.contains("\"active_account\""));
+    assert!(json.contains("\"publish_queue\""));
+    assert!(json.contains("\"last_error_toast\""));
+    assert!(json.contains("\"relay_edit_rows\""));
+}

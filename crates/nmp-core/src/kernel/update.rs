@@ -90,6 +90,11 @@ impl Kernel {
             logical_interests: self.logical_interests(),
             wire_subscriptions: self.wire_subscriptions(),
             logs: self.logs.iter().cloned().collect(),
+            accounts: self.account_snapshot().0.to_vec(),
+            active_account: self.account_snapshot().1.cloned(),
+            publish_queue: self.publish_queue_snapshot().to_vec(),
+            last_error_toast: self.last_error_toast_snapshot().cloned(),
+            relay_edit_rows: self.relay_edit_rows_snapshot().to_vec(),
         };
 
         let first = serde_json::to_string(&update).unwrap_or_else(|_| "{}".to_string());

@@ -323,4 +323,10 @@ pub(super) struct KernelUpdate {
     pub(super) logical_interests: Vec<LogicalInterestStatus>,
     pub(super) wire_subscriptions: Vec<WireSubscriptionStatus>,
     pub(super) logs: Vec<String>,
+    // ── T66a identity / publish / relay-edit projections ──────────────────
+    pub(super) accounts: Vec<super::AccountSummary>,
+    pub(super) active_account: Option<String>,
+    pub(super) publish_queue: Vec<super::PublishQueueEntry>,
+    pub(super) last_error_toast: Option<String>,
+    pub(super) relay_edit_rows: Vec<super::RelayEditRow>,
 }

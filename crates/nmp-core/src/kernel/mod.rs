@@ -11,8 +11,10 @@
 //! - `tests`        — unit tests (cfg(test) only)
 
 mod auth;
+mod identity_state;
 mod ingest;
 mod nostr;
+mod publish_cmd;
 mod requests;
 mod status;
 #[cfg(any(test, feature = "test-support"))]
@@ -33,15 +35,33 @@ use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
+use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tungstenite::Message;
 
 use nostr::*;
 pub(crate) use nostr::{is_hex_id, is_hex_pubkey};
 
+/// Decode a 64-char lowercase/uppercase-hex pubkey into the store's
+/// `[u8; 32]` `PubKey`. Returns `None` on any malformed input — callers
+/// treat `None` as "no lookup" (never panics across the FFI boundary, D6).
+pub(crate) fn hex_to_pubkey_bytes(hex: &str) -> Option<[u8; 32]> {
+    if hex.len() != 64 {
+        return None;
+    }
+    let mut out = [0u8; 32];
+    for (i, chunk) in hex.as_bytes().chunks(2).enumerate() {
+        let hi = (chunk[0] as char).to_digit(16)? as u8;
+        let lo = (chunk[1] as char).to_digit(16)? as u8;
+        out[i] = (hi << 4) | lo;
+    }
+    Some(out)
+}
+
 use crate::store::{EventStore, MemEventStore};
 use crate::subs::SubscriptionLifecycle;
 use auth::{AuthSignerFn, Nip42DriverState};
+pub(crate) use identity_state::{AccountSummary, PublishQueueEntry, RelayEditRow};
 use types::*;
 
 /// The kernel owns all Nostr protocol state for the active app session.
@@ -57,7 +77,11 @@ pub(crate) struct Kernel {
     /// Pluggable event store. D4: the single writer for all Nostr events.
     ///
     /// `MemEventStore` by default; replace with `LmdbEventStore` in M3 phase 2.
-    store: Box<dyn EventStore>,
+    /// `Arc` (not `Box`) so the `Nip65OutboxResolver` (D3) can share the same
+    /// store without a second copy — `EventStore` is interior-mutable
+    /// (`insert`/`scan` take `&self`), so the actor stays the only logical
+    /// writer (D4) even though the handle is shared.
+    store: Arc<dyn EventStore>,
     rev: u64,
     visible_limit: usize,
     started_at: Option<Instant>,
@@ -127,12 +151,21 @@ pub(crate) struct Kernel {
     /// as the `pubkey` field of the unsigned kind:22242 template (NIP-42
     /// requires the AUTH event to be signed by the connecting client's key).
     auth_signer_pubkey: Option<String>,
+    /// T66a identity/publish projections — flat wire-protocol summaries the
+    /// actor pushes after each AccountManager-equivalent mutation. The actor
+    /// (in `nmp-core`, so it CANNOT import `nmp-signers` per D0) owns the
+    /// authoritative `nostr::Keys` map; these are the derived snapshot cache.
+    accounts: Vec<AccountSummary>,
+    active_account: Option<String>,
+    publish_queue: Vec<PublishQueueEntry>,
+    last_error_toast: Option<String>,
+    relay_edit_rows: Vec<RelayEditRow>,
 }
 
 impl Kernel {
     pub(crate) fn new(visible_limit: usize) -> Self {
         Self {
-            store: Box::new(MemEventStore::new()),
+            store: Arc::new(MemEventStore::new()),
             rev: 0,
             visible_limit,
             started_at: None,
@@ -188,6 +221,11 @@ impl Kernel {
             lifecycle: SubscriptionLifecycle::new(),
             auth_signer: None,
             auth_signer_pubkey: None,
+            accounts: Vec::new(),
+            active_account: None,
+            publish_queue: Vec::new(),
+            last_error_toast: None,
+            relay_edit_rows: Vec::new(),
         }
     }
 
@@ -197,10 +235,16 @@ impl Kernel {
     /// startup — keeping the kernel free of any `nmp-signers` dependency
     /// (no cycle). Replaces any previously-bound signer. The FFI bridge that
     /// surfaces this from Swift is T59 (filed in `docs/perf/pending-user-decisions.md`).
-    #[allow(dead_code)]
     pub(crate) fn bind_auth_signer(&mut self, pubkey_hex: String, signer: AuthSignerFn) {
         self.auth_signer = Some(signer);
         self.auth_signer_pubkey = Some(pubkey_hex);
+    }
+
+    /// Drop the active signer + pubkey (no active account). AUTH challenges
+    /// are then recorded but never answered until a signer is rebound.
+    pub(crate) fn clear_auth_signer(&mut self) {
+        self.auth_signer = None;
+        self.auth_signer_pubkey = None;
     }
 
     pub(crate) fn start(&mut self) {

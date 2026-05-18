@@ -3,8 +3,11 @@
 //! Idle-tick timing helpers are in `tick.rs`.
 //! Relay lifecycle helpers are in `relay_mgmt.rs`.
 
+mod commands;
 mod relay_mgmt;
 mod tick;
+
+use commands::IdentityRuntime;
 
 use relay_mgmt::{
     all_relays_connected, bridge_commands, bridge_relays, close_relays, maybe_send_startup,
@@ -30,6 +33,43 @@ pub enum ActorCommand {
     OpenAuthor { pubkey: String },
     OpenThread { event_id: String },
     OpenFirehoseTag { tag: String },
+    /// T66a identity — import an nsec/hex secret, add to the actor-local
+    /// identity store, bind it as the active signer, retarget the timeline.
+    SignInNsec { secret: String },
+    /// T66a identity — parse a `bunker://` NIP-46 URI. Transport is NOT yet
+    /// wired (D0 forbids `nmp-core -> nmp-signers`); this validates the URI
+    /// shape and surfaces a `last_error_toast` directing the user to nsec.
+    SignInBunker { uri: String },
+    /// T66a identity — generate a fresh keypair and sign in with it.
+    CreateAccount,
+    /// T66a identity — switch the active account (synchronous re-bind +
+    /// timeline retarget, mirrors AccountManager::switch_active semantics).
+    SwitchActive { identity_id: String },
+    /// T66a identity — remove an account; clears the active slot if it was
+    /// the active one.
+    RemoveAccount { identity_id: String },
+    /// T66a publish — sign a kind:1 (optionally a reply) with the active
+    /// account and emit it to the NIP-65 outbox-resolved write relays (D3).
+    PublishNote {
+        content: String,
+        reply_to_id: Option<String>,
+    },
+    /// T66a publish — kind:7 reaction to `target_event_id`.
+    React {
+        target_event_id: String,
+        reaction: String,
+    },
+    /// T66a publish — append `pubkey` to the active account's kind:3 follow
+    /// set and re-publish it.
+    Follow { pubkey: String },
+    /// T66a publish — remove `pubkey` from the kind:3 follow set.
+    Unfollow { pubkey: String },
+    /// T66a relay edit — add a relay row (role: `read` | `write` | `both`).
+    AddRelay { url: String, role: String },
+    /// T66a relay edit — remove a relay row.
+    RemoveRelay { url: String },
+    /// T66a — (re)open the following-timeline for the active account.
+    OpenTimeline,
     ClaimProfile { pubkey: String, consumer_id: String },
     ReleaseProfile { pubkey: String, consumer_id: String },
     CloseAuthor { pubkey: String },
@@ -67,6 +107,7 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
     bridge_relays(relay_rx, actor_tx.clone());
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let mut identity = IdentityRuntime::new();
     let mut relay_controls: HashMap<RelayRole, RelayControl> = HashMap::new();
     let mut connected_relays = HashSet::new();
     let mut next_relay_generation = 1;
@@ -103,6 +144,7 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
                 let outbound = dispatch_command(
                     command,
                     &mut kernel,
+                    &mut identity,
                     &mut relay_controls,
                     &relay_tx,
                     &mut connected_relays,
@@ -162,6 +204,7 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
 fn dispatch_command(
     command: ActorCommand,
     kernel: &mut Kernel,
+    identity: &mut IdentityRuntime,
     relay_controls: &mut HashMap<RelayRole, RelayControl>,
     relay_tx: &Sender<RelayEvent>,
     connected_relays: &mut HashSet<RelayRole>,
@@ -234,6 +277,75 @@ fn dispatch_command(
         }
         ActorCommand::CloseThread { event_id } => {
             let outbound = kernel.close_thread(&event_id);
+            emit_now(kernel, *running, update_tx, last_emit);
+            Some(outbound)
+        }
+        ActorCommand::SignInNsec { secret } => {
+            let outbound = commands::sign_in_nsec(identity, kernel, &secret, relays_ready);
+            emit_now(kernel, *running, update_tx, last_emit);
+            Some(outbound)
+        }
+        ActorCommand::SignInBunker { uri } => {
+            commands::sign_in_bunker(kernel, &uri);
+            emit_now(kernel, *running, update_tx, last_emit);
+            Some(Vec::new())
+        }
+        ActorCommand::CreateAccount => {
+            let outbound = commands::create_account(identity, kernel, relays_ready);
+            emit_now(kernel, *running, update_tx, last_emit);
+            Some(outbound)
+        }
+        ActorCommand::SwitchActive { identity_id } => {
+            let outbound =
+                commands::switch_active(identity, kernel, &identity_id, relays_ready);
+            emit_now(kernel, *running, update_tx, last_emit);
+            Some(outbound)
+        }
+        ActorCommand::RemoveAccount { identity_id } => {
+            let outbound = commands::remove_account(identity, kernel, &identity_id);
+            emit_now(kernel, *running, update_tx, last_emit);
+            Some(outbound)
+        }
+        ActorCommand::PublishNote {
+            content,
+            reply_to_id,
+        } => {
+            let outbound =
+                commands::publish_note(identity, kernel, &content, reply_to_id.as_deref());
+            emit_now(kernel, *running, update_tx, last_emit);
+            Some(outbound)
+        }
+        ActorCommand::React {
+            target_event_id,
+            reaction,
+        } => {
+            let outbound =
+                commands::react(identity, kernel, &target_event_id, &reaction);
+            emit_now(kernel, *running, update_tx, last_emit);
+            Some(outbound)
+        }
+        ActorCommand::Follow { pubkey } => {
+            let outbound = commands::follow(identity, kernel, &pubkey, true);
+            emit_now(kernel, *running, update_tx, last_emit);
+            Some(outbound)
+        }
+        ActorCommand::Unfollow { pubkey } => {
+            let outbound = commands::follow(identity, kernel, &pubkey, false);
+            emit_now(kernel, *running, update_tx, last_emit);
+            Some(outbound)
+        }
+        ActorCommand::AddRelay { url, role } => {
+            commands::add_relay(kernel, &url, &role);
+            emit_now(kernel, *running, update_tx, last_emit);
+            Some(Vec::new())
+        }
+        ActorCommand::RemoveRelay { url } => {
+            commands::remove_relay(kernel, &url);
+            emit_now(kernel, *running, update_tx, last_emit);
+            Some(Vec::new())
+        }
+        ActorCommand::OpenTimeline => {
+            let outbound = commands::open_timeline(identity, kernel, relays_ready);
             emit_now(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
