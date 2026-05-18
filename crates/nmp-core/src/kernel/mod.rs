@@ -269,4 +269,14 @@ impl Kernel {
     pub(crate) fn changed_since_emit(&self) -> bool {
         self.changed_since_emit
     }
+
+    /// Mutable access to the subscription lifecycle (registry + trigger inbox).
+    ///
+    /// The actor-side `KernelAction` reducer (T95) uses this to register the
+    /// `LogicalInterest` resolved from an `OpenUri` action through the
+    /// single-writer [`crate::subs::InterestRegistry`] (D4). Kept crate-private
+    /// so the FFI surface never sees a subscription-internal type (D0/D6).
+    pub(crate) fn lifecycle_mut(&mut self) -> &mut SubscriptionLifecycle {
+        &mut self.lifecycle
+    }
 }

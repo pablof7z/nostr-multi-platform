@@ -4,10 +4,14 @@
 //! Relay lifecycle helpers are in `relay_mgmt.rs`.
 
 mod commands;
+mod kernel_action;
 mod relay_mgmt;
 mod tick;
 
 use commands::IdentityRuntime;
+use kernel_action::dispatch_kernel_action;
+
+use crate::app::KernelAction;
 
 use relay_mgmt::{
     all_relays_connected, bridge_commands, bridge_relays, close_relays, maybe_send_startup,
@@ -77,6 +81,11 @@ pub enum ActorCommand {
     Stop,
     Reset,
     Shutdown,
+    /// Generic FFI-boundary action (T95). Routed through the
+    /// [`dispatch_kernel_action`] reducer; the resolved [`KernelUpdate`] is
+    /// serialized and pushed on the update channel. `OpenUri` registers the
+    /// resolved interest through the single-writer registry (D4).
+    Kernel(KernelAction),
     /// Ingest pre-verified timeline events through the test-support kernel path.
     ///
     /// The caller is responsible for constructing `VerifiedEvent` values; this
@@ -348,6 +357,17 @@ fn dispatch_command(
             let outbound = commands::open_timeline(identity, kernel, relays_ready);
             emit_now(kernel, *running, update_tx, last_emit);
             Some(outbound)
+        }
+        ActorCommand::Kernel(action) => {
+            let update = dispatch_kernel_action(kernel, action);
+            // Discrete FFI update (not the periodic snapshot): serialize and
+            // push directly. D6 — serde never panics on these plain enums; a
+            // failure degrades to a no-op send rather than unwinding.
+            if let Ok(json) = serde_json::to_string(&update) {
+                let _ = update_tx.send(json);
+            }
+            emit_now(kernel, *running, update_tx, last_emit);
+            Some(Vec::new())
         }
         ActorCommand::Stop => {
             *running = false;

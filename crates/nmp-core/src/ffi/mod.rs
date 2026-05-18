@@ -213,6 +213,30 @@ pub extern "C" fn nmp_app_open_firehose_tag(app: *mut NmpApp, tag: *const c_char
     let _ = app.tx.send(ActorCommand::OpenFirehoseTag { tag });
 }
 
+/// Open whatever a `nostr:` URI (or bare NIP-19 entity) points at (T95/T80).
+///
+/// The actor routes this through the `KernelAction` reducer
+/// (`dispatch_kernel_action`): on success the resolved `LogicalInterest` is
+/// registered through the single-writer registry and a `ViewOpened`
+/// `KernelUpdate` is pushed; on failure a `UriRejected` `KernelUpdate` is
+/// pushed instead. FFI-clean (D6): a null/invalid argument is a silent no-op,
+/// never a panic across the boundary.
+#[no_mangle]
+pub extern "C" fn nmp_app_open_uri(app: *mut NmpApp, uri: *const c_char) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let Some(uri) = c_string_argument(uri) else {
+        return;
+    };
+
+    let _ = app
+        .tx
+        .send(ActorCommand::Kernel(crate::app::KernelAction::OpenUri {
+            uri,
+        }));
+}
+
 #[no_mangle]
 pub extern "C" fn nmp_app_claim_profile(
     app: *mut NmpApp,
