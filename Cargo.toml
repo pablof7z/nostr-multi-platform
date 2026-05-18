@@ -10,6 +10,7 @@ members = [
     "crates/nmp-codegen",
     "crates/nmp-core",
     "crates/nmp-highlighter-core",
+    "crates/nmp-nip23",
     "crates/nmp-nip29",
     "crates/nmp-nip42",
     "crates/nmp-nip77",

@@ -2,6 +2,26 @@ pub trait DomainModule: Send + Sync + 'static {
     const NAMESPACE: &'static str;
     const SCHEMA_VERSION: u32;
 
+    /// Kinds this module wants to see at ingest. Empty (the default) means
+    /// "no Nostr ingest" — useful for pure domain-store modules (e.g. the
+    /// fixture-todo crate) that materialise records from app-local writes
+    /// rather than relay traffic.
+    ///
+    /// Protocol-module crates override this to declare ownership of the
+    /// kinds they decode (`nmp-nip23` returns `&[30023]`, etc.). The kernel
+    /// dispatch table — landing in Phase 1 per
+    /// `docs/design/kind-wrappers.md` §6 + §8 — reads this slice to build
+    /// `kind → Vec<ModuleId>` routes; per D4 each `(kind, optional
+    /// discriminator)` pair has exactly one owning module.
+    ///
+    /// The default body keeps every existing impl (the 13 `nmp-nip29`
+    /// modules, the fixture-todo module, etc.) source-compatible — they
+    /// inherit `&[]` and stay opted-out of ingest dispatch until they
+    /// explicitly opt in.
+    fn ingest_kinds() -> &'static [u32] {
+        &[]
+    }
+
     fn migrations() -> Vec<DomainMigration>;
     fn indexes() -> Vec<DomainIndex>;
     fn register(registry: &mut DomainRegistry);
