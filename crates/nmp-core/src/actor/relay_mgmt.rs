@@ -176,6 +176,30 @@ pub(super) fn send_outbound(
     }
 }
 
+/// Shut down the worker for `url` (if one exists) and remove it from the pool.
+///
+/// Mirrors `ensure_relay_worker` in the remove direction. Sends
+/// `RelayCommand::Shutdown` to the worker, which causes the worker thread to
+/// close the socket and emit `RelayEvent::Closed` back to the actor loop.
+/// The `relay_controls` entry is dropped immediately so the URL is no longer
+/// in the pool — future `ensure_relay_worker` calls for the same URL will
+/// spawn a fresh worker (T126 invariant preserved).
+///
+/// Returns `true` if a worker was found and shut down, `false` if the URL was
+/// not in the pool (idempotent, no panic).
+pub(super) fn shutdown_relay_worker(
+    relay_controls: &mut HashMap<String, RelayControl>,
+    url: &str,
+) -> bool {
+    let Some(control) = relay_controls.remove(url) else {
+        return false;
+    };
+    // Best-effort send: if the worker channel is already closed the worker
+    // has already exited — treat as success (the entry is gone from the pool).
+    let _ = control.tx.send(RelayCommand::Shutdown);
+    true
+}
+
 pub(super) fn close_relays(
     relay_controls: &mut HashMap<String, RelayControl>,
     connected_relays: &mut HashSet<RelayRole>,
@@ -308,6 +332,127 @@ mod tests {
 
         let mut connected = HashSet::new();
         close_relays(&mut relay_controls, &mut connected, &mut kernel);
+    }
+
+    /// T162 — `shutdown_relay_worker` removes the worker entry from `relay_controls`.
+    ///
+    /// Verifies that after `ensure_relay_worker` dials a loopback socket and emits
+    /// `Connected`, calling `shutdown_relay_worker` with the same URL sends
+    /// `RelayCommand::Shutdown` to the worker and removes the entry from
+    /// `relay_controls`. The T126 invariant is preserved: after shutdown, the
+    /// URL is no longer in the pool.
+    ///
+    /// Uses `ws://` (plain TCP) to avoid TLS setup overhead in unit tests.
+    #[test]
+    fn t_remove_relay_shuts_down_worker() {
+        use super::shutdown_relay_worker;
+        use std::net::TcpListener;
+        use std::sync::mpsc::{self, RecvTimeoutError};
+        use std::thread;
+        use std::time::Duration;
+
+        // Bind a loopback listener; port 0 → OS picks a free port.
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral");
+        let port = listener.local_addr().expect("local_addr").port();
+        let relay_url = format!("ws://127.0.0.1:{port}");
+
+        // Minimal server: accept one connection, complete the WS handshake, park.
+        let _server = thread::spawn(move || {
+            listener.set_nonblocking(false).ok();
+            let (stream, _) = match listener.accept() {
+                Ok(s) => s,
+                Err(_) => return,
+            };
+            stream.set_read_timeout(Some(Duration::from_millis(50))).ok();
+            let mut socket = match tungstenite::accept(stream) {
+                Ok(s) => s,
+                Err(_) => return,
+            };
+            // Drain frames until the connection closes (worker shutdown).
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while std::time::Instant::now() < deadline {
+                match socket.read() {
+                    Ok(_) => {}
+                    Err(tungstenite::Error::Io(e))
+                        if matches!(
+                            e.kind(),
+                            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                        ) => {}
+                    Err(_) => return,
+                }
+            }
+        });
+        // Give the server thread a moment to enter `accept()` before the worker dials.
+        thread::sleep(Duration::from_millis(30));
+
+        let mut kernel = Kernel::new(80);
+        let (relay_tx, relay_rx) = mpsc::channel::<RelayEvent>();
+        let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
+        let mut next_gen = 1_u64;
+
+        // Step 1: add relay, wait for Connected.
+        let spawned = ensure_relay_worker(
+            &mut relay_controls,
+            &relay_tx,
+            &mut kernel,
+            &mut next_gen,
+            RelayRole::Content,
+            relay_url.clone(),
+        );
+        assert!(spawned, "first ensure_relay_worker call must spawn a worker");
+        assert_eq!(relay_controls.len(), 1, "pool must have exactly one entry after add");
+
+        // Wait for Connected event.
+        let mut got_connected = false;
+        let start = std::time::Instant::now();
+        while start.elapsed() < Duration::from_secs(3) {
+            match relay_rx.recv_timeout(Duration::from_millis(50)) {
+                Ok(RelayEvent::Connected { relay_url: url, .. }) if url == relay_url => {
+                    got_connected = true;
+                    break;
+                }
+                Ok(_) => continue,
+                Err(RecvTimeoutError::Timeout) => continue,
+                Err(RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        assert!(
+            got_connected,
+            "T162: ensure_relay_worker must emit Connected within 3s (url={relay_url})"
+        );
+
+        // Step 2: shutdown — this is the fix we are RED-testing. Before the fix
+        // shutdown_relay_worker does not exist; this call will not compile until
+        // the GREEN phase adds the function.
+        let removed = shutdown_relay_worker(&mut relay_controls, &relay_url);
+        assert!(removed, "T162: shutdown_relay_worker must return true for a known URL");
+        assert!(
+            !relay_controls.contains_key(&relay_url),
+            "T162: relay_controls must NOT contain the URL after RemoveRelay shutdown"
+        );
+    }
+
+    /// T162 — `shutdown_relay_worker` for an unknown URL is a no-op (no panic).
+    ///
+    /// `RemoveRelay` for a URL that was never added (no worker in the pool)
+    /// must be idempotent — it must not panic, must return false, and must
+    /// leave `relay_controls` empty.
+    #[test]
+    fn t_remove_relay_unknown_url_is_noop() {
+        use super::shutdown_relay_worker;
+
+        let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
+        let url = "wss://nonexistent.example.com/".to_string();
+
+        let removed = shutdown_relay_worker(&mut relay_controls, &url);
+        assert!(
+            !removed,
+            "T162: shutdown_relay_worker for unknown URL must return false"
+        );
+        assert!(
+            relay_controls.is_empty(),
+            "T162: relay_controls must remain empty after noop shutdown"
+        );
     }
 
     /// T158 — `ensure_relay_worker` dials a real loopback socket and emits `Connected`.

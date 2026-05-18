@@ -17,7 +17,8 @@ use crate::relay_worker::RelayEvent;
 use super::commands::{self, IdentityRuntime, LifecycleObserverSlot, WalletRuntime};
 use super::kernel_action::dispatch_kernel_action;
 use super::relay_mgmt::{
-    close_relays, ensure_relay_worker, maybe_send_startup, send_all_outbound, spawn_missing_relays,
+    close_relays, ensure_relay_worker, maybe_send_startup, send_all_outbound,
+    shutdown_relay_worker, spawn_missing_relays,
 };
 use super::tick::{emit_kernel_update, emit_now, maybe_emit_after_dispatch};
 use super::{ActorCommand, RelayControl};
@@ -212,6 +213,14 @@ pub(super) fn dispatch_command(
             Some(Vec::new())
         }
         ActorCommand::RemoveRelay { url } => {
+            // T162: resolve the same canonical URL that AddRelay/ensure_relay_worker
+            // used as the pool key (trim only — consistent with commands::add_relay
+            // and commands::remove_relay). Shutdown the worker first so the socket
+            // is closed before the projection row is removed. Idempotent: if no
+            // worker exists for the URL, shutdown_relay_worker returns false and
+            // the projection mutation still proceeds normally (D6: no silent drops).
+            let canonical_url = url.trim();
+            shutdown_relay_worker(relay_controls, canonical_url);
             commands::remove_relay(kernel, &url);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(Vec::new())
