@@ -1854,6 +1854,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dfa686283ad6dd069f105e5ab091b04c62850d3e4cf5d67debad1933f55023df"
 
 [[package]]
+name = "hkdf"
+version = "0.12.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b5f8eb2ad728638ea2c7d47a21db23b7b58a72ed6a38256b8a1849f15fbbdf7"
+dependencies = [
+ "hmac",
+]
+
+[[package]]
 name = "hmac"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2582,6 +2591,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-marmot"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "nmp-nip59",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nmp-nip01"
 version = "0.1.0"
 dependencies = [
@@ -2638,6 +2657,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-nip44"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "chacha20",
+ "hex",
+ "hkdf",
+ "hmac",
+ "rand_core 0.6.4",
+ "secp256k1",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "nmp-nip51"
 version = "0.1.0"
 dependencies = [
@@ -2651,6 +2687,15 @@ name = "nmp-nip57"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "nmp-nip59"
+version = "0.1.0"
+dependencies = [
+ "nmp-nip44",
  "serde",
  "serde_json",
 ]

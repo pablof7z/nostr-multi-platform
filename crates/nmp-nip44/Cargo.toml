@@ -6,5 +6,16 @@ license = { workspace = true }
 description = "NIP-44 v2 conversation-key encryption primitive (ChaCha20 + HKDF-SHA256 + HMAC-SHA256, padded). Prerequisite for nmp-nip59 gift-wrap. SCAFFOLD — see docs/plan/marmot-mls.md Step 0."
 
 [dependencies]
+secp256k1 = { version = "0.29", features = ["rand-std"] }
+sha2 = "0.10"
+hmac = "0.12"
+hkdf = "0.12"
+chacha20 = "0.9"
+base64 = "0.22"
+rand_core = { version = "0.6", features = ["std"] }
+thiserror = "1"
 
 [dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hex = "0.4"
