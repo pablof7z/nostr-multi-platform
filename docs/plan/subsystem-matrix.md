@@ -17,6 +17,7 @@ Cross-reference of which milestone delivers which user-specified concern.
 | **Multi-session clients** | [M8](m8-multi-account.md) | Per-account view-spec scoping; account switcher; isolation tests. |
 | **NIP-77 negentropy** | [M4](m4-negentropy.md) | Sync engine with watermarks; planner consults before REQ; capability negotiation; bytes-saved diagnostic. |
 | **Podcast-class apps** | [M11](m11-podcast.md) (proof), [M10](m10-blossom.md) (capabilities prerequisite) | AudioPlaybackCapability, BackgroundWorkCapability, BlossomDownloadCapability all generic; podcast-specific domain in `podcast-core` app crate. |
+| **Marmot MLS encrypted groups** | [post-v1 Marmot](marmot-mls.md) | MLS (RFC 9420) over Nostr relays; `nmp-marmot` wraps `marmot-protocol/mdk`. Forward secrecy + post-compromise security. Relay-pin routing via ADR-0012 lane from M11.5. Coexists with NIP-29 (different threat model) and NIP-17 (different interop requirements). |
 
 ## NIP support roadmap at v1
 
@@ -52,3 +53,11 @@ Cross-reference of which milestone delivers which user-specified concern.
 | Blossom BUD-01/02 | nmp-blossom | [M10](m10-blossom.md) | media |
 
 NIPs not in v1 (e.g., NIP-23 long-form, NIP-71 video) become post-v1 extension modules; the kernel boundary makes them additive.
+
+## Non-NIP protocol modules (post-v1)
+
+Protocols built on Nostr that are not NIPs or that predate NIP standardization.
+
+| Protocol | Crate | Milestone | Notes |
+|---|---|---|---|
+| **Marmot (MLS over Nostr)** | `nmp-marmot` | [post-v1 Marmot](marmot-mls.md) | `marmot-protocol/mdk` v0.7.1+; RFC 9420 MLS; forward secrecy + post-compromise security; relay-pin routing via ADR-0012 |

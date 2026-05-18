@@ -8,6 +8,16 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
+### PD-022 (2026-05-18) — Marmot coexists with deferred M9 (NIP-17), does not replace it
+
+**Decision:** Filed Marmot as a separate post-v1 milestone (`docs/plan/marmot-mls.md`) that coexists with deferred M9 (NIP-17 DMs) rather than replacing it.
+
+**Reasoning:** NIP-17 is the ecosystem-standard DM protocol — all other Nostr clients understand it. Marmot serves a different threat model (MLS forward secrecy, large groups, relay-operator-blind). If you want Marmot to *replace* NIP-17 entirely, revise `post-v1.md §M9` and `marmot-mls.md §What this milestone does NOT ship`.
+
+**Files affected:** `docs/plan/post-v1.md`, `docs/plan/marmot-mls.md`.
+
+---
+
 ### PD-021 (resolved 2026-05-18 autonomously, user-directed) — M10.5 exit gate re-scoped to the simulator-provable subset; hardware/M10 items deferred to the Pulse track
 
 **Decision (user-directed):** the literal M10.5 exit gate in

@@ -57,7 +57,7 @@ Each milestone has: **demo product**, **scope (what gets built)**, **subsystem d
 
 - **Not a schedule.** No dates, no person-months. Milestones are sequential; their durations depend on team size and surface complexity. Estimates per milestone are guidance only.
 - **Not a marketing roadmap.** v1 ships when M17 gates are met, not on a calendar.
-- **Not exhaustive about post-v1 work.** NIP-23 long-form, NIP-71 video, and additional protocol modules are post-v1. NIP-29 groups ship in v1 via [M11.5](plan/m11.5-highlighter.md) (Highlighter rebuild). Additional app demonstrations (TENEX-lite, etc.) are post-v1.
+- **Not exhaustive about post-v1 work.** NIP-23 long-form, NIP-71 video, and additional protocol modules are post-v1. NIP-29 groups ship in v1 via [M11.5](plan/m11.5-highlighter.md) (Highlighter rebuild). Marmot MLS-over-Nostr encrypted groups ship post-v1 via [`plan/marmot-mls.md`](plan/marmot-mls.md). Additional app demonstrations (TENEX-lite, etc.) are post-v1.
 - **Not silent about gaps.** The [status doc](plan/status.md) names exactly what is and isn't built. As the ladder progresses, the status doc gets revised so the plan stays honest about state.
 
 The plan exists so that any single milestone can be picked up cold by someone reading this doc + `product-spec.md` + the relevant ADRs and design docs, and they can execute without bothering the rest of the team.
