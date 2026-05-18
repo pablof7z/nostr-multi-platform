@@ -36,8 +36,11 @@ The ingest hook for 39000-39003 enforces the following step ladder (per
    the first legitimate 39000 lands, the quarantine is replayed against
    the now-pinned signer; events from the right signer are applied, events
    from a wrong signer are rejected.
-4. **Mismatch on (1) or (2):** reject the event with `MetadataSignerChanged`,
-   surface to the diagnostics lane, leave canonical state unchanged.
+4. **Mismatch on (1) or (2):** reject the event (return
+   `TrustCheckOutcome::Rejected` from `TofuSignerCache::evaluate`); the
+   ingest pipeline drops it and leaves canonical state unchanged. A typed
+   `MetadataSignerChanged` diagnostic surface + toast plumbing is deferred
+   per "Open questions" below.
 
 ## Why C is rejected
 
@@ -75,17 +78,25 @@ Policy B + the cold-TOFU rule (39000 only) defeats this:
 
 **Negative:**
 
-- A relay that legitimately rotates its keypair will trigger
-  `MetadataSignerChanged` toasts for every joined group; the rotation UX
-  (user-explicit-accept prompt) is deferred to post-M11.5 per
-  `moderation.md` §4.3.
-- Quarantine adds a small RAM overhead (64 events × 256 bytes × N
-  groups). Bounded; TTL-evicted after 1 hour.
+- A relay that legitimately rotates its keypair will (once the typed
+  diagnostic surface ships) trigger `MetadataSignerChanged` notifications
+  for every joined group. T42 / Step 0 ships only the policy enforcement
+  (rejecting events from a wrong signer); both the typed
+  metadata-signer-error plumbing and the user-explicit-accept rotation UX
+  are deferred to post-M11.5 per `moderation.md` §4.3.
+- Quarantine adds a small RAM overhead (64 events × ~256 bytes × N
+  groups). Bounded at 64 per group by `push_quarantine`; TTL-eviction
+  ("after 1 hour" per `moderation.md` §4.3) is **deferred** — T42's
+  in-memory implementation has the size bound but no `now_ms` expiry
+  path. Tracked under "Open questions" below.
 
 **Neutral:**
 
-- The pinned signer cache must be persisted across sessions (M3 LMDB);
-  losing it on restart would re-prompt for every group the user is in.
+- The pinned signer cache **should** persist across sessions (M3 LMDB)
+  so it doesn't re-prompt on restart. T42 ships the cache as
+  in-memory only (`cache/tofu.rs::TofuSignerCache` holds a `BTreeMap`).
+  LMDB-backed persistence is **deferred** to Step 5 alongside the
+  rest of the M3 store wiring for `nmp-nip29` records.
 
 ## Implementation
 
@@ -101,9 +112,22 @@ ingest of already-pinned hosts.
 
 ## Open questions deferred
 
-- **Rotation UX** — the per-group "trust the new key?" prompt. M11.5 ships
-  the typed error + diagnostics surface; interactive rotation prompt is
-  post-M11.5.
+- **Typed `MetadataSignerChanged` diagnostic / toast plumbing.** T42 lands
+  policy enforcement (`TofuSignerCache::evaluate` returns
+  `TrustCheckOutcome::Rejected`); a typed error type that propagates to
+  the diagnostics lane + a user-visible "metadata signer changed" toast
+  is post-M11.5. Drop-on-rejection is the current behavior.
+- **Quarantine TTL eviction.** `moderation.md` §4.3 specifies "TTL-evicted
+  after 1 hour"; T42 enforces the size bound (64 entries per group via
+  `push_quarantine`) but does not consume a `now_ms` for time-based
+  expiry. Adding the TTL is a localized change in `cache::tofu` — defer
+  until the actor wires a clock source through.
+- **Persistence (M3 LMDB).** The pinned signer cache should survive
+  session restarts so users aren't re-prompted on every relaunch. T42's
+  `TofuSignerCache` is in-memory only; M3 LMDB hookup lands in M11.5
+  Step 5 alongside the `nmp-nip29` record persistence.
+- **Rotation UX** — the per-group "trust the new key?" prompt. Requires
+  the typed-diagnostic surface above to land first; post-M11.5.
 - **Per-relay vs per-group pin granularity** — currently per-group (per
   `(host_relay_url, local_id)`) for B; per-host for A (NIP-11 declares one
   pubkey for the relay). If a host rotates and we want to roll the
