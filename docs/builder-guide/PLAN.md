@@ -10,7 +10,7 @@
 | **LANDED** | `docs/design/**/*.md`§, `docs/decisions/000N-*.md`, `docs/plan/m*.md`, plus partial `crates/` cites for scaffolded-but-incomplete code | `path:line` for code paths that don't exist on master |
 | **PLANNED** | `docs/plan/m*.md`, ADRs, `docs/design/**/*.md`, scope memo | any `crates/`/`apps/`/`ios/` path absent from master |
 
-Doctrine canon: `docs/product-spec/doctrine.md` (canonical D0–D8 file) + `docs/product-spec/overview-and-dx.md` §1.5 (in-page restatement). Research synthesis: `docs/research/sessions/synthesis.md` + `docs/design/ndk-applesauce-lessons.md` + `docs/research/{ndk,applesauce,highlighter}/`. Reality on master HEAD (`a92ed2e`): kernel substrate + planner + LMDB store + subscription pool + NIP-42 auth gate + publish engine **all SHIP**; protocol crates `nmp-signers` / `nmp-nip29` / `nmp-nip42` / `nmp-nip77` **all SHIP**; `nmp-highlighter-core` is a stub (M11.5 step 0); `apps/podcast/{podcast-core,podcast-feeds,podcast-audio,podcast-llm,podcast-rag}` shipped as scaffolds; `ios/NmpStress` (1,375 LOC) is the live shell; `ios/NmpPodcast` + `ios/NmpHighlighter` are tiny skeletons. FFI today is raw C JSON-over-string (`crates/nmp-core/src/ffi.rs`); UniFFI migration is M14 (PLANNED). M0–M8 + M10.5 + M11 + M11.5 are tracked DONE in `docs/perf/orchestration-log.md` HB31.
+Doctrine canon: `docs/product-spec/doctrine.md` (canonical D0–D8 file) + `docs/product-spec/overview-and-dx.md` §1.5 (in-page restatement). Research synthesis: `docs/research/sessions/synthesis.md` + `docs/design/ndk-applesauce-lessons.md` + `docs/research/{ndk,applesauce,highlighter}/`. Reality on master at this merge (`8fd2764`, HB31): kernel substrate + planner + EventStore/MemEventStore + subscription pool + NIP-42 auth gate + publish engine **all SHIP**; `LmdbEventStore` is a feature-gated skeleton (section 09 LANDED); protocol crates `nmp-signers` / `nmp-nip29` / `nmp-nip42` / `nmp-nip77` **all SHIP**; `nmp-highlighter-core` is a stub (M11.5 step 0); `apps/podcast/{podcast-core,podcast-feeds,podcast-audio,podcast-llm,podcast-rag}` shipped as scaffolds; `ios/NmpStress` (1,375 LOC app Swift) is the live shell; `ios/NmpPodcast` and `ios/NmpHighlighter` are Step 0 copied/scaffolded Swift surfaces, not kernel-complete app ports. FFI today is raw C JSON-over-string (`crates/nmp-core/src/ffi.rs`); UniFFI migration is M14 (PLANNED). M0–M8 + M10.5 + M11 + M11.5 are tracked DONE in `docs/perf/orchestration-log.md` HB31.
 
 ## Master TOC (28 sections)
 
@@ -25,7 +25,7 @@ Doctrine canon: `docs/product-spec/doctrine.md` (canonical D0–D8 file) + `docs
 | 06 | Reactivity contract (D8) | `06-reactivity-contract.md` | SHIPS | agents | 2400 |
 | 07 | Subscription planner — Interest → CompiledPlan → wire | `07-subscription-planner.md` | SHIPS | both | 2600 |
 | 08 | EventStore + insert invariants + GC | `08-eventstore.md` | SHIPS | both | 2400 |
-| 09 | Persistence (LMDB) + watermarks | `09-persistence-lmdb.md` | SHIPS | agents | 1800 |
+| 09 | Persistence (LMDB) + watermarks | `09-persistence-lmdb.md` | LANDED | agents | 1800 |
 | 10 | Outbox routing (NIP-65) | `10-outbox-routing.md` | SHIPS | both | 2000 |
 | 11 | Sessions + signers + identity scopes (`nmp-signers`) | `11-sessions-signers.md` | SHIPS | both | 2200 |
 | 12 | Publishing + the publish engine | `12-publish-and-ledger.md` | SHIPS | both | 2000 |
@@ -58,7 +58,7 @@ Compact format. Each section: **covers** (1 line) · **cite** (file:line refs) �
 
 ### 01 — What NMP is + why it exists  *(SHIPS · builders · 1800)*
 - covers: one-paragraph definition; the "make broken Nostr apps impossible" thesis; concrete contrast with NDK / Applesauce / raw `nostr-sdk` (one paragraph each); the four arcs (M0–M10 social · M10.5 hardening · M11 kernel-boundary proof via podcast · M11.5 Highlighter + NIP-29 · M13–M17 release); status snapshot (M0–M8 + M10.5 + M11 + M11.5 DONE per HB31).
-- cite: `README.md:1-117`; `docs/aim.md:9-89`; `docs/plan.md:30-52`; `docs/plan/status.md:1-60`; `docs/design/ndk-applesauce-lessons.md:1-65`; `docs/research/sessions/synthesis.md`; `docs/research/ndk/missing-features-for-nmp.md`; `docs/research/applesauce/missing-features-for-nmp.md`.
+- cite: `README.md:1-117`; `docs/aim.md:9-89`; `docs/plan.md:30-52`; `docs/perf/orchestration-log.md:38-41`; `docs/design/ndk-applesauce-lessons.md:1-65`; `docs/research/sessions/synthesis.md`; `docs/research/ndk/missing-features-for-nmp.md`; `docs/research/applesauce/missing-features-for-nmp.md`.
 - deliver: comparison table NDK/Applesauce/raw `nostr-sdk`/NMP × 6 axes (state ownership, outbox, kind:3 auto, reactivity, signers, FFI); "what NMP is NOT" box; "deferred to post-v1" callout (M9 DMs, M12 Wallet).
 - anti: framing NMP as "Rust NDK"; implying NDK feature parity (NDK has DMs/Wallet, NMP defers both); implying v1 ships everything in `docs/aim.md` (post-v1 scope memo deferrals stand).
 - xref: 02, 03, 25.
@@ -99,7 +99,7 @@ Compact format. Each section: **covers** (1 line) · **cite** (file:line refs) �
 - xref: 05, 07, 18.
 
 ### 07 — Subscription planner — Interest → CompiledPlan → wire  *(SHIPS · both · 2600)*
-- covers: why string-formatter planners fail; LogicalInterest (id, scope, shape, hints, lifecycle); the 4-stage compiler pipeline (resolve → fallback → merge → plan-id); the 8 merge-lattice rules including Rule 9 `relay_pin` (third routing lane); CompiledPlan + plan-id stability; logical-vs-wire split; recompilation triggers; coalescing + auto-close + EOSE; partition cases (incl. Case E for relay-pinned).
+- covers: why string-formatter planners fail; LogicalInterest (id, scope, shape, hints, lifecycle); the 4-stage compiler pipeline (resolve → fallback → merge → plan-id); the 9 merge-lattice rules including Rule 9 `relay_pin` (third routing lane); CompiledPlan + plan-id stability; logical-vs-wire split; recompilation triggers; coalescing + auto-close + EOSE; partition cases (incl. Case E for relay-pinned).
 - cite: `crates/nmp-core/src/planner/mod.rs:1-40`; `crates/nmp-core/src/planner/interest.rs`; `crates/nmp-core/src/planner/plan.rs`; `crates/nmp-core/src/planner/compiler/` (module dir); `crates/nmp-core/src/planner/lattice/` (module dir); `docs/design/subscription-compilation/intro.md` §1-§2; `docs/design/subscription-compilation/compiler.md`; `docs/design/subscription-compilation/recompilation.md`; `docs/design/subscription-compilation/outbox.md`; `docs/design/subscription-compilation/tests.md`; `docs/decisions/0012-relay-pinned-interest-and-third-routing-lane.md`; `docs/plan/m2-subscription-compilation.md`.
 - deliver: CompiledPlan ASCII for "5 followed authors × 2 relays each"; recompilation triggers table; worked example "kind:3 arrives → CLOSE/REQ deltas"; relay_pin/Case E callout (NIP-29 host pin).
 - anti: assuming 1 filter == 1 REQ; passing relay URLs to view-open APIs; hand-rolled dedup in app code; forgetting to close interests on view destruction; emitting plan-id churn on trivial recompile.
@@ -107,14 +107,14 @@ Compact format. Each section: **covers** (1 line) · **cite** (file:line refs) �
 
 ### 08 — EventStore + insert invariants + GC  *(SHIPS · both · 2400)*
 - covers: the insert path; replaceable (kinds 0/3/10000-19999) supersession; parameterized replaceable (30000-39999); kind:5 delete + tombstone; NIP-40 expiration; NIP-26 delegation; ephemeral events; provenance merge; claim-based GC; fallback loader contract; `MemEventStore` vs `LmdbEventStore`.
-- cite: `crates/nmp-core/src/store/mod.rs:1-50`; `crates/nmp-core/src/store/events.rs`; `crates/nmp-core/src/store/types/mod.rs` (InsertOutcome, RejectReason, GcBudget, etc.); `crates/nmp-core/src/store/mem.rs` (referenced via mod.rs:18); `docs/product-spec/subsystems.md:7-55`; `docs/design/framework-magic/replaceable.md`; `docs/design/lmdb/gc.md`; `docs/design/lmdb/watermarks.md`; `crates/nmp-core/src/kernel/ingest/mod.rs`.
+- cite: `crates/nmp-core/src/store/mod.rs:1-50`; `crates/nmp-core/src/store/events.rs`; `crates/nmp-core/src/store/types/mod.rs` (InsertOutcome, RejectReason, GcBudget, etc.); `crates/nmp-core/src/store/mem/mod.rs` (referenced via mod.rs:18); `docs/product-spec/subsystems.md:7-55`; `docs/design/framework-magic/replaceable.md`; `docs/design/lmdb/gc.md`; `docs/design/lmdb/watermarks.md`; `crates/nmp-core/src/kernel/ingest/mod.rs`.
 - deliver: "what happens on insert" by kind table; tombstone state diagram; fallback-loader interface sketch with the 4 miss types; `InsertOutcome` enum variants table.
 - anti: bypassing the insert path; mutating events after insert; treating cache-miss as "definitely not on relay" without watermark; manual delete-by-event from app code.
 - xref: 07, 09, 13, 21.
 
-### 09 — Persistence (LMDB) + watermarks  *(SHIPS · agents · 1800)*
-- covers: durable storage layout; key/value encoding; watermarks table; tombstones; GC pins; the `--features lmdb-backend` gate; ADR-0011 (NMP owns the LMDB env); backend abstraction (LMDB native / mem / future web).
-- cite: `crates/nmp-core/src/store/lmdb.rs`; `crates/nmp-core/src/store/types/mod.rs` (`WatermarkRow`, `TombstoneRow`); `crates/nmp-core/src/store/mod.rs:15-50` (StorageBackend enum); `docs/decisions/0011-lmdb-env-sharing.md`; `docs/design/lmdb-schema.md`; `docs/design/lmdb/keys.md`; `docs/design/lmdb/watermarks.md`; `docs/design/lmdb/gc.md`; `docs/design/lmdb/trait.md`; `docs/design/lmdb/tests.md`; `docs/plan/m3-persistence.md`.
+### 09 — Persistence (LMDB) + watermarks  *(LANDED · agents · 1800)*
+- covers: durable storage layout; key/value encoding; watermarks table; tombstones; GC pins; feature-gated `LmdbEventStore` skeleton; ADR-0011 (NMP owns the LMDB env); backend abstraction (LMDB native / mem / future web).
+- cite: `crates/nmp-core/src/store/lmdb.rs` (feature-gated skeleton); `crates/nmp-core/src/store/types/mod.rs` (`WatermarkRow`, `TombstoneRow`); `crates/nmp-core/src/store/mod.rs:15-50` (StorageBackend enum); `docs/decisions/0011-lmdb-env-sharing.md`; `docs/design/lmdb-schema.md`; `docs/design/lmdb/keys.md`; `docs/design/lmdb/watermarks.md`; `docs/design/lmdb/gc.md`; `docs/design/lmdb/trait.md`; `docs/design/lmdb/tests.md`; `docs/plan/m3-persistence.md`.
 - deliver: key-encoding table (composite → bytes); watermarks row spec; "survives restart" bullet list; the `lmdb-backend` feature build matrix.
 - anti: app-side persistence parallel to EventStore; cross-process LMDB sharing; sharing an `lmdb::Env` from another crate (ADR-0011 violation); treating cache as source of truth (D4 violation).
 - xref: 08, 13, 27.
@@ -169,14 +169,14 @@ Compact format. Each section: **covers** (1 line) · **cite** (file:line refs) �
 - xref: 03, 05, 11, 12, 17.
 
 ### 17 — iOS shell — SwiftUI consumes the kernel  *(SHIPS · builders · 1800)*
-- covers: the bridge (raw C FFI today); `KernelHandle` Swift wrapper; `KernelModel` ObservableObject; JSON-snapshot wire format; `@Published` state-shadow pattern; capability injection from Swift; what a SwiftUI view that consumes the kernel looks like; current iOS shell inventory (NmpStress 1,375 LOC live; NmpPodcast bridge-only; NmpHighlighter share-extension skeleton).
+- covers: the bridge (raw C FFI today); `KernelHandle` Swift wrapper; `KernelModel` ObservableObject; JSON-snapshot wire format; `@Published` state-shadow pattern; capability injection from Swift; what a SwiftUI view that consumes the kernel looks like; current iOS shell inventory (NmpStress 1,375 LOC live; NmpPodcast/NmpHighlighter Step 0 copied/scaffolded surfaces).
 - cite: `ios/NmpStress/NmpStress/KernelBridge.swift:1-80`; `ios/NmpStress/NmpStress/KernelModel.swift:1-80`; `ios/NmpStress/NmpStress/ContentView.swift`; `ios/NmpStress/NmpStress/NmpStressApp.swift`; `ios/NmpStress/NmpStress/ProfileViews.swift`; `ios/NmpStress/NmpStress/ThreadViews.swift`; `ios/NmpStress/NmpStress/SharedViews.swift`; `crates/nmp-core/src/ffi.rs:44-310`; `ios/NmpPodcast/NmpPodcast/Bridge/ErrorPresentation.swift`; `ios/NmpHighlighter/Sources/NmpHighlighter/App.swift`; `ios/NmpHighlighter/Sources/ShareExtension/ShareViewController.swift`.
-- deliver: annotated `KernelHandle` Swift snippet; Rust-side emit → SwiftUI re-render sequence; JSON-update shape with `rev` guard; per-iOS-app status box (NmpStress=live, NmpPodcast=scaffold, NmpHighlighter=share-ext stub).
+- deliver: annotated `KernelHandle` Swift snippet; Rust-side emit → SwiftUI re-render sequence; JSON-update shape with `rev` guard; per-iOS-app status box (NmpStress=live, NmpPodcast/NmpHighlighter=Step 0 copied/scaffolded).
 - anti: caching state in Swift; calling C FFI off the main actor without hopping; mutating `@Published` from background; business logic in SwiftUI; "if missing { spinner }" gates (D1).
 - xref: 04, 15, 16.
 
 ### 18 — Testing — `nmp-testing`, benches, contract tests  *(SHIPS · both · 2200)*
-- covers: testing-crate surface; framework-magic contract tests (14 named tests + meta-coverage); `reactivity-bench` (run 002 passed); `firehose-bench` (replay/capture/live modes); FFI-stress harness from M10.5; `test-support` feature gate; the "no networking required" principle.
+- covers: testing-crate surface; framework-magic contract tests (13 behavior tests + coverage meta-test, 14 total); `reactivity-bench` (run 002 passed); `firehose-bench` (replay/capture/live modes); FFI-stress harness from M10.5; `test-support` feature gate; the "no networking required" principle.
 - cite: `crates/nmp-testing/src/lib.rs`; `crates/nmp-testing/bin/firehose-bench/main.rs`; `crates/nmp-testing/bin/reactivity-bench/main.rs`; `crates/nmp-core/tests/substrate_registry.rs`; `crates/nmp-core/src/lib.rs:20-50` (test-support gate); `docs/design/framework-magic/test-scaffolding.md`; `docs/design/framework-magic.md:46-63` (test name canon); `docs/design/firehose-bench.md`; `docs/plan/test-pyramid.md`; `docs/plan/m10.5-ffi-hardening.md`; `docs/perf/reactivity-bench/`; `docs/perf/firehose-bench/`; `docs/perf/m10.5/`.
 - deliver: test-pyramid diagram; worked example "I added a ViewModule — what tests do I write?"; framework-magic-test naming convention recap; "where to add a contract bullet" recipe.
 - anti: platform tests for Rust logic; treating benches as integration tests; skipping the contract meta-test when adding a bullet; flake-prone time-based tests; requiring real relays in CI.
@@ -197,10 +197,10 @@ Compact format. Each section: **covers** (1 line) · **cite** (file:line refs) �
 - xref: 05, 07, 15, 18, 22.
 
 ### 21 — The framework-magic contract  *(SHIPS · builders · 1200)*
-- covers: thin pointer to the existing 13-bullet contract; per-bullet one-line "what the app gets for free"; doctrine each bullet discharges; owning milestone; the 14 named tests in `framework_magic_contract.rs` + the meta-coverage test; how to add a new bullet (ADR).
+- covers: thin pointer to the existing 13-bullet contract; per-bullet one-line "what the app gets for free"; doctrine each bullet discharges; owning milestone; the 13 behavior tests plus the coverage meta-test in `framework_magic_contract.rs` (14 total); how to add a new bullet (ADR).
 - cite: `docs/design/framework-magic.md:24-72`; `docs/design/framework-magic/intro.md`; `docs/design/framework-magic/{kind3,replaceable,outbox,subs,sync,signers,sessions,capabilities,test-scaffolding}.md`; `crates/nmp-testing/tests/framework_magic_contract.rs`; `docs/plan/scope-adjustments-2026-05-18.md` "framework-magic contract" section.
 - deliver: C1–C13 table reproduced with "what the app gets" column added; status column ([DONE]/[PARTIAL]/[PENDING M_n]); mini-recipe for adding C14 (ADR template + test name convention).
-- anti: assuming every bullet is live today (several still `[PENDING M_n]` per `framework-magic.md` index); paraphrasing into stronger claims than the contract makes; app-side fallback code "just in case"; re-implementing kind:3 watch in SwiftUI.
+- anti: assuming the status column without checking both `framework-magic.md` and the active test file; paraphrasing into stronger claims than the contract makes; app-side fallback code "just in case"; re-implementing kind:3 watch in SwiftUI.
 - xref: 03, 08, 10, 11, 18.
 
 ### 22 — Doctrine compliance checklist  *(SHIPS · agents · 1000)*
@@ -218,7 +218,7 @@ Compact format. Each section: **covers** (1 line) · **cite** (file:line refs) �
 - xref: linked from every section's first use of each term.
 
 ### 24 — Reference cards  *(SHIPS · both · 800)*
-- covers: today's KernelAction variants; today's KernelUpdate variants; today's KernelViewSpec variants; the 5 trait families one-liner each; v1 capability catalog per spec §6.5; the 9 doctrines D0–D8 one-liners; the 4-stage planner pipeline; the 8 merge-lattice rules; SyncStrategy decision matrix.
+- covers: today's KernelAction variants; today's KernelUpdate variants; today's KernelViewSpec variants; the 5 trait families one-liner each; v1 capability catalog per spec §6.5; the 9 doctrines D0–D8 one-liners; the 4-stage planner pipeline; the 9 merge-lattice rules; SyncStrategy decision matrix.
 - cite: `crates/nmp-core/src/app.rs:1-30`; `crates/nmp-core/src/substrate/*.rs`; `crates/nmp-core/src/planner/mod.rs`; `crates/nmp-nip77/src/coverage_gate.rs`; `docs/product-spec/api-surface.md:193-228`; `docs/product-spec/doctrine.md:1-98`.
 - deliver: 6 single-page tables suitable for bookmarking.
 - anti: linking outdated variant lists; conflating long-term catalog with what ships today; aspirational entries without a status marker.
@@ -239,8 +239,8 @@ Compact format. Each section: **covers** (1 line) · **cite** (file:line refs) �
 - xref: 17, 18, 27.
 
 ### 27 — Doc/code discrepancies (orchestrator queue)  *(SHIPS · agents · 800)*
-- covers: a running list of places where docs claim more than code delivers today: e.g. spec talks about full UniFFI `AppUpdate::ViewBatch` but the live FFI emits a single JSON snapshot; `nmp init` CLI is M16 (not built); UniFFI is M14 (not built); the iOS shells `NmpPodcast` + `NmpHighlighter` are skeletons (vs `NmpStress` 1,375 LOC live); M9 DMs + M12 Wallet are post-v1 deferrals; the actor still uses constants `relay.primal.net` + `purplepag.es` even though the planner can route to mailboxes (wiring gap). Each entry: claim · evidence · status · owning milestone · severity.
-- cite: `docs/product-spec/api-surface.md` §6.1, §6.4 (claimed shape); `crates/nmp-core/src/ffi.rs:44-310` (actual surface today); `crates/nmp-core/src/app.rs:1-30` (actual KernelUpdate); `crates/nmp-core/src/relay.rs:1-50` (hardcoded relays); `docs/plan/m16-cli-starter.md`; `docs/plan/m14-uniffi.md`; `docs/plan/m15-cross-platform.md`; `docs/plan/post-v1.md`; `docs/plan/scope-adjustments-2026-05-18.md`.
+- covers: a running list of places where docs claim more than code delivers today: e.g. spec talks about full UniFFI `AppUpdate::ViewBatch` but the live FFI emits a single JSON snapshot; `nmp init` CLI is M16 (not built); UniFFI is M14 (not built); the iOS shells `NmpPodcast` + `NmpHighlighter` are Step 0 copied/scaffolded Swift surfaces, not kernel-complete app ports (vs `NmpStress` 1,375 LOC live); M9 DMs + M12 Wallet are post-v1 deferrals; the actor still uses constants `relay.primal.net` + `purplepag.es` even though the planner can route to mailboxes (wiring gap). Each entry: claim · evidence · status · owning milestone · severity.
+- cite: `docs/product-spec/api-surface.md` §6.1, §6.4 (claimed shape); `crates/nmp-core/src/ffi.rs:44-310` (actual surface today); `crates/nmp-core/src/app.rs:1-30` (actual KernelUpdate); `crates/nmp-core/src/relay.rs:1-45` (hardcoded relays); `docs/plan/m16-cli-starter.md`; `docs/plan/m14-uniffi.md`; `docs/plan/m15-cross-platform.md`; `docs/plan/post-v1.md`; `docs/plan/scope-adjustments-2026-05-18.md`.
 - deliver: 5-col table (claim · evidence · status · owner-milestone · severity).
 - anti: treating every discrepancy as a bug (most are "milestone not landed yet" or deliberate scope deferral); silently changing spec to match incomplete code; silently expanding code beyond milestone scope.
 - xref: every section.
@@ -259,7 +259,7 @@ Compact format. Each section: **covers** (1 line) · **cite** (file:line refs) �
 | D7 capabilities report | 03, 12, 14, 16, 17 | | | |
 | D8 reactivity contract | 03, 06, 14, 18 | | | |
 
-Shipping crates → sections: `nmp-core` (substrate/planner/store/subs/publish) → 02, 04–12, 14, 22; `nmp-signers` → 11; `nmp-nip29` (reference protocol module) → 20; `nmp-nip42` → 14; `nmp-nip77` → 13; `nmp-codegen` → 15; `nmp-testing` → 18; `fixture-todo-core` → 05, 19; `apps/podcast/*` → 02, 16, 19; `nmp-highlighter-core` (M11.5 step 0 stub) → 20; `ios/NmpStress` → 17; `ios/{NmpPodcast,NmpHighlighter}` skeletons → 17, 27.
+Shipping crates → sections: `nmp-core` (substrate/planner/store/subs/publish) → 02, 04–12, 14, 22; `nmp-signers` → 11; `nmp-nip29` (reference protocol module) → 20; `nmp-nip42` → 14; `nmp-nip77` → 13; `nmp-codegen` → 15; `nmp-testing` → 18; `fixture-todo-core` → 05, 19; `apps/podcast/*` → 02, 16, 19; `nmp-highlighter-core` (M11.5 step 0 stub) → 20; `ios/NmpStress` → 17; `ios/{NmpPodcast,NmpHighlighter}` Step 0 Swift surfaces → 17, 27.
 
 Milestone status → sections: ✅ M0 → 02,05,15,18,19; ✅ M1 → 17,26; ✅ M2 → 07,10,21; ✅ M3 → 08,09; ✅ M4 → 13; ✅ M5 → 14; ✅ M6 → 11,12; ✅ M7 (publishing + interaction loop) → 05,12,21; ✅ M8 (multi-account + M8-subs lifecycle) → 11,14; ✅ M10.5 → 15,17,18; ✅ M11 (podcast scaffold) → 02,16,19; ✅ M11.5 (Highlighter step 0 + nmp-nip29) → 20,27; ⌛ M10 Blossom → 27; ⌛ M13 WoT → 27; ⌛ M14 UniFFI → 15,27; ⌛ M15 cross-platform → 15,17,27; ⌛ M16 CLI/starter → 19,26,27; ⌛ M17 release → 22,27; ❌ M9 DMs + M12 Wallet (post-v1) → 01,27.
 
@@ -267,7 +267,7 @@ Milestone status → sections: ✅ M0 → 02,05,15,18,19; ✅ M1 → 17,26; ✅ 
 
 1. Read this PLAN + your section's brief + cited prereqs (briefs or drafted sections) before drafting.
 2. Honor the `status` field strictly. SHIPS may cite `crates/`/`apps/`/`ios/` `path:line`; LANDED cites design + ADRs + partial code; PLANNED cites plan files + ADRs only.
-3. Verify every `path:line` you cite by Reading the file in the same commit (`a92ed2e` or later on master).
+3. Verify every `path:line` you cite by reading the file at the current master tip.
 4. Keep your file ≤ 300 LOC. If exceeded, split per the brief's hint (e.g. 05a/05b) and update the TOC in a follow-up.
 5. Include ≥3 anti-patterns and ≥2 concrete deliverables from the brief.
 6. End every section with `See also:` listing `xref` exactly as `[NN — title](NN-name.md)`.

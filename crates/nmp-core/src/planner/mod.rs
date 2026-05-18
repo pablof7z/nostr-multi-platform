@@ -6,7 +6,7 @@
 //! ## Module structure
 //!
 //! - `interest`  — `LogicalInterest`, `InterestShape`, `NaddrCoord` types.
-//! - `lattice`   — `merge()` function implementing the 8 merge rules.
+//! - `lattice`   — `merge()` function implementing the 9 merge rules.
 //! - `compiler`  — 4-stage pipeline: resolve → fallback → merge → plan-id.
 //! - `plan`      — `CompiledPlan`, `RelayPlan`, `SubShape`, `RoutingSource`.
 //!

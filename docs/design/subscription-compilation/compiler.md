@@ -45,11 +45,11 @@ The compiler is a pure function plus a small amount of state (the mailbox cache 
    CompiledPlan { plan_id, per_relay: Vec<RelayPlan> }
 ```
 
-The wire-emitter (`crates/nmp-core/src/kernel/wire.rs`, to be added) diffs the new plan against the current wire-sub registry: opens new REQs, closes orphaned ones, leaves stable assignments untouched.
+The wire-emitter (`crates/nmp-core/src/subs/wire.rs`) diffs the new plan against the current wire-sub registry: opens new REQs, closes orphaned ones, leaves stable assignments untouched.
 
 ## 3.1 Stage 1 — Resolve authors to mailboxes
 
-Inputs: every `LogicalInterest` with non-empty `shape.authors` or non-empty `shape.tags[#p]`; the mailbox cache populated by `ingest_relay_list` (`crates/nmp-core/src/kernel/ingest.rs:209-233`).
+Inputs: every `LogicalInterest` with non-empty `shape.authors` or non-empty `shape.tags[#p]`; the mailbox cache populated by `ingest_relay_list` (`crates/nmp-core/src/kernel/ingest/relay_list.rs:25-63`).
 
 Output: an `AuthorRouting` per author per direction:
 
@@ -110,6 +110,7 @@ Two `InterestShape`s `A` and `B` are **mergeable on relay R** iff:
 6. `A.lifecycle == B.lifecycle`. Tailing and one-shot do not merge (one-shot would never close).
 7. `A.event_ids` and `B.event_ids`: merge by union, capped at the relay's per-filter `ids` limit.
 8. **Rule 8 (address-pointer union).** `A.addresses` and `B.addresses` merge by `A.addresses ∪ B.addresses`, provided their other constraints (`authors`, `kinds`, `tags`, time, lifecycle) merge per Rules 1–7. Overlapping coordinates with differing time or lifecycle constraints do **not** merge — the compiler emits per-address sub-shapes so each `NaddrCoord`'s routing is independent. The union cap is the relay's per-filter `#a` value limit (default 1000). Address routing uses `NaddrCoord::pubkey` as the `AuthorRouting` input (Outbox direction, Stage 1), so the relays chosen are the addressed author's write relays — the same path as an `authors`-bearing filter for that pubkey.
+9. **Rule 9 (`relay_pin` equality).** `A.relay_pin == B.relay_pin`; `None` does not absorb `Some(_)`. Host-pinned interests route through Case E before Cases A-D, and identical pins may still coalesce via Rules 1-8.
 
 When mergeable, the merged shape is `{ authors: A.authors ∪ B.authors, addresses: A.addresses ∪ B.addresses, ... }`. The merged interest tracks both originating `InterestId`s so per-event dispatch back to consumers stays correct.
 
@@ -168,7 +169,7 @@ plan_id = blake3(
 
 Properties:
 
-- **Recompilation with no change ⇒ same plan-id.** If `ingest_relay_list` (`crates/nmp-core/src/kernel/ingest.rs:218-221`) deduplicates and decides not to replace a stale mailbox, no plan-id churn.
+- **Recompilation with no change ⇒ same plan-id.** If `ingest_relay_list` (`crates/nmp-core/src/kernel/ingest/relay_list.rs:38-61`) deduplicates and decides not to replace a stale mailbox, no plan-id churn.
 - **Adding an interest changes plan-id even if no new wire REQ results.** Two interests can merge into the same SubShape; the plan-id changes because the *interest set* changed. The platform diagnostic correctly reports "logical-interest count went up; wire-sub count did not."
 - **A new kind:10002 for a referenced author changes plan-id.** The hash only covers mailboxes for authors the current interest set touches, so a kind:10002 for an unrelated pubkey (not in any active interest's `authors` or `#p`) does not churn plan-ids.
 - **A new kind:10002 for an unreferenced author does NOT change plan-id.** This is the key
@@ -183,7 +184,7 @@ The `plan_id` is stored on `CompiledPlan` and rendered into `LogicalInterestStat
 
 ## 3.5 Migration of existing functions
 
-This is the binding contract: each function in `crates/nmp-core/src/kernel/requests.rs` and `crates/nmp-core/src/kernel/ingest.rs` either disappears, becomes thin glue over the compiler, or graduates into a typed module. The compiler does not coexist with the old planner; M2 replaces it.
+This is the binding contract: each function in `crates/nmp-core/src/kernel/requests/` and `crates/nmp-core/src/kernel/ingest/` either disappears, becomes thin glue over the compiler, or graduates into a typed module. The compiler does not coexist with the old planner; M2 replaces it.
 
 | Current function (file:line) | M2 replacement |
 |---|---|
