@@ -157,6 +157,13 @@ pub(super) fn send_all_outbound(
 /// new worker on first sight (per-URL on-demand). The previous role-based
 /// fallback (defer when role's socket is missing) is gone — every message
 /// resolves a concrete URL now (T105).
+///
+/// T-relay-url-normalize: both the spawn call and the subsequent pool lookup
+/// must use the same canonical key. `ensure_relay_worker` canonicalizes
+/// internally and stores the canonical key, so the `relay_controls.get()`
+/// must also use the canonical form — otherwise a non-canonical
+/// `message.relay_url` (trailing slash / uppercase scheme) would miss the
+/// entry and silently defer the frame forever.
 pub(super) fn send_outbound(
     relay_controls: &mut HashMap<String, RelayControl>,
     relay_tx: &Sender<RelayEvent>,
@@ -164,18 +171,23 @@ pub(super) fn send_outbound(
     next_relay_generation: &mut u64,
     message: OutboundMessage,
 ) {
+    // Resolve to the canonical pool key first so both the spawn and the
+    // subsequent lookup agree on the same HashMap entry.
+    let canonical_key = canonical_relay_url(&message.relay_url)
+        .unwrap_or_else(|| message.relay_url.clone());
+
     // Spawn on demand for any URL the pool has not seen before. The
-    // diagnostic lane is `message.role`; the actual socket dials `relay_url`.
+    // diagnostic lane is `message.role`; the actual socket dials `canonical_key`.
     let _spawned = ensure_relay_worker(
         relay_controls,
         relay_tx,
         kernel,
         next_relay_generation,
         message.role,
-        message.relay_url.clone(),
+        canonical_key.clone(),
     );
 
-    let Some(control) = relay_controls.get(&message.relay_url) else {
+    let Some(control) = relay_controls.get(&canonical_key) else {
         // ensure_relay_worker only fails to insert under a logic bug — defer
         // so the frame isn't dropped silently.
         kernel.defer_outbound(message);
@@ -229,7 +241,11 @@ pub(super) fn close_relays(
     // WireSub by req_for_relay).
     let active = kernel.snapshot_active_wire_subs();
     for (sub_id, relay_url) in active {
-        if let Some(control) = relay_controls.get(&relay_url) {
+        // T-relay-url-normalize: wire-sub URLs may carry non-canonical forms
+        // (trailing slash, uppercase scheme) — canonicalize before pool lookup
+        // so the CLOSE frame reaches the correct worker.
+        let key = canonical_relay_url(&relay_url).unwrap_or_else(|| relay_url.clone());
+        if let Some(control) = relay_controls.get(&key) {
             let close = json!(["CLOSE", sub_id]).to_string();
             let _ = control.tx.send(RelayCommand::Send(close));
         }
@@ -568,6 +584,121 @@ mod tests {
             got_connected,
             "T158: ensure_relay_worker must emit Connected for the user-added relay \
              within 3s (url={relay_url})"
+        );
+
+        close_relays(&mut relay_controls, &mut HashSet::new(), &mut kernel);
+    }
+
+    /// T-normalize-send-outbound: `send_outbound` with a non-canonical URL
+    /// (trailing slash / uppercase) must NOT defer the frame.
+    ///
+    /// Regression: the previous `d636a6b` commit fixed `ensure_relay_worker`
+    /// and `shutdown_relay_worker` to canonicalize, but left `send_outbound`
+    /// looking up by raw `message.relay_url` after `ensure_relay_worker` had
+    /// stored the canonical key — causing every frame destined for a URL with
+    /// a trailing slash to be silently deferred forever.
+    ///
+    /// This test calls `send_outbound` with a trailing-slash URL whose
+    /// canonical worker is already in the pool and asserts:
+    ///   1. Pool count stays at 1 (no duplicate socket spawned).
+    ///   2. `kernel.deferred_outbound_len()` is 0 (frame was routed, not deferred).
+    #[test]
+    fn t_normalize_send_outbound_non_canonical_url_routes_not_deferred() {
+        use crate::relay::OutboundMessage;
+        use std::net::TcpListener;
+        use std::sync::mpsc::{self, RecvTimeoutError};
+        use std::thread;
+        use std::time::Duration;
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral");
+        let port = listener.local_addr().expect("local_addr").port();
+        // canonical = no trailing slash
+        let canonical_url = format!("ws://127.0.0.1:{port}");
+        // non-canonical = trailing slash variant that used to cause a lookup miss
+        let non_canonical_url = format!("ws://127.0.0.1:{port}/");
+
+        let _server = thread::spawn(move || {
+            listener.set_nonblocking(false).ok();
+            let (stream, _) = match listener.accept() {
+                Ok(s) => s,
+                Err(_) => return,
+            };
+            stream.set_read_timeout(Some(Duration::from_millis(100))).ok();
+            let mut socket = match tungstenite::accept(stream) {
+                Ok(s) => s,
+                Err(_) => return,
+            };
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while std::time::Instant::now() < deadline {
+                match socket.read() {
+                    Ok(_) => {}
+                    Err(tungstenite::Error::Io(e))
+                        if matches!(
+                            e.kind(),
+                            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                        ) => {}
+                    Err(_) => return,
+                }
+            }
+        });
+        thread::sleep(Duration::from_millis(30));
+
+        let mut kernel = Kernel::new(80);
+        let (relay_tx, relay_rx) = mpsc::channel::<RelayEvent>();
+        let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
+        let mut next_gen = 1_u64;
+
+        // Pre-add via canonical URL so the worker is in the pool.
+        let spawned = ensure_relay_worker(
+            &mut relay_controls,
+            &relay_tx,
+            &mut kernel,
+            &mut next_gen,
+            RelayRole::Content,
+            canonical_url.clone(),
+        );
+        assert!(spawned, "initial ensure must spawn");
+
+        // Wait for Connected before sending.
+        let start = std::time::Instant::now();
+        while start.elapsed() < Duration::from_secs(3) {
+            match relay_rx.recv_timeout(Duration::from_millis(50)) {
+                Ok(RelayEvent::Connected { .. }) => break,
+                Ok(_) | Err(RecvTimeoutError::Timeout) => continue,
+                Err(RecvTimeoutError::Disconnected) => break,
+            }
+        }
+
+        // Send via the non-canonical (trailing-slash) form. The fix must route
+        // this to the existing worker, not defer it.
+        let msg = OutboundMessage {
+            role: RelayRole::Content,
+            relay_url: non_canonical_url.clone(),
+            text: r#"["REQ","t-normalize-sub",{"kinds":[1],"limit":1}]"#.to_string(),
+        };
+        send_outbound(
+            &mut relay_controls,
+            &relay_tx,
+            &mut kernel,
+            &mut next_gen,
+            msg,
+        );
+
+        // Pool must still have exactly one entry (no duplicate spawned).
+        assert_eq!(
+            relay_controls.len(),
+            1,
+            "T-normalize-send-outbound: pool must have 1 entry after send_outbound \
+             with non-canonical URL (trailing slash), got {}",
+            relay_controls.len()
+        );
+
+        // Deferred queue must be empty — the frame was routed, not deferred.
+        assert_eq!(
+            kernel.deferred_outbound_len(),
+            0,
+            "T-normalize-send-outbound: deferred queue must be empty — \
+             frame with non-canonical URL must NOT be deferred"
         );
 
         close_relays(&mut relay_controls, &mut HashSet::new(), &mut kernel);

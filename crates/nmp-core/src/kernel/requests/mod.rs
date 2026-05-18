@@ -184,4 +184,11 @@ impl Kernel {
         let relay = self.relay_mut(role);
         relay.counters.bytes_tx = relay.counters.bytes_tx.saturating_add(bytes as u64);
     }
+
+    /// Test-only: number of frames currently sitting in the deferred-outbound queue.
+    /// Used by actor-level tests that cannot access the private field directly.
+    #[cfg(test)]
+    pub(crate) fn deferred_outbound_len(&self) -> usize {
+        self.deferred_outbound.len()
+    }
 }
