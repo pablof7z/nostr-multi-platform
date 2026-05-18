@@ -244,8 +244,62 @@ extension Episode {
     var isTriageArchived: Bool { triageDecision == .archived }
     var isUntriaged: Bool { triageDecision == nil }
 }
-// Note: Episode.isUnplayed/isInProgress/playbackProgress/formattedDuration/plainTextSummary
-// are defined in verbatim Features/Library/LibraryDerivedDisplay.swift
+// verbatim-6 (#164): Episode display helpers — these live in the Library-scope
+// verbatim `Features/Library/LibraryDerivedDisplay.swift`, OUT of the #164
+// Player-restore surface. Logic mirrors the Podcastr source exactly; replaced
+// wholesale when the Library verbatim slice lands.
+extension Episode {
+    var isUnplayed: Bool {
+        !played && playbackPosition < 0.0001
+    }
+
+    var isInProgress: Bool {
+        guard !played else { return false }
+        guard let total = duration, total > 0 else { return playbackPosition > 0 }
+        let fraction = playbackPosition / total
+        return fraction > 0.0001 && fraction < 0.999
+    }
+
+    var playbackProgress: Double {
+        if played { return 1 }
+        guard let total = duration, total > 0 else { return 0 }
+        return min(1, max(0, playbackPosition / total))
+    }
+
+    var formattedDuration: String {
+        guard let total = duration, total > 0 else { return "—" }
+        let seconds = Int(total)
+        let h = seconds / 3600
+        let m = (seconds % 3600) / 60
+        if h > 0 { return "\(h)h \(m)m" }
+        return "\(m)m"
+    }
+
+    var plainTextSummary: String {
+        EpisodeShowNotesFormatter.plainText(from: description)
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+}
+
+// verbatim-6 (#164): per-podcast stats from the store — also Library-scope
+// (`LibraryDerivedDisplay.swift`). O(1) projections already exist on the
+// shim AppStateStore (`unplayedCountByShow` / `hasDownloadedByShow` /
+// `hasTranscribedByShow`); these accessors mirror the Podcastr source.
+extension AppStateStore {
+    func unplayedCount(forPodcast id: UUID) -> Int {
+        unplayedCountByShow[id] ?? 0
+    }
+
+    func hasDownloadedEpisode(forPodcast id: UUID) -> Bool {
+        hasDownloadedByShow.contains(id)
+    }
+
+    func hasTranscribedEpisode(forPodcast id: UUID) -> Bool {
+        hasTranscribedByShow.contains(id)
+    }
+}
 
 extension BidirectionalCollection where Element == Episode.Chapter {
     func active(at playheadSeconds: TimeInterval) -> Episode.Chapter? {
@@ -737,27 +791,7 @@ final class UserIdentityStore {
         case remoteSigner
     }
 
-    enum RemoteSignerState: Equatable {
-        case idle
-        case connecting
-        case reconnecting
-        case awaitingAuthorization(URL)
-        case connected(String)
-        case failed(String)
-    }
-
     var mode: Mode = .none
-    var remoteSignerState: RemoteSignerState = .idle
-    var isRemoteSigner: Bool { mode == .remoteSigner }
-
-    /// Nostr public key in bech32 npub format. Nil when no identity.
-    var npub: String? { nil }
-
-    /// Short display form: first-10 + "…" + last-6 of the full npub.
-    var npubShort: String? {
-        guard let full = npub, full.count > 16 else { return npub }
-        return "\(full.prefix(10))…\(full.suffix(6))"
-    }
 
     /// Last login/import failure copy surfaced to the UI. Stub never errors.
     private(set) var loginError: String? = nil
@@ -767,7 +801,9 @@ final class UserIdentityStore {
     private(set) var signer: (any NostrSigner)? = nil
 
     /// Live NIP-46 connection state surfaced by NostrConnectView /
-    /// Nip46ConnectCard. Stub stays `.idle`.
+    /// Nip46ConnectCard. Stub stays `.idle`. Uses the top-level
+    /// `RemoteSignerState` (defined below) so the verbatim switch
+    /// statements compile unchanged.
     private(set) var remoteSignerState: RemoteSignerState = .idle
 
     /// Cached kind-0 profile fields. Nil in the stub so UserProfileDisplay
@@ -849,56 +885,14 @@ enum RemoteSignerState: Sendable, Equatable {
     case failed(String)               // error message
 }
 
-// MARK: - NostrSigner / SignedNostrEvent (Blossom signing hand-off)
-
-/// Opaque signer handle. The verbatim views never call methods on it — they
-/// only check `signer != nil` and forward it to `BlossomUploading.upload`.
-protocol NostrSigner: Sendable {}
-
-/// Result of a successful kind-0 publish. The verbatim EditProfileView
-/// discards the value (`_ = try await identity.publishProfile(...)`).
-struct SignedNostrEvent: Sendable {}
-
-// MARK: - BlossomUploading / BlossomUploader
-
-/// Photo upload protocol used by the verbatim ChangePhotoSheet.
-protocol BlossomUploading: Sendable {
-    func upload(data: Data, contentType: String, signer: any NostrSigner) async throws -> URL
-}
-
-/// Default uploader. Stub throws — Blossom upload binds to the Rust kernel
-/// in a later slice; the verbatim view surfaces the failure state.
-final class BlossomUploader: BlossomUploading {
-    init() {}
-
-    func upload(data: Data, contentType: String, signer: any NostrSigner) async throws -> URL {
-        throw UserIdentityError.noIdentity
-    }
-}
-
-// MARK: - Data(hexString:)
-
-extension Data {
-    /// Decodes a hex string into bytes. Returns nil on odd length or any
-    /// non-hex character. Provided by NDKSwiftCore in Podcastr; reimplemented
-    /// here so the verbatim Identity views (AccountDetailsView fingerprint,
-    /// Nip46ConnectCard pubkey check) resolve.
-    init?(hexString: String) {
-        let chars = Array(hexString)
-        guard chars.count % 2 == 0 else { return nil }
-        var bytes = [UInt8]()
-        bytes.reserveCapacity(chars.count / 2)
-        var index = chars.startIndex
-        while index < chars.endIndex {
-            guard let hi = chars[index].hexDigitValue,
-                  let lo = chars[chars.index(after: index)].hexDigitValue
-            else { return nil }
-            bytes.append(UInt8(hi << 4 | lo))
-            index = chars.index(index, offsetBy: 2)
-        }
-        self.init(bytes)
-    }
-}
+// verbatim-6 (#164): The `ec5310cf` identity-shim merge pasted a SECOND copy
+// of NostrSigner / SignedNostrEvent / BlossomUploading / BlossomUploader /
+// Data(hexString:) here, duplicating the canonical definitions that already
+// exist later in this file (rich `NostrSigner`/`SignedNostrEvent` with the
+// publicKey()/sign() surface, `protocol BlossomUploading`, `struct
+// BlossomUploader` with `defaultServer`, `Data.init?(hexString:)`). The
+// duplicates made every Blossom / signer / hex call site ambiguous and broke
+// the device build. Removed here so the single canonical set governs.
 
 // MARK: - NostrRelayService
 
@@ -1153,7 +1147,42 @@ enum DeepLinkHandler {
     }
 }
 
-// Note: FeedbackWorkflow defined in verbatim Features/Feedback/FeedbackWorkflow.swift
+// verbatim-6 (#164): `FeedbackCategory` / `FeedbackWorkflow` live in the
+// Feedback-scope verbatim files (FeedbackModels.swift / FeedbackWorkflow.swift)
+// which were never restored — OUT of the #164 Player surface. These shims
+// mirror the Podcastr API the gap-stub `ScreenshotAnnotationView` + RootView
+// flow drive. NOTE: the local `ScreenshotAnnotationView` binds the workflow
+// with `@ObservedObject`, so this shim is an `ObservableObject` (the Podcastr
+// source is `@Observable`); the public surface is identical. Replaced
+// wholesale when the Feedback verbatim slice lands.
+
+enum FeedbackCategory: String, Codable, CaseIterable, Identifiable, Sendable {
+    case bug = "Bug"
+    case featureRequest = "Feature Request"
+    case question = "Question"
+    case praise = "Praise"
+
+    var id: String { rawValue }
+}
+
+@MainActor
+final class FeedbackWorkflow: ObservableObject {
+    enum Phase: Equatable {
+        case idle
+        case composing
+        case awaitingScreenshot
+        case annotating
+    }
+
+    @Published var phase: Phase = .idle
+    @Published var draft: String = ""
+    @Published var screenshot: UIImage? = nil
+    @Published var annotatedImage: UIImage? = nil
+    @Published var selectedCategory: FeedbackCategory = .bug
+
+    var isSheetVisible: Bool { phase == .composing }
+    var isAnnotationVisible: Bool { phase == .annotating }
+}
 
 // MARK: - ShakeFeedbackKit shims
 
@@ -1366,7 +1395,14 @@ final class SubscriptionRefreshService {
 // Note: LibraryFilter defined in verbatim Features/Library/LibraryFilters.swift
 // Note: HomeEpisodeRoute defined in verbatim Features/Home/HomeEpisodeRoute.swift
 // Note: HomeCategoryScope defined in verbatim Features/Home/HomeCategoryScope.swift
-// Note: HomeAgentPick/HomeAgentPicksBundle/HomeInboxBundleBuilder defined in verbatim Features/Home/HomeInboxBundle.swift
+// verbatim-6 (#164): `HomeAgentPick` lives in the Home-scope verbatim files
+// (HomeAgentPicks.swift), never restored — OUT of the #164 Player surface.
+// Only the unused `RationaleNarrator.narrate(pick:episode:)` stub references
+// it, so a minimal identifiable value satisfies the type checker. Replaced
+// wholesale when the Home verbatim slice lands.
+struct HomeAgentPick: Identifiable, Equatable, Sendable {
+    var id: UUID = UUID()
+}
 
 // MARK: - EpisodeNavTarget (used in ClippingsView as private, but referenced in PodcastrShims for other uses)
 // Note: ClippingsView defines EpisodeNavTarget privately, so we don't need a top-level shim.
@@ -1434,7 +1470,40 @@ extension View {
     // Note: agentAskPresenter() defined in verbatim Features/Agent/AgentAskPresenter.swift
 }
 
-// Note: EpisodeShowNotesFormatter defined in verbatim Features/EpisodeDetail/EpisodeShowNotesFormatter.swift
+// verbatim-6 (#164): `EpisodeShowNotesFormatter` is referenced by Library /
+// EpisodeDetail / PlayerShowNotesView but its verbatim source file
+// (Features/EpisodeDetail/EpisodeShowNotesFormatter.swift) was never restored
+// — that's EpisodeDetail-scope, OUT of the #164 Player surface. This shim
+// mirrors the Podcastr `plainText(from:)` contract (strip tags + decode the
+// common HTML entities + collapse whitespace) so the call sites compile and
+// render readable text; replaced wholesale when the EpisodeDetail verbatim
+// slice lands.
+enum EpisodeShowNotesFormatter {
+    static func plainText(from raw: String) -> String {
+        let stripped = raw.replacingOccurrences(
+            of: "<[^>]+>", with: " ", options: .regularExpression
+        )
+        let entities: [String: String] = [
+            "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": "\"",
+            "&#39;": "'", "&apos;": "'", "&nbsp;": " ",
+            "&rsquo;": "\u{2019}", "&lsquo;": "\u{2018}",
+            "&rdquo;": "\u{201D}", "&ldquo;": "\u{201C}",
+            "&mdash;": "\u{2014}", "&ndash;": "\u{2013}",
+            "&hellip;": "\u{2026}"
+        ]
+        var decoded = stripped
+        for (k, v) in entities {
+            decoded = decoded.replacingOccurrences(of: k, with: v)
+        }
+        let collapsed = decoded
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        return collapsed.replacingOccurrences(
+            of: "\\s+([.,!?;:])", with: "$1", options: .regularExpression
+        )
+    }
+}
 // Note: HomeCategoryPickerSheet defined in verbatim Features/Home/HomeCategoryPickerSheet.swift
 
 // MARK: - NDKSwiftCore shims (NDKSwiftCore not linked in NmpPodcast target)
@@ -2319,13 +2388,12 @@ extension AppStateStore {
     // Note: activeAgentActivityCount defined in main AppStateStore body
 }
 
-// MARK: - UserIdentityStore (expanded)
-
-extension UserIdentityStore {
-    var profileDisplayName: String? { nil }
-    var signer: (any NostrSigner)? { nil }
-    func publishProfile(name: String?, displayName: String?, about: String?, picture: String?) async throws -> SignedNostrEvent? { nil }
-}
+// verbatim-6 (#164): the `ec5310cf` merge added this `extension
+// UserIdentityStore` redeclaring `profileDisplayName`, `signer`, and
+// `publishProfile`, all of which already live (with the signatures the
+// verbatim Identity views require) in the `UserIdentityStore` class body
+// above. The redeclarations made every `identity.profileDisplayName /
+// .signer / .publishProfile(...)` call site ambiguous. Removed.
 
 // MARK: - ITunesSearchClient (expanded)
 
@@ -2371,12 +2439,54 @@ final class NostrCommentService {
     }
 }
 
-// MARK: - Bech32 encoding shim
+// verbatim-6 (#164): the fake `Bech32` encoding shim was removed. The
+// byte-for-byte verbatim `Services/Bech32.swift` (diff=0 vs Podcastr source,
+// real checksummed Bech32 implementation) now owns this symbol; the shim
+// made `Bech32.encode(hrp:data:)` ambiguous (Nip46ConnectCard / npub path).
 
-enum Bech32 {
-    static func encode(hrp: String, data: Data) -> String {
-        "\(hrp)1" + data.map { String(format: "%02x", $0) }.joined()
+// MARK: - Podcast display helpers (shim)
+//
+// verbatim-6 (#164): `accentColor` / `artworkSymbol` live in the Library-scope
+// verbatim `Features/Library/LibraryDerivedDisplay.swift`, which is OUT of the
+// #164 Player-restore surface (it drags EpisodeShowNotesFormatter + Episode /
+// AppStateStore projection deps). LibraryGridCell only needs deterministic
+// per-feed visuals, so this is a minimal shim — replaced wholesale when the
+// Library verbatim slice lands.
+
+extension Podcast {
+    /// Deterministic per-feed hue (FNV-1a over the feed URL / title) so the
+    /// same show always reads with the same tint, mirroring Podcastr.
+    private var accentHue: Double {
+        let source = feedURL?.absoluteString ?? title
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in source.utf8 {
+            hash ^= UInt64(byte)
+            hash &*= 0x100000001b3
+        }
+        return Double(hash % 360) / 360.0
     }
+
+    var accentColor: Color {
+        Color(hue: accentHue, saturation: 0.65, brightness: 0.78)
+    }
+
+    var artworkSymbol: String {
+        let bank = [
+            "waveform", "mic.fill", "headphones",
+            "antenna.radiowaves.left.and.right", "leaf.fill", "atom",
+            "books.vertical.fill", "brain.head.profile", "rectangle.stack.fill",
+            "graduationcap.fill", "building.columns.fill", "chart.line.uptrend.xyaxis"
+        ]
+        let idx = Int((accentHue * Double(bank.count)).rounded(.down)) % bank.count
+        return bank[abs(idx)]
+    }
+
+    /// verbatim-6 (#164): the diverged Library-scope `AllEpisodesView.swift`
+    /// reads `podcast.episodeCount`, but the shim `Podcast` value carries no
+    /// episode list (episodes live on `AppStateStore`). Returns 0 so the
+    /// header renders; replaced when the Library verbatim slice rebinds this
+    /// to the real per-show projection.
+    var episodeCount: Int { 0 }
 }
 
 // MARK: - Data hex init shim
@@ -2416,23 +2526,10 @@ enum NostrNpub {
     }
 }
 
-// MARK: - DownloadProgressBadge shim
-
-struct DownloadProgressBadge: View {
-    var episode: Episode
-    var liveProgress: Double?
-    var body: some View {
-        let progress = liveProgress ?? 0
-        ZStack {
-            Circle()
-                .stroke(Color.secondary.opacity(0.3), lineWidth: 2)
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(Color.accentColor, lineWidth: 2)
-                .rotationEffect(.degrees(-90))
-        }
-    }
-}
+// verbatim-6 (#164): the placeholder `DownloadProgressBadge` shim was removed.
+// The byte-for-byte verbatim `Features/Player/DownloadProgressBadge.swift`
+// (diff=0 vs Podcastr source) now owns this symbol; keeping the shim made it
+// an invalid redeclaration.
 
 // MARK: - BriefingScope / BriefingLength / BriefingStyle / BriefingRequest
 
@@ -2486,15 +2583,10 @@ struct BriefingComposeSheet: View {
     }
 }
 
-// MARK: - AgentIdentityQRView
-
-struct AgentIdentityQRView: View {
-    let npub: String
-    let name: String
-    var body: some View {
-        ContentUnavailableView("QR Code", systemImage: "qrcode")
-    }
-}
+// verbatim-6 (#164): `AgentIdentityQRView` placeholder shim removed. The
+// byte-for-byte verbatim `Features/Settings/Agent/AgentIdentityQRView.swift`
+// (diff=0 vs Podcastr source, same `npub`/`name` API) now owns this symbol;
+// the shim made every `AgentIdentityQRView(npub:name:)` call ambiguous.
 
 // MARK: - ClipShareSheet
 
