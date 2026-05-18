@@ -187,9 +187,16 @@ pub(super) fn partition_interest(
         }
 
         // "Both populated" split: also emit Inbox entries for any #p values.
+        //
+        // The inbox slice preserves the original author constraint — the
+        // semantics are `authors AND #p` (intersection), so the inbox REQ on
+        // the tagged pubkey's read relays must still be filtered by the
+        // interest's authors, not a wildcard that would match every event
+        // tagging the recipient.
         if !p_tag_values.is_empty() {
             route_p_tags_to_inbox(
                 &p_tag_values,
+                &interest.shape.authors,
                 &base_shape,
                 &interest.lifecycle,
                 &interest.id,
@@ -256,8 +263,12 @@ pub(super) fn partition_interest(
     // emit a probe so the next recompile has data. The plan will have an empty
     // per_relay map for this interest until kind:10002 arrives.
     if !p_tag_values.is_empty() {
+        // Case C: no `authors` (the early return above ensures this) — pass an
+        // empty set so the inbox shape doesn't constrain authors.
+        let empty_authors: BTreeSet<Pubkey> = BTreeSet::new();
         route_p_tags_to_inbox(
             &p_tag_values,
+            &empty_authors,
             &base_shape,
             &interest.lifecycle,
             &interest.id,
@@ -295,13 +306,24 @@ pub(super) fn partition_interest(
 
 /// Route `#p` tag values to their inbox relays (read ∪ both).
 ///
+/// `authors_for_inbox` is the original interest's author set — when called
+/// from Case A's "both populated" split, this preserves the `authors AND #p`
+/// semantics on the inbox slice (the inbox REQ filters by Alice's authorship
+/// AND tags Bob, not "any event tagging Bob"). Case C passes an empty set.
+///
 /// Structural ban: if inbox relays are unknown for a tagged pubkey, emit
 /// NO relay entries for that pubkey (fail-closed). A probe is emitted so
 /// the next recompile has data (§3.2 — IndexerProbe side-effect).
 ///
+/// Stage 3 (mod.rs) is responsible for deduping repeated `interest_id`
+/// pushes on the same relay (e.g. when an outbox and inbox push land on the
+/// same relay URL because the author's write relay == a tagged pubkey's
+/// read relay).
+///
 /// Called from Case A ("both populated" split) and Case C.
 fn route_p_tags_to_inbox(
     p_tag_values: &BTreeSet<Pubkey>,
+    authors_for_inbox: &BTreeSet<Pubkey>,
     base_shape: &InterestShape,
     lifecycle: &InterestLifecycle,
     interest_id: &InterestId,
@@ -314,7 +336,7 @@ fn route_p_tags_to_inbox(
                 for relay in snapshot.inbox_relays() {
                     relay_entries.entry(relay.clone()).or_default().push(RelayEntry {
                         base_shape: base_shape.clone(),
-                        authors_for_relay: BTreeSet::new(),
+                        authors_for_relay: authors_for_inbox.clone(),
                         addresses_for_relay: BTreeSet::new(),
                         lifecycle: lifecycle.clone(),
                         sources: BTreeSet::from([RoutingSource::Nip65]),

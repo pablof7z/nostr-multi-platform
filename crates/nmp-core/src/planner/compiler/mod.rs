@@ -150,7 +150,15 @@ impl<'a> SubscriptionCompiler<'a> {
                         merge(&existing_shape.clone(), &shape, existing_lifecycle, &lifecycle)
                     {
                         *existing_shape = new_shape;
-                        existing_ids.push(interest_id.clone());
+                        // Dedupe: the same interest_id can land on a relay more
+                        // than once (e.g. when Case A's outbox push and the
+                        // "both populated" inbox push both target the same
+                        // relay because the author's write relay == a tagged
+                        // pubkey's read relay). `originating_interests` is a
+                        // set semantically, not a multiset.
+                        if !existing_ids.contains(&interest_id) {
+                            existing_ids.push(interest_id.clone());
+                        }
                         merged = true;
                         break;
                     }
