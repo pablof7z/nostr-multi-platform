@@ -57,8 +57,8 @@ impl HotSet {
     /// On rejection, the state is unchanged (all-or-nothing per call).
     pub fn claim(&mut self, c: ClaimerId, ids: &[EventId]) -> Result<(), StoreError> {
         let existing = self.by_claimer.get(&c);
-        // Count only ids that are new to this claimer (dedup by BTreeSet membership).
-        let new_ids: Vec<EventId> = ids.iter()
+        // Collect into a BTreeSet to dedup both intra-call and against already-claimed ids.
+        let new_ids: BTreeSet<EventId> = ids.iter()
             .filter(|id| existing.map_or(true, |s| !s.contains(*id)))
             .copied()
             .collect();
@@ -75,7 +75,7 @@ impl HotSet {
             });
         }
         let new_global = self.pinned.len() + new_ids.iter()
-            .filter(|id| !self.pinned.contains_key(*id))
+            .filter(|id| !self.pinned.contains_key(id))
             .count();
         if new_global > self.max_pinned_total {
             return Err(StoreError::OverPinned {
@@ -226,7 +226,7 @@ The 1M-events-on-disk dimension does **not** appear in the budget because LMDB d
 | LRU evicted a still-pinned event (bug) | `trim()` would have skipped it; if observed, log + invariant violation | Pin reinstated from `claims_meta`; fire `tracing::error!`; flagged as critical bug class to investigate |
 | `gc_step()` over-budget | `start.elapsed() > max_duration_ms` mid-loop | Break out of current loop early; remaining work picked up next call (no state corruption — every reaped event is its own transaction) |
 | `release()` called for unknown `ClaimerId` | `by_claimer.remove` returns None | Silent no-op; logged at debug; not a bug (idempotent close) |
-| `claim()` exceeds per-view or global ceiling | Per-view: `by_claimer[c].len() + ids.len() > view_budgets[c]`; global: `pinned.len() + new_unique > max_pinned_total` | Return `StoreError::OverPinned`; state unchanged; actor surfaces `Effect::ViewOverPinned` and calls `release(claimer_id)` |
+| `claim()` exceeds per-view or global ceiling | Per-view: `by_claimer[c].len() + new_ids.len() > view_budgets[c]`; global: `pinned.len() + new_unique > max_pinned_total` (both counts deduplicated) | Return `StoreError::OverPinned`; state unchanged; actor surfaces `Effect::ViewOverPinned` and calls `release(claimer_id)` |
 | Memory warning during heavy insert burst | iOS `didReceiveMemoryWarning` → `MemoryWarningCapability` event | Actor lowers `target_hot_size` to 5k, runs `gc_step({max_events_per_step:5000, max_duration_ms:200})` once; restored after the warning clears |
 
 ## 7. Diagnostics integration (ADR-0007)

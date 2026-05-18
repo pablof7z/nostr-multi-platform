@@ -15,26 +15,7 @@ for_each_backend!(insert_returns_insert_outcome, |h: &mut StoreHarness| {
 });
 ```
 
-Plus a runtime-instrumented test enforcing that `insert()` is the only path that writes to the primary `events` sub-db. The test uses a `WriteCounting<S>` newtype that wraps any `EventStore` and intercepts every write; at teardown it asserts that all writes to the primary sub-db originated from `insert()` call frames (verified via a `AtomicBool` flag set on entry to `insert` and checked inside the write interceptor).
-
-```rust
-// crates/nmp-testing/tests/store_insert_path.rs
-struct WriteCounting<S: EventStore> {
-    inner: S,
-    in_insert: Arc<AtomicBool>,
-    illegal_primary_writes: Arc<AtomicUsize>,
-}
-
-// ...wraps every EventStore method; every put() to the primary sub-db checks
-// in_insert; increments illegal_primary_writes if false.
-for_each_backend!(only_insert_writes_primary, |h: &mut StoreHarness| {
-    let wc = WriteCounting::wrap(h.take_store());
-    // Exercise every non-insert method that could conceivably write.
-    let _ = wc.delete_by_filter(DeleteFilter::ByIdList(vec![]));
-    let _ = wc.gc_step(GcBudget { max_events_per_step: 0, max_duration_ms: 0 });
-    assert_eq!(wc.illegal_primary_writes.load(Ordering::SeqCst), 0);
-});
-```
+Secondary-count verification uses the `LmdbEventStore::with_write_observer` hook described in [`../tests.md` §1.1](../tests.md). LMDB-backend tests attach a `WriteCounter` to verify each insert writes exactly the expected number of secondary-index entries.
 
 ### 2.2 Signature verification (§7.1 row "Signature/delegation validity")
 

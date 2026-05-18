@@ -77,7 +77,7 @@ fn insert_kind30023_writes_dtag_time_index() {
 | Invariant (§7.1) | Test file | Detail |
 |---|---|---|
 | Insert API single path | `store_insert_path.rs` | [§2.1](tests/insert.md#21-insert-api-single-path-71-row-insert-api) |
-| Signature/delegation validity | `store_invalid_sig.rs` | [§2.2](tests/insert.md#22-signature-verification-71-row-signationdelegation-validity) |
+| Signature/delegation validity | `store_invalid_sig.rs` | [§2.2](tests/insert.md#22-signature-verification-71-row-signaturedelegation-validity) |
 | Duplicate id → merge provenance | `store_provenance_merge.rs` | [§2.3](tests/insert.md#23-duplicate-id--provenance-merge-71-row-duplicate-id) |
 | Replaceable supersession | `store_replaceable.rs` | [§2.4](tests/insert.md#24-replaceable-supersession-71-row-replaceable-kinds) |
 | Parameterized replaceable | `store_param_replaceable.rs` | [§2.5](tests/insert.md#25-parameterized-replaceable-71-row-parameterized-replaceable) |
