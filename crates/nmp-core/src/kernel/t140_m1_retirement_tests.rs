@@ -51,24 +51,6 @@ fn install_relay_list(kernel: &mut Kernel, author: &str, write_relays: &[&str]) 
     );
 }
 
-/// A kind:3 EVENT relay frame string where the author follows `follows`.
-fn kind3_event_frame(sub_id: &str, id: &str, author: &str, created_at: u64, follows: &[&str]) -> String {
-    let tags: Vec<Vec<String>> = follows
-        .iter()
-        .map(|pk| vec!["p".to_string(), pk.to_string()])
-        .collect();
-    let event = serde_json::json!({
-        "id": id,
-        "pubkey": author,
-        "created_at": created_at,
-        "kind": 3,
-        "tags": tags,
-        "content": "",
-        "sig": "a".repeat(128),
-    });
-    serde_json::json!(["EVENT", sub_id, event]).to_string()
-}
-
 /// All sub-ids appearing in `REQ` outbound frames (M1 OutboundMessage form).
 fn req_sub_ids_from_outbound(out: &[crate::relay::OutboundMessage]) -> Vec<String> {
     out.iter()
@@ -101,26 +83,39 @@ fn live_follow_feed_path_emits_no_seed_timeline_req() {
     install_relay_list(&mut kernel, BOB, &["wss://bob-t140.relay/"]);
 
     // Force `should_open_timeline()` to be satisfied by tripping the
-    // contacts deadline (the M1 gate the prior agent left active).
+    // contacts deadline (the M1 gate the prior agent left active) — this is
+    // what makes the pre-fix `maybe_open_timeline()` actually emit the
+    // `seed-timeline-*` REQ, so the retirement assertion is meaningful.
     kernel.contacts_deadline = Some(Instant::now() - Duration::from_secs(1));
 
-    // Drive the LIVE path: a kind:3 EVENT for the active account through
-    // handle_text. This runs ingest_contacts AND the maybe_open_timeline()
-    // tail in handle_text — exactly the production hot path.
-    let frame = kind3_event_frame(
-        "seed-contacts",
-        "0000000000000000000000000000000000000000000000000000000000000001",
-        ALICE,
-        2_000,
-        &[ALICE, BOB],
-    );
-    let outbound = kernel.handle_message(
-        crate::relay::RelayRole::Indexer,
-        "wss://indexer.relay/",
-        Message::Text(frame),
-    );
+    // Drive the LIVE follow-feed path: the active account's kind:3 lands via
+    // `ingest_contacts` (registers M2 interests + enqueues the
+    // FollowListChanged trigger), exactly as production does on a kind:3
+    // EVENT. `inject_replaceable_event` routes through the real
+    // `ingest_contacts` (the production handler) — it only bypasses
+    // secp256k1 signature verification (test keys aren't real).
+    kernel
+        .inject_replaceable_event(
+            "0000000000000000000000000000000000000000000000000000000000000001",
+            ALICE,
+            2_000,
+            3,
+            vec![
+                vec!["p".to_string(), ALICE.to_string()],
+                vec!["p".to_string(), BOB.to_string()],
+            ],
+            "wss://indexer.relay/",
+            2_000_000,
+        )
+        .expect("inject kind:3 must succeed");
 
-    // Also drain the M2 lifecycle tick (the actor idle loop call).
+    // The M1 follow-feed emitter: `maybe_open_timeline()` is the function the
+    // prior agent claimed was retired. Drive it directly — this is the exact
+    // call the `handle_text` tail makes on every inbound frame. POST-FIX it
+    // must emit ZERO `seed-timeline-*` REQs.
+    let outbound = kernel.maybe_open_timeline();
+
+    // The M2 lifecycle tick (the actor idle loop call) must now carry the feed.
     let m2_frames = kernel.drain_lifecycle_tick();
 
     let m1_sub_ids = req_sub_ids_from_outbound(&outbound);

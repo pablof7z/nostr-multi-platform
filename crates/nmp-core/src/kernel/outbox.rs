@@ -48,6 +48,13 @@ impl Kernel {
     /// relay list arrives.
     ///
     /// Empty input yields an empty map (caller emits nothing).
+    ///
+    /// T140: the M1 follow-feed emitter (`maybe_open_timeline`) was the only
+    /// production caller; it is retired (the M2 planner now partitions the
+    /// follow feed by NIP-65 write relays). This helper is retained `cfg(test)`
+    /// as the executable specification of the per-relay outbox partition the
+    /// planner reproduces — deleting it would lose that regression coverage.
+    #[cfg(test)]
     pub(crate) fn partition_authors_by_write_relays(
         &self,
         authors: &[String],

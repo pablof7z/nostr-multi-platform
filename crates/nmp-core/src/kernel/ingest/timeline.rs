@@ -5,18 +5,6 @@
 
 use super::super::*;
 use super::event_short_id;
-use std::hash::{Hash, Hasher};
-
-/// Stable per-relay sub-id for the follow-feed REQ. The `seed-timeline-`
-/// prefix is recognized as a long-lived (post-EOSE keep-alive) subscription
-/// in `ingest::handle_text`. The hash suffix is a deterministic 8-char tag
-/// over the relay URL — same URL → same sub-id across runs, so wire-sub
-/// identity in the diagnostic surface is stable.
-fn timeline_sub_id_for(relay_url: &str) -> String {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    relay_url.hash(&mut hasher);
-    format!("seed-timeline-{:08x}", (hasher.finish() & 0xFFFF_FFFF))
-}
 
 impl Kernel {
     /// Ingest a kind:1 or kind:6 event into the local read-cache and timeline.
@@ -234,62 +222,43 @@ impl Kernel {
         self.timeline = ids.into();
     }
 
-    /// Open the seed-timeline subscription once enough contacts are loaded.
+    /// T140 — follow-feed open milestone + pending profile-claim flush.
     ///
-    /// Returns REQ messages to send; also flushes pending profile claim requests.
+    /// ## M1 follow-feed REQ emission is RETIRED (T140 cutover)
+    ///
+    /// This function NO LONGER emits the hand-rolled `seed-timeline-*` REQ.
+    /// The follow feed is now carried exclusively by the M2 planner: kind:3
+    /// ingest registers per-follow `LogicalInterest`s
+    /// (`sync_follow_feed_interests`) and `drain_lifecycle_tick()` (the actor
+    /// idle loop) compiles + emits the per-NIP-65-write-relay REQ/CLOSE diff.
+    /// The seed-author bootstrap feed is independently covered by
+    /// `startup_requests()` (`seed-bootstrap` REQ + seed pubkeys seeded into
+    /// `timeline_authors`), so retiring the M1 path here does not regress it.
+    ///
+    /// `timeline_authors` is single-sourced from the M2 projection
+    /// (`sync_follow_feed_interests`) — the divergent `self.timeline_authors =
+    /// authors` assignment that previously lived here is deleted so the M1 and
+    /// M2 views cannot drift apart.
+    ///
+    /// The `timeline_requested` / `timeline_opened_at` milestone flags are
+    /// still flipped: `status.rs` reports cache-coverage off them, and the
+    /// milestone now means "the follow feed has been opened" regardless of
+    /// which subsystem carries it.
+    ///
+    /// Returns only the pending profile-claim requests (UI-driven, unrelated
+    /// to the follow feed).
     pub(in crate::kernel) fn maybe_open_timeline(&mut self) -> Vec<OutboundMessage> {
-        let mut requests = Vec::new();
         if !self.timeline_requested && self.should_open_timeline() {
-            let mut authors = BTreeSet::new();
-            for seed in seed_accounts() {
-                authors.insert(seed.pubkey.to_string());
-            }
-            for follows in self.seed_contacts.values() {
-                for follow in follows {
-                    authors.insert(follow.clone());
-                    if authors.len() >= TIMELINE_AUTHOR_LIMIT {
-                        break;
-                    }
-                }
-                if authors.len() >= TIMELINE_AUTHOR_LIMIT {
-                    break;
-                }
-            }
-            self.timeline_authors = authors;
-            let authors_vec = self.timeline_authors.iter().cloned().collect::<Vec<_>>();
             self.timeline_requested = true;
             self.timeline_opened_at = Some(Instant::now());
-
-            // T105: partition the follow set by each author's NIP-65 write
-            // relays — one REQ per resolved relay, carrying only the authors
-            // that relay actually serves. Cold-start authors (no cached
-            // kind:10002) land on the bootstrap discovery seed; the A1
-            // recompilation trigger re-emits the timeline onto resolved
-            // relays once kind:10002 arrives (see `ingest_relay_list`).
-            let partition = self.partition_authors_by_write_relays(&authors_vec);
-            self.log(format!(
-                "opening seed timeline: {} authors fanned out over {} relay(s)",
-                authors_vec.len(),
-                partition.len()
-            ));
-
-            // Stable sub-id per relay: `seed-timeline-<short-hash>`. The
-            // bare `seed-timeline` id is reserved for the unpartitioned
-            // legacy path and would now conflict across relays.
-            for (relay_url, served_authors) in partition {
-                let sub_id = timeline_sub_id_for(&relay_url);
-                requests.push(self.req_for_relay(
-                    RelayRole::Content,
-                    relay_url,
-                    &sub_id,
-                    "seed union timeline kinds:1,6 (NIP-65 outbox)",
-                    json!({"kinds":[1,6],"authors":served_authors,"limit":200}),
-                ));
-            }
+            self.log(
+                "follow-feed open milestone reached — carried by M2 planner \
+                 (drain_lifecycle_tick); M1 seed-timeline-* REQ retired (T140)"
+                    .to_string(),
+            );
         }
 
-        requests.extend(self.pending_profile_claim_requests());
-        requests
+        self.pending_profile_claim_requests()
     }
 
     pub(in crate::kernel) fn should_open_timeline(&self) -> bool {

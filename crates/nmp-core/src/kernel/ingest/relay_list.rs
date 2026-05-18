@@ -32,7 +32,21 @@ impl Kernel {
             && relay_list.write_relays.is_empty()
             && relay_list.both_relays.is_empty()
         {
-            self.author_relay_lists.remove(&event.pubkey);
+            let had_entry = self.author_relay_lists.remove(&event.pubkey).is_some();
+            // T140 (codex finding #5): clearing the mailbox cache without a
+            // recompile left existing M2 plans routed to the now-stale relays.
+            // Fan a `Nip65Arrived` so the next `drain_tick` re-plans this
+            // author off the cleared relays (the planner falls back to the
+            // bootstrap discovery seed when no mailbox is cached). Only when
+            // an entry actually existed — an empty event for an
+            // already-unknown author is a true no-op (no stale plan to fix).
+            if had_entry {
+                self.lifecycle
+                    .enqueue_trigger(CompileTrigger::Nip65Arrived {
+                        pubkey: event.pubkey.clone(),
+                        created_at: relay_list.created_at,
+                    });
+            }
             return;
         }
 

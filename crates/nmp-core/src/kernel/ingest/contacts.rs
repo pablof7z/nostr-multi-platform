@@ -17,8 +17,19 @@ fn follow_feed_interest_id(pubkey: &str) -> InterestId {
     InterestId(h.finish())
 }
 
+/// Per-author cap on the follow-feed REQ. Parity with the retired M1
+/// `seed-timeline-*` REQ, which carried `{"kinds":[1,6],"authors":[...],
+/// "limit":200}` (no since/until). Without this an `InterestShape` with no
+/// bounds risks an unbounded backfill on the wire (codex finding #6).
+const FOLLOW_FEED_LIMIT: u32 = 200;
+
 /// Build a `LogicalInterest` for a single follow-feed pubkey (kinds 1 and 6,
 /// `InterestLifecycle::Tailing`, `InterestScope::Global`).
+///
+/// T140: carries `limit: Some(200)` for parity with the retired M1 REQ. M1
+/// set no `since`/`until`, so parity is `limit` only (the relay returns the
+/// newest 200 and then tails — `Tailing` lifecycle keeps the sub live past
+/// EOSE for new events).
 fn follow_feed_interest(pubkey: &str) -> LogicalInterest {
     let mut authors = BTreeSetInner::new();
     authors.insert(pubkey.to_string());
@@ -31,6 +42,7 @@ fn follow_feed_interest(pubkey: &str) -> LogicalInterest {
         shape: InterestShape {
             authors,
             kinds,
+            limit: Some(FOLLOW_FEED_LIMIT),
             ..Default::default()
         },
         hints: Vec::new(),
@@ -69,8 +81,16 @@ impl Kernel {
         // Rebuild the `timeline_authors` derived cache from the new follow set
         // so `should_store_event` / `ingest_timeline_event` gate correctly.
         // `timeline_authors` is a denormalized read-cache over the M2 registry
-        // (D4: the registry is the single source of truth; this is a projection).
-        self.timeline_authors = follows.iter().cloned().collect();
+        // (D4: the registry is the single source of truth; this is a
+        // projection). T140: the seed-author bootstrap feed is opened by
+        // `startup_requests()` (`seed-bootstrap` REQ + seed pubkeys seeded
+        // here), independent of the follow set — UNION the seed accounts in so
+        // a follow-set replace / account switch never drops the seed feed.
+        let mut authors: BTreeSet<String> = follows.iter().cloned().collect();
+        for seed in seed_accounts() {
+            authors.insert(seed.pubkey.to_string());
+        }
+        self.timeline_authors = authors;
     }
 
     /// Ingest a kind:3 contact-list event into the local `seed_contacts` cache
@@ -133,8 +153,15 @@ impl Kernel {
     ///
     /// Called by `open_timeline()` (actor command) so that switching screens
     /// back to the timeline re-confirms the M2 interest set is populated.
-    /// Idempotent: if the active account has no kind:3 cached yet, the registry
-    /// stays empty until the first `ingest_contacts` fires.
+    ///
+    /// T140 (codex finding #4): empty / no-cached-follows must NOT no-op —
+    /// that left the *previous* account's `follow_feed_interest_ids` and
+    /// follow-derived `timeline_authors` live after an account switch or a
+    /// missing kind:3. `sync_follow_feed_interests(&[])` withdraws every stale
+    /// interest, clears the id set, and resets `timeline_authors` to the
+    /// seed-only baseline; the trigger drives `drain_tick` to emit the CLOSE
+    /// diff for the now-withdrawn subs. Calling it unconditionally is the
+    /// correct CLEAR semantics.
     pub(crate) fn register_follow_feed_for_active_account(&mut self) {
         let Some(active_pk) = self.active_account.clone() else {
             return;
@@ -144,15 +171,16 @@ impl Kernel {
             .get(&active_pk)
             .cloned()
             .unwrap_or_default();
-        if !follows.is_empty() {
-            self.sync_follow_feed_interests(&follows);
-            // Enqueue a trigger so drain_tick recompiles on the next idle tick.
-            use crate::subs::CompileTrigger;
-            self.lifecycle
-                .enqueue_trigger(CompileTrigger::FollowListChanged {
-                    account_id: crate::subs::AccountId(active_pk),
-                    new_follows: follows,
-                });
-        }
+        // Unconditional: empty `follows` CLEARs stale state (no-op was the bug).
+        self.sync_follow_feed_interests(&follows);
+        // Enqueue a trigger so drain_tick recompiles on the next idle tick —
+        // including the empty case, where the recompile emits the CLOSE diff
+        // that tears down the prior account's follow-feed subs.
+        use crate::subs::CompileTrigger;
+        self.lifecycle
+            .enqueue_trigger(CompileTrigger::FollowListChanged {
+                account_id: crate::subs::AccountId(active_pk),
+                new_follows: follows,
+            });
     }
 }

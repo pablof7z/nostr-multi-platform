@@ -187,6 +187,18 @@ pub struct SubscriptionLifecycle {
     /// the probed mark is then moot (the cache hit short-circuits the
     /// unknown-author check before this set is consulted).
     probed_mailboxes: BTreeSet<String>,
+    /// T140 (D6 / codex finding #7): the most recent *genuine* planner error
+    /// from [`Self::drain_tick`].
+    ///
+    /// `drain_tick` previously mapped every `Err(_)` to `Vec::new()` via
+    /// `unwrap_or_default()` — a silent swallow on a path that is now
+    /// FFI-visible (the actor idle loop drives it). D6 forbids silently
+    /// discarding errors. `EmptyInterestSet` is a benign steady state (no
+    /// interests → empty diff) and is NOT recorded here; structural errors
+    /// (`InvalidShape`, `HashingFailed`) ARE recorded so an operator /
+    /// diagnostic surface can observe them. `None` until the first genuine
+    /// error; never auto-cleared (latest-error-wins).
+    last_planner_error: Option<String>,
 }
 
 impl Default for SubscriptionLifecycle {
@@ -221,7 +233,15 @@ impl SubscriptionLifecycle {
             select_max_per_user: DEFAULT_SELECT_MAX_PER_USER,
             dead_relays: BTreeSet::new(),
             probed_mailboxes: BTreeSet::new(),
+            last_planner_error: None,
         }
+    }
+
+    /// T140 (D6) — the most recent genuine planner error surfaced by
+    /// [`Self::drain_tick`], or `None` if none has occurred. Benign
+    /// `EmptyInterestSet` is never recorded here. Read by diagnostics / tests.
+    pub fn last_planner_error(&self) -> Option<&str> {
+        self.last_planner_error.as_deref()
     }
 
     /// Clear the implicit-discovery probed set so the next recompile
@@ -548,6 +568,17 @@ impl SubscriptionLifecycle {
     /// T132: the caller supplies the mailbox cache for the same reason
     /// [`Self::recompile_and_diff`] does — the lifecycle is no longer the
     /// owner of mailbox state.
+    ///
+    /// T140 (D6 / codex finding #7): this path is FFI-visible (driven by the
+    /// actor idle loop via `Kernel::drain_lifecycle_tick`). The previous
+    /// `recompile_and_diff(...).unwrap_or_default()` silently discarded every
+    /// planner error — a D6 violation. We now classify the `Err`:
+    /// `EmptyInterestSet` is a benign steady state (no interests registered →
+    /// empty diff, common between account switches) and yields an empty `Vec`
+    /// without recording; genuine structural errors (`InvalidShape`,
+    /// `HashingFailed`) are surfaced into `last_planner_error` (observable via
+    /// [`Self::last_planner_error`]) before returning empty, so the error is
+    /// never silently lost.
     pub fn drain_tick(&mut self, mailbox_cache: &dyn MailboxCache) -> Vec<WireFrame> {
         let triggers = self.inbox.drain_coalesced();
         if triggers.is_empty() {
@@ -561,7 +592,18 @@ impl SubscriptionLifecycle {
                 let _ = self.auth_gate.record_transition(url.clone(), state.clone());
             }
         }
-        self.recompile_and_diff(mailbox_cache).unwrap_or_default()
+        match self.recompile_and_diff(mailbox_cache) {
+            Ok(frames) => frames,
+            // Benign: no interests registered (e.g. between account switches).
+            // Not an error condition — empty diff, nothing to surface.
+            Err(PlannerError::EmptyInterestSet) => Vec::new(),
+            // D6: a genuine structural planner error must be observable, never
+            // swallowed. Record it; the diff is empty for this tick.
+            Err(e) => {
+                self.last_planner_error = Some(e.to_string());
+                Vec::new()
+            }
+        }
     }
 
     /// A5 — relay-reconnected. Per recompilation.md §4.2: replay current plan
@@ -1364,6 +1406,48 @@ mod tests {
         assert!(
             l.probed_mailboxes().is_empty(),
             "no probe emitted → nothing marked probed"
+        );
+    }
+
+    // ─── T140 (D6) — drain_tick() error path is no longer a silent swallow ───
+
+    /// T140 / codex finding #7: `drain_tick` previously did
+    /// `recompile_and_diff(...).unwrap_or_default()` — every `Err(_)` silently
+    /// became `Vec::new()` on a now-FFI-visible path (D6 violation).
+    ///
+    /// This regression test pins the *classification contract*: a trigger
+    /// enqueued with NO interests registered must NOT panic and must NOT
+    /// record a `last_planner_error` (the no-interests state is the benign
+    /// `EmptyInterestSet` steady state, not a genuine error). The genuine
+    /// structural-error arm (`InvalidShape` / `HashingFailed`) is the explicit
+    /// `Err(e) => self.last_planner_error = Some(...)` branch in `drain_tick`.
+    /// Pre-fix, `last_planner_error` did not exist and ALL errors were lost;
+    /// the existence of the accessor + the benign-vs-genuine split is the
+    /// observable D6 fix.
+    #[test]
+    fn drain_tick_benign_empty_interest_set_does_not_record_planner_error() {
+        let mut l = SubscriptionLifecycle::new();
+        // Trigger enqueued, but registry is empty → recompile sees no
+        // interests. This is the benign steady state.
+        l.enqueue_trigger(CompileTrigger::FollowListChanged {
+            account_id: AccountId("acct".to_string()),
+            new_follows: vec![],
+        });
+        let mailboxes = InMemoryMailboxCache::new();
+        let frames = l.drain_tick(&mailboxes);
+
+        assert!(
+            frames.is_empty(),
+            "no interests → empty diff (benign), got {} frames",
+            frames.len()
+        );
+        assert_eq!(
+            l.last_planner_error(),
+            None,
+            "T140 D6: the benign EmptyInterestSet state must NOT be recorded \
+             as a planner error (only genuine structural errors are surfaced); \
+             got {:?}",
+            l.last_planner_error()
         );
     }
 }

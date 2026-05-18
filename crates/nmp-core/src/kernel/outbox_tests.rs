@@ -41,10 +41,18 @@ fn install_relay_list(
 
 #[test]
 fn follow_feed_fans_out_per_author_write_relays_not_constants() {
-    // Two followed authors with DISTINCT write relays. The follow-feed REQ
-    // MUST emit one REQ per resolved relay, each carrying only the authors
-    // that relay serves — never on a hardcoded `RelayRole::Content` URL.
+    // T140: the follow-feed REQ is now carried by the M2 planner
+    // (`drain_lifecycle_tick`), NOT the retired M1 `maybe_open_timeline()`
+    // `seed-timeline-*` path. The D3 contract this test pins is unchanged —
+    // only the mechanism moved from M1 to M2: two followed authors with
+    // DISTINCT write relays MUST each get a REQ on their own resolved relay,
+    // each carrying only the authors that relay serves — never a hardcoded
+    // `RelayRole::Content` URL.
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.active_account = Some(ALICE.to_string());
+    kernel
+        .lifecycle_mut()
+        .set_selection_budget(usize::MAX, usize::MAX);
     install_relay_list(&mut kernel, ALICE, &["wss://alice.relay/"], &[], &[]);
     install_relay_list(
         &mut kernel,
@@ -54,69 +62,74 @@ fn follow_feed_fans_out_per_author_write_relays_not_constants() {
         &["wss://shared.relay/"],
     );
 
-    // Force the timeline to open: the seed-contacts gate is satisfied when
-    // all seed accounts have contributed, or the contacts deadline elapses.
-    // The simplest path here is to populate timeline_authors directly and
-    // call maybe_open_timeline via the open-time gate. We use the
-    // contacts-deadline-elapsed path: set the deadline to the past, then
-    // populate seed_contacts so should_open_timeline returns true.
-    kernel.seed_contacts.insert(
-        ALICE.to_string(),
-        vec![ALICE.to_string(), BOB.to_string()],
-    );
-    kernel.seed_contacts.insert(BOB.to_string(), vec![]);
-    // Seed-account count is 3 (pablof7z/fiatjaf/jb55); the elapsed deadline
-    // path is the test-friendly gate.
-    kernel.contacts_deadline = Some(Instant::now() - Duration::from_secs(60));
+    // ALICE (the active account) follows ALICE + BOB. `ingest_contacts`
+    // registers the M2 follow-feed interests + enqueues FollowListChanged.
+    kernel
+        .inject_replaceable_event(
+            "1111111111111111111111111111111111111111111111111111111111111111",
+            ALICE,
+            1_000,
+            3,
+            vec![
+                vec!["p".to_string(), ALICE.to_string()],
+                vec!["p".to_string(), BOB.to_string()],
+            ],
+            "wss://seed.relay/",
+            1_000_000,
+        )
+        .expect("inject kind:3");
 
-    let requests = kernel.maybe_open_timeline();
-    // Strip out pending_profile_claim_requests passes (the function tail
-    // calls into it). Only seed-timeline REQs.
-    let timeline_reqs: Vec<_> = requests
+    // The actor idle-loop call: M2 compiles + emits the per-relay REQ diff.
+    let frames = kernel.drain_lifecycle_tick();
+    let reqs: Vec<(&String, &String)> = frames
         .iter()
-        .filter(|r| r.text.contains("seed-timeline"))
+        .filter_map(|f| match f {
+            crate::subs::WireFrame::Req {
+                relay_url,
+                filter_json,
+                ..
+            } => Some((relay_url, filter_json)),
+            _ => None,
+        })
         .collect();
     assert!(
-        !timeline_reqs.is_empty(),
-        "maybe_open_timeline must emit REQs after the contacts deadline"
+        !reqs.is_empty(),
+        "M2 drain must emit follow-feed REQs after ingest_contacts"
     );
 
-    // (1) Every timeline REQ carries a resolved relay_url — never a routing
-    // default we'd be hard-coding into the wire.
-    for r in &timeline_reqs {
+    // (1) Every REQ carries an explicit resolved relay_url.
+    for (url, _) in &reqs {
         assert!(
-            !r.relay_url.is_empty(),
-            "T105: every OutboundMessage has an explicit relay_url"
+            !url.is_empty(),
+            "T105: every WireFrame::Req has an explicit relay_url"
         );
     }
 
-    // (2) Alice and Bob's resolved write relays both appear in the URL set;
-    // the shared relay also appears once.
+    // (2) Alice's and Bob's resolved write relays both appear; the shared
+    // (both-marker) relay also appears.
     let urls: std::collections::BTreeSet<String> =
-        timeline_reqs.iter().map(|r| r.relay_url.clone()).collect();
+        reqs.iter().map(|(u, _)| (*u).clone()).collect();
     assert!(
         urls.contains("wss://alice.relay/"),
         "alice's write relay must be a routing target, got {urls:?}"
     );
     assert!(
         urls.contains("wss://bob.write/"),
-        "bob's write relay must be a routing target"
+        "bob's write relay must be a routing target, got {urls:?}"
     );
     assert!(
         urls.contains("wss://shared.relay/"),
-        "bob's both-marker relay must be a routing target"
+        "bob's both-marker relay must be a routing target, got {urls:?}"
     );
 
     // (3) D3 enforcement: a REQ targeting "wss://alice.relay/" MUST carry
-    // alice but NOT bob (and vice versa). The shared relay may carry bob
-    // (bob's "both" marker), not alice. Note: `maybe_open_timeline` also
-    // adds the built-in seed_accounts (pablof7z/fiatjaf/jb55) which lack
-    // cached kind:10002 → they land on the BOOTSTRAP_DISCOVERY_RELAYS seeds.
-    // Those seed REQs should NOT carry alice or bob (the resolved authors).
-    for r in &timeline_reqs {
-        let carries_alice = r.text.contains(ALICE);
-        let carries_bob = r.text.contains(BOB);
-        match r.relay_url.as_str() {
+    // alice but NOT bob (and vice versa). The shared relay carries bob (his
+    // "both" marker), not alice. Any kind:10002 discovery probe rides the
+    // indexer set (bootstrap) and must NOT carry the resolved authors.
+    for (url, filter) in &reqs {
+        let carries_alice = filter.contains(ALICE);
+        let carries_bob = filter.contains(BOB);
+        match url.as_str() {
             "wss://alice.relay/" => {
                 assert!(carries_alice, "alice's relay must carry alice");
                 assert!(!carries_bob, "alice's relay must NOT carry bob");
@@ -126,20 +139,16 @@ fn follow_feed_fans_out_per_author_write_relays_not_constants() {
                 assert!(!carries_alice, "bob's relay must NOT carry alice");
             }
             url if BOOTSTRAP_DISCOVERY_RELAYS.contains(&url) => {
-                // Bootstrap-routed sub for the seed_accounts cohort (no
-                // cached NIP-65). MUST NOT carry our resolved authors — if
-                // it does we've leaked the planner-resolved set onto the
-                // discovery seed (D3 violation).
+                // Indexer/bootstrap discovery probe (kinds:[10002]); MUST NOT
+                // carry the resolved follow authors (D3: their writes are
+                // already resolved, no leak onto the discovery seed).
                 assert!(
-                    !carries_alice,
-                    "bootstrap seed must not carry alice (her writes resolved)"
-                );
-                assert!(
-                    !carries_bob,
-                    "bootstrap seed must not carry bob (his writes resolved)"
+                    !carries_alice && !carries_bob,
+                    "discovery seed must not carry resolved authors; \
+                     filter = {filter}"
                 );
             }
-            other => panic!("unexpected resolved relay {other}"),
+            other => panic!("unexpected resolved relay {other}: {filter}"),
         }
     }
 }
