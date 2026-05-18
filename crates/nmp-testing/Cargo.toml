@@ -27,3 +27,9 @@ path = "bin/firehose-bench/main.rs"
 [[bin]]
 name = "ffi-stress"
 path = "bin/ffi-stress/main.rs"
+
+# M2 subscription compiler audit gate — Assertions 1–5 (phase 1 subset).
+# `cargo test -p nmp-testing --test m2_subscription_compilation_audit`
+[[test]]
+name = "m2_subscription_compilation_audit"
+path = "tests/m2_subscription_compilation_audit.rs"

@@ -2,6 +2,7 @@ mod actor;
 mod app;
 mod ffi;
 mod kernel;
+pub mod planner;
 mod relay;
 mod relay_worker;
 pub mod store;
