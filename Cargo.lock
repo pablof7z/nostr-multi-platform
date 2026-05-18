@@ -2314,6 +2314,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-reactions"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nmp-signers"
 version = "0.1.0"
 dependencies = [
