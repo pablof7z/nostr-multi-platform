@@ -8,7 +8,7 @@ license.workspace = true
 name = "nmp_codegen"
 
 [[bin]]
-name = "nmp"
+name = "nmp-codegen"
 path = "src/main.rs"
 
 [dependencies]
