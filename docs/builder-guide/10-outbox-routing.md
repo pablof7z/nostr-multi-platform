@@ -18,11 +18,11 @@ From `docs/product-spec/subsystems.md:78-86`:
 
 | Operation | Relay set |
 |---|---|
-| Subscription with `authors` filter | Union of each pubkey's write relays (kind-10002), deduplicated. Pubkeys without known mailboxes trigger an opportunistic kind-10002 fetch from indexer relays. |
+| Subscription with `authors` filter | Per author: union of NIP-65 write relays ∪ app relays. Authors with neither land in `CompiledPlan.unroutable_authors` so the kernel can surface a "no relay to ask" diagnostic. Indexer is **never** consulted for content. |
 | Subscription with `p` tag filter or notifications | Union of each tagged pubkey's inbox relays. |
-| Subscription with neither | Active session's read relays. |
-| Publish of any signed event | Author's write relays. |
-| Publish with `p` tags (DMs, mentions, reactions) | Author's write relays **plus** each tagged pubkey's inbox relays. |
+| Subscription with neither | Active account's NIP-65 read relays ∪ app relays. |
+| Publish of any signed event | Author's NIP-65 write relays ∪ app relays. Fails closed if both are empty. |
+| Publish with `p` tags (DMs, mentions, reactions) | (Author's write relays ∪ app relays) plus each tagged pubkey's NIP-65 inbox relays. |
 | DM (NIP-17 gift-wrapped) | **Only** resolved recipient inbox relays. Never the author's write relays. Never the active session's "default" relays. Missing recipient inbox relays fail closed. |
 | Discovery (kind-10002 fetch for unknown pubkeys) | Configurable indexer relay set (default: a curated list of high-coverage relays). |
 
@@ -37,9 +37,31 @@ footgun the structure removes.
 Read direction is `SubscriptionCompiler` Stage 1
 (`crates/nmp-core/src/planner/compiler/mod.rs:60-189`); the direction table
 on `SubscriptionCompiler` (`compiler/mod.rs:52-67`) maps shape → direction.
-Authors with no mailbox fall to the indexer set as read-only fallback
-(`RoutingSource::UserConfigured(Indexer)` — a sub-category of lane 4, not a
-fifth lane: `crates/nmp-core/src/planner/plan.rs:28-74`).
+**The indexer set is now strictly a discovery lane** — kind:0 / kind:3 /
+kind:10002 fetches only. Content REQs (kind:1, kind:7, kind:9735, …) never
+ride the indexer; `case_a_authors` / `case_b_addresses` route per author
+to *NIP-65 write relays ∪ configured app relays* (additive in both
+"NIP-65 known" and "NIP-65 unknown" cases). The app-relay lane is now
+first-class: `UserConfiguredCategory::AppRelay`, distinct from the
+`Indexer` sub-category (`crates/nmp-core/src/planner/plan.rs`).
+
+When an author has **neither** a NIP-65 entry **nor** any configured app
+relay, the planner does not silently widen — the author is collected into
+`CompiledPlan::unroutable_authors: BTreeSet<Pubkey>`. The kernel
+consumes this set to surface a "no relay to ask" diagnostic / toast
+rather than failing or sending a relay-less REQ. This replaces the
+previous behaviour of falling through to the indexer set, which had
+the wrong privacy/performance shape (indexers are not content hosts).
+
+Construction: prefer the new
+`SubscriptionCompiler::with_relays(cache, indexer, account_read, app)`
+constructor. The older `new(...)` and `with_active_account_read_relays(...)`
+ctors still exist for backward compatibility and default the app-relay
+slice to empty.
+
+The no-authors-no-`#p` case (case D — hashtag firehose, kind-only
+broad subs) routes to `active_account_read_relays ∪ app_relays`. Empty
+app-relay config keeps the historical behaviour intact.
 
 The mailbox seam is the `MailboxCache` trait
 (`crates/nmp-core/src/planner/compiler/mailbox.rs:54-70`):
@@ -95,17 +117,21 @@ relay ──kind:3 (active acct, follows {A,B,D})──▶ kernel.ingest
    ├──▶ Trigger::FollowListChanged { prev:{A,B,C}, next:{A,B,D} }
    │
    ├──▶ SubscriptionCompiler re-runs interests() for follow-dependent views
-   │      Stage 1: resolve A,B,D mailboxes (D unknown → indexer fallback)
+   │      Stage 1: resolve A,B,D mailboxes
+   │         (D unknown → if app_relays configured: route to app_relays;
+   │                       else: D collected into unroutable_authors)
    │      Stage 3: per-relay author merge
    │      Stage 4: new plan_id
    │
    ├──▶ wire-emitter diffs plan v1 vs v2:
    │      relay3 slice for C  ──▶ CLOSE
-   │      relay4 (or indexer) for D ──▶ REQ
+   │      app_relay slice for D ──▶ REQ (or no slice if D unroutable;
+   │                                  kernel surfaces diagnostic toast)
    │      relay1{A}, relay2{B}  ──▶ untouched (zero churn)
    │
    └──▶ view payload recomputes reactively; handle NOT destroyed
-        (later: D's kind:10002 lands → Nip65Arrived → D migrates off indexer)
+        (later: D's kind:10002 lands → Nip65Arrived → D migrates onto its
+         declared write relays; app_relay slice may drop out)
 ```
 
 The app writes nothing. The "following timeline" view spec names no authors;
@@ -140,6 +166,22 @@ in the kernel REQ path applies it as a diff yet. This wiring gap is a §27
 discrepancy (drift-class), recorded in the DRIFT REPORT of this delivery. Do
 not assume opening a view today routes by mailbox; verify against
 `subs::SubscriptionLifecycle`, not `kernel::requests`.
+
+### `apply_selection` — landed, not yet wired
+
+`crates/nmp-core/src/planner/selection.rs` ships an applesauce-style
+greedy max-coverage post-compile mutator:
+`apply_selection(&mut plan, max_connections, max_per_user)`. It trims
+plans that would otherwise open too many wire connections (the
+applesauce `selectOptimalRelays` algorithm, ported to Rust). It calls
+`SubShape::recompute_hash()` on changed shapes and intentionally does
+**not** touch `plan_id` — the plan-id contract is unchanged: same
+inputs → same id.
+
+The function is present and tested but **not yet wired** into the
+kernel's live recompile path. That's a separate follow-up; today it
+sits as an opt-in mutator the wiring layer will invoke once
+connection-cap policy is settled.
 
 ## Anti-patterns
 

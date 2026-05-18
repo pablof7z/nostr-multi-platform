@@ -23,6 +23,38 @@ app-relay fallback). NMP has a clean opportunity to do this right.
 | User-published indexer list     | Not modelled                     | Kind 10086 (applesauce-invented)    | **Defer — operator config is the floor for v1**     |
 | Symmetric R+W indexer           | N/A                              | **Explicitly broken** (see §3.3)    | **Yes — kind:0/3/1xxxx publishes hit indexers too** |
 
+## Update (shipped)
+
+> The following design choices from §7 below have been **decided and shipped**.
+> The open-question framing in §7 is preserved for historical context, but
+> the resolutions take precedence.
+
+- **AppRelay is now a first-class lane.** `UserConfiguredCategory::AppRelay`
+  lives in `crates/nmp-core/src/planner/plan.rs`, distinct from the
+  `Indexer` sub-category. Lane 7 in §5's table is real.
+- **Indexer is NOT a content fallback.** `case_a_authors` and
+  `case_b_addresses` ignore the indexer set entirely for content
+  REQs (kind:1 and friends). The indexer set is now strictly a
+  discovery lane (kind:0 / kind:3 / kind:10002). This resolves the
+  doctrinal tension in §3 / §6 anti-pattern #4: read symmetry is
+  preserved for discovery kinds only, not for content kinds.
+- **App relays are additive to NIP-65 in both directions.** Read side:
+  per-author union of NIP-65 write relays ∪ app relays (case_a / case_b)
+  and active-account NIP-65 read relays ∪ app relays for the no-authors
+  case (case_d). Write side: author's NIP-65 write relays ∪ app relays
+  (publish path) — this is the legitimate cold-start fallback the
+  indexer was previously (wrongly) being asked to provide. Resolves
+  §7(c) and §7(d) toward additive-at-session, per-author behaviour;
+  see the shipped planner cases for the precise rule.
+- **Authors with no NIP-65 AND no app_relays → `CompiledPlan::unroutable_authors`.**
+  A new `BTreeSet<Pubkey>` field on `CompiledPlan` collects authors the
+  planner refused to widen. The kernel surfaces a "no relay to ask"
+  diagnostic / UI toast rather than silently routing to indexers or
+  dropping the author from the plan.
+
+Items still open in §7: (a) indexer-set user-mutability surface,
+(b) precise indexer kind-gate range, (e) ADR-0020 / ADR-0021 split.
+
 ## 1. Where NDK + applesauce converge (even by accident)
 
 - **Both treat NIP-65 outbox as the primary routing input.** Neither models

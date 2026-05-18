@@ -132,6 +132,13 @@ Compare: Applesauce's `ActionContext.publish(event, relays?)` is caller-responsi
 any action can pass any relays (`docs/research/applesauce/outbox.md` §7 lines 116-138).
 NMP's planner is structural: publish resolution and read-fallback are separate code paths.
 
+The legitimate fallback when an author has no declared NIP-65 write relays is the
+operator-/user-configured **app-relay** set (`UserConfiguredCategory::AppRelay`). App
+relays are **additive** to NIP-65 in both directions (read and publish) — they are the
+correct cold-start substitution that the indexer was historically (and wrongly) being
+asked to provide on the read side. The "no indexer fallback" structural argument
+stands: app relays are a declared operator/user choice, not a global discovery commons.
+
 ```
 1. If `override_` is Some:
      a. Derive the allowed base set first (steps 2-3 without override).
@@ -139,13 +146,20 @@ NMP's planner is structural: publish resolution and read-fallback are separate c
         If any override relay is not a declared inbox, return Err(OverrideRejected).
      c. Apply the override (narrow the base set to override_relays).
      d. Set every PublishRouteReason::Override; continue to step 4.
-2. Resolve author write relays (no indexer fallback):
+2. Resolve author write relays (no indexer fallback; app_relays are additive):
      author_outbox = resolve_author_outbox_no_indexer(cache, user_configured, event.pubkey)
-     If author_outbox.relays is empty:
-         return Err(NoAuthorRelays { ... })  // fail; do not fall back to indexer
+     app_relays    = user_configured.app_relays()
+     write_set     = author_outbox.relays ∪ app_relays
+     If write_set is empty:
+         return Err(NoAuthorRelays { ... })  // fail; the kernel surfaces a toast.
+                                             // App relays are the legitimate fallback;
+                                             // indexers remain out of the publish path.
 3. Match on privacy:
    a. Public:
-        assignments = [each author_outbox.relays → AuthorWriteRelay { lane }]
+        // author_outbox.relays carries the Nip65 lane; app_relays carry
+        // the UserConfigured(AppRelay) lane. Tag each relay with the lane
+        // that introduced it.
+        assignments = [each r ∈ write_set → AuthorWriteRelay { lane: lane_of(r) }]
         required_success_count = max(1, ceil(N/3))   // configurable via AppConfig
    b. PrivateToRecipients { recipients }:
         For each recipient r:
@@ -172,8 +186,10 @@ NMP's planner is structural: publish resolution and read-fallback are separate c
         }).collect()
         required_success_count = per_recipient_required.len()  // all recipients must receive
    c. PublicWithNotifications { notify }:
-        assignments = author_outbox ∪ union(each notify pubkey's inbox)
-        required_success_count = max(1, ceil(author_outbox.len() / 3))
+        assignments = write_set ∪ union(each notify pubkey's inbox)
+        // write_set already includes app_relays; #p-tagged recipients add
+        // their NIP-65 inbox relays on top.
+        required_success_count = max(1, ceil(write_set.len() / 3))
 4. plan_id = blake3(event.id, sorted assignments)
 5. deadline_ms = now + AppConfig.publish_deadline_ms (default 30_000)
 6. Return PublishPlan { plan_id, assignments, required_success_count, deadline_ms }
@@ -184,8 +200,12 @@ Notes on the algorithm:
 - **Step 2's `resolve_author_outbox_no_indexer`** is the structural enforcement of D3 and
   `docs/product-spec/subsystems.md` §7.3 line 99: "fall back to indexer set for reads only;
   do not publish to indexers." The function signature deliberately omits the indexer set so
-  the caller cannot accidentally pass it. A failed Step 2 surfaces as `Failed { reason:
-  NoAuthorRelays }` in the action ledger, rendered as a toast per ADR-0007's `SideEffect` lane.
+  the caller cannot accidentally pass it. The union with `app_relays` is the legitimate
+  cold-start fallback: app relays are operator/user-declared, lane-tagged
+  (`UserConfiguredCategory::AppRelay`), and additive to NIP-65 — they take over the role
+  indexers were previously (and wrongly) being asked to play. A failed Step 2 (both
+  NIP-65 write relays AND app relays empty) surfaces as `Failed { reason: NoAuthorRelays }`
+  in the action ledger, rendered as a toast per ADR-0007's `SideEffect` lane.
 - **Step 1's override validation order** (derive base set first, validate override as subset)
   ensures the privacy constraint is always checked — the override cannot bypass the
   `PrivateToRecipients` fail-closed check by returning early before validation.
