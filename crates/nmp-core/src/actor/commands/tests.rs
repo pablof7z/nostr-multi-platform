@@ -646,3 +646,72 @@ fn remove_relay_canonical_matches_add_form() {
         "T-normalize-cmd-3: remove_relay with trailing-slash variant must remove the row"
     );
 }
+
+// ─── T140 — open_timeline must register M2 interests, not open_author ────────
+
+/// T140 RED test: the `open_timeline()` actor command must register M2
+/// `LogicalInterest`s in the lifecycle registry (for the active account's
+/// follow set) so that `drain_lifecycle_tick()` emits follow-feed REQ frames.
+///
+/// Pre-T140: `open_timeline` → `open_author` → no follow-feed interests in
+/// registry → `drain_lifecycle_tick` returns `Vec::new()`. FAILS.
+///
+/// Post-T140: `open_timeline` pushes per-follow `LogicalInterest`s → the M2
+/// planner compiles them → `drain_lifecycle_tick` returns REQ frame(s) for the
+/// followed author's NIP-65 write relay. PASSES.
+#[test]
+fn t140_open_timeline_registers_m2_interests_drain_emits_req() {
+    const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    let (mut id, mut kernel) = fresh();
+
+    // Sign in so `open_timeline` has an active pubkey.
+    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    let active_pk = id.active_pubkey().expect("active account after sign_in");
+
+    // ALICE has a resolved write relay (via kind:10002 test support helper).
+    kernel.seed_kind10002_for_test(ALICE, &["wss://alice-t140.relay/"]);
+
+    // Inject kind:3 for the active account listing ALICE as a follow.
+    // This populates `seed_contacts` via `ingest_contacts`.
+    let follow_tags = vec![vec!["p".to_string(), ALICE.to_string()]];
+    kernel.inject_replaceable_event(
+        "0000000000000000000000000000000000000000000000000000000000000001",
+        &active_pk,
+        2_000,
+        3,
+        follow_tags,
+        "wss://seed.relay/",
+        2_000_000,
+    );
+
+    // Force the lifecycle selection budget so the compiler routes freely.
+    kernel
+        .lifecycle_mut()
+        .set_selection_budget(usize::MAX, usize::MAX);
+
+    // Call the actor command under test. Before T140 this calls open_author.
+    let _outbound = open_timeline(&id, &mut kernel, true);
+
+    // Drain the M2 planner — must emit follow-feed REQs after T140.
+    let frames = kernel.drain_lifecycle_tick();
+    let req_urls: Vec<String> = frames
+        .iter()
+        .filter_map(|f| match f {
+            crate::subs::WireFrame::Req { relay_url, .. } => Some(relay_url.clone()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        !req_urls.is_empty(),
+        "T140: open_timeline must register follow-feed M2 interests so \
+         drain_lifecycle_tick emits REQ frames (got {} total frames, 0 REQs)",
+        frames.len(),
+    );
+    assert!(
+        req_urls.iter().any(|u| u == "wss://alice-t140.relay/"),
+        "T140: open_timeline REQ must target ALICE's resolved write relay \
+         wss://alice-t140.relay/; got urls: {req_urls:?}"
+    );
+}
