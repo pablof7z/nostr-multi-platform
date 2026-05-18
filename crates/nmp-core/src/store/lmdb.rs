@@ -12,8 +12,8 @@ use std::path::{Path, PathBuf};
 use super::events::{DomainHandle, EventIter, EventStore};
 use super::types::{
     ClaimerId, Coverage, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport,
-    InsertOutcome, ProvenanceEntry, PubKey, RawEvent, RelayUrl, StoredEvent, TombstoneRow,
-    WatermarkKey, WatermarkRow,
+    InsertOutcome, ProvenanceEntry, PubKey, RelayUrl, StoredEvent, TombstoneRow,
+    VerifiedEvent, WatermarkKey, WatermarkRow,
 };
 use super::StoreError;
 use crate::substrate::DomainMigration;
@@ -148,7 +148,7 @@ impl EventStore for LmdbEventStore {
 
     fn insert(
         &self,
-        _event: RawEvent,
+        _event: VerifiedEvent,
         _source: &RelayUrl,
         _received_at_ms: u64,
     ) -> Result<InsertOutcome, StoreError> {

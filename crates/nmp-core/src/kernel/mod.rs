@@ -283,13 +283,12 @@ struct ViewInterest {
 }
 
 pub(crate) struct Kernel {
-    /// Pluggable event store. Defaults to `MemEventStore`; will be replaced by
-    /// `LmdbEventStore` once the full M3 LMDB integration is complete.
+    /// Pluggable event store. D4: the single writer for all Nostr events.
     ///
-    /// The existing `events: HashMap<String, StoredEvent>` field is preserved
-    /// for backward compatibility during the M3 migration. The store field is
-    /// the target home for all event persistence after M3 completes.
-    #[allow(dead_code)]
+    /// `MemEventStore` by default; replace with `LmdbEventStore` in M3 phase 2.
+    /// `ingest_timeline_event` routes every new event through `store.insert()`.
+    /// `events: HashMap<String, kernel::StoredEvent>` is kept as a lightweight
+    /// read-cache (timeline ordering + content display) derived from store outcomes.
     store: Box<dyn EventStore>,
     rev: u64,
     visible_limit: usize,

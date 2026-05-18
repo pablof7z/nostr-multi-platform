@@ -8,8 +8,8 @@ use std::sync::{Arc, Mutex};
 
 use super::types::{
     ClaimerId, Coverage, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport,
-    InsertOutcome, ProvenanceEntry, PubKey, RawEvent, RelayUrl, StoredEvent, TombstoneRow,
-    WatermarkKey, WatermarkRow,
+    InsertOutcome, ProvenanceEntry, PubKey, RelayUrl, StoredEvent, TombstoneRow,
+    VerifiedEvent, WatermarkKey, WatermarkRow,
 };
 use super::StoreError;
 use crate::substrate::DomainMigration;
@@ -231,10 +231,11 @@ pub trait EventStore: Send + Sync {
     /// updates secondaries + provenance + tombstones atomically.
     /// Returns `InsertOutcome` per §7.1.
     ///
-    /// NOTE: uses `RawEvent` instead of `nostr::Event` until the nostr crate is wired in.
+    /// Callers must verify the event before calling this method; `VerifiedEvent`
+    /// is the proof-of-verification token.
     fn insert(
         &self,
-        event: RawEvent,
+        event: VerifiedEvent,
         source: &RelayUrl,
         received_at_ms: u64,
     ) -> Result<InsertOutcome, StoreError>;

@@ -25,11 +25,11 @@ pub use mem::MemEventStore;
 pub use types::{
     ClaimerId, Coverage, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport,
     InsertOutcome, ProvenanceEntry, PubKey, RawEvent, RejectReason, RelayUrl, StoredEvent,
-    SyncMethod, TombstoneOrigin, TombstoneRow, WatermarkKey, WatermarkRow,
+    SyncMethod, TombstoneOrigin, TombstoneRow, VerifiedEvent, WatermarkKey, WatermarkRow,
 };
 
-// Re-export StoreError from types (defined there to avoid circular imports).
-pub use types::StoreError;
+// Re-export error types from types (defined there to avoid circular imports).
+pub use types::{StoreError, VerifyError};
 
 use std::path::PathBuf;
 

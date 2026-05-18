@@ -155,7 +155,7 @@ impl Kernel {
 
         match event.kind {
             0 => self.ingest_profile(event),
-            1 | 6 => self.ingest_timeline_event(sub_id, event),
+            1 | 6 => self.ingest_timeline_event(role, sub_id, event),
             3 => self.ingest_contacts(event),
             10002 => self.ingest_relay_list(event),
             _ => {}
@@ -232,10 +232,11 @@ impl Kernel {
         }
     }
 
-    pub(super) fn ingest_timeline_event(&mut self, sub_id: &str, event: NostrEvent) {
+    pub(super) fn ingest_timeline_event(&mut self, role: RelayRole, sub_id: &str, event: NostrEvent) {
+        // Duplicate check on the in-memory read-cache.
         if self.events.contains_key(&event.id) {
-            if let Some(stored) = self.events.get_mut(&event.id) {
-                stored.relay_count = stored.relay_count.saturating_add(1);
+            if let Some(cached) = self.events.get_mut(&event.id) {
+                cached.relay_count = cached.relay_count.saturating_add(1);
             }
             return;
         }
@@ -244,7 +245,54 @@ impl Kernel {
             return;
         }
 
-        let stored = StoredEvent {
+        // D4: route through EventStore (the single writer).
+        // Signature verification via VerifiedEvent::try_from_raw. Events that
+        // fail verification are logged and dropped — not cached locally.
+        let raw = crate::store::RawEvent {
+            id: event.id.clone(),
+            pubkey: event.pubkey.clone(),
+            created_at: event.created_at,
+            kind: event.kind,
+            tags: event.tags.clone(),
+            content: event.content.clone(),
+            sig: event.sig.clone(),
+        };
+        let verified = match crate::store::VerifiedEvent::try_from_raw(raw) {
+            Ok(v) => v,
+            Err(e) => {
+                self.log(format!("sig verify failed for {}: {e}", &event.id[..16]));
+                return;
+            }
+        };
+        let relay_url = role.url().to_string();
+        let received_at_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        // Store insert; log but don't abort on error (graceful degradation).
+        match self.store.insert(verified, &relay_url, received_at_ms) {
+            Ok(outcome) => {
+                use crate::store::InsertOutcome;
+                match outcome {
+                    InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. } => {}
+                    InsertOutcome::Duplicate { .. } | InsertOutcome::Superseded { .. } => {
+                        // Store already has a valid version; still cache locally for timeline.
+                    }
+                    InsertOutcome::Tombstoned { .. } | InsertOutcome::Rejected { .. }
+                    | InsertOutcome::Ephemeral { .. } => {
+                        // Store rejected the event; skip populating local cache.
+                        return;
+                    }
+                }
+            }
+            Err(e) => {
+                self.log(format!("store insert error: {e}"));
+                // Graceful degradation: continue with local-cache-only path.
+            }
+        }
+
+        // Populate the lightweight read-cache for timeline ordering + display.
+        let cached = StoredEvent {
             id: event.id.clone(),
             author: event.pubkey.clone(),
             kind: event.kind,
@@ -253,7 +301,7 @@ impl Kernel {
             content: event.content,
             relay_count: 1,
         };
-        self.events.insert(event.id.clone(), stored);
+        self.events.insert(event.id.clone(), cached);
         if sub_id.starts_with("diag-firehose-") {
             self.diagnostic_firehose_events = self.diagnostic_firehose_events.saturating_add(1);
         }

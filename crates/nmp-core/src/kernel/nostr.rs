@@ -8,6 +8,10 @@ pub(super) struct NostrEvent {
     pub(super) kind: u32,
     pub(super) tags: Vec<Vec<String>>,
     pub(super) content: String,
+    /// Schnorr signature (hex). Present in all valid NIP-01 events.
+    /// Default to empty string so legacy test fixtures without `sig` still parse.
+    #[serde(default)]
+    pub(super) sig: String,
 }
 
 #[derive(Default, Deserialize)]

@@ -7,7 +7,7 @@
 //! See `docs/design/lmdb/tests.md` §1 for the harness specification.
 
 use nmp_core::store::{
-    EventId, EventStore, InsertOutcome, MemEventStore, RawEvent,
+    EventId, EventStore, InsertOutcome, MemEventStore, RawEvent, VerifiedEvent,
 };
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -118,13 +118,17 @@ impl StoreHarness {
     }
 
     /// Insert a pre-built `RawEvent`, panicking on error.
+    ///
+    /// Uses `VerifiedEvent::from_raw_unchecked` because test events carry
+    /// synthetic placeholder signatures.
     pub fn insert_raw(
         &self,
         event: RawEvent,
         source: &str,
         received_at_ms: u64,
     ) -> InsertOutcome {
-        self.store.insert(event, &source.to_string(), received_at_ms)
+        let verified = VerifiedEvent::from_raw_unchecked(event);
+        self.store.insert(verified, &source.to_string(), received_at_ms)
             .expect("insert should not error")
     }
 
