@@ -12,7 +12,7 @@ routes per NIP-65, retries transient failures, surfaces persistent failures to
 a snapshot, and never loses a queued publish across kernel restart.
 
 **Scope.** A new `crates/nmp-core/src/publish/` module (kept in-tree rather
-than a separate crate per Article VII / `AGENTS.md` size discipline; promote
+than a separate crate per `AGENTS.md` file-size discipline; promote
 to `crates/nmp-publish/` when the engine acquires its own dependency tree):
 
 - `PublishAction { Publish { handle, event, target: Auto | Explicit } }` +
@@ -20,8 +20,8 @@ to `crates/nmp-publish/` when the engine acquires its own dependency tree):
   Cancelled }` on the action ledger surface.
 - Per-(event, relay) state machine (`Pending → InFlight → Ok |
   RelayError | TimedOut → FailedAfterRetries`) with deterministic retry
-  policy: AUTH-REQUIRED → reauth + 1 retry; transient → 3 retries at 1s /
-  4s / 16s.
+  policy: AUTH-REQUIRED → reauth + 1 retry; transient → up to 3 total
+  attempts (initial + 2 retries) at 1s / 4s.
 - `PublishStatusView` view module with bounded snapshot: `in_flight`,
   `recent_ok` (cap 32), `recent_errors` (cap 32), `rev` (change marker for
   D8 projection coalescing).
@@ -39,9 +39,10 @@ to `crates/nmp-publish/` when the engine acquires its own dependency tree):
 - D5 (snapshots bounded by what's open): `PublishStatusSnapshot` carries
   in-flight rows + bounded recent windows; no event-store payload crosses
   FFI through this view.
-- D6 (errors never cross FFI): every failure surfaces as a `RecentFailure`
-  on the snapshot; `PublishEngine` returns `Result<_, PublishEngineError>`
-  internally but never panics; FFI sees only the snapshot.
+- D6 (errors never cross FFI): operational publish failures surface as
+  `RecentFailure` rows on the snapshot; `PublishEngine` returns
+  `Result<_, PublishEngineError>` internally, and actor/FFI wiring must map
+  those before they cross the boundary.
 - D7 (capabilities report, never decide): `RelayDispatcher` returns raw
   `RelayAck`; classification (`AckClass::AuthRequired | Transient |
   Permanent`) is the engine's; retry-or-give-up is the engine's.
@@ -72,7 +73,7 @@ the milestones drop in the I/O.
     kind:10002 set receive the EVENT.
   - `publish_p_tag_inbox_routing` — `#p:bob` adds bob's read relays.
   - `publish_retry_on_connection_drop` — transient → retry → OK.
-  - `publish_giveup_after_three_retries` — three transient → FailedAfterRetries.
+  - `publish_giveup_after_three_attempts` — three transient attempts → FailedAfterRetries.
   - `publish_durable_across_restart` — engine instance 1 queues + dies;
     instance 2 resumes from the same `PublishStore` and completes.
   - `publish_dedup_on_same_event_multi_relay_single_rev_per_batch` — 5 relay

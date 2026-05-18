@@ -107,7 +107,7 @@ pub struct PublishAttempt {
 
 /// What the planner produced for a single publish (one entry per resolved
 /// relay). Stored before any send so a crash mid-dispatch resumes without
-/// losing the plan (queue durability per the M11 podcast app spec).
+/// losing the plan.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct RelayPlan {
     pub relays: Vec<RelayUrl>,
