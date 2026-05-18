@@ -12,14 +12,14 @@
 - **Decoders** — pure `fn decode(&Event) -> Option<Record>` functions that produce already-typed `DomainRecord`s (`crates/nmp-nip29/src/domain/records.rs:30-100` is the precedent).
 - **Blueprints** — `Builder → UnsignedEvent` constructors, signed and published through the existing action ledger.
 
-Both live in **protocol-module crates** (Option A) for NIP-defined kinds and **app-core crates** (Option B) for app-specific kinds. There is no `nmp-kinds` mega-crate (Option C). There are **no read-side mutable wrapper classes** at all — NDK's `NDKArticle.title = "foo"` pattern violates D4 (single writer per fact) by giving every caller a phantom writer over shared state.
+Both live in **protocol-module crates** (Option A) for NIP-defined kinds and **app-core crates** (Option B) for app-specific kinds. There is no `nmp-kinds` mega-crate (Option C). There are **no read-side mutable wrapper classes** at all — NDK's `article.title = "foo"` setter pattern violates D4 (single writer per fact) by giving every caller a phantom writer over shared state.
 
 The kernel itself ships **no decoders** — every kind, including the universal 0 / 3 / 10002, lives in its protocol module (`nmp-nip01`, `nmp-nip02`, `nmp-nip65`). The kernel retains only the dispatch table that routes events to registered modules. The currently kernel-resident handlers (`crates/nmp-core/src/kernel/ingest/{profile,contacts,relay_list,timeline}.rs`) are extracted in Phase 1 — see §6 + §8.
 
 Three doctrines force this shape and they were not invented for this design — they predate it:
 
 - **D0** forbids `NDKArticle` in `nmp-core`.
-- **D4** forbids the NDK mutate-tags-via-getter pattern; only the actor writes.
+- **D4** forbids the NDK mutate-tags-via-setter pattern; only the actor writes.
 - **D5** makes read-side wrappers largely redundant — views project typed `ViewPayload`s already; "raw event in hand → typed accessor" is a narrow ingest-side need, not a view-side one.
 
 ## 2. Where wrappers live
@@ -27,7 +27,7 @@ Three doctrines force this shape and they were not invented for this design — 
 | Option | Verdict | Why |
 |---|---|---|
 | A. In protocol modules (`nmp-nip23::Article`, `nmp-nip54::Wiki`, `nmp-nip84::Highlight`) | **Accepted** for protocol-defined kinds | Matches ADR-0009 layering. Same crate owns the kind's wire format, its decode/encode, its domain record, its `DomainModule` registration. One change radius per NIP. |
-| B. In app-core crates (`podcast-core::PodcastEpisode`, `highlighter-core::FeedbackEntry`) | **Accepted** for app-specific kinds | When the wire format is a local invention not standardized as a NIP. Already present at `apps/podcast/podcast-core/src/domain/records.rs:1-80` and `crates/nmp-highlighter-core/src/lib.rs:1-25`. |
+| B. In app-core crates (`podcast-core::EpisodeRecord`, highlighter app records) | **Accepted** for app-specific kinds | When the wire format is a local invention not standardized as a NIP. The app-core boundaries already exist at `apps/podcast/podcast-core/src/domain/records.rs:1-80` and `crates/nmp-highlighter-core/src/lib.rs:1-25`; concrete highlighter records are still scaffolded. |
 | C. Shared `nmp-kinds` library | **Rejected** | Recreates the junk-drawer that ADR-0009 partitioned away. Forces every app to compile every wrapper. Inverts the protocol-module dependency graph (the bookmarks crate would have to know about wiki). |
 | D. Blueprints only (no decoders) | **Rejected** | The ingest path needs typed decoding to populate domain records — see §6. Encode-only is half a feature. |
 
@@ -39,7 +39,7 @@ Three doctrines force this shape and they were not invented for this design — 
 
 ```rust
 // crates/nmp-nip23/src/decode.rs
-use nmp_core::store::events::StoredEvent;
+use nmp_core::store::StoredEvent;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ArticleRecord {
@@ -64,7 +64,7 @@ The decoder is the inverse of NDK's `get title()` getter (`/Users/pablofernandez
 
 ```rust
 // crates/nmp-nip23/src/build.rs
-use nmp_core::substrate::identity::UnsignedEvent;
+use nmp_core::substrate::UnsignedEvent;
 
 pub struct ArticleBuilder {
     d_tag: String,
@@ -93,8 +93,8 @@ impl ArticleBuilder {
 |---|---|
 | **EventStore queries** | The app calls `store.scan_by_author_kind(pk, &[30023], …)` (`crates/nmp-core/src/store/events.rs:153-160`) and pipes results through `decode_article`. **No** `store.articles_by_author(pk)` method — that would re-grow kernel app-noun surface (D0). |
 | **Planner / InterestShape** | Untouched. The planner sees `BTreeSet<u32> { 30023 }` in `InterestShape.kinds` (`crates/nmp-core/src/planner/interest.rs:80`). Wrappers are **post-decode / pre-encode** — they never participate in plan-id derivation, so plan-id stability survives. |
-| **Signing** | `account_manager.signer_active().sign(&unsigned).await?` (per M6 design, `docs/research/sessions/synthesis.md` §1.1). The blueprint hands an `UnsignedEvent`; the existing signer pipeline applies its post-conditions. |
-| **Publishing** | `publish_engine.publish(signed, PublishTarget::Auto).await?`. D3 routing applies — the blueprint never picks relays. |
+| **Signing** | The action handler reads `account_manager.signer_active()` and passes the `UnsignedEvent` into `Signer::sign(unsigned)` (per ADR-0015 / M6). The existing signer pipeline applies its post-conditions. |
+| **Publishing** | The action ledger turns the signed event into `PublishAction::Publish { target: PublishTarget::Auto, … }` and drives `PublishEngine::start_publish`. D3 routing applies — the blueprint never picks relays. |
 | **Ingest routing** | `nmp-nip23` registers `Nip23DomainModule`; on `kind == 30023` ingest, the kernel dispatches into that module's `decode_and_route` hook, which calls `decode_article` and writes an `ArticleRecord` into `domain_open("nip23.article")`. See §6. |
 
 Nothing about this requires a *class*. The wrapper is a function on the read side and a builder on the write side. The owning identity (an article authored by Alice with d-tag `foo`) is the `(author, kind, d_tag)` triple in the store, not a Rust object.
@@ -116,15 +116,15 @@ P0 = ships before Twitter clone (M11-ish). P1 = follow-up protocol crates. P2 = 
 | 30023 | `Article`, `ArticleBuilder` | `nmp-nip23` (new) | **P1** |
 | 30818 | `Wiki`, `WikiBuilder` | `nmp-nip54` (new) | **P1** |
 | 9802 | `Highlight`, `HighlightBuilder` | `nmp-nip84` (new) | **P1** |
-| 9 / 11 / 39000-39003 | Group chat / discussion / metadata | `nmp-nip29` (exists) | **P0 (done)** |
+| 9 / 11 / 39000-39003 | Group chat / discussion / metadata | `nmp-nip29` (exists) | **P0** records/modules done; ingest decoders pending §6 |
 | 10000 / 10001 / 30000-39999 NIP-51 list family | `MuteList`, `BookmarkList`, `InterestList`, `RelayFeedList`, … | `nmp-nip51` (new) | **P1** |
 | 20, 21, 22 | `Image`, `Video`, `ShortVideo` | `nmp-nip68` / `nmp-nip71` | **P2** |
 | 31234 | `Draft` | `nmp-nip37` | **P2** |
 | 10063 | `BlossomList` | `nmp-blossom` | **P2** |
 | 7375, 17375, 9321, 10019 | Cashu token, wallet, nutzap, nutzap-info | `nmp-nip60` / `nmp-nip61` | **P2** |
-| 23196 (podcast) / app-local | `PodcastEpisode`, `WeightLog`, `ReadsFeedEntry` | `podcast-core`, `wtd-core`, `highlighter-core` | per-app cadence |
+| 23196 (podcast) / app-local | `EpisodeRecord`, `WeightLog`, `ReadsFeedEntry` | `podcast-core`, `wtd-core`, `highlighter-core` | per-app cadence |
 
-Total P0 protocol-module wrapper surface: 7 crates, ~10 decoders, ~6 builders. **An order of magnitude smaller than NDK's 30+** (`/Users/pablofernandez/Work/NDK-nhlteu/core/src/events/wrap.ts:82-114`) because (a) per-NIP partitioning forces small crates and (b) views deliver most of the typing already.
+Baseline P0 protocol-module wrapper surface is seven crates before conditional messenger support, with NIP-29 already split into records/modules but its ingest decoders waiting on the hook in §6. **An order of magnitude smaller than NDK's 30+** (`/Users/pablofernandez/Work/NDK-nhlteu/core/src/events/wrap.ts:82-114`) because (a) per-NIP partitioning forces small crates and (b) views deliver most of the typing already.
 
 ## 5. Opt-out path
 
@@ -175,7 +175,7 @@ for module_id in self.ingest_dispatch.get(&event.kind).iter().flatten() {
 }
 ```
 
-Per **D4**, exactly one module owns each `(kind, optional discriminator)` pair — e.g. `nmp-nip29::GroupHighlightModule` owns kind 9802 *with* an `h` tag, while a future `nmp-nip84::HighlightModule` owns kind 9802 *without* an `h` tag. The discriminator is the module's business (NDK punts this — see anti-pattern §9). Conflicting registrations panic at startup; this is the price of D4 enforcement and it's a one-time cost paid by the app's `nmp gen modules` step.
+Per **D4**, exactly one module owns each `(kind, optional discriminator)` pair — e.g. `nmp-nip29::GroupHighlightModule` owns kind 9802 *with* an `h` tag, while a future `nmp-nip84::HighlightModule` owns kind 9802 *without* an `h` tag. The discriminator is the module's business (NDK punts this — see anti-pattern §9). Conflicting module sets are rejected by `nmp gen modules`, with startup assertions as a direct-registry backstop.
 
 **The current D0 loophole.** The kernel's existing ingest handlers — `crates/nmp-core/src/kernel/ingest/{profile,contacts,relay_list,timeline}.rs` — handle kinds 0 / 3 / 10002 / 1 directly. These exist for legitimate kernel needs (D3 outbox routing needs the relay list; identity bootstrap needs the profile; `ActiveAccount` rendering needs both) **but they are still D0 violations** — the kernel is decoding app nouns. Phase 1 (§8) closes this by **extracting them into `nmp-nip01` / `nmp-nip02` / `nmp-nip65`** as the first consumers of the new `DomainModule::ingest_kinds` dispatch. The extraction is mechanical (each ingest function is 30–80 LOC); the kernel keeps the dispatch table and nothing else. The kernel's *consumers* of the decoded data (e.g. the outbox planner reading the latest kind:10002) call into the nip65 module's read API — the kernel still doesn't know what a `RelayList` is, it asks the module.
 
@@ -199,7 +199,7 @@ NDK's pattern is **TypeScript-shaped**: dynamic dispatch through a runtime class
 | Phase | Deliverable | Owner |
 |---|---|---|
 | **Phase 1 (now / M11-ish)** | `DomainModule::ingest_kinds` + `decode_and_route` hook; kernel dispatch table; extraction of profile/contacts/relay_list/timeline ingest from `nmp-core` into nascent `nmp-nip01`/`nip02`/`nip65`. | Kernel team. ~400 LOC kernel-side. |
-| **Phase 2 (M12-13)** | `nmp-nip23::Article{,Builder}`, `nmp-nip51` list family, `nmp-nip17` DM wrappers (already partly there). Twitter clone consumes them. | Per-NIP crate authors. |
+| **Phase 2 (M12-13)** | `nmp-nip23::Article{,Builder}`, `nmp-nip51` list family, `nmp-nip17` DM wrappers. Twitter clone consumes them. | Per-NIP crate authors. |
 | **Phase 3 (post-v1)** | `nmp-nip54::Wiki`, `nmp-nip84::Highlight`, `nmp-nip68/71` image/video, `nmp-nip37::Draft`, `nmp-nip60/61` cashu/nutzap. App-core wrappers grow alongside their apps. | Protocol authors as needs arise. |
 
 Each phase ships behind real apps, never speculatively. NDK's mistake is the inverse — `wrap.ts` registers 30+ wrappers that any single app uses ~3 of.
@@ -244,8 +244,8 @@ Each phase ships behind real apps, never speculatively. NDK's mistake is the inv
 ## 12. Open questions (for orchestrator)
 
 - **PD-006 — kernel ingest extraction timing.** Phase 1 above extracts kind 0/3/10002/1 ingest into protocol crates. Does that block M11 (Twitter), or run alongside? Recommend alongside — extract before M12 so Twitter's profile path lands on the new pattern; the M11 path already works.
-- **PD-007 — `DomainModule::ingest_kinds` trait migration.** The existing 5 `nmp-nip29` `DomainModule` impls all need this method added. Default `&[]` keeps them compiling; do we want to force every existing impl to declare explicitly (no default)?
-- **PD-008 — encrypted-content decoders.** Applesauce caches decoded profile content on a symbol on the event (`helpers/profile.ts:55`). For NMP, do decoded records live in the domain store (write at ingest, read at query) or in a derived in-memory cache (decode on demand, evict by D5)? Recommend ingest-time write — cheaper steady state, matches D8 hot-path discipline — but it costs LMDB space. Worth confirming.
+- **PD-007 — `DomainModule::ingest_kinds` trait migration.** The existing 13 `nmp-nip29` `DomainModule` impls all need this method added. Default `&[]` keeps them compiling; do we want to force every existing impl to declare explicitly (no default)?
+- **PD-008 — decoded-content caches.** Applesauce caches decoded profile content on a symbol on the event (`helpers/profile.ts:55`). For NMP, do decoded records live in the domain store (write at ingest, read at query) or in a derived in-memory cache (decode on demand, evict by D5)? Recommend ingest-time write — cheaper steady state, matches D8 hot-path discipline — but it costs LMDB space. Worth confirming.
 - **PD-009 — codegen of UniFFI Records.** `ArticleRecord` is plain serde; do we generate UniFFI bindings for every protocol-crate record automatically (via the per-app FFI crate of ADR-0010), or do apps opt-in per-record? Recommend automatic — the per-app FFI crate already aggregates types; one more is free at the build step.
 - **PD-010 — `static from()` helper.** NDK's `NDKArticle.from(event)` is convenient. Should each NMP module expose `pub fn try_from_event(&StoredEvent) -> Option<ArticleRecord>` as a uniform vocabulary, or is the per-module `decode_xxx` name clearer? Recommend uniform `try_from_event` — searchability wins.
 
