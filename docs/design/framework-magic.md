@@ -25,21 +25,55 @@ This document is split into focused sub-files to stay under the 300 LOC ceiling 
 
 Each row binds a behavior to: the sub-file that specifies it, the test name in `crates/nmp-testing/tests/framework_magic_contract.rs`, the milestone that owns the implementation, and the doctrine clause it discharges.
 
-| # | Behavior | Sub-file | Test name | Milestone | Doctrine / spec |
+> **Ground-truth note (reconciled 2026-05-18, PD-006).** Status cells below are
+> derived from a real run of the proof target, not from milestone-doc state:
+> `cargo test -p nmp-testing --test framework_magic_contract` →
+> **14 tests; 13 pass; 1 fail (`c13_view_payload_uses_placeholders_then_refines_in_place`); 0 ignored.**
+> All gating milestones (M2/M3/M4/M6/M8) are DONE on master and every test is
+> active (no `#[ignore]` remains — the un-ignore landed in commit `79e0257`).
+> `[DONE]` ⇒ test active **and passing**; `[PARTIAL]` ⇒ test active but failing
+> or only partially enforcing the bullet; `[PENDING M_n]` ⇒ test ignored/gated
+> (none remain). Line numbers are `file:line` of the `fn` as it exists on
+> master today; the cross-cutting sub-files live under
+> `crates/nmp-testing/tests/framework_magic_contract/`.
+
+| # | Behavior | Sub-file | Test name | Status · Milestone · `file:line` | Doctrine / spec |
 |---|---|---|---|---|---|
-| C1 | Replaceable-event supersession (kind 0 / 3 / 10000–19999) on insert | replaceable.md | `c1_replaceable_supersedes_on_insert` | **[DONE]** kernel | spec §7.1 row "Replaceable kinds"; §3.3 bug #1 |
-| C2 | Parameterized replaceable supersession (30000–39999) by `(pubkey, kind, d-tag)` | replaceable.md | `c2_parameterized_replaceable_supersedes_by_dtag` | **[PENDING M3]** | spec §7.1 row "Parameterized replaceable"; §3.3 bug #1 |
-| C3 | Kind:5 delete propagation: referenced events removed, tombstone persisted | replaceable.md | `c3_kind5_delete_removes_referenced_and_tombstones` | **[PENDING M3]** | spec §7.1 row "Kind 5 (delete)" |
-| C4 | NIP-40 expiration auto-removes event at expiry; survives actor restart | replaceable.md | `c4_nip40_expiration_removes_and_persists_schedule` | **[PENDING M3]** | spec §7.1 row "NIP-40 expiration" |
-| C5 | Kind:3 auto-tracking: active account's follow-list change recompiles dependent subscriptions transparently | kind3.md | `c5_kind3_change_recompiles_follow_dependent_subs` | **[PENDING M2]** | scope-adj §"Folded into M2"; D3; M2 design §4 (Trigger::Nip65Arrived analog for kind:3) |
-| C6 | Outbox read routing: `authors`-filter subscriptions fan out to those authors' write relays (NIP-65), de-duplicated | outbox.md | `c6_authors_subscription_routes_to_per_author_write_relays` | **[PENDING M2]** | D3; spec §7.3 row "Subscription with `authors`"; M2 design §7 |
-| C7 | Outbox write routing: publishes go to author write + `#p`-recipient inbox; private (gift-wrap) events fail closed when recipient inbox is unknown | outbox.md | `c7_publish_routes_outbox_and_private_fails_closed` | **[PENDING M2 seam → M6 publish]** | D3; spec §7.3 rows "Publish*"; §3.3 bugs #3, #4 |
-| C8 | Subscription planner deduplicates overlapping interests into one wire REQ per relay, auto-closes on EOSE / last-consumer-drop, and buffers ingress to ≤60Hz per view | subs.md | `c8_subscriptions_coalesce_autoclose_and_buffer` | **[PENDING M2]** | spec §7.2; §3.3 bug #2, bug #8 |
-| C9 | Provenance preserved: same event id arriving from N relays merges into one stored event with N-entry provenance set; original `id` and signature untouched | sync.md | `c9_provenance_merges_across_relay_redeliveries` | **[PENDING M3]** | aim §6 doctrine 10; spec §7.1 row "Provenance"; §3.3 bug #10 |
-| C10 | Sync watermarks: planner consults `(filter, relay)` coverage before issuing historical REQ; full coverage makes cache-miss authoritative; NIP-77 negentropy is the default backfill where supported | sync.md | `c10_watermark_gates_backfill_and_authoritative_miss` | **[LANDED M4]** | D2; spec §7.1 watermarks, §7.8 sync engine |
-| C11 | Signer onboarding: pasted `bunker://` URL parses + connects via NIP-46; "create new nsec" generates, NIP-49-encrypts, and persists via KeyringCapability — both as kernel actions, no app code | signers.md | `c11_bunker_url_and_nsec_creation_complete_via_actions` | **[PENDING M6]** | scope-adj §"Folded into M6"; spec §7.4 |
-| C12 | Account switch is a state transition: dispatching the switch action re-resolves every `ActiveAccount`-scoped view without the app issuing CLOSE/REQ or rebuilding view handles | sessions.md | `c12_account_switch_rebinds_views_without_imperative_dance` | **[PENDING M8]** | D4; spec §7.4; §3.3 bug #5; M2 §4 trigger A4 |
-| C13 | Best-effort rendering: every view payload field is non-`Option`; missing data uses defined placeholders (shortened npub, identicon, "just now"); the same payload updates in place when authoritative data arrives | capabilities.md | `c13_view_payload_uses_placeholders_then_refines_in_place` | **[DONE]** in placeholder shape; **[PENDING M2/M3]** for in-place refinement on enrich | D1; spec §7.6 "Best-effort field contract"; aim §4.12 |
+| C1 | Replaceable-event supersession (kind 0 / 3 / 10000–19999) on insert | replaceable.md | `c1_replaceable_supersedes_on_insert` | **[DONE]** · kernel/M3 · `c1_c4_c6_c9.rs:39` | spec §7.1 row "Replaceable kinds"; §3.3 bug #1 |
+| C2 | Parameterized replaceable supersession (30000–39999) by `(pubkey, kind, d-tag)` | replaceable.md | `c2_parameterized_replaceable_supersedes_by_dtag` | **[DONE]** · M3 · `c1_c4_c6_c9.rs:87` | spec §7.1 row "Parameterized replaceable"; §3.3 bug #1 |
+| C3 | Kind:5 delete propagation: referenced events removed, tombstone persisted | replaceable.md | `c3_kind5_delete_removes_referenced_and_tombstones` | **[DONE]** · M3 · `c1_c4_c6_c9.rs:134` | spec §7.1 row "Kind 5 (delete)" |
+| C4 | NIP-40 expiration auto-removes event at expiry; survives actor restart | replaceable.md | `c4_nip40_expiration_removes_and_persists_schedule` | **[DONE]** · M3 · `c1_c4_c6_c9.rs:178` | spec §7.1 row "NIP-40 expiration" |
+| C5 | Kind:3 auto-tracking: active account's follow-list change recompiles dependent subscriptions transparently | kind3.md | `c5_kind3_change_recompiles_follow_dependent_subs` | **[DONE]** · M2 · `c5_c8_c13.rs:64` | scope-adj §"Folded into M2"; D3; M2 design §4 (`CompileTrigger::FollowListChanged` A11, landed `001ebf6`) |
+| C6 | Outbox read routing: `authors`-filter subscriptions fan out to those authors' write relays (NIP-65), de-duplicated | outbox.md | `c6_authors_subscription_routes_to_per_author_write_relays` | **[DONE]** · M2 · `c1_c4_c6_c9.rs:229` | D3; spec §7.3 row "Subscription with `authors`"; M2 design §7 |
+| C7 | Outbox write routing: publishes go to author write + `#p`-recipient inbox; private (gift-wrap) events fail closed when recipient inbox is unknown | outbox.md | `c7_publish_routes_outbox_and_private_fails_closed` | **[DONE]** · M6 · `c7_c11.rs:67` | D3; spec §7.3 rows "Publish*"; §3.3 bugs #3, #4 |
+| C8 | Subscription planner deduplicates overlapping interests into one wire REQ per relay, auto-closes on EOSE / last-consumer-drop, and buffers ingress to ≤60Hz per view | subs.md | `c8_subscriptions_coalesce_autoclose_and_buffer` | **[DONE]** · M2 · `c5_c8_c13.rs:133` | spec §7.2; §3.3 bug #2, bug #8 |
+| C9 | Provenance preserved: same event id arriving from N relays merges into one stored event with N-entry provenance set; original `id` and signature untouched | sync.md | `c9_provenance_merges_across_relay_redeliveries` | **[DONE]** · M3 · `c1_c4_c6_c9.rs:279` | aim §6 doctrine 10; spec §7.1 row "Provenance"; §3.3 bug #10 |
+| C10 | Sync watermarks: planner consults `(filter, relay)` coverage before issuing historical REQ; full coverage makes cache-miss authoritative; NIP-77 negentropy is the default backfill where supported | sync.md | `c10_watermark_gates_backfill_and_authoritative_miss` | **[DONE]** · M4 · `c10.rs:34` | D2; spec §7.1 watermarks, §7.8 sync engine |
+| C11 | Signer onboarding: pasted `bunker://` URL parses + connects via NIP-46; "create new nsec" generates, NIP-49-encrypts, and persists via KeyringCapability — both as kernel actions, no app code | signers.md | `c11_bunker_url_and_nsec_creation_complete_via_actions` | **[DONE]** · M6 · `c7_c11.rs:159` (¹) | scope-adj §"Folded into M6"; spec §7.4 |
+| C12 | Account switch is a state transition: dispatching the switch action re-resolves every `ActiveAccount`-scoped view without the app issuing CLOSE/REQ or rebuilding view handles | sessions.md | `c12_account_switch_rebinds_views_without_imperative_dance` | **[DONE]** · M8 · `c12.rs:53` | D4; spec §7.4; §3.3 bug #5; M2 §4 trigger A4 |
+| C13 | Best-effort rendering: every view payload field is non-`Option`; missing data uses defined placeholders (shortened npub, identicon, "just now"); the same payload updates in place when authoritative data arrives | capabilities.md | `c13_view_payload_uses_placeholders_then_refines_in_place` | **[PARTIAL]** · M2/M3 · `c5_c8_c13.rs:238` (²) | D1; spec §7.6 "Best-effort field contract"; aim §4.12 |
+
+**Footnotes.**
+
+1. **C11 caveat (status unaffected).** The test passes and exercises the real
+   primitives (`parse_bunker_uri`, `LocalKeySigner::generate`,
+   `AccountManager::add`). The `KeyringCapability` / `IdentityModule` kernel
+   action-module wrapper is still a substrate-layer gap tracked by
+   `#57-c11-keyring` — an internal wiring caveat, **not** a bullet downgrade.
+   Similarly C5's registry push that expands the author set is a synthetic
+   stand-in for the M11 ViewModule rebuild; the trigger, ingest fan, and
+   `drain_tick` routing it exercises are real.
+2. **C13 is `[PARTIAL]`, not `[DONE]` — substrate landed but the proof is RED.**
+   The D1 placeholder substrate (`Placeholder<T>` newtype, `picture_placeholder`,
+   ADR-0017) landed in `d3067a6` and the test was made active there, but
+   `c13_view_payload_uses_placeholders_then_refines_in_place` **fails on master
+   today**: the actor emits an update whose JSON has no `items` array (panic at
+   `c5_c8_c13.rs:291`). The placeholder *shape* exists; the end-to-end actor
+   projection path the test asserts does not yet satisfy it. Per PD-006 doctrine
+   ("update the status truthfully — do not inflate") this bullet stays
+   `[PARTIAL]` until the test is green. Tracked as a follow-up (see final
+   reconcile note); fixing it requires `crates/` source changes out of this
+   doc-only task's scope.
 
 **Bullet count:** 13 (eleven sourced verbatim from `scope-adjustments-2026-05-18.md`; two — **C3** kind:5 delete propagation and **C4** NIP-40 expiration — derived from `product-spec/subsystems.md` §7.1 because they are guaranteed invariants of the same insert path and the contract is incomplete without them).
 
@@ -60,7 +94,7 @@ Each row binds a behavior to: the sub-file that specifies it, the test name in `
 13. `c13_view_payload_uses_placeholders_then_refines_in_place`
 14. `contract_surface_complete` — **meta-test**; asserts every behavior listed in this index has a corresponding `#[test] fn` in `framework_magic_contract.rs` (ignored or not). Drift between this doc and the test file fails the build.
 
-Tests for behaviors whose owning milestone has not landed are checked in with `#[ignore = "pending M_n"]`; the meta-test still counts them. This is the "doc says 13, code tests 11" regression the file-naming convention break (cross-cutting, not milestone-prefixed) is designed to support — see [test-scaffolding.md](framework-magic/test-scaffolding.md) §1.
+All gating milestones have landed, so **no `#[ignore]` remains** — all 14 tests are active (the un-ignore landed in `79e0257`; per-chapter split under `framework_magic_contract/`). The `#[ignore = "pending M_n"]` mechanism is retained for *future* bullets whose milestone has not yet landed (see the "How to add C14" recipe); the meta-test counts ignored tests too, so the historical "doc says 13, code tests 11" drift the cross-cutting (non-milestone-prefixed) file-naming convention guards against still cannot regress — see [test-scaffolding.md](framework-magic/test-scaffolding.md) §1.
 
 ## How this contract evolves
 
@@ -71,6 +105,36 @@ Every milestone owner adds a **"framework-magic delta"** subsection to their exi
 3. Whether the contract gained or lost a bullet during the milestone (rare; bullet count changes need an ADR).
 
 The orchestrator's heartbeat triage rule includes a "framework-magic regression" gate: any milestone landing that *removes* a bullet without an ADR fails review.
+
+### How to add C14 (mini-recipe)
+
+Adding a contract bullet is a four-step, drift-safe sequence. The
+`contract_surface_complete` meta-test (`framework_magic_contract.rs:39`) is the
+guardrail: it fails the build if the doc table and the test file disagree, so
+do steps 1 and 2 in the **same commit**.
+
+1. **Doc table row.** Add a `| C14 | … |` row to *The 13 contract bullets*
+   table above (the count in the section title and the prose tally below it
+   become 14). Column 4 **must** be the backticked test name exactly —
+   `` `c14_<behavior>` `` — because the meta-test parses only that column
+   (`framework_magic_contract.rs:59-74`); status/milestone/doctrine columns are
+   free-form. Add the bullet to the numbered *Test names* list too, and to a
+   sub-file (new or existing) that specifies the behavior.
+2. **Test fn.** Add `#[test] fn c14_<behavior>()` to the right per-chapter
+   file under `crates/nmp-testing/tests/framework_magic_contract/` (group by
+   owning milestone, keeping each file ≤300 LOC; create a new `cN.rs` module
+   and `pub mod` it in `framework_magic_contract.rs` if no chapter fits). Add
+   the name to `EXPECTED_TESTS` in `framework_magic_contract.rs` so the
+   meta-test's two-way check (doc⊆expected, expected⊆doc, equal length) stays
+   green.
+3. **Gate honestly.** If the owning milestone has not landed, check the test in
+   with `#[ignore = "pending M_n"]` and set the row status to `[PENDING M_n]`.
+   When the milestone lands, the owner removes the `#[ignore]`, runs
+   `cargo test -p nmp-testing --test framework_magic_contract`, and flips the
+   row to `[DONE]` **only if the test passes** (`[PARTIAL]` if active-but-red —
+   see footnote 2; never inflate a red test to `[DONE]`).
+4. **ADR for count change.** A bullet-count change (13→14) needs an ADR per the
+   regression gate above; reference it from the row's doctrine cell.
 
 ## Research citations (resolved)
 

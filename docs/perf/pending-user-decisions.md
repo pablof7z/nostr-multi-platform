@@ -168,7 +168,9 @@ JSON shapes are already byte-compatible so no Swift change is required.
 
 **Decision (autonomous):** accepted the kind-wrappers designer's recommendation. The new `ingest_kinds()` trait method has a default return of `&[]` (empty), so the existing 13 `nmp-nip29` impls and all other current `DomainModule` consumers continue to compile without changes. Protocol modules that want kernel-driven event routing override the method explicitly.
 
-### PD-006 — framework-magic.md C1–C13 status rows stale; codex follow-up from 8fd2764
+### PD-006 (RESOLVED 2026-05-18) — framework-magic.md C1–C13 status rows stale; codex follow-up from 8fd2764
+
+**Closure (2026-05-18):** C1–C13 table reconciled to a real `cargo test -p nmp-testing --test framework_magic_contract` run (14 tests; 13 pass; 1 fail; 0 ignored). C1–C12 → `[DONE]` with exact `file:line` cites + owning milestone; C13 → `[PARTIAL]` (substrate landed `d3067a6` but the proof test is RED on master — surfaced as a follow-up, not inflated); `[LANDED M4]` normalized to `[DONE] M4`; "How to add C14" recipe added; stale "code tests 11 / `#[ignore]`" prose corrected. PD-006 closed.
 
 **Decision (autonomous, 2026-05-18, builder-guide-planner agent):** flagged by codex during its post-merge review of `8fd2764` (the builder-guide PLAN.md merge); see `docs/perf/codex-reviews/8fd2764.md`.
 
