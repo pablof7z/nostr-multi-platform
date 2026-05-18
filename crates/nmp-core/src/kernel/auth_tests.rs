@@ -276,43 +276,48 @@ fn nip42_kernel_publish_retry_on_auth_required() {
 // Test 5 — nip42_kernel_auth_does_not_bump_view_rev (D8 invariant)
 // ───────────────────────────────────────────────────────────────────────────
 //
-// Pins: AUTH-state transitions are pure-diagnostic. `changed_since_emit`
-// must remain false through the entire handshake — only data events
-// (EVENT frames, kind ingestion) bump the view rev. This is the contract
-// reactivity benchmarks rely on (≤60 Hz/view per ADR-0002).
+// Pins: AUTH-state transitions DO NOT directly bump `kernel.rev`. The
+// `changed_since_emit` flag IS set so the diagnostic surface re-emits on
+// the next actor tick (required by `docs/plan/m5-nip42.md` §19 — Failed
+// AUTH must be visible), but the rev counter advances only via
+// `make_update` which the actor schedules at ≤60 Hz/view (D8).
+//
+// The narrower invariant pinned here: AUTH-paused REQ re-defers (the
+// `pending_view_requests` drain → still-paused re-defer loop) do NOT bump
+// `changed_since_emit` — otherwise the actor would emit every tick for
+// the entire AUTH-pause window. This is the test most likely to regress
+// silently if a future agent moves the auth-pause defer onto the noisy
+// `defer_outbound` instead of the silent variant.
 
 #[test]
 fn nip42_kernel_auth_does_not_bump_view_rev() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Clear the constructor-initial dirty flag — the test starts from a
-    // post-emit baseline so we only observe NEW changes triggered by the
-    // AUTH handshake.
-    kernel.changed_since_emit = false;
-
+    let rev_before = kernel.rev;
     let (signer, _) = make_signer(AUTH_EVENT_ID);
     kernel.bind_auth_signer(SIGNER_PUBKEY.to_string(), signer);
 
     let _ = kernel.handle_text(RelayRole::Content, &auth_frame("ch1"));
-    assert!(
-        !kernel.changed_since_emit,
-        "AUTH challenge must not bump view rev (D8)"
-    );
-
     let _ = kernel.handle_text(RelayRole::Content, &ok_frame(AUTH_EVENT_ID, true, ""));
-    assert!(
-        !kernel.changed_since_emit,
-        "AUTH ok (Authenticated) must not bump view rev (D8)"
+    assert_eq!(
+        kernel.rev, rev_before,
+        "AUTH transitions must not directly bump kernel.rev (only make_update does)"
     );
 
-    // Sanity inverse: a relay NOTICE frame DOES bump rev (it surfaces to
-    // RelayHealth.last_notice and the diagnostic view subscribers want to
-    // see it), proving the test discriminator is functional and not a false
-    // negative from a stuck flag.
-    let notice_frame = serde_json::json!(["NOTICE", "rate-limited"]).to_string();
-    let _ = kernel.handle_text(RelayRole::Content, &notice_frame);
+    // Auth-pause re-defer invariant: simulate ChallengeReceived → 10 ticks
+    // of `pending_view_requests` (each drains + re-defers the held REQ).
+    // The dirty flag must NOT keep getting set or the actor will busy-emit.
+    let _ = kernel.handle_text(RelayRole::Indexer, &auth_frame("ch-idx"));
+    let _ = kernel.partition_auth_paused(vec![OutboundMessage {
+        role: RelayRole::Indexer,
+        text: "[\"REQ\",\"x\",{}]".to_string(),
+    }]);
+    kernel.changed_since_emit = false; // post-emit baseline
+    for _ in 0..10 {
+        let _ = kernel.pending_view_requests();
+    }
     assert!(
-        kernel.changed_since_emit,
-        "a NOTICE frame DOES bump rev — proves the test discriminator works"
+        !kernel.changed_since_emit,
+        "10 ticks of auth-paused REQ re-defer must NOT bump changed_since_emit"
     );
 }
 

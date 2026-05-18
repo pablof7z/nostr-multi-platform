@@ -114,6 +114,23 @@ impl Kernel {
         let unsigned = build_auth_event(active_pubkey, role.url(), &challenge, created_at);
         match signer(&unsigned) {
             Ok(signed) => {
+                // Structural-validation guard against buggy/malicious signers
+                // that mutate the kind, drop the challenge tag, or return
+                // malformed ids/sigs. Schnorr verification is separately
+                // handled at the store boundary; this is the shape gate.
+                if let Err(reason) = super::super::auth::validate_signed_for(&signed, &challenge) {
+                    self.log(format!(
+                        "AUTH signer returned invalid event for {}: {reason}",
+                        role.key()
+                    ));
+                    let driver = self.nip42_drivers.entry(role).or_default();
+                    driver.record_signer_failure();
+                    let _ = self
+                        .lifecycle
+                        .handle_auth_state_change(relay_url, RelayAuthState::Failed);
+                    self.update_relay_auth_status(role, RelayAuthState::Failed, Some(reason));
+                    return Vec::new();
+                }
                 let event_id = signed.id.clone();
                 let driver = self.nip42_drivers.entry(role).or_default();
                 if !driver.record_dispatch(event_id.clone()) {
@@ -194,10 +211,16 @@ impl Kernel {
     }
 
     /// Reflect the per-relay auth state into the diagnostic
-    /// `RelayStatus.auth` field. Critically, this method does NOT set
-    /// `changed_since_emit` — AUTH-state transitions are pure-diagnostic
-    /// and must not bump view rev (D8 invariant; see test
-    /// `nip42_kernel_auth_does_not_bump_view_rev`).
+    /// `RelayStatus.auth` field. AUTH-state transitions DO bump
+    /// `changed_since_emit` so the diagnostic surface (RelayStatus + toast)
+    /// re-emits; the actor's ≤60 Hz/view cap (D8) handles throughput. The
+    /// `nip42_kernel_auth_does_not_bump_view_rev` test pins the narrower
+    /// invariant that AUTH does NOT directly bump `rev` — that's done by
+    /// the next `make_update` whose schedule is rate-capped.
+    ///
+    /// Without this dirty-mark the user could not see a Failed AUTH state
+    /// (`docs/plan/m5-nip42.md` §19 explicitly requires visible diagnostic
+    /// surfacing of the `Failed` transition).
     pub(super) fn update_relay_auth_status(
         &mut self,
         role: RelayRole,
@@ -210,6 +233,9 @@ impl Kernel {
         if let Some(r) = reason {
             relay.last_error = Some(r);
         }
-        // NB: changed_since_emit deliberately NOT set — D8 invariant.
+        // D8: bump the dirty flag so the diagnostic surface re-emits on the
+        // next actor tick. The actor's emit-interval throttle (≤60 Hz/view)
+        // bounds throughput; per-tick coalescing handles burst scenarios.
+        self.changed_since_emit = true;
     }
 }

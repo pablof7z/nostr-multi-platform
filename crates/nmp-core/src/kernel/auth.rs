@@ -11,14 +11,16 @@
 //!
 //! Doctrine:
 //! - **D0** — no app nouns. AUTH state is a transport-level capability.
-//! - **D5** — the signer reports a signed event; this module decides FSM
-//!   transitions and what to emit on the wire.
 //! - **D6** — errors are internal `Result`s, surfaced via the
 //!   `RelayHealth.last_error` field; never crossed via FFI.
-//! - **D7** — the per-relay driver reports `RelayAuthState`; the actor / pool
-//!   decides reconnect / retry policy.
-//! - **D8** — AUTH-state changes never set `changed_since_emit` (the view-rev
-//!   contract). Only data events do.
+//! - **D7** — capabilities (the signer) report; this module decides FSM
+//!   transitions and policy (what to emit on the wire, reconnect/retry).
+//! - **D8** — AUTH-state transitions bump `changed_since_emit` so the
+//!   diagnostic surface (`RelayStatus.auth`, `last_error`) re-emits, but
+//!   they do NOT directly bump `kernel.rev` — that's done by `make_update`
+//!   which the actor rate-caps at ≤60 Hz/view. AUTH-pause REQ re-defers
+//!   use the silent `defer_outbound_silent` variant so the actor doesn't
+//!   busy-wake every tick during a long AUTH-pause window.
 
 use crate::subs::RelayAuthState;
 use crate::substrate::{SignedEvent, UnsignedEvent};
@@ -98,6 +100,53 @@ pub(crate) fn build_auth_event(
         content: String::new(),
         created_at,
     }
+}
+
+/// Structural validation of a signer's response to `build_auth_event`. Catches
+/// buggy/malicious signers that mutate the kind, drop the challenge tag, or
+/// return malformed ids/sigs. Mirrors `nmp_nip42::builder::validate_signed_for`
+/// (inlined here for the same crate-cycle reason as the FSM itself). Returns
+/// `Err` with a short reason on any structural divergence — the caller surfaces
+/// it as `RelayAuthState::Failed` plus a toast-bound `failure_reason`.
+///
+/// Schnorr signature verification is the store's `VerifiedEvent::try_from_raw`
+/// path, not this guard — this is the structural-shape gate only.
+pub(crate) fn validate_signed_for(signed: &SignedEvent, challenge: &str) -> Result<(), String> {
+    if signed.unsigned.kind != 22242 {
+        return Err(format!(
+            "signer returned wrong kind: expected 22242, got {}",
+            signed.unsigned.kind
+        ));
+    }
+    if signed.id.is_empty() || signed.id.len() != 64 {
+        return Err(format!(
+            "signer returned malformed id (len={})",
+            signed.id.len()
+        ));
+    }
+    if signed.sig.is_empty() || signed.sig.len() != 128 {
+        return Err(format!(
+            "signer returned malformed sig (len={})",
+            signed.sig.len()
+        ));
+    }
+    let has_challenge = signed
+        .unsigned
+        .tags
+        .iter()
+        .any(|tag| tag.len() >= 2 && tag[0] == "challenge" && tag[1] == challenge);
+    if !has_challenge {
+        return Err("signer dropped or mutated the challenge tag".to_string());
+    }
+    let has_relay = signed
+        .unsigned
+        .tags
+        .iter()
+        .any(|tag| tag.len() >= 2 && tag[0] == "relay" && !tag[1].is_empty());
+    if !has_relay {
+        return Err("signer dropped or mutated the relay tag".to_string());
+    }
+    Ok(())
 }
 
 /// Per-relay handshake driver state. One per `RelayRole`. Default is
@@ -254,5 +303,55 @@ mod tests {
         assert_eq!(e.tags.len(), 2);
         assert_eq!(e.tags[0], vec!["relay", "wss://relay.example"]);
         assert_eq!(e.tags[1], vec!["challenge", "challenge-value"]);
+    }
+
+    fn ok_signed(challenge: &str) -> SignedEvent {
+        let unsigned = build_auth_event("ff".repeat(32), "wss://relay.example", challenge, 123);
+        SignedEvent {
+            id: "a".repeat(64),
+            sig: "b".repeat(128),
+            unsigned,
+        }
+    }
+
+    #[test]
+    fn validate_signed_for_accepts_well_formed() {
+        let s = ok_signed("ch1");
+        assert!(validate_signed_for(&s, "ch1").is_ok());
+    }
+
+    #[test]
+    fn validate_signed_for_rejects_wrong_kind() {
+        let mut s = ok_signed("ch1");
+        s.unsigned.kind = 1;
+        let err = validate_signed_for(&s, "ch1").unwrap_err();
+        assert!(err.contains("wrong kind"), "{err}");
+    }
+
+    #[test]
+    fn validate_signed_for_rejects_dropped_challenge() {
+        let mut s = ok_signed("ch1");
+        s.unsigned
+            .tags
+            .retain(|t| t.first().map(|x| x.as_str()) != Some("challenge"));
+        let err = validate_signed_for(&s, "ch1").unwrap_err();
+        assert!(err.contains("challenge"), "{err}");
+    }
+
+    #[test]
+    fn validate_signed_for_rejects_mismatched_challenge() {
+        let s = ok_signed("ch1");
+        let err = validate_signed_for(&s, "different-challenge").unwrap_err();
+        assert!(err.contains("challenge"), "{err}");
+    }
+
+    #[test]
+    fn validate_signed_for_rejects_malformed_id_or_sig() {
+        let mut s = ok_signed("ch1");
+        s.id = "tooshort".to_string();
+        assert!(validate_signed_for(&s, "ch1").is_err());
+        s.id = "a".repeat(64);
+        s.sig = "tooshort".to_string();
+        assert!(validate_signed_for(&s, "ch1").is_err());
     }
 }

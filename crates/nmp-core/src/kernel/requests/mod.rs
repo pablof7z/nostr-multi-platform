@@ -230,13 +230,20 @@ impl Kernel {
     }
 
     /// Partition an outbound batch: REQ frames targeting an AUTH-paused relay
-    /// are removed from the batch and deferred via `defer_outbound` (the
-    /// generic deferred queue is drained on `Authenticated` via
-    /// `pending_view_requests`). Non-REQ frames and REQs to live relays pass
-    /// through unchanged. This is the M5+M2+M8 wiring seam replacing the
-    /// hand-rolled "send + cross-fingers" path for AUTH-required relays —
-    /// `AuthGate` semantics modelled inline so the kernel doesn't need to
-    /// hold a separate per-relay buffer.
+    /// are removed from the batch and parked in the deferred queue (drained
+    /// on `Authenticated` via `pending_view_requests`). Non-REQ frames and
+    /// REQs to live relays pass through unchanged. This is the M5+M2+M8
+    /// wiring seam replacing the hand-rolled "send + cross-fingers" path for
+    /// AUTH-required relays — `AuthGate` semantics modelled inline so the
+    /// kernel doesn't need to hold a separate per-relay buffer.
+    ///
+    /// **D8 invariant:** unlike the generic `defer_outbound` path (which
+    /// bumps `changed_since_emit` because connection-drop replay is itself
+    /// a diagnostic event worth surfacing), AUTH-pause re-defers do NOT
+    /// bump the emit flag. AUTH-state is already pure-diagnostic per the
+    /// `update_relay_auth_status` contract; re-defer on every tick (the
+    /// `pending_view_requests` drain → still-paused re-defer loop) would
+    /// otherwise wake the actor every tick.
     pub(crate) fn partition_auth_paused(
         &mut self,
         outbound: Vec<OutboundMessage>,
@@ -245,12 +252,23 @@ impl Kernel {
         for msg in outbound {
             if msg.text.starts_with("[\"REQ\"") && self.relay_auth_paused(msg.role) {
                 self.log(format!("REQ@{} held — relay AUTH-paused", msg.role.key()));
-                self.defer_outbound(msg);
+                self.defer_outbound_silent(msg);
             } else {
                 passthrough.push(msg);
             }
         }
         passthrough
+    }
+
+    /// Diagnostic-quiet variant of `defer_outbound` — same bounded-queue
+    /// discipline (64 slots) but does NOT set `changed_since_emit`. Used by
+    /// `partition_auth_paused` so the actor doesn't false-wakeup-emit on
+    /// every tick that re-defers an AUTH-paused REQ.
+    fn defer_outbound_silent(&mut self, message: OutboundMessage) {
+        self.deferred_outbound.push_back(message);
+        while self.deferred_outbound.len() > 64 {
+            self.deferred_outbound.pop_front();
+        }
     }
 
     pub(crate) fn defer_outbound(&mut self, message: OutboundMessage) {
