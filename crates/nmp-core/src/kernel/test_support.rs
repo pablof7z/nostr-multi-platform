@@ -264,6 +264,20 @@ impl Kernel {
         self.wire_subs.get(sub_id).map(|s| s.state.clone())
     }
 
+    /// T170: relay-scoped variant — diagnostic `state` of the wire sub tracked
+    /// for `(relay_url, sub_id)`. Used by the relay-scoped-keying tests where
+    /// the same `sub_id` is legitimately live on multiple relay connections.
+    pub(crate) fn wire_sub_state_for_test_on_relay(
+        &self,
+        relay_url: &str,
+        sub_id: &str,
+    ) -> Option<String> {
+        self.wire_subs
+            .values()
+            .find(|s| s.id == sub_id && s.relay_url == relay_url)
+            .map(|s| s.state.clone())
+    }
+
     /// Snapshot of the registered M2 follow-feed `InterestId`s.
     pub(crate) fn follow_feed_interest_ids_for_test(
         &self,
