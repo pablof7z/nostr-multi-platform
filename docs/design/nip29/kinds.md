@@ -93,8 +93,8 @@ All require `["h", <group_id>]` and are signed by a current admin (member of the
 
 #### Kind 9000 — Put user
 
-- **Required tags:** `["h", <group_id>]`, `["p", <target_pubkey_hex>]`
-- **Optional tags:** `["role", <role_name>]` (sibling tag, Highlighter convention — `groups.rs::create_invite_codes` neighbours and `nip29-crate.md` §3.3 both use the sibling-tag form `["role","admin"]`); `["reason", <text>]`. **Note:** The NIP-29 spec also allows the role name as a third element on the `p` tag (`["p", <pubkey>, <role_name>]`); for emit, we use the sibling `role` tag form because it matches Highlighter's existing client and relay29's expectations, but ingest accepts both wire formats and normalizes to the same in-memory shape.
+- **Required tags:** `["h", <group_id>]`, `["p", <target_pubkey_hex>]` (or `["p", <target_pubkey_hex>, <role_name>]` to grant a role atomically with the membership change)
+- **Optional tags:** `["reason", <text>]`. **Role tag format:** NIP-29 + relay29 parse roles from *extra elements on each `p` tag* — `["p", <pubkey>, <role>]` associates the role with the target. **Emit MUST use this form**; a sibling `["role", <name>]` tag (which earlier drafts of this doc suggested) is not associated with the target and will be ignored by relay29, causing the user to be added as a plain member without admin promotion. Ingest accepts both wire formats (per-p-tag role *and* a sibling `role` tag) for compatibility with other client conventions, normalizing both to the same in-memory shape.
 - **Routing:** host relay (pin)
 - **Effect:** target pubkey added to 39002 (and to 39001 if a role tag is present in either form).
 - **Owner:** emitted by `PutUser` ActionModule.

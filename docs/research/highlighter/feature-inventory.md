@@ -52,7 +52,7 @@
 - **[N29]** Reply marker — chat messages can carry `["e", <target>, "", "reply"]` and render inline-threaded; chat.rs surfaces this via `reply_to_event_id` (`chat.rs::reply_target`).
 - **[N29]** Author header collapsing — consecutive messages from the same author render without repeating the header (`ChatView.swift::shouldShowHeader`).
 - **[N29]** Ascending-time order — chat view appends at the bottom; `chat.rs::query_chat_messages` returns ascending-by-`created_at`.
-- **[N29]** Reactions on chat messages — via NIP-25 kind:7 with the chat message in the `["e", …]` target (`reactions.rs` consumed from chat view).
+- *(Reactions on chat messages are NOT shipped in the reference iOS chat UI — `ChatView.swift` exposes Reply + Copy only; verified per the context-menu code at lines 348-355. If a future Highlighter release adds them, they'd be `nmp-nip29::GroupReaction` per the unifying ownership rule. M11.5 preserves the present-day Reply-only behavior for parity.)*
 - **[N29]** Discussion threads — kind:11 long-form discussions scoped to the room, with title + body + image attachments (`Communities/DiscussionListView.swift`, `DiscussionDetailView.swift`, `DiscussionComposerView.swift` → `discussions.rs`).
 - **[N29]** Discussion list ordering — discussions sort by latest-reply timestamp (computed from kind:1111 NIP-22 comments that target the kind:11).
 - **[N29]** Discussion replies — NIP-22 (kind:1111) tree under each kind:11 root (`comments.rs`).
@@ -147,12 +147,12 @@ Listed at one bullet per coherent feature so the count reflects the real scope o
 
 **Bullet count by scope label** (count one feature = one bullet):
 
-- **[N29] NIP-29-bearing:** 34 bullets across §§ 1.1–1.6
+- **[N29] NIP-29-bearing:** 33 bullets across §§ 1.1–1.6
 - **[N29-adj] NIP-29-adjacent:** 6 bullets across §§ 2.1–2.2
 - **[N29-ind] NIP-29-independent:** 32 bullets across §§ 3.1–3.10
 
-**Total feature bullets: 72.**
+**Total feature bullets: 71.**
 
-The split (34 N29 / 6 adjacent / 32 independent) confirms the survey's claim that NIP-29 is one slice of Highlighter, not the whole app — but it's the *new* slice that justifies the M11.5 milestone existing at all. The 34 N29-bearing features are the surface area `nmp-nip29` must support; the 6 adjacent features are the dual-routing test cases that prove the host-relay-pin design integrates cleanly with NMP's existing outbox planner.
+The split (33 N29 / 6 adjacent / 32 independent) confirms the survey's claim that NIP-29 is one slice of Highlighter, not the whole app — but it's the *new* slice that justifies the M11.5 milestone existing at all. The 33 N29-bearing features are the surface area `nmp-nip29` must support; the 6 adjacent features are the dual-routing test cases that prove the host-relay-pin design integrates cleanly with NMP's existing outbox planner.
 
 The 32 independent features confirm M11.5 needs every protocol crate planned through M10 (nip01/02/22/23/25/51/65/68/78/84, plus blossom, plus the bunker signer surface from M6) to be in place. M11.5 cannot start before M10 ends; the brief already reflects this (M11.5 follows M11 in the ladder).
