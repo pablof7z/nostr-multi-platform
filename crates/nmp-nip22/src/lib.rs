@@ -14,12 +14,17 @@ pub mod build;
 pub mod decode;
 pub mod domain;
 pub mod kinds;
+pub mod meta_timeline;
 pub mod view;
 
 pub use build::{Comment, CommentBuildError, CommentBuilder};
 pub use decode::{try_from_event, try_from_kernel_event, CommentPointer, CommentRecord};
 pub use domain::{decode_and_route, list_by_parent, CommentsDomain, NAMESPACE};
 pub use kinds::KIND_COMMENT;
+pub use meta_timeline::{
+    ModularTimelineDelta, ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState,
+    Nip22ModularTimelineView, Nip22Resolver,
+};
 pub use view::{CommentsDelta, CommentsPayload, CommentsSpec, CommentsState, CommentsView};
 
 use nmp_core::substrate::ModuleRegistry;
@@ -29,4 +34,5 @@ use nmp_core::substrate::ModuleRegistry;
 pub fn register(registry: &mut ModuleRegistry) {
     registry.register_domain::<CommentsDomain>();
     registry.register_view::<CommentsView>();
+    registry.register_view::<Nip22ModularTimelineView>();
 }
