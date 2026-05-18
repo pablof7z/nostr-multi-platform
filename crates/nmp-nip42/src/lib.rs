@@ -54,6 +54,6 @@ pub mod frame;
 pub mod state;
 
 pub use builder::build_auth_event;
-pub use flow::{HandshakeOutcome, Nip42Driver, Nip42Error};
+pub use flow::{run_handshake, HandshakeOutcome, Nip42Driver, Nip42Error};
 pub use frame::{parse_auth_frame, parse_ok_frame, AuthChallenge, AuthOk};
 pub use state::{relay_auth_state_to_subs, RelayAuthState};

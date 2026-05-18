@@ -63,7 +63,7 @@ test result: ok. 25 passed; 0 failed
 - `cargo test --workspace --lib` — 100% green (24 nmp-core + 77 publish + 29 subs + 25 nmp-nip42 + others — 157+ total).
 - `cargo clippy -p nmp-nip42 --all-targets -- -D warnings` — clean.
 - `cargo fmt -p nmp-nip42 -- --check` — clean.
-- File sizes (LOC): `lib.rs` 56, `state.rs` 143, `frame.rs` 129, `builder.rs` 190, `flow.rs` 463. `flow.rs` exceeds the 300 LOC soft cap due to in-file test module padding (impl is ~200 LOC); under the 500 LOC hard cap. Test extraction to a sibling file is the codex-noted follow-up.
+- File sizes (LOC): `src/lib.rs` 59, `src/state.rs` 145, `src/frame.rs` 157, `src/builder.rs` 190, `src/flow.rs` 296, `tests/flow.rs` 258. All under the 300 LOC soft cap.
 
 ---
 
