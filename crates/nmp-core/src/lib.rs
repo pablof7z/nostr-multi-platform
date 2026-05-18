@@ -11,6 +11,7 @@ mod relay_worker;
 pub mod store;
 pub mod subs;
 pub mod substrate;
+pub mod util;
 
 pub use app::{AppState, KernelAction, KernelUpdate, KernelViewSpec};
 pub use ffi::NmpApp;
