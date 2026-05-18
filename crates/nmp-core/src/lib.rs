@@ -13,7 +13,10 @@ pub mod subs;
 pub mod substrate;
 pub mod util;
 
-pub use app::{AppState, KernelAction, KernelUpdate, KernelViewSpec};
+pub use app::{
+    resolve_open_uri, AppState, KernelAction, KernelUpdate, KernelViewSpec, OpenUriError,
+    OpenUriRouting, VIEW_ADDRESSABLE, VIEW_PROFILE, VIEW_THREAD,
+};
 pub use ffi::NmpApp;
 
 // Re-export the FFI entry-points so the ffi-stress harness (and any other

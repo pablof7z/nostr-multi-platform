@@ -55,6 +55,7 @@ pub use compiler::{
     SubscriptionCompiler,
 };
 pub use interest::{
+    HintSource,
     InterestId,
     InterestLifecycle,
     InterestScope,
@@ -62,6 +63,7 @@ pub use interest::{
     LogicalInterest,
     NaddrCoord,
     Pubkey,
+    RelayHint,
     RelayUrl,
 };
 pub use lattice::{merge, MergeOutcome};
