@@ -8,6 +8,7 @@ mod capability;
 mod event_observer;
 mod identity;
 mod lifecycle;
+mod raw_event_tap;
 mod timeline;
 mod wallet;
 
@@ -41,6 +42,15 @@ pub use lifecycle::{
 // static lib.
 #[cfg(any(test, feature = "test-support"))]
 pub use event_observer::{nmp_app_register_event_observer, nmp_app_unregister_event_observer};
+
+// Raw signed-event tap FFI exposed through the test-support facade so
+// integration tests (and the in-tree smoke in `raw_event_tap.rs`) can
+// register verbatim-signed-event callbacks. Swift / Kotlin shells consume
+// the same `#[no_mangle] extern "C"` symbols directly via the static lib.
+#[cfg(any(test, feature = "test-support"))]
+pub use raw_event_tap::{
+    nmp_app_register_raw_event_observer, nmp_app_unregister_raw_event_observer,
+};
 
 // Re-exported so `crate::ffi::nmp_app_inject_*` stays byte-stable for the
 // test-support facade in `lib.rs`. The symbols stay `#[no_mangle] extern "C"`
@@ -96,6 +106,10 @@ pub use lifecycle::{
 #[cfg(feature = "android-ffi")]
 pub use event_observer::{nmp_app_register_event_observer, nmp_app_unregister_event_observer};
 #[cfg(feature = "android-ffi")]
+pub use raw_event_tap::{
+    nmp_app_register_raw_event_observer, nmp_app_unregister_raw_event_observer,
+};
+#[cfg(feature = "android-ffi")]
 pub use timeline::{
     nmp_app_claim_profile, nmp_app_close_author, nmp_app_close_thread, nmp_app_open_author,
     nmp_app_open_firehose_tag, nmp_app_open_thread, nmp_app_open_uri, nmp_app_release_profile,
@@ -104,9 +118,11 @@ pub use timeline::{
 pub use wallet::{nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wallet_pay_invoice};
 
 use crate::actor::{
-    new_event_observer_slot, new_lifecycle_observer_slot, register_rust_observer,
-    run_actor_with_observers, unregister_observer, ActorCommand, KernelEventObserver,
-    KernelEventObserverId, KernelEventObserverSlot, LifecycleObserverSlot,
+    new_event_observer_slot, new_lifecycle_observer_slot, new_raw_event_observer_slot,
+    register_rust_observer, register_rust_raw_observer, run_actor_with_observers,
+    unregister_observer, unregister_raw_observer, ActorCommand, KernelEventObserver,
+    KernelEventObserverId, KernelEventObserverSlot, KindFilter, LifecycleObserverSlot,
+    RawEventObserver, RawEventObserverId, RawEventObserverSlot,
 };
 use crate::relay::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 use std::ffi::{c_char, c_uint, c_void, CStr, CString};
@@ -140,6 +156,15 @@ pub struct NmpApp {
     /// through `ffi::event_observer::nmp_app_register_event_observer`. Both
     /// paths mutate the same `Mutex<…>` the actor reads.
     event_observers: KernelEventObserverSlot,
+    /// Raw signed-event tap slot. Shared `Arc` with the actor thread (and
+    /// thus the kernel, which `run_actor_with_observers` binds via
+    /// `set_raw_event_observers_handle`). Per-app crates reach this through
+    /// [`NmpApp::register_raw_event_observer`] /
+    /// [`NmpApp::unregister_raw_event_observer`]; the C-ABI variant goes
+    /// through `ffi::raw_event_tap::nmp_app_register_raw_event_observer`.
+    /// Both paths mutate the same `Mutex<…>` the actor reads. Delivers the
+    /// verbatim flat NIP-01 signed event (`sig` included), kind-filtered.
+    raw_event_observers: RawEventObserverSlot,
     actor: Mutex<Option<JoinHandle<()>>>,
     update_listener: Mutex<Option<JoinHandle<()>>>,
 }
@@ -183,12 +208,19 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // mutate the inner `Mutex` visible to both sides.
     let event_observers = new_event_observer_slot();
     let actor_event_observers = Arc::clone(&event_observers);
+    // Raw signed-event tap slot. Same shared-`Arc` pattern: the `NmpApp`
+    // keeps one clone (Rust + C-ABI registration entry points), the actor
+    // thread carries another for the kernel's tap path
+    // (`set_raw_event_observers_handle`).
+    let raw_event_observers = new_raw_event_observer_slot();
+    let actor_raw_event_observers = Arc::clone(&raw_event_observers);
     let actor = thread::spawn(move || {
         run_actor_with_observers(
             command_rx,
             update_tx,
             actor_lifecycle_observer,
             actor_event_observers,
+            actor_raw_event_observers,
         );
     });
     let update_listener = thread::spawn(move || {
@@ -209,6 +241,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         capability_callback: Arc::new(Mutex::new(None)),
         lifecycle_observer,
         event_observers,
+        raw_event_observers,
         actor: Mutex::new(Some(actor)),
         update_listener: Mutex::new(Some(update_listener)),
     }))
@@ -251,6 +284,36 @@ impl NmpApp {
     /// [`Self::register_event_observer`] / [`Self::unregister_event_observer`].
     pub(crate) fn event_observers_slot(&self) -> KernelEventObserverSlot {
         Arc::clone(&self.event_observers)
+    }
+
+    /// Register a typed Rust raw signed-event observer with a kind filter
+    /// (empty filter → all kinds). Returns an opaque id the caller retains
+    /// to unregister via [`Self::unregister_raw_event_observer`]. Used by
+    /// per-app / protocol crates that need the verbatim signed event
+    /// (`sig` included) — e.g. an inbound-ingest seam that must hand the
+    /// whole signed event to its own state machine. D0 — `nmp-core` never
+    /// names the protocol; this trait is the generic seam.
+    pub fn register_raw_event_observer(
+        &self,
+        kinds: KindFilter,
+        observer: Arc<dyn RawEventObserver>,
+    ) -> RawEventObserverId {
+        register_rust_raw_observer(&self.raw_event_observers, kinds, observer)
+    }
+
+    /// Unregister a previously-registered raw observer. Idempotent;
+    /// unknown ids are silent no-ops (D6).
+    pub fn unregister_raw_event_observer(&self, id: RawEventObserverId) {
+        unregister_raw_observer(&self.raw_event_observers, id);
+    }
+
+    /// Clone of the raw signed-event tap slot. The `ffi::raw_event_tap`
+    /// FFI surface uses this to plug C-ABI registrations into the same
+    /// slot that backs the typed Rust API above. Crate-private — external
+    /// Rust callers go through [`Self::register_raw_event_observer`] /
+    /// [`Self::unregister_raw_event_observer`].
+    pub(crate) fn raw_event_observers_slot(&self) -> RawEventObserverSlot {
+        Arc::clone(&self.raw_event_observers)
     }
 }
 

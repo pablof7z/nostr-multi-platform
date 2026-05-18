@@ -47,9 +47,10 @@ pub use ffi::{
     nmp_app_open_firehose_tag, nmp_app_open_thread, nmp_app_open_uri,
     nmp_app_publish_signed_event, nmp_app_publish_signed_event_to,
     nmp_app_publish_unsigned_event, nmp_app_register_event_observer,
-    nmp_app_release_profile,
+    nmp_app_register_raw_event_observer, nmp_app_release_profile,
     nmp_app_set_capability_callback, nmp_app_set_lifecycle_callback, nmp_app_set_update_callback,
     nmp_app_signin_nsec, nmp_app_start, nmp_app_unregister_event_observer,
+    nmp_app_unregister_raw_event_observer,
 };
 
 // android-ffi: expose the full FFI surface via Rust paths. nmp-android-ffi
@@ -85,6 +86,8 @@ pub use ffi::{
     nmp_app_react,
     // T146 — kernel event observer FFI for Android JNI.
     nmp_app_register_event_observer,
+    // Raw signed-event tap FFI for Android JNI.
+    nmp_app_register_raw_event_observer,
     nmp_app_release_profile,
     nmp_app_remove_account,
     nmp_app_remove_relay,
@@ -98,6 +101,7 @@ pub use ffi::{
     nmp_app_switch_active,
     nmp_app_unfollow,
     nmp_app_unregister_event_observer,
+    nmp_app_unregister_raw_event_observer,
     nmp_app_wallet_connect,
     nmp_app_wallet_disconnect,
     nmp_app_wallet_pay_invoice,
@@ -119,6 +123,18 @@ pub use actor::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE
 pub use actor::{
     KernelEventObserver, KernelEventObserverFn, KernelEventObserverId,
     KernelEventObserverRegistration,
+};
+
+// Raw signed-event tap surface exposed to per-app Rust crates. Apps
+// register typed `Arc<dyn RawEventObserver>`s (with a `KindFilter`) via
+// [`NmpApp::register_raw_event_observer`] to receive the verbatim flat
+// NIP-01 signed event (`sig` included). The FFI shape
+// (`RawEventObserverFn` etc.) is the C-ABI channel Swift / Kotlin bridges
+// use directly through `nmp_app_register_raw_event_observer`. Generic
+// capability (D0) — no protocol nouns.
+pub use actor::{
+    KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId,
+    RawEventObserverRegistration,
 };
 
 /// Test-support facade: gives live-bench binaries access to the actor

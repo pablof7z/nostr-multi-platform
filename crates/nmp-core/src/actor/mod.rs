@@ -50,6 +50,21 @@ pub use commands::{
     KernelEventObserver, KernelEventObserverFn, KernelEventObserverId,
     KernelEventObserverRegistration,
 };
+// Raw signed-event tap — re-export the slot helpers (crate-private) so
+// `ffi/raw_event_tap.rs` and the actor entry point reach the shared slot,
+// and the public wire shapes so per-app Rust crates + Swift / Kotlin
+// bindings can register a verbatim signed-event observer.
+#[allow(unused_imports)]
+pub(crate) use commands::{
+    new_raw_event_observer_slot, notify_raw_observers, raw_observers_idle_for_kind,
+    register_c_raw_observer, register_rust_raw_observer, unregister_raw_observer,
+    RawEventObserverSlot,
+};
+#[allow(unused_imports)]
+pub use commands::{
+    KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId,
+    RawEventObserverRegistration,
+};
 use dispatch::{dispatch_command, handle_relay_event};
 
 use crate::kernel::LifecyclePhase;
@@ -253,6 +268,7 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
         update_tx,
         new_lifecycle_observer_slot(),
         new_event_observer_slot(),
+        new_raw_event_observer_slot(),
     );
 }
 
@@ -272,6 +288,7 @@ pub fn run_actor_with_lifecycle_observer(
         update_tx,
         lifecycle_observer,
         new_event_observer_slot(),
+        new_raw_event_observer_slot(),
     );
 }
 
@@ -291,6 +308,7 @@ pub fn run_actor_with_observers(
     update_tx: Sender<String>,
     lifecycle_observer: LifecycleObserverSlot,
     event_observers: KernelEventObserverSlot,
+    raw_event_observers: RawEventObserverSlot,
 ) {
     // Dual-channel design: relay events get their own dedicated channel.
     // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.
@@ -315,6 +333,13 @@ pub fn run_actor_with_observers(
     // `NmpApp::register_event_observer` to register typed observers.
     // Survives `Reset` the same way the drop counter does.
     kernel.set_event_observers_handle(Arc::clone(&event_observers));
+    // Bind the shared raw signed-event tap slot. The kernel calls
+    // `notify_raw_observers` from the single all-kinds ingest point
+    // (`kernel/ingest/mod.rs::handle_event`) after the event passes the
+    // existing Schnorr + id-hash gate, for any kind a registration filters
+    // on. Survives `Reset` the same way the event-observer slot does so
+    // external registrations stay live across a kernel rebuild.
+    kernel.set_raw_event_observers_handle(Arc::clone(&raw_event_observers));
     let mut identity = IdentityRuntime::new();
     let mut wallet = WalletRuntime::new();
     // T105: URL-keyed transport pool. One socket per resolved relay URL;

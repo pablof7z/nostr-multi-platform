@@ -17,6 +17,9 @@ mod closed_classifier_tests;
 mod event_observer;
 #[cfg(test)]
 mod event_observer_tests;
+mod raw_event_observer;
+#[cfg(test)]
+mod raw_event_observer_tests;
 mod discovery;
 #[cfg(test)]
 mod discovery_tests;
@@ -327,6 +330,13 @@ pub(crate) struct Kernel {
     /// `kernel/event_observer.rs`; `None` until the actor binds the
     /// shared `Arc<Mutex<…>>` via `set_event_observers_handle`.
     event_observers: Option<crate::actor::KernelEventObserverSlot>,
+    /// Raw signed-event tap slot. Integration lives in
+    /// `kernel/raw_event_observer.rs`; `None` until the actor binds the
+    /// shared `Arc<Mutex<…>>` via `set_raw_event_observers_handle`.
+    /// Delivers the verbatim flat NIP-01 signed event (`sig` included)
+    /// from the single all-kinds ingest point after the existing
+    /// Schnorr + id-hash gate. Generic capability (D0) — no protocol nouns.
+    raw_event_observers: Option<crate::actor::RawEventObserverSlot>,
 }
 
 /// Construct the kernel's `EventStore`.
@@ -456,6 +466,7 @@ impl Kernel {
             dispatch_drops: None,
             lifecycle_phase: LifecyclePhase::Inactive,
             event_observers: None,
+            raw_event_observers: None,
         }
     }
 

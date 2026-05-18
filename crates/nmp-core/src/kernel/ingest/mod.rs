@@ -295,6 +295,46 @@ impl Kernel {
             sub.last_event_at = Some(now);
         }
 
+        // Raw signed-event tap (additive, generic — D0). This is the SINGLE
+        // all-kinds ingest point: every kind flows through here with the
+        // full `NostrEvent` (`event.sig` intact) before the per-kind
+        // dispatch below projects it to the sig-stripped `KernelEvent`.
+        // Some consumers need the verbatim signed event (`sig` included) —
+        // e.g. an inbound-ingest seam that must hand the whole signed event
+        // to its own state machine. Mutating `KernelEvent` to carry `sig`
+        // would couple every projection consumer to that need; this
+        // parallel tap keeps the projection type stable.
+        //
+        // Cost discipline (D8): the idle fast-path probe short-circuits
+        // BEFORE any allocation when no registration filters on this kind
+        // (the common case — nobody tapped). Only when a consumer IS
+        // listening for `event.kind` do we pay to build a `RawEvent` and
+        // run `VerifiedEvent::try_from_raw` (the kernel's existing Schnorr
+        // + id-hash gate). The tap fires ONLY on gate success, so a
+        // consumer never sees an unverified event. The per-kind dispatch
+        // below independently re-verifies through its own store path; the
+        // duplicate verify is the deliberate, documented cost of keeping
+        // this a fully additive tap that does not touch projection / subs
+        // / per-kind handlers (a single-verify refactor is future work).
+        if !self.raw_event_observers_idle_for_kind(event.kind) {
+            let raw = crate::store::RawEvent {
+                id: event.id.clone(),
+                pubkey: event.pubkey.clone(),
+                created_at: event.created_at,
+                kind: event.kind,
+                tags: event.tags.clone(),
+                content: event.content.clone(),
+                sig: event.sig.clone(),
+            };
+            match crate::store::VerifiedEvent::try_from_raw(raw) {
+                Ok(verified) => self.notify_raw_event_observers(verified.raw()),
+                Err(e) => self.log(format!(
+                    "raw-tap sig verify failed for {}: {e}",
+                    event_short_id(&event.id)
+                )),
+            }
+        }
+
         // D4: all events are persisted before kind-specific dispatch.
         // Kinds 1|6 handle their own store.insert inside ingest_timeline_event.
         // For replaceable kinds (0, 3, 10002) we gate local cache mutations on

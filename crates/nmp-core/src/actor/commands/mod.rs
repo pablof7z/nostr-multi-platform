@@ -49,6 +49,7 @@ mod event_observer;
 mod identity;
 mod lifecycle;
 mod publish;
+mod raw_event_observer;
 mod relays;
 mod wallet;
 #[cfg(test)]
@@ -81,6 +82,20 @@ pub(crate) use event_observer::{
 pub use event_observer::{
     KernelEventObserver, KernelEventObserverFn, KernelEventObserverId,
     KernelEventObserverRegistration,
+};
+// Raw signed-event tap. Parallel to the kernel-event observer slot above
+// but delivers the verbatim flat NIP-01 signed event (`sig` included),
+// kind-filtered. Generic capability (D0) — no protocol nouns. Re-exported
+// up the actor chain so `ffi/raw_event_tap.rs` and the per-app crate
+// registration path reach the same `Arc<Mutex<…>>` the kernel taps.
+pub(crate) use raw_event_observer::{
+    new_raw_event_observer_slot, notify_raw_observers, raw_observers_idle_for_kind,
+    register_c_raw_observer, register_rust_raw_observer, unregister_raw_observer,
+    RawEventObserverSlot,
+};
+pub use raw_event_observer::{
+    KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId,
+    RawEventObserverRegistration,
 };
 pub(super) use publish::{
     follow, open_timeline, publish_note, publish_signed_event, publish_unsigned_event, react,
