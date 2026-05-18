@@ -8,6 +8,41 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
+### PD-023 (2026-05-18) — T136 Gate-1 STOP: pick `nostr-lmdb` env-injection path
+
+**Decision deferred (genuine user choice needed).** T136 Gate 1 audited
+`nostr-lmdb` v0.44.1 (current crates.io) and master and **confirmed no
+env-injection seam exists** — `Env` is created internally inside `Lmdb::new`
+and never exposed; `save_event` runs in a dedicated ingester thread; the
+txn-scoped `Lmdb::store` primitive is `pub(crate)` and *does not implement
+NIP-09 / replaceable / addressable policy* (that lives in the 411-LOC
+ingester loop). ADR-0011's primary design is **blocked on upstream change**
+or a fork carrying the same change.
+
+**The four options (full analysis in `docs/design/lmdb/env-injection-status.md`):**
+- **A:** Upstream PR (clean; unknown latency; no precedent in PR tracker).
+- **B:** Pinned local fork via `[patch.crates-io]` (unblocks T136b now;
+  carries maintenance surface).
+- **C:** Hand-roll on `heed` directly, drop `nostr-lmdb` (~2 100 LOC; the
+  "battle-tested" argument weakens because A and B both require an ingester
+  refactor anyway).
+- **D:** Two-env fallback (ADR-0011 already rejected; mentioned only to
+  mark closed).
+
+**Why I am not picking autonomously:** the trade-off pivots on
+upstream-maintainer relationship and v1 timeline pressure — both are facts
+the user holds, not the agent. Logging here per `autonomous-mode.md`.
+
+**Files affected:** `docs/design/lmdb/env-injection-status.md` (new). The
+226-LOC stub `crates/nmp-core/src/store/lmdb.rs` is unchanged; no
+`cargo add nostr-lmdb` was performed because the option choice may pivot
+away from the crate (option C).
+
+**T136 status:** Gate 1 closed with STOP outcome. T136a = option selection
+(this decision). T136b = Gates 2–4 once an option is picked.
+
+---
+
 ### PD-022 (2026-05-18) — Marmot coexists with deferred M9 (NIP-17), does not replace it
 
 **Decision:** Filed Marmot as a separate post-v1 milestone (`docs/plan/marmot-mls.md`) that coexists with deferred M9 (NIP-17 DMs) rather than replacing it.
