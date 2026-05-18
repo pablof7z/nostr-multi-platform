@@ -1,0 +1,393 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 54;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		01178DB7E0DBE979AD04A86B /* Logger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DD44240952F17949D8EC289 /* Logger.swift */; };
+		1B7E6385630CA9E64AAA45DA /* Config.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FA555689E22AF4B65558BA5 /* Config.swift */; };
+		34C98F5762CCF307B298D6F4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FA2ABCA4F6F51BD5EB8D4A49 /* Assets.xcassets */; };
+		703F60A85FD6E59939ED59B6 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 630FDF057F3BA46DA53E7E6F /* ContentView.swift */; };
+		B1F57A9B7571BAF389E1548E /* PodcastApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDEE76F2A4733886BE9D4A08 /* PodcastApp.swift */; };
+		B269D210E52E3C01ABAB3E17 /* KernelBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9CC99FF5896FB2B1EDCE1B2 /* KernelBridge.swift */; };
+		BB47E4D226CE7DBAD18B86A1 /* KernelModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FA6EF075CA5E72E63B4786E /* KernelModel.swift */; };
+		C2A335BA955ADE5905021D8D /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6372F7FEA90BABF7AA7EB97A /* LibraryView.swift */; };
+		CDEBAFF4BE1BDCE4714CBD7D /* AddPodcastView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDBC5F26BE1A7F4732ABBE5C /* AddPodcastView.swift */; };
+		D4F4CDC29A451D3E4AB90365 /* ErrorPresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61D12987460FEF25AD4171BF /* ErrorPresentation.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		4FA555689E22AF4B65558BA5 /* Config.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Config.swift; sourceTree = "<group>"; };
+		61D12987460FEF25AD4171BF /* ErrorPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorPresentation.swift; sourceTree = "<group>"; };
+		630FDF057F3BA46DA53E7E6F /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		6372F7FEA90BABF7AA7EB97A /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		6FA6EF075CA5E72E63B4786E /* KernelModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KernelModel.swift; sourceTree = "<group>"; };
+		7DD44240952F17949D8EC289 /* Logger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Logger.swift; sourceTree = "<group>"; };
+		95A965AC0733B576B481FC07 /* NmpCore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NmpCore.h; sourceTree = "<group>"; };
+		B8A5CD4BDBDB4A6FC326168A /* NmpPodcast.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = NmpPodcast.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B9CC99FF5896FB2B1EDCE1B2 /* KernelBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KernelBridge.swift; sourceTree = "<group>"; };
+		EDEE76F2A4733886BE9D4A08 /* PodcastApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PodcastApp.swift; sourceTree = "<group>"; };
+		FA2ABCA4F6F51BD5EB8D4A49 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		FDBC5F26BE1A7F4732ABBE5C /* AddPodcastView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddPodcastView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		087913E80A20765B02517F31 /* Bridge */ = {
+			isa = PBXGroup;
+			children = (
+				61D12987460FEF25AD4171BF /* ErrorPresentation.swift */,
+				B9CC99FF5896FB2B1EDCE1B2 /* KernelBridge.swift */,
+				6FA6EF075CA5E72E63B4786E /* KernelModel.swift */,
+				7DD44240952F17949D8EC289 /* Logger.swift */,
+				95A965AC0733B576B481FC07 /* NmpCore.h */,
+			);
+			name = Bridge;
+			path = NmpPodcast/Bridge;
+			sourceTree = "<group>";
+		};
+		180895A3CB6BD139067A5A50 = {
+			isa = PBXGroup;
+			children = (
+				DA8D33FBDC53178E265A320F /* App */,
+				087913E80A20765B02517F31 /* Bridge */,
+				8DC9C839AE60E5FADB09C725 /* Features */,
+				C81E319F6F62E324B26B1F9A /* Resources */,
+				367802DABB6CE6AEDC396668 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		367802DABB6CE6AEDC396668 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B8A5CD4BDBDB4A6FC326168A /* NmpPodcast.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		8DC9C839AE60E5FADB09C725 /* Features */ = {
+			isa = PBXGroup;
+			children = (
+				FDBC5F26BE1A7F4732ABBE5C /* AddPodcastView.swift */,
+				6372F7FEA90BABF7AA7EB97A /* LibraryView.swift */,
+			);
+			name = Features;
+			path = NmpPodcast/Features;
+			sourceTree = "<group>";
+		};
+		C81E319F6F62E324B26B1F9A /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				FA2ABCA4F6F51BD5EB8D4A49 /* Assets.xcassets */,
+			);
+			name = Resources;
+			path = NmpPodcast/Resources;
+			sourceTree = "<group>";
+		};
+		DA8D33FBDC53178E265A320F /* App */ = {
+			isa = PBXGroup;
+			children = (
+				4FA555689E22AF4B65558BA5 /* Config.swift */,
+				630FDF057F3BA46DA53E7E6F /* ContentView.swift */,
+				EDEE76F2A4733886BE9D4A08 /* PodcastApp.swift */,
+			);
+			name = App;
+			path = NmpPodcast/App;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		621B38F9349E05538ACC4ACC /* NmpPodcast */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 74E52C4958B09135697C2C7E /* Build configuration list for PBXNativeTarget "NmpPodcast" */;
+			buildPhases = (
+				E1C00C6B15CCA65A8F761568 /* Sources */,
+				FC7AA913FC9AF37FF38252D1 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = NmpPodcast;
+			packageProductDependencies = (
+			);
+			productName = NmpPodcast;
+			productReference = B8A5CD4BDBDB4A6FC326168A /* NmpPodcast.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		4BFBA84E60FDA3D4A4AC3CE6 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					621B38F9349E05538ACC4ACC = {
+						DevelopmentTeam = 456SHKPP26;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 2564E6C1C786B1683F353F32 /* Build configuration list for PBXProject "NmpPodcast" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 180895A3CB6BD139067A5A50;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 54;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				621B38F9349E05538ACC4ACC /* NmpPodcast */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		FC7AA913FC9AF37FF38252D1 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				34C98F5762CCF307B298D6F4 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		E1C00C6B15CCA65A8F761568 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CDEBAFF4BE1BDCE4714CBD7D /* AddPodcastView.swift in Sources */,
+				1B7E6385630CA9E64AAA45DA /* Config.swift in Sources */,
+				703F60A85FD6E59939ED59B6 /* ContentView.swift in Sources */,
+				D4F4CDC29A451D3E4AB90365 /* ErrorPresentation.swift in Sources */,
+				B269D210E52E3C01ABAB3E17 /* KernelBridge.swift in Sources */,
+				BB47E4D226CE7DBAD18B86A1 /* KernelModel.swift in Sources */,
+				C2A335BA955ADE5905021D8D /* LibraryView.swift in Sources */,
+				01178DB7E0DBE979AD04A86B /* Logger.swift in Sources */,
+				B1F57A9B7571BAF389E1548E /* PodcastApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		1B3C66993E52DDBA5EAA50FE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 456SHKPP26;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		46A8DC34989908C8189905EB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NmpPodcast/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(SRCROOT)/../../target/aarch64-apple-ios/debug",
+					"$(SRCROOT)/../../target/aarch64-apple-ios/release",
+				);
+				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]" = (
+					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/debug",
+					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/release",
+				);
+				OTHER_LDFLAGS = "$(inherited) -lnmp_app_podcast -lnmp_signer_broker -lnmp_core";
+				PRODUCT_BUNDLE_IDENTIFIER = com.podcast.app;
+				PRODUCT_NAME = NmpPodcast;
+				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = NmpPodcast/Bridge/NmpCore.h;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		69FE73FD562AADC7FA274EBC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 456SHKPP26;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		CC5ED1420A9A505D85320D71 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NmpPodcast/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = (
+					"$(SRCROOT)/../../target/aarch64-apple-ios/debug",
+					"$(SRCROOT)/../../target/aarch64-apple-ios/release",
+				);
+				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]" = (
+					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/debug",
+					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/release",
+				);
+				OTHER_LDFLAGS = "$(inherited) -lnmp_app_podcast -lnmp_signer_broker -lnmp_core";
+				PRODUCT_BUNDLE_IDENTIFIER = com.podcast.app;
+				PRODUCT_NAME = NmpPodcast;
+				SDKROOT = iphoneos;
+				SWIFT_OBJC_BRIDGING_HEADER = NmpPodcast/Bridge/NmpCore.h;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		2564E6C1C786B1683F353F32 /* Build configuration list for PBXProject "NmpPodcast" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1B3C66993E52DDBA5EAA50FE /* Debug */,
+				69FE73FD562AADC7FA274EBC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		74E52C4958B09135697C2C7E /* Build configuration list for PBXNativeTarget "NmpPodcast" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				46A8DC34989908C8189905EB /* Debug */,
+				CC5ED1420A9A505D85320D71 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 4BFBA84E60FDA3D4A4AC3CE6 /* Project object */;
+}

@@ -12,3 +12,8 @@
 ios/Chirp/build/
 ios/Chirp/Chirp.xcodeproj/xcuserdata/
 ios/Chirp/Chirp.xcodeproj/project.xcworkspace/xcuserdata/
+
+# NmpPodcast Xcode build output (T156)
+ios/NmpPodcast/build/
+ios/NmpPodcast/NmpPodcast.xcodeproj/xcuserdata/
+ios/NmpPodcast/NmpPodcast.xcodeproj/project.xcworkspace/xcuserdata/
