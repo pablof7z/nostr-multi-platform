@@ -16,7 +16,7 @@
 //! - D5 (snapshots bounded by what's open): the view payload is small and
 //!   only carries currently-pending plus a bounded recent window.
 //! - D6 (errors never cross FFI as exceptions): every failure path lands on
-//!   the snapshot as a structured `PublishOutcome::RelayError` /
+//!   the snapshot as `RecentFailure`, or on the ledger as a structured
 //!   `PublishOutcome::FailedAfterRetries`.
 //! - D7 (capabilities report): the `RelayDispatcher` shim returns raw
 //!   transport results (`RelayAck`); the engine decides the policy.

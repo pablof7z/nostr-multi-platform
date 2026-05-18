@@ -98,8 +98,10 @@ pub struct RelayPlan {
     pub relays: Vec<RelayUrl>,
 }
 
-/// Retry policy. Default matches the task spec: AUTH-REQUIRED → reauth + 1
-/// retry; transient → 3 retries at 1s / 4s / 16s.
+/// Retry policy. Default: AUTH-REQUIRED → reauth + 1 retry; transient →
+/// up to 3 total attempts (initial + 2 retries) with exponential backoff
+/// (1s before attempt 2, 4s before attempt 3). The 16s slot in the original
+/// task spec is reachable by setting `transient_max_retries = 4`.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct RetryPolicy {
     pub transient_max_retries: u32,

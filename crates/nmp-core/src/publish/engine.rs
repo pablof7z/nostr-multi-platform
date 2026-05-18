@@ -59,6 +59,11 @@ pub struct PublishEngine {
     store: Arc<dyn PublishStore>,
     #[allow(dead_code)]
     signer: Arc<dyn Signer>,
+    /// Set when a handle was just removed from `in_flight` (completed or
+    /// cancelled) — flush_view consults this so the snapshot's `in_flight`
+    /// vector clears the stale row even though nothing in the live map is
+    /// marked dirty.
+    needs_in_flight_rebuild: bool,
 }
 
 impl PublishEngine {
@@ -77,6 +82,7 @@ impl PublishEngine {
             dispatcher,
             store,
             signer,
+            needs_in_flight_rebuild: false,
         }
     }
 
@@ -159,6 +165,7 @@ impl PublishEngine {
         now_ms: u64,
     ) -> Result<(), PublishEngineError> {
         if let Some(mut row) = self.in_flight.remove(&handle) {
+            self.needs_in_flight_rebuild = true;
             for state in row.per_relay.values_mut() {
                 if !state.is_terminal() {
                     *state = PerRelayState::FailedAfterRetries {
@@ -206,8 +213,22 @@ impl PublishEngine {
                 });
             }
             self.in_flight.remove(handle);
-        } else {
-            let _ = self.persist(handle);
+            self.needs_in_flight_rebuild = true;
+        } else if let Err(err) = self.persist(handle) {
+            // D6: store failure surfaces as a RecentFailure, never panics, never
+            // crosses FFI as an exception.
+            let event_id = self
+                .in_flight
+                .get(handle)
+                .map(|row| row.event.id.clone())
+                .unwrap_or_default();
+            self.view.push_failure(RecentFailure {
+                handle: handle.clone(),
+                event_id,
+                relay_url: "(store)".to_string(),
+                reason: format!("store upsert failed: {:?}", err),
+                at_ms: now_ms,
+            });
         }
         self.flush_view();
     }
@@ -254,7 +275,8 @@ impl PublishEngine {
     }
 
     fn flush_view(&mut self) {
-        let mut any_dirty = false;
+        let mut any_dirty = self.needs_in_flight_rebuild;
+        self.needs_in_flight_rebuild = false;
         let mut in_flight_rows = Vec::new();
         for (handle, row) in &mut self.in_flight {
             any_dirty |= row.dirty;
