@@ -495,34 +495,6 @@ impl BunkerBroker {
         });
     }
 
-    /// Generate a `nostrconnect://` URI for the QR-code sign-in flow. Encodes
-    /// the ephemeral client pubkey and a random secret. The signer app scans
-    /// the QR, connects to `relay_url`, and either:
-    ///  (a) sends back a `bunker://` URI via the app callback scheme, or
-    ///  (b) drives the relay-based NIP-46 handshake (Phase 2).
-    ///
-    /// Returns the full URI string. Each call generates fresh ephemeral keys.
-    pub fn nostrconnect_uri(&self, relay_url: &str) -> String {
-        let client_keys = Keys::generate();
-        let pubkey_hex = client_keys.public_key().to_hex();
-        // Use first 8 bytes of the secret key as the random session secret.
-        let secret_bytes = client_keys.secret_key().as_secret_bytes();
-        let secret: String = secret_bytes[..8].iter().map(|b| format!("{b:02x}")).collect();
-        // Percent-encode the relay URL for use as a query param value.
-        let encoded_relay: String = relay_url
-            .bytes()
-            .flat_map(|b| match b {
-                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                    vec![b as char]
-                }
-                _ => format!("%{b:02X}").chars().collect::<Vec<_>>(),
-            })
-            .collect();
-        format!(
-            "nostrconnect://{pubkey_hex}?relay={encoded_relay}&secret={secret}&name=Chirp&perms=sign_event%3A1%2Csign_event%3A7"
-        )
-    }
-
     fn emit_progress(&self, stage: &str, message: Option<&str>) {
         let _ = self.actor_tx.send(ActorCommand::BunkerHandshakeProgress {
             stage: stage.to_string(),

@@ -114,7 +114,7 @@ pub extern "C" fn nmp_app_nostrconnect_uri(
     let Some(broker) = GLOBAL_BROKER.get() else {
         return std::ptr::null_mut();
     };
-    let uri = broker.nostrconnect_uri(relay);
+    let uri = broker.start_nostrconnect_handshake(relay.to_string());
     match std::ffi::CString::new(uri) {
         Ok(cs) => cs.into_raw(),
         Err(_) => std::ptr::null_mut(),
