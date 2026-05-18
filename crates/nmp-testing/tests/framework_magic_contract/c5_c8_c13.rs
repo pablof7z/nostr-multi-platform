@@ -9,7 +9,7 @@
 //! Design: `docs/design/framework-magic/`
 
 use nmp_core::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
-use nmp_core::subs::{CompileTrigger, InvalidateReason, RelayAuthState, SubscriptionLifecycle, WireFrame};
+use nmp_core::subs::{AccountId, CompileTrigger, InvalidateReason, RelayAuthState, SubscriptionLifecycle, WireFrame};
 use nmp_testing::store_harness::{StoreHarness, ALICE_HEX};
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
@@ -51,14 +51,13 @@ fn oneshot_interest(id: u64, authors: &[&str]) -> LogicalInterest {
 /// C5: Kind:3 auto-tracking: when the active account's follow list changes
 /// (a new kind:3 stored), dependent subscriptions must be recompiled.
 ///
-/// The discrete `FollowListChanged` trigger variant does not yet exist (it will
-/// be A11 in the trigger enum when M2 phase-2 wires the ingest pipeline to the
-/// subs inbox). What IS present is the full machinery: kind:3 storage in the
-/// event store, `InvalidateCompile` as the current forced-recompile trigger, and
-/// `SubscriptionLifecycle::drain_tick`. This test verifies the behaviour
-/// end-to-end using the available substrate: store a kind:3, fire an
-/// `InvalidateCompile`, and assert that `drain_tick` produces a new REQ set that
-/// includes the newly-followed author's relay.
+/// `FollowListChanged` (A11) is now live in the trigger enum — this test uses
+/// it directly instead of the `InvalidateCompile` placeholder. The registry
+/// push that expands the author set to include bob is still synthetic: in
+/// production a ViewModule rebuilds its authors set from the follow-set; that
+/// wiring lands in M11 when ViewModules migrate onto `LogicalInterest`. What
+/// IS real here: the trigger variant, the ingest fan from `ingest_contacts`,
+/// and `drain_tick` routing into the compiler.
 ///
 /// Design: `docs/design/framework-magic/kind3.md`
 #[test]
@@ -80,9 +79,8 @@ fn c5_kind3_change_recompiles_follow_dependent_subs() {
     assert!(req_urls1.contains(&"wss://r1/"), "first compile must REQ alice's relay");
     assert_eq!(lc.compile_count(), 1);
 
-    // Simulate a kind:3 arrival by storing it in the event store + issuing an
-    // InvalidateCompile trigger (the seam that M2 phase-2 will replace with
-    // A11 FollowListChanged when the ingest pipeline grows the trigger enum).
+    // Store the kind:3 in the harness (exercises the store path the real
+    // ingest fan calls before emitting the trigger).
     let h = StoreHarness::mem();
     let kind3 = h.make_event_with_tags(ALICE_HEX, 3, 2_000, vec![
         vec!["p".to_string(), pubkey("bob")],
@@ -92,13 +90,16 @@ fn c5_kind3_change_recompiles_follow_dependent_subs() {
     // "bob" has a mailbox — wire it so the recompile finds a route.
     lc.set_mailbox(pubkey("bob"), &["wss://r2/"]);
 
-    // Expand the follow-list interest to include bob (as if FollowListChanged
-    // rebuilt the authors set from the just-stored kind:3).
+    // Expand the follow-list interest to include bob (synthetic stand-in for
+    // the M11 ViewModule rebuild; the trigger does not rewrite registry
+    // entries — that is the ViewModule's responsibility).
     lc.registry_mut().push(tailing_interest(1, &["alice", "bob"]));
 
-    // Fire the invalidation trigger (A6).
-    lc.enqueue_trigger(CompileTrigger::InvalidateCompile {
-        reason: InvalidateReason::TestForceRecompile,
+    // Fire the real A11 FollowListChanged trigger (replaces the old A6
+    // InvalidateCompile placeholder used before this variant existed).
+    lc.enqueue_trigger(CompileTrigger::FollowListChanged {
+        account_id: AccountId(pubkey("alice")),
+        new_follows: vec![pubkey("bob")],
     });
 
     // drain_tick must recompile and emit the new REQ diff.

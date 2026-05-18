@@ -63,7 +63,7 @@ pub enum InvalidateReason {
 
 // ─── CompileTrigger ─────────────────────────────────────────────────────────
 
-/// The ten canonical recompilation triggers from
+/// The eleven canonical recompilation triggers from
 /// `docs/design/subscription-compilation/recompilation.md` §4.1.
 ///
 /// All triggers fan into the actor's trigger inbox. Per-tick coalescing
@@ -115,6 +115,20 @@ pub enum CompileTrigger {
         account: AccountId,
         signer_id: SignerId,
     },
+    /// A11 — active account's kind:3 contact list replaced with a fresher
+    /// event. Emitted by the kind:3 ingest fan after `Inserted | Replaced`
+    /// from the event store (D4). The compiler re-runs every ViewModule whose
+    /// `dependencies()` declares `kind 3` or whose `interests()` consumes the
+    /// active account's follow-set as a filter shape input.
+    ///
+    /// `new_follows` is the extracted "p"-tagged pubkey vec from the fresher
+    /// kind:3; callers may use it to update view-module author sets before
+    /// triggering the recompile. The compiler itself does not inspect this
+    /// field — it recompiles unconditionally when this trigger fires.
+    FollowListChanged {
+        account_id: AccountId,
+        new_follows: Vec<String>,
+    },
 }
 
 impl CompileTrigger {
@@ -147,6 +161,15 @@ mod tests {
     fn invalidate_compile_requires_recompile() {
         let t = CompileTrigger::InvalidateCompile {
             reason: InvalidateReason::TestForceRecompile,
+        };
+        assert!(t.requires_recompile());
+    }
+
+    #[test]
+    fn follow_list_changed_requires_recompile() {
+        let t = CompileTrigger::FollowListChanged {
+            account_id: AccountId("alice".to_string()),
+            new_follows: vec!["bob".to_string()],
         };
         assert!(t.requires_recompile());
     }
