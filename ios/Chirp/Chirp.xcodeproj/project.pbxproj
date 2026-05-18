@@ -27,14 +27,15 @@
 		D08889E779C6991EF8540EAC /* ThreadNoteRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF4D140423145993963B8F23 /* ThreadNoteRow.swift */; };
 		D93F87FAB4BDD5BB307789C0 /* KernelModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3808C5C6482C44109C442925 /* KernelModel.swift */; };
 		E6AF81962D62F30FDB2F4F35 /* NoteRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6ADE8B08D5ABD0EA510EDC /* NoteRowView.swift */; };
-		AA11BB22CC33DD44EE55FF66 /* NoteContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11BB22CC33DD44EE55FF67 /* NoteContentView.swift */; };
 		EA0318372F152947A645ADC8 /* ProfileNoteRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C170D9BAEF17D256061902E9 /* ProfileNoteRow.swift */; };
+		EADA12AFFA8D08461F19DFA7 /* NoteContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ED689DD9659151162F819BC /* NoteContentView.swift */; };
 		FD278220A9E454AE75608FE8 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABF5AA8E2264637D1CA3BCA4 /* SearchView.swift */; };
 		FDD2055AA0756C779D63C6C4 /* NmpPulseCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = D54123F5D11729471B341A4E /* NmpPulseCapabilities.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		1B303905AEF1833128E7C6BC /* KernelBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KernelBridge.swift; sourceTree = "<group>"; };
+		1ED689DD9659151162F819BC /* NoteContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteContentView.swift; sourceTree = "<group>"; };
 		2C01000494AC737F8F8E286D /* ThreadScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadScreen.swift; sourceTree = "<group>"; };
 		2F9E4580C1A561577607FE7A /* AccountsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountsView.swift; sourceTree = "<group>"; };
 		31F55FC6A139DA43D434DBF9 /* RootShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootShell.swift; sourceTree = "<group>"; };
@@ -45,7 +46,6 @@
 		6642DD3D8D6000AC2E047C03 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		7BA43E598F11A1CE9FEC7D6F /* SettingsHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsHubView.swift; sourceTree = "<group>"; };
 		7D6ADE8B08D5ABD0EA510EDC /* NoteRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteRowView.swift; sourceTree = "<group>"; };
-		AA11BB22CC33DD44EE55FF67 /* NoteContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteContentView.swift; sourceTree = "<group>"; };
 		886A82F866183EB8C3674AD1 /* NmpCore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NmpCore.h; sourceTree = "<group>"; };
 		8C88FE40DE954EED68068786 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
 		900229FDEE3330B7264E8A33 /* WalletView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletView.swift; sourceTree = "<group>"; };
@@ -68,7 +68,7 @@
 			isa = PBXGroup;
 			children = (
 				5EB771E148A6FCB120C2ADCF /* AccountAvatar.swift */,
-				AA11BB22CC33DD44EE55FF67 /* NoteContentView.swift */,
+				1ED689DD9659151162F819BC /* NoteContentView.swift */,
 				7D6ADE8B08D5ABD0EA510EDC /* NoteRowView.swift */,
 				C170D9BAEF17D256061902E9 /* ProfileNoteRow.swift */,
 				BF4D140423145993963B8F23 /* ThreadNoteRow.swift */,
@@ -231,7 +231,7 @@
 				D93F87FAB4BDD5BB307789C0 /* KernelModel.swift in Sources */,
 				998745C91A2392EBF235E258 /* KeychainCapability.swift in Sources */,
 				FDD2055AA0756C779D63C6C4 /* NmpPulseCapabilities.swift in Sources */,
-				AA11BB22CC33DD44EE55FF66 /* NoteContentView.swift in Sources */,
+				EADA12AFFA8D08461F19DFA7 /* NoteContentView.swift in Sources */,
 				E6AF81962D62F30FDB2F4F35 /* NoteRowView.swift in Sources */,
 				BA5D10F42934B36256492BCC /* NotificationsView.swift in Sources */,
 				82CC2009FF54F2B7DAD35B06 /* OnboardingView.swift in Sources */,
