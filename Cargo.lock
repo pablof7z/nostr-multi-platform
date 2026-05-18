@@ -2346,6 +2346,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-app-chirp"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "nmp-nip01",
+ "nmp-threading",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nmp-app-fixture"
 version = "0.1.0"
 dependencies = [
