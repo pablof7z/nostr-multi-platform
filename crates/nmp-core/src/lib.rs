@@ -11,6 +11,17 @@ pub mod substrate;
 pub use app::{AppState, KernelAction, KernelUpdate, KernelViewSpec};
 pub use ffi::NmpApp;
 
+// Re-export the FFI entry-points so the ffi-stress harness (and any other
+// Rust-side crate) can call them directly via the Rust rlib dependency,
+// without an `extern "C"` block. The symbols remain `#[no_mangle]` on the
+// ffi:: side and are still reachable from Swift/C unchanged.
+#[cfg(any(test, feature = "test-support"))]
+pub use ffi::{
+    nmp_app_claim_profile, nmp_app_close_author, nmp_app_configure, nmp_app_free, nmp_app_new,
+    nmp_app_open_author, nmp_app_open_firehose_tag, nmp_app_release_profile,
+    nmp_app_set_update_callback, nmp_app_start,
+};
+
 /// Test-support facade: gives live-bench binaries access to the actor
 /// internals without exposing domain nouns in the stable `nmp-core` API.
 ///

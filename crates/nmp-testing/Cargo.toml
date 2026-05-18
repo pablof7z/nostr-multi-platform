@@ -23,7 +23,8 @@ name = "firehose-bench"
 path = "bin/firehose-bench/main.rs"
 
 # M10.5 FFI hardening harness — S1..S5 (phase 1)
-# Drives nmp_app_* C symbols via extern "C" declarations (same ABI as Swift).
+# Links nmp_app_* FFI symbols via the Rust rlib dependency with test-support
+# feature; exercises the identical code paths Swift uses via extern "C" ABI.
 [[bin]]
 name = "ffi-stress"
 path = "bin/ffi-stress/main.rs"
