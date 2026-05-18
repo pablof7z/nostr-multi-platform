@@ -88,6 +88,30 @@ impl Kernel {
         }
     }
 
+    /// Resolve a single author's relays for **discovery** fetches (kind:0/3/10002).
+    ///
+    /// Cold-start: no cached kind:10002 ⇒ ONLY [`crate::relay::INDEXER_RELAY_URL`]
+    /// (purplepag.es). Unlike `author_write_relays`, the content relay (damus.io)
+    /// is never included — profile-claim REQs must not go there.
+    /// NIP-65 known: returns the author's declared write relays (they published
+    /// kind:0 there, so that is the right place to read it back).
+    pub(crate) fn author_indexer_relays(&self, author: &str) -> Vec<String> {
+        match self.author_relay_lists.get(author) {
+            Some(list) if !list.write_relays.is_empty() || !list.both_relays.is_empty() => {
+                let mut out: Vec<String> = list
+                    .write_relays
+                    .iter()
+                    .chain(list.both_relays.iter())
+                    .cloned()
+                    .collect();
+                out.sort();
+                out.dedup();
+                out
+            }
+            _ => vec![crate::relay::INDEXER_RELAY_URL.to_string()],
+        }
+    }
+
     /// Resolve a single recipient's NIP-65 **read** relays (inbox direction —
     /// the relays a `#p`-tagged pubkey reads, where notifications/DMs land).
     ///

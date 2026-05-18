@@ -317,7 +317,7 @@ mod tests {
         CompiledPlan {
             plan_id: "test".to_string(),
             per_relay,
-            unroutable_authors: std::collections::BTreeSet::new(),
+            unroutable_authors: BTreeSet::new(),
         }
     }
 

@@ -228,17 +228,54 @@ impl Kernel {
     }
 
     pub(crate) fn pending_profile_claim_requests(&mut self) -> Vec<OutboundMessage> {
-        let authors = self.pending_profiles.iter().cloned().collect::<Vec<_>>();
-        let mut requests = Vec::new();
-        for author in authors {
-            if self.profile_claims.contains_key(&author)
-                && !self.profiles.contains_key(&author)
-                && !self.requested_profiles.contains(&author)
-            {
-                requests.extend(self.profile_claim_request(author));
-            } else {
-                self.pending_profiles.remove(&author);
+        // Collect valid pending authors: have an active claim, not already fetched/inflight.
+        let authors: Vec<String> = self
+            .pending_profiles
+            .iter()
+            .filter(|pk| {
+                self.profile_claims.contains_key(*pk)
+                    && !self.profiles.contains_key(*pk)
+                    && !self.requested_profiles.contains(*pk)
+            })
+            .cloned()
+            .collect();
+
+        if authors.is_empty() {
+            // Evict any pending that have no active claim (consumer released before relay connected).
+            self.pending_profiles
+                .retain(|pk| self.profile_claims.contains_key(pk));
+            return Vec::new();
+        }
+
+        // Group authors by relay — cold-start → INDEXER only; NIP-65 known → write relays.
+        let mut by_relay: std::collections::BTreeMap<String, Vec<String>> =
+            std::collections::BTreeMap::new();
+        for author in &authors {
+            for relay_url in self.author_indexer_relays(author) {
+                by_relay.entry(relay_url).or_default().push(author.clone());
             }
+        }
+
+        // Mark all as requested and remove from pending.
+        for author in &authors {
+            self.pending_profiles.remove(author);
+            self.requested_profiles.insert(author.clone());
+        }
+
+        // One batched REQ per relay with all authors in a single `authors` array.
+        self.profile_req_seq = self.profile_req_seq.saturating_add(1);
+        let seq = self.profile_req_seq;
+        let mut requests = Vec::new();
+        for (relay_url, relay_authors) in by_relay {
+            let tag = relay_tag(&relay_url);
+            let n = relay_authors.len();
+            requests.push(self.req_for_relay(
+                RelayRole::Indexer,
+                relay_url,
+                &format!("profile-batch-{seq}-{tag}"),
+                &format!("batched profile claims ({n})"),
+                json!({"kinds":[0],"authors": relay_authors,"limit": n}),
+            ));
         }
         requests
     }
@@ -250,12 +287,11 @@ impl Kernel {
         }
         self.profile_req_seq = self.profile_req_seq.saturating_add(1);
         let seq = self.profile_req_seq;
-        // T105: kind:0 is a discovery fetch. If the author's NIP-65 is cached
-        // their declared write relays are the right place to read kind:0 (the
-        // author published it there); otherwise the bootstrap discovery seed
-        // serves the cold-start lookup. Fan out one REQ per resolved relay.
+        // T105: kind:0 is a discovery fetch. Cold-start → INDEXER relay only
+        // (purplepag.es). NIP-65 known → declared write relays (the author
+        // published kind:0 there). Never send to the content relay (damus.io).
         let mut requests = Vec::new();
-        for relay_url in self.author_write_relays(&pubkey) {
+        for relay_url in self.author_indexer_relays(&pubkey) {
             let tag = relay_tag(&relay_url);
             requests.push(self.req_for_relay(
                 RelayRole::Indexer,

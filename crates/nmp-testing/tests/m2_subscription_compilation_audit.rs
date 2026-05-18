@@ -25,8 +25,6 @@ use nmp_core::planner::{
     InterestShape,
     LogicalInterest,
     NaddrCoord,
-    RoutingSource,
-    UserConfiguredCategory,
 };
 use std::collections::BTreeSet;
 
@@ -256,13 +254,19 @@ fn address_pointer_dedup_across_two_interests() {
     );
 }
 
-// ─── Fallback to indexer set when no mailbox known ───────────────────────────
+// ─── Unroutable when no mailbox AND no app_relays ────────────────────────────
 
-/// Authors with no known mailbox route to the indexer set with source = Indexer.
+/// Authors with no known mailbox AND no `app_relays` configured route to
+/// `CompiledPlan::unroutable_authors` — the indexer is for discovery only,
+/// NEVER a content fallback (T134; see `feat(planner): app_relays + drop
+/// indexer fallback for content`).
 #[test]
-fn unknown_author_falls_back_to_indexer() {
+fn unknown_author_with_no_app_relays_becomes_unroutable() {
     let cache = InMemoryMailboxCache::new(); // empty
     let indexer = vec![relay("wss://purplepag.es")];
+    // SubscriptionCompiler::new defaults app_relays = &[] — so an author with no
+    // mailbox AND no app_relays has no content lane and must land in
+    // `unroutable_authors`, not on the indexer.
     let compiler = SubscriptionCompiler::new(&cache, &indexer);
 
     let interest = LogicalInterest {
@@ -279,17 +283,16 @@ fn unknown_author_falls_back_to_indexer() {
 
     let plan = compiler.compile(&[interest]).expect("compile");
 
-    // Assert: routes to the indexer.
+    // Assert: unknown author is recorded in `unroutable_authors` so the
+    // kernel can surface a "no relays to fetch from" toast.
     assert!(
-        plan.per_relay.contains_key("wss://purplepag.es"),
-        "unknown author must fall back to indexer relay"
+        plan.unroutable_authors.contains(&pubkey("unknown_alice")),
+        "unknown author with no app_relays must be recorded in unroutable_authors"
     );
-    let rp = &plan.per_relay["wss://purplepag.es"];
-    // Indexer fallback is lane 4 (UserConfigured/Indexer) per diagnostics.md §5.0 + ADR-0007.
-    // There is NO RoutingSource::Indexer variant — indexer is a subcategory of UserConfigured.
+    // Assert: indexer is NOT used as a content fallback.
     assert!(
-        rp.role_tags.contains(&RoutingSource::UserConfigured(UserConfiguredCategory::Indexer)),
-        "routing source for indexer fallback must be UserConfigured(Indexer), not a fifth lane"
+        !plan.per_relay.contains_key("wss://purplepag.es"),
+        "indexer must NOT receive content REQs for unknown authors (T134: discovery-only)"
     );
 }
 

@@ -110,7 +110,7 @@ pub(crate) fn jittered_backoff(base: Duration, url: &str) -> Duration {
     let hash = url
         .bytes()
         .fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
-    let jitter_ms = (hash % 5000) as u64; // 0–4999 ms spread
+    let jitter_ms = hash % 5000; // 0–4999 ms spread
     base + Duration::from_millis(jitter_ms)
 }
 

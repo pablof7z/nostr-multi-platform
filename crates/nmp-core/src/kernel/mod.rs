@@ -40,6 +40,8 @@ mod publish_engine_wire;
 mod replay;
 #[cfg(test)]
 mod replay_tests;
+#[cfg(test)]
+mod profile_claim_tests;
 mod reply;
 mod requests;
 #[cfg(test)]

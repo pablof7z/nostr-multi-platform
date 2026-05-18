@@ -49,12 +49,26 @@ impl StoreHarness {
 
     /// Create a harness backed by `LmdbEventStore` in a temporary directory.
     ///
-    /// Only available with `--features lmdb-backend`.
+    /// Only available with `--features lmdb-backend`. Uses a process-unique
+    /// path (`pid + counter + nanos`) — `uuid` is intentionally not a dep of
+    /// `nmp-testing`, and parallel tests get a fresh path per call.
     #[cfg(feature = "lmdb-backend")]
     pub fn lmdb() -> Self {
         use nmp_core::store::LmdbEventStore;
-        use std::path::PathBuf;
-        let tmp = std::env::temp_dir().join(format!("nmp-test-{}", uuid::new_v4()));
+        use std::sync::atomic::{AtomicU64, Ordering as AOrdering};
+        use std::time::{SystemTime, UNIX_EPOCH};
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        let seq = COUNTER.fetch_add(1, AOrdering::SeqCst);
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let tmp = std::env::temp_dir().join(format!(
+            "nmp-test-{}-{}-{}",
+            std::process::id(),
+            seq,
+            nanos
+        ));
         std::fs::create_dir_all(&tmp).expect("create lmdb temp dir");
         Self {
             store: Box::new(LmdbEventStore::open(&tmp).expect("open lmdb store")),

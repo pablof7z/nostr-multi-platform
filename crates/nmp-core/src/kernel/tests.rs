@@ -202,9 +202,8 @@ fn profile_claims_are_ui_driven_and_deduped_by_pubkey() {
         true,
     );
 
-    // T105: cold-start claim fans out to each bootstrap discovery seed.
-    let n_seeds = crate::relay::BOOTSTRAP_DISCOVERY_RELAYS.len();
-    assert_eq!(first.len(), n_seeds);
+    // Cold-start profile claim must go to the indexer relay ONLY (not the content relay).
+    assert_eq!(first.len(), 1, "cold-start profile claim must emit exactly one REQ");
     assert!(second.is_empty());
     let joined = first
         .iter()
@@ -215,9 +214,10 @@ fn profile_claims_are_ui_driven_and_deduped_by_pubkey() {
     assert!(joined.contains("\"kinds\":[0]"));
     assert!(joined.contains(FIATJAF_PUBKEY));
     for r in &first {
-        assert!(
-            crate::relay::BOOTSTRAP_DISCOVERY_RELAYS.contains(&r.relay_url.as_str()),
-            "cold-start profile claim routes to bootstrap, got {}",
+        assert_eq!(
+            r.relay_url.as_str(),
+            crate::relay::INDEXER_RELAY_URL,
+            "cold-start profile claim must route to indexer only, got {}",
             r.relay_url
         );
     }
