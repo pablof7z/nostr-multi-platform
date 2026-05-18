@@ -17,6 +17,7 @@ mod discovery_tests;
 mod identity_state;
 mod ingest;
 mod nostr;
+mod outbox;
 mod publish_cmd;
 mod requests;
 mod status;
