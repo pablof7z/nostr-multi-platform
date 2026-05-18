@@ -22,6 +22,13 @@ data class EpisodeRowPayload(
     val title: String = "",
     val podcastTitle: String = "",
     val podcastArtworkUrl: String? = null,
+    /**
+     * The ULID string of the parent podcast. Projected by Rust (T-podcast-android-8)
+     * so the NowPlaying mini-player can navigate to EpisodeDetail from any screen
+     * without the host maintaining a separate lookup table (D5).
+     * Defaults to empty string so an older snapshot still decodes cleanly (D1).
+     */
+    val podcastId: String = "",
     val summary: String? = null,
     val durationStr: String = "",
     /** Human-readable publication date, e.g. "Jan 1, 2024". Empty when feed omitted pubDate. */

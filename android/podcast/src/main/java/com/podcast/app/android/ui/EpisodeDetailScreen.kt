@@ -1,6 +1,5 @@
 package com.podcast.app.android.ui
 
-import android.content.ComponentName
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,29 +34,30 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
-import androidx.media3.session.SessionToken
-import com.google.common.util.concurrent.ListenableFuture
 import com.podcast.app.android.model.EpisodeRowPayload
-import com.podcast.app.android.playback.PodcastPlaybackService
 import kotlinx.coroutines.delay
 
 /**
  * Episode detail screen with real ExoPlayer audio playback.
  *
- * T-podcast-android-7: wires the Play button to an [ExoPlayer] hosted in
+ * T-podcast-android-7: wires the Play button to an ExoPlayer hosted in
  * [PodcastPlaybackService] (foreground MediaSessionService) via [MediaController].
  * Playback survives screen-off. MVP scope: play / pause / elapsed position display.
  *
+ * T-podcast-android-8: [controller] is now HOISTED from [MainActivity] — one
+ * shared session connection used by both this screen and [NowPlayingMiniPlayer].
+ * [onPlay] is called when the user initiates playback so the ViewModel tracks
+ * [PodcastKernelModel.nowPlaying] for app-wide mini-player visibility.
+ *
  * D6 honest states:
  *   - [audioUrl] empty → Play button disabled + "No audio available" label.
- *   - Connecting to session → button disabled while controller is being obtained.
+ *   - [controller] null → button disabled while the session is being obtained.
  *   - Playing → shows Pause button.
  *   - Paused / stopped → shows Play button.
  *
@@ -74,47 +74,16 @@ import kotlinx.coroutines.delay
 @Composable
 fun EpisodeDetailScreen(
     episode: EpisodeRowPayload,
+    controller: MediaController?,
+    onPlay: (EpisodeRowPayload) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     val hasAudio = episode.audioUrl.isNotEmpty()
 
-    // MediaController is nullable while the session connection is being established.
-    var controller by remember { mutableStateOf<MediaController?>(null) }
-    var controllerFuture by remember { mutableStateOf<ListenableFuture<MediaController>?>(null) }
-
-    // Playback state observed from the controller.
-    var isPlaying by remember { mutableStateOf(false) }
-    var positionMs by remember { mutableLongStateOf(0L) }
-
-    // Connect to PodcastPlaybackService via MediaController.
-    DisposableEffect(Unit) {
-        if (!hasAudio) return@DisposableEffect onDispose {}
-
-        val token = SessionToken(
-            context,
-            ComponentName(context, PodcastPlaybackService::class.java),
-        )
-        val future = MediaController.Builder(context, token).buildAsync()
-        controllerFuture = future
-
-        future.addListener(
-            {
-                val ctrl = runCatching { future.get() }.getOrNull() ?: return@addListener
-                controller = ctrl
-                isPlaying = ctrl.isPlaying
-            },
-            { runnable -> runnable.run() }, // direct executor — already on main thread callback
-        )
-
-        onDispose {
-            controller?.release()
-            controller = null
-            MediaController.releaseFuture(future)
-            controllerFuture = null
-        }
-    }
+    // Playback state observed from the hoisted controller.
+    var isPlaying by remember { mutableStateOf(controller?.isPlaying ?: false) }
+    var positionMs by remember { mutableLongStateOf(controller?.currentPosition ?: 0L) }
 
     // Poll position every 500 ms while playing (lightweight — ExoPlayer is the truth).
     LaunchedEffect(isPlaying) {
@@ -124,9 +93,13 @@ fun EpisodeDetailScreen(
         }
     }
 
-    // Keep isPlaying in sync via a Player.Listener.
+    // Keep isPlaying in sync via a Player.Listener on the hoisted controller.
     DisposableEffect(controller) {
         val ctrl = controller ?: return@DisposableEffect onDispose {}
+        // Sync initial state from the controller (mini-player may have changed it).
+        isPlaying = ctrl.isPlaying
+        positionMs = ctrl.currentPosition
+
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
@@ -234,13 +207,16 @@ fun EpisodeDetailScreen(
                             if (ctrl.isPlaying) {
                                 ctrl.pause()
                             } else {
-                                // If controller isn't already on this episode, set the item.
-                                val currentUri = ctrl.currentMediaItem?.localConfiguration?.uri?.toString()
+                                // Switch to this episode if not already loaded.
+                                val currentUri =
+                                    ctrl.currentMediaItem?.localConfiguration?.uri?.toString()
                                 if (currentUri != episode.audioUrl) {
                                     ctrl.setMediaItem(MediaItem.fromUri(episode.audioUrl))
                                     ctrl.prepare()
                                 }
                                 ctrl.play()
+                                // Notify the model so the mini-player becomes visible.
+                                onPlay(episode)
                             }
                         },
                         enabled = controller != null,
@@ -292,7 +268,7 @@ fun EpisodeDetailScreen(
                 }
             }
 
-            // Bottom padding so content clears the navigation bar.
+            // Bottom padding so content clears the mini-player + navigation bar.
             Box(modifier = Modifier.padding(bottom = 24.dp))
         }
     }

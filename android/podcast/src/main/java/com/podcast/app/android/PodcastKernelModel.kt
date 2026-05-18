@@ -78,6 +78,24 @@ class PodcastKernelModel : ViewModel() {
     private val _isRefreshing = MutableStateFlow(false)
     val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
 
+    /**
+     * The episode whose audio is currently loaded in [PodcastPlaybackService].
+     *
+     * Set by the UI when the user initiates playback; cleared when the service
+     * reports [Player.STATE_IDLE] or [Player.STATE_ENDED]. The mini-player uses
+     * this to render title, artwork, and the tap-to-EpisodeDetail route — all
+     * from the Rust-projected [EpisodeRowPayload] with no fabricated state (D6/D8).
+     *
+     * Null = nothing playing → mini-player is hidden (honest state, D6).
+     */
+    private val _nowPlaying = MutableStateFlow<com.podcast.app.android.model.EpisodeRowPayload?>(null)
+    val nowPlaying: StateFlow<com.podcast.app.android.model.EpisodeRowPayload?> = _nowPlaying.asStateFlow()
+
+    /** Called by the UI when the user taps play on an episode. */
+    fun setNowPlaying(episode: com.podcast.app.android.model.EpisodeRowPayload?) {
+        _nowPlaying.value = episode
+    }
+
     private var started = false
 
     fun start() {

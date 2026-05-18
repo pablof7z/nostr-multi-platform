@@ -29,8 +29,8 @@ android {
         applicationId = "com.podcast.app.android"
         minSdk = 26
         targetSdk = 34
-        versionCode = 6
-        versionName = "0.3.0-T-podcast-android-7"
+        versionCode = 7
+        versionName = "0.3.0-T-podcast-android-8"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
 
