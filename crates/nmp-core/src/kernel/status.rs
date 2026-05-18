@@ -60,6 +60,19 @@ impl Kernel {
         statuses
     }
 
+    /// T112 — update the NIP-77 probe state for a relay lane. Called by the
+    /// actor/observer layer when the `nmp-nip77` capability probe transitions
+    /// (`ProbeState::Unknown → Probing → Supported/Unsupported`).  The string
+    /// key must match a `ProbeState` variant name in snake_case:
+    /// `"unknown"`, `"probing"`, `"supported"`, or `"unsupported"`.
+    ///
+    /// `nmp-core` does not import `nmp-nip77` (D0 — cycle would form); the
+    /// caller owns the translation from `ProbeState` to the key string.
+    #[allow(dead_code)] // Wired in by actor observer once nmp-nip77 CapabilityCache is plumbed
+    pub(crate) fn set_nip77_probe_state(&mut self, role: RelayRole, state_key: &str) {
+        self.relay_mut(role).nip77_probe_state = state_key.to_string();
+    }
+
     pub(super) fn relay_status_for(&self, role: RelayRole) -> RelayStatus {
         let relay = self.relay(role);
         RelayStatus {
@@ -67,7 +80,7 @@ impl Kernel {
             relay_url: role.url().to_string(),
             connection: relay.connection.clone(),
             auth: relay.auth.clone(),
-            nip77_negentropy: "unknown".to_string(),
+            nip77_negentropy: relay.nip77_probe_state.clone(),
             active_wire_subscriptions: self
                 .wire_subs
                 .values()
@@ -366,5 +379,63 @@ impl Kernel {
         while self.logs.len() > 80 {
             self.logs.pop_front();
         }
+    }
+}
+
+// T112 — NIP-77 probe state projection tests.
+#[cfg(test)]
+mod nip77_status_tests {
+    use super::*;
+    use crate::relay::DEFAULT_VISIBLE_LIMIT;
+
+    #[test]
+    fn t112_nip77_probe_state_projected_into_relay_status() {
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+        // Default: both bootstrap roles report "unknown".
+        let statuses = kernel.relay_statuses();
+        for s in &statuses {
+            if s.role == "content" || s.role == "indexer" {
+                assert_eq!(
+                    s.nip77_negentropy, "unknown",
+                    "default probe state must be 'unknown' for role {}",
+                    s.role
+                );
+            }
+        }
+
+        // After the actor/observer calls set_nip77_probe_state, the projection
+        // reflects the new state on the matching lane.
+        kernel.set_nip77_probe_state(RelayRole::Content, "probing");
+        let statuses = kernel.relay_statuses();
+        let content_row = statuses
+            .iter()
+            .find(|s| s.role == "content")
+            .expect("content relay row must be present");
+        assert_eq!(
+            content_row.nip77_negentropy, "probing",
+            "relay_statuses() must reflect the updated probe state on the content lane"
+        );
+
+        // Indexer lane is unaffected.
+        let indexer_row = statuses
+            .iter()
+            .find(|s| s.role == "indexer")
+            .expect("indexer relay row must be present");
+        assert_eq!(
+            indexer_row.nip77_negentropy, "unknown",
+            "indexer lane must remain 'unknown' after updating only the content lane"
+        );
+
+        // Terminal states round-trip correctly.
+        kernel.set_nip77_probe_state(RelayRole::Content, "supported");
+        let statuses = kernel.relay_statuses();
+        let content_row = statuses.iter().find(|s| s.role == "content").unwrap();
+        assert_eq!(content_row.nip77_negentropy, "supported");
+
+        kernel.set_nip77_probe_state(RelayRole::Content, "unsupported");
+        let statuses = kernel.relay_statuses();
+        let content_row = statuses.iter().find(|s| s.role == "content").unwrap();
+        assert_eq!(content_row.nip77_negentropy, "unsupported");
     }
 }
