@@ -15,14 +15,13 @@
 //!   engine; the snapshot is derived from it.
 //! - D5 (snapshots bounded by what's open): the view payload is small and
 //!   only carries currently-pending plus a bounded recent window.
-//! - D6 (errors never cross FFI as exceptions): every failure path lands on
-//!   the snapshot as `RecentFailure`, or on the ledger as a structured
-//!   `PublishOutcome::FailedAfterRetries`.
+//! - D6 (errors never cross FFI as exceptions): publish failures are represented
+//!   in `RecentFailure` entries and coarse `PublishOutcome` values.
 //! - D7 (capabilities report): the `RelayDispatcher` shim returns raw
 //!   transport results (`RelayAck`); the engine decides the policy.
-//! - D8 (≤60 Hz/view): the view payload bumps `rev` once per coalesced
-//!   delta batch, not once per ack — the engine batches per-event acks
-//!   before notifying.
+//! - D8 (≤60 Hz/view): the view payload exposes a monotonic `rev` so the
+//!   projection bridge can coalesce publish-status changes under the view
+//!   emission budget.
 
 mod action;
 mod engine;
@@ -46,6 +45,6 @@ pub use traits::{
     StaticOutbox,
 };
 pub use view::{
-    EventPublishStatus, PublishStatusSnapshot, PublishStatusSpec, PublishStatusView,
-    RecentFailure, RecentSuccess,
+    EventPublishStatus, PublishStatusSnapshot, PublishStatusSpec, PublishStatusView, RecentFailure,
+    RecentSuccess,
 };

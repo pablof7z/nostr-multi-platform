@@ -60,11 +60,26 @@ pub enum AckClass {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum PerRelayState {
     Pending,
-    InFlight { sent_at_ms: u64, attempt: u32 },
-    Ok { acked_at_ms: u64 },
-    RelayError { message: String, attempt: u32, last_at_ms: u64 },
-    TimedOut { attempt: u32, last_at_ms: u64 },
-    FailedAfterRetries { reason: String, last_at_ms: u64 },
+    InFlight {
+        sent_at_ms: u64,
+        attempt: u32,
+    },
+    Ok {
+        acked_at_ms: u64,
+    },
+    RelayError {
+        message: String,
+        attempt: u32,
+        last_at_ms: u64,
+    },
+    TimedOut {
+        attempt: u32,
+        last_at_ms: u64,
+    },
+    FailedAfterRetries {
+        reason: String,
+        last_at_ms: u64,
+    },
 }
 
 impl PerRelayState {
@@ -154,31 +169,51 @@ pub fn apply_ack(
     let attempt = state.attempt().max(1);
     match (state, ack) {
         (PerRelayState::InFlight { .. }, RelayAck::Ok { .. }) => {
-            RetryVerdict::Settled(PerRelayState::Ok { acked_at_ms: now_ms })
+            RetryVerdict::Settled(PerRelayState::Ok {
+                acked_at_ms: now_ms,
+            })
         }
         (
             PerRelayState::InFlight { .. },
-            RelayAck::Failed { message, class: AckClass::Permanent, .. },
+            RelayAck::Failed {
+                message,
+                class: AckClass::Permanent,
+                ..
+            },
         ) => RetryVerdict::Settled(PerRelayState::FailedAfterRetries {
             reason: message.clone(),
             last_at_ms: now_ms,
         }),
         (
             PerRelayState::InFlight { .. },
-            RelayAck::Failed { message, class: AckClass::AuthRequired, .. },
+            RelayAck::Failed {
+                message,
+                class: AckClass::AuthRequired,
+                ..
+            },
         ) => {
             if attempt > policy.auth_required_max_retries {
                 RetryVerdict::Settled(PerRelayState::FailedAfterRetries {
-                    reason: format!("auth-required after {} reauth attempts: {}", attempt, message),
+                    reason: format!(
+                        "auth-required after {} reauth attempts: {}",
+                        attempt, message
+                    ),
                     last_at_ms: now_ms,
                 })
             } else {
-                RetryVerdict::Reauth { delay_ms: 0, next_attempt: attempt + 1 }
+                RetryVerdict::Reauth {
+                    delay_ms: 0,
+                    next_attempt: attempt + 1,
+                }
             }
         }
         (
             PerRelayState::InFlight { .. },
-            RelayAck::Failed { message, class: AckClass::Transient, .. },
+            RelayAck::Failed {
+                message,
+                class: AckClass::Transient,
+                ..
+            },
         ) => {
             if attempt >= policy.transient_max_retries {
                 RetryVerdict::Settled(PerRelayState::FailedAfterRetries {

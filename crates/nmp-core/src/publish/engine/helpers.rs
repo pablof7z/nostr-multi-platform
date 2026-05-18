@@ -45,7 +45,10 @@ pub(super) fn dispatch_due(
             continue;
         }
         let attempt = state.attempt().saturating_add(1).max(1);
-        *state = PerRelayState::InFlight { sent_at_ms: now_ms, attempt };
+        *state = PerRelayState::InFlight {
+            sent_at_ms: now_ms,
+            attempt,
+        };
         in_flight.pending_retries.remove(relay_url);
         in_flight.dirty = true;
         acks.extend(dispatcher.dispatch(relay_url, frame));
@@ -67,7 +70,10 @@ pub(super) fn apply_verdict(
             *state = next;
             in_flight.dirty = true;
         }
-        RetryVerdict::ScheduleRetry { delay_ms, next_attempt } => {
+        RetryVerdict::ScheduleRetry {
+            delay_ms,
+            next_attempt,
+        } => {
             *state = PerRelayState::RelayError {
                 message: format!("retry scheduled (attempt {})", next_attempt),
                 attempt: next_attempt - 1,
@@ -78,7 +84,10 @@ pub(super) fn apply_verdict(
                 .insert(relay_url.to_string(), now_ms.saturating_add(delay_ms));
             in_flight.dirty = true;
         }
-        RetryVerdict::Reauth { delay_ms, next_attempt } => {
+        RetryVerdict::Reauth {
+            delay_ms,
+            next_attempt,
+        } => {
             // M6 signer integration: the engine will call sign_auth, dispatch
             // AUTH, then re-dispatch the original publish on success. Until M6
             // lands the auth-required path is modelled as a transient retry —

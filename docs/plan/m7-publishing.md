@@ -23,8 +23,8 @@ to `crates/nmp-publish/` when the engine acquires its own dependency tree):
   policy: AUTH-REQUIRED → reauth + 1 retry; transient → 3 retries at 1s /
   4s / 16s.
 - `PublishStatusView` view module with bounded snapshot: `in_flight`,
-  `recent_ok` (cap 32), `recent_errors` (cap 32), `rev` (one bump per
-  coalesced batch — D8).
+  `recent_ok` (cap 32), `recent_errors` (cap 32), `rev` (change marker for
+  D8 projection coalescing).
 - Trait shims for dependencies that have not yet landed: `Signer` (M6 #43),
   `RelayDispatcher` (M8 RelayManager #46), `OutboxResolver` (M2 NIP-65),
   `PublishStore` (M3 LMDB). Each shim has an `InMemory*` / `Static*` /
@@ -45,8 +45,8 @@ to `crates/nmp-publish/` when the engine acquires its own dependency tree):
 - D7 (capabilities report, never decide): `RelayDispatcher` returns raw
   `RelayAck`; classification (`AckClass::AuthRequired | Transient |
   Permanent`) is the engine's; retry-or-give-up is the engine's.
-- D8 (≤60 Hz/view, working set bounded): `rev` bumps once per coalesced
-  ack batch; per-relay updates do NOT each bump rev. Tested.
+- D8 (≤60 Hz/view, working set bounded): `rev` marks publish-status changes;
+  the projection bridge must coalesce/rate-limit emitted deltas.
 
 **Wiring (deferred to dependency milestones).** This milestone delivers the
 engine + traits + tests. The actor / ledger wiring is bundled with the
@@ -76,7 +76,7 @@ the milestones drop in the I/O.
   - `publish_durable_across_restart` — engine instance 1 queues + dies;
     instance 2 resumes from the same `PublishStore` and completes.
   - `publish_dedup_on_same_event_multi_relay_single_rev_per_batch` — 5 relay
-    fan-out, ≤6 rev bumps (start + 5 acks coalesced), one `recent_ok` entry.
+    fan-out, bounded replay-harness rev churn, one `recent_ok` entry.
   - `publish_outcome_classification_matches_per_relay_states` — coarse
     outcome derived from per-relay map.
   - `publish_store_persists_event_for_resume_round_trip` — store contract.

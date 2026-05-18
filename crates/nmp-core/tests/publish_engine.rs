@@ -45,8 +45,10 @@ fn outbox_with(
         author_writes.iter().map(|r| r.to_string()).collect(),
     );
     for (p, reads) in p_reads {
-        o.p_tag_reads
-            .insert((*p).to_string(), reads.iter().map(|r| r.to_string()).collect());
+        o.p_tag_reads.insert(
+            (*p).to_string(),
+            reads.iter().map(|r| r.to_string()).collect(),
+        );
     }
     Arc::new(o)
 }
@@ -71,11 +73,21 @@ fn publish_auto_resolves_outbox() {
     let outbox = outbox_with("alice", &["wss://r1", "wss://r2"], &[]);
     let dispatcher = Arc::new(ReplayDispatcher::new());
     for r in ["wss://r1", "wss://r2"] {
-        dispatcher.script(r, vec![RelayAck::Ok { relay_url: r.to_string() }]);
+        dispatcher.script(
+            r,
+            vec![RelayAck::Ok {
+                relay_url: r.to_string(),
+            }],
+        );
     }
     // A third relay exists in the world but is NOT in alice's kind:10002 — it
     // must NOT receive the publish.
-    dispatcher.script("wss://r3", vec![RelayAck::Ok { relay_url: "wss://r3".to_string() }]);
+    dispatcher.script(
+        "wss://r3",
+        vec![RelayAck::Ok {
+            relay_url: "wss://r3".to_string(),
+        }],
+    );
 
     let store: Arc<dyn PublishStore> = Arc::new(InMemoryPublishStore::new());
     let mut e = engine(outbox, dispatcher.clone(), store);
@@ -113,7 +125,12 @@ fn publish_p_tag_inbox_routing() {
     );
     let dispatcher = Arc::new(ReplayDispatcher::new());
     for r in ["wss://alice-write", "wss://bob-read"] {
-        dispatcher.script(r, vec![RelayAck::Ok { relay_url: r.to_string() }]);
+        dispatcher.script(
+            r,
+            vec![RelayAck::Ok {
+                relay_url: r.to_string(),
+            }],
+        );
     }
     let store: Arc<dyn PublishStore> = Arc::new(InMemoryPublishStore::new());
     let mut e = engine(outbox, dispatcher.clone(), store);
@@ -280,26 +297,32 @@ fn publish_durable_across_restart() {
     e2.resume_from_store(60_000).unwrap();
 
     let snap = e2.snapshot();
-    assert_eq!(snap.recent_ok.len(), 1, "expected resumed publish to succeed");
-    assert!(store.load_pending().unwrap().is_empty(), "store cleared after completion");
+    assert_eq!(
+        snap.recent_ok.len(),
+        1,
+        "expected resumed publish to succeed"
+    );
+    assert!(
+        store.load_pending().unwrap().is_empty(),
+        "store cleared after completion"
+    );
 }
 
 #[test]
 fn publish_dedup_on_same_event_multi_relay_single_rev_per_batch() {
     let outbox = outbox_with(
         "alice",
-        &[
-            "wss://r1",
-            "wss://r2",
-            "wss://r3",
-            "wss://r4",
-            "wss://r5",
-        ],
+        &["wss://r1", "wss://r2", "wss://r3", "wss://r4", "wss://r5"],
         &[],
     );
     let dispatcher = Arc::new(ReplayDispatcher::new());
     for r in ["wss://r1", "wss://r2", "wss://r3", "wss://r4", "wss://r5"] {
-        dispatcher.script(r, vec![RelayAck::Ok { relay_url: r.to_string() }]);
+        dispatcher.script(
+            r,
+            vec![RelayAck::Ok {
+                relay_url: r.to_string(),
+            }],
+        );
     }
     let store: Arc<dyn PublishStore> = Arc::new(InMemoryPublishStore::new());
     let mut e = engine(outbox, dispatcher.clone(), store);
@@ -323,7 +346,11 @@ fn publish_dedup_on_same_event_multi_relay_single_rev_per_batch() {
         "expected ≤6 rev bumps, got {} — coalescer regressed",
         bumps
     );
-    assert_eq!(e.snapshot().recent_ok.len(), 1, "five OK acks coalesce to one recent_ok entry");
+    assert_eq!(
+        e.snapshot().recent_ok.len(),
+        1,
+        "five OK acks coalesce to one recent_ok entry"
+    );
     assert_eq!(e.snapshot().recent_ok[0].accepted_by.len(), 5);
 }
 
@@ -331,33 +358,36 @@ fn publish_dedup_on_same_event_multi_relay_single_rev_per_batch() {
 fn publish_outcome_classification_matches_per_relay_states() {
     use std::collections::BTreeMap;
     let mut all_ok = BTreeMap::new();
-    all_ok.insert(
-        "wss://a".to_string(),
-        PerRelayState::Ok { acked_at_ms: 1 },
-    );
-    all_ok.insert(
-        "wss://b".to_string(),
-        PerRelayState::Ok { acked_at_ms: 1 },
-    );
-    assert!(matches!(outcome_of(&all_ok), PublishOutcome::Accepted { .. }));
+    all_ok.insert("wss://a".to_string(), PerRelayState::Ok { acked_at_ms: 1 });
+    all_ok.insert("wss://b".to_string(), PerRelayState::Ok { acked_at_ms: 1 });
+    assert!(matches!(
+        outcome_of(&all_ok),
+        PublishOutcome::Accepted { .. }
+    ));
 
     let mut mixed = BTreeMap::new();
-    mixed.insert(
-        "wss://a".to_string(),
-        PerRelayState::Ok { acked_at_ms: 1 },
-    );
+    mixed.insert("wss://a".to_string(), PerRelayState::Ok { acked_at_ms: 1 });
     mixed.insert(
         "wss://b".to_string(),
-        PerRelayState::FailedAfterRetries { reason: "x".to_string(), last_at_ms: 2 },
+        PerRelayState::FailedAfterRetries {
+            reason: "x".to_string(),
+            last_at_ms: 2,
+        },
     );
     assert!(matches!(outcome_of(&mixed), PublishOutcome::Mixed { .. }));
 
     let mut all_fail = BTreeMap::new();
     all_fail.insert(
         "wss://a".to_string(),
-        PerRelayState::FailedAfterRetries { reason: "x".to_string(), last_at_ms: 2 },
+        PerRelayState::FailedAfterRetries {
+            reason: "x".to_string(),
+            last_at_ms: 2,
+        },
     );
-    assert!(matches!(outcome_of(&all_fail), PublishOutcome::FailedAfterRetries { .. }));
+    assert!(matches!(
+        outcome_of(&all_fail),
+        PublishOutcome::FailedAfterRetries { .. }
+    ));
 }
 
 #[test]

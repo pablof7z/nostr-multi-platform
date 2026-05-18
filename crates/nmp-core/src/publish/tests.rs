@@ -6,9 +6,7 @@ use std::sync::Arc;
 
 use super::action::{PublishAction, PublishTarget};
 use super::engine::PublishEngine;
-use super::state::{
-    apply_ack, AckClass, PerRelayState, RelayAck, RetryPolicy, RetryVerdict,
-};
+use super::state::{apply_ack, AckClass, PerRelayState, RelayAck, RetryPolicy, RetryVerdict};
 use super::traits::{
     InMemoryPublishStore, NoopSigner, OutboxResolver, ReplayDispatcher, StaticOutbox,
 };
@@ -36,7 +34,11 @@ fn engine_with(
     outbox: Arc<dyn OutboxResolver>,
     dispatcher: Arc<ReplayDispatcher>,
     policy: RetryPolicy,
-) -> (PublishEngine, Arc<InMemoryPublishStore>, Arc<ReplayDispatcher>) {
+) -> (
+    PublishEngine,
+    Arc<InMemoryPublishStore>,
+    Arc<ReplayDispatcher>,
+) {
     let store = Arc::new(InMemoryPublishStore::new());
     let signer = Arc::new(NoopSigner);
     let engine = PublishEngine::new(
@@ -51,8 +53,13 @@ fn engine_with(
 
 #[test]
 fn state_machine_ok_settles_in_one_attempt() {
-    let state = PerRelayState::InFlight { sent_at_ms: 1_000, attempt: 1 };
-    let ack = RelayAck::Ok { relay_url: "wss://r1".to_string() };
+    let state = PerRelayState::InFlight {
+        sent_at_ms: 1_000,
+        attempt: 1,
+    };
+    let ack = RelayAck::Ok {
+        relay_url: "wss://r1".to_string(),
+    };
     let verdict = apply_ack(&state, &ack, RetryPolicy::default(), 1_010);
     match verdict {
         RetryVerdict::Settled(PerRelayState::Ok { acked_at_ms }) => assert_eq!(acked_at_ms, 1_010),
@@ -62,20 +69,29 @@ fn state_machine_ok_settles_in_one_attempt() {
 
 #[test]
 fn state_machine_permanent_error_settles_failed() {
-    let state = PerRelayState::InFlight { sent_at_ms: 1_000, attempt: 1 };
+    let state = PerRelayState::InFlight {
+        sent_at_ms: 1_000,
+        attempt: 1,
+    };
     let ack = RelayAck::Failed {
         relay_url: "wss://r1".to_string(),
         message: "blocked: spam".to_string(),
         class: AckClass::Permanent,
     };
     let verdict = apply_ack(&state, &ack, RetryPolicy::default(), 1_010);
-    assert!(matches!(verdict, RetryVerdict::Settled(PerRelayState::FailedAfterRetries { .. })));
+    assert!(matches!(
+        verdict,
+        RetryVerdict::Settled(PerRelayState::FailedAfterRetries { .. })
+    ));
 }
 
 #[test]
 fn state_machine_transient_retries_with_exponential_backoff() {
     let policy = RetryPolicy::default();
-    let state = PerRelayState::InFlight { sent_at_ms: 1_000, attempt: 1 };
+    let state = PerRelayState::InFlight {
+        sent_at_ms: 1_000,
+        attempt: 1,
+    };
     let ack = RelayAck::Failed {
         relay_url: "wss://r1".to_string(),
         message: "io".to_string(),
@@ -83,7 +99,10 @@ fn state_machine_transient_retries_with_exponential_backoff() {
     };
     let verdict = apply_ack(&state, &ack, policy, 1_010);
     match verdict {
-        RetryVerdict::ScheduleRetry { delay_ms, next_attempt } => {
+        RetryVerdict::ScheduleRetry {
+            delay_ms,
+            next_attempt,
+        } => {
             assert_eq!(delay_ms, 1_000);
             assert_eq!(next_attempt, 2);
         }
@@ -91,10 +110,16 @@ fn state_machine_transient_retries_with_exponential_backoff() {
     }
 
     // Attempt 2 fails again
-    let state = PerRelayState::InFlight { sent_at_ms: 2_010, attempt: 2 };
+    let state = PerRelayState::InFlight {
+        sent_at_ms: 2_010,
+        attempt: 2,
+    };
     let verdict = apply_ack(&state, &ack, policy, 2_020);
     match verdict {
-        RetryVerdict::ScheduleRetry { delay_ms, next_attempt } => {
+        RetryVerdict::ScheduleRetry {
+            delay_ms,
+            next_attempt,
+        } => {
             assert_eq!(delay_ms, 4_000);
             assert_eq!(next_attempt, 3);
         }
@@ -102,7 +127,10 @@ fn state_machine_transient_retries_with_exponential_backoff() {
     }
 
     // Attempt 3 fails — give up
-    let state = PerRelayState::InFlight { sent_at_ms: 6_020, attempt: 3 };
+    let state = PerRelayState::InFlight {
+        sent_at_ms: 6_020,
+        attempt: 3,
+    };
     let verdict = apply_ack(&state, &ack, policy, 6_030);
     assert!(matches!(
         verdict,
@@ -113,7 +141,10 @@ fn state_machine_transient_retries_with_exponential_backoff() {
 #[test]
 fn state_machine_auth_required_triggers_reauth_then_gives_up() {
     let policy = RetryPolicy::default();
-    let state = PerRelayState::InFlight { sent_at_ms: 1_000, attempt: 1 };
+    let state = PerRelayState::InFlight {
+        sent_at_ms: 1_000,
+        attempt: 1,
+    };
     let ack = RelayAck::Failed {
         relay_url: "wss://r1".to_string(),
         message: "AUTH-REQUIRED: please AUTH".to_string(),
@@ -126,7 +157,10 @@ fn state_machine_auth_required_triggers_reauth_then_gives_up() {
     }
 
     // Second auth-required after reauth → give up (max 1 reauth).
-    let state = PerRelayState::InFlight { sent_at_ms: 2_000, attempt: 2 };
+    let state = PerRelayState::InFlight {
+        sent_at_ms: 2_000,
+        attempt: 2,
+    };
     let verdict = apply_ack(&state, &ack, policy, 2_010);
     assert!(matches!(
         verdict,
@@ -153,8 +187,18 @@ fn state_machine_late_ack_for_terminal_is_idempotent() {
 fn engine_explicit_target_dispatches_to_named_relays() {
     let outbox = Arc::new(StaticOutbox::default());
     let dispatcher = Arc::new(ReplayDispatcher::new());
-    dispatcher.script("wss://r1", vec![RelayAck::Ok { relay_url: "wss://r1".to_string() }]);
-    dispatcher.script("wss://r2", vec![RelayAck::Ok { relay_url: "wss://r2".to_string() }]);
+    dispatcher.script(
+        "wss://r1",
+        vec![RelayAck::Ok {
+            relay_url: "wss://r1".to_string(),
+        }],
+    );
+    dispatcher.script(
+        "wss://r2",
+        vec![RelayAck::Ok {
+            relay_url: "wss://r2".to_string(),
+        }],
+    );
     let (mut engine, _store, dispatcher) = engine_with(outbox, dispatcher, RetryPolicy::default());
 
     let action = PublishAction::Publish {
@@ -186,7 +230,9 @@ fn engine_auto_target_resolves_outbox_author_writes() {
     let dispatcher = Arc::new(ReplayDispatcher::new());
     dispatcher.script(
         "wss://alice-write",
-        vec![RelayAck::Ok { relay_url: "wss://alice-write".to_string() }],
+        vec![RelayAck::Ok {
+            relay_url: "wss://alice-write".to_string(),
+        }],
     );
     let (mut engine, _store, dispatcher) = engine_with(outbox, dispatcher, RetryPolicy::default());
 
@@ -218,11 +264,15 @@ fn engine_auto_target_includes_p_tag_inbox_relays() {
     let dispatcher = Arc::new(ReplayDispatcher::new());
     dispatcher.script(
         "wss://alice-write",
-        vec![RelayAck::Ok { relay_url: "wss://alice-write".to_string() }],
+        vec![RelayAck::Ok {
+            relay_url: "wss://alice-write".to_string(),
+        }],
     );
     dispatcher.script(
         "wss://bob-read",
-        vec![RelayAck::Ok { relay_url: "wss://bob-read".to_string() }],
+        vec![RelayAck::Ok {
+            relay_url: "wss://bob-read".to_string(),
+        }],
     );
     let (mut engine, _store, dispatcher) = engine_with(outbox, dispatcher, RetryPolicy::default());
 
@@ -252,8 +302,7 @@ fn engine_auto_target_includes_p_tag_inbox_relays() {
 fn engine_no_targets_emits_recent_failure_and_errors() {
     let outbox = Arc::new(StaticOutbox::default());
     let dispatcher = Arc::new(ReplayDispatcher::new());
-    let (mut engine, _store, _dispatcher) =
-        engine_with(outbox, dispatcher, RetryPolicy::default());
+    let (mut engine, _store, _dispatcher) = engine_with(outbox, dispatcher, RetryPolicy::default());
 
     let action = PublishAction::Publish {
         handle: "h4".to_string(),
@@ -266,7 +315,10 @@ fn engine_no_targets_emits_recent_failure_and_errors() {
         Err(super::engine::PublishEngineError::NoTargets)
     ));
     assert_eq!(engine.snapshot().recent_errors.len(), 1);
-    assert_eq!(engine.snapshot().recent_errors[0].reason, "no relays resolved for publish target");
+    assert_eq!(
+        engine.snapshot().recent_errors[0].reason,
+        "no relays resolved for publish target"
+    );
 }
 
 #[test]
@@ -278,8 +330,7 @@ fn engine_dedups_handle_on_double_start() {
     let outbox = Arc::new(outbox);
     let dispatcher = Arc::new(ReplayDispatcher::new());
     // No ack scripted → publish stays InFlight; second start should reject.
-    let (mut engine, _store, _dispatcher) =
-        engine_with(outbox, dispatcher, RetryPolicy::default());
+    let (mut engine, _store, _dispatcher) = engine_with(outbox, dispatcher, RetryPolicy::default());
 
     let action = PublishAction::Publish {
         handle: "dup".to_string(),
@@ -308,10 +359,14 @@ fn engine_view_rev_bumps_once_per_batch_not_per_relay() {
     let outbox = Arc::new(outbox);
     let dispatcher = Arc::new(ReplayDispatcher::new());
     for r in ["wss://r1", "wss://r2", "wss://r3"] {
-        dispatcher.script(r, vec![RelayAck::Ok { relay_url: r.to_string() }]);
+        dispatcher.script(
+            r,
+            vec![RelayAck::Ok {
+                relay_url: r.to_string(),
+            }],
+        );
     }
-    let (mut engine, _store, _dispatcher) =
-        engine_with(outbox, dispatcher, RetryPolicy::default());
+    let (mut engine, _store, _dispatcher) = engine_with(outbox, dispatcher, RetryPolicy::default());
 
     let rev_before = engine.snapshot().rev;
     let action = PublishAction::Publish {

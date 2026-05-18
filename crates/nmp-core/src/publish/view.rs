@@ -6,8 +6,8 @@
 //! - `recent_ok` and `recent_errors` are ring-buffer-bounded to keep payloads
 //!   small and to honour the "snapshots bounded by what's open" rule.
 //!
-//! Per D8 each engine flush bumps `rev` exactly once even if many per-relay
-//! acks landed in the same batch — the coalescer is the engine.
+//! Per D8 the payload exposes `rev` for projection coalescing. The kernel
+//! projection bridge owns the per-view emission budget.
 
 use serde::{Deserialize, Serialize};
 
@@ -88,7 +88,7 @@ impl PublishStatusState {
         }
     }
 
-    /// Replace the in-flight set wholesale; called once per coalesced batch.
+    /// Replace the in-flight set wholesale when the engine refreshes status.
     pub fn replace_in_flight(&mut self, rows: Vec<EventPublishStatus>) {
         self.snapshot.in_flight = rows;
     }
@@ -109,8 +109,8 @@ impl PublishStatusState {
         }
     }
 
-    /// One bump per coalesced flush — the engine calls exactly once per batch
-    /// per D8 (`≤60 Hz per view`).
+    /// Mark the snapshot as changed; the projection bridge enforces the D8
+    /// `≤60 Hz per view` budget when it emits deltas.
     pub fn bump_rev(&mut self) {
         self.snapshot.rev = self.snapshot.rev.saturating_add(1);
     }

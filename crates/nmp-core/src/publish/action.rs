@@ -66,9 +66,16 @@ pub enum PublishStep {
 /// single coarse verdict.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum PublishOutcome {
-    Accepted { relays: Vec<RelayUrl> },
-    Mixed { accepted: Vec<RelayUrl>, failed: Vec<RelayUrl> },
-    FailedAfterRetries { failed: Vec<RelayUrl> },
+    Accepted {
+        relays: Vec<RelayUrl>,
+    },
+    Mixed {
+        accepted: Vec<RelayUrl>,
+        failed: Vec<RelayUrl>,
+    },
+    FailedAfterRetries {
+        failed: Vec<RelayUrl>,
+    },
     NoTargets,
     Cancelled,
 }

@@ -24,9 +24,7 @@ use super::state::{apply_ack, PerRelayState, RelayAck, RetryPolicy};
 use super::traits::{
     OutboxResolver, PublishRecord, PublishStore, PublishStoreError, RelayDispatcher, Signer,
 };
-use super::view::{
-    EventPublishStatus, PublishStatusSnapshot, PublishStatusState, RecentFailure,
-};
+use super::view::{EventPublishStatus, PublishStatusSnapshot, PublishStatusState, RecentFailure};
 use crate::substrate::SignedEvent;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -114,9 +112,11 @@ impl PublishEngine {
         now_ms: u64,
     ) -> Result<(), PublishEngineError> {
         match action {
-            PublishAction::Publish { handle, event, target } => {
-                self.start_publish_inner(handle, event, target, now_ms)
-            }
+            PublishAction::Publish {
+                handle,
+                event,
+                target,
+            } => self.start_publish_inner(handle, event, target, now_ms),
             PublishAction::Cancel { handle } => self.cancel_publish(handle, now_ms),
         }
     }

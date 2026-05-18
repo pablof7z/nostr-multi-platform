@@ -160,7 +160,9 @@ impl RelayDispatcher for ReplayDispatcher {
                 return vec![queue.remove(0)];
             }
         }
-        vec![RelayAck::TimedOut { relay_url: relay_url.to_string() }]
+        vec![RelayAck::TimedOut {
+            relay_url: relay_url.to_string(),
+        }]
     }
 }
 
