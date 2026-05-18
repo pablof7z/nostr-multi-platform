@@ -370,3 +370,26 @@ Product-spec now has D0–D8 with an explicit "two kinds" distinction:
 - **D6–D8: substrate invariants** — runtime / FFI / hot-path constraints (errors-never-FFI, capabilities-report, reactivity-contract).
 
 Conflicts still resolve in listed order (D0 wins over D8). README aligned. T19 framework-magic-reconciler in flight will absorb D0–D8 into the framework-magic docs (sending them an updated brief alongside this commit).
+
+## PD-023 — kind-by-kind publish handler retirement (deferred from `e895c09`)
+
+**Filed:** 2026-05-18 HB44 from Merge Report.
+
+**Context:** `e895c09` (`feat(publish): ActorCommand::PublishUnsignedEvent`) is the doctrine-clean stepping-stone for kind-agnostic publish. The session deferred refactoring existing kind-specific handlers (`publish_note`, `react`, `follow`) because moving those into nmp-core would invert D0 (kernel depending on protocol crates). The doctrine path is the **opposite direction**: extract each handler into a per-crate `ActionModule` (per `docs/design/kind-wrappers.md` §8 Phase 1).
+
+**Open question to user:** Do you want the orchestrator to schedule the per-crate ActionModule extraction (nip01/nip22/nip57/reactions) as a follow-up sweep, or keep `PublishUnsignedEvent` as the only kind-agnostic path until M11.5 Highlighter forces the issue?
+
+**Default if no answer:** Keep `PublishUnsignedEvent` as the canonical surface; existing handlers deprecate kind-by-kind only when a new consumer asks.
+
+---
+
+## PD-024 — uniform `<crate>::Action / <crate>::Update / <crate>::ViewSpec` aggregate enums (deferred from `e895c09`)
+
+**Filed:** 2026-05-18 HB44 from Merge Report.
+
+**Context:** `nmp-codegen` template references `<crate>::Action / Update / ViewSpec` aggregate enums for module wiring. No existing protocol crate (nip01/22/23/29/51/57/reactions) currently exposes them. This is a uniform-action-surface design question affecting **all** protocol crates, not just the three new ones.
+
+**Open question to user:** Adopt the aggregate-enum convention NOW (one ADR + sweep across 7 crates) or defer until codegen actually needs it (M11.5)? Adopting now constrains every future protocol crate to the same shape, which is good for FFI uniformity but adds boilerplate.
+
+**Default if no answer:** Defer to M11.5 (Highlighter rebuild surfaces the codegen requirement naturally; adopting before that is speculative).
+
