@@ -3,6 +3,7 @@ mod app;
 mod ffi;
 mod kernel;
 pub mod planner;
+pub mod publish;
 mod relay;
 mod relay_worker;
 pub mod store;
