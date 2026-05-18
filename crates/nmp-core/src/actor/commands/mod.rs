@@ -54,6 +54,8 @@ mod wallet;
 #[cfg(test)]
 mod remote_signer_tests;
 #[cfg(test)]
+mod t168_identity_followfeed_reconcile_tests;
+#[cfg(test)]
 mod tests;
 
 pub(super) use identity::{
