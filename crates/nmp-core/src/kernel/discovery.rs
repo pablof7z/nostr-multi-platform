@@ -115,7 +115,7 @@ impl Kernel {
             slots_used += 1;
         } else if !event_ids.is_empty() {
             // No slot available; put everything back.
-            self.unknown_ids.put_back_events(event_ids.into_iter());
+            self.unknown_ids.put_back_events(event_ids);
         }
 
         // Profiles sub (indexer) — same pattern.
@@ -143,7 +143,7 @@ impl Kernel {
                 self.unknown_ids.put_back_pubkeys(remainder.iter().cloned());
             }
         } else if !pubkeys.is_empty() {
-            self.unknown_ids.put_back_pubkeys(pubkeys.into_iter());
+            self.unknown_ids.put_back_pubkeys(pubkeys);
         }
 
         if !out.is_empty() {

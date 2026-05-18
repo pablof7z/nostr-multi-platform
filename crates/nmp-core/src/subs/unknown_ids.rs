@@ -156,6 +156,19 @@ fn is_hex64(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
+impl UnknownIds {
+    /// Re-insert event ids that were drained but not yet issued as REQs.
+    /// Called by the kernel when it can only open a subset of batches this tick.
+    pub fn put_back_events(&mut self, ids: impl IntoIterator<Item = EventId>) {
+        self.event_ids.extend(ids);
+    }
+
+    /// Re-insert pubkeys that were drained but not yet issued as REQs.
+    pub fn put_back_pubkeys(&mut self, pks: impl IntoIterator<Item = Pubkey>) {
+        self.pubkeys.extend(pks);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,18 +251,5 @@ mod tests {
         let (events, pubkeys) = u.drain();
         assert_eq!(events, vec![ID_A.to_string()]);
         assert_eq!(pubkeys, vec![PK_C.to_string()]);
-    }
-}
-
-impl UnknownIds {
-    /// Re-insert event ids that were drained but not yet issued as REQs.
-    /// Called by the kernel when it can only open a subset of batches this tick.
-    pub fn put_back_events(&mut self, ids: impl IntoIterator<Item = EventId>) {
-        self.event_ids.extend(ids);
-    }
-
-    /// Re-insert pubkeys that were drained but not yet issued as REQs.
-    pub fn put_back_pubkeys(&mut self, pks: impl IntoIterator<Item = Pubkey>) {
-        self.pubkeys.extend(pks);
     }
 }

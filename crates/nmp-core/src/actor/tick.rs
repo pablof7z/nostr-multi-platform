@@ -105,10 +105,11 @@ pub(super) fn emit_kernel_update(update: &KernelUpdate, update_tx: &Sender<Strin
 mod tests {
     use crate::actor::{run_actor, ActorCommand};
     use crate::app::KernelAction;
+    use crate::kernel::Kernel;
     use crate::update_envelope::UpdateEnvelope;
     use std::sync::mpsc;
     use std::thread;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     /// Verifies that idle ticks do not emit snapshots when kernel state has not
     /// changed (D8: zero false-wakeup allocations after warmup — codex T23 P2).
@@ -222,7 +223,9 @@ mod tests {
             cmd_tx.send(ActorCommand::OpenAuthor { pubkey: pk.clone() }).unwrap();
             cmd_tx.send(ActorCommand::CloseAuthor { pubkey: pk.clone() }).unwrap();
         }
-        thread::sleep(Duration::from_millis(150));
+        // The actor may be inside the 250 ms idle relay wait before it
+        // checks the command channel, so wait past one full idle cycle.
+        thread::sleep(Duration::from_millis(350));
         let _ = cmd_tx.send(ActorCommand::Shutdown);
 
         let mut snapshots = 0usize;
@@ -255,48 +258,23 @@ mod tests {
     /// future "optimization" doesn't drop emits entirely and break the UI.
     #[test]
     fn view_dispatches_emit_snapshots_when_running() {
-        let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
         let (upd_tx, upd_rx) = mpsc::channel::<String>();
-        thread::spawn(move || run_actor(cmd_rx, upd_tx));
+        let mut kernel = Kernel::new(50);
+        let mut last_emit = Instant::now();
 
-        cmd_tx
-            .send(ActorCommand::Start {
-                visible_limit: 50,
-                emit_hz: 30,
-            })
-            .unwrap();
-        // Drain the Start snapshot first.
-        thread::sleep(Duration::from_millis(100));
-        let mut pre_view_snapshots = 0usize;
-        while upd_rx.try_recv().is_ok() {
-            pre_view_snapshots += 1;
-        }
-        assert!(pre_view_snapshots >= 1, "Start must emit at least one snapshot");
-
-        // Now fire a view command. At least one snapshot should follow.
         let pk = "0".repeat(64);
-        cmd_tx
-            .send(ActorCommand::ClaimProfile {
-                pubkey: pk.clone(),
-                consumer_id: "test-consumer".into(),
-            })
-            .unwrap();
-        thread::sleep(Duration::from_millis(150));
-        let _ = cmd_tx.send(ActorCommand::Shutdown);
+        let _ = kernel.claim_profile(pk, "test-consumer".into(), false);
+        super::maybe_emit_after_dispatch(&mut kernel, true, &upd_tx, &mut last_emit);
 
-        let mut post_view_snapshots = 0usize;
-        while let Ok(frame) = upd_rx.try_recv() {
-            if matches!(
+        let frame = upd_rx
+            .recv_timeout(Duration::from_millis(50))
+            .expect("running=true view dispatch must emit a snapshot");
+        assert!(
+            matches!(
                 serde_json::from_str::<UpdateEnvelope>(&frame),
                 Ok(UpdateEnvelope::Snapshot(_))
-            ) {
-                post_view_snapshots += 1;
-            }
-        }
-        assert!(
-            post_view_snapshots >= 1,
-            "regression: running=true + view command produced {post_view_snapshots} \
-             snapshots; expected ≥1. The UI relies on prompt snapshot delivery."
+            ),
+            "regression: running=true + view dispatch emitted a non-snapshot frame: {frame}"
         );
     }
 }

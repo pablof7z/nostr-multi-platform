@@ -335,7 +335,7 @@ impl Lmdb {
     ///
     /// This should never block the current thread
     #[inline]
-    pub fn read_txn(&self) -> Result<RoTxn, Error> {
+    pub fn read_txn(&self) -> Result<RoTxn<'_>, Error> {
         Ok(self.env.read_txn()?)
     }
 
@@ -343,7 +343,7 @@ impl Lmdb {
     ///
     /// This blocks the current thread if there is another write txn
     #[inline]
-    pub fn write_txn(&self) -> Result<RwTxn, Error> {
+    pub fn write_txn(&self) -> Result<RwTxn<'_>, Error> {
         Ok(self.env.write_txn()?)
     }
 

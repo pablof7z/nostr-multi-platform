@@ -335,7 +335,7 @@ fn publish_fans_out_to_author_write_relays_via_outbox() {
 const CHARLIE: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 
 fn id_for(prefix: char) -> String {
-    std::iter::repeat(prefix).take(64).collect()
+    std::iter::repeat_n(prefix, 64).collect()
 }
 
 #[test]

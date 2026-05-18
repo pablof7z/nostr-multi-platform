@@ -38,9 +38,13 @@ use nmp_core::substrate::{EventId, KernelEvent};
 use serde::{Deserialize, Serialize};
 
 use crate::block::TimelineBlock;
-use crate::policy::ModulePolicy;
 use crate::pointer::ThreadPointer;
+use crate::policy::ModulePolicy;
 use crate::resolver::ParentResolver;
+
+mod collapse;
+
+use self::collapse::{gap_between, root_id_mismatched};
 
 /// Delta surface for the grouper. Wrappers map this into their own
 /// view-module `Delta` type (typically a 1:1 forward).
@@ -160,7 +164,9 @@ impl<R: ParentResolver> Grouper<R> {
                     removed_idx = Some(idx);
                     break;
                 }
-                TimelineBlock::Module { events, has_gap, .. } => {
+                TimelineBlock::Module {
+                    events, has_gap, ..
+                } => {
                     if events.iter().any(|e| e == id) {
                         events.retain(|e| e != id);
                         // A removed mid-chain element introduces a gap.
@@ -193,11 +199,7 @@ impl<R: ParentResolver> Grouper<R> {
 
     /// Process a replaced event. Modelled as remove + insert; wrappers see a
     /// single delta — the inserted one.
-    pub fn on_replace(
-        &mut self,
-        old_id: &EventId,
-        new_event: &KernelEvent,
-    ) -> Option<GroupDelta> {
+    pub fn on_replace(&mut self, old_id: &EventId, new_event: &KernelEvent) -> Option<GroupDelta> {
         self.on_remove(old_id);
         self.on_insert(new_event)
     }
@@ -283,8 +285,7 @@ impl<R: ParentResolver> Grouper<R> {
                 if max_size < 2 {
                     return false;
                 }
-                let mismatched =
-                    root_id_mismatched(root_hint.as_ref(), parent_id.as_str());
+                let mismatched = root_id_mismatched(root_hint.as_ref(), parent_id.as_str());
                 let promoted = TimelineBlock::Module {
                     events: vec![parent_id.clone(), event.id.clone()],
                     has_gap: leaf_gap || mismatched,
@@ -293,7 +294,11 @@ impl<R: ParentResolver> Grouper<R> {
                 self.blocks[idx] = promoted;
                 true
             }
-            TimelineBlock::Module { events, has_gap, root } => {
+            TimelineBlock::Module {
+                events,
+                has_gap,
+                root,
+            } => {
                 if events.len() >= max_size {
                     return false;
                 }
@@ -317,10 +322,9 @@ impl<R: ParentResolver> Grouper<R> {
     fn find_block_with_leaf(&self, parent_id: &str) -> Option<usize> {
         self.blocks.iter().position(|b| match b {
             TimelineBlock::Standalone(id) => id == parent_id,
-            TimelineBlock::Module { events, .. } => events
-                .last()
-                .map(|leaf| leaf == parent_id)
-                .unwrap_or(false),
+            TimelineBlock::Module { events, .. } => {
+                events.last().map(|leaf| leaf == parent_id).unwrap_or(false)
+            }
         })
     }
 
@@ -372,7 +376,11 @@ impl<R: ParentResolver> Grouper<R> {
                     };
                     let child_id = chain.first().expect("non-empty");
                     let child = self.by_id.get(child_id);
-                    if gap_between(Some(&parent_event), child, self.policy.max_lookback_gap_secs) {
+                    if gap_between(
+                        Some(&parent_event),
+                        child,
+                        self.policy.max_lookback_gap_secs,
+                    ) {
                         has_gap = true;
                     }
                     chain.insert(0, id.clone());
@@ -390,12 +398,12 @@ impl<R: ParentResolver> Grouper<R> {
         }
 
         // Mismatched-root detection: chain top is not the declared root id.
-        if let Some(root) = terminal_root.as_ref().or(root_hint.as_ref()) {
-            if let ThreadPointer::Event { id: rid, .. } = root {
-                let top = chain.first().expect("non-empty");
-                if top != rid {
-                    has_gap = true;
-                }
+        if let Some(ThreadPointer::Event { id: rid, .. }) =
+            terminal_root.as_ref().or(root_hint.as_ref())
+        {
+            let top = chain.first().expect("non-empty");
+            if top != rid {
+                has_gap = true;
             }
         }
 
@@ -414,86 +422,5 @@ impl<R: ParentResolver> Grouper<R> {
         }
         let block = self.blocks.remove(idx);
         self.blocks.insert(0, block);
-    }
-
-    /// Merge adjacent `Module` blocks sharing the same `root` pointer, when
-    /// policy permits and combined length fits `max_module_size`.
-    fn collapse_adjacent(&mut self) {
-        if !self.policy.collapse_adjacent_same_root {
-            return;
-        }
-        let max_size = self.policy.max_module_size as usize;
-        let mut i = 0;
-        while i + 1 < self.blocks.len() {
-            let merge = match (&self.blocks[i], &self.blocks[i + 1]) {
-                (
-                    TimelineBlock::Module {
-                        events: e_a,
-                        root: Some(r_a),
-                        ..
-                    },
-                    TimelineBlock::Module {
-                        events: e_b,
-                        root: Some(r_b),
-                        ..
-                    },
-                ) if r_a == r_b => e_a.len() + e_b.len() <= max_size,
-                _ => false,
-            };
-            if merge {
-                // Block i is newer, i+1 is older. Merged chain order is
-                // older.events ++ newer.events (root-first preserved).
-                let TimelineBlock::Module {
-                    events: newer_events,
-                    has_gap: newer_gap,
-                    root,
-                } = self.blocks.remove(i)
-                else {
-                    unreachable!()
-                };
-                let TimelineBlock::Module {
-                    events: mut older_events,
-                    has_gap: older_gap,
-                    ..
-                } = self.blocks.remove(i)
-                else {
-                    unreachable!()
-                };
-                older_events.extend(newer_events);
-                self.blocks.insert(
-                    i,
-                    TimelineBlock::Module {
-                        events: older_events,
-                        has_gap: newer_gap || older_gap,
-                        root,
-                    },
-                );
-                // Don't advance; the merged block may collapse further.
-            } else {
-                i += 1;
-            }
-        }
-    }
-}
-
-fn gap_between(
-    parent: Option<&KernelEvent>,
-    child: Option<&KernelEvent>,
-    threshold_secs: u64,
-) -> bool {
-    match (parent, child) {
-        (Some(p), Some(c)) => c.created_at.saturating_sub(p.created_at) > threshold_secs,
-        _ => false,
-    }
-}
-
-/// True when the chain's root pointer names an Event id different from the
-/// chain's top element (i.e. the module does not contain its declared root).
-/// Address / External / None always returns false — non-Event roots are
-/// handled by the terminal-walk branch instead.
-fn root_id_mismatched(root: Option<&ThreadPointer>, chain_top: &str) -> bool {
-    match root {
-        Some(ThreadPointer::Event { id, .. }) => id != chain_top,
-        _ => false,
     }
 }

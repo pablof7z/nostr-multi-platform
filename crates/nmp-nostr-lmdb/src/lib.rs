@@ -201,18 +201,18 @@ impl NostrDatabase for NostrLMDB {
         })
     }
 
-    fn count(&self, filter: Filter) -> BoxedFuture<Result<usize, DatabaseError>> {
+    fn count(&self, filter: Filter) -> BoxedFuture<'_, Result<usize, DatabaseError>> {
         Box::pin(async move { self.db.count(filter).map_err(DatabaseError::backend) })
     }
 
-    fn query(&self, filter: Filter) -> BoxedFuture<Result<Events, DatabaseError>> {
+    fn query(&self, filter: Filter) -> BoxedFuture<'_, Result<Events, DatabaseError>> {
         Box::pin(async move { self.db.query(filter).map_err(DatabaseError::backend) })
     }
 
     fn negentropy_items(
         &self,
         filter: Filter,
-    ) -> BoxedFuture<Result<Vec<(EventId, Timestamp)>, DatabaseError>> {
+    ) -> BoxedFuture<'_, Result<Vec<(EventId, Timestamp)>, DatabaseError>> {
         Box::pin(async move {
             self.db
                 .negentropy_items(filter)
@@ -220,12 +220,12 @@ impl NostrDatabase for NostrLMDB {
         })
     }
 
-    fn delete(&self, filter: Filter) -> BoxedFuture<Result<(), DatabaseError>> {
+    fn delete(&self, filter: Filter) -> BoxedFuture<'_, Result<(), DatabaseError>> {
         Box::pin(async move { self.db.delete(filter).await.map_err(DatabaseError::backend) })
     }
 
     #[inline]
-    fn wipe(&self) -> BoxedFuture<Result<(), DatabaseError>> {
+    fn wipe(&self) -> BoxedFuture<'_, Result<(), DatabaseError>> {
         Box::pin(async move { self.db.wipe().await.map_err(DatabaseError::backend) })
     }
 }
@@ -589,7 +589,7 @@ mod tests {
             let keys_a = Keys::generate();
             let keys_b = Keys::generate();
 
-            let events = vec![
+            let events = [
                 EventBuilder::text_note("Text Note A")
                     .sign_with_keys(&keys_a)
                     .unwrap(),
@@ -944,7 +944,7 @@ mod tests {
 
         // Confirm both events have the same timestamp
         assert_eq!(event1.created_at, event2.created_at);
-        assert_eq!(event1.created_at.as_u64(), 1754066538);
+        assert_eq!(event1.created_at.as_secs(), 1754066538);
 
         // Confirm event1 has the smaller ID (lexicographically first)
         assert!(event1.id.to_string() < event2.id.to_string());
@@ -1028,7 +1028,7 @@ mod tests {
 
         // Confirm both events have the same timestamp and d-tag
         assert_eq!(event1.created_at, event2.created_at);
-        assert_eq!(event1.created_at.as_u64(), 1754066538);
+        assert_eq!(event1.created_at.as_secs(), 1754066538);
         assert_eq!(event1.tags.identifier(), event2.tags.identifier());
         assert_eq!(event1.tags.identifier(), Some("article-123"));
 
