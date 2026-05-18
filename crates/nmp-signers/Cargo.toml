@@ -17,6 +17,7 @@ wasm = []
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
+nmp-signer-iface = { path = "../nmp-signer-iface" }
 nostr = { version = "0.44", features = ["std", "nip04", "nip44", "nip49"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

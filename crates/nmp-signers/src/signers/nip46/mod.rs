@@ -44,43 +44,15 @@ use super::payload::{Nip46Payload, SignerPayload};
 use super::traits::{Nip04, Nip44, Signer, SignerBackend, SignerError};
 use super::SignerOp;
 
+// `Nip46Rpc` and `Nip46Transport` are defined in the leaf
+// [`nmp_signer_iface`] crate so the kernel side can refer to them
+// without depending on `nmp-signers` (doctrine **D0**).
+pub use nmp_signer_iface::{Nip46Rpc, Nip46Transport};
+
 use mapper::{escape_json, generate_request_id, map_response_to_event};
 
 /// Pending RPC table: request id -> one-shot sender.
 type PendingMap = HashMap<String, Sender<Result<String, SignerError>>>;
-
-/// Outbound RPC the signer needs the kernel to perform.
-#[derive(Clone, Debug)]
-pub struct Nip46Rpc {
-    /// Request id (echoed in the response).
-    pub id: String,
-    /// JSON-encoded request body (NIP-46 RPC envelope: `{id, method, params}`).
-    pub body_json: String,
-    /// Payload body to publish as kind:24133 after the transport applies
-    /// NIP-46 encryption.
-    pub encrypted_payload: String,
-    /// Target relays (mirrors what `bunker://?relay=...` declared).
-    pub relays: Vec<String>,
-    /// Remote pubkey to address the kind:24133 event to (in a `p` tag).
-    pub remote_pubkey_hex: String,
-}
-
-/// The transport contract.  The production kernel implements this; tests can
-/// implement it with `Vec<Nip46Rpc>` + an inject-response helper.
-pub trait Nip46Transport: Send + Sync + std::fmt::Debug {
-    /// Send an RPC.  The signer holds a `Sender<Result<String, SignerError>>`
-    /// keyed by `Nip46Rpc.id`; the transport delivers the decrypted response
-    /// body by invoking a `resolve_response` helper on the signer (or, in
-    /// practice, by routing through a kernel-owned dispatch table).
-    ///
-    /// The signer never blocks waiting for the response inside `send_rpc`; the
-    /// response arrives later via the `Sender` that lives in `Nip46Signer::pending`.
-    fn send_rpc(&self, rpc: Nip46Rpc) -> Result<(), SignerError>;
-
-    /// Hint that the underlying subscription was rebuilt.  Signer may re-send
-    /// pending RPCs.  Default: no-op.
-    fn reconnect_hint(&self) {}
-}
 
 /// Pre-handshake handle for a NIP-46 connection.
 ///

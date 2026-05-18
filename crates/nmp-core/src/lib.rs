@@ -8,6 +8,7 @@ pub mod planner;
 pub mod publish;
 mod relay;
 mod relay_worker;
+pub mod remote_signer;
 pub mod store;
 pub mod subs;
 pub mod substrate;
@@ -19,6 +20,7 @@ pub use app::{
     resolve_open_uri, AppState, KernelAction, KernelUpdate, KernelViewSpec, OpenUriError,
     OpenUriRouting, VIEW_ADDRESSABLE, VIEW_PROFILE, VIEW_THREAD,
 };
+pub use remote_signer::RemoteSignerHandle;
 pub use update_envelope::{wrap_snapshot, wrap_update, UpdateEnvelope, WireEnvelope};
 pub use ffi::NmpApp;
 

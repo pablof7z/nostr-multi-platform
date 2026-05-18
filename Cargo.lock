@@ -2236,6 +2236,7 @@ dependencies = [
  "chrono",
  "nmp-nip42-types",
  "nmp-nwc",
+ "nmp-signer-iface",
  "nostr",
  "proptest",
  "rustls",
@@ -2381,6 +2382,7 @@ name = "nmp-signers"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
+ "nmp-signer-iface",
  "nostr",
  "serde",
  "serde_json",
