@@ -3,10 +3,9 @@ name: file-size-gate
 # Enforces AGENTS.md 300 LOC warn / 500 LOC hard cap on hand-authored source.
 # Checks the full tracked tree (not just staged files — that's the pre-commit hook's job).
 #
-# NOTE: crates/nmp-core/src/kernel/requests.rs (574 LOC) is a known violation
-# that predates this gate. It is tracked as brainstorm item #6 (split task) and
-# will be fixed in a dedicated commit. Until then this workflow will report it.
-# Do not add it to .file-size-ignore — that would hide real debt.
+# NOTE: brainstorm item #6 (requests.rs 574 LOC split) is resolved — the file
+# was already decomposed into kernel/requests/{mod,profile,thread}.rs before
+# this gate landed. UniFFI-generated bindings are exempted via .file-size-ignore.
 
 on:
   push:
