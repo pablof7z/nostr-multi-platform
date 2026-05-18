@@ -296,6 +296,9 @@ fn episode_to_payload(
         has_insights: !ep.insight_ids.is_empty(),
         insights_count: ep.insight_ids.len() as u32,
         is_playing: false,
+        // T-podcast-android-7: project the RSS enclosure URL so the Android
+        // host can stream audio without any fabricated state on the Kotlin side.
+        audio_url: ep.audio_url.to_string(),
     }
 }
 
@@ -612,6 +615,28 @@ mod tests {
                 ep.pub_date_str,
             );
         }
+    }
+
+    /// T-podcast-android-7: audio_url must roundtrip through the snapshot so
+    /// the Android host can stream audio without any fabricated state on the
+    /// Kotlin side. Uses the same enclosure URL from rss2_one_episode().
+    #[test]
+    fn episodes_for_roundtrips_audio_url() {
+        let feed_url = url("https://feeds.example.com/show.xml");
+        let app = PodcastApp::new();
+        let SubscribeResult::Subscribed { podcast_id } =
+            app.subscribe(feed_url.clone(), Some("Audio Test".into()), None)
+        else {
+            panic!("subscribe failed");
+        };
+        app.ingest_feed_bytes(&feed_url, &rss2_one_episode());
+        let feed_view = app.episodes_for(podcast_id);
+        assert_eq!(feed_view.episodes.len(), 1);
+        assert_eq!(
+            feed_view.episodes[0].audio_url,
+            "https://example.com/ep1.mp3",
+            "audio_url must roundtrip from RSS enclosure into EpisodeRowPayload"
+        );
     }
 
     #[test]

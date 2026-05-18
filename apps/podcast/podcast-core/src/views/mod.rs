@@ -38,6 +38,10 @@ pub struct EpisodeRowPayload {
     pub has_insights: bool,
     pub insights_count: u32,
     pub is_playing: bool,
+    /// The streaming audio URL for this episode (from the RSS enclosure element).
+    /// Empty string when the feed omitted the enclosure — UI must gate playback
+    /// on this being non-empty (D6 honest state).
+    pub audio_url: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
