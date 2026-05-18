@@ -15,10 +15,17 @@
 //!   engine; the snapshot is derived from it.
 //! - D5 (snapshots bounded by what's open): the view payload is small and
 //!   only carries currently-pending plus a bounded recent window.
-//! - D6 (errors never cross FFI as exceptions): publish failures are represented
-//!   in `RecentFailure` entries and coarse `PublishOutcome` values.
-//! - D7 (capabilities report): the `RelayDispatcher` shim returns raw
-//!   transport results (`RelayAck`); the engine decides the policy.
+//! - D6 (errors never cross FFI as exceptions): per-relay publish failures
+//!   surface as `RecentFailure` entries on the snapshot plus a coarse
+//!   `PublishOutcome::Mixed` / `FailedAfterRetries` on the action ledger.
+//!   Engine-level `PublishEngineError` values (`DuplicateHandle`, `NoTargets`,
+//!   `Store`) are mapped by `engine::engine_error_to_failure` into the same
+//!   `RecentFailure` shape so the FFI boundary only ever sees state, never
+//!   an exception or `Result<T, E>`.
+//! - D7 (capabilities report): the `RelayDispatcher` shim returns purely
+//!   descriptive `RelayAck { ok, code, message, details }` values; the
+//!   engine's `classify_ack` (in `state.rs`) is the only place that maps
+//!   ack codes to retry policy.
 //! - D8 (≤60 Hz/view): the view payload exposes a monotonic `rev` so the
 //!   projection bridge can coalesce publish-status changes under the view
 //!   emission budget.
@@ -35,10 +42,11 @@ pub use action::{
     PublishAction, PublishHandle, PublishModule, PublishOutcome, PublishStep, PublishTarget,
     RelayUrl,
 };
-pub use engine::{outcome_of, PublishEngine, PublishEngineError};
-pub use state::{
-    AckClass, PerRelayState, PublishAttempt, RelayAck, RelayPlan, RetryPolicy, RetryVerdict,
+pub use engine::{
+    engine_error_to_failure, outcome_of, PublishEngine, PublishEngineError,
+    ENGINE_FAILURE_RELAY_URL,
 };
+pub use state::{PerRelayState, PublishAttempt, RelayAck, RelayPlan, RetryPolicy, RetryVerdict};
 pub use traits::{
     InMemoryPublishStore, NoopOutboxResolver, NoopSigner, OutboxResolver, PublishRecord,
     PublishStore, PublishStoreError, RelayDispatcher, ReplayDispatcher, Signer, SignerError,

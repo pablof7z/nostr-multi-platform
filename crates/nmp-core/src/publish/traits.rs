@@ -160,9 +160,7 @@ impl RelayDispatcher for ReplayDispatcher {
                 return vec![queue.remove(0)];
             }
         }
-        vec![RelayAck::TimedOut {
-            relay_url: relay_url.to_string(),
-        }]
+        vec![RelayAck::timed_out(relay_url)]
     }
 }
 
@@ -184,6 +182,14 @@ pub struct PublishRecord {
     pub handle: PublishHandle,
     pub event: SignedEvent,
     pub per_relay: Vec<(RelayUrl, PerRelayState)>,
+    /// Per-relay scheduled retry deadlines (`relay_url → earliest_retry_ms`).
+    /// Persisted so a mid-backoff state survives kernel restart — without
+    /// this, a process that died one tick after scheduling a 4-second retry
+    /// would lose the backoff and either retry instantly (thundering herd)
+    /// or never (silent drop). Defaults to empty so older serialised rows
+    /// keep deserialising.
+    #[serde(default)]
+    pub pending_retries: Vec<(RelayUrl, u64)>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

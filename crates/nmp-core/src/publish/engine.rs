@@ -6,12 +6,23 @@
 //! engine is deterministic in tests; the actor passes `Instant::now()` in
 //! production.
 //!
-//! The engine never spawns threads, never touches sockets, and never panics —
-//! all failure paths surface through `PublishOutcome` and the snapshot
-//! (D6: errors never cross FFI as exceptions).
+//! The engine never spawns threads, never touches sockets, and never panics.
+//! Two kinds of failure paths exist, and both honour D6 (errors never cross
+//! FFI as exceptions):
+//!
+//! - **Per-relay relay-side failures** surface as `RecentFailure` rows on the
+//!   snapshot (via `apply_verdict` → `FailedAfterRetries`) and as
+//!   `PublishOutcome::Mixed` / `FailedAfterRetries` on the action ledger.
+//! - **Engine-level failures** (`PublishEngineError::DuplicateHandle`,
+//!   `NoTargets`, `Store`) are returned through the in-process `Result` so
+//!   the actor can branch on them, then mapped via
+//!   `engine::error_mapping::engine_error_to_failure` into a `RecentFailure`
+//!   row on the same snapshot before the boundary crosses to Swift / Kotlin.
 
+mod error_mapping;
 mod helpers;
 
+pub use error_mapping::{engine_error_to_failure, ENGINE_FAILURE_RELAY_URL};
 pub use helpers::outcome_of;
 
 use std::collections::{BTreeMap, HashMap};
@@ -20,7 +31,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use super::action::{PublishAction, PublishHandle, PublishTarget, RelayUrl};
-use super::state::{apply_ack, PerRelayState, RelayAck, RetryPolicy};
+use super::state::{apply_ack, classify_ack, AckClass, PerRelayState, RelayAck, RetryPolicy};
 use super::traits::{
     OutboxResolver, PublishRecord, PublishStore, PublishStoreError, RelayDispatcher, Signer,
 };
@@ -87,16 +98,28 @@ impl PublishEngine {
     /// Resume any pending records left by a prior process. Called once at
     /// kernel boot. M3 LMDB will return real rows; the in-memory shim returns
     /// what was previously upserted.
+    ///
+    /// Restores `pending_retries` from the persisted record so a mid-backoff
+    /// state survives restart with its scheduled retry deadline intact —
+    /// `dispatch_pending` will fire the retry only when `now_ms` reaches the
+    /// stored deadline (no thundering herd, no silent drop). When the record
+    /// has no `pending_retries` entry for a relay in `RelayError`/`TimedOut`
+    /// (older serialised rows), `dispatch_due` falls back to retry-now so the
+    /// resume path stays best-effort.
     pub fn resume_from_store(&mut self, now_ms: u64) -> Result<(), PublishEngineError> {
         for record in self.store.load_pending()? {
             let mut per_relay = BTreeMap::new();
             for (url, state) in record.per_relay {
                 per_relay.insert(url, state);
             }
+            let mut pending_retries = BTreeMap::new();
+            for (url, due_ms) in record.pending_retries {
+                pending_retries.insert(url, due_ms);
+            }
             let in_flight = InFlight {
                 event: record.event,
                 per_relay,
-                pending_retries: BTreeMap::new(),
+                pending_retries,
                 dirty: true,
             };
             self.in_flight.insert(record.handle.clone(), in_flight);
@@ -238,6 +261,40 @@ impl PublishEngine {
         &self.view.snapshot
     }
 
+    /// D6 FFI mapping path: convert a `PublishEngineError` into a snapshot
+    /// `RecentFailure` row and bump the view rev. The actor / FFI adapter
+    /// calls this for any error returned from `start_publish` /
+    /// `cancel_publish` / `resume_from_store` before letting the boundary
+    /// cross to the platform. Errors never become exceptions; they always
+    /// become observable state.
+    ///
+    /// `event_id` may be empty when the error happens before an event is
+    /// associated with a handle.
+    pub fn record_engine_error(
+        &mut self,
+        err: &PublishEngineError,
+        handle: &PublishHandle,
+        event_id: &str,
+        now_ms: u64,
+    ) {
+        let failure = error_mapping::engine_error_to_failure(err, handle, event_id, now_ms);
+        self.view.push_failure(failure);
+        self.view.bump_rev();
+    }
+
+    /// Engine-owned classification of a raw `RelayAck` (per D7 — capabilities
+    /// report; the engine decides policy). The dispatcher MUST NOT call this.
+    /// Exposed `pub(crate)` so the FFI bridge (in `crate::ffi::*`) can
+    /// inspect a classification without re-deriving the rules; outside callers
+    /// must drive the engine through `on_ack` / `tick`.
+    ///
+    /// `dead_code` allowed because the FFI bridge that calls it lands with
+    /// M6 (actor ledger wiring); the in-crate test asserts the routing.
+    #[allow(dead_code)]
+    pub(crate) fn classify_ack(&self, ack: &RelayAck) -> AckClass {
+        classify_ack(ack)
+    }
+
     /// Test/diagnostic accessor — returns the per-relay state map for a
     /// handle, or empty if the publish completed and was evicted.
     pub fn per_relay(&self, handle: &PublishHandle) -> BTreeMap<RelayUrl, PerRelayState> {
@@ -269,6 +326,13 @@ impl PublishEngine {
                 .per_relay
                 .iter()
                 .map(|(k, v)| (k.clone(), v.clone()))
+                .collect(),
+            // Persist scheduled retry deadlines so a restart mid-backoff
+            // resumes with the same wait, not a thundering retry.
+            pending_retries: in_flight
+                .pending_retries
+                .iter()
+                .map(|(k, v)| (k.clone(), *v))
                 .collect(),
         };
         self.store.upsert(&record).map_err(PublishEngineError::from)

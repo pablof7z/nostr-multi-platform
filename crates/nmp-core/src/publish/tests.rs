@@ -6,7 +6,9 @@ use std::sync::Arc;
 
 use super::action::{PublishAction, PublishTarget};
 use super::engine::PublishEngine;
-use super::state::{apply_ack, AckClass, PerRelayState, RelayAck, RetryPolicy, RetryVerdict};
+use super::state::{
+    apply_ack, classify_ack, AckClass, PerRelayState, RelayAck, RetryPolicy, RetryVerdict,
+};
 use super::traits::{
     InMemoryPublishStore, NoopSigner, OutboxResolver, ReplayDispatcher, StaticOutbox,
 };
@@ -57,9 +59,7 @@ fn state_machine_ok_settles_in_one_attempt() {
         sent_at_ms: 1_000,
         attempt: 1,
     };
-    let ack = RelayAck::Ok {
-        relay_url: "wss://r1".to_string(),
-    };
+    let ack = RelayAck::ok("wss://r1");
     let verdict = apply_ack(&state, &ack, RetryPolicy::default(), 1_010);
     match verdict {
         RetryVerdict::Settled(PerRelayState::Ok { acked_at_ms }) => assert_eq!(acked_at_ms, 1_010),
@@ -73,11 +73,7 @@ fn state_machine_permanent_error_settles_failed() {
         sent_at_ms: 1_000,
         attempt: 1,
     };
-    let ack = RelayAck::Failed {
-        relay_url: "wss://r1".to_string(),
-        message: "blocked: spam".to_string(),
-        class: AckClass::Permanent,
-    };
+    let ack = RelayAck::failed("wss://r1", "blocked", "blocked: spam");
     let verdict = apply_ack(&state, &ack, RetryPolicy::default(), 1_010);
     assert!(matches!(
         verdict,
@@ -92,11 +88,7 @@ fn state_machine_transient_retries_with_exponential_backoff() {
         sent_at_ms: 1_000,
         attempt: 1,
     };
-    let ack = RelayAck::Failed {
-        relay_url: "wss://r1".to_string(),
-        message: "io".to_string(),
-        class: AckClass::Transient,
-    };
+    let ack = RelayAck::failed("wss://r1", "io", "io");
     let verdict = apply_ack(&state, &ack, policy, 1_010);
     match verdict {
         RetryVerdict::ScheduleRetry {
@@ -145,11 +137,7 @@ fn state_machine_auth_required_triggers_reauth_then_gives_up() {
         sent_at_ms: 1_000,
         attempt: 1,
     };
-    let ack = RelayAck::Failed {
-        relay_url: "wss://r1".to_string(),
-        message: "AUTH-REQUIRED: please AUTH".to_string(),
-        class: AckClass::AuthRequired,
-    };
+    let ack = RelayAck::failed("wss://r1", "auth-required", "AUTH-REQUIRED: please AUTH");
     let verdict = apply_ack(&state, &ack, policy, 1_010);
     match verdict {
         RetryVerdict::Reauth { next_attempt, .. } => assert_eq!(next_attempt, 2),
@@ -171,11 +159,7 @@ fn state_machine_auth_required_triggers_reauth_then_gives_up() {
 #[test]
 fn state_machine_late_ack_for_terminal_is_idempotent() {
     let state = PerRelayState::Ok { acked_at_ms: 1_000 };
-    let ack = RelayAck::Failed {
-        relay_url: "wss://r1".to_string(),
-        message: "duplicate".to_string(),
-        class: AckClass::Transient,
-    };
+    let ack = RelayAck::failed("wss://r1", "io", "duplicate");
     let verdict = apply_ack(&state, &ack, RetryPolicy::default(), 2_000);
     assert!(matches!(
         verdict,
@@ -187,18 +171,8 @@ fn state_machine_late_ack_for_terminal_is_idempotent() {
 fn engine_explicit_target_dispatches_to_named_relays() {
     let outbox = Arc::new(StaticOutbox::default());
     let dispatcher = Arc::new(ReplayDispatcher::new());
-    dispatcher.script(
-        "wss://r1",
-        vec![RelayAck::Ok {
-            relay_url: "wss://r1".to_string(),
-        }],
-    );
-    dispatcher.script(
-        "wss://r2",
-        vec![RelayAck::Ok {
-            relay_url: "wss://r2".to_string(),
-        }],
-    );
+    dispatcher.script("wss://r1", vec![RelayAck::ok("wss://r1")]);
+    dispatcher.script("wss://r2", vec![RelayAck::ok("wss://r2")]);
     let (mut engine, _store, dispatcher) = engine_with(outbox, dispatcher, RetryPolicy::default());
 
     let action = PublishAction::Publish {
@@ -228,12 +202,7 @@ fn engine_auto_target_resolves_outbox_author_writes() {
         .insert("alice".to_string(), vec!["wss://alice-write".to_string()]);
     let outbox = Arc::new(outbox);
     let dispatcher = Arc::new(ReplayDispatcher::new());
-    dispatcher.script(
-        "wss://alice-write",
-        vec![RelayAck::Ok {
-            relay_url: "wss://alice-write".to_string(),
-        }],
-    );
+    dispatcher.script("wss://alice-write", vec![RelayAck::ok("wss://alice-write")]);
     let (mut engine, _store, dispatcher) = engine_with(outbox, dispatcher, RetryPolicy::default());
 
     let action = PublishAction::Publish {
@@ -262,18 +231,8 @@ fn engine_auto_target_includes_p_tag_inbox_relays() {
         .insert("bob".to_string(), vec!["wss://bob-read".to_string()]);
     let outbox = Arc::new(outbox);
     let dispatcher = Arc::new(ReplayDispatcher::new());
-    dispatcher.script(
-        "wss://alice-write",
-        vec![RelayAck::Ok {
-            relay_url: "wss://alice-write".to_string(),
-        }],
-    );
-    dispatcher.script(
-        "wss://bob-read",
-        vec![RelayAck::Ok {
-            relay_url: "wss://bob-read".to_string(),
-        }],
-    );
+    dispatcher.script("wss://alice-write", vec![RelayAck::ok("wss://alice-write")]);
+    dispatcher.script("wss://bob-read", vec![RelayAck::ok("wss://bob-read")]);
     let (mut engine, _store, dispatcher) = engine_with(outbox, dispatcher, RetryPolicy::default());
 
     let action = PublishAction::Publish {
@@ -359,12 +318,7 @@ fn engine_view_rev_bumps_once_per_batch_not_per_relay() {
     let outbox = Arc::new(outbox);
     let dispatcher = Arc::new(ReplayDispatcher::new());
     for r in ["wss://r1", "wss://r2", "wss://r3"] {
-        dispatcher.script(
-            r,
-            vec![RelayAck::Ok {
-                relay_url: r.to_string(),
-            }],
-        );
+        dispatcher.script(r, vec![RelayAck::ok(r)]);
     }
     let (mut engine, _store, _dispatcher) = engine_with(outbox, dispatcher, RetryPolicy::default());
 
@@ -390,4 +344,103 @@ fn engine_view_rev_bumps_once_per_batch_not_per_relay() {
     );
     assert_eq!(engine.snapshot().recent_ok.len(), 1);
     assert_eq!(engine.snapshot().recent_ok[0].accepted_by.len(), 3);
+}
+
+#[test]
+fn engine_exposes_classify_ack_to_actor_ffi_bridge() {
+    // Per the task spec ("move classification to PublishEngine::classify_ack"),
+    // the engine carries a method the actor / FFI bridge can call without
+    // re-deriving the rules. The method routes to the pure `state::classify_ack`
+    // so the policy stays single-sourced.
+    let outbox = Arc::new(StaticOutbox::default());
+    let dispatcher = Arc::new(ReplayDispatcher::new());
+    let (engine, _store, _dispatcher) = engine_with(outbox, dispatcher, RetryPolicy::default());
+
+    assert_eq!(
+        engine.classify_ack(&RelayAck::failed("wss://r", "blocked", "no")),
+        AckClass::Permanent
+    );
+    assert_eq!(
+        engine.classify_ack(&RelayAck::failed("wss://r", "auth-required", "auth")),
+        AckClass::AuthRequired
+    );
+    assert_eq!(
+        engine.classify_ack(&RelayAck::timed_out("wss://r")),
+        AckClass::Transient
+    );
+}
+
+#[test]
+fn classify_ack_maps_codes_to_engine_policy_d7_boundary() {
+    // Regression guard: the dispatcher hands the engine purely descriptive
+    // RelayAck values; classification into AckClass lives entirely inside
+    // the engine (per D7 — capabilities report, never decide policy). If
+    // anyone ever adds an `AckClass`-shaped field back to RelayAck this test
+    // still passes, but the type system breaks first.
+
+    // Permanent NIP-20 OK-false prefixes → Permanent.
+    for code in [
+        "blocked",
+        "pow",
+        "rate-limited",
+        "restricted",
+        "invalid",
+        "duplicate",
+    ] {
+        let ack = RelayAck::failed("wss://r", code, "nope");
+        assert_eq!(
+            classify_ack(&ack),
+            AckClass::Permanent,
+            "code `{}` must map to Permanent",
+            code
+        );
+    }
+
+    // AUTH-REQUIRED → AuthRequired.
+    let ack = RelayAck::failed("wss://r", "auth-required", "need auth");
+    assert_eq!(classify_ack(&ack), AckClass::AuthRequired);
+
+    // Transport-class + unknown codes → Transient (conservative retry).
+    for code in ["timeout", "io", "connection-reset", "totally-new-code", ""] {
+        let ack = RelayAck::failed("wss://r", code, "transport");
+        assert_eq!(
+            classify_ack(&ack),
+            AckClass::Transient,
+            "code `{}` must map to Transient (conservative default)",
+            code
+        );
+    }
+
+    // ok=true short-circuits to Permanent (success is permanent; the engine
+    // never consults the classifier on success — pinning prevents accidents).
+    let ack = RelayAck::ok("wss://r");
+    assert_eq!(classify_ack(&ack), AckClass::Permanent);
+}
+
+#[test]
+fn relay_ack_struct_carries_optional_details_for_dispatcher_metadata() {
+    // RelayAck::details lets a dispatcher hand the engine richer transport
+    // metadata (NIP-42 challenge, NIP-13 difficulty, retry-after-ms) without
+    // baking a classification into the type. Per D7 the engine is free to
+    // ignore it; classifiers only key off `code`.
+    let mut ack = RelayAck::failed("wss://r", "auth-required", "please AUTH");
+    ack.details = Some(serde_json::json!({"challenge": "deadbeef"}));
+
+    // The classifier ignores `details` and routes solely on `code`.
+    assert_eq!(classify_ack(&ack), AckClass::AuthRequired);
+
+    // The struct round-trips through serde (FFI / persistence safety).
+    let json = serde_json::to_string(&ack).unwrap();
+    let back: RelayAck = serde_json::from_str(&json).unwrap();
+    assert_eq!(back.details, ack.details);
+    assert_eq!(back.code, "auth-required");
+    assert!(!back.ok);
+
+    // Ack with `ok=true` skips serialising `details` (defaults to None).
+    let success = RelayAck::ok("wss://r");
+    let json = serde_json::to_string(&success).unwrap();
+    assert!(
+        !json.contains("details"),
+        "ok ack must not serialise None details (skip_serializing_if): {json}"
+    );
 }

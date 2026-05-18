@@ -13,11 +13,7 @@ use super::InFlight;
 use crate::substrate::SignedEvent;
 
 pub(super) fn relay_url_of(ack: &RelayAck) -> RelayUrl {
-    match ack {
-        RelayAck::Ok { relay_url }
-        | RelayAck::Failed { relay_url, .. }
-        | RelayAck::TimedOut { relay_url } => relay_url.clone(),
-    }
+    ack.relay_url.clone()
 }
 
 pub(super) fn dispatch_due(

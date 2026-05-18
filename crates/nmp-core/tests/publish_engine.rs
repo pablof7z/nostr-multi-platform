@@ -10,8 +10,8 @@
 use std::sync::Arc;
 
 use nmp_core::publish::{
-    outcome_of, AckClass, InMemoryPublishStore, NoopSigner, PublishAction, PublishEngine,
-    PublishOutcome, PublishStore, PublishTarget, RelayAck, RetryPolicy, StaticOutbox,
+    outcome_of, InMemoryPublishStore, NoopSigner, PublishAction, PublishEngine, PublishOutcome,
+    PublishStore, PublishTarget, RelayAck, RetryPolicy, StaticOutbox,
 };
 use nmp_core::publish::{PerRelayState, PublishStoreError, RelayDispatcher, ReplayDispatcher};
 use nmp_core::substrate::*;
@@ -73,21 +73,11 @@ fn publish_auto_resolves_outbox() {
     let outbox = outbox_with("alice", &["wss://r1", "wss://r2"], &[]);
     let dispatcher = Arc::new(ReplayDispatcher::new());
     for r in ["wss://r1", "wss://r2"] {
-        dispatcher.script(
-            r,
-            vec![RelayAck::Ok {
-                relay_url: r.to_string(),
-            }],
-        );
+        dispatcher.script(r, vec![RelayAck::ok(r)]);
     }
     // A third relay exists in the world but is NOT in alice's kind:10002 — it
     // must NOT receive the publish.
-    dispatcher.script(
-        "wss://r3",
-        vec![RelayAck::Ok {
-            relay_url: "wss://r3".to_string(),
-        }],
-    );
+    dispatcher.script("wss://r3", vec![RelayAck::ok("wss://r3")]);
 
     let store: Arc<dyn PublishStore> = Arc::new(InMemoryPublishStore::new());
     let mut e = engine(outbox, dispatcher.clone(), store);
@@ -125,12 +115,7 @@ fn publish_p_tag_inbox_routing() {
     );
     let dispatcher = Arc::new(ReplayDispatcher::new());
     for r in ["wss://alice-write", "wss://bob-read"] {
-        dispatcher.script(
-            r,
-            vec![RelayAck::Ok {
-                relay_url: r.to_string(),
-            }],
-        );
+        dispatcher.script(r, vec![RelayAck::ok(r)]);
     }
     let store: Arc<dyn PublishStore> = Arc::new(InMemoryPublishStore::new());
     let mut e = engine(outbox, dispatcher.clone(), store);
@@ -168,14 +153,8 @@ fn publish_retry_on_connection_drop() {
     dispatcher.script(
         "wss://flaky",
         vec![
-            RelayAck::Failed {
-                relay_url: "wss://flaky".to_string(),
-                message: "connection reset".to_string(),
-                class: AckClass::Transient,
-            },
-            RelayAck::Ok {
-                relay_url: "wss://flaky".to_string(),
-            },
+            RelayAck::failed("wss://flaky", "connection-reset", "connection reset"),
+            RelayAck::ok("wss://flaky"),
         ],
     );
     let store: Arc<dyn PublishStore> = Arc::new(InMemoryPublishStore::new());
@@ -213,11 +192,7 @@ fn publish_giveup_after_three_attempts() {
     let dispatcher = Arc::new(ReplayDispatcher::new());
     // Default policy allows three total attempts: initial send plus two
     // retries. Three explicit transient failures exhaust it.
-    let fail = RelayAck::Failed {
-        relay_url: "wss://always-500".to_string(),
-        message: "ERR 500".to_string(),
-        class: AckClass::Transient,
-    };
+    let fail = RelayAck::failed("wss://always-500", "io", "ERR 500");
     dispatcher.script(
         "wss://always-500",
         vec![fail.clone(), fail.clone(), fail.clone()],
@@ -261,12 +236,7 @@ fn publish_durable_across_restart() {
         let mut e = engine(outbox.clone(), dispatcher_1.clone(), store.clone());
         // Scripted to immediately time out so the engine schedules a retry,
         // leaving the row durably persisted.
-        dispatcher_1.script(
-            "wss://durable",
-            vec![RelayAck::TimedOut {
-                relay_url: "wss://durable".to_string(),
-            }],
-        );
+        dispatcher_1.script("wss://durable", vec![RelayAck::timed_out("wss://durable")]);
         e.start_publish(
             PublishAction::Publish {
                 handle: "p-durable".to_string(),
@@ -284,12 +254,7 @@ fn publish_durable_across_restart() {
 
     // "Restart": new engine instance, new dispatcher that this time succeeds.
     let dispatcher_2 = Arc::new(ReplayDispatcher::new());
-    dispatcher_2.script(
-        "wss://durable",
-        vec![RelayAck::Ok {
-            relay_url: "wss://durable".to_string(),
-        }],
-    );
+    dispatcher_2.script("wss://durable", vec![RelayAck::ok("wss://durable")]);
     let mut e2 = engine(outbox, dispatcher_2.clone(), store.clone());
     // resume_from_store waits for retry backoff; supply a now_ms past it.
     e2.resume_from_store(60_000).unwrap();
@@ -315,12 +280,7 @@ fn publish_dedup_on_same_event_multi_relay_single_rev_per_batch() {
     );
     let dispatcher = Arc::new(ReplayDispatcher::new());
     for r in ["wss://r1", "wss://r2", "wss://r3", "wss://r4", "wss://r5"] {
-        dispatcher.script(
-            r,
-            vec![RelayAck::Ok {
-                relay_url: r.to_string(),
-            }],
-        );
+        dispatcher.script(r, vec![RelayAck::ok(r)]);
     }
     let store: Arc<dyn PublishStore> = Arc::new(InMemoryPublishStore::new());
     let mut e = engine(outbox, dispatcher.clone(), store);
@@ -396,6 +356,7 @@ fn publish_store_persists_event_for_resume_round_trip() {
         handle: "h-round".to_string(),
         event: event.clone(),
         per_relay: vec![("wss://r1".to_string(), PerRelayState::Pending)],
+        pending_retries: Vec::new(),
     };
     store.upsert(&record).unwrap();
     let loaded = store.load_pending().unwrap();
@@ -416,3 +377,7 @@ fn publish_store_error_does_not_panic_engine() {
         nmp_core::publish::PublishEngineError::Store(_)
     ));
 }
+
+// Two follow-up tests for codex 947dcfc findings (D6 FFI mapping +
+// pending_retries durability) live in `publish_engine_followup.rs` so
+// neither file exceeds the AGENTS.md 500-LOC hard cap.
