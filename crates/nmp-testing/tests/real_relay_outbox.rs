@@ -211,7 +211,7 @@ fn outbox_routes_real_author_kind10002_writes() {
                 "Scenario 2 — NIP-65 outbox routing vs real kind:10002",
                 "2-outbox-real-kind10002",
                 Verdict::Skip,
-                &RELAYS.to_vec(),
+                RELAYS,
                 &body,
             ),
         );

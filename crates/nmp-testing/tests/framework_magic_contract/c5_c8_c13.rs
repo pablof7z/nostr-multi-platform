@@ -218,26 +218,27 @@ fn c8_subscriptions_coalesce_autoclose_and_buffer() {
 /// C13: Best-effort rendering — `author_picture_url` is a non-`Option` `String`
 /// on the JSON wire format; authoritative data refines in place.
 ///
-/// The substrate gap (#57-c13-gap) is resolved: `TimelineItem.author_picture_url`
-/// was migrated from `Option<String>` to `String` via
-/// `nmp_core::substrate::placeholder::picture_placeholder` (ADR-0017).  The
-/// field now always carries a non-empty value — either the kind:0 picture URL or
-/// a deterministic `identicon:<pubkey-prefix>` URI — which satisfies D1 (the UI
-/// never has to branch on `None`).
+/// Integration proof of TWO contracts in one drain:
 ///
-/// This integration test verifies the JSON wire format the Swift/Kotlin FFI
-/// consumers actually decode.  It drives the kernel through the actor path to
-/// validate the full pipeline: ingest → projection → JSON serialisation.
+/// 1. **ADR-0017 (D1 placeholder shape).** With no kind:0 ingested, the
+///    timeline item's `author_picture_url` is the deterministic
+///    `identicon:<pubkey-prefix>` URI and `author_avatar_source` is
+///    `"placeholder"` (the discriminator tracks the actual URL selection).
+/// 2. **ADR-0001 / T103 (FFI envelope).** Every frame on the channel decodes
+///    as the single `UpdateEnvelope` discriminated type — the tag *is* the
+///    discriminant (D6).  This test never sniffs payload keys to decide
+///    snapshot-vs-update; it pattern-matches on `UpdateEnvelope::Snapshot`.
 ///
-/// A companion kernel-internal test (`c13_kernel_*` in `kernel/tests.rs`)
-/// exercises the in-place refinement (placeholder → kind:0 URL) with direct
-/// access to `Profile` insertion.
+/// In-place refinement (placeholder → kind:0 URL) is covered by the kernel
+/// companion `c13_kernel_*` in `kernel/tests.rs`, per the ADR-0017 split.
 ///
-/// Design: `docs/product-spec/doctrine.md` §D1, ADR-0017.
+/// Design: `docs/product-spec/doctrine.md` §D1, ADR-0017,
+///         `docs/design/0001-ffi-update-channel-envelope.md` (T103).
 #[test]
 fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     use nmp_core::store::RawEvent;
     use nmp_core::testing::{spawn_actor, ActorCommand};
+    use nmp_core::UpdateEnvelope;
     use std::time::Duration;
 
     let (tx, rx) = spawn_actor();
@@ -267,28 +268,50 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     tx.send(ActorCommand::IngestPreVerifiedEvents(vec![verified]))
         .expect("send IngestPreVerifiedEvents");
 
-    // Drain update(s) until we see one that contains our event.
-    let update_json = {
-        let mut found = None;
+    // Drain envelopes until we find a `Snapshot` carrying our event in `items`.
+    // Every frame on the channel is wrapped as `{"t":"…","v":…}` per ADR-0001
+    // (T103); decoding through `UpdateEnvelope` here proves the snapshot is
+    // delivered with the canonical discriminator — discrete `Update` frames
+    // (e.g. `Started`) are skipped on the typed tag, never by key sniffing.
+    let snapshot = {
+        let mut found: Option<serde_json::Value> = None;
         let deadline = std::time::Instant::now() + Duration::from_secs(5);
         while std::time::Instant::now() < deadline {
             match rx.recv_timeout(Duration::from_millis(100)) {
-                Ok(json) if json.contains(event_id) => {
-                    found = Some(json);
-                    break;
+                Ok(frame) => {
+                    let envelope: UpdateEnvelope = serde_json::from_str(&frame)
+                        .unwrap_or_else(|e| {
+                            panic!("every channel frame must decode as UpdateEnvelope (ADR-0001 / T103) — got error {e} on frame: {frame}")
+                        });
+                    if let UpdateEnvelope::Snapshot(snapshot) = envelope {
+                        let items = snapshot
+                            .get("items")
+                            .and_then(|value| value.as_array());
+                        if let Some(items) = items {
+                            if items
+                                .iter()
+                                .any(|item| item.get("id").and_then(|id| id.as_str()) == Some(event_id))
+                            {
+                                found = Some(snapshot);
+                                break;
+                            }
+                        }
+                    }
                 }
-                Ok(_) => continue,
                 Err(_) => break,
             }
         }
-        found.expect("actor must emit an update containing our event within 5 s")
+        found.expect(
+            "actor must emit a `snapshot` envelope whose `items` contains our event within 5 s",
+        )
     };
 
-    // Parse the JSON and locate our item.
-    let update: serde_json::Value =
-        serde_json::from_str(&update_json).expect("update must be valid JSON");
-
-    let items = update["items"].as_array().expect("update must have an items array");
+    // The snapshot's `items` field is the projection of the kernel's visible
+    // timeline — required by the view payload contract (see ADR-0001 §"Periodic
+    // snapshot" and `Kernel::make_update`).
+    let items = snapshot["items"]
+        .as_array()
+        .expect("snapshot must have an items array (Kernel::make_update contract)");
     let our_item = items
         .iter()
         .find(|item| item["id"].as_str() == Some(event_id))
@@ -308,6 +331,8 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     );
 
     // author_avatar_source distinguishes placeholder from authoritative.
+    // ADR-0017: with no kind:0 ingested, the discriminator MUST be
+    // "placeholder" (not "kind0"), tracking the actual URL selection.
     let source = our_item["author_avatar_source"]
         .as_str()
         .expect("author_avatar_source must be present");
