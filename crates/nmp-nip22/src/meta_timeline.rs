@@ -102,10 +102,11 @@ impl ModularTimelineState {
         if !self.accepted_kinds.contains(&event.kind) {
             return false;
         }
-        // NIP-29 discriminator: h-tagged kind:1111 events fail the
-        // resolver, so the grouper naturally drops them. We do not need
-        // to re-check here.
-        true
+        // (kind, h-tag) D4 discriminator: h-tagged kind:1111 events
+        // belong to nmp-nip29 (group comments). `try_from_kernel_event`
+        // returns None for them; mirror `CommentsView::accept`'s guard
+        // here so they never reach the grouper as headless events.
+        try_from_kernel_event(event).is_some()
     }
 }
 
@@ -269,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn h_tagged_kind_1111_dropped_via_resolver() {
+    fn h_tagged_kind_1111_dropped_via_d4_discriminator() {
         let spec = ModularTimelineSpec {
             viewer: "me".into(),
             kinds: vec![],
@@ -277,7 +278,7 @@ mod tests {
             policy: ModulePolicy::default(),
         };
         let (mut s, _) = Nip22ModularTimelineView::open(&ctx(), spec);
-        let mut h = ke_comment(
+        let h = ke_comment(
             "H",
             1,
             vec![
@@ -285,16 +286,12 @@ mod tests {
                 vec!["h".into(), "group".into()],
             ],
         );
-        h.author = "alice".into();
-        // The wrapper passes h-tagged events into the grouper, but the
-        // resolver returns None for both parent and root — so it lands as
-        // a Standalone block. Verify it does NOT crash / mis-attribute.
-        Nip22ModularTimelineView::on_event_inserted(&ctx(), &mut s, &h);
-        // h-tagged events are out-of-scope for NIP-22; the resolver answers
-        // None to both parent and root, so the grouper places it as a
-        // standalone with no chain. UI typically filters by namespace anyway.
+        // h-tagged kind:1111 belongs to nmp-nip29 (group comments). Mirror
+        // CommentsView::accept's guard so they never reach the grouper.
+        let delta = Nip22ModularTimelineView::on_event_inserted(&ctx(), &mut s, &h);
+        assert!(delta.is_none());
         let snap = Nip22ModularTimelineView::snapshot(&ctx(), &s);
-        assert_eq!(snap.blocks.len(), 1);
+        assert!(snap.blocks.is_empty());
     }
 
     #[test]
