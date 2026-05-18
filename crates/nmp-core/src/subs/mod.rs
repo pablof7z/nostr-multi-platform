@@ -39,8 +39,8 @@ use auth_gate::AuthGate;
 use lifecycle_gate::LifecycleGate;
 
 use crate::planner::{
-    apply_selection, CompiledPlan, InterestId, InterestShape, MailboxCache, PlannerError, RelayUrl,
-    SubscriptionCompiler,
+    apply_selection, CompiledPlan, InterestId, InterestLifecycle, InterestShape, MailboxCache,
+    PlannerError, RelayUrl, SubscriptionCompiler,
 };
 
 /// Post-compile plan-mutation hook (M4 negentropy coverage gate).
@@ -83,6 +83,11 @@ pub const DEFAULT_SELECT_MAX_CONNECTIONS: usize = 30;
 /// Default per-author redundancy cap (applesauce-pure). Each follow is
 /// covered by at most this many surviving relays.
 pub const DEFAULT_SELECT_MAX_PER_USER: usize = 2;
+
+/// Max pubkeys per implicit kind:10002 discovery REQ. Mirrors the kernel's
+/// `Kernel::DISCOVERY_BATCH` — relays that reject large author filters
+/// gracefully drop events, so ≤50 is the conservative-safe ceiling.
+const MAILBOX_PROBE_BATCH: usize = 50;
 
 pub use inbox::TriggerInbox;
 pub use oneshot::{OneshotApi, OneshotToken};
@@ -166,6 +171,22 @@ pub struct SubscriptionLifecycle {
     /// re-connection. Each transition fires [`CompileTrigger::RelayHealthChanged`]
     /// so the affected authors re-route on the next compile pass.
     dead_relays: BTreeSet<RelayUrl>,
+    /// Pubkeys for which a kind:10002 discovery REQ has already been emitted
+    /// this session. Implicit-discovery dedup: when `recompile_and_diff`
+    /// compiles a REQ that targets an author with no cached mailbox AND not
+    /// in this set, it auto-emits a `kinds:[10002]` discovery REQ to the
+    /// indexer set and records the author here.
+    ///
+    /// **Insert-only for the session** (no TTL). An author who has never
+    /// published a kind:10002 is probed exactly once; the empty EOSE that
+    /// comes back leaves them in this set so subsequent recompiles do not
+    /// re-probe (the "nor have tried" half of the contract). Cleared in bulk
+    /// via [`Self::clear_probed_mailboxes`] (the `refresh` escape hatch).
+    /// A relay-list that *does* arrive lands in the mailbox cache and fires
+    /// [`CompileTrigger::Nip65Arrived`], re-routing the author via NIP-65 —
+    /// the probed mark is then moot (the cache hit short-circuits the
+    /// unknown-author check before this set is consulted).
+    probed_mailboxes: BTreeSet<String>,
 }
 
 impl Default for SubscriptionLifecycle {
@@ -199,7 +220,21 @@ impl SubscriptionLifecycle {
             select_max_connections: DEFAULT_SELECT_MAX_CONNECTIONS,
             select_max_per_user: DEFAULT_SELECT_MAX_PER_USER,
             dead_relays: BTreeSet::new(),
+            probed_mailboxes: BTreeSet::new(),
         }
+    }
+
+    /// Clear the implicit-discovery probed set so the next recompile
+    /// re-probes every still-unknown author's kind:10002. The `refresh`
+    /// escape hatch — e.g. after the indexer set changes or the operator
+    /// wants to retry authors whose mailbox never arrived.
+    pub fn clear_probed_mailboxes(&mut self) {
+        self.probed_mailboxes.clear();
+    }
+
+    /// Read-only view of the probed set (diagnostics / tests).
+    pub fn probed_mailboxes(&self) -> &BTreeSet<String> {
+        &self.probed_mailboxes
     }
 
     /// Mark a relay as persistently unreachable. The next recompile excludes
@@ -388,7 +423,67 @@ impl SubscriptionLifecycle {
         self.lifecycle_gate.observe_diff(&raw_frames);
         self.current_plan = Some(plan);
 
-        Ok(self.auth_gate.partition(raw_frames))
+        let mut frames = self.auth_gate.partition(raw_frames);
+
+        // Implicit kind:10002 discovery (D3). Any author this REQ targets
+        // whose mailbox is neither cached NOR previously probed gets an
+        // auto-emitted `kinds:[10002]` REQ to the indexer set. The relay's
+        // answer lands in the kernel's mailbox cache via `ingest_relay_list`,
+        // which fires `Nip65Arrived` → the next recompile routes the author
+        // through their declared write relays. Authors who never published a
+        // kind:10002 are probed exactly once (the empty EOSE still marks them
+        // probed) so we don't re-REQ every recompile.
+        //
+        // These frames are auxiliary: they are NOT part of `CompiledPlan`,
+        // do NOT affect `plan_id`, and are appended AFTER the auth partition
+        // (the indexer is not an auth-paused relay). v1 scope: `shape.authors`
+        // only — `#p` tag values and address-pointer pubkeys are a
+        // documented follow-up.
+        if !self.indexer_relays.is_empty() {
+            let mut to_probe: BTreeSet<String> = BTreeSet::new();
+            for interest in &interests {
+                for author in &interest.shape.authors {
+                    if self.probed_mailboxes.contains(author) {
+                        continue;
+                    }
+                    if mailbox_cache.get(author).is_some() {
+                        continue;
+                    }
+                    to_probe.insert(author.clone());
+                }
+            }
+            if !to_probe.is_empty() {
+                let batch: Vec<String> = to_probe.iter().cloned().collect();
+                for chunk in batch.chunks(MAILBOX_PROBE_BATCH) {
+                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                    for pk in chunk {
+                        std::hash::Hash::hash(pk, &mut hasher);
+                    }
+                    let sub_id = format!(
+                        "mailbox-probe-{:08x}",
+                        std::hash::Hasher::finish(&hasher) & 0xFFFF_FFFF
+                    );
+                    let filter_json = serde_json::json!({
+                        "kinds": [10002],
+                        "authors": chunk,
+                        "limit": chunk.len(),
+                    })
+                    .to_string();
+                    for indexer in &self.indexer_relays {
+                        frames.push(WireFrame::Req {
+                            relay_url: indexer.clone(),
+                            sub_id: sub_id.clone(),
+                            filter_json: filter_json.clone(),
+                            interest_id: InterestId(u64::MAX),
+                            lifecycle: InterestLifecycle::OneShot,
+                        });
+                    }
+                }
+                self.probed_mailboxes.extend(to_probe);
+            }
+        }
+
+        Ok(frames)
     }
 
     /// Drain the trigger inbox at a tick boundary. Per D8, all triggers
@@ -999,6 +1094,127 @@ mod tests {
             baseline + 1,
             "10 triggers in one tick must coalesce into exactly 1 compile (got {} compiles)",
             l.compile_count() - baseline,
+        );
+    }
+
+    // ─── implicit kind:10002 discovery ───────────────────────────────────────
+
+    fn probe_reqs(frames: &[WireFrame]) -> Vec<&WireFrame> {
+        frames
+            .iter()
+            .filter(|f| matches!(f, WireFrame::Req { sub_id, .. } if sub_id.starts_with("mailbox-probe-")))
+            .collect()
+    }
+
+    /// An author with no cached mailbox triggers exactly one kind:10002
+    /// discovery REQ to the indexer set, targeting that author.
+    #[test]
+    fn unknown_author_triggers_mailbox_probe() {
+        let mut l = SubscriptionLifecycle::new(); // indexer = [purplepag.es]
+        let empty = InMemoryMailboxCache::new(); // nothing cached
+        l.registry_mut().push(follow(1, "ab01"));
+
+        let frames = l.recompile_and_diff(&empty).expect("compile");
+        let probes = probe_reqs(&frames);
+        assert_eq!(probes.len(), 1, "exactly one indexer probe expected");
+        if let WireFrame::Req {
+            relay_url,
+            filter_json,
+            lifecycle,
+            ..
+        } = probes[0]
+        {
+            assert_eq!(relay_url, "wss://purplepag.es");
+            assert!(filter_json.contains("10002"));
+            assert!(filter_json.contains(&pubkey("ab01")));
+            assert!(matches!(lifecycle, InterestLifecycle::OneShot));
+        } else {
+            panic!("expected a Req frame");
+        }
+        assert!(l.probed_mailboxes().contains(&pubkey("ab01")));
+    }
+
+    /// A second recompile does NOT re-probe an already-probed author, even
+    /// though the mailbox never arrived ("nor have tried" — insert-only).
+    #[test]
+    fn probed_author_not_reprobed() {
+        let mut l = SubscriptionLifecycle::new();
+        let empty = InMemoryMailboxCache::new();
+        l.registry_mut().push(follow(1, "cd01"));
+
+        let first = l.recompile_and_diff(&empty).expect("compile 1");
+        assert_eq!(probe_reqs(&first).len(), 1);
+
+        let second = l.recompile_and_diff(&empty).expect("compile 2");
+        assert_eq!(
+            probe_reqs(&second).len(),
+            0,
+            "already-probed author must not re-probe"
+        );
+
+        // refresh escape hatch re-probes.
+        l.clear_probed_mailboxes();
+        let third = l.recompile_and_diff(&empty).expect("compile 3");
+        assert_eq!(
+            probe_reqs(&third).len(),
+            1,
+            "clear_probed_mailboxes re-arms discovery"
+        );
+    }
+
+    /// An author WITH a cached mailbox is never probed.
+    #[test]
+    fn cached_author_never_probed() {
+        let mut l = SubscriptionLifecycle::new();
+        let mut cache = InMemoryMailboxCache::new();
+        cache.put(
+            pubkey("ef01"),
+            MailboxSnapshot {
+                write_relays: vec!["wss://known.example".to_string()],
+                read_relays: vec![],
+                both_relays: vec![],
+            },
+        );
+        l.registry_mut().push(follow(1, "ef01"));
+
+        let frames = l.recompile_and_diff(&cache).expect("compile");
+        assert_eq!(
+            probe_reqs(&frames).len(),
+            0,
+            "author with cached mailbox must not be probed"
+        );
+        assert!(l.probed_mailboxes().is_empty());
+    }
+
+    /// >50 unknown authors batch into multiple probe REQs (≤50 each).
+    #[test]
+    fn many_unknown_authors_batch_into_chunks() {
+        let mut l = SubscriptionLifecycle::new();
+        let empty = InMemoryMailboxCache::new();
+        for i in 0..120u32 {
+            let seed = format!("z{i:03}");
+            l.registry_mut().push(follow(u64::from(i) + 1, &seed));
+        }
+        let frames = l.recompile_and_diff(&empty).expect("compile");
+        let probes = probe_reqs(&frames);
+        // 120 authors / 50 per batch = 3 batches (50 + 50 + 20), one indexer.
+        assert_eq!(probes.len(), 3, "120 authors must split into 3 probe REQs");
+        assert_eq!(l.probed_mailboxes().len(), 120);
+    }
+
+    /// With no indexer configured, discovery is silently skipped (the
+    /// operator opted out of indexer discovery).
+    #[test]
+    fn no_indexer_means_no_probe() {
+        let mut l = SubscriptionLifecycle::new();
+        l.set_indexer_relays(vec![]);
+        let empty = InMemoryMailboxCache::new();
+        l.registry_mut().push(follow(1, "aa99"));
+        let frames = l.recompile_and_diff(&empty).expect("compile");
+        assert_eq!(probe_reqs(&frames).len(), 0);
+        assert!(
+            l.probed_mailboxes().is_empty(),
+            "no probe emitted → nothing marked probed"
         );
     }
 }

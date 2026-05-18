@@ -1,6 +1,7 @@
 //! Kind:10002 (NIP-65 relay list) ingest.
 
 use super::super::*;
+use crate::subs::CompileTrigger;
 
 impl Kernel {
     /// Ingest a kind:10002 NIP-65 relay-list event into `author_relay_lists`.
@@ -58,7 +59,25 @@ impl Kernel {
                 relay_list.both_relays.len()
             ));
             let is_timeline_author = self.timeline_authors.contains(&event.pubkey);
+            // Capture created_at before `relay_list` moves into the map.
+            let nip65_created_at = relay_list.created_at;
             self.author_relay_lists.insert(event.pubkey.clone(), relay_list);
+            // A1: a kind:10002 replaced an author's mailbox. Fan a
+            // Nip65Arrived trigger into the lifecycle inbox so the
+            // subscription compiler recompiles on the next tick — the
+            // author now routes via their declared NIP-65 write relays
+            // instead of the indexer-discovery probe. Mirrors the A11
+            // FollowListChanged pattern in `ingest/contacts.rs`. Per D8,
+            // multiple kind:10002 arrivals within one tick collapse to a
+            // single compile pass. This closes the auto-probe round-trip:
+            // recompile emits the kinds:[10002] discovery REQ → relay
+            // answers → ingest_relay_list lands it here → this trigger
+            // re-plans the author onto their resolved write relays.
+            self.lifecycle
+                .enqueue_trigger(CompileTrigger::Nip65Arrived {
+                    pubkey: event.pubkey.clone(),
+                    created_at: nip65_created_at,
+                });
             // T105 / A1 recompilation trigger: a kind:10002 arrived for an
             // author already in the follow-feed. The current `seed-timeline-*`
             // subs are partitioned by the previous (likely bootstrap) routing
