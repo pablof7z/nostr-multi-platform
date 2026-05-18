@@ -22,26 +22,12 @@ use crate::kinds::KIND_COMMENT;
 /// What a NIP-22 comment is anchored to. Either a Nostr event (by id), a
 /// parameterized-replaceable address (`<kind>:<author>:<d>`), or an external
 /// URI (`I`/`i` tag — e.g. `https://...`).
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub enum CommentPointer {
-    Event {
-        id: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        relay: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        kind: Option<u32>,
-    },
-    Address {
-        coord: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        relay: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        kind: Option<u32>,
-    },
-    External {
-        uri: String,
-    },
-}
+///
+/// Aliased onto [`nmp_threading::ThreadPointer`] so the same anchor type is
+/// shared between NIP-10 and NIP-22 wrappers without an FFI-visible
+/// duplicate. Serde shape is byte-identical to the historic local enum —
+/// existing wire formats and tests round-trip unchanged.
+pub type CommentPointer = nmp_threading::ThreadPointer;
 
 /// Decoded NIP-22 standalone comment. Immutable per `kind-wrappers.md` §1.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
