@@ -27,6 +27,7 @@ members = [
     "crates/nmp-signer-iface",
     "crates/nmp-signers",
     "crates/nmp-testing",
+    "crates/nmp-threading",
     "crates/nmp-desktop",
 ]
 resolver = "2"
