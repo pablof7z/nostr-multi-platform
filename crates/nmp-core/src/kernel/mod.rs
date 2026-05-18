@@ -27,6 +27,8 @@ mod nostr;
 mod outbox;
 #[cfg(test)]
 mod outbox_tests;
+#[cfg(test)]
+mod t142_drain_lifecycle_tick_tests;
 mod provenance;
 #[cfg(test)]
 mod provenance_wire_tests;

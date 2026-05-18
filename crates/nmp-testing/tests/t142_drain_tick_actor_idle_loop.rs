@@ -122,13 +122,17 @@ fn t142_follow_list_update_produces_wire_frames_e2e() {
 
 // ─── Test 3 — empty tick no recompile (D8 zero-cost no-op invariant) ─────────
 
-/// With no triggers enqueued, drain_tick() must return no frames and must NOT
-/// invoke the planner (compile count unchanged). This is the common case on a
-/// quiet idle tick — the cost is a single `inbox.is_empty()` check.
+/// With no interests registered AND no triggers enqueued, drain_tick() must
+/// return no frames and must NOT invoke the planner (compile count unchanged).
+///
+/// D8 empty-registry invariant: the actor idle loop calls drain_tick() on every
+/// tick. When no UI has claimed any interest (cold-start, background, or between
+/// sessions), the cost of that call must be a single `inbox.is_empty()` check
+/// — zero allocation, zero compile pass. This is the most common case.
 #[test]
 fn t142_empty_tick_no_recompile() {
     let mut lifecycle = SubscriptionLifecycle::new();
-    lifecycle.registry_mut().push(interest_for(3, "carol"));
+    // No interests registered — empty registry, not just empty inbox.
 
     let mailboxes = cache_for("carol", "wss://carol-relay.example");
     let before = lifecycle.compile_count();
