@@ -10,6 +10,13 @@ final class KernelHandle {
 
     init() {
         raw = nmp_app_new()
+        // Stage 4 of NIP-46 wiring: initialise the bunker broker before any
+        // `signInBunker(...)` dispatch can reach the actor. The broker
+        // registers a hook with `nmp-core` that drives the NIP-46 connect /
+        // get_public_key handshake on a worker thread, then ships the
+        // resulting signer back via `AddRemoteSigner`. D0 stays clean — the
+        // broker is a separate static lib (`libnmp_signer_broker.a`).
+        nmp_signer_broker_init(raw)
     }
 
     deinit {
@@ -75,6 +82,12 @@ final class KernelHandle {
 
     func signInBunker(_ uri: String) {
         uri.withCString { nmp_app_signin_bunker(raw, $0) }
+    }
+
+    /// Cancel an in-flight NIP-46 bunker handshake. Idempotent / safe when
+    /// nothing is in flight (no-op).
+    func cancelBunkerHandshake() {
+        nmp_app_cancel_bunker_handshake(raw)
     }
 
     func createAccount() {

@@ -130,12 +130,13 @@ final class KernelModel: ObservableObject {
     }
 
     func signInBunker(_ uri: String) { kernel.signInBunker(uri) }
-    /// Cancel an in-flight NIP-46 handshake. UI-only stub today — Stage 4
-    /// broker will expose `nmp_app_cancel_bunker_handshake` and this method
-    /// will dispatch to the kernel. Clearing the local mirror gives the
-    /// sheet an immediate visual reset; the next snapshot will reconcile.
-    // TODO: wired by Stage 4 broker — symbol is a no-op until then.
+    /// Cancel an in-flight NIP-46 handshake. Stage 4 (the broker) backs this
+    /// with `nmp_app_cancel_bunker_handshake`, which flips the handshake
+    /// thread's cancel flag and tears down its relay client. We also clear
+    /// the local mirror so the sheet resets immediately; the next snapshot
+    /// will reconcile through the broker's `idle` progress event.
     func cancelBunkerHandshake() {
+        kernel.cancelBunkerHandshake()
         bunkerHandshake = nil
     }
     func createAccount() {

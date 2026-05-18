@@ -68,4 +68,21 @@ void nmp_app_lifecycle_background(void *app);
 typedef void (*NmpLifecycleCallback)(void *context, uint32_t phase);
 void nmp_app_set_lifecycle_callback(void *app, void *context, NmpLifecycleCallback callback);
 
+// ── NIP-46 signer broker (Stage 4) ───────────────────────────────────────
+//
+// `libnmp_signer_broker.a` is a separate Rust static library (doctrine D0
+// forbids `nmp-core -> nmp-signers`, so the broker — which depends on both
+// — must live in its own archive). The two symbols below are exported from
+// that archive and MUST be reachable to the Chirp link step.
+//
+// Call `nmp_signer_broker_init(app)` exactly once, right after `nmp_app_new()`.
+// It registers a `bunker://` handler that drives the NIP-46 connect /
+// get_public_key dance on a worker thread; subsequent
+// `nmp_app_signin_bunker(app, uri)` calls flow through the broker.
+//
+// `nmp_app_cancel_bunker_handshake(app)` aborts any in-flight handshake.
+// Idempotent / safe when nothing is in flight.
+void nmp_signer_broker_init(void *app);
+void nmp_app_cancel_bunker_handshake(void *app);
+
 #endif

@@ -11,6 +11,12 @@ gen-modules-check:
 
 rust-ios-sim:
     cargo build -p nmp-core --target aarch64-apple-ios-sim
+    # Stage 4 of NIP-46 wiring: `nmp-signer-broker` is a separate static lib
+    # (doctrine D0 forbids `nmp-core -> nmp-signer-broker`). Chirp's link
+    # step picks up `libnmp_signer_broker.a` from the same target dir via
+    # `OTHER_LDFLAGS = "$(inherited) -lnmp_core -lnmp_signer_broker"` in the
+    # pbxproj.
+    cargo build -p nmp-signer-broker --target aarch64-apple-ios-sim
 
 gen-ios:
     xcodegen generate --spec ios/NmpStress/project.yml
