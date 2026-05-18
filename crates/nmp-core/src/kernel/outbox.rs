@@ -208,6 +208,44 @@ impl Kernel {
     pub(crate) fn mailbox_cache_view(&self) -> KernelMailboxes<'_> {
         KernelMailboxes::new(&self.author_relay_lists)
     }
+
+    /// T142 — actor idle-loop bridge: drain one tick of the subscription
+    /// lifecycle and return wire frames.
+    ///
+    /// Splits the borrow across the two kernel fields so the Rust borrow
+    /// checker is satisfied: `author_relay_lists` is borrowed immutably for the
+    /// adapter, and `lifecycle` is borrowed mutably for the drain call. Both
+    /// fields live on `Kernel` (not accessed via `&self`/`&mut self` method
+    /// chains), which Rust allows as simultaneous non-overlapping field borrows.
+    ///
+    /// Per D8: an empty trigger inbox is a zero-cost no-op (no allocation, no
+    /// compile pass). This is the common case on a quiet idle tick.
+    pub(crate) fn drain_lifecycle_tick(&mut self) -> Vec<crate::subs::WireFrame> {
+        let mailboxes = KernelMailboxes::new(&self.author_relay_lists);
+        self.lifecycle.drain_tick(&mailboxes)
+    }
+
+    /// T142 — role lookup: map a resolved relay URL to its `RelayRole` lane.
+    ///
+    /// Option A from the spec §3.2: bootstrap-URL matching with Content fallback.
+    /// The two bootstrap seeds are the only URLs with known role assignments at
+    /// this stage; any other URL (per-author NIP-65 write relay resolved by the
+    /// planner) falls through to `RelayRole::Content`, which accepts generic
+    /// content-fetch REQs safely. This is correct because the planner only
+    /// generates REQs for the content lane today (M2 scope).
+    ///
+    /// M11 will sharpen this to a per-URL lookup once the URL→role index is
+    /// maintained by the relay-lifecycle manager.
+    pub(crate) fn role_for_relay_url(&self, url: &str) -> Option<crate::relay::RelayRole> {
+        use crate::relay::{BOOTSTRAP_DISCOVERY_RELAYS, RelayRole};
+        if url == BOOTSTRAP_DISCOVERY_RELAYS[0] {
+            Some(RelayRole::Content)
+        } else if url == BOOTSTRAP_DISCOVERY_RELAYS[1] {
+            Some(RelayRole::Indexer)
+        } else {
+            None
+        }
+    }
 }
 
 // ─── KernelMailboxes adapter (T132) ──────────────────────────────────────────

@@ -16,6 +16,7 @@
 mod commands;
 mod dispatch;
 mod kernel_action;
+mod outbound;
 mod relay_mgmt;
 mod tick;
 #[cfg(test)]
@@ -214,6 +215,8 @@ pub(super) struct RelayControl {
     pub(super) relay_url: String,
     pub(super) tx: Sender<RelayCommand>,
 }
+
+use outbound::wire_frames_to_outbound;
 
 /// Backwards-compatible entry point: spawn the actor without a lifecycle
 /// observer. Existing tests and the `nmp-core::testing` facade call this
@@ -415,6 +418,27 @@ pub fn run_actor_with_observers(
                 &mut next_relay_generation,
                 pending,
             );
+        }
+        // T142 — M2 planner tick: drain the subscription lifecycle's trigger
+        // inbox. Per D8, an empty inbox is a zero-cost no-op (single
+        // `is_empty()` check — no allocation, no compile pass). When
+        // triggers are queued (e.g. FollowListChanged A11, Nip65Arrived A1)
+        // this produces REQ/CLOSE WireFrames that are converted to
+        // OutboundMessages and sent to the relay pool. Placed after M1
+        // `pending_view_requests()` to ensure M1 CLOSE frames are enqueued
+        // before M2 opens new subs (spec §3.1 placement rationale).
+        {
+            let wire_frames = kernel.drain_lifecycle_tick();
+            if !wire_frames.is_empty() {
+                let outbound = wire_frames_to_outbound(wire_frames, &kernel);
+                send_all_outbound(
+                    &mut relay_controls,
+                    &relay_tx,
+                    &mut kernel,
+                    &mut next_relay_generation,
+                    outbound,
+                );
+            }
         }
         // T127: actor-tick for the publish engine. The 250ms idle poll
         // in `compute_wait` (`tick.rs`) already paces this; no

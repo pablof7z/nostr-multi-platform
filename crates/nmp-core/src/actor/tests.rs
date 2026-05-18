@@ -11,7 +11,7 @@ mod tests {
     use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT, BOOTSTRAP_DISCOVERY_RELAYS};
     use crate::subs::WireFrame;
 
-    use super::super::{wire_frames_to_outbound, role_for_relay_url};
+    use super::super::outbound::wire_frames_to_outbound;
 
     // ─── T142-U5: known relay URL → correct RelayRole ────────────────────────
 
