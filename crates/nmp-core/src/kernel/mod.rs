@@ -403,6 +403,14 @@ impl Kernel {
             .unwrap_or(0)
     }
 
+    /// T133 retention-test accessor — total `wire_subs` row count, evicted or
+    /// not. The whole point of T133 is that this stabilises rather than
+    /// growing with close-cycle count.
+    #[cfg(test)]
+    pub(crate) fn wire_subs_len_for_test(&self) -> usize {
+        self.wire_subs.len()
+    }
+
     /// Bind a signer callback used by the NIP-42 handshake, with the active
     /// pubkey hex. The actor (or iOS layer) adapts
     /// `nmp_signers::AccountManager::signer_active()` to this signature at

@@ -94,19 +94,22 @@ impl Kernel {
                     let relay = self.relay_mut(role);
                     relay.counters.eose_rx = relay.counters.eose_rx.saturating_add(1);
                 }
+                // T105: the follow-feed (seed-timeline) is now per-relay
+                // (`seed-timeline-<short-hash>`). Both the legacy id and its
+                // per-relay variants stay live after EOSE.
+                let keep_live = sub_id == "seed-timeline"
+                    || sub_id.starts_with("seed-timeline-")
+                    || sub_id.starts_with("diag-firehose-");
                 if let Some(sub) = self.wire_subs.get_mut(sub_id) {
-                    // T105: the follow-feed (seed-timeline) is now per-relay
-                    // (`seed-timeline-<short-hash>`). Both the legacy id and
-                    // its per-relay variants stay live after EOSE.
-                    sub.state = if sub_id == "seed-timeline"
-                        || sub_id.starts_with("seed-timeline-")
-                        || sub_id.starts_with("diag-firehose-")
-                    {
-                        "live".to_string()
-                    } else {
-                        "closed".to_string()
-                    };
                     sub.eose_at = Some(Instant::now());
+                    if keep_live {
+                        sub.state = "live".to_string();
+                    } else {
+                        // T133: mark closed for the brief window before
+                        // eviction below; ingest path readers (e.g. EVENT for
+                        // an already-EOSE'd sub) will see the row absent.
+                        sub.state = "closed".to_string();
+                    }
                 }
                 if sub_id.starts_with("thread-ids-") {
                     self.thread_ids_inflight = false;
@@ -120,10 +123,7 @@ impl Kernel {
                 if sub_id.starts_with(crate::kernel::discovery::ONESHOT_SUB_PREFIX) {
                     self.complete_unknown_oneshot(sub_id);
                 }
-                if sub_id != "seed-timeline"
-                    && !sub_id.starts_with("seed-timeline-")
-                    && !sub_id.starts_with("diag-firehose-")
-                {
+                if !keep_live {
                     // T105: CLOSE must travel back to the same socket the REQ
                     // went out on — the transport pool is URL-keyed, so a
                     // role-only close would target the bootstrap socket and
@@ -140,6 +140,14 @@ impl Kernel {
                         relay_url,
                         text: json!(["CLOSE", sub_id]).to_string(),
                     });
+                    // T133: evict the row now that the CLOSE outbound is
+                    // queued. The closed state is logically terminal for any
+                    // sub that is not the live follow-feed / firehose; keeping
+                    // the row was a diagnostic-only courtesy that grew the
+                    // table unboundedly across long sessions (every
+                    // profile-claim, thread-ids, thread-replies, and discovery
+                    // oneshot completes via this EOSE→CLOSE path).
+                    self.wire_subs.remove(sub_id);
                 }
                 self.changed_since_emit = true;
                 self.log(format!("EOSE {sub_id}"));
@@ -166,10 +174,11 @@ impl Kernel {
                     let relay = self.relay_mut(role);
                     relay.counters.closed_rx = relay.counters.closed_rx.saturating_add(1);
                 }
-                if let Some(sub) = self.wire_subs.get_mut(sub_id) {
-                    sub.state = "closed_by_relay".to_string();
-                    sub.close_reason = reason.clone();
-                }
+                // T133: a relay-initiated CLOSED is terminal — the relay just
+                // told us the subscription is dead. Evict the row instead of
+                // leaving it with `state="closed_by_relay"` (which previously
+                // accumulated on the diagnostic surface across long sessions).
+                self.wire_subs.remove(sub_id);
                 if sub_id.starts_with("thread-ids-") {
                     self.thread_ids_inflight = false;
                 }

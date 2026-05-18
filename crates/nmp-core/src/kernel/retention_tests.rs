@@ -60,10 +60,29 @@
 //!
 //! Production paths that DO populate `wire_subs` (post-`Start`) are bounded
 //! by the view-close paths (`close_subscriptions_with_prefixes`) and the
-//! per-view refcount in `selected_author`/`selected_thread`. A future
-//! tightening: actually evict closed rows from `wire_subs` rather than mark
-//! them `state="closed"` (today the row stays for diagnostic surfacing; see
-//! M11 follow-up).
+//! per-view refcount in `selected_author`/`selected_thread`.
+//!
+//! ## T133 — `wire_subs` row eviction
+//!
+//! Pre-T133 the row table only ever marked closed subs with
+//! `state="closed"` / `closed_by_relay`; the row stayed for diagnostic
+//! surfacing, so the table grew without bound across long sessions (every
+//! profile-claim, thread-ids/replies, and discovery oneshot completes via
+//! EOSE→CLOSE — the high-volume retention source the advisor flagged on
+//! T114b). T133 evicts rows at every terminal point:
+//!
+//! | Trigger                          | Action                          |
+//! |----------------------------------|---------------------------------|
+//! | `close_subscriptions_with_prefixes` (view-close) | `HashMap::remove` after CLOSE outbound |
+//! | EOSE for non-keep sub (oneshot)  | `HashMap::remove` after CLOSE outbound |
+//! | CLOSED (relay-initiated)         | `HashMap::remove` (no outbound)        |
+//! | `relay_closed` (socket teardown) | `wire_subs.retain(role != …)`          |
+//! | `relay_failed` (transient)       | no eviction — `state="retrying"` may resume |
+//!
+//! Pinned by `view_close_evicts_wire_subs_to_zero` and
+//! `eose_evicts_wire_sub_row` below; the diagnostic-filter call sites at
+//! `status.rs:27` / `requests/mod.rs:25,39,80` remain (defense-in-depth —
+//! they cost nothing once the row is gone).
 
 use super::*;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
@@ -267,4 +286,178 @@ fn claim_flood_does_not_grow_unbounded() {
     // (a pre-fix regression), `len()` would be `flood_size` not the cap.
     // The set's heap footprint is therefore O(MAX_CLAIMS_PER_PUBKEY × avg
     // consumer_id size), independent of dispatch count — the D8 invariant.
+}
+
+// ── T133: wire_subs row eviction ─────────────────────────────────────────────
+
+/// T133 — repeated open/close cycles must not grow `wire_subs`. Pre-T133 each
+/// `close_author` marked rows `state="closed"` but never removed them; the
+/// table grew linearly with cycle count. After T133 the row table returns to
+/// zero after each cycle, so 100 cycles leave it empty.
+#[test]
+fn view_close_evicts_wire_subs_to_zero() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    assert_eq!(
+        kernel.wire_subs_len_for_test(),
+        0,
+        "baseline: fresh kernel has no wire-subs"
+    );
+
+    for cycle in 0..100u32 {
+        let pk = deterministic_pubkey(cycle);
+        // open_author with can_send=true populates wire_subs via author_requests().
+        let opens = kernel.open_author(pk.clone(), true);
+        assert!(
+            !opens.is_empty(),
+            "cycle {cycle}: open_author must emit REQ frames"
+        );
+        assert!(
+            kernel.wire_subs_len_for_test() >= opens.len(),
+            "cycle {cycle}: every REQ recorded a wire_subs row"
+        );
+
+        let closes = kernel.close_author(&pk);
+        assert!(
+            !closes.is_empty(),
+            "cycle {cycle}: close_author must emit CLOSE frames"
+        );
+        // Every CLOSE outbound must correspond to an evicted row — the table
+        // must NOT carry forward into the next cycle.
+        assert_eq!(
+            kernel.wire_subs_len_for_test(),
+            0,
+            "cycle {cycle}: wire_subs row table must be empty after close"
+        );
+    }
+
+    // Final invariant: after 100 open/close cycles the table is still empty.
+    // Pre-T133 this would be ~100 × subs-per-author rows of `state="closed"`
+    // accumulated junk on the diagnostic surface.
+    assert_eq!(
+        kernel.wire_subs_len_for_test(),
+        0,
+        "100 open/close cycles must leave wire_subs empty"
+    );
+}
+
+/// T133 — EOSE for a non-keep sub (oneshot: profile-claim, author-profile,
+/// thread-ids, …) evicts the row from `wire_subs`. This is the
+/// higher-volume retention source than view-close: every claim and every
+/// thread hydration ends via EOSE.
+#[test]
+fn eose_evicts_wire_sub_row() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    // Stage a wire-sub via the same insertion path the production code uses.
+    let req = kernel.req_for_relay(
+        RelayRole::Indexer,
+        "wss://relay.test".to_string(),
+        "profile-claim-1-abcd1234",
+        "T133 eviction probe",
+        serde_json::json!({"kinds":[0],"authors":["aa".repeat(32)],"limit":1}),
+    );
+    assert_eq!(req.text.split("\"REQ\"").count(), 2, "one REQ emitted");
+    assert_eq!(
+        kernel.wire_subs_len_for_test(),
+        1,
+        "REQ inserted exactly one row"
+    );
+
+    // Simulate the relay's EOSE — the kernel must (a) emit a CLOSE outbound
+    // and (b) evict the row.
+    let frame = serde_json::json!(["EOSE", "profile-claim-1-abcd1234"]).to_string();
+    let outbound = kernel.handle_text(RelayRole::Indexer, "wss://relay.test", &frame);
+    assert!(
+        outbound.iter().any(|m| m.text.contains("CLOSE")
+            && m.text.contains("profile-claim-1-abcd1234")),
+        "EOSE for a oneshot must emit a CLOSE outbound"
+    );
+    assert_eq!(
+        kernel.wire_subs_len_for_test(),
+        0,
+        "EOSE for a oneshot must evict the wire_subs row"
+    );
+}
+
+/// T133 — relay-initiated CLOSED frame evicts the row outright (no outbound
+/// CLOSE — the relay already declared the sub dead).
+#[test]
+fn closed_frame_evicts_wire_sub_row() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    kernel.req_for_relay(
+        RelayRole::Content,
+        "wss://relay.test".to_string(),
+        "author-notes-7-deadbeef",
+        "T133 CLOSED-frame eviction probe",
+        serde_json::json!({"kinds":[1,6],"authors":["bb".repeat(32)],"limit":100}),
+    );
+    assert_eq!(kernel.wire_subs_len_for_test(), 1);
+
+    let frame = serde_json::json!(["CLOSED", "author-notes-7-deadbeef", "rate-limited"])
+        .to_string();
+    let _ = kernel.handle_text(RelayRole::Content, "wss://relay.test", &frame);
+    assert_eq!(
+        kernel.wire_subs_len_for_test(),
+        0,
+        "CLOSED frame must evict the row"
+    );
+}
+
+/// T133 — `relay_closed` (full socket teardown) evicts every row for that
+/// role; rows on a different role lane are preserved. `relay_failed`
+/// (transient → state="retrying") does NOT evict — the sub may resume after
+/// the backoff window.
+#[test]
+fn relay_closed_evicts_per_role_relay_failed_preserves() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    // Two subs on the Indexer lane, one on Content.
+    kernel.req_for_relay(
+        RelayRole::Indexer,
+        "wss://idx.test".to_string(),
+        "profile-claim-1-aaaa",
+        "ix probe a",
+        serde_json::json!({"kinds":[0]}),
+    );
+    kernel.req_for_relay(
+        RelayRole::Indexer,
+        "wss://idx.test".to_string(),
+        "profile-claim-2-bbbb",
+        "ix probe b",
+        serde_json::json!({"kinds":[0]}),
+    );
+    kernel.req_for_relay(
+        RelayRole::Content,
+        "wss://content.test".to_string(),
+        "author-notes-1-cccc",
+        "content probe",
+        serde_json::json!({"kinds":[1]}),
+    );
+    assert_eq!(kernel.wire_subs_len_for_test(), 3);
+
+    // relay_failed must NOT evict — it only marks "retrying".
+    kernel.relay_failed(RelayRole::Indexer, "transient error".to_string());
+    assert_eq!(
+        kernel.wire_subs_len_for_test(),
+        3,
+        "relay_failed is transient — rows preserved"
+    );
+
+    // relay_closed evicts every row on that role.
+    kernel.relay_closed(RelayRole::Indexer);
+    assert_eq!(
+        kernel.wire_subs_len_for_test(),
+        1,
+        "relay_closed evicts the two Indexer rows; Content row preserved"
+    );
+
+    // Content lane still healthy.
+    kernel.relay_closed(RelayRole::Content);
+    assert_eq!(
+        kernel.wire_subs_len_for_test(),
+        0,
+        "relay_closed on Content evicts the last row"
+    );
 }

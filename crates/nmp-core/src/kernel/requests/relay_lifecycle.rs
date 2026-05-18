@@ -54,11 +54,13 @@ impl Kernel {
         let relay = self.relay_mut(role);
         relay.connection = "closed".to_string();
         relay.auth = "not_required".to_string();
-        for sub in self.wire_subs.values_mut() {
-            if sub.role == role {
-                sub.state = "closed".to_string();
-            }
-        }
+        // T133: the socket for `role` is gone — every wire-sub on that lane is
+        // dead. Evict rather than mark `state="closed"`; the diagnostic value
+        // of a row that can never resume is zero, and accumulating closed rows
+        // across reconnect churn is exactly the long-session leak T133 fixes.
+        // `retrying` (set by `relay_failed`) is preserved — that's a transient
+        // state where the sub may resume after backoff.
+        self.wire_subs.retain(|_id, sub| sub.role != role);
         self.changed_since_emit = true;
         if let Some(driver) = self.nip42_drivers.get_mut(&role) {
             driver.reset_on_disconnect();
