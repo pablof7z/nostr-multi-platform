@@ -3356,6 +3356,7 @@ dependencies = [
  "mdk-sqlite-storage",
  "nmp-core",
  "nmp-nip59",
+ "nostr",
  "serde",
  "serde_json",
 ]
