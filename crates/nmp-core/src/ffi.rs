@@ -274,20 +274,26 @@ pub extern "C" fn nmp_app_close_thread(app: *mut NmpApp, event_id: *const c_char
     let _ = app.tx.send(ActorCommand::CloseThread { event_id });
 }
 
-/// Inject `count` synthetic kind-1 events into the kernel timeline.
+/// Inject `count` pre-verified kind-1 events into the kernel timeline via
+/// the real `ingest_timeline_event` path.
 ///
-/// Each event gets a unique ID derived from `base_id_prefix` + index.
-/// Pubkeys are round-robined from a small internal pool.  `created_at` starts
-/// at `base_created_at` and increases by 1 per event so the timeline sorts
-/// deterministically.
+/// Events are constructed with deterministic IDs/pubkeys using
+/// `VerifiedEvent::from_raw_unchecked` (test-support fast path; bypasses
+/// Schnorr verification for harness ergonomics — see D7 note below).
 ///
-/// Test-support only — not compiled into production builds.
-/// Used by S3/S4/S5 stress scenarios to create real emit pressure without a
-/// live relay connection.
+/// D7: this symbol is gated on `cfg(any(test, feature = "test-support"))` and
+/// is never part of the production FFI surface.  Swift/C callers never see it.
+/// The `VerifiedEvent` type is the capability boundary: production code can
+/// only construct one via `try_from_raw` (full Schnorr verify).  This function
+/// uses `from_raw_unchecked` explicitly for perf-harness use (S3 100k events).
+///
+/// For S4/S5 (small batches), callers can use `inject_signed_events` in
+/// `nmp_core::testing`, which produces real Schnorr signatures via the `nostr`
+/// crate's `EventBuilder::sign_with_keys`.
 #[cfg(any(test, feature = "test-support"))]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
-pub extern "C" fn nmp_app_inject_events(
+pub extern "C" fn nmp_app_inject_pre_verified_events(
     app: *mut NmpApp,
     base_id_prefix: *const c_char,
     base_created_at: u64,
@@ -297,16 +303,16 @@ pub extern "C" fn nmp_app_inject_events(
         return;
     };
     let prefix = if base_id_prefix.is_null() {
-        "synthetic".to_string()
+        "stress".to_string()
     } else {
         // SAFETY: non-null pointer checked above.
         unsafe { CStr::from_ptr(base_id_prefix) }
             .to_str()
-            .unwrap_or("synthetic")
+            .unwrap_or("stress")
             .to_string()
     };
 
-    // Pool of 8 deterministic pubkeys (64 hex chars each).
+    // Pool of 8 deterministic pubkeys (64 hex chars each) for the harness.
     const POOL: &[&str] = &[
         "0000000000000000000000000000000000000000000000000000000000000001",
         "0000000000000000000000000000000000000000000000000000000000000002",
@@ -318,7 +324,7 @@ pub extern "C" fn nmp_app_inject_events(
         "0000000000000000000000000000000000000000000000000000000000000008",
     ];
 
-    let batch: Vec<(String, String, u64, String)> = (0..count as u64)
+    let events: Vec<crate::store::VerifiedEvent> = (0..count as u64)
         .map(|i| {
             // 64-hex event ID derived from prefix + index.
             let raw_id = format!("{prefix}{i:0>16x}");
@@ -326,14 +332,75 @@ pub extern "C" fn nmp_app_inject_events(
             let id = id[..64].to_string();
             let pubkey = POOL[(i as usize) % POOL.len()].to_string();
             let created_at = base_created_at.saturating_add(i);
-            let content = format!("synthetic event {i} from stress harness");
-            (id, pubkey, created_at, content)
+            let content = format!("harness event {i}");
+            let raw = crate::store::RawEvent {
+                id,
+                pubkey,
+                created_at,
+                kind: 1,
+                tags: Vec::new(),
+                content,
+                // Placeholder sig — from_raw_unchecked bypasses verification.
+                // Rationale: S3 injects 100k events; Schnorr verify would cost
+                // ~3-5 s of setup time that obscures the serialisation metrics
+                // being measured.  D7 gate: this path is cfg-gated and excluded
+                // from the production FFI ABI.
+                sig: "0".repeat(128),
+            };
+            crate::store::VerifiedEvent::from_raw_unchecked(raw)
         })
         .collect();
 
-    let _ = app
-        .tx
-        .send(ActorCommand::InjectSyntheticEvents(batch));
+    let _ = app.tx.send(ActorCommand::IngestPreVerifiedEvents(events));
+}
+
+/// Inject `count` real Schnorr-signed kind-1 events into the kernel timeline
+/// via the full `try_from_raw` verification path.
+///
+/// Uses `nostr::Keys::generate() + EventBuilder::text_note + sign_with_keys`
+/// to produce cryptographically valid events.  Schnorr sign cost is ~30–50 µs
+/// per event; for S4 (500 events) and S5 (200 events) this is 10–25 ms total.
+///
+/// D7: gated on `cfg(any(test, feature = "test-support"))`.  Not part of the
+/// production FFI ABI.
+#[cfg(any(test, feature = "test-support"))]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn nmp_app_inject_signed_events(
+    app: *mut NmpApp,
+    base_created_at: u64,
+    count: u32,
+) {
+    use nostr::{EventBuilder, Keys, Timestamp};
+
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+
+    // Single fixture key: generate once, sign all events.
+    let keys = Keys::generate();
+    let events: Vec<crate::store::VerifiedEvent> = (0..count as u64)
+        .filter_map(|i| {
+            let ts = Timestamp::from(base_created_at.saturating_add(i));
+            let nostr_event = EventBuilder::text_note(format!("signed harness event {i}"))
+                .custom_created_at(ts)
+                .sign_with_keys(&keys)
+                .ok()?;
+            let raw = crate::store::RawEvent {
+                id: nostr_event.id.to_hex(),
+                pubkey: nostr_event.pubkey.to_hex(),
+                created_at: nostr_event.created_at.as_secs(),
+                kind: nostr_event.kind.as_u16() as u32,
+                tags: nostr_event.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
+                content: nostr_event.content.clone(),
+                sig: nostr_event.sig.to_string(),
+            };
+            // try_from_raw: full Schnorr + id-hash verification.
+            crate::store::VerifiedEvent::try_from_raw(raw).ok()
+        })
+        .collect();
+
+    let _ = app.tx.send(ActorCommand::IngestPreVerifiedEvents(events));
 }
 
 fn app_ref<'a>(app: *mut NmpApp) -> Option<&'a NmpApp> {

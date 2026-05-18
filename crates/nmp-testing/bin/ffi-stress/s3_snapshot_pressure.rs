@@ -3,10 +3,11 @@
 //! Spec: docs/design/ffi-hardening/scenarios.md §S3
 //! Gate: docs/design/ffi-hardening/gates.md §G-S3
 //!
-//! Injects 1,000 synthetic timeline events via `nmp_app_inject_events`
-//! (test-support; bypasses sig verification but routes through the same
-//! kernel HashMap path `make_update()` reads from).  Then triggers 10
-//! configure() bursts to stress the listener serialization + callback path.
+//! Injects 100,000 pre-verified kind-1 events via the real kernel ingest path
+//! (`nmp_app_inject_pre_verified_events`, test-support only).  Uses
+//! `VerifiedEvent::from_raw_unchecked` to bypass Schnorr verification for
+//! harness perf (D7: gated on `cfg(test-support)`; not in production ABI).
+//! Then triggers 10 configure() bursts to stress listener serialization.
 //!
 //! D1 (best-effort rendering): every emit processed promptly without blocking.
 //! D2 (<=60 Hz): reconciler frequency stays bounded by configured emit_hz.
@@ -14,7 +15,8 @@
 
 use crate::allocator::alloc_snapshot;
 use crate::common::{
-    configure_and_settle, extract_rev, inject_events, percentile_u64, revs_strictly_increasing,
+    configure_and_settle, extract_rev, inject_pre_verified_events, percentile_u64,
+    revs_strictly_increasing,
 };
 use crate::ffi::{
     nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, process_rss_bytes,
@@ -58,7 +60,7 @@ extern "C" fn measure_cb(ctx: *mut c_void, payload: *const c_char) {
 }
 
 pub(crate) struct S3Config {
-    /// Synthetic events to inject before burst (phase-1 analog of 100k trace).
+    /// Pre-verified events to inject before burst (spec: 100,000).
     pub(crate) inject_count: u32,
     /// Number of configure() bursts (spec: 10).
     pub(crate) configure_bursts: usize,
@@ -69,7 +71,9 @@ pub(crate) struct S3Config {
 impl Default for S3Config {
     fn default() -> Self {
         S3Config {
-            inject_count: 1_000,
+            // G-S3 spec: 100,000 events (gates.md §G-S3).
+            // Uses from_raw_unchecked for harness perf (D7: cfg-gated test path).
+            inject_count: 100_000,
             configure_bursts: 10,
             burst_interval: Duration::from_millis(200),
         }
@@ -93,14 +97,17 @@ pub(crate) fn run(cfg: S3Config, report: &mut ScenarioMetrics) {
     // Configure-not-Start: no relay workers; S3 tests emit serialization, not relay.
     nmp_app_configure(app, 0, 500, 12);
 
-    // Inject synthetic events to build kernel state (phase-1 analog of 100k trace).
-    // Events appear in the read-cache HashMap immediately after the actor processes
-    // the InjectSyntheticEvents command, which is enqueued fire-and-forget.
+    // Inject 100k pre-verified events via the real kernel ingest path.
+    // Routes through ingest_pre_verified_event (same hot path as relay delivery).
+    // Uses from_raw_unchecked for harness perf (D7 note: cfg-gated; not in
+    // production ABI; Schnorr verify cost at 100k would be 3-5 s of setup time).
     let base_ts: u64 = 1_700_000_000;
-    inject_events(app, "s3-", base_ts, cfg.inject_count);
+    inject_pre_verified_events(app, "s3-", base_ts, cfg.inject_count);
 
-    // Settle: allow actor to process inject + emit the initial snapshot.
-    configure_and_settle(app, 500);
+    // Settle: allow actor to process 100k inject + emit the initial snapshot.
+    // 100k events processed sequentially in actor: ~500 ms - 2 s depending on
+    // store insert cost + per-event sort_timeline overhead.  Wait 4 s to be safe.
+    configure_and_settle(app, 4_000);
 
     // D8 allocator snapshot: take BEFORE the burst to measure heap slope over
     // the serialization window (post-warmup).
@@ -196,11 +203,12 @@ pub(crate) fn run(cfg: S3Config, report: &mut ScenarioMetrics) {
         "Injected {} synthetic events; emits observed: {}; burst window: {:.1} s; Hz: {:.1}",
         cfg.inject_count, emit_count, burst_elapsed.as_secs_f64(), burst_hz
     ));
-    report.notes.push(
-        "Event injection uses nmp_app_inject_events (test-support, no sig verify). \
-         Full 100k snapshot test with captured trace is a phase-2 deliverable."
-            .to_string(),
-    );
+    report.notes.push(format!(
+        "Event injection: {} events via nmp_app_inject_pre_verified_events \
+         (real ingest path, from_raw_unchecked for perf; D7: cfg-gated, \
+         not in production ABI).",
+        cfg.inject_count
+    ));
 
     report.measurements = json!({
         "inject_count": cfg.inject_count,

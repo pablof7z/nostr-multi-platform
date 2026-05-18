@@ -129,6 +129,7 @@ impl RawEvent {
 /// Construction is intentionally limited to `try_from_raw()`. In tests and
 /// integration-test harnesses, `from_raw_unchecked()` bypasses verification
 /// (gated on `cfg(any(test, feature = "test-support"))`).
+#[derive(Debug)]
 pub struct VerifiedEvent(pub(crate) RawEvent);
 
 impl VerifiedEvent {

@@ -37,15 +37,17 @@ pub enum ActorCommand {
     Stop,
     Reset,
     Shutdown,
-    /// Inject synthetic timeline events directly into the kernel read-cache.
+    /// Ingest pre-verified timeline events through the real kernel ingest path.
     ///
-    /// Bypasses signature verification — test-support only.  Events appear in
-    /// the timeline immediately and drive emit pressure the same way real relay
-    /// events do.  Enables S3/S4/S5 event-pressure gates without a live relay.
+    /// The caller is responsible for constructing `VerifiedEvent` values; this
+    /// command routes each through `kernel::ingest_timeline_event` under the
+    /// `"diag-firehose-stress"` sub-id, exercising the same hot path that relay
+    /// delivery uses.  No signature re-verification is performed — the
+    /// `VerifiedEvent` type is the gate (D7: capability boundary respected).
     ///
-    /// Each entry: `(event_id, pubkey, created_at, content)`.
+    /// Test-support only (D7: not part of production FFI surface).
     #[cfg(any(test, feature = "test-support"))]
-    InjectSyntheticEvents(Vec<(String, String, u64, String)>),
+    IngestPreVerifiedEvents(Vec<crate::store::VerifiedEvent>),
 }
 
 pub(super) enum ActorMsg {
@@ -258,8 +260,21 @@ fn dispatch_command(
             None
         }
         #[cfg(any(test, feature = "test-support"))]
-        ActorCommand::InjectSyntheticEvents(events) => {
-            kernel.inject_synthetic_events(events);
+        ActorCommand::IngestPreVerifiedEvents(events) => {
+            // D4 (single writer per fact): actor thread is the sole mutator.
+            // Route each event through the real ingest path under the
+            // "diag-firehose-stress" sub-id so should_store_event passes.
+            // sort_timeline() is deferred to after the loop to avoid O(n²·log n)
+            // cost for large batches (e.g. S3: 100k events).
+            for verified in events {
+                kernel.ingest_pre_verified_event(
+                    crate::relay::RelayRole::Content,
+                    "diag-firehose-stress",
+                    verified,
+                );
+            }
+            // One sort after all events are ingested: O(n log n) not O(n²·log n).
+            kernel.sort_timeline_deferred();
             emit_now(kernel, *running, update_tx, last_emit);
             Some(Vec::new())
         }

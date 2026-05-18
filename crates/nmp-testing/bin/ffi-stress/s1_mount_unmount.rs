@@ -115,13 +115,14 @@ pub(crate) fn run(cfg: S1Config, report: &mut ScenarioMetrics) {
     let final_rss = process_rss_bytes();
     let rss_growth_bytes = final_rss.saturating_sub(baseline_rss);
     let nominal_cycles = cfg.pairs_per_sec * cfg.duration.as_secs();
-    // macOS sleep(1ms) timer resolution: actual sleep is ~1.5 ms on average, limiting
-    // achievable throughput to ~670 pairs/sec rather than the spec's 1000/sec.
-    // G-S1 spec says >= 90% of nominal; on macOS host the cap is ~67%, so we gate at
-    // 60% to catch severe stall regressions without a false-fail on host-timer jitter.
-    // DEFERRED: 90% threshold target tracked in docs/design/ffi-hardening/gates.md §G-S1
-    // as a phase-2 item requiring XCUITest device execution (not achievable via macOS sim).
-    let min_cycles = nominal_cycles * 60 / 100;
+    // G-S1 spec: >= 90% of nominal cycles (gates.md §G-S1).
+    // macOS sleep(1ms) timer resolution is ~1.5 ms on average, capping
+    // throughput at ~670 pairs/sec (~67% of 1000/sec nominal).  This gate
+    // will FAIL on macOS host — this is the correct, honest outcome.
+    // Rationale: "unobservable on macOS Rust host harness (sleep(1ms) timer
+    // resolution ~1.5 ms caps throughput at ~67%); XCUITest on iOS
+    // simulator/device required for G-S1.cycles_completed".
+    let min_cycles = nominal_cycles * 90 / 100;
 
     // Net heap slope (bytes/sec) in steady state — D8 invariant.
     // Use net_heap_delta (live bytes) not bytes_since (gross allocations) so that
@@ -152,7 +153,9 @@ pub(crate) fn run(cfg: S1Config, report: &mut ScenarioMetrics) {
     );
     report.gates.push(
         Gate::gte("cycles_completed", cycles as f64, min_cycles as f64).with_note(
-            "G-S1: cycles >= 60% nominal (macOS sleep(1ms)≈1.5ms → ~670/sec max; spec 90% on device)",
+            "G-S1: cycles >= 90% nominal (spec); EXPECTED FAIL on macOS host: \
+             unobservable on macOS Rust harness (sleep(1ms)≈1.5ms caps at ~67%); \
+             XCUITest on iOS simulator/device required for G-S1.cycles_completed",
         ),
     );
     report.gates.push(

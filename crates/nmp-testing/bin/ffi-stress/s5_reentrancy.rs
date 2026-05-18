@@ -18,7 +18,7 @@
 //!    not mutate kernel state directly.
 //! Bible #3 (fire-and-forget): send inside callback returns immediately.
 
-use crate::common::{extract_rev, inject_events, revs_strictly_increasing};
+use crate::common::{extract_rev, inject_signed_events, revs_strictly_increasing};
 use crate::ffi::{
     nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_open_author, nmp_app_set_update_callback,
     test_pubkeys, NmpApp,
@@ -138,8 +138,9 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
     nmp_app_set_update_callback(app, ctx, Some(reentrant_cb));
     nmp_app_configure(app, 0, 80, 4);
 
-    // Inject events to create real emit pressure.
-    inject_events(app, "s5-", 1_700_000_000, cfg.inject_count);
+    // Inject real Schnorr-signed events via try_from_raw verify path.
+    // S5 uses full verify (D7: 200 events ~6-10 ms; acceptable for setup).
+    inject_signed_events(app, 1_700_000_000, cfg.inject_count);
 
     // Spawn external watchdog BEFORE the dispatch loop.
     //

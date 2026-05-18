@@ -153,15 +153,15 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
     let p50_ms = p50_ns as f64 / 1_000_000.0;
     let nominal = cfg.dispatches_per_sec * cfg.duration.as_secs();
 
-    // G-S2: dispatches >= 100% of nominal.
-    // The per-thread tick scheduler tolerates up to 1 % timing slippage on
-    // macOS; gate at 98 % to catch real throughput regressions without
-    // flaking on host-timer jitter.  Spec says 600k (10k/s × 60s); fast
-    // mode is 300k (10k/s × 30s).
-    let min_dispatches = nominal * 98 / 100;
+    // G-S2: dispatches >= 100% of nominal (gates.md §G-S2 spec value).
+    // Spec says 600k (10k/s × 60s); fast mode is 300k (10k/s × 30s).
+    // The per-thread tick scheduler achieves ~100% on macOS; set threshold
+    // at 100% per spec.  If timer jitter causes failures, surface them
+    // honestly rather than weakening the gate.
+    let min_dispatches = nominal;
     report.gates.push(
         Gate::gte("dispatches_submitted", total_dispatches as f64, min_dispatches as f64)
-            .with_note("G-S2: dispatches_submitted >= 98% of nominal (≈100% spec)"),
+            .with_note("G-S2: dispatches_submitted >= 100% of nominal (spec)"),
     );
     report.gates.push(
         Gate::lte("send_latency_p99_ms", p99_ms, 1.0)

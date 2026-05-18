@@ -475,35 +475,87 @@ impl Kernel {
         Some(outcome)
     }
 
-    /// Inject synthetic timeline events directly into the kernel read-cache.
+    /// Ingest a pre-verified event through the real kernel ingest path.
     ///
-    /// Bypasses signature verification — test-support only (gated by
-    /// `cfg(any(test, feature = "test-support"))`).  Each call populates
-    /// `self.events` and appends to `self.timeline`, then calls `sort_timeline()`
-    /// so the view layer sees the events on the next `make_update()`.
+    /// Calls `ingest_timeline_event` directly with a `VerifiedEvent` that has
+    /// already been constructed by the caller (either via `try_from_raw` for
+    /// the full-verify path, or via `from_raw_unchecked` for the perf-harness
+    /// fast path).  This is the test-support substitute for the relay delivery
+    /// path; it exercises the same hot path as `handle_event` without a live
+    /// relay connection.
     ///
-    /// Entries: `(event_id, pubkey, created_at, content)`.
+    /// D7: capability boundary respected — this method is gated behind
+    /// `cfg(any(test, feature = "test-support"))` and is never part of the
+    /// production FFI surface.
     #[cfg(any(test, feature = "test-support"))]
-    pub(crate) fn inject_synthetic_events(&mut self, events: Vec<(String, String, u64, String)>) {
-        for (id, pubkey, created_at, content) in events {
-            if self.events.contains_key(&id) {
-                continue;
+    pub(crate) fn ingest_pre_verified_event(
+        &mut self,
+        role: crate::relay::RelayRole,
+        sub_id: &str,
+        verified: crate::store::VerifiedEvent,
+    ) {
+        use crate::store::InsertOutcome;
+
+        let raw = verified.into_raw();
+        let relay_url = role.url().to_string();
+        let received_at_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+
+        // Re-wrap as VerifiedEvent for the store; from_raw_unchecked is used
+        // here because the caller has already verified (or intentionally
+        // bypassed) verification.  The store is the single authoritative writer
+        // per D4.
+        let verified_for_store = crate::store::VerifiedEvent::from_raw_unchecked(raw.clone());
+
+        let proceed = match self.store.insert(verified_for_store, &relay_url, received_at_ms) {
+            Ok(outcome) => matches!(
+                outcome,
+                InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. }
+            ),
+            Err(e) => {
+                self.log(format!("test ingest store error: {e}"));
+                !self.events.contains_key(&raw.id)
             }
-            let cached = StoredEvent {
-                id: id.clone(),
-                author: pubkey,
-                kind: 1,
-                created_at,
-                tags: Vec::new(),
-                content,
-                relay_count: 1,
-            };
-            self.events.insert(id.clone(), cached);
-            self.timeline.push_back(id);
-            self.events_since_last_update =
-                self.events_since_last_update.saturating_add(1);
+        };
+
+        if !proceed {
+            return;
         }
-        self.sort_timeline();
+
+        let id = raw.id.clone();
+        let cached = StoredEvent {
+            id: raw.id.clone(),
+            author: raw.pubkey.clone(),
+            kind: raw.kind,
+            created_at: raw.created_at,
+            tags: raw.tags.clone(),
+            content: raw.content.clone(),
+            relay_count: 1,
+        };
+        self.events.insert(id.clone(), cached);
+        // diag-firehose-stress sub_id: always appended to timeline.
+        // sort_timeline() is NOT called here; callers that inject a batch of
+        // events must call kernel.sort_timeline_if_needed() once after the loop
+        // to avoid O(n²·log n) sort overhead for large batches.
+        if sub_id.starts_with("diag-firehose-") {
+            self.diagnostic_firehose_events =
+                self.diagnostic_firehose_events.saturating_add(1);
+            self.timeline.push_back(id);
+        }
+        self.events_since_last_update =
+            self.events_since_last_update.saturating_add(1);
         self.changed_since_emit = true;
+    }
+
+    /// Sort the timeline once after a batch inject (deferred sort).
+    ///
+    /// Call this after a loop of `ingest_pre_verified_event` calls to amortize
+    /// the O(n log n) sort cost across the whole batch rather than paying it
+    /// per-event.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn sort_timeline_deferred(&mut self) {
+        self.sort_timeline();
     }
 }
