@@ -119,7 +119,8 @@ pub(crate) fn run(cfg: S1Config, report: &mut ScenarioMetrics) {
     // achievable throughput to ~670 pairs/sec rather than the spec's 1000/sec.
     // G-S1 spec says >= 90% of nominal; on macOS host the cap is ~67%, so we gate at
     // 60% to catch severe stall regressions without a false-fail on host-timer jitter.
-    // The iPhone XCUITest path runs at the full 90% threshold.
+    // DEFERRED: 90% threshold target tracked in docs/design/ffi-hardening/gates.md §G-S1
+    // as a phase-2 item requiring XCUITest device execution (not achievable via macOS sim).
     let min_cycles = nominal_cycles * 60 / 100;
 
     // Net heap slope (bytes/sec) in steady state — D8 invariant.

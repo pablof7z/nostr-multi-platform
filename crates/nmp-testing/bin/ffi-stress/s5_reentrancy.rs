@@ -28,18 +28,21 @@ use crate::report::ScenarioMetrics;
 use serde_json::json;
 use std::ffi::{c_char, c_void};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-/// 5 s watchdog: if an emit callback has not returned in this window, it's a deadlock.
+/// 5 s watchdog: if an emit callback is still in flight after this window, it's a deadlock.
 const WATCHDOG_TIMEOUT_MS: u64 = 5_000;
 
-/// Shared timestamp: updated by the callback on entry, read by the watchdog.
-static LAST_CB_ENTRY_MS: AtomicU64 = AtomicU64::new(0);
+/// Shared epoch: set once at scenario start; all timestamps are ms-since-epoch.
+/// 0 in CB_IN_FLIGHT_TS_MS means no callback is in flight.
+static EPOCH: OnceLock<Instant> = OnceLock::new();
+/// Non-zero while a callback is in flight: stores epoch-relative ms of callback entry.
+/// Reset to 0 on callback return.  Watchdog: fires if non-zero AND age > WATCHDOG_TIMEOUT_MS.
+static CB_IN_FLIGHT_TS_MS: AtomicU64 = AtomicU64::new(0);
+
 static EMIT_COUNT: AtomicU64 = AtomicU64::new(0);
 static REENTRANT_DISPATCHES: AtomicU64 = AtomicU64::new(0);
-/// Set by callback on RETURN; watchdog compares with LAST_CB_ENTRY_MS.
-static LAST_CB_RETURN_MS: AtomicU64 = AtomicU64::new(0);
 /// Set by watchdog if a deadlock is detected; scenario treats as fatal.
 static WATCHDOG_FIRED: AtomicBool = AtomicBool::new(false);
 /// Set by run() when the scenario loop finishes; watchdog exits on this.
@@ -53,16 +56,20 @@ struct ReentryState {
 }
 
 extern "C" fn reentrant_cb(ctx: *mut c_void, payload: *const c_char) {
-    let t0 = Instant::now();
-    let now_ms = t0.elapsed().as_millis() as u64;
-    LAST_CB_ENTRY_MS.store(now_ms, Ordering::Release);
+    let t_entry_ms = EPOCH
+        .get()
+        .map(|e| e.elapsed().as_millis() as u64)
+        .unwrap_or(0);
+    // Mark callback in-flight: store epoch-relative entry timestamp (non-zero).
+    CB_IN_FLIGHT_TS_MS.store(t_entry_ms.max(1), Ordering::Release);
+    let t_start = Instant::now();
 
     let emit_n = EMIT_COUNT.fetch_add(1, Ordering::Relaxed);
 
     let state_ptr = ctx as *mut Mutex<ReentryState>;
     let (app_ptr, pk_cstr, rev) = {
         let Ok(state) = (unsafe { (*state_ptr).lock() }) else {
-            LAST_CB_RETURN_MS.store(now_ms, Ordering::Release);
+            CB_IN_FLIGHT_TS_MS.store(0, Ordering::Release);
             return;
         };
         let pk = state.pubkeys[emit_n as usize % state.pubkeys.len()].clone();
@@ -80,11 +87,10 @@ extern "C" fn reentrant_cb(ctx: *mut c_void, payload: *const c_char) {
     nmp_app_open_author(app_ptr, pk_cstr.as_ptr());
     REENTRANT_DISPATCHES.fetch_add(1, Ordering::Relaxed);
 
-    let total_ns = t0.elapsed().as_nanos() as u64;
-    LAST_CB_RETURN_MS.store(
-        LAST_CB_ENTRY_MS.load(Ordering::Relaxed) + total_ns / 1_000_000,
-        Ordering::Release,
-    );
+    let total_ns = t_start.elapsed().as_nanos() as u64;
+
+    // Mark callback complete: reset in-flight flag to 0.
+    CB_IN_FLIGHT_TS_MS.store(0, Ordering::Release);
 
     if let Ok(mut state) = unsafe { (*state_ptr).lock() } {
         state.cb_latencies_ns.push(total_ns);
@@ -115,10 +121,9 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
     REENTRANT_DISPATCHES.store(0, Ordering::Relaxed);
     WATCHDOG_FIRED.store(false, Ordering::Release);
     SCENARIO_DONE.store(false, Ordering::Release);
-    // Initialise to "no callback in progress".
-    let now_ms = Instant::now().elapsed().as_millis() as u64;
-    LAST_CB_ENTRY_MS.store(now_ms, Ordering::Release);
-    LAST_CB_RETURN_MS.store(now_ms, Ordering::Release);
+    // Initialise epoch; CB_IN_FLIGHT_TS_MS = 0 means no callback in flight.
+    let _ = EPOCH.set(Instant::now());
+    CB_IN_FLIGHT_TS_MS.store(0, Ordering::Release);
 
     let app: *mut NmpApp = nmp_app_new();
     let pubkeys = test_pubkeys(10);
@@ -137,29 +142,36 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
     inject_events(app, "s5-", 1_700_000_000, cfg.inject_count);
 
     // Spawn external watchdog BEFORE the dispatch loop.
-    // The watchdog monitors the gap between LAST_CB_ENTRY_MS and LAST_CB_RETURN_MS.
-    // If an emit callback has been running for > WATCHDOG_TIMEOUT_MS without
-    // returning, the scenario is deadlocked; the watchdog writes metrics and
-    // terminates the process.
+    //
+    // Protocol:
+    //   - CB_IN_FLIGHT_TS_MS == 0  → no callback in flight (safe).
+    //   - CB_IN_FLIGHT_TS_MS > 0   → callback entered at that epoch-ms; watchdog fires
+    //                                 if (epoch.elapsed_ms - stored_ms) > WATCHDOG_TIMEOUT_MS.
+    //
+    // This is correct because EPOCH is monotonic and shared between callback and watchdog;
+    // the gap is the true wall-time the callback has been running.
     let watchdog = std::thread::spawn(move || {
         loop {
             if SCENARIO_DONE.load(Ordering::Acquire) {
                 break;
             }
             std::thread::sleep(Duration::from_millis(500));
-            let entry_ms = LAST_CB_ENTRY_MS.load(Ordering::Acquire);
-            let return_ms = LAST_CB_RETURN_MS.load(Ordering::Acquire);
-            // Callback is "in flight" when entry_ms > return_ms.
-            if entry_ms > return_ms {
-                let gap = entry_ms.saturating_sub(return_ms);
-                if gap > WATCHDOG_TIMEOUT_MS {
-                    WATCHDOG_FIRED.store(true, Ordering::Release);
-                    eprintln!(
-                        "ffi-stress S5: DEADLOCK detected — callback in flight for {gap} ms \
-                         (threshold {WATCHDOG_TIMEOUT_MS} ms). Terminating."
-                    );
-                    std::process::exit(1);
-                }
+            let in_flight_ms = CB_IN_FLIGHT_TS_MS.load(Ordering::Acquire);
+            if in_flight_ms == 0 {
+                continue; // no callback in flight
+            }
+            let now_ms = EPOCH
+                .get()
+                .map(|e| e.elapsed().as_millis() as u64)
+                .unwrap_or(0);
+            let age_ms = now_ms.saturating_sub(in_flight_ms);
+            if age_ms > WATCHDOG_TIMEOUT_MS {
+                WATCHDOG_FIRED.store(true, Ordering::Release);
+                eprintln!(
+                    "ffi-stress S5: DEADLOCK detected — callback in flight for {age_ms} ms \
+                     (threshold {WATCHDOG_TIMEOUT_MS} ms). Terminating."
+                );
+                std::process::exit(1);
             }
         }
     });
@@ -208,7 +220,7 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
     // G-S5 gates — per docs/design/ffi-hardening/gates.md §G-S5.
     report.gates.push(
         Gate::eq("deadlocks", deadlock_count as f64, 0.0)
-            .with_note("G-S5: zero deadlocks (5 s external watchdog)"),
+            .with_note("G-S5: zero deadlocks (5 s external watchdog; epoch-absolute timestamps)"),
     );
     report.gates.push(
         Gate::gte("reentrant_dispatches", reentrant_count as f64, 100.0)
@@ -232,9 +244,9 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
          deadlocks: {deadlock_count}; avg callback: {avg_cb_ms:.3} ms"
     ));
     report.notes.push(
-        "External watchdog thread spawned before dispatch loop; fires process::exit(1) \
-         if any callback runs > 5 s without returning — catches real deadlocks that would \
-         never reach an inline post-callback check."
+        "External watchdog: shared OnceLock<Instant> epoch; CB_IN_FLIGHT_TS_MS=0 means \
+         idle; non-zero stores epoch-relative entry ms. Watchdog fires exit(1) when \
+         (epoch.elapsed_ms - entry_ms) > 5000 — correctly measures wall-time in flight."
             .to_string(),
     );
     report.notes.push(

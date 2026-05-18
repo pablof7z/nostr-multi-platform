@@ -167,11 +167,6 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
             .count()
     };
 
-    // Apply-after-resume burst: time from stall-release to next configure() call
-    // where revs catch up.  Approximated as 0 ms here since we can't time the
-    // actor wake precisely from the test side.  Gate: <= 33 ms (2 frames).
-    let apply_burst_ms: f64 = 0.0; // measured as 0; real measurement needs actor-tick tracing
-
     // G-S4 gates — per docs/design/ffi-hardening/gates.md §G-S4.
     report.gates.push(
         Gate::eq(
@@ -193,28 +188,45 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
         Gate::eq("rev_monotonic", if revs_monotonic { 1.0 } else { 0.0 }, 1.0)
             .with_note("G-S4/bible#1: rev order on stall-resume strictly monotonic"),
     );
-    // Stale-rev drops: spec expects >= 1 stale-rev event per stall (buffered emits
-    // during stall window).  With configure-not-start and no relay, emits are
-    // purely timer-driven; any backlog accumulates as stale-rev pairs.
-    // Gate direction: stale_rev_pairs >= 0 (always passes — informational gate).
+    // Stall liveness: the actor must continue emitting while the callback is blocked.
+    // Each stall window is at least stall_ms (250 ms) + 50 ms margin; with emit_hz=4
+    // that yields at least 1 emit per stall.  We count stall windows where zero emits
+    // arrived — a non-zero count means the actor was blocked (backpressure failure).
+    let total_stall_backlog: u64 = stall_pre_counts
+        .iter()
+        .zip(stall_post_counts.iter())
+        .map(|(pre, post)| post.saturating_sub(*pre))
+        .sum();
+    let stall_windows_starved: u64 = stall_pre_counts
+        .iter()
+        .zip(stall_post_counts.iter())
+        .filter(|(pre, post)| *post <= *pre)
+        .count() as u64;
     report.gates.push(
-        Gate::eq("dropped_emits", 0.0, 0.0)
-            .with_note("G-S4: total emits dropped (listener-side) == 0"),
+        Gate::eq("stall_windows_starved", stall_windows_starved as f64, 0.0)
+            .with_note(
+                "G-S4: stall windows with zero emits == 0 \
+                 (actor not blocked by sleeping callback)",
+            ),
     );
-    report.gates.push(
-        Gate::lte("apply_burst_ms", apply_burst_ms, 33.0)
-            .with_note("G-S4: apply-after-resume burst <= 33 ms (2 frames)"),
-    );
+    // Apply-after-resume burst: actor-tick tracing is not available from the FFI side.
+    // Phase-2 deliverable: instrument actor with emit-timing telemetry (tracked in
+    // docs/design/ffi-hardening/gates.md §G-S4 TODO).  Gate omitted this phase.
 
     report.notes.push(format!(
         "Injected {} events; stalls: {}; max backlog: {}; expected <= {}; \
-         emits total: {}; stale-rev pairs: {}",
+         emits total: {}; stale-rev pairs: {}; total_stall_backlog: {}; starved_windows: {}",
         cfg.inject_count, stalls_injected, max_backlog_emits, expected_max,
-        emit_count, stale_rev_pairs
+        emit_count, stale_rev_pairs, total_stall_backlog, stall_windows_starved
     ));
     report.notes.push(
         "Stall simulated via callback sleep (250 ms).  Actor is not blocked; \
          configure() returns immediately (D4 single-writer via actor thread)."
+            .to_string(),
+    );
+    report.notes.push(
+        "apply_burst_ms gate deferred to phase-2 (needs actor-tick telemetry). \
+         See docs/design/ffi-hardening/gates.md §G-S4."
             .to_string(),
     );
 
@@ -225,10 +237,11 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
         "emit_hz": cfg.emit_hz,
         "max_backlog_emits": max_backlog_emits,
         "expected_max_backlog": expected_max,
+        "total_stall_backlog": total_stall_backlog,
+        "stall_windows_starved": stall_windows_starved,
         "total_emits": emit_count,
         "rev_monotonic": revs_monotonic,
         "stale_rev_pairs": stale_rev_pairs,
-        "apply_burst_ms": apply_burst_ms,
         "wall_seconds": wall_elapsed,
     });
 
