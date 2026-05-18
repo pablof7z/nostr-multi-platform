@@ -1,7 +1,7 @@
 //! 15 `ActionModule` impls per `docs/design/nip29-crate.md` §3.3.
 //!
 //! Every action takes a typed `GroupId` and emits a `PublishPlan` with
-//! `relay_pin: Some(host_relay_url)` so the publish planner routes via the
+//! `pin_to: Some(host_relay_url)` so the publish planner routes via the
 //! third lane (Case E + Rule 9) — no NIP-65 outbox lookup, no string-typed
 //! `h` tags inspected at plan time.
 //!

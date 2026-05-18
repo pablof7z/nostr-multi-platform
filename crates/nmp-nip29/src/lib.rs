@@ -28,8 +28,8 @@
 //! - [`moderation`] — audit-record materialisation; canonical-state separation.
 //!
 //! All inputs to actions carry a typed `GroupId` so the publish planner gets a
-//! typed `relay_pin: Some(host)` carrier and never derives routing from raw tag
-//! strings.
+//! typed `PublishPlan::pin_to: Some(host)` carrier and never derives routing
+//! from raw tag strings.
 
 pub mod cache;
 pub mod domain;

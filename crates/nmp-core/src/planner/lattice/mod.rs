@@ -1,10 +1,10 @@
-//! The filter-merge lattice: `merge()` implements Rules 1–8 from the compiler
-//! design. Only shapes that pass all eight rules are merged; otherwise the
+//! The filter-merge lattice: `merge()` implements Rules 1–9 from the compiler
+//! design. Only shapes that pass all nine rules are merged; otherwise the
 //! caller emits two distinct REQs.
 //!
 //! ## Module structure
 //!
-//! - `rules` — the 8 individual rule functions (pub(super)).
+//! - `rules` — the 9 individual rule functions (pub(super)).
 //!
 //! Design: `docs/design/subscription-compilation/compiler.md` §3.3
 //! Doctrine: D8 (zero per-event allocs on the hot path after warmup).
@@ -47,10 +47,10 @@ pub enum MergeOutcome {
 
 /// Attempt to merge shape `b` into shape `a` on a given relay.
 ///
-/// Returns `Merged(result)` iff all 8 rules pass; `Refused` otherwise.
+/// Returns `Merged(result)` iff all 9 rules pass; `Refused` otherwise.
 /// Neither `a` nor `b` is modified on refusal.
 ///
-/// Design: §3.3 Rules 1–8
+/// Design: §3.3 Rules 1–9
 pub fn merge(
     a: &InterestShape,
     b: &InterestShape,
