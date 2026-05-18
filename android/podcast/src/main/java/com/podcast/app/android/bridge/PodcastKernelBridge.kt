@@ -146,4 +146,40 @@ class PodcastKernelBridge {
 
     /** Unsubscribe a podcast by ULID string. Fire-and-forget. */
     private external fun nativeUnsubscribe(podcastHandle: Long, podcastId: String)
+
+    // -----------------------------------------------------------------------
+    // Feed ingest + episode list — T-podcast-android-3
+    // -----------------------------------------------------------------------
+
+    /**
+     * Ingest raw RSS/Atom feed bytes for a subscribed podcast URL. The host
+     * (Android) fetches the bytes via OkHttp (T-podcast-gap-3); this method
+     * passes them to the Rust parser.
+     *
+     * Returns a JSON status string `{"ok":true,"episode_count":N}` or
+     * `{"ok":false,"reason":"..."}`. Returns null on null handle.
+     */
+    fun ingestBytes(feedUrl: String, bytes: ByteArray): String? {
+        val h = podcastHandle
+        return if (h != 0L) nativeIngestBytes(h, feedUrl, bytes) else null
+    }
+
+    /**
+     * Return the episode list for one podcast as a JSON string
+     * (`{"episodes":[…]}`). Unknown ids return `{"episodes":[]}`.
+     */
+    fun episodes(podcastId: String): String? {
+        val h = podcastHandle
+        return if (h != 0L) nativeEpisodes(h, podcastId) else null
+    }
+
+    /** Ingest raw feed bytes. Returns JSON status or null on null handle. */
+    private external fun nativeIngestBytes(
+        podcastHandle: Long,
+        feedUrl: String,
+        bytes: ByteArray,
+    ): String?
+
+    /** Return episode list JSON for one podcast id. */
+    private external fun nativeEpisodes(podcastHandle: Long, podcastId: String): String?
 }

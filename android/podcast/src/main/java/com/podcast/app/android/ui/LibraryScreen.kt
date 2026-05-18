@@ -1,6 +1,7 @@
 package com.podcast.app.android.ui
 
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -38,24 +39,22 @@ import com.podcast.app.android.model.PodcastRowPayload
 /**
  * Library tab — Android parity of `ios/NmpPodcast/.../Views/Library/LibraryView.swift`.
  *
- * T-podcast-android-2: "Add podcast" CTA now opens a dialog where the user
- * enters a feed URL. The dialog dispatches [PodcastKernelModel.onAddPodcastPressed]
- * which calls `nmp_app_podcast_subscribe` via JNI and refreshes the library
- * from the podcast snapshot (D8 verbatim mirror).
+ * T-podcast-android-3: podcast rows are now tappable — tapping navigates to
+ * the [EpisodeListScreen] for that podcast. The [onPodcastSelected] callback
+ * is forwarded to [PodcastKernelModel.onPodcastSelected] which fetches the
+ * episode list from the Rust state.
  *
  * Doctrine compliance:
- *   - D5 no business logic: URL validation lives in Rust (`url::Url::parse`).
- *   - D6 error surface: `onAddPodcastPressed` emits a [toastEvent] on failure;
- *     this screen collects it and shows an Android Toast.
- *   - D8 verbatim mirror: the list renders the Rust-emitted snapshot directly;
- *     no Kotlin-side sort, filter, or dedup.
- *
- * Visual fidelity is approximate (functional parity only, not pixel-perfect).
+ *   - D5: no business logic — URL validation lives in Rust.
+ *   - D6: `onAddPodcastPressed` emits a [toastEvent] on failure; this screen
+ *     collects it and shows an Android Toast.
+ *   - D8: the list renders the Rust-emitted snapshot directly.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
     model: PodcastKernelModel,
+    onPodcastSelected: (podcastId: String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val library by model.library.collectAsStateWithLifecycle()
@@ -89,7 +88,10 @@ fun LibraryScreen(
                     .padding(inner),
             ) {
                 items(library.podcasts, key = { it.id }) { podcast ->
-                    PodcastRow(podcast)
+                    PodcastRow(
+                        podcast = podcast,
+                        onClick = { onPodcastSelected(podcast.id) },
+                    )
                 }
             }
         }
@@ -184,10 +186,14 @@ private fun LibraryEmptyState(
 }
 
 @Composable
-private fun PodcastRow(podcast: PodcastRowPayload) {
+private fun PodcastRow(
+    podcast: PodcastRowPayload,
+    onClick: () -> Unit = {},
+) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         Text(
