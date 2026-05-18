@@ -80,7 +80,9 @@ pub use event_observer::{
     KernelEventObserver, KernelEventObserverFn, KernelEventObserverId,
     KernelEventObserverRegistration,
 };
-pub(super) use publish::{follow, open_timeline, publish_note, publish_unsigned_event, react};
+pub(super) use publish::{
+    follow, open_timeline, publish_note, publish_signed_event, publish_unsigned_event, react,
+};
 pub(super) use relays::{add_relay, remove_relay};
 pub(super) use wallet::{
     handle_nwc_text, wallet_connect, wallet_disconnect, wallet_pay_invoice, WalletRuntime,

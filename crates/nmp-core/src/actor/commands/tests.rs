@@ -295,6 +295,165 @@ fn publish_unsigned_event_valid_tags_pass_through() {
     assert!(outbound[0].text.contains("\"title\""));
 }
 
+// ── publish_signed_event — already-signed verbatim relay-publish path ───────
+//
+// Sibling to the unsigned tests above. The decisive difference: the signer is
+// NEVER consulted. We produce a genuine signed event via `sign_active` (real
+// Schnorr sig over TEST_NSEC's keys), serialize it to flat NIP-01 JSON, and
+// feed it through the signed path. Assertions mirror the unsigned sibling.
+
+/// Produce a genuine flat NIP-01 JSON for a real signed event over `id`'s
+/// active keys (kind:30023 article — generic, kind-agnostic).
+fn signed_nip01_json(id: &IdentityRuntime, content: &str) -> (String, String, String) {
+    let unsigned = crate::substrate::UnsignedEvent {
+        pubkey: String::new(), // ignored by signer
+        kind: 30023,
+        tags: vec![
+            vec!["d".into(), "signed-test".into()],
+            vec!["title".into(), "Signed".into()],
+        ],
+        content: content.into(),
+        created_at: 1_700_000_000,
+    };
+    let signed = crate::actor::commands::identity::sign_active(id, &unsigned)
+        .expect("sign_active produces a real signed event");
+    let raw = crate::store::RawEvent {
+        id: signed.id.clone(),
+        pubkey: signed.unsigned.pubkey.clone(),
+        created_at: signed.unsigned.created_at,
+        kind: signed.unsigned.kind,
+        tags: signed.unsigned.tags.clone(),
+        content: signed.unsigned.content.clone(),
+        sig: signed.sig.clone(),
+    };
+    let json = serde_json::to_string(&raw).expect("serialize flat NIP-01");
+    (json, signed.id, signed.sig)
+}
+
+#[test]
+fn flat_nip01_json_round_trips_into_raw_event() {
+    // Lock in the RawEvent serde shape == the flat NIP-01 event object the
+    // FFI contract advertises (field-name based, not order based).
+    let literal = r#"{"id":"aa","pubkey":"bb","created_at":1700000000,
+        "kind":30023,"tags":[["d","x"]],"content":"hi","sig":"cc"}"#;
+    let raw: crate::store::RawEvent =
+        serde_json::from_str(literal).expect("flat NIP-01 → RawEvent");
+    assert_eq!(raw.id, "aa");
+    assert_eq!(raw.pubkey, "bb");
+    assert_eq!(raw.created_at, 1_700_000_000);
+    assert_eq!(raw.kind, 30023);
+    assert_eq!(raw.content, "hi");
+    assert_eq!(raw.sig, "cc");
+}
+
+#[test]
+fn publish_signed_event_routes_and_dispatches_verbatim() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_with_nip65(&mut id, &mut kernel);
+    let active_pubkey = id.active_pubkey().unwrap();
+    let (json, ev_id, ev_sig) = signed_nip01_json(&id, "# signed body");
+
+    let raw: crate::store::RawEvent = serde_json::from_str(&json).unwrap();
+    let outbound = publish_signed_event(&mut kernel, raw);
+
+    assert!(!outbound.is_empty(), "valid signed event must route");
+    assert_eq!(kernel.last_error_toast_snapshot(), None);
+    // Verbatim: the exact id + sig bytes from the input appear on the wire
+    // frame unchanged (no re-signing).
+    assert!(
+        outbound[0].text.contains(&format!("\"id\":\"{ev_id}\"")),
+        "event id must be carried through verbatim"
+    );
+    assert!(
+        outbound[0].text.contains(&format!("\"sig\":\"{ev_sig}\"")),
+        "signature must be carried through verbatim — never re-signed"
+    );
+    assert!(outbound[0]
+        .text
+        .contains(&format!("\"pubkey\":\"{active_pubkey}\"")));
+    assert!(outbound[0].text.contains("\"kind\":30023"));
+    let q = kernel.publish_queue_snapshot();
+    assert_eq!(q.last().unwrap().kind, 30023);
+    assert_eq!(q.last().unwrap().status, "accepted_locally");
+}
+
+#[test]
+fn publish_signed_event_publishes_without_active_account() {
+    // Behavioral asymmetry vs. the unsigned sibling: the signature already
+    // exists, routing keys off the event's own pubkey (its kind:10002), so
+    // NO active account is required. Sign the event under a throwaway
+    // identity, seed THAT pubkey's kind:10002, then publish on a kernel with
+    // no active account.
+    let (mut signer_id, mut signer_kernel) = fresh();
+    sign_in_with_nip65(&mut signer_id, &mut signer_kernel);
+    let author = signer_id.active_pubkey().unwrap();
+    let (json, ev_id, _sig) = signed_nip01_json(&signer_id, "no-account body");
+
+    // Fresh kernel: NO account signed in, but the author's kind:10002 seeded.
+    let (no_acct_id, mut kernel) = fresh();
+    assert!(no_acct_id.active_pubkey().is_none());
+    kernel.seed_kind10002_for_test(&author, TEST_WRITE_RELAYS);
+
+    let raw: crate::store::RawEvent = serde_json::from_str(&json).unwrap();
+    let outbound = publish_signed_event(&mut kernel, raw);
+
+    assert!(
+        !outbound.is_empty(),
+        "signed event must publish even with no active account"
+    );
+    assert_eq!(kernel.last_error_toast_snapshot(), None);
+    assert!(outbound[0].text.contains(&format!("\"id\":\"{ev_id}\"")));
+}
+
+#[test]
+fn publish_signed_event_rejects_tampered_signature_with_toast() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_with_nip65(&mut id, &mut kernel);
+    let (json, _ev_id, sig) = signed_nip01_json(&id, "tamper me");
+
+    // Flip one hex char of the signature — id stays valid, sig is now forged.
+    let flipped = if sig.starts_with('a') { 'b' } else { 'a' };
+    let bad_json = json.replacen(&sig, &format!("{flipped}{}", &sig[1..]), 1);
+    assert_ne!(bad_json, json, "signature must actually have changed");
+
+    let raw: crate::store::RawEvent = serde_json::from_str(&bad_json).unwrap();
+    let outbound = publish_signed_event(&mut kernel, raw);
+
+    assert!(
+        outbound.is_empty(),
+        "forged-signature event must produce no outbound frames"
+    );
+    assert!(
+        kernel
+            .last_error_toast_snapshot()
+            .is_some_and(|t| t.contains("signed event rejected")),
+        "expected rejection toast, got: {:?}",
+        kernel.last_error_toast_snapshot()
+    );
+    assert!(
+        kernel.publish_queue_snapshot().is_empty(),
+        "forged event must never enter the publish queue"
+    );
+}
+
+#[test]
+fn publish_signed_event_rejects_id_mismatch_with_toast() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_with_nip65(&mut id, &mut kernel);
+    let (json, _ev_id, _sig) = signed_nip01_json(&id, "id mismatch");
+
+    // Mutate content without re-deriving the id → id-hash check must fail.
+    let mut raw: crate::store::RawEvent = serde_json::from_str(&json).unwrap();
+    raw.content = "tampered-after-signing".into();
+    let outbound = publish_signed_event(&mut kernel, raw);
+
+    assert!(outbound.is_empty(), "id-mismatch event must not publish");
+    assert!(kernel
+        .last_error_toast_snapshot()
+        .is_some_and(|t| t.contains("signed event rejected")));
+    assert!(kernel.publish_queue_snapshot().is_empty());
+}
+
 #[test]
 fn react_builds_kind7_with_e_tag() {
     let (mut id, mut kernel) = fresh();

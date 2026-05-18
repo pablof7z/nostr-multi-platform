@@ -140,6 +140,15 @@ pub enum ActorCommand {
     /// Stepping stone toward per-protocol-crate `ActionModule` impls
     /// (`kind-wrappers.md` §8 Phase 1); deprecates kind-by-kind as those land.
     PublishUnsignedEvent(crate::substrate::UnsignedEvent),
+    /// Generic publish of an **already-signed** event. The kernel verifies
+    /// the Schnorr signature + event-id hash, then routes the event verbatim
+    /// through the same planner / NIP-65 outbox / relay-pin path the unsigned
+    /// command uses — the signer is never consulted (no re-signing). Unlike
+    /// [`ActorCommand::PublishUnsignedEvent`], this does not require an active
+    /// account: the signature already exists and routing keys off the event's
+    /// own pubkey. Generic capability (D0); Marmot/MDK group events are the
+    /// first consumer but the kernel has no protocol nouns.
+    PublishSignedEvent(crate::store::RawEvent),
     /// T66a publish — kind:7 reaction to `target_event_id`.
     React {
         target_event_id: String,

@@ -58,6 +58,64 @@ pub(crate) fn publish_unsigned_event(
     }
 }
 
+/// Generic, kind-agnostic publish of an **already-signed** event.
+///
+/// Sibling to [`publish_unsigned_event`], with one decisive difference: the
+/// signer is **never** consulted. The caller supplies a fully-formed Nostr
+/// event (`id`, `pubkey`, `created_at`, `kind`, `tags`, `content`, `sig`)
+/// that was signed elsewhere — by an MDK/Marmot group-message signer, a
+/// hardware signer, a relayed NIP-46 broker, anything. The kernel verifies
+/// the Schnorr signature + event-id hash (forged/garbled events are rejected,
+/// never published) and then routes the event verbatim through the **same**
+/// publish planner / NIP-65 outbox resolver / relay-pin path the unsigned
+/// command uses (D3). Only the signing step is skipped.
+///
+/// **Behavioral asymmetry vs. the unsigned sibling.** The unsigned path
+/// requires an active account because it must sign. This path does **not** —
+/// the signature already exists, and routing keys off the event's *own*
+/// `pubkey` (its kind:10002 outbox), not the active account. Publishing a
+/// signed event with no active account signed in is therefore valid and
+/// supported. Marmot is the first consumer; the capability is generic (D0 —
+/// no MLS/Marmot nouns in the kernel).
+///
+/// D6 — a signature/id verification failure is surfaced as a toast (error
+/// becomes kernel state, never a silent no-op) and produces no outbound
+/// frames and no publish-queue entry. The forged event is dropped.
+pub(crate) fn publish_signed_event(
+    kernel: &mut Kernel,
+    raw: crate::store::RawEvent,
+) -> Vec<OutboundMessage> {
+    // Reuse the store's verification gate: serializes to NIP-01 canonical
+    // JSON, parses with the `nostr` crate, and checks BOTH the event-id hash
+    // and the Schnorr signature. This is the exact primitive `kernel::ingest`
+    // uses on inbound events, so a published signed event is held to the same
+    // cryptographic bar as a received one.
+    let verified = match crate::store::VerifiedEvent::try_from_raw(raw) {
+        Ok(v) => v,
+        Err(reason) => {
+            kernel.set_last_error_toast(Some(format!("signed event rejected: {reason}")));
+            return Vec::new();
+        }
+    };
+    let raw = verified.into_raw();
+    // RawEvent (flat NIP-01) → SignedEvent (the kernel's publish-engine input).
+    // No re-signing: `id` and `sig` are carried through verbatim — the wire
+    // frame the engine builds (`build_event_frame`) reproduces these bytes
+    // exactly.
+    let signed = crate::substrate::SignedEvent {
+        id: raw.id,
+        sig: raw.sig,
+        unsigned: UnsignedEvent {
+            pubkey: raw.pubkey,
+            kind: raw.kind,
+            tags: raw.tags,
+            content: raw.content,
+            created_at: raw.created_at,
+        },
+    };
+    kernel.publish_signed(&signed, &[])
+}
+
 pub(crate) fn publish_note(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,

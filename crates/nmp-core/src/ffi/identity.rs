@@ -121,6 +121,69 @@ pub extern "C" fn nmp_app_publish_unsigned_event(
     }
 }
 
+/// Generic publish entrypoint for an **already-signed** Nostr event — route a
+/// fully-formed, externally-signed event verbatim through the kernel's
+/// publish pipeline **without re-signing**.
+///
+/// Sibling to [`nmp_app_publish_unsigned_event`]. The decisive difference:
+/// the kernel's signer is **never** consulted. The caller provides a complete
+/// Nostr event that was signed elsewhere (an MDK/Marmot group-message signer,
+/// a hardware signer, a relayed NIP-46 broker — anything). The kernel
+/// verifies the Schnorr signature + event-id hash and, if valid, routes the
+/// event verbatim through the same publish planner / NIP-65 outbox resolver /
+/// relay-pin path the unsigned sibling uses. Generic capability (D0 — no
+/// MLS/Marmot nouns in the kernel); Marmot is merely the first consumer.
+///
+/// `event_json` is the standard flat NIP-01 event object:
+/// ```json
+/// {"id":"<64-hex>","pubkey":"<64-hex>","created_at":<u64>,
+///  "kind":<u32>,"tags":[["e","…"],…],"content":"…","sig":"<128-hex>"}
+/// ```
+///
+/// **Behavioral asymmetry vs. the unsigned sibling.** The unsigned path
+/// requires an active account (it must sign). This path does **not** — the
+/// signature already exists and routing keys off the event's *own* `pubkey`
+/// (its kind:10002 outbox), not the active account. Publishing with no
+/// active account signed in is valid and supported.
+///
+/// **Return / error contract** (mirrors the unsigned sibling exactly):
+/// returns `()`. The publish is fire-and-forget via the actor channel.
+/// D6 — no panic ever crosses the FFI boundary:
+/// - null app / null `event_json` / non-UTF-8 → silent no-op (matches
+///   sibling: `app_ref` / `c_string_argument` guards).
+/// - malformed JSON (not a NIP-01 event object) → a `ShowToast`
+///   `"Failed to decode signed event payload"` is enqueued (no publish).
+/// - structurally-parsed but **invalid signature or id mismatch** → the
+///   actor surfaces `"signed event rejected: <reason>"` as a toast
+///   (`<reason>` is `"invalid Schnorr signature"`, `"event id mismatch"`,
+///   or a serialization error). No outbound frame, no publish-queue entry —
+///   the forged/garbled event is dropped, never published.
+/// - valid signed event → routed + dispatched to relays verbatim; `id` and
+///   `sig` bytes are carried through unchanged.
+#[no_mangle]
+pub extern "C" fn nmp_app_publish_signed_event(app: *mut NmpApp, event_json: *const c_char) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let Some(json) = c_string_argument(event_json) else {
+        return;
+    };
+    match serde_json::from_str::<crate::store::RawEvent>(&json) {
+        Ok(raw) => {
+            let _ = app.tx.send(ActorCommand::PublishSignedEvent(raw));
+        }
+        Err(_) => {
+            // D6 — surface the decode failure as a toast (error becomes state,
+            // never a silent no-op across FFI). Signature/id verification
+            // happens on the actor side (`commands::publish_signed_event`);
+            // here we only guard the JSON-shape decode.
+            let _ = app.tx.send(ActorCommand::ShowToast {
+                message: "Failed to decode signed event payload".to_string(),
+            });
+        }
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn nmp_app_react(
     app: *mut NmpApp,
