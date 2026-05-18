@@ -9,7 +9,7 @@ settings:
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     GENERATE_INFOPLIST_FILE: NO
     CODE_SIGN_STYLE: Automatic
-    DEVELOPMENT_TEAM: C99QRJCR43
+    DEVELOPMENT_TEAM: 456SHKPP26
 targets:
   Chirp:
     type: application
