@@ -2,6 +2,11 @@
 
 > **Status:** Accepted (2026-05-18, design phase — no code yet).
 > **Companion:** `docs/design/intent-routing.md` (full spec).
+> **Depends on:** ADR-0021 (relay roles — Indexer + AppRelay). ADR-0021
+> promotes `Indexer` to a top-level `RoutingSource` variant and adds
+> `AppRelay`; this ADR's `ClassRouted` lane is sibling to those. P3 of
+> the rollout introduces five new lanes simultaneously (ClassRouted +
+> Indexer + AppRelay).
 > **Extends:** ADR-0012 (`relay_pin` and the third routing lane). The
 > per-interest `relay_pin` field stays for NIP-29; this ADR adds a kernel-
 > resident classifier driven by event kind and NIP-51 lists, plus a
@@ -232,8 +237,14 @@ and gift-wrap relay semantics without re-plumbing this design.
 
 - ADR-0012 — `relay_pin` and the third routing lane.
 - ADR-0015 — M6 signer design (NIP-44 self-decrypt dependency).
+- ADR-0021 — Relay roles: Indexer + AppRelay (this ADR's prerequisite).
 - `docs/design/intent-routing.md` — full design.
+- `docs/design/relay-roles.md` — ADR-0021's design doc covering the
+  worker-vs-planner abstraction split (existing `RelayRole` enum vs
+  new `RoutingSource` variants).
 - `docs/design/subscription-compilation/diagnostics.md` §5 — four-lane
-  diagnostic discipline (extends to five lanes in P3).
+  diagnostic discipline (extends to **seven lanes** in P3 once both
+  ADR-0020 and ADR-0021 land: NIP-65, Hint, Provenance, UserConfigured,
+  ClassRouted, Indexer, AppRelay).
 - NIP-37 (drafts + checkpoints), NIP-50 (search), NIP-51 (lists),
-  NIP-54 (wikis), NIP-29 (relay groups).
+  NIP-54 (wikis), NIP-29 (relay groups), NIP-51 PR #1985 (kind:10086).
