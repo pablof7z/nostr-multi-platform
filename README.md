@@ -11,16 +11,22 @@
 > Full per-milestone status in [`docs/plan/status.md`](docs/plan/status.md); per-milestone scope in `docs/plan/m*.md`.
 
 - **M0 (kernel substrate + non-Nostr fixture):** ✅ DONE.
-- **M1 (read-only Twitter slice on live iOS):** 🟡 hardening (firehose-bench `live` mode + iPhone-12 baseline in flight via `m1-hardener`).
-- **M2 (subscription compilation + outbox + NIP-65):** design landed + codex-reviewed; 10 issues being addressed in T13.
-- **M3 (LMDB + insert invariants + claim GC):** design landed + codex-reviewed; 12 issues pending fix in T14.
-- **M4–M8 (negentropy, NIP-42, signers+write, interaction loop, multi-session):** scoped, pending design after M2/M3 lock.
+- **M1 (read-only Twitter slice on live iOS):** ✅ DONE (`701d0e5` — firehose-bench `live` cold_start 258ms first-item / 3587ms filled-timeline; profile_thrashing 0 leaked subs).
+- **M2 (subscription compilation + outbox + NIP-65):** ✅ planner + 5-case partition + Rule 9 group-id merge on master. 5 rounds of codex follow-up landed. Address-pointer support.
+- **M3 (LMDB + insert invariants + claim GC):** ✅ EventStore trait + MemEventStore (sole writer per D4) + LmdbEventStore skeleton + verify_and_persist outcome gating for kind:0/3/10002 + kernel/mod.rs split 561→179 + kernel/ingest.rs split into 5 files (`83a964e`). 38 nmp-core tests passing.
+- **M4 (NIP-77 negentropy):** 🟡 in flight (`m4-nip77-impl`).
+- **M5 (NIP-42 relay auth):** 🟡 in flight (`m5-nip42-impl`).
+- **M6 (sessions + signers):** ✅ LANDED (`9944bed` — `crates/nmp-signers/` with Signer trait + Local/Nip46/Nip07 + AccountManager + kind:3 auto-rewire). ADR-0015 captures design. Sessions research synthesis at `docs/research/sessions/synthesis.md` informed the design (AccountPublic/AccountSecret split, signer-mismatch post-conditions, bunker:// strict-hex parser).
+- **M7 (publishing pipeline):** ✅ LANDED (`08fc01f` — Publish action + per-relay state machine + NIP-65 auto-route + durable retry queue + PublishStatusView).
+- **M8 (subscription lifecycle / RelayManager):** ✅ LANDED (`9ca90c9` — registry + trigger inbox + wire emitter + connection pool + auth gate).
 - **M10 (Blossom + long-running capabilities):** pending.
-- **M10.5 (FFI hardening + iOS empirical proof):** design landed; **hard gate before M11**.
-- **M11 (rebuild of `/Users/pablofernandez/src/podcast` on NMP):** design landed (13 sub-docs, codex-reviewed clean after 5 iterations); awaits M10.5 empirical pass.
-- **M11.5 (rebuild of `/Users/pablofernandez/Work/hl/app` Highlighter + `nmp-nip29` crate):** design in flight (T18).
+- **M10.5 (FFI hardening + iOS empirical proof):** S2 6/6 + S3 6/6 + S4 6/6 + S5 5/5 PASS with VerifiedEvent injection. Round-4 in flight (`m105-round4-fixes`). **Hard gate before M11 iOS deploy.**
+- **M11 (rebuild of `/Users/pablofernandez/src/podcast` on NMP):** 🟡 Step 0 in flight (`m11-step0-impl` — Swift verbatim + 5 podcast crates scaffold; some files already landed in `apps/podcast/`).
+- **M11.5 (rebuild of `/Users/pablofernandez/Work/hl/app` Highlighter + `nmp-nip29` crate):** ✅ Step 0 LANDED (`5178cfc` — full nmp-nip29 + nmp-highlighter-core + ios/NmpHighlighter Swift Sources verbatim + planner case_e_pin_to + Rule 9 group-id merge).
 - **M13 (WoT), M14 (UniFFI), M15 (cross-platform), M16 (CLI), M17 (v1 release):** scoped, pending.
-- **Framework-magic contract** (kind:3 auto-tracking, `bunker://` onboarding, new-nsec creation, outbox-by-default-on-publish, etc.): designed at [`docs/design/framework-magic.md`](docs/design/framework-magic.md) with 13 behaviors and 14 named tests in `crates/nmp-testing/tests/framework_magic_contract.rs`. Aligned with canonical D0–D8 (T19 complete).
+- **Framework-magic contract** (kind:3 auto-tracking, `bunker://` onboarding, new-nsec creation, outbox-by-default-on-publish): designed at [`docs/design/framework-magic.md`](docs/design/framework-magic.md). Companion `framework_magic_contract.rs` being finalized by `framework-magic-test` agent.
+- **E2E pipeline tests** (`d0b7df6`): 6-scenario `crates/nmp-testing/tests/e2e_full_pipeline.rs` + audit companion forcing test-de-ignoring as milestones land.
+- **Sessions research** (`de9e7b4` + `a3bf036`): NDK + applesauce deep-dives + NMP M6 synthesis at `docs/research/sessions/`.
 - **Plan structure:** `docs/plan.md` is the index; per-milestone files under `docs/plan/m*.md` (≤300 LOC each). Scope shifts captured in [`docs/plan/scope-adjustments-2026-05-18.md`](docs/plan/scope-adjustments-2026-05-18.md) — DMs (was M9) and Wallet (was M12) deferred to post-v1 (see [`docs/plan/post-v1.md`](docs/plan/post-v1.md)).
 - **Research foundation:** NDK + Applesauce deep-dives at [`docs/research/ndk/`](docs/research/ndk/) and [`docs/research/applesauce/`](docs/research/applesauce/) — outbox routing, kind:3 auto-tracking gap, subscription compilation, signers, gotchas, missing features.
 
