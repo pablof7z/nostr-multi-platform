@@ -11,7 +11,7 @@
 //! cache of the actor's identity facts; the actor mutates them only through
 //! `set_accounts` / `push_publish_entry` / `set_last_error_toast`, then emits.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// One account row in the snapshot. `signer_kind` is a stable label
 /// (`"local"` | `"bunker"`) the UI renders verbatim — never a policy input.
@@ -74,6 +74,22 @@ pub(crate) struct RelayAckOutcome {
 pub(crate) struct RelayEditRow {
     pub(crate) url: String,
     pub(crate) role: String,
+}
+
+/// NIP-46 bunker handshake progress projection. The broker (Stage 4) is the
+/// sole writer of this field; the actor exposes it on the snapshot so the
+/// SwiftUI sign-in flow can render handshake state ("connecting" →
+/// "awaiting_pubkey" → "ready" or "failed"). `None` means no handshake is in
+/// flight (the explicit `"idle"` stage from the broker maps to clearing).
+///
+/// Deserialize is included so Stage 2 (Swift codegen) can round-trip the type.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct BunkerHandshakeDto {
+    /// `"connecting"` | `"awaiting_pubkey"` | `"ready"` | `"failed"` | `"idle"`
+    /// (the wire never carries `"idle"`; the actor maps it to `None`).
+    pub(crate) stage: String,
+    /// Optional human-readable status (e.g. relay URL, error reason).
+    pub(crate) message: Option<String>,
 }
 
 /// NIP-47 wallet connection status projected onto the snapshot.
@@ -165,6 +181,17 @@ impl super::Kernel {
         }
     }
 
+    /// Replace the NIP-46 bunker handshake projection. Stage 3 of NIP-46 wiring:
+    /// the broker (Stage 4) is the sole driver; the actor's `sign_in_bunker`
+    /// command also seeds the initial `"connecting"` value on shape-valid URIs.
+    /// Pass `None` (or stage `"idle"`) to clear.
+    pub(crate) fn set_bunker_handshake(&mut self, value: Option<BunkerHandshakeDto>) {
+        if self.bunker_handshake != value {
+            self.bunker_handshake = value;
+            self.changed_since_emit = true;
+        }
+    }
+
     pub(crate) fn account_snapshot(&self) -> (&[AccountSummary], Option<&String>) {
         (&self.accounts, self.active_account.as_ref())
     }
@@ -183,5 +210,9 @@ impl super::Kernel {
 
     pub(crate) fn wallet_status_snapshot(&self) -> Option<&WalletStatus> {
         self.wallet_status.as_ref()
+    }
+
+    pub(crate) fn bunker_handshake_snapshot(&self) -> Option<&BunkerHandshakeDto> {
+        self.bunker_handshake.as_ref()
     }
 }

@@ -96,10 +96,13 @@ impl Kernel {
                 }
                 // T105: the follow-feed (seed-timeline) is now per-relay
                 // (`seed-timeline-<short-hash>`). Both the legacy id and its
-                // per-relay variants stay live after EOSE.
+                // per-relay variants stay live after EOSE. Persistent subs
+                // (NWC kind:23195 listener, …) registered via
+                // `register_persistent_sub` also survive EOSE.
                 let keep_live = sub_id == "seed-timeline"
                     || sub_id.starts_with("seed-timeline-")
-                    || sub_id.starts_with("diag-firehose-");
+                    || sub_id.starts_with("diag-firehose-")
+                    || self.is_persistent_sub(sub_id);
                 if let Some(sub) = self.wire_subs.get_mut(sub_id) {
                     sub.eose_at = Some(Instant::now());
                     if keep_live {

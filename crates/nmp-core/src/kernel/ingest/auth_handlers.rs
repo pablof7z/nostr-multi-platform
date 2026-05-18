@@ -104,17 +104,13 @@ impl Kernel {
             .handle_auth_state_change(relay_url.clone(), RelayAuthState::ChallengeReceived);
         self.update_relay_auth_status(role, RelayAuthState::ChallengeReceived, None);
 
-        let Some(signer) = self.auth_signer.clone() else {
+        let Some((signer, active_pubkey)) = self
+            .auth_signers
+            .get(&role)
+            .map(|c| (c.signer.clone(), c.pubkey_hex.clone()))
+        else {
             self.log(format!(
-                "AUTH challenge from {} but no signer bound — staying in ChallengeReceived",
-                role.key()
-            ));
-            return Vec::new();
-        };
-
-        let Some(active_pubkey) = self.auth_signer_pubkey.clone() else {
-            self.log(format!(
-                "AUTH challenge from {}: signer bound but no active pubkey",
+                "AUTH challenge from {} but no signer bound for this role — staying in ChallengeReceived",
                 role.key()
             ));
             return Vec::new();

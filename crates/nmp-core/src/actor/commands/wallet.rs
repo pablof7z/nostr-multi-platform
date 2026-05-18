@@ -11,6 +11,7 @@
 //! never as panics or FFI exceptions.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use nostr::nips::nip19::ToBech32;
@@ -19,11 +20,13 @@ use serde_json::json;
 
 use crate::kernel::{Kernel, WalletStatus};
 use crate::relay::{OutboundMessage, RelayRole};
-use crate::substrate::SignedEvent;
+use crate::substrate::{SignedEvent, UnsignedEvent};
 use nmp_nwc::decode::try_decode_relay_message_with_id;
 use nmp_nwc::parse::NwcUri;
 use nmp_nwc::types::PayInvoiceParams;
 use nmp_nwc::NwcMethod;
+
+use super::identity::sign_with;
 
 /// Actor-local NWC connection state. Cleared on `WalletDisconnect`.
 struct WalletConnection {
@@ -63,6 +66,13 @@ impl WalletRuntime {
 
 /// Parse a NWC URI and establish the connection state.
 ///
+/// Wires the kernel-level NIP-47 infrastructure:
+/// - registers a per-role NIP-42 signer for `RelayRole::Wallet` using the NWC
+///   client secret (the kernel answers AUTH challenges from the wallet relay
+///   with this key, NOT the user's identity);
+/// - registers the kind:23195 sub-id as persistent so EOSE doesn't auto-CLOSE
+///   the listener.
+///
 /// Returns outbound messages: a REQ subscription for kind:23195 and an
 /// initial `get_info` + `get_balance` requests to the NWC relay.
 pub(crate) fn wallet_connect(
@@ -70,11 +80,10 @@ pub(crate) fn wallet_connect(
     kernel: &mut Kernel,
     uri: &str,
 ) -> Vec<OutboundMessage> {
-    // Disconnect any existing connection first.
+    // Disconnect any existing connection first (also tears down kernel-side
+    // wallet-lane signer + persistent-sub registrations).
     if wallet.connection.is_some() {
-        let disconnect_msgs = wallet_disconnect_inner(wallet, kernel);
-        // Keep disconnecting but proceed with the new URI.
-        drop(disconnect_msgs);
+        let _ = wallet_disconnect_inner(wallet, kernel);
     }
 
     let nwc_uri = match NwcUri::parse(uri) {
@@ -93,15 +102,24 @@ pub(crate) fn wallet_connect(
         }
     };
 
+    let client_secret_key = match SecretKey::from_hex(&nwc_uri.client_secret_hex) {
+        Ok(sk) => sk,
+        Err(e) => {
+            kernel.set_last_error_toast(Some(format!("invalid NWC client secret: {e}")));
+            return Vec::new();
+        }
+    };
+
     let wallet_npub = pubkey_to_npub(&nwc_uri.wallet_pubkey_hex)
         .unwrap_or_else(|_| nwc_uri.wallet_pubkey_hex[..8.min(nwc_uri.wallet_pubkey_hex.len())].to_string());
 
     let sub_id = format!("nwc-{}", &nwc_uri.wallet_pubkey_hex[..8]);
+    let relay = nwc_uri.primary_relay_url().to_string();
 
     let conn = WalletConnection {
         wallet_pubkey_hex: nwc_uri.wallet_pubkey_hex.clone(),
         wallet_npub: wallet_npub.clone(),
-        relay_url: nwc_uri.relay_url.clone(),
+        relay_url: relay.clone(),
         client_secret_hex: nwc_uri.client_secret_hex.clone(),
         client_pubkey_hex: client_pubkey_hex.clone(),
         status: "connecting".to_string(),
@@ -111,10 +129,21 @@ pub(crate) fn wallet_connect(
     };
     wallet.connection = Some(conn);
 
+    // Bind the wallet-lane NIP-42 signer. The kernel's existing AUTH driver
+    // will invoke this when the wallet relay (e.g. relay.damus.io) issues a
+    // challenge — using the NWC client secret, never the user identity.
+    let client_keys = Keys::new(client_secret_key);
+    kernel.set_relay_auth_signer(
+        RelayRole::Wallet,
+        client_pubkey_hex.clone(),
+        Arc::new(move |unsigned: &UnsignedEvent| sign_with(&client_keys, unsigned)),
+    );
+    // Pin the kind:23195 listener so EOSE doesn't auto-CLOSE it.
+    kernel.register_persistent_sub(sub_id.clone());
+
     sync_wallet_status(wallet, kernel);
 
     let mut out = Vec::new();
-    let relay = nwc_uri.relay_url.clone();
 
     // Subscribe for kind:23195 responses from the wallet.
     let req_filter = json!({
@@ -172,6 +201,9 @@ fn wallet_disconnect_inner(
     let Some(conn) = wallet.connection.take() else {
         return Vec::new();
     };
+    // Tear down kernel-side wallet-lane registrations.
+    kernel.unregister_persistent_sub(&conn.sub_id);
+    kernel.clear_relay_auth_signer(RelayRole::Wallet);
     let close_msg = serde_json::to_string(&json!(["CLOSE", &conn.sub_id])).unwrap_or_default();
     kernel.set_wallet_status(Some(WalletStatus {
         status: "disconnected".to_string(),

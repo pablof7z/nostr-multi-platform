@@ -204,13 +204,21 @@ fn add_and_remove_relay_edits_projection() {
 }
 
 #[test]
-fn sign_in_bunker_parses_uri_but_defers_transport() {
+fn sign_in_bunker_seeds_handshake_progress() {
+    // Stage 3 of NIP-46 wiring: a shape-valid bunker:// URI seeds the
+    // snapshot with `"connecting"` so the SwiftUI sign-in flow can render
+    // progress immediately. The broker (Stage 4) drives the real handshake
+    // and pushes subsequent progress via `BunkerHandshakeProgress`.
     let (_id, mut kernel) = fresh();
     let pk = "c".repeat(64);
     sign_in_bunker(&mut kernel, &format!("bunker://{pk}?relay=wss://r.example"));
-    assert!(kernel
-        .last_error_toast_snapshot()
-        .is_some_and(|t| t.contains("NIP-46 transport is not wired")));
+    let handshake = kernel
+        .bunker_handshake_snapshot()
+        .expect("handshake seeded");
+    assert_eq!(handshake.stage, "connecting");
+    assert!(handshake.message.is_some());
+    // No toast on the happy path — the seeded progress is the UX signal.
+    assert!(kernel.last_error_toast_snapshot().is_none());
 }
 
 #[test]
@@ -234,4 +242,6 @@ fn snapshot_json_carries_new_projections() {
     assert!(json.contains("\"publish_queue\""));
     assert!(json.contains("\"last_error_toast\""));
     assert!(json.contains("\"relay_edit_rows\""));
+    // Stage 3 of NIP-46 wiring — new snapshot field, `null` when no handshake.
+    assert!(json.contains("\"bunker_handshake\""));
 }

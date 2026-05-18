@@ -7,21 +7,36 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use nostr::nips::nip19::{FromBech32, ToBech32};
-use nostr::{EventBuilder, Keys, Kind, SecretKey, Tag, Timestamp};
+use nostr::{EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
 
-use crate::kernel::{AccountSummary, Kernel};
+use crate::kernel::{AccountSummary, BunkerHandshakeDto, Kernel};
 use crate::relay::OutboundMessage;
+use crate::remote_signer::RemoteSignerHandle;
 use crate::substrate::{SignedEvent, UnsignedEvent};
+
+/// `SignerOp::wait` timeout for remote-signer signs. Bunker UX can require a
+/// user tap on the phone — long enough to cover that, short enough that a
+/// crashed broker doesn't wedge the actor indefinitely. The publish callsites
+/// (`publish.rs`) surface the error as `last_error_toast` per D6.
+const REMOTE_SIGN_TIMEOUT: Duration = Duration::from_secs(45);
 
 /// IdentityId is the hex pubkey (matches NDK / applesauce / `AccountManager`).
 pub(crate) type IdentityId = String;
 
 /// Actor-local multi-account state. Insertion-ordered for deterministic UI.
+///
+/// Local-key accounts (nsec / generated) live in `keys`; remote-signer
+/// accounts (NIP-46 bunker today, NIP-07 / hardware later) live in
+/// `remote_signers`. Both share the same `order` list so the UI projection
+/// stays deterministic. If the same pubkey lands in BOTH maps, the remote
+/// signer wins (`active_signer_kind` + `sign_active` consult it first) — the
+/// user explicitly added a remote handle, so route through it.
 pub(crate) struct IdentityRuntime {
     keys: HashMap<IdentityId, Keys>,
+    remote_signers: HashMap<IdentityId, Box<dyn RemoteSignerHandle>>,
     order: Vec<IdentityId>,
     active: Option<IdentityId>,
 }
@@ -30,6 +45,7 @@ impl IdentityRuntime {
     pub(crate) fn new() -> Self {
         Self {
             keys: HashMap::new(),
+            remote_signers: HashMap::new(),
             order: Vec::new(),
             active: None,
         }
@@ -37,26 +53,76 @@ impl IdentityRuntime {
 
     fn add(&mut self, keys: Keys) -> IdentityId {
         let id = keys.public_key().to_hex();
-        if !self.keys.contains_key(&id) {
+        if !self.keys.contains_key(&id) && !self.remote_signers.contains_key(&id) {
             self.order.push(id.clone());
         }
         self.keys.insert(id.clone(), keys);
         id
     }
 
+    /// Register a remote-signer handle keyed by its user pubkey hex. Mirrors
+    /// `add` for local keys: if the pubkey is new, append to `order`; if no
+    /// account is active yet, the new remote becomes active.
+    pub(crate) fn add_remote(
+        &mut self,
+        handle: Box<dyn RemoteSignerHandle>,
+    ) -> IdentityId {
+        let id = handle.pubkey_hex();
+        if !self.keys.contains_key(&id) && !self.remote_signers.contains_key(&id) {
+            self.order.push(id.clone());
+        }
+        self.remote_signers.insert(id.clone(), handle);
+        if self.active.is_none() {
+            self.active = Some(id.clone());
+        }
+        id
+    }
+
+    /// Drop the remote signer (if any) for `identity_id`. If it was active,
+    /// fall back to the next account in `order` (mirroring `remove_account`).
+    pub(crate) fn remove_remote(&mut self, identity_id: &str) {
+        if self.remote_signers.remove(identity_id).is_none() {
+            return;
+        }
+        // Only drop from `order` if no local key for the same pubkey survives.
+        if !self.keys.contains_key(identity_id) {
+            self.order.retain(|x| x != identity_id);
+        }
+        if self.active.as_deref() == Some(identity_id) {
+            self.active = self.order.first().cloned();
+        }
+    }
+
     fn active_keys(&self) -> Option<&Keys> {
         self.active.as_ref().and_then(|id| self.keys.get(id))
     }
 
+    fn active_remote(&self) -> Option<&dyn RemoteSignerHandle> {
+        self.active
+            .as_ref()
+            .and_then(|id| self.remote_signers.get(id))
+            .map(|b| b.as_ref())
+    }
+
     pub(crate) fn active_pubkey(&self) -> Option<String> {
         self.active.clone()
+    }
+
+    /// Stable signer-kind label for the active account, or `None` if no
+    /// account is active. `"local"` for nsec / generated keys; whatever the
+    /// remote signer returns (`"nip46"`, …) for remote handles.
+    pub(crate) fn active_signer_kind(&self) -> Option<&'static str> {
+        if let Some(handle) = self.active_remote() {
+            return Some(handle.signer_kind());
+        }
+        self.active_keys().map(|_| "local")
     }
 }
 
 /// Build an `AuthSignerFn`-shaped closure over a fixed `Keys`. Mirrors the
 /// `nmp-signers::LocalKeySigner::sign_now` recipe exactly (same `nostr`
 /// primitives) — kept here because D0 forbids importing `nmp-signers`.
-fn sign_with(keys: &Keys, unsigned: &UnsignedEvent) -> Result<SignedEvent, String> {
+pub(super) fn sign_with(keys: &Keys, unsigned: &UnsignedEvent) -> Result<SignedEvent, String> {
     let kind = Kind::from_u16(unsigned.kind as u16);
     let tags = unsigned
         .tags
@@ -88,36 +154,72 @@ pub(crate) fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
-/// Sign `unsigned` with the active account's keys. Returns `Err` (as state,
-/// surfaced via toast — never panics across FFI, D6) if no active account.
+/// Sign `unsigned` with the active account. Returns `Err` (as state, surfaced
+/// via toast — never panics across FFI, D6) if no active account. Remote
+/// signers are consulted first (D0: actor only sees the trait); local keys
+/// are the fallback for nsec-imported accounts.
+///
+/// For remote signers the call blocks the actor thread for up to
+/// `REMOTE_SIGN_TIMEOUT` (45s) — long enough for NIP-46 user-approval UX,
+/// short enough that a crashed broker doesn't wedge the actor forever.
+/// `SignerError` is `Display`-formatted into the toast string.
 pub(crate) fn sign_active(
     identity: &IdentityRuntime,
     unsigned: &UnsignedEvent,
 ) -> Result<SignedEvent, String> {
+    if let Some(handle) = identity.active_remote() {
+        return handle
+            .sign(unsigned)
+            .wait(REMOTE_SIGN_TIMEOUT)
+            .map_err(|e| format!("remote sign failed: {e}"));
+    }
     let keys = identity
         .active_keys()
         .ok_or_else(|| "no active account — sign in first".to_string())?;
     sign_with(keys, unsigned)
 }
 
+/// Bech32-encode a hex pubkey as `npub1…`. Falls back to the raw hex if the
+/// pubkey doesn't parse (defensive — never panics across FFI, D6).
+fn npub_from_hex(hex: &str) -> String {
+    PublicKey::from_hex(hex)
+        .ok()
+        .and_then(|pk| pk.to_bech32().ok())
+        .unwrap_or_else(|| hex.to_string())
+}
+
+fn display_name_from_hex(id: &str) -> String {
+    format!(
+        "{}…{}",
+        &id[..6.min(id.len())],
+        &id[id.len().saturating_sub(4)..]
+    )
+}
+
 /// Push the account projection + rebind the kernel's NIP-42 signer to the
 /// active key (D4 single-writer: this is the only path that mutates either).
-fn sync_kernel(identity: &IdentityRuntime, kernel: &mut Kernel) {
+///
+/// Order matters: remote signers shadow local keys for the same pubkey, so
+/// the `signer_kind` projection reflects what `sign_active` will actually use.
+pub(super) fn sync_kernel(identity: &IdentityRuntime, kernel: &mut Kernel) {
     let active = identity.active.clone();
     let summaries = identity
         .order
         .iter()
         .filter_map(|id| {
-            let keys = identity.keys.get(id)?;
-            let npub = keys
-                .public_key()
-                .to_bech32()
-                .unwrap_or_else(|_| id.clone());
+            let (signer_kind, npub) = if let Some(handle) = identity.remote_signers.get(id) {
+                (handle.signer_kind().to_string(), npub_from_hex(id))
+            } else if let Some(keys) = identity.keys.get(id) {
+                let npub = keys.public_key().to_bech32().unwrap_or_else(|_| id.clone());
+                ("local".to_string(), npub)
+            } else {
+                return None;
+            };
             Some(AccountSummary {
                 id: id.clone(),
                 npub,
-                display_name: format!("{}…{}", &id[..6.min(id.len())], &id[id.len().saturating_sub(4)..]),
-                signer_kind: "local".to_string(),
+                display_name: display_name_from_hex(id),
+                signer_kind,
                 status: if active.as_deref() == Some(id) {
                     "active"
                 } else {
@@ -129,6 +231,19 @@ fn sync_kernel(identity: &IdentityRuntime, kernel: &mut Kernel) {
         .collect::<Vec<_>>();
     kernel.set_accounts(summaries, active.clone());
 
+    // NIP-42 auth signer binding. Remote signers (NIP-46) cannot sign NIP-42
+    // challenges with the user's pubkey today — the broker's ephemeral key
+    // would sign as itself, not as the user. Clear the auth signer when a
+    // remote is active and rely on the broker to surface auth-required state.
+    // TODO(nip46-nip42): wrap the remote signer behind AuthSignerFn so NIP-42
+    // can sign through the bunker (separate follow-up — needs broker-side
+    // sign_event RPC plus a sync-style adapter compatible with AuthSignerFn).
+    if let Some(active_id) = active.as_ref() {
+        if identity.remote_signers.contains_key(active_id) {
+            kernel.clear_auth_signer();
+            return;
+        }
+    }
     match active.as_ref().and_then(|id| identity.keys.get(id)) {
         Some(keys) => {
             let signer_keys = keys.clone();
@@ -144,7 +259,7 @@ fn sync_kernel(identity: &IdentityRuntime, kernel: &mut Kernel) {
 /// Retarget the timeline to the active account: reuse the kernel's existing
 /// `open_author` path against the active pubkey (cheap correct retarget;
 /// kind:3 follow fan-out is a documented follow-up).
-fn retarget_timeline(
+pub(super) fn retarget_timeline(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
     relays_ready: bool,
@@ -193,7 +308,9 @@ pub(crate) fn switch_active(
     identity_id: &str,
     relays_ready: bool,
 ) -> Vec<OutboundMessage> {
-    if !identity.keys.contains_key(identity_id) {
+    if !identity.keys.contains_key(identity_id)
+        && !identity.remote_signers.contains_key(identity_id)
+    {
         kernel.set_last_error_toast(Some(format!("account not found: {identity_id}")));
         return Vec::new();
     }
@@ -210,7 +327,9 @@ pub(crate) fn remove_account(
     kernel: &mut Kernel,
     identity_id: &str,
 ) -> Vec<OutboundMessage> {
-    if identity.keys.remove(identity_id).is_none() {
+    let had_local = identity.keys.remove(identity_id).is_some();
+    let had_remote = identity.remote_signers.remove(identity_id).is_some();
+    if !had_local && !had_remote {
         return Vec::new();
     }
     identity.order.retain(|x| x != identity_id);
@@ -221,16 +340,63 @@ pub(crate) fn remove_account(
     Vec::new()
 }
 
+/// Broker → actor: register a fully-handshaken remote signer (e.g. completed
+/// NIP-46 bunker handshake). Becomes active if no account was active; pushes
+/// a snapshot update + timeline retarget so the UI swaps immediately.
+pub(crate) fn add_remote_signer(
+    identity: &mut IdentityRuntime,
+    kernel: &mut Kernel,
+    handle: Box<dyn RemoteSignerHandle>,
+    relays_ready: bool,
+) -> Vec<OutboundMessage> {
+    let _id = identity.add_remote(handle);
+    sync_kernel(identity, kernel);
+    retarget_timeline(identity, kernel, relays_ready)
+}
+
+/// Broker → actor: drop a remote signer by user pubkey hex. If it was the
+/// active account, fall back to the next account in `order`.
+pub(crate) fn remove_remote_signer(
+    identity: &mut IdentityRuntime,
+    kernel: &mut Kernel,
+    identity_id: &str,
+) -> Vec<OutboundMessage> {
+    if !identity.remote_signers.contains_key(identity_id) {
+        return Vec::new();
+    }
+    identity.remove_remote(identity_id);
+    sync_kernel(identity, kernel);
+    Vec::new()
+}
+
+/// Broker → actor: latest NIP-46 handshake progress. Stage `"idle"` clears
+/// the projection; everything else replaces it (snapshot diff handled by the
+/// setter — no emit if unchanged).
+pub(crate) fn bunker_handshake_progress(
+    kernel: &mut Kernel,
+    stage: String,
+    message: Option<String>,
+) {
+    let value = if stage == "idle" {
+        None
+    } else {
+        Some(BunkerHandshakeDto { stage, message })
+    };
+    kernel.set_bunker_handshake(value);
+}
+
 pub(crate) fn sign_in_bunker(kernel: &mut Kernel, uri: &str) {
-    // Shape-validate the bunker URI without wiring transport (D0: Nip46Signer
-    // lives in nmp-signers; importing it would be a dependency cycle). The
-    // build doc §11 authorizes nsec-only multi-account for this build.
+    // Stage 3 of NIP-46 wiring: actor exposes handshake-progress snapshot;
+    // broker (Stage 4) drives the real handshake via `AddRemoteSigner` /
+    // `BunkerHandshakeProgress`. Here we shape-validate the URI and seed the
+    // snapshot with `"connecting"` so the SwiftUI sign-in flow can render
+    // progress immediately; the broker takes over from there. D0 stays clean
+    // — `nmp-signers` is still NOT imported in `nmp-core`.
     if parse_bunker_remote(uri).is_some() {
-        kernel.set_last_error_toast(Some(
-            "valid bunker:// URI parsed, but NIP-46 transport is not wired in \
-             this build — use nsec sign-in for this session"
-                .to_string(),
-        ));
+        kernel.set_bunker_handshake(Some(BunkerHandshakeDto {
+            stage: "connecting".to_string(),
+            message: Some("Waiting for broker...".to_string()),
+        }));
     } else {
         kernel.set_last_error_toast(Some(
             "invalid bunker:// URI — expected bunker://<64-hex-pubkey>?relay=…"

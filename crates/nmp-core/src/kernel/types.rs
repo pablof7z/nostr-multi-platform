@@ -348,4 +348,6 @@ pub(super) struct KernelUpdate {
     pub(super) relay_edit_rows: Vec<super::RelayEditRow>,
     // ── NIP-47 wallet projection ───────────────────────────────────────────
     pub(super) wallet_status: Option<super::WalletStatus>,
+    // ── NIP-46 bunker handshake projection ─────────────────────────────────
+    pub(super) bunker_handshake: Option<super::BunkerHandshakeDto>,
 }

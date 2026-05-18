@@ -14,6 +14,10 @@ crate-type = ["staticlib", "rlib"]
 test-support = []
 # Enable the LMDB-backed EventStore (requires heed crate — not yet wired in M3 phase 1).
 lmdb-backend = []
+# Re-export all FFI entry-points via Rust paths so nmp-android-ffi can call them
+# through the rlib dependency (extern "C" declarations are opaque to Rust CGU
+# compilation — the android-ffi feature is the portable fix).
+android-ffi = []
 
 [dependencies]
 bech32 = "0.11"

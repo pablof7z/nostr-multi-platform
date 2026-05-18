@@ -83,7 +83,8 @@ use crate::store::{EventStore, MemEventStore};
 use crate::subs::{OneshotApi, SubscriptionLifecycle, UnknownIds};
 use auth::{AuthSignerFn, Nip42DriverState};
 pub(crate) use identity_state::{
-    AccountSummary, PublishQueueEntry, RelayAckOutcome, RelayEditRow, WalletStatus,
+    AccountSummary, BunkerHandshakeDto, PublishQueueEntry, RelayAckOutcome, RelayEditRow,
+    WalletStatus,
 };
 use std::sync::atomic::{AtomicU64, Ordering};
 use types::*;
@@ -119,6 +120,17 @@ pub(crate) const MAX_CLAIMS_PER_PUBKEY: usize = 256;
 /// The `EventStore` (`self.store`) is the single authoritative writer for all
 /// persisted events (D4).  The lightweight `events` read-cache is a derived
 /// projection populated only after the store confirms insertion or replacement.
+
+/// Per-relay-role NIP-42 credentials. The closure signs the kind:22242 with
+/// whatever keypair is appropriate for that role (user identity for Content /
+/// Indexer; NWC client secret for Wallet). `pubkey_hex` is stamped on the
+/// unsigned template's `pubkey` field — NIP-42 requires the AUTH event to be
+/// signed by the connecting client's key.
+pub(crate) struct RelayAuthCredentials {
+    pub(crate) signer: AuthSignerFn,
+    pub(crate) pubkey_hex: String,
+}
+
 pub(crate) struct Kernel {
     /// Pluggable event store. D4: the single writer for all Nostr events.
     ///
@@ -166,6 +178,11 @@ pub(crate) struct Kernel {
     timeline_requested: bool,
     contacts_deadline: Option<Instant>,
     wire_subs: HashMap<String, WireSub>,
+    /// Subscription ids that must survive EOSE (the kernel's default policy
+    /// is to auto-CLOSE any non-seed/non-firehose sub on EOSE). Protocol lanes
+    /// like NWC (kind:23195 listener) register here so the wire-side
+    /// subscription is kept open for the connection lifetime.
+    persistent_subs: HashSet<String>,
     last_emitted_items: Vec<TimelineItem>,
     update_sequence: u64,
     events_since_last_update: u64,
@@ -198,16 +215,15 @@ pub(crate) struct Kernel {
     /// EOSE handler can route a completed oneshot back to its token for
     /// release. Entries are removed on completion (bounded by in-flight set).
     oneshot_subs: HashMap<String, crate::subs::OneshotToken>,
-    /// M6 signer injection: actor / iOS layer wires this from
-    /// `nmp_signers::AccountManager::signer_active()` at startup. `None`
-    /// means no active account — AUTH challenges are recorded but no
-    /// kind:22242 dispatch is attempted (the driver stays in
-    /// `ChallengeReceived` until the signer is bound).
-    auth_signer: Option<AuthSignerFn>,
-    /// Hex pubkey of the active signer. Bound alongside `auth_signer`; used
-    /// as the `pubkey` field of the unsigned kind:22242 template (NIP-42
-    /// requires the AUTH event to be signed by the connecting client's key).
-    auth_signer_pubkey: Option<String>,
+    /// M6 signer injection, per relay role. The actor / iOS layer wires the
+    /// user-identity signer for `Content`/`Indexer` from
+    /// `nmp_signers::AccountManager::signer_active()`. Other lanes (e.g.
+    /// `RelayRole::Wallet` for NWC) register their own per-protocol credentials
+    /// — the NWC client secret signs kind:22242 against the wallet relay
+    /// independently of the user's identity. Missing entry → challenges from
+    /// that role are recorded but unanswered (driver stays in
+    /// `ChallengeReceived` until a signer is bound for that role).
+    auth_signers: HashMap<RelayRole, RelayAuthCredentials>,
     /// T66a identity/publish projections — flat wire-protocol summaries the
     /// actor pushes after each AccountManager-equivalent mutation. The actor
     /// (in `nmp-core`, so it CANNOT import `nmp-signers` per D0) owns the
@@ -218,6 +234,10 @@ pub(crate) struct Kernel {
     last_error_toast: Option<String>,
     relay_edit_rows: Vec<RelayEditRow>,
     wallet_status: Option<WalletStatus>,
+    /// Stage 3 of NIP-46 wiring: the broker pushes handshake progress through
+    /// `ActorCommand::BunkerHandshakeProgress`; the actor stores the latest
+    /// into this projection. `None` means no handshake is in flight.
+    bunker_handshake: Option<BunkerHandshakeDto>,
     /// T117 — the publish engine drives the per-(event, relay) retry FSM
     /// (`publish/state.rs`). Mandatory on every Kernel; previously the
     /// kernel one-shotted a single EVENT frame and the engine was dead code
@@ -325,6 +345,7 @@ impl Kernel {
             timeline_requested: false,
             contacts_deadline: None,
             wire_subs: HashMap::new(),
+            persistent_subs: HashSet::new(),
             last_emitted_items: Vec::new(),
             update_sequence: 0,
             events_since_last_update: 0,
@@ -340,14 +361,14 @@ impl Kernel {
             unknown_ids: UnknownIds::new(),
             oneshot: OneshotApi::new(),
             oneshot_subs: HashMap::new(),
-            auth_signer: None,
-            auth_signer_pubkey: None,
+            auth_signers: HashMap::new(),
             accounts: Vec::new(),
             active_account: None,
             publish_queue: Vec::new(),
             last_error_toast: None,
             relay_edit_rows: Vec::new(),
             wallet_status: None,
+            bunker_handshake: None,
             publish_engine,
             publish_dispatcher,
             publish_store,
@@ -411,22 +432,72 @@ impl Kernel {
         self.wire_subs.len()
     }
 
-    /// Bind a signer callback used by the NIP-42 handshake, with the active
-    /// pubkey hex. The actor (or iOS layer) adapts
-    /// `nmp_signers::AccountManager::signer_active()` to this signature at
-    /// startup — keeping the kernel free of any `nmp-signers` dependency
-    /// (no cycle). Replaces any previously-bound signer. The FFI bridge that
-    /// surfaces this from Swift is T59 (filed in `docs/perf/pending-user-decisions.md`).
-    pub(crate) fn bind_auth_signer(&mut self, pubkey_hex: String, signer: AuthSignerFn) {
-        self.auth_signer = Some(signer);
-        self.auth_signer_pubkey = Some(pubkey_hex);
+    /// Bind a per-role signer callback used by the NIP-42 handshake on `role`,
+    /// with the active pubkey hex. The actor (or iOS layer) adapts the user's
+    /// `nmp_signers::AccountManager::signer_active()` for `Content`/`Indexer`;
+    /// other lanes (e.g. NWC `Wallet`) bind their own per-protocol keypair.
+    /// Replaces any previously-bound signer for that role.
+    pub(crate) fn set_relay_auth_signer(
+        &mut self,
+        role: RelayRole,
+        pubkey_hex: String,
+        signer: AuthSignerFn,
+    ) {
+        self.auth_signers
+            .insert(role, RelayAuthCredentials { signer, pubkey_hex });
     }
 
-    /// Drop the active signer + pubkey (no active account). AUTH challenges
-    /// are then recorded but never answered until a signer is rebound.
+    /// Drop the signer for `role`. Challenges from that role are then recorded
+    /// but never answered until a signer is rebound.
+    pub(crate) fn clear_relay_auth_signer(&mut self, role: RelayRole) {
+        self.auth_signers.remove(&role);
+    }
+
+    /// Compat wrapper: bind the same identity signer to every user-identity
+    /// relay role (Content + Indexer). Replaces any previously-bound identity
+    /// signer on those roles; other roles (e.g. NWC `Wallet`) are unaffected.
+    /// FFI bridge that surfaces this from Swift is T59
+    /// (filed in `docs/perf/pending-user-decisions.md`).
+    pub(crate) fn bind_auth_signer(&mut self, pubkey_hex: String, signer: AuthSignerFn) {
+        self.auth_signers.insert(
+            RelayRole::Content,
+            RelayAuthCredentials {
+                signer: signer.clone(),
+                pubkey_hex: pubkey_hex.clone(),
+            },
+        );
+        self.auth_signers.insert(
+            RelayRole::Indexer,
+            RelayAuthCredentials { signer, pubkey_hex },
+        );
+    }
+
+    /// Compat wrapper: drop the identity signer for the user-identity roles
+    /// (Content + Indexer). Other roles (e.g. NWC `Wallet`) are unaffected —
+    /// use `clear_relay_auth_signer(role)` for per-role clearing.
     pub(crate) fn clear_auth_signer(&mut self) {
-        self.auth_signer = None;
-        self.auth_signer_pubkey = None;
+        self.auth_signers.remove(&RelayRole::Content);
+        self.auth_signers.remove(&RelayRole::Indexer);
+    }
+
+    /// Register a subscription id as persistent — EOSE will not auto-CLOSE it.
+    /// Used by long-lived protocol lanes (NWC kind:23195 listener) where the
+    /// subscription must remain open for the connection lifetime. Inverse of
+    /// [`unregister_persistent_sub`]. Idempotent.
+    pub(crate) fn register_persistent_sub(&mut self, sub_id: impl Into<String>) {
+        self.persistent_subs.insert(sub_id.into());
+    }
+
+    /// Remove `sub_id` from the persistent set. Called when the protocol lane
+    /// (e.g. wallet disconnect) tears down its subscription. Idempotent.
+    pub(crate) fn unregister_persistent_sub(&mut self, sub_id: &str) {
+        self.persistent_subs.remove(sub_id);
+    }
+
+    /// True when `sub_id` is registered as persistent — EOSE handlers consult
+    /// this to skip the default auto-CLOSE policy.
+    pub(crate) fn is_persistent_sub(&self, sub_id: &str) -> bool {
+        self.persistent_subs.contains(sub_id)
     }
 
     pub(crate) fn start(&mut self) {

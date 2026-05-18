@@ -38,6 +38,30 @@ pub use timeline::{
     nmp_app_open_firehose_tag, nmp_app_open_uri, nmp_app_release_profile,
 };
 
+// android-ffi: expose all FFI entry-points via Rust paths so nmp-android-ffi
+// can call them through the rlib. These re-exports are the ONLY thing that
+// makes rustc include the symbol bodies in CGU files for the cdylib.
+#[cfg(feature = "android-ffi")]
+pub use identity::{
+    nmp_app_add_relay, nmp_app_create_new_account, nmp_app_follow, nmp_app_open_timeline,
+    nmp_app_publish_note, nmp_app_publish_unsigned_event, nmp_app_react, nmp_app_remove_account,
+    nmp_app_remove_relay, nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_switch_active,
+    nmp_app_unfollow,
+};
+#[cfg(feature = "android-ffi")]
+pub use timeline::{
+    nmp_app_claim_profile, nmp_app_close_author, nmp_app_close_thread, nmp_app_open_author,
+    nmp_app_open_firehose_tag, nmp_app_open_thread, nmp_app_open_uri, nmp_app_release_profile,
+};
+#[cfg(feature = "android-ffi")]
+pub use wallet::{
+    nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wallet_pay_invoice,
+};
+#[cfg(feature = "android-ffi")]
+pub use capability::{
+    nmp_app_dispatch_capability, nmp_app_free_string, nmp_app_set_capability_callback,
+};
+
 use crate::actor::{run_actor, ActorCommand};
 use crate::relay::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 use std::ffi::{c_char, c_uint, c_void, CStr, CString};

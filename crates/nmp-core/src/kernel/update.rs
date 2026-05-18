@@ -99,6 +99,7 @@ impl Kernel {
             last_error_toast: self.last_error_toast_snapshot().cloned(),
             relay_edit_rows: self.relay_edit_rows_snapshot().to_vec(),
             wallet_status: self.wallet_status_snapshot().cloned(),
+            bunker_handshake: self.bunker_handshake_snapshot().cloned(),
         };
 
         let first = serde_json::to_string(&update).unwrap_or_else(|_| "{}".to_string());

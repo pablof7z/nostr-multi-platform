@@ -140,6 +140,22 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
+        ActorCommand::AddRemoteSigner { handle } => {
+            let outbound =
+                commands::add_remote_signer(identity, kernel, handle, relays_ready);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            Some(outbound)
+        }
+        ActorCommand::RemoveRemoteSigner { identity_id } => {
+            let outbound = commands::remove_remote_signer(identity, kernel, &identity_id);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            Some(outbound)
+        }
+        ActorCommand::BunkerHandshakeProgress { stage, message } => {
+            commands::bunker_handshake_progress(kernel, stage, message);
+            emit_now(kernel, *running, update_tx, last_emit);
+            Some(Vec::new())
+        }
         ActorCommand::PublishNote {
             content,
             reply_to_id,

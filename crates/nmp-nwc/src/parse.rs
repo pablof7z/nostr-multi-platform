@@ -2,18 +2,27 @@
 
 /// A parsed NWC connection URI.
 ///
-/// Format: `nostr+walletconnect://<wallet_pubkey_hex>?relay=<url>&secret=<client_secret_hex>[&lud16=<email>]`
+/// Format: `nostr+walletconnect://<wallet_pubkey_hex>?relay=<url>(&relay=<url>)*&secret=<client_secret_hex>[&lud16=<email>]`
 ///
 /// - `wallet_pubkey_hex`: the 64-char hex pubkey of the wallet service
 /// - `client_secret_hex`: the 64-char hex of the client's secret key
-/// - `relay_url`: the relay URL for NWC messages
+/// - `relay_urls`: ordered list of relay URLs for NWC messages. NIP-47 allows
+///   multiple `relay=` query parameters; values are trimmed (handling
+///   real-world copy-paste whitespace) and deduplicated.
 /// - `lud16`: optional Lightning address
 #[derive(Debug, Clone)]
 pub struct NwcUri {
     pub wallet_pubkey_hex: String,
     pub client_secret_hex: String,
-    pub relay_url: String,
+    pub relay_urls: Vec<String>,
     pub lud16: Option<String>,
+}
+
+impl NwcUri {
+    /// First relay in the URI's list. Parser guarantees `relay_urls` is non-empty.
+    pub fn primary_relay_url(&self) -> &str {
+        &self.relay_urls[0]
+    }
 }
 
 /// Parse errors for NWC URIs.
@@ -64,7 +73,7 @@ impl NwcUri {
             return Err(ParseError::InvalidWalletPubkey);
         }
 
-        let mut relay_url: Option<String> = None;
+        let mut relay_urls: Vec<String> = Vec::new();
         let mut client_secret_hex: Option<String> = None;
         let mut lud16: Option<String> = None;
 
@@ -75,7 +84,12 @@ impl NwcUri {
             if let Some((k, v)) = part.split_once('=') {
                 let v = url_decode(v);
                 match k {
-                    "relay" => relay_url = Some(v),
+                    "relay" => {
+                        let trimmed = v.trim().to_string();
+                        if !trimmed.is_empty() && !relay_urls.contains(&trimmed) {
+                            relay_urls.push(trimmed);
+                        }
+                    }
                     "secret" => client_secret_hex = Some(v),
                     "lud16" => lud16 = Some(v),
                     _ => {}
@@ -83,10 +97,18 @@ impl NwcUri {
             }
         }
 
-        let relay_url = relay_url.ok_or(ParseError::MissingRelay)?;
-        if !relay_url.starts_with("wss://") && !relay_url.starts_with("ws://") {
+        if relay_urls.is_empty() {
+            return Err(ParseError::MissingRelay);
+        }
+        // Reject if no relay survives the ws:// scheme gate.
+        if !relay_urls
+            .iter()
+            .any(|u| u.starts_with("wss://") || u.starts_with("ws://"))
+        {
             return Err(ParseError::InvalidRelayUrl);
         }
+        // Drop any non-ws schemes that snuck in alongside valid ones.
+        relay_urls.retain(|u| u.starts_with("wss://") || u.starts_with("ws://"));
 
         let client_secret_hex = client_secret_hex.ok_or(ParseError::MissingSecret)?;
         if !is_hex64(&client_secret_hex) {
@@ -96,7 +118,7 @@ impl NwcUri {
         Ok(Self {
             wallet_pubkey_hex,
             client_secret_hex,
-            relay_url,
+            relay_urls,
             lud16,
         })
     }
@@ -152,8 +174,35 @@ mod tests {
         let parsed = NwcUri::parse(&uri).unwrap();
         assert_eq!(parsed.wallet_pubkey_hex, wallet_pk);
         assert_eq!(parsed.client_secret_hex, secret);
-        assert_eq!(parsed.relay_url, "wss://relay.example.com");
+        assert_eq!(parsed.relay_urls, vec!["wss://relay.example.com"]);
+        assert_eq!(parsed.primary_relay_url(), "wss://relay.example.com");
         assert!(parsed.lud16.is_none());
+    }
+
+    /// Real-world URI shape: multiple `relay=` params + a stray trailing space
+    /// before `&secret=` (the kind of formatting variance produced by hand-
+    /// copying from a wallet UI). All relays survive, trimmed, in declared
+    /// order; duplicates dedup.
+    #[test]
+    fn parse_multi_relay_trims_and_dedupes() {
+        let wallet_pk = "e".repeat(64);
+        let secret = "f".repeat(64);
+        let uri = format!(
+            "nostr+walletconnect://{}?relay=wss://relay.damus.io&relay=wss://relay.8333.space/&relay=wss://nos.lol&relay=wss://relay.primal.net&relay=wss://relay.primal.net &secret={}",
+            wallet_pk, secret
+        );
+        let parsed = NwcUri::parse(&uri).unwrap();
+        assert_eq!(
+            parsed.relay_urls,
+            vec![
+                "wss://relay.damus.io",
+                "wss://relay.8333.space/",
+                "wss://nos.lol",
+                "wss://relay.primal.net",
+            ]
+        );
+        assert_eq!(parsed.primary_relay_url(), "wss://relay.damus.io");
+        assert_eq!(parsed.client_secret_hex, secret);
     }
 
     #[test]

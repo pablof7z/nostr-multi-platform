@@ -1,0 +1,151 @@
+//! JNI shim: Android ⇄ the nmp-core kernel via Rust-path function calls.
+//!
+//! Doctrine: no business logic or cached state here (D5/D8) — pure transport.
+//! Errors never cross FFI (D6): the kernel reports via the JSON snapshot; these
+//! entrypoints return only a handle / a string / void. The kernel's update
+//! callback fires on its own listener thread with a pointer valid ONLY for the
+//! call's duration (`docs/ffi-surface.md` §3), so we copy it into an owned
+//! `String` before handing it to a channel. A Kotlin thread drains the channel
+//! via `nativeNextUpdate` (blocking, timed) — this sidesteps JNI
+//! thread-attach/global-ref complexity while staying a faithful mirror of the
+//! iOS push model.
+//!
+//! WHY Rust paths, not `extern "C"`:
+//! `extern "C" { fn nmp_app_new() }` is opaque to Rust CGU compilation — the
+//! rlib is consumed at compile time into CGU object files, but only code
+//! reachable through RUST paths enters those files. Symbols declared only via
+//! `extern "C"` stay `U` (undefined) in the final cdylib. Calling through
+//! `nmp_core::nmp_app_new()` (enabled by the `android-ffi` feature) is the
+//! portable fix that makes rustc include the bodies.
+
+use std::ffi::{c_char, c_void, CStr};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
+use std::time::Duration;
+
+use jni::objects::{JClass, JString};
+use jni::sys::{jint, jlong, jstring};
+use jni::JNIEnv;
+
+use nmp_core::{
+    nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start, nmp_app_stop, NmpApp,
+};
+
+/// Owns the kernel handle, the snapshot receiver, and the boxed sender that the
+/// kernel holds as an opaque callback context. Freed exactly once in
+/// `nativeFree` (mirrors Swift `KernelHandle.deinit`).
+struct Session {
+    app: *mut NmpApp,
+    rx: Receiver<String>,
+    tx: *mut Sender<String>,
+}
+
+// SAFETY: Session is sent across threads only inside a Box whose ownership is
+// transferred to Kotlin as a jlong handle. Access is serialized by the Kotlin
+// caller (nativeNew → nativeFree lifecycle; nativeNextUpdate on one reader thread).
+unsafe impl Send for Session {}
+
+/// Update callback — runs on the kernel's listener thread. `context` is the
+/// `*mut Sender<String>` we registered; `json` is borrowed for this call only.
+extern "C" fn on_update(context: *mut c_void, json: *const c_char) {
+    if context.is_null() || json.is_null() {
+        return;
+    }
+    // SAFETY: `context` is the pointer passed to `nmp_app_set_update_callback`,
+    // alive until `nativeFree` clears the callback before reclaiming it.
+    let tx = unsafe { &*(context as *const Sender<String>) };
+    // Copy out of the borrowed buffer before it is invalidated (§3).
+    let owned = unsafe { CStr::from_ptr(json) }.to_string_lossy().into_owned();
+    let _ = tx.send(owned); // dead receiver ⇒ silent no-op (D6)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNew(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jlong {
+    let app = unsafe { nmp_app_new() };
+    if app.is_null() {
+        return 0;
+    }
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    let tx = Box::into_raw(Box::new(tx));
+    unsafe { nmp_app_set_update_callback(app, tx as *mut c_void, Some(on_update)) };
+    let session = Box::new(Session { app, rx, tx });
+    Box::into_raw(session) as jlong
+}
+
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeStart(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    visible_limit: jint,
+    emit_hz: jint,
+) {
+    if let Some(s) = session_ref(handle) {
+        unsafe { nmp_app_start(s.app, 0, visible_limit as u32, emit_hz as u32) };
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeStop(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) {
+    if let Some(s) = session_ref(handle) {
+        unsafe { nmp_app_stop(s.app) };
+    }
+}
+
+/// Blocking drain with a 250 ms timeout so the Kotlin reader thread stays
+/// responsive to cancellation. Returns `null` on timeout / closed channel.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNextUpdate<'l>(
+    env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    handle: jlong,
+) -> jstring {
+    let null = std::ptr::null_mut();
+    let Some(s) = session_ref(handle) else { return null };
+    match s.rx.recv_timeout(Duration::from_millis(250)) {
+        Ok(json) => match env.new_string(json) {
+            Ok(js) => js.into_raw(),
+            Err(_) => null,
+        },
+        Err(RecvTimeoutError::Timeout) | Err(RecvTimeoutError::Disconnected) => null,
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeFree(
+    _env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) {
+    if handle == 0 {
+        return;
+    }
+    // SAFETY: `handle` was produced by `nativeNew`; freed exactly once.
+    let s = unsafe { Box::from_raw(handle as *mut Session) };
+    unsafe {
+        nmp_app_set_update_callback(s.app, std::ptr::null_mut(), None);
+        nmp_app_free(s.app);
+        drop(Box::from_raw(s.tx)); // reclaim the boxed Sender (callback cleared)
+    }
+}
+
+fn session_ref<'a>(handle: jlong) -> Option<&'a Session> {
+    if handle == 0 {
+        None
+    } else {
+        // SAFETY: non-zero handles are live `Session` pointers from nativeNew
+        // until nativeFree; Kotlin never calls after free.
+        Some(unsafe { &*(handle as *const Session) })
+    }
+}
+
+// JString param kept in the contract surface for future signed-in screens;
+// silence unused-import on the read-only L1 build.
+#[allow(dead_code)]
+fn _contract_marker(_: JString) {}

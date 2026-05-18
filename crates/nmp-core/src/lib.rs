@@ -38,6 +38,23 @@ pub use ffi::{
     nmp_app_set_update_callback, nmp_app_start,
 };
 
+// android-ffi: expose the full FFI surface via Rust paths. nmp-android-ffi
+// calls these through the rlib dependency — this is what causes rustc to
+// include the symbol bodies in CGU files. Without Rust-path references the
+// rlib is consumed at compile time but the symbols stay `U` in the cdylib.
+#[cfg(feature = "android-ffi")]
+pub use ffi::{
+    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_close_author, nmp_app_close_thread,
+    nmp_app_configure, nmp_app_create_new_account, nmp_app_dispatch_capability,
+    nmp_app_follow, nmp_app_free, nmp_app_free_string, nmp_app_new,
+    nmp_app_open_author, nmp_app_open_firehose_tag, nmp_app_open_thread, nmp_app_open_timeline,
+    nmp_app_open_uri, nmp_app_publish_note, nmp_app_publish_unsigned_event, nmp_app_react,
+    nmp_app_release_profile, nmp_app_remove_account, nmp_app_remove_relay,
+    nmp_app_set_capability_callback, nmp_app_set_update_callback, nmp_app_signin_bunker,
+    nmp_app_signin_nsec, nmp_app_start, nmp_app_stop, nmp_app_switch_active, nmp_app_unfollow,
+    nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wallet_pay_invoice,
+};
+
 /// Test-support facade: gives live-bench binaries access to the actor
 /// internals without exposing domain nouns in the stable `nmp-core` API.
 ///

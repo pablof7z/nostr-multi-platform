@@ -63,7 +63,7 @@ struct WalletView: View {
 
                     VStack(spacing: ChirpSpace.s) {
                         Text("Connect a Wallet")
-                            .font(ChirpFont.title3.weight(.semibold))
+                            .font(ChirpFont.title)
                             .foregroundStyle(ChirpColor.textPrimary)
                         Text("Use any NWC-compatible wallet — Alby, Zeus, Mutiny, or self-hosted — to send and receive Lightning payments.")
                             .font(ChirpFont.callout)

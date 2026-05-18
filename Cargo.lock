@@ -2354,8 +2354,11 @@ name = "nmp-nwc"
 version = "0.1.0"
 dependencies = [
  "nostr",
+ "rustls",
  "serde",
  "serde_json",
+ "tungstenite",
+ "url",
 ]
 
 [[package]]

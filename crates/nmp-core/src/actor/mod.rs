@@ -71,6 +71,27 @@ pub enum ActorCommand {
     /// T66a identity — remove an account; clears the active slot if it was
     /// the active one.
     RemoveAccount { identity_id: String },
+    /// Broker → actor: register a fully-handshaken remote signer (e.g.
+    /// completed NIP-46 bunker handshake). Actor inserts into
+    /// `IdentityRuntime.remote_signers` and emits a snapshot update.
+    /// Becomes active if no account was active. D0 stays clean — the
+    /// trait object's concrete type lives in `nmp-signers` but `nmp-core`
+    /// only sees `dyn RemoteSignerHandle` (defined in
+    /// [`crate::remote_signer`]).
+    AddRemoteSigner {
+        handle: Box<dyn crate::RemoteSignerHandle>,
+    },
+    /// Broker → actor: drop a remote signer by user pubkey hex.
+    RemoveRemoteSigner { identity_id: String },
+    /// Broker → actor: progress event for the bunker handshake UI. Actor
+    /// stores the latest into a kernel snapshot field; the broker is the
+    /// sole writer. Stage `"idle"` clears the projection.
+    BunkerHandshakeProgress {
+        /// `"connecting"` | `"awaiting_pubkey"` | `"ready"` | `"failed"` | `"idle"`.
+        stage: String,
+        /// Optional human-readable status (e.g. relay URL, error reason).
+        message: Option<String>,
+    },
     /// T66a publish — sign a kind:1 (optionally a reply) with the active
     /// account and emit it to the NIP-65 outbox-resolved write relays (D3).
     PublishNote {
