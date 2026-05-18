@@ -1,0 +1,153 @@
+//! `CompileTrigger` enum + auxiliary types.
+//!
+//! See `docs/design/subscription-compilation/recompilation.md` §4.1 for the
+//! canonical enum. This module ships the seam shape only — the actual
+//! reconciler (M4), NIP-42 handshake (M5), publisher (M7), and multi-account
+//! session machine (M8) emit triggers into the inbox; this module does not
+//! implement their semantics.
+//!
+//! ## Type aliases
+//!
+//! `AccountId` and `SignerId` are opaque newtypes so the M6/M8 implementations
+//! can substitute richer types without breaking this module's API. The
+//! `RelayAuthState` enum is the seam for M5 — T40 may add variants (e.g.
+//! `Failed { reason }`) without breaking the trigger ABI.
+
+use crate::planner::{InterestId, RelayUrl};
+
+// ─── Opaque newtypes (M6/M8 will substitute) ────────────────────────────────
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
+pub struct AccountId(pub String);
+
+#[derive(Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
+pub struct SignerId(pub String);
+
+// ─── RelayAuthState (M5 seam) ───────────────────────────────────────────────
+
+/// Per-relay NIP-42 auth state.
+///
+/// M5 / T40 owns the canonical type; this enum is the seam so the inbox and
+/// pause-gate plumbing land in M8-subs without waiting for M5. T40 may add
+/// variants without breaking ABI; M8-subs only branches on
+/// `ChallengeReceived` / `Authenticating` (paused) and `Authenticated` (flush).
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+pub enum RelayAuthState {
+    /// No challenge seen; subscriptions proceed without auth.
+    NotRequired,
+    /// Relay has sent `AUTH` but signer has not yet been invoked.
+    ChallengeReceived,
+    /// Signer is producing kind:22242; client awaits relay `OK`.
+    Authenticating,
+    /// Relay has acknowledged; subscriptions resume.
+    Authenticated,
+    /// Auth attempt failed (wrong signer, signer error, etc.); subscriptions
+    /// stay paused until external action resolves it.
+    Failed,
+}
+
+// ─── InvalidateReason (A6) ──────────────────────────────────────────────────
+
+/// Why an external `InvalidateCompile` trigger was emitted.
+///
+/// Listed for diagnostic provenance only — the compiler treats them identically.
+#[derive(Clone, Debug, Hash, Eq, PartialEq)]
+pub enum InvalidateReason {
+    /// Operator pressed "Force re-route now" in diagnostics.
+    DiagnosticsManualRefresh,
+    /// Test harness force-recompile (the audit gate, the integration tests).
+    TestForceRecompile,
+    /// Catch-all with a diagnostic string.
+    External(String),
+}
+
+// ─── CompileTrigger ─────────────────────────────────────────────────────────
+
+/// The ten canonical recompilation triggers from
+/// `docs/design/subscription-compilation/recompilation.md` §4.1.
+///
+/// All triggers fan into the actor's trigger inbox. Per-tick coalescing
+/// guarantees ≤ 1 compile per tick regardless of fan-in (D8).
+#[derive(Clone, Debug)]
+pub enum CompileTrigger {
+    /// A1 — kind:10002 just replaced an author's mailbox entry.
+    Nip65Arrived {
+        pubkey: String,
+        created_at: u64,
+    },
+    /// A2 — view registered one or more interests.
+    ViewOpened {
+        interest_ids: Vec<InterestId>,
+    },
+    /// A3 — view's warmth grace expired; interests dropped.
+    ViewClosed {
+        interest_ids: Vec<InterestId>,
+        warmth_expired_at_ms: u64,
+    },
+    /// A4 — active account changed (M8 multi-account).
+    ActiveAccountChanged {
+        from: Option<AccountId>,
+        to: Option<AccountId>,
+    },
+    /// A5 — relay reconnected after backoff. Pure replay; not a recompile.
+    RelayReconnected {
+        url: RelayUrl,
+    },
+    /// A6 — external force-recompile.
+    InvalidateCompile {
+        reason: InvalidateReason,
+    },
+    /// A7 — user-configured relay set changed.
+    UserConfiguredRelaysChanged {
+        generation: u64,
+    },
+    /// A8 — kernel-configured indexer set changed.
+    IndexerSetChanged {
+        generation: u64,
+    },
+    /// A9 — NIP-42 auth-state transition (M5 / T40 seam).
+    RelayAuthStateChanged {
+        url: RelayUrl,
+        state: RelayAuthState,
+    },
+    /// A10 — signer became available for an account (M6 / T43 seam).
+    SignerAvailable {
+        account: AccountId,
+        signer_id: SignerId,
+    },
+}
+
+impl CompileTrigger {
+    /// Returns true if this trigger requires invoking the compiler. False for
+    /// pure-replay triggers (A5) which the lifecycle handles via
+    /// `handle_reconnect` directly.
+    ///
+    /// Kept `pub` so that the M4 / M5 / M7 in-flight tasks (T39/T40/T45) can
+    /// classify triggers as they fan them into the inbox without re-encoding
+    /// the rule.
+    #[allow(dead_code)]
+    pub fn requires_recompile(&self) -> bool {
+        !matches!(self, CompileTrigger::RelayReconnected { .. })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reconnect_does_not_require_recompile() {
+        let t = CompileTrigger::RelayReconnected {
+            url: "wss://a".to_string(),
+        };
+        assert!(!t.requires_recompile());
+    }
+
+    #[test]
+    fn invalidate_compile_requires_recompile() {
+        let t = CompileTrigger::InvalidateCompile {
+            reason: InvalidateReason::TestForceRecompile,
+        };
+        assert!(t.requires_recompile());
+    }
+}

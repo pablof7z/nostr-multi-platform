@@ -37,3 +37,12 @@ path = "bin/ffi-stress/main.rs"
 [[test]]
 name = "m2_subscription_compilation_audit"
 path = "tests/m2_subscription_compilation_audit.rs"
+
+# M8-subs — subscription lifecycle integration tests (Task #46).
+# Pins the seam between M2's CompiledPlan and the wire: registry, trigger
+# inbox, wire-emitter, connection pool. Eight tests defined in
+# `docs/plan/m8-subscription-lifecycle.md` §6.
+# `cargo test -p nmp-testing --test m8_subscription_lifecycle`
+[[test]]
+name = "m8_subscription_lifecycle"
+path = "tests/m8_subscription_lifecycle.rs"
