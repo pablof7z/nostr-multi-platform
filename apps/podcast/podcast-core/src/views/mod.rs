@@ -28,6 +28,10 @@ pub struct EpisodeRowPayload {
     pub title: String,
     pub podcast_title: String,
     pub podcast_artwork_url: Option<String>,
+    /// The ULID string of the parent podcast. Projected so the mini-player can
+    /// navigate to EpisodeDetail from any screen without tracking a separate
+    /// podcast-id in the host UI (D5 — zero Kotlin business logic).
+    pub podcast_id: String,
     pub summary: Option<String>,
     pub duration_str: String,
     /// Human-readable publication date, e.g. "Jan 1, 2024". Empty string when

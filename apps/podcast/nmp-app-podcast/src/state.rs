@@ -288,6 +288,10 @@ fn episode_to_payload(
         title: ep.title.clone(),
         podcast_title: podcast_title.to_string(),
         podcast_artwork_url: artwork_url.map(|s| s.to_string()),
+        // T-podcast-android-8: project podcast_id so the mini-player can
+        // navigate back to EpisodeDetail from any screen without the host
+        // maintaining a separate lookup table (D5 — zero Kotlin business logic).
+        podcast_id: ep.podcast_id.to_string(),
         summary: ep.ai_summary.clone().or_else(|| ep.description_text.clone()),
         duration_str: format_duration(ep.duration_s),
         pub_date_str: format_pub_date(ep.published_at_ms),
@@ -615,6 +619,28 @@ mod tests {
                 ep.pub_date_str,
             );
         }
+    }
+
+    /// T-podcast-android-8: podcast_id must roundtrip through the episode
+    /// payload so the mini-player can navigate to EpisodeDetail without the
+    /// Kotlin host maintaining a separate podcast-id lookup table (D5).
+    #[test]
+    fn episodes_for_roundtrips_podcast_id() {
+        let feed_url = url("https://feeds.example.com/show.xml");
+        let app = PodcastApp::new();
+        let SubscribeResult::Subscribed { podcast_id } =
+            app.subscribe(feed_url.clone(), Some("ID Test".into()), None)
+        else {
+            panic!("subscribe failed");
+        };
+        app.ingest_feed_bytes(&feed_url, &rss2_one_episode());
+        let feed_view = app.episodes_for(podcast_id);
+        assert_eq!(feed_view.episodes.len(), 1);
+        assert_eq!(
+            feed_view.episodes[0].podcast_id,
+            podcast_id.to_string(),
+            "podcast_id must roundtrip from EpisodeRecord into EpisodeRowPayload"
+        );
     }
 
     /// T-podcast-android-7: audio_url must roundtrip through the snapshot so
