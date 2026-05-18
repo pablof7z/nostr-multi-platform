@@ -1,4 +1,5 @@
 use super::*;
+use crate::substrate::placeholder::picture_placeholder;
 
 impl Kernel {
     pub(crate) fn make_update(&mut self, running: bool) -> String {
@@ -129,6 +130,13 @@ impl Kernel {
 
     pub(super) fn timeline_item(&self, event: &StoredEvent) -> TimelineItem {
         let profile = self.profiles.get(&event.author);
+        // D1: author_picture_url is always non-empty.  Use the kind:0 URL when
+        // available; fall back to a deterministic identicon URI otherwise.
+        let author_picture_url = profile
+            .and_then(|p| p.picture_url.as_deref())
+            .filter(|url| !url.is_empty())
+            .map(str::to_owned)
+            .unwrap_or_else(|| picture_placeholder(&event.author));
         TimelineItem {
             id: event.id.clone(),
             author_pubkey: event.author.clone(),
@@ -136,7 +144,7 @@ impl Kernel {
                 .map(|profile| profile.display.clone())
                 .filter(|display| !display.is_empty())
                 .unwrap_or_else(|| short_pubkey_display(&event.author)),
-            author_picture_url: profile.and_then(|profile| profile.picture_url.clone()),
+            author_picture_url,
             author_avatar_initials: profile
                 .map(|profile| profile.avatar_initials.clone())
                 .unwrap_or_else(|| "..".to_string()),
@@ -174,6 +182,13 @@ impl Kernel {
         placeholder_about: &str,
     ) -> ProfileCard {
         let profile = self.profiles.get(pubkey);
+        // D1: picture_url is always non-empty.  Use the kind:0 URL when
+        // available; fall back to a deterministic identicon URI otherwise.
+        let picture_url = profile
+            .and_then(|p| p.picture_url.as_deref())
+            .filter(|url| !url.is_empty())
+            .map(str::to_owned)
+            .unwrap_or_else(|| picture_placeholder(pubkey));
         ProfileCard {
             pubkey: pubkey.to_string(),
             npub: npub.unwrap_or(pubkey).to_string(),
@@ -181,7 +196,7 @@ impl Kernel {
                 .map(|profile| profile.display.clone())
                 .filter(|display| !display.is_empty())
                 .unwrap_or_else(|| short_pubkey_display(pubkey)),
-            picture_url: profile.and_then(|profile| profile.picture_url.clone()),
+            picture_url,
             nip05: profile
                 .map(|profile| profile.nip05.clone())
                 .unwrap_or_default(),

@@ -215,29 +215,103 @@ fn c8_subscriptions_coalesce_autoclose_and_buffer() {
 
 // ── C13 ───────────────────────────────────────────────────────────────────────
 
-/// C13: Best-effort rendering — display fields use non-Option placeholders;
-/// authoritative data refines in place.
+/// C13: Best-effort rendering — `author_picture_url` is a non-`Option` `String`
+/// on the JSON wire format; authoritative data refines in place.
 ///
-/// Substrate gap: `TimelineItem` is `pub(super)` in `nmp_core::kernel` — it is
-/// not accessible from integration tests, making it impossible to verify the D1
-/// placeholder contract (that `author_picture_url` and `author_display_name` are
-/// non-Option `String`s, never `None`, on the FFI boundary) at this layer.
+/// The substrate gap (#57-c13-gap) is resolved: `TimelineItem.author_picture_url`
+/// was migrated from `Option<String>` to `String` via
+/// `nmp_core::substrate::placeholder::picture_placeholder` (ADR-0017).  The
+/// field now always carries a non-empty value — either the kind:0 picture URL or
+/// a deterministic `identicon:<pubkey-prefix>` URI — which satisfies D1 (the UI
+/// never has to branch on `None`).
 ///
-/// `TimelineItem.author_picture_url` is currently `Option<String>` — a D1
-/// violation. The full fix requires either exposing `TimelineItem` via
-/// `nmp_core::kernel::types` or migrating the field to `String` with a hardcoded
-/// placeholder fallback in `update.rs`.
+/// This integration test verifies the JSON wire format the Swift/Kotlin FFI
+/// consumers actually decode.  It drives the kernel through the actor path to
+/// validate the full pipeline: ingest → projection → JSON serialisation.
 ///
-/// Follow-up task (#57-c13-gap): expose `TimelineItem` or add a kernel-level
-/// test harness so this contract can be verified end-to-end.
+/// A companion kernel-internal test (`c13_kernel_*` in `kernel/tests.rs`)
+/// exercises the in-place refinement (placeholder → kind:0 URL) with direct
+/// access to `Profile` insertion.
 ///
-/// Design: `docs/design/framework-magic/capabilities.md`
+/// Design: `docs/product-spec/doctrine.md` §D1, ADR-0017.
 #[test]
-#[should_panic = "substrate gap: TimelineItem is pub(super) in nmp-core::kernel — cannot verify D1 placeholder contract from integration test; expose type or add kernel-level harness (follow-up #57-c13-gap)"]
 fn c13_view_payload_uses_placeholders_then_refines_in_place() {
-    panic!(
-        "substrate gap: TimelineItem is pub(super) in nmp-core::kernel \
-        — cannot verify D1 placeholder contract from integration test; \
-        expose type or add kernel-level harness (follow-up #57-c13-gap)"
+    use nmp_core::store::RawEvent;
+    use nmp_core::testing::{spawn_actor, ActorCommand};
+    use std::time::Duration;
+
+    let (tx, rx) = spawn_actor();
+
+    // Start the actor with a visible limit that will include our injected event.
+    tx.send(ActorCommand::Start {
+        visible_limit: 100,
+        emit_hz: 0,
+    })
+    .expect("send Start");
+
+    // Build a kind:1 event with a fixed author pubkey (no kind:0 will arrive).
+    let author_pk = "c13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13a";
+    let event_id  = "c13e0000c13e0000c13e0000c13e0000c13e0000c13e0000c13e0000c13e0000";
+    let raw = RawEvent {
+        id: event_id.to_string(),
+        pubkey: author_pk.to_string(),
+        created_at: 1_000,
+        kind: 1,
+        tags: vec![],
+        content: "D1 placeholder test note".to_string(),
+        sig: "a".repeat(128),
+    };
+
+    use nmp_core::store::VerifiedEvent;
+    let verified = VerifiedEvent::from_raw_unchecked(raw);
+    tx.send(ActorCommand::IngestPreVerifiedEvents(vec![verified]))
+        .expect("send IngestPreVerifiedEvents");
+
+    // Drain update(s) until we see one that contains our event.
+    let update_json = {
+        let mut found = None;
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while std::time::Instant::now() < deadline {
+            match rx.recv_timeout(Duration::from_millis(100)) {
+                Ok(json) if json.contains(event_id) => {
+                    found = Some(json);
+                    break;
+                }
+                Ok(_) => continue,
+                Err(_) => break,
+            }
+        }
+        found.expect("actor must emit an update containing our event within 5 s")
+    };
+
+    // Parse the JSON and locate our item.
+    let update: serde_json::Value =
+        serde_json::from_str(&update_json).expect("update must be valid JSON");
+
+    let items = update["items"].as_array().expect("update must have an items array");
+    let our_item = items
+        .iter()
+        .find(|item| item["id"].as_str() == Some(event_id))
+        .expect("our event must appear in items");
+
+    // C13 core assertion: author_picture_url must be a non-null, non-empty String.
+    let pic_url = our_item["author_picture_url"]
+        .as_str()
+        .expect("author_picture_url must be a JSON string (not null) — D1 violation if missing");
+    assert!(
+        !pic_url.is_empty(),
+        "author_picture_url must be non-empty (D1 placeholder contract)"
     );
+    assert!(
+        pic_url.starts_with("identicon:"),
+        "no-profile placeholder must be an identicon URI, got: {pic_url}"
+    );
+
+    // author_avatar_source distinguishes placeholder from authoritative.
+    let source = our_item["author_avatar_source"]
+        .as_str()
+        .expect("author_avatar_source must be present");
+    assert_eq!(source, "placeholder");
+
+    tx.send(ActorCommand::Shutdown).ok();
 }

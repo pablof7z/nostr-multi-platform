@@ -55,6 +55,10 @@ pub(super) struct Profile {
     pub(super) event_id: String,
     pub(super) created_at: u64,
     pub(super) display: String,
+    /// Raw picture URL from kind:0. `None` while no kind:0 has arrived.
+    /// At the `TimelineItem` / `ProfileCard` boundary this becomes a non-Option
+    /// field backed by [`crate::substrate::placeholder::picture_placeholder`]
+    /// (D1: display fields are always renderable).
     pub(super) picture_url: Option<String>,
     pub(super) nip05: String,
     pub(super) about: String,
@@ -64,12 +68,22 @@ pub(super) struct Profile {
 
 // ── Timeline and view payloads ────────────────────────────────────────────────
 
+/// A single item in a timeline or thread view.
+///
+/// All display fields are non-`Option` (D1: best-effort rendering — placeholders
+/// are part of the type contract).  `author_picture_url` carries either the
+/// kind:0 picture URL or a deterministic `identicon:<pubkey-prefix>` URI when
+/// no kind:0 has arrived.  The `author_avatar_source` field (`"kind0"` |
+/// `"placeholder"`) lets the UI decide how to render without branching on
+/// `Option`.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub(super) struct TimelineItem {
     pub(super) id: String,
     pub(super) author_pubkey: String,
     pub(super) author_display: String,
-    pub(super) author_picture_url: Option<String>,
+    /// Always non-empty (D1).  Either the kind:0 picture URL or an
+    /// `identicon:<pubkey-prefix>` placeholder URI.
+    pub(super) author_picture_url: String,
     pub(super) author_avatar_initials: String,
     pub(super) author_avatar_color: String,
     pub(super) author_avatar_source: String,
@@ -79,12 +93,18 @@ pub(super) struct TimelineItem {
     pub(super) relay_count: u32,
 }
 
+/// Profile summary card.
+///
+/// All display fields are non-`Option` (D1).  `picture_url` carries either the
+/// kind:0 picture URL or an `identicon:<pubkey-prefix>` placeholder URI.
 #[derive(Clone, Debug, Serialize)]
 pub(super) struct ProfileCard {
     pub(super) pubkey: String,
     pub(super) npub: String,
     pub(super) display: String,
-    pub(super) picture_url: Option<String>,
+    /// Always non-empty (D1).  Either the kind:0 picture URL or an
+    /// `identicon:<pubkey-prefix>` placeholder URI.
+    pub(super) picture_url: String,
     pub(super) nip05: String,
     pub(super) about: String,
     pub(super) avatar_initials: String,
