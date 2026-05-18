@@ -5,28 +5,34 @@
 //! The nostrconnect:// flow requires **two** WebSocket clients (broker + signer
 //! app) to communicate through a relay. This module provides:
 //!
-//! 1. `MockNostrConnectRelay` — a minimal broadcast relay that accepts multiple
-//!    WebSocket connections and fans out every EVENT to all subscribers.
+//! 1. A minimal broadcast relay embedded in `MockNostrConnectSigner` that
+//!    accepts multiple WebSocket connections and fans out every EVENT to all
+//!    subscribers.
 //!
 //! 2. `MockNostrConnectSigner` — a signer-app simulator that:
-//!    a. Spawns `MockNostrConnectRelay` internally.
+//!    a. Spawns the relay internally.
 //!    b. Exposes `connect_with_correct_secret(uri)` / `connect_with_wrong_secret(uri, bad)`.
 //!    c. When called, dials the relay as a WebSocket client (playing the signer
 //!       app), sends a NIP-44-encrypted `connect` RPC with params
 //!       `[signer_pubkey, secret, ""]`, then waits for the broker's
 //!       `get_public_key` and replies with `user_keys.public_key().to_hex()`.
 //!
+//! ## Subscription synchronisation
+//!
+//! The signer mock waits until the relay has received at least one `REQ` frame
+//! (via `subscription_count` atomic) before sending its `connect` EVENT. This
+//! prevents a race where the event is broadcast before the broker has subscribed
+//! and therefore never reaches the broker's inbound channel.
+//!
 //! ## Threading model
 //!
 //! The relay runs an acceptor thread + per-connection worker threads. Workers
 //! share a broadcast channel via `Arc<Mutex<Vec<Sender<String>>>>` so any
 //! published EVENT is forwarded to all connected subscribers.
-//!
-//! On `Drop`, the shutdown flag is set; workers exit within ~100ms.
 
 use std::io::ErrorKind;
 use std::net::{SocketAddr, TcpListener};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -46,6 +52,10 @@ pub struct MockNostrConnectSigner {
     user_keys: Keys,
     shutdown: Arc<AtomicBool>,
     broadcast_senders: BroadcastSenders,
+    /// Incremented each time any connection sends a REQ frame.
+    /// The signer-driver waits until this is >= 1 before sending the connect
+    /// EVENT, ensuring the broker is subscribed before the event is broadcast.
+    subscription_count: Arc<AtomicUsize>,
     listener: Option<TcpListener>,
     acceptor: Mutex<Option<JoinHandle<()>>>,
     workers: Arc<Mutex<Vec<JoinHandle<()>>>>,
@@ -59,11 +69,13 @@ impl MockNostrConnectSigner {
         let shutdown = Arc::new(AtomicBool::new(false));
         let workers: Arc<Mutex<Vec<JoinHandle<()>>>> = Arc::new(Mutex::new(Vec::new()));
         let broadcast_senders: BroadcastSenders = Arc::new(Mutex::new(Vec::new()));
+        let subscription_count = Arc::new(AtomicUsize::new(0));
 
         let listener_for_thread = listener.try_clone()?;
         let shutdown_t = Arc::clone(&shutdown);
         let workers_t = Arc::clone(&workers);
         let senders_t = Arc::clone(&broadcast_senders);
+        let sub_count_t = Arc::clone(&subscription_count);
 
         let acceptor = thread::spawn(move || {
             listener_for_thread
@@ -79,8 +91,9 @@ impl MockNostrConnectSigner {
                         let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
                         let shutdown_w = Arc::clone(&shutdown_t);
                         let senders_w = Arc::clone(&senders_t);
+                        let sub_count_w = Arc::clone(&sub_count_t);
                         let worker = thread::spawn(move || {
-                            run_relay_connection(stream, shutdown_w, senders_w);
+                            run_relay_connection(stream, shutdown_w, senders_w, sub_count_w);
                         });
                         workers_t.lock().unwrap().push(worker);
                     }
@@ -97,6 +110,7 @@ impl MockNostrConnectSigner {
             user_keys,
             shutdown,
             broadcast_senders,
+            subscription_count,
             listener: Some(listener),
             acceptor: Mutex::new(Some(acceptor)),
             workers,
@@ -130,10 +144,20 @@ impl MockNostrConnectSigner {
         let relay_url = params.relay_url.clone();
         let client_pubkey = params.client_pubkey.clone();
         let workers = Arc::clone(&self.workers);
+        let subscription_count = Arc::clone(&self.subscription_count);
 
         let handle = thread::spawn(move || {
-            // Small delay so the broker's REQ subscription is in place.
-            thread::sleep(Duration::from_millis(150));
+            // Wait until the broker has sent at least one REQ to the relay
+            // (subscription_count >= 1). This ensures the event is broadcast
+            // to the broker's connection rather than dropped. Bound: 5s.
+            let wait_deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while subscription_count.load(Ordering::Relaxed) == 0 {
+                if std::time::Instant::now() > wait_deadline {
+                    eprintln!("mock signer: timed out waiting for broker REQ subscription");
+                    return;
+                }
+                thread::sleep(Duration::from_millis(20));
+            }
 
             let (mut ws, _) = match tungstenite::connect(&relay_url) {
                 Ok(c) => c,
@@ -174,8 +198,9 @@ impl MockNostrConnectSigner {
                 return;
             }
 
-            // Wait for broker's get_public_key (it arrives via relay broadcast
-            // as ["EVENT", sub_id, {kind:24133,...}]).
+            // For wrong-secret tests, the broker rejects immediately and the
+            // signer doesn't need to do anything further. For happy-path tests,
+            // wait for broker's get_public_key RPC and reply.
             let deadline = std::time::Instant::now() + Duration::from_secs(10);
             let mut sent_gpk_reply = false;
 
@@ -224,8 +249,7 @@ impl MockNostrConnectSigner {
                     continue;
                 };
 
-                // Decrypt with signer_keys.secret + client_pk (broker sends
-                // to signer, encrypted to signer's pubkey).
+                // Decrypt with signer_keys.secret + client_pk.
                 let plaintext = match nip44::decrypt(
                     signer_keys.secret_key(),
                     &client_pk,
@@ -264,9 +288,9 @@ impl MockNostrConnectSigner {
                 }
             }
 
-            if !sent_gpk_reply {
-                eprintln!("mock signer: never received get_public_key from broker within 10s");
-            }
+            // In wrong-secret scenarios sent_gpk_reply will be false — that's
+            // expected; the broker rejects before issuing get_public_key.
+            let _ = sent_gpk_reply;
         });
 
         workers.lock().unwrap().push(handle);
@@ -294,6 +318,7 @@ fn run_relay_connection(
     stream: std::net::TcpStream,
     shutdown: Arc<AtomicBool>,
     broadcast_senders: BroadcastSenders,
+    subscription_count: Arc<AtomicUsize>,
 ) {
     let mut ws = match tungstenite::accept(stream) {
         Ok(w) => w,
@@ -355,6 +380,10 @@ fn run_relay_connection(
                 if let Some(sub) = arr.get(1).and_then(|v| v.as_str()) {
                     subscription_id = Some(sub.to_string());
                 }
+                // Increment the subscription counter so the signer mock knows
+                // the broker is subscribed and it's safe to send the connect EVENT.
+                subscription_count.fetch_add(1, Ordering::Relaxed);
+
                 // Reply EOSE so the broker knows the subscription is active.
                 if let Some(sub) = &subscription_id {
                     let eose = json!(["EOSE", sub]).to_string();

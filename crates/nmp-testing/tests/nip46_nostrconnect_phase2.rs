@@ -128,7 +128,8 @@ fn nostrconnect_wrong_secret_fails_handshake() {
                 break;
             }
             Ok(_) => continue,
-            Err(_) => break,
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
 
