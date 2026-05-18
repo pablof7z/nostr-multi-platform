@@ -10,7 +10,22 @@ mod relay_mgmt;
 mod tick;
 
 use commands::{IdentityRuntime, WalletRuntime};
+pub(crate) use commands::{
+    new_observer_slot as new_lifecycle_observer_slot, LifecycleObserverRegistration,
+    LifecycleObserverSlot,
+};
+// `pub` (not `pub(crate)`) so the `lib.rs` test-support re-export reaches
+// integration tests outside the crate. The `actor` module itself is
+// crate-private (`mod actor;` in `lib.rs`), so external Rust callers still
+// see these only via the gated `pub use actor::{...}` in lib.rs. The
+// constants are unused inside the crate (FFI consumers read them through
+// the test-support facade), so allow-unused keeps a plain `cargo build`
+// clean.
+#[allow(unused_imports)]
+pub use commands::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
 use dispatch::{dispatch_command, handle_relay_event};
+
+use crate::kernel::LifecyclePhase;
 
 use crate::app::KernelAction;
 
@@ -134,6 +149,16 @@ pub enum ActorCommand {
     WalletDisconnect,
     /// NIP-47 pay invoice — sign and send a `pay_invoice` kind:23194 request.
     WalletPayInvoice { bolt11: String, amount_msats: Option<u64> },
+    /// T118 / G3 — iOS scenePhase transition reported by the Pulse shell
+    /// (or any conforming consumer). The actor folds the phase into the
+    /// kernel's [`crate::kernel::LifecyclePhase`] state and, on a
+    /// meaningful transition (`Background → Foreground`, `Foreground →
+    /// Background`, or first phase after boot), fires the registered
+    /// lifecycle observer. The observer is what fans the trigger out to
+    /// `nmp_nip77::TriggerEngine` for `TriggerEvent::Foreground`; nmp-core
+    /// itself does not name nip77 (D0). Idempotent: rapid scene oscillation
+    /// debounces to a single observer call per transition.
+    LifecycleEvent(LifecyclePhase),
     Stop,
     Reset,
     Shutdown,
@@ -173,7 +198,29 @@ pub(super) struct RelayControl {
     pub(super) tx: Sender<RelayCommand>,
 }
 
+/// Backwards-compatible entry point: spawn the actor without a lifecycle
+/// observer. Existing tests and the `nmp-core::testing` facade call this
+/// shape. The FFI surface uses [`run_actor_with_lifecycle_observer`]
+/// instead so the shell can register a phase-transition callback.
+///
+/// `#[allow(dead_code)]` because callers live behind the
+/// `cfg(any(test, feature = "test-support"))` gate (the `testing` facade in
+/// `lib.rs` and `actor::tick`'s test module). A plain `cargo build` without
+/// `--tests` or the `test-support` feature would otherwise warn.
+#[allow(dead_code)]
 pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) {
+    run_actor_with_lifecycle_observer(command_rx, update_tx, new_lifecycle_observer_slot());
+}
+
+/// T118 / G3 — actor entry point that accepts a shared lifecycle observer
+/// slot. The FFI (`ffi/lifecycle.rs::nmp_app_set_lifecycle_callback`)
+/// shares the SAME `Arc<Mutex<…>>` so registrations from the Swift bridge
+/// are visible to the actor thread without crossing the FFI on each event.
+pub fn run_actor_with_lifecycle_observer(
+    command_rx: Receiver<ActorCommand>,
+    update_tx: Sender<String>,
+    lifecycle_observer: LifecycleObserverSlot,
+) {
     // T114 part 1: bounded internal command channel. Commands `try_send` and
     // drop on `Full` (D6 fire-and-forget — never block the FFI thread); relay
     // events use the same `SyncSender` with blocking `send` so network frames
@@ -275,6 +322,7 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
                     &mut emit_hz,
                     &mut startup_sent,
                     relays_ready,
+                    &lifecycle_observer,
                 );
                 let Some(outbound) = outbound else {
                     return; // Shutdown

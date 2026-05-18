@@ -46,6 +46,7 @@
 //! (TODO(nip46-nip42) in `identity.rs:sync_kernel`).
 
 mod identity;
+mod lifecycle;
 mod publish;
 mod relays;
 mod wallet;
@@ -58,6 +59,14 @@ pub(super) use identity::{
     add_remote_signer, bunker_handshake_progress, create_account, remove_account,
     remove_remote_signer, sign_in_bunker, sign_in_nsec, switch_active, IdentityRuntime,
 };
+pub(super) use lifecycle::handle_lifecycle_event;
+pub(crate) use lifecycle::{
+    new_observer_slot, LifecycleObserverRegistration, LifecycleObserverSlot,
+};
+// `pub` (not `pub(crate)`) so the test-support re-export in `lib.rs` works.
+// `commands` is crate-private (`mod commands;`), so external Rust code only
+// sees these through the gated `pub use` in lib.rs.
+pub use lifecycle::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
 pub(super) use publish::{follow, open_timeline, publish_note, publish_unsigned_event, react};
 pub(super) use relays::{add_relay, remove_relay};
 pub(super) use wallet::{

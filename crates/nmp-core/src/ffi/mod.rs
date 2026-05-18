@@ -6,6 +6,7 @@
 
 mod capability;
 mod identity;
+mod lifecycle;
 mod timeline;
 mod wallet;
 
@@ -20,6 +21,16 @@ mod testing;
 #[cfg(any(test, feature = "test-support"))]
 pub use capability::{
     nmp_app_dispatch_capability, nmp_app_free_string, nmp_app_set_capability_callback,
+};
+
+// T118 / G3 — lifecycle FFI exposed through the test-support facade so
+// integration tests (`nmp-testing/tests/lifecycle_ffi_*`) can drive
+// scenePhase transitions and assert on the observer callback. The Swift
+// shell consumes the same `#[no_mangle] extern "C"` symbols directly via
+// the static lib — the `pub use` only affects Rust-side reach.
+#[cfg(any(test, feature = "test-support"))]
+pub use lifecycle::{
+    nmp_app_lifecycle_background, nmp_app_lifecycle_foreground, nmp_app_set_lifecycle_callback,
 };
 
 // Re-exported so `crate::ffi::nmp_app_inject_*` stays byte-stable for the
@@ -48,6 +59,13 @@ pub use identity::{
     nmp_app_remove_relay, nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_switch_active,
     nmp_app_unfollow,
 };
+// T118 / G3 — android-ffi must also reach the lifecycle symbols; without this
+// re-export rustc doesn't pull the symbol bodies into the cdylib CGU and the
+// Android JNI shim can't link.
+#[cfg(feature = "android-ffi")]
+pub use lifecycle::{
+    nmp_app_lifecycle_background, nmp_app_lifecycle_foreground, nmp_app_set_lifecycle_callback,
+};
 #[cfg(feature = "android-ffi")]
 pub use timeline::{
     nmp_app_claim_profile, nmp_app_close_author, nmp_app_close_thread, nmp_app_open_author,
@@ -62,7 +80,10 @@ pub use capability::{
     nmp_app_dispatch_capability, nmp_app_free_string, nmp_app_set_capability_callback,
 };
 
-use crate::actor::{run_actor, ActorCommand};
+use crate::actor::{
+    new_lifecycle_observer_slot, run_actor_with_lifecycle_observer, ActorCommand,
+    LifecycleObserverSlot,
+};
 use crate::relay::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 use std::ffi::{c_char, c_uint, c_void, CStr, CString};
 use std::sync::mpsc::{self, Sender};
@@ -82,6 +103,10 @@ pub struct NmpApp {
     tx: Sender<ActorCommand>,
     update_callback: Arc<Mutex<Option<UpdateCallbackRegistration>>>,
     capability_callback: Arc<Mutex<Option<capability::CapabilityCallbackRegistration>>>,
+    /// T118 / G3 — lifecycle observer slot. Shared `Arc` with the actor
+    /// thread: registrations through [`lifecycle::nmp_app_set_lifecycle_callback`]
+    /// are visible to the actor without crossing the FFI on each event.
+    lifecycle_observer: LifecycleObserverSlot,
     actor: Mutex<Option<JoinHandle<()>>>,
     update_listener: Mutex<Option<JoinHandle<()>>>,
 }
@@ -112,7 +137,15 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     let update_callback: Arc<Mutex<Option<UpdateCallbackRegistration>>> =
         Arc::new(Mutex::new(None));
     let listener_callback = Arc::clone(&update_callback);
-    let actor = thread::spawn(move || run_actor(command_rx, update_tx));
+    // T118 / G3 — shared lifecycle observer slot. The FFI side
+    // (`nmp_app_set_lifecycle_callback`) writes registrations through one
+    // clone; the actor thread reads through the other when handling
+    // `ActorCommand::LifecycleEvent`. Both see the same `Mutex<Option<...>>`.
+    let lifecycle_observer = new_lifecycle_observer_slot();
+    let actor_lifecycle_observer = Arc::clone(&lifecycle_observer);
+    let actor = thread::spawn(move || {
+        run_actor_with_lifecycle_observer(command_rx, update_tx, actor_lifecycle_observer);
+    });
     let update_listener = thread::spawn(move || {
         while let Ok(update) = update_rx.recv() {
             let Ok(payload) = CString::new(update) else {
@@ -129,6 +162,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         tx: command_tx,
         update_callback,
         capability_callback: Arc::new(Mutex::new(None)),
+        lifecycle_observer,
         actor: Mutex::new(Some(actor)),
         update_listener: Mutex::new(Some(update_listener)),
     }))

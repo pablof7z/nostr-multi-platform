@@ -156,6 +156,29 @@ final class KernelHandle {
         }
     }
 
+    // ── T118 / G3 — iOS scenePhase → kernel lifecycle bridge ─────────────
+    //
+    // Chirp's `@main` App observes `@Environment(\.scenePhase)` and routes
+    // `.active` / `.background` through here. The kernel decides what each
+    // phase MEANS (D7): scenePhase reports the fact, the kernel reacts —
+    // fans `TriggerEvent::Foreground` through its internal observer to
+    // wake the NIP-77 reconciler on Background→Foreground.
+    //
+    // `.inactive` (the interstitial state between active and background) is
+    // silently dropped at the call site — no Swift method, no FFI symbol;
+    // the actor's lifecycle reducer never sees it.
+
+    /// Report iOS scenePhase = `.active`. Idempotent: while the kernel is
+    /// already foregrounded, this is a debounced no-op.
+    func lifecycleForeground() {
+        nmp_app_lifecycle_foreground(raw)
+    }
+
+    /// Report iOS scenePhase = `.background`. Idempotent.
+    func lifecycleBackground() {
+        nmp_app_lifecycle_background(raw)
+    }
+
     fileprivate static func decode(pointer: UnsafePointer<CChar>) -> KernelUpdateResult? {
         let start = ContinuousClock.now
         let payload = String(cString: pointer)

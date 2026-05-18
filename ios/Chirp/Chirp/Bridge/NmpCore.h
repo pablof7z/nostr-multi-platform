@@ -46,4 +46,26 @@ void nmp_app_wallet_connect(void *app, const char *uri);
 void nmp_app_wallet_disconnect(void *app);
 void nmp_app_wallet_pay_invoice(void *app, const char *bolt11, const char *amount_msats_or_null);
 
+// T118 / G3 — iOS scenePhase → kernel lifecycle bridge. ChirpApp observes
+// `@Environment(\.scenePhase)` and reports `.active` / `.background` here;
+// the kernel decides what each phase MEANS (D7) — when to fan
+// `TriggerEvent::Foreground` through the NIP-77 reconciler, when to throttle
+// retries, etc. `.inactive` is iOS's interstitial state during app-switch
+// animations; the shell silently drops it (no FFI symbol).
+//
+// Fire-and-forget (D6): a null app, an already-stopped actor, or a closed
+// channel are silent no-ops.
+void nmp_app_lifecycle_foreground(void *app);
+void nmp_app_lifecycle_background(void *app);
+
+// Optional callback fired on a meaningful phase transition (the debounced
+// `EnteredForeground` / `EnteredBackground` verdicts — rapid scenePhase
+// oscillation collapses to one event). `phase` is `0` for foreground, `1`
+// for background. Chirp does not currently register here (no client-side
+// TriggerEngine; the in-kernel observer is what fans NIP-77 reconcile work
+// internally). The symbol is exposed so a future shell-side consumer (or
+// test harness) can plug in without changing the FFI shape.
+typedef void (*NmpLifecycleCallback)(void *context, uint32_t phase);
+void nmp_app_set_lifecycle_callback(void *app, void *context, NmpLifecycleCallback callback);
+
 #endif

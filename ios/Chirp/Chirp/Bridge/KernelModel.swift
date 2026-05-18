@@ -164,6 +164,24 @@ final class KernelModel: ObservableObject {
         kernel.walletPayInvoice(bolt11: bolt11, amountMsats: amountMsats)
     }
 
+    // ── T118 / G3 — scenePhase pass-through ───────────────────────────────
+    //
+    // `ChirpApp` observes `@Environment(\.scenePhase)` and routes the OS
+    // event here. The kernel decides what each phase MEANS (D7); the model
+    // is a pure pass-through — no state, no policy.
+
+    /// iOS `.active` — app became visible / interactive. On a meaningful
+    /// `Background→Foreground` transition the kernel fans
+    /// `TriggerEvent::Foreground` through its registered observer so the
+    /// NIP-77 reconciler resumes from the persisted watermark.
+    func lifecycleForeground() { kernel.lifecycleForeground() }
+
+    /// iOS `.background` — app is no longer visible. Symmetric counterpart;
+    /// today no in-kernel consumer reacts (NIP-77 has no Background trigger
+    /// variant), but the hook is in place for future close-idle-sockets
+    /// policy.
+    func lifecycleBackground() { kernel.lifecycleBackground() }
+
     private func apply(result: KernelUpdateResult) {
         let update = result.update
         guard update.rev > rev else { return }

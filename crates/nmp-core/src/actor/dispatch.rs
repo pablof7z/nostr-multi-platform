@@ -14,7 +14,7 @@ use crate::kernel::Kernel;
 use crate::relay::{OutboundMessage, RelayRole};
 use crate::relay_worker::RelayEvent;
 
-use super::commands::{self, IdentityRuntime, WalletRuntime};
+use super::commands::{self, IdentityRuntime, LifecycleObserverSlot, WalletRuntime};
 use super::kernel_action::dispatch_kernel_action;
 use super::relay_mgmt::{
     close_relays, maybe_send_startup, send_all_outbound, spawn_missing_relays,
@@ -38,6 +38,7 @@ pub(super) fn dispatch_command(
     emit_hz: &mut u32,
     startup_sent: &mut bool,
     relays_ready: bool,
+    lifecycle_observer: &LifecycleObserverSlot,
 ) -> Option<Vec<OutboundMessage>> {
     match command {
         ActorCommand::Start {
@@ -218,6 +219,17 @@ pub(super) fn dispatch_command(
             let outbound = commands::wallet_pay_invoice(wallet, kernel, &bolt11, amount_msats);
             emit_now(kernel, *running, update_tx, last_emit);
             Some(outbound)
+        }
+        ActorCommand::LifecycleEvent(phase) => {
+            // T118 / G3 — fold scenePhase into the kernel state and fire
+            // the registered observer (if any) on a meaningful transition.
+            // The handler is idempotent (rapid scene oscillation collapses
+            // to a single observer call) and never emits outbound frames;
+            // the consumer's TriggerEngine drives any reconcile work
+            // through its own path on the next tick.
+            commands::handle_lifecycle_event(kernel, lifecycle_observer, phase);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            Some(Vec::new())
         }
         ActorCommand::Kernel(action) => {
             let update = dispatch_kernel_action(kernel, action);

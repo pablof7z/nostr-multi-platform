@@ -16,6 +16,7 @@ mod discovery;
 mod discovery_tests;
 mod identity_state;
 mod ingest;
+mod lifecycle;
 mod nostr;
 mod outbox;
 #[cfg(test)]
@@ -84,6 +85,7 @@ pub(crate) fn hex_to_pubkey_bytes(hex: &str) -> Option<[u8; 32]> {
 use crate::store::{EventStore, MemEventStore};
 use crate::subs::{OneshotApi, SubscriptionLifecycle, UnknownIds};
 use auth::{AuthSignerFn, Nip42DriverState};
+pub(crate) use lifecycle::{LifecyclePhase, LifecycleTransition};
 pub(crate) use identity_state::{
     AccountSummary, BunkerHandshakeDto, PublishQueueEntry, RelayAckOutcome, RelayEditRow,
     WalletStatus,
@@ -277,6 +279,12 @@ pub(crate) struct Kernel {
     /// reports `dispatch_drops_total = 0`. Surfaced on the snapshot via
     /// [`Metrics::dispatch_drops_total`].
     dispatch_drops: Option<Arc<AtomicU64>>,
+    /// T118 / G3 — current iOS scenePhase reported through the lifecycle
+    /// FFI. Starts as [`LifecyclePhase::Inactive`] (the sentinel meaning
+    /// "shell hasn't reported a phase yet"). `set_lifecycle_phase`
+    /// debounces repeated phases and returns the transition verdict the
+    /// actor uses to drive the observer callback.
+    lifecycle_phase: LifecyclePhase,
 }
 
 impl Kernel {
@@ -377,6 +385,7 @@ impl Kernel {
             event_provenance: provenance::EventProvenance::new(),
             claim_drops_total: 0,
             dispatch_drops: None,
+            lifecycle_phase: LifecyclePhase::Inactive,
         }
     }
 
