@@ -52,12 +52,18 @@ impl std::fmt::Display for ParseError {
 }
 
 impl NwcUri {
-    /// Parse a `nostr+walletconnect://` URI string.
+    /// Parse a `nostr+walletconnect://` URI string. The scheme match is
+    /// case-insensitive — wallet UIs / mobile deeplink handlers sometimes emit
+    /// `Nostr+walletconnect://` (auto-capitalize first letter).
     pub fn parse(uri: &str) -> Result<Self, ParseError> {
         let uri = uri.trim();
-        let rest = uri
-            .strip_prefix("nostr+walletconnect://")
-            .ok_or(ParseError::BadScheme)?;
+        const SCHEME: &str = "nostr+walletconnect://";
+        let rest = if uri.len() >= SCHEME.len() && uri[..SCHEME.len()].eq_ignore_ascii_case(SCHEME)
+        {
+            &uri[SCHEME.len()..]
+        } else {
+            return Err(ParseError::BadScheme);
+        };
 
         // Split path from query: <wallet_pubkey>?<query>
         let (path, query) = match rest.split_once('?') {
@@ -223,6 +229,22 @@ mod tests {
             NwcUri::parse("nostr://abc").unwrap_err(),
             ParseError::BadScheme
         );
+    }
+
+    /// Mobile keyboards / deeplink handlers sometimes auto-capitalize the
+    /// scheme's leading char. The parser must still accept it — otherwise
+    /// the iOS Connect-button enable check fails closed and the user is
+    /// stuck without an obvious recovery.
+    #[test]
+    fn scheme_is_case_insensitive() {
+        let wallet_pk = "a".repeat(64);
+        let secret = "b".repeat(64);
+        let uri = format!(
+            "Nostr+walletconnect://{}?relay=wss://r.io&secret={}",
+            wallet_pk, secret
+        );
+        let parsed = NwcUri::parse(&uri).unwrap();
+        assert_eq!(parsed.wallet_pubkey_hex, wallet_pk);
     }
 
     #[test]

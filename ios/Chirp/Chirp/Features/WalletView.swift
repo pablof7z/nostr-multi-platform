@@ -233,6 +233,11 @@ private struct ConnectWalletSheet: View {
 
                     TextEditor(text: $uri)
                         .font(.system(.body, design: .monospaced))
+                        // NWC URIs are case-sensitive hex; the leading "n" must
+                        // not be auto-capitalized or the parser's scheme check
+                        // (and the Connect-button enable check) would fail.
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                         .frame(minHeight: 100)
                         .padding(ChirpSpace.m)
                         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
@@ -262,11 +267,11 @@ private struct ConnectWalletSheet: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, ChirpSpace.m)
                         .background(
-                            uri.hasPrefix("nostr+walletconnect://") ? ChirpColor.zap : ChirpColor.textTertiary,
+                            schemeLooksValid(uri) ? ChirpColor.zap : ChirpColor.textTertiary,
                             in: RoundedRectangle(cornerRadius: 12)
                         )
                 }
-                .disabled(!uri.hasPrefix("nostr+walletconnect://"))
+                .disabled(!schemeLooksValid(uri))
 
                 Spacer()
             }
@@ -286,6 +291,15 @@ private struct ConnectWalletSheet: View {
                 }
             }
         }
+    }
+
+    /// Case-insensitive scheme check. Auto-capitalize is disabled on the
+    /// TextEditor, but paste sources (browser deeplinks, Notes/Mail apps) can
+    /// still deliver `Nostr+walletconnect://`. The Rust parser also matches
+    /// case-insensitively; this keeps the Connect button consistent with it.
+    private func schemeLooksValid(_ s: String) -> Bool {
+        let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.lowercased().hasPrefix("nostr+walletconnect://")
     }
 }
 
