@@ -108,11 +108,21 @@ fn duplicate_references_across_events_dedup_before_fetch() {
 
 #[test]
 fn discovered_event_on_oneshot_sub_passes_the_store_gate() {
-    // Regression: without the discovery prefix in `should_store_event`, a
-    // resolved quoted-note arriving on its `oneshot-disc-*` sub would be
-    // dropped (author isn't a timeline author), the cache would stay missing,
-    // and the next ingest would re-discover + re-fetch the same id forever.
-    let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // Regression: without discovery oneshot recognition in `should_store_event`,
+    // a resolved quoted-note arriving on its oneshot sub would be dropped
+    // (author isn't a timeline author), the cache would stay missing, and the
+    // next ingest would re-discover + re-fetch the same id forever.
+    //
+    // T104: routing is now via `is_discovery_oneshot` (HashMap lookup on the
+    // typed OneshotKind), not via `starts_with(ONESHOT_SUB_PREFIX)`. The sub_id
+    // must be registered in `oneshot_subs` for the gate to pass — we drain a
+    // real oneshot to get a registered sub_id.
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.collect_unknown_refs(&[tag(&["q", QUOTED_ID])]);
+    let reqs = kernel.drain_unknown_oneshots();
+    assert_eq!(reqs.len(), 1);
+    let oneshot_sub = sub_id_of(&reqs[0].text);
+
     let quoted = NostrEvent {
         id: QUOTED_ID.to_string(),
         pubkey: "f".repeat(64), // NOT a timeline author
@@ -122,10 +132,9 @@ fn discovered_event_on_oneshot_sub_passes_the_store_gate() {
         content: "the quoted note".to_string(),
         sig: String::new(),
     };
-    let oneshot_sub = format!("{}7", discovery::ONESHOT_SUB_PREFIX);
     assert!(
         kernel.should_store_event(&oneshot_sub, &quoted),
-        "a discovered event on its oneshot sub must be storable"
+        "a discovered event on its registered oneshot sub must be storable"
     );
     // Sanity: the same event on an unrelated sub is still gated out.
     assert!(!kernel.should_store_event("some-other-sub", &quoted));
@@ -171,6 +180,39 @@ fn many_unknown_ids_collapse_to_few_batch_reqs() {
     assert_eq!(kernel.discovery_in_flight(), 2, "2 in-flight; 95 remain queued");
 }
 
+
+#[test]
+fn oneshot_kind_typed_routing_replaces_string_prefix_matching() {
+    // T104 acceptance criterion: `is_discovery_oneshot` returns true only for
+    // sub-ids registered in `oneshot_subs` with `OneshotKind::Discovery`.
+    // An unregistered sub_id that happens to share the `oneshot-disc-` prefix
+    // returns false (HashMap lookup, not prefix scan).
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    // Before any drain, no sub is registered.
+    let fake = format!("{}999", discovery::ONESHOT_SUB_PREFIX);
+    assert!(
+        !kernel.is_discovery_oneshot(&fake),
+        "unregistered sub_id is not a discovery oneshot even if it carries the prefix"
+    );
+
+    // Drain a real oneshot — it must be recognisable.
+    kernel.collect_unknown_refs(&[tag(&["q", QUOTED_ID])]);
+    let reqs = kernel.drain_unknown_oneshots();
+    assert_eq!(reqs.len(), 1);
+    let registered_sub = sub_id_of(&reqs[0].text);
+    assert!(
+        kernel.is_discovery_oneshot(&registered_sub),
+        "registered discovery oneshot is recognised by OneshotKind::Discovery lookup"
+    );
+
+    // After EOSE completes and releases the token, the sub is deregistered.
+    kernel.complete_unknown_oneshot(&registered_sub);
+    assert!(
+        !kernel.is_discovery_oneshot(&registered_sub),
+        "completed oneshot is removed from oneshot_subs — no longer recognised"
+    );
+}
 
 /// Extract the sub-id (2nd JSON array element) from a `["REQ", sub_id, …]`
 /// frame text — test-local parser, avoids a serde_json dep churn here.

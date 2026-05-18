@@ -27,8 +27,26 @@
 use super::*;
 use crate::planner::{InterestScope, InterestShape};
 
-/// Wire sub-id prefix for discovery oneshots. The EOSE handler routes any
-/// sub-id with this prefix back to [`Kernel::complete_unknown_oneshot`].
+/// Typed discriminant for entries in [`Kernel::oneshot_subs`].
+///
+/// Replaces the `"oneshot-disc-"` string-prefix routing that previously
+/// required callers to call `sub_id.starts_with(ONESHOT_SUB_PREFIX)` to
+/// determine how to handle a completed oneshot. Adding a new oneshot kind
+/// now requires extending this enum; the compiler enforces exhaustive
+/// handling wherever the variant is matched.
+///
+/// Today only `Discovery` exists. Profile-claim and thread-hydration subs use
+/// different sub-id schemes and are NOT stored in `oneshot_subs`; adding
+/// spurious variants here would be speculative future-proofing (Article VII).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::kernel) enum OneshotKind {
+    /// An id-or-pubkey discovery fetch issued by [`Kernel::drain_unknown_oneshots`].
+    Discovery,
+}
+
+/// Wire sub-id prefix for discovery oneshots. Retained for sub-id
+/// construction (the prefix makes wire logs readable); routing is done
+/// via [`OneshotKind`], not via `starts_with` on this constant.
 pub(in crate::kernel) const ONESHOT_SUB_PREFIX: &str = "oneshot-disc-";
 
 impl Kernel {
@@ -102,7 +120,7 @@ impl Kernel {
                 self.oneshot.request(registry, InterestScope::Global, shape)
             };
             let sub_id = format!("{ONESHOT_SUB_PREFIX}{}", token.0);
-            self.oneshot_subs.insert(sub_id.clone(), token);
+            self.oneshot_subs.insert(sub_id.clone(), (token, OneshotKind::Discovery));
             out.push(self.req(
                 RelayRole::Content,
                 &sub_id,
@@ -132,7 +150,7 @@ impl Kernel {
                 self.oneshot.request(registry, InterestScope::Global, shape)
             };
             let sub_id = format!("{ONESHOT_SUB_PREFIX}{}", token.0);
-            self.oneshot_subs.insert(sub_id.clone(), token);
+            self.oneshot_subs.insert(sub_id.clone(), (token, OneshotKind::Discovery));
             out.push(self.req(
                 RelayRole::Indexer,
                 &sub_id,
@@ -162,7 +180,7 @@ impl Kernel {
     /// dropped (the deduped slot GCs when its last owner leaves). No-op for a
     /// non-oneshot sub-id (D6: never panics).
     pub(in crate::kernel) fn complete_unknown_oneshot(&mut self, sub_id: &str) {
-        let Some(token) = self.oneshot_subs.remove(sub_id) else {
+        let Some((token, _kind)) = self.oneshot_subs.remove(sub_id) else {
             return;
         };
         self.oneshot.complete(token);
@@ -172,6 +190,19 @@ impl Kernel {
         let _ = self.oneshot.drain_completed();
         let registry = self.lifecycle.registry_mut();
         self.oneshot.release(registry, token);
+    }
+
+    /// Returns `true` if `sub_id` is a registered discovery oneshot.
+    ///
+    /// Callers that previously used `sub_id.starts_with(ONESHOT_SUB_PREFIX)`
+    /// to route EOSE / store-gate decisions should use this instead — the
+    /// HashMap lookup is O(1) and the routing decision is made on the typed
+    /// [`OneshotKind`] stored alongside the token, not on a string prefix.
+    pub(in crate::kernel) fn is_discovery_oneshot(&self, sub_id: &str) -> bool {
+        matches!(
+            self.oneshot_subs.get(sub_id),
+            Some((_, OneshotKind::Discovery))
+        )
     }
 
     /// Count of in-flight discovery oneshots. Diagnostics/tests.

@@ -221,10 +221,13 @@ pub(crate) struct Kernel {
     /// `OneShot`-lifecycle interests on `lifecycle`'s registry to resolve
     /// drained `unknown_ids`; the wire lifecycle CLOSEs them on first EOSE.
     oneshot: OneshotApi,
-    /// T82 — discovery wire-sub-id → [`crate::subs::OneshotToken`] map so the
-    /// EOSE handler can route a completed oneshot back to its token for
-    /// release. Entries are removed on completion (bounded by in-flight set).
-    oneshot_subs: HashMap<String, crate::subs::OneshotToken>,
+    /// T82/T104 — discovery wire-sub-id → `(token, kind)` map so the EOSE
+    /// handler can route a completed oneshot by typed [`discovery::OneshotKind`]
+    /// rather than by string-prefix scan. Bounded by
+    /// `Kernel::MAX_DISCOVERY_CONCURRENCY` (2): `drain_unknown_oneshots` guards
+    /// the cap before inserting, so the map never grows beyond 2 entries in
+    /// steady state. Entries are removed on completion.
+    oneshot_subs: HashMap<String, (crate::subs::OneshotToken, discovery::OneshotKind)>,
     /// M6 signer injection, per relay role. The actor / iOS layer wires the
     /// user-identity signer for `Content`/`Indexer` from
     /// `nmp_signers::AccountManager::signer_active()`. Other lanes (e.g.

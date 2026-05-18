@@ -163,10 +163,11 @@ impl Kernel {
             || sub_id.starts_with("thread-ids-")
             || sub_id.starts_with("thread-replies-")
             || sub_id.starts_with("diag-firehose-")
-            // T82: a discovered quoted-note / referenced event arrives on its
-            // oneshot sub — it must be stored so the missing reference is
+            // T82/T104: a discovered quoted-note / referenced event arrives on
+            // its oneshot sub — it must be stored so the missing reference is
             // actually resolved (otherwise the next ingest re-discovers it).
-            || sub_id.starts_with(crate::kernel::discovery::ONESHOT_SUB_PREFIX)
+            // Uses typed OneshotKind dispatch (T104) rather than string-prefix.
+            || self.is_discovery_oneshot(sub_id)
     }
 
     pub(in crate::kernel) fn enqueue_thread_hydration_from_event(&mut self, event_id: &str) {

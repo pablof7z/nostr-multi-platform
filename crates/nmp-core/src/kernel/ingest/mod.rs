@@ -121,10 +121,12 @@ impl Kernel {
                 if sub_id.starts_with("thread-replies-") {
                     self.thread_replies_inflight = false;
                 }
-                // T82: a discovery oneshot's first stored set has landed
+                // T82/T104: a discovery oneshot's first stored set has landed
                 // (OneShot lifecycle == "EOSE closes"). Complete + release the
                 // token; the generic CLOSE below tears down the wire sub.
-                if sub_id.starts_with(crate::kernel::discovery::ONESHOT_SUB_PREFIX) {
+                // Dispatch is on the typed OneshotKind stored in oneshot_subs
+                // (not a string-prefix scan — T104 typed routing).
+                if self.is_discovery_oneshot(sub_id) {
                     self.complete_unknown_oneshot(sub_id);
                 }
                 if !keep_live {
