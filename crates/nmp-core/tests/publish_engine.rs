@@ -208,13 +208,11 @@ fn publish_retry_on_connection_drop() {
 }
 
 #[test]
-fn publish_giveup_after_three_retries() {
+fn publish_giveup_after_three_attempts() {
     let outbox = outbox_with("alice", &["wss://always-500"], &[]);
     let dispatcher = Arc::new(ReplayDispatcher::new());
-    // Three transient failures then no more script entries (TimedOut from the
-    // dispatcher would also classify as transient via the state machine, but
-    // for purity we script 4 explicit failures so the retry exhaustion is
-    // unambiguous).
+    // Default policy allows three total attempts: initial send plus two
+    // retries. Three explicit transient failures exhaust it.
     let fail = RelayAck::Failed {
         relay_url: "wss://always-500".to_string(),
         message: "ERR 500".to_string(),
@@ -222,7 +220,7 @@ fn publish_giveup_after_three_retries() {
     };
     dispatcher.script(
         "wss://always-500",
-        vec![fail.clone(), fail.clone(), fail.clone(), fail.clone()],
+        vec![fail.clone(), fail.clone(), fail.clone()],
     );
     let store: Arc<dyn PublishStore> = Arc::new(InMemoryPublishStore::new());
     let mut e = engine(outbox, dispatcher.clone(), store);
