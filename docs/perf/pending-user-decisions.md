@@ -8,6 +8,46 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
+### PD-019 (resolved 2026-05-18 autonomously) — T63a: kernel-side keyring prerequisite (T63) absent in tree; shipped the iOS half against the generic envelope
+
+**Decision (autonomous, T63a):** the task brief states "the kernel-side
+capability contract + IdentityModule wiring already shipped (T63, commit
+referenced in TaskList #62)" and instructs me to "wire it into NmpPulse's
+capability injection." That precondition does **not** hold in this tree.
+Verified: `crates/nmp-core/src/substrate/capability.rs` is only the abstract
+`CapabilityModule` trait + generic `CapabilityRequest`/`CapabilityEnvelope`
+structs; there is no `KeyringCapability` Request/Result type anywhere in
+`crates/`; no capability callback FFI on `nmp_app_*` (only timeline read +
+claim/release_profile); no `T63`/keyring/keychain commit on `origin/master`
+or any branch (`git log --all`); no Onboarding flow in NmpPulse to wire into
+(README explicitly files it under T66a). The only keychain reference is
+`ios/NmpPulse/README.md` row "Keychain at-rest secret storage | Filed as
+T63a per the original task brief" — i.e. this task is the *first* keychain
+work, not the second half of a shipped T63.
+
+**What I shipped instead:** the honestly-buildable slice, single commit —
+a self-contained `KeychainCapability.swift` (Foundation + Security only,
+zero Rust link dependency) conforming to the **generic** envelope shape that
+*does* exist in `substrate/capability.rs`, plus `NmpPulseCapabilities`
+injection holder wired into `KernelModel` start/stop, plus a dedicated
+XCTest target that round-trips store→retrieve→overwrite→delete against the
+simulator's real Keychain. The capability defines the keyring request/result
+vocabulary (`store`/`retrieve`/`delete` keyed by `account_id`) that the
+kernel side should converge on.
+
+**Deferred (needs user / a follow-up task):** the kernel-side
+`KeyringCapability` Rust contract (Request/Result enum), the IdentityModule
+wiring, and the `nmp_app_*` FFI capability-callback socket that routes a
+`CapabilityRequest` to `KeychainCapability.handleJSON(_:)`. Inventing those
+here would blow past the single-commit boundary and conflate two tasks.
+Until the socket lands, the (also-deferred) Onboarding flow calls
+`NmpPulseCapabilities.persistImportedSecret(accountID:secret:)` directly,
+which routes through the identical envelope path the kernel will use.
+
+**If the user disagrees:** revert the single `feat(ios-keychain):` commit;
+the Swift side is self-contained and re-derivable against a different
+kernel-side envelope shape once T63 defines one.
+
 ### PD-016 (resolved 2026-05-18 autonomously) — T62 lifecycle re-plan: A11 needs no dedicated drain_tick arm
 
 **Decision (autonomous, T62 / followlist-trigger):** The task specification called for "lifecycle handler re-plan" as a deliverable alongside the trigger variant and ingest fan. After reviewing the `drain_tick` implementation in `crates/nmp-core/src/subs/mod.rs`, A11 `FollowListChanged` does NOT need a dedicated side-effecting arm analogous to the `RelayAuthStateChanged → auth_gate.record_transition` arm.
@@ -166,18 +206,17 @@ The first three are M14 (UniFFI) + M10.5 (live iOS demo) overlap. The fourth is 
 
 ---
 
-### PD-004 — M6 `IdentityId = pubkey_hex` vs ULID for "same nsec, two accounts"
+### PD-004 — RESOLVED (user directive, 2026-05-18): `IdentityId = pubkey_hex`, permanent — no ULID rekey
 
-**Decision (autonomous, 2026-05-18, T43):** keep `IdentityId = pubkey_hex` for the M6 landing.  ULID-based account ids are required before M8 (multi-account UX) ships, per `docs/research/sessions/synthesis.md` §1.2 (applesauce allows two accounts for the same pubkey — "same nsec, different relay policy" or "same bunker user from two devices").
+**USER DECISION (2026-05-18, verbatim):** *"same nsec, two accounts → that's not a thing, same nsec, same account."*
 
-**Why now:**
+**Resolution:** `IdentityId = pubkey_hex` is the **permanent, correct** identity key. Same nsec ⇒ same account, full stop. The applesauce "two accounts for one pubkey" model (`synthesis.md` §1.2) is **explicitly rejected** for NMP. The ULID-rekey sub-task on the M6 follow-up checklist (ADR-0015) is **CANCELLED** — do not key the accounts map by ULID. `AccountManager` keys by `pubkey_hex`; adding an already-known nsec/pubkey is an idempotent no-op (relay-policy merge at most), never a second account slot. Any future code or doc implying multiple accounts per pubkey is a defect.
 
-- The M6 demo is single-active-account (paste nsec / paste bunker / generate, then compose).  One-account-per-pubkey is fine for the demo.
-- Switching to ULID is a 30-line change confined to `crates/nmp-signers/src/identity/manager.rs` — keying the `accounts` HashMap by ULID instead of `pubkey_hex` plus storing `pubkey` as a field on a small `AccountSlot { id: ULID, pubkey, signer }` record.
-- `IdentityId` is a type alias for `String` today; the API surface does not change.
-- Doing the switch before any UX flow lands keeps the eventual migration trivial.
+**Action items (filed as T88):** (1) audit `crates/nmp-signers/src/identity/manager.rs` for the dedup-by-pubkey invariant + regression test "adding the same nsec twice yields exactly one account"; (2) strike the ULID-before-M8 line from ADR-0015; (3) correct `docs/research/sessions/synthesis.md` §1.2 to record that NMP rejects the applesauce dual-account-per-pubkey model.
 
-**Recommendation:** ULID-rekey before M8 dispatch (filed as a sub-task on the M6 follow-up checklist in ADR-0015).  No user input needed unless you'd rather defer past M8.
+<details><summary>Superseded prior autonomous decision (T43)</summary>
+
+Kept `IdentityId = pubkey_hex` for M6; ULID rekey was tentatively planned before M8 per `synthesis.md` §1.2 (applesauce dual-account-per-pubkey). **This rationale is now void per the user directive above.**</details>
 
 ---
 
