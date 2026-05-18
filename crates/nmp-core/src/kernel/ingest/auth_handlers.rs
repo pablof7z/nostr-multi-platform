@@ -24,8 +24,15 @@ pub(super) fn auth_state_key(state: &RelayAuthState) -> &'static str {
 }
 
 /// Convert lifecycle `WireFrame`s (emitted by AuthGate-on-Authenticated) into
-/// the kernel's `OutboundMessage` shape. Frames not addressed to `role.url()`
-/// are skipped — the AuthGate stores per-relay so this is belt-and-braces.
+/// the kernel's `OutboundMessage` shape. Every flushed frame already carries
+/// the correct per-URL relay target (the AuthGate's pending buffer is keyed
+/// by `RelayUrl` — see `subs/auth_gate.rs`). The translation is therefore a
+/// straight pass-through with `role` stamped for the diagnostic lane.
+///
+/// **T148**: pre-fix this dropped any frame whose `relay_url != role.url()`
+/// (the bootstrap host), which silently discarded every flushed REQ
+/// targeting a NIP-65 resolved relay. Post-T148 we trust the AuthGate's
+/// per-URL bookkeeping and forward every frame as-is.
 pub(super) fn wire_frames_to_outbound(
     frames: Vec<crate::subs::WireFrame>,
     role: RelayRole,
@@ -39,21 +46,20 @@ pub(super) fn wire_frames_to_outbound(
                 sub_id,
                 filter_json,
                 ..
-            } if relay_url == role.url() => {
+            } => {
                 out.push(OutboundMessage {
                     role,
                     relay_url,
                     text: format!("[\"REQ\",\"{sub_id}\",{filter_json}]"),
                 });
             }
-            WireFrame::Close { relay_url, sub_id } if relay_url == role.url() => {
+            WireFrame::Close { relay_url, sub_id } => {
                 out.push(OutboundMessage {
                     role,
                     relay_url,
                     text: format!("[\"CLOSE\",\"{sub_id}\"]"),
                 });
             }
-            _ => {}
         }
     }
     out
@@ -95,10 +101,13 @@ impl Kernel {
         let driver = self.nip42_drivers.entry(role).or_default();
         driver.on_auth_frame(challenge.clone());
 
-        // Fan ChallengeReceived into the lifecycle AuthGate so subsequent REQs
-        // to this relay are buffered. partition() returns no flushed frames on
-        // a pause-transition.
-        let relay_url = role.url().to_string();
+        // T148: fan `ChallengeReceived` into the lifecycle's per-URL AuthGate
+        // using the DELIVERING relay URL, not the lane's bootstrap host. Pre-
+        // T148 this stamped `role.url()` which mis-keyed the AuthGate's pending
+        // buffer and the post-Authenticated flush never targeted the right
+        // socket. The kernel-side `nip42_drivers` map is still per-role (one
+        // socket per lane today; per-URL split is a separate, larger change).
+        let relay_url = delivering_relay_url.to_string();
         let _paused = self
             .lifecycle
             .handle_auth_state_change(relay_url.clone(), RelayAuthState::ChallengeReceived);
@@ -206,9 +215,15 @@ impl Kernel {
     /// frame. Correlates against the per-relay pending kind:22242. On match,
     /// transitions to `Authenticated` (and flushes AuthGate's buffered REQs
     /// back to outbound) or `Failed`. Non-AUTH OKs are no-ops here.
+    ///
+    /// T148: `delivering_relay_url` is the URL of the socket the OK arrived on;
+    /// it is threaded into the lifecycle's per-URL AuthGate so the right
+    /// per-URL pending buffer is drained on `Authenticated`. Pre-T148 this
+    /// stamped `role.url()` (the lane bootstrap), which mis-routed the flush.
     pub(super) fn handle_auth_ok(
         &mut self,
         role: RelayRole,
+        delivering_relay_url: &str,
         array: &[Value],
     ) -> Vec<OutboundMessage> {
         use super::super::auth::parse_ok_frame;
@@ -220,7 +235,7 @@ impl Kernel {
         let Some(new_state) = driver.on_ok_frame(&ok) else {
             return Vec::new();
         };
-        let relay_url = role.url().to_string();
+        let relay_url = delivering_relay_url.to_string();
         let flushed = self
             .lifecycle
             .handle_auth_state_change(relay_url, new_state.clone());

@@ -58,6 +58,7 @@ impl Kernel {
     pub(super) fn classify_and_route_closed(
         &mut self,
         role: RelayRole,
+        relay_url: &str,
         sub_id: &str,
         reason_text: Option<&str>,
     ) {
@@ -65,7 +66,9 @@ impl Kernel {
         let class = classify(raw);
 
         match class {
-            CloseReason::AuthRequired => self.on_closed_auth_required(role, sub_id, raw),
+            CloseReason::AuthRequired => {
+                self.on_closed_auth_required(role, relay_url, sub_id, raw)
+            }
             CloseReason::Restricted | CloseReason::Blocked | CloseReason::Shadowbanned => {
                 self.on_closed_denied(role, sub_id, class, raw);
             }
@@ -86,11 +89,21 @@ impl Kernel {
     /// follow up with a real `["AUTH", challenge]` frame; the existing
     /// `handle_auth_challenge` path then drives signing. Synthesizing a
     /// pseudo-challenge here would break NIP-42 replay protection.
-    fn on_closed_auth_required(&mut self, role: RelayRole, sub_id: &str, raw: &str) {
-        let relay_url = role.url().to_string();
-        let _paused = self
-            .lifecycle
-            .handle_auth_state_change(relay_url, RelayAuthState::ChallengeReceived);
+    ///
+    /// T148: `relay_url` is the delivering socket's URL. Pre-T148 this
+    /// stamped `role.url()` (the lane bootstrap), mis-keying the lifecycle's
+    /// per-URL AuthGate and leaving the actual paused URL unguarded.
+    fn on_closed_auth_required(
+        &mut self,
+        role: RelayRole,
+        relay_url: &str,
+        sub_id: &str,
+        raw: &str,
+    ) {
+        let _paused = self.lifecycle.handle_auth_state_change(
+            relay_url.to_string(),
+            RelayAuthState::ChallengeReceived,
+        );
         self.update_relay_auth_status(
             role,
             RelayAuthState::ChallengeReceived,

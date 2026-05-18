@@ -2596,6 +2596,7 @@ dependencies = [
  "nmp-nip22",
  "nmp-nip23",
  "nmp-nip29",
+ "nmp-nip42",
  "nmp-nip57",
  "nmp-nip77",
  "nmp-reactions",

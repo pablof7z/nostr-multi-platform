@@ -206,7 +206,10 @@ impl Kernel {
                 // denied; rate-limited records for the reconnect worker;
                 // error/invalid/unsupported log + give up). Pre-T120 every
                 // CLOSED folded to the generic "closed_by_relay" mark.
-                self.classify_and_route_closed(role, &sub_id, reason.as_deref());
+                // T148: thread the delivering `relay_url` so the AUTH-required
+                // branch can pause the right per-URL bucket in the lifecycle's
+                // AuthGate, not the lane's bootstrap host.
+                self.classify_and_route_closed(role, relay_url, &sub_id, reason.as_deref());
             }
             "OK" => {
                 // M5+M2+M8 wiring: an OK frame may be the ack of an in-flight
@@ -216,7 +219,10 @@ impl Kernel {
                 // the inbound `relay_url` is the resolved URL the OK arrived
                 // on (per-URL transport pool), so the engine sees the same
                 // URL its `dispatch` produced — not a role-bound fallback.
-                outbound.extend(self.handle_auth_ok(role, array));
+                // T148: thread `relay_url` so the lifecycle's per-URL AuthGate
+                // un-pauses the actual socket the OK arrived on, not the lane's
+                // bootstrap host.
+                outbound.extend(self.handle_auth_ok(role, relay_url, array));
                 outbound.extend(self.route_publish_ok(relay_url, array));
             }
             "AUTH" => {

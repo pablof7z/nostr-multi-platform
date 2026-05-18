@@ -56,6 +56,8 @@ mod auth_test_helpers;
 #[cfg(test)]
 mod auth_tests;
 #[cfg(test)]
+mod auth_url_threading_tests;
+#[cfg(test)]
 mod contacts_fanout_tests;
 
 use crate::relay::{

@@ -352,6 +352,14 @@ impl SubscriptionLifecycle {
         self.auth_gate.record_transition(relay_url, state)
     }
 
+    /// T148 — test-only inspection of the AuthGate's per-URL pause predicate.
+    /// Pins the per-URL keying invariant: a challenge that arrived on URL_B
+    /// must NOT pause URL_A. See `kernel/auth_url_threading_tests.rs`.
+    #[cfg(test)]
+    pub(crate) fn is_auth_paused_for_url(&self, relay_url: &str) -> bool {
+        self.auth_gate.is_paused(relay_url)
+    }
+
     /// Replace the indexer relay set (A8 trigger consumer). Used by M2 phase 2
     /// when user/operator changes the configured indexer list.
     #[allow(dead_code)]
