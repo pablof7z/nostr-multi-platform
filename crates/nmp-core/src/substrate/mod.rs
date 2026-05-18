@@ -23,6 +23,14 @@ pub use keyring::{
 pub use placeholder::{picture_placeholder, Placeholder};
 pub use view::{EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies, ViewModule};
 
+// NIP-10 / tag codec lives in `crate::tags` (a protocol codec, like nip19 /
+// nip21 — not a per-kind decoder, so D0-clean). Re-exported here so the
+// per-NIP relation crates that already `use nmp_core::substrate::{...}`
+// consume one source.
+pub use crate::tags::{
+    a_tag, all_tag_values, e_tag, first_tag_value, p_tag, parse_nip10, q_tag, EventRef, Nip10Refs,
+};
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ModuleDescriptor {
     pub namespace: &'static str,

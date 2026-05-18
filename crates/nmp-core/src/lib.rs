@@ -11,6 +11,7 @@ mod relay_worker;
 pub mod store;
 pub mod subs;
 pub mod substrate;
+pub mod tags;
 mod update_envelope;
 pub mod util;
 

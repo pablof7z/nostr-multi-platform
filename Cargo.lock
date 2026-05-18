@@ -2266,6 +2266,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-nip01"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "nmp-nip22"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nmp-nip23"
 version = "0.1.0"
 dependencies = [
@@ -2303,6 +2321,15 @@ dependencies = [
 
 [[package]]
 name = "nmp-nip51"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "nmp-nip57"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
