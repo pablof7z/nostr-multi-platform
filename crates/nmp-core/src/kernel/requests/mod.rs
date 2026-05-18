@@ -153,6 +153,7 @@ impl Kernel {
                 relay_url: relay_url.clone(),
                 filter_summary: summary.to_string(),
                 state: if paused { "auth_paused" } else { "opening" }.to_string(),
+                events_rx: 0,
                 opened_at: Instant::now(),
                 last_event_at: None,
                 eose_at: None,

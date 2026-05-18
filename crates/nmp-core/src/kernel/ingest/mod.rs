@@ -271,6 +271,7 @@ impl Kernel {
             if sub.state == "opening" {
                 sub.state = "live".to_string();
             }
+            sub.events_rx = sub.events_rx.saturating_add(1);
             sub.last_event_at = Some(now);
         }
 

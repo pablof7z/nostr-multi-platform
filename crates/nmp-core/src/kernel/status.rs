@@ -6,10 +6,58 @@ impl Kernel {
     }
 
     pub(super) fn relay_statuses(&self) -> Vec<RelayStatus> {
-        RelayRole::all()
+        let mut statuses: Vec<RelayStatus> = RelayRole::all()
             .into_iter()
             .map(|role| self.relay_status_for(role))
-            .collect()
+            .collect();
+        // Include outbox relay URLs present in wire_subs but not covered by a
+        // bootstrap role (T105 — resolved per-author URLs appear here only).
+        let known_urls: std::collections::HashSet<&str> =
+            statuses.iter().map(|s| s.relay_url.as_str()).collect();
+        let outbox_urls: std::collections::BTreeSet<String> = self
+            .wire_subs
+            .values()
+            .map(|sub| sub.relay_url.clone())
+            .filter(|url| !known_urls.contains(url.as_str()))
+            .collect();
+        for url in outbox_urls {
+            let active_subs = self
+                .wire_subs
+                .values()
+                .filter(|sub| {
+                    sub.relay_url == url
+                        && !matches!(sub.state.as_str(), "closed" | "closed_by_relay")
+                })
+                .count();
+            let last_event_at_ms = self
+                .wire_subs
+                .values()
+                .filter(|sub| sub.relay_url == url)
+                .filter_map(|sub| self.elapsed_ms(sub.last_event_at))
+                .max();
+            statuses.push(RelayStatus {
+                role: "outbox".to_string(),
+                relay_url: url,
+                connection: if active_subs > 0 {
+                    "connected".to_string()
+                } else {
+                    "unknown".to_string()
+                },
+                auth: "—".to_string(),
+                nip77_negentropy: "unknown".to_string(),
+                active_wire_subscriptions: active_subs,
+                reconnect_count: 0,
+                last_connected_at_ms: None,
+                last_event_at_ms,
+                last_notice: None,
+                last_error: None,
+                bytes_rx: 0,
+                bytes_tx: 0,
+                denied: false,
+                last_close_reason: None,
+            });
+        }
+        statuses
     }
 
     pub(super) fn relay_status_for(&self, role: RelayRole) -> RelayStatus {
@@ -208,10 +256,11 @@ impl Kernel {
             .values()
             .map(|sub| WireSubscriptionStatus {
                 wire_id: sub.id.clone(),
-                relay_url: sub.role.url().to_string(),
+                relay_url: sub.relay_url.clone(),
                 filter_summary: sub.filter_summary.clone(),
                 state: sub.state.clone(),
                 logical_consumer_count: 1,
+                events_rx: sub.events_rx,
                 opened_at_ms: self.elapsed_ms(Some(sub.opened_at)).unwrap_or(0),
                 last_event_at_ms: self.elapsed_ms(sub.last_event_at),
                 eose_at_ms: self.elapsed_ms(sub.eose_at),
