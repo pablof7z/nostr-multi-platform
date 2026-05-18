@@ -244,6 +244,7 @@ pub fn run_actor_with_lifecycle_observer(
     // workers spawn on demand as OutboundMessages flow with new relay_urls.
     let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
     let mut connected_relays = HashSet::new();
+    let mut connected_urls: HashSet<String> = HashSet::new(); // T116/G1 reconnect-replay discriminator.
     let mut next_relay_generation = 1;
     let mut running = false;
     let mut emit_hz = DEFAULT_EMIT_HZ;
@@ -268,6 +269,7 @@ pub fn run_actor_with_lifecycle_observer(
                         &mut relay_controls,
                         &relay_tx,
                         &mut connected_relays,
+                        &mut connected_urls,
                         &update_tx,
                         &mut last_emit,
                         &mut next_relay_generation,
@@ -304,6 +306,7 @@ pub fn run_actor_with_lifecycle_observer(
                 Err(TryRecvError::Empty) => break,
                 Err(TryRecvError::Disconnected) => {
                     close_relays(&mut relay_controls, &mut connected_relays, &mut kernel);
+                    connected_urls.clear();
                     return;
                 }
             }
@@ -330,6 +333,7 @@ pub fn run_actor_with_lifecycle_observer(
                         &relay_tx,
                         &mut next_relay_generation,
                         &mut connected_relays,
+                        &mut connected_urls,
                         &update_tx,
                         &mut last_emit,
                         &mut startup_sent,

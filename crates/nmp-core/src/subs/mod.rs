@@ -272,6 +272,21 @@ impl SubscriptionLifecycle {
     /// A5 — relay-reconnected. Per recompilation.md §4.2: replay current plan
     /// to that relay WITHOUT invoking the planner. This is a pure replay, not
     /// a recompile.
+    ///
+    /// T116/G1 wiring point: the actor calls this on `RelayEvent::Connected`
+    /// when the URL has been seen before (i.e. a true reconnect, not a first
+    /// dial). Returned frames are fresh REQs that re-establish every active
+    /// sub-shape that targeted this URL in the last `current_plan`.
+    ///
+    /// T129 watermark on replay: between the last `recompile_and_diff` and
+    /// this reconnect the store may have ingested newer events. We
+    /// re-apply the watermark per-shape *on a clone* so the REQ does not
+    /// re-fetch already-stored events. Per recompilation.md §4.2 "this is a
+    /// pure replay, not a recompile" — we deliberately do NOT mutate
+    /// `current_plan`; only the on-the-wire `since` is bumped. This keeps
+    /// sub_id stability (`canonical_filter_hash` is computed off `shape` not
+    /// the post-watermark filter — see `planner/mod.rs::canonical_filter_hash`
+    /// rationale and the T129 carve-out in `apply_watermark_rewrite`).
     pub fn handle_reconnect(&mut self, relay_url: RelayUrl) -> Vec<WireFrame> {
         let Some(plan) = self.current_plan.as_ref() else {
             return Vec::new();
@@ -280,6 +295,7 @@ impl SubscriptionLifecycle {
             return Vec::new();
         };
         let interests = self.registry.iter_active();
+        let watermark_fn = self.watermark_fn.as_ref().map(Arc::clone);
         let mut frames = Vec::with_capacity(relay_plan.sub_shapes.len());
         for shape in &relay_plan.sub_shapes {
             let sub_id = wire::sub_id_for(&plan.plan_id, shape);
@@ -289,7 +305,20 @@ impl SubscriptionLifecycle {
                 .cloned()
                 .unwrap_or(InterestId(0));
             let lifecycle = wire::lifecycle_for_shape(shape, &interests);
-            let filter_json = wire::filter_json_for(&shape.shape);
+            let filter_json = match watermark_fn.as_ref() {
+                Some(wm) if !shape_is_ephemeral_only(&shape.shape) => {
+                    let mut wire_shape = shape.shape.clone();
+                    if let Some(watermark) = wm(&wire_shape) {
+                        let floor = watermark.saturating_add(1);
+                        wire_shape.since = Some(match wire_shape.since {
+                            Some(existing) if existing >= floor => existing,
+                            _ => floor,
+                        });
+                    }
+                    wire::filter_json_for(&wire_shape)
+                }
+                _ => wire::filter_json_for(&shape.shape),
+            };
             frames.push(WireFrame::Req {
                 relay_url: relay_url.clone(),
                 sub_id,

@@ -31,6 +31,7 @@ pub(super) fn dispatch_command(
     relay_controls: &mut HashMap<String, RelayControl>,
     relay_tx: &Sender<RelayEvent>,
     connected_relays: &mut HashSet<RelayRole>,
+    connected_urls: &mut HashSet<String>,
     update_tx: &Sender<String>,
     last_emit: &mut Instant,
     next_relay_generation: &mut u64,
@@ -244,11 +245,15 @@ pub(super) fn dispatch_command(
             *running = false;
             *startup_sent = false;
             close_relays(relay_controls, connected_relays, kernel);
+            // T116/G1 — clear reconnect-replay discriminator so a subsequent
+            // Start replays cleanly (every URL appears as a first-connect).
+            connected_urls.clear();
             emit_now(kernel, *running, update_tx, last_emit);
             Some(Vec::new())
         }
         ActorCommand::Reset => {
             close_relays(relay_controls, connected_relays, kernel);
+            connected_urls.clear();
             // T114b — preserve the FFI-channel drop-counter handle across
             // Reset (the underlying Arc<AtomicU64> is shared with the FFI
             // forwarder thread and must NOT be replaced; the counter is
@@ -268,6 +273,7 @@ pub(super) fn dispatch_command(
         }
         ActorCommand::Shutdown => {
             close_relays(relay_controls, connected_relays, kernel);
+            connected_urls.clear();
             None
         }
         #[cfg(any(test, feature = "test-support"))]
@@ -303,15 +309,45 @@ pub(super) fn handle_relay_event(
     relay_tx: &Sender<RelayEvent>,
     next_relay_generation: &mut u64,
     connected_relays: &mut HashSet<RelayRole>,
+    connected_urls: &mut HashSet<String>,
     update_tx: &Sender<String>,
     last_emit: &mut Instant,
     startup_sent: &mut bool,
     running: bool,
 ) {
     match event {
-        RelayEvent::Connected { role, .. } => {
+        RelayEvent::Connected {
+            role, relay_url, ..
+        } => {
             connected_relays.insert(role);
             kernel.relay_connected(role);
+            // T116/G1 — reconnect-replay. The first `Connected` for a URL is
+            // the initial dial; the startup path (`maybe_send_startup` /
+            // `kernel.startup_requests()`) emits REQs there. Every
+            // subsequent `Connected` after a `Failed`/`Closed` is a true
+            // reconnect — the kernel's `wire_subs` for that URL were
+            // evicted by `relay_closed` (T133), and the relay's
+            // per-connection sub-id table is fresh, so we must re-emit
+            // active sub-shapes. `kernel.replay_on_reconnect` consults
+            // `SubscriptionLifecycle::handle_reconnect` (a pure read of
+            // `current_plan`) and applies the T129 watermark per-shape so
+            // `since` is bumped past already-stored events.
+            //
+            // D7 preserved: actor reports the OS-level transition; the
+            // kernel decides what to replay and rewrites `since`.
+            let is_reconnect = !connected_urls.insert(relay_url.clone());
+            if is_reconnect && running {
+                let replay = kernel.replay_on_reconnect(role, &relay_url);
+                if !replay.is_empty() {
+                    send_all_outbound(
+                        relay_controls,
+                        relay_tx,
+                        kernel,
+                        next_relay_generation,
+                        replay,
+                    );
+                }
+            }
             maybe_send_startup(
                 running,
                 startup_sent,
