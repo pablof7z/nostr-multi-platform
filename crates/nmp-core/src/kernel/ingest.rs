@@ -162,21 +162,35 @@ impl Kernel {
         // Kinds 1|6 handle their own store.insert inside ingest_timeline_event
         // (which also manages the local read-cache); all other kinds are
         // persisted here so the store is the single authoritative writer.
+        //
+        // For replaceable kinds (0, 3, 10002) we gate local cache mutations on
+        // the store outcome: only Inserted | Replaced means this event is now
+        // canonical — Superseded / Duplicate / Tombstoned / Rejected must not
+        // overwrite a newer entry already held by the store (D4).
         match event.kind {
             1 | 6 => self.ingest_timeline_event(role, sub_id, event),
             0 => {
-                self.verify_and_persist(role, &event);
-                self.ingest_profile(event);
+                use crate::store::InsertOutcome;
+                let outcome = self.verify_and_persist(role, &event);
+                if matches!(outcome, Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })) {
+                    self.ingest_profile(event);
+                }
                 self.changed_since_emit = true;
             }
             3 => {
-                self.verify_and_persist(role, &event);
-                self.ingest_contacts(event);
+                use crate::store::InsertOutcome;
+                let outcome = self.verify_and_persist(role, &event);
+                if matches!(outcome, Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })) {
+                    self.ingest_contacts(event);
+                }
                 self.changed_since_emit = true;
             }
             10002 => {
-                self.verify_and_persist(role, &event);
-                self.ingest_relay_list(event);
+                use crate::store::InsertOutcome;
+                let outcome = self.verify_and_persist(role, &event);
+                if matches!(outcome, Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })) {
+                    self.ingest_relay_list(event);
+                }
                 self.changed_since_emit = true;
             }
             _ => {
@@ -186,12 +200,19 @@ impl Kernel {
         }
     }
 
-    /// Verify and persist an event to the EventStore. Returns `true` if the
-    /// event was freshly inserted or replaced an older version.
+    /// Verify and persist an event to the EventStore.
     ///
-    /// Logs verification errors; does not abort — caller proceeds with
-    /// kind-specific local-cache updates regardless (graceful degradation).
-    pub(super) fn verify_and_persist(&mut self, role: RelayRole, event: &NostrEvent) -> bool {
+    /// Returns `Some(outcome)` with the store's [`InsertOutcome`] when
+    /// verification succeeds, or `None` when signature verification fails.
+    /// Callers that perform local-cache mutations for replaceable kinds **must**
+    /// inspect the outcome: only `Inserted | Replaced` means this event is now
+    /// the canonical version in the store — all other outcomes must be treated
+    /// as no-ops for cache purposes (D4).
+    pub(super) fn verify_and_persist(
+        &mut self,
+        role: RelayRole,
+        event: &NostrEvent,
+    ) -> Option<crate::store::InsertOutcome> {
         let raw = crate::store::RawEvent {
             id: event.id.clone(),
             pubkey: event.pubkey.clone(),
@@ -205,7 +226,7 @@ impl Kernel {
             Ok(v) => v,
             Err(e) => {
                 self.log(format!("sig verify failed for {}: {e}", event_short_id(&event.id)));
-                return false;
+                return None;
             }
         };
         let relay_url = role.url().to_string();
@@ -214,13 +235,10 @@ impl Kernel {
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
         match self.store.insert(verified, &relay_url, received_at_ms) {
-            Ok(outcome) => {
-                use crate::store::InsertOutcome;
-                matches!(outcome, InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
-            }
+            Ok(outcome) => Some(outcome),
             Err(e) => {
                 self.log(format!("store insert error for {}: {e}", event_short_id(&event.id)));
-                false
+                None
             }
         }
     }
@@ -269,7 +287,7 @@ impl Kernel {
     }
 
     pub(super) fn ingest_relay_list(&mut self, event: NostrEvent) {
-        let relay_list = parse_relay_list(event.created_at, &event.tags);
+        let relay_list = parse_relay_list(&event.id, event.created_at, &event.tags);
         if relay_list.read_relays.is_empty()
             && relay_list.write_relays.is_empty()
             && relay_list.both_relays.is_empty()
@@ -277,10 +295,20 @@ impl Kernel {
             return;
         }
 
+        // This function is only called after verify_and_persist returned
+        // Inserted | Replaced, so the store already enforced strict `>` with
+        // lexicographic event-id tiebreak. The local cache guard below is a
+        // belt-and-suspenders check that mirrors the store's supersession
+        // logic exactly (strict `>` on timestamp; same-ts resolved by
+        // lexicographically smaller event id wins).
         let should_replace = self
             .author_relay_lists
             .get(&event.pubkey)
-            .map(|current| relay_list.created_at >= current.created_at)
+            .map(|current| {
+                relay_list.created_at > current.created_at
+                    || (relay_list.created_at == current.created_at
+                        && event.id < current.event_id)
+            })
             .unwrap_or(true);
         if should_replace {
             self.log(format!(

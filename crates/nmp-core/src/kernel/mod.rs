@@ -270,6 +270,10 @@ impl Default for RelayHealth {
 
 #[derive(Clone, Debug, Default)]
 struct AuthorRelayList {
+    /// Event id of the kind:10002 that produced this relay list.  Used as a
+    /// tiebreak when two events share the same `created_at`: lexicographically
+    /// smaller event id wins (mirrors the store's supersession logic).
+    event_id: String,
     created_at: u64,
     read_relays: Vec<String>,
     write_relays: Vec<String>,
@@ -413,6 +417,62 @@ impl Kernel {
 
     pub(crate) fn changed_since_emit(&self) -> bool {
         self.changed_since_emit
+    }
+
+    /// Deliver a replaceable event (kind:0, 3, or 10002) to the kernel,
+    /// bypassing signature verification.
+    ///
+    /// Mirrors the production `handle_event` dispatch for replaceable kinds but
+    /// uses `VerifiedEvent::from_raw_unchecked` so unit tests don't need real
+    /// secp256k1 signatures.  Returns the `InsertOutcome` so callers can assert
+    /// on supersession behaviour.
+    ///
+    /// Test-support only — gated on `cfg(any(test, feature = "test-support"))`.
+    #[cfg(any(test, feature = "test-support"))]
+    #[allow(clippy::too_many_arguments, dead_code)]
+    pub(crate) fn inject_replaceable_event(
+        &mut self,
+        id: &str,
+        pubkey: &str,
+        created_at: u64,
+        kind: u32,
+        tags: Vec<Vec<String>>,
+        relay_url: &str,
+        received_at_ms: u64,
+    ) -> Option<crate::store::InsertOutcome> {
+        use crate::store::{InsertOutcome, RawEvent, VerifiedEvent};
+        let raw = RawEvent {
+            id: id.to_string(),
+            pubkey: pubkey.to_string(),
+            created_at,
+            kind,
+            tags: tags.clone(),
+            content: String::new(),
+            sig: "a".repeat(128),
+        };
+        let verified = VerifiedEvent::from_raw_unchecked(raw);
+        let outcome = match self.store.insert(verified, &relay_url.to_string(), received_at_ms) {
+            Ok(o) => o,
+            Err(_) => return None,
+        };
+        if matches!(outcome, InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. }) {
+            let event = NostrEvent {
+                id: id.to_string(),
+                pubkey: pubkey.to_string(),
+                created_at,
+                kind,
+                tags,
+                content: String::new(),
+                sig: "a".repeat(128),
+            };
+            match kind {
+                0 => self.ingest_profile(event),
+                3 => self.ingest_contacts(event),
+                10002 => self.ingest_relay_list(event),
+                _ => {}
+            }
+        }
+        Some(outcome)
     }
 
     /// Inject synthetic timeline events directly into the kernel read-cache.
