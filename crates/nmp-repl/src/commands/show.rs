@@ -1,5 +1,7 @@
 //! `show <state|relays|budget|seen>` — dump session state.
 
+use nmp_core::planner::MailboxCache;
+
 use crate::ast::ShowTopic;
 use crate::error::Result;
 use crate::session::Session;
@@ -22,7 +24,14 @@ fn print_state(session: &Session) {
         .map(|s| s.len().to_string())
         .unwrap_or_else(|| "<none>".to_string());
     println!("  follows_cache:   {f}");
-    println!("  mailbox_cache:   {} authors", session.mailbox_cache.len());
+    println!(
+        "  mailbox_cache:   {} authors",
+        session.mailbox_cache.snapshot_all().len()
+    );
+    println!(
+        "  probed_mailboxes: {} authors (lifecycle)",
+        session.lifecycle.probed_mailboxes().len()
+    );
     println!("  indexer_relays:  {}", session.indexer_relays.join(", "));
     println!(
         "  app_relays:      {}",

@@ -276,6 +276,62 @@ impl SubscriptionLifecycle {
         &self.dead_relays
     }
 
+    /// Materialise the full current plan as `WireFrame::Req`s — one per
+    /// `(relay, sub_shape)` — independent of the prior-plan diff.
+    ///
+    /// `recompile_and_diff` returns only the *delta* vs. the last plan, so
+    /// once the plan stabilises a recompile yields few or no frames even
+    /// though live subscriptions exist. Diagnostics (`nmp-repl`) need the
+    /// complete in-effect REQ set without tearing the registry down and
+    /// rebuilding it (which would double-count `compile_count` and re-fire
+    /// the lifecycle / auth gates). This is the read-only seam for that.
+    ///
+    /// Probe REQs are intentionally absent: implicit kind:10002 discovery
+    /// frames are appended *outside* `current_plan` (see
+    /// [`Self::recompile_and_diff`]), so the returned vec is content-only by
+    /// construction.
+    pub fn current_plan_frames(&self) -> Vec<WireFrame> {
+        let Some(plan) = self.current_plan.as_ref() else {
+            return Vec::new();
+        };
+        let interests = self.registry.iter_active();
+        let mut frames = Vec::new();
+        for (relay_url, relay_plan) in &plan.per_relay {
+            for shape in &relay_plan.sub_shapes {
+                let interest_id = shape
+                    .originating_interests
+                    .first()
+                    .cloned()
+                    .unwrap_or(InterestId(0));
+                frames.push(WireFrame::Req {
+                    relay_url: relay_url.clone(),
+                    sub_id: wire::sub_id_for(&plan.plan_id, shape),
+                    filter_json: wire::filter_json_for(&shape.shape),
+                    interest_id,
+                    lifecycle: wire::lifecycle_for_shape(shape, &interests),
+                });
+            }
+        }
+        frames
+    }
+
+    /// Authors the last `recompile_and_diff` could not route to any relay
+    /// (no cached NIP-65 mailbox, no app-relay substitute). Empty when no
+    /// compile has run yet.
+    ///
+    /// This is the read-only seam onto the otherwise-internal
+    /// `CompiledPlan::unroutable_authors` — exposed for diagnostics
+    /// (`nmp-repl`'s `outbox: … K unroutable` line) without leaking the
+    /// whole plan. Recomputing this caller-side would mean re-walking the
+    /// mailbox cache against the interest author set; the plan already did
+    /// that work, so prefer this accessor.
+    pub fn current_plan_unroutable(&self) -> BTreeSet<String> {
+        self.current_plan
+            .as_ref()
+            .map(|p| p.unroutable_authors.clone())
+            .unwrap_or_default()
+    }
+
     /// Install (or replace) the operator-configured app relay list (T134).
     ///
     /// The next recompile threads this list into the compiler so author
@@ -1200,6 +1256,99 @@ mod tests {
         // 120 authors / 50 per batch = 3 batches (50 + 50 + 20), one indexer.
         assert_eq!(probes.len(), 3, "120 authors must split into 3 probe REQs");
         assert_eq!(l.probed_mailboxes().len(), 120);
+    }
+
+    // ─── current-plan diagnostics accessors (nmp-repl seam) ──────────────────
+
+    /// `current_plan_unroutable` is empty before any compile, then reflects
+    /// the plan's `unroutable_authors` after a recompile.
+    #[test]
+    fn current_plan_unroutable_reflects_plan() {
+        let mut l = SubscriptionLifecycle::new();
+        assert!(l.current_plan_unroutable().is_empty());
+
+        let mut cache = InMemoryMailboxCache::new();
+        cache.put(
+            pubkey("rt01"),
+            MailboxSnapshot {
+                write_relays: vec!["wss://known.example".to_string()],
+                read_relays: vec![],
+                both_relays: vec![],
+            },
+        );
+        l.registry_mut().push(follow(1, "rt01"));
+        l.registry_mut().push(follow(2, "ur01"));
+
+        let _ = l.recompile_and_diff(&cache).expect("compile");
+        let unroutable = l.current_plan_unroutable();
+        assert!(
+            unroutable.contains(&pubkey("ur01")),
+            "author with no mailbox + no app-relay must be unroutable; got {unroutable:?}"
+        );
+        assert!(
+            !unroutable.contains(&pubkey("rt01")),
+            "author with cached mailbox must be routable"
+        );
+    }
+
+    /// `current_plan_frames` is empty before any compile, then materialises
+    /// one content REQ per `(relay, sub_shape)` — and never a probe REQ
+    /// (probes live outside `current_plan`).
+    #[test]
+    fn current_plan_frames_materialises_full_content_plan() {
+        let mut l = SubscriptionLifecycle::new();
+        l.set_selection_budget(usize::MAX, usize::MAX);
+        assert!(l.current_plan_frames().is_empty());
+
+        let mut cache = InMemoryMailboxCache::new();
+        cache.put(
+            pubkey("cp01"),
+            MailboxSnapshot {
+                write_relays: vec![
+                    "wss://cp-a.example".to_string(),
+                    "wss://cp-b.example".to_string(),
+                ],
+                read_relays: vec![],
+                both_relays: vec![],
+            },
+        );
+        l.registry_mut().push(follow(1, "cp01"));
+
+        let _ = l.recompile_and_diff(&cache).expect("compile");
+        let frames = l.current_plan_frames();
+
+        // Expected: exactly one REQ per (relay, sub_shape) in current_plan.
+        let plan = l.current_plan.as_ref().expect("plan present");
+        let expected: usize = plan
+            .per_relay
+            .values()
+            .map(|rp| rp.sub_shapes.len())
+            .sum();
+        assert_eq!(
+            frames.len(),
+            expected,
+            "one frame per (relay, sub_shape); got {} want {expected}",
+            frames.len()
+        );
+        // No probe REQ may appear in the materialised content plan.
+        for f in &frames {
+            if let WireFrame::Req { sub_id, .. } = f {
+                assert!(
+                    !sub_id.starts_with("mailbox-probe-"),
+                    "current_plan_frames must be content-only; saw probe {sub_id}"
+                );
+            }
+        }
+        // Both write relays must be present (selection budget unbounded).
+        let relays: std::collections::BTreeSet<String> = frames
+            .iter()
+            .filter_map(|f| match f {
+                WireFrame::Req { relay_url, .. } => Some(relay_url.clone()),
+                _ => None,
+            })
+            .collect();
+        assert!(relays.contains("wss://cp-a.example"));
+        assert!(relays.contains("wss://cp-b.example"));
     }
 
     /// With no indexer configured, discovery is silently skipped (the

@@ -18,9 +18,15 @@ use crossterm::{
 };
 use serde_json::json;
 
-use crate::fanout::{RelayEvent, RelayStats};
+use crate::fanout::{ContentReq, RelayEvent, RelayStats};
 use crate::session::Session;
 use crate::ws::truncate;
+
+/// Per-relay author count for the row label — sum across the relay's
+/// content REQs (the lifecycle may assign more than one sub-shape).
+fn relay_author_count(reqs: &[ContentReq]) -> usize {
+    reqs.iter().map(|r| r.authors).sum()
+}
 
 #[derive(Clone, Debug)]
 enum RowState {
@@ -59,7 +65,7 @@ pub struct FanoutSummary {
 pub fn drive(
     session: &mut Session,
     rx: mpsc::Receiver<RelayEvent>,
-    per_relay: &BTreeMap<String, Vec<String>>,
+    per_relay: &BTreeMap<String, Vec<ContentReq>>,
     wall_deadline: Instant,
 ) -> FanoutSummary {
     if session.json {
@@ -71,19 +77,23 @@ pub fn drive(
 fn drive_table(
     session: &mut Session,
     rx: mpsc::Receiver<RelayEvent>,
-    per_relay: &BTreeMap<String, Vec<String>>,
+    per_relay: &BTreeMap<String, Vec<ContentReq>>,
     wall_deadline: Instant,
 ) -> FanoutSummary {
     // ── Build the row table. Sort by author count desc. ─────────────────
     let mut rows_by_relay: HashMap<String, usize> = HashMap::new();
     let mut rows: Vec<Row> = Vec::new();
-    let mut pairs: Vec<(&String, &Vec<String>)> = per_relay.iter().collect();
-    pairs.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then_with(|| a.0.cmp(b.0)));
-    for (relay, authors) in &pairs {
+    let mut pairs: Vec<(&String, &Vec<ContentReq>)> = per_relay.iter().collect();
+    pairs.sort_by(|a, b| {
+        relay_author_count(b.1)
+            .cmp(&relay_author_count(a.1))
+            .then_with(|| a.0.cmp(b.0))
+    });
+    for (relay, reqs) in &pairs {
         rows_by_relay.insert((*relay).clone(), rows.len());
         rows.push(Row {
             relay: (*relay).clone(),
-            authors: authors.len(),
+            authors: relay_author_count(reqs),
             state: RowState::Connecting,
             events: 0,
             new: 0,
@@ -185,7 +195,7 @@ fn drive_table(
 fn drive_json(
     session: &mut Session,
     rx: mpsc::Receiver<RelayEvent>,
-    per_relay: &BTreeMap<String, Vec<String>>,
+    per_relay: &BTreeMap<String, Vec<ContentReq>>,
     wall_deadline: Instant,
 ) -> FanoutSummary {
     let started = Instant::now();
@@ -195,7 +205,7 @@ fn drive_json(
     let mut per_relay_stats: BTreeMap<String, RelayStats> = BTreeMap::new();
     let mut authors_by_relay: HashMap<String, usize> = HashMap::new();
     for (k, v) in per_relay {
-        authors_by_relay.insert(k.clone(), v.len());
+        authors_by_relay.insert(k.clone(), relay_author_count(v));
     }
 
     loop {

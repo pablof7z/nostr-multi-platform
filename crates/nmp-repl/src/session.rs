@@ -1,10 +1,33 @@
 //! REPL session state. One struct, owned by the main thread, mutated only
 //! between `req` runs. See `docs/design/nmp-repl.md` §6.
+//!
+//! ## Lifecycle ownership (refactor note)
+//!
+//! The REPL no longer hand-rolls the outbox pipeline. `req` drives the
+//! *production* [`nmp_core::subs::SubscriptionLifecycle`]. For cross-`req`
+//! discovery dedup (the lifecycle's `probed_mailboxes` set + the mailbox
+//! cache) both the lifecycle AND its cache live on the `Session`:
+//!
+//! - `lifecycle` — one instance per session. Holds `probed_mailboxes` so a
+//!   second `req` does not re-probe authors whose kind:10002 already arrived
+//!   (or was already attempted).
+//! - `mailbox_cache` — the `&dyn MailboxCache` handed to
+//!   `recompile_and_diff` / `drain_tick`. Discovery REQ responses
+//!   (kind:10002) are `put` here.
+//!
+//! They are two separate fields (not one wrapper struct) because
+//! `recompile_and_diff` borrows the cache `&` while `cache.put` needs
+//! `&mut` — the mutations never overlap in time, so a split borrow at the
+//! call site is the cleanest ownership. `set-seed` replaces BOTH with fresh
+//! instances. `refresh mailboxes` clears `probed_mailboxes` + drops the
+//! cache. `refresh follows` only drops `follows_cache` (variable-expansion
+//! state, independent of the outbox lifecycle).
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashSet};
 use std::time::Duration;
 
-use nmp_core::planner::MailboxSnapshot;
+use nmp_core::planner::InMemoryMailboxCache;
+use nmp_core::subs::SubscriptionLifecycle;
 
 /// Summary of the last `req` execution, surfaced via `show state`.
 #[derive(Clone, Debug, Default)]
@@ -18,16 +41,24 @@ pub struct RunSummary {
     pub wall: Duration,
 }
 
-#[derive(Debug)]
 pub struct Session {
     // Identity
     pub seed_hex: Option<String>,
 
-    // Discovery caches
+    // Variable-expansion cache (kind:3 follows). Independent of the outbox
+    // lifecycle — `$follows` resolution is a thin targeted fetch, not outbox.
     pub follows_cache: Option<BTreeSet<String>>,
-    pub mailbox_cache: BTreeMap<String, MailboxSnapshot>,
 
-    // Configuration
+    // ── Production outbox engine ─────────────────────────────────────────
+    // The real lifecycle, driven by `req`. One instance per session so its
+    // `probed_mailboxes` dedup survives across `req` calls.
+    pub lifecycle: SubscriptionLifecycle,
+    // The mailbox cache the lifecycle reads. kind:10002 discovery responses
+    // land here. Persists across `req` so a second `req` is cache-warm.
+    pub mailbox_cache: InMemoryMailboxCache,
+
+    // Configuration. Re-applied onto the lifecycle at the start of each
+    // `req` so config changes between `req`s take effect.
     pub indexer_relays: Vec<String>,
     pub app_relays: Vec<String>,
     pub dead_relays: BTreeSet<String>,
@@ -49,7 +80,8 @@ impl Default for Session {
         Self {
             seed_hex: None,
             follows_cache: None,
-            mailbox_cache: BTreeMap::new(),
+            lifecycle: SubscriptionLifecycle::new(),
+            mailbox_cache: InMemoryMailboxCache::new(),
             indexer_relays: vec!["wss://purplepag.es".to_string()],
             app_relays: Vec::new(),
             dead_relays: BTreeSet::new(),
@@ -67,6 +99,21 @@ impl Default for Session {
 impl Session {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Replace the lifecycle + mailbox cache with fresh instances. Called by
+    /// `set-seed` (new identity → probed set and cache are meaningless).
+    pub fn reset_lifecycle(&mut self) {
+        self.lifecycle = SubscriptionLifecycle::new();
+        self.mailbox_cache = InMemoryMailboxCache::new();
+    }
+
+    /// Drop just the mailbox cache, keeping the lifecycle instance (so a
+    /// preceding `clear_probed_mailboxes()` stays in effect). `refresh
+    /// mailboxes` uses this: the next `req` re-probes every still-unknown
+    /// author against a fresh cache.
+    pub fn reset_lifecycle_cache_only(&mut self) {
+        self.mailbox_cache = InMemoryMailboxCache::new();
     }
 
     /// Short seed label for the prompt — `seed=npub1l2v…` (design §8.4) or
