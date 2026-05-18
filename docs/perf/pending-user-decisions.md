@@ -85,6 +85,19 @@ which routes through the identical envelope path the kernel will use.
 **If the user disagrees:** revert the single `feat(ios-keychain):` commit;
 the Swift side is self-contained and re-derivable against a different
 kernel-side envelope shape once T63 defines one.
+
+**Update 2026-05-18 (T96) — kernel half landed.** The deferred kernel-side
+contract now exists and converges exactly on the Swift vocabulary:
+`crates/nmp-core/src/substrate/keyring.rs` (`KeyringCapability` impl
+`CapabilityModule`, `KeyringRequest` store/retrieve/delete-by-`account_id`,
+`KeyringResult` ok/not_found/error, `KeyringIdentityWiring` persist/recall/
+forget), plus the `nmp_app_set_capability_callback` /
+`nmp_app_dispatch_capability` / `nmp_app_free_string` FFI socket in
+`crates/nmp-core/src/ffi/capability.rs` that routes a `CapabilityRequest`
+JSON to the registered native handler (`KeychainCapability.handleJSON(_:)`)
+and back as envelope-data only (D6). Swift convergence (replacing the
+generic envelope use with this typed contract) remains a later task; the
+JSON shapes are already byte-compatible so no Swift change is required.
 ### PD-020 (resolved 2026-05-18 autonomously) — T81 SubKey/triple: `iter_active` dedups by `(scope, key)`, not by `InterestId`
 
 **Decision (autonomous, T81 / SubKey + ownership triple):** The `InterestRegistry` is now keyed by the `(owner, key, scope)` triple from `docs/design/nostrdb-notedeck-lessons.md` §3.2. Two design ambiguities were resolved by making a call:

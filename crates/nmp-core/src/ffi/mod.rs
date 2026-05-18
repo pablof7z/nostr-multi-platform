@@ -2,7 +2,18 @@
 //! wrappers; `identity` carries the T66a identity / publish / multi-account
 //! / relay-edit wrappers (split to keep each file under the 500-LOC cap).
 
+mod capability;
 mod identity;
+
+// Re-exported so the crate-level test-support facade (`lib.rs`) can reach
+// these by the `ffi::` path, mirroring the other FFI entry points. The
+// symbols stay `#[no_mangle] extern "C"` in `capability` so the Swift/C ABI
+// is unaffected; the `pub use` itself is only consumed under the
+// test-support gate, hence the matching `cfg`.
+#[cfg(any(test, feature = "test-support"))]
+pub use capability::{
+    nmp_app_dispatch_capability, nmp_app_free_string, nmp_app_set_capability_callback,
+};
 
 use crate::actor::{run_actor, ActorCommand};
 use crate::kernel::{is_hex_id, is_hex_pubkey};
@@ -24,6 +35,7 @@ struct UpdateCallbackRegistration {
 pub struct NmpApp {
     tx: Sender<ActorCommand>,
     update_callback: Arc<Mutex<Option<UpdateCallbackRegistration>>>,
+    capability_callback: Arc<Mutex<Option<capability::CapabilityCallbackRegistration>>>,
     actor: Mutex<Option<JoinHandle<()>>>,
     update_listener: Mutex<Option<JoinHandle<()>>>,
 }
@@ -70,6 +82,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     Box::into_raw(Box::new(NmpApp {
         tx: command_tx,
         update_callback,
+        capability_callback: Arc::new(Mutex::new(None)),
         actor: Mutex::new(Some(actor)),
         update_listener: Mutex::new(Some(update_listener)),
     }))

@@ -2,6 +2,7 @@ mod action;
 mod capability;
 mod domain;
 mod identity;
+mod keyring;
 pub mod placeholder;
 mod view;
 
@@ -14,6 +15,10 @@ pub use domain::{DomainIndex, DomainMigration, DomainModule, DomainRegistry, Mig
 pub use identity::{
     BoxFuture, IdentityContext, IdentityError, IdentityId, IdentityModule, IdentityScopeKind,
     SignedEvent, SigningError, UnsignedEvent,
+};
+pub use keyring::{
+    KeyringCapability, KeyringIdentityWiring, KeyringRequest, KeyringResult, KeyringStatus,
+    MALFORMED_RESULT,
 };
 pub use placeholder::{picture_placeholder, Placeholder};
 pub use view::{EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies, ViewModule};
