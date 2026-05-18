@@ -49,6 +49,21 @@ pub(crate) struct RelayEditRow {
     pub(crate) role: String,
 }
 
+/// NIP-47 wallet connection status projected onto the snapshot.
+/// Present when a wallet is (or was recently) connected; `None` when no
+/// wallet has been connected in this session.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub(crate) struct WalletStatus {
+    /// `"connecting"` | `"ready"` | `"error"` | `"disconnected"`
+    pub(crate) status: String,
+    /// The NWC relay URL (from the connection URI).
+    pub(crate) relay_url: String,
+    /// The wallet service pubkey in bech32 npub form.
+    pub(crate) wallet_npub: String,
+    /// Balance in millisatoshis, if the wallet has responded to `get_balance`.
+    pub(crate) balance_msats: Option<u64>,
+}
+
 impl super::Kernel {
     /// Replace the account projection (D4: actor is sole writer).
     pub(crate) fn set_accounts(&mut self, accounts: Vec<AccountSummary>, active: Option<String>) {
@@ -88,6 +103,14 @@ impl super::Kernel {
         }
     }
 
+    /// Replace the wallet status projection (D4: actor is sole writer).
+    pub(crate) fn set_wallet_status(&mut self, status: Option<WalletStatus>) {
+        if self.wallet_status != status {
+            self.wallet_status = status;
+            self.changed_since_emit = true;
+        }
+    }
+
     pub(crate) fn account_snapshot(&self) -> (&[AccountSummary], Option<&String>) {
         (&self.accounts, self.active_account.as_ref())
     }
@@ -102,5 +125,9 @@ impl super::Kernel {
 
     pub(crate) fn relay_edit_rows_snapshot(&self) -> &[RelayEditRow] {
         &self.relay_edit_rows
+    }
+
+    pub(crate) fn wallet_status_snapshot(&self) -> Option<&WalletStatus> {
+        self.wallet_status.as_ref()
     }
 }

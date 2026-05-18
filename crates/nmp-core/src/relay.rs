@@ -57,9 +57,15 @@ pub(crate) const JB55_PUBKEY: &str =
 pub(crate) enum RelayRole {
     Content,
     Indexer,
+    /// NIP-47 Nostr Wallet Connect relay. Spawned on demand when a wallet is
+    /// connected; NOT included in `all()` so it does not block the startup
+    /// bootstrap gate or appear in the standard relay-statuses projection.
+    Wallet,
 }
 
 impl RelayRole {
+    /// Bootstrap-only roles (spawned at start, gate for startup REQs).
+    /// `Wallet` is excluded: it spawns on demand, not at startup.
     pub(crate) fn all() -> [Self; 2] {
         [Self::Content, Self::Indexer]
     }
@@ -68,6 +74,7 @@ impl RelayRole {
         match self {
             Self::Content => "content",
             Self::Indexer => "indexer",
+            Self::Wallet => "wallet",
         }
     }
 
@@ -82,6 +89,8 @@ impl RelayRole {
             // the seed-timeline bootstrap do not collide on one socket.
             Self::Content => BOOTSTRAP_DISCOVERY_RELAYS[0],
             Self::Indexer => BOOTSTRAP_DISCOVERY_RELAYS[1],
+            // Wallet relay URL is dynamic (from NWC URI); no static bootstrap.
+            Self::Wallet => "",
         }
     }
 

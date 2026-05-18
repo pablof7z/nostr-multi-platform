@@ -1,17 +1,20 @@
 import SwiftUI
 
-// OWNER: Phase-2 Agent D — Wallet (polished "Coming in Chirp CX2" surface).
-// No fake numbers. No wallet FFI at v1. Shows a preview-labeled locked balance
-// card, NWC/zap/Cashu explainer, and the CX3 Olas-style auto-link teaser.
-
 struct WalletView: View {
     @EnvironmentObject private var model: KernelModel
+    @State private var showingConnectSheet = false
 
     var body: some View {
         ScrollView {
             VStack(spacing: ChirpSpace.xl) {
-                balanceCard
-                featureCards
+                if let status = model.walletStatus, status.isConnected {
+                    connectedCard(status: status)
+                    if status.isReady {
+                        walletActions(status: status)
+                    }
+                } else {
+                    disconnectedCard
+                }
                 technologyCards
             }
             .padding(.horizontal, ChirpSpace.l)
@@ -21,145 +24,182 @@ struct WalletView: View {
         .background(Color(.systemBackground))
         .navigationTitle("Wallet")
         .navigationBarTitleDisplayMode(.large)
+        .sheet(isPresented: $showingConnectSheet) {
+            ConnectWalletSheet(isPresented: $showingConnectSheet)
+                .environmentObject(model)
+        }
     }
 
-    // ── Locked balance card ───────────────────────────────────────────────
+    // ── Disconnected state ────────────────────────────────────────────────────
 
-    private var balanceCard: some View {
+    private var disconnectedCard: some View {
+        VStack(spacing: ChirpSpace.xl) {
+            ZStack {
+                RoundedRectangle(cornerRadius: ChirpSpace.radius, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                ChirpColor.zap.opacity(0.12),
+                                ChirpColor.accent.opacity(0.08),
+                                Color(.systemBackground).opacity(0)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                RoundedRectangle(cornerRadius: ChirpSpace.radius, style: .continuous)
+                    .strokeBorder(ChirpColor.zap.opacity(0.2), lineWidth: 1)
+
+                VStack(spacing: ChirpSpace.xl) {
+                    Image(systemName: "bolt.circle")
+                        .font(.system(size: 52, weight: .light))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [ChirpColor.zap, ChirpColor.zap.opacity(0.5)],
+                                startPoint: .top, endPoint: .bottom
+                            )
+                        )
+                        .symbolRenderingMode(.hierarchical)
+
+                    VStack(spacing: ChirpSpace.s) {
+                        Text("Connect a Wallet")
+                            .font(ChirpFont.title3.weight(.semibold))
+                            .foregroundStyle(ChirpColor.textPrimary)
+                        Text("Use any NWC-compatible wallet — Alby, Zeus, Mutiny, or self-hosted — to send and receive Lightning payments.")
+                            .font(ChirpFont.callout)
+                            .foregroundStyle(ChirpColor.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+
+                    Button {
+                        showingConnectSheet = true
+                    } label: {
+                        Label("Connect Wallet", systemImage: "bolt.fill")
+                            .font(ChirpFont.callout.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, ChirpSpace.xl)
+                            .padding(.vertical, ChirpSpace.m)
+                            .background(ChirpColor.zap, in: Capsule())
+                    }
+                }
+                .padding(ChirpSpace.xl)
+            }
+        }
+    }
+
+    // ── Connected state ───────────────────────────────────────────────────────
+
+    private func connectedCard(status: WalletStatusData) -> some View {
         ZStack {
-            // Gradient background
             RoundedRectangle(cornerRadius: ChirpSpace.radius, style: .continuous)
                 .fill(
                     LinearGradient(
                         colors: [
-                            ChirpColor.zap.opacity(0.22),
-                            ChirpColor.accent.opacity(0.18),
-                            Color(.systemBackground).opacity(0.0)
+                            ChirpColor.zap.opacity(0.18),
+                            ChirpColor.accent.opacity(0.12),
+                            Color(.systemBackground).opacity(0)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
             RoundedRectangle(cornerRadius: ChirpSpace.radius, style: .continuous)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [ChirpColor.zap.opacity(0.35), ChirpColor.accent.opacity(0.2)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: ChirpSpace.radius, style: .continuous))
+                .strokeBorder(ChirpColor.zap.opacity(0.3), lineWidth: 1)
 
-            VStack(spacing: ChirpSpace.xl) {
-                // Preview badge
+            VStack(spacing: ChirpSpace.l) {
                 HStack {
+                    statusBadge(status: status.status)
                     Spacer()
-                    HStack(spacing: ChirpSpace.xs) {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 10, weight: .bold))
-                        Text("PREVIEW")
-                            .font(.system(.caption2, design: .rounded).weight(.bold))
-                            .tracking(1)
-                    }
-                    .foregroundStyle(ChirpColor.zap)
-                    .padding(.horizontal, ChirpSpace.s)
-                    .padding(.vertical, 4)
-                    .background(ChirpColor.zap.opacity(0.15), in: Capsule())
-                    .overlay(Capsule().strokeBorder(ChirpColor.zap.opacity(0.3)))
-                }
-
-                // Balance display — locked/blurred, never a real number
-                VStack(spacing: ChirpSpace.s) {
-                    Image(systemName: "bolt.circle.fill")
-                        .font(.system(size: 44, weight: .light))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [ChirpColor.zap, ChirpColor.zap.opacity(0.6)],
-                                startPoint: .top, endPoint: .bottom
-                            )
-                        )
-                        .symbolRenderingMode(.hierarchical)
-
-                    // Locked balance placeholder — clearly marked as non-real
-                    ZStack {
-                        Text("— sats")
-                            .font(.system(.largeTitle, design: .rounded).weight(.bold))
-                            .foregroundStyle(ChirpColor.textPrimary)
-                            .blur(radius: 8)
-
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 20, weight: .medium))
+                    Button(role: .destructive) {
+                        model.walletDisconnect()
+                    } label: {
+                        Text("Disconnect")
+                            .font(ChirpFont.caption.weight(.medium))
                             .foregroundStyle(ChirpColor.textTertiary)
                     }
+                }
 
-                    Text("Balance unlocks in Chirp CX2")
-                        .font(ChirpFont.caption)
+                Image(systemName: "bolt.circle.fill")
+                    .font(.system(size: 48, weight: .light))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [ChirpColor.zap, ChirpColor.zap.opacity(0.6)],
+                            startPoint: .top, endPoint: .bottom
+                        )
+                    )
+                    .symbolRenderingMode(.hierarchical)
+
+                if let sats = status.balanceSats {
+                    Text("\(sats.formatted()) sats")
+                        .font(.system(.largeTitle, design: .rounded).weight(.bold))
+                        .foregroundStyle(ChirpColor.textPrimary)
+                } else {
+                    Text(status.status == "connecting" ? "Fetching balance…" : "— sats")
+                        .font(.system(.largeTitle, design: .rounded).weight(.bold))
                         .foregroundStyle(ChirpColor.textTertiary)
                 }
 
-                // CX2 version pill
-                HStack(spacing: ChirpSpace.xs) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 11, weight: .semibold))
-                    Text("Coming in Chirp CX2")
-                        .font(.system(.caption, design: .rounded).weight(.semibold))
-                }
-                .foregroundStyle(ChirpColor.accent)
-                .padding(.horizontal, ChirpSpace.m)
-                .padding(.vertical, ChirpSpace.xs)
-                .background(ChirpColor.accentSoft, in: Capsule())
-                .overlay(Capsule().strokeBorder(ChirpColor.accent.opacity(0.25)))
+                Text(shortNpub(status.walletNpub))
+                    .font(ChirpFont.caption)
+                    .foregroundStyle(ChirpColor.textTertiary)
+                    .lineLimit(1)
             }
             .padding(ChirpSpace.xl)
         }
     }
 
-    // ── Feature cards ─────────────────────────────────────────────────────
+    private func statusBadge(status: String) -> some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(statusColor(status))
+                .frame(width: 6, height: 6)
+            Text(status.capitalized)
+                .font(.system(.caption2, design: .rounded).weight(.semibold))
+                .foregroundStyle(statusColor(status))
+        }
+        .padding(.horizontal, ChirpSpace.s)
+        .padding(.vertical, 4)
+        .background(statusColor(status).opacity(0.12), in: Capsule())
+    }
 
-    private var featureCards: some View {
-        VStack(alignment: .leading, spacing: ChirpSpace.m) {
-            ChirpSectionHeader(title: "What's Coming")
+    private func statusColor(_ status: String) -> Color {
+        switch status {
+        case "ready": return ChirpColor.positive
+        case "connecting": return ChirpColor.zap
+        case "error": return .red
+        default: return ChirpColor.textTertiary
+        }
+    }
 
+    // ── Wallet actions ────────────────────────────────────────────────────────
+
+    private func walletActions(status: WalletStatusData) -> some View {
+        GlassCard {
             VStack(spacing: ChirpSpace.m) {
-                WalletFeatureRow(
-                    icon: "bolt.fill",
-                    iconColor: ChirpColor.zap,
-                    cx: "CX2",
-                    title: "Lightning Zaps",
-                    description: "Send and receive sats instantly over Lightning with one tap. NWC-powered — bring your own wallet or connect to Alby, Zeus, or Mutiny."
-                )
-                WalletFeatureRow(
-                    icon: "circle.hexagongrid.fill",
-                    iconColor: Color(red: 0.85, green: 0.55, blue: 0.20),
-                    cx: "CX2",
-                    title: "Cashu Nutzaps",
-                    description: "Ecash tokens for privacy-preserving tips via NIP-60. Receive zaps even while offline."
-                )
-                WalletFeatureRow(
-                    icon: "link.circle.fill",
-                    iconColor: ChirpColor.positive,
-                    cx: "CX3",
-                    title: "Identity–Wallet Auto-link",
-                    description: "Olas-style seamless binding: your Nostr identity auto-links to your payment address. No manual LUD-16 copy-paste."
-                )
-                WalletFeatureRow(
-                    icon: "chart.bar.xaxis",
-                    iconColor: ChirpColor.accent,
-                    cx: "CX2",
-                    title: "Zap Analytics",
-                    description: "See who zapped you, totals over time, and your most-appreciated notes — all in one glanceable dashboard."
-                )
+                ChirpSectionHeader(title: "Actions")
+                Text("Pay Invoice")
+                    .font(ChirpFont.callout)
+                    .foregroundStyle(ChirpColor.textTertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                // Simple pay invoice button — opens paste-invoice sheet (future work)
+                HStack(spacing: ChirpSpace.m) {
+                    Label("Send", systemImage: "arrow.up.circle.fill")
+                        .font(ChirpFont.callout.weight(.semibold))
+                        .foregroundStyle(ChirpColor.zap)
+                    Spacer()
+                    Text("Paste invoice to pay")
+                        .font(ChirpFont.caption)
+                        .foregroundStyle(ChirpColor.textTertiary)
+                }
             }
         }
     }
 
-    // ── Technology explainer ──────────────────────────────────────────────
+    // ── Technology cards ──────────────────────────────────────────────────────
 
     private var technologyCards: some View {
         VStack(alignment: .leading, spacing: ChirpSpace.m) {
             ChirpSectionHeader(title: "Powered By")
-
             HStack(spacing: ChirpSpace.m) {
                 TechPill(label: "NWC", sublabel: "Nostr Wallet Connect", color: ChirpColor.zap)
                 TechPill(label: "NIP-57", sublabel: "Zap protocol", color: ChirpColor.accent)
@@ -167,54 +207,89 @@ struct WalletView: View {
             }
         }
     }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private func shortNpub(_ npub: String) -> String {
+        guard npub.count > 16 else { return npub }
+        return "\(npub.prefix(10))…\(npub.suffix(6))"
+    }
 }
 
-// ── Wallet feature row ─────────────────────────────────────────────────────
+// ── Connect Wallet Sheet ───────────────────────────────────────────────────────
 
-private struct WalletFeatureRow: View {
-    let icon: String
-    let iconColor: Color
-    let cx: String
-    let title: String
-    let description: String
+private struct ConnectWalletSheet: View {
+    @EnvironmentObject private var model: KernelModel
+    @Binding var isPresented: Bool
+    @State private var uri = ""
 
     var body: some View {
-        GlassCard {
-            HStack(alignment: .top, spacing: ChirpSpace.m) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(iconColor.opacity(0.14))
-                        .frame(width: 40, height: 40)
-                    Image(systemName: icon)
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(iconColor)
-                        .symbolRenderingMode(.hierarchical)
-                }
-
-                VStack(alignment: .leading, spacing: ChirpSpace.xs) {
-                    HStack(spacing: ChirpSpace.s) {
-                        Text(title)
-                            .font(ChirpFont.callout.weight(.semibold))
-                            .foregroundStyle(ChirpColor.textPrimary)
-                        Text(cx)
-                            .font(.system(.caption2, design: .rounded).weight(.bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(ChirpColor.accent, in: Capsule())
-                    }
-                    Text(description)
+        NavigationView {
+            VStack(spacing: ChirpSpace.xl) {
+                VStack(alignment: .leading, spacing: ChirpSpace.m) {
+                    Text("Paste your NWC connection string from Alby, Zeus, Mutiny, or any NIP-47 compatible wallet.")
                         .font(ChirpFont.callout)
                         .foregroundStyle(ChirpColor.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
+
+                    TextEditor(text: $uri)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(minHeight: 100)
+                        .padding(ChirpSpace.m)
+                        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .strokeBorder(Color(.separator), lineWidth: 1)
+                        )
+
+                    if uri.isEmpty {
+                        Text("nostr+walletconnect://…")
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(ChirpColor.textTertiary)
+                            .padding(.leading, ChirpSpace.m)
+                            .allowsHitTesting(false)
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button {
+                    let trimmed = uri.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else { return }
+                    model.walletConnect(uri: trimmed)
+                    isPresented = false
+                } label: {
+                    Label("Connect", systemImage: "bolt.fill")
+                        .font(ChirpFont.callout.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, ChirpSpace.m)
+                        .background(
+                            uri.hasPrefix("nostr+walletconnect://") ? ChirpColor.zap : ChirpColor.textTertiary,
+                            in: RoundedRectangle(cornerRadius: 12)
+                        )
+                }
+                .disabled(!uri.hasPrefix("nostr+walletconnect://"))
+
+                Spacer()
+            }
+            .padding(ChirpSpace.l)
+            .navigationTitle("Connect Wallet")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { isPresented = false }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Paste") {
+                        if let pasted = UIPasteboard.general.string {
+                            uri = pasted
+                        }
+                    }
+                }
             }
         }
     }
 }
 
-// ── Technology pill ────────────────────────────────────────────────────────
+// ── Technology pill ────────────────────────────────────────────────────────────
 
 private struct TechPill: View {
     let label: String

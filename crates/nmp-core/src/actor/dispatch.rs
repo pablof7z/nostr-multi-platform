@@ -13,8 +13,9 @@ use std::time::Instant;
 use crate::kernel::Kernel;
 use crate::relay::{OutboundMessage, RelayRole};
 use crate::relay_worker::RelayEvent;
+use tungstenite;
 
-use super::commands::{self, IdentityRuntime};
+use super::commands::{self, IdentityRuntime, WalletRuntime};
 use super::kernel_action::dispatch_kernel_action;
 use super::relay_mgmt::{
     close_relays, maybe_send_startup, send_all_outbound, spawn_missing_relays,
@@ -27,6 +28,7 @@ pub(super) fn dispatch_command(
     command: ActorCommand,
     kernel: &mut Kernel,
     identity: &mut IdentityRuntime,
+    wallet: &mut WalletRuntime,
     relay_controls: &mut HashMap<String, RelayControl>,
     relay_tx: &Sender<RelayEvent>,
     connected_relays: &mut HashSet<RelayRole>,
@@ -187,6 +189,21 @@ pub(super) fn dispatch_command(
             emit_now(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
+        ActorCommand::WalletConnect { uri } => {
+            let outbound = commands::wallet_connect(wallet, kernel, &uri);
+            emit_now(kernel, *running, update_tx, last_emit);
+            Some(outbound)
+        }
+        ActorCommand::WalletDisconnect => {
+            let outbound = commands::wallet_disconnect(wallet, kernel);
+            emit_now(kernel, *running, update_tx, last_emit);
+            Some(outbound)
+        }
+        ActorCommand::WalletPayInvoice { bolt11, amount_msats } => {
+            let outbound = commands::wallet_pay_invoice(wallet, kernel, &bolt11, amount_msats);
+            emit_now(kernel, *running, update_tx, last_emit);
+            Some(outbound)
+        }
         ActorCommand::Kernel(action) => {
             let update = dispatch_kernel_action(kernel, action);
             // Discrete FFI update: emit as the tagged `{"t":"update","v":…}`
@@ -246,6 +263,7 @@ pub(super) fn dispatch_command(
 pub(super) fn handle_relay_event(
     event: RelayEvent,
     kernel: &mut Kernel,
+    wallet: &mut WalletRuntime,
     relay_controls: &mut HashMap<String, RelayControl>,
     relay_tx: &Sender<RelayEvent>,
     next_relay_generation: &mut u64,
@@ -288,8 +306,24 @@ pub(super) fn handle_relay_event(
             message,
             ..
         } if running => {
+            // NWC relay intercept: peek at text frames from the wallet relay
+            // for kind:23195 responses before passing to kernel.handle_message.
+            // The kernel silently drops unknown kinds, so letting it see wallet
+            // events too is harmless; we just need to decrypt them first.
+            let wallet_text = if wallet.is_nwc_relay(&relay_url) {
+                match &message {
+                    tungstenite::Message::Text(s) => Some(s.clone()),
+                    _ => None,
+                }
+            } else {
+                None
+            };
             let mut outbound = kernel.handle_message(role, &relay_url, message);
             outbound.extend(kernel.pending_view_requests());
+            if let Some(text) = wallet_text {
+                let wallet_out = commands::handle_nwc_text(wallet, &text, kernel);
+                outbound.extend(wallet_out);
+            }
             send_all_outbound(
                 relay_controls,
                 relay_tx,

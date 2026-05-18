@@ -1,4 +1,7 @@
 import Foundation
+import os.log
+
+private let kbLog = Logger(subsystem: "com.example.Chirp", category: "KernelBridge")
 
 /// Thin C-FFI wrapper around the `nmp_core` static library. Mirrors
 /// `ios/NmpStress/NmpStress/KernelBridge.swift` (which is the established
@@ -126,20 +129,58 @@ final class KernelHandle {
         nmp_app_open_timeline(raw)
     }
 
+    // ── NIP-47 Wallet Connect ────────────────────────────────────────────────
+
+    func walletConnect(uri: String) {
+        uri.withCString { nmp_app_wallet_connect(raw, $0) }
+    }
+
+    func walletDisconnect() {
+        nmp_app_wallet_disconnect(raw)
+    }
+
+    func walletPayInvoice(bolt11: String, amountMsats: UInt64?) {
+        bolt11.withCString { bPtr in
+            if let amount = amountMsats {
+                let amountStr = String(amount)
+                amountStr.withCString { aPtr in
+                    nmp_app_wallet_pay_invoice(raw, bPtr, aPtr)
+                }
+            } else {
+                nmp_app_wallet_pay_invoice(raw, bPtr, nil)
+            }
+        }
+    }
+
     fileprivate static func decode(pointer: UnsafePointer<CChar>) -> KernelUpdate? {
         let payload = String(cString: pointer)
         let data = Data(payload.utf8)
-        // Actor wraps all frames: {"t":"snapshot","v":{...}} or {"t":"update","v":{...}}.
-        // Only snapshot frames carry the full kernel state we render.
-        guard let outer = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              (outer["t"] as? String) == "snapshot",
-              let inner = outer["v"],
-              let innerData = try? JSONSerialization.data(withJSONObject: inner) else {
+        guard let outer = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            kbLog.error("outer JSON parse failed")
+            return nil
+        }
+        guard (outer["t"] as? String) == "snapshot" else { return nil }
+        guard let inner = outer["v"] else {
+            kbLog.error("snapshot missing 'v' field")
+            return nil
+        }
+        guard let innerData = try? JSONSerialization.data(withJSONObject: inner) else {
+            kbLog.error("failed to re-serialize inner JSON")
             return nil
         }
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return try? decoder.decode(KernelUpdate.self, from: innerData)
+        do {
+            let result = try decoder.decode(KernelUpdate.self, from: innerData)
+            kbLog.info("decoded ok rev=\(result.rev) activeAccount=\(result.activeAccount ?? "nil")")
+            return result
+        } catch {
+            kbLog.error("decode error: \(error.localizedDescription)")
+            if let preview = String(data: innerData.prefix(500), encoding: .utf8) {
+                kbLog.error("JSON preview: \(preview)")
+            }
+            return nil
+        }
     }
 }
 
@@ -181,6 +222,8 @@ struct KernelUpdate: Decodable {
     let publishQueue: [PublishQueueEntry]?
     let lastErrorToast: String?
     let relayEditRows: [RelayEditRow]?
+    // NIP-47 wallet projection. Optional so older kernels still decode (D1).
+    let walletStatus: WalletStatusData?
 }
 
 struct ThreadView: Decodable, Equatable {
@@ -213,6 +256,23 @@ struct RelayEditRow: Decodable, Identifiable, Equatable {
     let url: String
     let role: String
     var id: String { url }
+}
+
+/// NIP-47 wallet connection status, projected from the kernel snapshot.
+struct WalletStatusData: Decodable, Equatable {
+    /// `"connecting"` | `"ready"` | `"error"` | `"disconnected"`
+    let status: String
+    let relayUrl: String
+    let walletNpub: String
+    let balanceMsats: UInt64?
+
+    var isReady: Bool { status == "ready" }
+    var isConnected: Bool { status == "connecting" || status == "ready" }
+
+    /// Balance in sats (rounded down from msats).
+    var balanceSats: UInt64? {
+        balanceMsats.map { $0 / 1000 }
+    }
 }
 
 struct ProfileCard: Decodable, Equatable {

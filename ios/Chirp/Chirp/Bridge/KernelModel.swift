@@ -1,5 +1,8 @@
 import Foundation
 import SwiftUI
+import os.log
+
+private let kmLog = Logger(subsystem: "com.example.Chirp", category: "KernelModel")
 
 /// `@Observable` mirror of the kernel snapshot. The Rust actor pushes JSON
 /// updates via the callback; this class decodes them and republishes for
@@ -23,6 +26,8 @@ final class KernelModel: ObservableObject {
     @Published private(set) var lastErrorToast: String?
     @Published private(set) var relayEditRows: [RelayEditRow] = []
     @Published private(set) var threadView: ThreadView?
+    // NIP-47 wallet state
+    @Published private(set) var walletStatus: WalletStatusData?
 
     var hasActiveAccount: Bool { activeAccount != nil }
 
@@ -68,18 +73,15 @@ final class KernelModel: ObservableObject {
     // above are a pure mirror of the kernel snapshot.
 
     func signInNsec(_ secret: String) {
-        // Pure pass-through. At-rest Keychain persistence is T63a's
-        // responsibility and must be keyed by the real identity_id the
-        // kernel assigns — doing it here with a placeholder id would be
-        // Swift-side identity business logic (forbidden) and would clobber
-        // one slot per sign-in. The kernel-side capability socket that
-        // routes persistence through `capabilities.keyring` is unbuilt
-        // (PD-019); persistence lands when that socket graduates.
+        kmLog.info("signInNsec dispatched (len=\(secret.count))")
         kernel.signInNsec(secret)
     }
 
     func signInBunker(_ uri: String) { kernel.signInBunker(uri) }
-    func createAccount() { kernel.createAccount() }
+    func createAccount() {
+        kmLog.info("createAccount dispatched")
+        kernel.createAccount()
+    }
     func switchActive(_ identityID: String) { kernel.switchActive(identityID: identityID) }
     func removeAccount(_ identityID: String) { kernel.removeAccount(identityID: identityID) }
     func publishNote(_ content: String, replyToID: String? = nil) {
@@ -95,8 +97,18 @@ final class KernelModel: ObservableObject {
     func openTimeline() { kernel.openTimeline() }
     func clearErrorToast() { lastErrorToast = nil }
 
+    // ── NIP-47 wallet commands ────────────────────────────────────────────────
+    func walletConnect(uri: String) { kernel.walletConnect(uri: uri) }
+    func walletDisconnect() { kernel.walletDisconnect() }
+    func walletPayInvoice(bolt11: String, amountMsats: UInt64? = nil) {
+        kernel.walletPayInvoice(bolt11: bolt11, amountMsats: amountMsats)
+    }
+
     private func apply(update: KernelUpdate) {
         guard update.rev > rev else { return }
+        if update.activeAccount != activeAccount {
+            kmLog.info("apply: activeAccount changing \(self.activeAccount ?? "nil") → \(update.activeAccount ?? "nil")")
+        }
         rev = update.rev
         isRunning = update.running
         relayUrl = update.relayUrl
@@ -112,6 +124,7 @@ final class KernelModel: ObservableObject {
         lastErrorToast = update.lastErrorToast
         if let r = update.relayEditRows { relayEditRows = r }
         threadView = update.threadView
+        walletStatus = update.walletStatus
         snapshotCount &+= 1
         lastSnapshotAt = Date()
     }

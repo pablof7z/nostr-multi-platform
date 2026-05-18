@@ -338,4 +338,6 @@ pub(super) struct KernelUpdate {
     pub(super) publish_queue: Vec<super::PublishQueueEntry>,
     pub(super) last_error_toast: Option<String>,
     pub(super) relay_edit_rows: Vec<super::RelayEditRow>,
+    // ── NIP-47 wallet projection ───────────────────────────────────────────
+    pub(super) wallet_status: Option<super::WalletStatus>,
 }

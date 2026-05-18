@@ -40,4 +40,10 @@ void nmp_app_add_relay(void *app, const char *url, const char *role);
 void nmp_app_remove_relay(void *app, const char *url);
 void nmp_app_open_timeline(void *app);
 
+// NIP-47 Nostr Wallet Connect. All fire-and-forget (D6); outcomes arrive via
+// the snapshot's `wallet_status` and `last_error_toast` fields.
+void nmp_app_wallet_connect(void *app, const char *uri);
+void nmp_app_wallet_disconnect(void *app);
+void nmp_app_wallet_pay_invoice(void *app, const char *bolt11, const char *amount_msats_or_null);
+
 #endif

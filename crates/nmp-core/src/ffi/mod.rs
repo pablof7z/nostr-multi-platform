@@ -7,6 +7,7 @@
 mod capability;
 mod identity;
 mod timeline;
+mod wallet;
 
 #[cfg(any(test, feature = "test-support"))]
 mod testing;

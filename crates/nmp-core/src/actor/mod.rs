@@ -9,7 +9,7 @@ mod kernel_action;
 mod relay_mgmt;
 mod tick;
 
-use commands::IdentityRuntime;
+use commands::{IdentityRuntime, WalletRuntime};
 use dispatch::{dispatch_command, handle_relay_event};
 
 use crate::app::KernelAction;
@@ -106,6 +106,13 @@ pub enum ActorCommand {
     ReleaseProfile { pubkey: String, consumer_id: String },
     CloseAuthor { pubkey: String },
     CloseThread { event_id: String },
+    /// NIP-47 wallet connect — parse the `nostr+walletconnect://` URI, subscribe
+    /// for kind:23195 responses, and send get_info + get_balance requests.
+    WalletConnect { uri: String },
+    /// NIP-47 wallet disconnect — close the subscription and clear state.
+    WalletDisconnect,
+    /// NIP-47 pay invoice — sign and send a `pay_invoice` kind:23194 request.
+    WalletPayInvoice { bolt11: String, amount_msats: Option<u64> },
     Stop,
     Reset,
     Shutdown,
@@ -160,6 +167,7 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let mut identity = IdentityRuntime::new();
+    let mut wallet = WalletRuntime::new();
     // T105: URL-keyed transport pool. One socket per resolved relay URL;
     // workers spawn on demand as OutboundMessages flow with new relay_urls.
     let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
@@ -231,6 +239,7 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
                     command,
                     &mut kernel,
                     &mut identity,
+                    &mut wallet,
                     &mut relay_controls,
                     &relay_tx,
                     &mut connected_relays,
@@ -279,6 +288,7 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
                 handle_relay_event(
                     event,
                     &mut kernel,
+                    &mut wallet,
                     &mut relay_controls,
                     &relay_tx,
                     &mut next_relay_generation,

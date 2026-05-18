@@ -227,9 +227,9 @@ impl Kernel {
     }
 
     pub(super) fn relay_mut(&mut self, role: RelayRole) -> &mut RelayHealth {
-        self.relays
-            .get_mut(&role)
-            .expect("relay health initialized for every role") // doctrine-allow: D6 — see `Self::relay` for the invariant rationale
+        // Content + Indexer are pre-initialized in Kernel::new(); Wallet is
+        // lazily created on first use (not a bootstrap-spawned lane).
+        self.relays.entry(role).or_default()
     }
 
     pub(super) fn total_counters(&self) -> Counters {

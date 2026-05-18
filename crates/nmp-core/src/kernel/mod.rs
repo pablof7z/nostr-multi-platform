@@ -75,7 +75,7 @@ pub(crate) fn hex_to_pubkey_bytes(hex: &str) -> Option<[u8; 32]> {
 use crate::store::{EventStore, MemEventStore};
 use crate::subs::{OneshotApi, SubscriptionLifecycle, UnknownIds};
 use auth::{AuthSignerFn, Nip42DriverState};
-pub(crate) use identity_state::{AccountSummary, PublishQueueEntry, RelayEditRow};
+pub(crate) use identity_state::{AccountSummary, PublishQueueEntry, RelayEditRow, WalletStatus};
 use types::*;
 
 /// The kernel owns all Nostr protocol state for the active app session.
@@ -185,6 +185,7 @@ pub(crate) struct Kernel {
     publish_queue: Vec<PublishQueueEntry>,
     last_error_toast: Option<String>,
     relay_edit_rows: Vec<RelayEditRow>,
+    wallet_status: Option<WalletStatus>,
     /// T117 — the publish engine drives the per-(event, relay) retry FSM
     /// (`publish/state.rs`). Mandatory on every Kernel; previously the
     /// kernel one-shotted a single EVENT frame and the engine was dead code
@@ -296,6 +297,7 @@ impl Kernel {
             publish_queue: Vec::new(),
             last_error_toast: None,
             relay_edit_rows: Vec::new(),
+            wallet_status: None,
             publish_engine,
             publish_dispatcher,
             publish_store,

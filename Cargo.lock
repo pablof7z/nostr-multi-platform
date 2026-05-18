@@ -2235,6 +2235,7 @@ dependencies = [
  "bech32",
  "chrono",
  "nmp-nip42-types",
+ "nmp-nwc",
  "nostr",
  "proptest",
  "rustls",
@@ -2343,6 +2344,15 @@ version = "0.1.0"
 dependencies = [
  "negentropy",
  "nmp-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "nmp-nwc"
+version = "0.1.0"
+dependencies = [
+ "nostr",
  "serde",
  "serde_json",
 ]

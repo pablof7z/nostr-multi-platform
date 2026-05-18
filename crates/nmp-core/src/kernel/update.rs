@@ -95,6 +95,7 @@ impl Kernel {
             publish_queue: self.publish_queue_snapshot().to_vec(),
             last_error_toast: self.last_error_toast_snapshot().cloned(),
             relay_edit_rows: self.relay_edit_rows_snapshot().to_vec(),
+            wallet_status: self.wallet_status_snapshot().cloned(),
         };
 
         let first = serde_json::to_string(&update).unwrap_or_else(|_| "{}".to_string());
