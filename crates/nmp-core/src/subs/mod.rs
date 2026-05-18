@@ -32,6 +32,7 @@ pub(crate) mod trigger;
 pub(crate) mod unknown_ids;
 pub(crate) mod wire;
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use auth_gate::AuthGate;
@@ -156,6 +157,15 @@ pub struct SubscriptionLifecycle {
     /// head while ignoring the long tail. Default:
     /// [`DEFAULT_SELECT_MAX_PER_USER`] (applesauce-pure).
     select_max_per_user: usize,
+    /// Relays considered persistently unreachable. Filtered out of the plan
+    /// BEFORE [`apply_selection`] runs, so the selector picks alternative
+    /// NIP-65 write relays for the affected authors. Populated by the actor
+    /// via [`Self::mark_relay_dead`] in response to repeated connect failures
+    /// (heuristic owned by the caller — the lifecycle just respects the set).
+    /// Cleared per-relay via [`Self::mark_relay_alive`] on a successful
+    /// re-connection. Each transition fires [`CompileTrigger::RelayHealthChanged`]
+    /// so the affected authors re-route on the next compile pass.
+    dead_relays: BTreeSet<RelayUrl>,
 }
 
 impl Default for SubscriptionLifecycle {
@@ -188,7 +198,47 @@ impl SubscriptionLifecycle {
             watermark_fn: None,
             select_max_connections: DEFAULT_SELECT_MAX_CONNECTIONS,
             select_max_per_user: DEFAULT_SELECT_MAX_PER_USER,
+            dead_relays: BTreeSet::new(),
         }
+    }
+
+    /// Mark a relay as persistently unreachable. The next recompile excludes
+    /// it from the candidate set passed to [`apply_selection`], so authors
+    /// who declared this relay route through their other NIP-65 write
+    /// relays instead. Authors whose ENTIRE write set is dead fall off the
+    /// plan (they cannot be reached) until a relay is marked alive.
+    ///
+    /// Returns true iff the relay's state changed (was alive, now dead).
+    /// On change, enqueues [`CompileTrigger::RelayHealthChanged`].
+    ///
+    /// The actor owns the heuristic for what counts as "dead" — typically
+    /// N consecutive connect failures within a window. This lifecycle just
+    /// respects the actor's decision.
+    pub fn mark_relay_dead(&mut self, url: RelayUrl) -> bool {
+        let inserted = self.dead_relays.insert(url.clone());
+        if inserted {
+            self.inbox
+                .enqueue(CompileTrigger::RelayHealthChanged { url, dead: true });
+        }
+        inserted
+    }
+
+    /// Clear a relay's dead mark. The next recompile lets the selector pick
+    /// it again. Returns true iff the relay's state changed.
+    pub fn mark_relay_alive(&mut self, url: &RelayUrl) -> bool {
+        let removed = self.dead_relays.remove(url);
+        if removed {
+            self.inbox.enqueue(CompileTrigger::RelayHealthChanged {
+                url: url.clone(),
+                dead: false,
+            });
+        }
+        removed
+    }
+
+    /// Read-only access to the dead-relay set (diagnostics).
+    pub fn dead_relays(&self) -> &BTreeSet<RelayUrl> {
+        &self.dead_relays
     }
 
     /// Install (or replace) the operator-configured app relay list (T134).
@@ -278,6 +328,21 @@ impl SubscriptionLifecycle {
         );
         let mut plan = compiler.compile(&interests)?;
         self.compile_count = self.compile_count.saturating_add(1);
+
+        // Health filter: strip relays the actor has marked dead BEFORE the
+        // selector runs. The selector's candidate set is then the alive
+        // subset, so authors with a dead-only declared write set lose any
+        // landing pad and the selector retires them into "uncovered" (they
+        // simply don't appear in any surviving sub_shape). Authors with
+        // mixed alive/dead declared write relays naturally pick the alive
+        // ones during coverage rounds.
+        //
+        // Doing this BEFORE compile would shrink the plan_id input set;
+        // doing it AFTER apply_selection would leave dead relays in the
+        // wire diff. Between the two is the right seam.
+        if !self.dead_relays.is_empty() {
+            plan.per_relay.retain(|url, _| !self.dead_relays.contains(url));
+        }
 
         // Greedy max-coverage selection — applesauce-style. The naive plan
         // connects to every NIP-65 write relay declared by every follow
@@ -725,5 +790,108 @@ mod tests {
             l.indexer_relays(),
             &["wss://sentinel-indexer.example".to_string()],
         );
+    }
+
+    // ─── dead-relay exclusion ────────────────────────────────────────────────
+
+    /// An author who declares two write relays should land on the alive one
+    /// when the other is marked dead. The dead relay must not appear in the
+    /// resulting plan; the alive one must.
+    #[test]
+    fn dead_relay_excluded_from_next_recompile() {
+        let mut l = SubscriptionLifecycle::new();
+        l.set_selection_budget(usize::MAX, usize::MAX);
+
+        let mut mailboxes = InMemoryMailboxCache::new();
+        mailboxes.put(
+            pubkey("cc01"),
+            MailboxSnapshot {
+                write_relays: vec![
+                    "wss://alive.example".to_string(),
+                    "wss://dead.example".to_string(),
+                ],
+                read_relays: vec![],
+                both_relays: vec![],
+            },
+        );
+        l.registry_mut().push(follow(1, "cc01"));
+
+        // First compile: both relays present.
+        let _ = l.recompile_and_diff(&mailboxes).expect("first compile");
+        let before = l.current_plan.as_ref().expect("plan").per_relay.clone();
+        assert!(before.contains_key("wss://alive.example"));
+        assert!(before.contains_key("wss://dead.example"));
+
+        // Mark dead.example as dead and recompile.
+        assert!(l.mark_relay_dead("wss://dead.example".to_string()));
+        let _ = l.recompile_and_diff(&mailboxes).expect("second compile");
+        let after = &l.current_plan.as_ref().expect("plan").per_relay;
+        assert!(
+            after.contains_key("wss://alive.example"),
+            "alive relay must still serve cc01"
+        );
+        assert!(
+            !after.contains_key("wss://dead.example"),
+            "dead relay must not appear in the plan"
+        );
+    }
+
+    /// An author whose ENTIRE declared write set is dead falls out of the
+    /// plan entirely (no candidate relay to route to). When a relay becomes
+    /// alive again, the next recompile routes the author back to it.
+    #[test]
+    fn fully_dead_author_returns_when_relay_alive_again() {
+        let mut l = SubscriptionLifecycle::new();
+        l.set_selection_budget(usize::MAX, usize::MAX);
+
+        let mut mailboxes = InMemoryMailboxCache::new();
+        mailboxes.put(
+            pubkey("dd01"),
+            MailboxSnapshot {
+                write_relays: vec!["wss://only.example".to_string()],
+                read_relays: vec![],
+                both_relays: vec![],
+            },
+        );
+        l.registry_mut().push(follow(1, "dd01"));
+
+        // Compile, kill, recompile.
+        let _ = l.recompile_and_diff(&mailboxes).expect("compile 1");
+        assert!(l
+            .current_plan
+            .as_ref()
+            .unwrap()
+            .per_relay
+            .contains_key("wss://only.example"));
+
+        l.mark_relay_dead("wss://only.example".to_string());
+        let _ = l.recompile_and_diff(&mailboxes).expect("compile 2");
+        assert!(
+            l.current_plan.as_ref().unwrap().per_relay.is_empty(),
+            "all relays dead → empty plan"
+        );
+
+        // Resurrect.
+        assert!(l.mark_relay_alive(&"wss://only.example".to_string()));
+        let _ = l.recompile_and_diff(&mailboxes).expect("compile 3");
+        assert!(l
+            .current_plan
+            .as_ref()
+            .unwrap()
+            .per_relay
+            .contains_key("wss://only.example"));
+    }
+
+    /// Toggling a relay's state fires the `RelayHealthChanged` trigger.
+    /// Marking an already-dead relay dead (or already-alive alive) is a no-op
+    /// and does NOT enqueue a redundant trigger.
+    #[test]
+    fn mark_dead_idempotent_and_fires_trigger_only_on_change() {
+        let mut l = SubscriptionLifecycle::new();
+        assert!(l.mark_relay_dead("wss://x.example".to_string()));
+        assert!(!l.mark_relay_dead("wss://x.example".to_string())); // already dead
+        assert!(l.mark_relay_alive(&"wss://x.example".to_string()));
+        assert!(!l.mark_relay_alive(&"wss://x.example".to_string())); // already alive
+        assert!(l.dead_relays().is_empty());
     }
 }

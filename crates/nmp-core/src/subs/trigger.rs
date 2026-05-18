@@ -105,6 +105,15 @@ pub enum CompileTrigger {
         account: AccountId,
         signer_id: SignerId,
     },
+    /// A12 — a relay was marked dead or alive in the lifecycle's
+    /// `dead_relays` set. The selector will exclude dead relays from its
+    /// candidate set on the next recompile, forcing affected authors onto
+    /// alternative NIP-65 write relays. Symmetric: re-marking a relay alive
+    /// also fires this trigger so authors can route back to it.
+    RelayHealthChanged {
+        url: RelayUrl,
+        dead: bool,
+    },
     /// A11 — active account's kind:3 contact list replaced with a fresher
     /// event. Emitted by the kind:3 ingest fan after `Inserted | Replaced`
     /// from the event store (D4). The compiler re-runs every ViewModule whose
