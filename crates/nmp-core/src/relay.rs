@@ -112,6 +112,7 @@ pub(crate) struct OutboundMessage {
 
 impl OutboundMessage {
     /// Construct an outbound frame for a resolved relay URL on the given lane.
+    #[allow(dead_code)] // T105 transition shim — used as fan-out matures.
     pub(crate) fn to_relay(role: RelayRole, relay_url: impl Into<String>, text: String) -> Self {
         Self {
             role,

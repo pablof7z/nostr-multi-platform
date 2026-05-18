@@ -27,7 +27,7 @@ pub(super) fn dispatch_command(
     command: ActorCommand,
     kernel: &mut Kernel,
     identity: &mut IdentityRuntime,
-    relay_controls: &mut HashMap<RelayRole, RelayControl>,
+    relay_controls: &mut HashMap<String, RelayControl>,
     relay_tx: &Sender<RelayEvent>,
     connected_relays: &mut HashSet<RelayRole>,
     update_tx: &Sender<String>,
@@ -230,7 +230,9 @@ pub(super) fn dispatch_command(
 pub(super) fn handle_relay_event(
     event: RelayEvent,
     kernel: &mut Kernel,
-    relay_controls: &mut HashMap<RelayRole, RelayControl>,
+    relay_controls: &mut HashMap<String, RelayControl>,
+    relay_tx: &Sender<RelayEvent>,
+    next_relay_generation: &mut u64,
     connected_relays: &mut HashSet<RelayRole>,
     update_tx: &Sender<String>,
     last_emit: &mut Instant,
@@ -246,7 +248,9 @@ pub(super) fn handle_relay_event(
                 startup_sent,
                 connected_relays,
                 relay_controls,
+                relay_tx,
                 kernel,
+                next_relay_generation,
             );
             emit_now(kernel, running, update_tx, last_emit);
         }
@@ -265,7 +269,13 @@ pub(super) fn handle_relay_event(
         RelayEvent::Message { role, message, .. } if running => {
             let mut outbound = kernel.handle_message(role, message);
             outbound.extend(kernel.pending_view_requests());
-            send_all_outbound(relay_controls, kernel, outbound);
+            send_all_outbound(
+                relay_controls,
+                relay_tx,
+                kernel,
+                next_relay_generation,
+                outbound,
+            );
         }
         RelayEvent::Message { .. } => {}
     }

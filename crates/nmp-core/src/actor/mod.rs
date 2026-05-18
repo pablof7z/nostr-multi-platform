@@ -105,8 +105,16 @@ pub(super) enum ActorMsg {
     Relay(RelayEvent),
 }
 
+/// One per-URL relay-worker handle. T105: `relay_url` (NOT `role`) is the
+/// pool key — every resolved write/read relay gets its own socket. `role`
+/// is retained so the actor can route diagnostic-bucket updates back to
+/// the kernel's lane-keyed RelayHealth rows until per-URL health lands (M11).
 pub(super) struct RelayControl {
     pub(super) generation: u64,
+    #[allow(dead_code)] // Diagnostic lane label; per-URL health is M11.
+    pub(super) role: RelayRole,
+    #[allow(dead_code)] // The URL this worker dials — the routing key in the pool.
+    pub(super) relay_url: String,
     pub(super) tx: Sender<RelayCommand>,
 }
 
@@ -118,7 +126,9 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let mut identity = IdentityRuntime::new();
-    let mut relay_controls: HashMap<RelayRole, RelayControl> = HashMap::new();
+    // T105: URL-keyed transport pool. One socket per resolved relay URL;
+    // workers spawn on demand as OutboundMessages flow with new relay_urls.
+    let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
     let mut connected_relays = HashSet::new();
     let mut next_relay_generation = 1;
     let mut running = false;
@@ -133,7 +143,13 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
                 // Flush any time-gated view requests (e.g. contacts_deadline).
                 let pending = kernel.pending_view_requests();
                 if !pending.is_empty() {
-                    send_all_outbound(&relay_controls, &mut kernel, pending);
+                    send_all_outbound(
+                        &mut relay_controls,
+                        &relay_tx,
+                        &mut kernel,
+                        &mut next_relay_generation,
+                        pending,
+                    );
                 }
                 // Only emit when state actually changed; do not emit on every
                 // idle tick (D8: zero false-wakeup allocations after warmup).
@@ -170,31 +186,42 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
                     return; // Shutdown
                 };
                 if running {
-                    send_all_outbound(&relay_controls, &mut kernel, outbound);
+                    send_all_outbound(
+                        &mut relay_controls,
+                        &relay_tx,
+                        &mut kernel,
+                        &mut next_relay_generation,
+                        outbound,
+                    );
                     if maybe_send_startup(
                         running,
                         &mut startup_sent,
                         &connected_relays,
-                        &relay_controls,
+                        &mut relay_controls,
+                        &relay_tx,
                         &mut kernel,
+                        &mut next_relay_generation,
                     ) {
                         emit_now(&mut kernel, running, &update_tx, &mut last_emit);
                     }
                 }
             }
             ActorMsg::Relay(event) => {
-                let role = event.role();
+                let relay_url = event.relay_url().to_string();
                 let generation = event.generation();
                 if relay_controls
-                    .get(&role)
+                    .get(&relay_url)
                     .is_none_or(|control| control.generation != generation)
                 {
+                    // Stale event from a disposed worker — ignore.
                     continue;
                 }
                 handle_relay_event(
                     event,
                     &mut kernel,
                     &mut relay_controls,
+                    &relay_tx,
+                    &mut next_relay_generation,
                     &mut connected_relays,
                     &update_tx,
                     &mut last_emit,

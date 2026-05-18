@@ -127,6 +127,7 @@ impl Kernel {
         requests
     }
 
+    #[allow(dead_code)] // Per-lane snapshot retained for diagnostic surface (M11).
     pub(crate) fn active_subscriptions(&self, role: RelayRole) -> Vec<String> {
         self.wire_subs
             .values()
@@ -134,6 +135,19 @@ impl Kernel {
                 sub.role == role && !matches!(sub.state.as_str(), "closed" | "closed_by_relay")
             })
             .map(|sub| sub.id.clone())
+            .collect()
+    }
+
+    /// Snapshot every active wire-sub as `(sub_id, relay_url)`. T105: the
+    /// actor's lane-by-lane close path needs the URL each sub was opened on
+    /// so the CLOSE can be routed to the right socket in the URL-keyed
+    /// transport pool (the role alone is not enough — many sockets share
+    /// one lane).
+    pub(crate) fn snapshot_active_wire_subs(&self) -> Vec<(String, String)> {
+        self.wire_subs
+            .values()
+            .filter(|sub| !matches!(sub.state.as_str(), "closed" | "closed_by_relay"))
+            .map(|sub| (sub.id.clone(), sub.relay_url.clone()))
             .collect()
     }
 
