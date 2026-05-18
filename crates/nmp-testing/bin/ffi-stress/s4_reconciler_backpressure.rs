@@ -3,16 +3,16 @@
 //! Spec: docs/design/ffi-hardening/scenarios.md §S4
 //! Gate: docs/design/ffi-hardening/gates.md §G-S4
 //!
-//! Injects 500 synthetic events to build kernel state, then simulates 12 ×
-//! 250 ms main-thread stalls during a 60-s event stream.  During each stall
-//! the callback sleeps 250 ms to simulate a blocked consumer.
+//! Injects 500 signed harness events to build kernel state, then simulates
+//! 12 × 250 ms main-thread stalls during a 60-s event stream.  During each
+//! stall the callback sleeps 250 ms to simulate a blocked consumer.
 //!
 //! Validates:
 //! 1. Actor is not blocked during stall (configure() returns immediately).
 //! 2. On stall release, emits arrive in monotonic rev order.
-//! 3. Stale-rev detection: emits produced during stall may have lower rev
-//!    than post-stall emits — counted as stale-rev pairs per stall.
-//! 4. No emit is dropped (every configure() call produces at least one emit).
+//! 3. Stale-rev detection: emits must remain monotonic; buffered emits are
+//!    counted separately as stale-rev filter candidates.
+//! 4. No emit is dropped by the listener.
 //!
 //! D1 (best-effort rendering): on stall release, emit order is monotonic.
 //! Bible #1 (monotonic rev): enforced via rev extraction in callback.

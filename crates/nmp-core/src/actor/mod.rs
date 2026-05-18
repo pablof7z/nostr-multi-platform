@@ -37,15 +37,15 @@ pub enum ActorCommand {
     Stop,
     Reset,
     Shutdown,
-    /// Ingest pre-verified timeline events through the real kernel ingest path.
+    /// Ingest pre-verified timeline events through the test-support kernel path.
     ///
     /// The caller is responsible for constructing `VerifiedEvent` values; this
-    /// command routes each through `kernel::ingest_timeline_event` under the
-    /// `"diag-firehose-stress"` sub-id, exercising the same hot path that relay
-    /// delivery uses.  No signature re-verification is performed — the
-    /// `VerifiedEvent` type is the gate (D7: capability boundary respected).
+    /// command routes each through `kernel::ingest_pre_verified_event` under the
+    /// `"diag-firehose-stress"` sub-id. It inserts through the `EventStore`, then
+    /// updates the lightweight read-cache directly. No signature re-verification
+    /// is performed — the `VerifiedEvent` type is the gate.
     ///
-    /// Test-support only (D7: not part of production FFI surface).
+    /// Test-support only (D0: not part of production FFI surface).
     #[cfg(any(test, feature = "test-support"))]
     IngestPreVerifiedEvents(Vec<crate::store::VerifiedEvent>),
 }

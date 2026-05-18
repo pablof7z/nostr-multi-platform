@@ -275,7 +275,7 @@ pub extern "C" fn nmp_app_close_thread(app: *mut NmpApp, event_id: *const c_char
 }
 
 /// Inject `count` pre-verified kind-1 events into the kernel timeline via
-/// the real `ingest_timeline_event` path.
+/// the test-support `ingest_pre_verified_event` path.
 ///
 /// Events are constructed with deterministic IDs/pubkeys using
 /// `VerifiedEvent::from_raw_unchecked` (test-support fast path; bypasses
