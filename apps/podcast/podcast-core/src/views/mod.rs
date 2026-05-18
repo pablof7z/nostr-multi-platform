@@ -16,6 +16,10 @@ pub struct PodcastRowPayload {
     pub author: String,
     pub artwork_url: Option<String>,
     pub episode_count: u32,
+    /// The RSS/Atom feed URL for this podcast — exposed so the host platform
+    /// can re-fetch bytes for pull-to-refresh without maintaining a separate
+    /// URL index on the Kotlin/Swift side.
+    pub feed_url: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]

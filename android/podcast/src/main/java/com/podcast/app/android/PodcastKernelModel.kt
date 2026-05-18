@@ -74,6 +74,10 @@ class PodcastKernelModel : ViewModel() {
     private val _toastEvent = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val toastEvent: SharedFlow<String> = _toastEvent.asSharedFlow()
 
+    /** True while a pull-to-refresh re-fetch is in progress for the selected podcast. */
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
     private var started = false
 
     fun start() {
@@ -197,6 +201,54 @@ class PodcastKernelModel : ViewModel() {
             val view = if (raw != null) decodeFeedView(raw) else PodcastFeedView()
             withContext(Dispatchers.Main) {
                 _episodes.value = view ?: PodcastFeedView()
+            }
+        }
+    }
+
+    /**
+     * Pull-to-refresh: re-fetch feed bytes for [podcastId] using [feedUrl] and
+     * re-ingest into Rust state (T-podcast-android-6).
+     *
+     * Flow:
+     *   1. Set [isRefreshing] = true so the UI shows a spinner (D6 — never silent).
+     *   2. Fetch bytes via [FeedFetcher.fetchAndIngest].
+     *   3. Refresh [library] snapshot (episode count may change) + [episodes] list.
+     *   4. On failure, emit a [toastEvent] (D6 — visible error, not a no-op).
+     *   5. Always clear [isRefreshing] in a finally block so the spinner never hangs.
+     *
+     * [feedUrl] comes from [PodcastRowPayload.feedUrl] — projected by Rust so the
+     * host never needs a separate URL index (D5 — zero Kotlin business logic).
+     */
+    fun onRefreshPodcast(podcastId: String, feedUrl: String) {
+        if (feedUrl.isBlank()) {
+            Log.w(TAG, "onRefreshPodcast: feedUrl is blank for podcastId=$podcastId — skipping")
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            withContext(Dispatchers.Main) { _isRefreshing.value = true }
+            try {
+                Log.i(TAG, "onRefreshPodcast: re-fetching $feedUrl for podcast $podcastId")
+                val fetchResult = fetcher.fetchAndIngest(bridge, feedUrl)
+                when (fetchResult) {
+                    is FeedFetcher.FetchResult.Success -> {
+                        Log.i(TAG, "onRefreshPodcast: OK — ${fetchResult.episodeCount} episodes")
+                        val snapAfterIngest = bridge.snapshot()
+                        val updatedLibrary = snapAfterIngest?.let { decodePodcastSnapshot(it) }
+                        val updatedEpisodes = bridge.episodes(podcastId)?.let { decodeFeedView(it) }
+                        withContext(Dispatchers.Main) {
+                            if (updatedLibrary != null) _library.value = updatedLibrary
+                            if (updatedEpisodes != null) _episodes.value = updatedEpisodes
+                        }
+                    }
+                    is FeedFetcher.FetchResult.Failure -> {
+                        Log.w(TAG, "onRefreshPodcast failed: ${fetchResult.reason}")
+                        withContext(Dispatchers.Main) {
+                            _toastEvent.tryEmit("Refresh failed: ${fetchResult.reason}")
+                        }
+                    }
+                }
+            } finally {
+                withContext(Dispatchers.Main) { _isRefreshing.value = false }
             }
         }
     }

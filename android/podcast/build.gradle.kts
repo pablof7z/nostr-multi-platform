@@ -29,8 +29,8 @@ android {
         applicationId = "com.podcast.app.android"
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
-        versionName = "0.3.0-T-podcast-android-5"
+        versionCode = 5
+        versionName = "0.3.0-T-podcast-android-6"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
 
@@ -75,7 +75,9 @@ android {
 }
 
 dependencies {
-    implementation(platform("androidx.compose:compose-bom:2024.06.00"))
+    // T-podcast-android-6: bumped from 2024.06.00 to 2024.12.01 to get
+    // Material3 1.3.1 (PullToRefreshBox stable API).
+    implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.foundation:foundation")

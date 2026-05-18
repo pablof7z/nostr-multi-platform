@@ -21,6 +21,9 @@ data class PodcastRowPayload(
     val author: String = "",
     val artworkUrl: String? = null,
     val episodeCount: Long = 0,
+    /** RSS/Atom feed URL — used by pull-to-refresh to re-fetch bytes without
+     *  a separate URL index on the Kotlin side. Empty on older snapshots (D1). */
+    val feedUrl: String = "",
 )
 
 /**

@@ -16,6 +16,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -41,13 +42,17 @@ import com.podcast.app.android.model.EpisodeRowPayload
  * T-podcast-android-5: episode rows are now tappable. Tapping navigates to
  * [EpisodeDetailScreen] for that episode via [onEpisodeSelected].
  *
- * Empty state: renders an honest "No episodes yet" message if the episode
- * list is empty. This is correct behaviour while T-podcast-gap-3 (host HTTP
- * fetch capability) is open; episodes populate once the host fetches + ingests.
+ * T-podcast-android-6: pull-to-refresh wired. Dragging down re-fetches the
+ * feed bytes via [FeedFetcher] (same OkHttp path as subscribe) and re-ingests
+ * into Rust state. [isRefreshing] drives the spinner — no fake delay, real
+ * fetch. A 404 or parse error surfaces as a toast (D6 — never silent).
+ *
+ * Feed URL for the re-fetch comes from [PodcastRowPayload.feedUrl] — projected
+ * by Rust in T-podcast-android-6 so the host never maintains a separate index.
  *
  * Doctrine compliance:
  *   - D5: no business logic — all state lives in Rust.
- *   - D6: empty / missing episode list renders honest empty state, not a crash.
+ *   - D6: empty state, refresh spinner, and error toasts are all honest.
  *   - D8: verbatim mirror of the Rust-emitted FeedView snapshot.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,12 +71,12 @@ fun EpisodeListScreen(
 
     val feedView by model.episodes.collectAsStateWithLifecycle()
     val library by model.library.collectAsStateWithLifecycle()
+    val isRefreshing by model.isRefreshing.collectAsStateWithLifecycle()
 
-    // Resolve the podcast title from the library for the top bar.
-    val podcastTitle = library.podcasts
-        .firstOrNull { it.id == podcastId }
-        ?.title
-        ?: "Episodes"
+    // Resolve the podcast row — needed for title + feed_url (for refresh).
+    val podcastRow = library.podcasts.firstOrNull { it.id == podcastId }
+    val podcastTitle = podcastRow?.title ?: "Episodes"
+    val feedUrl = podcastRow?.feedUrl ?: ""
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -95,29 +100,36 @@ fun EpisodeListScreen(
             )
         },
     ) { inner ->
-        if (feedView.episodes.isEmpty()) {
-            EpisodeEmptyState(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(inner)
-                    .padding(24.dp),
-            )
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(inner),
-            ) {
-                items(feedView.episodes, key = { it.id }) { episode ->
-                    EpisodeRow(
-                        episode = episode,
-                        onClick = { onEpisodeSelected(episode) },
-                    )
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        thickness = 0.5.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant,
-                    )
+        // PullToRefreshBox (Material3 1.3.0+): isRefreshing controls the indicator;
+        // onRefresh is called when the user completes the pull gesture (D6 — real
+        // network fetch, never a spinner with fake delay).
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = { model.onRefreshPodcast(podcastId, feedUrl) },
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(inner),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            if (feedView.episodes.isEmpty()) {
+                EpisodeEmptyState(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                )
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(feedView.episodes, key = { it.id }) { episode ->
+                        EpisodeRow(
+                            episode = episode,
+                            onClick = { onEpisodeSelected(episode) },
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            thickness = 0.5.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                        )
+                    }
                 }
             }
         }

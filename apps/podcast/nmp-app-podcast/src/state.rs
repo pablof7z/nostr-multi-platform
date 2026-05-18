@@ -226,6 +226,7 @@ impl PodcastApp {
                     author: record.author,
                     artwork_url: record.artwork_url.map(|u| u.to_string()),
                     episode_count,
+                    feed_url: record.feed_url.to_string(),
                 }
             })
             .collect();
@@ -399,6 +400,23 @@ mod tests {
     fn empty_snapshot_yields_empty_library() {
         let app = PodcastApp::new();
         assert!(app.snapshot().podcasts.is_empty());
+    }
+
+    /// T-podcast-android-6: feed_url must roundtrip through the snapshot so
+    /// the Android host can re-fetch bytes for pull-to-refresh without
+    /// maintaining a separate URL index on the Kotlin side.
+    #[test]
+    fn snapshot_includes_feed_url_for_pull_to_refresh() {
+        let app = PodcastApp::new();
+        let feed = url("https://feeds.example.com/refresh-test.xml");
+        app.subscribe(feed.clone(), Some("Refresh Test".into()), None);
+        let view = app.snapshot();
+        assert_eq!(view.podcasts.len(), 1);
+        assert_eq!(
+            view.podcasts[0].feed_url,
+            "https://feeds.example.com/refresh-test.xml",
+            "feed_url must roundtrip through the snapshot"
+        );
     }
 
     #[test]

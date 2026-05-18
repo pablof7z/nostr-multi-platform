@@ -159,6 +159,7 @@ impl LibraryViewModule {
                 author: r.author.clone(),
                 artwork_url: r.artwork_url.as_ref().map(|u| u.to_string()),
                 episode_count: 0, // Episode count updated by EpisodesModule projection changes.
+                feed_url: r.feed_url.to_string(),
             })
             .collect();
         LibraryView { podcasts }
