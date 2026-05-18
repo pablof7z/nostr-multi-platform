@@ -68,11 +68,22 @@ impl Kernel {
     /// transitioning to `Authenticating` and emitting the
     /// `["AUTH", <signed_event>]` wire frame for outbound.
     ///
+    /// `delivering_relay_url` is the URL of the socket the AUTH challenge
+    /// arrived on (threaded from `handle_message`/`handle_text`). Per NIP-42
+    /// the kind:22242 event's `["relay", <url>]` tag MUST be the URL of the
+    /// relay that issued the challenge — this is the replay-protection
+    /// binding. The outbound frame's `relay_url` field also targets this URL
+    /// so the URL-keyed transport pool (T105 / `fada22b`) routes the AUTH
+    /// response back to the same socket. **T125**: pre-fix both stamped
+    /// `role.url()` (the lane's bootstrap host), which is wrong for any
+    /// relay other than the bootstrap.
+    ///
     /// Per D8: this method never sets `changed_since_emit = true`. AUTH-state
     /// transitions are diagnostic; only data-event ingestion bumps view rev.
     pub(super) fn handle_auth_challenge(
         &mut self,
         role: RelayRole,
+        delivering_relay_url: &str,
         array: &[Value],
     ) -> Vec<OutboundMessage> {
         use super::super::auth::{build_auth_event, parse_auth_challenge};
@@ -113,7 +124,15 @@ impl Kernel {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
-        let unsigned = build_auth_event(active_pubkey, role.url(), &challenge, created_at);
+        // T125: stamp the delivering relay's URL on the kind:22242 `relay` tag,
+        // not the lane's bootstrap URL. NIP-42 binds the AUTH event to the URL
+        // of the relay that issued the challenge (replay protection).
+        let unsigned = build_auth_event(
+            active_pubkey,
+            delivering_relay_url,
+            &challenge,
+            created_at,
+        );
         match signer(&unsigned) {
             Ok(signed) => {
                 // Structural-validation guard against buggy/malicious signers
@@ -158,10 +177,18 @@ impl Kernel {
                     }
                 ])
                 .to_string();
-                self.log(format!("AUTH dispatched to {} ({event_id})", role.key()));
+                self.log(format!(
+                    "AUTH dispatched to {} via {} ({event_id})",
+                    role.key(),
+                    delivering_relay_url
+                ));
+                // T125: route the AUTH response to the delivering socket. The
+                // URL-keyed transport pool (T105 / fada22b) dispatches by
+                // `relay_url`; pre-T125 this stamped `role.url()` (bootstrap),
+                // which mis-routed the response on any non-bootstrap relay.
                 vec![OutboundMessage {
                     role,
-                    relay_url: role.url().to_string(),
+                    relay_url: delivering_relay_url.to_string(),
                     text: wire,
                 }]
             }

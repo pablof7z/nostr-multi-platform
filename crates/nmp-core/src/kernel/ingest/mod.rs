@@ -199,7 +199,16 @@ impl Kernel {
                 // RelayAuthState into the lifecycle's AuthGate so future REQs
                 // to this relay are buffered until `Authenticated`. AUTH-state
                 // transitions never set `changed_since_emit` — D8 invariant.
-                outbound.extend(self.handle_auth_challenge(role, array));
+                //
+                // T125: thread the DELIVERING relay's URL (not `role.url()`) so
+                // the signed kind:22242 event's `["relay", ...]` tag — and the
+                // outbound frame's `relay_url` routing key — both reference the
+                // socket that issued the challenge. Pre-T125 both fields stamped
+                // `role.bootstrap_url()`, which violated NIP-42 (replay-protection
+                // semantics tie the AUTH response to the URL that sent the
+                // challenge) and mis-routed the response on the URL-keyed
+                // transport pool (`fada22b`).
+                outbound.extend(self.handle_auth_challenge(role, relay_url, array));
             }
             _ => self.log(format!("relay frame {kind}")),
         }
