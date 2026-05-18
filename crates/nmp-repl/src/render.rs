@@ -20,7 +20,7 @@ use serde_json::json;
 
 use crate::fanout::{ContentReq, RelayEvent, RelayStats};
 use crate::session::Session;
-use crate::ws::truncate;
+use crate::ws::{summarize_filter, truncate};
 
 /// Per-relay author count for the row label — sum across the relay's
 /// content REQs (the lifecycle may assign more than one sub-shape).
@@ -34,6 +34,10 @@ enum RowState {
     ReqSent,
     Receiving,
     Eose { elapsed: Duration },
+    /// Relay closed THIS sub — verbatim reason (e.g. rate limit). Terminal.
+    Closed { msg: String },
+    /// Relay demanded NIP-42 AUTH; read-only REPL won't respond. Terminal.
+    Auth,
     Error { msg: String },
     Timeout,
 }
@@ -41,8 +45,14 @@ enum RowState {
 #[derive(Clone, Debug)]
 struct Row {
     relay: String,
+    /// Wire sub_id — the row key. One row per REQ.
+    sub_id: String,
+    /// Compact filter summary, e.g. `kind:1 (83 authors)`.
+    summary: String,
     authors: usize,
     state: RowState,
+    /// Last NOTICE seen on this sub's socket (non-terminal, shown inline).
+    notice: Option<String>,
     events: u64,
     new: u64,
     elapsed: Option<Duration>,
@@ -80,8 +90,14 @@ fn drive_table(
     per_relay: &BTreeMap<String, Vec<ContentReq>>,
     wall_deadline: Instant,
 ) -> FanoutSummary {
-    // ── Build the row table. Sort by author count desc. ─────────────────
-    let mut rows_by_relay: HashMap<String, usize> = HashMap::new();
+    // ── Build the row table. One row PER REQ, keyed by `(relay, sub_id)`
+    // — NOT sub_id alone: two relays carrying the same filter hash get the
+    // same sub_id string (the lifecycle keys `known_subs` by
+    // `(relay_url, sub_id)` for exactly this reason), and a sub_id-only key
+    // would route both relays' events to one row and strand the other in
+    // `Connecting`. Relays sorted by total author count desc; within a
+    // relay, by sub_id. ─────────────────────────────────────────────────
+    let mut rows_by_sub: HashMap<(String, String), usize> = HashMap::new();
     let mut rows: Vec<Row> = Vec::new();
     let mut pairs: Vec<(&String, &Vec<ContentReq>)> = per_relay.iter().collect();
     pairs.sort_by(|a, b| {
@@ -90,15 +106,22 @@ fn drive_table(
             .then_with(|| a.0.cmp(b.0))
     });
     for (relay, reqs) in &pairs {
-        rows_by_relay.insert((*relay).clone(), rows.len());
-        rows.push(Row {
-            relay: (*relay).clone(),
-            authors: relay_author_count(reqs),
-            state: RowState::Connecting,
-            events: 0,
-            new: 0,
-            elapsed: None,
-        });
+        let mut sorted: Vec<&ContentReq> = reqs.iter().collect();
+        sorted.sort_by(|a, b| a.sub_id.cmp(&b.sub_id));
+        for req in sorted {
+            rows_by_sub.insert(((*relay).clone(), req.sub_id.clone()), rows.len());
+            rows.push(Row {
+                relay: (*relay).clone(),
+                sub_id: req.sub_id.clone(),
+                summary: summarize_filter(&req.filter_json),
+                authors: req.authors,
+                state: RowState::Connecting,
+                notice: None,
+                events: 0,
+                new: 0,
+                elapsed: None,
+            });
+        }
     }
 
     let mut stdout = stdout();
@@ -145,7 +168,7 @@ fn drive_table(
             Ok(ev) => apply_event(
                 ev,
                 &mut rows,
-                &rows_by_relay,
+                &rows_by_sub,
                 &mut deliveries,
                 &mut unique,
                 &mut new_events,
@@ -171,9 +194,15 @@ fn drive_table(
     } else {
         unique.len() as f64 / deliveries as f64
     };
+    let distinct_relays = rows
+        .iter()
+        .map(|r| r.relay.as_str())
+        .collect::<HashSet<_>>()
+        .len();
     let _ = writeln!(
         stdout,
-        "  fanout: {} relays, {} deliveries, {} new (dedup {:.2}), wall {:?}",
+        "  fanout: {} relays, {} REQs, {} deliveries, {} new (dedup {:.2}), wall {:?}",
+        distinct_relays,
         rows.len(),
         deliveries,
         new_events,
@@ -187,7 +216,7 @@ fn drive_table(
         unique_events: unique.len() as u64,
         new_events,
         wall,
-        relays: rows.len(),
+        relays: distinct_relays,
         per_relay: per_relay_stats,
     }
 }
@@ -218,16 +247,22 @@ fn drive_json(
         match rx.recv_timeout(timeout) {
             Ok(ev) => {
                 let line = match &ev {
-                    RelayEvent::Connecting { relay } => json!({
+                    RelayEvent::Connecting { relay, sub_id } => json!({
                         "relay": relay,
+                        "sub_id": sub_id,
                         "state": "connecting",
                         "authors": authors_by_relay.get(relay).copied().unwrap_or(0),
                     }),
-                    RelayEvent::ReqSent { relay } => json!({
+                    RelayEvent::ReqSent { relay, sub_id } => json!({
                         "relay": relay,
+                        "sub_id": sub_id,
                         "state": "req_sent",
                     }),
-                    RelayEvent::Frame { relay, event_id } => {
+                    RelayEvent::Frame {
+                        relay,
+                        sub_id,
+                        event_id,
+                    } => {
                         deliveries += 1;
                         let is_new = session.seen_ids.insert(event_id.clone());
                         if is_new {
@@ -238,29 +273,65 @@ fn drive_json(
                         stats.events += 1;
                         json!({
                             "relay": relay,
+                            "sub_id": sub_id,
                             "state": "event",
                             "event_id": event_id,
                             "new": is_new,
                         })
                     }
-                    RelayEvent::Eose { relay, elapsed } => {
+                    RelayEvent::Eose {
+                        relay,
+                        sub_id,
+                        elapsed,
+                    } => {
                         let stats = per_relay_stats.entry(relay.clone()).or_default();
                         stats.eose = true;
                         stats.elapsed = Some(*elapsed);
                         json!({
                             "relay": relay,
+                            "sub_id": sub_id,
                             "state": "eose",
                             "elapsed_ms": elapsed.as_millis() as u64,
                         })
                     }
-                    RelayEvent::Error { relay, msg } => json!({
+                    RelayEvent::Closed { relay, sub_id, msg } => {
+                        let stats = per_relay_stats.entry(relay.clone()).or_default();
+                        stats.error = Some(format!("CLOSED: {msg}"));
+                        json!({
+                            "relay": relay,
+                            "sub_id": sub_id,
+                            "state": "closed",
+                            "msg": msg,
+                        })
+                    }
+                    RelayEvent::Auth { relay, sub_id } => {
+                        let stats = per_relay_stats.entry(relay.clone()).or_default();
+                        stats.error = Some("AUTH required".to_string());
+                        json!({
+                            "relay": relay,
+                            "sub_id": sub_id,
+                            "state": "auth_required",
+                        })
+                    }
+                    RelayEvent::Notice { relay, sub_id, msg } => json!({
                         "relay": relay,
+                        "sub_id": sub_id,
+                        "state": "notice",
+                        "msg": msg,
+                    }),
+                    RelayEvent::Error { relay, sub_id, msg } => json!({
+                        "relay": relay,
+                        "sub_id": sub_id,
                         "state": "error",
                         "msg": msg,
                     }),
-                    RelayEvent::Done { relay, stats } => {
+                    RelayEvent::Done {
+                        relay,
+                        sub_id,
+                        stats,
+                    } => {
                         let entry = per_relay_stats.entry(relay.clone()).or_default();
-                        entry.authors_in_req = stats.authors_in_req;
+                        entry.authors_in_req = entry.authors_in_req.max(stats.authors_in_req);
                         entry.connected |= stats.connected;
                         entry.eose |= stats.eose;
                         entry.elapsed = entry.elapsed.or(stats.elapsed);
@@ -269,6 +340,7 @@ fn drive_json(
                         }
                         json!({
                             "relay": relay,
+                            "sub_id": sub_id,
                             "state": "done",
                             "events": stats.events,
                             "elapsed_ms": stats.elapsed.map(|d| d.as_millis() as u64),
@@ -307,11 +379,25 @@ fn drive_json(
     }
 }
 
+/// True if `state` is a terminal state that must NOT be downgraded by a
+/// later non-terminal event (e.g. a `Done` arriving after `Eose`, or a
+/// trailing NOTICE).
+fn is_terminal(state: &RowState) -> bool {
+    matches!(
+        state,
+        RowState::Eose { .. }
+            | RowState::Closed { .. }
+            | RowState::Auth
+            | RowState::Error { .. }
+            | RowState::Timeout
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 fn apply_event(
     ev: RelayEvent,
     rows: &mut [Row],
-    rows_by_relay: &HashMap<String, usize>,
+    rows_by_sub: &HashMap<(String, String), usize>,
     deliveries: &mut u64,
     unique: &mut HashSet<String>,
     new_events: &mut u64,
@@ -323,27 +409,35 @@ fn apply_event(
         set.insert(idx);
     };
     match ev {
-        RelayEvent::Connecting { relay } => {
-            if let Some(&idx) = rows_by_relay.get(&relay) {
+        RelayEvent::Connecting { relay, sub_id } => {
+            if let Some(&idx) = rows_by_sub.get(&(relay, sub_id)) {
                 rows[idx].state = RowState::Connecting;
                 bump_dirty(idx, needs_repaint);
             }
         }
-        RelayEvent::ReqSent { relay } => {
-            if let Some(&idx) = rows_by_relay.get(&relay) {
-                rows[idx].state = RowState::ReqSent;
-                bump_dirty(idx, needs_repaint);
+        RelayEvent::ReqSent { relay, sub_id } => {
+            if let Some(&idx) = rows_by_sub.get(&(relay, sub_id)) {
+                if !is_terminal(&rows[idx].state) {
+                    rows[idx].state = RowState::ReqSent;
+                    bump_dirty(idx, needs_repaint);
+                }
             }
         }
-        RelayEvent::Frame { relay, event_id } => {
+        RelayEvent::Frame {
+            relay,
+            sub_id,
+            event_id,
+        } => {
             *deliveries += 1;
             let is_new = seen_ids.insert(event_id.clone());
             if is_new {
                 *new_events += 1;
             }
             unique.insert(event_id);
-            if let Some(&idx) = rows_by_relay.get(&relay) {
-                rows[idx].state = RowState::Receiving;
+            if let Some(&idx) = rows_by_sub.get(&(relay.clone(), sub_id)) {
+                if !is_terminal(&rows[idx].state) {
+                    rows[idx].state = RowState::Receiving;
+                }
                 rows[idx].events += 1;
                 if is_new {
                     rows[idx].new += 1;
@@ -353,8 +447,12 @@ fn apply_event(
             let stats = per_relay_stats.entry(relay).or_default();
             stats.events += 1;
         }
-        RelayEvent::Eose { relay, elapsed } => {
-            if let Some(&idx) = rows_by_relay.get(&relay) {
+        RelayEvent::Eose {
+            relay,
+            sub_id,
+            elapsed,
+        } => {
+            if let Some(&idx) = rows_by_sub.get(&(relay.clone(), sub_id)) {
                 rows[idx].state = RowState::Eose { elapsed };
                 rows[idx].elapsed = Some(elapsed);
                 bump_dirty(idx, needs_repaint);
@@ -363,10 +461,36 @@ fn apply_event(
             stats.eose = true;
             stats.elapsed = Some(elapsed);
         }
-        RelayEvent::Error { relay, msg } => {
-            if let Some(&idx) = rows_by_relay.get(&relay) {
-                // Don't downgrade a terminal EOSE row to Error from a NOTICE.
+        RelayEvent::Closed { relay, sub_id, msg } => {
+            if let Some(&idx) = rows_by_sub.get(&(relay.clone(), sub_id)) {
                 if !matches!(rows[idx].state, RowState::Eose { .. }) {
+                    rows[idx].state = RowState::Closed { msg: msg.clone() };
+                    bump_dirty(idx, needs_repaint);
+                }
+            }
+            let stats = per_relay_stats.entry(relay).or_default();
+            stats.error = Some(format!("CLOSED: {msg}"));
+        }
+        RelayEvent::Auth { relay, sub_id } => {
+            if let Some(&idx) = rows_by_sub.get(&(relay.clone(), sub_id)) {
+                if !matches!(rows[idx].state, RowState::Eose { .. }) {
+                    rows[idx].state = RowState::Auth;
+                    bump_dirty(idx, needs_repaint);
+                }
+            }
+            let stats = per_relay_stats.entry(relay).or_default();
+            stats.error = Some("AUTH required".to_string());
+        }
+        RelayEvent::Notice { relay, sub_id, msg } => {
+            // Non-terminal: annotate the row, don't change its state.
+            if let Some(&idx) = rows_by_sub.get(&(relay, sub_id)) {
+                rows[idx].notice = Some(msg);
+                bump_dirty(idx, needs_repaint);
+            }
+        }
+        RelayEvent::Error { relay, sub_id, msg } => {
+            if let Some(&idx) = rows_by_sub.get(&(relay.clone(), sub_id)) {
+                if !is_terminal(&rows[idx].state) {
                     rows[idx].state = RowState::Error { msg: msg.clone() };
                     bump_dirty(idx, needs_repaint);
                 }
@@ -374,23 +498,33 @@ fn apply_event(
             let stats = per_relay_stats.entry(relay).or_default();
             stats.error = Some(msg);
         }
-        RelayEvent::Done { relay, stats } => {
-            if let Some(&idx) = rows_by_relay.get(&relay) {
+        RelayEvent::Done {
+            relay,
+            sub_id,
+            stats,
+        } => {
+            if let Some(&idx) = rows_by_sub.get(&(relay.clone(), sub_id)) {
                 rows[idx].elapsed = stats.elapsed;
-                // If we haven't seen EOSE, mark error or timeout.
-                if !stats.connected {
-                    rows[idx].state = RowState::Error {
-                        msg: stats.error.clone().unwrap_or_else(|| "connect refused".to_string()),
-                    };
-                } else if !stats.eose && stats.error.is_some() {
-                    rows[idx].state = RowState::Error {
-                        msg: stats.error.clone().unwrap_or_default(),
-                    };
+                // Only fill in a terminal state if the row never reached one
+                // (no EOSE/CLOSED/AUTH/explicit error arrived live).
+                if !is_terminal(&rows[idx].state) {
+                    if !stats.connected {
+                        rows[idx].state = RowState::Error {
+                            msg: stats
+                                .error
+                                .clone()
+                                .unwrap_or_else(|| "connect refused".to_string()),
+                        };
+                    } else if stats.error.is_some() {
+                        rows[idx].state = RowState::Error {
+                            msg: stats.error.clone().unwrap_or_default(),
+                        };
+                    }
                 }
                 bump_dirty(idx, needs_repaint);
             }
             let entry = per_relay_stats.entry(relay).or_default();
-            entry.authors_in_req = stats.authors_in_req;
+            entry.authors_in_req = entry.authors_in_req.max(stats.authors_in_req);
             entry.connected |= stats.connected;
             entry.eose |= stats.eose;
             entry.elapsed = entry.elapsed.or(stats.elapsed);
@@ -455,7 +589,7 @@ fn format_row_with_color(row: &Row, verbose: bool) -> (Option<Color>, String) {
     let url = if verbose {
         row.relay.clone()
     } else {
-        truncate(&row.relay, 48)
+        truncate(&row.relay, 44)
     };
     let (glyph, color, tail) = match &row.state {
         RowState::Connecting => (" ", None, "[connecting…]".to_string()),
@@ -469,20 +603,37 @@ fn format_row_with_color(row: &Row, verbose: bool) -> (Option<Color>, String) {
             ">",
             Some(Color::Green),
             format!(
-                "{} events  {} new in {}ms",
+                "EOSE  {} events  {} new in {}ms",
                 row.events,
                 row.new,
                 elapsed.as_millis()
             ),
         ),
-        RowState::Error { msg } => ("x", Some(Color::Red), truncate(msg, 60)),
+        RowState::Closed { msg } => (
+            "x",
+            Some(Color::Red),
+            format!("CLOSED: {}", truncate(msg, 56)),
+        ),
+        RowState::Auth => (
+            "x",
+            Some(Color::Red),
+            "AUTH required (read-only — not authing)".to_string(),
+        ),
+        RowState::Error { msg } => ("x", Some(Color::Red), truncate(msg, 56)),
         RowState::Timeout => ("x", Some(Color::Yellow), "[wall timeout]".to_string()),
     };
-    let line = format!(
-        "{glyph} REQ {url:<48} {authors:>4} authors  {tail}",
+    // The summary already carries the author count, e.g. `kind:1 (83
+    // authors)`. Show sub_id so each REQ row is individually identifiable.
+    let head = format!("{} {}", row.summary, row.sub_id);
+    let mut line = format!(
+        "{glyph} REQ {url:<44} {head:<30} {tail}",
         url = url,
-        authors = row.authors
+        head = truncate(&head, 30),
     );
+    if let Some(n) = &row.notice {
+        line.push_str(&format!("  • NOTICE: {}", truncate(n, 40)));
+    }
+    let _ = row.authors; // count is rendered via `summary`.
     (color, line)
 }
 

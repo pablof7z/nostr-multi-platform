@@ -27,7 +27,7 @@ use serde_json::{json, Value};
 use tungstenite::Message;
 
 use crate::discovery::parse_kind10002;
-use crate::ws::{next_text, try_connect};
+use crate::ws::{next_frame, summarize_filter, try_connect_msg, Frame};
 use nmp_core::planner::MailboxSnapshot;
 
 const FANOUT_MAX_WORKERS: usize = 64;
@@ -47,15 +47,51 @@ pub struct RelayStats {
     pub elapsed: Option<Duration>,
 }
 
-/// Events emitted from a worker to the main thread.
+/// Events emitted from a worker to the main thread. Every variant carries
+/// the wire `sub_id` so the renderer can show ONE row per REQ — the
+/// lifecycle keys live subs by `(relay_url, sub_id)` and a relay may carry
+/// more than one sub shape, so a relay-only key would hide REQs.
 #[derive(Debug)]
 pub enum RelayEvent {
-    Connecting { relay: String },
-    ReqSent { relay: String },
-    Frame { relay: String, event_id: String },
-    Eose { relay: String, elapsed: Duration },
-    Error { relay: String, msg: String },
-    Done { relay: String, stats: RelayStats },
+    Connecting { relay: String, sub_id: String },
+    ReqSent { relay: String, sub_id: String },
+    Frame {
+        relay: String,
+        sub_id: String,
+        event_id: String,
+    },
+    Eose {
+        relay: String,
+        sub_id: String,
+        elapsed: Duration,
+    },
+    /// Relay closed THIS sub (`CLOSED`) — terminal for the row. `msg` is the
+    /// verbatim relay reason (e.g. `auth-required: rate limit exceeded`).
+    Closed {
+        relay: String,
+        sub_id: String,
+        msg: String,
+    },
+    /// Relay demanded NIP-42 AUTH. Read-only REPL: not authing. Terminal for
+    /// every in-flight sub on this socket.
+    Auth { relay: String, sub_id: String },
+    /// Relay NOTICE. Non-terminal — surfaced but the row keeps streaming.
+    Notice {
+        relay: String,
+        sub_id: String,
+        msg: String,
+    },
+    /// Connect/IO failure or relay-initiated socket close — terminal.
+    Error {
+        relay: String,
+        sub_id: String,
+        msg: String,
+    },
+    Done {
+        relay: String,
+        sub_id: String,
+        stats: RelayStats,
+    },
 }
 
 /// One content REQ as produced by the lifecycle: the relay it targets, the
@@ -84,49 +120,107 @@ pub fn run_discovery(probes: &[(String, String, String)]) -> Vec<(String, Mailbo
             .push((sub_id.clone(), filter.clone()));
     }
 
+    let n_subs: usize = by_relay.values().map(|v| v.len()).sum();
+    println!(
+        "  discovery: {} implicit kind:10002 probe REQ{} across {} indexer{}",
+        n_subs,
+        if n_subs == 1 { "" } else { "s" },
+        by_relay.len(),
+        if by_relay.len() == 1 { "" } else { "s" }
+    );
+
     let mut out: BTreeMap<String, MailboxSnapshot> = BTreeMap::new();
     for (relay, subs) in by_relay {
-        let mut socket = match try_connect(&relay) {
-            Some(s) => s,
-            None => continue,
+        println!("  connecting {relay} …");
+        let mut socket = match try_connect_msg(&relay) {
+            Ok(s) => s,
+            Err(e) => {
+                // Every probe sub on this relay failed to even open.
+                for (sub_id, filter) in &subs {
+                    println!(
+                        "  {relay}  ✗ error: {e}  {} {sub_id}",
+                        summarize_filter(filter)
+                    );
+                }
+                continue;
+            }
         };
         let mut open: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        let mut events: std::collections::BTreeMap<String, u64> =
+            std::collections::BTreeMap::new();
         for (sub_id, filter) in &subs {
             let raw_filter: Value =
                 serde_json::from_str(filter).unwrap_or_else(|_| json!({ "kinds": [10002] }));
             let req = json!(["REQ", sub_id, raw_filter]).to_string();
             if socket.send(Message::Text(req)).is_ok() {
                 open.insert(sub_id.clone());
+                events.insert(sub_id.clone(), 0);
+                println!(
+                    "  {relay}  → REQ {} {sub_id}",
+                    summarize_filter(filter)
+                );
+            } else {
+                println!(
+                    "  {relay}  ✗ error: send REQ  {} {sub_id}",
+                    summarize_filter(filter)
+                );
             }
         }
         let deadline = Instant::now() + DISCOVERY_WALL;
+        // `auth_or_close` flags a socket-wide terminal (AUTH / relay close /
+        // IO): every still-open probe sub on it gets that terminal line.
+        let mut socket_terminal: Option<String> = None;
         while !open.is_empty() && Instant::now() < deadline {
-            match next_text(&mut socket) {
-                None => continue,
-                Some(text) => {
-                    if text.is_empty() {
-                        break;
+            match next_frame(&mut socket) {
+                Frame::Timeout | Frame::Other => continue,
+                Frame::Event { sub_id, event } => {
+                    if let Some(c) = events.get_mut(&sub_id) {
+                        *c += 1;
                     }
-                    let v: Value = match serde_json::from_str(&text) {
-                        Ok(v) => v,
-                        Err(_) => continue,
-                    };
-                    match v[0].as_str() {
-                        Some("EVENT") => {
-                            if let Some(event) = v.get(2) {
-                                if let Some((pk, snap)) = parse_kind10002(event) {
-                                    out.insert(pk, snap);
-                                }
-                            }
-                        }
-                        Some("EOSE") => {
-                            if let Some(sid) = v[1].as_str() {
-                                open.remove(sid);
-                            }
-                        }
-                        _ => {}
+                    if let Some((pk, snap)) = parse_kind10002(&event) {
+                        out.insert(pk, snap);
                     }
                 }
+                Frame::Eose { sub_id } => {
+                    if open.remove(&sub_id) {
+                        println!(
+                            "  {relay}  ✓ EOSE ({} event{}) {sub_id}",
+                            events.get(&sub_id).copied().unwrap_or(0),
+                            if events.get(&sub_id).copied().unwrap_or(0) == 1 {
+                                ""
+                            } else {
+                                "s"
+                            }
+                        );
+                    }
+                }
+                Frame::Closed { sub_id, message } => {
+                    if open.remove(&sub_id) {
+                        println!("  {relay}  ✗ CLOSED: {message}  {sub_id}");
+                    }
+                }
+                Frame::Notice { message } => {
+                    println!("  {relay}  • NOTICE: {message}");
+                }
+                Frame::Auth { .. } => {
+                    socket_terminal = Some("AUTH required (read-only — not authing)".into());
+                    break;
+                }
+                Frame::RelayClosed => {
+                    socket_terminal = Some("connection closed by relay".into());
+                    break;
+                }
+                Frame::Io { kind } => {
+                    socket_terminal = Some(format!("error: {kind}"));
+                    break;
+                }
+            }
+        }
+        // Any probe sub still open: name why (socket terminal, or timeout).
+        for sub_id in &open {
+            match &socket_terminal {
+                Some(reason) => println!("  {relay}  ✗ {reason}  {sub_id}"),
+                None => println!("  {relay}  ✗ timeout (no terminal frame)  {sub_id}"),
             }
         }
         // CLOSE every probe sub client-side: the lifecycle's wire-emitter
@@ -199,135 +293,196 @@ fn run_relay_thread(
     tx: mpsc::Sender<RelayEvent>,
     deadline: Instant,
 ) {
-    let authors_in_req = reqs.iter().map(|r| r.authors).sum();
-    let mut stats = RelayStats {
-        events: 0,
-        authors_in_req,
-        time_to_first: None,
-        connected: false,
-        eose: false,
-        error: None,
-        elapsed: None,
-    };
     let started = Instant::now();
 
-    let _ = tx.send(RelayEvent::Connecting {
-        relay: relay_url.clone(),
-    });
+    // Per-sub bookkeeping. One row per (relay, sub_id) so no REQ is hidden
+    // behind a relay-only aggregate.
+    let send_done = |sub_id: &str, stats: RelayStats| {
+        let _ = tx.send(RelayEvent::Done {
+            relay: relay_url.clone(),
+            sub_id: sub_id.to_string(),
+            stats,
+        });
+    };
 
-    let mut socket = match try_connect(&relay_url) {
-        Some(s) => s,
-        None => {
-            stats.error = Some("connect refused".to_string());
-            let _ = tx.send(RelayEvent::Error {
-                relay: relay_url.clone(),
-                msg: "connect refused".to_string(),
-            });
-            stats.elapsed = Some(started.elapsed());
-            let _ = tx.send(RelayEvent::Done {
-                relay: relay_url,
-                stats,
-            });
+    for r in &reqs {
+        let _ = tx.send(RelayEvent::Connecting {
+            relay: relay_url.clone(),
+            sub_id: r.sub_id.clone(),
+        });
+    }
+
+    let mut socket = match try_connect_msg(&relay_url) {
+        Ok(s) => s,
+        Err(e) => {
+            let msg = format!("error: {e}");
+            for r in &reqs {
+                let _ = tx.send(RelayEvent::Error {
+                    relay: relay_url.clone(),
+                    sub_id: r.sub_id.clone(),
+                    msg: msg.clone(),
+                });
+                send_done(
+                    &r.sub_id,
+                    RelayStats {
+                        authors_in_req: r.authors,
+                        error: Some(msg.clone()),
+                        elapsed: Some(started.elapsed()),
+                        ..Default::default()
+                    },
+                );
+            }
             return;
         }
     };
-    stats.connected = true;
 
     // Send every content REQ the lifecycle assigned to this relay, verbatim.
+    // `stats_for` tracks each sub independently.
+    let mut stats_for: std::collections::BTreeMap<String, RelayStats> =
+        std::collections::BTreeMap::new();
     let mut open: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     for r in &reqs {
+        let mut st = RelayStats {
+            authors_in_req: r.authors,
+            connected: true,
+            ..Default::default()
+        };
         let raw_filter: Value = match serde_json::from_str(&r.filter_json) {
             Ok(v) => v,
-            Err(_) => continue,
+            Err(_) => {
+                st.error = Some("bad filter json".to_string());
+                st.elapsed = Some(started.elapsed());
+                let _ = tx.send(RelayEvent::Error {
+                    relay: relay_url.clone(),
+                    sub_id: r.sub_id.clone(),
+                    msg: "bad filter json".to_string(),
+                });
+                send_done(&r.sub_id, st);
+                continue;
+            }
         };
         let req = json!(["REQ", r.sub_id, raw_filter]).to_string();
         if let Err(e) = socket.send(Message::Text(req)) {
             let msg = format!("send REQ: {e}");
-            stats.error = Some(msg.clone());
+            st.error = Some(msg.clone());
+            st.elapsed = Some(started.elapsed());
             let _ = tx.send(RelayEvent::Error {
                 relay: relay_url.clone(),
+                sub_id: r.sub_id.clone(),
                 msg,
             });
-            stats.elapsed = Some(started.elapsed());
-            let _ = tx.send(RelayEvent::Done {
-                relay: relay_url,
-                stats,
-            });
-            return;
+            send_done(&r.sub_id, st);
+            continue;
         }
+        let _ = tx.send(RelayEvent::ReqSent {
+            relay: relay_url.clone(),
+            sub_id: r.sub_id.clone(),
+        });
         open.insert(r.sub_id.clone());
+        stats_for.insert(r.sub_id.clone(), st);
     }
-    let _ = tx.send(RelayEvent::ReqSent {
-        relay: relay_url.clone(),
-    });
 
+    // A socket-wide terminal (AUTH / relay close / IO) ends EVERY open sub.
+    let mut socket_terminal: Option<String> = None;
     while !open.is_empty() && Instant::now() < deadline {
-        match next_text(&mut socket) {
-            None => continue,
-            Some(text) => {
-                if text.is_empty() {
-                    break;
+        match next_frame(&mut socket) {
+            Frame::Timeout | Frame::Other => continue,
+            Frame::Event { sub_id, event } => {
+                if !open.contains(&sub_id) {
+                    continue;
                 }
-                let v: Value = match serde_json::from_str(&text) {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-                let sid = v.get(1).and_then(Value::as_str).unwrap_or("");
-                match v[0].as_str() {
-                    Some("EVENT") if open.contains(sid) => {
-                        if stats.time_to_first.is_none() {
-                            stats.time_to_first = Some(started.elapsed());
-                        }
-                        stats.events += 1;
-                        if let Some(id) = v
-                            .get(2)
-                            .and_then(|v| v.get("id"))
-                            .and_then(Value::as_str)
-                        {
-                            let _ = tx.send(RelayEvent::Frame {
-                                relay: relay_url.clone(),
-                                event_id: id.to_string(),
-                            });
-                        }
+                if let Some(st) = stats_for.get_mut(&sub_id) {
+                    if st.time_to_first.is_none() {
+                        st.time_to_first = Some(started.elapsed());
                     }
-                    Some("EOSE") if open.contains(sid) => {
-                        open.remove(sid);
-                        if open.is_empty() {
-                            stats.eose = true;
-                            let elapsed = started.elapsed();
-                            let _ = tx.send(RelayEvent::Eose {
-                                relay: relay_url.clone(),
-                                elapsed,
-                            });
-                            break;
-                        }
-                    }
-                    Some("NOTICE") => {
-                        if let Some(msg) = v.get(1).and_then(Value::as_str) {
-                            let _ = tx.send(RelayEvent::Error {
-                                relay: relay_url.clone(),
-                                msg: format!("NOTICE: {msg}"),
-                            });
-                        }
-                    }
-                    Some("CLOSED") if open.contains(sid) => {
-                        let msg = v
-                            .get(2)
-                            .and_then(Value::as_str)
-                            .unwrap_or("CLOSED")
-                            .to_string();
-                        stats.error = Some(msg.clone());
-                        let _ = tx.send(RelayEvent::Error {
-                            relay: relay_url.clone(),
-                            msg,
-                        });
-                        open.remove(sid);
-                        if open.is_empty() {
-                            break;
-                        }
-                    }
-                    _ => {}
+                    st.events += 1;
                 }
+                if let Some(id) = event.get("id").and_then(Value::as_str) {
+                    let _ = tx.send(RelayEvent::Frame {
+                        relay: relay_url.clone(),
+                        sub_id: sub_id.clone(),
+                        event_id: id.to_string(),
+                    });
+                }
+            }
+            Frame::Eose { sub_id } => {
+                if open.remove(&sub_id) {
+                    if let Some(st) = stats_for.get_mut(&sub_id) {
+                        st.eose = true;
+                        st.elapsed = Some(started.elapsed());
+                    }
+                    let _ = tx.send(RelayEvent::Eose {
+                        relay: relay_url.clone(),
+                        sub_id: sub_id.clone(),
+                        elapsed: started.elapsed(),
+                    });
+                }
+            }
+            Frame::Closed { sub_id, message } => {
+                if open.remove(&sub_id) {
+                    if let Some(st) = stats_for.get_mut(&sub_id) {
+                        st.error = Some(message.clone());
+                        st.elapsed = Some(started.elapsed());
+                    }
+                    let _ = tx.send(RelayEvent::Closed {
+                        relay: relay_url.clone(),
+                        sub_id: sub_id.clone(),
+                        msg: message,
+                    });
+                }
+            }
+            Frame::Notice { message } => {
+                // Non-terminal: surface but keep streaming. Tagged to every
+                // open sub on this socket (NOTICE is not sub-scoped).
+                for sid in open.iter() {
+                    let _ = tx.send(RelayEvent::Notice {
+                        relay: relay_url.clone(),
+                        sub_id: sid.clone(),
+                        msg: message.clone(),
+                    });
+                }
+            }
+            Frame::Auth { .. } => {
+                socket_terminal = Some("__auth__".to_string());
+                break;
+            }
+            Frame::RelayClosed => {
+                socket_terminal = Some("connection closed by relay".to_string());
+                break;
+            }
+            Frame::Io { kind } => {
+                socket_terminal = Some(format!("error: {kind}"));
+                break;
+            }
+        }
+    }
+
+    // Resolve every still-open sub: socket-wide terminal, or wall timeout.
+    let still_open: Vec<String> = open.iter().cloned().collect();
+    for sub_id in still_open {
+        match &socket_terminal {
+            Some(s) if s == "__auth__" => {
+                let _ = tx.send(RelayEvent::Auth {
+                    relay: relay_url.clone(),
+                    sub_id: sub_id.clone(),
+                });
+                if let Some(st) = stats_for.get_mut(&sub_id) {
+                    st.error = Some("AUTH required".to_string());
+                }
+            }
+            Some(reason) => {
+                let _ = tx.send(RelayEvent::Error {
+                    relay: relay_url.clone(),
+                    sub_id: sub_id.clone(),
+                    msg: reason.clone(),
+                });
+                if let Some(st) = stats_for.get_mut(&sub_id) {
+                    st.error = Some(reason.clone());
+                }
+            }
+            None => {
+                // Wall deadline with no terminal frame — renderer maps a
+                // non-terminal row to Timeout itself; just close stats out.
             }
         }
     }
@@ -336,9 +491,15 @@ fn run_relay_thread(
         let _ = socket.send(Message::Text(json!(["CLOSE", r.sub_id]).to_string()));
     }
     let _ = socket.close(None);
-    stats.elapsed = Some(started.elapsed());
-    let _ = tx.send(RelayEvent::Done {
-        relay: relay_url,
-        stats,
-    });
+    for r in &reqs {
+        let mut st = stats_for.remove(&r.sub_id).unwrap_or(RelayStats {
+            authors_in_req: r.authors,
+            connected: true,
+            ..Default::default()
+        });
+        if st.elapsed.is_none() {
+            st.elapsed = Some(started.elapsed());
+        }
+        send_done(&r.sub_id, st);
+    }
 }

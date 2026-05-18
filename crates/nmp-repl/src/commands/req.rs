@@ -106,21 +106,13 @@ pub fn run(session: &mut Session, filter: FilterAst) -> Result<()> {
             break;
         }
 
-        let n_subs = probes
-            .iter()
-            .map(|(_, s, _)| s.clone())
-            .collect::<std::collections::BTreeSet<_>>()
-            .len();
         let probe_authors: usize =
             probes.iter().map(|(_, _, fj)| author_count(fj)).sum();
         probed_total += probe_authors;
-        println!(
-            "  discovery: probing {} mailboxes via indexer ({} REQ{})",
-            probe_authors,
-            n_subs,
-            if n_subs == 1 { "" } else { "s" }
-        );
 
+        // `run_discovery` prints a per-REQ row for EVERY implicit
+        // kind:10002 probe (relay + filter summary + sub_id + terminal
+        // status). No aggregation hides an implicit REQ.
         let snapshots = fanout::run_discovery(&probes);
         for (pubkey, snap) in snapshots {
             session.mailbox_cache.put(pubkey.clone(), snap);
