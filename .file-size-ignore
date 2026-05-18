@@ -1,0 +1,29 @@
+# .file-size-ignore — gitignore-style globs for files exempt from the
+# AGENTS.md 300/500 LOC gate.
+#
+# Rules:
+# - Generated, vendored, lockfile, binary, and benchmark-output artifacts are exempt.
+# - Hand-authored source and docs are NOT exempt (that is the point of the gate).
+# - Codex review dumps are output artifacts, not authored source — exempt.
+# - The smoke-test fixture is intentionally over-limit — exempt so the gate
+#   doesn't block normal commits; it is included explicitly by the smoke test step.
+#
+# Do not add a file here to "hide" a real LOC violation. The correct fix is to
+# split the file. Open violations are tracked as brainstorm items.
+
+# Build output
+target/**
+ios/*/build/**
+apps/*/build/**
+
+# Cargo lockfile (generated, not authored)
+Cargo.lock
+
+# Codex review output dumps (machine-generated, can be arbitrarily long)
+docs/perf/codex-reviews/**
+
+# Agent / harness internal directories
+.claude/**
+
+# Smoke-test fixture (intentionally oversized; exercised by --force-include)
+crates/nmp-testing/fixtures/file-size-gate/oversized.rs

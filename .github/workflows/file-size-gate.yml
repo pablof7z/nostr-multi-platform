@@ -1,0 +1,39 @@
+name: file-size-gate
+
+# Enforces AGENTS.md 300 LOC warn / 500 LOC hard cap on hand-authored source.
+# Checks the full tracked tree (not just staged files — that's the pre-commit hook's job).
+#
+# NOTE: crates/nmp-core/src/kernel/requests.rs (574 LOC) is a known violation
+# that predates this gate. It is tracked as brainstorm item #6 (split task) and
+# will be fixed in a dedicated commit. Until then this workflow will report it.
+# Do not add it to .file-size-ignore — that would hide real debt.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  file-size:
+    name: File-size check (300 warn / 500 hard)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check file sizes (full tree)
+        run: bash .githooks/check-file-size.sh
+
+      - name: Smoke test — fixture must trigger hard-cap report
+        run: |
+          # Verify the gate can actually detect a violation.
+          # --dry-run exits 0 even on violations, so this step always passes;
+          # the grep on the output is the real assertion.
+          OUTPUT=$(bash .githooks/check-file-size.sh --dry-run \
+            --force-include crates/nmp-testing/fixtures/file-size-gate/oversized.rs 2>&1 || true)
+          echo "$OUTPUT"
+          if ! echo "$OUTPUT" | grep -q "HARD-cap violation"; then
+            echo "SMOKE TEST FAILED: gate did not report a hard-cap violation for the fixture." >&2
+            exit 1
+          fi
+          echo "Smoke test passed — gate correctly identified oversized.rs as a violation."

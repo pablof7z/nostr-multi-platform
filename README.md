@@ -116,6 +116,7 @@
 4. `docs/decisions/0009-app-extension-kernel-boundary.md` — why the kernel is a kernel.
 5. `docs/decisions/0010-generated-app-enum-vs-type-erased-registry.md` — how FFI types are generated.
 6. `docs/design/framework-magic.md` — what "just works" without app code.
+7. Enable the file-size pre-commit hook (AGENTS.md 300/500 LOC rule): `git config core.hooksPath .githooks`
 
 ---
 

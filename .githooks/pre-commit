@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# pre-commit — file-size gate (AGENTS.md: 300 LOC warn / 500 LOC fail).
+#
+# Install: git config core.hooksPath .githooks
+# Checks only the files you are actually staging, so existing over-limit files
+# in the tree (tracked separately as brainstorm item #6) don't block your work.
+set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+exec "$SCRIPT_DIR/check-file-size.sh" --changed-only "$@"
