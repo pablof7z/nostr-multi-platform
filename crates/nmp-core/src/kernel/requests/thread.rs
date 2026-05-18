@@ -9,11 +9,13 @@
 //! - `open_thread` → register Thread view-module spec; return interests with
 //!   event_ids + #e-tag shapes
 //! - `close_thread` → drop interests by InterestId; recompile(Trigger::ViewClose)
-//! - `prepare_thread_requests` → moves to ThreadViewModule.reduce() in nmp-nip10;
-//!   hydration cascade becomes view module emitting new interests as event ids surface
-//! - `enqueue_thread_id` → ThreadViewModule internal state
-//! - `enqueue_thread_reply_target` → ThreadViewModule internal state
-//! - `maybe_open_thread_hydration` → ThreadViewModule.reduce() returning interests
+//! - `prepare_thread_requests` → moves to `nmp_nip01::ThreadView` /
+//!   `nmp_nip01::Nip10ModularTimelineView` (the latter wrapping
+//!   `nmp_threading::Grouper`); the hydration cascade becomes a view module
+//!   emitting new interests as event ids surface.
+//! - `enqueue_thread_id` → internal state of the chosen NIP-01 view module
+//! - `enqueue_thread_reply_target` → internal state of the chosen NIP-01 view module
+//! - `maybe_open_thread_hydration` → `reduce()` on the chosen NIP-01 view module
 //!
 //! The `close_subscriptions_with_prefixes` helper disappears: the wire-emitter
 //! closes by WireSubId (compiler diff output), not string-prefix matching.
