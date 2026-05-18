@@ -9,10 +9,13 @@
 //! they are still reachable from Swift/C unchanged.
 
 pub(crate) use nmp_core::{
-    nmp_app_claim_profile, nmp_app_close_author, nmp_app_configure, nmp_app_free, nmp_app_new,
-    nmp_app_open_author, nmp_app_open_firehose_tag, nmp_app_release_profile,
-    nmp_app_set_update_callback, NmpApp,
+    nmp_app_claim_profile, nmp_app_close_author, nmp_app_configure, nmp_app_free,
+    nmp_app_inject_events, nmp_app_new, nmp_app_open_author,
+    nmp_app_release_profile, nmp_app_set_update_callback, NmpApp,
 };
+// nmp_app_open_firehose_tag is no longer used in scenarios (replaced by inject_events).
+#[allow(unused_imports)]
+pub(crate) use nmp_core::nmp_app_open_firehose_tag;
 
 /// Generate N deterministic lowercase 64-hex-char pubkeys suitable for all
 /// FFI calls that require `is_hex_pubkey` validation to pass.

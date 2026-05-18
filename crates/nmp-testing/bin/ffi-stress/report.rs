@@ -50,9 +50,20 @@ impl ScenarioMetrics {
 }
 
 /// Write `metrics.json` and `report.md` to `docs/perf/m10.5/<scenario>/`.
+///
+/// The directory name is the scenario prefix (e.g. `S1`, `S2`) extracted from
+/// the full scenario name like `S1-mount-unmount`.  Per `ci.md` the bundle path
+/// is `docs/perf/m10.5/S1/{metrics.json,report.md}`, not `S1_MOUNT_UNMOUNT`.
 pub(crate) fn write_scenario_report(metrics: &ScenarioMetrics) -> io::Result<()> {
-    let scenario_upper = metrics.scenario.to_uppercase().replace('-', "_");
-    let dir = PathBuf::from(format!("docs/perf/m10.5/{scenario_upper}"));
+    // Extract the leading token before the first '-' and uppercase it.
+    // "S1-mount-unmount" -> "S1", "S2-dispatch-flood" -> "S2", etc.
+    let scenario_prefix = metrics
+        .scenario
+        .split('-')
+        .next()
+        .unwrap_or(&metrics.scenario)
+        .to_uppercase();
+    let dir = PathBuf::from(format!("docs/perf/m10.5/{scenario_prefix}"));
     fs::create_dir_all(&dir)?;
 
     fs::write(

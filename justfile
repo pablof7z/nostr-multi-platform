@@ -46,11 +46,11 @@ stress-s5:
 stress S:
     cargo run --release -p nmp-testing --bin ffi-stress -- {{S}} --write-report --fail-on-gate
 
-# Pre-merge fast gate: S1+S2+S3+S5 at fast durations (S4 is XCUITest-primary;
-# S7/S8 are out of scope for phase 1). Target: < 5 min wall-time.
+# Pre-merge fast gate: S1..S5 at fast durations.  Target: < 7 min wall-time.
 # Per docs/design/ffi-hardening/ci.md §9.
 stress-gate-fast:
     cargo run --release -p nmp-testing --bin ffi-stress -- mount-unmount --duration 60s --write-report --fail-on-gate
     cargo run --release -p nmp-testing --bin ffi-stress -- dispatch-flood --duration 30s --threads 4 --write-report --fail-on-gate
     cargo run --release -p nmp-testing --bin ffi-stress -- snapshot-pressure --duration 30s --write-report --fail-on-gate
+    cargo run --release -p nmp-testing --bin ffi-stress -- reconciler-backpressure --duration 60s --write-report --fail-on-gate
     cargo run --release -p nmp-testing --bin ffi-stress -- reentrancy --duration 30s --write-report --fail-on-gate

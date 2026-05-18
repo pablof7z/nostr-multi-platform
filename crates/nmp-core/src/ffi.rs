@@ -274,6 +274,68 @@ pub extern "C" fn nmp_app_close_thread(app: *mut NmpApp, event_id: *const c_char
     let _ = app.tx.send(ActorCommand::CloseThread { event_id });
 }
 
+/// Inject `count` synthetic kind-1 events into the kernel timeline.
+///
+/// Each event gets a unique ID derived from `base_id_prefix` + index.
+/// Pubkeys are round-robined from a small internal pool.  `created_at` starts
+/// at `base_created_at` and increases by 1 per event so the timeline sorts
+/// deterministically.
+///
+/// Test-support only — not compiled into production builds.
+/// Used by S3/S4/S5 stress scenarios to create real emit pressure without a
+/// live relay connection.
+#[cfg(any(test, feature = "test-support"))]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn nmp_app_inject_events(
+    app: *mut NmpApp,
+    base_id_prefix: *const c_char,
+    base_created_at: u64,
+    count: u32,
+) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let prefix = if base_id_prefix.is_null() {
+        "synthetic".to_string()
+    } else {
+        // SAFETY: non-null pointer checked above.
+        unsafe { CStr::from_ptr(base_id_prefix) }
+            .to_str()
+            .unwrap_or("synthetic")
+            .to_string()
+    };
+
+    // Pool of 8 deterministic pubkeys (64 hex chars each).
+    const POOL: &[&str] = &[
+        "0000000000000000000000000000000000000000000000000000000000000001",
+        "0000000000000000000000000000000000000000000000000000000000000002",
+        "0000000000000000000000000000000000000000000000000000000000000003",
+        "0000000000000000000000000000000000000000000000000000000000000004",
+        "0000000000000000000000000000000000000000000000000000000000000005",
+        "0000000000000000000000000000000000000000000000000000000000000006",
+        "0000000000000000000000000000000000000000000000000000000000000007",
+        "0000000000000000000000000000000000000000000000000000000000000008",
+    ];
+
+    let batch: Vec<(String, String, u64, String)> = (0..count as u64)
+        .map(|i| {
+            // 64-hex event ID derived from prefix + index.
+            let raw_id = format!("{prefix}{i:0>16x}");
+            let id = format!("{raw_id:0<64}");
+            let id = id[..64].to_string();
+            let pubkey = POOL[(i as usize) % POOL.len()].to_string();
+            let created_at = base_created_at.saturating_add(i);
+            let content = format!("synthetic event {i} from stress harness");
+            (id, pubkey, created_at, content)
+        })
+        .collect();
+
+    let _ = app
+        .tx
+        .send(ActorCommand::InjectSyntheticEvents(batch));
+}
+
 fn app_ref<'a>(app: *mut NmpApp) -> Option<&'a NmpApp> {
     if app.is_null() {
         None

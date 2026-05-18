@@ -414,4 +414,36 @@ impl Kernel {
     pub(crate) fn changed_since_emit(&self) -> bool {
         self.changed_since_emit
     }
+
+    /// Inject synthetic timeline events directly into the kernel read-cache.
+    ///
+    /// Bypasses signature verification — test-support only (gated by
+    /// `cfg(any(test, feature = "test-support"))`).  Each call populates
+    /// `self.events` and appends to `self.timeline`, then calls `sort_timeline()`
+    /// so the view layer sees the events on the next `make_update()`.
+    ///
+    /// Entries: `(event_id, pubkey, created_at, content)`.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn inject_synthetic_events(&mut self, events: Vec<(String, String, u64, String)>) {
+        for (id, pubkey, created_at, content) in events {
+            if self.events.contains_key(&id) {
+                continue;
+            }
+            let cached = StoredEvent {
+                id: id.clone(),
+                author: pubkey,
+                kind: 1,
+                created_at,
+                tags: Vec::new(),
+                content,
+                relay_count: 1,
+            };
+            self.events.insert(id.clone(), cached);
+            self.timeline.push_back(id);
+            self.events_since_last_update =
+                self.events_since_last_update.saturating_add(1);
+        }
+        self.sort_timeline();
+        self.changed_since_emit = true;
+    }
 }

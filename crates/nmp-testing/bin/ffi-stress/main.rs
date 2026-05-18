@@ -14,6 +14,7 @@
 //! See `docs/design/ffi-hardening/harness.md` §1.2 for the full CLI reference.
 
 mod allocator;
+mod common;
 mod ffi;
 mod gate;
 mod report;
@@ -63,10 +64,7 @@ fn main() {
                 s2_dispatch_flood::run(cfg, &mut metrics);
             }
             Scenario::SnapshotPressure => {
-                let cfg = s3_snapshot_pressure::S3Config {
-                    warmup_duration: (cli.duration / 3).min(Duration::from_secs(10)),
-                    ..Default::default()
-                };
+                let cfg = s3_snapshot_pressure::S3Config::default();
                 s3_snapshot_pressure::run(cfg, &mut metrics);
             }
             Scenario::ReconcilerBackpressure => {

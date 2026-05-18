@@ -37,6 +37,15 @@ pub enum ActorCommand {
     Stop,
     Reset,
     Shutdown,
+    /// Inject synthetic timeline events directly into the kernel read-cache.
+    ///
+    /// Bypasses signature verification — test-support only.  Events appear in
+    /// the timeline immediately and drive emit pressure the same way real relay
+    /// events do.  Enables S3/S4/S5 event-pressure gates without a live relay.
+    ///
+    /// Each entry: `(event_id, pubkey, created_at, content)`.
+    #[cfg(any(test, feature = "test-support"))]
+    InjectSyntheticEvents(Vec<(String, String, u64, String)>),
 }
 
 pub(super) enum ActorMsg {
@@ -247,6 +256,12 @@ fn dispatch_command(
         ActorCommand::Shutdown => {
             close_relays(relay_controls, connected_relays, kernel);
             None
+        }
+        #[cfg(any(test, feature = "test-support"))]
+        ActorCommand::InjectSyntheticEvents(events) => {
+            kernel.inject_synthetic_events(events);
+            emit_now(kernel, *running, update_tx, last_emit);
+            Some(Vec::new())
         }
     }
 }

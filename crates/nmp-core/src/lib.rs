@@ -17,9 +17,9 @@ pub use ffi::NmpApp;
 // ffi:: side and are still reachable from Swift/C unchanged.
 #[cfg(any(test, feature = "test-support"))]
 pub use ffi::{
-    nmp_app_claim_profile, nmp_app_close_author, nmp_app_configure, nmp_app_free, nmp_app_new,
-    nmp_app_open_author, nmp_app_open_firehose_tag, nmp_app_release_profile,
-    nmp_app_set_update_callback, nmp_app_start,
+    nmp_app_claim_profile, nmp_app_close_author, nmp_app_configure, nmp_app_free,
+    nmp_app_inject_events, nmp_app_new, nmp_app_open_author, nmp_app_open_firehose_tag,
+    nmp_app_release_profile, nmp_app_set_update_callback, nmp_app_start,
 };
 
 /// Test-support facade: gives live-bench binaries access to the actor
