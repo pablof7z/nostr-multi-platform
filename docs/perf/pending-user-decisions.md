@@ -274,6 +274,8 @@ The first three are M14 (UniFFI) + M10.5 (live iOS demo) overlap. The fourth is 
 
 **If wrong:** revert T58's `bind_auth_signer` field on Kernel + the ActorCommand if added in T59; the signer plumbing is opt-in and the AUTH handshake degrades gracefully to "stay in ChallengeReceived" when no signer is bound (the bonus regression test `nip42_kernel_auth_without_signer_holds_in_challenge_received` pins this).
 
+**Update (2026-05-18, T76/T77):** the kernel-side NIP-42 story is further hardened. **T76** made failed AUTH *fail-closed* (ADR-0019): a relay that rejects/refuses/times-out AUTH now withholds (drops, never leaks/buffers) its gated REQs while leaving other relays untouched; recovery is reconnect-only; surfaced via `RelayStatus.auth="failed"`. **T77** extracted the shared NIP-42 wire/type vocabulary into the dependency-free `nmp-nip42-types` substrate crate, retiring the kernel-side duplication (behaviour unchanged). The **iOS signer binding (T59) remains the open part** of PD-005 — unchanged by T76/T77; the recommendation above still stands.
+
 ---
 
 ### PD-004 — RESOLVED (user directive, 2026-05-18): `IdentityId = pubkey_hex`, permanent — no ULID rekey

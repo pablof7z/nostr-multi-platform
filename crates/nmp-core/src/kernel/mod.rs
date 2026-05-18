@@ -28,6 +28,10 @@ mod types;
 mod update;
 
 #[cfg(test)]
+mod auth_fail_closed_tests;
+#[cfg(test)]
+mod auth_test_helpers;
+#[cfg(test)]
 mod auth_tests;
 
 use crate::relay::{

@@ -215,10 +215,11 @@ impl Kernel {
         }
     }
 
-    /// True when an inbound `["AUTH", _]` has been received on `role` and the
-    /// handshake has not yet completed (`Authenticated`/`NotRequired`/`Failed`
-    /// are all pass-through; `Failed` is pass-through because the actor /
-    /// operator owns the resolution path per D7).
+    /// True when REQs to `role` must be withheld from the wire:
+    /// `ChallengeReceived` / `Authenticating` (transient, deferred) or
+    /// `Failed` (fail-closed, dropped — see [`Self::relay_auth_failed`]).
+    /// `NotRequired` / `Authenticated` are pass-through. Per ADR-0019 a
+    /// `Failed` relay never silently downgrades to unauthenticated reads.
     pub(crate) fn relay_auth_paused(&self, role: RelayRole) -> bool {
         let state = self
             .nip42_drivers
@@ -229,7 +230,26 @@ impl Kernel {
             state,
             crate::subs::RelayAuthState::ChallengeReceived
                 | crate::subs::RelayAuthState::Authenticating
+                | crate::subs::RelayAuthState::Failed
         )
+    }
+
+    /// True when `role`'s NIP-42 handshake is `Failed`. REQs to a failed
+    /// relay are dropped, not deferred (the shared ring has no per-relay
+    /// segregation). Recovery is reconnect-only. Rationale: ADR-0019.
+    pub(crate) fn relay_auth_failed(&self, role: RelayRole) -> bool {
+        matches!(
+            self.nip42_drivers.get(&role).map(|d| d.state.clone()),
+            Some(crate::subs::RelayAuthState::Failed)
+        )
+    }
+
+    /// Purge deferred REQ messages targeting `role` — called on the
+    /// transition into `Failed` so withheld REQs cannot leak when the ring
+    /// next drains. CLOSEs and other relays' messages are retained (ADR-0019).
+    pub(crate) fn purge_deferred_reqs_for(&mut self, role: RelayRole) {
+        self.deferred_outbound
+            .retain(|msg| !(msg.role == role && msg.text.starts_with("[\"REQ\"")));
     }
 
     /// Partition an outbound batch: REQ frames targeting an AUTH-paused relay
@@ -253,7 +273,16 @@ impl Kernel {
     ) -> Vec<OutboundMessage> {
         let mut passthrough = Vec::with_capacity(outbound.len());
         for msg in outbound {
-            if msg.text.starts_with("[\"REQ\"") && self.relay_auth_paused(msg.role) {
+            let is_req = msg.text.starts_with("[\"REQ\"");
+            if is_req && self.relay_auth_failed(msg.role) {
+                // Fail-closed: an AUTH-required relay that rejected/refused
+                // AUTH gets its gated REQs DROPPED, never deferred — no
+                // silent unauthenticated downgrade (T76 / ADR-0019).
+                self.log(format!(
+                    "REQ@{} dropped — relay AUTH failed (fail-closed)",
+                    msg.role.key()
+                ));
+            } else if is_req && self.relay_auth_paused(msg.role) {
                 self.log(format!("REQ@{} held — relay AUTH-paused", msg.role.key()));
                 self.defer_outbound_silent(msg);
             } else {

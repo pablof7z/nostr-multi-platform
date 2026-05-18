@@ -129,6 +129,9 @@ impl Kernel {
                         .lifecycle
                         .handle_auth_state_change(relay_url, RelayAuthState::Failed);
                     self.update_relay_auth_status(role, RelayAuthState::Failed, Some(reason));
+                    // T76 fail-closed: discard any REQs already deferred for
+                    // this relay so they cannot leak unauthenticated.
+                    self.purge_deferred_reqs_for(role);
                     return Vec::new();
                 }
                 let event_id = signed.id.clone();
@@ -164,6 +167,7 @@ impl Kernel {
                     .lifecycle
                     .handle_auth_state_change(relay_url, RelayAuthState::Failed);
                 self.update_relay_auth_status(role, RelayAuthState::Failed, Some(reason));
+                self.purge_deferred_reqs_for(role);
                 Vec::new()
             }
         }
@@ -201,6 +205,11 @@ impl Kernel {
             None
         };
         self.update_relay_auth_status(role, new_state.clone(), reason);
+        if matches!(new_state, RelayAuthState::Failed) {
+            // T76 fail-closed: relay rejected our AUTH event — discard any
+            // deferred REQs for this relay rather than leak them.
+            self.purge_deferred_reqs_for(role);
+        }
         self.log(format!("AUTH ok from {}: {new_state:?}", role.key()));
         // Flushed WireFrames flow back to outbound. The kernel's hand-rolled
         // `req()` is the M1 path, not the lifecycle, so the AuthGate's pending

@@ -10,48 +10,10 @@
 //! (cross-crate cycle prevented by the callback indirection in
 //! `kernel::auth::AuthSignerFn`).
 
+use super::auth_test_helpers::*;
 use super::*;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::subs::RelayAuthState;
-use std::sync::{Arc, Mutex};
-
-/// Test pubkey hex — 32 bytes / 64 hex chars / arbitrary.
-const SIGNER_PUBKEY: &str = "abababababababababababababababababababababababababababababababab";
-const AUTH_EVENT_ID: &str = "1234567812345678123456781234567812345678123456781234567812345678";
-const AUTH_EVENT_ID_2: &str = "9876987698769876987698769876987698769876987698769876987698769876";
-
-/// Build a "passing" signer that returns a `SignedEvent` whose id is
-/// `AUTH_EVENT_ID` (or the supplied override). Tracks invocation count so
-/// tests can assert re-AUTH cycles.
-fn make_signer(fixed_id: &'static str) -> (crate::kernel::auth::AuthSignerFn, Arc<Mutex<usize>>) {
-    let count = Arc::new(Mutex::new(0_usize));
-    let count_clone = Arc::clone(&count);
-    let signer: crate::kernel::auth::AuthSignerFn = Arc::new(move |unsigned| {
-        *count_clone.lock().unwrap() += 1;
-        Ok(crate::substrate::SignedEvent {
-            id: fixed_id.to_string(),
-            sig: "f".repeat(128),
-            unsigned: unsigned.clone(),
-        })
-    });
-    (signer, count)
-}
-
-fn auth_frame(challenge: &str) -> String {
-    serde_json::json!(["AUTH", challenge]).to_string()
-}
-
-fn ok_frame(event_id: &str, accepted: bool, reason: &str) -> String {
-    serde_json::json!(["OK", event_id, accepted, reason]).to_string()
-}
-
-fn auth_state_of(kernel: &Kernel, role: RelayRole) -> RelayAuthState {
-    kernel
-        .nip42_drivers
-        .get(&role)
-        .map(|d| d.state.clone())
-        .unwrap_or(RelayAuthState::NotRequired)
-}
 
 // ───────────────────────────────────────────────────────────────────────────
 // Test 1 — nip42_kernel_auth_required_for_read
@@ -236,15 +198,24 @@ fn nip42_kernel_publish_retry_on_auth_required() {
     );
     assert_eq!(*calls.lock().unwrap(), 1);
 
-    // Caller queues a REQ during the Failed window. Failed is pass-through
-    // per AuthGate semantics (D7: the operator owns resolution path; the
-    // buffer would grow without bound otherwise) — so the REQ is emitted,
-    // not held.
+    // Caller queues a REQ during the Failed window. T76 / ADR-0019:
+    // Failed is FAIL-CLOSED — the REQ is dropped, never emitted to an
+    // unauthenticated relay and never deferred (bounded-buffer).
     let pass = kernel.partition_auth_paused(vec![OutboundMessage {
         role: RelayRole::Content,
         text: "[\"REQ\",\"thread-1\",{\"kinds\":[1]}]".to_string(),
     }]);
-    assert_eq!(pass.len(), 1, "Failed state is pass-through (D7)");
+    assert!(
+        pass.is_empty(),
+        "Failed state is fail-closed: REQ must not reach the relay"
+    );
+    assert!(
+        !kernel
+            .deferred_outbound
+            .iter()
+            .any(|m| m.text.contains("thread-1")),
+        "fail-closed REQ must be dropped, not deferred"
+    );
 
     // Rebind the signer with a fresh event-id so the second handshake can
     // be correlated independently (a real signer would naturally produce a
