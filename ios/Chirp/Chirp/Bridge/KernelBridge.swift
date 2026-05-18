@@ -221,10 +221,27 @@ final class KernelHandle {
         let payload = String(cString: pointer)
         let data = Data(payload.utf8)
         guard let outer = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            kbLog.error("outer JSON parse failed")
+            // PD-025 finding 4: log the offending payload prefix so decode failures
+            // are observable (the original regression: decode failure → hasActiveAccount
+            // never flips → stuck on OnboardingView). Toast injection is impossible
+            // here because the toast surface is driven by the snapshot that just failed
+            // to decode — logging is the only correct path at this layer.
+            let preview = payload.prefix(200)
+            kbLog.error("outer JSON parse failed — payload prefix: \(preview)")
             return nil
         }
-        guard (outer["t"] as? String) == "snapshot" else { return nil }
+        let frameTag = outer["t"] as? String
+        guard frameTag == "snapshot" else {
+            // Discrete update frames (t=update) are intentionally ignored — the
+            // snapshot already carries full projected UI state. Log at debug so
+            // a flood of unhandled frame types is diagnosable without noise.
+            if frameTag == "update" {
+                kbLog.debug("discrete update frame received (not applied by snapshot bridge)")
+            } else {
+                kbLog.error("unknown envelope tag=\(frameTag ?? "<nil>") — payload prefix: \(payload.prefix(200))")
+            }
+            return nil
+        }
         guard let inner = outer["v"] else {
             kbLog.error("snapshot missing 'v' field")
             return nil
