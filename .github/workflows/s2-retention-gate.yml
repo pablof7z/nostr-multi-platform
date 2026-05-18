@@ -1,0 +1,79 @@
+name: s2-retention-gate
+
+# M10.5 §G-S2 retention regression gate (T134; T114b residual T126).
+#
+# Promotes the §G-S2 retention check from ad-hoc harness measurement to a
+# CI-enforced regression. T114b (commit 83430ca) closed §G-S2 by replacing
+# the per-dispatch unconditional emit with a `running`-gated helper, taking
+# `retained_heap_after_drain_bytes` from ~38 MiB to ~0.15 MiB at 30 s
+# (≤1 MiB threshold). This workflow re-runs the harness nightly and on
+# manual dispatch; if a future change regresses retention past 1 MiB the
+# pipeline fails.
+#
+# Why nightly + workflow_dispatch (not push/PR): the 30 s scenario plus
+# release build costs ~6–8 min on ubuntu-latest; running on every PR is
+# disproportionate for a slow-moving invariant. Manual dispatch is wired
+# so reviewers can opt-in for risky changes (kernel/dispatch.rs,
+# actor/tick.rs, kernel/requests/*). The harness exits 2 on gate failure
+# (--fail-on-gate); the job fails on any non-zero exit.
+
+on:
+  schedule:
+    # 07:00 UTC daily — after the doctrine-lint nightly window, before
+    # workday US/EU. Lines up with the existing nightly cadence.
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: "Scenario wall-clock duration (e.g. 30s, 60s)"
+        required: false
+        default: "30s"
+
+jobs:
+  s2-retention:
+    name: §G-S2 retention gate (release, --fail-on-gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry + target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-s2-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-s2-
+            ${{ runner.os }}-cargo-
+
+      - name: Build ffi-stress (release)
+        run: cargo build --release --bin ffi-stress -p nmp-testing
+
+      - name: Run §G-S2 retention gate
+        env:
+          # Default to 30s for scheduled runs; honor workflow_dispatch input.
+          DURATION: ${{ github.event.inputs.duration || '30s' }}
+        run: |
+          set -euo pipefail
+          echo "Running ffi-stress s2 --duration $DURATION --fail-on-gate --write-report"
+          ./target/release/ffi-stress s2 \
+            --duration "$DURATION" \
+            --fail-on-gate \
+            --write-report
+
+      - name: Upload metrics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: s2-metrics-${{ github.run_id }}
+          path: |
+            docs/perf/m10.5/S2/metrics.json
+            docs/perf/m10.5/S2/report.md
+          if-no-files-found: ignore
+          retention-days: 14

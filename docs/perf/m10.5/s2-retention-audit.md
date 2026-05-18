@@ -179,15 +179,24 @@ S2 sub-clause of the M10.5 exit gate is provably green.
 
 **PD-021 line-11 can be marked CLOSED on landing of this commit.**
 
+## CI Enforcement (T134 — closes T126 residual)
+
+`.github/workflows/s2-retention-gate.yml` runs the §G-S2 gate as a nightly
+CI regression: `ffi-stress s2 --duration 30s --fail-on-gate --write-report`
+on a release build, with `workflow_dispatch` available for manual opt-in
+on risky changes (`kernel/dispatch.rs`, `actor/tick.rs`,
+`kernel/requests/*`). On failure the job uploads `metrics.json` / `report.md`
+as an artifact for triage. The harness's exit-2-on-gate-failure contract
+is the load-bearing assertion — any regression of
+`retained_heap_after_drain_bytes` past 1 MiB fails the pipeline.
+
 ## Residuals (filed as future tasks, not blocking)
 
 - **T125** (proposed) — evict `wire_subs` rows on view close rather than
   marking `state="closed"` (today the row stays for diagnostic surfacing).
   Bounded-by-working-set already; this is a tightening for long-running
   sessions with high view-churn. Touches `kernel/requests/mod.rs::close_subscriptions_with_prefixes`.
-- **T126** (proposed) — promote the §G-S2 retention gate from this
-  ad-hoc harness measurement to a CI-enforced regression check. The
-  harness already exits 2 on `--fail-on-gate`; CI plumbing TBD.
+- **T126** — CLOSED by T134 (see "CI Enforcement" above).
 - **T127** (proposed) — investigate whether `mpsc::channel`'s block
   free-list is reclaimable on drop (it may be a one-time grow). If
   reclaimable, the kernel-side emit cadence could be relaxed without
