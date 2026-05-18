@@ -10,10 +10,21 @@ settings:
     GENERATE_INFOPLIST_FILE: NO
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: 456SHKPP26
+packages:
+  # verbatim-5 (#164 / closes T-podcast-gap-005): Kingfisher SPM dep so the
+  # byte-for-byte verbatim Design/CachedAsyncImage.swift (and the verbatim-6
+  # Audio/AudioEngine now-playing artwork path) compile unchanged.
+  # Coordinates + version mirror Podcastr's Project.swift exactly.
+  Kingfisher:
+    url: https://github.com/onevcat/Kingfisher
+    majorVersion: 8.0.0
+
 targets:
   NmpPodcast:
     type: application
     platform: iOS
+    dependencies:
+      - package: Kingfisher
     # T-podcast-ios-RESTART: Verbatim Podcastr UI restored.
     # - App/ — PodcastApp.swift (renamed from PodcastrApp) + RootView + AppDelegate
     #   + AppSidebarView + PlayerNavSheets + RootView+* (byte-for-byte from Podcastr)

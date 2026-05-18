@@ -997,8 +997,18 @@ final class AgentScheduledTaskRunner {
 
 // MARK: - PlaybackState
 
+// verbatim-5 (#164) reconciled with concurrent ec5310cf Agent/identity shim
+// rework: this is the UNION surface — every member the verbatim Player
+// View layer (PlayerView/MiniPlayerView/Controls/Scrubber/Sheets) calls,
+// plus the members ec5310cf added for its MiniPlayer stub
+// (volume / seekForward(seconds:) / seekBackward(seconds:) / skipToChapter /
+// non-optional onClearTriageDecision). Honest stub — the kernel/audio seam
+// is the verbatim-6 PlaybackState+Audio surface (see orchestration-log).
+@MainActor
 @Observable
 final class PlaybackState {
+    let engine: PlaybackEngine = PlaybackEngine()
+
     var episode: Episode? = nil
     var autoMarkPlayedOnFinish: Bool = true
 
@@ -1009,45 +1019,83 @@ final class PlaybackState {
     var onClearTriageDecision: (UUID) -> Void = { _ in }
     var onSegmentFinished: (() -> Void)? = nil
     var onClipRequested: (() -> Void)? = nil
-    var resolveShowName: ((Episode) -> String)? = nil
+    // Non-optional resolver closures with no-op defaults — surface matches
+    // Podcastr's `PlaybackState` exactly so verbatim call sites like
+    // `state.resolveShowImage(episode)` compile unchanged.
+    var resolveShowName: (Episode) -> String = { _ in "" }
     var resolveShowImage: (Episode) -> URL? = { _ in nil }
-    var resolveNavigableChapters: ((Episode) -> [Episode.Chapter])? = nil
+    var resolveNavigableChapters: (Episode) -> [Episode.Chapter] = { _ in [] }
 
-    var engine: PlaybackEngine = PlaybackEngine()
-
-    // Properties used in verbatim MiniPlayerView
     var isPlaying: Bool = false
     var currentTime: TimeInterval = 0
     var duration: TimeInterval = 0
-    var rate: Float = 1.0
+    /// `PlaybackRate` (not `Float`) — matches Podcastr's `PlaybackState.rate`
+    /// computed surface so the verbatim `PlayerSpeedSheet` (`rate == current`)
+    /// and `PlayerMoreMenu` compile byte-identically. Verified: no host or
+    /// ec5310cf shim code reads `state.rate` as Float.
+    var rate: PlaybackRate = .normal
     var volume: Float = 1.0
-    var skipForwardSeconds: Int = 30
+    var queue: [UUID] = []
+    var sleepTimer: PlaybackSleepTimer = .off
+    var sleepTimerChipLabel: String { "Sleep" }
+    var adSegments: [Episode.AdSegment] = []
+    var skippedAdSegmentIDs: Set<UUID> = []
 
-    func setEpisode(_ episode: Episode) {}
+    /// Skip intervals the verbatim `PlayerControlsView` reads to label the
+    /// skip buttons. `Int` to match Podcastr's `PlaybackState` surface.
+    var skipForwardSeconds: Int = 30
+    var skipBackwardSeconds: Int = 15
+
+    func setEpisode(_ episode: Episode) { self.episode = episode }
     func play() {}
     func pause() {}
     func togglePlayPause() {}
-    func skipForward() {}
-    func skipBackward() {}
+    func navigationalSeek(to time: TimeInterval) {}
     func seek(to time: TimeInterval) {}
+    func seekSnapping(to time: TimeInterval) {}
     func seekForward(seconds: TimeInterval = 30) {}
     func seekBackward(seconds: TimeInterval = 15) {}
-    func navigationalSeek(to time: TimeInterval) {}
+    func skipForward() {}
+    func skipBackward() {}
+    func seekToNextChapter(in navigable: [Episode.Chapter]) {}
+    func seekToPreviousChapter(in navigable: [Episode.Chapter]) {}
+    func skipToChapter(_ chapter: Episode.Chapter) {}
+    func setRate(_ newRate: Double) { rate = PlaybackRate.bestFit(for: newRate) }
+    func setRate(_ newRate: PlaybackRate) { rate = newRate }
+    func setSleepTimer(_ timer: PlaybackSleepTimer) { sleepTimer = timer }
     func playNext(_ resolver: (UUID) -> Episode?) -> Bool { false }
     func applyPreferences(from settings: Settings) {}
-    func skipToChapter(_ chapter: Episode.Chapter) {}
+    func isQueued(_ episodeID: UUID) -> Bool { queue.contains(episodeID) }
+    func enqueue(_ episodeID: UUID) {}
+    func removeFromQueue(_ episodeID: UUID) {}
+    func writeNowPlayingSnapshot(force: Bool) {}
 }
 
+@MainActor
+@Observable
 final class PlaybackEngine {
     var resolveShowName: ((Episode) -> String?)? = nil
     var resolveActiveChapterTitle: ((Episode, TimeInterval) -> String?)? = nil
     var resolveArtworkURL: ((Episode, TimeInterval) -> URL?)? = nil
-
-    var sleepTimer: SleepTimer = SleepTimer()
+    var currentTime: TimeInterval = 0
+    let sleepTimer: SleepTimer = SleepTimer()
 }
 
-struct SleepTimer {
-    enum Phase { case idle, armedEndOfEpisode, fired }
+final class SleepTimer {
+    enum Phase: Equatable {
+        case idle
+        case armed(remaining: TimeInterval)
+        case fading(remaining: TimeInterval)
+        case armedEndOfEpisode
+        case fired
+    }
+    /// Nested `Mode` mirrors Podcastr's `Audio/SleepTimer.swift` so the
+    /// verbatim `PlaybackTypes.swift` `engineMode` mapping compiles unchanged.
+    enum Mode: Equatable, Sendable {
+        case off
+        case duration(TimeInterval)
+        case endOfEpisode
+    }
     var phase: Phase = .idle
 }
 
@@ -1248,10 +1296,34 @@ final class AudioConversationManager {
 
 @MainActor
 final class AutoSnipController {
-    enum Source { case headphone }
+    enum Source { case headphone, touch }
     static let shared = AutoSnipController()
     func captureSnip(source: Source) {}
     func attach(playback: PlaybackState, store: AppStateStore) {}
+}
+
+// verbatim-5 (#164): `AutoSnipButton` is the only `AutoSnip/` symbol the
+// kept verbatim `PlayerControlsView` references (`AutoSnipButton()`). The
+// rest of `AutoSnip/` is deferred to verbatim-6. Stub preserves the EXACT
+// public surface the verbatim call site uses so `PlayerControlsView` stays
+// byte-identical; replace byte-for-byte with Podcastr's
+// Features/Player/AutoSnip/AutoSnipButton.swift in verbatim-6.
+@MainActor
+struct AutoSnipButton: View {
+    var body: some View {
+        Button {
+            AutoSnipController.shared.captureSnip(source: .touch)
+        } label: {
+            Image(systemName: "bookmark.fill")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 44, height: 44)
+                .glassEffect(.regular.interactive(), in: .circle)
+        }
+        .buttonStyle(.pressable)
+        .accessibilityLabel("Snip last 30 seconds")
+        .accessibilityHint("Saves a 30-second clip ending at the current moment")
+    }
 }
 
 // MARK: - RAGService (wikiRAG extension)
@@ -1346,6 +1418,11 @@ extension Notification.Name {
     static let openSubscriptionDetailRequested = Notification.Name("openSubscriptionDetailRequested")
     static let openAgentChatConversation = Notification.Name("openAgentChatConversation")
     static let openNostrConversationRequested = Notification.Name("openNostrConversationRequested")
+    // verbatim-5 (#164): posted by the kept verbatim `PlayerMoreMenu`.
+    // Raw value matches Podcastr's deferred
+    // `PlayerTranscriptScrollView+AskAgent.swift` byte-for-byte so the
+    // verbatim post site compiles unchanged and stays wire-compatible.
+    static let openEpisodeDetailRequested = Notification.Name("io.f7z.podcast.openEpisodeDetailRequested")
 }
 
 // MARK: - View modifiers referenced by RootView
@@ -2257,13 +2334,9 @@ extension ITunesSearchClient {
     static func topPodcasts() async throws -> [Result] { [] }
 }
 
-// MARK: - PlaybackState (queue support)
-
-extension PlaybackState {
-    func isQueued(_ episodeID: UUID) -> Bool { false }
-    func enqueue(_ episodeID: UUID) {}
-    func removeFromQueue(_ episodeID: UUID) {}
-}
+// verbatim-5 (#164): queue methods (isQueued/enqueue/removeFromQueue) merged
+// into the reconciled `PlaybackState` class above; the standalone extension
+// from concurrent ec5310cf was removed here to avoid redeclaration.
 
 // MARK: - EpisodeComment / NostrCommentService
 

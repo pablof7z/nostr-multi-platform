@@ -2,10 +2,19 @@ import SwiftUI
 
 // MARK: - PlayerView
 //
-// T-podcast-gap-002: Verbatim Podcastr PlayerView requires PlaybackState
-// backed by kernel audio engine. Stub until kernel exposes audio playback.
+// verbatim-5 (#164): the byte-for-byte Podcastr `PlayerView` is the
+// integration hub that pulls in the still-deferred Player tail
+// (PlayerChaptersScrollView / PlayerNoChaptersPlaceholder /
+// PlayerGenerationSourceChip / PlayerClipSourceChip / AutoSnipBanner /
+// NoLLMKeyHintBanner / VoiceNoteRecordingSheet / ChaptersHydrationService /
+// AIChapterCompiler) plus an optional `Episode.duration` + AppStateStore
+// `notes`/`clips`. Restoring it verbatim is the precise verbatim-6 surface.
 //
-// Podcastr source:
+// This honest stub keeps the EXACT public init signature `RootView` calls
+// (`PlayerView(state:glassNamespace:)`) so the host compiles unchanged while
+// the 15 verbatim Player control/sheet/type files land this iteration.
+//
+// Podcastr source (restore byte-for-byte in verbatim-6):
 // /Users/pablofernandez/Work/podcast/App/Sources/Features/Player/PlayerView.swift
 
 struct PlayerView: View {
@@ -16,7 +25,7 @@ struct PlayerView: View {
         ContentUnavailableView(
             "Player",
             systemImage: "waveform",
-            description: Text("Audio player loads once the kernel exposes playback (T-podcast-gap-002).")
+            description: Text("Full-screen player restores in verbatim-6 (#164) once the chapter / clip / voice-note tail and audio engine land.")
         )
     }
 }
