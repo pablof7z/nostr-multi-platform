@@ -193,8 +193,5 @@ fn const_list(name: &str, manifest: &AppManifest) -> String {
 }
 
 fn ffi_rs(manifest: &AppManifest) -> String {
-    format!(
-        "use crate::{{AppAction, AppUpdate}};\n\n#[derive(Default)]\npub struct FfiApp {{\n    rev: u64,\n}}\n\nimpl FfiApp {{\n    pub fn new() -> Self {{\n        Self::default()\n    }}\n\n    pub fn app_name(&self) -> &'static str {{\n        \"{}\"\n    }}\n\n    pub fn dispatch(&mut self, action: AppAction) -> AppUpdate {{\n        self.rev = self.rev.saturating_add(1);\n        AppUpdate::Kernel(nmp_core::KernelUpdate::Diagnostics {{\n            summary: format!(\"dispatched {{}} at rev {{}}\", action.namespace(), self.rev),\n        }})\n    }}\n}}\n",
-        manifest.name
-    )
+    crate::ffi_gen::ffi_rs(manifest)
 }

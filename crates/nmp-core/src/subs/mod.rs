@@ -744,6 +744,18 @@ impl SubscriptionLifecycle {
     pub(crate) fn indexer_relays(&self) -> &[RelayUrl] {
         &self.indexer_relays
     }
+
+    /// #171 test seam — force a `last_planner_error` so the
+    /// `KernelUpdate`/FFI projection can be exercised without a constructible
+    /// `PlannerError` path. `PlannerError` variants are presently defensive
+    /// (never constructed on a real compiler path — `compile_with_context`
+    /// always returns `Ok`); this setter injects the recorded-error state the
+    /// `drain_tick` `Err(e)` arm would set, so the D6 projection is testable
+    /// today and any future genuine construction path surfaces automatically.
+    #[cfg(test)]
+    pub(crate) fn set_planner_error_for_test(&mut self, error: impl Into<String>) {
+        self.last_planner_error = Some(error.into());
+    }
 }
 
 // ─── T129 watermark rewrite ──────────────────────────────────────────────────

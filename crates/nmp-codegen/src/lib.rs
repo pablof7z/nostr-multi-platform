@@ -1,3 +1,4 @@
+mod ffi_gen;
 mod generate;
 mod manifest;
 
