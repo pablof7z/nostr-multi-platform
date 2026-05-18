@@ -8,6 +8,16 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
+### PD-006 — framework-magic.md C1–C13 status rows stale; codex follow-up from 8fd2764
+
+**Decision (autonomous, 2026-05-18, builder-guide-planner agent):** flagged by codex during its post-merge review of `8fd2764` (the builder-guide PLAN.md merge); see `docs/perf/codex-reviews/8fd2764.md`.
+
+**The finding:** `docs/design/framework-magic.md:30-44` (the C1–C13 index table) still shows several rows as `[PENDING M_n]` even though those milestones have landed (per `docs/plan/status.md` and orchestration-log HB31: M0–M8, M10.5, M11, M11.5 are DONE). The active test file `crates/nmp-testing/tests/framework_magic_contract.rs` was un-ignored for 7 tests in commit `79e0257` (M2/M4/M6/M8 all landed) but the index table was not updated to match. The orchestrator should dispatch a sub-agent to reconcile the table against the test file and current milestone reality, marking each row `[DONE]` / `[PARTIAL]` / `[PENDING M_n]` accordingly.
+
+**Why not fixed in-place by codex:** codex's review-driven fix had FIX-IN-PLACE authority for doctrine citation typos and stale-comment fixes, not for multi-row status reconciliation that requires per-row inspection of test outcomes + milestone-doc cross-checking. Flagged as REPORT-class per the post-merge-codex-review memory.
+
+**Naming-conflict note for the orchestrator:** the parent agent dispatched this builder-guide-planner work under the label "T59 docs-planner — builder-guide TOC + per-section briefs." That collides with PD-005's `T59: iOS signer binding for NIP-42`. The builder-guide-planner agent could not call `TaskCreate` (tool not in its deferred-tool list) and is therefore unable to register a fresh T-number itself. Orchestrator should either rename the docs-planner task to a non-colliding T-number when registering completion, or treat the docs-planner work as untyped follow-up keyed by SHA (`8fd2764` for PLAN.md, `8a79c33` for codex fixes).
+
 ### PD-005 — T59: iOS signer binding for NIP-42 (deferred from T58)
 
 **Decision (autonomous, 2026-05-18, T58):** T58 shipped the kernel-side NIP-42 wiring (parsers + per-relay driver + AuthGate routing + 5 spec'd integration tests + 2 bonus regressions). iOS signer binding is deferred to a follow-up task T59.
