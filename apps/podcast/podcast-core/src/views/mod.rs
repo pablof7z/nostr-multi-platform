@@ -26,6 +26,9 @@ pub struct EpisodeRowPayload {
     pub podcast_artwork_url: Option<String>,
     pub summary: Option<String>,
     pub duration_str: String,
+    /// Human-readable publication date, e.g. "Jan 1, 2024". Empty string when
+    /// `published_at_ms` is 0 (feed omitted the date).
+    pub pub_date_str: String,
     pub download_state: String,
     pub active_job_kind: Option<String>,
     pub has_insights: bool,

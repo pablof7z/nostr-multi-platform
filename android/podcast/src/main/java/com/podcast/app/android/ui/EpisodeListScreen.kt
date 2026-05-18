@@ -1,5 +1,6 @@
 package com.podcast.app.android.ui
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -37,6 +38,9 @@ import com.podcast.app.android.model.EpisodeRowPayload
  * (no reference Android app exists). Data comes exclusively from the Rust
  * snapshot via [PodcastKernelModel.episodes] — no Kotlin-side fabrication.
  *
+ * T-podcast-android-5: episode rows are now tappable. Tapping navigates to
+ * [EpisodeDetailScreen] for that episode via [onEpisodeSelected].
+ *
  * Empty state: renders an honest "No episodes yet" message if the episode
  * list is empty. This is correct behaviour while T-podcast-gap-3 (host HTTP
  * fetch capability) is open; episodes populate once the host fetches + ingests.
@@ -52,6 +56,7 @@ fun EpisodeListScreen(
     podcastId: String,
     model: PodcastKernelModel,
     onBack: () -> Unit,
+    onEpisodeSelected: (EpisodeRowPayload) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // Trigger episode fetch whenever this screen is first shown for a podcast.
@@ -104,7 +109,10 @@ fun EpisodeListScreen(
                     .padding(inner),
             ) {
                 items(feedView.episodes, key = { it.id }) { episode ->
-                    EpisodeRow(episode)
+                    EpisodeRow(
+                        episode = episode,
+                        onClick = { onEpisodeSelected(episode) },
+                    )
                     HorizontalDivider(
                         modifier = Modifier.padding(horizontal = 16.dp),
                         thickness = 0.5.dp,
@@ -137,10 +145,11 @@ private fun EpisodeEmptyState(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun EpisodeRow(episode: EpisodeRowPayload) {
+private fun EpisodeRow(episode: EpisodeRowPayload, onClick: () -> Unit = {}) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
         Text(
@@ -154,6 +163,13 @@ private fun EpisodeRow(episode: EpisodeRowPayload) {
             modifier = Modifier.padding(top = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (episode.pubDateStr.isNotEmpty()) {
+                Text(
+                    text = episode.pubDateStr,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (episode.durationStr.isNotEmpty()) {
                 Text(
                     text = episode.durationStr,

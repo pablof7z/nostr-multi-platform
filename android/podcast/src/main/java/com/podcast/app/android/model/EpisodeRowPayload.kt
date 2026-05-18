@@ -20,6 +20,8 @@ data class EpisodeRowPayload(
     val podcastArtworkUrl: String? = null,
     val summary: String? = null,
     val durationStr: String = "",
+    /** Human-readable publication date, e.g. "Jan 1, 2024". Empty when feed omitted pubDate. */
+    val pubDateStr: String = "",
     val downloadState: String = "",
     val activeJobKind: String? = null,
     val hasInsights: Boolean = false,

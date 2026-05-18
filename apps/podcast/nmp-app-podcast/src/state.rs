@@ -289,6 +289,7 @@ fn episode_to_payload(
         podcast_artwork_url: artwork_url.map(|s| s.to_string()),
         summary: ep.ai_summary.clone().or_else(|| ep.description_text.clone()),
         duration_str: format_duration(ep.duration_s),
+        pub_date_str: format_pub_date(ep.published_at_ms),
         download_state: format!("{:?}", ep.download_state),
         active_job_kind: None,
         has_insights: !ep.insight_ids.is_empty(),
@@ -307,6 +308,32 @@ fn format_duration(secs: f64) -> String {
     } else {
         format!("{m}:{s:02}")
     }
+}
+
+const MONTH_NAMES: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+/// Format a millisecond Unix timestamp as "Mon D, YYYY".
+/// Returns an empty string when `ms` is 0 (feed omitted the date).
+fn format_pub_date(ms: u64) -> String {
+    if ms == 0 {
+        return String::new();
+    }
+    // Gregorian calendar from days since epoch (Euclidean algorithm, Neri/Schneidler).
+    let days = (ms / 1000 / 86_400) as i64;
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe as i64 + era * 400 + if m <= 2 { 1 } else { 0 };
+    let name = MONTH_NAMES[(m - 1) as usize];
+    format!("{name} {d}, {y}")
 }
 
 fn now_ms() -> u64 {
@@ -523,6 +550,50 @@ mod tests {
         let unknown_id = Ulid::new();
         let feed_view = app.episodes_for(unknown_id);
         assert!(feed_view.episodes.is_empty());
+    }
+
+    #[test]
+    fn pub_date_str_is_non_empty_after_ingest_with_pubdate() {
+        // rss2_one_episode has <pubDate>Mon, 01 Jan 2024 00:00:00 +0000</pubDate>
+        let feed_url = url("https://feeds.example.com/show.xml");
+        let app = PodcastApp::new();
+        let SubscribeResult::Subscribed { podcast_id } =
+            app.subscribe(feed_url.clone(), Some("My Show".into()), None)
+        else {
+            panic!("subscribe failed");
+        };
+        app.ingest_feed_bytes(&feed_url, &rss2_one_episode());
+        let feed_view = app.episodes_for(podcast_id);
+        assert_eq!(feed_view.episodes.len(), 1);
+        let ep = &feed_view.episodes[0];
+        assert!(
+            !ep.pub_date_str.is_empty(),
+            "pub_date_str must be non-empty for an episode with a pubDate, got: {:?}",
+            ep.pub_date_str,
+        );
+        // Jan 1, 2024 → "Jan 1, 2024"
+        assert_eq!(ep.pub_date_str, "Jan 1, 2024");
+    }
+
+    #[test]
+    fn pub_date_str_is_empty_when_no_pubdate() {
+        // rss2_three_episodes has no <pubDate> tags
+        let feed_url = url("https://feeds.example.com/multi.xml");
+        let app = PodcastApp::new();
+        let SubscribeResult::Subscribed { podcast_id } =
+            app.subscribe(feed_url.clone(), None, None)
+        else {
+            panic!("subscribe failed");
+        };
+        app.ingest_feed_bytes(&feed_url, &rss2_three_episodes());
+        let feed_view = app.episodes_for(podcast_id);
+        for ep in &feed_view.episodes {
+            assert!(
+                ep.pub_date_str.is_empty(),
+                "pub_date_str must be empty when feed omits pubDate, got: {:?}",
+                ep.pub_date_str,
+            );
+        }
     }
 
     #[test]
