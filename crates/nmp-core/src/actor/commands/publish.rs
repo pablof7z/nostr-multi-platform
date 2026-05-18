@@ -1,5 +1,5 @@
-//! Publish handlers — kind:1 (note/reply), kind:7 (reaction), kind:3
-//! (follow-edit), and timeline (re)open.
+//! Publish handlers — generic unsigned events, kind:1 (note/reply), kind:7
+//! (reaction), kind:3 (follow-edit), and timeline (re)open.
 //!
 //! Every handler builds an `UnsignedEvent`, signs it with the active
 //! account's key (D6: a missing active account is surfaced as a toast, never

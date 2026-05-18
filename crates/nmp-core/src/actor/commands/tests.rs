@@ -137,6 +137,7 @@ fn publish_unsigned_event_without_account_toasts_and_no_outbound() {
 fn publish_unsigned_event_signs_and_publishes_arbitrary_kind() {
     let (mut id, mut kernel) = fresh();
     sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    let active_pubkey = id.active_pubkey().unwrap();
     // Construct a generic kind:30023 (NIP-23 article) UnsignedEvent inline —
     // no per-kind kernel logic; the kernel just signs + publishes.
     let unsigned = crate::substrate::UnsignedEvent {
@@ -152,6 +153,10 @@ fn publish_unsigned_event_signs_and_publishes_arbitrary_kind() {
     let outbound = publish_unsigned_event(&id, &mut kernel, unsigned);
     assert!(!outbound.is_empty());
     assert!(outbound[0].text.contains("\"kind\":30023"));
+    assert!(outbound[0]
+        .text
+        .contains(&format!("\"pubkey\":\"{active_pubkey}\"")));
+    assert!(!outbound[0].text.contains("ignored-by-signer"));
     assert!(outbound[0].text.contains("\"d\""));
     assert!(outbound[0].text.contains("test-article"));
     let q = kernel.publish_queue_snapshot();
