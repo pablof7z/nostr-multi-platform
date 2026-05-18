@@ -2370,6 +2370,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-signer-iface"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "nmp-signers"
 version = "0.1.0"
 dependencies = [
