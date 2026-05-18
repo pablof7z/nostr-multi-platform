@@ -2,3 +2,5 @@
 /ios/DerivedData/
 /ios/NmpStress/DerivedData/
 /ios/NmpStress/NmpStress.xcodeproj/
+.claude/
+.codex-review*/
