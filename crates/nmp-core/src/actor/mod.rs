@@ -18,6 +18,8 @@ mod dispatch;
 mod kernel_action;
 mod relay_mgmt;
 mod tick;
+#[cfg(test)]
+mod tests;
 
 use commands::{IdentityRuntime, WalletRuntime};
 pub(crate) use commands::{

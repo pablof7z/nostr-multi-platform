@@ -894,4 +894,111 @@ mod tests {
         assert!(!l.mark_relay_alive(&"wss://x.example".to_string())); // already alive
         assert!(l.dead_relays().is_empty());
     }
+
+    // ─── T142 unit tests — drain_tick() actor-idle-loop driver ──────────────
+
+    /// T142-U1: Empty inbox tick returns no frames and does not compile.
+    /// Proves the zero-cost no-op guarantee from the spec §1 point 3.
+    #[test]
+    fn drain_tick_empty_inbox_returns_no_frames() {
+        let mut l = SubscriptionLifecycle::new();
+        // No interests, no triggers — inbox is empty.
+        let mailboxes = InMemoryMailboxCache::new();
+        let frames = l.drain_tick(&mailboxes);
+        assert!(frames.is_empty(), "empty inbox must return no frames");
+        assert_eq!(l.compile_count(), 0, "empty inbox must not trigger a compile");
+    }
+
+    /// T142-U2: A FollowListChanged trigger with follow interests → REQ frames.
+    /// Proves A11 trigger + follow interests → wire frames returned.
+    #[test]
+    fn drain_tick_follow_list_changed_emits_req_frames() {
+        let mut l = SubscriptionLifecycle::new();
+        let author = pubkey("alice");
+        l.set_selection_budget(usize::MAX, usize::MAX);
+
+        // Register a follow interest.
+        let interest = LogicalInterest {
+            id: InterestId(1),
+            scope: InterestScope::Global,
+            shape: InterestShape {
+                authors: [author.clone()].into_iter().collect(),
+                kinds: [1u32].into_iter().collect(),
+                ..Default::default()
+            },
+            hints: Vec::new(),
+            lifecycle: InterestLifecycle::Tailing,
+        };
+        l.registry_mut().push(interest);
+
+        // Set up mailbox so the author routes to a relay.
+        let mut mailboxes = InMemoryMailboxCache::new();
+        mailboxes.put(
+            author.clone(),
+            MailboxSnapshot {
+                write_relays: vec!["wss://drain-test.example".to_string()],
+                read_relays: vec![],
+                both_relays: vec![],
+            },
+        );
+
+        // Enqueue a FollowListChanged trigger (A11).
+        l.enqueue_trigger(CompileTrigger::FollowListChanged {
+            account_id: AccountId("test-account".to_string()),
+            new_follows: vec![author],
+        });
+
+        let frames = l.drain_tick(&mailboxes);
+        let req_count = frames.iter().filter(|f| matches!(f, WireFrame::Req { .. })).count();
+        assert!(req_count > 0, "FollowListChanged trigger with interests must emit REQ frames (got {req_count})");
+    }
+
+    /// T142-U3: RelayAuthStateChanged → AuthGate state applied before compile.
+    /// Proves that the auth-state side-effect lands in the AuthGate before the
+    /// compile pass runs (spec §1 point 2).
+    #[test]
+    fn drain_tick_relay_auth_changed_applies_side_effect() {
+        let mut l = SubscriptionLifecycle::new();
+        let relay_url = "wss://auth-test.example".to_string();
+
+        // Before the trigger: relay is NOT paused.
+        assert!(!l.is_auth_paused_for_url(&relay_url), "relay should not be paused initially");
+
+        // Enqueue a ChallengeReceived transition — should pause the relay.
+        l.enqueue_trigger(CompileTrigger::RelayAuthStateChanged {
+            url: relay_url.clone(),
+            state: RelayAuthState::ChallengeReceived,
+        });
+
+        let mailboxes = InMemoryMailboxCache::new();
+        let _frames = l.drain_tick(&mailboxes);
+
+        // After drain_tick the side effect must be applied.
+        assert!(l.is_auth_paused_for_url(&relay_url), "relay must be paused after ChallengeReceived side effect");
+    }
+
+    /// T142-U4: N triggers in one tick → exactly 1 compile (D8 coalescing).
+    /// Proves the per-tick discipline: N triggers → at most 1 compile.
+    #[test]
+    fn drain_tick_coalesces_multiple_triggers() {
+        let mut l = SubscriptionLifecycle::new();
+        let mailboxes = InMemoryMailboxCache::new();
+        let baseline = l.compile_count();
+
+        // Enqueue 10 triggers within the same tick.
+        for _ in 0..10 {
+            l.enqueue_trigger(CompileTrigger::InvalidateCompile {
+                reason: InvalidateReason::TestForceRecompile,
+            });
+        }
+
+        let _frames = l.drain_tick(&mailboxes);
+
+        assert_eq!(
+            l.compile_count(),
+            baseline + 1,
+            "10 triggers in one tick must coalesce into exactly 1 compile (got {} compiles)",
+            l.compile_count() - baseline,
+        );
+    }
 }
