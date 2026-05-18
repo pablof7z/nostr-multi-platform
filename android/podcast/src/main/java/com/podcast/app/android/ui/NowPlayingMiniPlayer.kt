@@ -68,6 +68,7 @@ fun NowPlayingMiniPlayer(
     episode: EpisodeRowPayload?,
     controller: MediaController?,
     onTap: () -> Unit,
+    onPlaybackEnded: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Observe isPlaying + position from the shared controller.
@@ -94,6 +95,12 @@ fun NowPlayingMiniPlayer(
             override fun onPlaybackStateChanged(playbackState: Int) {
                 durationMs = ctrl.duration.takeIf { it > 0 }?.toFloat() ?: 0f
                 positionMs = ctrl.currentPosition.toFloat()
+                // D6: honest state — clear nowPlaying when playback finishes or
+                // the player idles (e.g. after an error), so the mini-player hides
+                // rather than freezing on the last-played episode indefinitely.
+                if (playbackState == Player.STATE_ENDED || playbackState == Player.STATE_IDLE) {
+                    onPlaybackEnded()
+                }
             }
         }
         ctrl.addListener(listener)

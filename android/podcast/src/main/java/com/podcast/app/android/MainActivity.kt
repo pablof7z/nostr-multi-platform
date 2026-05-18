@@ -114,6 +114,10 @@ private fun RootTabs(model: PodcastKernelModel) {
                         selectedPodcastId = pid
                         selectedEpisode = ep
                     },
+                    // D6: clear nowPlaying when ExoPlayer reports STATE_ENDED or
+                    // STATE_IDLE so the mini-player hides instead of staying
+                    // frozen on the last-played episode (honest state — no fake UI).
+                    onPlaybackEnded = { model.setNowPlaying(null) },
                 )
                 NavigationBar {
                     NavigationBarItem(
