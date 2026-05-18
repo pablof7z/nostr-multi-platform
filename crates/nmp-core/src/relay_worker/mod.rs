@@ -98,6 +98,22 @@ const KEEPALIVE_IDLE_THRESHOLD: Duration = Duration::from_secs(30);
 /// this window after a Ping is emitted.
 const KEEPALIVE_PONG_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// T116c / G12 — per-URL deterministic jitter to prevent thundering-herd
+/// reconnects when many relays fail simultaneously (e.g. network partition
+/// recovery). Uses a hash of the URL bytes to produce a spread that is:
+///   - deterministic per URL (same URL always gets the same jitter offset),
+///   - spread across all active relays (different URLs → different offsets),
+///   - bounded to [0, 5s] so worst-case individual delay is `base + 5s`.
+///
+/// No shared state needed: each worker computes its own jitter independently.
+pub(crate) fn jittered_backoff(base: Duration, url: &str) -> Duration {
+    let hash = url
+        .bytes()
+        .fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
+    let jitter_ms = (hash % 5000) as u64; // 0–4999 ms spread
+    base + Duration::from_millis(jitter_ms)
+}
+
 /// HTTP-level denial: the relay explicitly rejected the connection.
 /// 401 and 403 are both permanent until the user changes credentials/policy.
 fn is_permanent_error(error: &str) -> bool {
@@ -201,7 +217,13 @@ fn run_relay_worker(
                         // Do NOT reset backoff here — a relay that connects and
                         // immediately disconnects should back off progressively,
                         // not spin at 3 s per cycle.
-                        if !wait_before_reconnect(&control_rx, &mut pending, backoff) {
+                        // T116c / G12: jitter spreads simultaneous reconnects
+                        // across a [0, 5s] window to avoid global thundering-herd.
+                        if !wait_before_reconnect(
+                            &control_rx,
+                            &mut pending,
+                            jittered_backoff(backoff, &relay_url),
+                        ) {
                             return;
                         }
                         backoff = (backoff * 2).min(RELAY_RECONNECT_DELAY_MAX);
@@ -225,7 +247,13 @@ fn run_relay_worker(
                 if permanent {
                     return;
                 }
-                if !wait_before_reconnect(&control_rx, &mut pending, backoff) {
+                // T116c / G12: jitter spreads simultaneous reconnects
+                // across a [0, 5s] window to avoid global thundering-herd.
+                if !wait_before_reconnect(
+                    &control_rx,
+                    &mut pending,
+                    jittered_backoff(backoff, &relay_url),
+                ) {
                     return;
                 }
                 backoff = (backoff * 2).min(RELAY_RECONNECT_DELAY_MAX);
