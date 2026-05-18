@@ -121,11 +121,8 @@ struct NoteRowView: View {
                 .foregroundStyle(ChirpColor.textTertiary)
             }
             if !text.isEmpty {
-                Text(text)
-                    .font(ChirpFont.body)
+                NoteContentView(content: text, font: ChirpFont.body)
                     .foregroundStyle(ChirpColor.textPrimary)
-                    .lineLimit(nil)
-                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(.top, ChirpSpace.xs)

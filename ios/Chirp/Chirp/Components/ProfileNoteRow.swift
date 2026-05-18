@@ -33,11 +33,8 @@ struct ProfileNoteRow: View {
                             .foregroundStyle(ChirpColor.textTertiary)
                     }
 
-                    Text(item.content)
-                        .font(ChirpFont.body)
+                    NoteContentView(content: item.content, font: ChirpFont.body)
                         .foregroundStyle(ChirpColor.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .multilineTextAlignment(.leading)
 
                     // Like action row
                     HStack(spacing: ChirpSpace.xl) {

@@ -46,12 +46,12 @@ struct ThreadNoteRow: View {
                             .foregroundStyle(ChirpColor.textTertiary)
                     }
 
-                    Text(item.content)
-                        .font(isFocused ? ChirpFont.body : ChirpFont.callout)
-                        .foregroundStyle(ChirpColor.textPrimary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .multilineTextAlignment(.leading)
-                        .padding(.bottom, isFocused ? ChirpSpace.xs : 0)
+                    NoteContentView(
+                        content: item.content,
+                        font: isFocused ? ChirpFont.body : ChirpFont.callout
+                    )
+                    .foregroundStyle(ChirpColor.textPrimary)
+                    .padding(.bottom, isFocused ? ChirpSpace.xs : 0)
 
                     // Action row
                     HStack(spacing: ChirpSpace.xl) {
