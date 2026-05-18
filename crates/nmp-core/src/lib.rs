@@ -2,6 +2,8 @@ mod actor;
 mod app;
 mod ffi;
 mod kernel;
+pub mod nip19;
+pub mod nip21;
 pub mod planner;
 pub mod publish;
 mod relay;
