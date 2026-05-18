@@ -19,8 +19,6 @@ pub type IdentityId = String;
 pub enum AccountError {
     /// No account exists with this id.
     NotFound(IdentityId),
-    /// An account with this pubkey already exists.
-    AlreadyExists(IdentityId),
     /// The signer's `sign(test_template)` post-condition failed — refused.
     SignerMismatch(String),
     /// The signer's `sign(test_template)` itself errored.
@@ -31,7 +29,6 @@ impl std::fmt::Display for AccountError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AccountError::NotFound(id) => write!(f, "account not found: {id}"),
-            AccountError::AlreadyExists(id) => write!(f, "account already exists: {id}"),
             AccountError::SignerMismatch(m) => write!(f, "signer mismatch: {m}"),
             AccountError::SignerError(e) => write!(f, "signer error: {e}"),
         }
@@ -115,11 +112,19 @@ impl AccountManager {
     /// signs a fixed test template and verifies the returned pubkey + computed
     /// id match.  Refuses the account if the check fails — protects against
     /// malicious or buggy signers that mutate the event before signing.
+    ///
+    /// **PD-004 (same nsec = same account):** `IdentityId` is permanently
+    /// `pubkey_hex`.  Adding a pubkey that is already known is an idempotent
+    /// no-op — it returns the existing id, keeps the originally-installed
+    /// signer, and does NOT re-run the post-condition.  NMP explicitly rejects
+    /// the applesauce "two accounts for one pubkey" model: one pubkey is always
+    /// exactly one account slot (at most a future relay-policy merge — the
+    /// `Signer` trait carries no policy today, so nothing to merge yet).
     pub fn add(&mut self, signer: Arc<dyn Signer>) -> Result<IdentityId, AccountError> {
         let pubkey = signer.pubkey();
         let id = pubkey.to_hex();
         if self.accounts.contains_key(&id) {
-            return Err(AccountError::AlreadyExists(id));
+            return Ok(id);
         }
         self.verify_signer(&signer)?;
         self.accounts.insert(id.clone(), signer);
@@ -131,11 +136,15 @@ impl AccountManager {
     /// only for restoration paths where the signer cannot perform a sign
     /// operation eagerly (e.g. NIP-46 with no connected transport).  Callers
     /// MUST run their own verification before relying on the signer.
+    ///
+    /// **PD-004:** same idempotent one-account-per-pubkey contract as
+    /// [`AccountManager::add`] — a known pubkey returns its existing id and
+    /// keeps the originally-installed signer.
     pub fn add_unverified(&mut self, signer: Arc<dyn Signer>) -> Result<IdentityId, AccountError> {
         let pubkey = signer.pubkey();
         let id = pubkey.to_hex();
         if self.accounts.contains_key(&id) {
-            return Err(AccountError::AlreadyExists(id));
+            return Ok(id);
         }
         self.accounts.insert(id.clone(), signer);
         self.order.push(id.clone());

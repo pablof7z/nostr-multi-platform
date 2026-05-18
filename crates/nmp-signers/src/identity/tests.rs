@@ -21,16 +21,49 @@ fn add_and_active_lifecycle() {
     assert!(mgr.signer_active().is_some());
 }
 
+/// PD-004 (same nsec = same account): adding the same nsec twice yields
+/// exactly one account.  `IdentityId == pubkey_hex` is permanent; the
+/// applesauce "two accounts for one pubkey" model is rejected.
 #[test]
-fn duplicate_add_rejected() {
+fn adding_same_nsec_twice_yields_exactly_one_account() {
     let mut mgr = AccountManager::new();
     let key = LocalKeySigner::generate();
     let key_hex = key.secret_hex();
     let a = LocalKeySigner::from_secret_hex(&key_hex).unwrap();
     let b = LocalKeySigner::from_secret_hex(&key_hex).unwrap();
-    let _id = mgr.add(Arc::new(a)).unwrap();
-    let err = mgr.add(Arc::new(b)).unwrap_err();
-    assert!(matches!(err, AccountError::AlreadyExists(_)));
+    let id1 = mgr.add(Arc::new(a)).expect("first add");
+    let id2 = mgr.add(Arc::new(b)).expect("second add is an idempotent no-op");
+
+    assert_eq!(id1, id2, "same nsec must map to the same IdentityId");
+    assert_eq!(mgr.accounts(), vec![id1.clone()], "exactly one slot");
+    assert!(mgr.signer_for(&id1).is_some(), "signer still resolves");
+}
+
+/// PD-004: `add_unverified` (restoration path) is equally idempotent — a
+/// known pubkey never opens a second slot and keeps the original signer.
+#[test]
+fn add_unverified_same_pubkey_is_noop_and_mixed_paths_keep_one_slot() {
+    let mut mgr = AccountManager::new();
+    let key_hex = LocalKeySigner::generate().secret_hex();
+
+    let first = LocalKeySigner::from_secret_hex(&key_hex).unwrap();
+    let id1 = mgr.add(Arc::new(first)).expect("verified add");
+    let original = mgr.signer_for(&id1).expect("installed");
+
+    // add_unverified with the same pubkey: no-op, original signer retained.
+    let dup = LocalKeySigner::from_secret_hex(&key_hex).unwrap();
+    let id2 = mgr.add_unverified(Arc::new(dup)).expect("idempotent no-op");
+    // add (verified path) with the same pubkey again: still one slot.
+    let dup2 = LocalKeySigner::from_secret_hex(&key_hex).unwrap();
+    let id3 = mgr.add(Arc::new(dup2)).expect("idempotent no-op");
+
+    assert_eq!(id1, id2);
+    assert_eq!(id1, id3);
+    assert_eq!(mgr.accounts(), vec![id1.clone()], "AccountManager is the sole writer of account identity (D4): exactly one slot");
+    assert!(
+        Arc::ptr_eq(&original, &mgr.signer_for(&id1).unwrap()),
+        "originally-installed signer must be retained, not replaced"
+    );
 }
 
 #[test]

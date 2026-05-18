@@ -42,7 +42,7 @@ NDK's `NDKSession` (`sessions/src/types.ts:7-51`) mixes identity, derived state,
 ```rust
 // Persistent / serializable:
 pub struct AccountRecord<D: IdentityDescriptor> {
-    pub id: AccountId,           // ULID; distinct from pubkey (supports multiple accounts for one pubkey)
+    pub id: AccountId,           // == pubkey_hex, permanent (PD-004: same nsec = same account; applesauce dual-account-per-pubkey model REJECTED)
     pub pubkey: Hexpubkey,
     pub namespace: &'static str, // IdentityModule::NAMESPACE
     pub descriptor: D,           // module-specific
@@ -60,7 +60,7 @@ pub struct ActiveAccount {
 }
 ```
 
-`AccountId` (ULID) distinct from `pubkey` — required because applesauce allows multiple accounts for one pubkey (`manager.ts:60-63`), and NMP must support "same nsec, different relay policy" or "same bunker user from two devices."
+`AccountId` **== `pubkey_hex`, permanent** — **NMP explicitly rejects** the applesauce "two accounts for one pubkey" model (`manager.ts:60-63`). PD-004 (resolved): **same nsec = same account**; the ULID rekey is cancelled. `AccountManager::add` is an idempotent no-op for a known pubkey (at most a relay-policy merge), never a second slot. "Same nsec, different relay policy" is a per-account policy concern, not a second account.
 
 **Mutable vs immutable:**
 - `AccountRecord.pubkey`, `id`, `namespace` are immutable post-creation.

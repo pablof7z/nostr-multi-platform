@@ -158,14 +158,12 @@ Where they diverge, this section names the divergence + rationale.
 
 ### Adopted with adjustment
 
-6. **`AccountId` distinct from pubkey** — synthesis §1.2 wants a ULID.
-   Current impl uses `pubkey.to_hex()` as id (one-account-per-pubkey).  M8
-   needs the ULID to support "same nsec, two policies" or "same bunker user
-   from two devices."  **Deferred to a follow-up commit**: the
-   `IdentityId` type alias is `String` today and accepts ULIDs without an
-   API change; switching the keying inside `AccountManager.accounts` from
-   `pubkey_hex` to ULID is a contained 30-line change.  Documented as
-   PD-004 in `docs/perf/pending-user-decisions.md` so it doesn't slip.
+6. **`AccountId` == pubkey (one account per pubkey)** — PD-004 (resolved)
+   made `IdentityId = pubkey_hex` **permanent**; the ULID rekey is
+   **cancelled** and the applesauce dual-account-per-pubkey model is
+   rejected.  Same nsec = same account: `AccountManager::add` is an
+   idempotent no-op for a known pubkey (at most a future relay-policy
+   merge), never a second slot.
 
 7. **Extend `IdentityError`** (§1.1) — `nmp-core::substrate::identity::IdentityError`
    currently has 2 variants.  Our `SignerError` (in `nmp-signers`) already
@@ -231,7 +229,7 @@ When persistence lands the schema will be:
 - **`AccountSecret`** in Keyring (NIP-49-encrypted nsec OR bunker
   `local_signer.private_key` + bunker URI metadata).  Opaque to the
   capability; nmp-signers serialises the blob.
-- Linked by `AccountId` (ULID per §1.2; see PD-004).
+- Linked by `AccountId` (== `pubkey_hex`, permanent per PD-004).
 
 The current `SignerPayload` is already shaped to slot into `AccountSecret`
 as the opaque blob — it carries only secret-bearing fields, no display
@@ -246,8 +244,10 @@ current-commit change required.
 
 ### Open follow-ups (for orchestrator)
 
-- **PD-004 candidate**: switch `IdentityId` from `pubkey_hex` to ULID before
-  M8.  30-line change confined to `AccountManager`.
+- ~~**PD-004 candidate**: switch `IdentityId` from `pubkey_hex` to ULID
+  before M8.~~  **Resolved (PD-004): `pubkey_hex` is permanent; ULID rekey
+  cancelled — one account per pubkey, applesauce dual-account model
+  rejected.**
 - **`IdentityError` extension** in `nmp-core` to add per-synthesis-§1.1
   variants — one-file diff, deferred to keep this commit focused.
 - **NIP-46 `switch_relays` extension** — synthesis §1.7 wants it day-one.
