@@ -8,7 +8,19 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
-### PD-027 (2026-05-18) — T141 STOP: spec's pragmatic path (explicit-arms) is blocked by a Cargo dependency cycle; registry wiring has no production caller
+### PD-027 RESOLVED (2026-05-18, HB54) — User picked **Option A: extract substrate-types crate** (= option C in original write-up + then A's explicit arms)
+
+User confirmed the cleanest path: extract `StoredEvent`, `DomainHandle`, `StoreError`, `KernelEvent`, `EventId`, `DomainModule` + companions into a new `nmp-substrate-types` crate so the cycle dissolves. Once that lands, T141 itself ships explicit ingest arms in `kernel/ingest/{reactions,comments,zaps}.rs` calling `nmp_reactions::decode_and_route` etc. Heartbeat-dispatched to a worktree agent.
+
+---
+
+### PD-028 (2026-05-18, HB54) — T136b Gate B write-path policy: **Document then implement** (ADR-driven mem-canonical reconciliation)
+
+User picked the ADR-first path. Plan: write `docs/decisions/0012-lmdb-write-path-policy.md` comparing `nostr-lmdb::save_event_with_txn` vs `MemEventStore::insert` (supersession, provenance, NIP-09 deletions, replaceable/addressable rules), declare `MemEventStore` canonical per D4 ("single writer per fact"), then port the canonical pipeline to the LMDB adapter so both backends share identical observable invariants. Heartbeat-dispatched to a worktree agent (Gates B-E).
+
+---
+
+### PD-027 (2026-05-18, ORIGINAL) — T141 STOP: spec's pragmatic path (explicit-arms) is blocked by a Cargo dependency cycle; registry wiring has no production caller
 
 **Decision deferred (genuine user choice needed). NO code changes landed.**
 
