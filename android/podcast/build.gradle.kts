@@ -30,7 +30,7 @@ android {
         minSdk = 26
         targetSdk = 34
         versionCode = 3
-        versionName = "0.3.0-T-podcast-android-3"
+        versionName = "0.3.0-T-podcast-android-4"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
 
@@ -85,6 +85,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.2")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.2")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+    // T-podcast-android-4: host-side feed fetch (Option A from T-podcast-gap-3).
+    // OkHttp downloads RSS bytes; bridge.ingestBytes passes them to Rust parser.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 }
 
 // Delegate native build to :app's cargoNdk task — the .so is shared between
