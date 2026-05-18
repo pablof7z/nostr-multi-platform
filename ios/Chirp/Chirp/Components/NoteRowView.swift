@@ -109,12 +109,37 @@ struct NoteRowView: View {
     // ── Note content ──────────────────────────────────────────────────────
 
     private var noteContent: some View {
-        Text(item.content)
-            .font(ChirpFont.body)
-            .foregroundStyle(ChirpColor.textPrimary)
-            .lineLimit(nil)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.top, ChirpSpace.xs)
+        let (text, isRepost) = effectiveContent(item.content)
+        return VStack(alignment: .leading, spacing: ChirpSpace.xs) {
+            if isRepost {
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.2.squarepath")
+                        .font(.system(size: 11, weight: .medium))
+                    Text("Repost")
+                        .font(ChirpFont.caption)
+                }
+                .foregroundStyle(ChirpColor.textTertiary)
+            }
+            if !text.isEmpty {
+                Text(text)
+                    .font(ChirpFont.body)
+                    .foregroundStyle(ChirpColor.textPrimary)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(.top, ChirpSpace.xs)
+    }
+
+    // Kind:6 reposts carry the full reposted-event JSON as their content field.
+    // Extract the inner text; treat anything that doesn't parse as plain content.
+    private func effectiveContent(_ raw: String) -> (String, Bool) {
+        guard raw.hasPrefix("{"),
+              let data = raw.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return (raw, false)
+        }
+        return ((json["content"] as? String) ?? "", true)
     }
 
     // ── Relay-count chip ──────────────────────────────────────────────────

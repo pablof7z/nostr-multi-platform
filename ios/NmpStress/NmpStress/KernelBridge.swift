@@ -75,9 +75,17 @@ final class KernelHandle {
         let start = ContinuousClock.now
         let payload = String(cString: pointer)
         let data = Data(payload.utf8)
+        // Actor wraps all frames: {"t":"snapshot","v":{...}} or {"t":"update","v":{...}}.
+        // Only snapshot frames carry the full kernel state we render.
+        guard let outer = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              (outer["t"] as? String) == "snapshot",
+              let inner = outer["v"],
+              let innerData = try? JSONSerialization.data(withJSONObject: inner) else {
+            return nil
+        }
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
-        guard let update = try? decoder.decode(KernelUpdate.self, from: data) else {
+        guard let update = try? decoder.decode(KernelUpdate.self, from: innerData) else {
             return nil
         }
         let duration = start.duration(to: .now)
