@@ -7,6 +7,13 @@ description = "NIP-25 reactions (kind:7) + NIP-18 reposts (kind:6 / generic kind
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
+# Cross-NIP facade composition (`relations` module) — the applesauce-shape
+# ergonomic surface for apps. Adding these here, rather than spinning up a
+# separate `nmp-relations` crate, keeps the cross-NIP entrypoints adjacent to
+# the largest already-landed relation crate.
+nmp-nip01 = { path = "../nmp-nip01" }
+nmp-nip22 = { path = "../nmp-nip22" }
+nmp-nip57 = { path = "../nmp-nip57" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 

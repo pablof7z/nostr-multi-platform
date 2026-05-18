@@ -41,6 +41,7 @@ pub mod build;
 pub mod decode;
 pub mod domain;
 pub mod kinds;
+pub mod relations;
 pub mod view;
 
 pub use build::{
@@ -55,6 +56,7 @@ pub use domain::{
     ReactionsDomain, NAMESPACE,
 };
 pub use kinds::{KIND_GENERIC_REPOST, KIND_REACTION, KIND_REPOST, SOCIAL_KINDS};
+pub use relations::{RelationSpecs, Relations};
 pub use view::{
     ReactionAccumulator, ReactionSummaryPayload, ReactionSummarySpec, ReactionSummaryView,
     ReactionViewDelta, RepostsPayload, RepostsSpec, RepostsView,
