@@ -12,11 +12,11 @@
 
 - **M0 (kernel substrate + non-Nostr fixture):** ✅ DONE.
 - **M1 (read-only Twitter slice on live iOS):** 🟡 hardening (firehose-bench `live` mode + iPhone-12 baseline in flight via `m1-hardener`).
-- **M2 (subscription compilation + outbox + NIP-65):** design landed + codex-reviewed; 10 issues being addressed in T13.
-- **M3 (LMDB + insert invariants + claim GC):** design landed + codex-reviewed; 12 issues pending fix in T14.
+- **M2 (subscription compilation + outbox + NIP-65):** design + **impl phase 1** landed. `crates/nmp-core/src/planner/` (interest/lattice/compiler/plan, 5 files); 29 unit tests; M2 audit gate. Codex flagged 8 follow-ups including Rule-1 wildcard bug + plan-id stability (T30, pending). `requests/*` migration to compiler deferred to phase 2.
+- **M3 (LMDB + insert invariants + claim GC):** design + **impl phase 1** landed. `crates/nmp-core/src/store/` with `EventStore` trait + `MemEventStore` complete + `LmdbEventStore` skeleton; 47 store tests via `for_each_backend!` macro; ADR-0011 (env sharing). Codex flagged 6 follow-ups including mem.rs 1067 LOC HARD-CEILING + D4 ingest wire-up + `RawEvent`→`VerifiedEvent` (T29, in flight).
 - **M4–M8 (negentropy, NIP-42, signers+write, interaction loop, multi-session):** scoped, pending design after M2/M3 lock.
 - **M10 (Blossom + long-running capabilities):** pending.
-- **M10.5 (FFI hardening + iOS empirical proof):** design landed; **hard gate before M11**.
+- **M10.5 (FFI hardening + iOS empirical proof):** design + **impl phase 1** landed. `crates/nmp-testing/bin/ffi-stress/` with 5 host-side scenarios (S1-S5 mount/unmount churn, dispatch flood, snapshot pressure, reconciler back-pressure, reentrancy); justfile `stress-gate-fast`. Codex flagged 8 follow-ups (event-pressure injection void + G-S1/G-S2 weakened + S5 deadlock watchdog — T31, pending). iPhone 12 device measurements + iOS XCUITest harness + Sonnet-agent UI runner remain. **Hard gate before M11.**
 - **M11 (rebuild of `/Users/pablofernandez/src/podcast` on NMP):** design landed (13 sub-docs, codex-reviewed clean after 5 iterations); awaits M10.5 empirical pass.
 - **M11.5 (rebuild of `/Users/pablofernandez/Work/hl/app` Highlighter + `nmp-nip29` crate):** design in flight (T18).
 - **M13 (WoT), M14 (UniFFI), M15 (cross-platform), M16 (CLI), M17 (v1 release):** scoped, pending.
