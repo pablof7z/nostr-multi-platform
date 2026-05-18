@@ -21,6 +21,20 @@ Agent's final log line ("Wait — 1081 not 1238?") suggests a **test-count REGRE
 
 If user disagrees with Option A: Option B (opaque backend trait inside enum) is a ~30-min surgical alternative; revert this decision and rerun under B by replacing the dispatched agent's instructions.
 
+**HB66 / T155 RESOLUTION (2026-05-18) — ✅ FULLY LANDED on master:** T155 agent (`a9ceb35f`) investigated and found the "regression" was a phantom — cargo's default fail-fast behavior was truncating the test run after `nmp_core_is_doctrine_clean` (T154 pre-existing) failed inside `nmp-testing`, masking ~150 subsequent tests. With `--no-fail-fast` the real picture: rescue = master + 4 new T141 routing tests + 1 fixed `unknown_author_*` test (corrected to T134's new `unroutable_authors` semantics).
+
+While the agent was working, the substrate-types extract + ingest arms + PD-029 doc + selection.rs `unroutable_authors` test fixture + uuid-replacement in `store_harness.rs` all landed on master through separate user-direct or other-agent paths (`581d415` + `43c0e4a` + `a6c1fbc` + `99d979d` + `8fdc2ff` + `f618689` + `a39d6c2` + `ec1e205` + `da91a14` etc.).
+
+Final closing commit on master: `3106c05 fix(workspace): clear 4 clippy -D warnings findings (T155 follow-through)` — sweeps the last hygiene issues so:
+
+- `cargo clippy --workspace -- -D warnings` clean
+- `cargo clippy --workspace --features lmdb-backend -- -D warnings` clean
+- `cargo build --workspace` + `cargo build --workspace --features lmdb-backend` clean
+- `cargo test --workspace --no-fail-fast` 1297 passed / 1 failed (doctrine-lint, T154 territory)
+- `cargo test --workspace --no-fail-fast --features lmdb-backend` 1364 passed / 1 failed (same)
+
+**T140 / T142 / T145 unblocked.** T141 marked completed. T155 marked completed.
+
 ---
 
 ### PD-029 (2026-05-18, HB56c) — T141 substrate-types extract collides with T136b LMDB `DomainHandleInner::Lmdb { backend: Arc<lmdb::Inner> }`; rebase blocked
