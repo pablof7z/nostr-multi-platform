@@ -83,6 +83,13 @@ impl Kernel {
             return;
         }
 
+        // T82 discovery seam (notedeck §3.10): collect referenced-but-missing
+        // pubkeys/event ids (p/e/q tags) into UnknownIds *before* `event.tags`
+        // is moved into the cache — borrowed visitor, no clone, zero alloc
+        // when every reference is already cached (D8). The actor turns the
+        // deduped set into OneshotApi fetches via `drain_unknown_oneshots`.
+        self.collect_unknown_refs(&event.tags);
+
         let cached = StoredEvent {
             id: event.id.clone(),
             author: event.pubkey.clone(),
@@ -116,6 +123,10 @@ impl Kernel {
             || sub_id.starts_with("thread-ids-")
             || sub_id.starts_with("thread-replies-")
             || sub_id.starts_with("diag-firehose-")
+            // T82: a discovered quoted-note / referenced event arrives on its
+            // oneshot sub — it must be stored so the missing reference is
+            // actually resolved (otherwise the next ingest re-discovers it).
+            || sub_id.starts_with(crate::kernel::discovery::ONESHOT_SUB_PREFIX)
     }
 
     pub(in crate::kernel) fn enqueue_thread_hydration_from_event(&mut self, event_id: &str) {

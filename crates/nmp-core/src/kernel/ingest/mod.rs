@@ -96,6 +96,12 @@ impl Kernel {
                 if sub_id.starts_with("thread-replies-") {
                     self.thread_replies_inflight = false;
                 }
+                // T82: a discovery oneshot's first stored set has landed
+                // (OneShot lifecycle == "EOSE closes"). Complete + release the
+                // token; the generic CLOSE below tears down the wire sub.
+                if sub_id.starts_with(crate::kernel::discovery::ONESHOT_SUB_PREFIX) {
+                    self.complete_unknown_oneshot(sub_id);
+                }
                 if sub_id != "seed-timeline" && !sub_id.starts_with("diag-firehose-") {
                     outbound.push(OutboundMessage {
                         role,

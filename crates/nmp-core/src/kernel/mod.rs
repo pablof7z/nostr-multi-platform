@@ -11,6 +11,9 @@
 //! - `tests`        — unit tests (cfg(test) only)
 
 mod auth;
+mod discovery;
+#[cfg(test)]
+mod discovery_tests;
 mod identity_state;
 mod ingest;
 mod nostr;
@@ -59,7 +62,7 @@ pub(crate) fn hex_to_pubkey_bytes(hex: &str) -> Option<[u8; 32]> {
 }
 
 use crate::store::{EventStore, MemEventStore};
-use crate::subs::SubscriptionLifecycle;
+use crate::subs::{OneshotApi, SubscriptionLifecycle, UnknownIds};
 use auth::{AuthSignerFn, Nip42DriverState};
 pub(crate) use identity_state::{AccountSummary, PublishQueueEntry, RelayEditRow};
 use types::*;
@@ -141,6 +144,17 @@ pub(crate) struct Kernel {
     /// kernel-side AUTH-pause is currently routed through `defer_outbound`
     /// (the existing M1 generic queue) via `partition_auth_paused`.
     lifecycle: SubscriptionLifecycle,
+    /// T82 — referenced-but-missing id collector (notedeck §3.10). Fed by the
+    /// ingest seam (`collect_unknown_refs`); drained into `oneshot` fetches.
+    unknown_ids: UnknownIds,
+    /// T82 — transient one-shot read coordinator (notedeck §3.9). Issues
+    /// `OneShot`-lifecycle interests on `lifecycle`'s registry to resolve
+    /// drained `unknown_ids`; the wire lifecycle CLOSEs them on first EOSE.
+    oneshot: OneshotApi,
+    /// T82 — discovery wire-sub-id → [`crate::subs::OneshotToken`] map so the
+    /// EOSE handler can route a completed oneshot back to its token for
+    /// release. Entries are removed on completion (bounded by in-flight set).
+    oneshot_subs: HashMap<String, crate::subs::OneshotToken>,
     /// M6 signer injection: actor / iOS layer wires this from
     /// `nmp_signers::AccountManager::signer_active()` at startup. `None`
     /// means no active account — AUTH challenges are recorded but no
@@ -219,6 +233,9 @@ impl Kernel {
                 .map(|role| (role, Nip42DriverState::new()))
                 .collect(),
             lifecycle: SubscriptionLifecycle::new(),
+            unknown_ids: UnknownIds::new(),
+            oneshot: OneshotApi::new(),
+            oneshot_subs: HashMap::new(),
             auth_signer: None,
             auth_signer_pubkey: None,
             accounts: Vec::new(),

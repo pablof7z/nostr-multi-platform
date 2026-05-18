@@ -160,6 +160,9 @@ impl Kernel {
         }
         requests.extend(self.pending_profile_claim_requests());
         requests.extend(self.maybe_open_thread_hydration());
+        // T82: turn referenced-but-missing ids collected during ingest into
+        // oneshot fetches (idempotent — no-op when the set is empty).
+        requests.extend(self.drain_unknown_oneshots());
         requests
     }
 

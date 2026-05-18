@@ -310,6 +310,14 @@ The task's own escape clause: "If one missing: define minimal trait shim that #4
 
 ---
 
+### PD-021 (resolved 2026-05-18 autonomously) — T82 OneshotApi delivery model + UnknownIds reference scope
+
+**Decision (autonomous, T82):** the task says OneshotApi delivers "the first matching result(s) to a callback/future". `nmp-core` has no async runtime and the kernel is a synchronous actor (`handle_text` → ingest path); events do not flow through `SubscriptionLifecycle`. I chose a **poll-based completion model**: `OneshotApi::request(shape)` registers a `OneShot`-lifecycle interest via `InterestRegistry::ensure_sub` under a stable synthetic owner derived from the shape hash (so identical oneshots dedup), returns a `OneshotToken`; the existing `LifecycleGate` already CLOSEs the wire sub on first EOSE (no parallel tracker built). Completion is observed by the actor calling `OneshotApi::complete(token)` from the ingest seam when a matching event lands, then `OneshotApi::drain_completed()` (idempotent) yields finished tokens. No `Box<dyn FnOnce>` callback and no `Future` — both would either need an async runtime (absent) or a non-`Send` closure store crossing the actor boundary (D6 risk). For **UnknownIds** reference scope I cover `p`-tags (pubkeys), `e`-tags and `q`-tags (event ids) — the raw NIP-01 tag forms. Full `nevent`/`naddr` bech32 decode is deferred: that codec lives in `nmp-nip19` and decoding embeds in content/tags is out of this task's `nmp-core` scope (documented inline in `unknown_ids.rs`). `a`-tag address coords are collected as opaque coordinate strings so the seam exists; resolving them to fetches is the planner's `addresses` field, untouched here.
+
+**If wrong:** the OneshotApi public surface is `request`/`complete`/`drain_completed`/`is_complete`; swapping to a callback model later is additive (add `request_with(shape, cb)` overload) and does not break the poll surface. UnknownIds scope widens by extending the visitor's tag match arms.
+
+---
+
 ---
 
 ## Resolved (user acked or superseded)
