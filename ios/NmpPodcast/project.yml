@@ -20,11 +20,14 @@ targets:
     # - Bridge/ — KernelBridge, KernelModel, NmpCore.h, PodcastrShims (shim types)
     # - Design/ — AppTheme*, Haptics, CachedAsyncImage, etc. (byte-for-byte)
     # - Features/ — stub views for each tab (honest empty states backed by kernel)
+    # - Services/ — verbatim Podcastr service layer (Settings, BYOK, Keychain,
+    #   credential stores); T-podcast-ios-verbatim-2
     sources:
       - path: NmpPodcast/App
       - path: NmpPodcast/Bridge
       - path: NmpPodcast/Design
       - path: NmpPodcast/Features
+      - path: NmpPodcast/Services
       - path: NmpPodcast/Resources
     info:
       path: NmpPodcast/Info.plist

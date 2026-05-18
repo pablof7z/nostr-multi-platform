@@ -129,21 +129,6 @@ struct NostrConversation: Identifiable, Hashable {
     var rootEventID: String = ""
 }
 
-// MARK: - Settings
-
-struct Settings: Equatable {
-    /// Reads from UserDefaults so the OnboardingView dismiss sticks across restarts.
-    var hasCompletedOnboarding: Bool = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
-    var nostrEnabled: Bool = false
-    var nostrRelayURL: String = ""
-    var nostrPublicKeyHex: String? = nil
-    var nostrProfileName: String = ""
-    var nostrProfileAbout: String = ""
-    var nostrProfilePicture: String = ""
-    var autoMarkPlayedAtEnd: Bool = true
-    var autoPlayNext: Bool = true
-}
-
 // MARK: - AppState
 
 struct AppState {
@@ -222,6 +207,14 @@ final class AppStateStore {
     func deletePodcast(podcastID: UUID) {
         guard let km = _kernelModel else { return }
         km.unsubscribe(podcastID: podcastID.uuidString)
+    }
+
+    /// Mutates `state.settings` in-place. Called by OnboardingView handlers
+    /// and Settings screens to persist preferences. The real Podcastr AppStateStore
+    /// persists to disk; this shim updates in-memory state only (sufficient for
+    /// T-podcast-ios-verbatim-2 — full persistence is T-podcast-gap-004).
+    func updateSettings(_ settings: Settings) {
+        state.settings = settings
     }
 
     func episode(id: UUID) -> Episode? { nil }
