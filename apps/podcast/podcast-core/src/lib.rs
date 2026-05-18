@@ -8,6 +8,12 @@ pub mod views;
 pub use domain::ids::*;
 pub use domain::records::*;
 
+// Module registry helpers — convenience re-exports so callers don't need to
+// dig into sub-modules.
+pub use actions::modules::{SubscribePodcastModule, UnsubscribePodcastModule};
+pub use domain::modules::{EpisodesModule, PodcastsModule};
+pub use views::library::LibraryViewModule;
+
 #[cfg(test)]
 mod tests {
     use super::*;

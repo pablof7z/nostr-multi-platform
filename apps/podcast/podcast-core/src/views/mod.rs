@@ -1,6 +1,8 @@
 // View module payload stubs for podcast-core.
 // Full reactivity contracts in docs/design/podcast/podcast-core.md §C.
 
+pub mod library;
+
 use serde::{Deserialize, Serialize};
 
 use crate::domain::records::SettingsRecord;

@@ -1,6 +1,8 @@
 // Action stubs for podcast-core.
 // Full step machines in docs/design/podcast/podcast-core.md §D.
 
+pub mod modules;
+
 use serde::{Deserialize, Serialize};
 use url::Url;
 

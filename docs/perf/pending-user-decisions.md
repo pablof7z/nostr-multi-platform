@@ -677,3 +677,25 @@ Per T136 Gate-1 audit (`docs/design/lmdb/env-injection-status.md`, commit `1db4d
 
 **Rationale:** v1 timeline pressure outweighs the maintenance-surface cost of a short-lived fork. Option A acceptance latency is unknown (no precedent PRs of this shape); Option C is exactly what `nostrdb-rs-evaluation.md` was trying to avoid (~2100 LOC reinvention). Option B delivers the same correctness as A on a known timeline, with a clear migration path back to A later.
 
+
+---
+
+### PD-035 (2026-05-18, T-podcast-gap-1) — kernel snapshot envelope does not carry a `library` field; per-app FFI snapshot used instead
+
+**Filed by:** T-podcast-gap-1 implementation (engineer agent).
+
+**Context:** T-podcast-gap-1 spec stated "snapshot envelope carries `library: {podcasts:[...]}` natively". Investigation found `Kernel::make_update()` in `crates/nmp-core/src/kernel/update.rs` (and `update_envelope.rs`) constructs a hardcoded struct with fixed fields. There is no generic extensions map. Adding a `library` field requires modifying nmp-core's core snapshot construction — a D0 violation if it names podcast types, or a structural change (extensions map) if kept generic.
+
+**Decision made autonomously (user asleep):** Per the Chirp pattern (`nmp_app_chirp_snapshot`), the podcast app uses a **separate per-app FFI snapshot** (`nmp_app_podcast_snapshot`) that serializes `LibraryView` directly. The 6 FFI symbols' external signatures are preserved. The main `{"t":"snapshot","v":{...}}` envelope carries zero podcast keys.
+
+**Options for user review:**
+
+A. **Current approach (per-app FFI snapshot)** — zero nmp-core changes, D0 clean. iOS/Android shell calls `nmp_app_podcast_snapshot` separately from the kernel update callback. Matches Chirp exactly.
+
+B. **Add generic extensions map to KernelUpdate** — add `extensions: HashMap<String, serde_json::Value>` to the snapshot struct; podcast registers a snapshot contributor callback. Touches `crates/nmp-core/src/kernel/update.rs` and the snapshot serialization. Cleaner for future per-app views but requires a nmp-core PR.
+
+C. **Add `library` field to KernelUpdate enum** — directly names podcast in nmp-core. Violates D0 absolutely.
+
+**Recommendation:** Option A for M11 (the gap is closed by the implementation landed here). Option B is the right long-term design but deferred until nmp-core's substrate phase matures.
+
+**Commit:** `feat(podcast-core): DomainModule/ViewModule/ActionModule impls + retire Mutex (T-podcast-gap-1)`

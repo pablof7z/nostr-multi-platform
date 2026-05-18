@@ -1,8 +1,16 @@
 //! `PodcastApp` — the per-app projection state for the podcast library.
 //!
-//! Owns a `Mutex<Inner>` carrying subscribed podcasts and their episodes.
-//! The episodes are stored keyed by `PodcastId` in a parallel `HashMap`
-//! so the Library snapshot can reflect real `episode_count` values.
+//! Podcast records are backed by a kernel `DomainHandle` (in-memory
+//! `MemEventStore` backend), replacing the previous `Vec<PodcastRecord>`
+//! inside `Mutex<Inner>`. Episodes remain in-memory via
+//! `HashMap<PodcastId, Vec<EpisodeRecord>>` — migration to a second
+//! `DomainHandle` is deferred (T-podcast-gap-1 scope is podcasts only).
+//!
+//! ## Storage layout (podcasts)
+//!
+//! Namespace: `"podcast.podcasts"` (matches `PodcastsModule::NAMESPACE`).
+//! Key: ULID bytes of `PodcastRecord::id` (16 bytes, lexicographically sortable).
+//! Value: JSON-encoded `PodcastRecord`.
 //!
 //! ## HTTP-fetch gap (T-podcast-gap-3)
 //!
@@ -12,20 +20,26 @@
 //! `ingest_feed_bytes()`. That capability boundary is tracked in:
 //!   `docs/perf/m11/T-podcast-gap-3.md`
 //!
-//! Until that capability lands, the subscribe path stores only the feed URL
-//! and title/author metadata. Once `ingest_feed_bytes` is called with real
-//! feed bytes, the episodes table is populated.
+//! D0: no podcast nouns in `nmp-core`. D6: every fallible path degrades
+//! gracefully; no panics cross the FFI seam.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use nmp_core::store::{DomainHandle, EventStore, MemEventStore};
 use podcast_core::domain::ids::PodcastId;
 use podcast_core::domain::records::{DownloadState, EpisodeRecord, PodcastRecord};
 use podcast_core::views::{EpisodeRowPayload, FeedView, LibraryView, PodcastRowPayload};
 use podcast_feeds::parser::{self, FeedError, ParsedPodcast};
 use ulid::Ulid;
 use url::Url;
+
+/// The key for a podcast record in the domain store — ULID bytes (16 bytes,
+/// big-endian), which sorts chronologically and makes scan_prefix trivial.
+fn ulid_key(id: PodcastId) -> [u8; 16] {
+    id.to_bytes()
+}
 
 /// Output of [`PodcastApp::subscribe`].
 #[derive(Debug, Clone, PartialEq)]
@@ -48,23 +62,28 @@ pub enum IngestResult {
     ParseError(String),
 }
 
-/// Per-app state. Holds the in-memory library and episode table.
-#[derive(Default)]
+/// Per-app state.
+///
+/// Podcast records are backed by a `DomainHandle` (kernel domain store).
+/// Episodes are held in-memory via a `Mutex<HashMap<PodcastId, Vec<EpisodeRecord>>>`.
 pub struct PodcastApp {
-    inner: Mutex<Inner>,
-}
-
-#[derive(Default)]
-struct Inner {
-    /// Subscribed podcasts in subscription order.
-    podcasts: Vec<PodcastRecord>,
-    /// Episodes keyed by podcast id. Populated by `ingest_feed_bytes`.
-    episodes: HashMap<PodcastId, Vec<EpisodeRecord>>,
+    /// DomainHandle-backed podcast store.
+    handle: DomainHandle,
+    /// In-memory episode table. Populated by `ingest_feed_bytes`.
+    episodes: Mutex<HashMap<PodcastId, Vec<EpisodeRecord>>>,
 }
 
 impl PodcastApp {
     pub fn new() -> Self {
-        Self::default()
+        let store = MemEventStore::new();
+        // MemEventStore::new() + domain_open() are infallible on a fresh store.
+        let handle = store
+            .domain_open("podcast.podcasts")
+            .expect("MemEventStore domain_open is infallible");
+        Self {
+            handle,
+            episodes: Mutex::new(HashMap::new()),
+        }
     }
 
     /// Subscribe to a feed. Dedupes on `feed_url` — repeated calls return
@@ -76,14 +95,10 @@ impl PodcastApp {
         title: Option<String>,
         author: Option<String>,
     ) -> SubscribeResult {
-        let Ok(mut inner) = self.inner.lock() else {
-            return SubscribeResult::Subscribed {
-                podcast_id: Ulid::new(),
-            };
-        };
-        if let Some(existing) = inner.podcasts.iter().find(|p| p.feed_url == feed_url) {
+        // Scan all records and check for an existing subscription on this URL.
+        if let Some(record) = self.all_records().into_iter().find(|r| r.feed_url == feed_url) {
             return SubscribeResult::AlreadySubscribed {
-                podcast_id: existing.id,
+                podcast_id: record.id,
             };
         }
         let fallback_title = || feed_url.host_str().unwrap_or("podcast").to_string();
@@ -97,20 +112,23 @@ impl PodcastApp {
             last_refreshed_ms: None,
         };
         let id = record.id;
-        inner.podcasts.push(record);
+        if let Ok(bytes) = serde_json::to_vec(&record) {
+            // D6: ignore store errors — the state degrades gracefully.
+            let _ = self.handle.put(&ulid_key(id), &bytes);
+        }
         SubscribeResult::Subscribed { podcast_id: id }
     }
 
     /// Drop a subscription. Idempotent — unknown ids return `false`.
     /// Also removes the stored episode list for that podcast.
     pub fn unsubscribe(&self, podcast_id: PodcastId) -> bool {
-        let Ok(mut inner) = self.inner.lock() else {
-            return false;
-        };
-        let before = inner.podcasts.len();
-        inner.podcasts.retain(|p| p.id != podcast_id);
-        inner.episodes.remove(&podcast_id);
-        inner.podcasts.len() != before
+        let removed = self.handle.delete(&ulid_key(podcast_id)).unwrap_or(false);
+        if removed {
+            if let Ok(mut eps) = self.episodes.lock() {
+                eps.remove(&podcast_id);
+            }
+        }
+        removed
     }
 
     /// Ingest a parsed feed body for a given `feed_url`. The caller (host
@@ -128,25 +146,31 @@ impl PodcastApp {
             Err(FeedError::Network(msg)) => return IngestResult::ParseError(msg),
         };
 
-        let Ok(mut inner) = self.inner.lock() else {
-            return IngestResult::PodcastNotFound;
-        };
-
-        let Some(podcast) = inner.podcasts.iter_mut().find(|p| &p.feed_url == feed_url) else {
-            return IngestResult::PodcastNotFound;
+        // Find the existing podcast record by feed_url.
+        let mut record = match self
+            .all_records()
+            .into_iter()
+            .find(|r| &r.feed_url == feed_url)
+        {
+            Some(r) => r,
+            None => return IngestResult::PodcastNotFound,
         };
 
         // Update feed-level metadata from the parsed result.
         if !parsed.title.is_empty() {
-            podcast.title = parsed.title;
+            record.title = parsed.title;
         }
         if !parsed.author.is_empty() {
-            podcast.author = parsed.author;
+            record.author = parsed.author;
         }
-        podcast.artwork_url = parsed.artwork_url;
-        podcast.last_refreshed_ms = Some(now_ms());
+        record.artwork_url = parsed.artwork_url;
+        record.last_refreshed_ms = Some(now_ms());
 
-        let podcast_id = podcast.id;
+        // Write updated record back to domain store.
+        let podcast_id = record.id;
+        if let Ok(bytes) = serde_json::to_vec(&record) {
+            let _ = self.handle.put(&ulid_key(podcast_id), &bytes);
+        }
 
         // Convert parsed episodes to EpisodeRecord.
         let episodes: Vec<EpisodeRecord> = parsed
@@ -173,7 +197,9 @@ impl PodcastApp {
             .collect();
 
         let episode_count = episodes.len();
-        inner.episodes.insert(podcast_id, episodes);
+        if let Ok(mut eps) = self.episodes.lock() {
+            eps.insert(podcast_id, episodes);
+        }
 
         IngestResult::Updated {
             podcast_id,
@@ -184,23 +210,21 @@ impl PodcastApp {
     /// Snapshot the current library as `podcast_core::views::LibraryView`.
     /// `episode_count` reflects stored episodes for each podcast.
     pub fn snapshot(&self) -> LibraryView {
-        let Ok(inner) = self.inner.lock() else {
-            return LibraryView::default();
-        };
-        let podcasts = inner
-            .podcasts
-            .iter()
+        let records = self.all_records();
+        let eps = self.episodes.lock().ok();
+        let podcasts = records
+            .into_iter()
             .map(|record| {
-                let episode_count = inner
-                    .episodes
-                    .get(&record.id)
-                    .map(|eps| eps.len() as u32)
+                let episode_count = eps
+                    .as_ref()
+                    .and_then(|e| e.get(&record.id))
+                    .map(|v| v.len() as u32)
                     .unwrap_or(0);
                 PodcastRowPayload {
                     id: record.id.to_string(),
-                    title: record.title.clone(),
-                    author: record.author.clone(),
-                    artwork_url: record.artwork_url.as_ref().map(|u| u.to_string()),
+                    title: record.title,
+                    author: record.author,
+                    artwork_url: record.artwork_url.map(|u| u.to_string()),
                     episode_count,
                 }
             })
@@ -211,26 +235,45 @@ impl PodcastApp {
     /// Return the episodes for a single podcast as `podcast_core::views::FeedView`.
     /// Unknown ids return an empty `FeedView` (honest empty state, not an error).
     pub fn episodes_for(&self, podcast_id: PodcastId) -> FeedView {
-        let Ok(inner) = self.inner.lock() else {
-            return FeedView::default();
-        };
-        let podcast = inner.podcasts.iter().find(|p| p.id == podcast_id);
-        let podcast_title = podcast.map(|p| p.title.as_str()).unwrap_or("");
+        let records = self.all_records();
+        let podcast = records.iter().find(|p| p.id == podcast_id);
+        let podcast_title = podcast.map(|p| p.title.as_str()).unwrap_or("").to_owned();
         let podcast_artwork = podcast
             .and_then(|p| p.artwork_url.as_ref())
             .map(|u| u.to_string());
-        let episodes = inner
-            .episodes
+
+        let Ok(eps) = self.episodes.lock() else {
+            return FeedView::default();
+        };
+        let episodes = eps
             .get(&podcast_id)
             .map(|eps| {
                 eps.iter()
-                    .map(|ep| {
-                        episode_to_payload(ep, podcast_title, podcast_artwork.as_deref())
-                    })
+                    .map(|ep| episode_to_payload(ep, &podcast_title, podcast_artwork.as_deref()))
                     .collect()
             })
             .unwrap_or_default();
         FeedView { episodes }
+    }
+
+    /// Read all `PodcastRecord` rows from the domain store. Silently skips
+    /// rows that fail to deserialize (D6).
+    fn all_records(&self) -> Vec<PodcastRecord> {
+        let iter = match self.handle.scan_prefix(&[]) {
+            Ok(it) => it,
+            Err(_) => return vec![],
+        };
+        iter.filter_map(|row| {
+            let (_, value) = row.ok()?;
+            serde_json::from_slice(&value).ok()
+        })
+        .collect()
+    }
+}
+
+impl Default for PodcastApp {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
