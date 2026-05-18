@@ -72,10 +72,9 @@ pub extern "C" fn nmp_app_dispatch_capability(
         Some(app) => dispatch_capability(&app.capability_callback, &request),
         None => capability_error_envelope(&request, "kernel-unavailable"),
     };
-    // CString::new only fails on an interior NUL; JSON never contains one.
-    CString::new(envelope)
-        .unwrap_or_else(|_| CString::new("{}").expect("literal has no NUL"))
-        .into_raw()
+    // JSON never contains an interior NUL; the `c"{}"` literal fallback is
+    // NUL-checked at compile time, so there is no runtime panic path (D6).
+    CString::new(envelope).unwrap_or_else(|_| c"{}".to_owned()).into_raw()
 }
 
 /// Release a string previously returned by [`nmp_app_dispatch_capability`].

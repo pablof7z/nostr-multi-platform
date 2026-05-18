@@ -11,9 +11,10 @@
 //!
 //! 1. **Comment lines** (line, block, `///`, `//!`).
 //! 2. **`#[cfg(test)]` modules** detected inline via the walker's tracker.
-//! 3. **Test-only files by filename**: `tests.rs`, `auth_tests.rs`,
-//!    `test_support.rs`, anything under a `/tests/` directory. Such files
-//!    are declared as `#[cfg(test)] mod foo;` in their parent and the
+//! 3. **Test-only files by filename**: `tests.rs`, `test_support.rs`, any
+//!    file whose name ends in `_tests.rs` (e.g. `auth_tests.rs`,
+//!    `discovery_tests.rs`), and anything under a `/tests/` directory. Such
+//!    files are declared as `#[cfg(test)] mod foo;` in their parent and the
 //!    `cfg(test)` gate lives there, not inside the file — so the walker
 //!    cannot see it. Filename exemption is the brief-mandated workaround.
 //! 4. **`Mutex::lock().unwrap()` / `RwLock::*().unwrap()`** — lock poisoning
@@ -33,11 +34,20 @@ use std::path::Path;
 
 pub const ID: &str = "D6";
 
-const TEST_FILE_NAMES: &[&str] = &["tests.rs", "auth_tests.rs", "test_support.rs"];
+const TEST_FILE_NAMES: &[&str] = &["tests.rs", "test_support.rs"];
 
 pub fn file_is_test_only(path: &Path) -> bool {
     if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
         if TEST_FILE_NAMES.contains(&name) {
+            return true;
+        }
+        // `*_tests.rs` is the codebase convention for a test-only file whose
+        // `#[cfg(test)] mod <name>;` declaration (and thus the `cfg(test)`
+        // gate) lives in the parent module, invisible to the line walker.
+        // Match the suffix — but require a real `_` separator so a file
+        // literally named `tests.rs` is still caught by the exact list
+        // above and an unrelated name like `tests.rs`'s prefix can't slip.
+        if name.ends_with("_tests.rs") {
             return true;
         }
     }
@@ -227,6 +237,34 @@ mod tests {
             false,
         );
         assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn test_only_filename_exemption_matches_suffix_and_exacts() {
+        use std::path::Path;
+        // Exact-name list.
+        assert!(file_is_test_only(Path::new("crates/nmp-core/src/kernel/tests.rs")));
+        assert!(file_is_test_only(Path::new(
+            "crates/nmp-core/src/kernel/test_support.rs"
+        )));
+        // `*_tests.rs` suffix — the bug T106 fixed: these were NOT exempt
+        // although they are `#[cfg(test)] mod ...;` in the parent.
+        assert!(file_is_test_only(Path::new(
+            "crates/nmp-core/src/kernel/discovery_tests.rs"
+        )));
+        assert!(file_is_test_only(Path::new(
+            "crates/nmp-core/src/kernel/auth_tests.rs"
+        )));
+        assert!(file_is_test_only(Path::new("foo/bar/some_feature_tests.rs")));
+        // `/tests/` directory.
+        assert!(file_is_test_only(Path::new("crates/x/tests/integration.rs")));
+        // Negatives: production files must NOT be exempted, including a name
+        // that merely contains "tests" without the `_tests.rs` suffix.
+        assert!(!file_is_test_only(Path::new(
+            "crates/nmp-core/src/ffi/capability.rs"
+        )));
+        assert!(!file_is_test_only(Path::new("crates/x/src/tests_helper.rs")));
+        assert!(!file_is_test_only(Path::new("crates/x/src/contests.rs")));
     }
 
     #[test]
