@@ -56,6 +56,76 @@ final class KernelHandle {
         }
     }
 
+    // ── T66a identity / publish / multi-account / relay-edit ──────────────
+    //
+    // All fire-and-forget: outcomes arrive on the next snapshot via the
+    // KernelUpdate `accounts` / `publishQueue` / `lastErrorToast` fields
+    // (D6 — the FFI never returns a value or throws).
+
+    func signInNsec(_ secret: String) {
+        secret.withCString { nmp_app_signin_nsec(raw, $0) }
+    }
+
+    func signInBunker(_ uri: String) {
+        uri.withCString { nmp_app_signin_bunker(raw, $0) }
+    }
+
+    func createAccount() {
+        nmp_app_create_new_account(raw)
+    }
+
+    func switchActive(identityID: String) {
+        identityID.withCString { nmp_app_switch_active(raw, $0) }
+    }
+
+    func removeAccount(identityID: String) {
+        identityID.withCString { nmp_app_remove_account(raw, $0) }
+    }
+
+    func publishNote(content: String, replyToID: String?) {
+        content.withCString { cPtr in
+            if let replyToID {
+                replyToID.withCString { rPtr in
+                    nmp_app_publish_note(raw, cPtr, rPtr)
+                }
+            } else {
+                nmp_app_publish_note(raw, cPtr, nil)
+            }
+        }
+    }
+
+    func react(targetEventID: String, reaction: String) {
+        targetEventID.withCString { tPtr in
+            reaction.withCString { rPtr in
+                nmp_app_react(raw, tPtr, rPtr)
+            }
+        }
+    }
+
+    func follow(pubkey: String) {
+        pubkey.withCString { nmp_app_follow(raw, $0) }
+    }
+
+    func unfollow(pubkey: String) {
+        pubkey.withCString { nmp_app_unfollow(raw, $0) }
+    }
+
+    func addRelay(url: String, role: String) {
+        url.withCString { uPtr in
+            role.withCString { rPtr in
+                nmp_app_add_relay(raw, uPtr, rPtr)
+            }
+        }
+    }
+
+    func removeRelay(url: String) {
+        url.withCString { nmp_app_remove_relay(raw, $0) }
+    }
+
+    func openTimeline() {
+        nmp_app_open_timeline(raw)
+    }
+
     fileprivate static func decode(pointer: UnsafePointer<CChar>) -> KernelUpdate? {
         let payload = String(cString: pointer)
         let data = Data(payload.utf8)
@@ -95,6 +165,46 @@ struct KernelUpdate: Decodable {
     let items: [TimelineItem]
     let metrics: KernelMetricsLite
     let relayStatuses: [RelayStatus]
+    // T66a projections. Optional so a kernel that elides one (or an older
+    // build) still decodes — the model keeps its prior value (D1).
+    let threadView: ThreadView?
+    let accounts: [AccountSummary]?
+    let activeAccount: String?
+    let publishQueue: [PublishQueueEntry]?
+    let lastErrorToast: String?
+    let relayEditRows: [RelayEditRow]?
+}
+
+struct ThreadView: Decodable, Equatable {
+    let focusedEventId: String
+    let rootEventId: String
+    let state: String
+    let items: [TimelineItem]
+    let previousCount: Int
+    let nextCount: Int
+}
+
+struct AccountSummary: Decodable, Identifiable, Equatable {
+    let id: String
+    let npub: String
+    let displayName: String
+    let signerKind: String
+    let status: String
+    var isActive: Bool { status == "active" }
+}
+
+struct PublishQueueEntry: Decodable, Identifiable, Equatable {
+    let eventId: String
+    let kind: UInt32
+    let targetRelays: Int
+    let status: String
+    var id: String { eventId }
+}
+
+struct RelayEditRow: Decodable, Identifiable, Equatable {
+    let url: String
+    let role: String
+    var id: String { url }
 }
 
 struct ProfileCard: Decodable, Equatable {
@@ -109,7 +219,7 @@ struct ProfileCard: Decodable, Equatable {
     let source: String
 }
 
-struct TimelineItem: Decodable, Identifiable, Equatable {
+struct TimelineItem: Decodable, Identifiable, Equatable, Hashable {
     let id: String
     let authorPubkey: String
     let authorDisplay: String

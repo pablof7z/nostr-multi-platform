@@ -10,25 +10,50 @@ import SwiftUI
 struct TimelineView: View {
     @EnvironmentObject private var model: KernelModel
 
+    @State private var showCompose = false
+
     var body: some View {
-        Group {
-            if model.items.isEmpty {
-                placeholder
-            } else {
-                List(model.items) { item in
-                    NoteRow(item: item)
+        ZStack(alignment: .bottomTrailing) {
+            Group {
+                if model.items.isEmpty {
+                    placeholder
+                } else {
+                    List(model.items) { item in
+                        NavigationLink(value: item) {
+                            NoteRow(item: item)
+                        }
+                    }
+                    .listStyle(.plain)
                 }
-                .listStyle(.plain)
             }
+
+            Button {
+                showCompose = true
+            } label: {
+                Image(systemName: "square.and.pencil")
+                    .font(.title2)
+                    .padding(18)
+                    .background(Circle().fill(.tint))
+                    .foregroundStyle(.white)
+                    .shadow(radius: 4)
+            }
+            .padding(20)
+            .accessibilityLabel("Compose")
         }
         .navigationTitle("Pulse")
         .navigationBarTitleDisplayMode(.large)
+        .navigationDestination(for: TimelineItem.self) { item in
+            NoteDetailView(rootItem: item)
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Text("rev \(model.rev)")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
+        }
+        .sheet(isPresented: $showCompose) {
+            ComposeView()
         }
     }
 

@@ -1,11 +1,25 @@
 # NmpPulse — e2e validation iOS app for NMP kernel
 
-**Status (T66 / pulse-builder):** **L1 scaffold landed.** Timeline-only.
-Sign-in / Compose / multi-account / NoteDetail screens are filed as T66a
-because they depend on FFI surface that the kernel actor does not yet
-expose (sign-in commands, publish-engine wiring, AccountManager
-integration). See `Views/PendingFeaturesView.swift` for the in-app status
-surface.
+**Status (T66a / pulse-builder):** **All five screens landed.** Onboarding
+(nsec / parsed-bunker / create), Timeline (→ NoteDetail, + Compose),
+NoteDetail (thread + like + reply), Compose (kind:1 publish via the
+NIP-65 outbox, D3), Accounts (multi-session switch + relay edit). Every
+screen drives a real kernel dispatch through the T66a FFI surface
+(`crates/nmp-core/src/ffi/identity.rs`); no Swift-side business logic, no
+cached state (D5/D8). Verified in the iPhone 17 simulator — see
+`docs/perf/pulse/0{1..5}-*.png`.
+
+Scope notes (carried forward, documented not silent):
+- **NIP-46 transport is parse-only.** `bunker://` URIs are shape-validated
+  and surface a toast directing the user to nsec. D0 forbids importing
+  `nmp-signers` (`Nip46Signer`) into `nmp-core` where the FFI lives; full
+  transport is M14 (UniFFI). Build doc §11 authorizes nsec-only.
+- **Timeline retargets via `open_author(active_pubkey)`** — kind:3 follows
+  fan-out is a follow-up.
+- **Publish OK correlation is coarse**: the queue entry is marked
+  `accepted_locally` when the EVENT frame is emitted (D1: refine in
+  place); per-relay OK matching + true NIP-65 multi-relay socket fan-out
+  is a follow-up.
 
 For the full spec see `docs/builder-guide/e2e-validation-app.md` and the
 build guide `docs/builder-guide/e2e-validation-build.md`.
