@@ -64,6 +64,7 @@ unsafe impl Sync for ChirpHandle {}
 /// `app` MUST outlive the returned handle. Call [`nmp_app_chirp_unregister`]
 /// before `nmp_app_free`.
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn nmp_app_chirp_register(
     app: *mut NmpApp,
     viewer_pubkey: *const c_char,

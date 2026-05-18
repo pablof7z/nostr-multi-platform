@@ -123,6 +123,7 @@ pub extern "C" fn nmp_app_nostrconnect_uri(
 
 /// Free a string returned by `nmp_app_nostrconnect_uri`. Null-safe (no-op).
 #[allow(unsafe_code)]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
 pub extern "C" fn nmp_broker_free_string(ptr: *mut std::os::raw::c_char) {
     if ptr.is_null() {

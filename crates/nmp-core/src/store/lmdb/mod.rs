@@ -124,7 +124,7 @@ impl LmdbEventStore {
     pub fn open(path: &Path) -> Result<Self, StoreError> {
         #[cfg(feature = "lmdb-backend")]
         {
-            return open_impl(path);
+            open_impl(path)
         }
         #[cfg(not(feature = "lmdb-backend"))]
         {

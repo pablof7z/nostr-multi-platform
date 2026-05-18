@@ -81,11 +81,15 @@ pub(crate) fn delete(
     Ok(removed)
 }
 
+/// One materialized scan entry: `(key, value)` both owned `Vec<u8>`. Local
+/// alias keeps `scan_prefix` below the `clippy::type_complexity` cap.
+type ScanEntry = (Vec<u8>, Vec<u8>);
+
 pub(crate) fn scan_prefix(
     inner: &Arc<Inner>,
     namespace: &str,
     user_prefix: &[u8],
-) -> Result<Vec<(Vec<u8>, Vec<u8>)>, StoreError> {
+) -> Result<Vec<ScanEntry>, StoreError> {
     let txn = inner
         .lmdb
         .read_txn()
