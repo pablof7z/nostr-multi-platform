@@ -46,6 +46,12 @@ pub enum SignerError {
     Mismatch(String),
     /// Operation timed out.
     Timeout(String),
+    /// Signature verification failed on a signed event returned by a remote
+    /// signer.  Used by NIP-46 / NIP-07 to refuse responses whose id or
+    /// signature do not validate under the claimed pubkey — protects against
+    /// a compromised or malicious bunker returning a payload the local
+    /// kernel would otherwise trust verbatim.
+    SignatureVerificationFailed(String),
     /// Backend-specific failure (network, IO, parse, etc.).
     Backend(String),
 }
@@ -58,6 +64,9 @@ impl std::fmt::Display for SignerError {
             SignerError::Rejected(m) => write!(f, "rejected: {m}"),
             SignerError::Mismatch(m) => write!(f, "signer mismatch: {m}"),
             SignerError::Timeout(m) => write!(f, "timeout: {m}"),
+            SignerError::SignatureVerificationFailed(m) => {
+                write!(f, "signature verification failed: {m}")
+            }
             SignerError::Backend(m) => write!(f, "backend error: {m}"),
         }
     }

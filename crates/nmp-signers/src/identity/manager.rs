@@ -40,23 +40,27 @@ impl std::fmt::Display for AccountError {
 
 impl std::error::Error for AccountError {}
 
-/// Observer payload for `AccountManager::switch_active`.
+/// Observer payload for active-account transitions.  Fires on `switch_active`
+/// (new active) and on `remove(active_id)` (`current = None` — teardown
+/// signal: kind:3 / kind:10002 close-out + `FullState { active_account: None }`).
+/// No-op transitions do not fire.
 #[derive(Clone, Debug)]
 pub struct ActiveChangeEvent {
     /// Previous active account, if any.
     pub previous: Option<IdentityId>,
-    /// New active account.
-    pub current: IdentityId,
-    /// Pubkey of the new active account (convenience for observers).
-    pub current_pubkey: PublicKey,
+    /// New active account, or `None` if the active slot was cleared.
+    pub current: Option<IdentityId>,
+    /// Pubkey of the new active account.  `None` iff `current` is `None`.
+    pub current_pubkey: Option<PublicKey>,
 }
 
-/// Observer hook for `switch_active`.  Runs on the caller's thread (which in
-/// the NMP kernel is the actor thread per D4 — single writer per fact).
+/// Observer hook for active-account changes.  Runs on the caller's thread
+/// (which in the NMP kernel is the actor thread per D4 — single writer per
+/// fact).
 pub trait ActiveChangeObserver: Send + Sync {
-    /// Called after the new signer is installed but before `switch_active`
-    /// returns.  Observers must not block — the actor thread is on the hot
-    /// path.
+    /// Called after the active slot has been updated synchronously, but
+    /// before the originating `switch_active` / `remove` call returns.
+    /// Observers must not block — the actor thread is on the hot path.
     fn on_active_change(&self, event: &ActiveChangeEvent);
 }
 
@@ -159,8 +163,8 @@ impl AccountManager {
             .pubkey();
         let event = ActiveChangeEvent {
             previous,
-            current: id.clone(),
-            current_pubkey,
+            current: Some(id.clone()),
+            current_pubkey: Some(current_pubkey),
         };
         for obs in &self.observers {
             obs.on_active_change(&event);
@@ -168,18 +172,32 @@ impl AccountManager {
         Ok(())
     }
 
-    /// Remove an account.  If the removed account was active, clears the
-    /// active slot (and fires observers with no current — TBD; current code
-    /// just clears).  See `docs/design/framework-magic/intro.md` for the
-    /// account-removal UX contract.
+    /// Remove an account.  Atomic semantics (codex review #5 — 9944bed.md):
+    ///
+    /// - Missing id → no-op (idempotent; `Ok(())`, no observers fire).
+    /// - Present, not active → drop + shrink order, no observers fire.
+    /// - Present and active → clear active **before** firing observers, then
+    ///   notify once with `ActiveChangeEvent { current: None, current_pubkey:
+    ///   None }`.  This is the kind:3 / kind:10002 teardown + `FullState
+    ///   { active_account: None }` signal.
     pub fn remove(&mut self, id: &IdentityId) -> Result<(), AccountError> {
         if !self.accounts.contains_key(id) {
-            return Err(AccountError::NotFound(id.clone()));
+            return Ok(());
         }
+        let was_active = self.active.as_deref() == Some(id);
         self.accounts.remove(id);
         self.order.retain(|x| x != id);
-        if self.active.as_deref() == Some(id) {
-            self.active = None;
+        if !was_active {
+            return Ok(());
+        }
+        let previous = self.active.take();
+        let event = ActiveChangeEvent {
+            previous,
+            current: None,
+            current_pubkey: None,
+        };
+        for obs in &self.observers {
+            obs.on_active_change(&event);
         }
         Ok(())
     }

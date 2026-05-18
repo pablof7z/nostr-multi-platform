@@ -68,11 +68,11 @@ fn observer_fires_on_active_change() {
     let events = obs.drain();
     assert_eq!(events.len(), 3);
     assert_eq!(events[0].previous, None);
-    assert_eq!(events[0].current, id_a);
+    assert_eq!(events[0].current.as_deref(), Some(id_a.as_str()));
     assert_eq!(events[1].previous.as_deref(), Some(id_a.as_str()));
-    assert_eq!(events[1].current, id_b);
+    assert_eq!(events[1].current.as_deref(), Some(id_b.as_str()));
     assert_eq!(events[2].previous.as_deref(), Some(id_b.as_str()));
-    assert_eq!(events[2].current, id_a);
+    assert_eq!(events[2].current.as_deref(), Some(id_a.as_str()));
 }
 
 #[test]

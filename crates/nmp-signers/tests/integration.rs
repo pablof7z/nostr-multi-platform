@@ -199,8 +199,8 @@ fn t5_kind3_rewire_fires_per_real_switch() {
 
     let events = obs.drain();
     assert_eq!(events.len(), 2);
-    assert_eq!(events[0].current, id_a);
-    assert_eq!(events[1].current, id_b);
+    assert_eq!(events[0].current.as_deref(), Some(id_a.as_str()));
+    assert_eq!(events[1].current.as_deref(), Some(id_b.as_str()));
     assert_eq!(events[1].previous.as_deref(), Some(id_a.as_str()));
 }
 
@@ -224,15 +224,12 @@ fn t6_nip46_handshake_and_sign_round_trip() {
     let handle = Nip46SignerHandle::from_bunker_uri(&uri).expect("parse");
     assert_eq!(handle.uri().remote_pubkey_hex, SAMPLE_PK);
 
-    // Promote to a connected signer (in production the kernel would have done
-    // the `connect`/`get_public_key` handshake first; here we supply the
-    // remote user pubkey directly).
-    let remote_user_pubkey =
-        PublicKey::from_hex("ddb70e0e6a59f3b6f06a0bf3e93e6f0d8b4f4fbb40e4f1e76b1f7e2c5e2e8c5e")
-            .unwrap_or_else(|_| {
-                // Generate a valid one if the literal isn't valid hex.
-                LocalKeySigner::generate().pubkey()
-            });
+    // Promote to a connected signer.  In production the kernel would do the
+    // `connect`/`get_public_key` handshake first; here we use a real keypair
+    // we control so we can produce a valid schnorr signature for the response
+    // (the mapper now runs `nostr::Event::verify()` — codex review #3).
+    let remote_user_signer = LocalKeySigner::generate();
+    let remote_user_pubkey = remote_user_signer.pubkey();
     let transport = Arc::new(StubTransport::default());
     let signer = handle.complete(transport.clone(), remote_user_pubkey);
 
@@ -260,18 +257,27 @@ fn t6_nip46_handshake_and_sign_round_trip() {
     // Op should be pending.
     assert!(op.poll().is_none());
 
-    // Build a fake signed-event response & deliver it.
-    let signed_event_json = format!(
-        r#"{{"id":"deadbeef","pubkey":"{}","sig":"sig123","kind":1,"created_at":1700000000,"tags":[],"content":"via bunker"}}"#,
-        remote_user_pubkey.to_hex(),
+    // Build a REAL signed-event response (the mapper verifies it).
+    let real_signed = remote_user_signer
+        .sign(unsigned.clone())
+        .wait(std::time::Duration::from_secs(1))
+        .expect("real sign");
+    let response_json = format!(
+        r#"{{"id":"{}","pubkey":"{}","sig":"{}","kind":{},"created_at":{},"tags":[],"content":"{}"}}"#,
+        real_signed.id,
+        real_signed.unsigned.pubkey,
+        real_signed.sig,
+        real_signed.unsigned.kind,
+        real_signed.unsigned.created_at,
+        real_signed.unsigned.content,
     );
-    signer.resolve_response(&rpc.id, Ok(signed_event_json));
+    signer.resolve_response(&rpc.id, Ok(response_json));
 
     // Poll until done (background thread converts the response).
     let signed = poll_with_timeout(&mut op, std::time::Duration::from_secs(2))
         .expect("signed event arrives");
-    assert_eq!(signed.id, "deadbeef");
-    assert_eq!(signed.sig, "sig123");
+    assert_eq!(signed.id, real_signed.id);
+    assert_eq!(signed.sig, real_signed.sig);
     assert_eq!(signed.unsigned.pubkey, remote_user_pubkey.to_hex());
 
     // Payload round-trip.

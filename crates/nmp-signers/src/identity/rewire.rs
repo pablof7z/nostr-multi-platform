@@ -14,13 +14,18 @@ use std::sync::{Arc, Mutex};
 
 use super::manager::{ActiveChangeEvent, ActiveChangeObserver, IdentityId};
 
-/// One rewire request — emitted on every active-account flip.
+/// One rewire request — emitted on every active-account transition,
+/// including removal-of-active (`current = None`, codex review #5 —
+/// 9944bed.md).  The kernel-side planner translates each event into the
+/// appropriate subscription rebuild or teardown.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Kind3RewireEvent {
     /// Previous active account, if any.
     pub previous: Option<IdentityId>,
-    /// New active account.
-    pub current: IdentityId,
+    /// New active account.  `None` means the active slot was cleared (the
+    /// active account was removed); downstream code tears down the kind:3
+    /// subscription and emits a `FullState` with no active account.
+    pub current: Option<IdentityId>,
 }
 
 /// Observer that captures rewire events into an internal buffer.  The kernel

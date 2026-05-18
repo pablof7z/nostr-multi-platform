@@ -5,7 +5,9 @@
 //! payload so the wasm follow-up is a pure additive change (no API churn).
 //!
 //! Non-wasm builds keep the payload + trait shape available.  Operations return
-//! `Unsupported`; `pubkey()` requires a cached pubkey from a prior payload.
+//! `Unsupported`; `pubkey()` is guaranteed by construction-time gating to
+//! always return a real key — every constructor either supplies a cached
+//! pubkey or returns `SignerError::NotReady`.  No panic path remains.
 
 use nmp_core::substrate::{SignedEvent, UnsignedEvent};
 use nostr::PublicKey;
@@ -16,32 +18,64 @@ use super::SignerOp;
 
 /// Browser-extension NIP-07 signer.
 ///
-/// On non-wasm builds, every operation returns
+/// On non-wasm builds, every sign / encrypt / decrypt operation returns
 /// [`SignerError::Unsupported`] with a clear "wasm target required" message.
-/// The cached pubkey, if any, is still accessible — apps can render the
-/// avatar/handle from a previous session without an extension call.
+/// `pubkey()` is synchronous and infallible because **construction is gated**:
+/// a `Nip07Signer` cannot exist without a cached pubkey (per applesauce
+/// `0867a502` — the extension's pubkey is cached after first handshake).
+///
+/// ## Construction
+///
+/// - [`Nip07Signer::from_cached_pubkey`] — restore an extension session with a
+///   known pubkey (the common path; the caller has it from a previous payload
+///   or from a fresh `window.nostr.getPublicKey()` round-trip).
+/// - [`Nip07Signer::from_payload`] — restore from a persisted
+///   [`Nip07Payload`].  Returns [`SignerError::NotReady`] if the payload
+///   carries no cached pubkey — the caller must re-handshake on wasm before
+///   the signer is usable.
+///
+/// ## Doctrine D6 compliance
+///
+/// `pubkey()` never panics and never returns `Result` (per trait invariant).
+/// Failure modes are surfaced at construction as structured `SignerError`
+/// values that callers can map to `toast: Option<String>` at the FFI boundary.
 #[derive(Debug)]
 pub struct Nip07Signer {
-    cached_pubkey: Option<PublicKey>,
+    cached_pubkey: PublicKey,
 }
 
 impl Nip07Signer {
-    /// Construct an empty NIP-07 signer (no cached pubkey).  This value cannot
-    /// satisfy `pubkey()` until a wasm handshake or cached payload supplies one.
-    pub fn new() -> Self {
-        Self { cached_pubkey: None }
+    /// Construct from a known cached pubkey.  Always succeeds.
+    ///
+    /// This is the canonical construction path for both production (after a
+    /// wasm `window.nostr.getPublicKey()` round-trip) and restore-from-storage
+    /// flows.
+    pub fn from_cached_pubkey(pubkey: PublicKey) -> Self {
+        Self {
+            cached_pubkey: pubkey,
+        }
     }
 
-    /// Restore from a payload, optionally re-using a cached pubkey.
+    /// Restore from a payload.
+    ///
+    /// Returns [`SignerError::NotReady`] if the payload carries no cached
+    /// pubkey — restore is impossible without a wasm re-handshake.  This is
+    /// the structured-error equivalent of the panic this module used to throw
+    /// when `pubkey()` was called on an empty signer (D6: errors never cross
+    /// FFI as panics).
     pub fn from_payload(p: &Nip07Payload) -> Result<Self, SignerError> {
-        let cached = p
-            .cached_pubkey_hex
-            .as_deref()
-            .map(PublicKey::from_hex)
-            .transpose()
-            .map_err(|e| SignerError::Backend(format!("invalid cached nip07 pubkey: {e}")))?;
+        let hex = p.cached_pubkey_hex.as_deref().ok_or_else(|| {
+            SignerError::NotReady(
+                "nip07 payload has no cached pubkey; wasm handshake required \
+                 (`window.nostr.getPublicKey()`) before signer is usable"
+                    .to_string(),
+            )
+        })?;
+        let pubkey = PublicKey::from_hex(hex).map_err(|e| {
+            SignerError::Backend(format!("invalid cached nip07 pubkey hex: {e}"))
+        })?;
         Ok(Self {
-            cached_pubkey: cached,
+            cached_pubkey: pubkey,
         })
     }
 
@@ -51,31 +85,14 @@ impl Nip07Signer {
     }
 }
 
-impl Default for Nip07Signer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Signer for Nip07Signer {
     fn backend(&self) -> SignerBackend {
         SignerBackend::Nip07
     }
 
     fn pubkey(&self) -> PublicKey {
-        // Non-wasm: must have been restored from a cached payload.  Returning
-        // a zero pubkey would silently corrupt downstream logic; we panic with
-        // a descriptive message so the bug is loud during development.
-        //
-        // On wasm-with-feature: a future revision calls
-        // `web_sys::window().nostr().get_public_key().await` synchronously via
-        // the cached value (populated by `Nip07Signer::handshake().await`).
-        self.cached_pubkey.unwrap_or_else(|| {
-            panic!(
-                "Nip07Signer::pubkey() called without cached pubkey; \
-                 wasm target + handshake required (see ADR-0015)"
-            )
-        })
+        // Construction-gated: `cached_pubkey` is always set.  No panic path.
+        self.cached_pubkey
     }
 
     fn sign(&self, _unsigned: UnsignedEvent) -> SignerOp<SignedEvent> {
@@ -98,7 +115,7 @@ impl Signer for Nip07Signer {
 
     fn to_payload(&self) -> SignerPayload {
         SignerPayload::Nip07(Nip07Payload {
-            cached_pubkey_hex: self.cached_pubkey.map(|p| p.to_hex()),
+            cached_pubkey_hex: Some(self.cached_pubkey.to_hex()),
         })
     }
 }
