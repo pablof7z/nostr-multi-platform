@@ -21,8 +21,8 @@
 //!   tokenization (`content-rendering.md` §10 #3).
 //! - **FFI-stable public types** — pulse-builder agent (#66) consumes these
 //!   shapes via FFI; do not break.
-//! - **D0-clean** — no UI nouns, no kernel coupling beyond `EventStore` trait
-//!   consumption inside `EmbedClaimRegistry`.
+//! - **D0-clean** — no UI nouns; `EmbedClaimRegistry` stays behind the
+//!   `ViewModule` boundary.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

@@ -84,13 +84,10 @@ impl RenderContext {
     }
 }
 
-/// Free-function form of [`RenderContext::should_collapse`] for FFI surfaces
-/// that prefer pure functions over methods. Returns `true` when the
-/// renderer should NOT descend (i.e. should collapse).
+/// Free-function form for FFI surfaces that prefer pure functions over
+/// methods. Returns `true` when the renderer may descend into `into`.
 ///
-/// Note: the function returns "can descend" semantics (true = OK to
-/// descend) per the brief's `render_context_can_descend(ctx, into) -> bool`
-/// signature, which is the inverse of `should_collapse`.
+/// This is the inverse of [`RenderContext::should_collapse`].
 pub fn render_context_can_descend(ctx: &RenderContext, into: &EventId) -> bool {
     !ctx.should_collapse(into)
 }
