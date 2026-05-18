@@ -67,7 +67,10 @@ fi
 # both paths.
 echo "[4/5] Mirror APK to $APP_MIRROR/$APK_NAME"
 mkdir -p "$APP_MIRROR"
-rm -f "$APP_MIRROR"/podcast-debug.apk
+# Wipe ALL apks under the mirror dir to honor the policy's single-version
+# rule: any stale NmpPulse `app-debug.apk` from a prior `:app` build, plus
+# any prior `podcast-debug.apk`, both go.
+rm -f "$APP_MIRROR"/*.apk
 cp "$APK" "$APP_MIRROR/$APK_NAME"
 
 # Step 5 — print version + path + size.
