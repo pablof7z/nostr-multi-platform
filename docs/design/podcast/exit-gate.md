@@ -82,7 +82,7 @@ crates/nmp-testing/tests/
 └── capability_apple_intelligence.rs
 ```
 
-Every test file ≤ 500 LOC. The cross-cutting kill-relaunch test is the most load-bearing — it asserts D2 (reactivity) and D4 (single writer per fact) hold under app termination at every state-transition boundary.
+Every test file ≤ 500 LOC. The cross-cutting kill-relaunch test is the most load-bearing — it asserts D8 (reactivity) and D4 (single writer per fact) hold under app termination at every state-transition boundary.
 
 ---
 
@@ -103,7 +103,7 @@ All three are required for merge to `master`.
 M11 is **done** when:
 
 - Every row in §A / §B / §C above has a green evidence artifact.
-- The doctrine review at `docs/perf/m11/doctrine-review.md` signs off D0–D5 against the M11 surface (template: `docs/perf/m10.5/doctrine-review.md`).
+- The doctrine review at `docs/perf/m11/doctrine-review.md` signs off D0–D8 against the M11 surface (template: `docs/perf/m10.5/doctrine-review.md`).
 - `cargo test --workspace` is green.
 - `just screenshot-diff --fail-on-gate` is green.
 - The release artifact `ios/NmpPodcast.app` runs on iPhone 12 hardware (build + install + the 20 scripted scenarios run).

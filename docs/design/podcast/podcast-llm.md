@@ -277,7 +277,7 @@ Reads happen at action boot only. Per RMP bible commandment #2, keys never cross
 - Prompt-parity test: each `build_*` function called with the exact arguments from a reference transcript fixture → output asserted byte-equal to a checked-in `prompts_golden/*.txt`.
 - Router test table: each route selected per `(settings, capabilities)` combo.
 - Streaming integration test: `MockLlmCapability` emits tokens at a chosen cadence; assert `AskViewModule` deltas coalesce to ≤ 30 Hz; assert final `ChatTurn` content is the concatenation; assert citations parsed correctly.
-- Failure-mode test: capability emits `Error { reason: "rate_limit" }` mid-stream → `ChatTurn` commits with `is_error: true` and the `toast` field is set per doctrine D3.
+- Failure-mode test: capability emits `Error { reason: "rate_limit" }` mid-stream → `ChatTurn` commits with `is_error: true` and the `toast` field is set per doctrine D6.
 
 ## K. rig.rs path — M11 required (not deferred)
 

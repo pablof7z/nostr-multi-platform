@@ -62,7 +62,7 @@ Each Swift service becomes an `ActionModule` (when it has side-effects) plus, wh
 | Swift file | LOC | Side | NMP host | Notes |
 |---|---:|---|---|---|
 | `Utilities/RSSParser.swift` | 261 | rust | `podcast-feeds` | Replaced by `feed-rs` or `rss` Rust crates plus a Podcasting 2.0 extension parser. The Swift class is deleted. |
-| `Utilities/ErrorPresentation.swift` | 58 | swift | `ios/NmpPodcast/Bridge/ErrorPresentation.swift` | UI-only — `AppError`/`ErrorHandler` map `toast: Option<String>` from `AppState` (doctrine D3). No business logic. |
+| `Utilities/ErrorPresentation.swift` | 58 | swift | `ios/NmpPodcast/Bridge/ErrorPresentation.swift` | UI-only — `AppError`/`ErrorHandler` map `toast: Option<String>` from `AppState` (doctrine D6). No business logic. |
 | `Utilities/Logger.swift` | 14 | swift | `ios/NmpPodcast/Bridge/Logger.swift` | UI-side OSLog wrappers. Rust uses `tracing`. |
 
 ## F. ViewModels
