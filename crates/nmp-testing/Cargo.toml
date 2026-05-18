@@ -47,3 +47,10 @@ path = "tests/m2_subscription_compilation_audit.rs"
 [[test]]
 name = "m8_subscription_lifecycle"
 path = "tests/m8_subscription_lifecycle.rs"
+
+# Framework magic contract — 13 behaviour tests (C1-C13) + coverage meta-test.
+# Cross-cutting; intentionally not milestone-prefixed.
+# `cargo test -p nmp-testing --test framework_magic_contract`
+[[test]]
+name = "framework_magic_contract"
+path = "tests/framework_magic_contract.rs"
