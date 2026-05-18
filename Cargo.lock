@@ -2599,6 +2599,8 @@ dependencies = [
  "nmp-nip57",
  "nmp-nip77",
  "nmp-reactions",
+ "nmp-signer-broker",
+ "nmp-signer-iface",
  "nmp-signers",
  "nostr",
  "paste",

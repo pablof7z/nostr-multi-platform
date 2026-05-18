@@ -25,8 +25,11 @@ nmp-nip42 = { path = "../nmp-nip42" }
 nmp-nip57 = { path = "../nmp-nip57" }
 nmp-reactions = { path = "../nmp-reactions" }
 nmp-signers = { path = "../nmp-signers" }
+nmp-signer-broker = { path = "../nmp-signer-broker" }
+nmp-signer-iface = { path = "../nmp-signer-iface" }
 # Real-relay smoke test dependencies (real_relay_smoke.rs).
-nostr = "0.44"
+# NIP-46 mock-bunker integration test (nip46_bunker_signing.rs) needs nip04/nip44.
+nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
 
