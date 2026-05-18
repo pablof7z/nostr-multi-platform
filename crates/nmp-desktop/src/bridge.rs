@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use nmp_core::testing::{spawn_actor, ActorCommand};
+use nmp_core::UpdateEnvelope;
 
 use crate::snapshot::Snapshot;
 
@@ -31,14 +32,22 @@ impl KernelBridge {
 
         let reader_latest = Arc::clone(&latest);
         thread::spawn(move || {
-            // `rx` yields one JSON line per kernel emit until the actor stops.
+            // Actor emits tagged envelopes: {"t":"snapshot","v":{...}} or
+            // {"t":"update","v":{...}}. We only care about snapshot frames.
             for line in rx {
-                if let Some(snap) = Snapshot::parse(&line) {
-                    if let Ok(mut slot) = reader_latest.lock() {
-                        *slot = Some(snap);
-                    }
-                    egui_ctx.request_repaint();
+                let env: UpdateEnvelope = match serde_json::from_str(&line) {
+                    Ok(e) => e,
+                    Err(_) => continue,
+                };
+                let UpdateEnvelope::Snapshot(v) = env else { continue };
+                let snap: Snapshot = match serde_json::from_value(v) {
+                    Ok(s) => s,
+                    Err(_) => continue,
+                };
+                if let Ok(mut slot) = reader_latest.lock() {
+                    *slot = Some(snap);
                 }
+                egui_ctx.request_repaint();
             }
         });
 

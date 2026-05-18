@@ -77,10 +77,3 @@ pub struct Snapshot {
     pub last_error_toast: Option<String>,
 }
 
-impl Snapshot {
-    /// Parse one actor JSON line. Returns `None` on malformed input — a bad
-    /// frame is dropped, never panics across the in-process seam (D6).
-    pub fn parse(line: &str) -> Option<Self> {
-        serde_json::from_str(line).ok()
-    }
-}

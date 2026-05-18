@@ -8,7 +8,7 @@ use eframe::App;
 use egui::{Align, CentralPanel, Color32, Frame, Layout, RichText, ScrollArea, TopBottomPanel};
 
 use crate::bridge::KernelBridge;
-use crate::render::{hex_color, note_body};
+use crate::render::{effective_content, hex_color, note_body};
 use crate::snapshot::Snapshot;
 
 pub struct DesktopApp {
@@ -186,7 +186,14 @@ fn note_card(ui: &mut egui::Ui, item: &crate::snapshot::TimelineItem) {
                             }
                         });
                     });
-                    note_body(ui, &item.content);
+                    let (text, is_repost) = effective_content(&item.content);
+                    if is_repost {
+                        ui.label(RichText::new("↩ repost").small().weak()
+                            .color(Color32::from_rgb(148, 163, 184)));
+                    }
+                    if !text.is_empty() {
+                        note_body(ui, text.as_ref());
+                    }
                 });
             });
         });

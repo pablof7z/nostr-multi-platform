@@ -9,6 +9,7 @@
 use std::time::{Duration, Instant};
 
 use nmp_core::testing::{spawn_actor, ActorCommand};
+use nmp_core::UpdateEnvelope;
 
 #[test]
 #[ignore = "hits the public relay wss://relay.primal.net; run with --ignored"]
@@ -28,9 +29,10 @@ fn in_process_kernel_renders_live_feed() {
         let Ok(line) = rx.recv_timeout(Duration::from_secs(5)) else {
             continue;
         };
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else {
+        let Ok(env) = serde_json::from_str::<UpdateEnvelope>(&line) else {
             continue;
         };
+        let UpdateEnvelope::Snapshot(v) = env else { continue };
         let items = v["items"].as_array().map(Vec::len).unwrap_or(0);
         let events = v["metrics"]["events_rx"].as_u64().unwrap_or(0);
         best_items = best_items.max(items);
