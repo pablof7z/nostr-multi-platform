@@ -25,7 +25,7 @@
 /// Mirrors `crate::publish::DEFAULT_INDEXER_FALLBACK` (the publish-side seed)
 /// so cold-start reads and the first publish converge on the same bootstrap.
 pub(crate) const BOOTSTRAP_DISCOVERY_RELAYS: &[&str] =
-    &["wss://relay.damus.io", "wss://nos.lol"];
+    &["wss://relay.damus.io", "wss://purplepag.es"];
 
 /// Diagnostics-only lane labels (relay-health rows, status payload). NOT a
 /// routing source (T105) — they alias the cold-start bootstrap seeds purely so

@@ -81,17 +81,28 @@ pub(crate) enum RelayCommand {
 
 enum RelayWorkerResult {
     Reconnect,
+    PermanentFailure,
     Shutdown,
 }
 
 type RelaySocket = WebSocket<MaybeTlsStream<TcpStream>>;
 const RELAY_READ_TIMEOUT: Duration = Duration::from_millis(50);
-const RELAY_RECONNECT_DELAY: Duration = Duration::from_secs(3);
+/// Initial mid-session reconnect delay. Doubled on each consecutive failure
+/// up to [`RELAY_RECONNECT_DELAY_MAX`]; reset to this value on a successful
+/// connect.
+const RELAY_RECONNECT_DELAY_INITIAL: Duration = Duration::from_secs(3);
+const RELAY_RECONNECT_DELAY_MAX: Duration = Duration::from_secs(300);
 /// T120b / G4 — emit a Ping after this much inbound silence.
 const KEEPALIVE_IDLE_THRESHOLD: Duration = Duration::from_secs(30);
 /// T120b / G4 — declare the socket dead if no inbound frame arrives within
 /// this window after a Ping is emitted.
 const KEEPALIVE_PONG_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// HTTP-level denial: the relay explicitly rejected the connection.
+/// 401 and 403 are both permanent until the user changes credentials/policy.
+fn is_permanent_error(error: &str) -> bool {
+    error.contains("403") || error.contains("401") || error.contains("Forbidden")
+}
 
 /// Spawn a worker that dials `relay_url` on transport lane `role`.
 ///
@@ -156,6 +167,7 @@ fn run_relay_worker(
     keepalive_pong_timeout: Duration,
 ) {
     let mut pending = VecDeque::new();
+    let mut backoff = RELAY_RECONNECT_DELAY_INITIAL;
     loop {
         match open_relay_socket(&relay_url) {
             Ok(mut socket) => {
@@ -184,20 +196,39 @@ fn run_relay_worker(
                     &mut socket,
                     &mut keepalive,
                 ) {
-                    RelayWorkerResult::Reconnect => {}
+                    RelayWorkerResult::Reconnect => {
+                        // Mid-session drop: wait with backoff before retrying.
+                        // Do NOT reset backoff here — a relay that connects and
+                        // immediately disconnects should back off progressively,
+                        // not spin at 3 s per cycle.
+                        if !wait_before_reconnect(&control_rx, &mut pending, backoff) {
+                            return;
+                        }
+                        backoff = (backoff * 2).min(RELAY_RECONNECT_DELAY_MAX);
+                    }
+                    // HTTP 401/403 received mid-session (e.g., after NIP-42 auth
+                    // failure): relay is denying this client permanently.
+                    RelayWorkerResult::PermanentFailure => return,
                     RelayWorkerResult::Shutdown => return,
                 }
             }
             Err(error) => {
+                // HTTP 403/401 at connect time = relay denies this client;
+                // no point reconnecting.
+                let permanent = is_permanent_error(&error);
                 let _ = relay_tx.send(RelayEvent::Failed {
                     role,
                     relay_url: relay_url.clone(),
                     generation,
                     error,
                 });
-                if !wait_before_reconnect(&control_rx, &mut pending) {
+                if permanent {
                     return;
                 }
+                if !wait_before_reconnect(&control_rx, &mut pending, backoff) {
+                    return;
+                }
+                backoff = (backoff * 2).min(RELAY_RECONNECT_DELAY_MAX);
             }
         }
     }
@@ -298,12 +329,17 @@ fn run_connected_relay(
                     std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
                 ) => {}
             Err(error) => {
+                let error_str = error.to_string();
+                let permanent = is_permanent_error(&error_str);
                 let _ = relay_tx.send(RelayEvent::Failed {
                     role,
                     relay_url: relay_url.to_string(),
                     generation,
-                    error: error.to_string(),
+                    error: error_str,
                 });
+                if permanent {
+                    return RelayWorkerResult::PermanentFailure;
+                }
                 return RelayWorkerResult::Reconnect;
             }
         }
@@ -336,8 +372,9 @@ fn flush_relay_writes(
 fn wait_before_reconnect(
     control_rx: &Receiver<RelayCommand>,
     pending: &mut VecDeque<String>,
+    delay: Duration,
 ) -> bool {
-    let deadline = Instant::now() + RELAY_RECONNECT_DELAY;
+    let deadline = Instant::now() + delay;
     loop {
         let remaining = deadline
             .checked_duration_since(Instant::now())
