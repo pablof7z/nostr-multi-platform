@@ -9,17 +9,19 @@ The snapshot unwrap fixes the reported onboarding failure: all three bridges now
 ## Findings
 
 - `ios/NmpPulse/NmpPulse/Bridge/KernelBridge.swift:134` and `ios/NmpStress/NmpStress/KernelBridge.swift:80` - Medium - REPORT: envelope parse and snapshot decode failures still return `nil` via `try?` with no log/toast/status. Chirp current master logs parse/decode failures at `ios/Chirp/Chirp/Bridge/KernelBridge.swift:158` and `:177`, but Pulse/Stress can still regress silently.
-- `ios/Chirp/Chirp/Components/NoteRowView.swift:136` - Medium - REPORT: repost content parsing is protocol/event-shape logic in the Swift app. For D0 inverse, the durable fix is a kernel/shared content projection (`displayContent`, `isRepost`, or nodes), not per-app Nostr JSON parsing.
+- `ios/Chirp/Chirp/Components/NoteRowView.swift:133` - Medium - REPORT: repost content parsing is protocol/event-shape logic in the Swift app. For D0 inverse, the durable fix is a kernel/shared content projection (`displayContent`, `isRepost`, or nodes), not per-app Nostr JSON parsing.
 - `crates/nmp-core/src/update_envelope.rs:48` and `crates/nmp-core/src/actor/dispatch.rs:207` - Low - REPORT: T103 has a canonical two-shape envelope and the actor emits discrete `update` frames, but the Swift bridges hand-parse only `snapshot` and silently drop `update`. That is graceful for current snapshot renderers, but not a typed shared consumer contract.
 - `ios/Chirp/Chirp/Bridge/KernelBridge.swift:155`, `ios/NmpPulse/NmpPulse/Bridge/KernelBridge.swift:129`, and `ios/NmpStress/NmpStress/KernelBridge.swift:74` - Low - REPORT: the envelope unwrap is copy-pasted across all three bridges. Extract a shared Swift helper when bridge code is consolidated.
-- `ios/Chirp/Chirp/Components/NoteRowView.swift:136` - Low - FIX: any valid JSON object was treated as a repost, so a kind:1 note containing JSON could be relabeled/hidden. Fixed in `3b7a3e1b` by requiring event-shaped JSON before unwrapping.
-- `ios/Chirp/project.yml:12` and `ios/Chirp/Chirp.xcodeproj/project.pbxproj:312` - Low - FIX: `project.yml` is the source of truth for `DEVELOPMENT_TEAM=456SHKPP26`. Running `xcodegen generate` preserved that and exposed one current-master drift: `RelayDetailView.swift` was missing from the generated project. Fixed in `3b7a3e1b`.
+- `ios/Chirp/Chirp/Components/NoteRowView.swift:133` - Low - FIX: any valid JSON object was treated as a repost, so a kind:1 note containing JSON could be relabeled/hidden. Fixed in `dd3fd6d` by requiring event-shaped JSON before unwrapping.
+- `ios/Chirp/project.yml:12` and `ios/Chirp/Chirp.xcodeproj/project.pbxproj:316` - Low - FIX: `project.yml` is the source of truth for `DEVELOPMENT_TEAM=456SHKPP26`. Running `xcodegen generate` preserved that and exposed current-master project drift: `RelayDetailView.swift` was missing and `NoteContentView.swift` had non-generated IDs. Fixed in `dd3fd6d` and `80e141f`.
 
 ## What codex fixed in-place
 
-- `3b7a3e1b fix(codex): tighten Chirp repost unwrap and project regen`
+- `dd3fd6d fix(codex): tighten Chirp repost unwrap and project regen`
   - Tightened `effectiveContent` so invalid JSON and non-event JSON render unchanged; nested repost content is displayed literally, with no recursive parse path.
   - Regenerated `ios/Chirp/Chirp.xcodeproj` with `xcodegen`, adding `RelayDetailView.swift` to the project while preserving `456SHKPP26`.
+- `80e141f fix(codex): complete Chirp xcodegen regeneration`
+  - Re-ran `xcodegen` after rebasing over the newer `NoteContentView` commit, replacing its manual project IDs with generated IDs.
 
 ## REPORT-class follow-ups for orchestrator
 
