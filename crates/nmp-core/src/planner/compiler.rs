@@ -284,9 +284,11 @@ impl<'a> SubscriptionCompiler<'a> {
         };
 
         // Case A: interest has explicit authors — partition them.
+        // Also routes any address-pointer coordinates in the same interest, since
+        // both authors and addresses may target the same relay (or different ones).
         if !interest.shape.authors.is_empty() {
-            // relay_url → (author_set, source)
-            let mut per_relay_authors: BTreeMap<RelayUrl, (BTreeSet<Pubkey>, RoutingSource)> =
+            // relay_url → (author_set, addr_set, source)
+            let mut per_relay: BTreeMap<RelayUrl, (BTreeSet<Pubkey>, BTreeSet<NaddrCoord>, RoutingSource)> =
                 BTreeMap::new();
 
             for author in &interest.shape.authors {
@@ -294,8 +296,8 @@ impl<'a> SubscriptionCompiler<'a> {
                     Some(snapshot) => {
                         for relay in snapshot.outbox_relays() {
                             let entry =
-                                per_relay_authors.entry(relay.clone()).or_insert_with(|| {
-                                    (BTreeSet::new(), RoutingSource::Nip65)
+                                per_relay.entry(relay.clone()).or_insert_with(|| {
+                                    (BTreeSet::new(), BTreeSet::new(), RoutingSource::Nip65)
                                 });
                             entry.0.insert(author.clone());
                         }
@@ -304,8 +306,8 @@ impl<'a> SubscriptionCompiler<'a> {
                         // Indexer fallback (Stage 2)
                         for relay in self.indexer_relays {
                             let entry =
-                                per_relay_authors.entry(relay.clone()).or_insert_with(|| {
-                                    (BTreeSet::new(), RoutingSource::Indexer)
+                                per_relay.entry(relay.clone()).or_insert_with(|| {
+                                    (BTreeSet::new(), BTreeSet::new(), RoutingSource::Indexer)
                                 });
                             entry.0.insert(author.clone());
                         }
@@ -313,11 +315,35 @@ impl<'a> SubscriptionCompiler<'a> {
                 }
             }
 
-            for (relay_url, (authors, source)) in per_relay_authors {
+            // Route address-pointer coordinates (may target the same relays or different ones).
+            for coord in &interest.shape.addresses {
+                match self.mailbox_cache.get(&coord.pubkey) {
+                    Some(snapshot) => {
+                        for relay in snapshot.outbox_relays() {
+                            let entry =
+                                per_relay.entry(relay.clone()).or_insert_with(|| {
+                                    (BTreeSet::new(), BTreeSet::new(), RoutingSource::Nip65)
+                                });
+                            entry.1.insert(coord.clone());
+                        }
+                    }
+                    None => {
+                        for relay in self.indexer_relays {
+                            let entry =
+                                per_relay.entry(relay.clone()).or_insert_with(|| {
+                                    (BTreeSet::new(), BTreeSet::new(), RoutingSource::Indexer)
+                                });
+                            entry.1.insert(coord.clone());
+                        }
+                    }
+                }
+            }
+
+            for (relay_url, (authors, addrs, source)) in per_relay {
                 relay_entries.entry(relay_url).or_default().push(RelayEntry {
                     base_shape: base_shape.clone(),
                     authors_for_relay: authors,
-                    addresses_for_relay: BTreeSet::new(),
+                    addresses_for_relay: addrs,
                     lifecycle: interest.lifecycle.clone(),
                     source,
                     interest_id: interest.id.clone(),

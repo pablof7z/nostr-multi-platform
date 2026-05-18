@@ -259,6 +259,76 @@ fn unknown_author_falls_back_to_indexer() {
     );
 }
 
+// ─── Authors + addresses combined in one interest ────────────────────────────
+
+/// When an interest declares BOTH explicit authors AND address-pointer coordinates,
+/// the compiled plan must include both in the per-relay sub-shape.
+///
+/// Regression: an early Case-A implementation dropped addresses when authors
+/// were non-empty (it returned early before processing `interest.shape.addresses`).
+#[test]
+fn interest_with_authors_and_addresses_preserves_both() {
+    let author_pk = pubkey("author_with_relay");
+    let article_pk = pubkey("article_author");
+
+    let mut cache = InMemoryMailboxCache::new();
+    cache.put(
+        author_pk.clone(),
+        MailboxSnapshot {
+            write_relays: vec![relay("wss://author-relay.example")],
+            read_relays: vec![],
+            both_relays: vec![],
+        },
+    );
+    cache.put(
+        article_pk.clone(),
+        MailboxSnapshot {
+            write_relays: vec![relay("wss://author-relay.example")],
+            read_relays: vec![],
+            both_relays: vec![],
+        },
+    );
+
+    let indexer = vec![relay("wss://purplepag.es")];
+    let compiler = SubscriptionCompiler::new(&cache, &indexer);
+
+    let coord = NaddrCoord {
+        pubkey: article_pk.clone(),
+        kind: 30023,
+        d_tag: "my-article".to_string(),
+    };
+
+    // A single interest with both authors and addresses.
+    let interest = LogicalInterest {
+        id: interest_id(99),
+        scope: InterestScope::Global,
+        shape: InterestShape {
+            authors: [author_pk.clone()].into_iter().collect(),
+            addresses: [coord.clone()].into_iter().collect(),
+            kinds: [1u32, 30023u32].into_iter().collect(),
+            ..Default::default()
+        },
+        hints: vec![],
+        lifecycle: InterestLifecycle::Tailing,
+    };
+
+    let plan = compiler.compile(&[interest]).expect("compile");
+
+    // Assert: the relay is present in the plan.
+    assert!(
+        plan.per_relay.contains_key("wss://author-relay.example"),
+        "author's declared relay must appear in the plan"
+    );
+
+    // Assert: the sub-shape retains the address coordinate (not dropped by Case A).
+    let rp = &plan.per_relay["wss://author-relay.example"];
+    assert_eq!(rp.sub_shapes.len(), 1, "should have one merged sub-shape");
+    assert!(
+        rp.sub_shapes[0].shape.addresses.contains(&coord),
+        "address coordinate must be preserved in the sub-shape when authors are also present"
+    );
+}
+
 // ─── Plan-id stability under repeated compile ─────────────────────────────────
 
 /// Compiling the same interests twice without any state change must produce

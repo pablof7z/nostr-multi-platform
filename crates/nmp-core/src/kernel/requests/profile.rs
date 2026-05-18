@@ -1,4 +1,23 @@
 //! Profile, author, and diagnostic-firehose request builders.
+//!
+//! # TODO(M2-migration)
+//! Per `docs/design/subscription-compilation/compiler.md` §3.5, these request
+//! builders are scheduled for replacement by `SubscriptionCompiler`-driven
+//! interest registration once the wire-emitter, InterestRegistry, and
+//! trigger-based recompilation infrastructure land (M2 full migration):
+//!
+//! - `open_author`         → register three LogicalInterests; call compiler.recompile()
+//! - `claim_profile`       → register LogicalInterest { kinds:[0], limit:1 }; dedup via registry
+//! - `release_profile`     → unregister LogicalInterest by InterestId
+//! - `close_author`        → drop interests by InterestId; recompile(Trigger::ViewClose)
+//! - `author_requests`     → disappears (replaced by open_author interest registration)
+//! - `profile_claim_request` → disappears (compiler routes via Stage 1+2)
+//! - `pending_profile_claim_requests` → disappears (compiler handles deferred relay reconnect)
+//! - `open_firehose_tag`   → register LogicalInterest { kinds:[1], tags:{#t:[tag]} }
+//! - `firehose_requests`   → disappears (replaced by open_firehose_tag registration)
+//!
+//! The `req()` helper and `RelayRole`-based routing are replaced by the
+//! wire-emitter's `emit_req(relay_url, sub_id, filter)` call.
 
 use super::super::*;
 

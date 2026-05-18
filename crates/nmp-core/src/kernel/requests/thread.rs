@@ -1,4 +1,22 @@
 //! Thread view open/close/hydration request builders.
+//!
+//! # TODO(M2-migration)
+//! Per `docs/design/subscription-compilation/compiler.md` §3.5, these request
+//! builders are scheduled for replacement by `SubscriptionCompiler`-driven
+//! interest registration once the wire-emitter, InterestRegistry, and
+//! trigger-based recompilation infrastructure land (M2 full migration):
+//!
+//! - `open_thread` → register Thread view-module spec; return interests with
+//!   event_ids + #e-tag shapes
+//! - `close_thread` → drop interests by InterestId; recompile(Trigger::ViewClose)
+//! - `prepare_thread_requests` → moves to ThreadViewModule.reduce() in nmp-nip10;
+//!   hydration cascade becomes view module emitting new interests as event ids surface
+//! - `enqueue_thread_id` → ThreadViewModule internal state
+//! - `enqueue_thread_reply_target` → ThreadViewModule internal state
+//! - `maybe_open_thread_hydration` → ThreadViewModule.reduce() returning interests
+//!
+//! The `close_subscriptions_with_prefixes` helper disappears: the wire-emitter
+//! closes by WireSubId (compiler diff output), not string-prefix matching.
 
 use super::super::*;
 

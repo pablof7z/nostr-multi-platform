@@ -40,6 +40,13 @@ pub enum RoutingSource {
 /// The wire-emitter renders each `SubShape` as exactly one `["REQ", sub_id, filter]`
 /// frame. The `canonical_filter_hash` provides stable identity for ADR-0007
 /// `WireSubscriptionStatus` records across re-emissions.
+///
+/// # TODO(wire-emitter)
+/// Add `lifecycle: InterestLifecycle` to this struct when the wire-emitter lands.
+/// The compiler already computes lifecycle during the Stage 3 greedy merge;
+/// lifecycle equality is enforced by Rule 6 before any two shapes are merged.
+/// The wire-emitter needs lifecycle to decide whether to send CLOSE on EOSE
+/// (OneShot / BoundedTime) or keep the subscription open (Tailing).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SubShape {
     /// The canonical, post-merge filter description.
