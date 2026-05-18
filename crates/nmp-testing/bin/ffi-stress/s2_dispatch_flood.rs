@@ -6,7 +6,7 @@
 //! 10,000 dispatches/sec from N=4 caller threads × 60 s.
 //! Mix: 30% open_author, 30% close_author, 20% claim_profile, 20% release_profile.
 //!
-//! D2 (<=60 Hz reactivity bound): actor mpsc backlog never exceeds 10,000.
+//! D8 (reactivity contract, <=60 Hz/view): actor mpsc backlog never exceeds 10,000.
 //! Bible #3 (fire-and-forget): every send call returns within p99 <= 1 ms.
 
 use crate::ffi::{

@@ -139,7 +139,7 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
     nmp_app_configure(app, 0, 80, 4);
 
     // Inject real Schnorr-signed events via try_from_raw verify path.
-    // S5 uses full verify (D7: 200 events ~6-10 ms; acceptable for setup).
+    // S5 uses full verify (D0: 200 events ~6-10 ms; acceptable for setup).
     inject_signed_events(app, 1_700_000_000, cfg.inject_count);
 
     // Spawn external watchdog BEFORE the dispatch loop.
