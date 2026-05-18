@@ -21,6 +21,10 @@ mod outbox;
 #[cfg(test)]
 mod outbox_tests;
 mod publish_cmd;
+mod publish_engine;
+#[cfg(test)]
+mod publish_engine_tests;
+mod publish_engine_wire;
 mod requests;
 mod status;
 #[cfg(any(test, feature = "test-support"))]
@@ -181,12 +185,54 @@ pub(crate) struct Kernel {
     publish_queue: Vec<PublishQueueEntry>,
     last_error_toast: Option<String>,
     relay_edit_rows: Vec<RelayEditRow>,
+    /// T117 — the publish engine drives the per-(event, relay) retry FSM
+    /// (`publish/state.rs`). Mandatory on every Kernel; previously the
+    /// kernel one-shotted a single EVENT frame and the engine was dead code
+    /// (relay-lifecycle review §G5). Now every `publish_signed` builds a
+    /// `PublishAction::Publish`, drives the engine, and drains the queue
+    /// dispatcher into outbound frames. Per-relay OKs are folded back via
+    /// `Kernel::handle_publish_ok` (called from `ingest::handle_text`).
+    publish_engine: crate::publish::PublishEngine,
+    /// Buffered (relay_url, frame) pairs produced by the engine. The kernel
+    /// drains this after each engine call and wraps the pairs as
+    /// `OutboundMessage`s on the `RelayRole::Content` lane (the publish
+    /// lane). Shared `Arc` so the engine's `Arc<dyn RelayDispatcher>` and the
+    /// kernel both see the same buffer.
+    publish_dispatcher: Arc<crate::publish::QueueDispatcher>,
+    /// Durable publish-state store. Defaulted to in-memory for production
+    /// today (M3 LMDB lands later). Held as `Arc` so tests can construct a
+    /// second kernel sharing the same store to prove resume-from-store.
+    #[allow(dead_code)]
+    publish_store: Arc<dyn crate::publish::PublishStore>,
 }
 
 impl Kernel {
     pub(crate) fn new(visible_limit: usize) -> Self {
+        Self::with_publish_store(
+            visible_limit,
+            Arc::new(crate::publish::InMemoryPublishStore::new()),
+        )
+    }
+
+    /// Construct a Kernel with an externally-supplied publish store. Used by
+    /// integration tests that need two kernel instances to share one store
+    /// (proving `PublishEngine::resume_from_store` survives a "restart"). The
+    /// publish engine is built against this store + the kernel's NIP-65
+    /// outbox resolver + a `QueueDispatcher` shared with the kernel for
+    /// frame drainage.
+    pub(crate) fn with_publish_store(
+        visible_limit: usize,
+        publish_store: Arc<dyn crate::publish::PublishStore>,
+    ) -> Self {
+        let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
+        let publish_dispatcher = Arc::new(crate::publish::QueueDispatcher::new());
+        let publish_engine = publish_engine::build_engine(
+            Arc::clone(&store),
+            Arc::clone(&publish_dispatcher),
+            Arc::clone(&publish_store),
+        );
         Self {
-            store: Arc::new(MemEventStore::new()),
+            store,
             rev: 0,
             visible_limit,
             started_at: None,
@@ -250,6 +296,9 @@ impl Kernel {
             publish_queue: Vec::new(),
             last_error_toast: None,
             relay_edit_rows: Vec::new(),
+            publish_engine,
+            publish_dispatcher,
+            publish_store,
         }
     }
 

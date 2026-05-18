@@ -103,7 +103,10 @@ fn publish_note_signs_and_enqueues_via_outbox_fallback() {
     sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
     let outbound = publish_note(&id, &mut kernel, "hello pulse e2e", None);
     // No kind:10002 yet → resolver returns the indexer fallback, so the
-    // event still goes out and is queued as accepted_locally (D1/D3).
+    // event still goes out and is queued as `accepted_locally`. T117
+    // routed this through the publish engine (so the per-relay state
+    // machine is now alive) while preserving the queue-entry wire shape
+    // iOS Pulse keys on (ComposeView matches on "accepted_locally").
     assert!(!outbound.is_empty());
     assert!(outbound[0].text.starts_with("[\"EVENT\""));
     let q = kernel.publish_queue_snapshot();

@@ -1,103 +1,42 @@
-//! Kernel-side publish dispatch (T66a).
+//! Kernel-side publish dispatch — T117 thin shim over `PublishEngine`.
 //!
-//! D3: relay targets are resolved by `Nip65OutboxResolver` reading the
-//! active account's kind:10002 from the shared store — never a hard-coded
-//! constant. An empty resolution for a publish surfaces a `last_error_toast`
-//! (D6: errors are state, never exceptions across FFI) and the event is
-//! still recorded in the publish queue as `pending_relays_unknown` so the UI
-//! can prompt the user to declare write-relays.
+//! Before T117 this file contained a one-shot publish path: resolve NIP-65
+//! relays, emit a single `EVENT` frame on `RelayRole::Content`, stamp
+//! `accepted_locally`, and forget. The publish-retry FSM
+//! (`crate::publish::state`) was dead code (relay-lifecycle review §G5).
 //!
-//! D1: the queue entry is appended the moment the EVENT frame is emitted and
-//! marked `accepted_locally`; full per-relay OK correlation is a follow-up
-//! (refine in place). The socket fan-out is the kernel's existing
-//! `RelayRole::Content` write path — true NIP-65 multi-relay fan-out needs a
-//! relay-manager change tracked beyond T66a.
+//! T117 deletes that pathway and routes every publish through
+//! [`Kernel::run_publish_engine`] (`kernel/publish_engine.rs`). The engine:
+//!
+//! 1. Resolves NIP-65 outbox relays (D3).
+//! 2. Drives the per-(event, relay) state machine and pushes per-relay frames
+//!    into the kernel's `QueueDispatcher`.
+//! 3. Surfaces ack handling, retry policy, AUTH-REQUIRED reauth, and durable
+//!    `pending_retries` across kernel restart.
+//! 4. Folds inbound `OK` frames back through `Kernel::handle_publish_ok` —
+//!    the engine is the single writer of publish state (D4).
+//!
+//! This file remains the kernel's public `publish_signed` entrypoint so
+//! `actor/commands/publish.rs` stays untouched.
 
 use super::*;
-use crate::publish::{Nip65OutboxResolver, OutboxResolver, PublishTarget};
 use crate::substrate::SignedEvent;
 
 impl Kernel {
-    /// Resolve outbox relays for `author_hex` + `p_tags` via NIP-65 (D3),
-    /// emit the signed event as a wire `EVENT` frame on the write path, and
-    /// record it in the publish queue. Returns the outbound frames (empty if
-    /// no write-relays are declared — caller already set the toast).
+    /// Publish a signed event through the publish engine (T117).
+    ///
+    /// Returns the outbound frames the kernel must send: one per resolved
+    /// outbox relay (D3). When the resolver returns no targets the engine
+    /// records a `RecentFailure` row and the kernel surfaces a toast (D6) —
+    /// the return is `Vec::new()`. The retry / ack / reauth lifecycle is
+    /// owned entirely by the engine; the kernel only feeds OK frames in via
+    /// `handle_publish_ok` (called from `kernel::ingest::handle_text`).
     pub(crate) fn publish_signed(
         &mut self,
         signed: &SignedEvent,
         p_tags: &[String],
     ) -> Vec<OutboundMessage> {
-        let resolver = Nip65OutboxResolver::new(
-            Arc::clone(&self.store),
-            crate::publish::DEFAULT_INDEXER_FALLBACK
-                .iter()
-                .map(|s| (*s).to_string())
-                .collect(),
-        );
-        // D3: Auto target → resolver decides. We pass the author so the
-        // resolver can read the active account's own kind:10002 write set.
-        let relays = resolver.resolve(&signed.unsigned.pubkey, p_tags, &PublishTarget::Auto);
-
-        let wire = json!([
-            "EVENT",
-            {
-                "id": signed.id,
-                "pubkey": signed.unsigned.pubkey,
-                "kind": signed.unsigned.kind,
-                "tags": signed.unsigned.tags,
-                "content": signed.unsigned.content,
-                "created_at": signed.unsigned.created_at,
-                "sig": signed.sig,
-            }
-        ])
-        .to_string();
-
-        if relays.is_empty() {
-            // Resolver returned nothing AND no indexer fallback applied — the
-            // only way `resolve` is empty for Auto is an explicit-empty path,
-            // which cannot happen here. Defensive: treat as "no targets".
-            self.push_publish_entry(PublishQueueEntry {
-                event_id: signed.id.clone(),
-                kind: signed.unsigned.kind,
-                target_relays: 0,
-                status: "pending_relays_unknown".to_string(),
-            });
-            self.set_last_error_toast(Some(
-                "active account has no write-relays declared — add a relay in \
-                 Accounts → Relays and publish a fresh kind:10002"
-                    .to_string(),
-            ));
-            return Vec::new();
-        }
-
-        self.log(format!(
-            "PUBLISH kind:{} id={} → {} outbox relay(s)",
-            signed.unsigned.kind,
-            &signed.id[..signed.id.len().min(12)],
-            relays.len()
-        ));
-        self.push_publish_entry(PublishQueueEntry {
-            event_id: signed.id.clone(),
-            kind: signed.unsigned.kind,
-            target_relays: relays.len(),
-            status: "accepted_locally".to_string(),
-        });
-        self.set_last_error_toast(None);
-        self.changed_since_emit = true;
-
-        // T105 (subsumes T99): NIP-65 multi-relay write fan-out — one
-        // PublishAction → N per-relay EVENT frames addressed to the author's
-        // resolved write relays + recipients' read relays. Each frame carries
-        // its own `relay_url`; the transport dials the right socket per URL.
-        // The diagnostic lane is `Content` (the write/publish lane).
-        relays
-            .into_iter()
-            .map(|relay_url| OutboundMessage {
-                role: RelayRole::Content,
-                relay_url,
-                text: wire.clone(),
-            })
-            .collect()
+        self.run_publish_engine(signed, p_tags)
     }
 
     /// Latest kind:3 follow set for `author_hex` (hex pubkeys from `p` tags),

@@ -2375,8 +2375,12 @@ name = "nmp-testing"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
+ "nmp-nip01",
+ "nmp-nip22",
  "nmp-nip29",
+ "nmp-nip57",
  "nmp-nip77",
+ "nmp-reactions",
  "nmp-signers",
  "nostr",
  "paste",

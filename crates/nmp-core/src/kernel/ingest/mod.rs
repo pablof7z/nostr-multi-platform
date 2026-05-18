@@ -33,7 +33,14 @@ impl Kernel {
                 let relay = self.relay_mut(role);
                 relay.counters.frames_rx = relay.counters.frames_rx.saturating_add(1);
                 relay.counters.bytes_rx = relay.counters.bytes_rx.saturating_add(text.len() as u64);
-                self.handle_text(role, relay_url, &text)
+                let mut outbound = self.handle_text(role, relay_url, &text);
+                // T117: opportunistic publish-engine retry pump. Every
+                // inbound frame ticks the engine so transient retries fire
+                // as soon as their backoff is due, bounded by inbound
+                // traffic frequency. The dedicated actor-tick path is a
+                // follow-up (T114 is concurrently touching actor mechanics).
+                outbound.extend(self.tick_publish_engine_for_now());
+                outbound
             }
             Message::Binary(bytes) => {
                 let relay = self.relay_mut(role);
@@ -177,9 +184,14 @@ impl Kernel {
             }
             "OK" => {
                 // M5+M2+M8 wiring: an OK frame may be the ack of an in-flight
-                // kind:22242. Non-AUTH OKs (publish acks etc.) are no-ops here;
-                // the publish engine has its own OK matcher per `nmp-core::publish`.
+                // kind:22242. Non-AUTH OKs are routed through the publish
+                // engine (T117) — the engine's per-(event, relay) FSM folds
+                // ack code + ok-bit + message into a retry verdict. Post-T105
+                // the inbound `relay_url` is the resolved URL the OK arrived
+                // on (per-URL transport pool), so the engine sees the same
+                // URL its `dispatch` produced — not a role-bound fallback.
                 outbound.extend(self.handle_auth_ok(role, array));
+                outbound.extend(self.route_publish_ok(relay_url, array));
             }
             "AUTH" => {
                 // M5+M2+M8 wiring: relay-initiated NIP-42 challenge. Builds the

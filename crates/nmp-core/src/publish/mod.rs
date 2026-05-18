@@ -51,8 +51,8 @@ pub use nip65::{Nip65OutboxResolver, DEFAULT_INDEXER_FALLBACK};
 pub use state::{PerRelayState, PublishAttempt, RelayAck, RelayPlan, RetryPolicy, RetryVerdict};
 pub use traits::{
     InMemoryPublishStore, NoopOutboxResolver, NoopSigner, OutboxResolver, PublishRecord,
-    PublishStore, PublishStoreError, RelayDispatcher, ReplayDispatcher, Signer, SignerError,
-    StaticOutbox,
+    PublishStore, PublishStoreError, QueueDispatcher, RelayDispatcher, ReplayDispatcher, Signer,
+    SignerError, StaticOutbox,
 };
 pub use view::{
     EventPublishStatus, PublishStatusSnapshot, PublishStatusSpec, PublishStatusView, RecentFailure,

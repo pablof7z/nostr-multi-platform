@@ -164,6 +164,52 @@ impl RelayDispatcher for ReplayDispatcher {
     }
 }
 
+/// Production dispatcher seam used by the kernel.
+///
+/// The publish engine's [`RelayDispatcher::dispatch`] contract is synchronous,
+/// but the live wire path is async — the engine emits an `EVENT` frame, the
+/// transport dials the relay, an `OK` arrives back later as a `RelayEvent`.
+/// `QueueDispatcher` reconciles the two by buffering each frame the engine
+/// "sends" and returning an empty `Vec<RelayAck>` synchronously (no
+/// pre-classified ack). The kernel drains the buffer after `start_publish` /
+/// `tick` and hands the frames to the actor as `OutboundMessage`s; the inbound
+/// `OK` frame is folded back in via `PublishEngine::on_ack` (D7 — engine owns
+/// classification, dispatcher only reports facts).
+///
+/// Thread-safe so a single instance can be shared between the kernel and the
+/// engine; both are driven by the single actor thread (D4) but the trait
+/// bound is `Send + Sync` for the engine's `Arc<dyn RelayDispatcher>` field.
+#[derive(Default)]
+pub struct QueueDispatcher {
+    queued: Mutex<Vec<(RelayUrl, String)>>,
+}
+
+impl QueueDispatcher {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Drain every queued frame in FIFO order. Returned `(relay_url, frame)`
+    /// pairs are ready for the kernel to wrap as `OutboundMessage`s.
+    pub fn drain(&self) -> Vec<(RelayUrl, String)> {
+        std::mem::take(&mut *self.queued.lock().unwrap())
+    }
+}
+
+impl RelayDispatcher for QueueDispatcher {
+    fn dispatch(&self, relay_url: &str, frame: &str) -> Vec<RelayAck> {
+        self.queued
+            .lock()
+            .unwrap()
+            .push((relay_url.to_string(), frame.to_string()));
+        // Async path: no synchronous ack. The engine's
+        // `dispatch_pending` tolerates an empty ack vector — every relay
+        // stays InFlight until the kernel feeds the real OK frame in via
+        // `on_ack`.
+        Vec::new()
+    }
+}
+
 // ---------------- Durable store (M3 / LMDB) ----------------
 
 /// Persist publish state so a kernel restart resumes pending publishes.
