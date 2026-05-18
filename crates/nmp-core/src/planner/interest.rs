@@ -59,8 +59,9 @@ pub struct NaddrCoord {
 
 // Phase 2 (nmp-nip19): NaddrCoord::from_naddr_bech32 / to_naddr_bech32 helpers
 // land when the nmp-nip19 bech32 codec crate joins the workspace. Both helpers
-// are needed for the ThreadViewModule and MetaTimelineViewModule address-pointer
-// loaders to accept user-facing naddr strings from the Swift/Kotlin FFI surface.
+// are needed for `nmp_nip01::ThreadView` and `nmp_nip01::Nip10ModularTimelineView`
+// (the latter wrapping `nmp_threading::Grouper`) to accept user-facing naddr
+// strings from the Swift/Kotlin FFI surface.
 
 // ─── InterestShape ───────────────────────────────────────────────────────────
 
@@ -99,10 +100,10 @@ pub struct InterestShape {
     /// Parameterized-replaceable event coordinates for address-pointer hydration.
     ///
     /// Non-empty when a view needs to resolve a specific `naddr` (e.g., a NIP-23
-    /// article in `ThreadViewModule` or `MetaTimelineViewModule`). The compiler
-    /// routes each coordinate to the addressed author's write relays (Stage 1
-    /// Outbox direction keyed on `NaddrCoord::pubkey`). See Rule 8 and §7 of
-    /// the design doc.
+    /// article in `nmp_nip01::ThreadView` or `nmp_nip01::Nip10ModularTimelineView`).
+    /// The compiler routes each coordinate to the addressed author's write relays
+    /// (Stage 1 Outbox direction keyed on `NaddrCoord::pubkey`). See Rule 8 and §7
+    /// of the design doc.
     ///
     /// Adding `addresses` as a first-class field gives the merge lattice a stable
     /// key to union on, rather than encoding coords into opaque `#a` tag strings.

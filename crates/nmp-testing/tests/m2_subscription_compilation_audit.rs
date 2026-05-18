@@ -200,7 +200,7 @@ fn address_pointer_dedup_across_two_interests() {
         d_tag: "my-post".to_string(),
     };
 
-    // Two interests (ThreadViewModule + MetaTimelineViewModule) for the same coord.
+    // Two interests (ThreadView + Nip10ModularTimelineView in nmp-nip01) for the same coord.
     let make_interest = |id: u64| LogicalInterest {
         id: interest_id(id),
         scope: InterestScope::Global,
