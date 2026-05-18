@@ -177,11 +177,10 @@ impl Kernel {
     }
 
     pub(super) fn profile_card(&self) -> ProfileCard {
-        self.profile_card_for(
-            TEST_PUBKEY,
-            Some(TEST_NPUB),
-            "Waiting for kind:0 from indexer",
-        )
+        match self.active_account.as_deref() {
+            Some(pk) => self.profile_card_for(pk, None, "Waiting for kind:0 from indexer"),
+            None => self.profile_card_for(TEST_PUBKEY, Some(TEST_NPUB), "Waiting for kind:0 from indexer"),
+        }
     }
 
     pub(super) fn profile_card_for(

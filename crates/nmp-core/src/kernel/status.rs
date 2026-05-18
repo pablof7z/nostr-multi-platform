@@ -39,9 +39,10 @@ impl Kernel {
 
     pub(super) fn logical_interests(&self) -> Vec<LogicalInterestStatus> {
         let mut interests = Vec::new();
+        let target_pk = self.active_account.as_deref().unwrap_or(TEST_PUBKEY);
         interests.push(LogicalInterestStatus {
-            key: format!("Profile({})", short_hex(TEST_PUBKEY)),
-            state: if self.profiles.contains_key(TEST_PUBKEY) {
+            key: format!("Profile({})", short_hex(target_pk)),
+            state: if self.profiles.contains_key(target_pk) {
                 "complete".to_string()
             } else if self.relay(RelayRole::Indexer).connection == "connected" {
                 "tailing".to_string()
@@ -50,7 +51,7 @@ impl Kernel {
             },
             refcount: 1,
             relay_urls: vec![INDEXER_RELAY_URL.to_string()],
-            cache_coverage: self.relay_list_coverage(TEST_PUBKEY),
+            cache_coverage: self.relay_list_coverage(target_pk),
             warming_until_ms: None,
         });
         interests.push(LogicalInterestStatus {

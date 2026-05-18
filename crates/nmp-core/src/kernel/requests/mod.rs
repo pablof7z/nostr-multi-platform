@@ -71,6 +71,16 @@ impl Kernel {
 
     pub(crate) fn startup_requests(&mut self) -> Vec<OutboundMessage> {
         self.contacts_deadline = Some(Instant::now() + Duration::from_secs(3));
+
+        // Use the active account as the "self" target for profile/relay-list
+        // lookups. Falls back to TEST_PUBKEY in anonymous/demo mode (no
+        // persistence yet, so this branch fires when sign-in precedes the
+        // first relay connection).
+        let self_pk = self
+            .active_account
+            .clone()
+            .unwrap_or_else(|| TEST_PUBKEY.to_string());
+
         let seeds = seed_accounts();
         let seed_pubkeys = seeds.iter().map(|seed| seed.pubkey).collect::<Vec<_>>();
 
@@ -93,14 +103,14 @@ impl Kernel {
         requests.push(self.req(
             RelayRole::Indexer,
             "profile-target",
-            "target kind:0 profile via indexer",
-            json!({"kinds":[0],"authors":[TEST_PUBKEY],"limit":1}),
+            "self kind:0 profile via indexer",
+            json!({"kinds":[0],"authors":[self_pk],"limit":1}),
         ));
         requests.push(self.req(
             RelayRole::Indexer,
             "target-relays",
-            "target NIP-65 relay list",
-            json!({"kinds":[10002],"authors":[TEST_PUBKEY],"limit":1}),
+            "self NIP-65 relay list",
+            json!({"kinds":[10002],"authors":[self_pk],"limit":1}),
         ));
         requests.push(self.req(
             RelayRole::Indexer,
@@ -120,7 +130,7 @@ impl Kernel {
             "seed NIP-65 relay lists",
             json!({"kinds":[10002],"authors":seed_pubkeys,"limit":10}),
         ));
-        self.requested_profiles.insert(TEST_PUBKEY.to_string());
+        self.requested_profiles.insert(self_pk);
         for seed in seed_accounts() {
             self.requested_profiles.insert(seed.pubkey.to_string());
         }
