@@ -68,6 +68,37 @@ void nmp_app_lifecycle_background(void *app);
 typedef void (*NmpLifecycleCallback)(void *context, uint32_t phase);
 void nmp_app_set_lifecycle_callback(void *app, void *context, NmpLifecycleCallback callback);
 
+// ── T151 — capability socket, generic publish, URI routing ───────────────
+//
+// `nmp_app_set_capability_callback` registers the native handler that the
+// kernel calls (synchronously) whenever it needs a platform capability (e.g.
+// iOS Keychain via PD-019/T96).  The callback receives the
+// `CapabilityRequest` JSON and MUST return a freshly heap-allocated
+// `CapabilityEnvelope` JSON string; that string MUST then be released by the
+// caller via `nmp_app_free_string`.  Passing NULL for `callback` unregisters
+// the handler; a request received while unregistered yields an error
+// envelope (D6), never a crash.
+//
+// `nmp_app_dispatch_capability` routes a `CapabilityRequest` JSON through
+// the registered handler and returns the resulting `CapabilityEnvelope`
+// JSON.  The returned pointer is heap-allocated by Rust and MUST be freed
+// by the caller via `nmp_app_free_string`.  Never returns NULL for a
+// non-NULL app/request_json (D6).
+//
+// `nmp_app_publish_unsigned_event` signs and publishes an `UnsignedEvent`
+// JSON (fields: pubkey, kind, tags, content, created_at).  Fire-and-forget
+// (D6); outcomes arrive via `last_error_toast` / `publish_queue`.
+//
+// `nmp_app_open_uri` opens whatever a `nostr:` URI (or bare NIP-19 entity)
+// points at.  Fire-and-forget (D6): null/invalid input is a silent no-op.
+
+typedef char *(*NmpCapabilityCallback)(void *context, const char *request_json);
+void nmp_app_set_capability_callback(void *app, void *context, NmpCapabilityCallback callback);
+char *nmp_app_dispatch_capability(void *app, const char *request_json);
+void nmp_app_free_string(char *ptr);
+void nmp_app_publish_unsigned_event(void *app, const char *unsigned_json);
+void nmp_app_open_uri(void *app, const char *uri);
+
 // ── NIP-46 signer broker (Stage 4) ───────────────────────────────────────
 //
 // `libnmp_signer_broker.a` is a separate Rust static library (doctrine D0
