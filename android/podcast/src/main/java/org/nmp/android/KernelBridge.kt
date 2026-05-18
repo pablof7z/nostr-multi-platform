@@ -41,6 +41,18 @@ class KernelBridge {
     /** Blocking (≤250 ms) drain of the kernel snapshot channel; null on idle. */
     fun nextUpdate(): String? = if (handle != 0L) nativeNextUpdate(handle) else null
 
+    /**
+     * Expose the raw kernel Session pointer (jlong) so per-app bridges
+     * (e.g. [com.podcast.app.android.bridge.PodcastKernelBridge]) can call
+     * `nmp_app_podcast_register(app)` by passing the session handle into Rust,
+     * which extracts `session.app`. Returns 0 if the bridge was freed.
+     * Callers must not store this value beyond the lifetime of this bridge.
+     *
+     * Lockstep: `android/app/src/main/java/org/nmp/android/KernelBridge.kt`
+     * must carry the same method (T-podcast-android-2).
+     */
+    fun rawHandle(): Long = handle
+
     fun free() {
         if (handle != 0L) {
             nativeFree(handle)

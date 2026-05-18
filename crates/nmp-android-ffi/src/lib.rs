@@ -30,11 +30,13 @@ use nmp_core::{
     nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start, nmp_app_stop, NmpApp,
 };
 
+mod podcast;
+
 /// Owns the kernel handle, the snapshot receiver, and the boxed sender that the
 /// kernel holds as an opaque callback context. Freed exactly once in
 /// `nativeFree` (mirrors Swift `KernelHandle.deinit`).
-struct Session {
-    app: *mut NmpApp,
+pub(crate) struct Session {
+    pub(crate) app: *mut NmpApp,
     rx: Receiver<String>,
     tx: *mut Sender<String>,
 }
@@ -135,7 +137,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeFree(
     }
 }
 
-fn session_ref<'a>(handle: jlong) -> Option<&'a Session> {
+pub(crate) fn session_ref<'a>(handle: jlong) -> Option<&'a Session> {
     if handle == 0 {
         None
     } else {

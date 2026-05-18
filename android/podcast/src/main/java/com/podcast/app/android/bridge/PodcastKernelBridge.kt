@@ -1,58 +1,149 @@
 package com.podcast.app.android.bridge
 
+import android.util.Log
 import org.nmp.android.KernelBridge
 
+private const val TAG = "PodcastBridge"
+
 /**
- * NmpPodcast wrapper around the kernel JNI bridge — T157 step 2.
+ * JNI bridge for the podcast-specific FFI surface — T-podcast-android-2.
  *
- * Delegates to [org.nmp.android.KernelBridge] (re-paste of NmpPulse's
- * bridge under the same package — see that class's KDoc for the JNI
- * symbol-naming rationale). The wrapper layer exists so the podcast app
- * can grow podcast-specific bridge methods (`subscribePodcast`,
- * `librarySnapshot`, …) once the FFI surface is built, without forcing
- * NmpPulse to grow podcast-shaped methods on its bridge.
+ * Wraps [org.nmp.android.KernelBridge] for the core kernel lifecycle (start /
+ * stop / nextUpdate / free) and owns a separate `podcastHandle` (the opaque
+ * `*mut PodcastHandle` from `nmp_app_podcast_register`) for the six podcast
+ * symbols.
  *
- * **Functional state today (T157 step 2):**
- *   - Kernel lifecycle: ✅ wired (this delegates start/stop/nextUpdate/free)
- *   - Snapshot stream: ✅ flows through (decoded in
- *     `com.podcast.app.android.PodcastKernelModel`)
- *   - Podcast-specific FFI (e.g. `nmp_podcast_subscribe`,
- *     `nmp_podcast_library`): ❌ blocked on **T-podcast-gap-2** — no
- *     `nmp_podcast_*` FFI surface exists; iOS hasn't built one either.
- *     When that lands, this wrapper grows `nativeSubscribePodcast` /
- *     `nativeLibrarySnapshot`, mirroring what iOS adds to its bridge.
+ * Why two handles?
+ *   The Rust FFI has two independent object lifetimes: a `Session` (kernel
+ *   snapshot pump, owned by [KernelBridge]) and a `PodcastHandle` (podcast
+ *   library state, owned here). iOS holds both as separate Swift properties;
+ *   we mirror that pattern. The Kotlin side MUST call [unregister] before
+ *   [free] — same ordering rule as iOS `unregisterPodcast()` before
+ *   `KernelHandle.free()`.
  *
  * Doctrine: pure transport (D5). No business logic, no cached state, no
  * derived view models. Errors never cross FFI (D6) — the snapshot stream
- * carries outcomes.
+ * carries outcomes; `subscribe` returns `Boolean` to let the UI show a toast.
  */
 class PodcastKernelBridge {
 
     private val inner = KernelBridge()
 
+    /** Opaque `*mut PodcastHandle` as jlong; 0 == unregistered / failed. */
+    private var podcastHandle: Long = 0L
+
+    companion object {
+        init {
+            // The library is already loaded by KernelBridge's companion object
+            // (same .so), but System.loadLibrary is idempotent — safe to repeat.
+            System.loadLibrary("nmp_android_ffi")
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Kernel lifecycle — delegated to KernelBridge
+    // -----------------------------------------------------------------------
+
     /**
-     * Start the kernel. `visibleLimit` / `emitHz` are kernel knobs documented
-     * in `docs/ffi-surface.md`; the podcast app picks the same defaults as
-     * NmpPulse for parity.
+     * Start the kernel and register the podcast projection. Must be called
+     * once before any podcast operations. `visibleLimit` / `emitHz` are
+     * kernel knobs from `docs/ffi-surface.md`.
      */
     fun start(visibleLimit: Int = 80, emitHz: Int = 4) {
         inner.start(visibleLimit, emitHz)
+        val kernelHandle = inner.rawHandle()
+        if (kernelHandle != 0L) {
+            podcastHandle = nativeRegister(kernelHandle)
+            if (podcastHandle == 0L) {
+                Log.e(TAG, "nativeRegister returned 0 — podcast FFI unavailable")
+            }
+        }
     }
 
     fun stop() = inner.stop()
 
     /**
-     * Blocking (≤250 ms) drain of the kernel snapshot channel. Returns the raw
-     * JSON envelope (or null on idle / shutdown). The podcast app's
-     * `PodcastKernelModel` decodes it via the same `{"t":"snapshot","v":{…}}`
-     * envelope contract used by Chirp / NmpPulse (T103 / T107).
-     *
-     * Today the snapshot has no `podcasts`/`library` field — `podcast-core`
-     * hasn't registered a `LibraryViewModule` yet (T-podcast-gap-1). The
-     * decoded `PodcastLibraryView` therefore stays at its default empty
-     * value, and the UI renders the canonical 'No Podcasts' empty state.
+     * Blocking (≤250 ms) drain of the kernel snapshot channel. Returns the
+     * raw JSON envelope (or null on idle / shutdown). Decoded by
+     * [com.podcast.app.android.PodcastKernelModel].
      */
     fun nextUpdate(): String? = inner.nextUpdate()
 
-    fun free() = inner.free()
+    /**
+     * Unregister the podcast projection, then free the kernel session.
+     * Call once on ViewModel.onCleared() — do not use the bridge after this.
+     */
+    fun free() {
+        if (podcastHandle != 0L) {
+            nativeUnregister(podcastHandle)
+            podcastHandle = 0L
+        }
+        inner.free()
+    }
+
+    // -----------------------------------------------------------------------
+    // Podcast-specific operations
+    // -----------------------------------------------------------------------
+
+    /**
+     * Pull the current library as a JSON string (`{"podcasts":[…]}`).
+     * Returns null if the podcast handle is not yet registered or the
+     * serialization failed (D6).
+     */
+    fun snapshot(): String? {
+        val h = podcastHandle
+        return if (h != 0L) nativeSnapshot(h) else null
+    }
+
+    /**
+     * Subscribe to a podcast feed. Returns `true` if a new podcast was added
+     * (i.e. the library snapshot grew), `false` on dedup, invalid URL, or
+     * any FFI error. The caller should re-fetch [snapshot] on `true`.
+     *
+     * @param feedUrl  RSS / Atom feed URL — must be a valid URL or the call
+     *                 is a silent no-op (D6).
+     * @param title    Optional display title; falls back to URL host if null.
+     * @param author   Optional author string; falls back to empty if null.
+     */
+    fun subscribe(feedUrl: String, title: String? = null, author: String? = null): Boolean {
+        val h = podcastHandle
+        if (h == 0L) return false
+        return nativeSubscribe(h, feedUrl, title ?: "", author ?: "")
+    }
+
+    /**
+     * Remove a podcast by its ULID string. Idempotent — unknown IDs are a
+     * silent no-op. The caller should re-fetch [snapshot] to refresh the UI.
+     */
+    fun unsubscribe(podcastId: String) {
+        val h = podcastHandle
+        if (h != 0L) nativeUnsubscribe(h, podcastId)
+    }
+
+    // -----------------------------------------------------------------------
+    // JNI externals — podcast
+    // -----------------------------------------------------------------------
+
+    /** Register a PodcastHandle against the kernel session pointer. */
+    private external fun nativeRegister(kernelHandle: Long): Long
+
+    /** Drop the PodcastHandle. Must be called before nativeFree. */
+    private external fun nativeUnregister(podcastHandle: Long)
+
+    /** Serialize the current LibraryView to JSON. */
+    private external fun nativeSnapshot(podcastHandle: Long): String?
+
+    /**
+     * Subscribe to a feed URL. Returns true if the library grew (new row),
+     * false on dedup / failure.
+     */
+    private external fun nativeSubscribe(
+        podcastHandle: Long,
+        feedUrl: String,
+        title: String,
+        author: String,
+    ): Boolean
+
+    /** Unsubscribe a podcast by ULID string. Fire-and-forget. */
+    private external fun nativeUnsubscribe(podcastHandle: Long, podcastId: String)
 }
