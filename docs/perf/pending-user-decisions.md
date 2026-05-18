@@ -46,7 +46,13 @@ when hardware/Blossom are in the loop. Revert by treating the original
 Full rationale: `docs/plan/m10.5-ffi-hardening.md` § "Re-scope addendum
 (2026-05-18)".
 
-### PD-019 (resolved 2026-05-18 autonomously) — T63a: kernel-side keyring prerequisite (T63) absent in tree; shipped the iOS half against the generic envelope
+### PD-019 — ✅ FULLY CLOSED (HB37, 2026-05-18) — both halves landed: iOS T63a + kernel T96 (`fd002ce`)
+
+**Closure:** The deferred kernel-side half is now shipped. T96 (`fd002ce`) landed `crates/nmp-core/src/substrate/keyring.rs` (`KeyringCapability` impl `CapabilityModule`, `NAMESPACE = "nmp.keyring.capability"`, `KeyringRequest`/`KeyringResult` store/retrieve/delete byte-compatible with the Swift `KeychainCapability` from T63a) + `crates/nmp-core/src/ffi/capability.rs` (the `nmp_app_set_capability_callback`/`nmp_app_dispatch_capability` socket the Swift `handleJSON(_:)` plugs into), 7 tests, D0/D6/D7 clean. The iOS↔kernel keyring contract is complete and converged; no further action. Original deferral note retained below for history.
+
+<details><summary>Original PD-019 (T63a deferral — now satisfied)</summary>
+
+T63a: kernel-side keyring prerequisite (T63) absent in tree; shipped the iOS half against the generic envelope
 
 **Decision (autonomous, T63a):** the task brief states "the kernel-side
 capability contract + IdentityModule wiring already shipped (T63, commit
@@ -85,6 +91,8 @@ which routes through the identical envelope path the kernel will use.
 **If the user disagrees:** revert the single `feat(ios-keychain):` commit;
 the Swift side is self-contained and re-derivable against a different
 kernel-side envelope shape once T63 defines one.
+
+</details>
 
 **Update 2026-05-18 (T96) — kernel half landed.** The deferred kernel-side
 contract now exists and converges exactly on the Swift vocabulary:
@@ -282,7 +290,13 @@ Kept `IdentityId = pubkey_hex` for M6; ULID rekey was tentatively planned before
 
 ---
 
-### PD-003 — M7 publishing-pipeline scope (task #45) shipped as substrate-only ahead of M3/M6/M8 wiring
+### PD-003 — ✅ CLOSED (HB37, 2026-05-18) — superseded; substrate now wired, residual gaps tracked as concrete tasks
+
+**Closure:** The "shipped substrate-only, wiring deferred" concern is resolved. The named dependencies landed and the publish pipeline is wired end-to-end: T54 (`f04c735` — RelayAck D7 envelope + PublishEngineError FFI mapping + pending_retries durability), T58 (`df4e843` — M5+M2+M8 kernel wiring incl. AUTH-paused REQ routing), and T66a (`7f4953d`/`00c3bf6` — Pulse exercises the real path: sign → Nip65OutboxResolver → publish_queue → `accepted_locally`, verified in-simulator). The two remaining honest gaps are no longer "deferred unknowns" but concrete tracked tasks: **T99** (true NIP-65 multi-relay write fan-out — today emits on the fixed `RelayRole::Content` path) and **T100** (per-relay OK correlation + kind:3 follow fan-out). PD-003's escape-clause shims have all been satisfied or superseded. No standing decision required. Original note retained below.
+
+<details><summary>Original PD-003 (substrate-only deferral — now superseded)</summary>
+
+M7 publishing-pipeline scope (task #45) shipped as substrate-only ahead of M3/M6/M8 wiring
 
 **Decision (autonomous):** shipped `crates/nmp-core/src/publish/` with engine + state machine + trait shims + 20 tests. Did NOT wire it into the actor / FFI / iOS slice. Did NOT use MockRelay (does not exist). Did NOT exercise real LMDB persistence.
 
@@ -307,6 +321,8 @@ The task's own escape clause: "If one missing: define minimal trait shim that #4
 **Hard-reset orphan commits:** during rebase I hard-reset to `origin/master` to escape doc-only conflicts in `docs/design/framework-magic/`. Approximately 7 doc-edit commits previously on `origin/worktree-agent-a53de6ee35b4e2ccc` (T22 doctrine alignment) are now orphaned on that remote branch. They were ALREADY in master per `git rebase` reporting (`skipped previously applied commit`) — so no semantic loss, but the orphan branch on origin still shows them. The heartbeat orphan-sweep will surface this.
 
 **If wrong:** revert with `git revert <merge-sha>`; the substrate is self-contained and the wiring milestones can re-derive against a different shape. Or amend the scope (e.g. demand the full M3/M6/M8 wiring before merge).
+
+</details>
 
 ---
 
