@@ -1,5 +1,17 @@
 //! Per-sub lifecycle tracking — OneShot CLOSE on EOSE, BoundedTime CLOSE on
-//! deadline. Owns the `known_subs` map keyed by wire sub-id.
+//! deadline. Owns the `known_subs` map keyed by `(RelayUrl, sub_id)`.
+//!
+//! ## Gate key vs wire sub-id (mirrors subs/wire.rs reasoning)
+//!
+//! Wire sub-ids (`sub_id_for`) are derived from `canonical_filter_hash`
+//! alone, not the relay URL. Per NIP-01 §1, subscription ids are
+//! per-connection — the same filter on two relay connections may legitimately
+//! share the same sub-id string. The gate's internal key is therefore
+//! `(RelayUrl, sub_id)`, NOT `sub_id` alone: two relays carrying the same
+//! filter hash are distinct subscriptions from the gate's perspective. Without
+//! relay-scoped keying, the second `observe_diff` REQ silently overwrites the
+//! first, causing EOSE / deadline CLOSEs to miss the overwritten relay's sub
+//! (relay leaks). (#166, follows #161 `wire.rs` fix.)
 //!
 //! Pure data structure; the lifecycle controller in `mod.rs` decides when to
 //! call the methods here based on incoming relay frames.
@@ -12,7 +24,6 @@ use crate::planner::{InterestId, InterestLifecycle, RelayUrl};
 /// Per-wire-sub bookkeeping for lifecycle decisions.
 #[derive(Clone, Debug)]
 pub(super) struct KnownSub {
-    pub(super) relay_url: RelayUrl,
     pub(super) lifecycle: InterestLifecycle,
     /// The originating logical-interest id. Held so future view-module
     /// integration can correlate wire-sub → consumer when EOSE / CLOSED
@@ -22,9 +33,13 @@ pub(super) struct KnownSub {
 }
 
 /// Tracks which wire subs are currently open and how each should close.
+///
+/// Keyed by `(relay_url, sub_id)` — relay-scoped so that two relays carrying
+/// the same filter hash (same sub_id string) are tracked independently.
+/// See module doc for the NIP-01 rationale.
 #[derive(Default)]
 pub(super) struct LifecycleGate {
-    known_subs: HashMap<String, KnownSub>,
+    known_subs: HashMap<(RelayUrl, String), KnownSub>,
 }
 
 impl LifecycleGate {
@@ -34,6 +49,9 @@ impl LifecycleGate {
 
     /// Reconcile the bookkeeping with a freshly-computed diff. REQs are added
     /// to the known set; CLOSEs remove them.
+    ///
+    /// Both insert and remove use `(relay_url, sub_id)` as the key — the
+    /// relay-scoped gate key (not the wire sub-id alone). See module doc.
     pub(super) fn observe_diff(&mut self, frames: &[WireFrame]) {
         for frame in frames {
             match frame {
@@ -45,34 +63,36 @@ impl LifecycleGate {
                     ..
                 } => {
                     self.known_subs.insert(
-                        sub_id.clone(),
+                        (relay_url.clone(), sub_id.clone()),
                         KnownSub {
-                            relay_url: relay_url.clone(),
                             lifecycle: lifecycle.clone(),
                             interest_id: interest_id.clone(),
                         },
                     );
                 }
-                WireFrame::Close { sub_id, .. } => {
-                    self.known_subs.remove(sub_id);
+                WireFrame::Close { relay_url, sub_id } => {
+                    self.known_subs.remove(&(relay_url.clone(), sub_id.clone()));
                 }
             }
         }
     }
 
     /// EOSE → CLOSE for OneShot subs; no-op otherwise.
+    ///
+    /// Lookup uses `(relay_url, sub_id)` — the relay-scoped key — so EOSE on
+    /// relay A only affects relay A's entry, even when relay B shares the
+    /// same sub_id string. The relay-mismatch guard from the old single-key
+    /// scheme is not needed here: if the key is absent, the sub is unknown.
     pub(super) fn on_eose(&mut self, relay_url: &str, sub_id: &str) -> Vec<WireFrame> {
-        let Some(sub) = self.known_subs.get(sub_id).cloned() else {
+        let key = (relay_url.to_string(), sub_id.to_string());
+        let Some(sub) = self.known_subs.get(&key).cloned() else {
             return Vec::new();
         };
-        if sub.relay_url != relay_url {
-            return Vec::new();
-        }
         match sub.lifecycle {
             InterestLifecycle::OneShot => {
-                self.known_subs.remove(sub_id);
+                self.known_subs.remove(&key);
                 vec![WireFrame::Close {
-                    relay_url: sub.relay_url,
+                    relay_url: relay_url.to_string(),
                     sub_id: sub_id.to_string(),
                 }]
             }
@@ -81,20 +101,23 @@ impl LifecycleGate {
     }
 
     /// Tick deadlines: CLOSE every BoundedTime sub whose `until_ms` has passed.
+    ///
+    /// Iterates `(relay_url, sub_id)` pairs so two relays sharing a filter
+    /// hash (same sub_id) each produce an independent CLOSE.
     pub(super) fn tick_deadlines(&mut self, now_ms: u64) -> Vec<WireFrame> {
-        let expired: Vec<(String, RelayUrl)> = self
+        let expired: Vec<(RelayUrl, String)> = self
             .known_subs
             .iter()
-            .filter_map(|(sub_id, sub)| match sub.lifecycle {
+            .filter_map(|((relay_url, sub_id), sub)| match sub.lifecycle {
                 InterestLifecycle::BoundedTime { until_ms } if now_ms >= until_ms => {
-                    Some((sub_id.clone(), sub.relay_url.clone()))
+                    Some((relay_url.clone(), sub_id.clone()))
                 }
                 _ => None,
             })
             .collect();
         let mut closes = Vec::with_capacity(expired.len());
-        for (sub_id, relay_url) in expired {
-            self.known_subs.remove(&sub_id);
+        for (relay_url, sub_id) in expired {
+            self.known_subs.remove(&(relay_url.clone(), sub_id.clone()));
             closes.push(WireFrame::Close { relay_url, sub_id });
         }
         closes
