@@ -44,13 +44,16 @@ To verify that insert paths write the expected number of secondary-index entries
 
 ```rust
 // crates/nmp-core/src/store/lmdb/mod.rs
+// Compiled only under test or the "test-support" feature (never in release binaries).
+#[cfg(any(test, feature = "test-support"))]
 pub trait WriteObserver: Send + Sync {
     fn on_put(&self, sub_db: &'static str);
 }
 
+#[cfg(any(test, feature = "test-support"))]
 impl LmdbEventStore {
     /// Attach an observer that counts every LMDB `put` in subsequent writes.
-    /// Observer is cleared when the store is dropped. Test-only.
+    /// Observer is cleared when the store is dropped.
     pub fn with_write_observer(&mut self, obs: Arc<dyn WriteObserver>) { /* ... */ }
 }
 ```
