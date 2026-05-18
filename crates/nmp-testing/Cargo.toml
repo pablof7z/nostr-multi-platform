@@ -32,6 +32,14 @@ nmp-signer-iface = { path = "../nmp-signer-iface" }
 nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+# Marmot exit-gate integration tests (marmot_*.rs).
+# nmp-marmot drives MarmotService; test-utils gates new_unencrypted / new_in_memory.
+# mdk-core exposes MessageProcessingResult + NostrGroupConfigData + GroupId for assertions.
+# tempfile provides ephemeral SQLite paths for state-fork (post-compromise test).
+nmp-marmot = { path = "../nmp-marmot" }
+mdk-core = "0.8.0"
+mdk-sqlite-storage = { version = "0.8.0", features = ["test-utils"] }
+tempfile = "3"
 
 [[bin]]
 name = "reactivity-bench"
@@ -99,3 +107,32 @@ path = "tests/nip29_lifecycle.rs"
 [[test]]
 name = "real_relay_smoke"
 path = "tests/real_relay_smoke.rs"
+
+# Marmot milestone exit-gate integration tests.
+# Run all five: `cargo test -p nmp-testing --test 'marmot_*'`
+# Or per-file, e.g.: `cargo test -p nmp-testing --test marmot_key_package_lifecycle`
+[[test]]
+name = "marmot_key_package_lifecycle"
+path = "tests/marmot_key_package_lifecycle.rs"
+
+[[test]]
+name = "marmot_message_roundtrip"
+path = "tests/marmot_message_roundtrip.rs"
+
+[[test]]
+name = "marmot_forward_secrecy"
+path = "tests/marmot_forward_secrecy.rs"
+
+[[test]]
+name = "marmot_post_compromise"
+path = "tests/marmot_post_compromise.rs"
+
+[[test]]
+name = "marmot_key_package_rotation"
+path = "tests/marmot_key_package_rotation.rs"
+
+# Marmot perf measurement harness (produces timing numbers for perf-measurements.md).
+# `cargo test -p nmp-testing --test marmot_perf -- --nocapture`
+[[test]]
+name = "marmot_perf"
+path = "tests/marmot_perf.rs"
