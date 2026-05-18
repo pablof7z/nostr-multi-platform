@@ -87,15 +87,17 @@ impl<'a> SubscriptionCompiler<'a> {
 
     /// Compile a set of logical interests into a `CompiledPlan`.
     ///
-    /// Equivalent to `compile_with_context(interests, &CompileContext::default())`.
-    /// Use `compile_with_context` when tracking policy version counters.
+    /// **Warning — use only in tests or when policy versions are immutable.**
     ///
-    /// # EventStore coverage
-    /// Phase 2 / M3 wiring point (not yet consulted):
-    /// ```text
-    /// // Phase 2: let coverage = event_store.coverage(&watermark_key)?;
-    /// // Use coverage to skip REQs whose time-range is fully cached locally.
-    /// ```
+    /// Delegates to `compile_with_context(..., &CompileContext::default())`,
+    /// which sets `indexer_set_version = 0` and `user_config_version = 0`.
+    /// If the indexer relay set or active-account config changes at runtime,
+    /// the resulting `plan_id` will NOT change — callers that rely on plan-id
+    /// stability for subscription diffing MUST use `compile_with_context` with
+    /// their own monotonic version counters.
+    ///
+    /// Production callers: use `compile_with_context`.
+    /// Test-only / static-config callers: `compile` is safe.
     pub fn compile(
         &self,
         interests: &[LogicalInterest],
@@ -125,22 +127,23 @@ impl<'a> SubscriptionCompiler<'a> {
         }
 
         // ── Stage 3: Per-relay shape merge ──────────────────────────────────
+        //
+        // `role_tags` accumulates ALL RoutingSource lanes across all entries
+        // for a relay, preserving the four-lane discipline (§3.1).
         let mut per_relay: BTreeMap<RelayUrl, RelayPlan> = BTreeMap::new();
         for (relay_url, entries) in relay_entries {
             let mut role_tags: BTreeSet<RoutingSource> = BTreeSet::new();
-            let mut resolved: Vec<(InterestShape, InterestLifecycle, RoutingSource, InterestId)> =
-                entries
-                    .into_iter()
-                    .map(|entry| {
-                        let source = entry.source.clone();
-                        role_tags.insert(source);
-                        entry.into_shape()
-                    })
-                    .collect();
+            // Shape + lifecycle + all source lanes + originating interest id.
+            let shaped: Vec<(InterestShape, InterestLifecycle, BTreeSet<RoutingSource>, InterestId)> =
+                entries.into_iter().map(|entry| entry.into_shape()).collect();
 
             let mut sub_shapes: Vec<(InterestShape, InterestLifecycle, Vec<InterestId>)> =
                 Vec::new();
-            for (shape, lifecycle, _source, interest_id) in resolved.drain(..) {
+            for (shape, lifecycle, entry_sources, interest_id) in shaped {
+                // Merge all source lanes from this entry into role_tags.
+                for src in entry_sources {
+                    role_tags.insert(src);
+                }
                 let mut merged = false;
                 for (existing_shape, existing_lifecycle, existing_ids) in sub_shapes.iter_mut() {
                     if let MergeOutcome::Merged(new_shape) =

@@ -30,6 +30,20 @@ impl MailboxSnapshot {
     pub fn outbox_relays(&self) -> impl Iterator<Item = &RelayUrl> {
         self.write_relays.iter().chain(self.both_relays.iter())
     }
+
+    /// All relays relevant for Inbox direction (read + both).
+    ///
+    /// Used for `#p` interests (DMs, notifications) where we want to reach the
+    /// tagged pubkey's declared read relays. `both_relays` are included because
+    /// the pubkey reads from them too (NIP-65 semantics: `both` = read + write).
+    pub fn inbox_relays(&self) -> impl Iterator<Item = &RelayUrl> {
+        self.read_relays.iter().chain(self.both_relays.iter())
+    }
+
+    /// True iff the snapshot has at least one inbox relay (read or both).
+    pub fn has_inbox_relays(&self) -> bool {
+        !self.read_relays.is_empty() || !self.both_relays.is_empty()
+    }
 }
 
 // ─── MailboxCache trait ───────────────────────────────────────────────────────

@@ -26,6 +26,10 @@ use super::mailbox::MailboxCache;
 /// authors that declared this specific relay (not all N authors). This is the
 /// author-partitioning that lets the merge lattice produce per-relay author
 /// subsets.
+///
+/// `sources` is a set (not a single value) so that a relay reached by two
+/// different lanes (e.g. NIP-65 for author A, Indexer for author B) preserves
+/// both lanes in `role_tags` at Stage 3 (§3.1 four-lane discipline).
 pub(super) struct RelayEntry {
     /// The interest's non-author fields (kinds, tags, since, until, etc.).
     /// `authors` is intentionally left empty here; we merge `authors_for_relay`
@@ -36,18 +40,26 @@ pub(super) struct RelayEntry {
     /// Address-pointer coordinates from this interest (if relevant for routing).
     pub addresses_for_relay: BTreeSet<NaddrCoord>,
     pub lifecycle: InterestLifecycle,
-    pub source: RoutingSource,
+    /// All routing lanes that contributed to this relay entry.
+    pub sources: BTreeSet<RoutingSource>,
     pub interest_id: InterestId,
 }
 
 impl RelayEntry {
     /// Construct the final `InterestShape` for this relay slice.
-    pub fn into_shape(mut self) -> (InterestShape, InterestLifecycle, RoutingSource, InterestId) {
+    pub fn into_shape(
+        mut self,
+    ) -> (InterestShape, InterestLifecycle, BTreeSet<RoutingSource>, InterestId) {
         self.base_shape.authors = self.authors_for_relay;
         self.base_shape.addresses = self.addresses_for_relay;
-        (self.base_shape, self.lifecycle, self.source, self.interest_id)
+        (self.base_shape, self.lifecycle, self.sources, self.interest_id)
     }
 }
+
+// ─── Internal type aliases ────────────────────────────────────────────────────
+
+/// Per-relay accumulator for Case A: (authors, addresses, sources).
+type CaseAEntry = (BTreeSet<Pubkey>, BTreeSet<NaddrCoord>, BTreeSet<RoutingSource>);
 
 // ─── partition_interest ───────────────────────────────────────────────────────
 
@@ -86,27 +98,37 @@ pub(super) fn partition_interest(
     };
 
     // Case A: explicit authors → Outbox (write relays).
+    //
+    // The per_relay map accumulates ALL RoutingSource lanes per relay URL.
+    // Author A may reach wss://x via NIP-65 while author B reaches the same
+    // relay via indexer fallback; both lanes must be recorded so Stage 3
+    // role_tags reflects the four-lane model (§3.1 four-lane discipline).
     if !interest.shape.authors.is_empty() {
-        let mut per_relay: BTreeMap<RelayUrl, (BTreeSet<Pubkey>, BTreeSet<NaddrCoord>, RoutingSource)> =
-            BTreeMap::new();
+        let mut per_relay: BTreeMap<RelayUrl, CaseAEntry> = BTreeMap::new();
 
         for author in &interest.shape.authors {
             match mailbox_cache.get(author) {
                 Some(snapshot) => {
                     for relay in snapshot.outbox_relays() {
-                        let entry = per_relay.entry(relay.clone()).or_insert_with(|| {
-                            (BTreeSet::new(), BTreeSet::new(), RoutingSource::Nip65)
-                        });
+                        let entry = per_relay
+                            .entry(relay.clone())
+                            .or_insert_with(|| (BTreeSet::new(), BTreeSet::new(), BTreeSet::new()));
                         entry.0.insert(author.clone());
+                        entry.2.insert(RoutingSource::Nip65);
                     }
                 }
                 None => {
+                    // No mailbox known — probe so cache can be populated and
+                    // the next recompile routes via NIP-65 (§3.2).
+                    mailbox_cache.request_probe(author);
                     for relay in indexer_relays {
-                        let entry = per_relay.entry(relay.clone()).or_insert_with(|| {
-                            (BTreeSet::new(), BTreeSet::new(),
-                             RoutingSource::UserConfigured(UserConfiguredCategory::Indexer))
-                        });
+                        let entry = per_relay
+                            .entry(relay.clone())
+                            .or_insert_with(|| (BTreeSet::new(), BTreeSet::new(), BTreeSet::new()));
                         entry.0.insert(author.clone());
+                        entry.2.insert(RoutingSource::UserConfigured(
+                            UserConfiguredCategory::Indexer,
+                        ));
                     }
                 }
             }
@@ -116,31 +138,35 @@ pub(super) fn partition_interest(
             match mailbox_cache.get(&coord.pubkey) {
                 Some(snapshot) => {
                     for relay in snapshot.outbox_relays() {
-                        let entry = per_relay.entry(relay.clone()).or_insert_with(|| {
-                            (BTreeSet::new(), BTreeSet::new(), RoutingSource::Nip65)
-                        });
+                        let entry = per_relay
+                            .entry(relay.clone())
+                            .or_insert_with(|| (BTreeSet::new(), BTreeSet::new(), BTreeSet::new()));
                         entry.1.insert(coord.clone());
+                        entry.2.insert(RoutingSource::Nip65);
                     }
                 }
                 None => {
+                    mailbox_cache.request_probe(&coord.pubkey);
                     for relay in indexer_relays {
-                        let entry = per_relay.entry(relay.clone()).or_insert_with(|| {
-                            (BTreeSet::new(), BTreeSet::new(),
-                             RoutingSource::UserConfigured(UserConfiguredCategory::Indexer))
-                        });
+                        let entry = per_relay
+                            .entry(relay.clone())
+                            .or_insert_with(|| (BTreeSet::new(), BTreeSet::new(), BTreeSet::new()));
                         entry.1.insert(coord.clone());
+                        entry.2.insert(RoutingSource::UserConfigured(
+                            UserConfiguredCategory::Indexer,
+                        ));
                     }
                 }
             }
         }
 
-        for (relay_url, (authors, addrs, source)) in per_relay {
+        for (relay_url, (authors, addrs, sources)) in per_relay {
             relay_entries.entry(relay_url).or_default().push(RelayEntry {
                 base_shape: base_shape.clone(),
                 authors_for_relay: authors,
                 addresses_for_relay: addrs,
                 lifecycle: interest.lifecycle.clone(),
-                source,
+                sources,
                 interest_id: interest.id.clone(),
             });
         }
@@ -149,38 +175,43 @@ pub(super) fn partition_interest(
 
     // Case B: no explicit authors, but address-pointer pubkeys → Outbox.
     if !interest.shape.addresses.is_empty() {
-        let mut per_relay_addrs: BTreeMap<RelayUrl, (BTreeSet<NaddrCoord>, RoutingSource)> =
+        let mut per_relay_addrs: BTreeMap<RelayUrl, (BTreeSet<NaddrCoord>, BTreeSet<RoutingSource>)> =
             BTreeMap::new();
 
         for coord in &interest.shape.addresses {
             match mailbox_cache.get(&coord.pubkey) {
                 Some(snapshot) => {
                     for relay in snapshot.outbox_relays() {
-                        let entry = per_relay_addrs.entry(relay.clone()).or_insert_with(|| {
-                            (BTreeSet::new(), RoutingSource::Nip65)
-                        });
+                        let entry = per_relay_addrs
+                            .entry(relay.clone())
+                            .or_insert_with(|| (BTreeSet::new(), BTreeSet::new()));
                         entry.0.insert(coord.clone());
+                        entry.1.insert(RoutingSource::Nip65);
                     }
                 }
                 None => {
+                    // Probe so the cache can route via NIP-65 on next recompile.
+                    mailbox_cache.request_probe(&coord.pubkey);
                     for relay in indexer_relays {
-                        let entry = per_relay_addrs.entry(relay.clone()).or_insert_with(|| {
-                            (BTreeSet::new(),
-                             RoutingSource::UserConfigured(UserConfiguredCategory::Indexer))
-                        });
+                        let entry = per_relay_addrs
+                            .entry(relay.clone())
+                            .or_insert_with(|| (BTreeSet::new(), BTreeSet::new()));
                         entry.0.insert(coord.clone());
+                        entry.1.insert(RoutingSource::UserConfigured(
+                            UserConfiguredCategory::Indexer,
+                        ));
                     }
                 }
             }
         }
 
-        for (relay_url, (addrs, source)) in per_relay_addrs {
+        for (relay_url, (addrs, sources)) in per_relay_addrs {
             relay_entries.entry(relay_url).or_default().push(RelayEntry {
                 base_shape: base_shape.clone(),
                 authors_for_relay: BTreeSet::new(),
                 addresses_for_relay: addrs,
                 lifecycle: interest.lifecycle.clone(),
-                source,
+                sources,
                 interest_id: interest.id.clone(),
             });
         }
@@ -193,7 +224,10 @@ pub(super) fn partition_interest(
     // relays (Inbox direction). Routing them to write relays violates the
     // structural ban on private routes to non-inbox relays (§3.2).
     //
-    // Phase 1 stub: read_relays not yet populated from kind:10002 → fall back
+    // `inbox_relays()` = read_relays ∪ both_relays (NIP-65 §3.1: `both` means
+    // read + write, so both_relays are also valid Inbox targets).
+    //
+    // Phase 1 stub: mailbox data not yet populated from kind:10002 → falls back
     // to indexer. The code path is correct; only the mailbox data is missing.
     let p_tag_values: BTreeSet<Pubkey> = interest
         .shape
@@ -205,14 +239,14 @@ pub(super) fn partition_interest(
     if !p_tag_values.is_empty() {
         for tagged_pk in &p_tag_values {
             match mailbox_cache.get(tagged_pk) {
-                Some(snapshot) if !snapshot.read_relays.is_empty() => {
-                    for relay in &snapshot.read_relays {
+                Some(ref snapshot) if snapshot.has_inbox_relays() => {
+                    for relay in snapshot.inbox_relays() {
                         relay_entries.entry(relay.clone()).or_default().push(RelayEntry {
                             base_shape: base_shape.clone(),
                             authors_for_relay: BTreeSet::new(),
                             addresses_for_relay: BTreeSet::new(),
                             lifecycle: interest.lifecycle.clone(),
-                            source: RoutingSource::Nip65,
+                            sources: BTreeSet::from([RoutingSource::Nip65]),
                             interest_id: interest.id.clone(),
                         });
                     }
@@ -225,9 +259,9 @@ pub(super) fn partition_interest(
                             authors_for_relay: BTreeSet::new(),
                             addresses_for_relay: BTreeSet::new(),
                             lifecycle: interest.lifecycle.clone(),
-                            source: RoutingSource::UserConfigured(
+                            sources: BTreeSet::from([RoutingSource::UserConfigured(
                                 UserConfiguredCategory::Indexer,
-                            ),
+                            )]),
                             interest_id: interest.id.clone(),
                         });
                     }
@@ -239,11 +273,15 @@ pub(super) fn partition_interest(
 
     // Case D: no authors, addresses, or #p → active-account read relays / indexer.
     let (fallback_relays, fallback_source) = if !active_account_read_relays.is_empty() {
-        (active_account_read_relays,
-         RoutingSource::UserConfigured(UserConfiguredCategory::AccountRead))
+        (
+            active_account_read_relays,
+            RoutingSource::UserConfigured(UserConfiguredCategory::AccountRead),
+        )
     } else {
-        (indexer_relays,
-         RoutingSource::UserConfigured(UserConfiguredCategory::Indexer))
+        (
+            indexer_relays,
+            RoutingSource::UserConfigured(UserConfiguredCategory::Indexer),
+        )
     };
     for relay in fallback_relays {
         relay_entries.entry(relay.clone()).or_default().push(RelayEntry {
@@ -251,7 +289,7 @@ pub(super) fn partition_interest(
             authors_for_relay: BTreeSet::new(),
             addresses_for_relay: BTreeSet::new(),
             lifecycle: interest.lifecycle.clone(),
-            source: fallback_source.clone(),
+            sources: BTreeSet::from([fallback_source.clone()]),
             interest_id: interest.id.clone(),
         });
     }
