@@ -7,6 +7,10 @@ private let kbLog = Logger(subsystem: "com.example.Chirp", category: "KernelBrid
 final class KernelHandle {
     private let raw: UnsafeMutableRawPointer
     private var updateSink: KernelUpdateSink?
+    /// T146 — opaque handle returned by `nmp_app_chirp_register`. Owned
+    /// for the lifetime of `KernelHandle`; freed on `deinit` BEFORE
+    /// `nmp_app_free` per the FFI contract in `nmp-app-chirp/src/ffi.rs`.
+    private var chirpHandle: UnsafeMutableRawPointer?
 
     init() {
         raw = nmp_app_new()
@@ -17,11 +21,61 @@ final class KernelHandle {
         // resulting signer back via `AddRemoteSigner`. D0 stays clean — the
         // broker is a separate static lib (`libnmp_signer_broker.a`).
         nmp_signer_broker_init(raw)
+        // T146: register the Chirp modular timeline projection BEFORE the
+        // actor starts seeing events. The projection owns one
+        // `Nip10ModularTimelineView` state and feeds the kernel event
+        // observer slot every time an event reaches the read-cache. Viewer
+        // pubkey is passed nil on cold boot — `signInNsec` etc. retarget
+        // the projection once an account becomes active (Spec.viewer is
+        // currently only used for future personalization keys; the grouper
+        // accepts every kind:1 the kernel ingests regardless).
+        chirpHandle = nmp_app_chirp_register(raw, nil)
+        if chirpHandle == nil {
+            kbLog.error("nmp_app_chirp_register returned NULL — projection unavailable")
+        }
     }
 
     deinit {
+        // T146 — drop the projection BEFORE `nmp_app_free` per FFI contract.
+        if let handle = chirpHandle {
+            nmp_app_chirp_unregister(handle)
+            chirpHandle = nil
+        }
         nmp_app_set_update_callback(raw, nil, nil)
         nmp_app_free(raw)
+    }
+
+    /// T146 — decode the current modular timeline snapshot. Returns
+    /// `ChirpTimelineSnapshot.empty` when the projection handle is unset
+    /// (registration failed) or when JSON parse fails (D6 — never throws
+    /// across the bridge; logs and continues).
+    func chirpSnapshot() -> ChirpTimelineSnapshot {
+        guard let handle = chirpHandle else { return .empty }
+        guard let ptr = nmp_app_chirp_snapshot(handle) else { return .empty }
+        defer { nmp_app_chirp_snapshot_free(ptr) }
+        let payload = String(cString: ptr)
+        guard let data = payload.data(using: .utf8) else { return .empty }
+        do {
+            return try JSONDecoder().decode(ChirpTimelineSnapshot.self, from: data)
+        } catch {
+            kbLog.error("chirpSnapshot decode failed: \(error.localizedDescription)")
+            return .empty
+        }
+    }
+
+    /// T146 — drop the current projection and register a fresh one.
+    /// Called after `nmp_app_reset` (which clears the kernel's read-cache
+    /// but cannot reach inside the projection's state). The new handle
+    /// starts empty; the next batch of events repopulates it.
+    func reregisterChirpProjection() {
+        if let handle = chirpHandle {
+            nmp_app_chirp_unregister(handle)
+            chirpHandle = nil
+        }
+        chirpHandle = nmp_app_chirp_register(raw, nil)
+        if chirpHandle == nil {
+            kbLog.error("nmp_app_chirp_register (re-register) returned NULL")
+        }
     }
 
     func listen(_ handler: @escaping (KernelUpdateResult) -> Void) {

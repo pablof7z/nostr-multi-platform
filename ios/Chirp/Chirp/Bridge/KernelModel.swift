@@ -15,6 +15,13 @@ final class KernelModel: ObservableObject {
     @Published private(set) var testNpub: String = ""
     @Published private(set) var profile: ProfileCard?
     @Published private(set) var items: [TimelineItem] = []
+    /// T146 — modular timeline blocks produced by `nmp-app-chirp`'s
+    /// `Nip10ModularTimelineView` projection. Refreshed on every kernel
+    /// snapshot via `kernel.chirpSnapshot()`. Coexists with `items` for the
+    /// PR: `HomeFeedView` switches to blocks; `ProfileView` /
+    /// `ThreadScreen` still consume the legacy flat list (M2 follow-up
+    /// migrates them).
+    @Published private(set) var modularTimeline: ChirpTimelineSnapshot = .empty
     @Published private(set) var metrics: KernelMetrics?
     @Published private(set) var relayStatuses: [RelayStatus] = []
     @Published private(set) var snapshotCount: UInt64 = 0
@@ -81,6 +88,15 @@ final class KernelModel: ObservableObject {
     func resetAndRestart() {
         kernel.reset()
         items = []
+        // T146 — `ActorCommand::Reset` preserves the kernel's observer
+        // slot so existing registrations stay alive, BUT the projection's
+        // internal state (the grouper + per-event card map) lives behind
+        // the same `Arc<ChirpModularTimeline>` as before the reset and
+        // would otherwise retain the prior session's blocks. Drop and
+        // re-register so the new handle's grouper starts empty; the next
+        // batch of events repopulates it.
+        kernel.reregisterChirpProjection()
+        modularTimeline = .empty
         threadView = nil
         metrics = nil
         rev = 0
@@ -207,6 +223,15 @@ final class KernelModel: ObservableObject {
         testNpub = update.testNpub
         profile = update.profile
         items = update.items
+        // T146 — refresh the modular timeline snapshot in the same apply
+        // pass. The grouper's state is fed by the kernel event observer
+        // (which fires synchronously inside `EventStore::insert`), so by
+        // the time the actor pushes its snapshot here the projection's
+        // blocks have already accepted every event in `items`. One JSON
+        // round-trip per snapshot is the cost; reads are O(blocks + cards)
+        // and avoid duplicating profile state (Swift looks the author up
+        // in `items` for display name / avatar).
+        modularTimeline = kernel.chirpSnapshot()
         metrics = update.metrics
         relayStatuses = update.relayStatuses
         // T66a projections — mirror only; never derive (D8).
