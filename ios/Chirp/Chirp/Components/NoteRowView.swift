@@ -131,12 +131,18 @@ struct NoteRowView: View {
     // Kind:6 reposts carry the full reposted-event JSON as their content field.
     // Extract the inner text; treat anything that doesn't parse as plain content.
     private func effectiveContent(_ raw: String) -> (String, Bool) {
-        guard raw.hasPrefix("{"),
-              let data = raw.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"),
+              let data = trimmed.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              json["id"] is String,
+              json["pubkey"] is String,
+              json["kind"] != nil,
+              json["sig"] is String,
+              let content = json["content"] as? String else {
             return (raw, false)
         }
-        return ((json["content"] as? String) ?? "", true)
+        return (content, true)
     }
 
     // ── Relay-count chip ──────────────────────────────────────────────────

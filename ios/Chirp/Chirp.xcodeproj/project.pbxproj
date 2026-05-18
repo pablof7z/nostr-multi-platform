@@ -21,6 +21,7 @@
 		998745C91A2392EBF235E258 /* KeychainCapability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50F5B25557B2147731A5F75C /* KeychainCapability.swift */; };
 		9E910ED32775EBC4511B2F90 /* ThreadScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C01000494AC737F8F8E286D /* ThreadScreen.swift */; };
 		A4D78531938555278B719582 /* AccountsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F9E4580C1A561577607FE7A /* AccountsView.swift */; };
+		B38A5D94A5C43305C226EE4B /* RelayDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CD04CA5EB5E534F616BC342 /* RelayDetailView.swift */; };
 		BA5D10F42934B36256492BCC /* NotificationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C79DFA56568C01E3AE76955E /* NotificationsView.swift */; };
 		C5A3FCE92DF36AD33D083F83 /* SettingsHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BA43E598F11A1CE9FEC7D6F /* SettingsHubView.swift */; };
 		D08889E779C6991EF8540EAC /* ThreadNoteRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF4D140423145993963B8F23 /* ThreadNoteRow.swift */; };
@@ -49,6 +50,7 @@
 		8C88FE40DE954EED68068786 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
 		900229FDEE3330B7264E8A33 /* WalletView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletView.swift; sourceTree = "<group>"; };
 		985298ED1B842E892A6FA759 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		9CD04CA5EB5E534F616BC342 /* RelayDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayDetailView.swift; sourceTree = "<group>"; };
 		ABF5AA8E2264637D1CA3BCA4 /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
 		BE212C39877A658DFB0C98FA /* Chirp.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Chirp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BF4D140423145993963B8F23 /* ThreadNoteRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadNoteRow.swift; sourceTree = "<group>"; };
@@ -100,6 +102,7 @@
 				C79DFA56568C01E3AE76955E /* NotificationsView.swift */,
 				D32D744B5446C909E7AEEB8F /* OnboardingView.swift */,
 				985298ED1B842E892A6FA759 /* ProfileView.swift */,
+				9CD04CA5EB5E534F616BC342 /* RelayDetailView.swift */,
 				ABF5AA8E2264637D1CA3BCA4 /* SearchView.swift */,
 				7BA43E598F11A1CE9FEC7D6F /* SettingsHubView.swift */,
 				2C01000494AC737F8F8E286D /* ThreadScreen.swift */,
@@ -234,6 +237,7 @@
 				82CC2009FF54F2B7DAD35B06 /* OnboardingView.swift in Sources */,
 				EA0318372F152947A645ADC8 /* ProfileNoteRow.swift in Sources */,
 				072991FD6319A37D692C27E4 /* ProfileView.swift in Sources */,
+				B38A5D94A5C43305C226EE4B /* RelayDetailView.swift in Sources */,
 				72E6C28DE61F97428F972267 /* RootShell.swift in Sources */,
 				FD278220A9E454AE75608FE8 /* SearchView.swift in Sources */,
 				C5A3FCE92DF36AD33D083F83 /* SettingsHubView.swift in Sources */,
