@@ -8,6 +8,7 @@ members = [
     "apps/podcast/podcast-llm",
     "crates/fixture-todo-core",
     "crates/nmp-codegen",
+    "crates/nmp-content",
     "crates/nmp-core",
     "crates/nmp-highlighter-core",
     "crates/nmp-nip23",
