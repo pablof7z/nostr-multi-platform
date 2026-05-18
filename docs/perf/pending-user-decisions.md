@@ -8,25 +8,6 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
-### PD-030 RESOLVED AUTONOMOUSLY (2026-05-18, T-publish-resolver-indexer) — fix code, not docs
-
-**Decision:** Removed `DEFAULT_INDEXER_FALLBACK` from `Nip65OutboxResolver` and made the resolver fail-closed (empty set → `NoTargets` upstream) when an author has no kind:10002 in the event store. Docs were correct; code was the legacy outlier.
-
-**Context:** Codex review `f81f735` (HB60–HB66) flagged a mismatch: `docs/builder-guide/10-outbox-routing.md` says the indexer is "discovery-only" after T134, but `Nip65OutboxResolver` still fell back to hardcoded public relays (`wss://relay.damus.io`, `wss://nos.lol`) for authors with no kind:10002. That silent widening violated D3 and `subsystems.md:99` ("do not publish to indexers").
-
-**Options evaluated:**
-- A. Fix the code (remove fallback; fail-closed). CHOSEN.
-- B. Keep fallback but rename/document it as a "warm-up widening" exception.
-- C. Fix the docs to describe the fallback as intended.
-
-**Rationale for A:** (1) The "fallback" URLs are large public *content* relays, not indexers — the name `DEFAULT_INDEXER_FALLBACK` was doubly wrong. (2) T134 established `unroutable_authors` as the correct subscription-side pattern; publish should mirror it. (3) `PublishEngineError::NoTargets` already exists and produces a visible toast ("add a relay in Accounts → Relays") rather than a silent misdirect. (4) D3 absolute: outbox routing is automatic, never a hardcoded public relay list. Option B was tempting but requires user input on which URIs qualify as bootstrap seeds — blocking. Option C would document a known-wrong behavior.
-
-**Artifacts:** `crates/nmp-core/src/publish/nip65/mod.rs`, `crates/nmp-core/src/kernel/publish_engine.rs`, `crates/nmp-core/src/relay.rs`, `crates/nmp-core/src/publish/mod.rs`, all test files updated.
-
-**Status:** RESOLVED 2026-05-18. Awaiting user acknowledgement.
-
----
-
 ### PD-029 RESOLVED AUTONOMOUSLY (2026-05-18, HB57) — picked **Option A: trait seam in nmp-substrate-types**
 
 User is asleep; decision made per autonomous-mode rule. Pattern-match: user has consistently chosen the cleanest long-term option over surgical/fast (PD-027 → substrate-types extract; PD-028 → ADR-first). Option A (trait seam, ~1-2 hr) is the recommended-clean choice; matches LSP-style backend pluggability; aligns `DomainHandle` with `EventStore` (also a trait); generalizes to future M2 hot-path (T140). Worktree agent dispatched at HB57.
@@ -697,28 +678,6 @@ Per T136 Gate-1 audit (`docs/design/lmdb/env-injection-status.md`, commit `1db4d
 **Rationale:** v1 timeline pressure outweighs the maintenance-surface cost of a short-lived fork. Option A acceptance latency is unknown (no precedent PRs of this shape); Option C is exactly what `nostrdb-rs-evaluation.md` was trying to avoid (~2100 LOC reinvention). Option B delivers the same correctness as A on a known timeline, with a clear migration path back to A later.
 
 
----
-
-### PD-035 (2026-05-18, T-podcast-gap-1) — kernel snapshot envelope does not carry a `library` field; per-app FFI snapshot used instead
-
-**Filed by:** T-podcast-gap-1 implementation (engineer agent).
-
-**Context:** T-podcast-gap-1 spec stated "snapshot envelope carries `library: {podcasts:[...]}` natively". Investigation found `Kernel::make_update()` in `crates/nmp-core/src/kernel/update.rs` (and `update_envelope.rs`) constructs a hardcoded struct with fixed fields. There is no generic extensions map. Adding a `library` field requires modifying nmp-core's core snapshot construction — a D0 violation if it names podcast types, or a structural change (extensions map) if kept generic.
-
-**Decision made autonomously (user asleep):** Per the Chirp pattern (`nmp_app_chirp_snapshot`), the podcast app uses a **separate per-app FFI snapshot** (`nmp_app_podcast_snapshot`) that serializes `LibraryView` directly. The 6 FFI symbols' external signatures are preserved. The main `{"t":"snapshot","v":{...}}` envelope carries zero podcast keys.
-
-**Options for user review:**
-
-A. **Current approach (per-app FFI snapshot)** — zero nmp-core changes, D0 clean. iOS/Android shell calls `nmp_app_podcast_snapshot` separately from the kernel update callback. Matches Chirp exactly.
-
-B. **Add generic extensions map to KernelUpdate** — add `extensions: HashMap<String, serde_json::Value>` to the snapshot struct; podcast registers a snapshot contributor callback. Touches `crates/nmp-core/src/kernel/update.rs` and the snapshot serialization. Cleaner for future per-app views but requires a nmp-core PR.
-
-C. **Add `library` field to KernelUpdate enum** — directly names podcast in nmp-core. Violates D0 absolutely.
-
-**Recommendation:** Option A for M11 (the gap is closed by the implementation landed here). Option B is the right long-term design but deferred until nmp-core's substrate phase matures.
-
-**Commit:** `feat(podcast-core): DomainModule/ViewModule/ActionModule impls + retire Mutex (T-podcast-gap-1)`
-
 
 ## PD-027 — Marmot/MLS pulled forward from post-v1 (2026-05-18)
 
@@ -726,6 +685,6 @@ C. **Add `library` field to KernelUpdate enum** — directly names podcast in nm
 
 `docs/plan/marmot-mls.md` is explicitly scoped post-v1 ("Status: Deferred post-v1. M11.5 explicitly excludes encrypted groups"). North-star memory = "complete v1 with zero debt." User explicitly directed pulling it forward now, with **full Chirp support (Rust FFI + iOS SwiftUI)** — which also exceeds the milestone's stated "does NOT ship Marmot-native app UI" boundary.
 
-**Decision:** Implement now. New crates: `nmp-nip44` (NIP-44 v2), `nmp-nip59` (gift-wrap), `nmp-marmot` (wraps `mdk-core` 0.8.0 + `mdk-sqlite-storage`). Plus `nmp-app-chirp` Marmot module registration + FFI and `ios/Chirp` SwiftUI screens. Executed via parallel agents in git worktrees (wave-structured by dependency chain nip44 -> nip59 -> marmot -> tests/Chirp).
+**Decision:** Implement now. New crates: `nmp-nip44` (NIP-44 v2), `nmp-nip59` (gift-wrap), `nmp-marmot` (wraps `mdk-core` 0.8.0 + `mdk-sqlite-storage`). Plus `nmp-app-chirp` Marmot module registration + FFI and `ios/Chirp` SwiftUI screens. Executed via parallel agents in git worktrees (wave-structured by dependency chain nip44 → nip59 → marmot → tests/Chirp).
 
-**Risk noted:** Roadmap deviation; openmls transitive license/advisory graph must pass `deny.toml` before marmot integration proceeds (blocking gate). MDK is 0.8.0 on crates.io; plan referenced 0.7.1+ — 0.7->0.8 deltas to be captured in the MDK API spike.
+**Risk noted:** Roadmap deviation; openmls transitive license/advisory graph must pass `deny.toml` before marmot integration proceeds (blocking gate). MDK is 0.8.0 on crates.io; plan referenced 0.7.1+ — 0.7→0.8 deltas to be captured in the MDK API spike.
