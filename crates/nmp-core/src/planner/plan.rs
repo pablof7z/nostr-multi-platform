@@ -93,8 +93,8 @@ pub struct SubShape {
     pub shape: InterestShape,
     /// All logical interests whose filters were merged into this sub-shape.
     pub originating_interests: Vec<InterestId>,
-    /// Blake3 hash of the serialised `shape` for stable wire-subscription identity.
-    /// Placeholder: populated by the compiler stage 4. Format: 8 hex chars.
+    /// Canonical hash of the serialised `shape` for stable wire-subscription identity.
+    /// Current stop-gap format is 8 hex chars; see [`canonical_filter_hash`].
     pub canonical_filter_hash: String,
 }
 

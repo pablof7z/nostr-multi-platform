@@ -80,7 +80,7 @@ where the 95 %+ savings appear.
   **[LANDED — T53 follow-up]**. `SubscriptionLifecycle::set_coverage_hook`
   is the seam; the actor installs `apply_coverage_filter` as the hook.
   Coverage is exercised end-to-end by
-  `crates/nmp-testing/tests/framework_magic_contract.rs::c10_watermark_gates_backfill_and_authoritative_miss`.
+  `crates/nmp-testing/tests/framework_magic_c10.rs::c10_watermark_gates_backfill_and_authoritative_miss`.
 - Add a real `canonical_filter_hash(&Filter) -> [u8; 32]` to
   `nmp-core::store` per `docs/design/lmdb/watermarks.md` §3 (BLAKE3-CBOR).
   The T53 follow-up promoted `simple_shape_hash` to
