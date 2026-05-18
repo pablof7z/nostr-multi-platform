@@ -266,11 +266,17 @@ split borrow at the call site is the cleanest ownership.
    between `req`s take effect.
 2. **Expand `$follows`** (variable resolution — *not* outbox). If `$follows`
    is referenced and `follows_cache` is empty, do the thin kind:3 fetch
-   (`{kinds:[3], authors:[seed], limit:1}`) against the first reachable
-   indexer; parse `p` tags; cache. This is exactly what a real
-   following-feed ViewModule does to turn `$follows` into a concrete
-   `LogicalInterest` author set. `$relays` / `$inbox` read the seed's
-   kind:10002 from the lifecycle's mailbox cache.
+   (`{kinds:[3], authors:[seed], limit:1}`). This is **fully visible**: it
+   tries EVERY configured indexer in listed order, printing `connecting
+   <url> …`, `<url> → REQ kind:3 …`, and the verbatim terminal state
+   (`✓ EOSE (n events, k follows)` / `✗ CLOSED: <reason>` / `✗ AUTH
+   required (read-only — not authing)` / `✗ error: <reason>` /
+   `✗ timeout`). EOSE (or events-then-timeout) returns; CLOSED / AUTH /
+   relay-close / IO / per-indexer-timeout fall through to the next indexer
+   so a single rate-limited relay does not zero out discovery. This is
+   exactly what a real following-feed ViewModule does to turn `$follows`
+   into a concrete `LogicalInterest` author set. `$relays` / `$inbox` read
+   the seed's kind:10002 from the lifecycle's mailbox cache.
 3. **Build + register the interest.** Construct one `LogicalInterest`
    (`InterestId(1)`, `Global`, `Tailing`) from the parsed filter +
    expanded authors; `lifecycle.registry_mut().push(interest)` (same id
@@ -281,10 +287,17 @@ split borrow at the call site is the cleanest ownership.
       discovery REQs (the lifecycle auto-emits these for any author whose
       mailbox is neither cached nor previously probed); everything else is
       content.
-   3. If probe frames exist, print `discovery: probing N mailboxes via
-      indexer (K REQs)` and run them synchronously (`fanout::run_discovery`)
-      against the indexer. For each kind:10002 response: `parse_kind10002`
-      → `cache.put(pubkey, snapshot)` →
+   3. If probe frames exist, run them synchronously
+      (`fanout::run_discovery`) against the indexer. Every implicit
+      kind:10002 probe REQ — the lifecycle auto-emits these WITHOUT the
+      user asking — gets its **own visible row**: `connecting <url> …`,
+      `<url> → REQ kind:10002 (N authors) mailbox-probe-…`, then its
+      verbatim terminal state (`✓ EOSE` / `✗ CLOSED: <reason>` / `✗ AUTH
+      required …` / `✗ error …` / `✗ timeout`). A summary header
+      (`discovery: N implicit kind:10002 probe REQs across M indexers`) is
+      printed IN ADDITION, never INSTEAD OF the per-REQ rows — no implicit
+      REQ is hidden behind aggregation. For each kind:10002 response:
+      `parse_kind10002` → `cache.put(pubkey, snapshot)` →
       `lifecycle.enqueue_trigger(CompileTrigger::Nip65Arrived { … })`.
    4. `lifecycle.drain_tick(&mailbox_cache)` consumes the `Nip65Arrived`
       triggers; the next iteration's compile routes those authors via
@@ -319,10 +332,40 @@ split borrow at the call site is the cleanest ownership.
   `refresh mailboxes` work.
 - `seen_ids` survives `refresh` — it's a session artefact, not discovery.
 
-### 7.3 Indexer / probe socket handling
+### 7.3 Visibility guarantee + typed frames
 
-The kind:3 follows fetch dials the indexer set sequentially and uses the
-first reachable URL (v1; multi-indexer fan is a §12 follow-up).
+**Hard requirement: no relay socket the REPL opens is invisible.** There
+are exactly three socket-opening sites and ALL render per-relay /
+per-REQ status with a live terminal state:
+
+1. **Variable fetch** (`discovery.rs::fetch_follows`) — the kind:3 /
+   kind:10002 `$follows` / `$relays` / `$inbox` resolution. Iterates EVERY
+   configured indexer; prints connect, REQ, and verbatim terminal state.
+2. **Discovery probes** (`fanout.rs::run_discovery`) — every implicit
+   `mailbox-probe-*` kind:10002 REQ the lifecycle emits, one visible row
+   each (relay + filter summary + sub_id + terminal state).
+3. **Content fanout** (`fanout.rs::run_relay_thread` → `render.rs`) — one
+   live table row per `(relay, sub_id)`.
+
+**Typed frames (the swallowing-bug fix).** `ws.rs::next_frame` parses the
+JSON envelope once and returns a typed `Frame` (`Event` / `Eose` /
+`Closed{msg}` / `Auth{challenge}` / `Notice{msg}` / `Other` / `RelayClosed`
+/ `Io{kind}` / `Timeout`). The old `next_text` collapsed `["CLOSED",…]` /
+`["AUTH",…]` / WS-Close / IO errors into an empty string indistinguishable
+from "nothing arrived", so a rate-limited relay (`["AUTH",…]` +
+`["CLOSED",sub,"auth-required: rate limit exceeded"]`) burned the full
+10 s wall on a silent zero result. Now `CLOSED` / `AUTH` / relay-close /
+IO are **terminal the instant they arrive** — the rate-limit is named on
+screen immediately, never waited out. `NOTICE` is non-terminal (surfaced,
+keep reading). All connect failures surface tungstenite's real reason
+(DNS / TLS / refused / `Unable to connect to host:port`), never a bare
+"connect refused".
+
+The kind:3 follows fetch dials EVERY configured indexer in listed order
+(`indexer_relays` defaults to `["wss://purplepag.es",
+"wss://relay.nostr.band", "wss://relay.damus.io"]`) and falls through on
+CLOSED / AUTH / error / timeout, so one rate-limited indexer does not zero
+out discovery.
 
 **Finding (lifecycle behaviour, surfaced not papered over):** implicit
 kind:10002 probe REQs are appended in `recompile_and_diff` *after*
@@ -368,17 +411,31 @@ During fanout, the main thread drains the worker `mpsc<RelayEvent>` with
 
 ### 8.3 Row states
 
+**One row per REQ, not per relay.** The lifecycle keys live subs by
+`(relay_url, sub_id)` and a relay may carry more than one sub shape, so the
+content-fanout table is keyed by `sub_id` — every wire REQ gets its own row
+(`<filter-summary> <sub_id>`, e.g. `kind:1 (83 authors) sub-7621…`). No REQ
+is ever collapsed into a relay aggregate.
+
 | State        | Render                                                                                            |
 |--------------|---------------------------------------------------------------------------------------------------|
-| `Connecting` | `  REQ <url:48>  <authors:>4 authors  [connecting…]`                                              |
-| `ReqSent`    | `  REQ <url:48>  <authors:>4 authors  [streaming…]  <events> seen`                                |
-| `Receiving`  | `  REQ <url:48>  <authors:>4 authors  <events> events  <new>/<events> new`                        |
-| `Eose`       | `> REQ <url:48>  <authors:>4 authors  <events> events  <new> new in <ms>ms`  (green)              |
-| `Error(e)`   | `x REQ <url:48>  <authors:>4 authors  <error>`  (red)                                             |
-| `Timeout`    | `x REQ <url:48>  <authors:>4 authors  [wall timeout]`  (yellow)                                   |
+| `Connecting` | `  REQ <url:44> <summary> <sub_id>  [connecting…]`                                                 |
+| `ReqSent`    | `  REQ <url:44> <summary> <sub_id>  [streaming…]`                                                  |
+| `Receiving`  | `  REQ <url:44> <summary> <sub_id>  <events> events  <new>/<events> new`                           |
+| `Eose`       | `> REQ <url:44> <summary> <sub_id>  EOSE  <events> events  <new> new in <ms>ms`  (green)           |
+| `Closed(m)`  | `x REQ <url:44> <summary> <sub_id>  CLOSED: <verbatim relay reason>`  (red) — TERMINAL             |
+| `Auth`       | `x REQ <url:44> <summary> <sub_id>  AUTH required (read-only — not authing)`  (red) — TERMINAL     |
+| `Error(e)`   | `x REQ <url:44> <summary> <sub_id>  <error>`  (red)                                                |
+| `Timeout`    | `x REQ <url:44> <summary> <sub_id>  [wall timeout]`  (yellow)                                      |
 
-The leading `>` / `x` glyphs match the user's UX target. URLs longer than
-48 chars get truncated with `…`.
+A `NOTICE` is **non-terminal**: it is appended inline (`• NOTICE: <msg>`)
+without changing the row's state, so a relay that NOTICEs and then keeps
+streaming still shows its real terminal state. `Closed` (relay sent
+`["CLOSED",sub,reason]`) and `Auth` (relay sent `["AUTH",…]`; the REPL is
+read-only and will NOT respond) are **first-class terminal states** —
+surfaced the instant the relay sends them, never waited out to the wall
+deadline. The leading `>` / `x` glyphs match the user's UX target. URLs
+longer than 44 chars get truncated with `…`.
 
 ### 8.4 ASCII screenshot
 

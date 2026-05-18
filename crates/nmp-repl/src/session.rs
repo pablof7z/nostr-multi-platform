@@ -82,7 +82,15 @@ impl Default for Session {
             follows_cache: None,
             lifecycle: SubscriptionLifecycle::new(),
             mailbox_cache: InMemoryMailboxCache::new(),
-            indexer_relays: vec!["wss://purplepag.es".to_string()],
+            // Multiple indexers so one rate-limited relay (e.g.
+            // purplepag.es returning AUTH + CLOSED) does not zero out
+            // discovery — `fetch_follows` falls through in listed order,
+            // showing every attempt + terminal status.
+            indexer_relays: vec![
+                "wss://purplepag.es".to_string(),
+                "wss://relay.nostr.band".to_string(),
+                "wss://relay.damus.io".to_string(),
+            ],
             app_relays: Vec::new(),
             dead_relays: BTreeSet::new(),
             max_connections: 30,
