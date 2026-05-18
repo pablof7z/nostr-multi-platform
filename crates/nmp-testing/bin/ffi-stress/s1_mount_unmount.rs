@@ -12,8 +12,8 @@
 
 use crate::allocator::{alloc_snapshot, AllocSnapshot};
 use crate::ffi::{
-    nmp_app_claim_profile, nmp_app_free, nmp_app_new, nmp_app_release_profile,
-    nmp_app_set_update_callback, nmp_app_start, process_rss_bytes, test_pubkeys, NmpApp,
+    nmp_app_claim_profile, nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_release_profile,
+    nmp_app_set_update_callback, process_rss_bytes, test_pubkeys, NmpApp,
 };
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
@@ -54,9 +54,12 @@ pub(crate) fn run(cfg: S1Config, report: &mut ScenarioMetrics) {
     let wall_start = Instant::now();
 
     // --- Setup ---
+    // Configure-not-Start: nmp_app_configure sets emit_hz/visible_limit without spawning
+    // relay worker threads that would attempt TCP connections to wss://relay.primal.net.
+    // S1 tests FFI dispatch latency and refcount correctness, not relay connectivity.
     let app: *mut NmpApp = nmp_app_new();
     nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(sink_cb));
-    nmp_app_start(app, 0, 80, 4);
+    nmp_app_configure(app, 0, 80, 4);
 
     let pubkeys = test_pubkeys(cfg.pool_size);
     // Stable consumer IDs: in production, a consumer ID is a view lifecycle token

@@ -19,7 +19,7 @@
 
 use crate::ffi::{
     nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_open_author, nmp_app_open_firehose_tag,
-    nmp_app_set_update_callback, nmp_app_start, test_pubkeys, NmpApp,
+    nmp_app_set_update_callback, test_pubkeys, NmpApp,
 };
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
@@ -133,7 +133,8 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
     let ctx = Box::into_raw(state) as *mut c_void;
 
     nmp_app_set_update_callback(app, ctx, Some(reentrant_cb));
-    nmp_app_start(app, 0, 80, 4);
+    // Configure-not-Start: S5 tests reentrancy safety, not relay connectivity.
+    nmp_app_configure(app, 0, 80, 4);
 
     // Open firehose to drive ingest events.
     let tag = std::ffi::CString::new("reentrancy-test").expect("no nuls");

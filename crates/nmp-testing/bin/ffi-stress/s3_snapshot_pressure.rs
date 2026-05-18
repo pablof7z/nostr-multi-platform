@@ -18,7 +18,7 @@
 
 use crate::ffi::{
     nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_open_firehose_tag,
-    nmp_app_set_update_callback, nmp_app_start, process_rss_bytes, NmpApp,
+    nmp_app_set_update_callback, process_rss_bytes, NmpApp,
 };
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
@@ -113,8 +113,10 @@ pub(crate) fn run(cfg: S3Config, report: &mut ScenarioMetrics) {
     let ctx = Box::into_raw(state) as *mut c_void;
 
     nmp_app_set_update_callback(app, ctx, Some(measure_cb));
+    // Configure-not-Start: no relay workers needed; S3 tests emit-rate gating,
+    // not relay connectivity. nmp_app_configure sets emit_hz/visible_limit only.
     // 12 Hz emit cap ensures we can measure frequency vs the 60 Hz bound.
-    nmp_app_start(app, 0, 500, 12);
+    nmp_app_configure(app, 0, 500, 12);
 
     // Open firehose to drive ingest.
     let tag = std::ffi::CString::new(cfg.firehose_tag.as_str()).expect("no nuls");

@@ -20,7 +20,7 @@
 
 use crate::ffi::{
     nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_open_firehose_tag,
-    nmp_app_set_update_callback, nmp_app_start, NmpApp,
+    nmp_app_set_update_callback, NmpApp,
 };
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
@@ -108,7 +108,8 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
     let ctx = Box::into_raw(state) as *mut c_void;
 
     nmp_app_set_update_callback(app, ctx, Some(stall_cb));
-    nmp_app_start(app, 0, 80, cfg.emit_hz);
+    // Configure-not-Start: S4 tests callback backpressure, not relay connectivity.
+    nmp_app_configure(app, 0, 80, cfg.emit_hz);
 
     let tag = std::ffi::CString::new("test").expect("no nuls");
     nmp_app_open_firehose_tag(app, tag.as_ptr());

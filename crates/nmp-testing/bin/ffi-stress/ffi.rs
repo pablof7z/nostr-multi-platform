@@ -11,7 +11,7 @@
 pub(crate) use nmp_core::{
     nmp_app_claim_profile, nmp_app_close_author, nmp_app_configure, nmp_app_free, nmp_app_new,
     nmp_app_open_author, nmp_app_open_firehose_tag, nmp_app_release_profile,
-    nmp_app_set_update_callback, nmp_app_start, NmpApp,
+    nmp_app_set_update_callback, NmpApp,
 };
 
 /// Generate N deterministic lowercase 64-hex-char pubkeys suitable for all
