@@ -183,4 +183,35 @@ impl Kernel {
                 new_follows: follows,
             });
     }
+
+    /// T168 — reconcile the M2 follow-feed after an identity change
+    /// (logout / remove / switch). Call AFTER `sync_kernel` has updated
+    /// `active_account` to the NEW active (or `None` on logout).
+    ///
+    /// - `active_account = Some(new)`: delegate to
+    ///   `register_follow_feed_for_active_account()` — it withdraws the prior
+    ///   account's interests and installs the new account's follows (or the
+    ///   seed-only baseline when the new account has no cached kind:3), and
+    ///   enqueues the recompile trigger.
+    /// - `active_account = None` (logged out of the last account):
+    ///   `register_follow_feed_for_active_account()` early-returns, so do the
+    ///   CLEAR here — `sync_follow_feed_interests(&[])` withdraws every stale
+    ///   interest, resets `timeline_authors` to the seed-only baseline, and we
+    ///   enqueue a `FollowListChanged{ new_follows: [] }` so `drain_tick`
+    ///   emits the CLOSE diff that tears down the prior account's follow-feed
+    ///   subs (privacy leak + stale-feed fix).
+    pub(crate) fn reconcile_follow_feed_after_identity_change(&mut self) {
+        match self.active_account.clone() {
+            Some(_) => self.register_follow_feed_for_active_account(),
+            None => {
+                self.sync_follow_feed_interests(&[]);
+                use crate::subs::CompileTrigger;
+                self.lifecycle
+                    .enqueue_trigger(CompileTrigger::FollowListChanged {
+                        account_id: crate::subs::AccountId(String::new()),
+                        new_follows: Vec::new(),
+                    });
+            }
+        }
+    }
 }
