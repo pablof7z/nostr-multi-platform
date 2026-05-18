@@ -63,10 +63,7 @@ impl IdentityRuntime {
     /// Register a remote-signer handle keyed by its user pubkey hex. Mirrors
     /// `add` for local keys: if the pubkey is new, append to `order`; if no
     /// account is active yet, the new remote becomes active.
-    pub(crate) fn add_remote(
-        &mut self,
-        handle: Box<dyn RemoteSignerHandle>,
-    ) -> IdentityId {
+    pub(crate) fn add_remote(&mut self, handle: Box<dyn RemoteSignerHandle>) -> IdentityId {
         let id = handle.pubkey_hex();
         if !self.keys.contains_key(&id) && !self.remote_signers.contains_key(&id) {
             self.order.push(id.clone());
@@ -390,21 +387,35 @@ pub(crate) fn bunker_handshake_progress(
 }
 
 pub(crate) fn sign_in_bunker(kernel: &mut Kernel, uri: &str) {
-    // Stage 3 of NIP-46 wiring: actor exposes handshake-progress snapshot;
-    // broker (Stage 4) drives the real handshake via `AddRemoteSigner` /
-    // `BunkerHandshakeProgress`. Here we shape-validate the URI and seed the
-    // snapshot with `"connecting"` so the SwiftUI sign-in flow can render
-    // progress immediately; the broker takes over from there. D0 stays clean
-    // — `nmp-signers` is still NOT imported in `nmp-core`.
-    if parse_bunker_remote(uri).is_some() {
-        kernel.set_bunker_handshake(Some(BunkerHandshakeDto {
-            stage: "connecting".to_string(),
-            message: Some("Waiting for broker...".to_string()),
-        }));
-    } else {
+    // Stage 3 of NIP-46 wiring: actor exposes handshake-progress snapshot.
+    // Stage 4 of NIP-46 wiring: actor delegates the handshake to a broker
+    // registered via `crate::bunker_hook::register_bunker_hook`.
+    //
+    // Here we shape-validate the URI, seed the snapshot with `"connecting"`
+    // so the SwiftUI sign-in flow renders progress immediately, then hand
+    // the URI to the registered broker. The broker drives the connect /
+    // get_public_key dance on its own thread and reports progress via
+    // `BunkerHandshakeProgress` + `AddRemoteSigner`. D0 stays clean —
+    // `nmp-signers` is still NOT imported in `nmp-core`; the broker crate
+    // (`nmp-signer-broker`) is the only place that links both sides.
+    if parse_bunker_remote(uri).is_none() {
         kernel.set_last_error_toast(Some(
-            "invalid bunker:// URI — expected bunker://<64-hex-pubkey>?relay=…"
-                .to_string(),
+            "invalid bunker:// URI — expected bunker://<64-hex-pubkey>?relay=…".to_string(),
+        ));
+        return;
+    }
+    kernel.set_bunker_handshake(Some(BunkerHandshakeDto {
+        stage: "connecting".to_string(),
+        message: Some("Waiting for broker...".to_string()),
+    }));
+    if !crate::bunker_hook::invoke_bunker_hook(uri) {
+        // Defence against init-order bugs: the broker should be registered
+        // before any URI can reach the actor. If it isn't, surface a clear
+        // toast and clear the progress projection (D6 — error becomes state,
+        // never panic across FFI).
+        kernel.set_bunker_handshake(None);
+        kernel.set_last_error_toast(Some(
+            "NIP-46 broker not initialised — call nmp_signer_broker_init".to_string(),
         ));
     }
 }

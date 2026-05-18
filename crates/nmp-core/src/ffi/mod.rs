@@ -45,8 +45,8 @@ pub use testing::{nmp_app_inject_pre_verified_events, nmp_app_inject_signed_even
 // under the test-support gate.
 #[cfg(any(test, feature = "test-support"))]
 pub use timeline::{
-    nmp_app_claim_profile, nmp_app_close_author, nmp_app_open_author,
-    nmp_app_open_firehose_tag, nmp_app_open_uri, nmp_app_release_profile,
+    nmp_app_claim_profile, nmp_app_close_author, nmp_app_open_author, nmp_app_open_firehose_tag,
+    nmp_app_open_uri, nmp_app_release_profile,
 };
 
 // android-ffi: expose all FFI entry-points via Rust paths so nmp-android-ffi
@@ -63,6 +63,10 @@ pub use identity::{
 // re-export rustc doesn't pull the symbol bodies into the cdylib CGU and the
 // Android JNI shim can't link.
 #[cfg(feature = "android-ffi")]
+pub use capability::{
+    nmp_app_dispatch_capability, nmp_app_free_string, nmp_app_set_capability_callback,
+};
+#[cfg(feature = "android-ffi")]
 pub use lifecycle::{
     nmp_app_lifecycle_background, nmp_app_lifecycle_foreground, nmp_app_set_lifecycle_callback,
 };
@@ -72,13 +76,7 @@ pub use timeline::{
     nmp_app_open_firehose_tag, nmp_app_open_thread, nmp_app_open_uri, nmp_app_release_profile,
 };
 #[cfg(feature = "android-ffi")]
-pub use wallet::{
-    nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wallet_pay_invoice,
-};
-#[cfg(feature = "android-ffi")]
-pub use capability::{
-    nmp_app_dispatch_capability, nmp_app_free_string, nmp_app_set_capability_callback,
-};
+pub use wallet::{nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wallet_pay_invoice};
 
 use crate::actor::{
     new_lifecycle_observer_slot, run_actor_with_lifecycle_observer, ActorCommand,
@@ -166,6 +164,17 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         actor: Mutex::new(Some(actor)),
         update_listener: Mutex::new(Some(update_listener)),
     }))
+}
+
+impl NmpApp {
+    /// Clone of the actor command sender. Used by `nmp-signer-broker` to push
+    /// `AddRemoteSigner` / `BunkerHandshakeProgress` back to the actor without
+    /// importing private internals. Stage 4 of the NIP-46 wiring (D0 stays
+    /// clean — the broker depends on `nmp-core` + `nmp-signers`; `nmp-core`
+    /// has no idea the broker exists).
+    pub fn actor_sender(&self) -> Sender<ActorCommand> {
+        self.tx.clone()
+    }
 }
 
 // SAFETY: `app` is a raw pointer from `nmp_app_new()`. The function is `extern "C"` (callable

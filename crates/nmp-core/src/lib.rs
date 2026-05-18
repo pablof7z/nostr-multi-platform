@@ -1,5 +1,6 @@
 mod actor;
 mod app;
+pub mod bunker_hook;
 mod ffi;
 mod kernel;
 pub mod nip19;
@@ -20,9 +21,17 @@ pub use app::{
     resolve_open_uri, AppState, KernelAction, KernelUpdate, KernelViewSpec, OpenUriError,
     OpenUriRouting, VIEW_ADDRESSABLE, VIEW_PROFILE, VIEW_THREAD,
 };
+pub use bunker_hook::{register_bunker_hook, BunkerHookFn};
+pub use ffi::NmpApp;
 pub use remote_signer::RemoteSignerHandle;
 pub use update_envelope::{wrap_snapshot, wrap_update, UpdateEnvelope, WireEnvelope};
-pub use ffi::NmpApp;
+
+// Stage 4 of NIP-46 wiring: `nmp-signer-broker` (the crate that bridges
+// `nmp-core` and `nmp-signers`) needs to construct `ActorCommand` values to
+// push `AddRemoteSigner` / `BunkerHandshakeProgress` back to the actor. The
+// `actor` module is crate-private so this re-export is the only path. The
+// enum variants themselves are already `pub`.
+pub use actor::ActorCommand;
 
 // Re-export the FFI entry-points so the ffi-stress harness (and any other
 // Rust-side crate) can call them directly via the Rust rlib dependency,
@@ -30,13 +39,12 @@ pub use ffi::NmpApp;
 // ffi:: side and are still reachable from Swift/C unchanged.
 #[cfg(any(test, feature = "test-support"))]
 pub use ffi::{
-    nmp_app_claim_profile, nmp_app_close_author, nmp_app_configure,
-    nmp_app_dispatch_capability, nmp_app_free, nmp_app_free_string,
-    nmp_app_inject_pre_verified_events, nmp_app_inject_signed_events,
-    nmp_app_lifecycle_background, nmp_app_lifecycle_foreground, nmp_app_new,
-    nmp_app_open_author, nmp_app_open_firehose_tag, nmp_app_open_uri,
-    nmp_app_release_profile, nmp_app_set_capability_callback,
-    nmp_app_set_lifecycle_callback, nmp_app_set_update_callback, nmp_app_start,
+    nmp_app_claim_profile, nmp_app_close_author, nmp_app_configure, nmp_app_dispatch_capability,
+    nmp_app_free, nmp_app_free_string, nmp_app_inject_pre_verified_events,
+    nmp_app_inject_signed_events, nmp_app_lifecycle_background, nmp_app_lifecycle_foreground,
+    nmp_app_new, nmp_app_open_author, nmp_app_open_firehose_tag, nmp_app_open_uri,
+    nmp_app_release_profile, nmp_app_set_capability_callback, nmp_app_set_lifecycle_callback,
+    nmp_app_set_update_callback, nmp_app_start,
 };
 
 // android-ffi: expose the full FFI surface via Rust paths. nmp-android-ffi
@@ -45,19 +53,44 @@ pub use ffi::{
 // rlib is consumed at compile time but the symbols stay `U` in the cdylib.
 #[cfg(feature = "android-ffi")]
 pub use ffi::{
-    nmp_app_add_relay, nmp_app_claim_profile, nmp_app_close_author, nmp_app_close_thread,
-    nmp_app_configure, nmp_app_create_new_account, nmp_app_dispatch_capability,
-    nmp_app_follow, nmp_app_free, nmp_app_free_string,
+    nmp_app_add_relay,
+    nmp_app_claim_profile,
+    nmp_app_close_author,
+    nmp_app_close_thread,
+    nmp_app_configure,
+    nmp_app_create_new_account,
+    nmp_app_dispatch_capability,
+    nmp_app_follow,
+    nmp_app_free,
+    nmp_app_free_string,
     // T118 / G3 — lifecycle symbols must be reachable from the Android JNI
     // shim too; same rationale as every other entry in this block.
-    nmp_app_lifecycle_background, nmp_app_lifecycle_foreground, nmp_app_new,
-    nmp_app_open_author, nmp_app_open_firehose_tag, nmp_app_open_thread, nmp_app_open_timeline,
-    nmp_app_open_uri, nmp_app_publish_note, nmp_app_publish_unsigned_event, nmp_app_react,
-    nmp_app_release_profile, nmp_app_remove_account, nmp_app_remove_relay,
-    nmp_app_set_capability_callback, nmp_app_set_lifecycle_callback, nmp_app_set_update_callback,
-    nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_start, nmp_app_stop, nmp_app_switch_active,
+    nmp_app_lifecycle_background,
+    nmp_app_lifecycle_foreground,
+    nmp_app_new,
+    nmp_app_open_author,
+    nmp_app_open_firehose_tag,
+    nmp_app_open_thread,
+    nmp_app_open_timeline,
+    nmp_app_open_uri,
+    nmp_app_publish_note,
+    nmp_app_publish_unsigned_event,
+    nmp_app_react,
+    nmp_app_release_profile,
+    nmp_app_remove_account,
+    nmp_app_remove_relay,
+    nmp_app_set_capability_callback,
+    nmp_app_set_lifecycle_callback,
+    nmp_app_set_update_callback,
+    nmp_app_signin_bunker,
+    nmp_app_signin_nsec,
+    nmp_app_start,
+    nmp_app_stop,
+    nmp_app_switch_active,
     nmp_app_unfollow,
-    nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wallet_pay_invoice,
+    nmp_app_wallet_connect,
+    nmp_app_wallet_disconnect,
+    nmp_app_wallet_pay_invoice,
 };
 
 // T118 / G3 — lifecycle observer wire-shape exposed for integration tests
