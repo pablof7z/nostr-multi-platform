@@ -8,6 +8,22 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
+### PD-010 (resolved 2026-05-18 autonomously, recommendation-accepted) — Uniform `try_from_event` decoder name
+
+**Decision (autonomous):** accepted the kind-wrappers designer's recommendation (in `docs/design/kind-wrappers.md` §12). Every protocol module exposes `pub fn try_from_event(&StoredEvent) -> Option<XxxRecord>` as the uniform decoder vocabulary. Searchability wins; per-module bespoke names like `decode_article` are forbidden. nmp-nip23-impl (T79, currently in flight) was sent this directive via SendMessage.
+
+### PD-009 (resolved 2026-05-18 autonomously, recommendation-accepted) — Auto codegen of UniFFI Records per protocol crate
+
+**Decision (autonomous):** accepted the kind-wrappers designer's recommendation. The per-app FFI crate (ADR-0010) automatically aggregates `XxxRecord` types from every protocol-crate dependency into the UniFFI bindings — apps don't opt-in per record. One build step. The cost (a few KB of bindings per record) is dwarfed by the DX win.
+
+### PD-008 (resolved 2026-05-18 autonomously, recommendation-accepted) — Decoded records cached in domain store at ingest time, not on-demand
+
+**Decision (autonomous):** accepted the kind-wrappers designer's recommendation. Each `DomainModule` decodes at ingest and writes the typed `XxxRecord` to its domain store. Reads query the store directly — no decode-on-demand path. Matches D8 hot-path discipline (zero per-event allocation at query time). Costs LMDB space but apps already pay that cost for raw events; the typed records are ~30% smaller than the raw event blobs they derive from.
+
+### PD-007 (resolved 2026-05-18 autonomously, recommendation-accepted) — `DomainModule::ingest_kinds()` defaults to `&[]`
+
+**Decision (autonomous):** accepted the kind-wrappers designer's recommendation. The new `ingest_kinds()` trait method has a default return of `&[]` (empty), so the existing 13 `nmp-nip29` impls and all other current `DomainModule` consumers continue to compile without changes. Protocol modules that want kernel-driven event routing override the method explicitly.
+
 ### PD-006 — framework-magic.md C1–C13 status rows stale; codex follow-up from 8fd2764
 
 **Decision (autonomous, 2026-05-18, builder-guide-planner agent):** flagged by codex during its post-merge review of `8fd2764` (the builder-guide PLAN.md merge); see `docs/perf/codex-reviews/8fd2764.md`.
