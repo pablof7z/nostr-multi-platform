@@ -2366,6 +2366,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-app-podcast"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "podcast-core",
+ "serde",
+ "serde_json",
+ "ulid",
+ "url",
+]
+
+[[package]]
 name = "nmp-cli"
 version = "0.1.0"
 dependencies = [
