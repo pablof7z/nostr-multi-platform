@@ -186,6 +186,11 @@ pub(super) struct RelayHealth {
     pub(super) last_error: Option<String>,
     pub(super) reconnect_count: u32,
     pub(super) counters: Counters,
+    /// NIP-42 per-relay auth state — diagnostic key matching ADR-0007 wire
+    /// keys (`not_required` | `challenge_received` | `authenticating` |
+    /// `authenticated` | `failed`). Mutated by `handle_auth_challenge` /
+    /// `handle_auth_ok` per D8 (without bumping `changed_since_emit`).
+    pub(super) auth: String,
 }
 
 impl Default for RelayHealth {
@@ -198,6 +203,7 @@ impl Default for RelayHealth {
             last_error: None,
             reconnect_count: 0,
             counters: Counters::default(),
+            auth: "not_required".to_string(),
         }
     }
 }

@@ -22,11 +22,7 @@
 use super::super::*;
 
 impl Kernel {
-    pub(crate) fn open_author(
-        &mut self,
-        pubkey: String,
-        can_send: bool,
-    ) -> Vec<OutboundMessage> {
+    pub(crate) fn open_author(&mut self, pubkey: String, can_send: bool) -> Vec<OutboundMessage> {
         match self.selected_author.as_mut() {
             Some(interest) if interest.key == pubkey => {
                 interest.refcount = interest.refcount.saturating_add(1);

@@ -10,6 +10,7 @@
 //! - `test_support` — signature-free injection helpers (test / test-support feature)
 //! - `tests`        — unit tests (cfg(test) only)
 
+mod auth;
 mod ingest;
 mod nostr;
 mod requests;
@@ -20,6 +21,9 @@ mod test_support;
 mod tests;
 mod types;
 mod update;
+
+#[cfg(test)]
+mod auth_tests;
 
 use crate::relay::{
     OutboundMessage, RelayRole, CONTENT_RELAY_URL, DEFAULT_EMIT_HZ, FIATJAF_PUBKEY,
@@ -36,6 +40,8 @@ use nostr::*;
 pub(crate) use nostr::{is_hex_id, is_hex_pubkey};
 
 use crate::store::{EventStore, MemEventStore};
+use crate::subs::SubscriptionLifecycle;
+use auth::{AuthSignerFn, Nip42DriverState};
 use types::*;
 
 /// The kernel owns all Nostr protocol state for the active app session.
@@ -97,6 +103,30 @@ pub(crate) struct Kernel {
     max_events_per_update: u64,
     changed_since_emit: bool,
     logs: VecDeque<String>,
+    /// M5+M2+M8 wiring: per-relay NIP-42 driver state. One entry per
+    /// `RelayRole`. Default `NotRequired`; an inbound `AUTH` frame transitions
+    /// to `ChallengeReceived` and triggers signer invocation.
+    nip42_drivers: HashMap<RelayRole, Nip42DriverState>,
+    /// M5+M2+M8 wiring: subscription lifecycle. Today the kernel uses ONLY
+    /// `handle_auth_state_change` (diagnostic state fan-in to AuthGate); the
+    /// compile / registry / wire-diff machinery stays dormant because the
+    /// kernel's M1 hand-rolled `req()` path is still authoritative per
+    /// `docs/plan/m8-subscription-lifecycle.md` §4 (both paths coexist until
+    /// M11 migrates view modules onto `LogicalInterest`). The AuthGate's
+    /// pending-REQ buffer is the seam that activates on that migration;
+    /// kernel-side AUTH-pause is currently routed through `defer_outbound`
+    /// (the existing M1 generic queue) via `partition_auth_paused`.
+    lifecycle: SubscriptionLifecycle,
+    /// M6 signer injection: actor / iOS layer wires this from
+    /// `nmp_signers::AccountManager::signer_active()` at startup. `None`
+    /// means no active account — AUTH challenges are recorded but no
+    /// kind:22242 dispatch is attempted (the driver stays in
+    /// `ChallengeReceived` until the signer is bound).
+    auth_signer: Option<AuthSignerFn>,
+    /// Hex pubkey of the active signer. Bound alongside `auth_signer`; used
+    /// as the `pubkey` field of the unsigned kind:22242 template (NIP-42
+    /// requires the AUTH event to be signed by the connecting client's key).
+    auth_signer_pubkey: Option<String>,
 }
 
 impl Kernel {
@@ -151,7 +181,26 @@ impl Kernel {
             max_events_per_update: 0,
             changed_since_emit: true,
             logs: VecDeque::new(),
+            nip42_drivers: RelayRole::all()
+                .into_iter()
+                .map(|role| (role, Nip42DriverState::new()))
+                .collect(),
+            lifecycle: SubscriptionLifecycle::new(),
+            auth_signer: None,
+            auth_signer_pubkey: None,
         }
+    }
+
+    /// Bind a signer callback used by the NIP-42 handshake, with the active
+    /// pubkey hex. The actor (or iOS layer) adapts
+    /// `nmp_signers::AccountManager::signer_active()` to this signature at
+    /// startup — keeping the kernel free of any `nmp-signers` dependency
+    /// (no cycle). Replaces any previously-bound signer. The FFI bridge that
+    /// surfaces this from Swift is T59 (filed in `docs/perf/pending-user-decisions.md`).
+    #[allow(dead_code)]
+    pub(crate) fn bind_auth_signer(&mut self, pubkey_hex: String, signer: AuthSignerFn) {
+        self.auth_signer = Some(signer);
+        self.auth_signer_pubkey = Some(pubkey_hex);
     }
 
     pub(crate) fn start(&mut self) {

@@ -210,7 +210,11 @@ fn kind3_stale_redelivery_does_not_overwrite_contacts_cache() {
         .get(PK_A)
         .cloned()
         .expect("contacts must be populated after v2");
-    assert_eq!(contacts_after_v2.len(), 2, "cache should hold v2's two follows");
+    assert_eq!(
+        contacts_after_v2.len(),
+        2,
+        "cache should hold v2's two follows"
+    );
 
     // v1 — older event with one follow (stale re-delivery).
     let follows_v1: Vec<Vec<String>> = vec![vec!["p".to_string(), FIATJAF_PUBKEY.to_string()]];
@@ -245,8 +249,16 @@ fn kind10002_stale_redelivery_does_not_overwrite_relay_list_cache() {
 
     // v2 — two relays.
     let tags_v2: Vec<Vec<String>> = vec![
-        vec!["r".to_string(), "wss://v2-read.example/".to_string(), "read".to_string()],
-        vec!["r".to_string(), "wss://v2-write.example/".to_string(), "write".to_string()],
+        vec![
+            "r".to_string(),
+            "wss://v2-read.example/".to_string(),
+            "read".to_string(),
+        ],
+        vec![
+            "r".to_string(),
+            "wss://v2-write.example/".to_string(),
+            "write".to_string(),
+        ],
     ];
     let o2 = kernel
         .inject_replaceable_event(ID_V2, PK_A, 2000, 10002, tags_v2, RELAY, 2_000_000)
@@ -260,12 +272,14 @@ fn kind10002_stale_redelivery_does_not_overwrite_relay_list_cache() {
         .get(PK_A)
         .cloned()
         .expect("relay list must be populated after v2");
-    assert_eq!(list_after_v2.created_at, 2000, "cache should hold v2 timestamp");
+    assert_eq!(
+        list_after_v2.created_at, 2000,
+        "cache should hold v2 timestamp"
+    );
 
     // v1 — older event with one relay.
-    let tags_v1: Vec<Vec<String>> = vec![
-        vec!["r".to_string(), "wss://v1-only.example/".to_string()],
-    ];
+    let tags_v1: Vec<Vec<String>> =
+        vec![vec!["r".to_string(), "wss://v1-only.example/".to_string()]];
     let o1 = kernel
         .inject_replaceable_event(ID_V1, PK_A, 1000, 10002, tags_v1, RELAY, 1_000_000)
         .expect("store insert must succeed");
@@ -281,8 +295,7 @@ fn kind10002_stale_redelivery_does_not_overwrite_relay_list_cache() {
         .cloned()
         .expect("relay list must still be populated");
     assert_eq!(
-        list_after_v1.created_at,
-        2000,
+        list_after_v1.created_at, 2000,
         "D4 violation: stale v1 overwrote v2 relay list cache"
     );
 }
@@ -298,8 +311,16 @@ fn kind10002_empty_relay_list_clears_cache_entry() {
 
     // v1 — non-empty relay list; populates the cache.
     let tags_v1: Vec<Vec<String>> = vec![
-        vec!["r".to_string(), "wss://v1-read.example/".to_string(), "read".to_string()],
-        vec!["r".to_string(), "wss://v1-write.example/".to_string(), "write".to_string()],
+        vec![
+            "r".to_string(),
+            "wss://v1-read.example/".to_string(),
+            "read".to_string(),
+        ],
+        vec![
+            "r".to_string(),
+            "wss://v1-write.example/".to_string(),
+            "write".to_string(),
+        ],
     ];
     let o1 = kernel
         .inject_replaceable_event(ID_V1, PK_A, 1000, 10002, tags_v1, RELAY, 1_000_000)
@@ -318,7 +339,10 @@ fn kind10002_empty_relay_list_clears_cache_entry() {
         .inject_replaceable_event(ID_V2, PK_A, 2000, 10002, vec![], RELAY, 2_000_000)
         .expect("v2 store insert must succeed");
     assert!(
-        matches!(o2, InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. }),
+        matches!(
+            o2,
+            InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. }
+        ),
         "v2 must supersede v1 in the store, got {o2:?}"
     );
 

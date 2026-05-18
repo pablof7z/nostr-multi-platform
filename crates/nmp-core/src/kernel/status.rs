@@ -18,7 +18,7 @@ impl Kernel {
             role: role.key().to_string(),
             relay_url: role.url().to_string(),
             connection: relay.connection.clone(),
-            auth: "not_required".to_string(),
+            auth: relay.auth.clone(),
             nip77_negentropy: "unknown".to_string(),
             active_wire_subscriptions: self
                 .wire_subs

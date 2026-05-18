@@ -8,6 +8,46 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
+### PD-005 — T59: iOS signer binding for NIP-42 (deferred from T58)
+
+**Decision (autonomous, 2026-05-18, T58):** T58 shipped the kernel-side NIP-42 wiring (parsers + per-relay driver + AuthGate routing + 5 spec'd integration tests + 1 bonus regression). iOS signer binding is deferred to a follow-up task T59.
+
+**Why deferred:**
+
+T58's task description named "iOS signer binding verification if straightforward, else file T59." It is not straightforward — it requires:
+
+1. New FFI symbol `nmp_app_bind_auth_signer(NmpApp*, const char* pubkey_hex, signer_callback*, void* ctx)` in `crates/nmp-core/src/ffi.rs`.
+2. New `ActorCommand::BindAuthSigner { pubkey_hex, signer: AuthSignerFn }` variant in `crates/nmp-core/src/actor/mod.rs` + dispatcher.
+3. Adapter trampoline that wraps the C callback into an `AuthSignerFn = Arc<dyn Fn(&UnsignedEvent) -> Result<SignedEvent, String> + Send + Sync>`.
+4. Swift side in `ios/NmpStress/NmpStress/KernelBridge.swift` that holds the `nmp_signers::AccountManager` (via `NmpSigners` UniFFI bindings — themselves M14 territory and not yet wired) and exposes a C-compatible callback.
+5. UniFFI scaffolding for the signer slice OR a hand-rolled C shim — both are M10.5 / M14 surface decisions.
+
+Conservative estimate: 250-400 LOC across 5+ files, 2 crates, plus Swift work, plus the M10.5 FFI hardening review since this adds a new FFI ingress for a closure pointer (D6 / errors-never-cross-FFI applies).
+
+T58's 500 LOC hard cap could not absorb this without skimping on the integration tests; the cleaner separation is to land T58 as a kernel-substrate commit and file T59 for the FFI/iOS wiring.
+
+**What T58 ships that makes T59 mechanical:**
+
+- `Kernel::bind_auth_signer(pubkey_hex: String, signer: AuthSignerFn)` — already in place, callable from the actor as soon as an `ActorCommand::BindAuthSigner` is added.
+- The signer callback shape (`Fn(&UnsignedEvent) -> Result<SignedEvent, String>`) is intentionally narrow so adapters from `nmp_signers::Signer` trait, the publish engine's `Signer::sign_auth` shim, or a hand-rolled C closure all fit without cycles.
+- The kernel's NIP-42 handshake runs synchronously from `handle_text`. Async signers (NIP-46 bunker via `SignerOp::Pending`) need an extension — likely a future `deliver_signed_for(challenge, result)` API on the kernel mirroring `nmp_nip42::Nip42Driver::deliver_signed_for`. T59 should decide whether to inline that or expose the async hook at FFI boundary.
+
+**Validation gap T59 closes:**
+
+T58's tests verify the kernel handshake in isolation (synthetic signer closure). They do NOT verify that:
+- The Swift-side AccountManager wiring is correct (signer slot is actually populated at iOS app startup).
+- Real `LocalKeySigner::sign(unsigned)` produces a SignedEvent the kernel correctly forwards.
+- A NIP-46 bunker round-trip works end-to-end on iOS.
+- The signer is correctly **un**-bound on `AccountManager::remove(active_id)` (the `ActiveChangeEvent { current: None }` path) so a logged-out user cannot accidentally sign an AUTH event.
+
+The first three are M14 (UniFFI) + M10.5 (live iOS demo) overlap. The fourth is a discrete correctness item — T59 should pin it with a regression test once the binding is in place.
+
+**Recommendation:** dispatch T59 after M14's UniFFI scaffolding lands (so the Swift side has a real `NmpSigners` API to bind from). Tracking task: T59. If you want it sooner, the hand-rolled C shim path is feasible in isolation but creates a divergence with M14's planned UniFFI surface.
+
+**If wrong:** revert T58's `bind_auth_signer` field on Kernel + the ActorCommand if added in T59; the signer plumbing is opt-in and the AUTH handshake degrades gracefully to "stay in ChallengeReceived" when no signer is bound (the bonus regression test `nip42_kernel_auth_without_signer_holds_in_challenge_received` pins this).
+
+---
+
 ### PD-004 — M6 `IdentityId = pubkey_hex` vs ULID for "same nsec, two accounts"
 
 **Decision (autonomous, 2026-05-18, T43):** keep `IdentityId = pubkey_hex` for the M6 landing.  ULID-based account ids are required before M8 (multi-account UX) ships, per `docs/research/sessions/synthesis.md` §1.2 (applesauce allows two accounts for the same pubkey — "same nsec, different relay policy" or "same bunker user from two devices").

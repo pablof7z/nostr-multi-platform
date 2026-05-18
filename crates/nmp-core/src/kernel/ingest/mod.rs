@@ -8,6 +8,7 @@
 //!
 //! `verify_and_persist` is the shared store-insertion path for non-timeline kinds.
 
+mod auth_handlers;
 mod contacts;
 mod profile;
 mod relay_list;
@@ -30,8 +31,7 @@ impl Kernel {
             Message::Text(text) => {
                 let relay = self.relay_mut(role);
                 relay.counters.frames_rx = relay.counters.frames_rx.saturating_add(1);
-                relay.counters.bytes_rx =
-                    relay.counters.bytes_rx.saturating_add(text.len() as u64);
+                relay.counters.bytes_rx = relay.counters.bytes_rx.saturating_add(text.len() as u64);
                 self.handle_text(role, &text)
             }
             Message::Binary(bytes) => {
@@ -82,12 +82,12 @@ impl Kernel {
                     relay.counters.eose_rx = relay.counters.eose_rx.saturating_add(1);
                 }
                 if let Some(sub) = self.wire_subs.get_mut(sub_id) {
-                    sub.state =
-                        if sub_id == "seed-timeline" || sub_id.starts_with("diag-firehose-") {
-                            "live".to_string()
-                        } else {
-                            "closed".to_string()
-                        };
+                    sub.state = if sub_id == "seed-timeline" || sub_id.starts_with("diag-firehose-")
+                    {
+                        "live".to_string()
+                    } else {
+                        "closed".to_string()
+                    };
                     sub.eose_at = Some(Instant::now());
                 }
                 if sub_id.starts_with("thread-ids-") {
@@ -143,12 +143,29 @@ impl Kernel {
                     reason.unwrap_or_else(|| "".to_string())
                 ));
             }
-            "OK" => {}
+            "OK" => {
+                // M5+M2+M8 wiring: an OK frame may be the ack of an in-flight
+                // kind:22242. Non-AUTH OKs (publish acks etc.) are no-ops here;
+                // the publish engine has its own OK matcher per `nmp-core::publish`.
+                outbound.extend(self.handle_auth_ok(role, array));
+            }
+            "AUTH" => {
+                // M5+M2+M8 wiring: relay-initiated NIP-42 challenge. Builds the
+                // kind:22242 via the bound signer (if any) and fans the new
+                // RelayAuthState into the lifecycle's AuthGate so future REQs
+                // to this relay are buffered until `Authenticated`. AUTH-state
+                // transitions never set `changed_since_emit` — D8 invariant.
+                outbound.extend(self.handle_auth_challenge(role, array));
+            }
             _ => self.log(format!("relay frame {kind}")),
         }
 
         outbound.extend(self.maybe_open_timeline());
         outbound.extend(self.maybe_open_thread_hydration());
+        // M5+M2+M8 wiring: the AUTH-pause partition lives at the single
+        // send-time choke point in `actor::relay_mgmt::send_all_outbound`, so
+        // every REQ regardless of producer (handle_text, view-open commands,
+        // startup, pending) is screened uniformly. No partition needed here.
         outbound
     }
 

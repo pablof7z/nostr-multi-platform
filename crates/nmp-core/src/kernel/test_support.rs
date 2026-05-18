@@ -45,11 +45,17 @@ impl Kernel {
             sig: "a".repeat(128),
         };
         let verified = VerifiedEvent::from_raw_unchecked(raw);
-        let outcome = match self.store.insert(verified, &relay_url.to_string(), received_at_ms) {
+        let outcome = match self
+            .store
+            .insert(verified, &relay_url.to_string(), received_at_ms)
+        {
             Ok(o) => o,
             Err(_) => return None,
         };
-        if matches!(outcome, InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. }) {
+        if matches!(
+            outcome,
+            InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. }
+        ) {
             let event = NostrEvent {
                 id: id.to_string(),
                 pubkey: pubkey.to_string(),
@@ -106,7 +112,10 @@ impl Kernel {
         // per D4.
         let verified_for_store = crate::store::VerifiedEvent::from_raw_unchecked(raw.clone());
 
-        let proceed = match self.store.insert(verified_for_store, &relay_url, received_at_ms) {
+        let proceed = match self
+            .store
+            .insert(verified_for_store, &relay_url, received_at_ms)
+        {
             Ok(outcome) => matches!(
                 outcome,
                 InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. }
@@ -137,12 +146,10 @@ impl Kernel {
         // events must call kernel.sort_timeline_deferred() once after the loop
         // to avoid O(n²·log n) sort overhead for large batches.
         if sub_id.starts_with("diag-firehose-") {
-            self.diagnostic_firehose_events =
-                self.diagnostic_firehose_events.saturating_add(1);
+            self.diagnostic_firehose_events = self.diagnostic_firehose_events.saturating_add(1);
             self.timeline.push_back(id);
         }
-        self.events_since_last_update =
-            self.events_since_last_update.saturating_add(1);
+        self.events_since_last_update = self.events_since_last_update.saturating_add(1);
         self.changed_since_emit = true;
     }
 

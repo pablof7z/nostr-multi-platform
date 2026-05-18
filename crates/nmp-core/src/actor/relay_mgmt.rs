@@ -79,6 +79,14 @@ pub(super) fn send_all_outbound(
     kernel: &mut Kernel,
     outbound: Vec<OutboundMessage>,
 ) {
+    // M5+M2+M8 wiring: every outbound batch passes through the AUTH-pause
+    // partition before hitting the wire. REQs targeting an AUTH-paused
+    // relay (ChallengeReceived / Authenticating) are diverted into the
+    // deferred queue and replayed on the next tick after Authenticated. This
+    // is the single choke point — view-open paths (open_author, open_thread,
+    // claim_profile, …) all route through here, so kernel-level partitioning
+    // catches every REQ regardless of which kernel method built it.
+    let outbound = kernel.partition_auth_paused(outbound);
     for message in outbound {
         send_outbound(relay_controls, kernel, message);
     }

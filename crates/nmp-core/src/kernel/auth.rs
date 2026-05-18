@@ -1,0 +1,258 @@
+//! NIP-42 AUTH wiring — kernel-internal handshake FSM and frame parsers.
+//!
+//! NIP-42 is wire-layer (the same category as NIP-01's EVENT/EOSE/OK/NOTICE/CLOSED
+//! frames already parsed inline in `ingest/mod.rs::handle_text`). It is NOT an
+//! app-domain protocol like NIP-29 / NIP-94 / NIP-77 which live in carved-out
+//! crates per D0. The `nmp-nip42` crate (master @ e69c3a4) holds the canonical
+//! standalone protocol module for downstream consumers and isolated validation;
+//! the kernel inlines the FSM here because the AUTH handshake is tightly
+//! coupled to the relay socket's wire path — the same circular-dependency
+//! reasoning that keeps NIP-01 framing inline.
+//!
+//! Doctrine:
+//! - **D0** — no app nouns. AUTH state is a transport-level capability.
+//! - **D5** — the signer reports a signed event; this module decides FSM
+//!   transitions and what to emit on the wire.
+//! - **D6** — errors are internal `Result`s, surfaced via the
+//!   `RelayHealth.last_error` field; never crossed via FFI.
+//! - **D7** — the per-relay driver reports `RelayAuthState`; the actor / pool
+//!   decides reconnect / retry policy.
+//! - **D8** — AUTH-state changes never set `changed_since_emit` (the view-rev
+//!   contract). Only data events do.
+
+use crate::subs::RelayAuthState;
+use crate::substrate::{SignedEvent, UnsignedEvent};
+use serde_json::Value;
+use std::sync::Arc;
+
+/// Synchronous signer callback. The actor / iOS layer adapts
+/// `nmp_signers::AccountManager::signer_active()` to this signature at kernel
+/// construction time (avoids the `nmp-signers -> nmp-core` cycle that would
+/// otherwise prevent direct trait use).
+pub(crate) type AuthSignerFn =
+    Arc<dyn Fn(&UnsignedEvent) -> Result<SignedEvent, String> + Send + Sync>;
+
+/// Parsed `["AUTH", <challenge>]` frame. Rejects empty / non-string challenges
+/// (NIP-42 requires a non-empty signable string).
+pub(crate) fn parse_auth_challenge(frame: &[Value]) -> Option<String> {
+    if frame.first().and_then(Value::as_str) != Some("AUTH") {
+        return None;
+    }
+    let challenge = frame.get(1).and_then(Value::as_str)?;
+    if challenge.is_empty() {
+        None
+    } else {
+        Some(challenge.to_string())
+    }
+}
+
+/// Parsed `["OK", <event_id>, <accepted>, <reason>]` frame. Strict bool
+/// (NIP-01 specs a boolean; a missing/non-bool field is a malformed frame).
+/// Returns `None` for non-OK or malformed frames. Non-AUTH OKs still parse;
+/// the caller correlates against the pending kind:22242 event id.
+pub(crate) struct OkFrame {
+    pub event_id: String,
+    pub accepted: bool,
+    pub reason: String,
+}
+
+pub(crate) fn parse_ok_frame(frame: &[Value]) -> Option<OkFrame> {
+    if frame.first().and_then(Value::as_str) != Some("OK") {
+        return None;
+    }
+    let event_id = frame.get(1).and_then(Value::as_str)?.to_string();
+    let accepted = frame.get(2).and_then(Value::as_bool)?;
+    let reason = frame
+        .get(3)
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    if event_id.is_empty() {
+        None
+    } else {
+        Some(OkFrame {
+            event_id,
+            accepted,
+            reason,
+        })
+    }
+}
+
+/// Build the kind:22242 unsigned event for AUTH per NIP-42. Two mandatory
+/// tags: `["relay", <url>]` and `["challenge", <value>]`. The signer fills
+/// `id`/`pubkey`/`sig`; the `pubkey` field on the unsigned template is the
+/// signer's active pubkey hex (caller supplies).
+pub(crate) fn build_auth_event(
+    pubkey: String,
+    relay_url: &str,
+    challenge: &str,
+    created_at: u64,
+) -> UnsignedEvent {
+    UnsignedEvent {
+        pubkey,
+        kind: 22242,
+        tags: vec![
+            vec!["relay".to_string(), relay_url.to_string()],
+            vec!["challenge".to_string(), challenge.to_string()],
+        ],
+        content: String::new(),
+        created_at,
+    }
+}
+
+/// Per-relay handshake driver state. One per `RelayRole`. Default is
+/// `NotRequired`; an inbound AUTH transitions to `ChallengeReceived` and the
+/// caller invokes the signer.
+#[derive(Clone, Debug)]
+pub(crate) struct Nip42DriverState {
+    pub state: RelayAuthState,
+    pub pending_challenge: Option<String>,
+    /// Event id of the in-flight kind:22242. Cleared on OK match or reset.
+    pub pending_event_id: Option<String>,
+}
+
+impl Default for Nip42DriverState {
+    fn default() -> Self {
+        Self {
+            state: RelayAuthState::NotRequired,
+            pending_challenge: None,
+            pending_event_id: None,
+        }
+    }
+}
+
+impl Nip42DriverState {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Reset on relay disconnect — the next connect re-learns AUTH requirement
+    /// from a fresh challenge.
+    pub fn reset_on_disconnect(&mut self) {
+        *self = Self::new();
+    }
+
+    /// Apply an inbound AUTH challenge. Always transitions to
+    /// `ChallengeReceived` (re-auth mid-session drops back from `Authenticated`).
+    pub fn on_auth_frame(&mut self, challenge: String) {
+        self.pending_challenge = Some(challenge);
+        self.pending_event_id = None;
+        self.state = RelayAuthState::ChallengeReceived;
+    }
+
+    /// Record that a signed kind:22242 has been dispatched. Transitions to
+    /// `Authenticating`. Returns `false` if no challenge is pending (caller
+    /// race vs disconnect).
+    pub fn record_dispatch(&mut self, signed_event_id: String) -> bool {
+        if self.pending_challenge.is_none() {
+            return false;
+        }
+        self.pending_event_id = Some(signed_event_id);
+        self.state = RelayAuthState::Authenticating;
+        true
+    }
+
+    /// Apply a signer failure (signer rejected, threw, or returned invalid).
+    pub fn record_signer_failure(&mut self) {
+        self.state = RelayAuthState::Failed;
+        self.pending_event_id = None;
+    }
+
+    /// Apply an OK frame correlated against the in-flight event id. Returns
+    /// the new state when matched, or `None` when the OK is for some other
+    /// event (publish OK, unrelated id).
+    pub fn on_ok_frame(&mut self, ok: &OkFrame) -> Option<RelayAuthState> {
+        if self.pending_event_id.as_deref() != Some(ok.event_id.as_str()) {
+            return None;
+        }
+        self.pending_event_id = None;
+        let new_state = if ok.accepted {
+            RelayAuthState::Authenticated
+        } else {
+            RelayAuthState::Failed
+        };
+        self.state = new_state.clone();
+        Some(new_state)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn parse_auth_extracts_non_empty_challenge() {
+        assert_eq!(
+            parse_auth_challenge(&[json!("AUTH"), json!("abc")]).as_deref(),
+            Some("abc")
+        );
+        assert!(parse_auth_challenge(&[json!("AUTH"), json!("")]).is_none());
+        assert!(parse_auth_challenge(&[json!("AUTH"), json!(42)]).is_none());
+        assert!(parse_auth_challenge(&[json!("EVENT"), json!("x")]).is_none());
+    }
+
+    #[test]
+    fn parse_ok_requires_strict_bool() {
+        let id = "a".repeat(64);
+        let f = parse_ok_frame(&[json!("OK"), json!(id), json!(true), json!("")]).unwrap();
+        assert!(f.accepted);
+        assert!(parse_ok_frame(&[json!("OK"), json!("a"), json!("true"), json!("")]).is_none());
+        assert!(parse_ok_frame(&[json!("OK"), json!("a"), json!(1), json!("")]).is_none());
+    }
+
+    #[test]
+    fn driver_records_dispatch_only_with_pending_challenge() {
+        let mut d = Nip42DriverState::new();
+        assert!(!d.record_dispatch("evt1".into()));
+        d.on_auth_frame("c1".into());
+        assert!(d.record_dispatch("evt1".into()));
+        assert_eq!(d.state, RelayAuthState::Authenticating);
+    }
+
+    #[test]
+    fn driver_correlates_ok_against_pending_event_id() {
+        let mut d = Nip42DriverState::new();
+        d.on_auth_frame("c1".into());
+        d.record_dispatch("evt1".into());
+        let unrelated = OkFrame {
+            event_id: "evt2".into(),
+            accepted: true,
+            reason: String::new(),
+        };
+        assert!(d.on_ok_frame(&unrelated).is_none(), "unrelated OK = no-op");
+        let auth_ok = OkFrame {
+            event_id: "evt1".into(),
+            accepted: true,
+            reason: String::new(),
+        };
+        assert_eq!(d.on_ok_frame(&auth_ok), Some(RelayAuthState::Authenticated));
+    }
+
+    #[test]
+    fn driver_failed_on_rejection() {
+        let mut d = Nip42DriverState::new();
+        d.on_auth_frame("c1".into());
+        d.record_dispatch("evt1".into());
+        let rejected = OkFrame {
+            event_id: "evt1".into(),
+            accepted: false,
+            reason: "restricted".into(),
+        };
+        assert_eq!(d.on_ok_frame(&rejected), Some(RelayAuthState::Failed));
+    }
+
+    #[test]
+    fn build_auth_event_has_two_mandatory_tags() {
+        let e = build_auth_event(
+            "ff".repeat(32),
+            "wss://relay.example",
+            "challenge-value",
+            123,
+        );
+        assert_eq!(e.kind, 22242);
+        assert_eq!(e.tags.len(), 2);
+        assert_eq!(e.tags[0], vec!["relay", "wss://relay.example"]);
+        assert_eq!(e.tags[1], vec!["challenge", "challenge-value"]);
+    }
+}

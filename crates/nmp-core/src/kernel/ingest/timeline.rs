@@ -94,13 +94,10 @@ impl Kernel {
         };
         self.events.insert(event.id.clone(), cached);
         if sub_id.starts_with("diag-firehose-") {
-            self.diagnostic_firehose_events =
-                self.diagnostic_firehose_events.saturating_add(1);
+            self.diagnostic_firehose_events = self.diagnostic_firehose_events.saturating_add(1);
         }
         self.enqueue_thread_hydration_from_event(&event.id);
-        if self.timeline_authors.contains(&event.pubkey)
-            || sub_id.starts_with("diag-firehose-")
-        {
+        if self.timeline_authors.contains(&event.pubkey) || sub_id.starts_with("diag-firehose-") {
             self.timeline.push_back(event.id);
             self.sort_timeline();
             self.timeline_first_item_at.get_or_insert_with(Instant::now);

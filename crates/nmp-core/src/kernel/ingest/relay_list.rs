@@ -46,8 +46,7 @@ impl Kernel {
             .get(&event.pubkey)
             .map(|current| {
                 relay_list.created_at > current.created_at
-                    || (relay_list.created_at == current.created_at
-                        && event.id < current.event_id)
+                    || (relay_list.created_at == current.created_at && event.id < current.event_id)
             })
             .unwrap_or(true);
         if should_replace {

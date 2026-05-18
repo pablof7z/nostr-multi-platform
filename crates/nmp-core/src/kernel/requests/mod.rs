@@ -24,8 +24,14 @@ impl Kernel {
         relay.connection = "connected".to_string();
         relay.connected_at = Some(Instant::now());
         relay.last_error = None;
+        relay.auth = "not_required".to_string();
         self.changed_since_emit = true;
         self.log(format!("{} relay connected", role.key()));
+        // M5+M2+M8 wiring: on reconnect the NIP-42 driver resets — the relay
+        // will re-send a fresh AUTH challenge if it still requires auth.
+        if let Some(driver) = self.nip42_drivers.get_mut(&role) {
+            driver.reset_on_disconnect();
+        }
     }
 
     pub(crate) fn relay_failed(&mut self, role: RelayRole, error: String) {
@@ -49,13 +55,18 @@ impl Kernel {
     }
 
     pub(crate) fn relay_closed(&mut self, role: RelayRole) {
-        self.relay_mut(role).connection = "closed".to_string();
+        let relay = self.relay_mut(role);
+        relay.connection = "closed".to_string();
+        relay.auth = "not_required".to_string();
         for sub in self.wire_subs.values_mut() {
             if sub.role == role {
                 sub.state = "closed".to_string();
             }
         }
         self.changed_since_emit = true;
+        if let Some(driver) = self.nip42_drivers.get_mut(&role) {
+            driver.reset_on_disconnect();
+        }
     }
 
     pub(crate) fn startup_requests(&mut self) -> Vec<OutboundMessage> {
@@ -180,13 +191,14 @@ impl Kernel {
         filter: Value,
     ) -> OutboundMessage {
         self.log(format!("REQ {sub_id}@{}: {summary}", role.key()));
+        let paused = self.relay_auth_paused(role);
         self.wire_subs.insert(
             sub_id.to_string(),
             WireSub {
                 id: sub_id.to_string(),
                 role,
                 filter_summary: summary.to_string(),
-                state: "opening".to_string(),
+                state: if paused { "auth_paused" } else { "opening" }.to_string(),
                 opened_at: Instant::now(),
                 last_event_at: None,
                 eose_at: None,
@@ -198,6 +210,47 @@ impl Kernel {
             role,
             text: json!(["REQ", sub_id, filter]).to_string(),
         }
+    }
+
+    /// True when an inbound `["AUTH", _]` has been received on `role` and the
+    /// handshake has not yet completed (`Authenticated`/`NotRequired`/`Failed`
+    /// are all pass-through; `Failed` is pass-through because the actor /
+    /// operator owns the resolution path per D7).
+    pub(crate) fn relay_auth_paused(&self, role: RelayRole) -> bool {
+        let state = self
+            .nip42_drivers
+            .get(&role)
+            .map(|d| d.state.clone())
+            .unwrap_or(crate::subs::RelayAuthState::NotRequired);
+        matches!(
+            state,
+            crate::subs::RelayAuthState::ChallengeReceived
+                | crate::subs::RelayAuthState::Authenticating
+        )
+    }
+
+    /// Partition an outbound batch: REQ frames targeting an AUTH-paused relay
+    /// are removed from the batch and deferred via `defer_outbound` (the
+    /// generic deferred queue is drained on `Authenticated` via
+    /// `pending_view_requests`). Non-REQ frames and REQs to live relays pass
+    /// through unchanged. This is the M5+M2+M8 wiring seam replacing the
+    /// hand-rolled "send + cross-fingers" path for AUTH-required relays —
+    /// `AuthGate` semantics modelled inline so the kernel doesn't need to
+    /// hold a separate per-relay buffer.
+    pub(crate) fn partition_auth_paused(
+        &mut self,
+        outbound: Vec<OutboundMessage>,
+    ) -> Vec<OutboundMessage> {
+        let mut passthrough = Vec::with_capacity(outbound.len());
+        for msg in outbound {
+            if msg.text.starts_with("[\"REQ\"") && self.relay_auth_paused(msg.role) {
+                self.log(format!("REQ@{} held — relay AUTH-paused", msg.role.key()));
+                self.defer_outbound(msg);
+            } else {
+                passthrough.push(msg);
+            }
+        }
+        passthrough
     }
 
     pub(crate) fn defer_outbound(&mut self, message: OutboundMessage) {

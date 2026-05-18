@@ -21,11 +21,7 @@
 use super::super::*;
 
 impl Kernel {
-    pub(crate) fn open_thread(
-        &mut self,
-        event_id: String,
-        can_send: bool,
-    ) -> Vec<OutboundMessage> {
+    pub(crate) fn open_thread(&mut self, event_id: String, can_send: bool) -> Vec<OutboundMessage> {
         match self.selected_thread.as_mut() {
             Some(interest) if interest.key == event_id => {
                 interest.refcount = interest.refcount.saturating_add(1);
