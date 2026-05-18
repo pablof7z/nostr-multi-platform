@@ -569,12 +569,13 @@ Conflicts still resolve in listed order (D0 wins over D8). README aligned. T19 f
 ## PD-024 — uniform `<crate>::Action / <crate>::Update / <crate>::ViewSpec` aggregate enums (deferred from `e895c09`)
 
 **Filed:** 2026-05-18 HB44 from Merge Report.
+**Resolved autonomously:** 2026-05-18 HB67 — take the documented default. **Defer to M11.5 (Highlighter rebuild).**
 
-**Context:** `nmp-codegen` template references `<crate>::Action / Update / ViewSpec` aggregate enums for module wiring. No existing protocol crate (nip01/22/23/29/51/57/reactions) currently exposes them. This is a uniform-action-surface design question affecting **all** protocol crates, not just the three new ones.
+**Rationale for autonomous resolution:** Adopting the convention NOW requires a 7-crate sweep (nip01/22/23/29/42/57/reactions) plus an ADR — substantial speculative refactor while the kernel is mid-T141 substrate-types extract. The M11.5 Highlighter rebuild is the first consumer that exercises codegen; that's when the codegen shape will be concretely tested and refining backwards is straightforward. Adopting before M11.5 risks settling on a shape the real codegen consumer would have changed.
 
-**Open question to user:** Adopt the aggregate-enum convention NOW (one ADR + sweep across 7 crates) or defer until codegen actually needs it (M11.5)? Adopting now constrains every future protocol crate to the same shape, which is good for FFI uniformity but adds boilerplate.
+**Knock-on effect:** T145 (codegen ffi_rs stub dispatch) stays `pending` — the convention is the blocker, and we are explicitly choosing not to unblock it via autonomous adoption. T145 is now bundled into M11.5 scope.
 
-**Default if no answer:** Defer to M11.5 (Highlighter rebuild surfaces the codegen requirement naturally; adopting before that is speculative).
+**Context:** `nmp-codegen` template references `<crate>::Action / Update / ViewSpec` aggregate enums for module wiring. No existing protocol crate currently exposes them.
 
 
 ---
