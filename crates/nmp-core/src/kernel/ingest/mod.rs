@@ -25,6 +25,7 @@ impl Kernel {
     pub(crate) fn handle_message(
         &mut self,
         role: RelayRole,
+        relay_url: &str,
         message: Message,
     ) -> Vec<OutboundMessage> {
         match message {
@@ -32,7 +33,7 @@ impl Kernel {
                 let relay = self.relay_mut(role);
                 relay.counters.frames_rx = relay.counters.frames_rx.saturating_add(1);
                 relay.counters.bytes_rx = relay.counters.bytes_rx.saturating_add(text.len() as u64);
-                self.handle_text(role, &text)
+                self.handle_text(role, relay_url, &text)
             }
             Message::Binary(bytes) => {
                 let relay = self.relay_mut(role);
@@ -53,7 +54,12 @@ impl Kernel {
         }
     }
 
-    pub(super) fn handle_text(&mut self, role: RelayRole, text: &str) -> Vec<OutboundMessage> {
+    pub(super) fn handle_text(
+        &mut self,
+        role: RelayRole,
+        relay_url: &str,
+        text: &str,
+    ) -> Vec<OutboundMessage> {
         let Ok(value) = serde_json::from_str::<Value>(text) else {
             self.log(format!("unparseable relay frame: {}", truncate(text, 120)));
             return Vec::new();
@@ -72,7 +78,7 @@ impl Kernel {
             "EVENT" => {
                 let sub_id = array.get(1).and_then(Value::as_str).unwrap_or("unknown");
                 if let Some(event_value) = array.get(2) {
-                    self.handle_event(role, sub_id, event_value);
+                    self.handle_event(role, relay_url, sub_id, event_value);
                 }
             }
             "EOSE" => {
@@ -195,7 +201,13 @@ impl Kernel {
         outbound
     }
 
-    pub(super) fn handle_event(&mut self, role: RelayRole, sub_id: &str, value: &Value) {
+    pub(super) fn handle_event(
+        &mut self,
+        role: RelayRole,
+        relay_url: &str,
+        sub_id: &str,
+        value: &Value,
+    ) {
         let Ok(event) = serde_json::from_value::<NostrEvent>(value.clone()) else {
             self.log(format!("bad EVENT payload on {sub_id}"));
             return;
@@ -223,10 +235,10 @@ impl Kernel {
         // the store outcome: only Inserted | Replaced means this event is now
         // canonical (D4).
         match event.kind {
-            1 | 6 => self.ingest_timeline_event(role, sub_id, event),
+            1 | 6 => self.ingest_timeline_event(role, relay_url, sub_id, event),
             0 => {
                 use crate::store::InsertOutcome;
-                let outcome = self.verify_and_persist(role, &event);
+                let outcome = self.verify_and_persist(relay_url, &event);
                 if matches!(
                     outcome,
                     Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
@@ -237,7 +249,7 @@ impl Kernel {
             }
             3 => {
                 use crate::store::InsertOutcome;
-                let outcome = self.verify_and_persist(role, &event);
+                let outcome = self.verify_and_persist(relay_url, &event);
                 if matches!(
                     outcome,
                     Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
@@ -248,7 +260,7 @@ impl Kernel {
             }
             10002 => {
                 use crate::store::InsertOutcome;
-                let outcome = self.verify_and_persist(role, &event);
+                let outcome = self.verify_and_persist(relay_url, &event);
                 if matches!(
                     outcome,
                     Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
@@ -258,7 +270,7 @@ impl Kernel {
                 self.changed_since_emit = true;
             }
             _ => {
-                self.verify_and_persist(role, &event);
+                self.verify_and_persist(relay_url, &event);
                 self.changed_since_emit = true;
             }
         }
@@ -274,7 +286,7 @@ impl Kernel {
     /// as no-ops for cache purposes (D4).
     pub(super) fn verify_and_persist(
         &mut self,
-        role: RelayRole,
+        relay_url: &str,
         event: &NostrEvent,
     ) -> Option<crate::store::InsertOutcome> {
         let raw = crate::store::RawEvent {
@@ -296,12 +308,15 @@ impl Kernel {
                 return None;
             }
         };
-        let relay_url = role.url().to_string();
+        // T105: store provenance is the *actual* URL the event came in on,
+        // not the lane's bootstrap URL. The relay_count derived from store
+        // sources is now correct across the URL-keyed transport pool.
+        let provenance = relay_url.to_string();
         let received_at_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
-        match self.store.insert(verified, &relay_url, received_at_ms) {
+        match self.store.insert(verified, &provenance, received_at_ms) {
             Ok(outcome) => Some(outcome),
             Err(e) => {
                 self.log(format!(

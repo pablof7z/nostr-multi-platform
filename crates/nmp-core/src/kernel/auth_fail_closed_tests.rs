@@ -25,7 +25,7 @@ fn nip42_kernel_failed_auth_fails_closed() {
 
     // Content relay demands AUTH; a REQ arrives while Authenticating and is
     // deferred (transient-pause path).
-    let _ = kernel.handle_text(RelayRole::Content, &auth_frame("ch1"));
+    let _ = kernel.handle_text(RelayRole::Content, RelayRole::Content.url(), &auth_frame("ch1"));
     let early = kernel.partition_auth_paused(vec![OutboundMessage {
         role: RelayRole::Content,
         relay_url: RelayRole::Content.url().to_string(),
@@ -43,6 +43,7 @@ fn nip42_kernel_failed_auth_fails_closed() {
     // Relay REJECTS the AUTH event → fail-closed.
     let _ = kernel.handle_text(
         RelayRole::Content,
+        RelayRole::Content.url(),
         &ok_frame(AUTH_EVENT_ID, false, "restricted: members only"),
     );
     assert_eq!(

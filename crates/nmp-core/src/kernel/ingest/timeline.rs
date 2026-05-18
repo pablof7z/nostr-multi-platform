@@ -28,7 +28,8 @@ impl Kernel {
     /// Rejected, Ephemeral) are dropped.
     pub(in crate::kernel) fn ingest_timeline_event(
         &mut self,
-        role: RelayRole,
+        _role: RelayRole,
+        relay_url: &str,
         sub_id: &str,
         event: NostrEvent,
     ) {
@@ -56,13 +57,15 @@ impl Kernel {
                 return;
             }
         };
-        let relay_url = role.url().to_string();
+        // T105: provenance is the resolved per-author write relay the EVENT
+        // actually arrived on, not the lane's bootstrap URL.
+        let provenance = relay_url.to_string();
         let received_at_ms = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
 
-        let proceed = match self.store.insert(verified, &relay_url, received_at_ms) {
+        let proceed = match self.store.insert(verified, &provenance, received_at_ms) {
             Ok(outcome) => {
                 use crate::store::InsertOutcome;
                 match outcome {

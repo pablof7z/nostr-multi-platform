@@ -266,8 +266,13 @@ pub(super) fn handle_relay_event(
             kernel.relay_closed(role);
             emit_now(kernel, running, update_tx, last_emit);
         }
-        RelayEvent::Message { role, message, .. } if running => {
-            let mut outbound = kernel.handle_message(role, message);
+        RelayEvent::Message {
+            role,
+            relay_url,
+            message,
+            ..
+        } if running => {
+            let mut outbound = kernel.handle_message(role, &relay_url, message);
             outbound.extend(kernel.pending_view_requests());
             send_all_outbound(
                 relay_controls,
