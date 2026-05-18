@@ -565,3 +565,46 @@ fn hashtag_firehose_routes_to_active_account_inbox_relays_not_bootstrap() {
          must NOT be a routing target, got urls = {urls:?}"
     );
 }
+
+
+// ─── T130 — deferred queue preserves per-URL routing on drain ────────────────
+
+#[test]
+fn t130_deferred_outbound_preserves_relay_url_through_drain() {
+    // T130 invariant (kernel side): a frame placed into `deferred_outbound`
+    // by any producer (CLOSE-on-replan, defer-on-disconnect, AUTH-pause
+    // defer) must drain via `pending_view_requests` carrying the SAME
+    // `relay_url` the producer stamped. The kernel does not rewrite routing
+    // at drain time — it preserves what the producer chose.
+    //
+    // Without this guarantee, a CLOSE for a sub originally opened on URL_B
+    // could drain back targeting URL_A (the bootstrap), tearing down the
+    // wrong socket and leaving URL_B with a stranded sub_id (and double-
+    // billing the relay since the kernel re-emits as a new sub on the next
+    // recompile).
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    let resolved_url = "wss://resolved.write/".to_string();
+    let msg = OutboundMessage {
+        role: RelayRole::Content,
+        relay_url: resolved_url.clone(),
+        text: "[\"CLOSE\",\"some-sub\"]".to_string(),
+    };
+    kernel.defer_outbound(msg.clone());
+
+    let drained = kernel.pending_view_requests();
+    let close: Vec<_> = drained
+        .iter()
+        .filter(|m| m.text == "[\"CLOSE\",\"some-sub\"]")
+        .collect();
+    assert_eq!(close.len(), 1, "deferred CLOSE must drain exactly once");
+    assert_eq!(
+        close[0].relay_url, resolved_url,
+        "drained frame must preserve the producer-stamped relay_url"
+    );
+    assert_eq!(
+        close[0].role,
+        RelayRole::Content,
+        "drained frame must preserve the role label"
+    );
+}
