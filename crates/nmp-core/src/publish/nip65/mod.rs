@@ -7,12 +7,14 @@
 //! - For a publish authored by `A` with `#p` recipients `R1..Rn`:
 //!   - resolve write-relays of `A`
 //!   - union read-relays of each `Ri`
-//!   - if `A` has no kind:10002, fall back to a configurable indexer set.
+//!   - if `A` has no kind:10002, return an **empty relay set** (fail-closed).
 //!
 //! D3 (outbox automatic): callers pass `PublishTarget::Auto`; this resolver
-//! picks relays from durable state, never from a hardcoded constant — the
-//! indexer fallback is the seam through which the kernel injects a bootstrap
-//! relay set, not a policy choice.
+//! picks relays from durable state, never from a hardcoded constant. An author
+//! with no cached kind:10002 is unroutable — the engine surfaces `NoTargets`
+//! so the UI can show "no relay to publish to" rather than silently widening
+//! to arbitrary public relays. This mirrors T134's subscription-side semantics
+//! (`CompiledPlan::unroutable_authors`).
 //!
 //! D7 (capabilities report): bad-shape kind:10002 tags (missing url, non-wss)
 //! are logged via `tracing::debug!` and skipped — never crash; never return an
@@ -26,42 +28,30 @@ use crate::store::{EventStore, PubKey, StoredEvent};
 use super::action::{PublishTarget, RelayUrl};
 use super::traits::OutboxResolver;
 
-/// Default indexer bootstrap relays for `Nip65OutboxResolver` when the author
-/// has no kind:10002 on file. Per the e2e validation spec, two large public
-/// strfry relays — neither is authoritative, both are best-effort.
-pub const DEFAULT_INDEXER_FALLBACK: &[&str] =
-    &["wss://relay.damus.io", "wss://nos.lol"];
-
 /// Resolve `PublishTarget::Auto` to a concrete relay set per NIP-65, using an
 /// `EventStore` as the source of truth for kind:10002 lookups.
 ///
-/// `indexer_fallback` is consulted only when the author has no kind:10002 (or
-/// when the lookup fails). Recipient `#p` reads are unioned in regardless.
+/// When the author has no kind:10002 on file (or the lookup fails), the
+/// resolver returns an **empty relay set** — the engine maps this to
+/// `PublishEngineError::NoTargets` and surfaces it as a visible failure on
+/// the publish-status snapshot. This is fail-closed per doctrine (D3) and
+/// mirrors T134's subscription-side `unroutable_authors` semantics.
 pub struct Nip65OutboxResolver {
     store: Arc<dyn EventStore>,
-    indexer_fallback: Vec<RelayUrl>,
 }
 
 impl Nip65OutboxResolver {
-    /// Build a resolver over the given store. `indexer_fallback` should be the
-    /// (small) bootstrap set the kernel falls back to when an author hasn't
-    /// published kind:10002 yet. Typically `DEFAULT_INDEXER_FALLBACK`.
-    pub fn new(store: Arc<dyn EventStore>, indexer_fallback: Vec<RelayUrl>) -> Self {
-        Self {
-            store,
-            indexer_fallback,
-        }
+    /// Build a resolver backed by the given event store.
+    pub fn new(store: Arc<dyn EventStore>) -> Self {
+        Self { store }
     }
 
-    /// Build a resolver with the default indexer fallback.
+    /// Compatibility constructor — identical to `new`. Previously accepted an
+    /// `indexer_fallback` slice; the fallback is removed (T-publish-resolver-
+    /// indexer; codex f81f735). Retained so call sites compile without change
+    /// during the migration; callers should migrate to `new`.
     pub fn with_default_fallback(store: Arc<dyn EventStore>) -> Self {
-        Self::new(
-            store,
-            DEFAULT_INDEXER_FALLBACK
-                .iter()
-                .map(|s| (*s).to_string())
-                .collect(),
-        )
+        Self::new(store)
     }
 
     /// Look up the latest kind:10002 for `author_hex` and parse it into
@@ -92,17 +82,20 @@ impl OutboxResolver for Nip65OutboxResolver {
         let mut out: BTreeSet<RelayUrl> = BTreeSet::new();
 
         // 2. Author write-relays.
-        match self.lookup_kind10002(author_pubkey) {
-            Some((writes, _reads)) if !writes.is_empty() => {
-                out.extend(writes);
-            }
-            // Either no kind:10002 or kind:10002 has no write-marker tags.
-            // Indexer fallback covers both: it's the bootstrap set the kernel
-            // injects when we have nothing better.
-            _ => {
-                out.extend(self.indexer_fallback.iter().cloned());
-            }
+        //
+        // If the author has no kind:10002 on file (or has an empty write set),
+        // we return an empty relay set — fail-closed per D3 / subsystems.md:99
+        // ("do not publish to indexers"). The engine maps an empty resolve to
+        // `PublishEngineError::NoTargets` and surfaces a visible toast. This
+        // mirrors T134's subscription-side `unroutable_authors` discipline:
+        // unroutable is surfaced honestly, never silently widened.
+        if let Some((writes, _reads)) = self.lookup_kind10002(author_pubkey) {
+            out.extend(writes);
         }
+        // No kind:10002 → `out` remains empty. Fall through to #p handling
+        // so at least recipient inboxes are included if any are resolvable.
+        // (If both author-writes and all #p reads are empty, out is empty →
+        // NoTargets. That is the correct outcome for a fully-unroutable author.)
 
         // 3. Recipient read-relays — union for every `#p` tag.
         for p in p_tags {

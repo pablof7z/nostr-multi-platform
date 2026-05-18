@@ -22,8 +22,6 @@
 /// never a routing fallback for content REQs once a relay list is known.
 ///
 /// Two large public relays; neither is authoritative, both are best-effort.
-/// Mirrors `crate::publish::DEFAULT_INDEXER_FALLBACK` (the publish-side seed)
-/// so cold-start reads and the first publish converge on the same bootstrap.
 pub(crate) const BOOTSTRAP_DISCOVERY_RELAYS: &[&str] =
     &["wss://relay.damus.io", "wss://purplepag.es"];
 

@@ -44,7 +44,7 @@ pub(super) fn build_engine(
     dispatcher: Arc<QueueDispatcher>,
     publish_store: Arc<dyn PublishStore>,
 ) -> PublishEngine {
-    let resolver = Nip65OutboxResolver::with_default_fallback(event_store);
+    let resolver = Nip65OutboxResolver::new(event_store);
     PublishEngine::new(
         Arc::new(resolver),
         dispatcher as Arc<dyn RelayDispatcher>,

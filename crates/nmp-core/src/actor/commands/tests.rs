@@ -11,8 +11,25 @@ use crate::relay::DEFAULT_VISIBLE_LIMIT;
 const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
 const SECOND_HEX: &str = "0000000000000000000000000000000000000000000000000000000000000abc";
 
+/// Write relays injected via kind:10002 for tests that exercise the publish path.
+///
+/// T-publish-resolver-indexer (codex f81f735): `Nip65OutboxResolver` is now
+/// fail-closed — an author with no kind:10002 resolves to an empty relay set
+/// (`NoTargets`). Tests that assert non-empty outbound frames MUST seed a
+/// kind:10002 for the active account before publishing.
+const TEST_WRITE_RELAYS: &[&str] = &["wss://test-write-r1.test", "wss://test-write-r2.test"];
+
 fn fresh() -> (IdentityRuntime, Kernel) {
     (IdentityRuntime::new(), Kernel::new(DEFAULT_VISIBLE_LIMIT))
+}
+
+/// Sign in with TEST_NSEC and seed kind:10002 write relays for the active
+/// account so the `Nip65OutboxResolver` has NIP-65 data and publish commands
+/// produce non-empty outbound frames.
+fn sign_in_with_nip65(id: &mut IdentityRuntime, kernel: &mut Kernel) {
+    sign_in_nsec(id, kernel, TEST_NSEC, false);
+    let pubkey = id.active_pubkey().expect("active account after sign_in_nsec");
+    kernel.seed_kind10002_for_test(&pubkey, TEST_WRITE_RELAYS);
 }
 
 #[test]
@@ -98,15 +115,13 @@ fn publish_note_without_account_toasts_and_no_outbound() {
 }
 
 #[test]
-fn publish_note_signs_and_enqueues_via_outbox_fallback() {
+fn publish_note_signs_and_routes_via_nip65() {
+    // T-publish-resolver-indexer (codex f81f735): resolver is now fail-closed.
+    // A kind:10002 must be seeded for the active account so the engine has
+    // NIP-65 write relays and produces non-empty outbound frames.
     let (mut id, mut kernel) = fresh();
-    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    sign_in_with_nip65(&mut id, &mut kernel);
     let outbound = publish_note(&id, &mut kernel, "hello pulse e2e", None);
-    // No kind:10002 yet → resolver returns the indexer fallback, so the
-    // event still goes out and is queued as `accepted_locally`. T117
-    // routed this through the publish engine (so the per-relay state
-    // machine is now alive) while preserving the queue-entry wire shape
-    // iOS Pulse keys on (ComposeView matches on "accepted_locally").
     assert!(!outbound.is_empty());
     assert!(outbound[0].text.starts_with("[\"EVENT\""));
     let q = kernel.publish_queue_snapshot();
@@ -136,7 +151,7 @@ fn publish_unsigned_event_without_account_toasts_and_no_outbound() {
 #[test]
 fn publish_unsigned_event_signs_and_publishes_arbitrary_kind() {
     let (mut id, mut kernel) = fresh();
-    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    sign_in_with_nip65(&mut id, &mut kernel);
     let active_pubkey = id.active_pubkey().unwrap();
     // Construct a generic kind:30023 (NIP-23 article) UnsignedEvent inline —
     // no per-kind kernel logic; the kernel just signs + publishes.
@@ -210,7 +225,7 @@ fn publish_unsigned_event_valid_kind_publishes_normally() {
     // Regression for Finding 1: a valid u32 kind within [0, 65535] must still
     // publish exactly as before.
     let (mut id, mut kernel) = fresh();
-    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    sign_in_with_nip65(&mut id, &mut kernel);
     let unsigned = crate::substrate::UnsignedEvent {
         pubkey: String::new(),
         kind: 1,
@@ -261,7 +276,7 @@ fn publish_unsigned_event_valid_tags_pass_through() {
     // Regression for Finding 2: all-valid tags must still appear in the
     // signed event unchanged.
     let (mut id, mut kernel) = fresh();
-    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    sign_in_with_nip65(&mut id, &mut kernel);
     let unsigned = crate::substrate::UnsignedEvent {
         pubkey: String::new(),
         kind: 30023,
@@ -283,7 +298,7 @@ fn publish_unsigned_event_valid_tags_pass_through() {
 #[test]
 fn react_builds_kind7_with_e_tag() {
     let (mut id, mut kernel) = fresh();
-    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    sign_in_with_nip65(&mut id, &mut kernel);
     let target = "a".repeat(64);
     let outbound = react(&id, &mut kernel, &target, "❤");
     assert!(!outbound.is_empty());
@@ -295,7 +310,7 @@ fn react_builds_kind7_with_e_tag() {
 #[test]
 fn follow_publishes_kind3_with_p_tag() {
     let (mut id, mut kernel) = fresh();
-    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    sign_in_with_nip65(&mut id, &mut kernel);
     let target = "b".repeat(64);
     let outbound = follow(&id, &mut kernel, &target, true);
     assert!(!outbound.is_empty());
@@ -403,7 +418,7 @@ fn sign_in_bunker_without_broker_clears_progress_and_toasts() {
 #[test]
 fn snapshot_json_carries_new_projections() {
     let (mut id, mut kernel) = fresh();
-    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    sign_in_with_nip65(&mut id, &mut kernel);
     publish_note(&id, &mut kernel, "json shape check", None);
     add_relay(&mut kernel, "wss://relay.damus.io", "both");
     let json = kernel.make_update(true);
@@ -473,7 +488,7 @@ fn publish_note_reply_to_mid_thread_forwards_root_and_carries_p_tags() {
     //   ["p", AUTHOR_B, ...]           ← parent author re-notified (T144 bug)
     //   ["p", AUTHOR_A, ...]           ← thread participant re-notified
     let (mut id, mut kernel) = fresh();
-    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    sign_in_with_nip65(&mut id, &mut kernel);
 
     // Seed root A (no NIP-10 refs of its own — it IS the root).
     kernel.seed_kind1_for_reply_test(ROOT_A_ID, AUTHOR_A, 100, vec![], "root note");
@@ -524,7 +539,7 @@ fn publish_note_reply_to_root_promotes_parent_to_root_and_emits_both_markers() {
     // pointing to the same id) — this is the shape `nmp_nip01::Note::reply_to`
     // emits (see `crates/nmp-nip01/src/build.rs:205` test).
     let (mut id, mut kernel) = fresh();
-    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    sign_in_with_nip65(&mut id, &mut kernel);
 
     kernel.seed_kind1_for_reply_test(ROOT_A_ID, AUTHOR_A, 100, vec![], "root note");
 
@@ -553,7 +568,7 @@ fn publish_note_reply_to_unknown_parent_falls_back_and_kicks_hydration() {
     // id onto the T121 thread-hydration queue so a follow-up REQ surfaces the
     // parent's real structure.
     let (mut id, mut kernel) = fresh();
-    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    sign_in_with_nip65(&mut id, &mut kernel);
 
     // Sanity: parent must NOT be in cache for this path to fire.
     assert!(!kernel.is_thread_hydration_requested(COLD_PARENT_ID));

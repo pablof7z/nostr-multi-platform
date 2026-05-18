@@ -47,7 +47,7 @@ pub use engine::{
     engine_error_to_failure, outcome_of, PublishEngine, PublishEngineError, TerminalOutcome,
     ENGINE_FAILURE_RELAY_URL,
 };
-pub use nip65::{Nip65OutboxResolver, DEFAULT_INDEXER_FALLBACK};
+pub use nip65::Nip65OutboxResolver;
 pub use state::{PerRelayState, PublishAttempt, RelayAck, RelayPlan, RetryPolicy, RetryVerdict};
 pub use traits::{
     InMemoryPublishStore, NoopOutboxResolver, NoopSigner, OutboxResolver, PublishRecord,

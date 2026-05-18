@@ -197,10 +197,18 @@ fn publish_unsigned_event_with_active_remote_uses_stub_signer() {
     // End-to-end: AddRemoteSigner → PublishUnsignedEvent goes through the
     // stub. Mirrors `publish_unsigned_event_signs_and_publishes_arbitrary_kind`
     // from `commands::tests` but with a remote handle behind the active slot.
+    //
+    // T-publish-resolver-indexer (codex f81f735): seed kind:10002 for the
+    // remote signer's pubkey so the resolver has NIP-65 write relays.
     let (mut id, mut kernel) = fresh();
     let (handle, count) = stub_signer();
     let expected_pk = handle.pubkey_hex();
     add_remote_signer(&mut id, &mut kernel, handle, false);
+    // Seed kind:10002 so the fail-closed resolver finds write relays.
+    kernel.seed_kind10002_for_test(
+        &expected_pk,
+        &["wss://remote-write-r1.test", "wss://remote-write-r2.test"],
+    );
 
     let unsigned = UnsignedEvent {
         pubkey: "ignored-by-signer".into(),

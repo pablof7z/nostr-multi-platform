@@ -1,9 +1,14 @@
 //! Unit tests for `Nip65OutboxResolver`.
 //!
 //! Split from `mod.rs` to keep the implementation file under the 300 LOC
-//! soft cap (AGENTS.md). 7 tests cover: author writes, indexer fallback,
-//! recipient `#p` reads, explicit pass-through, malformed-tag tolerance,
-//! unmarked-tag = both, invalid-hex author.
+//! soft cap (AGENTS.md). Tests cover: author writes, fail-closed on missing
+//! kind:10002, recipient `#p` reads, explicit pass-through, malformed-tag
+//! tolerance, unmarked-tag = both, invalid-hex author.
+//!
+//! T-publish-resolver-indexer (codex f81f735): the indexer-fallback tests
+//! have been updated to assert the new fail-closed semantics — an author with
+//! no kind:10002 resolves to an empty relay set, causing `NoTargets` upstream,
+//! rather than silently widening to arbitrary public relays.
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -36,7 +41,7 @@ fn store_kind10002(store: &dyn EventStore, author_hex: &str, tags: Vec<Vec<Strin
 }
 
 fn mk_resolver(store: Arc<dyn EventStore>) -> Nip65OutboxResolver {
-    Nip65OutboxResolver::new(store, vec!["wss://fallback.example".to_string()])
+    Nip65OutboxResolver::new(store)
 }
 
 #[test]
@@ -59,13 +64,21 @@ fn nip65_resolver_uses_author_writes_when_present() {
     assert!(!out.contains("wss://fallback.example"));
 }
 
+/// T-publish-resolver-indexer (codex f81f735): an author with no kind:10002
+/// must resolve to an **empty relay set** (fail-closed). The engine maps this
+/// to `PublishEngineError::NoTargets` — the user sees a visible toast ("no
+/// relay to publish to") rather than a silent widening to arbitrary relays.
+/// This mirrors T134's subscription-side `unroutable_authors` semantics.
 #[test]
-fn nip65_resolver_falls_back_to_indexer_when_no_kind10002() {
+fn nip65_resolver_returns_empty_when_no_kind10002() {
     let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
     let resolver = mk_resolver(store);
     let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto);
-    assert_eq!(out.len(), 1);
-    assert!(out.contains("wss://fallback.example"));
+    assert!(
+        out.is_empty(),
+        "author with no kind:10002 must resolve to empty set (fail-closed, NoTargets); \
+         got {out:?}"
+    );
 }
 
 #[test]
@@ -158,12 +171,18 @@ fn nip65_resolver_unmarked_tag_is_both() {
     assert!(out.contains("wss://recipient-both.example"));
 }
 
+/// T-publish-resolver-indexer: an unparseable (non-hex, wrong-length) author
+/// pubkey means the kind:10002 lookup returns `None`. This is also unroutable
+/// → empty relay set (fail-closed). Same `NoTargets` outcome upstream.
 #[test]
-fn nip65_resolver_invalid_author_hex_falls_back() {
+fn nip65_resolver_invalid_author_hex_returns_empty() {
     let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
     let resolver = mk_resolver(store);
-    // Short / non-hex author → lookup returns None → fallback.
+    // Short / non-hex author → lookup returns None → empty (fail-closed).
     let out = resolver.resolve("not-hex", &[], &PublishTarget::Auto);
-    assert_eq!(out.len(), 1);
-    assert!(out.contains("wss://fallback.example"));
+    assert!(
+        out.is_empty(),
+        "unparseable author pubkey must resolve to empty set (fail-closed); \
+         got {out:?}"
+    );
 }

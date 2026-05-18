@@ -206,6 +206,36 @@ impl Kernel {
         self.requested_thread_ids.contains(id) || self.pending_thread_ids.contains(id)
     }
 
+    /// Seed a kind:10002 (NIP-65 relay list) into the kernel's event store and
+    /// relay-list cache for `author_pubkey` with `write_urls` as its write-marker
+    /// relay tags.
+    ///
+    /// Required by tests that exercise the publish path after
+    /// T-publish-resolver-indexer (codex f81f735): `Nip65OutboxResolver` is now
+    /// fail-closed — an author with no kind:10002 resolves to an empty relay set
+    /// and the engine returns `NoTargets`. Tests that assert non-empty outbound
+    /// frames MUST call this before any publish command.
+    ///
+    /// Test-support only — gated on `cfg(any(test, feature = "test-support"))`.
+    #[allow(dead_code)]
+    pub(crate) fn seed_kind10002_for_test(&mut self, author_pubkey: &str, write_urls: &[&str]) {
+        let id_prefix = &author_pubkey[..2];
+        let id = format!("{:0<64}", format!("{}k10002ts", id_prefix));
+        let tags: Vec<Vec<String>> = write_urls
+            .iter()
+            .map(|url| vec!["r".to_string(), url.to_string(), "write".to_string()])
+            .collect();
+        self.inject_replaceable_event(
+            &id,
+            author_pubkey,
+            1_700_000_000,
+            10002,
+            tags,
+            "wss://seed",
+            1_700_000_000_000,
+        );
+    }
+
     /// Sort the timeline once after a batch inject (deferred sort).
     ///
     /// Call this after a loop of `ingest_pre_verified_event` calls to amortize

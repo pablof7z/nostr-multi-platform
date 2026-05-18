@@ -8,6 +8,25 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
+### PD-030 RESOLVED AUTONOMOUSLY (2026-05-18, T-publish-resolver-indexer) — fix code, not docs
+
+**Decision:** Removed `DEFAULT_INDEXER_FALLBACK` from `Nip65OutboxResolver` and made the resolver fail-closed (empty set → `NoTargets` upstream) when an author has no kind:10002 in the event store. Docs were correct; code was the legacy outlier.
+
+**Context:** Codex review `f81f735` (HB60–HB66) flagged a mismatch: `docs/builder-guide/10-outbox-routing.md` says the indexer is "discovery-only" after T134, but `Nip65OutboxResolver` still fell back to hardcoded public relays (`wss://relay.damus.io`, `wss://nos.lol`) for authors with no kind:10002. That silent widening violated D3 and `subsystems.md:99` ("do not publish to indexers").
+
+**Options evaluated:**
+- A. Fix the code (remove fallback; fail-closed). CHOSEN.
+- B. Keep fallback but rename/document it as a "warm-up widening" exception.
+- C. Fix the docs to describe the fallback as intended.
+
+**Rationale for A:** (1) The "fallback" URLs are large public *content* relays, not indexers — the name `DEFAULT_INDEXER_FALLBACK` was doubly wrong. (2) T134 established `unroutable_authors` as the correct subscription-side pattern; publish should mirror it. (3) `PublishEngineError::NoTargets` already exists and produces a visible toast ("add a relay in Accounts → Relays") rather than a silent misdirect. (4) D3 absolute: outbox routing is automatic, never a hardcoded public relay list. Option B was tempting but requires user input on which URIs qualify as bootstrap seeds — blocking. Option C would document a known-wrong behavior.
+
+**Artifacts:** `crates/nmp-core/src/publish/nip65/mod.rs`, `crates/nmp-core/src/kernel/publish_engine.rs`, `crates/nmp-core/src/relay.rs`, `crates/nmp-core/src/publish/mod.rs`, all test files updated.
+
+**Status:** RESOLVED 2026-05-18. Awaiting user acknowledgement.
+
+---
+
 ### PD-029 RESOLVED AUTONOMOUSLY (2026-05-18, HB57) — picked **Option A: trait seam in nmp-substrate-types**
 
 User is asleep; decision made per autonomous-mode rule. Pattern-match: user has consistently chosen the cleanest long-term option over surgical/fast (PD-027 → substrate-types extract; PD-028 → ADR-first). Option A (trait seam, ~1-2 hr) is the recommended-clean choice; matches LSP-style backend pluggability; aligns `DomainHandle` with `EventStore` (also a trait); generalizes to future M2 hot-path (T140). Worktree agent dispatched at HB57.
