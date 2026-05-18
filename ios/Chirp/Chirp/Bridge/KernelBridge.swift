@@ -74,6 +74,21 @@ final class KernelHandle {
         }
     }
 
+    /// Signal that the author feed for `pubkey` is no longer visible.
+    /// Tears down the author-subscription so the kernel's wire_subs count
+    /// returns to baseline. Call from `.onDisappear` on the AuthorView
+    /// (ProfileView) to prevent sub-leaks on navigation pop.
+    func closeAuthor(pubkey: String) {
+        pubkey.withCString { nmp_app_close_author(raw, $0) }
+    }
+
+    /// Signal that the thread for `eventID` is no longer visible.
+    /// Symmetric counterpart to `openThread`; call from `.onDisappear`
+    /// on the ThreadScreen to release the thread subscription.
+    func closeThread(eventID: String) {
+        eventID.withCString { nmp_app_close_thread(raw, $0) }
+    }
+
     // ── T66a identity / publish / multi-account / relay-edit ──────────────
 
     func signInNsec(_ secret: String) {

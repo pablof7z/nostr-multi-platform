@@ -39,6 +39,12 @@ struct ProfileView: View {
         .task {
             model.openAuthor(pubkey: pubkey)
         }
+        .onDisappear {
+            // T152: release the author subscription when this view is no
+            // longer visible (NavigationStack pop, or another view pushed
+            // on top).  Keeps wire_subs at baseline after navigation.
+            model.closeAuthor(pubkey: pubkey)
+        }
         .animation(.smooth(duration: 0.3), value: model.profile)
         .animation(.smooth(duration: 0.25), value: model.items.count)
     }

@@ -103,8 +103,16 @@ final class KernelModel: ObservableObject {
         kernel.openAuthor(pubkey: pubkey)
     }
 
+    func closeAuthor(pubkey: String) {
+        kernel.closeAuthor(pubkey: pubkey)
+    }
+
     func openThread(eventID: String) {
         kernel.openThread(eventID: eventID)
+    }
+
+    func closeThread(eventID: String) {
+        kernel.closeThread(eventID: eventID)
     }
 
     func claimProfile(pubkey: String, consumerID: String) {

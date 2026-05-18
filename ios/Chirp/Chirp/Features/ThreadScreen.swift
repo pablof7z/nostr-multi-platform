@@ -29,6 +29,11 @@ struct ThreadScreen: View {
         .task {
             model.openThread(eventID: eventID)
         }
+        .onDisappear {
+            // T152: release the thread subscription when this view is no
+            // longer visible.  Symmetric with openThread in .task above.
+            model.closeThread(eventID: eventID)
+        }
         .animation(.smooth(duration: 0.3), value: thread == nil)
         .sheet(item: $replyTargetID) { target in
             ComposeView(replyToID: target.eventID)
