@@ -61,6 +61,7 @@ pub(crate) mod compiler;
 pub(crate) mod interest;
 pub(crate) mod lattice;
 pub(crate) mod plan;
+pub(crate) mod selection;
 
 // ─── Public API surface ──────────────────────────────────────────────────────
 //
@@ -99,3 +100,4 @@ pub use plan::{
     SubShape,
     UserConfiguredCategory,
 };
+pub use selection::apply_selection;
