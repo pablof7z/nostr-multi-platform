@@ -1,47 +1,32 @@
-//! Idle-tick timing helpers — `next_actor_msg`, `emit_now`, `flush_due`, and
+//! Idle-tick timing helpers — `compute_wait`, `emit_now`, `flush_due`, and
 //! the `emit_interval` utility.  Separated from the main loop so that the D8
 //! invariant ("emit only when state changed") is concentrated in one file.
 
 use crate::app::KernelUpdate;
 use crate::kernel::Kernel;
 use crate::update_envelope::{wrap_snapshot, wrap_update};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
+use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
-use super::ActorMsg;
-
-pub(super) fn next_actor_msg(
-    actor_rx: &Receiver<ActorMsg>,
+/// Compute how long the actor loop should block on `relay_rx.recv_timeout`.
+///
+/// When the kernel has un-emitted changes and we are running, returns the
+/// time remaining until the next emit window (clamped to zero). Otherwise
+/// returns 250 ms so that time-gated kernel gates (e.g. contacts_deadline)
+/// are checked at a reasonable cadence even with no relay traffic.
+pub(super) fn compute_wait(
     kernel: &Kernel,
     running: bool,
     last_emit: Instant,
     emit_hz: u32,
-) -> Result<Option<ActorMsg>, ()> {
+) -> Duration {
     if running && kernel.changed_since_emit() {
-        let wait = emit_interval(emit_hz)
+        emit_interval(emit_hz)
             .checked_sub(last_emit.elapsed())
-            .unwrap_or(Duration::ZERO);
-        if wait.is_zero() {
-            return Ok(None);
-        }
-        return match actor_rx.recv_timeout(wait) {
-            Ok(message) => Ok(Some(message)),
-            Err(RecvTimeoutError::Timeout) => Ok(None),
-            Err(RecvTimeoutError::Disconnected) => Err(()),
-        };
+            .unwrap_or(Duration::ZERO)
+    } else {
+        Duration::from_millis(250)
     }
-
-    if running {
-        // Poll at 250 ms so time-based kernel gates (e.g. contacts_deadline)
-        // are checked even when no relay messages arrive.
-        return match actor_rx.recv_timeout(Duration::from_millis(250)) {
-            Ok(message) => Ok(Some(message)),
-            Err(RecvTimeoutError::Timeout) => Ok(None),
-            Err(RecvTimeoutError::Disconnected) => Err(()),
-        };
-    }
-
-    actor_rx.recv().map(Some).map_err(|_| ())
 }
 
 pub(super) fn emit_interval(emit_hz: u32) -> Duration {
@@ -72,7 +57,7 @@ pub(super) fn emit_now(
 /// View-command dispatchers (`OpenAuthor`, `ClaimProfile`, … — everything in
 /// `dispatch.rs` that mutates kernel state but is NOT a lifecycle event) MUST
 /// route through this helper. It emits the snapshot only when `running=true`,
-/// matching the idle-tick path's gating contract (see [`next_actor_msg`]).
+/// matching the idle-tick path's gating contract (see [`compute_wait`]).
 ///
 /// When the kernel is in `running=false` state (the harness Configure-not-Start
 /// pattern used by S1–S5, and the `nmp_app_configure` mid-process call before

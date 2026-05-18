@@ -15,30 +15,9 @@ use crate::relay::{OutboundMessage, RelayRole, BOOTSTRAP_DISCOVERY_RELAYS};
 use crate::relay_worker::{spawn_relay_worker, RelayCommand, RelayEvent};
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
-use std::sync::mpsc::{Receiver, Sender};
-use std::thread;
+use std::sync::mpsc::Sender;
 
-use super::{ActorCommand, ActorMsg, RelayControl};
-
-pub(super) fn bridge_commands(command_rx: Receiver<ActorCommand>, actor_tx: Sender<ActorMsg>) {
-    thread::spawn(move || {
-        while let Ok(command) = command_rx.recv() {
-            if actor_tx.send(ActorMsg::Command(command)).is_err() {
-                break;
-            }
-        }
-    });
-}
-
-pub(super) fn bridge_relays(relay_rx: Receiver<RelayEvent>, actor_tx: Sender<ActorMsg>) {
-    thread::spawn(move || {
-        while let Ok(event) = relay_rx.recv() {
-            if actor_tx.send(ActorMsg::Relay(event)).is_err() {
-                break;
-            }
-        }
-    });
-}
+use super::RelayControl;
 
 /// True when at least one URL on **every** lane has reported `Connected`.
 /// Used as the startup-send gate so the first burst of REQs has somewhere to

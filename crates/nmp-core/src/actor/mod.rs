@@ -2,6 +2,16 @@
 //!
 //! Idle-tick timing helpers are in `tick.rs`.
 //! Relay lifecycle helpers are in `relay_mgmt.rs`.
+//!
+//! # Dual-channel priority design
+//!
+//! Commands (`command_rx`) are checked via `try_recv` at the top of every
+//! iteration — zero latency, never dropped under relay event flood.
+//! Relay events go through their own separate channel, read via
+//! `recv_timeout(compute_wait(…))`. This replaces the old merged
+//! `SyncSender<ActorMsg>` design where a 4096-slot bounded channel could fill
+//! with relay events and cause `try_send` to silently drop commands like
+//! `CreateAccount` during onboarding.
 
 mod commands;
 mod dispatch;
@@ -30,35 +40,18 @@ use crate::kernel::LifecyclePhase;
 use crate::app::KernelAction;
 
 use relay_mgmt::{
-    all_relays_connected, bridge_commands, bridge_relays, close_relays, maybe_send_startup,
-    send_all_outbound,
+    all_relays_connected, close_relays, maybe_send_startup, send_all_outbound,
 };
-use tick::{emit_now, flush_due, next_actor_msg};
+use tick::{compute_wait, emit_now, flush_due};
 
 use crate::kernel::Kernel;
 use crate::relay::{RelayRole, DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 use crate::relay_worker::{RelayCommand, RelayEvent};
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TrySendError};
+use std::sync::atomic::AtomicU64;
+use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::Arc;
-use std::thread;
 use std::time::{Duration, Instant};
-
-/// Bounded capacity of the actor's internal command channel (T114 part 1 of 2).
-/// D8: M10.5 S2 drain (`docs/perf/m10.5/s2-drain-analysis.md`, `d6d5400`) measured
-/// ~127 B/dispatch retained on the unbounded internal channel. 4096 caps worst-case
-/// retention at ~520 KiB (4096 × 127 B), well under the 1 MiB D8 budget; final
-/// tuning waits for the per-dispatch retention audit in T114b.
-pub(super) const BOUNDED_ACTOR_CMD_CAPACITY: usize = 4096;
-
-// Keep `bridge_commands` / `bridge_relays` (relay_mgmt.rs, out of T114 write zone)
-// reachable in the symbol graph after `run_actor` was rewritten to inline its
-// forwarders. Path-as-value suppresses dead_code without touching their file.
-#[allow(dead_code)]
-const _BRIDGE_COMMANDS_KEEPALIVE: fn(Receiver<ActorCommand>, Sender<ActorMsg>) = bridge_commands;
-#[allow(dead_code)]
-const _BRIDGE_RELAYS_KEEPALIVE: fn(Receiver<RelayEvent>, Sender<ActorMsg>) = bridge_relays;
 
 /// Actor command variants.  The `actor` module is private (`mod actor`, not
 /// `pub mod actor`), so this `pub` is only reachable from outside the crate
@@ -188,11 +181,6 @@ pub enum ActorCommand {
     IngestPreVerifiedEvents(Vec<crate::store::VerifiedEvent>),
 }
 
-pub(super) enum ActorMsg {
-    Command(ActorCommand),
-    Relay(RelayEvent),
-}
-
 /// One per-URL relay-worker handle. T105: `relay_url` (NOT `role`) is the
 /// pool key — every resolved write/read relay gets its own socket. `role`
 /// is retained so the actor can route diagnostic-bucket updates back to
@@ -224,21 +212,25 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
 /// slot. The FFI (`ffi/lifecycle.rs::nmp_app_set_lifecycle_callback`)
 /// shares the SAME `Arc<Mutex<…>>` so registrations from the Swift bridge
 /// are visible to the actor thread without crossing the FFI on each event.
+///
+/// Dual-channel priority design: `command_rx` is drained via `try_recv` at
+/// the top of every iteration so UI commands are NEVER dropped under relay
+/// event flood. Relay events use a separate channel read with
+/// `recv_timeout(compute_wait(…))` so emit-hz cadence is respected.
 pub fn run_actor_with_lifecycle_observer(
     command_rx: Receiver<ActorCommand>,
     update_tx: Sender<String>,
     lifecycle_observer: LifecycleObserverSlot,
 ) {
-    // T114 part 1: bounded internal command channel. Commands `try_send` and
-    // drop on `Full` (D6 fire-and-forget — never block the FFI thread); relay
-    // events use the same `SyncSender` with blocking `send` so network frames
-    // are not silently dropped (backpressures onto the internal relay worker).
-    let (actor_tx, actor_rx) = mpsc::sync_channel::<ActorMsg>(BOUNDED_ACTOR_CMD_CAPACITY);
+    // Dual-channel design: relay events get their own dedicated channel.
+    // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.
+    let (relay_tx, relay_rx) = mpsc::channel::<RelayEvent>();
+
+    // T114b — bind a dispatch-drops counter for diagnostic visibility. Under
+    // the new dual-channel design the counter is always zero (commands cannot
+    // be dropped), but the kernel API and the Reset rebind path are kept so
+    // the FFI surface and diagnostic snapshot don't change.
     let dispatch_drops = Arc::new(AtomicU64::new(0));
-    spawn_bounded_command_forwarder(command_rx, actor_tx.clone(), Arc::clone(&dispatch_drops));
-    let (relay_tx, relay_rx) = mpsc::channel();
-    spawn_relay_forwarder(relay_rx, actor_tx.clone());
-    let _ = actor_tx; // local sender no longer needed; forwarders hold clones.
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     // T114b — bind the FFI-channel drop counter so it surfaces on the
@@ -259,104 +251,69 @@ pub fn run_actor_with_lifecycle_observer(
     let mut startup_sent = false;
 
     loop {
-        let message = match next_actor_msg(&actor_rx, &kernel, running, last_emit, emit_hz) {
-            Ok(Some(message)) => message,
-            Ok(None) => {
-                // Flush any time-gated view requests (e.g. contacts_deadline).
-                let pending = kernel.pending_view_requests();
-                if !pending.is_empty() {
-                    send_all_outbound(
+        // ── Priority lane: commands ──────────────────────────────────────
+        // Drain ALL pending commands before touching relay events. This is
+        // the core of the dual-channel priority guarantee: commands can never
+        // be starved by relay event floods because they bypass the relay_rx
+        // entirely and are never queued behind relay events.
+        loop {
+            match command_rx.try_recv() {
+                Ok(command) => {
+                    let relays_ready = all_relays_connected(&connected_relays);
+                    let outbound = dispatch_command(
+                        command,
+                        &mut kernel,
+                        &mut identity,
+                        &mut wallet,
                         &mut relay_controls,
                         &relay_tx,
-                        &mut kernel,
+                        &mut connected_relays,
+                        &update_tx,
+                        &mut last_emit,
                         &mut next_relay_generation,
-                        pending,
+                        &mut running,
+                        &mut emit_hz,
+                        &mut startup_sent,
+                        relays_ready,
+                        &lifecycle_observer,
                     );
-                }
-                // T127: actor-tick for the publish engine. The 250ms idle poll
-                // in `next_actor_msg` (`tick.rs`) already paces this; no
-                // additional throttle (the engine's own pending_retries gate
-                // skips dispatch work when nothing is due). D8 — when
-                // `in_flight` is empty the tick is heap-free:
-                //   - `PublishEngine::tick` collects `Vec<PublishHandle>`
-                //     from an empty iterator (Rust's `FromIterator for Vec`
-                //     special-cases empty → `Vec::new()`, no allocation),
-                //   - `QueueDispatcher::drain` swaps in `Vec::new()` via
-                //     `mem::take` (no allocation when the queue was empty),
-                //   - the kernel returns `drained.into_iter().map(..).collect()`
-                //     which is also heap-free for an empty source.
-                // Closes Residual 1 from T117 — transient retries fire even
-                // on a quiet socket (no inbound traffic).
-                if running {
-                    let retry_frames = kernel.tick_publish_engine_for_now();
-                    if !retry_frames.is_empty() {
+                    let Some(outbound) = outbound else {
+                        return; // Shutdown
+                    };
+                    if running {
                         send_all_outbound(
                             &mut relay_controls,
                             &relay_tx,
                             &mut kernel,
                             &mut next_relay_generation,
-                            retry_frames,
+                            outbound,
                         );
+                        if maybe_send_startup(
+                            running,
+                            &mut startup_sent,
+                            &connected_relays,
+                            &mut relay_controls,
+                            &relay_tx,
+                            &mut kernel,
+                            &mut next_relay_generation,
+                        ) {
+                            emit_now(&mut kernel, running, &update_tx, &mut last_emit);
+                        }
                     }
                 }
-                // Only emit when state actually changed; do not emit on every
-                // idle tick (D8: zero false-wakeup allocations after warmup).
-                if kernel.changed_since_emit() {
-                    emit_now(&mut kernel, running, &update_tx, &mut last_emit);
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => {
+                    close_relays(&mut relay_controls, &mut connected_relays, &mut kernel);
+                    return;
                 }
-                continue;
             }
-            Err(()) => {
-                close_relays(&mut relay_controls, &mut connected_relays, &mut kernel);
-                return;
-            }
-        };
+        }
 
-        match message {
-            ActorMsg::Command(command) => {
-                let relays_ready = all_relays_connected(&connected_relays);
-                let outbound = dispatch_command(
-                    command,
-                    &mut kernel,
-                    &mut identity,
-                    &mut wallet,
-                    &mut relay_controls,
-                    &relay_tx,
-                    &mut connected_relays,
-                    &update_tx,
-                    &mut last_emit,
-                    &mut next_relay_generation,
-                    &mut running,
-                    &mut emit_hz,
-                    &mut startup_sent,
-                    relays_ready,
-                    &lifecycle_observer,
-                );
-                let Some(outbound) = outbound else {
-                    return; // Shutdown
-                };
-                if running {
-                    send_all_outbound(
-                        &mut relay_controls,
-                        &relay_tx,
-                        &mut kernel,
-                        &mut next_relay_generation,
-                        outbound,
-                    );
-                    if maybe_send_startup(
-                        running,
-                        &mut startup_sent,
-                        &connected_relays,
-                        &mut relay_controls,
-                        &relay_tx,
-                        &mut kernel,
-                        &mut next_relay_generation,
-                    ) {
-                        emit_now(&mut kernel, running, &update_tx, &mut last_emit);
-                    }
-                }
-            }
-            ActorMsg::Relay(event) => {
+        // ── Relay event lane ─────────────────────────────────────────────
+        // Block up to compute_wait so emit-hz is respected without busy-spin.
+        let wait = compute_wait(&kernel, running, last_emit, emit_hz);
+        match relay_rx.recv_timeout(wait) {
+            Ok(event) => {
                 let relay_url = event.relay_url().to_string();
                 let generation = event.generation();
                 if relay_controls
@@ -364,140 +321,71 @@ pub fn run_actor_with_lifecycle_observer(
                     .is_none_or(|control| control.generation != generation)
                 {
                     // Stale event from a disposed worker — ignore.
-                    continue;
+                } else {
+                    handle_relay_event(
+                        event,
+                        &mut kernel,
+                        &mut wallet,
+                        &mut relay_controls,
+                        &relay_tx,
+                        &mut next_relay_generation,
+                        &mut connected_relays,
+                        &update_tx,
+                        &mut last_emit,
+                        &mut startup_sent,
+                        running,
+                    );
                 }
-                handle_relay_event(
-                    event,
-                    &mut kernel,
-                    &mut wallet,
+            }
+            Err(_timeout_or_disconnected) => {
+                // Timeout (normal idle tick) or relay_rx disconnected (actor
+                // holds relay_tx so this can't happen in practice). Either way
+                // fall through to idle work below.
+            }
+        }
+
+        // ── Idle work (runs on every iteration after relay poll) ─────────
+        // Flush any time-gated view requests (e.g. contacts_deadline).
+        let pending = kernel.pending_view_requests();
+        if !pending.is_empty() {
+            send_all_outbound(
+                &mut relay_controls,
+                &relay_tx,
+                &mut kernel,
+                &mut next_relay_generation,
+                pending,
+            );
+        }
+        // T127: actor-tick for the publish engine. The 250ms idle poll
+        // in `compute_wait` (`tick.rs`) already paces this; no
+        // additional throttle (the engine's own pending_retries gate
+        // skips dispatch work when nothing is due). D8 — when
+        // `in_flight` is empty the tick is heap-free:
+        //   - `PublishEngine::tick` collects `Vec<PublishHandle>`
+        //     from an empty iterator (Rust's `FromIterator for Vec`
+        //     special-cases empty → `Vec::new()`, no allocation),
+        //   - `QueueDispatcher::drain` swaps in `Vec::new()` via
+        //     `mem::take` (no allocation when the queue was empty),
+        //   - the kernel returns `drained.into_iter().map(..).collect()`
+        //     which is also heap-free for an empty source.
+        // Closes Residual 1 from T117 — transient retries fire even
+        // on a quiet socket (no inbound traffic).
+        if running {
+            let retry_frames = kernel.tick_publish_engine_for_now();
+            if !retry_frames.is_empty() {
+                send_all_outbound(
                     &mut relay_controls,
                     &relay_tx,
+                    &mut kernel,
                     &mut next_relay_generation,
-                    &mut connected_relays,
-                    &update_tx,
-                    &mut last_emit,
-                    &mut startup_sent,
-                    running,
+                    retry_frames,
                 );
             }
         }
-
+        // Only emit when state actually changed; do not emit on every
+        // idle tick (D8: zero false-wakeup allocations after warmup).
         if flush_due(&kernel, running, last_emit, emit_hz) {
             emit_now(&mut kernel, running, &update_tx, &mut last_emit);
         }
-    }
-}
-
-/// FFI → bounded-actor-channel forwarder (T114 part 1 of 2).
-/// `try_send`s onto the bounded sink; on `Full` drops the command and increments
-/// `dispatch_drops`. Drop-newest is the defensible policy: FFI dispatch is
-/// fire-and-forget (D6) and most commands are idempotent (Open/Claim/Close) or
-/// retryable from the UI (publish/follow). Coalescing ships as follow-up if
-/// production drops are observed.
-pub(super) fn spawn_bounded_command_forwarder(
-    command_rx: Receiver<ActorCommand>,
-    actor_tx: SyncSender<ActorMsg>,
-    dispatch_drops: Arc<AtomicU64>,
-) {
-    thread::spawn(move || {
-        while let Ok(command) = command_rx.recv() {
-            match actor_tx.try_send(ActorMsg::Command(command)) {
-                Ok(()) => {}
-                Err(TrySendError::Full(_dropped)) => {
-                    // D6: FFI dispatch is fire-and-forget; never block, never
-                    // surface an error across the FFI boundary. Drop the
-                    // command and increment the visibility counter.
-                    dispatch_drops.fetch_add(1, Ordering::Relaxed);
-                }
-                Err(TrySendError::Disconnected(_)) => return,
-            }
-        }
-    });
-}
-
-/// Relay-event → actor-channel forwarder. Uses blocking `send`: relay events MAY
-/// backpressure onto the (internal) relay-worker thread. The bounded T114 scope
-/// is the FFI dispatch path only — dropping network frames would be a
-/// correctness bug.
-pub(super) fn spawn_relay_forwarder(
-    relay_rx: Receiver<RelayEvent>,
-    actor_tx: SyncSender<ActorMsg>,
-) {
-    thread::spawn(move || {
-        while let Ok(event) = relay_rx.recv() {
-            if actor_tx.send(ActorMsg::Relay(event)).is_err() {
-                break;
-            }
-        }
-    });
-}
-
-#[cfg(test)]
-mod bounded_channel_tests {
-    use super::*;
-
-    /// T114 part 1 — synthetic full-channel flood. With NO reader draining,
-    /// sending past capacity must NOT block, MUST increment `dispatch_drops`,
-    /// and the actor side MUST receive exactly `capacity` messages.
-    #[test]
-    fn full_channel_drops_excess_and_never_blocks() {
-        const CAP: usize = 4;
-        const FLOOD: usize = 64;
-
-        let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
-        let (actor_tx, actor_rx) = mpsc::sync_channel::<ActorMsg>(CAP);
-        let drops = Arc::new(AtomicU64::new(0));
-        spawn_bounded_command_forwarder(cmd_rx, actor_tx, Arc::clone(&drops));
-
-        let start = Instant::now();
-        for _ in 0..FLOOD {
-            cmd_tx
-                .send(ActorCommand::Kernel(KernelAction::OpenView {
-                    namespace: "profile".into(),
-                    key: "pk".into(),
-                }))
-                .expect("FFI channel send must not block (unbounded)");
-        }
-        thread::sleep(Duration::from_millis(50));
-
-        let elapsed = start.elapsed();
-        assert!(elapsed < Duration::from_millis(500), "forwarder blocked: {elapsed:?}");
-
-        let mut received = 0usize;
-        while actor_rx.try_recv().is_ok() {
-            received += 1;
-        }
-        let total_drops = drops.load(Ordering::Relaxed) as usize;
-        assert_eq!(received, CAP, "bounded channel held {received}, expected {CAP}");
-        assert_eq!(received + total_drops, FLOOD, "received+drops != flood");
-        assert!(total_drops > 0, "expected drops under flood, got {total_drops}");
-    }
-
-    /// T114 part 1 — actor still progresses after drops. Once the actor
-    /// drains the bounded channel, the forwarder's next `try_send` must
-    /// succeed (no orphaned thread, no disconnect).
-    #[test]
-    fn actor_progresses_after_overflow_drops() {
-        let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
-        let (actor_tx, actor_rx) = mpsc::sync_channel::<ActorMsg>(2);
-        let drops = Arc::new(AtomicU64::new(0));
-        spawn_bounded_command_forwarder(cmd_rx, actor_tx, Arc::clone(&drops));
-
-        for _ in 0..16 {
-            cmd_tx.send(ActorCommand::Reset).expect("FFI send");
-        }
-        thread::sleep(Duration::from_millis(50));
-        assert!(drops.load(Ordering::Relaxed) > 0, "expected drops after flood");
-
-        while actor_rx.try_recv().is_ok() {} // drain
-        cmd_tx.send(ActorCommand::Stop).expect("FFI send (recovered)");
-        let received = (0..20).find_map(|_| {
-            thread::sleep(Duration::from_millis(10));
-            actor_rx.try_recv().ok()
-        });
-        assert!(
-            matches!(received, Some(ActorMsg::Command(ActorCommand::Stop))),
-            "actor must keep progressing after drop episode"
-        );
     }
 }
