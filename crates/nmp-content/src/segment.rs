@@ -1,9 +1,14 @@
 //! Segment IR — the cross-platform output of [`crate::tokenize`].
 //!
-//! These types are the **FFI-stable boundary** between the substrate and
-//! every consuming UI (SwiftUI / Compose / iced / wasm). Changing any
-//! variant's shape is a breaking change for every consumer including the
-//! pulse-builder iOS scaffold (#66). Add fields conservatively.
+//! These types are the internal, ergonomic, **recursive** representation. They
+//! are NOT themselves serde-serializable (see the [`Segment`] doc-comment) and
+//! therefore are NOT directly a `ViewModule::Payload`. The **FFI-stable wire
+//! boundary** every consuming UI (SwiftUI / Compose / iced / wasm) actually
+//! decodes is [`crate::wire::ContentTreeWire`], produced by the pure projection
+//! [`ContentTree::to_wire`]. See
+//! `docs/decisions/0018-content-tree-ffi-projection.md`. Changing a variant's
+//! shape still ripples through the wire projection, so add fields
+//! conservatively.
 
 use nmp_core::nip21::NostrUri;
 use serde::{Deserialize, Serialize};

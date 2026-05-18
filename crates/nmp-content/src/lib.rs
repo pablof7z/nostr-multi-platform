@@ -32,6 +32,7 @@ pub mod embed_registry;
 pub mod markdown;
 pub mod mode;
 pub mod segment;
+pub mod wire;
 mod grouper;
 mod regex_set;
 mod tokenizer;
@@ -45,3 +46,7 @@ pub use markdown::{MarkdownInline, MarkdownNode};
 pub use mode::{sniff_mode_from_kind, RenderMode};
 pub use segment::{ContentTree, InvoiceKind, MediaKind, Segment};
 pub use tokenizer::{tokenize, tokenize_with_kind};
+pub use wire::{
+    ContentTreeWire, PlaceholderReason, WireNode, WireNostrUri, WireNostrUriKind,
+    WIRE_MAX_DEPTH,
+};
