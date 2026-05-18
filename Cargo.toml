@@ -22,6 +22,7 @@ members = [
     "crates/nmp-nip51",
     "crates/nmp-nip57",
     "crates/nmp-nip77",
+    "crates/nmp-nostr-lmdb",
     "crates/nmp-nwc",
     "crates/nmp-reactions",
     "crates/nmp-signer-broker",

@@ -1,0 +1,30 @@
+[package]
+name = "nmp-nostr-lmdb"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "NMP-local fork of nostr-lmdb v0.44.1 with env-injection seam (PD-026 Option B)"
+
+[lib]
+name = "nmp_nostr_lmdb"
+path = "src/lib.rs"
+
+[dependencies]
+async-utility = "0.3"
+flume = "0.11"
+nostr = { version = "0.44", default-features = false, features = ["std"] }
+nostr-database = { version = "0.44", default-features = false, features = ["flatbuf"] }
+tokio = { version = ">=1.37", default-features = false, features = ["sync"] }
+tracing = { version = "0.1", default-features = false }
+
+# POSIX semaphores are required for Apple's App Sandbox on iOS & macOS.
+[target.'cfg(not(all(target_os = "macos", target_os = "ios")))'.dependencies]
+heed = { version = "0.20", default-features = false, features = ["read-txn-no-tls"] }
+
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+heed = { version = "0.20", default-features = false, features = ["read-txn-no-tls", "posix-sem"] }
+
+[dev-dependencies]
+futures = "0.3"
+tempfile = "3"
+tokio = { version = ">=1.37", default-features = false, features = ["macros", "rt-multi-thread"] }
