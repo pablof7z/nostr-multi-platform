@@ -32,7 +32,9 @@ use nmp_signers::{parse_bunker_uri, Nip46Signer, Nip46SignerHandle};
 use nostr::{Keys, PublicKey};
 use serde_json::Value;
 
-use crate::handshake::{build_req_frame, run_handshake, HandshakeOutcome};
+use crate::handshake::{
+    build_req_frame, run_handshake, run_nostrconnect_handshake, HandshakeOutcome,
+};
 use crate::relay_client::{EventCallback, RelayClient, TungsteniteRelayClient};
 use crate::transport::BrokerTransport;
 
@@ -98,6 +100,180 @@ impl BunkerBroker {
                 signer: Mutex::new(None),
             });
         }
+    }
+
+    /// Begin the signer-initiated (`nostrconnect://`) handshake. Returns the
+    /// `nostrconnect://` URI **immediately** (it embeds the ephemeral client
+    /// pubkey + secret). Spawns a worker thread that:
+    /// 1. Connects to `relay_url`.
+    /// 2. Subscribes (REQ) for inbound kind:24133 events tagged to the
+    ///    ephemeral client pubkey.
+    /// 3. Waits for the signer app to dial the relay and send a `connect` RPC.
+    /// 4. Validates the secret, replies `ack`, sends `get_public_key`.
+    /// 5. Ships `AddRemoteSigner` to the actor on success.
+    ///
+    /// Progress is reported via `BunkerHandshakeProgress` snapshots using the
+    /// same stage strings as the `bunker://` path (`"connecting"`,
+    /// `"awaiting_pubkey"`, `"ready"`, `"idle"`, `"failed"`).
+    ///
+    /// Cancels any prior in-flight bunker or nostrconnect session (MVP
+    /// single-session contract).
+    pub fn start_nostrconnect_handshake(self: &Arc<Self>, relay_url: String) -> String {
+        // Cancel any prior session so a re-scan replaces cleanly.
+        self.cancel();
+
+        // Generate ephemeral keypair + secret now (must return URI synchronously).
+        let local_keys = Keys::generate();
+        let pubkey_hex = local_keys.public_key().to_hex();
+        // Derive the session secret: first 8 bytes of secret key as hex.
+        let secret_bytes = local_keys.secret_key().as_secret_bytes();
+        let secret: String = secret_bytes[..8]
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+
+        // Percent-encode the relay URL for the URI.
+        let encoded_relay: String = relay_url
+            .bytes()
+            .flat_map(|b| match b {
+                b'A'..=b'Z'
+                | b'a'..=b'z'
+                | b'0'..=b'9'
+                | b'-'
+                | b'_'
+                | b'.'
+                | b'~' => vec![b as char],
+                _ => format!("%{b:02X}").chars().collect::<Vec<_>>(),
+            })
+            .collect();
+        let uri = format!(
+            "nostrconnect://{pubkey_hex}?relay={encoded_relay}&secret={secret}&name=Chirp&perms=sign_event%3A1%2Csign_event%3A7"
+        );
+
+        let me = Arc::clone(self);
+        let secret_for_thread = secret.clone();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let cancel_for_thread = Arc::clone(&cancel);
+        let thread = std::thread::spawn(move || {
+            me.run_nostrconnect_thread(relay_url, local_keys, secret_for_thread, cancel_for_thread);
+        });
+
+        // Stage the session entry (placeholder relay/transport until the thread
+        // connects and installs the real ones).
+        if let Ok(mut guard) = self.active.lock() {
+            *guard = Some(ActiveSession {
+                relay: Arc::new(NoopRelay) as Arc<dyn RelayClient>,
+                cancel,
+                handshake_thread: Some(thread),
+                transport: BrokerTransport::new(
+                    Arc::new(NoopRelay) as Arc<dyn RelayClient>,
+                    Keys::generate(),
+                    Keys::generate().public_key(),
+                ),
+                signer: Mutex::new(None),
+            });
+        }
+
+        uri
+    }
+
+    /// Body of the nostrconnect:// worker thread.
+    fn run_nostrconnect_thread(
+        self: Arc<Self>,
+        relay_url: String,
+        local_keys: Keys,
+        expected_secret: String,
+        cancel: Arc<AtomicBool>,
+    ) {
+        // Set up inbound channel.
+        let (inbound_tx, inbound_rx) = mpsc::channel::<Value>();
+        let inbound_tx_for_cb = inbound_tx.clone();
+        let event_cb: EventCallback = Arc::new(move |event| {
+            let _ = inbound_tx_for_cb.send(event);
+        });
+
+        // Connect to the relay.
+        if cancel.load(std::sync::atomic::Ordering::Relaxed) {
+            self.emit_progress("failed", Some("cancelled"));
+            return;
+        }
+        self.emit_progress("connecting", Some(&format!("connecting to relay {relay_url}")));
+        let relay = match TungsteniteRelayClient::connect(&relay_url, Arc::clone(&event_cb)) {
+            Ok(c) => Arc::new(c) as Arc<dyn RelayClient>,
+            Err(e) => {
+                self.emit_progress("failed", Some(&format!("relay connect failed: {e}")));
+                return;
+            }
+        };
+
+        // Subscribe to inbound kind:24133 events p-tagged to our ephemeral pubkey.
+        let req_frame = build_req_frame(BUNKER_SUB_ID, &local_keys.public_key().to_hex());
+        if let Err(e) = relay.send(req_frame) {
+            self.emit_progress("failed", Some(&format!("REQ subscribe failed: {e}")));
+            return;
+        }
+
+        // Build a placeholder transport (we don't know the signer pubkey yet).
+        let placeholder_transport = BrokerTransport::new(
+            Arc::clone(&relay),
+            local_keys.clone(),
+            // Placeholder — will be replaced once we learn the signer pubkey.
+            local_keys.public_key(),
+        );
+        self.install_session(Arc::clone(&relay), Arc::clone(&placeholder_transport));
+
+        // Run the nostrconnect handshake (signer-initiated).
+        let mut progress_emitter = |stage: &str, msg: Option<&str>| {
+            self.emit_progress(stage, msg);
+        };
+        let outcome = match run_nostrconnect_handshake(
+            relay.as_ref(),
+            &inbound_rx,
+            &local_keys,
+            &expected_secret,
+            &cancel,
+            &mut progress_emitter,
+        ) {
+            Ok(o) => o,
+            Err(e) => {
+                self.emit_progress("failed", Some(&format!("{e}")));
+                return;
+            }
+        };
+
+        // Build the real transport now that we know the signer pubkey.
+        let signer_pk = match PublicKey::from_hex(&outcome.signer_pubkey_hex) {
+            Ok(pk) => pk,
+            Err(e) => {
+                self.emit_progress("failed", Some(&format!("signer pubkey decode: {e}")));
+                return;
+            }
+        };
+        let transport = BrokerTransport::new(Arc::clone(&relay), local_keys.clone(), signer_pk);
+        self.install_session(Arc::clone(&relay), Arc::clone(&transport));
+
+        // Build a Nip46SignerHandle from the nostrconnect URI. We reuse the
+        // bunker:// handle type by constructing a synthetic bunker:// URI —
+        // the handle is just a container for local_keys; the transport does the
+        // actual routing.
+        let synthetic_bunker_uri = format!(
+            "bunker://{}?relay={}",
+            outcome.signer_pubkey_hex, relay_url
+        );
+        let handle = match Nip46SignerHandle::from_bunker_uri_with_local_key(
+            &synthetic_bunker_uri,
+            local_keys.secret_key().clone(),
+        ) {
+            Ok(h) => h,
+            Err(e) => {
+                self.emit_progress("failed", Some(&format!("build signer handle: {e}")));
+                return;
+            }
+        };
+
+        self.complete_handshake(handle, transport, inbound_rx, HandshakeOutcome {
+            user_pubkey_hex: outcome.user_pubkey_hex,
+        });
     }
 
     /// Cancel the active session if any. Idempotent.
