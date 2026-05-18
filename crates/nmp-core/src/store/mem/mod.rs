@@ -6,13 +6,13 @@
 //!
 //! See `docs/design/lmdb/trait.md` §5 ("Two backends in v1").
 //!
-//! Module layout (Article I — each sub-module ≤ 300 LOC):
-//!   mod.rs      — factory, `MemState`, `MemEventStore`, provenance helpers
+//! Module layout:
+//!   mod.rs        — factory, `MemState`, `MemEventStore`, provenance helpers
 //!   store_impl.rs — `EventStore` trait impl (delegation to sub-modules)
-//!   insert.rs   — §7.1 insert invariants (replaceable, kind:5, normal)
-//!   query.rs    — read / scan methods
-//!   gc.rs       — claim / release / prune
-//!   domain.rs   — domain rows + migrations
+//!   insert.rs     — §7.1 insert invariants (replaceable, kind:5, normal)
+//!   query.rs      — read / scan methods
+//!   gc.rs         — claim / release / prune
+//!   domain.rs     — domain rows + migrations
 
 pub(super) mod domain;
 pub(super) mod gc;

@@ -27,12 +27,14 @@ pub(super) fn claim(
     claimer: ClaimerId,
     ids: &[EventId],
 ) -> Result<(), StoreError> {
+    use std::collections::BTreeSet;
     let mut st = store.lock()?;
     let ceiling = *st.claim_budgets.get(&claimer).unwrap_or(&DEFAULT_VIEW_CEILING);
 
     let existing_set = st.claims.entry(claimer).or_default();
-    // Only count genuinely new ids (BTreeSet idempotency).
-    let new_ids: Vec<String> = ids
+    // Use BTreeSet for intra-call deduplication so repeated ids in the same
+    // batch do not count multiple times toward the per-view ceiling (T25).
+    let new_ids: BTreeSet<String> = ids
         .iter()
         .map(|id| bytes_to_hex(id))
         .filter(|hex| !existing_set.contains(hex))
@@ -48,13 +50,14 @@ pub(super) fn claim(
         });
     }
 
-    // Global pinned ceiling check (D8 / gc.md §2).
-    let all_pinned: usize = st.claims.values().map(|s| s.len()).sum();
+    // Global pinned ceiling uses UNION of all claim sets, not SUM, to avoid
+    // double-counting ids pinned by multiple claimers (D8 / gc.md §2).
+    let current_global: BTreeSet<&str> = st.claims.values().flatten().map(String::as_str).collect();
     let global_new = new_ids
         .iter()
-        .filter(|hex| !st.claims.values().any(|s| s.contains(*hex)))
+        .filter(|hex| !current_global.contains(hex.as_str()))
         .count();
-    let requested_global = all_pinned + global_new;
+    let requested_global = current_global.len() + global_new;
     if requested_global > MAX_PINNED_TOTAL {
         return Err(StoreError::OverPinned {
             claimer,
@@ -77,7 +80,7 @@ pub(super) fn release(
 ) -> Result<(), StoreError> {
     let mut st = store.lock()?;
     st.claims.remove(&claimer);
-    // Leave budget registered — re-registering at re-open is the actor's job.
+    st.claim_budgets.remove(&claimer);
     Ok(())
 }
 
@@ -190,5 +193,32 @@ mod tests {
         store.release(c).unwrap();
         let st = store.lock().unwrap();
         assert!(!st.claims.contains_key(&c), "release must clear claimer's pins");
+    }
+
+    #[test]
+    fn claim_intra_call_dedup_counts_once() {
+        // Passing the same id three times in one batch must increment the
+        // per-view ceiling by exactly 1, not 3.
+        let store = MemEventStore::new();
+        let c = ClaimerId(4);
+        store.register_view_cover(c, 2).unwrap();
+        let id = make_id(42);
+        // Ceiling is 2; passing the same id three times should only consume 1 slot.
+        store.claim(c, &[id, id, id]).unwrap();
+        let st = store.lock().unwrap();
+        assert_eq!(st.claims[&c].len(), 1, "intra-call dup ids must count as one");
+    }
+
+    #[test]
+    fn release_also_clears_budget() {
+        // After release(), claim_budgets must not retain the stale entry.
+        let store = MemEventStore::new();
+        let c = ClaimerId(5);
+        store.register_view_cover(c, 10).unwrap();
+        store.claim(c, &[make_id(7)]).unwrap();
+        store.release(c).unwrap();
+        let st = store.lock().unwrap();
+        assert!(!st.claims.contains_key(&c), "release must clear pins");
+        assert!(!st.claim_budgets.contains_key(&c), "release must clear budget entry");
     }
 }

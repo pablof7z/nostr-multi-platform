@@ -1,5 +1,10 @@
 use super::*;
 
+/// Returns up to the first 16 chars of an event id, safe for any length.
+fn event_short_id(id: &str) -> &str {
+    &id[..id.len().min(16)]
+}
+
 impl Kernel {
     pub(crate) fn handle_message(
         &mut self,
@@ -153,14 +158,71 @@ impl Kernel {
             sub.last_event_at = Some(now);
         }
 
+        // D4: all events are persisted before kind-specific dispatch.
+        // Kinds 1|6 handle their own store.insert inside ingest_timeline_event
+        // (which also manages the local read-cache); all other kinds are
+        // persisted here so the store is the single authoritative writer.
         match event.kind {
-            0 => self.ingest_profile(event),
             1 | 6 => self.ingest_timeline_event(role, sub_id, event),
-            3 => self.ingest_contacts(event),
-            10002 => self.ingest_relay_list(event),
-            _ => {}
+            0 => {
+                self.verify_and_persist(role, &event);
+                self.ingest_profile(event);
+                self.changed_since_emit = true;
+            }
+            3 => {
+                self.verify_and_persist(role, &event);
+                self.ingest_contacts(event);
+                self.changed_since_emit = true;
+            }
+            10002 => {
+                self.verify_and_persist(role, &event);
+                self.ingest_relay_list(event);
+                self.changed_since_emit = true;
+            }
+            _ => {
+                self.verify_and_persist(role, &event);
+                self.changed_since_emit = true;
+            }
         }
-        self.changed_since_emit = true;
+    }
+
+    /// Verify and persist an event to the EventStore. Returns `true` if the
+    /// event was freshly inserted or replaced an older version.
+    ///
+    /// Logs verification errors; does not abort — caller proceeds with
+    /// kind-specific local-cache updates regardless (graceful degradation).
+    pub(super) fn verify_and_persist(&mut self, role: RelayRole, event: &NostrEvent) -> bool {
+        let raw = crate::store::RawEvent {
+            id: event.id.clone(),
+            pubkey: event.pubkey.clone(),
+            created_at: event.created_at,
+            kind: event.kind,
+            tags: event.tags.clone(),
+            content: event.content.clone(),
+            sig: event.sig.clone(),
+        };
+        let verified = match crate::store::VerifiedEvent::try_from_raw(raw) {
+            Ok(v) => v,
+            Err(e) => {
+                self.log(format!("sig verify failed for {}: {e}", event_short_id(&event.id)));
+                return false;
+            }
+        };
+        let relay_url = role.url().to_string();
+        let received_at_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        match self.store.insert(verified, &relay_url, received_at_ms) {
+            Ok(outcome) => {
+                use crate::store::InsertOutcome;
+                matches!(outcome, InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
+            }
+            Err(e) => {
+                self.log(format!("store insert error for {}: {e}", event_short_id(&event.id)));
+                false
+            }
+        }
     }
 
     pub(super) fn ingest_profile(&mut self, event: NostrEvent) {
@@ -233,19 +295,14 @@ impl Kernel {
     }
 
     pub(super) fn ingest_timeline_event(&mut self, role: RelayRole, sub_id: &str, event: NostrEvent) {
-        // Duplicate check on the in-memory read-cache.
-        if self.events.contains_key(&event.id) {
-            if let Some(cached) = self.events.get_mut(&event.id) {
-                cached.relay_count = cached.relay_count.saturating_add(1);
-            }
-            return;
-        }
-
         if !self.should_store_event(sub_id, &event) {
             return;
         }
 
-        // D4: route through EventStore (the single writer).
+        // D4: route through EventStore (the single writer) for ALL deliveries,
+        // including duplicates. This ensures provenance is updated on every
+        // relay re-delivery, not just the first one.
+        //
         // Signature verification via VerifiedEvent::try_from_raw. Events that
         // fail verification are logged and dropped — not cached locally.
         let raw = crate::store::RawEvent {
@@ -260,7 +317,7 @@ impl Kernel {
         let verified = match crate::store::VerifiedEvent::try_from_raw(raw) {
             Ok(v) => v,
             Err(e) => {
-                self.log(format!("sig verify failed for {}: {e}", &event.id[..16]));
+                self.log(format!("sig verify failed for {}: {e}", event_short_id(&event.id)));
                 return;
             }
         };
@@ -269,14 +326,29 @@ impl Kernel {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
+
         // Store insert; log but don't abort on error (graceful degradation).
-        match self.store.insert(verified, &relay_url, received_at_ms) {
+        // Returns false to signal "skip local cache population".
+        let proceed = match self.store.insert(verified, &relay_url, received_at_ms) {
             Ok(outcome) => {
                 use crate::store::InsertOutcome;
                 match outcome {
-                    InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. } => {}
-                    InsertOutcome::Duplicate { .. } | InsertOutcome::Superseded { .. } => {
-                        // Store already has a valid version; still cache locally for timeline.
+                    InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. } => {
+                        // Genuinely new or replaced event — populate read-cache.
+                        true
+                    }
+                    InsertOutcome::Duplicate { sources_after, .. } => {
+                        // Store already has this event; update relay_count from
+                        // the authoritative provenance count, not a local increment.
+                        if let Some(cached) = self.events.get_mut(&event.id) {
+                            cached.relay_count = sources_after;
+                        }
+                        // Provenance updated in store; no new timeline entry needed.
+                        return;
+                    }
+                    InsertOutcome::Superseded { .. } => {
+                        // Incoming was older than what we have; discard.
+                        return;
                     }
                     InsertOutcome::Tombstoned { .. } | InsertOutcome::Rejected { .. }
                     | InsertOutcome::Ephemeral { .. } => {
@@ -287,8 +359,20 @@ impl Kernel {
             }
             Err(e) => {
                 self.log(format!("store insert error: {e}"));
-                // Graceful degradation: continue with local-cache-only path.
+                // Graceful degradation: fall through to local-cache-only path.
+                if self.events.contains_key(&event.id) {
+                    // Already cached locally — update relay_count heuristically.
+                    if let Some(cached) = self.events.get_mut(&event.id) {
+                        cached.relay_count = cached.relay_count.saturating_add(1);
+                    }
+                    return;
+                }
+                true
             }
+        };
+
+        if !proceed {
+            return;
         }
 
         // Populate the lightweight read-cache for timeline ordering + display.
@@ -311,6 +395,8 @@ impl Kernel {
             self.sort_timeline();
             self.timeline_first_item_at.get_or_insert_with(Instant::now);
         }
+        // Only set changed_since_emit on genuinely new/replaced events (Inserted/Replaced outcomes).
+        self.changed_since_emit = true;
     }
 
     pub(super) fn should_store_event(&self, sub_id: &str, event: &NostrEvent) -> bool {

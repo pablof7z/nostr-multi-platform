@@ -304,12 +304,8 @@ pub(super) fn list_watermarks_for_relay<'a>(
 pub(super) fn dump(
     store: &MemEventStore,
     out: &mut dyn std::io::Write,
-    format: DumpFormat,
+    _format: DumpFormat,
 ) -> Result<DumpStats, StoreError> {
-    if !matches!(format, DumpFormat::Jsonl) {
-        return Err(StoreError::Io("CBOR dump not yet implemented".into()));
-    }
-
     let st = store.lock()?;
     let mut stats = DumpStats::default();
 

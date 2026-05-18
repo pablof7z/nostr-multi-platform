@@ -54,7 +54,6 @@ pub enum DeleteFilter {
 #[derive(Clone, Copy, Debug)]
 pub enum DumpFormat {
     Jsonl,
-    Cbor,
 }
 
 #[derive(Clone, Debug, Default)]
