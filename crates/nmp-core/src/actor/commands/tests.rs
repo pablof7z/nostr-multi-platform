@@ -306,14 +306,22 @@ fn follow_publishes_kind3_with_p_tag() {
 #[test]
 fn add_and_remove_relay_edits_projection() {
     let (_id, mut kernel) = fresh();
-    add_relay(&mut kernel, "wss://relay.damus.io", "both");
-    add_relay(&mut kernel, "wss://nos.lol", "write");
+    // T158: add_relay returns Some(url) on success, None on failure.
+    let result = add_relay(&mut kernel, "wss://relay.damus.io", "both");
+    assert_eq!(result, Some("wss://relay.damus.io".to_string()));
+    let result2 = add_relay(&mut kernel, "wss://nos.lol", "write");
+    assert_eq!(result2, Some("wss://nos.lol".to_string()));
     assert_eq!(kernel.relay_edit_rows_snapshot().len(), 2);
-    add_relay(&mut kernel, "http://bad", "read");
+    // Invalid URL scheme — returns None and sets a toast.
+    let bad = add_relay(&mut kernel, "http://bad", "read");
+    assert_eq!(bad, None);
     assert_eq!(kernel.relay_edit_rows_snapshot().len(), 2);
     assert!(kernel
         .last_error_toast_snapshot()
         .is_some_and(|t| t.contains("invalid relay URL")));
+    // Invalid role — returns None.
+    let bad_role = add_relay(&mut kernel, "wss://nos.lol", "superwrite");
+    assert_eq!(bad_role, None);
     remove_relay(&mut kernel, "wss://nos.lol");
     assert_eq!(kernel.relay_edit_rows_snapshot().len(), 1);
     assert_eq!(

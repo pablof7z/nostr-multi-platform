@@ -1,11 +1,20 @@
 //! Relay-edit handlers.
 //!
-//! The kernel's socket layer is a fixed two-role model (Content / Indexer
-//! with constant URLs); arbitrary user-added relay sockets are a
-//! relay-manager change beyond T66a scope. These handlers maintain the
-//! editable relay-row projection (D4: actor is sole writer) so the Accounts
-//! screen can render + edit the set; wiring each row to a live socket is a
-//! documented follow-up.
+//! `add_relay` now returns `Some(url)` on success so the dispatch layer can
+//! call `ensure_relay_worker` and open a live socket for the new entry
+//! (T158). Returning the canonical URL (trimmed) avoids re-parsing at the
+//! call site. `None` is returned on any validation failure (invalid URL
+//! scheme or unrecognised role); the caller MUST NOT spawn a worker in that
+//! case.
+//!
+//! Role semantics: the user-facing NIP-65 role string (`"read"` | `"write"`
+//! | `"both"`) is stored in the `RelayEditRow` projection. For the transport
+//! pool, user-added relays are bucketed under `RelayRole::Content` — the
+//! diagnostic lane that groups inbox/outbox user-content sockets. The
+//! NIP-65 read/write split is handled by the outbox resolver, not by the
+//! socket pool key (T105). `ensure_relay_worker` is idempotent on URL, so
+//! calling it again for a role-edit of an already-connected relay is a
+//! harmless no-op.
 
 use crate::kernel::{Kernel, RelayEditRow};
 
@@ -18,19 +27,24 @@ fn normalize_role(role: &str) -> Option<&'static str> {
     }
 }
 
-pub(crate) fn add_relay(kernel: &mut Kernel, url: &str, role: &str) {
+/// Validate `url` and `role`, update the relay-edit projection, and return
+/// the trimmed canonical URL so the caller can open a socket.
+///
+/// Returns `Some(canonical_url)` on success, `None` on any validation error
+/// (an error toast is set on the kernel in that case).
+pub(crate) fn add_relay(kernel: &mut Kernel, url: &str, role: &str) -> Option<String> {
     let url = url.trim();
     if !(url.starts_with("wss://") || url.starts_with("ws://")) {
         kernel.set_last_error_toast(Some(
             "invalid relay URL — expected wss:// or ws://".to_string(),
         ));
-        return;
+        return None;
     }
     let Some(role) = normalize_role(role) else {
         kernel.set_last_error_toast(Some(
             "invalid relay role — expected read | write | both".to_string(),
         ));
-        return;
+        return None;
     };
     let mut rows = kernel.relay_edit_rows_snapshot().to_vec();
     if let Some(existing) = rows.iter_mut().find(|r| r.url == url) {
@@ -43,6 +57,7 @@ pub(crate) fn add_relay(kernel: &mut Kernel, url: &str, role: &str) {
     }
     kernel.set_relay_edit_rows(rows);
     kernel.set_last_error_toast(None);
+    Some(url.to_string())
 }
 
 pub(crate) fn remove_relay(kernel: &mut Kernel, url: &str) {

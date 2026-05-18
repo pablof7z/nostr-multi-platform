@@ -17,7 +17,7 @@ use crate::relay_worker::RelayEvent;
 use super::commands::{self, IdentityRuntime, LifecycleObserverSlot, WalletRuntime};
 use super::kernel_action::dispatch_kernel_action;
 use super::relay_mgmt::{
-    close_relays, maybe_send_startup, send_all_outbound, spawn_missing_relays,
+    close_relays, ensure_relay_worker, maybe_send_startup, send_all_outbound, spawn_missing_relays,
 };
 use super::tick::{emit_kernel_update, emit_now, maybe_emit_after_dispatch};
 use super::{ActorCommand, RelayControl};
@@ -192,7 +192,22 @@ pub(super) fn dispatch_command(
             Some(outbound)
         }
         ActorCommand::AddRelay { url, role } => {
-            commands::add_relay(kernel, &url, &role);
+            // T158: add_relay now returns Some(canonical_url) on success so we
+            // can dial a real socket immediately. User-added relays use
+            // RelayRole::Content as the diagnostic lane (inbox/outbox bucket);
+            // the NIP-65 read/write distinction lives in RelayEditRow, not in
+            // the transport pool key (T105). ensure_relay_worker is idempotent —
+            // a role-edit for an already-connected URL is a harmless no-op.
+            if let Some(canonical_url) = commands::add_relay(kernel, &url, &role) {
+                ensure_relay_worker(
+                    relay_controls,
+                    relay_tx,
+                    kernel,
+                    next_relay_generation,
+                    crate::relay::RelayRole::Content,
+                    canonical_url,
+                );
+            }
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(Vec::new())
         }

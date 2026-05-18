@@ -309,4 +309,95 @@ mod tests {
         let mut connected = HashSet::new();
         close_relays(&mut relay_controls, &mut connected, &mut kernel);
     }
+
+    /// T158 — `ensure_relay_worker` dials a real loopback socket and emits `Connected`.
+    ///
+    /// This is the component-level proof that the `AddRelay` dispatch arm (T158
+    /// fix) calls `ensure_relay_worker` with the user-supplied URL, which in turn
+    /// spawns a worker that completes the WebSocket handshake and emits
+    /// `RelayEvent::Connected`.
+    ///
+    /// Uses `ws://` (plain TCP) to avoid TLS setup overhead in unit tests.
+    /// The actor-level integration (command → dispatch → ensure_relay_worker) is
+    /// proven by compilation + the `commands::add_relay` return-value tests; this
+    /// test pins the socket-dial behaviour of the underlying primitive.
+    #[test]
+    fn t158_ensure_relay_worker_dials_and_emits_connected() {
+        use std::net::TcpListener;
+        use std::sync::mpsc::{self, RecvTimeoutError};
+        use std::thread;
+        use std::time::Duration;
+
+        // Bind a loopback listener; port 0 → OS picks a free port.
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral");
+        let port = listener.local_addr().expect("local_addr").port();
+        let relay_url = format!("ws://127.0.0.1:{port}");
+
+        // Minimal server: accept one connection, complete the WS handshake, park.
+        let _server = thread::spawn(move || {
+            listener.set_nonblocking(false).ok();
+            let (stream, _) = match listener.accept() {
+                Ok(s) => s,
+                Err(_) => return,
+            };
+            stream.set_read_timeout(Some(Duration::from_millis(50))).ok();
+            let mut socket = match tungstenite::accept(stream) {
+                Ok(s) => s,
+                Err(_) => return,
+            };
+            // Drain frames until the test tears down the connection.
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while std::time::Instant::now() < deadline {
+                match socket.read() {
+                    Ok(_) => {}
+                    Err(tungstenite::Error::Io(e))
+                        if matches!(
+                            e.kind(),
+                            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                        ) => {}
+                    Err(_) => return,
+                }
+            }
+        });
+        // Give the server thread a moment to enter `accept()` before the worker dials.
+        thread::sleep(Duration::from_millis(30));
+
+        let mut kernel = Kernel::new(80);
+        let (relay_tx, relay_rx) = mpsc::channel::<RelayEvent>();
+        let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
+        let mut next_gen = 1_u64;
+
+        let spawned = ensure_relay_worker(
+            &mut relay_controls,
+            &relay_tx,
+            &mut kernel,
+            &mut next_gen,
+            RelayRole::Content,
+            relay_url.clone(),
+        );
+        assert!(spawned, "first ensure_relay_worker call must spawn a worker");
+        assert_eq!(relay_controls.len(), 1, "pool must have exactly one entry");
+
+        // Wait for the Connected event — proves the socket actually dialled.
+        let mut got_connected = false;
+        let start = std::time::Instant::now();
+        while start.elapsed() < Duration::from_secs(3) {
+            match relay_rx.recv_timeout(Duration::from_millis(50)) {
+                Ok(RelayEvent::Connected { relay_url: url, .. }) if url == relay_url => {
+                    got_connected = true;
+                    break;
+                }
+                Ok(_) => continue,
+                Err(RecvTimeoutError::Timeout) => continue,
+                Err(RecvTimeoutError::Disconnected) => break,
+            }
+        }
+        assert!(
+            got_connected,
+            "T158: ensure_relay_worker must emit Connected for the user-added relay \
+             within 3s (url={relay_url})"
+        );
+
+        close_relays(&mut relay_controls, &mut HashSet::new(), &mut kernel);
+    }
 }
