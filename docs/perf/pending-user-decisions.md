@@ -393,3 +393,55 @@ Conflicts still resolve in listed order (D0 wins over D8). README aligned. T19 f
 
 **Default if no answer:** Defer to M11.5 (Highlighter rebuild surfaces the codegen requirement naturally; adopting before that is speculative).
 
+
+---
+
+## PD-025 — codex post-merge review batch (6711b01 / e895c09 / 8f7bbad / 03f139d)
+
+**Filed:** 2026-05-18, post-merge codex review per `memory/post-merge-codex-review.md`.
+
+**Scope:** Four commits reviewed in this batch. Full reviews in `docs/perf/codex-reviews/{6711b01,e895c09,8f7bbad,03f139d}.md`. Codex applied FIX-IN-PLACE for trivia; this PD consolidates REPORT-class findings the orchestrator must route.
+
+### From 6711b01 (T117 PublishEngine wiring) — verdict PARTIAL
+
+Codex pushed `b866ca2` (stale-comment fixes). The substantive follow-ups (already partly addressed by `2e249a6 T127 publish-engine actor-tick + boot-resume` landed mid-review, and `eaae019 T123 requests/mod.rs split`):
+
+1. **Quiet-period retry stall (MEDIUM):** Engine retry pump is opportunistic on every inbound text frame. If a relay goes quiet between OK and a due retry, retries stall until the next inbound. T127 (`2e249a6`) added actor-tick + boot-resume — verify it covers the quiet-period case.
+2. **Per-inbound `tick` allocation (MEDIUM, D8 risk):** Every inbound text frame calls `tick_publish_engine`, which clones all in-flight publish handles. Hot-path alloc risk. Suggested: track next-due deadline; tick only when due.
+3. **Ack-only snapshot rev (MEDIUM):** `on_ack` mutates `PublishStatusSnapshot` without setting `changed_since_emit` unless retry frames drain. When the FFI publish-status projection lands, pure ack state changes can be invisible to snapshot emitters.
+4. **Test coverage gap (LOW):** Four T117 integration tests exercise the kernel engine seam, but not `publish_signed` end-to-end, JSON OK parsing via `handle_message`, actor idle ticking, or live retry dispatch.
+5. **File-size SOFT cap (INFO):** `kernel/publish_engine.rs` 328 LOC (> 300 soft / < 500 hard). Author-chosen; not split per review instruction.
+
+### From e895c09 (PublishUnsignedEvent) — verdict PARTIAL
+
+Codex pushed `9b932d3` (active-pubkey provenance test + clippy fix + module doc). Security claim VERIFIED: signer derives event.pubkey from active Keys; caller `unsigned.pubkey` is ignored.
+
+Follow-ups:
+
+1. **HIGH — silent kind truncation:** `commands/identity.rs:60` casts `unsigned.kind as u16` from a `u32`. A malformed `kind:65559` would publish as `kind:23` instead of being rejected. **Add range validation + D6 toast on out-of-range.**
+2. **MEDIUM — silent tag drop:** `identity.rs:64` uses `filter_map(|t| Tag::parse(t).ok())`. Malformed tags vanish without state. For kind-agnostic pass-through, either fail (D6 toast) or document/test as normalization.
+3. **MEDIUM — FFI silent malformed JSON:** `ffi/identity.rs:105` is panic-safe but returns silently for malformed JSON. No toast, no status. Decide: enqueue a toast command, expose a status field, or document as silent no-op (current).
+4. **LOW — `actor/dispatch.rs` 303 LOC and `actor/mod.rs` 412 LOC** — both over 300 soft cap, under 500 hard. T114 owns the split; tracked.
+5. Pre-existing PD-023 / PD-024 cover the doctrine destination (per-crate ActionModule + uniform aggregate enums); not duplicated here.
+
+### From 8f7bbad (iOS T103 envelope unwrap + kind:6 repost) — verdict PARTIAL
+
+Codex pushed `dd3fd6d` + `80e141f` (Chirp repost unwrap tightening: trim whitespace, require id/pubkey/kind/sig fields before treating as nested event; ran xcodegen to complete the project regen).
+
+Follow-ups:
+
+1. **MEDIUM — Pulse/Stress silent decode failures:** Codex tightened Chirp; Pulse and NmpStress bridges still swallow decode failures silently. The original regression (decode failure → `hasActiveAccount` never flips → stuck on OnboardingView) can recur in Pulse/Stress. **Add logging or a visible "envelope decode failed" toast in all 3 bridges.**
+2. **MEDIUM — code duplication:** All 3 iOS bridges (Chirp/Pulse/Stress) copy-paste the same envelope-unwrap logic. **Suggested:** extract a shared Swift helper (e.g. `KernelFrameEnvelope.swift`) — single source of truth.
+3. **LOW — repost parsing is app-side protocol logic:** `NoteRowView.effectiveContent` decodes nested NIP-18 repost JSON in the iOS app, which is doctrine-borderline (D0 inverse: app should not learn protocol structure). Acceptable for the keystone "Twitter slice" milestone; long-term destination is a per-NIP view module.
+4. **LOW — Chirp.xcodeproj regen reproducibility:** Codex re-ran `xcodegen generate` to make the regen reproducible (commit shipped a partial regen). Verify CI runs xcodegen as part of the iOS pipeline so this can't drift again.
+
+### From 03f139d (workspace bin rename) — verdict DONE
+
+Trivial 1-LOC fix; no findings, no follow-ups. Codex dispatch skipped per advisor guidance.
+
+### Open question to user
+
+Most of the MEDIUM findings (1-3 across 6711b01 and 8f7bbad, 1-3 across e895c09) are FIX-FORWARD ready — they're concrete code changes with clear suggested implementations. Want the orchestrator to dispatch sub-agents to apply them now, or batch them into the next M11/Pulse-prep heartbeat?
+
+**Default if no answer:** Schedule the 3 HIGH/MEDIUM correctness items from e895c09 (kind range validation, tag-drop policy, FFI silent JSON) and the Pulse/Stress decode-logging fix as immediate sub-agent dispatches; defer D8 hot-path optimization (per-inbound tick allocation) until reactivity-bench surfaces it.
+
