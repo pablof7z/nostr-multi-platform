@@ -403,12 +403,34 @@ impl EventStore for MemEventStore {
         let mut st = self.lock()?;
 
         // 4. Check tombstone (per-id).
-        if let Some(tomb) = st.tombstones.get(&id_hex) {
-            return Ok(InsertOutcome::Tombstoned {
-                id: id_bytes,
-                kind5_event_id: tomb.kind5_event_id,
-                origin: tomb.origin,
-            });
+        //
+        // For Kind5 tombstones created pre-emptively (target arrived after kind:5), enforce
+        // the self-delete invariant: only suppress if the tombstone's deleter owns this event.
+        // Foreign kind:5 tombstones (deleter != event.pubkey) MUST NOT block the rightful event.
+        // When a foreign pre-tombstone is found to not apply, remove it to maintain invariant 3
+        // (no tombstone whose target is in the primary store).
+        if let Some(tomb) = st.tombstones.get(&id_hex).cloned() {
+            let tombstone_applies = match tomb.origin {
+                TombstoneOrigin::Kind5 => {
+                    // Self-delete check: the deleter must be the event author.
+                    tomb.deleter_pubkey
+                        .as_ref()
+                        .map(|dp| bytes_to_hex(dp) == event.pubkey)
+                        .unwrap_or(false)
+                }
+                // NIP-40 expiry and admin purge tombstones always apply.
+                TombstoneOrigin::NIP40Expiry | TombstoneOrigin::AdminPurge => true,
+            };
+            if tombstone_applies {
+                return Ok(InsertOutcome::Tombstoned {
+                    id: id_bytes,
+                    kind5_event_id: tomb.kind5_event_id,
+                    origin: tomb.origin,
+                });
+            }
+            // Foreign pre-tombstone does not apply — remove it so the event can be inserted
+            // and invariant 3 (no tombstone with live primary target) is maintained.
+            st.tombstones.remove(&id_hex);
         }
 
         // 5. Check address tombstone for parameterized replaceables.
@@ -823,6 +845,14 @@ fn handle_replaceable_insert(
     let pubkey_hex = event.pubkey.clone();
     let kind = event.kind;
 
+    // Check for exact-id duplicate first — this supersedes the replaceable logic.
+    if st.events.contains_key(&id_hex) {
+        let p = st.provenance.entry(id_hex).or_default();
+        upsert_provenance(p, source.clone(), received_at_ms);
+        let sources_after = p.len() as u32;
+        return Ok(InsertOutcome::Duplicate { id: id_bytes, sources_after });
+    }
+
     // Find existing replaceable for this (pubkey, kind).
     let existing_id: Option<String> = st.events.iter()
         .filter(|(_, ev)| ev.raw.pubkey == pubkey_hex && ev.raw.kind == kind)
@@ -883,6 +913,14 @@ fn handle_param_replaceable_insert(
     let kind = event.kind;
     let d_tag = event.d_tag().unwrap_or_default();
     let d_str = String::from_utf8_lossy(&d_tag).into_owned();
+
+    // Check for exact-id duplicate first — this supersedes the replaceable logic.
+    if st.events.contains_key(&id_hex) {
+        let p = st.provenance.entry(id_hex).or_default();
+        upsert_provenance(p, source.clone(), received_at_ms);
+        let sources_after = p.len() as u32;
+        return Ok(InsertOutcome::Duplicate { id: id_bytes, sources_after });
+    }
 
     // Find existing parameterized replaceable for (pubkey, kind, d_tag).
     let existing_id: Option<String> = st.events.iter()
