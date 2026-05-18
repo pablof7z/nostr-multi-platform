@@ -621,6 +621,16 @@ Most of the MEDIUM findings (1-3 across 6711b01 and 8f7bbad, 1-3 across e895c09)
 
 **Default if no answer:** Schedule the 3 HIGH/MEDIUM correctness items from e895c09 (kind range validation, tag-drop policy, FFI silent JSON) and the Pulse/Stress decode-logging fix as immediate sub-agent dispatches; defer D8 hot-path optimization (per-inbound tick allocation) until reactivity-bench surfaces it.
 
+### Update — PD-025 Findings 1-3 RESOLVED (2026-05-18, HB56)
+
+The three FIX-FORWARD correctness items from e895c09 have been applied in commit `9360faa`:
+
+- **Finding 1 (HIGH):** `sign_with` now validates `unsigned.kind <= u16::MAX` and returns an Err (D6 toast) if out of range. Prevents kind:65559 → kind:23 silent truncation.
+- **Finding 2 (MEDIUM):** `sign_with` now counts malformed tag parse failures and hard-fails with a D6 toast (`"Dropped N malformed tag(s)"`) instead of silently dropping tags.
+- **Finding 3 (MEDIUM):** Added `ActorCommand::ShowToast { message }` primitive. `nmp_app_publish_unsigned_event` sends `ShowToast` on JSON parse failure instead of returning silently. Toast: `"Failed to decode action payload"`.
+
+All three covered by new tests. `cargo test --workspace` green. Remaining items in PD-025 (6711b01 quiet-period retry, 8f7bbad iOS bridge decode logging) remain open.
+
 
 ## PD-023 / PD-026 number collision RESOLVED
 
