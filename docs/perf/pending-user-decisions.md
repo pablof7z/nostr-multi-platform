@@ -8,6 +8,44 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
+### PD-021 (resolved 2026-05-18 autonomously, user-directed) — M10.5 exit gate re-scoped to the simulator-provable subset; hardware/M10 items deferred to the Pulse track
+
+**Decision (user-directed):** the literal M10.5 exit gate in
+`docs/plan/m10.5-ffi-hardening.md` is over-specified — it predates the Pulse
+e2e app and assumes an "M1–M10 iOS Twitter slice" + iPhone-12 hardware that do
+not exist (M10 Blossom deferred; M2–M9 are kernel substrate, not iOS-integrated
+features). Finalize the simulator-provable subset now; explicitly and honestly
+defer the hardware/M10 items into the Pulse e2e validation track. Do not fake
+numbers.
+
+**What M10.5 closes on (re-scoped gate, all simulator-provable):**
+1. `docs/ffi-surface.md` — canonical FFI surface reference, tagged reviewed
+   2026-05-18.
+2. `docs/perf/m10.5/sim-baseline.md` — full `ffi-stress` S1–S5 simulator-host
+   run with captured numbers + gate pass/fail.
+3. Instruments Leaks = 0 over the 10-min canonical NmpStress workflow on the
+   iPhone 17 Pro simulator (evidence in `docs/perf/m10.5/leak-evidence/`).
+4. UI-scripted simulator fleet over every NmpStress surface
+   (`docs/perf/m10.5/ui-fleet/`).
+5. `docs/perf/m10.5/doctrine-review.md` — written D0–D8 signoff.
+
+**Deferred to the Pulse track** (`docs/builder-guide/e2e-validation-app.md`),
+not done and not faked: iPhone-hardware baseline + `iphone12-baseline.md` +
+per-device scaling + S11 device RSS; `firehose-bench live` real-device battery;
+"re-run all M1–M10 perf" (no standalone M1–M10 iOS perf suite exists — the
+FFI-bound suite is `ffi-stress`, delivered here); M10 Blossom UI scenarios
+(Blossom deferred pre-M10.5); a first-class XCUITest target.
+
+**Also corrected:** the plan's "Doctrine review (D0–D5)" wording is stale —
+per PD-001 the canonical set is D0–D8 (D0–D5 policy + D6–D8 substrate
+invariants). The re-scoped doctrine review covers all nine.
+
+**If wrong:** the deferred items are additive; re-open them in the Pulse track
+when hardware/Blossom are in the loop. Revert by treating the original
+"Exit gate" section (retained verbatim above the addendum) as authoritative.
+Full rationale: `docs/plan/m10.5-ffi-hardening.md` § "Re-scope addendum
+(2026-05-18)".
+
 ### PD-019 (resolved 2026-05-18 autonomously) — T63a: kernel-side keyring prerequisite (T63) absent in tree; shipped the iOS half against the generic envelope
 
 **Decision (autonomous, T63a):** the task brief states "the kernel-side
