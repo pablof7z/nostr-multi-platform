@@ -51,6 +51,20 @@ final class KernelModel: ObservableObject {
     private let kernel = KernelHandle()
     private var lastLogicalInterestSummary = ""
 
+    /// Marmot (MLS encrypted groups) projection mirror. Registered lazily
+    /// once a secret key crosses Swift via `signInNsec` / `NMP_TEST_NSEC`
+    /// (the only nsec seam Chirp exposes — bunker/NIP-46 sign-in never
+    /// surfaces a secret key, so Marmot stays empty then; documented in
+    /// `Bridge/MarmotBridge.swift`). Refreshed on every kernel tick.
+    private(set) lazy var marmot = MarmotStore(kernel: kernel)
+
+    /// Best-effort in-memory cache of the local secret used to register the
+    /// Marmot MLS DB. Lost on cold relaunch (Marmot reappears empty until
+    /// the next nsec sign-in or a future kernel-side key accessor). Held
+    /// only to drive `nmp_app_chirp_marmot_register`; never persisted here
+    /// (the kernel's keyring capability owns durable secret storage).
+    private var cachedSecretKey: String?
+
     /// Platform capability implementations injected for the kernel to use.
     let capabilities = NmpPulseCapabilities()
 
@@ -75,7 +89,9 @@ final class KernelModel: ObservableObject {
         isRunning = true
         // UITest affordance: NMP_TEST_NSEC auto-signs-in without driving onboarding.
         if let nsec = ProcessInfo.processInfo.environment["NMP_TEST_NSEC"] {
+            cachedSecretKey = nsec
             kernel.signInNsec(nsec)
+            marmot.registerIfNeeded(secretKey: nsec)
         }
     }
 
@@ -150,7 +166,12 @@ final class KernelModel: ObservableObject {
 
     func signInNsec(_ secret: String) {
         kmLog.info("signInNsec dispatched (len=\(secret.count))")
+        // Cache the secret so the Marmot MLS DB can be registered. This is
+        // the only nsec seam Chirp exposes to Swift; bunker/NIP-46 sign-in
+        // never reaches here (see `Bridge/MarmotBridge.swift` limitation).
+        cachedSecretKey = secret
         kernel.signInNsec(secret)
+        marmot.registerIfNeeded(secretKey: secret)
     }
 
     func signInBunker(_ uri: String) { kernel.signInBunker(uri) }
@@ -236,6 +257,10 @@ final class KernelModel: ObservableObject {
         // and avoid duplicating profile state (Swift looks the author up
         // in `items` for display name / avatar).
         modularTimeline = kernel.chirpSnapshot()
+        // Refresh the Marmot snapshot in the same pass (no-op until the
+        // projection is registered). One JSON round-trip per tick; reads
+        // are O(groups + welcomes).
+        marmot.refresh()
         metrics = update.metrics
         relayStatuses = update.relayStatuses
         // T66a projections — mirror only; never derive (D8).

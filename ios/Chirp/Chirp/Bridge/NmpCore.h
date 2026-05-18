@@ -147,4 +147,35 @@ char *nmp_app_chirp_snapshot(void *handle);
 void nmp_app_chirp_snapshot_free(char *ptr);
 void nmp_app_chirp_unregister(void *handle);
 
+// ── Marmot (MLS encrypted groups) per-app FFI ────────────────────────────
+//
+// Six symbols exported from the same `libnmp_app_chirp.a` archive (the
+// Chirp-specific composition point — D0 forbids `nmp-core -> nmp-marmot`).
+// They mirror the lifetime / free / D6 conventions of the modular-timeline
+// symbols above.
+//
+// Flow:
+// 1. `nmp_app_chirp_marmot_register(app, secret_key_hex, db_dir)` once the
+//    local identity secret is known. `secret_key_hex` is hex OR `nsec…`;
+//    the encrypted MLS SQLite DB is created at
+//    `<db_dir>/marmot-mls-state.sqlite`. Returns an opaque handle, or NULL
+//    on any failure (D6).
+// 2. `nmp_app_chirp_marmot_snapshot(handle)` each render tick → JSON
+//    `{ groups, pending_welcomes, key_package }`.
+// 3. `nmp_app_chirp_marmot_group_messages(handle, group_id_hex)` → newest
+//    200 decrypted messages for one group (JSON array).
+// 4. `nmp_app_chirp_marmot_dispatch(handle, action_json)` → one mutating
+//    op; returns `{"ok":true,…}` / `{"ok":false,"error":"…"}`.
+// 5. Free EVERY returned string via `nmp_app_chirp_marmot_string_free`.
+// 6. `nmp_app_chirp_marmot_unregister(handle)` BEFORE `nmp_app_free(app)`.
+//
+// Fire-and-forget: every entry point degrades silently on null pointers,
+// poisoned mutexes, or (de)serialization failure (D6).
+void *nmp_app_chirp_marmot_register(void *app, const char *secret_key_hex, const char *db_dir);
+char *nmp_app_chirp_marmot_snapshot(void *handle);
+char *nmp_app_chirp_marmot_group_messages(void *handle, const char *group_id_hex);
+char *nmp_app_chirp_marmot_dispatch(void *handle, const char *action_json);
+void nmp_app_chirp_marmot_string_free(char *ptr);
+void nmp_app_chirp_marmot_unregister(void *handle);
+
 #endif

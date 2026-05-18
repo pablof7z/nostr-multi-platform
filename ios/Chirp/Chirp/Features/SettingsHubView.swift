@@ -70,6 +70,16 @@ struct SettingsHubView: View {
                 ChirpSectionHeader(title: "Relays")
             }
 
+            // ── Encrypted Groups (Marmot) ─────────────────────────────────
+            Section {
+                MarmotKeyPackageRow()
+                    .environmentObject(model)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            } header: {
+                ChirpSectionHeader(title: "Encrypted Groups (Marmot)")
+            }
+
             // ── Developer ─────────────────────────────────────────────────
             Section {
                 NavigationLink(destination: DiagnosticsView()) {
@@ -305,5 +315,99 @@ private struct RelayRow: View {
         case "write": return ChirpColor.positive
         default: return ChirpColor.accent  // "both"
         }
+    }
+}
+
+// ── Marmot key-package status row ─────────────────────────────────────────
+//
+// Surfaces the local MLS key-package state (published? · age · stale) and a
+// publish / rotate action calling the `publish_key_package` dispatch op.
+// Key-package visibility lives in Settings, not a top-level screen, per the
+// milestone scope.
+
+private struct MarmotKeyPackageRow: View {
+    @EnvironmentObject private var model: KernelModel
+    @State private var busy = false
+
+    private var kp: MarmotKeyPackage { model.marmot.keyPackage }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ChirpSpace.s) {
+            HStack(spacing: ChirpSpace.m) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(statusColor.opacity(0.15))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: "key.horizontal.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(statusColor)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Key package")
+                        .font(ChirpFont.callout.weight(.medium))
+                        .foregroundStyle(ChirpColor.textPrimary)
+                    Text(statusSubtitle)
+                        .font(ChirpFont.caption)
+                        .foregroundStyle(ChirpColor.textTertiary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                if kp.stale {
+                    Text("STALE")
+                        .font(.system(.caption2, design: .rounded).weight(.bold))
+                        .foregroundStyle(ChirpColor.zap)
+                        .padding(.horizontal, ChirpSpace.s)
+                        .padding(.vertical, 3)
+                        .background(ChirpColor.zap.opacity(0.14), in: Capsule())
+                }
+            }
+
+            Button {
+                busy = true
+                _ = model.marmot.publishKeyPackage()
+                busy = false
+            } label: {
+                Text(kp.published ? "Rotate key package" : "Publish key package")
+                    .font(ChirpFont.callout.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, ChirpSpace.s)
+                    .background(
+                        model.marmot.isRegistered && !busy
+                            ? ChirpColor.accent
+                            : ChirpColor.accent.opacity(0.4),
+                        in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(!model.marmot.isRegistered || busy)
+        }
+        .padding(.vertical, ChirpSpace.xs)
+    }
+
+    private var statusColor: Color {
+        if !model.marmot.isRegistered { return ChirpColor.textTertiary }
+        if kp.stale { return ChirpColor.zap }
+        return kp.published ? ChirpColor.positive : ChirpColor.textTertiary
+    }
+
+    private var statusSubtitle: String {
+        guard model.marmot.isRegistered else {
+            return "Sign in with an nsec to enable"
+        }
+        guard kp.published else { return "Not published" }
+        if let age = kp.ageSecs {
+            return "Published · \(ageString(age))\(kp.stale ? " · needs rotation" : "")"
+        }
+        return "Published"
+    }
+
+    private func ageString(_ secs: UInt64) -> String {
+        if secs < 60 { return "\(secs)s old" }
+        if secs < 3600 { return "\(secs / 60)m old" }
+        if secs < 86_400 { return "\(secs / 3600)h old" }
+        return "\(secs / 86_400)d old"
     }
 }

@@ -11,6 +11,11 @@ final class KernelHandle {
     /// modular-timeline bridge extension manages its lifetime; see
     /// `Bridge/ModularTimelineBridge.swift`.
     var chirpHandle: UnsafeMutableRawPointer?
+    /// Opaque handle returned by `nmp_app_chirp_marmot_register`. The
+    /// Marmot bridge extension manages its lifetime; see
+    /// `Bridge/MarmotBridge.swift`. Registered lazily once a secret key is
+    /// known (nsec sign-in); nil until then (and for bunker sign-in).
+    var marmotHandle: UnsafeMutableRawPointer?
 
     init() {
         raw = nmp_app_new()
@@ -29,6 +34,8 @@ final class KernelHandle {
     deinit {
         // T146 — drop the projection BEFORE `nmp_app_free` per FFI contract.
         unregisterChirpProjectionIfNeeded()
+        // Same contract for the Marmot observer registration.
+        unregisterMarmotIfNeeded()
         nmp_app_set_update_callback(raw, nil, nil)
         nmp_app_free(raw)
     }
