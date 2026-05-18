@@ -10,6 +10,7 @@ struct RelayDetailView: View {
             VStack(spacing: ChirpSpace.xl) {
                 statusSection
                 if !wireSubscriptions.isEmpty {
+                    subsOverviewSection
                     wireSubsSection
                 }
                 if !logicalInterests.isEmpty {
@@ -76,7 +77,7 @@ struct RelayDetailView: View {
                             .foregroundStyle(relay.reconnectCount > 0 ? ChirpColor.zap : ChirpColor.textTertiary)
                             .monospacedDigit()
                     }
-                    if let rx = relay.bytesRx {
+                    if let rx = relay.bytesRx, rx > 0 {
                         RelayDetailDivider()
                         RelayDetailRow(label: "Bytes Rx") {
                             Text(formatBytes(rx))
@@ -84,7 +85,7 @@ struct RelayDetailView: View {
                                 .foregroundStyle(ChirpColor.textSecondary)
                         }
                     }
-                    if let tx = relay.bytesTx {
+                    if let tx = relay.bytesTx, tx > 0 {
                         RelayDetailDivider()
                         RelayDetailRow(label: "Bytes Tx") {
                             Text(formatBytes(tx))
@@ -131,6 +132,45 @@ struct RelayDetailView: View {
         }
     }
 
+    // ── Subscription overview tiles ───────────────────────────────────────
+
+    private var subsOverviewSection: some View {
+        let activeSubs = wireSubscriptions.filter { ["open", "live", "active"].contains($0.state) }
+        let eosedSubs = wireSubscriptions.filter { $0.eoseAtMs != nil }
+        let totalEvents = wireSubscriptions.compactMap(\.eventsRx).reduce(0, +)
+        return VStack(alignment: .leading, spacing: ChirpSpace.m) {
+            ChirpSectionHeader(title: "Subscription Overview")
+            HStack(spacing: ChirpSpace.m) {
+                RelayMetricTile(
+                    label: "Total",
+                    value: "\(wireSubscriptions.count)",
+                    icon: "dot.radiowaves.left.and.right",
+                    color: ChirpColor.accent
+                )
+                RelayMetricTile(
+                    label: "Active",
+                    value: "\(activeSubs.count)",
+                    icon: "bolt.fill",
+                    color: activeSubs.isEmpty ? ChirpColor.textTertiary : ChirpColor.positive
+                )
+            }
+            HStack(spacing: ChirpSpace.m) {
+                RelayMetricTile(
+                    label: "Events Rx",
+                    value: totalEvents.formatted(.number.notation(.compactName)),
+                    icon: "arrow.down.circle",
+                    color: ChirpColor.positive
+                )
+                RelayMetricTile(
+                    label: "EOSE'd",
+                    value: "\(eosedSubs.count)",
+                    icon: "checkmark.circle",
+                    color: ChirpColor.textSecondary
+                )
+            }
+        }
+    }
+
     // ── Wire subscriptions ────────────────────────────────────────────────
 
     private var wireSubsSection: some View {
@@ -139,7 +179,10 @@ struct RelayDetailView: View {
             GlassCard {
                 VStack(spacing: 0) {
                     ForEach(Array(wireSubscriptions.enumerated()), id: \.element.id) { index, sub in
-                        WireSubRow(sub: sub)
+                        NavigationLink(destination: WireSubscriptionDetailView(sub: sub)) {
+                            WireSubRow(sub: sub)
+                        }
+                        .buttonStyle(.plain)
                         if index < wireSubscriptions.count - 1 {
                             Divider().background(ChirpColor.hairline)
                         }
@@ -212,6 +255,34 @@ struct RelayDetailView: View {
     }
 }
 
+// ── Metric tile ───────────────────────────────────────────────────────────
+
+private struct RelayMetricTile: View {
+    let label: String
+    let value: String
+    let icon: String
+    let color: Color
+
+    var body: some View {
+        GlassCard {
+            VStack(spacing: ChirpSpace.xs) {
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(color)
+                Text(value)
+                    .font(ChirpFont.headline)
+                    .foregroundStyle(ChirpColor.textPrimary)
+                    .monospacedDigit()
+                Text(label)
+                    .font(ChirpFont.caption)
+                    .foregroundStyle(ChirpColor.textTertiary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, ChirpSpace.xs)
+        }
+    }
+}
+
 // ── Wire subscription row ──────────────────────────────────────────────────
 
 private struct WireSubRow: View {
@@ -235,6 +306,11 @@ private struct WireSubRow: View {
                     Label("\(sub.logicalConsumerCount) consumer\(sub.logicalConsumerCount == 1 ? "" : "s")", systemImage: "person.2")
                         .font(ChirpFont.caption)
                         .foregroundStyle(ChirpColor.textTertiary)
+                }
+                if let rx = sub.eventsRx, rx > 0 {
+                    Label("\(rx.formatted(.number.notation(.compactName))) events", systemImage: "arrow.down.circle")
+                        .font(ChirpFont.caption)
+                        .foregroundStyle(ChirpColor.positive)
                 }
                 if sub.eoseAtMs != nil {
                     Label("EOSE", systemImage: "checkmark.circle")
@@ -269,8 +345,8 @@ private struct WireSubRow: View {
 
     private func stateColor(_ s: String) -> Color {
         switch s.lowercased() {
-        case "open", "active": return ChirpColor.positive
-        case "pending", "warming": return ChirpColor.zap
+        case "open", "active", "live": return ChirpColor.positive
+        case "pending", "warming", "opening", "auth_paused": return ChirpColor.zap
         case "closed", "done": return ChirpColor.textTertiary
         default: return ChirpColor.textTertiary
         }

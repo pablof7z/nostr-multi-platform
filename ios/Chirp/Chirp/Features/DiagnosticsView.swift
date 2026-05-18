@@ -12,7 +12,6 @@ struct DiagnosticsView: View {
                 metricsSection
                 relaySection
                 logicalInterestsSection
-                wireSubscriptionsSection
                 publishQueueSection
                 accountSection
                 runtimeLogSection
@@ -45,16 +44,6 @@ struct DiagnosticsView: View {
                                 .foregroundStyle(model.isRunning ? ChirpColor.positive : ChirpColor.like)
                         }
                         .animation(.easeInOut(duration: 0.3), value: model.isRunning)
-                    }
-
-                    DiagDivider()
-
-                    DiagRow(label: "Connection") {
-                        let conn = model.relayStatuses.first?.connection.uppercased() ?? "STARTING"
-                        Text(conn)
-                            .font(ChirpFont.callout.weight(.semibold))
-                            .foregroundStyle(connectionColor(conn))
-                            .accessibilityIdentifier("relay-state-value")
                     }
 
                     DiagDivider()
@@ -109,26 +98,9 @@ struct DiagnosticsView: View {
                                 .foregroundStyle(ChirpColor.textTertiary)
                         }
                     }
-
-                    DiagDivider()
-
-                    DiagRow(label: "Relay") {
-                        Text(model.relayUrl.isEmpty ? "—" : model.relayUrl)
-                            .font(ChirpFont.mono)
-                            .foregroundStyle(ChirpColor.textSecondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
                 }
             }
         }
-    }
-
-    private func connectionColor(_ conn: String) -> Color {
-        let s = conn.lowercased()
-        if s == "connected" { return ChirpColor.positive }
-        if s.contains("connect") { return ChirpColor.zap }
-        return ChirpColor.like
     }
 
     // ── Swift-side timing (NmpStress perf goals) ──────────────────────────
@@ -278,14 +250,44 @@ struct DiagnosticsView: View {
         }
     }
 
-    // ── Relay status table ────────────────────────────────────────────────
+    // ── All relays (bootstrap + outbox) ───────────────────────────────────
+
+    private var allRelayURLs: [String] {
+        var urls = model.relayStatuses.map(\.relayUrl)
+        for sub in model.wireSubscriptions {
+            if !urls.contains(sub.relayUrl) {
+                urls.append(sub.relayUrl)
+            }
+        }
+        return urls
+    }
+
+    private func syntheticRelayStatus(url: String, subs: [WireSubscriptionStatus]) -> RelayStatus {
+        let activeSubs = subs.filter { ["open", "live", "active", "opening"].contains($0.state) }.count
+        return RelayStatus(
+            role: "outbox",
+            relayUrl: url,
+            connection: activeSubs > 0 ? "connected" : "unknown",
+            auth: "—",
+            nip77Negentropy: nil,
+            activeWireSubscriptions: activeSubs,
+            reconnectCount: 0,
+            lastConnectedAtMs: nil,
+            lastEventAtMs: subs.compactMap(\.lastEventAtMs).max(),
+            lastNotice: nil,
+            lastError: nil,
+            bytesRx: nil,
+            bytesTx: nil
+        )
+    }
 
     private var relaySection: some View {
-        VStack(alignment: .leading, spacing: ChirpSpace.m) {
-            ChirpSectionHeader(title: "Relays (\(model.relayStatuses.count))")
-            if model.relayStatuses.isEmpty {
+        let urls = allRelayURLs
+        return VStack(alignment: .leading, spacing: ChirpSpace.m) {
+            ChirpSectionHeader(title: "Relays (\(urls.count))")
+            if urls.isEmpty {
                 GlassCard {
-                    Text("No relay statuses yet")
+                    Text("No relays yet")
                         .font(ChirpFont.callout)
                         .foregroundStyle(ChirpColor.textTertiary)
                         .frame(maxWidth: .infinity)
@@ -294,9 +296,19 @@ struct DiagnosticsView: View {
             } else {
                 GlassCard {
                     VStack(spacing: 0) {
-                        ForEach(Array(model.relayStatuses.enumerated()), id: \.element.id) { index, relay in
-                            DiagRelayRow(relay: relay)
-                            if index < model.relayStatuses.count - 1 {
+                        ForEach(Array(urls.enumerated()), id: \.element) { index, url in
+                            let status = model.relayStatuses.first(where: { $0.relayUrl == url })
+                            let subs = model.wireSubscriptions.filter { $0.relayUrl == url }
+                            let interests = model.logicalInterests.filter { $0.relayUrls.contains(url) }
+                            NavigationLink(destination: RelayDetailView(
+                                relay: status ?? syntheticRelayStatus(url: url, subs: subs),
+                                wireSubscriptions: subs,
+                                logicalInterests: interests
+                            )) {
+                                DiagRelayRow(relay: status ?? syntheticRelayStatus(url: url, subs: subs))
+                            }
+                            .buttonStyle(.plain)
+                            if index < urls.count - 1 {
                                 DiagDivider()
                             }
                         }
@@ -342,54 +354,6 @@ struct DiagnosticsView: View {
         switch state {
         case "active", "warming": return ChirpColor.positive
         case "idle": return ChirpColor.textTertiary
-        default: return ChirpColor.zap
-        }
-    }
-
-    // ── Wire subscriptions (NmpStress perf goal) ──────────────────────────
-
-    @ViewBuilder
-    private var wireSubscriptionsSection: some View {
-        if !model.wireSubscriptions.isEmpty {
-            VStack(alignment: .leading, spacing: ChirpSpace.m) {
-                ChirpSectionHeader(title: "Wire Subscriptions (\(model.wireSubscriptions.count))")
-                GlassCard {
-                    VStack(spacing: 0) {
-                        ForEach(Array(model.wireSubscriptions.enumerated()), id: \.element.id) { index, sub in
-                            VStack(alignment: .leading, spacing: ChirpSpace.xs) {
-                                HStack {
-                                    Text(sub.wireId)
-                                        .font(ChirpFont.mono)
-                                        .foregroundStyle(ChirpColor.textPrimary)
-                                        .lineLimit(1)
-                                    Spacer(minLength: 0)
-                                    DiagChip(label: sub.state, color: subStateColor(sub.state))
-                                }
-                                Text(sub.filterSummary)
-                                    .font(ChirpFont.caption)
-                                    .foregroundStyle(ChirpColor.textSecondary)
-                                    .lineLimit(2)
-                                Text(sub.relayUrl)
-                                    .font(ChirpFont.caption)
-                                    .foregroundStyle(ChirpColor.textTertiary)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                            }
-                            .padding(.vertical, ChirpSpace.s)
-                            if index < model.wireSubscriptions.count - 1 {
-                                DiagDivider()
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private func subStateColor(_ state: String) -> Color {
-        switch state {
-        case "open", "active": return ChirpColor.positive
-        case "closed": return ChirpColor.textTertiary
         default: return ChirpColor.zap
         }
     }
@@ -657,7 +621,7 @@ private struct DiagRelayRow: View {
 }
 
 /// Tiny pill label for relay chips.
-private struct DiagChip: View {
+struct DiagChip: View {
     let label: String
     let color: Color
 

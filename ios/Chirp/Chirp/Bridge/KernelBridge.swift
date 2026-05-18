@@ -318,6 +318,7 @@ struct WireSubscriptionStatus: Decodable, Identifiable, Equatable {
     let filterSummary: String
     let state: String
     let logicalConsumerCount: UInt32
+    let eventsRx: UInt64?
     let openedAtMs: UInt64
     let lastEventAtMs: UInt64?
     let eoseAtMs: UInt64?
