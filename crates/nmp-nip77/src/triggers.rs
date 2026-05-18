@@ -92,7 +92,8 @@ impl TriggerEngine {
     }
 
     /// Map a trigger event to its reconciliation work list.  Output order is
-    /// deterministic (relay-url-major, filter-hash-minor).
+    /// deterministic by the derived [`Ord`] on [`ReconcileWork`]
+    /// (filter-hash-major, relay-url-minor).
     pub fn on_event(&self, event: TriggerEvent) -> Vec<ReconcileWork> {
         let mut out: BTreeSet<ReconcileWork> = BTreeSet::new();
         match event {

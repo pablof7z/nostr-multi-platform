@@ -8,16 +8,15 @@
 //! | Outcome | Meaning |
 //! |---|---|
 //! | `Send(bytes)` | Forward `bytes` to the peer, then call `step` again with the response. |
-//! | `Done { synced, have, need, state }` | Reconciliation converged.  `have` are ids the peer must accept from us; `need` are ids we should pull. `state` is an opaque resume blob suitable for [`crate::SyncStrategy::resume_state`] persistence. |
+//! | `Done { have, need, state }` | Reconciliation converged.  `have` are ids the peer must accept from us; `need` are ids we should pull. `state` is an opaque resume blob suitable for [`nmp_core::store::WatermarkRow::last_negentropy_state`] persistence. |
 //!
 //! ## Roles
 //!
 //! Negentropy is asymmetric — the *client* drives the protocol, the *server*
 //! responds to fingerprint queries.  The reconciler factory mirrors this:
 //!
-//! * [`Reconciler::client`] builds an initiating client (`set_initiator` is
-//!   true by construction; first call to [`Reconciler::step`] with `None`
-//!   produces the initial query).
+//! * [`Reconciler::client`] builds an initiating client; first call to
+//!   [`Reconciler::step`] with `None` produces the initial query.
 //! * [`Reconciler::server`] builds a responding server.  Calling
 //!   [`Reconciler::step`] without a peer payload on a server is a programmer
 //!   error and returns [`ReconcilerError::ServerNotInitiator`].

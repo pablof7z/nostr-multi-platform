@@ -30,9 +30,8 @@
 //!   `Result` returns; mapping to `toast`/`busy` state happens at the actor /
 //!   `RunSync` action boundary, not in the engine.
 //! * **D8** — reconciliation is working-set-bounded.  The reconciler's frame
-//!   budget is capped at `8 KiB` per step (well below `negentropy`'s 64 KiB
-//!   default) and the trigger engine deduplicates redundant work-items per
-//!   `(filter_hash, relay_url)` before dispatching.
+//!   budget is capped at `64 KiB` per step and the trigger engine deduplicates
+//!   redundant work-items per `(filter_hash, relay_url)` before dispatching.
 
 pub mod capability;
 pub mod capability_domain;
