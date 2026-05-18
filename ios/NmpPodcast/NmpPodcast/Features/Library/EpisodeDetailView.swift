@@ -22,11 +22,4 @@ struct EpisodeDetailView: View {
     }
 }
 
-/// Placeholder for LibraryEpisodeRoute navigation destination.
-struct LibraryEpisodePlaceholder: View {
-    let route: LibraryEpisodeRoute
-
-    var body: some View {
-        EpisodeDetailView(episodeID: route.episodeID)
-    }
-}
+// Note: LibraryEpisodePlaceholder is defined in EpisodeDetailLink.swift (verbatim from Podcastr)

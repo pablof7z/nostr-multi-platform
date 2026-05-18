@@ -36,15 +36,8 @@ enum AllEpisodesFilter: String, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - LibraryEpisodeRoute
-
-struct LibraryEpisodeRoute: Hashable {
-    let episodeID: UUID
-    let subscriptionID: UUID
-    let title: String
-}
-
 // MARK: - AllEpisodesView
+// Note: LibraryEpisodeRoute is defined in EpisodeDetailLink.swift (verbatim from Podcastr)
 //
 // T-podcast-ios-3 (Step 2): Wire AppStateStore.allPodcasts (kernel-backed) into
 // the Library tab. Rows are tappable NavigationLinks to ShowDetailView.
