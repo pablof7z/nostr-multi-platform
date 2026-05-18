@@ -1,9 +1,72 @@
 //! Kind:3 (contact list) ingest.
 
 use super::super::*;
+use crate::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
 use crate::subs::{AccountId, CompileTrigger};
+use std::collections::BTreeSet as BTreeSetInner;
+
+/// Deterministic `InterestId` for a follow-feed interest keyed by pubkey.
+///
+/// Hashes `("t140-follow-feed", pubkey)` so the same pubkey always produces the
+/// same id across restarts, enabling stable `withdraw` / `push` round-trips.
+fn follow_feed_interest_id(pubkey: &str) -> InterestId {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    "t140-follow-feed".hash(&mut h);
+    pubkey.hash(&mut h);
+    InterestId(h.finish())
+}
+
+/// Build a `LogicalInterest` for a single follow-feed pubkey (kinds 1 and 6,
+/// `InterestLifecycle::Tailing`, `InterestScope::Global`).
+fn follow_feed_interest(pubkey: &str) -> LogicalInterest {
+    let mut authors = BTreeSetInner::new();
+    authors.insert(pubkey.to_string());
+    let mut kinds = BTreeSetInner::new();
+    kinds.insert(1u32);
+    kinds.insert(6u32);
+    LogicalInterest {
+        id: follow_feed_interest_id(pubkey),
+        scope: InterestScope::Global,
+        shape: InterestShape {
+            authors,
+            kinds,
+            ..Default::default()
+        },
+        hints: Vec::new(),
+        lifecycle: InterestLifecycle::Tailing,
+    }
+}
 
 impl Kernel {
+    /// T140 — Register (or replace) M2 `LogicalInterest`s for the active
+    /// account's follow set.
+    ///
+    /// Withdraws any previously-registered follow-feed interests (tracked in
+    /// `self.follow_feed_interest_ids`), then pushes one new `LogicalInterest`
+    /// per pubkey in `follows` into the lifecycle registry. The `FollowListChanged`
+    /// trigger is NOT enqueued here — callers are responsible for that (avoids
+    /// duplicate triggers when this is called from a path that already enqueues).
+    ///
+    /// After this call the planner's next `drain_tick` will compile the new
+    /// interest set and emit the correct REQ/CLOSE diff via `drain_lifecycle_tick`.
+    pub(crate) fn sync_follow_feed_interests(&mut self, follows: &[String]) {
+        // Withdraw stale interests from the prior follow set.
+        let old_ids: Vec<InterestId> = self.follow_feed_interest_ids.iter().cloned().collect();
+        for id in &old_ids {
+            self.lifecycle.registry_mut().withdraw(id);
+        }
+        self.follow_feed_interest_ids.clear();
+
+        // Register one LogicalInterest per followed pubkey.
+        for pubkey in follows {
+            let interest = follow_feed_interest(pubkey);
+            let id = interest.id.clone();
+            self.lifecycle.registry_mut().push(interest);
+            self.follow_feed_interest_ids.insert(id);
+        }
+    }
+
     /// Ingest a kind:3 contact-list event into the local `seed_contacts` cache
     /// and fan a `FollowListChanged` (A11) trigger into the subscription
     /// lifecycle inbox.
@@ -11,18 +74,13 @@ impl Kernel {
     /// Only called after `verify_and_persist` returns `Inserted | Replaced` (D4).
     /// Extracts "p"-tagged hex pubkeys, capping at `TIMELINE_AUTHOR_LIMIT`.
     ///
+    /// T140: also calls `sync_follow_feed_interests` for the active account's
+    /// kind:3 to register M2 `LogicalInterest`s into the lifecycle registry.
     /// The A11 trigger causes `drain_tick` (on the next tick boundary) to run
-    /// a recompile so any ViewModule whose `dependencies()` declares `kind 3`
-    /// picks up the new follow-set without app involvement. The kernel's M1
-    /// hand-rolled `req()` path continues to drive the wire; the lifecycle
-    /// trigger is the seam that M2 phase-2 / M11 will route to the compiler
-    /// once ViewModules are wired onto `LogicalInterest`.
-    ///
-    /// Seam-gap note: the actor loop must call `lifecycle.drain_tick()` at each
-    /// tick boundary for this trigger to produce wire frames in production.
-    /// Today the kernel uses the lifecycle only for the AuthGate
-    /// (`handle_auth_state_change`); the compile / registry machinery is dormant
-    /// until M11 migrates view modules onto `LogicalInterest`.
+    /// a recompile and emit REQ frames for each followed author's NIP-65 write
+    /// relays. The M1 hand-rolled `req()` path continues to run in parallel
+    /// during the T140 verification window (Step A). Step C will retire M1 once
+    /// M2 output is confirmed equivalent.
     pub(in crate::kernel) fn ingest_contacts(&mut self, event: NostrEvent) {
         let follows = event
             .tags
@@ -61,28 +119,66 @@ impl Kernel {
         // relays. Active-account gated so arbitrary peers' kind:3 don't
         // disturb our subs.
         let is_active = self.active_account.as_deref() == Some(event.pubkey.as_str());
-        if is_active && self.timeline_requested {
-            let prior_follows: BTreeSet<&str> = self
-                .seed_contacts
-                .get(&event.pubkey)
-                .map(|v| v.iter().map(String::as_str).collect())
-                .unwrap_or_default();
-            let new_follows: BTreeSet<&str> = follows.iter().map(String::as_str).collect();
-            if prior_follows != new_follows {
-                self.timeline_requested = false;
-                self.log(format!(
-                    "kind:3 arrival → re-plan timeline for {} (follows {} → {})",
-                    short_hex(&event.pubkey),
-                    prior_follows.len(),
-                    new_follows.len()
-                ));
-                let closes = self.close_subscriptions_with_prefixes(&["seed-timeline-"]);
-                for close in closes {
-                    self.defer_outbound(close);
+        if is_active {
+            // M1 workaround: flip timeline_requested so the next
+            // `maybe_open_timeline()` re-opens with the updated follow set.
+            // (T140 Step C will remove this once M2 is the sole authority.)
+            if self.timeline_requested {
+                let prior_follows: BTreeSet<&str> = self
+                    .seed_contacts
+                    .get(&event.pubkey)
+                    .map(|v| v.iter().map(String::as_str).collect())
+                    .unwrap_or_default();
+                let new_follows: BTreeSet<&str> = follows.iter().map(String::as_str).collect();
+                if prior_follows != new_follows {
+                    self.timeline_requested = false;
+                    self.log(format!(
+                        "kind:3 arrival → re-plan timeline for {} (follows {} → {})",
+                        short_hex(&event.pubkey),
+                        prior_follows.len(),
+                        new_follows.len()
+                    ));
+                    let closes = self.close_subscriptions_with_prefixes(&["seed-timeline-"]);
+                    for close in closes {
+                        self.defer_outbound(close);
+                    }
                 }
             }
+
+            // T140 Step A: register M2 LogicalInterests for the follow set.
+            // The FollowListChanged trigger above drives drain_tick to recompile
+            // and emit the REQ/CLOSE diff on the next actor idle tick.
+            self.sync_follow_feed_interests(&follows);
         }
 
         self.seed_contacts.insert(event.pubkey, follows);
+    }
+
+    /// T140 — Re-register M2 follow-feed interests from the current
+    /// `seed_contacts` of the active account.
+    ///
+    /// Called by `open_timeline()` (actor command) so that switching screens
+    /// back to the timeline re-confirms the M2 interest set is populated.
+    /// Idempotent: if the active account has no kind:3 cached yet, the registry
+    /// stays empty until the first `ingest_contacts` fires.
+    pub(crate) fn register_follow_feed_for_active_account(&mut self) {
+        let Some(active_pk) = self.active_account.clone() else {
+            return;
+        };
+        let follows = self
+            .seed_contacts
+            .get(&active_pk)
+            .cloned()
+            .unwrap_or_default();
+        if !follows.is_empty() {
+            self.sync_follow_feed_interests(&follows);
+            // Enqueue a trigger so drain_tick recompiles on the next idle tick.
+            use crate::subs::CompileTrigger;
+            self.lifecycle
+                .enqueue_trigger(CompileTrigger::FollowListChanged {
+                    account_id: crate::subs::AccountId(active_pk),
+                    new_follows: follows,
+                });
+        }
     }
 }

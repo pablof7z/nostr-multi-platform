@@ -192,6 +192,11 @@ pub(crate) struct Kernel {
     seed_contacts: HashMap<String, Vec<String>>,
     author_relay_lists: HashMap<String, AuthorRelayList>,
     timeline_authors: BTreeSet<String>,
+    /// T140 — M2 follow-feed interest tracking. Maps each currently-registered
+    /// follow-feed `InterestId` so `sync_follow_feed_interests` can withdraw
+    /// stale entries before re-registering on kind:3 change. Derived from the
+    /// active account's kind:3 follow set; empty until first kind:3 arrives.
+    follow_feed_interest_ids: BTreeSet<crate::planner::InterestId>,
     profile_claims: HashMap<String, BTreeSet<String>>,
     requested_profiles: HashSet<String>,
     pending_profiles: BTreeSet<String>,
@@ -398,6 +403,7 @@ impl Kernel {
             seed_contacts: HashMap::new(),
             author_relay_lists: HashMap::new(),
             timeline_authors: BTreeSet::new(),
+            follow_feed_interest_ids: BTreeSet::new(),
             profile_claims: HashMap::new(),
             requested_profiles: HashSet::new(),
             pending_profiles: BTreeSet::new(),

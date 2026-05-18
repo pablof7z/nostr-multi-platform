@@ -197,7 +197,19 @@ pub(crate) fn open_timeline(
     relays_ready: bool,
 ) -> Vec<OutboundMessage> {
     match identity.active_pubkey() {
-        Some(pk) => kernel.open_author(pk, relays_ready),
+        Some(pk) => {
+            // T140 Step A: register M2 follow-feed interests so drain_lifecycle_tick
+            // emits REQ frames for the follow set on the next idle tick.
+            // This complements ingest_contacts (which registers on kind:3 arrival);
+            // open_timeline covers re-opens (screen re-entry) before a new kind:3
+            // arrives.
+            kernel.register_follow_feed_for_active_account();
+
+            // M1 path: keep profile open (open_author) during the T140 transition
+            // window. Step C will evaluate whether open_author is still needed
+            // post-M2 or can be removed.
+            kernel.open_author(pk, relays_ready)
+        }
         None => toast_no_account(kernel, "open timeline"),
     }
 }
