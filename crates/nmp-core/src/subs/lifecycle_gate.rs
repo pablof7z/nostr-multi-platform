@@ -150,4 +150,97 @@ mod tests {
         let mut g = LifecycleGate::new();
         assert!(g.on_eose("wss://r", "ghost").is_empty());
     }
+
+    // ─── RED: cross-relay shared-filter collision (#166) ─────────────────────
+
+    /// OneShot on two relays with the SAME filter hash (same sub_id) — EOSE on
+    /// relay A must emit exactly one CLOSE for relay A, and the relay-B sub
+    /// must remain known so its own EOSE later still fires a CLOSE.
+    ///
+    /// With the buggy `HashMap<sub_id>` keying, the second REQ (relay B)
+    /// overwrites the first (relay A), so EOSE on relay A hits the relay
+    /// mismatch guard and emits nothing — relay A's sub leaks on the wire.
+    #[test]
+    fn oneshot_cross_relay_shared_filter_each_eose_closes_own_relay() {
+        let mut g = LifecycleGate::new();
+        // Same sub_id on two relays (identical filter hash — the realistic
+        // scenario when a OneShot interest routes to multiple relays).
+        g.observe_diff(&[
+            req("shared-filter", "wss://relay-a", InterestLifecycle::OneShot),
+            req("shared-filter", "wss://relay-b", InterestLifecycle::OneShot),
+        ]);
+
+        // EOSE on relay A → must produce a CLOSE for relay A only.
+        let closes_a = g.on_eose("wss://relay-a", "shared-filter");
+        assert_eq!(
+            closes_a.len(),
+            1,
+            "EOSE on relay-a must emit exactly 1 CLOSE; got {closes_a:?}"
+        );
+        assert!(
+            matches!(&closes_a[0], WireFrame::Close { relay_url, sub_id }
+                if relay_url == "wss://relay-a" && sub_id == "shared-filter"),
+            "CLOSE must target relay-a; got {:?}",
+            closes_a
+        );
+
+        // Relay B's sub must still be known → EOSE on relay B must also close.
+        let closes_b = g.on_eose("wss://relay-b", "shared-filter");
+        assert_eq!(
+            closes_b.len(),
+            1,
+            "EOSE on relay-b must emit exactly 1 CLOSE; got {closes_b:?}"
+        );
+        assert!(
+            matches!(&closes_b[0], WireFrame::Close { relay_url, sub_id }
+                if relay_url == "wss://relay-b" && sub_id == "shared-filter"),
+            "CLOSE must target relay-b; got {:?}",
+            closes_b
+        );
+    }
+
+    /// BoundedTime on two relays with the SAME filter hash — deadline tick must
+    /// emit two CLOSE frames, one per relay.
+    ///
+    /// With single-key keying, only one entry exists in `known_subs`, so
+    /// `tick_deadlines` produces at most one CLOSE; the other relay's sub
+    /// silently leaks past its deadline.
+    #[test]
+    fn bounded_time_cross_relay_shared_filter_deadline_closes_both_relays() {
+        let mut g = LifecycleGate::new();
+        g.observe_diff(&[
+            req(
+                "shared-filter",
+                "wss://relay-a",
+                InterestLifecycle::BoundedTime { until_ms: 100 },
+            ),
+            req(
+                "shared-filter",
+                "wss://relay-b",
+                InterestLifecycle::BoundedTime { until_ms: 100 },
+            ),
+        ]);
+
+        let closes = g.tick_deadlines(101);
+        assert_eq!(
+            closes.len(),
+            2,
+            "deadline must close both relay subs; got {closes:?}"
+        );
+        let relay_urls: std::collections::BTreeSet<&str> = closes
+            .iter()
+            .filter_map(|f| match f {
+                WireFrame::Close { relay_url, .. } => Some(relay_url.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            relay_urls.contains("wss://relay-a"),
+            "relay-a must receive a CLOSE; got {closes:?}"
+        );
+        assert!(
+            relay_urls.contains("wss://relay-b"),
+            "relay-b must receive a CLOSE; got {closes:?}"
+        );
+    }
 }
