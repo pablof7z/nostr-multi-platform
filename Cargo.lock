@@ -652,6 +652,7 @@ dependencies = [
  "nmp-core",
  "nmp-nip29",
  "nmp-nip77",
+ "nmp-signers",
  "paste",
  "serde",
  "serde_json",

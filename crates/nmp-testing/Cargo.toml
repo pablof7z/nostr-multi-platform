@@ -18,6 +18,7 @@ serde_json = "1.0"
 [dev-dependencies]
 nmp-core = { path = "../nmp-core" }
 nmp-nip29 = { path = "../nmp-nip29" }
+nmp-signers = { path = "../nmp-signers" }
 
 [[bin]]
 name = "reactivity-bench"
