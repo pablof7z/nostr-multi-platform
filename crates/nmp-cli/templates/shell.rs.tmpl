@@ -1,0 +1,23 @@
+//! Minimal headless shell stub for `{{display}}`.
+//!
+//! A real platform shell (SwiftUI / Compose / iced / wasm) drives the
+//! generated `nmp-app-{{name}}` FFI surface. This stub stays dependency-free
+//! — it just assembles the app's module registry and prints it, proving the
+//! `{{pkg}}` skeleton wires together. Run it with:
+//!
+//! ```sh
+//! cargo run --example shell -p {{pkg}}
+//! ```
+
+use {{crate_ident}}::module_descriptors;
+
+fn main() {
+    let registry = module_descriptors();
+    println!(
+        "{{display}} assembled {} module(s):",
+        registry.descriptors().len()
+    );
+    for descriptor in registry.descriptors() {
+        println!("  {:?}\t{}", descriptor.family, descriptor.namespace);
+    }
+}

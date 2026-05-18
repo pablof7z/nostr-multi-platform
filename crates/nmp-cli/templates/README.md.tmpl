@@ -1,0 +1,41 @@
+# {{display}}
+
+Scaffolded by `nmp init {{name}}`.
+
+## Layout
+
+| Path | What |
+|------|------|
+| `nmp.toml` | App manifest. Declares the kernel, protocol modules, and app modules. Consumed by `nmp gen modules`. |
+| `crates/{{pkg}}/` | Your app's core. Owns the app's nouns (`EntryRecord`, …). One Domain / View / Action module. **App nouns never go in `nmp-core`** (doctrine D0). |
+| `crates/{{pkg}}/examples/shell.rs` | Minimal headless shell stub. |
+
+## Build the skeleton
+
+```sh
+cargo check                              # the {{pkg}} skeleton compiles as-is
+cargo test -p {{pkg}}                    # skeleton tests pass
+cargo run --example shell -p {{pkg}}     # headless shell stub
+```
+
+## Generate the FFI crate
+
+```sh
+nmp gen modules            # emits apps/{{name}}/nmp-app-{{name}}
+nmp gen modules --check    # verifies it is up to date (deterministic)
+```
+
+`nmp gen modules` produces the per-app FFI crate `nmp-app-{{name}}`
+(`AppAction` / `AppUpdate` / `ViewSpec` enums, the `FfiApp` wrapper). That
+crate references the kernel via a **monorepo-relative** path
+(`../../../crates/nmp-core`). To build it, place this app inside an `nmp`
+checkout (so `crates/nmp-core` resolves) and add
+`apps/{{name}}/nmp-app-{{name}}` to the `[workspace] members` list. The
+`{{pkg}}` skeleton itself builds standalone — its `nmp-core` path was
+resolved to an absolute location at `nmp init` time.
+
+## Next steps
+
+1. Replace `Entry` in `crates/{{pkg}}/src/lib.rs` with your real domain.
+2. Add protocol modules to `nmp.toml` (`protocol = ["nmp-nip01", …]`).
+3. Re-run `nmp gen modules`.

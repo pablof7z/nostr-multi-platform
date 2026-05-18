@@ -1,0 +1,259 @@
+//! `{{pkg}}` — the app-specific core for `{{display}}`, scaffolded by
+//! `nmp init {{name}}`.
+//!
+//! This crate owns your app's nouns. Per cardinal doctrine **D0**, app nouns
+//! never live in `nmp-core` — `EntryRecord` and friends are defined *here*,
+//! and the kernel stays generic. This skeleton demonstrates the kernel
+//! boundary with one of each extension family:
+//!
+//! * [`EntryDomainModule`] — a domain store materialised from app-local
+//!   writes (no Nostr ingest).
+//! * [`EntryListView`]'s [`EntryViewModule`] — a reactive view over it.
+//! * [`EntryActionModule`] — an action that validates and accepts input.
+//!
+//! Replace `Entry` with your real domain. Add protocol modules
+//! (`nmp-nip01`, ...) to `nmp.toml` and run `nmp gen modules`.
+
+use nmp_core::substrate::*;
+use serde::{Deserialize, Serialize};
+
+/// The app module identifier. Namespaces below derive from it.
+pub const APP_MODULE: &str = "{{name}}.entries";
+
+/// An app-owned record. This is a *generic* example — not a social-app
+/// noun. Make it whatever your app stores.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct EntryRecord {
+    pub id: String,
+    pub label: String,
+    pub archived: bool,
+}
+
+// ---------------------------------------------------------------------------
+// Domain
+// ---------------------------------------------------------------------------
+
+pub struct EntryDomainModule;
+
+impl DomainModule for EntryDomainModule {
+    const NAMESPACE: &'static str = "{{name}}.entries.domain";
+    const SCHEMA_VERSION: u32 = 1;
+
+    fn migrations() -> Vec<DomainMigration> {
+        Vec::new()
+    }
+
+    fn indexes() -> Vec<DomainIndex> {
+        vec![DomainIndex {
+            name: "by_archived",
+            key_fn: |bytes| {
+                serde_json::from_slice::<EntryRecord>(bytes)
+                    .ok()
+                    .map(|entry| entry.archived.to_string().into_bytes())
+            },
+        }]
+    }
+
+    fn register(registry: &mut DomainRegistry) {
+        registry.register_record::<EntryRecord>();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// View
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
+pub struct EntryListSpec {
+    pub include_archived: bool,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub struct EntryListView {
+    pub items: Vec<EntryRecord>,
+    pub active_count: usize,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum EntryDelta {
+    Replaced { payload: EntryListView },
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct EntryViewState {
+    payload: EntryListView,
+}
+
+pub struct EntryViewModule;
+
+impl ViewModule for EntryViewModule {
+    const NAMESPACE: &'static str = "{{name}}.entries.view";
+
+    type Spec = EntryListSpec;
+    type Payload = EntryListView;
+    type Delta = EntryDelta;
+    type Key = bool;
+    type State = EntryViewState;
+
+    fn key(spec: &Self::Spec) -> Self::Key {
+        spec.include_archived
+    }
+
+    fn dependencies(_spec: &Self::Spec) -> ViewDependencies {
+        ViewDependencies::default()
+    }
+
+    fn open(_ctx: &ViewContext, _spec: Self::Spec) -> (Self::State, Self::Payload) {
+        let payload = EntryListView::default();
+        (
+            EntryViewState {
+                payload: payload.clone(),
+            },
+            payload,
+        )
+    }
+
+    fn on_event_inserted(
+        _ctx: &ViewContext,
+        _state: &mut Self::State,
+        _event: &KernelEvent,
+    ) -> Option<Self::Delta> {
+        None
+    }
+
+    fn on_event_removed(
+        _ctx: &ViewContext,
+        _state: &mut Self::State,
+        _id: &EventId,
+    ) -> Option<Self::Delta> {
+        None
+    }
+
+    fn on_event_replaced(
+        _ctx: &ViewContext,
+        _state: &mut Self::State,
+        _old_id: &EventId,
+        _new_event: &KernelEvent,
+    ) -> Option<Self::Delta> {
+        None
+    }
+
+    fn on_projection_changed(
+        _ctx: &ViewContext,
+        state: &mut Self::State,
+        _change: &ProjectionChange,
+    ) -> Option<Self::Delta> {
+        Some(EntryDelta::Replaced {
+            payload: state.payload.clone(),
+        })
+    }
+
+    fn snapshot(_ctx: &ViewContext, state: &Self::State) -> Self::Payload {
+        state.payload.clone()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Action
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum Action {
+    Add { id: String, label: String },
+    Archive { id: String },
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum EntryStep {
+    ApplyLocalWrite,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum ActionOutput {
+    Accepted,
+}
+
+pub struct EntryActionModule;
+
+impl ActionModule for EntryActionModule {
+    const NAMESPACE: &'static str = "{{name}}.entries.action";
+
+    type Action = Action;
+    type Step = EntryStep;
+    type Output = ActionOutput;
+
+    fn start(
+        _ctx: &mut ActionContext,
+        action: Self::Action,
+    ) -> Result<ActionPlan<Self::Step>, ActionRejection> {
+        if matches!(&action, Action::Add { label, .. } if label.trim().is_empty()) {
+            return Err(ActionRejection::Invalid("entry label is empty".to_string()));
+        }
+        Ok(ActionPlan {
+            initial_step: EntryStep::ApplyLocalWrite,
+            initial_status: ActionStatus::Running,
+            deadline_ms: None,
+        })
+    }
+
+    fn reduce(
+        _ctx: &mut ActionContext,
+        _id: ActionId,
+        _input: ActionInput<Self::Step>,
+    ) -> ActionTransition<Self::Step, Self::Output> {
+        ActionTransition::Complete {
+            output: ActionOutput::Accepted,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Assembly
+// ---------------------------------------------------------------------------
+
+/// Register every module this app contributes. The headless shell stub
+/// (`examples/shell.rs`) and the generated FFI crate both build on this.
+pub fn module_descriptors() -> ModuleRegistry {
+    let mut registry = ModuleRegistry::default();
+    registry.register_domain::<EntryDomainModule>();
+    registry.register_view::<EntryViewModule>();
+    registry.register_action::<EntryActionModule>();
+    registry
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn registers_one_module_per_family() {
+        let registry = module_descriptors();
+        let families = registry
+            .descriptors()
+            .iter()
+            .map(|descriptor| descriptor.family)
+            .collect::<Vec<_>>();
+
+        assert_eq!(families.len(), 3);
+        assert!(families.contains(&ModuleFamily::Domain));
+        assert!(families.contains(&ModuleFamily::View));
+        assert!(families.contains(&ModuleFamily::Action));
+    }
+
+    #[test]
+    fn action_rejects_empty_label() {
+        let mut ctx = ActionContext::default();
+        let result = EntryActionModule::start(
+            &mut ctx,
+            Action::Add {
+                id: "1".to_string(),
+                label: "  ".to_string(),
+            },
+        );
+
+        assert_eq!(
+            result,
+            Err(ActionRejection::Invalid("entry label is empty".to_string()))
+        );
+    }
+}

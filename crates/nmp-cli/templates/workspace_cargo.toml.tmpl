@@ -1,0 +1,14 @@
+# Scaffolded by `nmp init {{name}}`.
+#
+# The generated FFI crate (apps/{{name}}/nmp-app-{{name}}, produced by
+# `nmp gen modules`) is intentionally NOT a member here: it expects a
+# monorepo layout (../../../crates/nmp-core). Add it as a member once you
+# are building inside an nmp checkout. See README.md.
+[workspace]
+members = ["crates/{{pkg}}"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+version = "0.1.0"

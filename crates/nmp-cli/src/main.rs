@@ -1,0 +1,57 @@
+//! `nmp` — the NMP developer CLI.
+//!
+//! Two commands make NMP adoptable instead of hand-wired:
+//!
+//! * `nmp init <app-name>` — scaffold a new app (an `nmp.toml` manifest plus
+//!   an `<app>-core` crate skeleton with one DomainModule / ViewModule /
+//!   ActionModule and a minimal headless shell stub).
+//! * `nmp gen modules` — invoke the existing `nmp-codegen` pipeline to emit
+//!   the per-app `nmp-app-<name>` FFI crate.
+//!
+//! The scaffold compiles immediately after `nmp init`, and `nmp gen modules`
+//! is deterministic. See `docs/cli.md`.
+
+mod gen;
+mod init;
+
+use std::env;
+
+fn main() {
+    match run() {
+        Ok(()) => {}
+        Err(error) => {
+            eprintln!("nmp: {error}");
+            std::process::exit(1);
+        }
+    }
+}
+
+fn run() -> Result<(), String> {
+    let args = env::args().skip(1).collect::<Vec<_>>();
+    match args.first().map(String::as_str) {
+        Some("init") => init::run(&args[1..]),
+        Some("gen") => gen::run(&args[1..]),
+        Some("--help") | Some("-h") | Some("help") | None => {
+            println!("{}", help());
+            Ok(())
+        }
+        Some(other) => Err(format!("unknown command `{other}`\n\n{}", help())),
+    }
+}
+
+fn help() -> String {
+    [
+        "usage:",
+        "  nmp init <app-name> [--path DIR]",
+        "      Scaffold a new NMP app. Creates a workspace at DIR (default",
+        "      ./<app-name>) with an nmp.toml manifest and an <app-name>-core",
+        "      crate skeleton (one DomainModule / ViewModule / ActionModule",
+        "      plus a headless shell stub). The skeleton compiles as-is.",
+        "",
+        "  nmp gen modules [--manifest nmp.toml] [--out DIR] [--check]",
+        "      Generate the per-app nmp-app-<name> FFI crate from a manifest",
+        "      via the nmp-codegen pipeline. --check verifies the on-disk",
+        "      crate matches a fresh generation (deterministic codegen gate).",
+    ]
+    .join("\n")
+}
