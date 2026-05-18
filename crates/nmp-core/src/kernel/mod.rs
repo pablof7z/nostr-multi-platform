@@ -20,6 +20,9 @@ mod nostr;
 mod outbox;
 #[cfg(test)]
 mod outbox_tests;
+mod provenance;
+#[cfg(test)]
+mod provenance_wire_tests;
 mod publish_cmd;
 mod publish_engine;
 #[cfg(test)]
@@ -205,6 +208,13 @@ pub(crate) struct Kernel {
     /// second kernel sharing the same store to prove resume-from-store.
     #[allow(dead_code)]
     publish_store: Arc<dyn crate::publish::PublishStore>,
+    /// T131 — per-URL first-source / duplicate / replaced / rejected
+    /// counters, fed at `ingest/timeline.rs:68` from the store's
+    /// `InsertOutcome` discriminator. The diagnostic projection
+    /// (F4, future task) folds this into `KernelUpdate::relay_diagnostics`
+    /// to expose `RelayUsefulness.novelty_ratio`
+    /// (`docs/design/outbox-explorer-diagnostics.md` §2 line 152).
+    pub(in crate::kernel) event_provenance: provenance::EventProvenance,
 }
 
 impl Kernel {
@@ -301,6 +311,7 @@ impl Kernel {
             publish_engine,
             publish_dispatcher,
             publish_store,
+            event_provenance: provenance::EventProvenance::new(),
         }
     }
 

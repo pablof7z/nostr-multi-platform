@@ -68,6 +68,31 @@ impl Kernel {
         let proceed = match self.store.insert(verified, &provenance, received_at_ms) {
             Ok(outcome) => {
                 use crate::store::InsertOutcome;
+                // T131 — bump per-URL `RelayUsefulness` counters in the
+                // same match arms (design doc §3 line 188: 0 per-event
+                // alloc on the hot path; the `provenance` URL is already
+                // in scope at line 62 above).
+                match &outcome {
+                    InsertOutcome::Inserted { .. } => {
+                        self.event_provenance
+                            .record_first_source(&event.id, &provenance);
+                    }
+                    InsertOutcome::Replaced { .. } => {
+                        self.event_provenance.record_replaced(&provenance);
+                    }
+                    InsertOutcome::Duplicate { .. } => {
+                        self.event_provenance.record_duplicate(&provenance);
+                    }
+                    InsertOutcome::Rejected { .. } => {
+                        self.event_provenance.record_rejected(&provenance);
+                    }
+                    // Superseded / Tombstoned / Ephemeral are not relay-
+                    // usefulness signals — neither novel nor a redundant
+                    // copy, they're protocol-state transitions.
+                    InsertOutcome::Superseded { .. }
+                    | InsertOutcome::Tombstoned { .. }
+                    | InsertOutcome::Ephemeral { .. } => {}
+                }
                 match outcome {
                     InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. } => true,
                     InsertOutcome::Duplicate { sources_after, .. } => {
