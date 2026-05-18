@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use nmp_core::nip21::parse_nostr_uri;
 use url::Url;
 
-use crate::grouper::{group_consecutive_media, media_kind_for_url};
+use crate::grouper::group_consecutive_media;
 use crate::markdown::parse_markdown_blocks;
 use crate::mode::{sniff_mode_from_kind, RenderMode};
 use crate::regex_set::{patterns, PatternKind};
@@ -145,10 +145,42 @@ fn classify(
         }
         let raw = &content[m.start..m.end];
         let capture = &content[m.capture_start..m.capture_end];
-        if let Some(seg) = classify_match(m.kind, raw, capture, emoji_table) {
-            out.push(seg);
-        } else {
-            out.push(Segment::Text(raw.to_string()));
+        match m.kind {
+            // Hashtag's match span includes the leading `(?:^|\s)`
+            // separator before the captured `#tag`. Re-emit that separator
+            // as Text so the source round-trips (codex finding #7). The `#`
+            // sits at `capture_start - 1`; the separator is everything
+            // before it (empty when matched at start-of-string).
+            PatternKind::Hashtag => {
+                let prefix = &content[m.start..m.capture_start - 1];
+                if !prefix.is_empty() {
+                    out.push(Segment::Text(prefix.to_string()));
+                }
+                if let Some(seg) = classify_match(m.kind, raw, capture, emoji_table) {
+                    out.push(seg);
+                } else {
+                    // Empty tag body — re-emit the whole match verbatim.
+                    out.push(Segment::Text(raw.to_string()));
+                }
+            }
+            // URLs trim trailing punctuation; that suffix must survive as a
+            // trailing Text segment, never silently dropped (finding #8).
+            PatternKind::Url => match parse_url_segment(raw) {
+                Some((seg, trailing)) => {
+                    out.push(seg);
+                    if !trailing.is_empty() {
+                        out.push(Segment::Text(trailing.to_string()));
+                    }
+                }
+                None => out.push(Segment::Text(raw.to_string())),
+            },
+            _ => {
+                if let Some(seg) = classify_match(m.kind, raw, capture, emoji_table) {
+                    out.push(seg);
+                } else {
+                    out.push(Segment::Text(raw.to_string()));
+                }
+            }
         }
         cursor = m.end;
     }
@@ -190,25 +222,27 @@ fn classify_match(
                 Some(Segment::Hashtag(tag))
             }
         }
-        PatternKind::Url => parse_url_segment(raw),
+        // URL is handled directly in `classify` so its trimmed trailing
+        // punctuation can be re-emitted as a sibling Text segment.
+        PatternKind::Url => None,
         PatternKind::Bolt11 => Some(Segment::Invoice(InvoiceKind::Bolt11(raw.to_string()))),
         PatternKind::Bolt12 => Some(Segment::Invoice(InvoiceKind::Bolt12(raw.to_string()))),
         PatternKind::Cashu => Some(Segment::Invoice(InvoiceKind::Cashu(raw.to_string()))),
     }
 }
 
-/// Strip trailing punctuation, then parse. Returns `None` (text fallback)
-/// for unparseable URLs.
-fn parse_url_segment(raw: &str) -> Option<Segment> {
+/// Strip trailing punctuation, then parse. On success returns the
+/// `Segment::Url` plus the trimmed trailing-punctuation suffix (a slice of
+/// `raw`) so the caller can re-emit it as Text — no source character is
+/// ever dropped (codex finding #8). Returns `None` (text fallback) for
+/// unparseable URLs.
+fn parse_url_segment(raw: &str) -> Option<(Segment, &str)> {
     let trimmed = raw.trim_end_matches(['.', ',', ';', ':', '!', '?', ')']);
     let url = Url::parse(trimmed).ok()?;
-    // If extension matches a media type, emit a single-element media segment
-    // pre-grouper so that the grouper's "same kind run" merging picks it up.
-    if let Some(kind) = media_kind_for_url(&url) {
-        let _ = kind; // kind is assigned later by the grouper; we emit Url here
-        return Some(Segment::Url(url));
-    }
-    Some(Segment::Url(url))
+    // The trim chars are all ASCII, so the byte-length delta is a valid
+    // char boundary on `raw`.
+    let trailing = &raw[trimmed.len()..];
+    Some((Segment::Url(url), trailing))
 }
 
 fn coalesce_text(input: Vec<Segment>) -> Vec<Segment> {
@@ -258,10 +292,12 @@ mod tests {
     #[test]
     fn hashtag_emits_segment_lowercased() {
         let tree = tokenize("hello #Nostr there", &[], RenderMode::Plain);
+        // The leading separator (" ") before `#` is preserved as Text so
+        // the source round-trips (codex finding #7).
         assert_eq!(
             tree.segments,
             vec![
-                Segment::Text("hello".to_string()),
+                Segment::Text("hello ".to_string()),
                 Segment::Hashtag("nostr".to_string()),
                 Segment::Text(" there".to_string()),
             ]

@@ -14,11 +14,35 @@
 //! 4. **Recursion guard short-circuits at depth 4.** A `RenderContext`
 //!    descended `N` times where `N >= max_depth` MUST report
 //!    `should_collapse == true` for any candidate child id.
+//! 5. **Source round-trips (no character drops).** For arbitrary
+//!    lowercase-ASCII content (which the tokenizer never normalizes),
+//!    concatenating each segment's source reproduces the input verbatim —
+//!    every source character is preserved (codex finding #7/#8: leading
+//!    whitespace before hashtags and trimmed URL punctuation were dropped).
 
 use nmp_content::{
     render_context_can_descend, tokenize, RenderContext, RenderMode, Segment,
 };
 use proptest::prelude::*;
+
+/// Reconstruct the source string a `Segment` was tokenized from. Only the
+/// variants the round-trip generators can produce are handled — `Url`,
+/// `Media`, markdown blocks, etc. are unreachable for lowercase-ASCII
+/// no-URL input and panic loudly if that assumption ever breaks.
+fn segment_source(seg: &Segment) -> String {
+    match seg {
+        Segment::Text(t) => t.clone(),
+        // Hashtag is lowercased + strips the `#`; lowercase-ASCII input is
+        // already lowercase so reconstruction is exact.
+        Segment::Hashtag(tag) => format!("#{tag}"),
+        Segment::Emoji { shortcode, .. } => format!(":{shortcode}:"),
+        other => panic!("unexpected segment for round-trip input: {other:?}"),
+    }
+}
+
+fn reconstruct(segments: &[Segment]) -> String {
+    segments.iter().map(segment_source).collect()
+}
 
 /// Hashtag-class punctuation that breaks token boundaries — keep these out
 /// of the "plain text" generator so the tokenizer doesn't pull a tag out.
@@ -93,4 +117,55 @@ proptest! {
             prop_assert!(collapse, "depth {descents} >= max {} should collapse", ctx.max_depth);
         }
     }
+
+    /// Invariant 5: arbitrary lowercase-ASCII content (letters, digits,
+    /// spaces, newlines, `#`, ASCII punctuation) round-trips with zero
+    /// character loss. The tokenizer never normalizes lowercase ASCII, so
+    /// `reconstruct(segments) == content` must hold exactly.
+    #[test]
+    fn source_round_trips_without_dropping_characters(
+        content in r"[a-z0-9 \n#.,;:!?()_-]{0,160}"
+    ) {
+        let tree = tokenize(&content, &[], RenderMode::Plain);
+        prop_assert_eq!(reconstruct(&tree.segments), content);
+    }
+}
+
+/// Regression: codex finding #7 — leading whitespace before a hashtag was
+/// dropped from the source text on round-trip.
+#[test]
+fn hashtag_preserves_leading_whitespace() {
+    let tree = tokenize("hello   #nostr there", &[], RenderMode::Plain);
+    assert_eq!(reconstruct(&tree.segments), "hello   #nostr there");
+}
+
+/// Regression: codex finding #7 with newline + tab separators.
+#[test]
+fn hashtag_preserves_newline_separator() {
+    let tree = tokenize("line\n#tag", &[], RenderMode::Plain);
+    assert_eq!(reconstruct(&tree.segments), "line\n#tag");
+}
+
+/// Regression: codex finding #8 — URL trailing punctuation was trimmed off
+/// the URL then silently lost (never re-emitted as text).
+#[test]
+fn url_trailing_punctuation_re_emitted_as_text() {
+    let tree = tokenize("see https://example.com/x).", &[], RenderMode::Plain);
+    let urls: Vec<_> = tree
+        .segments
+        .iter()
+        .filter(|s| matches!(s, Segment::Url(_) | Segment::Media { .. }))
+        .collect();
+    assert_eq!(urls.len(), 1, "exactly one URL segment");
+    // The trimmed `).` suffix must survive as a trailing Text segment.
+    let trailing_text: String = tree
+        .segments
+        .iter()
+        .filter_map(|s| if let Segment::Text(t) = s { Some(t.as_str()) } else { None })
+        .collect();
+    assert!(
+        trailing_text.contains(")."),
+        "trimmed URL punctuation `).` must be re-emitted as text, got segments: {:?}",
+        tree.segments
+    );
 }

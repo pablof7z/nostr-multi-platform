@@ -80,10 +80,13 @@ pub enum MarkdownInline {
         /// Destination URL (validated; falls back to `None` if unparseable).
         href: Option<Url>,
     },
-    /// `![alt](src)`.
+    /// `![alt](src "title")`.
     Image {
-        /// Image alt text.
+        /// Image alt text — the literal text between `![` and `]`
+        /// (collected from the image's inline children, *not* the title).
         alt: String,
+        /// Optional title — the quoted string after the URL, or `None`.
+        title: Option<String>,
         /// Source URL; `None` if unparseable.
         src: Option<Url>,
     },
@@ -99,10 +102,10 @@ pub(crate) fn parse_markdown_blocks(
     content: &str,
     emoji_table: &HashMap<String, Url>,
 ) -> Vec<Segment> {
-    let mut options = Options::empty();
-    options.insert(Options::ENABLE_STRIKETHROUGH);
-    options.insert(Options::ENABLE_TABLES);
-    let parser = Parser::new_ext(content, options);
+    // PD-012: CommonMark-only. GFM extensions (tables, strikethrough,
+    // task lists, footnotes, …) are deliberately NOT enabled — pulldown
+    // then parses them as literal text, which the inline tokenizer handles.
+    let parser = Parser::new_ext(content, Options::empty());
     let mut walker = Walker::new(emoji_table);
     for event in parser {
         walker.handle(event);
@@ -145,6 +148,10 @@ enum InlineFrame {
     Emphasis(Vec<MarkdownInline>),
     Strong(Vec<MarkdownInline>),
     Link { label: Vec<MarkdownInline>, href: Option<Url> },
+    /// Accumulates the image's inline children (the real alt text) until
+    /// `TagEnd::Image`. `alt` collects raw text only — pulldown emits the
+    /// alt as `Text` events between `Start(Image)` and `End(Image)`.
+    Image { alt: String, title: Option<String>, src: Option<Url> },
 }
 
 impl<'a> Walker<'a> {
@@ -206,8 +213,13 @@ impl<'a> Walker<'a> {
                 href: Url::parse(&dest_url).ok(),
             }),
             Tag::Image { dest_url, title, .. } => {
-                self.push_inline(MarkdownInline::Image {
-                    alt: title.into_string(),
+                let title = {
+                    let t = title.into_string();
+                    if t.is_empty() { None } else { Some(t) }
+                };
+                self.inline_stack.push(InlineFrame::Image {
+                    alt: String::new(),
+                    title,
                     src: Url::parse(&dest_url).ok(),
                 });
             }
@@ -278,6 +290,11 @@ impl<'a> Walker<'a> {
                     self.push_inline(MarkdownInline::Link { label, href });
                 }
             }
+            TagEnd::Image => {
+                if let Some(InlineFrame::Image { alt, title, src }) = self.inline_stack.pop() {
+                    self.push_inline(MarkdownInline::Image { alt, title, src });
+                }
+            }
             TagEnd::HtmlBlock | TagEnd::Table | TagEnd::TableHead | TagEnd::TableRow | TagEnd::TableCell => {
                 if matches!(self.block_stack.last(), Some(BlockFrame::Paragraph)) {
                     let _ = self.block_stack.pop();
@@ -296,6 +313,13 @@ impl<'a> Walker<'a> {
             frame.body.push_str(text);
             return;
         }
+        // Inside an image, all inline events form the alt text. Per
+        // CommonMark the alt is the plain-text rendering of the children,
+        // so we accumulate raw text and never tokenize it.
+        if let Some(InlineFrame::Image { alt, .. }) = self.inline_stack.last_mut() {
+            alt.push_str(text);
+            return;
+        }
         // Run the inline tokenizer on this text fragment so mentions/hashtags/
         // URLs that appear mid-paragraph still parse. Empty fragments after
         // tokenization (rare) are no-ops.
@@ -311,6 +335,11 @@ impl<'a> Walker<'a> {
                 InlineFrame::Emphasis(buf)
                 | InlineFrame::Strong(buf)
                 | InlineFrame::Link { label: buf, .. } => buf.push(inline),
+                // Image alt is the plain-text rendering of descendants
+                // (CommonMark §6.4). Flatten any nested inline to its text.
+                InlineFrame::Image { alt, .. } => {
+                    inline_plain_text(&inline, alt);
+                }
             }
         } else {
             self.pending_inlines.push(inline);
@@ -326,6 +355,11 @@ impl<'a> Walker<'a> {
                 self.push_inline(MarkdownInline::Link { label, href });
                 return;
             }
+            Some(InlineFrame::Image { alt, title, src }) => {
+                // Defensive: TagEnd::Image is handled separately.
+                self.push_inline(MarkdownInline::Image { alt, title, src });
+                return;
+            }
             None => return,
         };
         self.push_inline(wrap(popped));
@@ -339,6 +373,38 @@ impl<'a> Walker<'a> {
         } else {
             self.blocks.push(node);
         }
+    }
+}
+
+/// Flatten a `MarkdownInline` to its plain-text rendering, appending into
+/// `out`. Used only for image alt text (CommonMark §6.4: alt is the plain
+/// string content of the image description, emphasis/links stripped).
+fn inline_plain_text(inline: &MarkdownInline, out: &mut String) {
+    match inline {
+        MarkdownInline::Inline(Segment::Text(t)) => out.push_str(t),
+        MarkdownInline::Inline(Segment::Hashtag(t)) => {
+            out.push('#');
+            out.push_str(t);
+        }
+        MarkdownInline::Inline(Segment::Emoji { shortcode, .. }) => {
+            out.push(':');
+            out.push_str(shortcode);
+            out.push(':');
+        }
+        MarkdownInline::Inline(Segment::Url(u)) => out.push_str(u.as_str()),
+        MarkdownInline::Code(c) => out.push_str(c),
+        MarkdownInline::Emphasis(children)
+        | MarkdownInline::Strong(children)
+        | MarkdownInline::Link { label: children, .. } => {
+            for child in children {
+                inline_plain_text(child, out);
+            }
+        }
+        MarkdownInline::Image { alt, .. } => out.push_str(alt),
+        MarkdownInline::SoftBreak | MarkdownInline::HardBreak => out.push('\n'),
+        // Mentions / event refs / media / invoices have no canonical
+        // plain-text form for alt; skip rather than leak debug output.
+        MarkdownInline::Inline(_) => {}
     }
 }
 
@@ -435,6 +501,71 @@ mod tests {
         };
         assert!(ordered_start.is_none());
         assert_eq!(items.len(), 2);
+    }
+
+    fn find_image(inlines: &[MarkdownInline]) -> Option<(&str, Option<&str>)> {
+        inlines.iter().find_map(|i| match i {
+            MarkdownInline::Image { alt, title, .. } => {
+                Some((alt.as_str(), title.as_deref()))
+            }
+            _ => None,
+        })
+    }
+
+    #[test]
+    fn image_uses_real_alt_text_not_title() {
+        let blocks = parse(r#"![real alt](https://x.test/i.png "the title")"#);
+        let MarkdownNode::Paragraph(inlines) = &blocks[0] else {
+            panic!("expected paragraph, got {:?}", blocks[0]);
+        };
+        let (alt, title) = find_image(inlines).expect("image inline");
+        assert_eq!(alt, "real alt");
+        assert_eq!(title, Some("the title"));
+    }
+
+    #[test]
+    fn image_alt_does_not_leak_as_inline_text() {
+        let blocks = parse("![alt words](https://x.test/i.png)");
+        let MarkdownNode::Paragraph(inlines) = &blocks[0] else {
+            panic!("expected paragraph");
+        };
+        // The alt must NOT appear as a sibling Text inline.
+        let leaked = inlines.iter().any(|i| {
+            matches!(i, MarkdownInline::Inline(Segment::Text(t)) if t.contains("alt words"))
+        });
+        assert!(!leaked, "alt text leaked as inline: {inlines:?}");
+        let (alt, title) = find_image(inlines).expect("image inline");
+        assert_eq!(alt, "alt words");
+        assert_eq!(title, None);
+    }
+
+    #[test]
+    fn gfm_table_not_parsed_as_table_pd012() {
+        // PD-012: tables are NOT a CommonMark feature; pulldown must treat
+        // the pipes as literal paragraph text, not a Table node.
+        let blocks = parse("| a | b |\n|---|---|\n| 1 | 2 |");
+        assert!(
+            blocks.iter().all(|b| !matches!(b, MarkdownNode::Rule)),
+            "table separator must not become a Rule"
+        );
+        assert!(matches!(blocks[0], MarkdownNode::Paragraph(_)));
+    }
+
+    #[test]
+    fn gfm_strikethrough_not_parsed_pd012() {
+        // `~~x~~` stays literal text under CommonMark-only options.
+        let blocks = parse("~~struck~~");
+        let MarkdownNode::Paragraph(inlines) = &blocks[0] else {
+            panic!("expected paragraph");
+        };
+        let text: String = inlines
+            .iter()
+            .filter_map(|i| match i {
+                MarkdownInline::Inline(Segment::Text(t)) => Some(t.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert!(text.contains("~~"), "tildes must remain literal: {inlines:?}");
     }
 
     #[test]
