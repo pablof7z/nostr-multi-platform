@@ -44,7 +44,7 @@ impl ViewModule for JoinedGroupsView {
         // `interest::joined_groups_for_host` driven by `JoinedHostsCache`. The
         // ViewDependencies surface here is the structural shape the compiler
         // sees pre-fanout — `#p: [self_pubkey]` on 39001/39002. The kernel
-        // wraps each of these in a `pin_to: Some(host)` per-host interest at
+        // wraps each of these in a `relay_pin: Some(host)` per-host interest at
         // dispatch time.
         ViewDependencies {
             kinds: vec![KIND_GROUP_ADMINS, KIND_GROUP_MEMBERS],

@@ -8,18 +8,19 @@
 //!
 //! ## Module layout (each sub-module ≤ 300 LOC)
 //!
-//! - `case_a_authors`   — Case A: explicit authors → outbox relays
-//! - `case_b_addresses` — Case B: address-pointer pubkeys → outbox relays
-//! - `case_c_p_tags`    — Case C: `#p` tag values → inbox relays (structural ban)
-//! - `case_d_no_author` — Case D: no author/address/p → active-account or indexer
-//! - `case_e_pin_to`    — Case E: `pin_to` hard-pin → host relay only (NIP-29)
-//! - `inbox_helper`     — `route_p_tags_to_inbox` shared by Cases A and C
+//! - `case_a_authors`      — Case A: explicit authors → outbox relays
+//! - `case_b_addresses`    — Case B: address-pointer pubkeys → outbox relays
+//! - `case_c_p_tags`       — Case C: `#p` tag values → inbox relays (structural ban)
+//! - `case_d_no_author`    — Case D: no author/address/p → active-account or indexer
+//! - `case_e_relay_pinned` — Case E: `relay_pin` hard-pin → host relay only.
+//!   Generic third routing lane; example consumer: NIP-29 relay-based groups.
+//! - `inbox_helper`        — `route_p_tags_to_inbox` shared by Cases A and C
 
 mod case_a_authors;
 mod case_b_addresses;
 mod case_c_p_tags;
 mod case_d_no_author;
-mod case_e_pin_to;
+mod case_e_relay_pinned;
 mod inbox_helper;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -109,15 +110,16 @@ pub(super) fn partition_interest(
         limit: interest.shape.limit,
         event_ids: interest.shape.event_ids.clone(),
         addresses: BTreeSet::new(),
-        pin_to: interest.shape.pin_to.clone(),
+        relay_pin: interest.shape.relay_pin.clone(),
     };
 
-    // Case E (NIP-29 host-relay-pin): hard-pin short-circuits the four-lane
+    // Case E (relay-pinned interest): hard-pin short-circuits the four-lane
     // dispatch entirely. Authors / addresses / #p on the same interest are
-    // retained on the wire filter but ignored for routing. This is the third
-    // routing lane required by `docs/design/nip29/routing.md` §3.
-    if let Some(pin_url) = &interest.shape.pin_to {
-        case_e_pin_to::route(interest, &base_shape, pin_url, relay_entries);
+    // retained on the wire filter but ignored for routing. This is the
+    // generic third routing lane — any protocol with single-host addressing
+    // semantics can opt in by setting `relay_pin` on its `InterestShape`.
+    if let Some(pin_url) = &interest.shape.relay_pin {
+        case_e_relay_pinned::route(interest, &base_shape, pin_url, relay_entries);
         return;
     }
 

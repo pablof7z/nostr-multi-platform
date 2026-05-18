@@ -13,7 +13,7 @@
 //!   composition happens at the app layer (e.g. `nmp-highlighter-core`).
 //! - `nmp-core` gains zero group / community / room nouns; this crate owns
 //!   them. The only generic surface added in `nmp-core` is the third routing
-//!   lane (`InterestShape::pin_to` + lattice Rule 9 + partition Case E).
+//!   lane (`InterestShape::relay_pin` + lattice Rule 9 + partition Case E).
 //!
 //! ## Module layout
 //!
@@ -28,7 +28,7 @@
 //! - [`moderation`] — audit-record materialisation; canonical-state separation.
 //!
 //! All inputs to actions carry a typed `GroupId` so the publish planner gets a
-//! typed `pin_to: Some(host)` carrier and never derives routing from raw tag
+//! typed `relay_pin: Some(host)` carrier and never derives routing from raw tag
 //! strings.
 
 pub mod cache;

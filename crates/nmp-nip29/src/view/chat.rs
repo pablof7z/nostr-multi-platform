@@ -1,5 +1,5 @@
 //! `GroupChatView`, `GroupDiscussionsView`, `GroupArtifactsView` — single-group
-//! event-list projections, all host-pinned via the same `pin_to` mechanism.
+//! event-list projections, all host-pinned via the same `relay_pin` mechanism.
 
 use std::collections::BTreeMap;
 

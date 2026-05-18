@@ -4,7 +4,7 @@
 //! dispatched by kind (9 chat, 11 with `t=discussion` discussion, 11 without
 //! `t=discussion` artifact, 16 with h repost, 9802 with h highlight).
 //!
-//! Routing per `routing.md` §3: host-pinned via `pin_to` on the
+//! Routing per `routing.md` §3: host-pinned via `relay_pin` on the
 //! `LogicalInterest` (lattice Rule 9 + partition Case E).
 
 use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule, DomainRegistry};

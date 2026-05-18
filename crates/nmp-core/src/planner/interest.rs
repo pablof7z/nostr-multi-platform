@@ -113,24 +113,31 @@ pub struct InterestShape {
     /// Hard routing pin: when `Some`, all four-lane routing (Cases A/B/C/D)
     /// is suppressed and the interest goes to exactly this relay.
     ///
-    /// This is the third routing lane required by NIP-29 relay-based groups:
-    /// the group only exists on one host relay, so NIP-65 mailbox routing is
-    /// irrelevant. The host-relay-pin contract is documented in
-    /// `docs/design/nip29/routing.md` §3 ("`RelayPinnedInterest`").
+    /// This is the third routing lane: some protocols require subscriptions
+    /// and publishes to be addressed to a specific host relay regardless of
+    /// the author's NIP-65 mailboxes. When a consumer needs that semantics,
+    /// it sets `relay_pin = Some(host)` and the planner short-circuits the
+    /// four-lane dispatch in `planner::compiler::partition::case_e_relay_pinned`.
     ///
-    /// Merge lattice **Rule 9** (in `planner::lattice::rules::rule9_pin_to`):
-    /// two shapes with different `pin_to` values refuse to merge — they go to
-    /// different relays and must produce distinct wire frames. Wildcard
+    /// Merge lattice **Rule 9** (in `planner::lattice::rules::rule9_relay_pin`):
+    /// two shapes with different `relay_pin` values refuse to merge — they go
+    /// to different relays and must produce distinct wire frames. Wildcard
     /// (`None`) does NOT absorb a concrete pin (unlike Rule 1's wildcard for
     /// kinds): a pinned interest is a hard routing override, mixing it with
     /// an unpinned interest would either narrow the unpinned scope or leak the
-    /// pinned content to other relays.
+    /// pinned content to other relays. Two pinned shapes that share the same
+    /// host coalesce normally — Rule 2's tag-value union is what collapses
+    /// many per-room subscriptions into a single per-host REQ (the "h-tag
+    /// coalesce" pattern the third lane is named after).
     ///
-    /// `pin_to` is purely an out-of-band routing hint; it is NEVER serialized
-    /// onto the wire as part of the filter. The relay receives only the
-    /// regular filter shape (kinds + tags + since/until/limit/event_ids
+    /// `relay_pin` is purely an out-of-band routing hint; it is NEVER
+    /// serialized onto the wire as part of the filter. The relay receives only
+    /// the regular filter shape (kinds + tags + since/until/limit/event_ids
     /// + addresses); routing happens entirely on the client side.
-    pub pin_to: Option<RelayUrl>,
+    ///
+    /// Example use case: NIP-29 relay-based groups (each group is bound to its
+    /// host relay; cross-host merging is forbidden).
+    pub relay_pin: Option<RelayUrl>,
 }
 
 impl InterestShape {

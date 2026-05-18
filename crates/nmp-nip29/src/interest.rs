@@ -1,7 +1,7 @@
 //! Helpers for constructing host-pinned `LogicalInterest`s.
 //!
 //! Per `docs/design/nip29/routing.md` §3, every NIP-29 subscription declares
-//! `pin_to: Some(host_relay_url)` so the compiler routes via Case E (the third
+//! `relay_pin: Some(host_relay_url)` so the compiler routes via Case E (the third
 //! routing lane) — bypassing NIP-65 mailbox lookup entirely.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -37,7 +37,7 @@ pub fn host_pinned_interest(
         shape: InterestShape {
             kinds: kinds.into_iter().collect(),
             tags,
-            pin_to: Some(group.host_relay_url.clone()),
+            relay_pin: Some(group.host_relay_url.clone()),
             ..Default::default()
         },
         hints: Vec::new(),
@@ -66,7 +66,7 @@ pub fn metadata_interest(id: u64, group: &GroupId) -> LogicalInterest {
             .into_iter()
             .collect(),
             tags,
-            pin_to: Some(group.host_relay_url.clone()),
+            relay_pin: Some(group.host_relay_url.clone()),
             ..Default::default()
         },
         hints: Vec::new(),
@@ -100,7 +100,7 @@ pub fn joined_groups_for_host(
                 .into_iter()
                 .collect(),
             tags,
-            pin_to: Some(host_relay_url.to_string()),
+            relay_pin: Some(host_relay_url.to_string()),
             ..Default::default()
         },
         hints: Vec::new(),
@@ -125,7 +125,7 @@ mod tests {
             BTreeMap::new(),
             InterestLifecycle::Tailing,
         );
-        assert_eq!(i.shape.pin_to.as_deref(), Some("wss://groups.example.com"));
+        assert_eq!(i.shape.relay_pin.as_deref(), Some("wss://groups.example.com"));
         assert!(i.shape.tags.get("h").unwrap().contains("room-a"));
     }
 
@@ -146,7 +146,7 @@ mod tests {
     #[test]
     fn joined_groups_for_host_uses_pin() {
         let i = joined_groups_for_host(3, "pubkey", "wss://h.example.com");
-        assert_eq!(i.shape.pin_to.as_deref(), Some("wss://h.example.com"));
+        assert_eq!(i.shape.relay_pin.as_deref(), Some("wss://h.example.com"));
         assert!(i.shape.tags.get("p").unwrap().contains("pubkey"));
     }
 }

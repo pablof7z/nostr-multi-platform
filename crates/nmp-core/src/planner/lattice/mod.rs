@@ -11,23 +11,25 @@
 //!
 //! ## Rules summary
 //! 1. `kinds` — equal or one wildcard; wildcard absorbs.
-//! 2. `tags` — same key dimensions; per-dimension value union ≤ limit.
+//! 2. `tags` — same key dimensions; per-dimension value union ≤ limit
+//!    (the "h-tag coalesce" workhorse: when two shapes share a `relay_pin`,
+//!    this is what collapses their per-room tag values into one REQ).
 //! 3. `since` — `min(a, b)` iff both present or both absent; mixed = refuse.
 //! 4. `until` — `max(a, b)` iff both present or both absent; mixed = refuse.
 //! 5. `limit` — merge only if both absent.
 //! 6. `lifecycle` — identical lifecycles only.
 //! 7. `event_ids` — union, capped.
 //! 8. `addresses` — union, capped; requires other fields mergeable per 1–7.
-//! 9. `pin_to` — host-relay-pin equality; `None` does NOT absorb `Some(_)`.
-//!    The third-routing-lane half of the NIP-29 contract
-//!    (`docs/design/nip29/routing.md` §3).
+//! 9. `relay_pin` — host-relay-pin equality; `None` does NOT absorb `Some(_)`.
+//!    Generic third-routing-lane contract for any protocol that requires
+//!    addressing a single host relay.
 
 mod rules;
 
 use crate::planner::interest::{InterestLifecycle, InterestShape};
 use rules::{
     rule1_kinds, rule2_tags, rule3_since, rule4_until, rule5_limit, rule6_lifecycle,
-    rule7_event_ids, rule8_addresses, rule9_pin_to,
+    rule7_event_ids, rule8_addresses, rule9_relay_pin,
 };
 
 /// Per-relay cap for merged value sets (tags, ids, addresses).
@@ -63,7 +65,7 @@ pub fn merge(
     // Rule 9 second — also cheap (Option equality), and a refusal here means
     // the two interests will definitely be sent to different relays. Pruning
     // before the more expensive set unions saves work on host-pinned views.
-    if !rule9_pin_to(a, b) {
+    if !rule9_relay_pin(a, b) {
         return MergeOutcome::Refused;
     }
 
@@ -118,7 +120,7 @@ pub fn merge(
         event_ids: merged_event_ids,
         addresses: merged_addresses,
         // Rule 9 guaranteed equality above; either side carries the result.
-        pin_to: a.pin_to.clone(),
+        relay_pin: a.relay_pin.clone(),
     })
 }
 
@@ -399,18 +401,23 @@ mod tests {
         assert_eq!(merge(&a, &b, &tailing(), &one_shot()), MergeOutcome::Refused);
     }
 
-    // ── Rule 9 — pin_to (host-relay-pin) ─────────────────────────────────────
+    // ── Rule 9 — relay_pin (host-relay-pin / h-tag coalesce) ─────────────────
     //
-    // NIP-29 / `docs/design/nip29/routing.md` §3: a `Some(host)` `pin_to` is a
-    // hard routing override, must NOT merge across different hosts, must NOT
-    // merge with `None`, must merge with identical `Some(host)`.
+    // A `Some(host)` `relay_pin` is a hard routing override: must NOT merge
+    // across different hosts, must NOT merge with `None`, and must merge with
+    // identical `Some(host)`. When the pin matches, the rest of the lattice
+    // (chiefly Rule 2) coalesces same-host shapes that differ only in their
+    // per-room `h` tag values into a single per-host REQ.
 
     #[test]
-    fn rule9_identical_pin_to_merges() {
+    fn rule9_identical_relay_pin_coalesces_h_tags() {
+        // Two interests pinned to the same host but carrying different `h`
+        // tag values must merge into one per-host REQ whose `h` set is the
+        // union — this is the generic h-tag-coalesce behavior.
         let mut a = InterestShape { kinds: [9].into_iter().collect(), ..Default::default() };
-        a.pin_to = Some("wss://groups.example.com".into());
+        a.relay_pin = Some("wss://host.example.com".into());
         let mut b = a.clone();
-        // Add a different h tag value so we don't trivially merge by identity
+        // Different `h` value per side — Rule 2 must union them.
         let mut tags = BTreeMap::new();
         tags.insert("h".to_string(), ["room-a".to_string()].into_iter().collect::<BTreeSet<_>>());
         a.tags = tags;
@@ -419,24 +426,24 @@ mod tests {
         b.tags = tags_b;
         let r = merge(&a, &b, &tailing(), &tailing());
         if let MergeOutcome::Merged(s) = r {
-            assert_eq!(s.pin_to.as_deref(), Some("wss://groups.example.com"));
+            assert_eq!(s.relay_pin.as_deref(), Some("wss://host.example.com"));
             // Tag values union across the same dimension (Rule 2).
             assert_eq!(s.tags.get("h").unwrap().len(), 2);
         } else {
-            panic!("expected Merged; identical pin_to must merge");
+            panic!("expected Merged; identical relay_pin must coalesce h-tag values");
         }
     }
 
     #[test]
-    fn rule9_different_pin_to_refuse() {
+    fn rule9_different_relay_pin_refuses() {
         // Two host-pinned interests targeting DIFFERENT hosts must NOT collapse
         // into a single wire frame — they're literally going to different relays.
         let mut a = InterestShape { kinds: [9].into_iter().collect(), ..Default::default() };
-        a.pin_to = Some("wss://groups.example.com".into());
+        a.relay_pin = Some("wss://host-a.example.com".into());
         let mut b = InterestShape { kinds: [9].into_iter().collect(), ..Default::default() };
-        b.pin_to = Some("wss://other.example.com".into());
+        b.relay_pin = Some("wss://host-b.example.com".into());
         assert_eq!(merge(&a, &b, &tailing(), &tailing()), MergeOutcome::Refused,
-            "different pin_to must refuse — they go to different relays");
+            "different relay_pin must refuse — they go to different relays");
     }
 
     #[test]
@@ -445,7 +452,7 @@ mod tests {
         // mixing pinned + unpinned would either leak pinned content or narrow
         // the unpinned scope — both correctness regressions.
         let mut pinned = InterestShape { kinds: [9].into_iter().collect(), ..Default::default() };
-        pinned.pin_to = Some("wss://groups.example.com".into());
+        pinned.relay_pin = Some("wss://host.example.com".into());
         let unpinned = InterestShape { kinds: [9].into_iter().collect(), ..Default::default() };
         // pinned ∪ unpinned must refuse in BOTH directions (symmetric refusal).
         assert_eq!(merge(&pinned, &unpinned, &tailing(), &tailing()), MergeOutcome::Refused);

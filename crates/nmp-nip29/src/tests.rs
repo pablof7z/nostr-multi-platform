@@ -7,9 +7,10 @@
 //!    `PublishPlan` for kind 9007; ingest of the relay's reflected 39000 +
 //!    39001 + 39002 flows through the trust + audit pipeline and projects
 //!    correctly into `GroupHomeView` + `GroupMembersView`.
-//! 2. **Lattice Rule 9 group-id merge** — two host-pinned interests targeting
-//!    different hosts refuse to merge; identical hosts merge cleanly; the pin
-//!    short-circuits the four-lane partition (Case E).
+//! 2. **Lattice Rule 9 relay-pin / h-tag coalesce** — two host-pinned
+//!    interests targeting different hosts refuse to merge; identical hosts
+//!    merge cleanly (Rule 2 unions h-tag values); the pin short-circuits
+//!    the four-lane partition (Case E).
 //! 3. **Audit-only moderation** — an ingested kind:9000 produces a
 //!    `ModerationEventRecord` and does NOT touch `GroupMembers`; the
 //!    relay-reflected 39002 is what flips canonical membership.
@@ -118,10 +119,10 @@ fn nip29_group_lifecycle_create_then_ingest_metadata() {
     assert_eq!(snap.members, vec![founder()]);
 }
 
-// ─── Test 2: lattice Rule 9 group-id merge ───────────────────────────────────
+// ─── Test 2: lattice Rule 9 relay-pin / h-tag coalesce ──────────────────────
 
 #[test]
-fn nip29_lattice_rule9_pin_to_blocks_cross_host_merge() {
+fn nip29_lattice_rule9_relay_pin_blocks_cross_host_merge() {
     let g_a = GroupId::new("wss://relay-a.example.com", "room");
     let g_b = GroupId::new("wss://relay-b.example.com", "room");
 
@@ -130,7 +131,7 @@ fn nip29_lattice_rule9_pin_to_blocks_cross_host_merge() {
 
     // Direct lattice check: refuse across hosts.
     let outcome = lattice_merge(&i_a.shape, &i_b.shape, &i_a.lifecycle, &i_b.lifecycle);
-    assert_eq!(outcome, MergeOutcome::Refused, "different pin_to must refuse merge");
+    assert_eq!(outcome, MergeOutcome::Refused, "different relay_pin must refuse merge");
 
     // End-to-end compiler check: pinned interests on different hosts each
     // produce their own per-relay plan (Case E short-circuits the four-lane
@@ -168,7 +169,7 @@ fn nip29_lattice_rule9_pin_to_blocks_cross_host_merge() {
                 m.insert("h".into(), ["room".into()].into_iter().collect());
                 m
             },
-            pin_to: None,
+            relay_pin: None,
             ..Default::default()
         },
         hints: Vec::new(),

@@ -155,8 +155,9 @@ pub fn lifecycle_for_shape(
 /// Serialise an `InterestShape` into the Nostr filter JSON object form.
 ///
 /// This is a minimal serializer — only the fields a relay accepts. Internal
-/// fields like `pin_to` and `addresses` are translated to wire-equivalent
-/// forms (`#a` tags for addresses) or omitted (pin_to is client-side only).
+/// fields like `relay_pin` and `addresses` are translated to wire-equivalent
+/// forms (`#a` tags for addresses) or omitted (`relay_pin` is client-side
+/// only — it never appears on the wire).
 pub fn filter_json_for(shape: &InterestShape) -> String {
     let mut parts: Vec<String> = Vec::new();
     if !shape.authors.is_empty() {

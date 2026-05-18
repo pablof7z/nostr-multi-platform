@@ -135,23 +135,28 @@ pub(super) fn rule8_addresses(
     }
 }
 
-/// Rule 9 — `pin_to` hard-routing-pin equality.
+/// Rule 9 — `relay_pin` equality (the "h-tag coalesce" lane).
 ///
-/// Two shapes are mergeable on this dimension iff their `pin_to` values are
+/// Two shapes are mergeable on this dimension iff their `relay_pin` values are
 /// *identical* (both `None`, or both `Some(same_url)`). A `None` does NOT
 /// absorb a `Some(_)` — unlike Rule 1's wildcard for kinds, the routing pin is
 /// a hard override that suppresses the four-lane routing entirely, so mixing
 /// pinned + unpinned interests would either narrow the unpinned scope (if the
 /// pin won) or leak the pinned content to other relays (if `None` won).
 ///
-/// Two interests with `pin_to = Some(host_a)` and `pin_to = Some(host_b)`
+/// Two interests with `relay_pin = Some(host_a)` and `relay_pin = Some(host_b)`
 /// where `host_a != host_b` go to *different relays* and therefore cannot be
 /// merged into a single wire frame regardless of how compatible their other
 /// fields are.
 ///
-/// This is the lattice half of the host-relay-pin contract
-/// (`docs/design/nip29/routing.md` §3). The partition half lives in
-/// `planner::compiler::partition::case_e_pin_to`.
-pub(super) fn rule9_pin_to(a: &InterestShape, b: &InterestShape) -> bool {
-    a.pin_to == b.pin_to
+/// When two shapes DO share a host (`relay_pin = Some(same_host)`), the rest
+/// of the lattice coalesces them — Rule 2's tag-value union is what collapses
+/// many sub-room subscriptions (each carrying its own per-room tag filter
+/// value) into a single per-host REQ. That is the generic "h-tag coalesce"
+/// behavior the third routing lane is named after.
+///
+/// This is the lattice half of the relay-pin contract. The partition half
+/// lives in `planner::compiler::partition::case_e_relay_pinned`.
+pub(super) fn rule9_relay_pin(a: &InterestShape, b: &InterestShape) -> bool {
+    a.relay_pin == b.relay_pin
 }

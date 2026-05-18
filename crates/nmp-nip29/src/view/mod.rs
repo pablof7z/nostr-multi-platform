@@ -2,7 +2,7 @@
 //!
 //! Each view declares `LogicalInterest`s via `dependencies()` that the M2
 //! compiler turns into per-relay REQs. All NIP-29 views are **host-pinned**
-//! via the `pin_to` field on `InterestShape` (routing.md §3); the compiler's
+//! via the `relay_pin` field on `InterestShape` (routing.md §3); the compiler's
 //! Case E + lattice Rule 9 do the work.
 //!
 //! ## Projection scope (M11.5 Step 0 scope-cut)
