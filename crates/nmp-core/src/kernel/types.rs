@@ -185,9 +185,18 @@ pub(super) struct Counters {
 }
 
 /// Active wire (WebSocket) subscription state.
+///
+/// T105: `relay_url` is the resolved wire target this sub was opened on. The
+/// CLOSE frame for this sub-id must be routed back to the same `relay_url`
+/// (the transport pool is URL-keyed, so closing on the wrong socket would
+/// leave the original subscription open). `role` is the transport lane label.
 pub(super) struct WireSub {
     pub(super) id: String,
     pub(super) role: RelayRole,
+    /// Resolved relay URL this subscription was opened on (T105). The CLOSE
+    /// frame for `id` must target this URL — the transport pool is URL-keyed
+    /// and would otherwise leak the open subscription on the original relay.
+    pub(super) relay_url: String,
     pub(super) filter_summary: String,
     pub(super) state: String,
     pub(super) opened_at: Instant,

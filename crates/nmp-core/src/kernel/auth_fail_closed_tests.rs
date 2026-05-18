@@ -28,6 +28,7 @@ fn nip42_kernel_failed_auth_fails_closed() {
     let _ = kernel.handle_text(RelayRole::Content, &auth_frame("ch1"));
     let early = kernel.partition_auth_paused(vec![OutboundMessage {
         role: RelayRole::Content,
+        relay_url: RelayRole::Content.url().to_string(),
         text: "[\"REQ\",\"gated-1\",{\"kinds\":[1]}]".to_string(),
     }]);
     assert!(early.is_empty(), "REQ deferred while Authenticating");
@@ -78,10 +79,12 @@ fn nip42_kernel_failed_auth_fails_closed() {
     let partitioned = kernel.partition_auth_paused(vec![
         OutboundMessage {
             role: RelayRole::Content,
+            relay_url: RelayRole::Content.url().to_string(),
             text: "[\"REQ\",\"gated-2\",{\"kinds\":[1]}]".to_string(),
         },
         OutboundMessage {
             role: RelayRole::Indexer,
+            relay_url: RelayRole::Indexer.url().to_string(),
             text: "[\"REQ\",\"healthy-1\",{\"kinds\":[0]}]".to_string(),
         },
     ]);

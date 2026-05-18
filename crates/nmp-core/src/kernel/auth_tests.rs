@@ -60,6 +60,7 @@ fn nip42_kernel_auth_required_for_read() {
     );
     let outbound_after = kernel.partition_auth_paused(vec![OutboundMessage {
         role: RelayRole::Content,
+        relay_url: RelayRole::Content.url().to_string(),
         text: "[\"REQ\",\"test-sub\",{}]".to_string(),
     }]);
     assert!(
@@ -138,6 +139,7 @@ fn nip42_kernel_replays_pending_reqs_on_auth() {
     // Caller dispatches a REQ; the partition routine pulls it into deferred.
     let req_msg = OutboundMessage {
         role: RelayRole::Content,
+        relay_url: RelayRole::Content.url().to_string(),
         text: "[\"REQ\",\"timeline-1\",{\"kinds\":[1]}]".to_string(),
     };
     let pass = kernel.partition_auth_paused(vec![req_msg]);
@@ -203,6 +205,7 @@ fn nip42_kernel_publish_retry_on_auth_required() {
     // unauthenticated relay and never deferred (bounded-buffer).
     let pass = kernel.partition_auth_paused(vec![OutboundMessage {
         role: RelayRole::Content,
+        relay_url: RelayRole::Content.url().to_string(),
         text: "[\"REQ\",\"thread-1\",{\"kinds\":[1]}]".to_string(),
     }]);
     assert!(
@@ -280,6 +283,7 @@ fn nip42_kernel_auth_does_not_bump_view_rev() {
     let _ = kernel.handle_text(RelayRole::Indexer, &auth_frame("ch-idx"));
     let _ = kernel.partition_auth_paused(vec![OutboundMessage {
         role: RelayRole::Indexer,
+        relay_url: RelayRole::Indexer.url().to_string(),
         text: "[\"REQ\",\"x\",{}]".to_string(),
     }]);
     kernel.changed_since_emit = false; // post-emit baseline

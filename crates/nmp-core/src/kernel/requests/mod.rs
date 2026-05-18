@@ -179,6 +179,7 @@ impl Kernel {
                 sub.close_reason = Some("view closed".to_string());
                 closes.push(OutboundMessage {
                     role: sub.role,
+                    relay_url: sub.relay_url.clone(),
                     text: json!(["CLOSE", sub.id]).to_string(),
                 });
             }
@@ -186,6 +187,12 @@ impl Kernel {
         closes
     }
 
+    /// Build a single REQ frame on `role`'s cold-start bootstrap socket.
+    ///
+    /// T105 transition shim: kept for diagnostic / one-off REQs (NIP-65
+    /// discovery, indexer-only fetches) that legitimately leave on the
+    /// bootstrap lane. Per-author/recipient view emitters use
+    /// [`Self::req_for_relay`] to route to the planner-resolved URL instead.
     pub(crate) fn req(
         &mut self,
         role: RelayRole,
@@ -193,13 +200,36 @@ impl Kernel {
         summary: &str,
         filter: Value,
     ) -> OutboundMessage {
-        self.log(format!("REQ {sub_id}@{}: {summary}", role.key()));
+        self.req_for_relay(role, role.bootstrap_url().to_string(), sub_id, summary, filter)
+    }
+
+    /// Build a single REQ frame addressed to `relay_url` on transport lane `role`.
+    ///
+    /// T105: the resolved per-author write relay (content/profile/thread) or
+    /// recipient read relay (inbox notifications) is threaded straight onto
+    /// the wire — the `RelayRole` only labels the diagnostic lane the frame
+    /// belongs to. The recorded `WireSub` remembers `relay_url` so the EOSE
+    /// CLOSE re-routes to the same socket the REQ went out on.
+    pub(crate) fn req_for_relay(
+        &mut self,
+        role: RelayRole,
+        relay_url: String,
+        sub_id: &str,
+        summary: &str,
+        filter: Value,
+    ) -> OutboundMessage {
+        self.log(format!(
+            "REQ {sub_id}@{} ({}): {summary}",
+            role.key(),
+            relay_url
+        ));
         let paused = self.relay_auth_paused(role);
         self.wire_subs.insert(
             sub_id.to_string(),
             WireSub {
                 id: sub_id.to_string(),
                 role,
+                relay_url: relay_url.clone(),
                 filter_summary: summary.to_string(),
                 state: if paused { "auth_paused" } else { "opening" }.to_string(),
                 opened_at: Instant::now(),
@@ -211,6 +241,7 @@ impl Kernel {
         self.changed_since_emit = true;
         OutboundMessage {
             role,
+            relay_url,
             text: json!(["REQ", sub_id, filter]).to_string(),
         }
     }

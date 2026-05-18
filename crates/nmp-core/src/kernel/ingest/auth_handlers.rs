@@ -42,12 +42,14 @@ pub(super) fn wire_frames_to_outbound(
             } if relay_url == role.url() => {
                 out.push(OutboundMessage {
                     role,
+                    relay_url,
                     text: format!("[\"REQ\",\"{sub_id}\",{filter_json}]"),
                 });
             }
             WireFrame::Close { relay_url, sub_id } if relay_url == role.url() => {
                 out.push(OutboundMessage {
                     role,
+                    relay_url,
                     text: format!("[\"CLOSE\",\"{sub_id}\"]"),
                 });
             }
@@ -157,7 +159,11 @@ impl Kernel {
                 ])
                 .to_string();
                 self.log(format!("AUTH dispatched to {} ({event_id})", role.key()));
-                vec![OutboundMessage { role, text: wire }]
+                vec![OutboundMessage {
+                    role,
+                    relay_url: role.url().to_string(),
+                    text: wire,
+                }]
             }
             Err(reason) => {
                 self.log(format!("AUTH signer failed for {}: {reason}", role.key()));

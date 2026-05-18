@@ -103,8 +103,20 @@ impl Kernel {
                     self.complete_unknown_oneshot(sub_id);
                 }
                 if sub_id != "seed-timeline" && !sub_id.starts_with("diag-firehose-") {
+                    // T105: CLOSE must travel back to the same socket the REQ
+                    // went out on — the transport pool is URL-keyed, so a
+                    // role-only close would target the bootstrap socket and
+                    // leave the resolved sub open. Pull the recorded URL from
+                    // the WireSub set on req_for_relay; fall back to the
+                    // delivering relay's URL when the sub_id is unknown.
+                    let relay_url = self
+                        .wire_subs
+                        .get(sub_id)
+                        .map(|sub| sub.relay_url.clone())
+                        .unwrap_or_else(|| role.url().to_string());
                     outbound.push(OutboundMessage {
                         role,
+                        relay_url,
                         text: json!(["CLOSE", sub_id]).to_string(),
                     });
                 }

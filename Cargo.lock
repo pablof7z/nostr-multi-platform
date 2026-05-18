@@ -2191,6 +2191,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-cli"
+version = "0.1.0"
+dependencies = [
+ "nmp-codegen",
+]
+
+[[package]]
 name = "nmp-codegen"
 version = "0.1.0"
 

@@ -85,13 +85,19 @@ impl Kernel {
         self.set_last_error_toast(None);
         self.changed_since_emit = true;
 
-        // The kernel's write path is the Content relay role. Emit one EVENT
-        // frame there; broader NIP-65 multi-relay fan-out is a follow-up
-        // (relay-manager work outside T66a scope).
-        vec![OutboundMessage {
-            role: RelayRole::Content,
-            text: wire,
-        }]
+        // T105 (subsumes T99): NIP-65 multi-relay write fan-out — one
+        // PublishAction → N per-relay EVENT frames addressed to the author's
+        // resolved write relays + recipients' read relays. Each frame carries
+        // its own `relay_url`; the transport dials the right socket per URL.
+        // The diagnostic lane is `Content` (the write/publish lane).
+        relays
+            .into_iter()
+            .map(|relay_url| OutboundMessage {
+                role: RelayRole::Content,
+                relay_url,
+                text: wire.clone(),
+            })
+            .collect()
     }
 
     /// Latest kind:3 follow set for `author_hex` (hex pubkeys from `p` tags),
