@@ -20,6 +20,8 @@ use tungstenite::Message;
 use nostr::*;
 pub(crate) use nostr::{is_hex_id, is_hex_pubkey};
 
+use crate::store::{EventStore, MemEventStore};
+
 #[derive(Clone)]
 struct SeedAccount {
     name: &'static str,
@@ -281,6 +283,14 @@ struct ViewInterest {
 }
 
 pub(crate) struct Kernel {
+    /// Pluggable event store. Defaults to `MemEventStore`; will be replaced by
+    /// `LmdbEventStore` once the full M3 LMDB integration is complete.
+    ///
+    /// The existing `events: HashMap<String, StoredEvent>` field is preserved
+    /// for backward compatibility during the M3 migration. The store field is
+    /// the target home for all event persistence after M3 completes.
+    #[allow(dead_code)]
+    store: Box<dyn EventStore>,
     rev: u64,
     visible_limit: usize,
     started_at: Option<Instant>,
@@ -331,6 +341,7 @@ pub(crate) struct Kernel {
 impl Kernel {
     pub(crate) fn new(visible_limit: usize) -> Self {
         Self {
+            store: Box::new(MemEventStore::new()),
             rev: 0,
             visible_limit,
             started_at: None,

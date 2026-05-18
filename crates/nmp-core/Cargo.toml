@@ -12,6 +12,8 @@ crate-type = ["staticlib", "rlib"]
 # Expose actor internals for live-bench harnesses and integration test binaries.
 # Never enable in production builds.
 test-support = []
+# Enable the LMDB-backed EventStore (requires heed crate — not yet wired in M3 phase 1).
+lmdb-backend = []
 
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock"] }

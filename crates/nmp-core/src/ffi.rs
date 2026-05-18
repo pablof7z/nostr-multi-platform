@@ -69,6 +69,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     }))
 }
 
+// SAFETY: `app` is a raw pointer from `nmp_app_new()`. The function is `extern "C"` (callable
+// from Swift/C) so it cannot be marked `unsafe` at the Rust level; the caller guarantees the
+// pointer contract. The `allow` suppresses the clippy::not_unsafe_ptr_arg_deref lint which
+// does not distinguish between `extern "C"` FFI boundaries and ordinary Rust functions.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
 pub extern "C" fn nmp_app_free(app: *mut NmpApp) {
     if !app.is_null() {
