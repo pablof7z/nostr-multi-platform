@@ -1,44 +1,57 @@
-# S2-DISPATCH-FLOOD — ffi-stress — 2026-xx-xx (unix 1779086329)
+# S2-DISPATCH-FLOOD — ffi-stress — 2026-xx-xx (unix 1779088865)
 
 - **Tool:** `ffi-stress`
 - **Wall time:** 30.0 s
-- **Overall:** **FAIL** (5/6 gates green)
+- **Overall:** **FAIL** (4/7 gates green)
 
 ## Gates
 
 | Gate | Threshold | Measured | Result |
 |---|---|---|---|
-| dispatches_submitted | >= 300000.0000 | 300000.0000 | PASS | (G-S2: dispatches_submitted >= 100% of nominal (spec))
-| send_latency_p99_ms | <= 1.0000 | 0.0300 | PASS | (G-S2/bible#3: Swift->Rust send latency p99 <= 1 ms)
-| send_latency_p50_ms | <= 0.1000 | 0.0034 | PASS | (G-S2: Swift->Rust send latency p50 <= 100 us)
-| rss_growth_bytes | <= 20971520.0000 | 48119808.0000 | FAIL | (G-S2: RSS growth <= 20 MiB)
-| failed_sends | == 0.0000 | 0.0000 | PASS | (G-S2: all sends accepted (no mpsc disconnects during flood))
+| dispatches_submitted | >= 300000.0000 | 299992.0000 | FAIL | (G-S2: dispatches_submitted >= 100% of nominal (spec))
+| send_latency_p99_ms | <= 1.0000 | 0.0889 | PASS | (G-S2/bible#3: Swift->Rust send latency p99 <= 1 ms)
+| send_latency_p50_ms | <= 0.1000 | 0.0049 | PASS | (G-S2: Swift->Rust send latency p50 <= 100 us)
+| rss_growth_bytes | <= 20971520.0000 | 17137664.0000 | PASS | (G-S2: RSS growth <= 20 MiB (PEAK, at flood end — unchanged contract))
+| retained_heap_after_drain_bytes | <= 1048576.0000 | 39866908.0000 | FAIL | (S2-drain: NET heap still live after backlog fully drained; PASS = transient spike, FAIL = real retention under load)
+| failed_sends | == 0.0000 | 8.0000 | FAIL | (G-S2: all sends accepted (no mpsc disconnects during flood))
 | send_hitch_proxy | == 0.0000 | 0.0000 | PASS | (G-S2: send p99 < 16 ms (no main-thread frame-drop hitches))
 
 ## Notes
 
-- Nominal dispatches: 300000; actual: 300000; p50=0.003ms p99=0.030ms; failed_sends: 0
+- Nominal dispatches: 300000; actual: 299992; p50=0.005ms p99=0.089ms; failed_sends: 8
 - Actor mpsc backlog depth: not directly observable from caller thread; RSS growth is the proxy gate (bounded channel growth = bounded RSS). Hitch gate uses p99 as proxy for individual send latencies.
+- S2-drain: peak_net_heap=39918768 B, retained_after_drain=39866908 B, reclaimed_by_drain=51860 B, drain=1.5s (4 samples). Verdict: RETAINED under load — heap NOT reclaimed after drain; genuine unbounded growth, a bounded-channel/backpressure fix is mandatory
 
 ## Raw measurements
 
 ```json
 {
-  "callback_count": 70011,
+  "callback_count": 34841,
   "dispatches_per_sec": 10000,
-  "failed_sends": 0,
+  "drain_net_heap_curve_bytes": [
+    39918768,
+    39923876,
+    39904100,
+    39866908
+  ],
+  "drain_seconds": 1.51329975,
+  "drained_rss_growth_bytes": 15400960,
+  "failed_sends": 8,
   "hitches_proxy": 0,
-  "latency_samples": 300000,
+  "latency_samples": 299992,
   "min_dispatches_gate": 300000,
   "nominal_dispatches": 300000,
-  "p50_ms": 0.003375,
-  "p50_ns": 3375,
-  "p99_ms": 0.030042,
-  "p99_ns": 30042,
-  "rss_growth_bytes": 48119808,
+  "p50_ms": 0.004875,
+  "p50_ns": 4875,
+  "p99_ms": 0.088875,
+  "p99_ns": 88875,
+  "peak_net_heap_bytes": 39918768,
+  "reclaimed_by_drain_bytes": 51860,
+  "retained_heap_after_drain_bytes": 39866908,
+  "rss_growth_bytes": 17137664,
   "threads": 4,
-  "total_dispatches": 300000,
-  "wall_seconds": 30.006093917
+  "total_dispatches": 299992,
+  "wall_seconds": 30.005973334
 }
 ```
 

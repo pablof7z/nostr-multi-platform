@@ -46,6 +46,21 @@ when hardware/Blossom are in the loop. Revert by treating the original
 Full rationale: `docs/plan/m10.5-ffi-hardening.md` § "Re-scope addendum
 (2026-05-18)".
 
+**Update 2026-05-18 (S2 tiebreaker run):** the one open M10.5 finding (S2
+working-set overrun) was resolved from "ambiguous" to **decisive** by adding a
+post-flood drain measurement (`docs/perf/m10.5/s2-drain-analysis.md`). Verdict:
+**RETAINED, not transient** — ~38 MiB net heap allocated under the flood,
+0.13 % reclaimed after drain. The "revise the §G-S2 threshold" option is
+**foreclosed by evidence**; a bounded actor channel + bounded actor-side state
+is **mandatory** before §G-S2 / D8 can close. The fix is in `crates/nmp-core/**`
+(kernel-session scope, not this FFI-hardening workstream); this analysis hands
+that session a precise reproducible target + the
+`retained_heap_after_drain_bytes ≤ 1 MiB` regression gate now in the harness.
+M10.5 closes on the achievable subset **with this explicitly open and routed**,
+not waived. (Note: a concurrent session also numbered an entry "PD-021" below
+— PD-number collision for the heartbeat to reconcile; this M10.5 entry is the
+line-11 one.)
+
 ### PD-019 — ✅ FULLY CLOSED (HB37, 2026-05-18) — both halves landed: iOS T63a + kernel T96 (`fd002ce`)
 
 **Closure:** The deferred kernel-side half is now shipped. T96 (`fd002ce`) landed `crates/nmp-core/src/substrate/keyring.rs` (`KeyringCapability` impl `CapabilityModule`, `NAMESPACE = "nmp.keyring.capability"`, `KeyringRequest`/`KeyringResult` store/retrieve/delete byte-compatible with the Swift `KeychainCapability` from T63a) + `crates/nmp-core/src/ffi/capability.rs` (the `nmp_app_set_capability_callback`/`nmp_app_dispatch_capability` socket the Swift `handleJSON(_:)` plugs into), 7 tests, D0/D6/D7 clean. The iOS↔kernel keyring contract is complete and converged; no further action. Original deferral note retained below for history.

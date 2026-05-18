@@ -149,9 +149,14 @@ D8 has three sub-clauses; the FFI/host baseline splits on them:
 **D8 verdict: EXCEPTION — logged, not waived.** The reactivity-rate and
 allocation-linearity halves of D8 PASS with wide margin; the working-set-bounded
 half FAILS under the S2 10k/s flood. M10.5 cannot honestly claim a clean D8
-signoff. Required before D8 closes: either a **bounded actor channel /
-backlog cap** (a real fix), or a **justified §G-S2 threshold revision** with
-rationale. Tracked as the headline M10.5 finding in the
+signoff. **Update 2026-05-18:** the leak-vs-transient tiebreaker was run
+(`s2-drain-analysis.md`) — verdict **RETAINED**: of ~38 MiB net heap allocated
+during the flood, only 0.13 % is reclaimed after the backlog drains. The
+threshold-revision escape is **foreclosed by evidence**; a **bounded actor
+channel + bounded actor-side state is mandatory** (the kernel fix, owned by the
+`nmp-core` session — out of this workstream's scope). The
+`retained_heap_after_drain_bytes` gate (≤ 1 MiB) added to the harness is the
+regression check. Tracked as the headline M10.5 finding in the
 [re-scope addendum](../../plan/m10.5-ffi-hardening.md) and `sim-baseline.md`
 §S2 / §Conclusion. The S1 `cycles_completed` FAIL is a separate, documented
 **macOS-host timer artifact** (not a kernel/D8 regression — net-heap slope is

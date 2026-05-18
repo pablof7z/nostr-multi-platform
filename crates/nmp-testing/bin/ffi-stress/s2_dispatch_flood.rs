@@ -14,6 +14,7 @@ use crate::ffi::{
     nmp_app_open_author, nmp_app_release_profile, nmp_app_set_update_callback, process_rss_bytes,
     test_pubkeys, NmpApp,
 };
+use crate::allocator::{alloc_snapshot, AllocSnapshot};
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
 use serde_json::json;
@@ -62,6 +63,10 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
     nmp_app_configure(app, 0, 80, 4);
 
     let baseline_rss = process_rss_bytes();
+    // Counting-allocator baseline. NET live heap (alloc-minus-free) is immune to
+    // the OS not returning freed pages, so it — not RSS — is the authoritative
+    // leak-vs-transient signal for the post-flood drain phase below.
+    let baseline_snap: AllocSnapshot = alloc_snapshot();
 
     // Convert raw pointer to usize for Send-safe sharing across threads.
     let app_usize = app as usize;
@@ -137,10 +142,49 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
         let _ = handle.join();
     }
 
+    // PEAK: workers have stopped but the actor is still draining its backlog.
+    // This is the moment the existing G-S2 rss_growth gate is contracted to
+    // (unchanged — not weakened).
     let wall_elapsed = wall_start.elapsed().as_secs_f64();
-    let final_rss = process_rss_bytes();
-    let rss_growth_bytes = final_rss.saturating_sub(baseline_rss);
+    let peak_rss = process_rss_bytes();
+    let peak_snap = alloc_snapshot();
+    let rss_growth_bytes = peak_rss.saturating_sub(baseline_rss);
     let total_dispatches = dispatch_counter.load(Ordering::Relaxed);
+
+    // DRAIN: the actor thread is still alive (teardown is below). Poll the
+    // counting allocator until NET live heap stabilises — i.e. the backlog of
+    // queued ActorCommands has been processed and their heap reclaimed — or a
+    // hard 30 s drain budget elapses. Stabilised = 3 consecutive 500 ms samples
+    // within a 256 KiB band. The drain curve is recorded for the analysis doc.
+    let drain_budget = Duration::from_secs(30);
+    let sample_gap = Duration::from_millis(500);
+    let stable_band: i64 = 256 * 1024;
+    let drain_start = Instant::now();
+    let mut drain_curve: Vec<i64> = Vec::new();
+    let mut last_net = peak_snap.net_heap_delta(&baseline_snap);
+    drain_curve.push(last_net);
+    let mut stable_runs = 0u32;
+    loop {
+        std::thread::sleep(sample_gap);
+        let net = alloc_snapshot().net_heap_delta(&baseline_snap);
+        drain_curve.push(net);
+        if (net - last_net).abs() <= stable_band {
+            stable_runs += 1;
+        } else {
+            stable_runs = 0;
+        }
+        last_net = net;
+        if stable_runs >= 3 || drain_start.elapsed() >= drain_budget {
+            break;
+        }
+    }
+    let drain_seconds = drain_start.elapsed().as_secs_f64();
+    let drained_snap = alloc_snapshot();
+    let drained_rss = process_rss_bytes();
+    let peak_net_heap = peak_snap.net_heap_delta(&baseline_snap);
+    let retained_after_drain = drained_snap.net_heap_delta(&baseline_snap);
+    let reclaimed_by_drain = peak_net_heap - retained_after_drain;
+    let drained_rss_growth = drained_rss.saturating_sub(baseline_rss);
 
     // Compute latency percentiles.
     let mut latencies = latency_collector.lock().unwrap().clone();
@@ -177,7 +221,26 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
             rss_growth_bytes as f64,
             20.0 * 1024.0 * 1024.0,
         )
-        .with_note("G-S2: RSS growth <= 20 MiB"),
+        .with_note("G-S2: RSS growth <= 20 MiB (PEAK, at flood end — unchanged contract)"),
+    );
+
+    // DECISIVE diagnostic gate (leak-vs-transient tiebreaker). NET live heap
+    // retained after the actor fully drains the backlog. Threshold 1 MiB is
+    // generous for legitimate residual working set (≤50-pubkey pool final
+    // state) yet ~46× below the observed peak — so PASS ⇒ the peak was a
+    // recoverable backpressure spike (supports a peak-threshold revision);
+    // FAIL ⇒ genuine unbounded retention under load (a bounded-channel fix is
+    // mandatory). Counting-allocator based: immune to OS page-return lag.
+    report.gates.push(
+        Gate::lte(
+            "retained_heap_after_drain_bytes",
+            retained_after_drain.max(0) as f64,
+            1024.0 * 1024.0,
+        )
+        .with_note(
+            "S2-drain: NET heap still live after backlog fully drained; \
+             PASS = transient spike, FAIL = real retention under load",
+        ),
     );
 
     // G-S2: dropped sends (mpsc disconnected) == 0.
@@ -210,6 +273,19 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
          Hitch gate uses p99 as proxy for individual send latencies."
             .to_string(),
     );
+    let verdict = if retained_after_drain.max(0) as f64 <= 1024.0 * 1024.0 {
+        "TRANSIENT backpressure spike — backlog fully reclaimed after drain; \
+         peak is recoverable, supports a justified peak-threshold revision"
+    } else {
+        "RETAINED under load — heap NOT reclaimed after drain; genuine \
+         unbounded growth, a bounded-channel/backpressure fix is mandatory"
+    };
+    report.notes.push(format!(
+        "S2-drain: peak_net_heap={} B, retained_after_drain={} B, \
+         reclaimed_by_drain={} B, drain={:.1}s ({} samples). Verdict: {}",
+        peak_net_heap, retained_after_drain, reclaimed_by_drain, drain_seconds,
+        drain_curve.len(), verdict,
+    ));
 
     report.measurements = json!({
         "total_dispatches": total_dispatches,
@@ -223,6 +299,12 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
         "p50_ms": p50_ms,
         "p99_ms": p99_ms,
         "rss_growth_bytes": rss_growth_bytes,
+        "peak_net_heap_bytes": peak_net_heap,
+        "retained_heap_after_drain_bytes": retained_after_drain,
+        "reclaimed_by_drain_bytes": reclaimed_by_drain,
+        "drained_rss_growth_bytes": drained_rss_growth,
+        "drain_seconds": drain_seconds,
+        "drain_net_heap_curve_bytes": drain_curve,
         "callback_count": CALLBACK_COUNT.load(Ordering::Relaxed),
         "wall_seconds": wall_elapsed,
         "latency_samples": latencies.len(),
