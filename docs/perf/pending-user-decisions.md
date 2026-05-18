@@ -703,3 +703,21 @@ All 7 Marmot tasks landed on origin/master: `9dbc8261` scaffold → `cdd48d1b` M
 - No kernel `Keys` provider → Chirp FFI `register` takes secret hex (3-arg).
 - Signature-less `KernelEvent` → `ingest_signed_event` dispatch op exists but has NO caller (Chirp kernel exposes no raw signed-event stream to Swift); no signed-event relay-publish hook → Chirp group ops land in local MDK SQLite, don't reach relays.
 - `nmp-nip59` `WelcomeUnwrap` substrate completion needs a kernel `process_event` ingest hook; `WelcomeWrap` uses a `WrapPlan` carrier (gift-wrap needs live keys, diverges from nip29 `PublishPlan`).
+
+
+
+## PD-028 — Verbatim-View shims must become REAL FFI bridges, not hollow stubs (2026-05-18)
+
+**Filed:** 2026-05-18. **Status:** DECIDED (autonomous) — proceeding; flagged for user confirmation.
+
+The T-podcast-ios-RESTART agent (commit `ec5310cf`, NmpPodcast builds clean) surfaced a real concern: the verbatim-Podcastr-View approach pairs each restored View with a `Bridge/PodcastrShims.swift` shim, and many shims are hollow (`startSend()` empty, `AgentChatSession.phase` static, `SubscriptionService` throws). Result: green build, dead app — a "shell." Agent asked whether to (1) pivot off verbatim to a copy-whole-repo-then-move-logic-to-Rust approach, (2) keep verbatim-build-green as a checkpoint, or (3) other. It also resurfaced an earlier unanswered user strategic question ("wouldn't it be easier to copy the entire swift repo and move the business logic into the Rust kernel so we have a usable app from the get-go?").
+
+**Decision (autonomous, derived from existing explicit user directives — NOT a new preference):** Neither binary option. The user's standing directives already constrain this fully and consistently:
+- "COPY the UI, byte for byte … the UI should be literally the same code" → verbatim Views are MANDATORY and non-negotiable; option (1)'s "pivot off verbatim" is rejected.
+- "no hacks, no temporary bullshit, if things don't work properly we need to fix them in nmp, not fake shit or pack logic or state that belongs in NMP" → hollow shims ARE the forbidden "temporary bullshit"; option (2) "green build as checkpoint" is rejected as a success criterion.
+
+Therefore the only reading consistent with ALL user constraints: **verbatim Views + progressively REAL FFI-backed Bridge.** A shim is a transient scaffold that MUST be replaced by real Rust-kernel data flow before the screen counts as done. "Build green" is explicitly NOT the success metric; "real data flows from the Rust kernel through FFI into the byte-identical View" is. Per-screen definition of done changes to: verbatim diff=0 **AND** its Bridge surface is kernel-backed (no empty/throwing stub on a path the screen exercises). Any logic/state that belongs in NMP goes in NMP (D0), never faked in the Swift shim.
+
+**Orchestration change:** verbatim agents continue restoring Views (correct, unchanged). A paired obligation is added: each verbatim wave must also land the REAL FFI/kernel backing for the screens it restores (or file a precise NMP substrate task if the kernel capability is missing). Hollow-shim count is now tracked debt, not acceptable steady state. README/M11 status must report "verbatim + wired" honestly, never conflate "builds" with "works."
+
+**Why flagged for user:** this is an architectural commitment (rejecting the copy-whole-repo pivot the user mused about) made autonomously because the user is unavailable; it is the only synthesis consistent with the user's own written constraints, but the user may have intended the copy-whole-repo idea as a genuine redirection. Confirm or redirect on return.
