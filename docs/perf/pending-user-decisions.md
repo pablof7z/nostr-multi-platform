@@ -706,7 +706,7 @@ All 7 Marmot tasks landed on origin/master: `9dbc8261` scaffold → `cdd48d1b` M
 
 
 
-## PD-028 — Verbatim-View shims must become REAL FFI bridges, not hollow stubs (2026-05-18)
+## PD-030 — Verbatim-View shims must become REAL FFI bridges, not hollow stubs (2026-05-18)
 
 **Filed:** 2026-05-18. **Status:** DECIDED (autonomous) — proceeding; flagged for user confirmation.
 
