@@ -1,3 +1,4 @@
+use crate::keepalive::{KeepaliveAction, KeepaliveState};
 use crate::relay::RelayRole;
 use std::collections::VecDeque;
 use std::net::TcpStream;
@@ -7,6 +8,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{connect, Message, WebSocket};
+
+#[cfg(test)]
+mod tests;
 
 /// One physical relay-worker event.
 ///
@@ -83,6 +87,11 @@ enum RelayWorkerResult {
 type RelaySocket = WebSocket<MaybeTlsStream<TcpStream>>;
 const RELAY_READ_TIMEOUT: Duration = Duration::from_millis(50);
 const RELAY_RECONNECT_DELAY: Duration = Duration::from_secs(3);
+/// T120b / G4 — emit a Ping after this much inbound silence.
+const KEEPALIVE_IDLE_THRESHOLD: Duration = Duration::from_secs(30);
+/// T120b / G4 — declare the socket dead if no inbound frame arrives within
+/// this window after a Ping is emitted.
+const KEEPALIVE_PONG_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Spawn a worker that dials `relay_url` on transport lane `role`.
 ///
@@ -90,14 +99,50 @@ const RELAY_RECONNECT_DELAY: Duration = Duration::from_secs(3);
 /// not `role.url()`. `role` is retained as the diagnostic lane label so the
 /// kernel keeps per-lane RelayHealth rows while the actual sockets multiply
 /// per resolved URL.
+///
+/// T120b: production calls into [`spawn_relay_worker_with_keepalive`] with the
+/// 30s/30s production constants; tests pass shorter intervals for hermetic
+/// keepalive exercises.
 pub(crate) fn spawn_relay_worker(
     role: RelayRole,
     relay_url: String,
     generation: u64,
     relay_tx: Sender<RelayEvent>,
 ) -> Sender<RelayCommand> {
+    spawn_relay_worker_with_keepalive(
+        role,
+        relay_url,
+        generation,
+        relay_tx,
+        KEEPALIVE_IDLE_THRESHOLD,
+        KEEPALIVE_PONG_TIMEOUT,
+    )
+}
+
+/// Spawn-with-explicit-keepalive variant. The production entry-point
+/// [`spawn_relay_worker`] is a thin wrapper passing the 30s/30s constants;
+/// tests use this directly to exercise the keepalive path on millisecond
+/// budgets without 30s sleeps.
+pub(crate) fn spawn_relay_worker_with_keepalive(
+    role: RelayRole,
+    relay_url: String,
+    generation: u64,
+    relay_tx: Sender<RelayEvent>,
+    keepalive_idle: Duration,
+    keepalive_pong_timeout: Duration,
+) -> Sender<RelayCommand> {
     let (control_tx, control_rx) = mpsc::channel();
-    thread::spawn(move || run_relay_worker(role, relay_url, generation, relay_tx, control_rx));
+    thread::spawn(move || {
+        run_relay_worker(
+            role,
+            relay_url,
+            generation,
+            relay_tx,
+            control_rx,
+            keepalive_idle,
+            keepalive_pong_timeout,
+        )
+    });
     control_tx
 }
 
@@ -107,6 +152,8 @@ fn run_relay_worker(
     generation: u64,
     relay_tx: Sender<RelayEvent>,
     control_rx: Receiver<RelayCommand>,
+    keepalive_idle: Duration,
+    keepalive_pong_timeout: Duration,
 ) {
     let mut pending = VecDeque::new();
     loop {
@@ -122,6 +169,11 @@ fn run_relay_worker(
                 {
                     return;
                 }
+                // T120b: fresh socket → fresh keepalive driver. `Instant::now()`
+                // is the moment the socket actually opened; the first
+                // `keepalive_idle` of silence is tolerated.
+                let mut keepalive =
+                    KeepaliveState::new(Instant::now(), keepalive_idle, keepalive_pong_timeout);
                 match run_connected_relay(
                     role,
                     &relay_url,
@@ -130,6 +182,7 @@ fn run_relay_worker(
                     &control_rx,
                     &mut pending,
                     &mut socket,
+                    &mut keepalive,
                 ) {
                     RelayWorkerResult::Reconnect => {}
                     RelayWorkerResult::Shutdown => return,
@@ -150,6 +203,7 @@ fn run_relay_worker(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_connected_relay(
     role: RelayRole,
     relay_url: &str,
@@ -158,6 +212,7 @@ fn run_connected_relay(
     control_rx: &Receiver<RelayCommand>,
     pending: &mut VecDeque<String>,
     socket: &mut RelaySocket,
+    keepalive: &mut KeepaliveState,
 ) -> RelayWorkerResult {
     loop {
         let mut shutdown = false;
@@ -183,8 +238,48 @@ fn run_connected_relay(
             return RelayWorkerResult::Shutdown;
         }
 
+        // T120b — drive the keepalive FSM each iteration. The read loop polls
+        // at ~20 Hz (50ms timeout), so a Ping fires within one tick of the
+        // 30s idle threshold and Dead is observed within one tick of the
+        // 30s pong window. No additional timer needed.
+        match keepalive.step(Instant::now()) {
+            KeepaliveAction::Idle => {}
+            KeepaliveAction::EmitPing => {
+                if let Err(error) = socket.send(Message::Ping(Vec::new())) {
+                    let _ = relay_tx.send(RelayEvent::Failed {
+                        role,
+                        relay_url: relay_url.to_string(),
+                        generation,
+                        error: format!("ping write failed: {error}"),
+                    });
+                    return RelayWorkerResult::Reconnect;
+                }
+            }
+            KeepaliveAction::Dead => {
+                let _ = relay_tx.send(RelayEvent::Failed {
+                    role,
+                    relay_url: relay_url.to_string(),
+                    generation,
+                    error: "keepalive timeout (no pong within 30s)".to_string(),
+                });
+                return RelayWorkerResult::Reconnect;
+            }
+        }
+
         match socket.read() {
             Ok(message) => {
+                // T120b — any inbound frame counts as a keepalive signal,
+                // including Pong replies. Pong frames are swallowed here
+                // (they're transport-layer artifacts; ingest already ignores
+                // them, but skipping the send avoids the round-trip + log
+                // noise). Ping frames from the relay must be replied to;
+                // tungstenite buffers an automatic Pong response that goes
+                // out on the next write. We pass Ping through too so any
+                // pending automatic Pong gets flushed via the write path.
+                keepalive.on_inbound(Instant::now());
+                if matches!(message, Message::Pong(_)) {
+                    continue;
+                }
                 if relay_tx
                     .send(RelayEvent::Message {
                         role,

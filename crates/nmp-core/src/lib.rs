@@ -2,6 +2,7 @@ mod actor;
 mod app;
 pub mod bunker_hook;
 mod ffi;
+mod keepalive;
 mod kernel;
 pub mod nip19;
 pub mod nip21;
