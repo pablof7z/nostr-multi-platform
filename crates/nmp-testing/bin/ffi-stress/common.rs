@@ -1,34 +1,21 @@
 //! Shared helpers used across S3/S4/S5 stress scenarios.
 //!
-//! P1.a (real ingest path): all event injection now routes through
-//! `nmp_app_inject_pre_verified_events`, which calls the same kernel
-//! `ingest_timeline_event` path that relay delivery uses.  The old
-//! `InjectSyntheticEvents` shortcut (direct HashMap write) is removed.
+//! All event injection uses the real ingest path (VerifiedEvent + EventStore::insert)
+//! via `nmp_app_inject_signed_events` (full Schnorr verify via try_from_raw).
+//! S3 switched from `inject_pre_verified_events` (from_raw_unchecked) to signed events
+//! in T44 round-4 so the signature-verification cost is included in the S3 measurement.
 
-use crate::ffi::{
-    nmp_app_configure, nmp_app_inject_pre_verified_events, nmp_app_inject_signed_events, NmpApp,
-};
-use std::ffi::CString;
+use crate::ffi::{nmp_app_configure, nmp_app_inject_signed_events, NmpApp};
 use std::time::Duration;
 
-/// Inject `count` pre-verified kind-1 events into the kernel via the real
-/// `ingest_timeline_event` path (test-support only).
-///
-/// Uses `VerifiedEvent::from_raw_unchecked` internally (D7: capability boundary
-/// gated on `cfg(test-support)`; not part of production FFI).  Suitable for
-/// S3 (100k events) where Schnorr verification cost would dominate.
-///
-/// For S4/S5 use `inject_signed_events` (via `nmp_core::testing`) which
-/// produces real Schnorr-signed events through `EventBuilder::sign_with_keys`.
-pub(crate) fn inject_pre_verified_events(app: *mut NmpApp, prefix: &str, base_ts: u64, count: u32) {
-    let prefix_cstr = CString::new(prefix).expect("prefix has no interior nuls");
-    nmp_app_inject_pre_verified_events(app, prefix_cstr.as_ptr(), base_ts, count);
-}
-
 /// Inject `count` real Schnorr-signed kind-1 events via the full
-/// `try_from_raw` verify path.  Use for S4/S5 (small counts; ~10–25 ms).
+/// `try_from_raw` verify path.
 ///
-/// For S3 (100k events) use `inject_pre_verified_events` instead.
+/// Uses `Keys::generate() + EventBuilder::text_note + sign_with_keys`.
+/// Schnorr sign cost: ~30-50 µs/event.  For S4/S5 (500/200 events): ~10-25 ms.
+/// For S3 (100k events): ~3-8 s; the S3 default settle is 10 s to account for this.
+///
+/// D0: gated on `cfg(any(test, feature = "test-support"))`.
 pub(crate) fn inject_signed_events(app: *mut NmpApp, base_ts: u64, count: u32) {
     nmp_app_inject_signed_events(app, base_ts, count);
 }

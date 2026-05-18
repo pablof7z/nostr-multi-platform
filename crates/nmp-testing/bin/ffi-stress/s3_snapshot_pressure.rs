@@ -3,19 +3,21 @@
 //! Spec: docs/design/ffi-hardening/scenarios.md §S3
 //! Gate: docs/design/ffi-hardening/gates.md §G-S3
 //!
-//! Injects 100,000 pre-verified kind-1 events via the real kernel ingest path
-//! (`nmp_app_inject_pre_verified_events`, test-support only).  Uses
-//! `VerifiedEvent::from_raw_unchecked` to bypass Schnorr verification for
-//! harness perf (D7: gated on `cfg(test-support)`; not in production ABI).
-//! Then triggers 10 configure() bursts to stress listener serialization.
+//! Injects 100,000 real Schnorr-signed kind-1 events via the real kernel ingest
+//! path (`nmp_app_inject_signed_events`, test-support only).  Full
+//! `VerifiedEvent::try_from_raw` signature verification is performed for every
+//! event.  Injection uses a single `Keys::generate()` fixture key; sign cost is
+//! ~30–50 µs/event so 100k ≈ 3–8 s of setup time.
 //!
+//! D0: test-support surface is gated on `cfg(any(test, feature = "test-support"))`;
+//! not part of the production FFI ABI.
 //! D1 (best-effort rendering): every emit processed promptly without blocking.
-//! D2 (<=60 Hz): reconciler frequency stays bounded by configured emit_hz.
-//! D8 (zero per-event allocs): allocator snapshot gates per-emit heap growth.
+//! D8 (reactivity contract ≤60 Hz/view): reconciler frequency stays bounded by
+//! configured emit_hz; per-emit allocs tracked by allocator-snapshot gates.
 
 use crate::allocator::alloc_snapshot;
 use crate::common::{
-    configure_and_settle, extract_rev, inject_pre_verified_events, percentile_u64,
+    configure_and_settle, extract_rev, inject_signed_events, percentile_u64,
     revs_strictly_increasing,
 };
 use crate::ffi::{
@@ -33,7 +35,7 @@ use std::time::{Duration, Instant};
 struct CallbackState {
     /// Latency from callback entry to return (ns) — proxy for apply_us.
     cb_latencies_ns: Vec<u64>,
-    /// Payload sizes per emit.
+    /// Payload sizes per emit (bytes) — used for D8 alloc gate denominator.
     payload_sizes: Vec<usize>,
     /// `rev` values for monotonicity check.
     revs: Vec<u64>,
@@ -60,7 +62,7 @@ extern "C" fn measure_cb(ctx: *mut c_void, payload: *const c_char) {
 }
 
 pub(crate) struct S3Config {
-    /// Pre-verified events to inject before burst (spec: 100,000).
+    /// Events to inject before burst (spec: 100,000).
     pub(crate) inject_count: u32,
     /// Number of configure() bursts (spec: 10).
     pub(crate) configure_bursts: usize,
@@ -72,7 +74,8 @@ impl Default for S3Config {
     fn default() -> Self {
         S3Config {
             // G-S3 spec: 100,000 events (gates.md §G-S3).
-            // Uses from_raw_unchecked for harness perf (D7: cfg-gated test path).
+            // Full Schnorr verify via nmp_app_inject_signed_events (D0: cfg-gated test path).
+            // Injection is ~3-8 s; settle waits 10 s to allow actor to finish processing.
             inject_count: 100_000,
             configure_bursts: 10,
             burst_interval: Duration::from_millis(200),
@@ -97,17 +100,15 @@ pub(crate) fn run(cfg: S3Config, report: &mut ScenarioMetrics) {
     // Configure-not-Start: no relay workers; S3 tests emit serialization, not relay.
     nmp_app_configure(app, 0, 500, 12);
 
-    // Inject 100k pre-verified events via the real kernel ingest path.
-    // Routes through ingest_pre_verified_event (same hot path as relay delivery).
-    // Uses from_raw_unchecked for harness perf (D7 note: cfg-gated; not in
-    // production ABI; Schnorr verify cost at 100k would be 3-5 s of setup time).
+    // Inject 100k real Schnorr-signed events via the full verify path (D0: cfg-gated).
+    // Each event is signed with Keys::generate(); try_from_raw verifies the signature.
+    // Injection cost: ~30-50 µs/event × 100k ≈ 3-8 s; settle waits 10 s.
     let base_ts: u64 = 1_700_000_000;
-    inject_pre_verified_events(app, "s3-", base_ts, cfg.inject_count);
+    inject_signed_events(app, base_ts, cfg.inject_count);
 
     // Settle: allow actor to process 100k inject + emit the initial snapshot.
-    // 100k events processed sequentially in actor: ~500 ms - 2 s depending on
-    // store insert cost + per-event sort_timeline overhead.  Wait 4 s to be safe.
-    configure_and_settle(app, 4_000);
+    // Full Schnorr-signed path is slower than from_raw_unchecked; 10 s is generous.
+    configure_and_settle(app, 10_000);
 
     // D8 allocator snapshot: take BEFORE the burst to measure heap slope over
     // the serialization window (post-warmup).
@@ -153,16 +154,27 @@ pub(crate) fn run(cfg: S3Config, report: &mut ScenarioMetrics) {
         0.0
     };
 
-    // D8 allocator gate: net heap growth per emit across burst window.
-    // The harness's own Vecs grow by O(1) per emit (amortized Vec push, ~100 bytes).
-    // A leak in the kernel path would cause much larger per-emit growth.
-    // Gate: net heap bytes per emit <= 2 KiB (generous; catches kernel leaks
-    // while allowing for harness Vec amortisation overhead).
+    // D8 allocator gate — spec: gates.md §G-S3.
+    // "Allocations per emit <= 2 × payload_bytes" (soft-budget per spec row 5).
+    // "Counting allocator: temporary peak during emit <= 3 × payload_bytes" (spec row 6).
+    //
+    // Implementation note: the harness uses a net-heap-delta proxy (alloc_snapshot)
+    // rather than a true counting allocator.  The net delta across the burst window
+    // (post-warmup, 10 emits) divided by emit count gives a per-emit heap growth
+    // approximation.  Per-emit payload_bytes is measured from the callback.
+    // Threshold: net_heap_per_emit <= 2 × max_payload_bytes (generous spec interpretation).
     let net_heap_delta_burst = burst_snap_after.net_heap_delta(&burst_snap_before);
     let net_heap_per_emit = if emit_count > 0 {
         net_heap_delta_burst as f64 / emit_count as f64
     } else {
         0.0
+    };
+    // Spec threshold: 2 × payload_bytes per emit (gates.md §G-S3 row 5).
+    let alloc_threshold = if max_payload > 0 {
+        2.0 * max_payload as f64
+    } else {
+        // Fallback: 2 MiB if no payload observed (conservative).
+        2.0 * 1024.0 * 1024.0
     };
 
     // G-S3 gates — per docs/design/ffi-hardening/gates.md §G-S3.
@@ -185,29 +197,34 @@ pub(crate) fn run(cfg: S3Config, report: &mut ScenarioMetrics) {
     );
     report.gates.push(
         Gate::lte("emit_hz", burst_hz, 60.0)
-            .with_note("G-S3: end-to-end reconciler frequency <= 60 Hz"),
+            .with_note("G-S3/D8: end-to-end reconciler frequency <= 60 Hz"),
     );
     report.gates.push(
         Gate::eq("rev_monotonic", if revs_monotonic { 1.0 } else { 0.0 }, 1.0)
             .with_note("G-S3: rev strictly increasing across emits (bible #1)"),
     );
-    // D8: net heap growth per emit <= 2 KiB.
-    // Harness Vec amortisation contributes ~100-500 bytes/emit (amortized push).
-    // A kernel-path leak would show as multiple KiB/emit sustained growth.
+    // D8/G-S3 row 5: net heap growth per emit <= 2 × payload_bytes (spec §G-S3).
+    // Harness Vec amortisation (~100-500 bytes/emit) is included; kernel-path leaks
+    // would show as sustained multi-KiB/emit growth.
     report.gates.push(
-        Gate::lte("net_heap_per_emit_bytes", net_heap_per_emit, 2048.0)
-            .with_note("G-S3/D8: net heap per emit <= 2 KiB (harness overhead excluded)"),
+        Gate::lte("net_heap_per_emit_bytes", net_heap_per_emit, alloc_threshold)
+            .with_note("G-S3/D8: net heap per emit <= 2×payload_bytes (gates.md §G-S3 row 5)"),
     );
 
     report.notes.push(format!(
-        "Injected {} synthetic events; emits observed: {}; burst window: {:.1} s; Hz: {:.1}",
+        "Injected {} signed events (full Schnorr verify); emits observed: {}; \
+         burst window: {:.1} s; Hz: {:.1}",
         cfg.inject_count, emit_count, burst_elapsed.as_secs_f64(), burst_hz
     ));
     report.notes.push(format!(
-        "Event injection: {} events via nmp_app_inject_pre_verified_events \
-         (real ingest path, from_raw_unchecked for perf; D7: cfg-gated, \
+        "Event injection: {} events via nmp_app_inject_signed_events \
+         (real ingest path, full try_from_raw Schnorr verify; D0: cfg-gated, \
          not in production ABI).",
         cfg.inject_count
+    ));
+    report.notes.push(format!(
+        "D8 alloc gate: max_payload_bytes={max_payload}; threshold=2×payload={alloc_threshold:.0}; \
+         net_heap_per_emit={net_heap_per_emit:.0} bytes (spec §G-S3 row 5)."
     ));
 
     report.measurements = json!({
@@ -224,6 +241,7 @@ pub(crate) fn run(cfg: S3Config, report: &mut ScenarioMetrics) {
         "rev_monotonic": revs_monotonic,
         "net_heap_delta_burst_bytes": net_heap_delta_burst,
         "net_heap_per_emit_bytes": net_heap_per_emit,
+        "alloc_threshold_bytes": alloc_threshold,
         "wall_seconds": wall_elapsed,
     });
 

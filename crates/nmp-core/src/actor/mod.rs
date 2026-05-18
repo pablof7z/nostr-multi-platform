@@ -262,8 +262,10 @@ fn dispatch_command(
         #[cfg(any(test, feature = "test-support"))]
         ActorCommand::IngestPreVerifiedEvents(events) => {
             // D4 (single writer per fact): actor thread is the sole mutator.
-            // Route each event through the real ingest path under the
-            // "diag-firehose-stress" sub-id so should_store_event passes.
+            // Routes each event through kernel.ingest_pre_verified_event under the
+            // "diag-firehose-stress" sub-id.  Note: ingest_pre_verified_event does
+            // NOT call should_store_event or ingest_timeline_event — it directly
+            // calls store.insert + populates the read-cache (events HashMap + timeline).
             // sort_timeline() is deferred to after the loop to avoid O(n²·log n)
             // cost for large batches (e.g. S3: 100k events).
             for verified in events {

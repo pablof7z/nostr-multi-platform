@@ -279,17 +279,16 @@ pub extern "C" fn nmp_app_close_thread(app: *mut NmpApp, event_id: *const c_char
 ///
 /// Events are constructed with deterministic IDs/pubkeys using
 /// `VerifiedEvent::from_raw_unchecked` (test-support fast path; bypasses
-/// Schnorr verification for harness ergonomics — see D7 note below).
+/// Schnorr verification for harness ergonomics — see D0 note below).
 ///
-/// D7: this symbol is gated on `cfg(any(test, feature = "test-support"))` and
+/// D0: this symbol is gated on `cfg(any(test, feature = "test-support"))` and
 /// is never part of the production FFI surface.  Swift/C callers never see it.
 /// The `VerifiedEvent` type is the capability boundary: production code can
 /// only construct one via `try_from_raw` (full Schnorr verify).  This function
-/// uses `from_raw_unchecked` explicitly for perf-harness use (S3 100k events).
+/// uses `from_raw_unchecked` explicitly for legacy perf-harness compatibility.
 ///
-/// For S4/S5 (small batches), callers can use `inject_signed_events` in
-/// `nmp_core::testing`, which produces real Schnorr signatures via the `nostr`
-/// crate's `EventBuilder::sign_with_keys`.
+/// Prefer `inject_signed_events` for new harnesses (S3/S4/S5 all use it now):
+/// it produces real Schnorr-signed events via `EventBuilder::sign_with_keys`.
 #[cfg(any(test, feature = "test-support"))]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[no_mangle]
@@ -341,10 +340,8 @@ pub extern "C" fn nmp_app_inject_pre_verified_events(
                 tags: Vec::new(),
                 content,
                 // Placeholder sig — from_raw_unchecked bypasses verification.
-                // Rationale: S3 injects 100k events; Schnorr verify would cost
-                // ~3-5 s of setup time that obscures the serialisation metrics
-                // being measured.  D7 gate: this path is cfg-gated and excluded
-                // from the production FFI ABI.
+                // D0 gate: this path is cfg-gated and excluded from the production
+                // FFI ABI.  Use inject_signed_events for full Schnorr verify path.
                 sig: "0".repeat(128),
             };
             crate::store::VerifiedEvent::from_raw_unchecked(raw)
@@ -361,7 +358,7 @@ pub extern "C" fn nmp_app_inject_pre_verified_events(
 /// to produce cryptographically valid events.  Schnorr sign cost is ~30–50 µs
 /// per event; for S4 (500 events) and S5 (200 events) this is 10–25 ms total.
 ///
-/// D7: gated on `cfg(any(test, feature = "test-support"))`.  Not part of the
+/// D0: gated on `cfg(any(test, feature = "test-support"))`.  Not part of the
 /// production FFI ABI.
 #[cfg(any(test, feature = "test-support"))]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]

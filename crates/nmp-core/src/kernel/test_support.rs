@@ -8,7 +8,7 @@
 //! New test-support helpers should be added here rather than to `kernel/mod.rs`
 //! to keep the main module under the 300-LOC soft limit (AGENTS.md).
 //!
-//! D7: capability boundary respected — none of these methods appear in the
+//! D0: capability boundary respected — none of these methods appear in the
 //! production FFI surface.
 
 use super::*;
@@ -69,16 +69,20 @@ impl Kernel {
         Some(outcome)
     }
 
-    /// Ingest a pre-verified event through the real kernel ingest path.
+    /// Ingest a pre-verified event through the kernel ingest path.
     ///
-    /// Calls `ingest_timeline_event` directly with a `VerifiedEvent` that has
-    /// already been constructed by the caller (either via `try_from_raw` for
-    /// the full-verify path, or via `from_raw_unchecked` for the perf-harness
-    /// fast path).  This is the test-support substitute for the relay delivery
-    /// path; it exercises the same hot path as `handle_event` without a live
-    /// relay connection.
+    /// This method does NOT call `ingest_timeline_event`.  Instead it:
+    /// 1. Calls `store.insert` via `from_raw_unchecked` to let the store record
+    ///    provenance (D4: store is the single authoritative writer; re-wrap avoids
+    ///    redundant re-verification).
+    /// 2. Populates the lightweight read-cache (`self.events` HashMap + appends to
+    ///    `self.timeline`) directly, mirroring the `Inserted/Replaced` branch of
+    ///    `ingest_timeline_event` but without signature re-verification overhead.
     ///
-    /// D7: capability boundary respected — this method is gated behind
+    /// Sort is deferred: callers injecting a batch MUST call
+    /// `sort_timeline_deferred()` once after the loop to avoid O(n²·log n) cost.
+    ///
+    /// D0: capability boundary respected — this method is gated behind
     /// `cfg(any(test, feature = "test-support"))` and is never part of the
     /// production FFI surface.
     pub(crate) fn ingest_pre_verified_event(
