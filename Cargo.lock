@@ -2555,6 +2555,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-signer-broker"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "nmp-signer-iface",
+ "nmp-signers",
+ "nostr",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tungstenite",
+]
+
+[[package]]
 name = "nmp-signer-iface"
 version = "0.1.0"
 dependencies = [

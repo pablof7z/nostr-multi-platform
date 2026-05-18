@@ -32,6 +32,17 @@ use crate::planner::{InterestScope, InterestShape};
 pub(in crate::kernel) const ONESHOT_SUB_PREFIX: &str = "oneshot-disc-";
 
 impl Kernel {
+    /// Max ids/pubkeys per discovery REQ. Relays that reject large id-filters
+    /// gracefully drop events; keeping this ≤50 is conservative but safe.
+    const DISCOVERY_BATCH: usize = 50;
+
+    /// Maximum concurrent discovery REQs across both relay roles. Keeps us
+    /// well under relay concurrent-sub limits (~15-20 on most public relays)
+    /// even during startup bursts that accumulate thousands of unknown refs.
+    /// The remainder is held in `unknown_ids` and drained on subsequent ticks
+    /// as in-flight subs close via EOSE.
+    const MAX_DISCOVERY_CONCURRENCY: usize = 2;
+
     /// Ingest seam: record referenced pubkeys (`p`) and event ids (`e`/`q`)
     /// from `tags` that are not already in the local projections. Borrowed
     /// predicates ⇒ no allocation when everything is known (D8).
@@ -53,57 +64,95 @@ impl Kernel {
         );
     }
 
-    /// Drain the unknown-id set: register one [`OneshotApi`] interest per
-    /// missing reference (forward-looking, deduped) and emit the matching M1
-    /// REQ so it resolves on the wire today. Event ids → id-filtered fetch on
-    /// the content relay; pubkeys → `kinds:[0]` profile fetch on the indexer.
+    /// Drain the unknown-id set up to [`Self::MAX_DISCOVERY_CONCURRENCY`]
+    /// concurrent REQs. Each REQ carries up to [`Self::DISCOVERY_BATCH`] ids.
+    /// Remaining unknown refs are put back into `unknown_ids` and will be
+    /// drained on the next tick once in-flight subs close via EOSE.
+    ///
     /// Idempotent: a second call with no intervening `collect_unknown_refs`
-    /// emits nothing (the set is drained).
+    /// emits nothing (the set is drained or at the concurrency cap).
     pub(in crate::kernel) fn drain_unknown_oneshots(&mut self) -> Vec<OutboundMessage> {
+        // Respect the concurrency cap — relay NOTICE "too many concurrent REQs"
+        // was the original bug (T82). Don't open more discovery subs until
+        // existing ones close via EOSE.
+        let in_flight = self.oneshot_subs.len();
+        if in_flight >= Self::MAX_DISCOVERY_CONCURRENCY {
+            return Vec::new();
+        }
+        let slots = Self::MAX_DISCOVERY_CONCURRENCY - in_flight;
+
         let (event_ids, pubkeys) = self.unknown_ids.drain();
         if event_ids.is_empty() && pubkeys.is_empty() {
             return Vec::new();
         }
-        let mut out = Vec::with_capacity(event_ids.len() + pubkeys.len());
 
-        for id in event_ids {
+        let mut out = Vec::with_capacity(slots.min(2));
+        let mut slots_used = 0usize;
+
+        // Events sub (content relay) — take first batch, put back the rest.
+        if !event_ids.is_empty() && slots_used < slots {
+            let (batch, remainder) = event_ids.split_at(event_ids.len().min(Self::DISCOVERY_BATCH));
             let shape = InterestShape {
-                event_ids: [id.clone()].into_iter().collect(),
-                limit: Some(1),
+                event_ids: batch.iter().cloned().collect(),
+                limit: Some(batch.len() as u32),
                 ..Default::default()
             };
             let token = {
                 let registry = self.lifecycle.registry_mut();
-                self.oneshot
-                    .request(registry, InterestScope::Global, shape)
+                self.oneshot.request(registry, InterestScope::Global, shape)
             };
             let sub_id = format!("{ONESHOT_SUB_PREFIX}{}", token.0);
             self.oneshot_subs.insert(sub_id.clone(), token);
             out.push(self.req(
                 RelayRole::Content,
                 &sub_id,
-                "discovery: referenced event",
-                json!({ "ids": [id], "limit": 1 }),
+                "discovery: referenced events",
+                json!({ "ids": batch, "limit": batch.len() }),
             ));
+            if !remainder.is_empty() {
+                self.unknown_ids.put_back_events(remainder.iter().cloned());
+            }
+            slots_used += 1;
+        } else if !event_ids.is_empty() {
+            // No slot available; put everything back.
+            self.unknown_ids.put_back_events(event_ids.into_iter());
         }
-        for pk in pubkeys {
-            let shape = InterestShape::profile_for(pk.clone());
+
+        // Profiles sub (indexer) — same pattern.
+        if !pubkeys.is_empty() && slots_used < slots {
+            let (batch, remainder) = pubkeys.split_at(pubkeys.len().min(Self::DISCOVERY_BATCH));
+            let shape = InterestShape {
+                authors: batch.iter().cloned().collect(),
+                kinds: [0u32].into_iter().collect(),
+                limit: Some(batch.len() as u32),
+                ..Default::default()
+            };
             let token = {
                 let registry = self.lifecycle.registry_mut();
-                self.oneshot
-                    .request(registry, InterestScope::Global, shape)
+                self.oneshot.request(registry, InterestScope::Global, shape)
             };
             let sub_id = format!("{ONESHOT_SUB_PREFIX}{}", token.0);
             self.oneshot_subs.insert(sub_id.clone(), token);
             out.push(self.req(
                 RelayRole::Indexer,
                 &sub_id,
-                "discovery: referenced profile",
-                json!({ "kinds": [0], "authors": [pk], "limit": 1 }),
+                "discovery: referenced profiles",
+                json!({ "kinds": [0], "authors": batch, "limit": batch.len() }),
             ));
+            if !remainder.is_empty() {
+                self.unknown_ids.put_back_pubkeys(remainder.iter().cloned());
+            }
+        } else if !pubkeys.is_empty() {
+            self.unknown_ids.put_back_pubkeys(pubkeys.into_iter());
         }
+
         if !out.is_empty() {
-            self.log(format!("discovery: {} oneshot fetch(es) issued", out.len()));
+            self.log(format!(
+                "discovery: {} REQ(s) issued ({} in-flight after, {} queued)",
+                out.len(),
+                self.oneshot_subs.len(),
+                self.unknown_ids.pending_len(),
+            ));
         }
         out
     }

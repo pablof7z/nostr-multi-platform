@@ -156,6 +156,22 @@ fn completing_unknown_oneshot_for_non_discovery_sub_is_noop() {
     assert_eq!(kernel.discovery_in_flight(), 0);
 }
 
+#[test]
+fn many_unknown_ids_collapse_to_few_batch_reqs() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // 120 event ids -> ceil(120\/50) = 3 content REQs
+    // 75 pubkeys    -> ceil(75\/50)  = 2 indexer REQs
+    let tags: Vec<Vec<String>> = (0u32..120)
+        .map(|i| tag(&["e", &format!("{i:0>64x}")]))
+        .chain((0u32..75).map(|i| tag(&["p", &format!("{i:0>64x}")])))
+        .collect();
+    kernel.collect_unknown_refs(&tags);
+    let reqs = kernel.drain_unknown_oneshots();
+    assert_eq!(reqs.len(), 2, "throttled: 1 events REQ + 1 profiles REQ regardless of backlog size");
+    assert_eq!(kernel.discovery_in_flight(), 2, "2 in-flight; 95 remain queued");
+}
+
+
 /// Extract the sub-id (2nd JSON array element) from a `["REQ", sub_id, …]`
 /// frame text — test-local parser, avoids a serde_json dep churn here.
 fn sub_id_of(req_text: &str) -> String {
