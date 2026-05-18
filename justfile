@@ -17,6 +17,12 @@ rust-ios-sim:
     # `OTHER_LDFLAGS = "$(inherited) -lnmp_core -lnmp_signer_broker"` in the
     # pbxproj.
     cargo build -p nmp-signer-broker --target aarch64-apple-ios-sim
+    # T146: `nmp-app-chirp` is a per-app crate composing Nip10ModularTimelineView
+    # with the kernel event observer slot. Same packaging rule as the broker —
+    # `nmp-core` cannot depend on `nmp-nip01 / nmp-threading` (cycle), so the
+    # Chirp glue ships its own static archive. Chirp's link step adds
+    # `-lnmp_app_chirp` in `ios/Chirp/project.yml`.
+    cargo build -p nmp-app-chirp --target aarch64-apple-ios-sim
 
 gen-ios:
     xcodegen generate --spec ios/NmpStress/project.yml

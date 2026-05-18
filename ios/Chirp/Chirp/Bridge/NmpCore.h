@@ -116,4 +116,29 @@ void nmp_app_open_uri(void *app, const char *uri);
 void nmp_signer_broker_init(void *app);
 void nmp_app_cancel_bunker_handshake(void *app);
 
+// ── T146: nmp-app-chirp per-app FFI ──────────────────────────────────────
+//
+// `libnmp_app_chirp.a` is a separate Rust static library: doctrine D0
+// forbids `nmp-core -> nmp-nip01 / nmp-threading`, so the Chirp-specific
+// glue that composes the modular timeline projection lives in its own
+// archive. The four symbols below are exported from that archive.
+//
+// Flow:
+// 1. Call `nmp_app_chirp_register(app, viewer_pubkey)` once after
+//    `nmp_app_new()` succeeds. Returns an opaque handle (or NULL on
+//    failure). `viewer_pubkey` may be NULL (treated as "no viewer set").
+// 2. On each render tick (or after an update arrives), call
+//    `nmp_app_chirp_snapshot(handle)` to get a nul-terminated JSON string
+//    `{ "blocks": [...], "cards": [...] }`. The shell owns the pointer
+//    until it calls `nmp_app_chirp_snapshot_free(ptr)`.
+// 3. On teardown, call `nmp_app_chirp_unregister(handle)` BEFORE
+//    `nmp_app_free(app)`.
+//
+// Fire-and-forget: every entry point degrades silently on null pointers,
+// poisoned mutexes, or serialization failure (D6).
+void *nmp_app_chirp_register(void *app, const char *viewer_pubkey_or_null);
+char *nmp_app_chirp_snapshot(void *handle);
+void nmp_app_chirp_snapshot_free(char *ptr);
+void nmp_app_chirp_unregister(void *handle);
+
 #endif
