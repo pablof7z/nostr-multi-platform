@@ -172,7 +172,7 @@ fn parse_filter_field(filter: &mut FilterAst, key: &str, val: &str) -> Result<()
             let letter = letters[0];
             let values = parse_value_list(val, k)?;
             // Multiple #X= fields for the same letter unite their values.
-            filter.tags.entry(letter).or_insert_with(Vec::new).extend(values);
+            filter.tags.entry(letter).or_default().extend(values);
         }
         other => {
             return Err(format!(

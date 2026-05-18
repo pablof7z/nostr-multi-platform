@@ -157,8 +157,10 @@ pub fn prepare(session: &mut Session, filter: &FilterAst) -> Result<PreparedPlan
     // ── Phase C: compile + select ────────────────────────────────────────
     let phase_c_start = std::time::Instant::now();
     // Build the InterestShape.
-    let mut shape = InterestShape::default();
-    shape.authors = authors_final.iter().cloned().collect();
+    let mut shape = InterestShape {
+        authors: authors_final.iter().cloned().collect(),
+        ..Default::default()
+    };
     if let Some(kinds) = &filter.kinds {
         shape.kinds = kinds.iter().copied().collect();
     }
