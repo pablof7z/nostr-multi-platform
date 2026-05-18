@@ -19,6 +19,7 @@ crate-type = ["staticlib", "rlib"]
 [dependencies]
 nmp-core = { path = "../../../crates/nmp-core" }
 podcast-core = { path = "../podcast-core" }
+podcast-feeds = { path = "../podcast-feeds" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 ulid = { version = "1", features = ["serde"] }

@@ -9,15 +9,6 @@ pub mod podcasting20;
 
 #[cfg(test)]
 mod tests {
-    use super::parser::{parse_feed, FeedError};
-
-    #[test]
-    fn podcast_feeds_parser_stub_returns_not_implemented() {
-        let url = "https://feeds.example.com/podcast.rss".parse().unwrap();
-        let result = parse_feed(b"<?xml version=\"1.0\"?>", &url);
-        assert!(matches!(result, Err(FeedError::NotImplemented)));
-    }
-
     #[test]
     fn podcast_feeds_podcast_index_types_serialize() {
         use super::podcast_index::IndexError;

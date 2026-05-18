@@ -12,6 +12,8 @@ serde_json = "1.0"
 url = { version = "2", features = ["serde"] }
 thiserror = "1"
 tracing = "0.1"
+feed-rs = "2.3"
+mediatype = "0.19"
 
 [dev-dependencies]
 nmp-testing = { path = "../../../crates/nmp-testing" }

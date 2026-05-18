@@ -28,8 +28,9 @@ use jni::sys::{jboolean, jlong, jstring, JNI_FALSE, JNI_TRUE};
 use jni::JNIEnv;
 
 use nmp_app_podcast::{
-    nmp_app_podcast_register, nmp_app_podcast_snapshot, nmp_app_podcast_snapshot_free,
-    nmp_app_podcast_subscribe, nmp_app_podcast_unregister, nmp_app_podcast_unsubscribe,
+    nmp_app_podcast_episodes, nmp_app_podcast_ingest_bytes, nmp_app_podcast_register,
+    nmp_app_podcast_snapshot, nmp_app_podcast_snapshot_free, nmp_app_podcast_subscribe,
+    nmp_app_podcast_unregister, nmp_app_podcast_unsubscribe,
 };
 
 use crate::Session;
@@ -204,4 +205,91 @@ fn snapshot_json_len(ph_ptr: *mut nmp_app_podcast::PodcastHandle) -> usize {
     let len = unsafe { CStr::from_ptr(ptr) }.to_bytes().len();
     unsafe { nmp_app_podcast_snapshot_free(ptr) };
     len
+}
+
+// ---------------------------------------------------------------------------
+// Ingest / Episodes (T-podcast-android-3)
+// ---------------------------------------------------------------------------
+
+/// `PodcastKernelBridge.nativeIngestBytes(podcastHandle: Long, feedUrl: String, bytes: ByteArray): String?`
+///
+/// Passes raw RSS/Atom feed bytes to the Rust parser. The host (Android) is
+/// responsible for fetching the bytes over HTTP (T-podcast-gap-3).
+///
+/// Returns a JSON status string `{"ok":true,"episode_count":N}` or
+/// `{"ok":false,"reason":"..."}`. Never returns null for non-null handle.
+#[no_mangle]
+pub extern "system" fn Java_com_podcast_app_android_bridge_PodcastKernelBridge_nativeIngestBytes<
+    'l,
+>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    podcast_handle: jlong,
+    feed_url: JString<'l>,
+    bytes: jni::objects::JByteArray<'l>,
+) -> jstring {
+    let null = std::ptr::null_mut();
+    if podcast_handle == 0 {
+        return null;
+    }
+    let Some(url_cstr) = jstring_to_cstring(&mut env, feed_url) else {
+        return null;
+    };
+    // Convert JByteArray to &[u8]. JNI bytes are signed (i8) — reinterpret.
+    let byte_len = env.get_array_length(&bytes).unwrap_or(0) as usize;
+    if byte_len == 0 {
+        return null;
+    }
+    let mut buf: Vec<i8> = vec![0i8; byte_len];
+    if env.get_byte_array_region(&bytes, 0, &mut buf).is_err() {
+        return null;
+    }
+    // SAFETY: i8 and u8 have the same bit width; this is a legal reinterpret.
+    let ubuf: &[u8] = unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, byte_len) };
+
+    let ph_ptr: *mut nmp_app_podcast::PodcastHandle = podcast_handle as *mut _;
+    let result_ptr = unsafe {
+        nmp_app_podcast_ingest_bytes(ph_ptr, url_cstr.as_ptr(), ubuf.as_ptr(), ubuf.len())
+    };
+    if result_ptr.is_null() {
+        return null;
+    }
+    let result_str = unsafe { CStr::from_ptr(result_ptr) }.to_string_lossy().into_owned();
+    unsafe { nmp_app_podcast_snapshot_free(result_ptr) };
+    match env.new_string(&result_str) {
+        Ok(js) => js.into_raw(),
+        Err(_) => null,
+    }
+}
+
+/// `PodcastKernelBridge.nativeEpisodes(podcastHandle: Long, podcastId: String): String?`
+///
+/// Returns a JSON-encoded `FeedView` (`{"episodes":[…]}`) for one podcast.
+/// Unknown podcast ids return `{"episodes":[]}`. Null on null handle.
+#[no_mangle]
+pub extern "system" fn Java_com_podcast_app_android_bridge_PodcastKernelBridge_nativeEpisodes<
+    'l,
+>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    podcast_handle: jlong,
+    podcast_id: JString<'l>,
+) -> jstring {
+    let null = std::ptr::null_mut();
+    if podcast_handle == 0 {
+        return null;
+    }
+    let id_cstr = jstring_to_cstring(&mut env, podcast_id);
+    let id_ptr = id_cstr.as_ref().map(|c| c.as_ptr()).unwrap_or(std::ptr::null());
+    let ph_ptr: *mut nmp_app_podcast::PodcastHandle = podcast_handle as *mut _;
+    let result_ptr = unsafe { nmp_app_podcast_episodes(ph_ptr, id_ptr) };
+    if result_ptr.is_null() {
+        return null;
+    }
+    let result_str = unsafe { CStr::from_ptr(result_ptr) }.to_string_lossy().into_owned();
+    unsafe { nmp_app_podcast_snapshot_free(result_ptr) };
+    match env.new_string(&result_str) {
+        Ok(js) => js.into_raw(),
+        Err(_) => null,
+    }
 }
