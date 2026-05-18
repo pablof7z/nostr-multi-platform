@@ -19,6 +19,11 @@ final class KernelModel: ObservableObject {
 
     private let kernel = KernelHandle()
 
+    /// Platform capability implementations injected for the kernel to use.
+    /// Owns the Keychain-backed keyring; the Onboarding flow persists an
+    /// imported key via `capabilities.persistImportedSecret(...)`.
+    let capabilities = NmpPulseCapabilities()
+
     init() {
         kernel.listen { [weak self] update in
             Task { @MainActor [weak self] in
@@ -29,12 +34,14 @@ final class KernelModel: ObservableObject {
 
     func start() {
         guard !isRunning else { return }
+        capabilities.start()
         kernel.start(visibleLimit: 80, emitHz: 4)
         isRunning = true
     }
 
     func stop() {
         kernel.stop()
+        capabilities.stop()
         isRunning = false
     }
 

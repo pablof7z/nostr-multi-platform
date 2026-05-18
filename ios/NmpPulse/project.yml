@@ -35,8 +35,28 @@ targets:
         OTHER_LDFLAGS: "$(inherited) -lnmp_core"
         ENABLE_USER_SCRIPT_SANDBOXING: NO
 
+  NmpPulseCapabilityTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: NmpPulseTests
+    dependencies:
+      # Hosted in the NmpPulse app so the test bundle inherits the app's
+      # keychain entitlement context — host-less unit-test bundles on the
+      # iOS simulator get errSecMissingEntitlement from SecItem*.
+      - target: NmpPulse
+    settings:
+      base:
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/NmpPulse.app/NmpPulse"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.NmpPulseCapabilityTests
+        GENERATE_INFOPLIST_FILE: YES
+
 schemes:
   NmpPulse:
     build:
       targets:
         NmpPulse: all
+    test:
+      targets:
+        - NmpPulseCapabilityTests
