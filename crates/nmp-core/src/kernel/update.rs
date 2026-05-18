@@ -97,6 +97,10 @@ impl Kernel {
             active_account: self.account_snapshot().1.cloned(),
             publish_queue: self.publish_queue_snapshot().to_vec(),
             last_error_toast: self.last_error_toast_snapshot().cloned(),
+            // #171 (D6): project the recorded planner error so the host can
+            // observe a genuine structural compile failure instead of silent
+            // empty frames. `None` (→ JSON null) in steady state.
+            last_planner_error: self.lifecycle.last_planner_error().map(str::to_owned),
             relay_edit_rows: self.relay_edit_rows_snapshot().to_vec(),
             wallet_status: self.wallet_status_snapshot().cloned(),
             bunker_handshake: self.bunker_handshake_snapshot().cloned(),

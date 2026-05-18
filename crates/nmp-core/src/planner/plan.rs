@@ -215,9 +215,18 @@ impl CompiledPlan {
 
 /// Internal planner error type.
 ///
-/// Per D6, this type NEVER crosses the FFI boundary. Callers at the actor
-/// boundary must map `PlannerError` to an observable state update (e.g. a
-/// toast string) before it reaches the FFI surface.
+/// Per D6, this type NEVER crosses the FFI boundary. The actor-boundary
+/// mapping is wired (`SubscriptionLifecycle::drain_tick` records genuine
+/// errors into `last_planner_error`; `Kernel::make_update` projects that
+/// recorded string into the `KernelUpdate`/FFI envelope — #171).
+///
+/// #171 status: these variants are presently DEFENSIVE-ONLY. The sole
+/// compiler path, `compile_with_context`, always returns `Ok` (an empty
+/// interest set yields an empty plan, not `EmptyInterestSet`; no shape
+/// validation or hashing-failure path constructs `InvalidShape` /
+/// `HashingFailed` today). The enum is kept so the `Result` API stays closed
+/// and the projection wiring above means any future genuine construction
+/// path surfaces through the FFI with no further D6 work.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PlannerError {
     /// No interests were registered; nothing to compile.

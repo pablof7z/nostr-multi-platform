@@ -376,6 +376,10 @@ pub(super) struct KernelUpdate {
     pub(super) active_account: Option<String>,
     pub(super) publish_queue: Vec<super::PublishQueueEntry>,
     pub(super) last_error_toast: Option<String>,
+    /// #171 (D6) — last genuine structural planner error recorded by
+    /// `SubscriptionLifecycle::last_planner_error()`, surfaced so the host
+    /// observes it instead of silent empty frames. `null` in steady state.
+    pub(super) last_planner_error: Option<String>,
     pub(super) relay_edit_rows: Vec<super::RelayEditRow>,
     // ── NIP-47 wallet projection ───────────────────────────────────────────
     pub(super) wallet_status: Option<super::WalletStatus>,
