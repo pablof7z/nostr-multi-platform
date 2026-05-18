@@ -6,15 +6,17 @@
 //!   3. `CompiledPlan::unroutable_authors` surfaces the kernel's "no relay
 //!      to ask" diagnostic
 //!
-//! Also defends against per-user/path-encoded relay URLs ("personal relays"
-//! like `wss://filter.nostr.wine/npub1.../?broadcast=true`) that pollute
-//! the outbox set if you naively trust kind:10002 contents.
+//! Personal / per-user relays (e.g. `wss://filter.nostr.wine/npub1...`,
+//! `wss://r.x/?broadcast=true`) are NOT filtered structurally. They have
+//! coverage=1 by construction — only the embedded npub uses them — so the
+//! greedy max-coverage selector in `apply_selection` loses every tiebreak
+//! against real shared relays. The selector is the defense; a separate
+//! URL-pattern filter would be redundant.
 //!
 //! Flow:
 //!   - Connect to wss://purplepag.es as the indexer.
 //!   - Phase A: REQ kind:3 for the seed → parse `p` tags → follow set.
-//!   - Phase B: REQ kind:10002 for follows → MailboxSnapshot per author,
-//!     scrubbing personal-relay URLs at parse time.
+//!   - Phase B: REQ kind:10002 for follows → MailboxSnapshot per author.
 //!   - Phase C: compile + apply_selection.
 //!   - Phase D: parallel fan-out to the optimized relay set.
 //!
@@ -50,10 +52,6 @@ const FANOUT_MAX_WORKERS: usize = 64;
 const MAX_CONNECTIONS: usize = 30;
 const MAX_RELAYS_PER_USER: usize = 2;
 
-/// Hosts known to expose per-user content via paths/queries — block at the
-/// host level. Seed list; expand as new patterns surface.
-const PERSONAL_HOSTS: &[&str] = &["filter.nostr.wine"];
-
 type Sock = WebSocket<MaybeTlsStream<TcpStream>>;
 
 fn main() {
@@ -88,17 +86,13 @@ fn main() {
 
     // ── Phase B ──────────────────────────────────────────────────────────────
     let phase_b_start = Instant::now();
-    let (mailboxes, personal_skipped) = phase_b_fetch_mailboxes(&mut indexer, &follows);
+    let mailboxes = phase_b_fetch_mailboxes(&mut indexer, &follows);
     let phase_b_elapsed = phase_b_start.elapsed();
     let cached = mailboxes.len();
     println!(
         "phase B — kind:10002: {cached}/{} follows have a cached relay list in {:?}",
         follows.len(),
         phase_b_elapsed
-    );
-    println!(
-        "          personal-relay URLs scrubbed at parse: {}",
-        personal_skipped
     );
     let _ = indexer.close(None);
 
@@ -288,72 +282,6 @@ fn ratio(numer: usize, denom: usize) -> String {
     }
 }
 
-// ── Personal-relay filter ────────────────────────────────────────────────────
-//
-// Per-user / path-encoded relay URLs (e.g. wss://filter.nostr.wine/npub1...,
-// wss://r.x/?broadcast=true) are pointless to connect to from other users'
-// clients — they only return events for the embedded npub. NDK has a fragile
-// `url.includes("/npub1")` substring check; applesauce has none. We do a
-// proper structural filter.
-fn is_personal_relay(url: &str) -> bool {
-    // Try to parse host/path/query without pulling a url crate. Strip scheme,
-    // split path / query.
-    let after_scheme = url
-        .strip_prefix("wss://")
-        .or_else(|| url.strip_prefix("ws://"))
-        .unwrap_or(url);
-    let (authority_path, query) = match after_scheme.split_once('?') {
-        Some((ap, q)) => (ap, Some(q)),
-        None => (after_scheme, None),
-    };
-    let (host_port, path) = match authority_path.split_once('/') {
-        Some((h, rest)) => (h, rest),
-        None => (authority_path, ""),
-    };
-    let host = host_port.split(':').next().unwrap_or(host_port);
-
-    // 1. Host denylist.
-    if PERSONAL_HOSTS.iter().any(|h| host.eq_ignore_ascii_case(h)) {
-        return true;
-    }
-    // 2. Path-encoded bech32 entity (npub1, nprofile1, nevent1, naddr1).
-    for prefix in ["npub1", "nprofile1", "nevent1", "naddr1"] {
-        if path_contains_token(path, prefix) {
-            return true;
-        }
-    }
-    // 3. 64-char lowercase hex pubkey segment in path.
-    for segment in path.split('/') {
-        if segment.len() == 64 && segment.chars().all(|c| c.is_ascii_hexdigit()) {
-            return true;
-        }
-    }
-    // 4. Personal query params.
-    if let Some(q) = query {
-        for kv in q.split('&') {
-            let key = kv.split_once('=').map(|(k, _)| k).unwrap_or(kv);
-            match key.to_ascii_lowercase().as_str() {
-                "broadcast" | "user" | "pubkey" | "npub" => return true,
-                _ => {}
-            }
-        }
-    }
-    false
-}
-
-fn path_contains_token(path: &str, token: &str) -> bool {
-    for segment in path.split('/') {
-        // Token may appear at the start of a segment (npub1... or npub1...?suffix).
-        if segment
-            .to_ascii_lowercase()
-            .starts_with(&token.to_ascii_lowercase())
-        {
-            return true;
-        }
-    }
-    false
-}
-
 // ── Phase A ──────────────────────────────────────────────────────────────────
 
 fn phase_a_fetch_kind3(seed_hex: &str) -> (Sock, BTreeSet<String>) {
@@ -409,7 +337,7 @@ fn phase_a_fetch_kind3(seed_hex: &str) -> (Sock, BTreeSet<String>) {
 fn phase_b_fetch_mailboxes(
     socket: &mut Sock,
     follows: &BTreeSet<String>,
-) -> (BTreeMap<String, MailboxSnapshot>, usize) {
+) -> BTreeMap<String, MailboxSnapshot> {
     let sub_id = "mailboxes-1";
     let authors: Vec<String> = follows.iter().cloned().collect();
     let req = json!([
@@ -422,7 +350,6 @@ fn phase_b_fetch_mailboxes(
 
     let deadline = Instant::now() + KIND10002_WAIT;
     let mut out: BTreeMap<String, MailboxSnapshot> = BTreeMap::new();
-    let mut personal_skipped: usize = 0;
     while Instant::now() < deadline {
         match next_text(socket) {
             None => continue,
@@ -433,8 +360,7 @@ fn phase_b_fetch_mailboxes(
                 };
                 if matches!(v[0].as_str(), Some("EVENT")) && v[1].as_str() == Some(sub_id) {
                     if let Some(event) = v.get(2) {
-                        if let Some((pk, snap, scrubbed)) = parse_kind10002(event) {
-                            personal_skipped += scrubbed;
+                        if let Some((pk, snap)) = parse_kind10002(event) {
                             // newest-wins approximation
                             out.insert(pk, snap);
                         }
@@ -447,18 +373,20 @@ fn phase_b_fetch_mailboxes(
         }
     }
     let _ = socket.send(Message::Text(json!(["CLOSE", sub_id]).to_string()));
-    (out, personal_skipped)
+    out
 }
 
-/// Parse a kind:10002 event into a `MailboxSnapshot`, scrubbing personal-relay
-/// URLs at parse time. Returns the count of scrubbed URLs as the third field.
-fn parse_kind10002(event: &Value) -> Option<(String, MailboxSnapshot, usize)> {
+/// Parse a kind:10002 event into a `MailboxSnapshot`.
+///
+/// No personal-relay URL filtering: the greedy max-coverage selector in
+/// `apply_selection` is the defense. Personal relays have coverage=1 by
+/// construction and lose every tiebreak against real shared relays.
+fn parse_kind10002(event: &Value) -> Option<(String, MailboxSnapshot)> {
     if event["kind"].as_u64()? != 10002 {
         return None;
     }
     let pk = event["pubkey"].as_str()?.to_string();
     let mut snap = MailboxSnapshot::default();
-    let mut scrubbed = 0usize;
     for tag in event["tags"].as_array().into_iter().flatten() {
         let arr = match tag.as_array() {
             Some(a) => a,
@@ -474,10 +402,6 @@ fn parse_kind10002(event: &Value) -> Option<(String, MailboxSnapshot, usize)> {
         if url.is_empty() {
             continue;
         }
-        if is_personal_relay(&url) {
-            scrubbed += 1;
-            continue;
-        }
         let marker = arr.get(2).and_then(Value::as_str);
         match marker {
             Some("read") => snap.read_relays.push(url),
@@ -485,7 +409,7 @@ fn parse_kind10002(event: &Value) -> Option<(String, MailboxSnapshot, usize)> {
             None | Some(_) => snap.both_relays.push(url),
         }
     }
-    Some((pk, snap, scrubbed))
+    Some((pk, snap))
 }
 
 fn normalize_url(s: &str) -> String {
@@ -731,56 +655,5 @@ fn truncate(s: &str, n: usize) -> String {
         s.to_string()
     } else {
         format!("{}…", &s[..n.saturating_sub(1)])
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::is_personal_relay;
-
-    #[test]
-    fn personal_path_npub() {
-        assert!(is_personal_relay(
-            "wss://filter.nostr.wine/npub1abcdefghijklmnopqrstuvwxyz0123456789?broadcast=true"
-        ));
-    }
-
-    #[test]
-    fn personal_query_broadcast() {
-        assert!(is_personal_relay("wss://r.x/?broadcast=true"));
-    }
-
-    #[test]
-    fn personal_host_denylist() {
-        assert!(is_personal_relay("wss://filter.nostr.wine/"));
-        assert!(is_personal_relay("wss://FILTER.NOSTR.WINE/foo"));
-    }
-
-    #[test]
-    fn personal_hex_pubkey_path() {
-        assert!(is_personal_relay(&format!(
-            "wss://example.com/{}",
-            "a".repeat(64)
-        )));
-    }
-
-    #[test]
-    fn personal_nprofile_path() {
-        assert!(is_personal_relay(
-            "wss://relay.x/nprofile1qqsxyz0123abcdef"
-        ));
-    }
-
-    #[test]
-    fn non_personal_pass() {
-        assert!(!is_personal_relay("wss://relay.damus.io"));
-        assert!(!is_personal_relay("wss://nos.lol/"));
-        assert!(!is_personal_relay("wss://relay.primal.net/v1/ws"));
-    }
-
-    #[test]
-    fn non_personal_query() {
-        // Non-personal query keys must not trip the filter.
-        assert!(!is_personal_relay("wss://relay.x/?lang=en"));
     }
 }
