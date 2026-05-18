@@ -298,6 +298,32 @@ pub(crate) struct Kernel {
     lifecycle_phase: LifecyclePhase,
 }
 
+/// Construct the kernel's `EventStore`.
+///
+/// Default: `MemEventStore` — used by all tests and the pre-M15 web target.
+///
+/// When compiled with `--features lmdb-backend` AND the `NMP_LMDB_PATH`
+/// environment variable is set to a directory, an `LmdbEventStore` is
+/// opened on that path instead. This is opt-in even with the feature on,
+/// so existing test suites (which call `Kernel::new` without setting the
+/// env var) keep using the in-memory backend.
+fn build_event_store() -> Arc<dyn EventStore> {
+    #[cfg(feature = "lmdb-backend")]
+    {
+        if let Ok(path) = std::env::var("NMP_LMDB_PATH") {
+            match crate::store::LmdbEventStore::open(std::path::Path::new(&path)) {
+                Ok(s) => return Arc::new(s),
+                Err(e) => {
+                    eprintln!(
+                        "nmp-core: NMP_LMDB_PATH={path} set but LmdbEventStore::open failed ({e}); falling back to MemEventStore"
+                    );
+                }
+            }
+        }
+    }
+    Arc::new(MemEventStore::new())
+}
+
 impl Kernel {
     pub(crate) fn new(visible_limit: usize) -> Self {
         Self::with_publish_store(
@@ -316,7 +342,7 @@ impl Kernel {
         visible_limit: usize,
         publish_store: Arc<dyn crate::publish::PublishStore>,
     ) -> Self {
-        let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
+        let store: Arc<dyn EventStore> = build_event_store();
         let publish_dispatcher = Arc::new(crate::publish::QueueDispatcher::new());
         let publish_engine = publish_engine::build_engine(
             Arc::clone(&store),

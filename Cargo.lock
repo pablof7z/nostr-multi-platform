@@ -2398,14 +2398,18 @@ version = "0.1.0"
 dependencies = [
  "bech32",
  "chrono",
+ "heed",
  "nmp-nip42-types",
+ "nmp-nostr-lmdb",
  "nmp-nwc",
  "nmp-signer-iface",
  "nostr",
+ "nostr-database",
  "proptest",
  "rustls",
  "serde",
  "serde_json",
+ "tempfile",
  "tungstenite",
 ]
 

@@ -34,10 +34,12 @@ pub(crate) enum DomainHandleInner {
         namespace: &'static str,
         data: MemDomainData,
     },
-    // LMDB variant added when the lmdb-backend feature is compiled in.
+    // LMDB variant — carries the namespace + a handle to the LMDB-side state.
+    // The actual storage operations live in `crate::store::lmdb::domain`.
     #[cfg(feature = "lmdb-backend")]
     Lmdb {
         namespace: &'static str,
+        backend: Arc<crate::store::lmdb::Inner>,
     },
 }
 
@@ -66,8 +68,8 @@ impl DomainHandle {
                 Ok(())
             }
             #[cfg(feature = "lmdb-backend")]
-            DomainHandleInner::Lmdb { .. } => {
-                Err(StoreError::Io("lmdb-backend not yet implemented".into()))
+            DomainHandleInner::Lmdb { namespace, backend } => {
+                crate::store::lmdb::domain::put(backend, namespace, key, value)
             }
         }
     }
@@ -82,8 +84,8 @@ impl DomainHandle {
                     .cloned())
             }
             #[cfg(feature = "lmdb-backend")]
-            DomainHandleInner::Lmdb { .. } => {
-                Err(StoreError::Io("lmdb-backend not yet implemented".into()))
+            DomainHandleInner::Lmdb { namespace, backend } => {
+                crate::store::lmdb::domain::get(backend, namespace, key)
             }
         }
     }
@@ -98,8 +100,8 @@ impl DomainHandle {
                     .is_some())
             }
             #[cfg(feature = "lmdb-backend")]
-            DomainHandleInner::Lmdb { .. } => {
-                Err(StoreError::Io("lmdb-backend not yet implemented".into()))
+            DomainHandleInner::Lmdb { namespace, backend } => {
+                crate::store::lmdb::domain::delete(backend, namespace, key)
             }
         }
     }
@@ -118,8 +120,9 @@ impl DomainHandle {
                 Ok(Box::new(snapshot.into_iter().map(Ok)))
             }
             #[cfg(feature = "lmdb-backend")]
-            DomainHandleInner::Lmdb { .. } => {
-                Err(StoreError::Io("lmdb-backend not yet implemented".into()))
+            DomainHandleInner::Lmdb { namespace, backend } => {
+                let rows = crate::store::lmdb::domain::scan_prefix(backend, namespace, prefix)?;
+                Ok(Box::new(rows.into_iter().map(Ok)))
             }
         }
     }
@@ -130,7 +133,7 @@ impl DomainHandle {
         _index: &'static str,
         key_prefix: &[u8],
     ) -> Result<DomainScanIter<'a>, StoreError> {
-        // For the memory backend the domain data is a flat map — no separate
+        // For now both backends have a flat map per namespace — no separate
         // secondary indexes are maintained. Fall back to scan_prefix.
         self.scan_prefix(key_prefix)
     }

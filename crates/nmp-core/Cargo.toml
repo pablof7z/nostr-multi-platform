@@ -12,8 +12,9 @@ crate-type = ["staticlib", "rlib"]
 # Expose actor internals for live-bench harnesses and integration test binaries.
 # Never enable in production builds.
 test-support = []
-# Enable the LMDB-backed EventStore (requires heed crate — not yet wired in M3 phase 1).
-lmdb-backend = []
+# Enable the LMDB-backed EventStore. Pulls in the NMP-local nostr-lmdb fork
+# (with env-injection seam) + heed + nostr-database. ADR-0011, ADR-0012.
+lmdb-backend = ["dep:nmp-nostr-lmdb", "dep:heed", "dep:nostr-database"]
 # Re-export all FFI entry-points via Rust paths so nmp-android-ffi can call them
 # through the rlib dependency (extern "C" declarations are opaque to Rust CGU
 # compilation — the android-ffi feature is the portable fix).
@@ -31,5 +32,13 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", features = ["raw_value"] }
 tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
 
+# LMDB backend — feature-gated. The fork at crates/nmp-nostr-lmdb carries the
+# env-injection seam (ADR-0011); heed / nostr-database are the underlying
+# storage and event-encoding crates.
+nmp-nostr-lmdb = { path = "../nmp-nostr-lmdb", optional = true }
+heed = { version = "0.20", default-features = false, features = ["read-txn-no-tls"], optional = true }
+nostr-database = { version = "0.44", default-features = false, features = ["flatbuf"], optional = true }
+
 [dev-dependencies]
 proptest = "1"
+tempfile = "3"
