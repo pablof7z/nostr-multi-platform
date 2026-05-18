@@ -17,7 +17,7 @@ struct OnboardingView: View {
     enum Mode { case welcome, importKey, bunkerConnect }
 
     enum DetectedSigner: String {
-        case amber = "Amber"
+        case nostrSigner = "Nostr Signer"
         case primal = "Primal"
         case other = "Signer"
     }
@@ -277,7 +277,7 @@ struct OnboardingView: View {
 
     private func detectSignerApps() {
         let schemes: [(String, DetectedSigner)] = [
-            ("nostrsigner://", .amber),
+            ("nostrsigner://", .nostrSigner),
             ("primal://", .primal),
         ]
         for (scheme, signer) in schemes {
