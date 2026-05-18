@@ -8,6 +8,43 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
+### PD-029 (2026-05-18, HB56c) — T141 substrate-types extract collides with T136b LMDB `DomainHandleInner::Lmdb { backend: Arc<lmdb::Inner> }`; rebase blocked
+
+**Status:** Step 1 (extract `nmp-substrate-types`) + Step 2 (explicit ingest arms for kinds 7 / 1111 / 9735) both **landed locally and tested green** on branch `worktree-agent-a3caa408e761c3e70` (commits `22657bf` + `318e1ed`, pushed to that branch on origin so they're durable). Workspace was 1238 tests green pre-rebase against an older `origin/master`. After `git fetch`, master had advanced to include T136b (commit `77ac7e0`, "LmdbEventStore — 33-method trait + Mem-parity"), which adds an LMDB variant to `DomainHandleInner` that ties the type to an `nmp-core` internal:
+
+```rust
+// crates/nmp-core/src/store/events.rs @ master tip
+pub(crate) enum DomainHandleInner {
+    Mem  { namespace: &'static str, data: MemDomainData },
+    Lmdb { namespace: &'static str, backend: Arc<crate::store::lmdb::Inner> },
+}
+```
+
+`crate::store::lmdb::Inner` is the LMDB adapter's private composite (heed env + 8 sub-dbs + claim/provenance state). It **cannot move into `nmp-substrate-types` without dragging the entire LMDB backend** with it, which defeats the purpose of the types crate (a leaf with no infrastructure deps).
+
+`rebase` produces a non-trivial merge conflict in `crates/nmp-core/src/store/events.rs` + `crates/nmp-core/src/store/lmdb/domain.rs` (which already imports `DomainHandle` / `DomainHandleInner` from `crate::store::events::*` and dispatches via the enum). PD-028 was resolved while my extract was in flight — the two changes are semantically orthogonal but structurally entangled at exactly this enum.
+
+**Three architectural options for the user:**
+
+- **A. Trait seam in `nmp-substrate-types`.** Promote `DomainHandle` from a struct to a trait (or keep struct + add a `DomainBackend` trait it wraps). `nmp-core` provides `MemDomainHandle` + `LmdbDomainHandle` impls. NIP crates only see the trait. Costs: ~1-2 hr; 4-5 files touched in `nmp-core`, no churn in NIP crates beyond changing the type they import (already abstracted by the swap). Cleanest long-term shape (matches LSP-style backend pluggability).
+
+- **B. Opaque backend trait inside the enum.** Keep `DomainHandleInner` as an enum, but change the `Lmdb` variant to carry `Arc<dyn DomainStorageBackend>` where `DomainStorageBackend` is a small trait declared in `nmp-substrate-types` (methods: `put / get / delete / scan_prefix`). `nmp-core::store::lmdb::Inner` (and `MemDomainData`) implement the trait. Costs: ~30 min; smallest delta from current shape. Minor double-dispatch overhead.
+
+- **C. Revert T136b temporarily.** Revert `77ac7e0` on master, land PD-027/T141 (substrate-types + explicit arms), then re-land T136b on top. Costs: loses ~3 hr of agent work + an ADR that already shipped; LMDB parity tests would replay. Cleanest for the rebase but wastes prior work.
+
+**Recommendation:** **B (opaque backend trait)** if speed matters — it's the smallest surgical change and matches the abstraction we'd want anyway (the LMDB-specific `Inner` type leaking into `events.rs` is a layering smell). **A (trait seam)** if we're willing to spend the extra hour, because it generalizes to the future M2 hot-path (T140) and aligns `DomainHandle` with `EventStore` (also a trait).
+
+**Two completed commits sitting on `origin/worktree-agent-a3caa408e761c3e70`:**
+
+```
+318e1ed feat(ingest): explicit M7 arms for kinds 7/1111/9735 — reactions/comments/zaps no longer silently dropped (T141)
+22657bf refactor(substrate): extract nmp-substrate-types crate — dissolves nmp-core ↔ nmp-{reactions,nip22,nip57} cycle (T141 prep, PD-027 option A)
+```
+
+Both will need a small follow-up edit (swap the `DomainHandle`/`DomainHandleInner` definitions per chosen option A or B) before they merge cleanly into master. Awaiting user direction.
+
+---
+
 ### PD-027 RESOLVED (2026-05-18, HB54) — User picked **Option A: extract substrate-types crate** (= option C in original write-up + then A's explicit arms)
 
 User confirmed the cleanest path: extract `StoredEvent`, `DomainHandle`, `StoreError`, `KernelEvent`, `EventId`, `DomainModule` + companions into a new `nmp-substrate-types` crate so the cycle dissolves. Once that lands, T141 itself ships explicit ingest arms in `kernel/ingest/{reactions,comments,zaps}.rs` calling `nmp_reactions::decode_and_route` etc. Heartbeat-dispatched to a worktree agent.
