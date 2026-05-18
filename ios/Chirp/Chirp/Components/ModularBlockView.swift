@@ -30,6 +30,8 @@ struct ModularBlockView: View {
     /// raw pubkey (D1 placeholders apply: identicon + truncated npub).
     let items: [String: TimelineItem]
 
+    @EnvironmentObject private var router: ChirpRouter
+
     var body: some View {
         switch block {
         case .standalone(let id):
@@ -89,17 +91,28 @@ struct ModularBlockView: View {
         let display = displayPubkey(item: item, card: card)
         let content = item?.content ?? card?.content ?? ""
 
-        return HStack(alignment: .top, spacing: ChirpSpace.m) {
-            avatarColumn(item: item, card: card, isLast: isLast)
-            VStack(alignment: .leading, spacing: ChirpSpace.xs) {
-                authorHeader(display: display, item: item, card: card)
-                if !content.isEmpty {
-                    NoteContentView(content: truncate(content, 1_200), font: ChirpFont.body)
-                        .foregroundStyle(ChirpColor.textPrimary)
+        // Tap = navigate to the thread for this event id (legacy
+        // `ThreadScreen` consumes `ThreadViewPayload` — the M2 migration of
+        // the thread surface itself is out of scope for this PR). Same
+        // affordance the existing `NoteRowView` provides on standalone
+        // rows; without it module rows would silently swallow taps.
+        return Button {
+            router.push(.thread(eventID: id))
+        } label: {
+            HStack(alignment: .top, spacing: ChirpSpace.m) {
+                avatarColumn(item: item, card: card, isLast: isLast)
+                VStack(alignment: .leading, spacing: ChirpSpace.xs) {
+                    authorHeader(display: display, item: item, card: card)
+                    if !content.isEmpty {
+                        NoteContentView(content: truncate(content, 1_200), font: ChirpFont.body)
+                            .foregroundStyle(ChirpColor.textPrimary)
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .padding(.bottom, isLast ? 0 : ChirpSpace.m)
     }
 
@@ -157,10 +170,13 @@ struct ModularBlockView: View {
     }
 
     private func showThisThreadPill(rootID: String) -> some View {
+        // Tap drops the user into ThreadScreen anchored at the chain's
+        // resolved root (or the chain top when `root` is nil — see
+        // `rootEventID(root:)` for the precedence). ThreadScreen still
+        // consumes the legacy `ThreadViewPayload`; that migration is
+        // explicitly out of scope for this PR (M2 follow-up).
         Button {
-            // Tapping the pill drops the user into the existing ThreadScreen
-            // (legacy `ThreadViewPayload` path — M2 follow-up migrates it).
-            // Routed via the same router HomeFeedView is wrapped in.
+            router.push(.thread(eventID: rootID))
         } label: {
             Text("Show this thread")
                 .font(ChirpFont.caption)
