@@ -2,8 +2,10 @@
 
 **Status:** spec for ONE builder-agent session. Companion: [`e2e-validation-build.md`](./e2e-validation-build.md) (the how).
 
-**Scope priority (per orchestrator HB31 directive — "as many features as possible"):**
-The original brief said "small enough for one session." The follow-up said "maximize feature coverage (outbox, multi-session, kind:3 auto-rewire)." We resolve by enumerating a Minimum-Viable Scope ladder (L1–L5 in §6); the builder MUST land L1+L2 to declare success, L3–L5 are stretch.
+**Scope priority (per orchestrator HB31 directive + user intent "run on my iPhone"):**
+The user's stated goal — "empirical proof on real iOS hardware before M11 podcast rebuild" — makes device install (L5) a **required** rung, not a stretch goal. The L1–L5 ladder in §6 lists rungs in execution order, but the success criterion is **all rungs land**. A rung that fails (e.g. dev-cert issues block L5) is an **escalation to the user**, not "partial success." The fallback for an L5 blocker is to file an issue, fix it in this session, and re-attempt — not to declare done.
+
+The ladder exists so that if mid-rung errors force a context-window stop, the durable state on master is coherent up to the last landed rung.
 
 ---
 
@@ -67,7 +69,7 @@ Pulse exercises: M2 planner (timeline filter compiled to REQ), M3 EventStore (LM
 
 The capability column says "expected" / "likely" — `Nip77CapabilityProbe` (`crates/nmp-nip77/src/capability.rs`) is the source of truth at runtime. If `nostr.wine` no longer enforces NIP-42, the smoke test (§5) catches that and the user just won't see an `auth-required` badge. That's fine; M5 still has unit-test coverage.
 
-Indexer fallback for `Nip65OutboxResolver` (when an author has no kind:10002): `[wss://relay.damus.io, wss://nos.lol]` — hard-coded constant in the resolver's constructor for now (proper indexer story is post-v1).
+**Read-discovery fallback** for `Nip65OutboxResolver` (when a recipient's read-relays for `#p` routing are unknown): `[wss://relay.damus.io, wss://nos.lol]` — hard-coded constant in the resolver's constructor for now (proper indexer story is post-v1). **Crucially, this fallback is read-side discovery only.** Per D3 (outbox automatic), publishing requires the active account to have declared its own write-relays (kind:10002). If the active account has no kind:10002, `nmp_app_publish_note` MUST surface a `last_error_toast` ("active account has no write-relays declared — add a relay in Accounts → Relays") rather than silently posting to undeclared relays. The Accounts screen exposes "Publish my kind:10002" as the bootstrap path.
 
 ---
 
@@ -110,19 +112,21 @@ The Rust smoke test is the **authoritative validation**; the iOS app is the user
 
 ---
 
-## 6. Minimum-Viable Scope ladder
+## 6. Rung ladder (execution order — all rungs REQUIRED)
 
-Builder MUST land L1+L2 to declare partial success. L3–L5 are stretch.
+L1–L5 are the **build order**, not a "ship what you can" gate. All five rungs must land. An L5 blocker (dev-cert friction, devicectl quirks) is an escalation back to the user — not a green light to declare done at L4.
 
 | L | Scope | Subsystems proven | Demo |
 |---|---|---|---|
 | **L1** | Onboarding (nsec-paste only) + Timeline reading from 1 followed pubkey on `relay.damus.io` in **simulator** | M2 + M3 + M6 (local signer only) + M8 | "Paste nsec, see one followed user's recent notes." |
 | **L2** | + Compose (`publish_note`) + `Nip65OutboxResolver` lands → kind:1 round-trip visible in own Timeline | M7 + D3 | "Compose 'hello pulse', see it appear in own timeline within 5s." |
 | **L3** | + Accounts screen + add 2nd account (nsec or bunker) + `switch_active` + `ActiveAccountReactor` lands → subscriptions re-plan | M6 multi-account + `ActiveAccountReactor` | "Switch account, see different timeline within 1s." |
-| **L4** | + Follow-edit (publish new kind:3) + kind:3 auto-rewire makes new follow's notes appear in timeline without app code | Framework-magic C8/C13 | "Add follow, see their notes land without leaving the screen." |
-| **L5** | + Real iPhone install via Xcode + dev-cert | Real device | "Run on @user's plugged-in iPhone." |
+| **L4** | + Follow-edit (publish new kind:3) + kind:3 auto-rewire makes new follow's notes appear in timeline without app code + NoteDetail screen (Screen 3) with reply + react | Framework-magic C8/C13 + kind:7 | "Add follow, see their notes land. Tap a note, see replies + heart it." |
+| **L5** | + Real iPhone install via Xcode + dev-cert | Real device | "Run on user's plugged-in iPhone, repeat L2 + L3 demos." |
 
-Stretch beyond L5 (do if time permits): NIP-42 add-relay (`nostr.wine`), NoteDetail with replies + likes (kind:7), diagnostics overlay, NIP-77 trigger button + counters.
+Beyond L5 (sequence permitting before context ends): NIP-42 add-relay (`nostr.wine`), full diagnostics overlay polish, NIP-77 manual trigger button + counters in overlay, screenshot capture script.
+
+**NoteDetail clarification.** Screen 3 (NoteDetail with replies + likes) is part of the 5-screen scope and lands in L4. The "stretch beyond L5" reference is to *polish* of the overlay/trigger UI, not the screen itself.
 
 ---
 
