@@ -38,7 +38,7 @@ use auth_gate::AuthGate;
 use lifecycle_gate::LifecycleGate;
 
 use crate::planner::{
-    CompiledPlan, InterestId, InterestShape, MailboxCache, PlannerError, RelayUrl,
+    apply_selection, CompiledPlan, InterestId, InterestShape, MailboxCache, PlannerError, RelayUrl,
     SubscriptionCompiler,
 };
 
@@ -74,6 +74,14 @@ pub type PlanCoverageHook = Arc<dyn Fn(&mut CompiledPlan) + Send + Sync>;
 /// lookup; the closure itself reuses the index buffers underlying
 /// `query_visit`).
 pub type WatermarkFn = Arc<dyn Fn(&InterestShape) -> Option<u64> + Send + Sync>;
+
+/// Default upper bound on concurrent relay connections after greedy
+/// max-coverage reduction. Mirrors the `outbox_perf` example budget.
+pub const DEFAULT_SELECT_MAX_CONNECTIONS: usize = 30;
+
+/// Default per-author redundancy cap (applesauce-pure). Each follow is
+/// covered by at most this many surviving relays.
+pub const DEFAULT_SELECT_MAX_PER_USER: usize = 2;
 
 pub use inbox::TriggerInbox;
 pub use oneshot::{OneshotApi, OneshotToken};
@@ -132,6 +140,22 @@ pub struct SubscriptionLifecycle {
     /// not re-fetch events already on disk. See module doc on [`WatermarkFn`]
     /// and the seam rationale documented in `planner/mod.rs`.
     watermark_fn: Option<WatermarkFn>,
+    /// Greedy max-coverage budget — upper bound on concurrent relay
+    /// connections after [`apply_selection`] reduces the naive plan.
+    ///
+    /// The naive M2 plan connects to every NIP-65 write relay declared by
+    /// every follow (in real test data: 287 relays for 1048 follows). The
+    /// selector reduces this to ~`select_max_connections` while preserving
+    /// per-author coverage via [`Self::select_max_per_user`]. Default:
+    /// [`DEFAULT_SELECT_MAX_CONNECTIONS`] (matches the `outbox_perf`
+    /// example). Tune via [`Self::set_selection_budget`].
+    select_max_connections: usize,
+    /// Per-author redundancy cap — each follow may be served by at most
+    /// this many surviving relays. Prevents the greedy algorithm from
+    /// spending its whole connection budget on the popularity-distribution
+    /// head while ignoring the long tail. Default:
+    /// [`DEFAULT_SELECT_MAX_PER_USER`] (applesauce-pure).
+    select_max_per_user: usize,
 }
 
 impl Default for SubscriptionLifecycle {
@@ -162,6 +186,8 @@ impl SubscriptionLifecycle {
             compile_count: 0,
             coverage_hook: None,
             watermark_fn: None,
+            select_max_connections: DEFAULT_SELECT_MAX_CONNECTIONS,
+            select_max_per_user: DEFAULT_SELECT_MAX_PER_USER,
         }
     }
 
@@ -252,6 +278,20 @@ impl SubscriptionLifecycle {
         );
         let mut plan = compiler.compile(&interests)?;
         self.compile_count = self.compile_count.saturating_add(1);
+
+        // Greedy max-coverage selection — applesauce-style. The naive plan
+        // connects to every NIP-65 write relay declared by every follow
+        // (in real data: hundreds). This pass reduces the relay set to
+        // ≤ `select_max_connections` with a per-author redundancy cap of
+        // `select_max_per_user`. Runs BEFORE the coverage hook / watermark
+        // so both downstream passes see only the surviving (relay, shape)
+        // set. `apply_selection` mutates each affected `SubShape` in place
+        // and calls `recompute_hash()` so the wire-emitter's diff produces
+        // the correct REQ/CLOSE delta. Plan-id is intentionally NOT
+        // recomputed (see `planner/mod.rs` §"Plan-id determinism vs.
+        // post-compile mutators"; M4 precedent in
+        // `docs/perf/codex-reviews/076173d.md`).
+        apply_selection(&mut plan, self.select_max_connections, self.select_max_per_user);
 
         // D2 negentropy-first: let the coverage-gate hook (M4) rewrite the
         // plan before the wire-emitter sees it — skipping authoritative
@@ -399,11 +439,43 @@ impl SubscriptionLifecycle {
         self.auth_gate.is_paused(relay_url)
     }
 
-    /// Replace the indexer relay set (A8 trigger consumer). Used by M2 phase 2
-    /// when user/operator changes the configured indexer list.
-    #[allow(dead_code)]
-    pub(crate) fn set_indexer_relays(&mut self, relays: Vec<RelayUrl>) {
+    /// Install (or replace) the *discovery* indexer relay set used for
+    /// kind:0 / kind:3 / kind:10002 lookups, event_id resolution, and the
+    /// case-D cold-start fallback when both `app_relays` and the
+    /// active-account read set are empty.
+    ///
+    /// Default at construction is `vec!["wss://purplepag.es".to_string()]`.
+    /// Set to an empty `Vec` to disable indexer fallback entirely (authors
+    /// without a mailbox snapshot will still land in
+    /// `CompiledPlan::unroutable_authors` — case A never falls back to the
+    /// indexer per T134's routing-rules clarification).
+    ///
+    /// Kernel-level only. FFI exposure is a separate API decision the user
+    /// has not blessed yet — do NOT extend this through `crates/nmp-core/src/ffi`
+    /// without that approval.
+    pub fn set_indexer_relays(&mut self, relays: Vec<RelayUrl>) {
         self.indexer_relays = relays;
+    }
+
+    /// Override the greedy max-coverage selection budget used by the next
+    /// recompile. Defaults: [`DEFAULT_SELECT_MAX_CONNECTIONS`] /
+    /// [`DEFAULT_SELECT_MAX_PER_USER`].
+    ///
+    /// Setting `max_connections = 0` or `max_per_user = 0` drops every
+    /// relay from the plan — almost certainly a config bug; callers are
+    /// responsible for clamping if they ever expose this through
+    /// configuration.
+    pub fn set_selection_budget(&mut self, max_connections: usize, max_per_user: usize) {
+        self.select_max_connections = max_connections;
+        self.select_max_per_user = max_per_user;
+    }
+
+    /// Read-only access to the `indexer_relays` field — used by test
+    /// scaffolds that verify `set_indexer_relays` mutated the field before
+    /// continuing through a recompile.
+    #[cfg(test)]
+    pub(crate) fn indexer_relays(&self) -> &[RelayUrl] {
+        &self.indexer_relays
     }
 }
 
@@ -454,7 +526,29 @@ fn apply_watermark_rewrite(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::planner::InMemoryMailboxCache;
+    use crate::planner::{
+        InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
+        LogicalInterest, MailboxSnapshot,
+    };
+
+    fn pubkey(s: &str) -> String {
+        format!("{s:0>64}").chars().take(64).collect()
+    }
+
+    /// Single-author follow interest (kind:1 timeline).
+    fn follow(id: u64, author: &str) -> LogicalInterest {
+        LogicalInterest {
+            id: InterestId(id),
+            scope: InterestScope::Global,
+            shape: InterestShape {
+                authors: [pubkey(author)].into_iter().collect(),
+                kinds: [1u32].into_iter().collect(),
+                ..Default::default()
+            },
+            hints: Vec::new(),
+            lifecycle: InterestLifecycle::Tailing,
+        }
+    }
 
     #[test]
     fn empty_lifecycle_starts_with_zero_compiles() {
@@ -470,5 +564,166 @@ mod tests {
         let frames = l.drain_tick(&mailboxes);
         assert!(frames.is_empty());
         assert_eq!(l.compile_count(), 0);
+    }
+
+    // ─── apply_selection wiring ──────────────────────────────────────────────
+
+    /// With 10 follows each declaring a unique write relay (no shared
+    /// coverage), the naive plan would carry 10 relay entries. Bound
+    /// `max_connections = 5` to force the greedy selector to actually prune
+    /// — proving `apply_selection` is wired into `recompile_and_diff` (not a
+    /// no-op).
+    #[test]
+    fn recompile_caps_per_relay_at_max_connections() {
+        let mut l = SubscriptionLifecycle::new();
+        l.set_app_relays(vec!["wss://app.example".to_string()]);
+        // Tighten the budget so the test is independent of the default
+        // (which would not prune at only 10 follows).
+        let max_connections: usize = 5;
+        l.set_selection_budget(max_connections, 2);
+
+        let mut mailboxes = InMemoryMailboxCache::new();
+        for i in 0..10u32 {
+            let author_seed = format!("aa{i:02}");
+            let relay = format!("wss://r{i:02}.example");
+            mailboxes.put(
+                pubkey(&author_seed),
+                MailboxSnapshot {
+                    write_relays: vec![relay],
+                    read_relays: vec![],
+                    both_relays: vec![],
+                },
+            );
+            l.registry_mut().push(follow(u64::from(i) + 1, &author_seed));
+        }
+
+        let _frames = l.recompile_and_diff(&mailboxes).expect("compile");
+        let plan = l.current_plan.as_ref().expect("plan present");
+        assert!(
+            plan.per_relay.len() <= max_connections,
+            "per_relay.len() = {} must be ≤ max_connections = {}",
+            plan.per_relay.len(),
+            max_connections,
+        );
+    }
+
+    /// A relay served by the naive plan on the first recompile drops out of
+    /// the second when the selection budget is tightened. The wire-emitter
+    /// diff MUST emit a CLOSE for every shape that was on the now-dropped
+    /// relay (the diff iterates prior `per_relay` and CLOSEs any sub_id not
+    /// in the next set — verifying that relays disappearing under selection
+    /// are handled cleanly).
+    #[test]
+    fn dropped_relay_emits_close_on_next_recompile() {
+        let mut l = SubscriptionLifecycle::new();
+        // First compile with a generous budget — every relay survives.
+        l.set_selection_budget(usize::MAX, usize::MAX);
+
+        let mut mailboxes = InMemoryMailboxCache::new();
+        for i in 0..3u32 {
+            let author_seed = format!("bb{i:02}");
+            let relay = format!("wss://drop{i:02}.example");
+            mailboxes.put(
+                pubkey(&author_seed),
+                MailboxSnapshot {
+                    write_relays: vec![relay],
+                    read_relays: vec![],
+                    both_relays: vec![],
+                },
+            );
+            l.registry_mut().push(follow(u64::from(i) + 1, &author_seed));
+        }
+
+        let first = l.recompile_and_diff(&mailboxes).expect("first compile");
+        let req_relays: std::collections::BTreeSet<String> = first
+            .iter()
+            .filter_map(|f| match f {
+                WireFrame::Req { relay_url, .. } => Some(relay_url.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            req_relays.len(),
+            3,
+            "first compile must REQ all 3 relays; got {req_relays:?}",
+        );
+
+        // Tighten the budget so 2 relays must be dropped on the next compile.
+        l.set_selection_budget(1, 1);
+        let second = l.recompile_and_diff(&mailboxes).expect("second compile");
+
+        let plan = l.current_plan.as_ref().expect("plan present");
+        assert_eq!(
+            plan.per_relay.len(),
+            1,
+            "selection budget = 1 → exactly one relay survives; got {}",
+            plan.per_relay.len(),
+        );
+        let surviving: std::collections::BTreeSet<String> =
+            plan.per_relay.keys().cloned().collect();
+
+        let closes: std::collections::BTreeSet<String> = second
+            .iter()
+            .filter_map(|f| match f {
+                WireFrame::Close { relay_url, .. } => Some(relay_url.clone()),
+                _ => None,
+            })
+            .collect();
+        // Every relay that disappeared must have at least one CLOSE.
+        let expected_dropped: std::collections::BTreeSet<String> =
+            req_relays.difference(&surviving).cloned().collect();
+        assert_eq!(expected_dropped.len(), 2, "two relays must have been dropped");
+        for dropped in &expected_dropped {
+            assert!(
+                closes.contains(dropped),
+                "wire-emitter diff must CLOSE the dropped relay {dropped}; got {closes:?}",
+            );
+        }
+    }
+
+    /// `set_indexer_relays` mutates the lifecycle's stored set and the next
+    /// `recompile_and_diff` threads the override into the compiler.
+    ///
+    /// We do NOT assert via the resulting plan because the case-D cold-start
+    /// path produces a wildcard-author sub-shape, which `apply_selection`
+    /// (now wired into the recompile path) deliberately drops (see
+    /// `selection.rs` §"Wildcard-author sub-shapes" — relays whose only
+    /// contribution is wildcard coverage are dropped). Instead, this test
+    /// (a) verifies the setter mutated the field, and (b) verifies the
+    /// recompile path still consumes the field cleanly. The compile-time
+    /// case-D cold-start behaviour is covered by
+    /// `planner::compiler::partition::case_d_no_author::tests::case_d_cold_start_falls_through_to_indexer`.
+    #[test]
+    fn set_indexer_relays_is_reflected_in_next_recompile() {
+        let mut l = SubscriptionLifecycle::new();
+        assert_eq!(
+            l.indexer_relays(),
+            &["wss://purplepag.es".to_string()],
+            "default indexer set is purplepag.es",
+        );
+
+        l.set_indexer_relays(vec!["wss://sentinel-indexer.example".to_string()]);
+        assert_eq!(
+            l.indexer_relays(),
+            &["wss://sentinel-indexer.example".to_string()],
+            "setter must replace the indexer set",
+        );
+
+        // Recompile with an empty registry should succeed (no-op compile)
+        // and increment the compile counter — proving the new indexer set
+        // is not poison input to the recompile path.
+        let mailboxes = InMemoryMailboxCache::new();
+        let prior = l.compile_count();
+        let _ = l.recompile_and_diff(&mailboxes).expect("compile");
+        assert_eq!(
+            l.compile_count(),
+            prior + 1,
+            "recompile must run with the new indexer set installed",
+        );
+        // And the value must still be the override (not reset by recompile).
+        assert_eq!(
+            l.indexer_relays(),
+            &["wss://sentinel-indexer.example".to_string()],
+        );
     }
 }

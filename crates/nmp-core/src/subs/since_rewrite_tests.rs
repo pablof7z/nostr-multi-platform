@@ -204,6 +204,10 @@ fn multi_relay_emits_identical_rewritten_since() {
     // Three relays carry the same author's events; all three REQs must use
     // the same rewritten since (1701).
     let (mut l, mailboxes) = lifecycle_with_mailbox("a", &["wss://r1", "wss://r2", "wss://r3"]);
+    // The greedy selector caps coverage at `max_per_user` relays per author;
+    // raise it above the test fanout (3) so this watermark assertion is not
+    // confounded by selection-induced relay dropping.
+    l.set_selection_budget(usize::MAX, usize::MAX);
     l.set_watermark_fn(Arc::new(|_shape: &InterestShape| Some(1700)));
     l.registry_mut().push(timeline_interest(1, "a"));
 
