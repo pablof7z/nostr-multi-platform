@@ -27,6 +27,14 @@ use crate::substrate::{SignedEvent, UnsignedEvent};
 use serde_json::Value;
 use std::sync::Arc;
 
+/// T77: the AUTH/OK frame parsers + shapes now live in the dependency-free
+/// `nmp-nip42-types` substrate crate, shared verbatim with `nmp-nip42` (no
+/// Cargo cycle — the types crate depends on nothing in the workspace).
+/// `OkFrame` is retained as an alias for `AuthOk` so the kernel FSM's
+/// `on_ok_frame(&OkFrame)` signature and the `OkFrame { .. }` test
+/// constructors are unchanged.
+pub(crate) use nmp_nip42_types::{parse_ok_frame, AuthOk as OkFrame};
+
 /// Synchronous signer callback. The actor / iOS layer adapts
 /// `nmp_signers::AccountManager::signer_active()` to this signature at kernel
 /// construction time (avoids the `nmp-signers -> nmp-core` cycle that would
@@ -34,50 +42,12 @@ use std::sync::Arc;
 pub(crate) type AuthSignerFn =
     Arc<dyn Fn(&UnsignedEvent) -> Result<SignedEvent, String> + Send + Sync>;
 
-/// Parsed `["AUTH", <challenge>]` frame. Rejects empty / non-string challenges
-/// (NIP-42 requires a non-empty signable string).
+/// Parsed `["AUTH", <challenge>]` frame → challenge string. Thin shim over
+/// [`nmp_nip42_types::parse_auth_frame`]; the kernel only needs the
+/// challenge value (the relay URL is the `RelayRole`, supplied by the
+/// caller), so the relay-url arg is irrelevant here and passed empty.
 pub(crate) fn parse_auth_challenge(frame: &[Value]) -> Option<String> {
-    if frame.first().and_then(Value::as_str) != Some("AUTH") {
-        return None;
-    }
-    let challenge = frame.get(1).and_then(Value::as_str)?;
-    if challenge.is_empty() {
-        None
-    } else {
-        Some(challenge.to_string())
-    }
-}
-
-/// Parsed `["OK", <event_id>, <accepted>, <reason>]` frame. Strict bool
-/// (NIP-01 specs a boolean; a missing/non-bool field is a malformed frame).
-/// Returns `None` for non-OK or malformed frames. Non-AUTH OKs still parse;
-/// the caller correlates against the pending kind:22242 event id.
-pub(crate) struct OkFrame {
-    pub event_id: String,
-    pub accepted: bool,
-    pub reason: String,
-}
-
-pub(crate) fn parse_ok_frame(frame: &[Value]) -> Option<OkFrame> {
-    if frame.first().and_then(Value::as_str) != Some("OK") {
-        return None;
-    }
-    let event_id = frame.get(1).and_then(Value::as_str)?.to_string();
-    let accepted = frame.get(2).and_then(Value::as_bool)?;
-    let reason = frame
-        .get(3)
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
-    if event_id.is_empty() {
-        None
-    } else {
-        Some(OkFrame {
-            event_id,
-            accepted,
-            reason,
-        })
-    }
+    nmp_nip42_types::parse_auth_frame(frame, "").map(|c| c.challenge)
 }
 
 /// Build the kind:22242 unsigned event for AUTH per NIP-42. Two mandatory

@@ -3,14 +3,12 @@
 //! Owns the M5 / T40 surface called out in `docs/plan/m5-nip42.md` and the
 //! T40 substitution contract in `docs/plan/m8-subscription-lifecycle.md` §3:
 //!
-//! - [`state::RelayAuthState`] — canonical per-relay NIP-42 lifecycle.
-//!   `nmp_core::subs::trigger::RelayAuthState` is the seam placeholder; this
-//!   crate's enum is the authoritative one. A free function
-//!   [`state::relay_auth_state_to_subs`] translates one-way to the
-//!   placeholder so consumers in `nmp-core::subs` can fan the state into
-//!   the trigger inbox without depending on this crate. The reverse
-//!   translation is not needed (the subs placeholder is only consumed by
-//!   `AuthGate`, never emitted back to this crate).
+//! - [`state::RelayAuthState`] — canonical per-relay NIP-42 lifecycle,
+//!   re-exported from the `nmp-nip42-types` substrate crate (T77).
+//!   `nmp_core::subs::RelayAuthState` is now *the same type* (also a
+//!   re-export of `nmp_nip42_types::RelayAuthState`), so the old seam
+//!   placeholder and the `relay_auth_state_to_subs` translation function
+//!   are retired — no conversion is needed across the crate boundary.
 //! - [`frame::AuthChallenge`] — `["AUTH", <challenge>]` parser.
 //! - [`frame::AuthOk`] — `["OK", <event_id>, <accepted>, <reason>]` matcher
 //!   for in-flight kind:22242 events. (OKs for non-auth events are not this
@@ -56,4 +54,4 @@ pub mod state;
 pub use builder::build_auth_event;
 pub use flow::{run_handshake, HandshakeOutcome, Nip42Driver, Nip42Error};
 pub use frame::{parse_auth_frame, parse_ok_frame, AuthChallenge, AuthOk};
-pub use state::{relay_auth_state_to_subs, RelayAuthState};
+pub use state::RelayAuthState;

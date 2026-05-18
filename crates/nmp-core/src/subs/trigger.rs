@@ -23,28 +23,18 @@ pub struct AccountId(pub String);
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd)]
 pub struct SignerId(pub String);
 
-// ─── RelayAuthState (M5 seam) ───────────────────────────────────────────────
+// ─── RelayAuthState (T77 — single substrate type) ───────────────────────────
 
 /// Per-relay NIP-42 auth state.
 ///
-/// M5 / T40 owns the canonical type; this enum is the seam so the inbox and
-/// pause-gate plumbing land in M8-subs without waiting for M5. T40 may add
-/// variants without breaking ABI; M8-subs only branches on
-/// `ChallengeReceived` / `Authenticating` (paused) and `Authenticated` (flush).
-#[derive(Clone, Debug, Hash, Eq, PartialEq)]
-pub enum RelayAuthState {
-    /// No challenge seen; subscriptions proceed without auth.
-    NotRequired,
-    /// Relay has sent `AUTH` but signer has not yet been invoked.
-    ChallengeReceived,
-    /// Signer is producing kind:22242; client awaits relay `OK`.
-    Authenticating,
-    /// Relay has acknowledged; subscriptions resume.
-    Authenticated,
-    /// Auth attempt failed (wrong signer, signer error, etc.); subscriptions
-    /// stay paused until external action resolves it.
-    Failed,
-}
+/// **T77:** this was a kernel-local placeholder enum kept variant-identical
+/// to `nmp_nip42::state::RelayAuthState` by a hand-written translation
+/// function. It is now the single substrate type from `nmp-nip42-types`,
+/// re-exported here so every existing `crate::subs::RelayAuthState` call
+/// site (and the `subs::mod` re-export consumed by the kernel) is
+/// unchanged. M8-subs branches on `ChallengeReceived` / `Authenticating`
+/// (paused) and `Authenticated` (flush); `Failed` is fail-closed (ADR-0019).
+pub use nmp_nip42_types::RelayAuthState;
 
 // ─── InvalidateReason (A6) ──────────────────────────────────────────────────
 

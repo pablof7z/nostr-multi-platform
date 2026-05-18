@@ -12,9 +12,9 @@
 //!   verbatim — already-formatted `["AUTH", <event>]` JSON strings.
 //! - Fanning the new [`RelayAuthState`] into the subs lifecycle inbox via
 //!   `CompileTrigger::RelayAuthStateChanged` (the actual emit site is the
-//!   M2-phase-2 actor wiring task; for now the kernel can call
-//!   [`relay_auth_state_to_subs`](super::state::relay_auth_state_to_subs)
-//!   to translate).
+//!   M2-phase-2 actor wiring task). Since T77, `nmp_core::subs::
+//!   RelayAuthState` and this crate's [`RelayAuthState`] are the same
+//!   substrate type, so no translation is required.
 //!
 //! Signer integration is via a small trait the caller adapts to either
 //! `nmp_core::publish::traits::Signer::sign_auth` (the M7 shim) or
