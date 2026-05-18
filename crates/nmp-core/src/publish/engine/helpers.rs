@@ -9,7 +9,7 @@ use super::super::action::{PublishOutcome, RelayUrl};
 use super::super::state::{PerRelayState, RelayAck, RetryVerdict};
 use super::super::traits::RelayDispatcher;
 use super::super::view::{PublishStatusState, RecentFailure, RecentSuccess};
-use super::InFlight;
+use super::{InFlight, TerminalOutcome};
 use crate::substrate::SignedEvent;
 
 pub(super) fn relay_url_of(ack: &RelayAck) -> RelayUrl {
@@ -142,6 +142,31 @@ pub(super) fn for_each_terminal(
             reason,
             at_ms: now_ms,
         });
+    }
+}
+
+/// T128: snapshot the per-relay terminal verdict for a fully-settled
+/// `InFlight` row. Called from `engine::on_ack` right before the row is
+/// evicted from `in_flight`. Mirrors `for_each_terminal` but in a shape the
+/// kernel consumes directly (no `RecentSuccess` / `RecentFailure` indirection
+/// — those are for the engine's bounded ring buffers; the kernel's queue
+/// entry needs the full per-relay map).
+pub(super) fn terminal_outcome_of(in_flight: &InFlight) -> TerminalOutcome {
+    let mut accepted: Vec<RelayUrl> = Vec::new();
+    let mut failed: Vec<(RelayUrl, String)> = Vec::new();
+    for (relay_url, state) in &in_flight.per_relay {
+        match state {
+            PerRelayState::Ok { .. } => accepted.push(relay_url.clone()),
+            PerRelayState::FailedAfterRetries { reason, .. } => {
+                failed.push((relay_url.clone(), reason.clone()));
+            }
+            _ => {}
+        }
+    }
+    TerminalOutcome {
+        event_id: in_flight.event.id.clone(),
+        accepted,
+        failed,
     }
 }
 

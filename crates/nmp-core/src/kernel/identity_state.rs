@@ -28,17 +28,44 @@ pub(crate) struct AccountSummary {
 
 /// One in-flight / recently-completed publish. Per D1 (best-effort
 /// rendering) the UI shows the entry the moment it is enqueued; the status
-/// refines in place as relay acks arrive. Per the T66a scope, the entry is
-/// marked `accepted_locally` the moment EVENT frames are emitted — full
-/// per-relay OK correlation is a follow-up (D1: refine in place).
+/// refines in place as relay acks arrive.
+///
+/// Status lifecycle (T128 — terminal transitions):
+/// - `"accepted_locally"` — engine has emitted EVENT frames; awaiting acks.
+/// - `"ok"` — every required relay has terminally settled (at least one Ok,
+///   no remaining FailedAfterRetries). Surfaces partial success too (Mixed
+///   outcome → `"ok"` with per-relay detail in `relay_outcomes`).
+/// - `"failed"` — every relay reached FailedAfterRetries (no Oks survived).
+/// - Pre-T128 holdovers: `"pending_relays_unknown"` | `"duplicate"` |
+///   `"store_error"`.
+///
+/// `relay_outcomes` carries the per-relay result map when the publish has
+/// terminally settled; empty while still in flight or when the engine never
+/// got that far (e.g. NoTargets). The iOS / Kotlin layers render this only
+/// once `status` is terminal — they never read partial-state outcomes.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub(crate) struct PublishQueueEntry {
     pub(crate) event_id: String,
     pub(crate) kind: u32,
     pub(crate) target_relays: usize,
-    /// `"accepted_locally"` | `"pending_relays_unknown"` | `"duplicate"` |
-    /// `"store_error"`.
     pub(crate) status: String,
+    /// Per-relay terminal outcomes, in insertion order. Empty while
+    /// `status == "accepted_locally"` (no terminal verdict yet).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) relay_outcomes: Vec<RelayAckOutcome>,
+}
+
+/// One relay's terminal verdict for a publish. The string `status` keeps the
+/// wire shape friendly to platforms that switch on tokens (Chirp's
+/// `DiagnosticsView.statusColor` already does this for `"ok"`/`"failed"`).
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub(crate) struct RelayAckOutcome {
+    pub(crate) relay_url: String,
+    /// `"ok"` for an accepted relay, `"failed"` for FailedAfterRetries.
+    pub(crate) status: String,
+    /// Empty for `"ok"`; carries the engine's give-up reason for `"failed"`.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) message: String,
 }
 
 /// One relay row the UI's Accounts screen edits. Mirrors the kernel's
@@ -83,6 +110,33 @@ impl super::Kernel {
             let drop = self.publish_queue.len() - MAX_PUBLISH_WINDOW;
             self.publish_queue.drain(0..drop);
         }
+        self.changed_since_emit = true;
+    }
+
+    /// Patch the queue entry for `event_id` in place, flipping `status` and
+    /// recording the per-relay outcome map. T128 — D1 (refine in place); the
+    /// entry was originally pushed as `accepted_locally`, and the engine's
+    /// terminal observation now refines it. No-op if no row matches
+    /// (defensive — the bounded 16-row window may have already evicted it).
+    pub(crate) fn set_publish_entry_terminal(
+        &mut self,
+        event_id: &str,
+        status: &str,
+        outcomes: Vec<RelayAckOutcome>,
+    ) {
+        let Some(entry) = self
+            .publish_queue
+            .iter_mut()
+            .rev() // most recent first — handles the common case fast
+            .find(|e| e.event_id == event_id)
+        else {
+            return;
+        };
+        if entry.status == status && entry.relay_outcomes == outcomes {
+            return;
+        }
+        entry.status = status.to_string();
+        entry.relay_outcomes = outcomes;
         self.changed_since_emit = true;
     }
 

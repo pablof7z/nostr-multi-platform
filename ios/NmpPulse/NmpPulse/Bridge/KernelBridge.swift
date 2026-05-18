@@ -205,8 +205,46 @@ struct PublishQueueEntry: Decodable, Identifiable, Equatable {
     let eventId: String
     let kind: UInt32
     let targetRelays: Int
+    /// T128: terminal status surfaces relay-by-relay outcomes once the engine
+    /// has settled every relay. Lifecycle (per the kernel's `identity_state.rs`):
+    /// - `"accepted_locally"` — engine emitted EVENT frames; still in-flight.
+    /// - `"ok"` — at least one relay accepted (partial-success rendered via
+    ///   `relayOutcomes`; full-success has every entry `status == "ok"`).
+    /// - `"failed"` — every relay reached FailedAfterRetries.
     let status: String
+    /// Per-relay terminal verdicts. Empty (or omitted from the wire JSON via
+    /// `skip_serializing_if = "Vec::is_empty"`) while `status == "accepted_locally"`.
+    /// Optional + defaulting so an older kernel still decodes cleanly (D1).
+    let relayOutcomes: [RelayAckOutcome]?
     var id: String { eventId }
+
+    /// Convenience: per-relay outcomes, treating an absent list as empty.
+    /// UI code should use this in preference to `relayOutcomes` directly.
+    var outcomes: [RelayAckOutcome] { relayOutcomes ?? [] }
+
+    /// Count of relays that terminally accepted the publish. Zero while
+    /// the entry is still `accepted_locally` (no verdict yet).
+    var acceptedRelayCount: Int {
+        outcomes.filter { $0.status == "ok" }.count
+    }
+
+    /// True iff the entry is at a terminal status (`"ok"` or `"failed"`).
+    var isTerminal: Bool { status == "ok" || status == "failed" }
+}
+
+/// One relay's terminal verdict for a publish (T128). Mirrors the kernel's
+/// `RelayAckOutcome` projection.
+struct RelayAckOutcome: Decodable, Equatable {
+    let relayUrl: String
+    /// `"ok"` if the relay accepted; `"failed"` if it reached FailedAfterRetries.
+    let status: String
+    /// Empty on `"ok"`; carries the engine's give-up reason on `"failed"`.
+    /// Optional + defaulted because the kernel elides empty messages via
+    /// `skip_serializing_if = "String::is_empty"`.
+    let message: String?
+
+    /// Convenience: the message string, treating an absent value as empty.
+    var reason: String { message ?? "" }
 }
 
 struct RelayEditRow: Decodable, Identifiable, Equatable {

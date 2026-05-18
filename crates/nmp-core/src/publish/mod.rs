@@ -44,7 +44,7 @@ pub use action::{
     RelayUrl,
 };
 pub use engine::{
-    engine_error_to_failure, outcome_of, PublishEngine, PublishEngineError,
+    engine_error_to_failure, outcome_of, PublishEngine, PublishEngineError, TerminalOutcome,
     ENGINE_FAILURE_RELAY_URL,
 };
 pub use nip65::{Nip65OutboxResolver, DEFAULT_INDEXER_FALLBACK};

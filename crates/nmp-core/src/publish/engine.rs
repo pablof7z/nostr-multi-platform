@@ -59,6 +59,23 @@ pub(super) struct InFlight {
     pub dirty: bool,
 }
 
+/// T128: terminal verdict for a settled publish. The engine records one of
+/// these into `recently_completed` the moment `in_flight.remove(handle)` is
+/// about to fire (`is_complete == true`), and the kernel drains it via
+/// [`PublishEngine::take_completed`] to flip the `PublishQueueEntry` status
+/// from `accepted_locally` to `"ok"` / `"failed"`.
+///
+/// `accepted` is the relays that landed `PerRelayState::Ok`; `failed` carries
+/// the `(relay_url, reason)` pairs from `FailedAfterRetries`. Mixed publishes
+/// (at least one Ok + at least one FailedAfterRetries) are reported here with
+/// both lists populated — the kernel decides what status string to surface.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TerminalOutcome {
+    pub event_id: String,
+    pub accepted: Vec<RelayUrl>,
+    pub failed: Vec<(RelayUrl, String)>,
+}
+
 pub struct PublishEngine {
     in_flight: HashMap<PublishHandle, InFlight>,
     pub view: PublishStatusState,
@@ -73,6 +90,12 @@ pub struct PublishEngine {
     /// vector clears the stale row even though nothing in the live map is
     /// marked dirty.
     needs_in_flight_rebuild: bool,
+    /// T128: terminal verdicts the engine recorded since the last drain.
+    /// Populated in `on_ack` (and any other path that evicts a completed row)
+    /// just before `in_flight.remove(handle)`. The kernel drains via
+    /// [`PublishEngine::take_completed`] after every engine call to update
+    /// the `PublishQueueEntry` projection iOS reads.
+    recently_completed: BTreeMap<PublishHandle, TerminalOutcome>,
 }
 
 impl PublishEngine {
@@ -92,6 +115,7 @@ impl PublishEngine {
             store,
             signer,
             needs_in_flight_rebuild: false,
+            recently_completed: BTreeMap::new(),
         }
     }
 
@@ -226,6 +250,14 @@ impl PublishEngine {
         helpers::apply_verdict(in_flight, &relay_url, verdict, now_ms);
         if helpers::is_complete(in_flight) {
             helpers::for_each_terminal(in_flight, handle, &mut self.view, now_ms);
+            // T128: snapshot the terminal verdict for the kernel's queue-entry
+            // projection BEFORE evicting the row. Once `in_flight.remove`
+            // runs the per-relay state is gone, and the kernel has no other
+            // hook to recover the Ok/Failed map (recent_ok / recent_errors
+            // are capped at 32 and not indexed by handle).
+            let outcome = helpers::terminal_outcome_of(in_flight);
+            self.recently_completed
+                .insert(handle.clone(), outcome);
             if let Err(err) = self.store.delete(handle) {
                 self.view.push_failure(RecentFailure {
                     handle: handle.clone(),
@@ -259,6 +291,18 @@ impl PublishEngine {
     /// Snapshot accessor for views / FFI.
     pub fn snapshot(&self) -> &PublishStatusSnapshot {
         &self.view.snapshot
+    }
+
+    /// T128: drain every terminal verdict recorded since the last call. The
+    /// kernel calls this after every engine entrypoint (`start_publish` /
+    /// `on_ack` / `tick` / `resume_from_store`) and applies the verdicts to
+    /// its `PublishQueueEntry` projection. Pure drain — the engine retains no
+    /// per-publish history after this call (the snapshot's `recent_ok` /
+    /// `recent_errors` carry the longer view).
+    pub(crate) fn take_completed(&mut self) -> Vec<TerminalOutcome> {
+        std::mem::take(&mut self.recently_completed)
+            .into_values()
+            .collect()
     }
 
     /// D6 FFI mapping path: convert a `PublishEngineError` into a snapshot

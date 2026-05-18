@@ -27,6 +27,8 @@ mod publish_cmd;
 mod publish_engine;
 #[cfg(test)]
 mod publish_engine_tests;
+#[cfg(test)]
+mod publish_terminal_status_tests;
 mod publish_engine_wire;
 mod requests;
 #[cfg(test)]
@@ -80,7 +82,9 @@ pub(crate) fn hex_to_pubkey_bytes(hex: &str) -> Option<[u8; 32]> {
 use crate::store::{EventStore, MemEventStore};
 use crate::subs::{OneshotApi, SubscriptionLifecycle, UnknownIds};
 use auth::{AuthSignerFn, Nip42DriverState};
-pub(crate) use identity_state::{AccountSummary, PublishQueueEntry, RelayEditRow, WalletStatus};
+pub(crate) use identity_state::{
+    AccountSummary, PublishQueueEntry, RelayAckOutcome, RelayEditRow, WalletStatus,
+};
 use std::sync::atomic::{AtomicU64, Ordering};
 use types::*;
 

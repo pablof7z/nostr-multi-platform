@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 use crate::publish::{
     Nip65OutboxResolver, NoopSigner, PublishAction, PublishEngine, PublishStore, PublishTarget,
-    QueueDispatcher, RelayAck, RelayDispatcher, RetryPolicy,
+    QueueDispatcher, RelayAck, RelayDispatcher, RetryPolicy, TerminalOutcome,
 };
 use crate::relay::{OutboundMessage, RelayRole};
 use crate::store::EventStore;
@@ -104,7 +104,16 @@ impl Kernel {
         let event_id = signed.id.clone();
         let kind = signed.unsigned.kind;
         match self.publish_engine.start_publish(action, now_ms) {
-            Ok(()) => self.drain_publish_engine_frames(&event_id, kind),
+            Ok(()) => {
+                let frames = self.drain_publish_engine_frames(&event_id, kind);
+                // Synchronous dispatchers (e.g. some test fixtures) can settle
+                // a publish inside `start_publish` itself by returning OK acks
+                // from `dispatch_due`. Drain any terminal verdicts that
+                // produced so the queue entry never lingers at
+                // `accepted_locally` past the engine's view.
+                self.apply_engine_completions();
+                frames
+            }
             Err(err) => {
                 // D6: map the engine error into a `RecentFailure` row on the
                 // publish-status snapshot, set the kernel-level toast, and
@@ -119,6 +128,7 @@ impl Kernel {
                     kind: signed.unsigned.kind,
                     target_relays: 0,
                     status,
+                    relay_outcomes: Vec::new(),
                 });
                 Vec::new()
             }
@@ -160,6 +170,10 @@ impl Kernel {
             kind,
             target_relays,
             status: "accepted_locally".to_string(),
+            // Empty until the engine settles — T128 fills this via
+            // `apply_engine_completions` once the per-relay state machine
+            // reaches a terminal verdict.
+            relay_outcomes: Vec::new(),
         });
         self.set_last_error_toast(None);
         self.changed_since_emit = true;
@@ -238,6 +252,10 @@ impl Kernel {
         // event_id == handle (per `run_publish_engine`).
         self.publish_engine
             .on_ack(&payload.event_id.to_string(), ack, now_ms);
+        // T128: a terminal ack (Ok or final give-up) may have just settled
+        // the publish — apply the terminal verdict to the queue entry before
+        // any retry frame drain so the iOS snapshot reflects the new status.
+        self.apply_engine_completions();
         // Any retry the engine scheduled (after `Reauth` / transient backoff
         // that is already due) was pushed into the queue dispatcher; drain it.
         let drained = self.publish_dispatcher.drain();
@@ -266,6 +284,10 @@ impl Kernel {
     /// by inbound traffic). Tests inject `now_ms` directly.
     pub(crate) fn tick_publish_engine(&mut self, now_ms: u64) -> Vec<OutboundMessage> {
         self.publish_engine.tick(now_ms);
+        // T128: `tick` → `dispatch_pending` → synchronous `dispatch_due` may
+        // return an OK / failure ack inline. Drain any settled verdicts so
+        // the queue entry flips to `"ok"` / `"failed"` on the same tick.
+        self.apply_engine_completions();
         let drained = self.publish_dispatcher.drain();
         if !drained.is_empty() {
             self.changed_since_emit = true;
@@ -296,6 +318,14 @@ impl Kernel {
             self.set_last_error_toast(Some(toast));
             return Vec::new();
         }
+        // T128: resume can complete a publish synchronously when the
+        // dispatcher returns OK acks for a re-dispatched retry. Drain
+        // terminal verdicts before returning so the boot-resume path
+        // surfaces the final status on the same actor frame. (The queue
+        // entry for resumed publishes was pushed by the original kernel
+        // process — on a fresh kernel B in tests there is no entry to flip;
+        // `set_publish_entry_terminal` is a no-op in that case.)
+        self.apply_engine_completions();
         let drained = self.publish_dispatcher.drain();
         drained
             .into_iter()
@@ -318,4 +348,65 @@ impl Kernel {
     ) -> &crate::publish::PublishStatusSnapshot {
         self.publish_engine.snapshot()
     }
+
+    /// T128: drain every terminal verdict the engine recorded since the last
+    /// drain and flip the matching `PublishQueueEntry` from `accepted_locally`
+    /// to its terminal `"ok"` / `"failed"` status, carrying the per-relay
+    /// outcome map. Called after every engine entrypoint
+    /// (`run_publish_engine_at`, `handle_publish_ok_at`, `tick_publish_engine`,
+    /// `resume_publish_engine`).
+    ///
+    /// Status mapping (per the iOS UX requirement — partial success is still
+    /// surfaced under the `"ok"` branch with N/M detail):
+    /// - `accepted.is_empty() && !failed.is_empty()` → `"failed"`
+    /// - any accepted (with or without failures) → `"ok"`
+    /// - both empty → `"failed"` defensively (no relays settled at all)
+    fn apply_engine_completions(&mut self) {
+        let completions = self.publish_engine.take_completed();
+        if completions.is_empty() {
+            return;
+        }
+        for outcome in completions {
+            let (status, outcomes) = classify_terminal_outcome(&outcome);
+            self.set_publish_entry_terminal(&outcome.event_id, status, outcomes);
+        }
+        // `changed_since_emit` is set inside `set_publish_entry_terminal` on
+        // any field change; setting again here is redundant but documents the
+        // intent (terminal transitions are always snapshot-worthy).
+        self.changed_since_emit = true;
+    }
+}
+
+/// T128: map a `TerminalOutcome` into the wire-level `(status, outcomes)`
+/// pair. Kept free-standing so the kernel tests can assert the contract
+/// without going through `apply_engine_completions`.
+fn classify_terminal_outcome(
+    outcome: &TerminalOutcome,
+) -> (&'static str, Vec<super::RelayAckOutcome>) {
+    let mut outcomes = Vec::with_capacity(outcome.accepted.len() + outcome.failed.len());
+    for url in &outcome.accepted {
+        outcomes.push(super::RelayAckOutcome {
+            relay_url: url.clone(),
+            status: "ok".to_string(),
+            message: String::new(),
+        });
+    }
+    for (url, reason) in &outcome.failed {
+        outcomes.push(super::RelayAckOutcome {
+            relay_url: url.clone(),
+            status: "failed".to_string(),
+            message: reason.clone(),
+        });
+    }
+    let status = if outcome.accepted.is_empty() {
+        // Pure failure — every relay reached FailedAfterRetries. (NoTargets
+        // never reaches this path; it's handled in `run_publish_engine_at`
+        // via `record_engine_error`.)
+        "failed"
+    } else {
+        // At least one Ok — partial-success and full-success both report
+        // `"ok"`; the per-relay detail tells iOS whether it's N/M or N/N.
+        "ok"
+    };
+    (status, outcomes)
 }

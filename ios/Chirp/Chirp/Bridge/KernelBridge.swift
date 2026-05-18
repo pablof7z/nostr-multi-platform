@@ -248,8 +248,27 @@ struct PublishQueueEntry: Decodable, Identifiable, Equatable {
     let eventId: String
     let kind: UInt32
     let targetRelays: Int
+    /// T128 lifecycle: `"accepted_locally"` (in-flight) → `"ok"` (at least
+    /// one relay accepted; partial success surfaced via `relayOutcomes`)
+    /// or `"failed"` (every relay reached FailedAfterRetries).
     let status: String
+    /// Per-relay terminal verdicts; absent while the publish is in-flight.
+    /// Decoded leniently so older kernel builds (pre-T128) still decode.
+    let relayOutcomes: [RelayAckOutcome]?
     var id: String { eventId }
+
+    /// Convenience: per-relay outcomes, treating an absent list as empty.
+    var outcomes: [RelayAckOutcome] { relayOutcomes ?? [] }
+}
+
+/// One relay's terminal verdict for a publish (T128). `DiagnosticsView`
+/// already colours `"ok"` / `"failed"` via `statusColor`, so the per-relay
+/// detail is wire-available for the row even before a UX refresh lands.
+struct RelayAckOutcome: Decodable, Equatable {
+    let relayUrl: String
+    let status: String
+    let message: String?
+    var reason: String { message ?? "" }
 }
 
 struct RelayEditRow: Decodable, Identifiable, Equatable {

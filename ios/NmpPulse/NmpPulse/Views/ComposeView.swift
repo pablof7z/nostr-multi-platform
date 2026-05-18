@@ -76,9 +76,17 @@ struct ComposeView: View {
                 }
             }
             .onChange(of: model.publishQueue) { _, queue in
-                // Best-effort auto-dismiss once the kernel has accepted the
-                // publish locally (D1: render now, refine in place).
-                if didSubmit, queue.contains(where: { $0.status == "accepted_locally" }) {
+                // Best-effort auto-dismiss once the engine has settled the
+                // publish on at least one relay (status flipped to `"ok"`).
+                // T128: pre-T128 we dismissed on `accepted_locally`, which
+                // raced the engine's terminal verdict — a publish that
+                // ended up failing all relays would be dismissed before the
+                // `failed` state ever rendered, hiding the retry CTA from
+                // the user. We now wait for `ok` to dismiss, and stay
+                // open on `failed` so Retry is reachable. `accepted_locally`
+                // by itself no longer triggers dismiss (it's transient).
+                guard didSubmit else { return }
+                if queue.last?.status == "ok" {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
                         dismiss()
                     }
@@ -87,16 +95,81 @@ struct ComposeView: View {
         }
     }
 
+    /// T128: render terminal status with per-relay detail.
+    /// - `accepted_locally`: spinner + "Publishing…"
+    /// - `ok` full: "Published to N relay(s)"
+    /// - `ok` partial: "Published to N of M relays"
+    /// - `failed`: error label + Retry button (re-publishes the same draft)
+    @ViewBuilder
     private var publishStatus: some View {
         let latest = model.publishQueue.last
-        return HStack(spacing: 8) {
-            if latest?.status == "accepted_locally" {
-                Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                Text("Sent to \(latest?.targetRelays ?? 0) relay(s)")
-            } else {
+        switch latest?.status {
+        case "ok":
+            publishStatusOk(latest!)
+        case "failed":
+            publishStatusFailed(latest!)
+        default:
+            // `accepted_locally`, missing entry, or any older / forward-compat
+            // status — render the in-flight indicator.
+            HStack(spacing: 8) {
                 ProgressView()
                 Text("Publishing…")
             }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+    }
+
+    private func publishStatusOk(_ entry: PublishQueueEntry) -> some View {
+        let accepted = entry.acceptedRelayCount
+        let target = entry.targetRelays
+        // Partial success: at least one relay refused. The kernel still
+        // reports `"ok"` (publish landed somewhere) but the per-relay map
+        // tells us not every relay accepted.
+        let isPartial = accepted < target
+        let label: String = {
+            if target == 0 { return "Published" }
+            if isPartial {
+                return "Published to \(accepted) of \(target) relays"
+            }
+            return "Published to \(target) relay\(target == 1 ? "" : "s")"
+        }()
+        return HStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(isPartial ? .orange : .green)
+            Text(label)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+
+    private func publishStatusFailed(_ entry: PublishQueueEntry) -> some View {
+        // Every relay reached FailedAfterRetries. Surface the first reason
+        // for context, but keep the row compact — the toast (D6) carries
+        // any kernel-wide error already.
+        let firstReason = entry.outcomes
+            .first(where: { $0.status == "failed" })?
+            .reason
+        return HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.red)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Publish failed on all \(entry.targetRelays) relay\(entry.targetRelays == 1 ? "" : "s")")
+                if let firstReason, !firstReason.isEmpty {
+                    Text(firstReason)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(2)
+                }
+            }
+            Spacer()
+            Button("Retry") {
+                let trimmed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty else { return }
+                model.publishNote(trimmed, replyToID: replyToID)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
         }
         .font(.caption)
         .foregroundStyle(.secondary)
