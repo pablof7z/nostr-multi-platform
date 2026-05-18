@@ -1,0 +1,32 @@
+[package]
+name = "nmp-app-chirp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Per-app Chirp glue. Owns the Nip10ModularTimelineView instance, drives it from KernelEventObserver fan-out, and surfaces the projected blocks over a static-lib FFI for the iOS shell."
+
+[lib]
+name = "nmp_app_chirp"
+# Static lib so the iOS shell can link `-lnmp_app_chirp` alongside
+# `-lnmp_core`. The crate's `#[no_mangle] extern "C"` symbols
+# (`nmp_app_chirp_register`, `nmp_app_chirp_snapshot`,
+# `nmp_app_chirp_snapshot_free`, `nmp_app_chirp_unregister`) land in their
+# own archive because doctrine D0 forbids `nmp-core -> nmp-nip01 /
+# nmp-threading`, so we cannot re-export them through `libnmp_core.a` the
+# way `android-ffi` does (T146 / ADR-0009).
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+nmp-core = { path = "../../../crates/nmp-core" }
+nmp-nip01 = { path = "../../../crates/nmp-nip01" }
+nmp-threading = { path = "../../../crates/nmp-threading" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+# Test-support gates expose `nmp_app_new` / `nmp_app_free` (and the
+# `nmp_app_register_event_observer` FFI symbol via Rust path) so the FFI
+# smoke tests in `src/ffi.rs` can spin up a real `NmpApp` rather than mocking
+# the slot. Matches the pattern in the other protocol crates (`nmp-nip01`,
+# `nmp-nip22`, `nmp-reactions`).
+nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
