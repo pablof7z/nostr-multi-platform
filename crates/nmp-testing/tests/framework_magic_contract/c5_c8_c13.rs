@@ -217,70 +217,26 @@ fn c8_subscriptions_coalesce_autoclose_and_buffer() {
 /// C13: Best-effort rendering — display fields use non-Option placeholders;
 /// authoritative data refines in place.
 ///
-/// `TimelineItem` (internal kernel type) has `author_picture_url: Option<String>`
-/// — a D1 violation. This test pins the correct behaviour using the store and
-/// update harness at the level that IS accessible from integration tests:
-/// the `StoreHarness` + `MemEventStore` + watermark round-trip confirms that
-/// the *scalar* display fields never surface `None` to the FFI layer by
-/// checking what the store harness populates for a known event with no profile
-/// data available.
+/// Substrate gap: `TimelineItem` is `pub(super)` in `nmp_core::kernel` — it is
+/// not accessible from integration tests, making it impossible to verify the D1
+/// placeholder contract (that `author_picture_url` and `author_display_name` are
+/// non-Option `String`s, never `None`, on the FFI boundary) at this layer.
 ///
-/// A follow-up task (#57-c13-gap) tracks the `author_picture_url` Option→String
-/// migration so the FFI payload fully satisfies D1.
+/// `TimelineItem.author_picture_url` is currently `Option<String>` — a D1
+/// violation. The full fix requires either exposing `TimelineItem` via
+/// `nmp_core::kernel::types` or migrating the field to `String` with a hardcoded
+/// placeholder fallback in `update.rs`.
+///
+/// Follow-up task (#57-c13-gap): expose `TimelineItem` or add a kernel-level
+/// test harness so this contract can be verified end-to-end.
 ///
 /// Design: `docs/design/framework-magic/capabilities.md`
 #[test]
+#[should_panic = "substrate gap: TimelineItem is pub(super) in nmp-core::kernel — cannot verify D1 placeholder contract from integration test; expose type or add kernel-level harness (follow-up #57-c13-gap)"]
 fn c13_view_payload_uses_placeholders_then_refines_in_place() {
-    use nmp_core::store::{
-        Coverage, EventStore, InsertOutcome, MemEventStore, SyncMethod, WatermarkKey, WatermarkRow,
-    };
-
-    // Verify the store pipeline: a newly inserted event's data round-trips
-    // without Option-escape at the store boundary. The kernel's `timeline_item`
-    // builder (update.rs) must fall back to placeholder strings for any missing
-    // profile field — verified indirectly here by confirming the store never
-    // loses the raw fields needed to synthesise a placeholder.
-    let h = StoreHarness::mem();
-
-    // Insert an event from an author with no known profile (no kind:0 stored).
-    let ev = h.make_event(ALICE_HEX, 1, 1_000);
-    let id = ev.id_bytes();
-    let outcome = h.insert_raw(ev, "wss://t/", 1_000_000);
-    assert!(matches!(outcome, InsertOutcome::Inserted { .. }));
-    h.assert_present(&id);
-
-    // Retrieve and confirm the raw event's scalar fields are non-empty strings
-    // (the kernel's placeholder generator reads these; if any were empty/None
-    // it would fall through to the hardcoded "placeholder" sentinel).
-    let stored = h.store.get_by_id(&id).expect("store read").expect("must be present");
-    assert!(!stored.raw.pubkey.is_empty(), "author pubkey must be non-empty (placeholder seed)");
-    assert!(!stored.raw.id.is_empty(), "event id must be non-empty");
-
-    // Watermark round-trip: write then read back — proves the store pipeline
-    // correctly tracks the placeholder-refinement precondition (the kernel
-    // checks the watermark to decide whether a cache-miss is authoritative).
-    let store = MemEventStore::new();
-    let key = WatermarkKey {
-        filter_hash: [0u8; 32],
-        relay_url: "wss://t/".to_string(),
-    };
-    let row = WatermarkRow {
-        key: key.clone(),
-        synced_up_to: 9_999,
-        last_sync_method: SyncMethod::ReqScan,
-        last_negentropy_state: None,
-        bytes_saved_vs_req: 0,
-        updated_at: 1_000,
-    };
-    store.write_watermark(row).expect("write watermark");
-    let read_back = store.read_watermark(&key).expect("read watermark").expect("must be present");
-    assert_eq!(read_back.synced_up_to, 9_999);
-    assert_eq!(read_back.last_sync_method, SyncMethod::ReqScan);
-    // The placeholder-refinement contract: CompleteAsOf implies cache is
-    // authoritative — further renders need not fetch (D1 refine-in-place).
-    let coverage = store.coverage(&key).expect("coverage");
-    assert!(
-        matches!(coverage, Coverage::CompleteAsOf(_) | Coverage::PartialUpTo(_)),
-        "watermark-backed filter must have bounded coverage: {coverage:?}"
+    panic!(
+        "substrate gap: TimelineItem is pub(super) in nmp-core::kernel \
+        — cannot verify D1 placeholder contract from integration test; \
+        expose type or add kernel-level harness (follow-up #57-c13-gap)"
     );
 }
