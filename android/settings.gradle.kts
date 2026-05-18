@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "NmpPulseAndroid"
 include(":app")
+include(":gallery")

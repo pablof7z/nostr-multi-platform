@@ -25,7 +25,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
@@ -98,12 +97,7 @@ private fun NoteRow(item: TimelineItem) {
             }
         }
         Spacer(Modifier.size(6.dp))
-        Text(
-            item.contentPreview.ifEmpty { item.content },
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 8,
-            overflow = TextOverflow.Ellipsis,
-        )
+        NostrRichText(content = item.contentPreview.ifEmpty { item.content })
     }
 }
 

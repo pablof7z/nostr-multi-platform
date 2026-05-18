@@ -1,0 +1,2871 @@
+{
+  "version": 1,
+  "scenarios": [
+    {
+      "id": "S-T01",
+      "category": "text",
+      "title": "Plain text",
+      "exercises": "tokenizer fast-path -> single Segment::Text",
+      "events": [
+        {
+          "id": "b36ac53f174cf22fcafd3fe5c9ea8136b6886ed0233c6892c1b1e712f4637b0f",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700000000,
+          "kind": 1,
+          "tags": [],
+          "content": "Just shipped the relay reconnect fix. Feels good.",
+          "sig": "c9ac93314bfe38531f0ebe838b2b97342759031846aeb07c39c7c99a1787bd6a128a02590eb077b5d517579b5975ef8c638ba61b3e846b63928334e2d07ef958"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "Just shipped the relay reconnect fix. Feels good."
+          }
+        ]
+      },
+      "embeds": {}
+    },
+    {
+      "id": "S-T02",
+      "category": "text",
+      "title": "Hashtags inline",
+      "exercises": "Segment::Hashtag extraction; leading # stripped, lowercased",
+      "events": [
+        {
+          "id": "bed21379706d1fcecfb463468d00c8b2bc75737295873fd323373de74807ce0b",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700000001,
+          "kind": 1,
+          "tags": [
+            [
+              "t",
+              "nostr"
+            ],
+            [
+              "t",
+              "nip01"
+            ],
+            [
+              "t",
+              "zaps"
+            ]
+          ],
+          "content": "Debugging #Nostr relays again #NIP01 #zaps",
+          "sig": "54875dd56300181162dfff6059c3d7e7d5fee7e4e31242a7022992c80af5c639bf8e84981edefab4c364ebdd7fa9c3c2bb5537b469bd877920e225e9530f92d5"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "Debugging "
+          },
+          {
+            "type": "hashtag",
+            "tag": "nostr"
+          },
+          {
+            "type": "text",
+            "text": " relays again "
+          },
+          {
+            "type": "hashtag",
+            "tag": "nip01"
+          },
+          {
+            "type": "text",
+            "text": " "
+          },
+          {
+            "type": "hashtag",
+            "tag": "zaps"
+          }
+        ]
+      },
+      "embeds": {}
+    },
+    {
+      "id": "S-T03",
+      "category": "text",
+      "title": "Bare URL (non-media)",
+      "exercises": "Segment::Url — URL not classified as media",
+      "events": [
+        {
+          "id": "395ca9eb3af0abbafe21f32ddee7acda06882466c7016cee2be63aafdb8418ca",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700000002,
+          "kind": 1,
+          "tags": [],
+          "content": "Spec lives at https://github.com/nostr-protocol/nips read it",
+          "sig": "47dd444ee1a9dce626fbe299cc90a895b6e60797f9c1f0d35a55dd576ed6b1724d1e54bb1469cf95c21d9ef88181218246142a6f4b567ab425ba5f5387eaeea2"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "Spec lives at "
+          },
+          {
+            "type": "url",
+            "url": "https://github.com/nostr-protocol/nips"
+          },
+          {
+            "type": "text",
+            "text": " read it"
+          }
+        ]
+      },
+      "embeds": {}
+    },
+    {
+      "id": "S-T04",
+      "category": "text",
+      "title": "Image URL -> media block",
+      "exercises": "grouper post-pass -> Segment::Media { kind: Image }",
+      "events": [
+        {
+          "id": "6c24eb444d1bea427f27768e87bda6346face974e8c429af6276b5a9571821dc",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700000003,
+          "kind": 1,
+          "tags": [],
+          "content": "Sunset from the office https://nmp.test/img/sunset.jpg",
+          "sig": "67bc204341616d0f0446296492797d733aefb8ec2ac240966cf8d4c74f726fdcadf8a67e2067b5c17ae6ccaba88dbebc82128ac804855e0aac9126cdd8b627fb"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "Sunset from the office "
+          },
+          {
+            "type": "media",
+            "media_kind": "Image",
+            "urls": [
+              "https://nmp.test/img/sunset.jpg"
+            ]
+          }
+        ]
+      },
+      "embeds": {}
+    },
+    {
+      "id": "S-T05",
+      "category": "text",
+      "title": "Video URL -> media block",
+      "exercises": "Segment::Media { kind: Video } from .mp4",
+      "events": [
+        {
+          "id": "5dff02248af41c5b8a70330e5e622e5083965ddd66eeaf857c95fe2649e49b3b",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700000004,
+          "kind": 1,
+          "tags": [],
+          "content": "Recording of the postmortem https://nmp.test/v/postmortem.mp4",
+          "sig": "7e81a3eb8a9dd6a66b46e8bdf527fee54ec10c1489ce3e853f51d08718f087b2531ba889dcb35ca36bd568cbb6d41dead36382dab617626a36f4cacc4d0ac1dd"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "Recording of the postmortem "
+          },
+          {
+            "type": "media",
+            "media_kind": "Video",
+            "urls": [
+              "https://nmp.test/v/postmortem.mp4"
+            ]
+          }
+        ]
+      },
+      "embeds": {}
+    },
+    {
+      "id": "S-T06",
+      "category": "text",
+      "title": "Media gallery (grouped images)",
+      "exercises": "grouper merges consecutive media URLs into ONE Segment::Media",
+      "events": [
+        {
+          "id": "aadd763036fc6e4d135bbec0f779a1abc1a447c750f88d47328cd74361686409",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700000005,
+          "kind": 1,
+          "tags": [],
+          "content": "Trip photos https://nmp.test/img/a.jpg https://nmp.test/img/b.png https://nmp.test/img/c.webp",
+          "sig": "3cabb54918fb8bf8abef2c28f7852f7cf37c7674976ffe39cd54d776d36b6496fee20ebc43ac124ecfaae476d107e02807588a857ab8c964e56d3be3499bec22"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "Trip photos "
+          },
+          {
+            "type": "media",
+            "media_kind": "Image",
+            "urls": [
+              "https://nmp.test/img/a.jpg",
+              "https://nmp.test/img/b.png",
+              "https://nmp.test/img/c.webp"
+            ]
+          }
+        ]
+      },
+      "embeds": {}
+    },
+    {
+      "id": "S-T07",
+      "category": "text",
+      "title": "Mixed media kinds adjacent",
+      "exercises": "grouper boundary: separate Media segment per kind run",
+      "events": [
+        {
+          "id": "a379d35d69b7417f4027eb9ddd7ab94b8368b768c4e0b859dd28cf7a22200aa4",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700000006,
+          "kind": 1,
+          "tags": [],
+          "content": "https://nmp.test/img/x.png https://nmp.test/v/y.webm https://nmp.test/a/z.mp3",
+          "sig": "156472c28547f2c253e592704e74b3eb41401f52b3ef9acf9439c9da3954aa4173583d87e24748224a59d0a32375033eeff77809edeed4e5751e3059b1c163d5"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "media",
+            "media_kind": "Image",
+            "urls": [
+              "https://nmp.test/img/x.png"
+            ]
+          },
+          {
+            "type": "text",
+            "text": " "
+          },
+          {
+            "type": "media",
+            "media_kind": "Video",
+            "urls": [
+              "https://nmp.test/v/y.webm"
+            ]
+          },
+          {
+            "type": "text",
+            "text": " "
+          },
+          {
+            "type": "media",
+            "media_kind": "Audio",
+            "urls": [
+              "https://nmp.test/a/z.mp3"
+            ]
+          }
+        ]
+      },
+      "embeds": {}
+    },
+    {
+      "id": "S-T08",
+      "category": "text",
+      "title": "NIP-30 custom emoji (resolved)",
+      "exercises": "Segment::Emoji { url: Some } resolved from emoji tags",
+      "events": [
+        {
+          "id": "2796c5bc4cbbe34dc2590a352f04f32b63e1f2d0ed5e49d0959ea29e9170df02",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700000007,
+          "kind": 1,
+          "tags": [
+            [
+              "emoji",
+              "nmp",
+              "https://nmp.test/e/nmp.png"
+            ],
+            [
+              "emoji",
+              "rocket",
+              "https://nmp.test/e/rocket.png"
+            ]
+          ],
+          "content": "gm :nmp: ship it :rocket:",
+          "sig": "06ab8fd0f17aa7dd8f3f1bebfe663a2f8a509c4d4b06721b87f172ce27207181d2c41e5af2601b3efe9e308bc50dba69d977a6c133e2813f241707a61d3e82e6"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "gm "
+          },
+          {
+            "type": "emoji",
+            "shortcode": "nmp",
+            "url": "https://nmp.test/e/nmp.png"
+          },
+          {
+            "type": "text",
+            "text": " ship it "
+          },
+          {
+            "type": "emoji",
+            "shortcode": "rocket",
+            "url": "https://nmp.test/e/rocket.png"
+          }
+        ]
+      },
+      "embeds": {}
+    },
+    {
+      "id": "S-T09",
+      "category": "text",
+      "title": "NIP-30 emoji (unresolved)",
+      "exercises": "Segment::Emoji { url: None } — graceful literal fallback (D1)",
+      "events": [
+        {
+          "id": "e91fc3832be9aa6f280ed5cab9c69800823e012f27beebbd073f703661e291b9",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700000008,
+          "kind": 1,
+          "tags": [],
+          "content": "missing :ghost: shortcode",
+          "sig": "33c6e11443174499991ca63173e5128aa09fd2c6fc4dc1b3d6885cf141e2ef075232541a7b143417f057e74e664c8a8913be14c617d3bc8400bc4d3a347be552"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "missing "
+          },
+          {
+            "type": "emoji",
+            "shortcode": "ghost",
+            "url": null
+          },
+          {
+            "type": "text",
+            "text": " shortcode"
+          }
+        ]
+      },
+      "embeds": {}
+    },
+    {
+      "id": "S-T10",
+      "category": "text",
+      "title": "Lightning / Cashu invoice tokens (reserved)",
+      "exercises": "Segment::Invoice — detect+emit; wallet UX app-owned (M12)",
+      "events": [
+        {
+          "id": "19f625435b24d08606ad18bce1523eaedd38aaff32463b938eef01a2ffb3b486",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700000009,
+          "kind": 1,
+          "tags": [],
+          "content": "zap me lnbc10u1p3xqsrpp5demoinvoicebody or cashu cashuAeyJ0b2tlbnMiOnt9fQ==",
+          "sig": "50f4dd2ebdc93c4a0e18e3ac752a8010d98720a4903f251aaf9d07300fa48cc3c453f1e2c243679186a4495fc26e185b2e5499aa78233c4a23fec1f171403b69"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "zap me lnbc10u1p3xqsrpp5demoinvoicebody or cashu cashuAeyJ0b2tlbnMiOnt9fQ=="
+          }
+        ]
+      },
+      "embeds": {}
+    },
+    {
+      "id": "S-M01",
+      "category": "mentions",
+      "title": "npub mention chip (kind:0 resolved)",
+      "exercises": "Segment::Mention(Profile) — chip shows name + avatar",
+      "events": [
+        {
+          "id": "c4951b409e3aaaf44657c35a5b2e2051c6b606a0ec1323664c9d0348a0392f2f",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700010000,
+          "kind": 1,
+          "tags": [],
+          "content": "talked with nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd about reconnects",
+          "sig": "7890f69e53f7b088adffd5f7c652eca5b3fc2ccbfd7173d346846b96585a7d2fd54f0fc240cbc676eba0fca137950c47b9ecd033fd779ec68ebcc534d9e148b4"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "talked with "
+          },
+          {
+            "type": "mention",
+            "uri": "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd",
+            "kind": "npub",
+            "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
+          },
+          {
+            "type": "text",
+            "text": " about reconnects"
+          }
+        ]
+      },
+      "embeds": {
+        "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd": {
+          "resolved_kind": 0,
+          "profile_name": "bob",
+          "profile_picture": "https://nmp.test/img/bob.png",
+          "collapsed": false
+        }
+      }
+    },
+    {
+      "id": "S-M02",
+      "category": "mentions",
+      "title": "nprofile mention chip (no picture -> D1 identicon)",
+      "exercises": "Segment::Mention(Profile w/ relay hint); identicon fallback",
+      "events": [
+        {
+          "id": "74b5cac8a6cd65febb588fe3a19e2909a683a3f4c00627dfd539e689b11270cb",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700010001,
+          "kind": 1,
+          "tags": [],
+          "content": "shoutout nostr:nprofile1qqs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7gpz3mhxue69uhhyetvv9ujumndwqh8getnwsqg9phv",
+          "sig": "700048e6cc5ef3ab72f130d7d915b39012e63a0633c4cf5fee45b9d617097e9d586f9fc4af6b8c7591211e0ce9c6f776b995164880f6f557743040f3507d36bf"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "shoutout "
+          },
+          {
+            "type": "mention",
+            "uri": "nostr:nprofile1qqs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7gpz3mhxue69uhhyetvv9ujumndwqh8getnwsqg9phv",
+            "kind": "nprofile",
+            "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9"
+          }
+        ]
+      },
+      "embeds": {
+        "nostr:nprofile1qqs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7gpz3mhxue69uhhyetvv9ujumndwqh8getnwsqg9phv": {
+          "resolved_kind": 0,
+          "profile_name": "carol",
+          "collapsed": false
+        }
+      }
+    },
+    {
+      "id": "S-M03",
+      "category": "mentions",
+      "title": "Mention with NO kind:0 (D1 identicon placeholder)",
+      "exercises": "D1 best-effort — absent target -> deterministic identicon",
+      "events": [
+        {
+          "id": "23fe763ea9f0cda2c822beafd53af1d645195e8e3a971f940db041283b404994",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700010002,
+          "kind": 1,
+          "tags": [],
+          "content": "ping nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k",
+          "sig": "5bfd30cbfbf63fb1d426f00d680103d398bb97537aaed703a3fd2f89662f5fd26841b20d575ed298985526c1d3ea8293f74748bc4c9fd9729dc01a1be6f0b4d1"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "ping "
+          },
+          {
+            "type": "mention",
+            "uri": "nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k",
+            "kind": "npub",
+            "pubkey": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13"
+          }
+        ]
+      },
+      "embeds": {
+        "nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k": {
+          "resolved_kind": 0,
+          "collapsed": true,
+          "collapse_reason": "dangling"
+        }
+      }
+    },
+    {
+      "id": "S-M04",
+      "category": "quotes",
+      "title": "Inline quoted note (note1)",
+      "exercises": "Segment::EventRef(Note) -> embedded quoted-note card",
+      "events": [
+        {
+          "id": "2e648f5e77523bdacba639c06fe156b1262c402fd5ff1eb3ecd24dd4e7be7985",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700020001,
+          "kind": 1,
+          "tags": [],
+          "content": "this nails it: nostr:note16rd0plzzcqhl6yk3jur0jt5pqs8xrghd94tufmnf906ms2ccdq5s60mrs8",
+          "sig": "8e50ffc1158b3aa5a1bd0f85d05237567cfb2c0183d60e5029e09828d4ef040a77d11f3047862ec255000ecc1a7f1e0a829200cf06bf805df38deff6fe09a301"
+        },
+        {
+          "id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
+          "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+          "created_at": 1700020000,
+          "kind": 1,
+          "tags": [],
+          "content": "Relays are a CDN you forgot you were running.",
+          "sig": "2ed539ee402c72466d8a4244011579ab73a1bef8909b7266433967ee333dd2e0f0879e27be8c36ce7209056b3f76079674a8bbc33e7096dda322e26b2c308326"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "this nails it: "
+          },
+          {
+            "type": "eventRef",
+            "uri": "nostr:note16rd0plzzcqhl6yk3jur0jt5pqs8xrghd94tufmnf906ms2ccdq5s60mrs8",
+            "kind": "note",
+            "id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829"
+          }
+        ]
+      },
+      "embeds": {
+        "nostr:note16rd0plzzcqhl6yk3jur0jt5pqs8xrghd94tufmnf906ms2ccdq5s60mrs8": {
+          "resolved_kind": 1,
+          "event": {
+            "id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
+            "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+            "created_at": 1700020000,
+            "kind": 1,
+            "tags": [],
+            "content": "Relays are a CDN you forgot you were running.",
+            "sig": "2ed539ee402c72466d8a4244011579ab73a1bef8909b7266433967ee333dd2e0f0879e27be8c36ce7209056b3f76079674a8bbc33e7096dda322e26b2c308326"
+          },
+          "rendered": {
+            "mode": "Plain",
+            "segments": [
+              {
+                "type": "text",
+                "text": "Relays are a CDN you forgot you were running."
+              }
+            ]
+          },
+          "collapsed": false
+        }
+      }
+    },
+    {
+      "id": "S-M05",
+      "category": "quotes",
+      "title": "Inline quoted event (nevent1, relay hint)",
+      "exercises": "Segment::EventRef(Nevent) resolves to same card as note1",
+      "events": [
+        {
+          "id": "594bc53d88ee70cd0d3c03841dea5fd2ca6d1064e232afabf0f0ed3140fa0358",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700020002,
+          "kind": 1,
+          "tags": [],
+          "content": "context: nostr:nevent1qqsdpkhsl3pvqtlaztgewphe96qsgrnp5tkj647yae5jhadc9vvxs2gpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqyt7lq82",
+          "sig": "0a016fb358abebba4c84ca7c49577629f036be353f2e64ca73a4e9a63640e578305de4121b91b3f16cca30db3e28e7d21d1d4814e3502dc3b4d0b0937aa33fd6"
+        },
+        {
+          "id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
+          "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+          "created_at": 1700020000,
+          "kind": 1,
+          "tags": [],
+          "content": "Relays are a CDN you forgot you were running.",
+          "sig": "2ed539ee402c72466d8a4244011579ab73a1bef8909b7266433967ee333dd2e0f0879e27be8c36ce7209056b3f76079674a8bbc33e7096dda322e26b2c308326"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "context: "
+          },
+          {
+            "type": "eventRef",
+            "uri": "nostr:nevent1qqsdpkhsl3pvqtlaztgewphe96qsgrnp5tkj647yae5jhadc9vvxs2gpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqyt7lq82",
+            "kind": "nevent",
+            "id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829"
+          }
+        ]
+      },
+      "embeds": {
+        "nostr:nevent1qqsdpkhsl3pvqtlaztgewphe96qsgrnp5tkj647yae5jhadc9vvxs2gpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqyt7lq82": {
+          "resolved_kind": 1,
+          "event": {
+            "id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
+            "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+            "created_at": 1700020000,
+            "kind": 1,
+            "tags": [],
+            "content": "Relays are a CDN you forgot you were running.",
+            "sig": "2ed539ee402c72466d8a4244011579ab73a1bef8909b7266433967ee333dd2e0f0879e27be8c36ce7209056b3f76079674a8bbc33e7096dda322e26b2c308326"
+          },
+          "rendered": {
+            "mode": "Plain",
+            "segments": [
+              {
+                "type": "text",
+                "text": "Relays are a CDN you forgot you were running."
+              }
+            ]
+          },
+          "collapsed": false
+        }
+      }
+    },
+    {
+      "id": "S-M06",
+      "category": "quotes",
+      "title": "Quoted note containing a mention",
+      "exercises": "one level recursion; inner Segment::Mention resolves",
+      "events": [
+        {
+          "id": "d59ec04c55c093a860f86d842636a37d51ec83f6e7a2d737e9825cc9184f8a23",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700020004,
+          "kind": 1,
+          "tags": [],
+          "content": "see nostr:note1ed8x9jmszjyg0e0pzh8wv8wzq7z0zt3ewjql70ceunxwhe3zxnlswzerr7",
+          "sig": "b32bdc9fb0b50c1456a9719e725f3e94ff7de114f44e79e6ba0ac53580967c1fbacbc649148da11c231745502da0f0ef7d2d4a13eeec8e855f41ffa62ae12d01"
+        },
+        {
+          "id": "cb4e62cb70148887e5e115cee61dc20784f12e397481ff3f19e4ccebe62234ff",
+          "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "created_at": 1700020003,
+          "kind": 1,
+          "tags": [],
+          "content": "agree with nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd here",
+          "sig": "e390189addbd963738b23a38c7ba3bd598965029e6db4770d05c268f79c4226113fec71f2ecf47831175426b73d91589bf630f80910b4e447a3dea5b9a352b6d"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "see "
+          },
+          {
+            "type": "eventRef",
+            "uri": "nostr:note1ed8x9jmszjyg0e0pzh8wv8wzq7z0zt3ewjql70ceunxwhe3zxnlswzerr7",
+            "kind": "note",
+            "id": "cb4e62cb70148887e5e115cee61dc20784f12e397481ff3f19e4ccebe62234ff"
+          }
+        ]
+      },
+      "embeds": {
+        "nostr:note1ed8x9jmszjyg0e0pzh8wv8wzq7z0zt3ewjql70ceunxwhe3zxnlswzerr7": {
+          "resolved_kind": 1,
+          "event": {
+            "id": "cb4e62cb70148887e5e115cee61dc20784f12e397481ff3f19e4ccebe62234ff",
+            "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+            "created_at": 1700020003,
+            "kind": 1,
+            "tags": [],
+            "content": "agree with nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd here",
+            "sig": "e390189addbd963738b23a38c7ba3bd598965029e6db4770d05c268f79c4226113fec71f2ecf47831175426b73d91589bf630f80910b4e447a3dea5b9a352b6d"
+          },
+          "rendered": {
+            "mode": "Plain",
+            "segments": [
+              {
+                "type": "text",
+                "text": "agree with "
+              },
+              {
+                "type": "mention",
+                "uri": "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd",
+                "kind": "npub",
+                "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
+              },
+              {
+                "type": "text",
+                "text": " here"
+              }
+            ]
+          },
+          "collapsed": false
+        },
+        "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd": {
+          "resolved_kind": 0,
+          "profile_name": "bob",
+          "profile_picture": "https://nmp.test/img/bob.png",
+          "collapsed": false
+        }
+      }
+    },
+    {
+      "id": "S-M07",
+      "category": "quotes",
+      "title": "Nested quotes (depth 3, all expand)",
+      "exercises": "multi-level recursion under max_depth=4",
+      "events": [
+        {
+          "id": "7d8790d9fdb20736cf2440898f9a3b7b24b01b3792444b79543bb49eac5f944f",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700020008,
+          "kind": 1,
+          "tags": [],
+          "content": "thread of thought nostr:note1hxzt895dpfczwm5t3pzf9rs4arv88nywzvxef4en7auuu5qmxnfsumesm5",
+          "sig": "2dba4d63bbad9c5c3eb5f4e0ae38f7d58640f69bc6f4745752d5d60adb57d8cd842517b8aa07d03e06ce5d3a16ef28480374ba87e819c921ba7870db1596b83b"
+        },
+        {
+          "id": "b984b3968d0a70276e8b8844928e15e8d873cc8e130d94d733f779ce501b34d3",
+          "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+          "created_at": 1700020007,
+          "kind": 1,
+          "tags": [],
+          "content": "strongly agree nostr:note17s3qpncp299dwpatac9hlpgfhln3445mw2qwewl0gn8r66frly8qzrvpkl",
+          "sig": "646c7d4ae2177968a6a468bc0e9be100b2be323d67b334db881187937635ebd950ba50500aad58a804ceb5c34276209cebdfcf7c8a5fdb1573fd43433b266b3d"
+        },
+        {
+          "id": "f42200cf01514ad707abee0b7f8509bfe71ad69b7280ecbbef44ce3d6923f90e",
+          "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "created_at": 1700020006,
+          "kind": 1,
+          "tags": [],
+          "content": "+1 nostr:note1g6y9tpx64qvmqp60vu4vnwcfycrxl6hdzm7jdw0e3xy60rfetkfq4thkfu",
+          "sig": "63cc72ea3a5ee3f0653e857bd8982f931909b645bce65b951607de89b22b202168716e23fa8f408594eb78545f73a13873a8c56e6d96e0149f7c6e0f38b2deb3"
+        },
+        {
+          "id": "46885584daa819b0074f672ac9bb0926066feaed16fd26b9f98989a78d395d92",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700020005,
+          "kind": 1,
+          "tags": [],
+          "content": "Root insight: backpressure is a feature.",
+          "sig": "9a54ea866e1765faf2d30ce0c2f9cce8df9ef75a7ebd009fc978dbb4bca7efcf45c35dd2fe002897347eee7951a85b5498667d4b17790b2ce7eeb2d26c4f8916"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "thread of thought "
+          },
+          {
+            "type": "eventRef",
+            "uri": "nostr:note1hxzt895dpfczwm5t3pzf9rs4arv88nywzvxef4en7auuu5qmxnfsumesm5",
+            "kind": "note",
+            "id": "b984b3968d0a70276e8b8844928e15e8d873cc8e130d94d733f779ce501b34d3"
+          }
+        ]
+      },
+      "embeds": {
+        "nostr:note17s3qpncp299dwpatac9hlpgfhln3445mw2qwewl0gn8r66frly8qzrvpkl": {
+          "resolved_kind": 1,
+          "event": {
+            "id": "f42200cf01514ad707abee0b7f8509bfe71ad69b7280ecbbef44ce3d6923f90e",
+            "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+            "created_at": 1700020006,
+            "kind": 1,
+            "tags": [],
+            "content": "+1 nostr:note1g6y9tpx64qvmqp60vu4vnwcfycrxl6hdzm7jdw0e3xy60rfetkfq4thkfu",
+            "sig": "63cc72ea3a5ee3f0653e857bd8982f931909b645bce65b951607de89b22b202168716e23fa8f408594eb78545f73a13873a8c56e6d96e0149f7c6e0f38b2deb3"
+          },
+          "rendered": {
+            "mode": "Plain",
+            "segments": [
+              {
+                "type": "text",
+                "text": "+1 "
+              },
+              {
+                "type": "eventRef",
+                "uri": "nostr:note1g6y9tpx64qvmqp60vu4vnwcfycrxl6hdzm7jdw0e3xy60rfetkfq4thkfu",
+                "kind": "note",
+                "id": "46885584daa819b0074f672ac9bb0926066feaed16fd26b9f98989a78d395d92"
+              }
+            ]
+          },
+          "collapsed": false
+        },
+        "nostr:note1g6y9tpx64qvmqp60vu4vnwcfycrxl6hdzm7jdw0e3xy60rfetkfq4thkfu": {
+          "resolved_kind": 1,
+          "event": {
+            "id": "46885584daa819b0074f672ac9bb0926066feaed16fd26b9f98989a78d395d92",
+            "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+            "created_at": 1700020005,
+            "kind": 1,
+            "tags": [],
+            "content": "Root insight: backpressure is a feature.",
+            "sig": "9a54ea866e1765faf2d30ce0c2f9cce8df9ef75a7ebd009fc978dbb4bca7efcf45c35dd2fe002897347eee7951a85b5498667d4b17790b2ce7eeb2d26c4f8916"
+          },
+          "rendered": {
+            "mode": "Plain",
+            "segments": [
+              {
+                "type": "text",
+                "text": "Root insight: backpressure is a feature."
+              }
+            ]
+          },
+          "collapsed": false
+        },
+        "nostr:note1hxzt895dpfczwm5t3pzf9rs4arv88nywzvxef4en7auuu5qmxnfsumesm5": {
+          "resolved_kind": 1,
+          "event": {
+            "id": "b984b3968d0a70276e8b8844928e15e8d873cc8e130d94d733f779ce501b34d3",
+            "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+            "created_at": 1700020007,
+            "kind": 1,
+            "tags": [],
+            "content": "strongly agree nostr:note17s3qpncp299dwpatac9hlpgfhln3445mw2qwewl0gn8r66frly8qzrvpkl",
+            "sig": "646c7d4ae2177968a6a468bc0e9be100b2be323d67b334db881187937635ebd950ba50500aad58a804ceb5c34276209cebdfcf7c8a5fdb1573fd43433b266b3d"
+          },
+          "rendered": {
+            "mode": "Plain",
+            "segments": [
+              {
+                "type": "text",
+                "text": "strongly agree "
+              },
+              {
+                "type": "eventRef",
+                "uri": "nostr:note17s3qpncp299dwpatac9hlpgfhln3445mw2qwewl0gn8r66frly8qzrvpkl",
+                "kind": "note",
+                "id": "f42200cf01514ad707abee0b7f8509bfe71ad69b7280ecbbef44ce3d6923f90e"
+              }
+            ]
+          },
+          "collapsed": false
+        }
+      }
+    },
+    {
+      "id": "S-M08",
+      "category": "quotes",
+      "title": "Recursion depth >= 4 -> collapse (PD-015)",
+      "exercises": "RenderContext::should_collapse when depth >= max_depth",
+      "events": [
+        {
+          "id": "e82960693a58e44fcb82217eeb64392d9a5c9643dfd806f02e611497c3218e9c",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700020014,
+          "kind": 1,
+          "tags": [],
+          "content": "L0 root nostr:note18vnprt6zpj646tctzwzuu8dd0gmfjaqtskjamyavtlfrpnyxjhrsl0la44",
+          "sig": "a0db7cb1568a217b31848d0fa1283a1a5d79128b8f1a2fbd9b0ed6fe8f2906203a919fd259af67bd38271d7888bc9da86cf3f55711dbe1d129bad62382513280"
+        },
+        {
+          "id": "3b2611af420cb55d2f0b1385ce1dad7a3699740b85a5dd93ac5fd230cc8695c7",
+          "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+          "created_at": 1700020013,
+          "kind": 1,
+          "tags": [],
+          "content": "L1 nostr:note1k5susjqffcvmxpfh7jsmcaxeu59c3up7ervsr7c4snkveexjszlszhadmx",
+          "sig": "1ea404364ecf94821bf61fd38e5a8f5b8e4906b68160a5b6b95af80b547422f08bc7a4fbd9cf857fcb127c4bd49a0aa7b1ca2cbc571acebd821ba330933c62c5"
+        },
+        {
+          "id": "b521c848094e19b30537f4a1bc74d9e50b88f03ec8d901fb1584eccce4d280bf",
+          "pubkey": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+          "created_at": 1700020012,
+          "kind": 1,
+          "tags": [],
+          "content": "L2 nostr:note15pqse447hpccdm97gemnhev59x0jfrkedchue39wxp7lv6qu84gqt6w809",
+          "sig": "de8c1ef3eaa6a8bf719429c83e374f975e49d92d758c620e750aa5c94f31717bfb2ba103cc942bc15c857b15f8fa28a303eb000729bb0a86aa3eb59aeff71ec1"
+        },
+        {
+          "id": "a0410cd6beb87186ecbe46773be594299f248ed96e2fccc4ae307df6681c3d50",
+          "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "created_at": 1700020011,
+          "kind": 1,
+          "tags": [],
+          "content": "L3 nostr:note1kz6ll4ksxd4m584ancqjv0h69dv5w24rfk557twgt4m0fuk65ylqhv0tlv",
+          "sig": "7cba96bc93ae417dcef5e2da4cf7cb5e9b6ceee75ed608abf34f9dbd7958a7e462fe40011b61255a6c8acca5ba693d5233caa33dde91dd625c556534e39f468e"
+        },
+        {
+          "id": "b0b5ffd6d0336bba1ebd9e01263efa2b59472aa34da94f2dc85d76f4f2daa13e",
+          "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+          "created_at": 1700020010,
+          "kind": 1,
+          "tags": [],
+          "content": "L4 nostr:note1yfphcaq0j62a9xf9dzp066mvjmhpgreqxlw0f3thx9y7q4m6wdpqtn94hc",
+          "sig": "c0ec70fd8810571fea16977160e293a593794fb51b7ff19e2335edc7170c55a04f1bd2c4dba7206edce4db44e1688f0281a75198aa4d043ad40af4cc9d9eddc1"
+        },
+        {
+          "id": "22437c740f9695d299256882fd6b6c96ee140f2037dcf4c5773149e0577a7342",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700020009,
+          "kind": 1,
+          "tags": [],
+          "content": "L5 deepest leaf",
+          "sig": "3aad5870676d5618371188d139fee60aeb764526b61ff3d0e1b3429cd46496e36acbf7ea253aa8640cea7b461e82cccda92ceeed08b93c6686554ee387fa408d"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "L0 root "
+          },
+          {
+            "type": "eventRef",
+            "uri": "nostr:note18vnprt6zpj646tctzwzuu8dd0gmfjaqtskjamyavtlfrpnyxjhrsl0la44",
+            "kind": "note",
+            "id": "3b2611af420cb55d2f0b1385ce1dad7a3699740b85a5dd93ac5fd230cc8695c7"
+          }
+        ]
+      },
+      "embeds": {
+        "nostr:note15pqse447hpccdm97gemnhev59x0jfrkedchue39wxp7lv6qu84gqt6w809": {
+          "resolved_kind": 1,
+          "event": {
+            "id": "a0410cd6beb87186ecbe46773be594299f248ed96e2fccc4ae307df6681c3d50",
+            "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+            "created_at": 1700020011,
+            "kind": 1,
+            "tags": [],
+            "content": "L3 nostr:note1kz6ll4ksxd4m584ancqjv0h69dv5w24rfk557twgt4m0fuk65ylqhv0tlv",
+            "sig": "7cba96bc93ae417dcef5e2da4cf7cb5e9b6ceee75ed608abf34f9dbd7958a7e462fe40011b61255a6c8acca5ba693d5233caa33dde91dd625c556534e39f468e"
+          },
+          "rendered": {
+            "mode": "Plain",
+            "segments": [
+              {
+                "type": "text",
+                "text": "L3 "
+              },
+              {
+                "type": "eventRef",
+                "uri": "nostr:note1kz6ll4ksxd4m584ancqjv0h69dv5w24rfk557twgt4m0fuk65ylqhv0tlv",
+                "kind": "note",
+                "id": "b0b5ffd6d0336bba1ebd9e01263efa2b59472aa34da94f2dc85d76f4f2daa13e"
+              }
+            ]
+          },
+          "collapsed": false
+        },
+        "nostr:note18vnprt6zpj646tctzwzuu8dd0gmfjaqtskjamyavtlfrpnyxjhrsl0la44": {
+          "resolved_kind": 1,
+          "event": {
+            "id": "3b2611af420cb55d2f0b1385ce1dad7a3699740b85a5dd93ac5fd230cc8695c7",
+            "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+            "created_at": 1700020013,
+            "kind": 1,
+            "tags": [],
+            "content": "L1 nostr:note1k5susjqffcvmxpfh7jsmcaxeu59c3up7ervsr7c4snkveexjszlszhadmx",
+            "sig": "1ea404364ecf94821bf61fd38e5a8f5b8e4906b68160a5b6b95af80b547422f08bc7a4fbd9cf857fcb127c4bd49a0aa7b1ca2cbc571acebd821ba330933c62c5"
+          },
+          "rendered": {
+            "mode": "Plain",
+            "segments": [
+              {
+                "type": "text",
+                "text": "L1 "
+              },
+              {
+                "type": "eventRef",
+                "uri": "nostr:note1k5susjqffcvmxpfh7jsmcaxeu59c3up7ervsr7c4snkveexjszlszhadmx",
+                "kind": "note",
+                "id": "b521c848094e19b30537f4a1bc74d9e50b88f03ec8d901fb1584eccce4d280bf"
+              }
+            ]
+          },
+          "collapsed": false
+        },
+        "nostr:note1k5susjqffcvmxpfh7jsmcaxeu59c3up7ervsr7c4snkveexjszlszhadmx": {
+          "resolved_kind": 1,
+          "event": {
+            "id": "b521c848094e19b30537f4a1bc74d9e50b88f03ec8d901fb1584eccce4d280bf",
+            "pubkey": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+            "created_at": 1700020012,
+            "kind": 1,
+            "tags": [],
+            "content": "L2 nostr:note15pqse447hpccdm97gemnhev59x0jfrkedchue39wxp7lv6qu84gqt6w809",
+            "sig": "de8c1ef3eaa6a8bf719429c83e374f975e49d92d758c620e750aa5c94f31717bfb2ba103cc942bc15c857b15f8fa28a303eb000729bb0a86aa3eb59aeff71ec1"
+          },
+          "rendered": {
+            "mode": "Plain",
+            "segments": [
+              {
+                "type": "text",
+                "text": "L2 "
+              },
+              {
+                "type": "eventRef",
+                "uri": "nostr:note15pqse447hpccdm97gemnhev59x0jfrkedchue39wxp7lv6qu84gqt6w809",
+                "kind": "note",
+                "id": "a0410cd6beb87186ecbe46773be594299f248ed96e2fccc4ae307df6681c3d50"
+              }
+            ]
+          },
+          "collapsed": false
+        },
+        "nostr:note1kz6ll4ksxd4m584ancqjv0h69dv5w24rfk557twgt4m0fuk65ylqhv0tlv": {
+          "resolved_kind": 1,
+          "event": {
+            "id": "b0b5ffd6d0336bba1ebd9e01263efa2b59472aa34da94f2dc85d76f4f2daa13e",
+            "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+            "created_at": 1700020010,
+            "kind": 1,
+            "tags": [],
+            "content": "L4 nostr:note1yfphcaq0j62a9xf9dzp066mvjmhpgreqxlw0f3thx9y7q4m6wdpqtn94hc",
+            "sig": "c0ec70fd8810571fea16977160e293a593794fb51b7ff19e2335edc7170c55a04f1bd2c4dba7206edce4db44e1688f0281a75198aa4d043ad40af4cc9d9eddc1"
+          },
+          "rendered": {
+            "mode": "Plain",
+            "segments": [
+              {
+                "type": "text",
+                "text": "L4 "
+              },
+              {
+                "type": "eventRef",
+                "uri": "nostr:note1yfphcaq0j62a9xf9dzp066mvjmhpgreqxlw0f3thx9y7q4m6wdpqtn94hc",
+                "kind": "note",
+                "id": "22437c740f9695d299256882fd6b6c96ee140f2037dcf4c5773149e0577a7342"
+              }
+            ]
+          },
+          "collapsed": false
+        },
+        "nostr:note1yfphcaq0j62a9xf9dzp066mvjmhpgreqxlw0f3thx9y7q4m6wdpqtn94hc": {
+          "resolved_kind": 1,
+          "event": {
+            "id": "22437c740f9695d299256882fd6b6c96ee140f2037dcf4c5773149e0577a7342",
+            "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+            "created_at": 1700020009,
+            "kind": 1,
+            "tags": [],
+            "content": "L5 deepest leaf",
+            "sig": "3aad5870676d5618371188d139fee60aeb764526b61ff3d0e1b3429cd46496e36acbf7ea253aa8640cea7b461e82cccda92ceeed08b93c6686554ee387fa408d"
+          },
+          "rendered": {
+            "mode": "Plain",
+            "segments": [
+              {
+                "type": "text",
+                "text": "L5 deepest leaf"
+              }
+            ]
+          },
+          "collapsed": false
+        }
+      }
+    },
+    {
+      "id": "S-M09",
+      "category": "quotes",
+      "title": "Cycle A->B->A -> visited-set collapse",
+      "exercises": "RenderContext.visited cycle guard (naddr coords)",
+      "events": [
+        {
+          "id": "75d18bc2b9a1a96dc37138858a8297c206166c7273e9dc0b3a54fdc699a7fa81",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700020017,
+          "kind": 1,
+          "tags": [],
+          "content": "recursive pair: nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd",
+          "sig": "25eed9cbcc96fe2ab87cb28995c4de60cb4ef865636c49ae9a2df984a0459621f9ef39ae6a61a747a341518820ea1d7490b9c2d49f0bc37bc38a8babe6817cee"
+        },
+        {
+          "id": "8a711a07eac3bb621ec3e1e44a5a68a7f9e7adf53fada2bb206a56b0aae326a7",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700020015,
+          "kind": 30023,
+          "tags": [
+            [
+              "d",
+              "cycle-a"
+            ],
+            [
+              "title",
+              "Cycle A"
+            ]
+          ],
+          "content": "# Cycle A\n\nSee the other side: nostr:naddr1qqrkx7trd3jj6cszyqhchhjdrgrjpy64kjnj2zju2y5w3zuyhhwxrx4hew5d26djgrh7gqcyqqq823chhzkch\n",
+          "sig": "d049a70cb56902e95fc08b5f330ae6c8a26e14955c9cd64966ea6e565043ce74770721367463db5ad8112b9bcf40f51e490f817d8b7a299ee3923e53e32e87b8"
+        },
+        {
+          "id": "2d957edb4c4e15f04ab7032ff16e45378c5255e52482a7f8cfae64bfb06a748d",
+          "pubkey": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+          "created_at": 1700020016,
+          "kind": 30023,
+          "tags": [
+            [
+              "d",
+              "cycle-b"
+            ],
+            [
+              "title",
+              "Cycle B"
+            ]
+          ],
+          "content": "# Cycle B\n\nBack to the start: nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd\n",
+          "sig": "25807703a91d6ac718fcc0000c68583a91cc64703e46984a609a99f2157a1b7a0ec9f8e3c39d509792f1edcc144947689baeede7acbff95bb96532c23dbd8550"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "recursive pair: "
+          },
+          {
+            "type": "eventRef",
+            "uri": "nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd",
+            "kind": "naddr",
+            "id": "30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:cycle-a"
+          }
+        ]
+      },
+      "embeds": {
+        "nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd": {
+          "resolved_kind": 30023,
+          "event": {
+            "id": "8a711a07eac3bb621ec3e1e44a5a68a7f9e7adf53fada2bb206a56b0aae326a7",
+            "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+            "created_at": 1700020015,
+            "kind": 30023,
+            "tags": [
+              [
+                "d",
+                "cycle-a"
+              ],
+              [
+                "title",
+                "Cycle A"
+              ]
+            ],
+            "content": "# Cycle A\n\nSee the other side: nostr:naddr1qqrkx7trd3jj6cszyqhchhjdrgrjpy64kjnj2zju2y5w3zuyhhwxrx4hew5d26djgrh7gqcyqqq823chhzkch\n",
+            "sig": "d049a70cb56902e95fc08b5f330ae6c8a26e14955c9cd64966ea6e565043ce74770721367463db5ad8112b9bcf40f51e490f817d8b7a299ee3923e53e32e87b8"
+          },
+          "rendered": {
+            "mode": "Markdown",
+            "segments": [
+              {
+                "type": "markdownBlock",
+                "node": {
+                  "type": "heading",
+                  "level": 1,
+                  "inlines": [
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": "Cycle A"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "markdownBlock",
+                "node": {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": "See the other side: "
+                      }
+                    },
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "eventRef",
+                        "uri": "nostr:naddr1qqrkx7trd3jj6cszyqhchhjdrgrjpy64kjnj2zju2y5w3zuyhhwxrx4hew5d26djgrh7gqcyqqq823chhzkch",
+                        "kind": "naddr",
+                        "id": "30023:2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4:cycle-b"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "collapsed": false
+        },
+        "nostr:naddr1qqrkx7trd3jj6cszyqhchhjdrgrjpy64kjnj2zju2y5w3zuyhhwxrx4hew5d26djgrh7gqcyqqq823chhzkch": {
+          "resolved_kind": 30023,
+          "event": {
+            "id": "2d957edb4c4e15f04ab7032ff16e45378c5255e52482a7f8cfae64bfb06a748d",
+            "pubkey": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+            "created_at": 1700020016,
+            "kind": 30023,
+            "tags": [
+              [
+                "d",
+                "cycle-b"
+              ],
+              [
+                "title",
+                "Cycle B"
+              ]
+            ],
+            "content": "# Cycle B\n\nBack to the start: nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd\n",
+            "sig": "25807703a91d6ac718fcc0000c68583a91cc64703e46984a609a99f2157a1b7a0ec9f8e3c39d509792f1edcc144947689baeede7acbff95bb96532c23dbd8550"
+          },
+          "rendered": {
+            "mode": "Markdown",
+            "segments": [
+              {
+                "type": "markdownBlock",
+                "node": {
+                  "type": "heading",
+                  "level": 1,
+                  "inlines": [
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": "Cycle B"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "markdownBlock",
+                "node": {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": "Back to the start: "
+                      }
+                    },
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "eventRef",
+                        "uri": "nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd",
+                        "kind": "naddr",
+                        "id": "30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:cycle-a"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "collapsed": false
+        }
+      }
+    },
+    {
+      "id": "S-A01",
+      "category": "articles",
+      "title": "kind:30023 rich CommonMark article",
+      "exercises": "real nmp-nip23 decode + tokenize_with_kind Markdown (PD-012/D8)",
+      "events": [
+        {
+          "id": "01ac957ed958e97a9112687098164cc44c88bea04741135b18ebbcc123cc068c",
+          "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "created_at": 1700030000,
+          "kind": 30023,
+          "tags": [
+            [
+              "d",
+              "reconnect-strategy"
+            ],
+            [
+              "title",
+              "Reconnect Strategy"
+            ],
+            [
+              "summary",
+              "Exponential backoff with jitter for relay reconnects."
+            ],
+            [
+              "published_at",
+              "1700030000"
+            ]
+          ],
+          "content": "# Reconnect Strategy\n\n## Background\n\nThe relay layer needs **exponential backoff** with *jitter*, and ***both*** matter under load.\n\n### Steps\n\n1. Detect disconnect\n2. Schedule retry\n   - with jitter\n   - capped at 30s\n3. Resume subscriptions\n\nUse `reconnect()` directly:\n\n```rust\nfn reconnect() { /* backoff */ }\n```\n\n> Backpressure is a feature.\n>\n> > Even nested.\n\nSee the [spec](https://nmp.test/spec) and credit nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd.\n\n![Figure 1](https://nmp.test/img/figure.png \"Figure 1\")\n\n---\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\nAlso ~~deprecated~~ approach noted.\n",
+          "sig": "7e56a4b1739c1d00e6b716f179fb84bb4403693fd355d68c8a7912e77cd5b23a4c3e45755a2915105082eea10f6b6aedd5a94bc515cf39526434540bb01f4edd"
+        }
+      ],
+      "rendered": {
+        "mode": "Markdown",
+        "segments": [
+          {
+            "type": "markdownBlock",
+            "node": {
+              "type": "heading",
+              "level": 1,
+              "inlines": [
+                {
+                  "type": "inline",
+                  "segment": {
+                    "type": "text",
+                    "text": "Reconnect Strategy"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "markdownBlock",
+            "node": {
+              "type": "heading",
+              "level": 2,
+              "inlines": [
+                {
+                  "type": "inline",
+                  "segment": {
+                    "type": "text",
+                    "text": "Background"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "markdownBlock",
+            "node": {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "inline",
+                  "segment": {
+                    "type": "text",
+                    "text": "The relay layer needs "
+                  }
+                },
+                {
+                  "type": "strong",
+                  "children": [
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": "exponential backoff"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "inline",
+                  "segment": {
+                    "type": "text",
+                    "text": " with "
+                  }
+                },
+                {
+                  "type": "emphasis",
+                  "children": [
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": "jitter"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "inline",
+                  "segment": {
+                    "type": "text",
+                    "text": ", and "
+                  }
+                },
+                {
+                  "type": "emphasis",
+                  "children": [
+                    {
+                      "type": "strong",
+                      "children": [
+                        {
+                          "type": "inline",
+                          "segment": {
+                            "type": "text",
+                            "text": "both"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "inline",
+                  "segment": {
+                    "type": "text",
+                    "text": " matter under load."
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "markdownBlock",
+            "node": {
+              "type": "heading",
+              "level": 3,
+              "inlines": [
+                {
+                  "type": "inline",
+                  "segment": {
+                    "type": "text",
+                    "text": "Steps"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "markdownBlock",
+            "node": {
+              "type": "list",
+              "ordered_start": 1,
+              "items": [
+                [
+                  {
+                    "type": "paragraph",
+                    "inlines": [
+                      {
+                        "type": "inline",
+                        "segment": {
+                          "type": "text",
+                          "text": "Detect disconnect"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                [
+                  {
+                    "type": "list",
+                    "ordered_start": null,
+                    "items": [
+                      [
+                        {
+                          "type": "paragraph",
+                          "inlines": [
+                            {
+                              "type": "inline",
+                              "segment": {
+                                "type": "text",
+                                "text": "Schedule retry"
+                              }
+                            },
+                            {
+                              "type": "inline",
+                              "segment": {
+                                "type": "text",
+                                "text": "with jitter"
+                              }
+                            }
+                          ]
+                        }
+                      ],
+                      [
+                        {
+                          "type": "paragraph",
+                          "inlines": [
+                            {
+                              "type": "inline",
+                              "segment": {
+                                "type": "text",
+                                "text": "capped at 30s"
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    ]
+                  }
+                ],
+                [
+                  {
+                    "type": "paragraph",
+                    "inlines": [
+                      {
+                        "type": "inline",
+                        "segment": {
+                          "type": "text",
+                          "text": "Resume subscriptions"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              ]
+            }
+          },
+          {
+            "type": "markdownBlock",
+            "node": {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "inline",
+                  "segment": {
+                    "type": "text",
+                    "text": "Use "
+                  }
+                },
+                {
+                  "type": "code",
+                  "text": "reconnect()"
+                },
+                {
+                  "type": "inline",
+                  "segment": {
+                    "type": "text",
+                    "text": " directly:"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "markdownBlock",
+            "node": {
+              "type": "codeBlock",
+              "info": "rust",
+              "body": "fn reconnect() { /* backoff */ }\n"
+            }
+          },
+          {
+            "type": "markdownBlock",
+            "node": {
+              "type": "blockQuote",
+              "blocks": [
+                {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": "Backpressure is a feature."
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "blockQuote",
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "inlines": [
+                        {
+                          "type": "inline",
+                          "segment": {
+                            "type": "text",
+                            "text": "Even nested."
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": "markdownBlock",
+            "node": {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "inline",
+                  "segment": {
+                    "type": "text",
+                    "text": "See the "
+                  }
+                },
+                {
+                  "type": "link",
+                  "label": [
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": "spec"
+                      }
+                    }
+                  ],
+                  "href": "https://nmp.test/spec"
+                },
+                {
+                  "type": "inline",
+                  "segment": {
+                    "type": "text",
+                    "text": " and credit "
+                  }
+                },
+                {
+                  "type": "inline",
+                  "segment": {
+                    "type": "mention",
+                    "uri": "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd",
+                    "kind": "npub",
+                    "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
+                  }
+                },
+                {
+                  "type": "inline",
+                  "segment": {
+                    "type": "text",
+                    "text": "."
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "markdownBlock",
+            "node": {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "image",
+                  "alt": "Figure 1",
+                  "title": "Figure 1",
+                  "src": "https://nmp.test/img/figure.png"
+                }
+              ]
+            }
+          },
+          {
+            "type": "markdownBlock",
+            "node": {
+              "type": "rule"
+            }
+          },
+          {
+            "type": "markdownBlock",
+            "node": {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "inline",
+                  "segment": {
+                    "type": "text",
+                    "text": "| a | b |"
+                  }
+                },
+                {
+                  "type": "softBreak"
+                },
+                {
+                  "type": "inline",
+                  "segment": {
+                    "type": "text",
+                    "text": "| - | - |"
+                  }
+                },
+                {
+                  "type": "softBreak"
+                },
+                {
+                  "type": "inline",
+                  "segment": {
+                    "type": "text",
+                    "text": "| 1 | 2 |"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "markdownBlock",
+            "node": {
+              "type": "paragraph",
+              "inlines": [
+                {
+                  "type": "inline",
+                  "segment": {
+                    "type": "text",
+                    "text": "Also ~~deprecated~~ approach noted."
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "embeds": {
+        "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd": {
+          "resolved_kind": 0,
+          "collapsed": true,
+          "collapse_reason": "dangling"
+        }
+      }
+    },
+    {
+      "id": "S-A02",
+      "category": "articles",
+      "title": "naddr -> kind:30023 preview card (Medium-like)",
+      "exercises": "Segment::EventRef(Naddr) -> compact article preview",
+      "events": [
+        {
+          "id": "d00dabaf7f522dde8e15612a5e43a72f4bd4e571c2af87aec3947deee93c4c09",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700030001,
+          "kind": 1,
+          "tags": [],
+          "content": "must-read: nostr:naddr1qqf8yetrdahxuetrwskhxarjv96x2emeqgs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7grqsqqqa28whvewl",
+          "sig": "6274e13d80a576e56c0575f91dcd117106dc8bd4b64c995491f9429df71a692e7b546c0c93cf56a27eca195f7655cce88c6a65f324469c2d12c64d3d079a7602"
+        },
+        {
+          "id": "01ac957ed958e97a9112687098164cc44c88bea04741135b18ebbcc123cc068c",
+          "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "created_at": 1700030000,
+          "kind": 30023,
+          "tags": [
+            [
+              "d",
+              "reconnect-strategy"
+            ],
+            [
+              "title",
+              "Reconnect Strategy"
+            ],
+            [
+              "summary",
+              "Exponential backoff with jitter for relay reconnects."
+            ],
+            [
+              "published_at",
+              "1700030000"
+            ]
+          ],
+          "content": "# Reconnect Strategy\n\n## Background\n\nThe relay layer needs **exponential backoff** with *jitter*, and ***both*** matter under load.\n\n### Steps\n\n1. Detect disconnect\n2. Schedule retry\n   - with jitter\n   - capped at 30s\n3. Resume subscriptions\n\nUse `reconnect()` directly:\n\n```rust\nfn reconnect() { /* backoff */ }\n```\n\n> Backpressure is a feature.\n>\n> > Even nested.\n\nSee the [spec](https://nmp.test/spec) and credit nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd.\n\n![Figure 1](https://nmp.test/img/figure.png \"Figure 1\")\n\n---\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\nAlso ~~deprecated~~ approach noted.\n",
+          "sig": "7e56a4b1739c1d00e6b716f179fb84bb4403693fd355d68c8a7912e77cd5b23a4c3e45755a2915105082eea10f6b6aedd5a94bc515cf39526434540bb01f4edd"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "must-read: "
+          },
+          {
+            "type": "eventRef",
+            "uri": "nostr:naddr1qqf8yetrdahxuetrwskhxarjv96x2emeqgs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7grqsqqqa28whvewl",
+            "kind": "naddr",
+            "id": "30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:reconnect-strategy"
+          }
+        ]
+      },
+      "embeds": {
+        "nostr:naddr1qqf8yetrdahxuetrwskhxarjv96x2emeqgs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7grqsqqqa28whvewl": {
+          "resolved_kind": 30023,
+          "event": {
+            "id": "01ac957ed958e97a9112687098164cc44c88bea04741135b18ebbcc123cc068c",
+            "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+            "created_at": 1700030000,
+            "kind": 30023,
+            "tags": [
+              [
+                "d",
+                "reconnect-strategy"
+              ],
+              [
+                "title",
+                "Reconnect Strategy"
+              ],
+              [
+                "summary",
+                "Exponential backoff with jitter for relay reconnects."
+              ],
+              [
+                "published_at",
+                "1700030000"
+              ]
+            ],
+            "content": "# Reconnect Strategy\n\n## Background\n\nThe relay layer needs **exponential backoff** with *jitter*, and ***both*** matter under load.\n\n### Steps\n\n1. Detect disconnect\n2. Schedule retry\n   - with jitter\n   - capped at 30s\n3. Resume subscriptions\n\nUse `reconnect()` directly:\n\n```rust\nfn reconnect() { /* backoff */ }\n```\n\n> Backpressure is a feature.\n>\n> > Even nested.\n\nSee the [spec](https://nmp.test/spec) and credit nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd.\n\n![Figure 1](https://nmp.test/img/figure.png \"Figure 1\")\n\n---\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\nAlso ~~deprecated~~ approach noted.\n",
+            "sig": "7e56a4b1739c1d00e6b716f179fb84bb4403693fd355d68c8a7912e77cd5b23a4c3e45755a2915105082eea10f6b6aedd5a94bc515cf39526434540bb01f4edd"
+          },
+          "rendered": {
+            "mode": "Markdown",
+            "segments": [
+              {
+                "type": "markdownBlock",
+                "node": {
+                  "type": "heading",
+                  "level": 1,
+                  "inlines": [
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": "Reconnect Strategy"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "markdownBlock",
+                "node": {
+                  "type": "heading",
+                  "level": 2,
+                  "inlines": [
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": "Background"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "markdownBlock",
+                "node": {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": "The relay layer needs "
+                      }
+                    },
+                    {
+                      "type": "strong",
+                      "children": [
+                        {
+                          "type": "inline",
+                          "segment": {
+                            "type": "text",
+                            "text": "exponential backoff"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": " with "
+                      }
+                    },
+                    {
+                      "type": "emphasis",
+                      "children": [
+                        {
+                          "type": "inline",
+                          "segment": {
+                            "type": "text",
+                            "text": "jitter"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": ", and "
+                      }
+                    },
+                    {
+                      "type": "emphasis",
+                      "children": [
+                        {
+                          "type": "strong",
+                          "children": [
+                            {
+                              "type": "inline",
+                              "segment": {
+                                "type": "text",
+                                "text": "both"
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": " matter under load."
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "markdownBlock",
+                "node": {
+                  "type": "heading",
+                  "level": 3,
+                  "inlines": [
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": "Steps"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "markdownBlock",
+                "node": {
+                  "type": "list",
+                  "ordered_start": 1,
+                  "items": [
+                    [
+                      {
+                        "type": "paragraph",
+                        "inlines": [
+                          {
+                            "type": "inline",
+                            "segment": {
+                              "type": "text",
+                              "text": "Detect disconnect"
+                            }
+                          }
+                        ]
+                      }
+                    ],
+                    [
+                      {
+                        "type": "list",
+                        "ordered_start": null,
+                        "items": [
+                          [
+                            {
+                              "type": "paragraph",
+                              "inlines": [
+                                {
+                                  "type": "inline",
+                                  "segment": {
+                                    "type": "text",
+                                    "text": "Schedule retry"
+                                  }
+                                },
+                                {
+                                  "type": "inline",
+                                  "segment": {
+                                    "type": "text",
+                                    "text": "with jitter"
+                                  }
+                                }
+                              ]
+                            }
+                          ],
+                          [
+                            {
+                              "type": "paragraph",
+                              "inlines": [
+                                {
+                                  "type": "inline",
+                                  "segment": {
+                                    "type": "text",
+                                    "text": "capped at 30s"
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        ]
+                      }
+                    ],
+                    [
+                      {
+                        "type": "paragraph",
+                        "inlines": [
+                          {
+                            "type": "inline",
+                            "segment": {
+                              "type": "text",
+                              "text": "Resume subscriptions"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  ]
+                }
+              },
+              {
+                "type": "markdownBlock",
+                "node": {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": "Use "
+                      }
+                    },
+                    {
+                      "type": "code",
+                      "text": "reconnect()"
+                    },
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": " directly:"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "markdownBlock",
+                "node": {
+                  "type": "codeBlock",
+                  "info": "rust",
+                  "body": "fn reconnect() { /* backoff */ }\n"
+                }
+              },
+              {
+                "type": "markdownBlock",
+                "node": {
+                  "type": "blockQuote",
+                  "blocks": [
+                    {
+                      "type": "paragraph",
+                      "inlines": [
+                        {
+                          "type": "inline",
+                          "segment": {
+                            "type": "text",
+                            "text": "Backpressure is a feature."
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "blockQuote",
+                      "blocks": [
+                        {
+                          "type": "paragraph",
+                          "inlines": [
+                            {
+                              "type": "inline",
+                              "segment": {
+                                "type": "text",
+                                "text": "Even nested."
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "markdownBlock",
+                "node": {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": "See the "
+                      }
+                    },
+                    {
+                      "type": "link",
+                      "label": [
+                        {
+                          "type": "inline",
+                          "segment": {
+                            "type": "text",
+                            "text": "spec"
+                          }
+                        }
+                      ],
+                      "href": "https://nmp.test/spec"
+                    },
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": " and credit "
+                      }
+                    },
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "mention",
+                        "uri": "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd",
+                        "kind": "npub",
+                        "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
+                      }
+                    },
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": "."
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "markdownBlock",
+                "node": {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "image",
+                      "alt": "Figure 1",
+                      "title": "Figure 1",
+                      "src": "https://nmp.test/img/figure.png"
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "markdownBlock",
+                "node": {
+                  "type": "rule"
+                }
+              },
+              {
+                "type": "markdownBlock",
+                "node": {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": "| a | b |"
+                      }
+                    },
+                    {
+                      "type": "softBreak"
+                    },
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": "| - | - |"
+                      }
+                    },
+                    {
+                      "type": "softBreak"
+                    },
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": "| 1 | 2 |"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "markdownBlock",
+                "node": {
+                  "type": "paragraph",
+                  "inlines": [
+                    {
+                      "type": "inline",
+                      "segment": {
+                        "type": "text",
+                        "text": "Also ~~deprecated~~ approach noted."
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          "collapsed": false,
+          "article": {
+            "title": "Reconnect Strategy",
+            "summary": "Exponential backoff with jitter for relay reconnects.",
+            "author": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+            "d_tag": "reconnect-strategy"
+          }
+        },
+        "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd": {
+          "resolved_kind": 0,
+          "collapsed": true,
+          "collapse_reason": "dangling"
+        }
+      }
+    },
+    {
+      "id": "S-A03",
+      "category": "lists",
+      "title": "naddr -> NIP-51 follow set (kind:30000)",
+      "exercises": "addressable list resolution -> inline titled list card",
+      "events": [
+        {
+          "id": "cbe24e826603d5956bb70f26044d01ef488b3bb1a359c1e86c6b04f54acb9256",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700040001,
+          "kind": 1,
+          "tags": [],
+          "content": "curated devs: nostr:naddr1qq9xummnw3ez6cm0wfjsyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cq9za8tm",
+          "sig": "c67c4f0642e2597f9369b8e401f3b4aae6645f5727f3ddf305d0eb63a57bf52267377a3bc893effc54a3da32a9a468b742dd46e25687e58ced1801ed7c249979"
+        },
+        {
+          "id": "36dc688a8b310db3e75aff1fc146057651e309be12e4eff9598431a48bcb928d",
+          "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "created_at": 1700040000,
+          "kind": 30000,
+          "tags": [
+            [
+              "d",
+              "nostr-core"
+            ],
+            [
+              "title",
+              "Nostr Core Devs"
+            ],
+            [
+              "p",
+              "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
+            ],
+            [
+              "p",
+              "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4"
+            ]
+          ],
+          "content": "",
+          "sig": "47786942cd65106b55ec92c6a670e56bf070d95a4b7e81c2db1b904aad852483f602cc023a734e0cee4834a039b8104aaf1c38525522ebce84ea0c5d131219d9"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "curated devs: "
+          },
+          {
+            "type": "eventRef",
+            "uri": "nostr:naddr1qq9xummnw3ez6cm0wfjsyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cq9za8tm",
+            "kind": "naddr",
+            "id": "30000:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:nostr-core"
+          }
+        ]
+      },
+      "embeds": {
+        "nostr:naddr1qq9xummnw3ez6cm0wfjsyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cq9za8tm": {
+          "resolved_kind": 30000,
+          "event": {
+            "id": "36dc688a8b310db3e75aff1fc146057651e309be12e4eff9598431a48bcb928d",
+            "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+            "created_at": 1700040000,
+            "kind": 30000,
+            "tags": [
+              [
+                "d",
+                "nostr-core"
+              ],
+              [
+                "title",
+                "Nostr Core Devs"
+              ],
+              [
+                "p",
+                "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
+              ],
+              [
+                "p",
+                "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4"
+              ]
+            ],
+            "content": "",
+            "sig": "47786942cd65106b55ec92c6a670e56bf070d95a4b7e81c2db1b904aad852483f602cc023a734e0cee4834a039b8104aaf1c38525522ebce84ea0c5d131219d9"
+          },
+          "rendered": {
+            "mode": "Plain",
+            "segments": []
+          },
+          "collapsed": false,
+          "list": {
+            "title": "Nostr Core Devs",
+            "rows": [
+              {
+                "type": "profile",
+                "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+                "name": null,
+                "picture": null
+              },
+              {
+                "type": "profile",
+                "pubkey": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+                "name": null,
+                "picture": null
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "S-A04",
+      "category": "lists",
+      "title": "naddr -> NIP-51 bookmarks (kind:30003, mixed items)",
+      "exercises": "generic addressable list with heterogeneous e/a/t rows",
+      "events": [
+        {
+          "id": "0cc561966b833e198cc71ff711af47d2e78fb556ad5a4267845877a9b9bfe230",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700040003,
+          "kind": 1,
+          "tags": [],
+          "content": "my reading list nostr:naddr1qqrhyetpv35kueczyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqq82vcl200pg",
+          "sig": "3fe5c8f892b9ef89a66a6496e2fab3e720aba2825623b10264c1ef360ff1814d06e87588bc92783bebcc33b039a320fbd1f542989adc35da84d29a739dfd6c15"
+        },
+        {
+          "id": "03909df1522498408282c1e4f3c86d2eb00db372a9255196de70c812e06fcb15",
+          "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "created_at": 1700040002,
+          "kind": 30003,
+          "tags": [
+            [
+              "d",
+              "reading"
+            ],
+            [
+              "title",
+              "Reading List"
+            ],
+            [
+              "e",
+              "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+            ],
+            [
+              "a",
+              "30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:reconnect-strategy"
+            ],
+            [
+              "t",
+              "nostr"
+            ]
+          ],
+          "content": "",
+          "sig": "6fd2d30ae2977c71073da58bef9fb862d8c78bb1d819a17b69aa701204da4a1e820354136275d9d084ed4a42846c3b4a13690ef1f94322d3e5203d9b936c7f1b"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "my reading list "
+          },
+          {
+            "type": "eventRef",
+            "uri": "nostr:naddr1qqrhyetpv35kueczyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqq82vcl200pg",
+            "kind": "naddr",
+            "id": "30003:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:reading"
+          }
+        ]
+      },
+      "embeds": {
+        "nostr:naddr1qqrhyetpv35kueczyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqq82vcl200pg": {
+          "resolved_kind": 30003,
+          "event": {
+            "id": "03909df1522498408282c1e4f3c86d2eb00db372a9255196de70c812e06fcb15",
+            "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+            "created_at": 1700040002,
+            "kind": 30003,
+            "tags": [
+              [
+                "d",
+                "reading"
+              ],
+              [
+                "title",
+                "Reading List"
+              ],
+              [
+                "e",
+                "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              ],
+              [
+                "a",
+                "30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:reconnect-strategy"
+              ],
+              [
+                "t",
+                "nostr"
+              ]
+            ],
+            "content": "",
+            "sig": "6fd2d30ae2977c71073da58bef9fb862d8c78bb1d819a17b69aa701204da4a1e820354136275d9d084ed4a42846c3b4a13690ef1f94322d3e5203d9b936c7f1b"
+          },
+          "rendered": {
+            "mode": "Plain",
+            "segments": []
+          },
+          "collapsed": false,
+          "list": {
+            "title": "Reading List",
+            "rows": [
+              {
+                "type": "event",
+                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+              },
+              {
+                "type": "address",
+                "coord": "30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:reconnect-strategy"
+              },
+              {
+                "type": "hashtag",
+                "tag": "nostr"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "S-A05",
+      "category": "lists",
+      "title": "NIP-51 relay list (kind:10002) referenced inline",
+      "exercises": "replaceable list resolution -> titled relay list w/ markers",
+      "events": [
+        {
+          "id": "bd75e4132110ce420630685bd9cd7789bba7510180e5726b70a3d92e09b70f19",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700040005,
+          "kind": 1,
+          "tags": [],
+          "content": "caro's relays nostr:nevent1qqs8g969e52gf8f653r5qk93xhghdarygwlhjeez60dhv28c0h8jsrqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp7fs3gqeykxrzpyngnu9lzw4y2d4x8yytqm0nxcgvq03zw7wqdheqvzqqqp8zglngexn",
+          "sig": "37bd83db1c4d0b2cf4619c712a24c5f7b17723e4353f56ed72765e92e538cbfa56b10d16a138f0def299a27da3ad2a90d56e104acc4e780b6701f2d905db0faf"
+        },
+        {
+          "id": "741745cd14849d3aa4474058b135d176f46443bf796722d3db7628f87dcf280c",
+          "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "created_at": 1700040004,
+          "kind": 10002,
+          "tags": [
+            [
+              "r",
+              "wss://relay.a.nmp.test"
+            ],
+            [
+              "r",
+              "wss://relay.b.nmp.test",
+              "read"
+            ]
+          ],
+          "content": "",
+          "sig": "9bc63ba597f2a040890888ad839ce576af75dda8e9fad669cc8b8441e776fb5489df96b136a2d7a348801f8b9b73475dbe8a5ba6f4cab0c4b6348b9689a9c7c3"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "caro's relays "
+          },
+          {
+            "type": "eventRef",
+            "uri": "nostr:nevent1qqs8g969e52gf8f653r5qk93xhghdarygwlhjeez60dhv28c0h8jsrqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp7fs3gqeykxrzpyngnu9lzw4y2d4x8yytqm0nxcgvq03zw7wqdheqvzqqqp8zglngexn",
+            "kind": "nevent",
+            "id": "741745cd14849d3aa4474058b135d176f46443bf796722d3db7628f87dcf280c"
+          }
+        ]
+      },
+      "embeds": {
+        "nostr:nevent1qqs8g969e52gf8f653r5qk93xhghdarygwlhjeez60dhv28c0h8jsrqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp7fs3gqeykxrzpyngnu9lzw4y2d4x8yytqm0nxcgvq03zw7wqdheqvzqqqp8zglngexn": {
+          "resolved_kind": 10002,
+          "event": {
+            "id": "741745cd14849d3aa4474058b135d176f46443bf796722d3db7628f87dcf280c",
+            "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+            "created_at": 1700040004,
+            "kind": 10002,
+            "tags": [
+              [
+                "r",
+                "wss://relay.a.nmp.test"
+              ],
+              [
+                "r",
+                "wss://relay.b.nmp.test",
+                "read"
+              ]
+            ],
+            "content": "",
+            "sig": "9bc63ba597f2a040890888ad839ce576af75dda8e9fad669cc8b8441e776fb5489df96b136a2d7a348801f8b9b73475dbe8a5ba6f4cab0c4b6348b9689a9c7c3"
+          },
+          "rendered": {
+            "mode": "Plain",
+            "segments": []
+          },
+          "collapsed": false,
+          "list": {
+            "title": "Relay List",
+            "rows": [
+              {
+                "type": "relay",
+                "url": "wss://relay.a.nmp.test",
+                "read": true,
+                "write": true
+              },
+              {
+                "type": "relay",
+                "url": "wss://relay.b.nmp.test",
+                "read": true,
+                "write": false
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "S-E01",
+      "category": "fallback",
+      "title": "Malformed bech32 entity",
+      "exercises": "tokenizer rejects invalid nostr: token -> literal text",
+      "events": [
+        {
+          "id": "623c6f88916d4b38ad9713ec508d193f6d77fbc34e79812a3a3c24c4d6e66c7b",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700050000,
+          "kind": 1,
+          "tags": [],
+          "content": "broken nostr:npub1thisisnotvalidbech32 still readable",
+          "sig": "481304b54cba2bdfc1d9fae785ad882b779e9f38069cf809dbd92210d5b0e80dd1341ff1e7c8b18ab31234420339a5e85548b0cc54f5bc4fa79ff8e605ee8787"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "broken nostr:npub1thisisnotvalidbech32 still readable"
+          }
+        ]
+      },
+      "embeds": {}
+    },
+    {
+      "id": "S-E02",
+      "category": "fallback",
+      "title": "Unknown / unsupported referenced kind",
+      "exercises": "EventRef to kind:31337 -> graceful unsupported card",
+      "events": [
+        {
+          "id": "3ccd878c7b806a406e6aa882fc24d0b3a0f36907c35d3a2466c2a7b2c03659d4",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700050002,
+          "kind": 1,
+          "tags": [],
+          "content": "listen: nostr:nevent1qqsgp0mhq4et35l52r523kzzv32tkcamrc3cwttlqv5guqn2gmmzmmqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqr6dyy40v5z",
+          "sig": "ececd8fe46074e97e0205e4a86e991b2c67b79b9f4643dc110913352a0602d6a53c193b394f2d6b83bb6f53d364f70c920fd6bfe0357f8c1d0bcca995a4c659d"
+        },
+        {
+          "id": "80bf770572b8d3f450e8a8d8426454bb63bb1e23872d7f03288e026a46f62dec",
+          "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+          "created_at": 1700050001,
+          "kind": 31337,
+          "tags": [
+            [
+              "d",
+              "song"
+            ]
+          ],
+          "content": "audio track event body",
+          "sig": "68e9a93cb89fb982c55fb9d95b533185fec86d263b76111c16d8d297a7bf494f207f7fabf693381896023078fd425079f859208e3173cd79510be991f230e9b2"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "listen: "
+          },
+          {
+            "type": "eventRef",
+            "uri": "nostr:nevent1qqsgp0mhq4et35l52r523kzzv32tkcamrc3cwttlqv5guqn2gmmzmmqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqr6dyy40v5z",
+            "kind": "nevent",
+            "id": "80bf770572b8d3f450e8a8d8426454bb63bb1e23872d7f03288e026a46f62dec"
+          }
+        ]
+      },
+      "embeds": {
+        "nostr:nevent1qqsgp0mhq4et35l52r523kzzv32tkcamrc3cwttlqv5guqn2gmmzmmqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqr6dyy40v5z": {
+          "resolved_kind": 31337,
+          "event": {
+            "id": "80bf770572b8d3f450e8a8d8426454bb63bb1e23872d7f03288e026a46f62dec",
+            "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+            "created_at": 1700050001,
+            "kind": 31337,
+            "tags": [
+              [
+                "d",
+                "song"
+              ]
+            ],
+            "content": "audio track event body",
+            "sig": "68e9a93cb89fb982c55fb9d95b533185fec86d263b76111c16d8d297a7bf494f207f7fabf693381896023078fd425079f859208e3173cd79510be991f230e9b2"
+          },
+          "collapsed": true,
+          "collapse_reason": "unsupported"
+        }
+      }
+    },
+    {
+      "id": "S-E03",
+      "category": "fallback",
+      "title": "Dangling nevent (target not in store)",
+      "exercises": "absent id -> D1 unresolved-embed stub, never a spinner",
+      "events": [
+        {
+          "id": "5d872bf8436bb87ab1f81bc9b0b5102a8030c3ed57d26118329771bff87195a1",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700050003,
+          "kind": 1,
+          "tags": [],
+          "content": "ghost quote nostr:nevent1qqs242424242424242424242424242424242424242424242424242spz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqy3nae07",
+          "sig": "6ce8a61d8c84cd23c64a6fbb0f5adabbadc377bcf9b2f589d588865a833744261558a9c90b3ced8792d0d21750ef8cc7f960c669a6e2f82fe9b6ddb04ac5f9e8"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "ghost quote "
+          },
+          {
+            "type": "eventRef",
+            "uri": "nostr:nevent1qqs242424242424242424242424242424242424242424242424242spz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqy3nae07",
+            "kind": "nevent",
+            "id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ]
+      },
+      "embeds": {
+        "nostr:nevent1qqs242424242424242424242424242424242424242424242424242spz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqy3nae07": {
+          "resolved_kind": 0,
+          "collapsed": true,
+          "collapse_reason": "dangling"
+        }
+      }
+    },
+    {
+      "id": "S-E04",
+      "category": "fallback",
+      "title": "Profile mention with no kind:0 metadata",
+      "exercises": "D1 identicon + npub label, never blank",
+      "events": [
+        {
+          "id": "8f11686d3c300c3008ebc87692a0b558f4126e88a3de539547eeda6051ecebc2",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700050004,
+          "kind": 1,
+          "tags": [],
+          "content": "hello nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k",
+          "sig": "2093333515426f55164c9a3d29ab6f7654ed03a88922a623f292966f611a01599b16c76b018c6de48343f30b07a9a40167708ed88f8e29a3411739b9956aa07c"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "hello "
+          },
+          {
+            "type": "mention",
+            "uri": "nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k",
+            "kind": "npub",
+            "pubkey": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13"
+          }
+        ]
+      },
+      "embeds": {
+        "nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k": {
+          "resolved_kind": 0,
+          "collapsed": true,
+          "collapse_reason": "dangling"
+        }
+      }
+    },
+    {
+      "id": "S-E05",
+      "category": "fallback",
+      "title": "Empty content event",
+      "exercises": "ContentTree::empty — zero segments, explicit placeholder",
+      "events": [
+        {
+          "id": "323bffe26eeb9732b5f61df5eb1f87f6ea9c452d541f604bf6b9a3984a0f8431",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700050005,
+          "kind": 1,
+          "tags": [],
+          "content": "",
+          "sig": "d88afc1c8abf0a4d5e864de59065d730a50c888b582e89903d4550d5d40136bc1ddd3d2979d0d22c9847f0c3f0ae9a0a62f29c1ae017fb5ceac1e845b63e0a45"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": []
+      },
+      "embeds": {}
+    },
+    {
+      "id": "S-E06",
+      "category": "fallback",
+      "title": "Article with empty body but valid metadata",
+      "exercises": "nmp-nip23 decode ok, body empty -> header-only render (D8)",
+      "events": [
+        {
+          "id": "82f9a9670b29bf14e153be3470b7d58a695606c28b4a6b59afc1271d242e7ce8",
+          "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "created_at": 1700050006,
+          "kind": 30023,
+          "tags": [
+            [
+              "d",
+              "draft"
+            ],
+            [
+              "title",
+              "Draft"
+            ],
+            [
+              "summary",
+              "WIP"
+            ]
+          ],
+          "content": "",
+          "sig": "9b3376b8e4dba6c626faa2f59bffb1bc1c2f016257798acc24ac2837423315dc500d8839c824a0dc1fa69801b4a7a1be738b8fbcfeb1eaf843cf6960dee8ec3e"
+        }
+      ],
+      "rendered": {
+        "mode": "Markdown",
+        "segments": []
+      },
+      "embeds": {}
+    },
+    {
+      "id": "S-E07",
+      "category": "fallback",
+      "title": "Naddr -> list with zero items",
+      "exercises": "NIP-51 list view with no members -> titled-but-empty card",
+      "events": [
+        {
+          "id": "dd05359904f805ff4c0b3b65657ed4860da6132f974485f1fd0633a13f7e9106",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700050008,
+          "kind": 1,
+          "tags": [],
+          "content": "empty list nostr:naddr1qqzk2mtsw3usyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cqrc7gp4",
+          "sig": "4fa70b676929d3b0de0654732334b37465b3695ec528164ffdb25da037fd32af6f10264f397592e6ea7580091685de47a3159c32910a0016f5c2f1cdbafecda3"
+        },
+        {
+          "id": "c6d0ba54a906d84547babeeb585ba973b48abfbfbcc5d76204e836798971e11c",
+          "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "created_at": 1700050007,
+          "kind": 30000,
+          "tags": [
+            [
+              "d",
+              "empty"
+            ],
+            [
+              "title",
+              "Empty Set"
+            ]
+          ],
+          "content": "",
+          "sig": "a8f831af9709296d0d552d58b6c4be9eb6ef5a6e69f1de99720b4bfca52477369d452a2a303bf419febaa395fd713829b193119cdee5aba95be210ca7034cab0"
+        }
+      ],
+      "rendered": {
+        "mode": "Plain",
+        "segments": [
+          {
+            "type": "text",
+            "text": "empty list "
+          },
+          {
+            "type": "eventRef",
+            "uri": "nostr:naddr1qqzk2mtsw3usyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cqrc7gp4",
+            "kind": "naddr",
+            "id": "30000:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:empty"
+          }
+        ]
+      },
+      "embeds": {
+        "nostr:naddr1qqzk2mtsw3usyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cqrc7gp4": {
+          "resolved_kind": 30000,
+          "event": {
+            "id": "c6d0ba54a906d84547babeeb585ba973b48abfbfbcc5d76204e836798971e11c",
+            "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+            "created_at": 1700050007,
+            "kind": 30000,
+            "tags": [
+              [
+                "d",
+                "empty"
+              ],
+              [
+                "title",
+                "Empty Set"
+              ]
+            ],
+            "content": "",
+            "sig": "a8f831af9709296d0d552d58b6c4be9eb6ef5a6e69f1de99720b4bfca52477369d452a2a303bf419febaa395fd713829b193119cdee5aba95be210ca7034cab0"
+          },
+          "rendered": {
+            "mode": "Plain",
+            "segments": []
+          },
+          "collapsed": false,
+          "list": {
+            "title": "Empty Set",
+            "rows": []
+          }
+        }
+      }
+    }
+  ]
+}
