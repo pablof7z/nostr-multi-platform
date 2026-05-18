@@ -19,10 +19,17 @@ use crate::subs::WireFrame;
 ///
 /// Called only when `drain_lifecycle_tick()` returns a non-empty frame list —
 /// the common empty-inbox case returns `Vec::new()` before reaching this path.
+///
+/// T140: this is the single point where planner frames cross into the
+/// transport layer, so it also registers each frame into the kernel's wire-sub
+/// / persistent-sub bookkeeping (`register_planner_wire_frames`) — the EOSE
+/// keep-live predicate then keeps `Tailing` follow-feed subs open at parity
+/// with the retired M1 `seed-timeline-*` path.
 pub(super) fn wire_frames_to_outbound(
     frames: Vec<WireFrame>,
-    kernel: &Kernel,
+    kernel: &mut Kernel,
 ) -> Vec<OutboundMessage> {
+    kernel.register_planner_wire_frames(&frames);
     frames
         .into_iter()
         .map(|f| {

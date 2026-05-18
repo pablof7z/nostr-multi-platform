@@ -32,7 +32,7 @@ mod tests {
             lifecycle: InterestLifecycle::Tailing,
         };
 
-        let outbound = wire_frames_to_outbound(vec![frame], &kernel);
+        let outbound = wire_frames_to_outbound(vec![frame], &mut kernel);
         assert_eq!(outbound.len(), 1);
         assert_eq!(outbound[0].role, RelayRole::Content);
         assert_eq!(outbound[0].relay_url, content_url);
@@ -44,7 +44,7 @@ mod tests {
     /// `RelayRole::Content` per spec §3.2 Option A.
     #[test]
     fn wire_frames_to_outbound_unknown_url_fallback() {
-        let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
         let unknown_url = "wss://unknown-relay.example".to_string();
 
         let frame = WireFrame::Req {
@@ -55,7 +55,7 @@ mod tests {
             lifecycle: InterestLifecycle::Tailing,
         };
 
-        let outbound = wire_frames_to_outbound(vec![frame], &kernel);
+        let outbound = wire_frames_to_outbound(vec![frame], &mut kernel);
         assert_eq!(outbound.len(), 1);
         assert_eq!(
             outbound[0].role,

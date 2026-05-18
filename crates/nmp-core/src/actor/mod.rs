@@ -432,7 +432,7 @@ pub fn run_actor_with_observers(
         {
             let wire_frames = kernel.drain_lifecycle_tick();
             if !wire_frames.is_empty() {
-                let outbound = wire_frames_to_outbound(wire_frames, &kernel);
+                let outbound = wire_frames_to_outbound(wire_frames, &mut kernel);
                 send_all_outbound(
                     &mut relay_controls,
                     &relay_tx,

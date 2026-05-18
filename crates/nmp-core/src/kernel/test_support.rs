@@ -244,4 +244,37 @@ impl Kernel {
     pub(crate) fn sort_timeline_deferred(&mut self) {
         self.sort_timeline();
     }
+
+    // ─── T140 fix-forward test accessors ─────────────────────────────────────
+
+    /// Mirror the actor wiring: register planner `WireFrame`s into the kernel's
+    /// `wire_subs` / persistent-sub bookkeeping. Production path is
+    /// `actor::outbound::wire_frames_to_outbound`; tests drive it directly so
+    /// the EOSE keep-live assertion exercises the same registration code.
+    pub(crate) fn register_wire_frames_for_test(
+        &mut self,
+        frames: &[crate::subs::WireFrame],
+    ) {
+        self.register_planner_wire_frames(frames);
+    }
+
+    /// Diagnostic `state` of a tracked wire sub (`opening` | `live` | …), or
+    /// `None` if no row exists.
+    pub(crate) fn wire_sub_state_for_test(&self, sub_id: &str) -> Option<String> {
+        self.wire_subs.get(sub_id).map(|s| s.state.clone())
+    }
+
+    /// Snapshot of the registered M2 follow-feed `InterestId`s.
+    pub(crate) fn follow_feed_interest_ids_for_test(
+        &self,
+    ) -> Vec<crate::planner::InterestId> {
+        self.follow_feed_interest_ids.iter().cloned().collect()
+    }
+
+    /// True when `pubkey` is present in the follow-derived `timeline_authors`
+    /// projection.
+    pub(crate) fn timeline_authors_for_test(&self) -> &std::collections::BTreeSet<String> {
+        &self.timeline_authors
+    }
 }
+

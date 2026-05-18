@@ -191,4 +191,71 @@ impl Kernel {
     pub(crate) fn deferred_outbound_len(&self) -> usize {
         self.deferred_outbound.len()
     }
+
+    /// T140 — register planner-emitted `WireFrame`s into the kernel's wire-sub
+    /// bookkeeping so the EOSE handler treats them at parity with the retired
+    /// M1 `seed-timeline-*` path.
+    ///
+    /// For every `WireFrame::Req`:
+    ///   - a `WireSub` row is inserted (the EOSE handler at
+    ///     `ingest/mod.rs` does `wire_subs.get_mut(sub_id)` to flip the sub to
+    ///     `live`; without a row that is a silent no-op and the diagnostic
+    ///     surface never shows the M2 follow feed);
+    ///   - if the originating interest is `Tailing` (the follow-feed
+    ///     lifecycle), the sub-id is registered persistent so the existing
+    ///     `is_persistent_sub(sub_id)` branch of the EOSE keep-live predicate
+    ///     keeps it open after the first EOSE — instead of inventing a new
+    ///     `sub-*` prefix rule that would also (wrongly) keep `OneShot`
+    ///     planner output alive. Lifecycle is the correct discriminator; it is
+    ///     already carried on the frame.
+    ///
+    /// For every `WireFrame::Close`: drop the persistent registration and the
+    /// wire-sub row so a re-routed/withdrawn follow no longer keeps a sub live.
+    ///
+    /// Called from the actor `wire_frames_to_outbound` bridge (the single
+    /// point where planner frames cross into the transport layer).
+    pub(crate) fn register_planner_wire_frames(
+        &mut self,
+        frames: &[crate::subs::WireFrame],
+    ) {
+        use crate::planner::InterestLifecycle;
+        use crate::subs::WireFrame;
+        for frame in frames {
+            match frame {
+                WireFrame::Req {
+                    relay_url,
+                    sub_id,
+                    lifecycle,
+                    ..
+                } => {
+                    let role = self
+                        .role_for_relay_url(relay_url)
+                        .unwrap_or(RelayRole::Content);
+                    if matches!(lifecycle, InterestLifecycle::Tailing) {
+                        self.register_persistent_sub(sub_id.clone());
+                    }
+                    self.wire_subs.insert(
+                        sub_id.clone(),
+                        WireSub {
+                            id: sub_id.clone(),
+                            role,
+                            relay_url: relay_url.clone(),
+                            filter_summary: "M2 planner sub".to_string(),
+                            state: "opening".to_string(),
+                            events_rx: 0,
+                            opened_at: Instant::now(),
+                            last_event_at: None,
+                            eose_at: None,
+                            close_reason: None,
+                        },
+                    );
+                }
+                WireFrame::Close { sub_id, .. } => {
+                    self.unregister_persistent_sub(sub_id);
+                    self.wire_subs.remove(sub_id);
+                }
+            }
+        }
+        self.changed_since_emit = true;
+    }
 }
