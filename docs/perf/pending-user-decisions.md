@@ -8,6 +8,14 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
+### PD-029 RESOLVED AUTONOMOUSLY (2026-05-18, HB57) — picked **Option A: trait seam in nmp-substrate-types**
+
+User is asleep; decision made per autonomous-mode rule. Pattern-match: user has consistently chosen the cleanest long-term option over surgical/fast (PD-027 → substrate-types extract; PD-028 → ADR-first). Option A (trait seam, ~1-2 hr) is the recommended-clean choice; matches LSP-style backend pluggability; aligns `DomainHandle` with `EventStore` (also a trait); generalizes to future M2 hot-path (T140). Worktree agent dispatched at HB57.
+
+If user disagrees: Option B (opaque backend trait inside enum) is a ~30-min surgical alternative; revert this decision and rerun the rebase under B by replacing the dispatched agent's instructions.
+
+---
+
 ### PD-029 (2026-05-18, HB56c) — T141 substrate-types extract collides with T136b LMDB `DomainHandleInner::Lmdb { backend: Arc<lmdb::Inner> }`; rebase blocked
 
 **Status:** Step 1 (extract `nmp-substrate-types`) + Step 2 (explicit ingest arms for kinds 7 / 1111 / 9735) both **landed locally and tested green** on branch `worktree-agent-a3caa408e761c3e70` (commits `22657bf` + `318e1ed`, pushed to that branch on origin so they're durable). Workspace was 1238 tests green pre-rebase against an older `origin/master`. After `git fetch`, master had advanced to include T136b (commit `77ac7e0`, "LmdbEventStore — 33-method trait + Mem-parity"), which adds an LMDB variant to `DomainHandleInner` that ties the type to an `nmp-core` internal:
