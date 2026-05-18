@@ -3238,9 +3238,13 @@ dependencies = [
 name = "nmp-app-chirp"
 version = "0.1.0"
 dependencies = [
+ "mdk-core",
+ "mdk-sqlite-storage",
  "nmp-core",
+ "nmp-marmot",
  "nmp-nip01",
  "nmp-threading",
+ "nostr",
  "serde",
  "serde_json",
 ]

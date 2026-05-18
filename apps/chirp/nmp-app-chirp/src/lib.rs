@@ -29,6 +29,7 @@
 //!   poisoning, or serialization failure.
 
 pub mod ffi;
+pub mod marmot;
 pub mod payload;
 pub mod state;
 
@@ -38,3 +39,18 @@ pub use ffi::{
 };
 pub use payload::{ChirpEventCard, ChirpTimelineSnapshot};
 pub use state::ChirpModularTimeline;
+
+// ── Marmot (MLS encrypted groups) projection ─────────────────────────────
+//
+// A second FFI projection over the same kernel substrate. Mirrors the
+// timeline symbols' naming / lifetime / free conventions. The iOS agent
+// links these alongside the timeline symbols. See `crate::marmot`.
+pub use marmot::ffi::{
+    nmp_app_chirp_marmot_dispatch, nmp_app_chirp_marmot_group_messages,
+    nmp_app_chirp_marmot_register, nmp_app_chirp_marmot_snapshot,
+    nmp_app_chirp_marmot_string_free, nmp_app_chirp_marmot_unregister, MarmotHandle,
+};
+pub use marmot::payload::{
+    KeyPackageStatus, MarmotGroupRow, MarmotMessageRow, MarmotSnapshot, PendingWelcomeRow,
+};
+pub use marmot::state::MarmotProjection;
