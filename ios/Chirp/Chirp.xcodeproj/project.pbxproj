@@ -20,6 +20,8 @@
 		6BE96583DDB7BC3A89DA1D79 /* ModularTimelineBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE028B856FE7D32538CE605 /* ModularTimelineBridge.swift */; };
 		72E6C28DE61F97428F972267 /* RootShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31F55FC6A139DA43D434DBF9 /* RootShell.swift */; };
 		82CC2009FF54F2B7DAD35B06 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D32D744B5446C909E7AEEB8F /* OnboardingView.swift */; };
+		A1B2C3D4E5F60001AABBCC01 /* OnboardingView+Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60002AABBCC01 /* OnboardingView+Components.swift */; };
+		A1B2C3D4E5F60003AABBCC01 /* OnboardingView+NIP46.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60004AABBCC01 /* OnboardingView+NIP46.swift */; };
 		941DFB06BDE709CE4871CABE /* AccountAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EB771E148A6FCB120C2ADCF /* AccountAvatar.swift */; };
 		998745C91A2392EBF235E258 /* KeychainCapability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50F5B25557B2147731A5F75C /* KeychainCapability.swift */; };
 		9E808639BB9728758172B8C0 /* WireSubscriptionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C06D858D226689DC1A99E44 /* WireSubscriptionDetailView.swift */; };
@@ -89,6 +91,8 @@
 		C79DFA56568C01E3AE76955E /* NotificationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsView.swift; sourceTree = "<group>"; };
 		CF9F1342DAEFAF5D00A119FA /* ChirpTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ChirpTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D32D744B5446C909E7AEEB8F /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60002AABBCC01 /* OnboardingView+Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OnboardingView+Components.swift"; sourceTree = "<group>"; };
+		A1B2C3D4E5F60004AABBCC01 /* OnboardingView+NIP46.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OnboardingView+NIP46.swift"; sourceTree = "<group>"; };
 		D54123F5D11729471B341A4E /* NmpPulseCapabilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NmpPulseCapabilities.swift; sourceTree = "<group>"; };
 		E58C0EC2EAF4941E587B9B94 /* ChirpApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChirpApp.swift; sourceTree = "<group>"; };
 		F3554BAD41A86827FFAF1D06 /* ChirpUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ChirpUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -135,6 +139,8 @@
 				4F03417D370984DB9AC4212B /* HomeFeedView.swift */,
 				C79DFA56568C01E3AE76955E /* NotificationsView.swift */,
 				D32D744B5446C909E7AEEB8F /* OnboardingView.swift */,
+				A1B2C3D4E5F60002AABBCC01 /* OnboardingView+Components.swift */,
+				A1B2C3D4E5F60004AABBCC01 /* OnboardingView+NIP46.swift */,
 				985298ED1B842E892A6FA759 /* ProfileView.swift */,
 				9CD04CA5EB5E534F616BC342 /* RelayDetailView.swift */,
 				ABF5AA8E2264637D1CA3BCA4 /* SearchView.swift */,
@@ -355,6 +361,8 @@
 				E6AF81962D62F30FDB2F4F35 /* NoteRowView.swift in Sources */,
 				BA5D10F42934B36256492BCC /* NotificationsView.swift in Sources */,
 				82CC2009FF54F2B7DAD35B06 /* OnboardingView.swift in Sources */,
+				A1B2C3D4E5F60001AABBCC01 /* OnboardingView+Components.swift in Sources */,
+				A1B2C3D4E5F60003AABBCC01 /* OnboardingView+NIP46.swift in Sources */,
 				EA0318372F152947A645ADC8 /* ProfileNoteRow.swift in Sources */,
 				072991FD6319A37D692C27E4 /* ProfileView.swift in Sources */,
 				B38A5D94A5C43305C226EE4B /* RelayDetailView.swift in Sources */,
