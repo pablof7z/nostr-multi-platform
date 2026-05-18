@@ -34,7 +34,7 @@ use std::path::Path;
 
 pub const ID: &str = "D6";
 
-const TEST_FILE_NAMES: &[&str] = &["tests.rs", "test_support.rs"];
+const TEST_FILE_NAMES: &[&str] = &["tests.rs", "test_support.rs", "test_fixtures.rs"];
 
 pub fn file_is_test_only(path: &Path) -> bool {
     if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
@@ -48,6 +48,12 @@ pub fn file_is_test_only(path: &Path) -> bool {
         // literally named `tests.rs` is still caught by the exact list
         // above and an unrelated name like `tests.rs`'s prefix can't slip.
         if name.ends_with("_tests.rs") {
+            return true;
+        }
+        // `tests_*.rs` is the mirror convention: files like `tests_kind5.rs`
+        // are declared as `#[cfg(all(test, ...))] mod tests_kind5;` in the
+        // parent, so the cfg gate is invisible to the line walker here too.
+        if name.starts_with("tests_") && name.ends_with(".rs") {
             return true;
         }
     }
@@ -240,12 +246,16 @@ mod tests {
     }
 
     #[test]
-    fn test_only_filename_exemption_matches_suffix_and_exacts() {
+    fn test_only_filename_exemption_matches_suffix_prefix_and_exacts() {
         use std::path::Path;
         // Exact-name list.
         assert!(file_is_test_only(Path::new("crates/nmp-core/src/kernel/tests.rs")));
         assert!(file_is_test_only(Path::new(
             "crates/nmp-core/src/kernel/test_support.rs"
+        )));
+        // `test_fixtures.rs` — exact-name exemption added by T154.
+        assert!(file_is_test_only(Path::new(
+            "crates/nmp-core/src/store/lmdb/test_fixtures.rs"
         )));
         // `*_tests.rs` suffix — the bug T106 fixed: these were NOT exempt
         // although they are `#[cfg(test)] mod ...;` in the parent.
@@ -256,15 +266,23 @@ mod tests {
             "crates/nmp-core/src/kernel/auth_tests.rs"
         )));
         assert!(file_is_test_only(Path::new("foo/bar/some_feature_tests.rs")));
+        // `tests_*.rs` prefix — T154: files like `tests_kind5.rs` whose
+        // `#[cfg(all(test, ...))] mod tests_kind5;` declaration lives in the
+        // parent and is invisible to the line walker.
+        assert!(file_is_test_only(Path::new(
+            "crates/nmp-core/src/store/lmdb/tests_kind5.rs"
+        )));
+        assert!(file_is_test_only(Path::new("foo/bar/tests_scenario.rs")));
         // `/tests/` directory.
         assert!(file_is_test_only(Path::new("crates/x/tests/integration.rs")));
-        // Negatives: production files must NOT be exempted, including a name
-        // that merely contains "tests" without the `_tests.rs` suffix.
+        // Negatives: production files must NOT be exempted.
         assert!(!file_is_test_only(Path::new(
             "crates/nmp-core/src/ffi/capability.rs"
         )));
-        assert!(!file_is_test_only(Path::new("crates/x/src/tests_helper.rs")));
+        // `contests.rs` contains "tests" but matches no exemption pattern.
         assert!(!file_is_test_only(Path::new("crates/x/src/contests.rs")));
+        // A file that merely ends in `tests` without `_tests.rs` is not exempt.
+        assert!(!file_is_test_only(Path::new("crates/x/src/run_tests.txt")));
     }
 
     #[test]

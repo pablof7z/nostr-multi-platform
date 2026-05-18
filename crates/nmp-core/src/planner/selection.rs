@@ -239,7 +239,7 @@ fn greedy_select(
                 ord => ord,
             })
             .map(|(r, _)| r.clone())
-            .expect("coverage non-empty checked above");
+            .expect("coverage non-empty checked above"); // doctrine-allow: D6 — coverage emptiness guarded at line 226; max_by on non-empty iter always returns Some
 
         selected.insert(winner_url.clone());
 
