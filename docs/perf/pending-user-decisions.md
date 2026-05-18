@@ -718,3 +718,14 @@ C. **Add `library` field to KernelUpdate enum** — directly names podcast in nm
 **Recommendation:** Option A for M11 (the gap is closed by the implementation landed here). Option B is the right long-term design but deferred until nmp-core's substrate phase matures.
 
 **Commit:** `feat(podcast-core): DomainModule/ViewModule/ActionModule impls + retire Mutex (T-podcast-gap-1)`
+
+
+## PD-027 — Marmot/MLS pulled forward from post-v1 (2026-05-18)
+
+**Filed:** 2026-05-18. **Status:** RESOLVED (user-directed) 2026-05-18.
+
+`docs/plan/marmot-mls.md` is explicitly scoped post-v1 ("Status: Deferred post-v1. M11.5 explicitly excludes encrypted groups"). North-star memory = "complete v1 with zero debt." User explicitly directed pulling it forward now, with **full Chirp support (Rust FFI + iOS SwiftUI)** — which also exceeds the milestone's stated "does NOT ship Marmot-native app UI" boundary.
+
+**Decision:** Implement now. New crates: `nmp-nip44` (NIP-44 v2), `nmp-nip59` (gift-wrap), `nmp-marmot` (wraps `mdk-core` 0.8.0 + `mdk-sqlite-storage`). Plus `nmp-app-chirp` Marmot module registration + FFI and `ios/Chirp` SwiftUI screens. Executed via parallel agents in git worktrees (wave-structured by dependency chain nip44 -> nip59 -> marmot -> tests/Chirp).
+
+**Risk noted:** Roadmap deviation; openmls transitive license/advisory graph must pass `deny.toml` before marmot integration proceeds (blocking gate). MDK is 0.8.0 on crates.io; plan referenced 0.7.1+ — 0.7->0.8 deltas to be captured in the MDK API spike.

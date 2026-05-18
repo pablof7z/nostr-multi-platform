@@ -1,0 +1,10 @@
+[package]
+name = "nmp-nip44"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+description = "NIP-44 v2 conversation-key encryption primitive (ChaCha20 + HKDF-SHA256 + HMAC-SHA256, padded). Prerequisite for nmp-nip59 gift-wrap. SCAFFOLD — see docs/plan/marmot-mls.md Step 0."
+
+[dependencies]
+
+[dev-dependencies]

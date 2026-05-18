@@ -1,0 +1,17 @@
+[package]
+name = "nmp-marmot"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+description = "Marmot Protocol (MLS-over-Nostr) as an NMP protocol crate. Sole importer of mdk-core/openmls; adapts MDK types to NMP Domain/View/Action module contracts. SCAFFOLD — see docs/plan/marmot-mls.md."
+
+[dependencies]
+nmp-core = { path = "../nmp-core" }
+nmp-nip59 = { path = "../nmp-nip59" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# mdk-core / mdk-sqlite-storage added by the MDK-spike agent after the
+# cargo-deny gate (openmls transitive graph vs deny.toml) passes.
+
+[dev-dependencies]
+nmp-core = { path = "../nmp-core", features = ["test-support"] }
