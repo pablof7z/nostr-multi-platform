@@ -17,7 +17,11 @@ serde_json = "1.0"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core" }
+nmp-nip01 = { path = "../nmp-nip01" }
+nmp-nip22 = { path = "../nmp-nip22" }
 nmp-nip29 = { path = "../nmp-nip29" }
+nmp-nip57 = { path = "../nmp-nip57" }
+nmp-reactions = { path = "../nmp-reactions" }
 nmp-signers = { path = "../nmp-signers" }
 # Real-relay smoke test dependencies (real_relay_smoke.rs).
 nostr = "0.44"
