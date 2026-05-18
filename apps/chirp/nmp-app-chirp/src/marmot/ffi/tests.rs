@@ -15,12 +15,16 @@
 //! tests below.
 
 use super::*;
+use crate::marmot::tap::MarmotIngestTap;
 use crate::marmot::{ops, state::MarmotProjection};
 
+use mdk_core::prelude::NostrGroupConfigData;
 use mdk_sqlite_storage::MdkSqliteStorage;
+use nmp_core::RawEventObserver;
 use nmp_marmot::service::MarmotService;
-use nostr::Keys;
+use nostr::{JsonUtil, Keys};
 use serde_json::json;
+use std::sync::Arc;
 
 fn in_memory(keys: Keys) -> MarmotService {
     let storage = MdkSqliteStorage::new_in_memory().expect("in-memory mls storage");
@@ -194,4 +198,117 @@ fn unknown_op_and_bad_json_degrade() {
         .with_inner(|h| ops::dispatch(h, &json!({ "no_op": true }), 1))
         .unwrap();
     assert_eq!(r["ok"], json!(false));
+}
+
+// ── Inbound ingest seam (raw-event tap) ──────────────────────────────────
+
+/// Simulate the kernel raw-event tap delivering a signed kind:1059
+/// gift-wrap welcome: it must reach `MarmotService` via the SAME shared
+/// `ingest_signed_event_core` the dispatch op uses, and Bob's snapshot
+/// must then show a pending welcome — with NO Swift / dispatch call (the
+/// existing snapshot poll surfaces the new state). Builds a real gift-wrap
+/// via the two-party in-memory pattern (the `nmp_nip59` path), exactly as
+/// `crates/nmp-marmot/src/tests.rs` does.
+#[test]
+fn raw_tap_kind_1059_welcome_reaches_service_and_snapshot() {
+    let alice_keys = Keys::generate();
+    let bob_keys = Keys::generate();
+
+    let alice = in_memory(alice_keys.clone());
+    let bob_service = in_memory(bob_keys.clone());
+
+    // Bob publishes a KeyPackage so Alice can invite him.
+    let bob_kp = bob_service
+        .publish_key_package(vec![nostr::RelayUrl::parse("wss://t.relay").unwrap()])
+        .expect("bob kp");
+
+    // Alice creates the group inviting Bob, then gift-wraps the kind:444
+    // welcome rumor to Bob (real NIP-59 path → signed kind:1059).
+    let config = NostrGroupConfigData::new(
+        "Tap Ingest Test".to_string(),
+        "inbound".to_string(),
+        None,
+        None,
+        None,
+        vec![nostr::RelayUrl::parse("wss://t.relay").unwrap()],
+        vec![alice_keys.public_key()],
+    );
+    let (_group, pending) = alice
+        .create_group(vec![bob_kp.event_30443.clone()], config)
+        .expect("alice creates group");
+    let welcome_rumor = pending.welcome_rumors[0].clone();
+    let gift = alice
+        .wrap_welcome(&bob_keys.public_key(), welcome_rumor, None)
+        .expect("alice gift-wraps welcome to bob");
+    pending.commit().expect("alice merges create commit");
+    let gift_json = gift.as_json();
+    let gift_id_hex = gift.id.to_hex();
+
+    // Bob's projection + the tap the FFI register path would install.
+    let bob_proj = Arc::new(MarmotProjection::new(bob_service));
+    let tap = MarmotIngestTap::new(Arc::clone(&bob_proj));
+
+    // Pre-condition: no pending welcomes yet.
+    assert!(bob_proj.snapshot(0).pending_welcomes.is_empty());
+
+    // Kernel delivers the verbatim signed kind:1059 to the tap.
+    tap.on_raw_event(1059, &gift_json);
+
+    // The snapshot poll (unchanged, no Swift call) now surfaces it.
+    let snap = bob_proj.snapshot(1);
+    assert_eq!(
+        snap.pending_welcomes.len(),
+        1,
+        "tap-delivered welcome must surface in snapshot: {snap:?}"
+    );
+    let row = &snap.pending_welcomes[0];
+    assert_eq!(row.id_hex, gift_id_hex);
+    assert_eq!(row.group_name, "Tap Ingest Test");
+    assert_eq!(row.inviter_npub, alice_keys.public_key().to_hex());
+
+    // Idempotent / D6: a duplicate relay echo of the same gift-wrap is a
+    // silent no-op on the tap (never panics, snapshot stays consistent).
+    tap.on_raw_event(1059, &gift_json);
+    assert_eq!(bob_proj.snapshot(2).pending_welcomes.len(), 1);
+
+    // The back-compat dispatch op drives the SAME shared core against the
+    // SAME projection (its key store has Bob's key package; a separate
+    // service would not — KP state is per-storage). `unwrap_and_process_
+    // welcome` is idempotent, so re-ingesting via the op succeeds and the
+    // row is still present — proving the tap and the op share one path.
+    let r = bob_proj
+        .with_inner(|h| {
+            ops::dispatch(
+                h,
+                &json!({ "op": "ingest_signed_event", "event_json": gift_json }),
+                3,
+            )
+        })
+        .unwrap();
+    assert_eq!(r["ok"], json!(true), "dispatch back-compat shares core: {r}");
+    assert_eq!(r["kind"], json!(1059));
+    assert_eq!(bob_proj.snapshot(3).pending_welcomes.len(), 1);
+}
+
+/// D6: the tap silently no-ops on garbage / unsupported-kind input — no
+/// panic across the actor boundary, snapshot unaffected.
+#[test]
+fn raw_tap_malformed_and_unsupported_are_silent() {
+    let proj = Arc::new(MarmotProjection::new(in_memory(Keys::generate())));
+    let tap = MarmotIngestTap::new(Arc::clone(&proj));
+
+    tap.on_raw_event(1059, "not json at all");
+    tap.on_raw_event(1059, "{}");
+    // kind:444 is admitted by the filter but a deliberate skip in the core.
+    tap.on_raw_event(
+        444,
+        &nostr::EventBuilder::new(nostr::Kind::Custom(444), "x")
+            .sign_with_keys(&Keys::generate())
+            .unwrap()
+            .as_json(),
+    );
+
+    let snap = proj.snapshot(0);
+    assert!(snap.pending_welcomes.is_empty());
+    assert!(snap.groups.is_empty());
 }

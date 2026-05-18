@@ -31,8 +31,22 @@
 //!
 //! Publish is fire-and-forget: success == "submitted to the kernel
 //! publish pipeline". The op result still carries the signed event JSON
-//! but it is now INFORMATIONAL only. The INBOUND ingest seam
-//! (`{"op":"ingest_signed_event"}`) is a SEPARATE seam, still open.
+//! but it is now INFORMATIONAL only.
+//!
+//! ## Inbound ingest seam — CLOSED (this is the receive direction)
+//!
+//! [`ingest_signed_event_core`] is the single code path that drives a
+//! signed inbound event into `MarmotService` (kind:1059 →
+//! `unwrap_and_process_welcome`; kind:445 → `process_message`; seed the
+//! `group_id→relays` cache from `Welcome::group_relays`). It now has TWO
+//! callers sharing that one path: the automatic
+//! [`crate::marmot::tap`] raw-event observer (registered against the
+//! retained `*mut NmpApp` in `nmp_app_chirp_marmot_register`; the kernel
+//! delivers every accepted inbound signed kind:1059/445 to it) and the
+//! back-compat `{"op":"ingest_signed_event"}` dispatch op. The tap makes
+//! welcomes / messages received from relays surface in the next
+//! `nmp_app_chirp_marmot_snapshot` with no Swift involvement. This was
+//! the last open seam.
 //!
 //! ## Pending-commit discipline (mdk-api.md §7.7)
 //!
@@ -464,17 +478,40 @@ fn decline_welcome(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> 
     Ok(json!({ "declined": wid }))
 }
 
-/// Lossy-observer seam: ingest a *signed* event the kernel observer cannot
-/// reconstruct (kind:445 group msg/commit, kind:1059 gift-wrap). Swift
-/// passes the full signed event JSON from the relay layer.
-fn ingest_signed_event(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
-    let json = str_field(v, "event_json")?;
-    let event = parse_signed_event(json)?;
+/// INBOUND ingest seam — CLOSED (the shared core).
+///
+/// Drives a *signed* `nostr::Event` into `MarmotService`: kind:1059
+/// gift-wrap → `unwrap_and_process_welcome` (+ seed the `group_id→relays`
+/// cache from `Welcome::group_relays` and cache the pending-welcome row);
+/// kind:445 → `process_message`. Any other kind is a deliberate **silent
+/// skip** (`Ok(None)`): the raw-event tap registers `[444, 445, 1059]`
+/// defensively, and a bare kind:444 rumor (should never reach the wire —
+/// the wire welcome is the kind:1059 gift-wrap) must not be treated as an
+/// error there.
+///
+/// TWO callers, ONE path:
+///
+/// * the automatic [`crate::marmot::tap`] raw-event observer (the kernel
+///   delivers every accepted inbound signed kind:1059/445 here) — it
+///   discards the `Result` (D6: a poisoned/duplicate/malformed event is a
+///   silent no-op on the actor thread, never a panic across the FFI), and
+/// * the manual `{"op":"ingest_signed_event"}` dispatch op (back-compat /
+///   tests) — it maps `Ok(None)` (unsupported kind) and any `Err` to the
+///   `{"ok":false,"error":…}` envelope, exactly as before.
+///
+/// `Ok(Some(Value))` carries the per-kind informational payload the
+/// dispatch op echoes. The projection mutation (pending-welcome row,
+/// relay cache, MDK state) is the load-bearing effect — the next
+/// `nmp_app_chirp_marmot_snapshot` reflects it for BOTH callers.
+pub(crate) fn ingest_signed_event_core(
+    h: &mut InnerHandle<'_>,
+    event: &nostr::Event,
+) -> Result<Option<Value>, String> {
     let kind = event.kind.as_u16();
     if kind == 1059 {
         // Gift-wrap: unwrap + process the inner kind:444 welcome, then
         // cache the gift-wrap as a pending welcome row (no MLS type held).
-        match h.service().unwrap_and_process_welcome(&event) {
+        match h.service().unwrap_and_process_welcome(event) {
             Ok((welcome, sender)) => {
                 let wid = event.id.to_hex();
                 let group_name = welcome.group_name.clone();
@@ -488,24 +525,42 @@ fn ingest_signed_event(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, Stri
                 );
                 h.cache_welcome(
                     wid.clone(),
-                    event,
+                    event.clone(),
                     group_name,
                     sender.to_hex(),
                 );
-                Ok(json!({ "kind": 1059, "pending_welcome_id_hex": wid }))
+                Ok(Some(json!({ "kind": 1059, "pending_welcome_id_hex": wid })))
             }
             Err(e) => Err(e.to_string()),
         }
     } else if kind == 445 {
         // Group message / commit / proposal.
-        match h.service().process_message(&event) {
-            Ok(_) => Ok(json!({ "kind": 445, "processed": true })),
+        match h.service().process_message(event) {
+            Ok(_) => Ok(Some(json!({ "kind": 445, "processed": true }))),
             Err(e) => Err(e.to_string()),
         }
     } else {
-        Err(format!(
-            "ingest_signed_event: unsupported kind {kind} (expect 445 or 1059)"
-        ))
+        // Defensive: the tap filter also admits kind:444 (and a bad
+        // filter could admit anything). Not an error for the automatic
+        // path — a deliberate skip.
+        Ok(None)
+    }
+}
+
+/// Lossy-observer seam back-compat op. Now a thin alias over
+/// [`ingest_signed_event_core`] (the raw-event tap is the automatic
+/// caller of the same core). Kept so existing tests / any Swift call
+/// site that still dispatches `{"op":"ingest_signed_event"}` keep
+/// working; an unsupported kind here is still surfaced as an error.
+fn ingest_signed_event(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
+    let json = str_field(v, "event_json")?;
+    let event = parse_signed_event(json)?;
+    match ingest_signed_event_core(h, &event)? {
+        Some(payload) => Ok(payload),
+        None => Err(format!(
+            "ingest_signed_event: unsupported kind {} (expect 445 or 1059)",
+            event.kind.as_u16()
+        )),
     }
 }
 

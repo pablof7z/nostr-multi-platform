@@ -40,9 +40,21 @@
 //! relay path. The op result still carries the signed event JSON
 //! (`event` / `events` / `evolution_event` / `welcome_rumors`) but it is
 //! now INFORMATIONAL only — publish already happened (fire-and-forget;
-//! success == "submitted to the kernel publish pipeline"). The INBOUND
-//! ingest seam (`{"op":"ingest_signed_event"}`) is a SEPARATE seam and is
-//! still open (see seam #2 below).
+//! success == "submitted to the kernel publish pipeline").
+//!
+//! ## Inbound ingest seam — CLOSED (this is the receive direction)
+//!
+//! The kernel now also exposes a parallel raw signed-event tap
+//! (`RawEventObserver`, sig included). `nmp_app_chirp_marmot_register`
+//! registers [`crate::marmot::tap`] against the retained `*mut NmpApp`
+//! for kinds `[444, 445, 1059]`; the kernel delivers every accepted
+//! inbound signed event of those kinds to it and it drives them through
+//! the shared `ops::ingest_signed_event_core` (kind:1059 →
+//! `unwrap_and_process_welcome`; kind:445 → `process_message`; seeds the
+//! `group_id→relays` cache). Welcomes / messages received from relays
+//! therefore surface in the next `snapshot` automatically — no Swift
+//! path. The `{"op":"ingest_signed_event"}` dispatch op remains as a
+//! back-compat alias over the same core.
 //!
 //! ## Threading
 //!
@@ -62,18 +74,21 @@
 //!    `nmp_app_chirp_marmot_register` takes the secret key hex/nsec
 //!    directly. Replace with a `KeyringCapability`-backed seam when one
 //!    lands on `NmpApp`.
-//! 2. **Lossy-observer seam.** The kernel `KernelEventObserver` fan-out
-//!    delivers a [`KernelEvent`] (id/author/kind/created_at/tags/content)
-//!    — it carries NO signature, so a signed `nostr::Event` cannot be
-//!    reconstructed. `MDK::process_message` /
-//!    `unwrap_and_process_welcome` REQUIRE a signed event. The observer
-//!    therefore only tracks *metadata* it can derive from the lossy
-//!    projection (presence of the local identity's own kind:30443/443
+//! 2. **Lossy-observer seam — RESOLVED (inbound ingest CLOSED).** The
+//!    kernel `KernelEventObserver` fan-out delivers a [`KernelEvent`]
+//!    (id/author/kind/created_at/tags/content) — it carries NO signature,
+//!    so a signed `nostr::Event` cannot be reconstructed from it, and
+//!    `MarmotProjection::on_kernel_event` still only uses it for
+//!    *metadata* (presence of the local identity's own kind:30443/443
 //!    key-package). Actual MLS ingest of kind:445 group messages and
-//!    kind:1059 gift-wraps is driven through the
-//!    `{"op":"ingest_signed_event","event_json":"…"}` dispatch op, which
-//!    takes the full signed event JSON from the Swift relay layer. Remove
-//!    this op once the kernel exposes signed `nostr::Event`s to observers.
+//!    kind:1059 gift-wraps is now driven automatically by the parallel
+//!    raw signed-event tap ([`crate::marmot::tap`], a
+//!    `nmp-core` `RawEventObserver` that DOES carry `sig`), registered in
+//!    `nmp_app_chirp_marmot_register`. The
+//!    `{"op":"ingest_signed_event","event_json":"…"}` dispatch op is kept
+//!    as a back-compat alias over the SAME
+//!    `ops::ingest_signed_event_core`; it no longer requires a Swift
+//!    relay layer (none ever existed). This seam is no longer open.
 //! 3. **KeyPackage cache seam.** `create_group` / `invite` need the
 //!    invitees' *signed* kind:30443 key-package events. This crate has no
 //!    kernel cache of signed events, so those ops accept an explicit
@@ -368,17 +383,19 @@ impl<'a> InnerHandle<'a> {
 }
 
 impl KernelEventObserver for MarmotProjection {
-    /// Lossy-observer seam (see module rustdoc): a [`KernelEvent`] has no
-    /// signature so we cannot feed kind:445 / kind:1059 into MDK from here.
-    /// We only track metadata: if the local identity has published a
-    /// key-package and the kernel re-ingests it (e.g. relay echo), keep the
-    /// `published` flag warm so the snapshot reflects reality even before a
-    /// `publish_key_package` dispatch this session.
+    /// Metadata-only `KernelEvent` observer (see module rustdoc): a
+    /// [`KernelEvent`] has no signature so we cannot feed kind:445 /
+    /// kind:1059 into MDK from here — that is now done automatically by
+    /// the parallel raw signed-event tap ([`crate::marmot::tap`]). This
+    /// observer only tracks metadata: if the local identity has published
+    /// a key-package and the kernel re-ingests it (e.g. relay echo), keep
+    /// the `published` flag warm so the snapshot reflects reality even
+    /// before a `publish_key_package` dispatch this session.
     fn on_kernel_event(&self, event: &KernelEvent) {
         if event.kind != MLS_KEY_PACKAGE_KIND && event.kind != MLS_KEY_PACKAGE_KIND_LEGACY
         {
-            // kind:445 / kind:1059 require a signed event — handled via the
-            // `ingest_signed_event` dispatch op, not here.
+            // kind:445 / kind:1059 require a signed event — driven by the
+            // raw signed-event tap (`crate::marmot::tap`), not here.
             return;
         }
         let Ok(mut inner) = self.inner.lock() else {

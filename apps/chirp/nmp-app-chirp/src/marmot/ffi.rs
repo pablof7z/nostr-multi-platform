@@ -7,8 +7,9 @@
 //!
 //! - [`nmp_app_chirp_marmot_register`] — build a [`MarmotService`]
 //!   (signer seam: secret key hex/nsec passed directly; DB at
-//!   `<app_support>/marmot-mls-state.sqlite`), register a kernel event
-//!   observer for the Marmot kinds, return an opaque `*mut MarmotHandle`.
+//!   `<app_support>/marmot-mls-state.sqlite`), register the lossy
+//!   `KernelEvent` metadata observer AND the raw signed-event inbound
+//!   tap (kinds `[444, 445, 1059]`), return an opaque `*mut MarmotHandle`.
 //! - [`nmp_app_chirp_marmot_snapshot`] — JSON snapshot
 //!   (`groups` / `pending_welcomes` / `key_package`).
 //! - [`nmp_app_chirp_marmot_group_messages`] — newest-N decrypted messages
@@ -18,8 +19,9 @@
 //!   `leave` / `remove` / `accept_welcome` / `decline_welcome` /
 //!   `ingest_signed_event`). Returns `{"ok":true,…}` / `{"ok":false,…}`.
 //! - [`nmp_app_chirp_marmot_string_free`] — companion deallocator.
-//! - [`nmp_app_chirp_marmot_unregister`] — drop the observer + free the
-//!   handle. Idempotent.
+//! - [`nmp_app_chirp_marmot_unregister`] — drop both kernel
+//!   registrations (lossy observer + raw tap) + free the handle.
+//!   Idempotent.
 //!
 //! ## Doctrine
 //!
@@ -51,21 +53,34 @@
 //! (`Auto`); kind:1059 gift-wrap → group relays as a documented
 //! inbox-routing approximation. The MDK pending-commit is still resolved
 //! here (commit eagerly because the events are produced + submitted;
-//! clear-on-failure is exposed via the `clear_pending` op). The INBOUND
-//! ingest seam (`{"op":"ingest_signed_event"}`) is a SEPARATE seam and is
-//! still open. See each op's rustdoc.
+//! clear-on-failure is exposed via the `clear_pending` op).
+//!
+//! ## Inbound ingest seam — CLOSED
+//!
+//! `nmp_app_chirp_marmot_register` also registers a raw signed-event tap
+//! (`nmp-core` `RawEventObserver`, Rust-trait API) for kinds
+//! `[444, 445, 1059]`. The kernel delivers every accepted inbound signed
+//! event of those kinds to [`crate::marmot::tap`], which drives them
+//! through the SAME `ops::ingest_signed_event_core` the back-compat
+//! `{"op":"ingest_signed_event"}` dispatch op uses — so welcomes /
+//! messages received from relays surface in the next snapshot with no
+//! Swift involvement (the existing snapshot poll is unchanged).
+//! `nmp_app_chirp_marmot_unregister` tears down BOTH kernel
+//! registrations (the lossy `KernelEvent` metadata observer AND the raw
+//! tap; distinct slots / ids). This was the last open seam.
 
 use std::ffi::{c_char, CStr, CString};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use nmp_core::{KernelEventObserverId, NmpApp};
+use nmp_core::{KernelEventObserverId, NmpApp, RawEventObserver, RawEventObserverId};
 use nostr::Keys;
 use serde_json::{json, Value};
 
 use nmp_marmot::service::MarmotService;
 
 use crate::marmot::state::MarmotProjection;
+use crate::marmot::tap::MarmotIngestTap;
 
 /// Default page size for [`nmp_app_chirp_marmot_group_messages`].
 const DEFAULT_MESSAGE_PAGE: usize = 200;
@@ -80,7 +95,14 @@ const KEYRING_DB_KEY_ID: &str = "marmot-mls-db-key";
 /// [`nmp_app_chirp_marmot_unregister`].
 pub struct MarmotHandle {
     projection: Arc<MarmotProjection>,
+    /// Lossy `KernelEvent` observer (key-package metadata tracker — see
+    /// `MarmotProjection::on_kernel_event`). Distinct slot / id from the
+    /// raw tap below; both are torn down in `unregister`.
     observer_id: KernelEventObserverId,
+    /// Raw signed-event tap (the CLOSED inbound ingest seam — drives
+    /// kind:1059/445 into `MarmotService` via the shared core; see
+    /// [`crate::marmot::tap`]). Separate kernel slot from `observer_id`.
+    raw_observer_id: RawEventObserverId,
     app: *mut NmpApp,
 }
 
@@ -152,9 +174,29 @@ pub extern "C" fn nmp_app_chirp_marmot_register(
         return std::ptr::null_mut(); // poisoned slot — soft fail.
     }
 
+    // CLOSE the inbound ingest seam: register the raw signed-event tap so
+    // accepted inbound kind:1059 welcomes / kind:445 group messages from
+    // relays drive `MarmotService` automatically (the next snapshot poll
+    // surfaces the new pending-welcomes / messages — no Swift path). The
+    // kernel owns the `Arc<dyn RawEventObserver>`; the tap holds an
+    // `Arc<MarmotProjection>` (no cycle — nothing in the projection points
+    // back). Torn down in `unregister` before `app` is freed.
+    let tap = Arc::new(MarmotIngestTap::new(Arc::clone(&projection)));
+    let raw_observer_id = app_ref.register_raw_event_observer(
+        MarmotIngestTap::kind_filter(),
+        tap as Arc<dyn RawEventObserver>,
+    );
+    if raw_observer_id.0 == 0 {
+        // Poisoned raw-tap slot — soft fail, but undo the kernel-event
+        // observer we already registered so we leak nothing.
+        app_ref.unregister_event_observer(observer_id);
+        return std::ptr::null_mut();
+    }
+
     Box::into_raw(Box::new(MarmotHandle {
         projection,
         observer_id,
+        raw_observer_id,
         app,
     }))
 }
@@ -250,7 +292,15 @@ pub extern "C" fn nmp_app_chirp_marmot_unregister(handle: *mut MarmotHandle) {
     if !boxed.app.is_null() {
         // SAFETY: same `app` validity rule as register.
         let app_ref = unsafe { &*boxed.app };
+        // Drop both kernel registrations (distinct slots): the lossy
+        // metadata observer AND the raw inbound-ingest tap. Both are
+        // idempotent no-ops for unknown ids (D6). Dropping the raw tap
+        // releases the kernel's `Arc<dyn RawEventObserver>`, which in turn
+        // releases the tap's `Arc<MarmotProjection>` clone — no
+        // use-after-free of `app` (it is read only here, then `boxed`
+        // drops).
         app_ref.unregister_event_observer(boxed.observer_id);
+        app_ref.unregister_raw_event_observer(boxed.raw_observer_id);
     }
 }
 
