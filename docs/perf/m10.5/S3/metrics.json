@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "tool": "ffi-stress",
+  "scenario": "S3-snapshot-pressure",
+  "started_at_unix": 1779086489,
+  "wall_seconds": 91.929245,
+  "passed": true,
+  "gates": [
+    {
+      "name": "callback_p99_ms",
+      "op": "<=",
+      "threshold": 20.0,
+      "measured": 0.038958,
+      "passed": true,
+      "note": "G-S3: per-emit serialization wall-time p99 <= 20 ms"
+    },
+    {
+      "name": "max_payload_bytes",
+      "op": "<=",
+      "threshold": 2097152.0,
+      "measured": 490038.0,
+      "passed": true,
+      "note": "G-S3: per-emit payload size <= 2 MiB"
+    },
+    {
+      "name": "apply_us_p99",
+      "op": "<=",
+      "threshold": 16000.0,
+      "measured": 38.0,
+      "passed": true,
+      "note": "G-S3: callback apply_us p99 <= 16 ms (one 60 Hz frame)"
+    },
+    {
+      "name": "emit_hz",
+      "op": "<=",
+      "threshold": 60.0,
+      "measured": 6.426856349564132,
+      "passed": true,
+      "note": "G-S3/D8: end-to-end reconciler frequency <= 60 Hz"
+    },
+    {
+      "name": "rev_monotonic",
+      "op": "==",
+      "threshold": 1.0,
+      "measured": 1.0,
+      "passed": true,
+      "note": "G-S3: rev strictly increasing across emits (bible #1)"
+    },
+    {
+      "name": "net_heap_per_emit_bytes",
+      "op": "<=",
+      "threshold": 980076.0,
+      "measured": 22.153846153846153,
+      "passed": true,
+      "note": "G-S3/D8: net heap per emit <= 2×payload_bytes (gates.md §G-S3 row 5)"
+    }
+  ],
+  "notes": [
+    "Injected 100000 signed events (full Schnorr verify); emits observed: 13; burst window: 2.0 s; Hz: 6.4",
+    "Event injection: 100000 events via nmp_app_inject_signed_events (real ingest path, full try_from_raw Schnorr verify; D0: cfg-gated, not in production ABI).",
+    "D8 alloc gate: max_payload_bytes=490038; threshold=2×payload=980076; net_heap_per_emit=22 bytes (spec §G-S3 row 5)."
+  ],
+  "measurements": {
+    "alloc_threshold_bytes": 980076.0,
+    "burst_elapsed_ms": 2022,
+    "burst_hz": 6.426856349564132,
+    "configure_bursts": 10,
+    "emit_count": 13,
+    "inject_count": 100000,
+    "max_payload_bytes": 490038,
+    "net_heap_delta_burst_bytes": 288,
+    "net_heap_per_emit_bytes": 22.153846153846153,
+    "p99_apply_us": 38,
+    "p99_callback_ms": 0.038958,
+    "p99_callback_ns": 38958,
+    "rev_monotonic": true,
+    "rss_growth_bytes": 167575552,
+    "wall_seconds": 91.929245
+  }
+}
