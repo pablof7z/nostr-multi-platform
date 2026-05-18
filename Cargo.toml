@@ -22,7 +22,6 @@ members = [
     "crates/nmp-nip29",
     "crates/nmp-nip42",
     "crates/nmp-nip42-types",
-    "crates/nmp-nip44",
     "crates/nmp-nip51",
     "crates/nmp-nip57",
     "crates/nmp-nip59",
