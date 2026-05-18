@@ -688,3 +688,18 @@ Per T136 Gate-1 audit (`docs/design/lmdb/env-injection-status.md`, commit `1db4d
 **Decision:** Implement now. New crates: `nmp-nip44` (NIP-44 v2), `nmp-nip59` (gift-wrap), `nmp-marmot` (wraps `mdk-core` 0.8.0 + `mdk-sqlite-storage`). Plus `nmp-app-chirp` Marmot module registration + FFI and `ios/Chirp` SwiftUI screens. Executed via parallel agents in git worktrees (wave-structured by dependency chain nip44 → nip59 → marmot → tests/Chirp).
 
 **Risk noted:** Roadmap deviation; openmls transitive license/advisory graph must pass `deny.toml` before marmot integration proceeds (blocking gate). MDK is 0.8.0 on crates.io; plan referenced 0.7.1+ — 0.7→0.8 deltas to be captured in the MDK API spike.
+
+### PD-027 addendum — Marmot milestone COMPLETE + exit-gate translation-layer deviation (2026-05-18)
+
+All 7 Marmot tasks landed on origin/master: `9dbc8261` scaffold → `cdd48d1b` MDK spike/deny-gate (GO) → `7e4cb7aa` nmp-nip59 → `018ac40d` nmp-marmot → `cd0a5d56` exit-gate tests+perf docs → `e939883c` Chirp Rust FFI → `6ec313df` Chirp iOS SwiftUI (sim build green). nip44 from-scratch (`3d3e7ba5`) reverted (`6291fd3c`) per user direction → rust-nostr used.
+
+**D0 kernel boundary HOLDS**: `nmp-core` has zero mdk-core/openmls deps and zero MLS nouns (grep-verified at `6ec313df`). 15 exit-gate tests green; forward-secrecy + post-compromise + kernel-boundary + perf reports in `docs/perf/marmot/`.
+
+**Documented deviation from marmot-mls.md exit-gate literal wording** ("nmp-marmot is the SOLE importer of mdk-core/openmls"):
+1. `nmp-testing` — `mdk-core`/`mdk-sqlite-storage` in **[dev-dependencies]** only (exit-gate integration tests must drive MDK + assert on `MessageProcessingResult`). Test harness, not production. Accepted.
+2. `nmp-app-chirp` — **direct `mdk-core` dep** (non-dev). This is the FFI typed-translation-layer the nmp-marmot crate doctrine explicitly anticipated ("when an actor/FFI consumer lands, it needs a typed translation layer"); no MLS type crosses the C-ABI — `mdk-core` types appear only at input-construction sites bridging C-ABI primitives into `MarmotService` args. Justification embedded in `apps/chirp/nmp-app-chirp/Cargo.toml`. **Conscious architectural decision, defensible, but a real deviation from the literal exit-gate phrasing — flagged for user review.**
+
+**Open follow-up seams (not blockers; milestone E2E proof = headless tests, Chirp UI additive):**
+- No kernel `Keys` provider → Chirp FFI `register` takes secret hex (3-arg).
+- Signature-less `KernelEvent` → `ingest_signed_event` dispatch op exists but has NO caller (Chirp kernel exposes no raw signed-event stream to Swift); no signed-event relay-publish hook → Chirp group ops land in local MDK SQLite, don't reach relays.
+- `nmp-nip59` `WelcomeUnwrap` substrate completion needs a kernel `process_event` ingest hook; `WelcomeWrap` uses a `WrapPlan` carrier (gift-wrap needs live keys, diverges from nip29 `PublishPlan`).
