@@ -84,6 +84,9 @@ impl Kernel {
                 last_event_to_emit_ms,
                 max_event_to_emit_ms: self.max_event_to_emit_ms,
                 max_events_per_update: self.max_events_per_update,
+                // T114b — per-dispatch retention audit visibility (PD-021 line-11).
+                dispatch_drops_total: self.dispatch_drops_total(),
+                claim_drops_total: self.claim_drops_total(),
             },
             relay_status: self.relay_status(),
             relay_statuses: self.relay_statuses(),

@@ -20,7 +20,7 @@ use super::kernel_action::dispatch_kernel_action;
 use super::relay_mgmt::{
     close_relays, maybe_send_startup, send_all_outbound, spawn_missing_relays,
 };
-use super::tick::{emit_kernel_update, emit_now};
+use super::tick::{emit_kernel_update, emit_now, maybe_emit_after_dispatch};
 use super::{ActorCommand, RelayControl};
 
 #[allow(clippy::too_many_arguments)]
@@ -76,17 +76,17 @@ pub(super) fn dispatch_command(
         }
         ActorCommand::OpenAuthor { pubkey } => {
             let outbound = kernel.open_author(pubkey, relays_ready);
-            emit_now(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::OpenThread { event_id } => {
             let outbound = kernel.open_thread(event_id, relays_ready);
-            emit_now(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::OpenFirehoseTag { tag } => {
             let outbound = kernel.open_firehose_tag(tag, relays_ready);
-            emit_now(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::ClaimProfile {
@@ -94,7 +94,7 @@ pub(super) fn dispatch_command(
             consumer_id,
         } => {
             let outbound = kernel.claim_profile(pubkey, consumer_id, relays_ready);
-            emit_now(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::ReleaseProfile {
@@ -102,43 +102,43 @@ pub(super) fn dispatch_command(
             consumer_id,
         } => {
             let outbound = kernel.release_profile(&pubkey, &consumer_id);
-            emit_now(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::CloseAuthor { pubkey } => {
             let outbound = kernel.close_author(&pubkey);
-            emit_now(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::CloseThread { event_id } => {
             let outbound = kernel.close_thread(&event_id);
-            emit_now(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::SignInNsec { secret } => {
             let outbound = commands::sign_in_nsec(identity, kernel, &secret, relays_ready);
-            emit_now(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::SignInBunker { uri } => {
             commands::sign_in_bunker(kernel, &uri);
-            emit_now(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(Vec::new())
         }
         ActorCommand::CreateAccount => {
             let outbound = commands::create_account(identity, kernel, relays_ready);
-            emit_now(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::SwitchActive { identity_id } => {
             let outbound =
                 commands::switch_active(identity, kernel, &identity_id, relays_ready);
-            emit_now(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::RemoveAccount { identity_id } => {
             let outbound = commands::remove_account(identity, kernel, &identity_id);
-            emit_now(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::PublishNote {
@@ -147,7 +147,7 @@ pub(super) fn dispatch_command(
         } => {
             let outbound =
                 commands::publish_note(identity, kernel, &content, reply_to_id.as_deref());
-            emit_now(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::PublishUnsignedEvent(unsigned) => {
@@ -161,32 +161,32 @@ pub(super) fn dispatch_command(
         } => {
             let outbound =
                 commands::react(identity, kernel, &target_event_id, &reaction);
-            emit_now(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::Follow { pubkey } => {
             let outbound = commands::follow(identity, kernel, &pubkey, true);
-            emit_now(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::Unfollow { pubkey } => {
             let outbound = commands::follow(identity, kernel, &pubkey, false);
-            emit_now(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::AddRelay { url, role } => {
             commands::add_relay(kernel, &url, &role);
-            emit_now(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(Vec::new())
         }
         ActorCommand::RemoveRelay { url } => {
             commands::remove_relay(kernel, &url);
-            emit_now(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(Vec::new())
         }
         ActorCommand::OpenTimeline => {
             let outbound = commands::open_timeline(identity, kernel, relays_ready);
-            emit_now(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::WalletConnect { uri } => {
@@ -210,7 +210,7 @@ pub(super) fn dispatch_command(
             // envelope so consumers decode the single `UpdateEnvelope` type
             // (D6 — the tag is the discriminant, no key sniffing).
             emit_kernel_update(&update, update_tx);
-            emit_now(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(Vec::new())
         }
         ActorCommand::Stop => {
@@ -222,7 +222,15 @@ pub(super) fn dispatch_command(
         }
         ActorCommand::Reset => {
             close_relays(relay_controls, connected_relays, kernel);
+            // T114b — preserve the FFI-channel drop-counter handle across
+            // Reset (the underlying Arc<AtomicU64> is shared with the FFI
+            // forwarder thread and must NOT be replaced; the counter is
+            // process-lifetime).
+            let drops_handle = kernel.take_dispatch_drops_handle_for_reset();
             *kernel = Kernel::new(kernel.visible_limit());
+            if let Some(handle) = drops_handle {
+                kernel.set_dispatch_drops_handle(handle);
+            }
             *startup_sent = false;
             if *running {
                 kernel.start();
@@ -253,7 +261,7 @@ pub(super) fn dispatch_command(
             }
             // One sort after all events are ingested: O(n log n) not O(n²·log n).
             kernel.sort_timeline_deferred();
-            emit_now(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(Vec::new())
         }
     }

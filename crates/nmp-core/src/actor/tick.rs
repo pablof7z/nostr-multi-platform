@@ -67,6 +67,44 @@ pub(super) fn emit_now(
     *last_emit = Instant::now();
 }
 
+/// T114b — post-dispatch emit gate (per-dispatch retention audit).
+///
+/// View-command dispatchers (`OpenAuthor`, `ClaimProfile`, … — everything in
+/// `dispatch.rs` that mutates kernel state but is NOT a lifecycle event) MUST
+/// route through this helper. It emits the snapshot only when `running=true`,
+/// matching the idle-tick path's gating contract (see [`next_actor_msg`]).
+///
+/// When the kernel is in `running=false` state (the harness Configure-not-Start
+/// pattern used by S1–S5, and the `nmp_app_configure` mid-process call before
+/// any `Start`) there is no UI consumer subscribed to the snapshot channel.
+/// Per-dispatch emits in that mode (a) produce no useful work (the listener
+/// fires `sink_cb` with no consumer) and (b) push `String` frames onto the
+/// unbounded kernel→listener mpsc whose internal block free-list retains
+/// segments long after the strings themselves are dropped — the dominant
+/// per-dispatch retention source measured in `s2-drain-analysis.md`.
+///
+/// Lifecycle commands (`Start`, `Configure`, `Reset`, `Stop`, `Shutdown`) MUST
+/// keep using [`emit_now`] directly — they need to deliver an initial /
+/// terminal snapshot regardless of the running flag.
+///
+/// When `running=true`, behavior is identical to [`emit_now`] (immediate
+/// snapshot delivery). The bottom-of-main-loop `flush_due` gate already
+/// enforces emit_hz rate-limit for state that changes faster than the UI
+/// can consume — this helper does not duplicate that.
+pub(super) fn maybe_emit_after_dispatch(
+    kernel: &mut Kernel,
+    running: bool,
+    update_tx: &Sender<String>,
+    last_emit: &mut Instant,
+) {
+    if running {
+        emit_now(kernel, running, update_tx, last_emit);
+    }
+    // When !running, state changes (e.g. claim_profile updating
+    // profile_claims) remain visible through `changed_since_emit`; the next
+    // `Start` command's `emit_now` will deliver the up-to-date snapshot.
+}
+
 /// Push a discrete [`KernelUpdate`] onto the channel as the tagged
 /// `{"t":"update","v":…}` frame so consumers decode the **one**
 /// [`crate::UpdateEnvelope`] type (D6 — the tag is the discriminant).
@@ -163,6 +201,117 @@ mod tests {
         assert!(
             snapshots >= 1,
             "expected ≥1 snapshot frame from Start/emit; got {snapshots}"
+        );
+    }
+
+    /// T114b regression — view-command dispatches (no preceding `Start`) MUST
+    /// NOT emit snapshots. The S2 dispatch-flood scenario configures the
+    /// actor without starting it; an emit-per-dispatch in that mode is the
+    /// dominant per-dispatch retention source (see `s2-drain-analysis.md`).
+    /// This pins `maybe_emit_after_dispatch`'s `running` gate so the leak
+    /// cannot regress.
+    #[test]
+    fn view_dispatches_do_not_emit_snapshots_when_not_running() {
+        let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
+        let (upd_tx, upd_rx) = mpsc::channel::<String>();
+        thread::spawn(move || run_actor(cmd_rx, upd_tx));
+
+        // Configure (NOT Start) — running stays false. Then fire a flurry of
+        // view commands. None of these should produce a snapshot frame; the
+        // discrete-update frames (Kernel actions) are emitted regardless and
+        // remain countable below.
+        cmd_tx
+            .send(ActorCommand::Configure {
+                visible_limit: 50,
+                emit_hz: 30,
+            })
+            .unwrap();
+        let pk = "0".repeat(64);
+        for _ in 0..50 {
+            cmd_tx
+                .send(ActorCommand::ClaimProfile {
+                    pubkey: pk.clone(),
+                    consumer_id: "test-consumer".into(),
+                })
+                .unwrap();
+            cmd_tx.send(ActorCommand::OpenAuthor { pubkey: pk.clone() }).unwrap();
+            cmd_tx.send(ActorCommand::CloseAuthor { pubkey: pk.clone() }).unwrap();
+        }
+        thread::sleep(Duration::from_millis(150));
+        let _ = cmd_tx.send(ActorCommand::Shutdown);
+
+        let mut snapshots = 0usize;
+        let mut updates = 0usize;
+        while let Ok(frame) = upd_rx.try_recv() {
+            match serde_json::from_str::<UpdateEnvelope>(&frame) {
+                Ok(UpdateEnvelope::Snapshot(_)) => snapshots += 1,
+                Ok(UpdateEnvelope::Update(_)) => updates += 1,
+                Err(_) => {} // ignore: legacy untagged frames
+            }
+        }
+
+        // Configure ITSELF emits one snapshot — that's the lifecycle event,
+        // which is allowed. View dispatches must not add to the count.
+        assert!(
+            snapshots <= 1,
+            "regression: view-command dispatches emitted {snapshots} snapshot(s) \
+             while running=false; expected ≤ 1 (lifecycle Configure only). \
+             This is the S2 retention leak — see s2-retention-audit.md."
+        );
+        // No Kernel actions sent → no discrete updates expected.
+        assert_eq!(
+            updates, 0,
+            "expected 0 discrete-update frames; got {updates}"
+        );
+    }
+
+    /// T114b regression positive — when `running=true`, view-command dispatches
+    /// MUST emit snapshots. Pins the other direction of the `running` gate so a
+    /// future "optimization" doesn't drop emits entirely and break the UI.
+    #[test]
+    fn view_dispatches_emit_snapshots_when_running() {
+        let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
+        let (upd_tx, upd_rx) = mpsc::channel::<String>();
+        thread::spawn(move || run_actor(cmd_rx, upd_tx));
+
+        cmd_tx
+            .send(ActorCommand::Start {
+                visible_limit: 50,
+                emit_hz: 30,
+            })
+            .unwrap();
+        // Drain the Start snapshot first.
+        thread::sleep(Duration::from_millis(100));
+        let mut pre_view_snapshots = 0usize;
+        while upd_rx.try_recv().is_ok() {
+            pre_view_snapshots += 1;
+        }
+        assert!(pre_view_snapshots >= 1, "Start must emit at least one snapshot");
+
+        // Now fire a view command. At least one snapshot should follow.
+        let pk = "0".repeat(64);
+        cmd_tx
+            .send(ActorCommand::ClaimProfile {
+                pubkey: pk.clone(),
+                consumer_id: "test-consumer".into(),
+            })
+            .unwrap();
+        thread::sleep(Duration::from_millis(150));
+        let _ = cmd_tx.send(ActorCommand::Shutdown);
+
+        let mut post_view_snapshots = 0usize;
+        while let Ok(frame) = upd_rx.try_recv() {
+            if matches!(
+                serde_json::from_str::<UpdateEnvelope>(&frame),
+                Ok(UpdateEnvelope::Snapshot(_))
+            ) {
+                post_view_snapshots += 1;
+            }
+        }
+        assert!(
+            post_view_snapshots >= 1,
+            "regression: running=true + view command produced {post_view_snapshots} \
+             snapshots; expected ≥1. The UI relies on prompt snapshot delivery."
         );
     }
 }

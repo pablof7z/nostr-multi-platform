@@ -2,23 +2,23 @@
   "schema_version": 1,
   "tool": "ffi-stress",
   "scenario": "S2-dispatch-flood",
-  "started_at_unix": 1779088865,
-  "wall_seconds": 30.005973334,
-  "passed": false,
+  "started_at_unix": 1779097371,
+  "wall_seconds": 30.000532208,
+  "passed": true,
   "gates": [
     {
       "name": "dispatches_submitted",
       "op": ">=",
       "threshold": 300000.0,
-      "measured": 299992.0,
-      "passed": false,
+      "measured": 300000.0,
+      "passed": true,
       "note": "G-S2: dispatches_submitted >= 100% of nominal (spec)"
     },
     {
       "name": "send_latency_p99_ms",
       "op": "<=",
       "threshold": 1.0,
-      "measured": 0.088875,
+      "measured": 0.024576,
       "passed": true,
       "note": "G-S2/bible#3: Swift->Rust send latency p99 <= 1 ms"
     },
@@ -26,7 +26,7 @@
       "name": "send_latency_p50_ms",
       "op": "<=",
       "threshold": 0.1,
-      "measured": 0.004875,
+      "measured": 0.001536,
       "passed": true,
       "note": "G-S2: Swift->Rust send latency p50 <= 100 us"
     },
@@ -34,7 +34,7 @@
       "name": "rss_growth_bytes",
       "op": "<=",
       "threshold": 20971520.0,
-      "measured": 17137664.0,
+      "measured": 884736.0,
       "passed": true,
       "note": "G-S2: RSS growth <= 20 MiB (PEAK, at flood end — unchanged contract)"
     },
@@ -42,16 +42,16 @@
       "name": "retained_heap_after_drain_bytes",
       "op": "<=",
       "threshold": 1048576.0,
-      "measured": 39866908.0,
-      "passed": false,
+      "measured": 519748.0,
+      "passed": true,
       "note": "S2-drain: NET heap still live after backlog fully drained; PASS = transient spike, FAIL = real retention under load"
     },
     {
       "name": "failed_sends",
       "op": "==",
       "threshold": 0.0,
-      "measured": 8.0,
-      "passed": false,
+      "measured": 0.0,
+      "passed": true,
       "note": "G-S2: all sends accepted (no mpsc disconnects during flood)"
     },
     {
@@ -64,36 +64,39 @@
     }
   ],
   "notes": [
-    "Nominal dispatches: 300000; actual: 299992; p50=0.005ms p99=0.089ms; failed_sends: 8",
+    "Nominal dispatches: 300000; actual: 300000; p50=0.002ms p99=0.025ms; failed_sends: 0",
     "Actor mpsc backlog depth: not directly observable from caller thread; RSS growth is the proxy gate (bounded channel growth = bounded RSS). Hitch gate uses p99 as proxy for individual send latencies.",
-    "S2-drain: peak_net_heap=39918768 B, retained_after_drain=39866908 B, reclaimed_by_drain=51860 B, drain=1.5s (4 samples). Verdict: RETAINED under load — heap NOT reclaimed after drain; genuine unbounded growth, a bounded-channel/backpressure fix is mandatory"
+    "S2-drain: peak_net_heap=519716 B, retained_after_drain=519748 B, reclaimed_by_drain=-32 B, drain=1.5s (4 samples). Verdict: TRANSIENT backpressure spike — backlog fully reclaimed after drain; peak is recoverable, supports a justified peak-threshold revision",
+    "T114b counters: dispatch_drops_total=0, claim_drops_total=0 (per-pubkey cap exercised when >0)"
   ],
   "measurements": {
-    "callback_count": 34841,
+    "callback_count": 1,
+    "claim_drops_total": 0,
+    "dispatch_drops_total": 0,
     "dispatches_per_sec": 10000,
     "drain_net_heap_curve_bytes": [
-      39918768,
-      39923876,
-      39904100,
-      39866908
+      519716,
+      519748,
+      519748,
+      519748
     ],
-    "drain_seconds": 1.51329975,
-    "drained_rss_growth_bytes": 15400960,
-    "failed_sends": 8,
+    "drain_seconds": 1.511627458,
+    "drained_rss_growth_bytes": 884736,
+    "failed_sends": 0,
     "hitches_proxy": 0,
-    "latency_samples": 299992,
+    "latency_samples": 300000,
     "min_dispatches_gate": 300000,
     "nominal_dispatches": 300000,
-    "p50_ms": 0.004875,
-    "p50_ns": 4875,
-    "p99_ms": 0.088875,
-    "p99_ns": 88875,
-    "peak_net_heap_bytes": 39918768,
-    "reclaimed_by_drain_bytes": 51860,
-    "retained_heap_after_drain_bytes": 39866908,
-    "rss_growth_bytes": 17137664,
+    "p50_ms": 0.001536,
+    "p50_ns": 1536,
+    "p99_ms": 0.024576,
+    "p99_ns": 24576,
+    "peak_net_heap_bytes": 519716,
+    "reclaimed_by_drain_bytes": -32,
+    "retained_heap_after_drain_bytes": 519748,
+    "rss_growth_bytes": 884736,
     "threads": 4,
-    "total_dispatches": 299992,
-    "wall_seconds": 30.005973334
+    "total_dispatches": 300000,
+    "wall_seconds": 30.000532208
   }
 }

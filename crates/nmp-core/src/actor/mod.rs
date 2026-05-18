@@ -163,9 +163,13 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
     let (relay_tx, relay_rx) = mpsc::channel();
     spawn_relay_forwarder(relay_rx, actor_tx.clone());
     let _ = actor_tx; // local sender no longer needed; forwarders hold clones.
-    let _ = dispatch_drops; // counter is reachable to the kernel via T114b.
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // T114b — bind the FFI-channel drop counter so it surfaces on the
+    // diagnostic snapshot (`Metrics::dispatch_drops_total`). A `Reset`
+    // command replaces the kernel; we re-bind there so the counter stays
+    // visible (the underlying `Arc<AtomicU64>` survives Reset).
+    kernel.set_dispatch_drops_handle(Arc::clone(&dispatch_drops));
     let mut identity = IdentityRuntime::new();
     let mut wallet = WalletRuntime::new();
     // T105: URL-keyed transport pool. One socket per resolved relay URL;

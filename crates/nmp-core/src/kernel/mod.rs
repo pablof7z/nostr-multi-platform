@@ -29,6 +29,8 @@ mod publish_engine;
 mod publish_engine_tests;
 mod publish_engine_wire;
 mod requests;
+#[cfg(test)]
+mod retention_tests;
 mod status;
 #[cfg(any(test, feature = "test-support"))]
 mod test_support;
@@ -79,7 +81,30 @@ use crate::store::{EventStore, MemEventStore};
 use crate::subs::{OneshotApi, SubscriptionLifecycle, UnknownIds};
 use auth::{AuthSignerFn, Nip42DriverState};
 pub(crate) use identity_state::{AccountSummary, PublishQueueEntry, RelayEditRow, WalletStatus};
+use std::sync::atomic::{AtomicU64, Ordering};
 use types::*;
+
+/// Per-pubkey claim consumer-id retention cap (T114b — per-dispatch retention audit).
+///
+/// `profile_claims[pk]: BTreeSet<consumer_id>` grows once per `claim_profile` call;
+/// without a cap a long-lived process accumulates consumer_ids in proportion to
+/// dispatch count rather than working-set size (a D8 violation — see PD-021
+/// line-11 and `docs/perf/m10.5/s2-drain-analysis.md`). The S2 flood mix issues
+/// unique consumer_ids per dispatch with no matching release, isolating this leak.
+///
+/// 256 is generous for legitimate UI: every concurrent SwiftUI view that
+/// calls `ProfileInterestAvatar` carries its own consumer_id; real apps hold
+/// at most a few dozen simultaneously (one per visible row in a list view).
+/// Caps worst-case retention per pubkey at ~12 KiB (256 × ~50 B node + key);
+/// across 50 pubkeys (S2's working set) that's ~600 KiB, well under the 1 MiB
+/// D8 budget. The S2 30 s flood (60 k claims across 50 pubkeys → ~1.2 k per
+/// pubkey) hits the cap by design — that is the audit's load-bearing test.
+///
+/// Drop-newest semantics: a claim attempt past the cap silently no-ops and
+/// increments `claim_drops_total`. This mirrors the bounded actor channel's
+/// drop-newest policy (`BOUNDED_ACTOR_CMD_CAPACITY` in `actor/mod.rs`) — see
+/// the audit table in `retention_tests.rs` for the per-structure rationale.
+pub(crate) const MAX_CLAIMS_PER_PUBKEY: usize = 256;
 
 /// The kernel owns all Nostr protocol state for the active app session.
 ///
@@ -215,6 +240,17 @@ pub(crate) struct Kernel {
     /// to expose `RelayUsefulness.novelty_ratio`
     /// (`docs/design/outbox-explorer-diagnostics.md` §2 line 152).
     pub(in crate::kernel) event_provenance: provenance::EventProvenance,
+    /// T114b — count of `claim_profile` requests dropped because a single
+    /// pubkey's consumer_id set hit `MAX_CLAIMS_PER_PUBKEY`. Surfaced on the
+    /// snapshot via [`Metrics::claim_drops_total`] for D8 visibility into
+    /// per-dispatch retention pressure.
+    claim_drops_total: u64,
+    /// T114b — bounded-actor-channel drop counter (the same `Arc<AtomicU64>`
+    /// owned by the FFI forwarder in `actor/mod.rs`). `None` when the kernel
+    /// is constructed outside the actor (tests, codegen); the snapshot then
+    /// reports `dispatch_drops_total = 0`. Surfaced on the snapshot via
+    /// [`Metrics::dispatch_drops_total`].
+    dispatch_drops: Option<Arc<AtomicU64>>,
 }
 
 impl Kernel {
@@ -312,7 +348,55 @@ impl Kernel {
             publish_dispatcher,
             publish_store,
             event_provenance: provenance::EventProvenance::new(),
+            claim_drops_total: 0,
+            dispatch_drops: None,
         }
+    }
+
+    /// T114b — install the actor's FFI-channel drop counter so the diagnostic
+    /// snapshot surfaces it. Idempotent: re-binding replaces the prior handle.
+    /// `None`-on-construction is fine — the snapshot reports zero when unbound.
+    /// Called once by `run_actor` immediately after the kernel is built.
+    pub(crate) fn set_dispatch_drops_handle(&mut self, handle: Arc<AtomicU64>) {
+        self.dispatch_drops = Some(handle);
+    }
+
+    /// T114b — extract the FFI-channel drop-counter handle before a `Reset`
+    /// replaces the kernel. The dispatch drops counter is process-lifetime
+    /// (shared with the FFI forwarder thread) so the Reset path moves it
+    /// onto the fresh kernel via `set_dispatch_drops_handle`.
+    pub(crate) fn take_dispatch_drops_handle_for_reset(&mut self) -> Option<Arc<AtomicU64>> {
+        self.dispatch_drops.take()
+    }
+
+    /// T114b — number of FFI dispatches dropped by the bounded actor channel
+    /// (`BOUNDED_ACTOR_CMD_CAPACITY` overflow). Returns 0 when the kernel was
+    /// constructed outside the actor (tests, codegen) and no handle is bound.
+    pub(crate) fn dispatch_drops_total(&self) -> u64 {
+        self.dispatch_drops
+            .as_ref()
+            .map(|c| c.load(Ordering::Relaxed))
+            .unwrap_or(0)
+    }
+
+    /// T114b — number of `claim_profile` requests dropped because a pubkey's
+    /// consumer_id set hit `MAX_CLAIMS_PER_PUBKEY`. Read-only accessor; the
+    /// counter is owned by the kernel and mutated only by `claim_profile`.
+    pub(crate) fn claim_drops_total(&self) -> u64 {
+        self.claim_drops_total
+    }
+
+    #[cfg(test)]
+    pub(crate) fn claim_drops_total_test(&self) -> u64 {
+        self.claim_drops_total
+    }
+
+    #[cfg(test)]
+    pub(crate) fn profile_claims_len_for_test(&self, pubkey: &str) -> usize {
+        self.profile_claims
+            .get(pubkey)
+            .map(|consumers| consumers.len())
+            .unwrap_or(0)
     }
 
     /// Bind a signer callback used by the NIP-42 handshake, with the active

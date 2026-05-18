@@ -94,8 +94,23 @@ impl Kernel {
         consumer_id: String,
         can_send: bool,
     ) -> Vec<OutboundMessage> {
+        // T114b — per-pubkey claim consumer-id retention bound. Without this
+        // check the BTreeSet grows once per `claim_profile` call (S2 mix:
+        // unique consumer_id per dispatch, no matching release) and per-dispatch
+        // retention scales with dispatch count rather than working-set size —
+        // a D8 violation (`docs/perf/m10.5/s2-drain-analysis.md`). Drop-newest
+        // on overflow mirrors the bounded actor channel; the dropped claim
+        // becomes a silent no-op (D6: never an FFI error) and bumps the
+        // diagnostic counter `claim_drops_total`.
         let (inserted, refcount) = {
             let consumers = self.profile_claims.entry(pubkey.clone()).or_default();
+            if !consumers.contains(&consumer_id)
+                && consumers.len() >= super::super::MAX_CLAIMS_PER_PUBKEY
+            {
+                self.claim_drops_total = self.claim_drops_total.saturating_add(1);
+                // hot path
+                return Vec::new();
+            }
             let inserted = consumers.insert(consumer_id.clone());
             (inserted, consumers.len())
         };

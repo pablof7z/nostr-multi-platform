@@ -17,6 +17,7 @@ use crate::ffi::{
 use crate::allocator::{alloc_snapshot, AllocSnapshot};
 use crate::gate::Gate;
 use crate::report::ScenarioMetrics;
+use crate::s2_latency_hist::LatencyHistogram;
 use serde_json::json;
 use std::ffi::{c_char, c_void, CString};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -25,8 +26,24 @@ use std::time::{Duration, Instant};
 
 static CALLBACK_COUNT: AtomicU64 = AtomicU64::new(0);
 
-extern "C" fn sink_cb(_ctx: *mut c_void, _payload: *const c_char) {
+/// Last-snapshot capture for T114b counter readout. We only care about the
+/// FINAL post-drain payload; replacing the slot per callback keeps the
+/// channel-residency footprint bounded to a single CString worth of bytes.
+static LAST_PAYLOAD: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+extern "C" fn sink_cb(_ctx: *mut c_void, payload: *const c_char) {
     CALLBACK_COUNT.fetch_add(1, Ordering::Relaxed);
+    if payload.is_null() {
+        return;
+    }
+    // SAFETY: payload is a valid null-terminated string emitted by the kernel
+    // through its update channel; we copy out so the callback's borrow ends.
+    let s = unsafe { std::ffi::CStr::from_ptr(payload) }
+        .to_string_lossy()
+        .into_owned();
+    if let Ok(mut slot) = LAST_PAYLOAD.lock() {
+        *slot = Some(s);
+    }
 }
 
 pub(crate) struct S2Config {
@@ -81,8 +98,10 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
     // Barrier so all threads start dispatching simultaneously.
     let barrier = Arc::new(Barrier::new(cfg.threads));
 
-    // Collect per-thread latency samples.
-    let latency_collector: Arc<std::sync::Mutex<Vec<u64>>> =
+    // T114b — per-thread fixed-size latency histograms (replaces unbounded
+    // Vec<u64>). Each histogram is 256 B; thread-local during the flood, merged
+    // after join. Footprint is O(threads × HIST_BUCKETS), NOT O(dispatches).
+    let histograms_collector: Arc<std::sync::Mutex<Vec<LatencyHistogram>>> =
         Arc::new(std::sync::Mutex::new(Vec::new()));
     let dispatch_counter: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
 
@@ -90,14 +109,14 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
         .map(|thread_idx| {
             let barrier = Arc::clone(&barrier);
             let pubkeys = Arc::clone(&pubkeys_arc);
-            let latencies = Arc::clone(&latency_collector);
+            let histograms = Arc::clone(&histograms_collector);
             let counter = Arc::clone(&dispatch_counter);
 
             std::thread::spawn(move || {
                 let app_ptr = app_usize as *mut NmpApp;
                 barrier.wait();
                 let thread_start = Instant::now();
-                let mut local_latencies: Vec<u64> = Vec::with_capacity(1024);
+                let mut local_hist = LatencyHistogram::default();
                 let mut seq: u64 = thread_idx as u64;
                 let mut next_tick = Instant::now();
 
@@ -123,7 +142,7 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
                         }
                     }
                     let elapsed_ns = t0.elapsed().as_nanos() as u64;
-                    local_latencies.push(elapsed_ns);
+                    local_hist.record(elapsed_ns);
                     counter.fetch_add(1, Ordering::Relaxed);
                     seq += threads as u64;
 
@@ -133,7 +152,7 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
                     }
                 }
 
-                latencies.lock().unwrap().extend(local_latencies);
+                histograms.lock().unwrap().push(local_hist);
             })
         })
         .collect();
@@ -186,11 +205,20 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
     let reclaimed_by_drain = peak_net_heap - retained_after_drain;
     let drained_rss_growth = drained_rss.saturating_sub(baseline_rss);
 
-    // Compute latency percentiles.
-    let mut latencies = latency_collector.lock().unwrap().clone();
-    latencies.sort_unstable();
-    let p50_ns = percentile(&latencies, 50);
-    let p99_ns = percentile(&latencies, 99);
+    // Compute latency percentiles from the merged log2 histogram. Each
+    // per-thread histogram is a fixed 256 B; merging is O(threads × buckets)
+    // and adds no per-dispatch retention to the global counting allocator.
+    let merged_hist = {
+        let per_thread = histograms_collector.lock().unwrap();
+        let mut merged = LatencyHistogram::default();
+        for h in per_thread.iter() {
+            merged.merge(h);
+        }
+        merged
+    };
+    let total_samples = merged_hist.count;
+    let p50_ns = merged_hist.percentile_ns(50);
+    let p99_ns = merged_hist.percentile_ns(99);
 
     // G-S2 numeric gates — per docs/design/ffi-hardening/gates.md §G-S2.
     let p99_ms = p99_ns as f64 / 1_000_000.0;
@@ -287,6 +315,26 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
         drain_curve.len(), verdict,
     ));
 
+    // T114b — surface the bounded-channel + per-pubkey claim drop counters
+    // from the kernel's last snapshot. These prove the caps were exercised
+    // (D6 fire-and-forget bookkeeping) and quantify per-dispatch pressure.
+    let (dispatch_drops_total, claim_drops_total) = {
+        let last = LAST_PAYLOAD.lock().ok().and_then(|guard| guard.clone());
+        match last.as_deref().and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok()) {
+            Some(v) => {
+                let metrics = v.pointer("/v/metrics").cloned().unwrap_or_default();
+                let dd = metrics.get("dispatch_drops_total").and_then(|x| x.as_u64()).unwrap_or(0);
+                let cd = metrics.get("claim_drops_total").and_then(|x| x.as_u64()).unwrap_or(0);
+                (dd, cd)
+            }
+            None => (0, 0),
+        }
+    };
+    report.notes.push(format!(
+        "T114b counters: dispatch_drops_total={dispatch_drops_total}, \
+         claim_drops_total={claim_drops_total} (per-pubkey cap exercised when >0)",
+    ));
+
     report.measurements = json!({
         "total_dispatches": total_dispatches,
         "nominal_dispatches": nominal,
@@ -307,8 +355,10 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
         "drain_net_heap_curve_bytes": drain_curve,
         "callback_count": CALLBACK_COUNT.load(Ordering::Relaxed),
         "wall_seconds": wall_elapsed,
-        "latency_samples": latencies.len(),
+        "latency_samples": total_samples,
         "hitches_proxy": hitches_proxy,
+        "dispatch_drops_total": dispatch_drops_total,
+        "claim_drops_total": claim_drops_total,
     });
 
     // Teardown.
@@ -316,12 +366,4 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
     nmp_app_free(app);
 
     report.finish(wall_elapsed);
-}
-
-fn percentile(sorted: &[u64], pct: usize) -> u64 {
-    if sorted.is_empty() {
-        return 0;
-    }
-    let idx = ((sorted.len() - 1) * pct) / 100;
-    sorted[idx]
 }

@@ -20,6 +20,7 @@ mod gate;
 mod report;
 mod s1_mount_unmount;
 mod s2_dispatch_flood;
+mod s2_latency_hist;
 mod s3_snapshot_pressure;
 mod s4_reconciler_backpressure;
 mod s5_reentrancy;
