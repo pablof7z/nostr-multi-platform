@@ -583,12 +583,12 @@
 					"@executable_path/Frameworks",
 				);
 				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = (
-					"$(SRCROOT)/../../target/aarch64-apple-ios/debug",
-					"$(SRCROOT)/../../target/aarch64-apple-ios/release",
+					"$(SRCROOT)/../../../../../target/aarch64-apple-ios/debug",
+					"$(SRCROOT)/../../../../../target/aarch64-apple-ios/release",
 				);
 				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]" = (
-					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/debug",
-					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/release",
+					"$(SRCROOT)/../../../../../target/aarch64-apple-ios-sim/debug",
+					"$(SRCROOT)/../../../../../target/aarch64-apple-ios-sim/release",
 				);
 				OTHER_LDFLAGS = "$(inherited) -lnmp_app_podcast -lnmp_signer_broker -lnmp_core";
 				PRODUCT_BUNDLE_IDENTIFIER = com.podcast.app;
@@ -671,12 +671,12 @@
 					"@executable_path/Frameworks",
 				);
 				"LIBRARY_SEARCH_PATHS[sdk=iphoneos*]" = (
-					"$(SRCROOT)/../../target/aarch64-apple-ios/debug",
-					"$(SRCROOT)/../../target/aarch64-apple-ios/release",
+					"$(SRCROOT)/../../../../../target/aarch64-apple-ios/debug",
+					"$(SRCROOT)/../../../../../target/aarch64-apple-ios/release",
 				);
 				"LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]" = (
-					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/debug",
-					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/release",
+					"$(SRCROOT)/../../../../../target/aarch64-apple-ios-sim/debug",
+					"$(SRCROOT)/../../../../../target/aarch64-apple-ios-sim/release",
 				);
 				OTHER_LDFLAGS = "$(inherited) -lnmp_app_podcast -lnmp_signer_broker -lnmp_core";
 				PRODUCT_BUNDLE_IDENTIFIER = com.podcast.app;
