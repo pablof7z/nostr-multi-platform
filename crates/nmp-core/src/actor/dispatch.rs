@@ -13,7 +13,6 @@ use std::time::Instant;
 use crate::kernel::Kernel;
 use crate::relay::{OutboundMessage, RelayRole};
 use crate::relay_worker::RelayEvent;
-use tungstenite;
 
 use super::commands::{self, IdentityRuntime, WalletRuntime};
 use super::kernel_action::dispatch_kernel_action;
