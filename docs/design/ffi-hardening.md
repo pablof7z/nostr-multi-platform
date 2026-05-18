@@ -267,7 +267,7 @@ Three tiers, defined in [`ffi-hardening/ci.md`](./ffi-hardening/ci.md):
    want `toast: Option<{ id: String, severity: Info|Warn|Error, message: String, source: String }>`? The latter is more useful but
    collides with ADR-0010's plan to migrate this entire surface to
    typed `Result` via UniFFI in M14. Recommend: keep it scalar for
-   M10.5, revisit in ADR-0011 when M14 lands.
+   M10.5, revisit in a new ADR (next free number: ADR-0014) when M14 lands. ADR-0011 is taken (LMDB env sharing).
 2. **Sonnet-agent determinism.** Parallel Sonnet agents producing
    non-deterministic taps means flaky CI. Should the Sonnet runner be
    nightly-only (no pre-merge gating), or do we record + replay agent
