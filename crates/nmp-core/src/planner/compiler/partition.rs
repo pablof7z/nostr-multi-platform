@@ -71,12 +71,15 @@ type CaseAEntry = (BTreeSet<Pubkey>, BTreeSet<NaddrCoord>, BTreeSet<RoutingSourc
 /// ## Direction routing (§3.1 / §3.2)
 ///
 /// - **Case A**: explicit `authors` → Outbox (write relays). Also routes
-///   any `addresses` on the same interest to the same relay map.
+///   any `addresses` on the same interest to the same relay map. If the
+///   interest also has `#p` tag values, inbox routing is emitted in addition
+///   (see `route_p_tags_to_inbox`; spec §3.1 "Both populated" row).
 /// - **Case B**: no authors, but `addresses` → Outbox for each coord.pubkey.
 /// - **Case C (#p)**: no authors/addresses, but `#p` tag values → Inbox
 ///   (tagged pubkey's read relays). Structural ban enforced: never route
-///   private `#p` interests to non-inbox relays.
-///   Phase 1 stub: falls back to indexer; real inbox resolution in phase 2.
+///   `#p` interests to non-inbox relays. When inbox relays are unknown, the
+///   interest produces NO relay entries (fail-closed); a probe is emitted so
+///   the next recompile has data.
 /// - **Case D (no-author)**: no authors, addresses, or #p → active-account
 ///   read relays (hashtag firehose, global search). Falls to indexer if empty.
 pub(super) fn partition_interest(
@@ -97,12 +100,24 @@ pub(super) fn partition_interest(
         addresses: BTreeSet::new(),
     };
 
+    // Extract #p tag values once — used in Case A (if authors + #p) and Case C.
+    let p_tag_values: BTreeSet<Pubkey> = interest
+        .shape
+        .tags
+        .get("p")
+        .cloned()
+        .unwrap_or_default();
+
     // Case A: explicit authors → Outbox (write relays).
     //
     // The per_relay map accumulates ALL RoutingSource lanes per relay URL.
     // Author A may reach wss://x via NIP-65 while author B reaches the same
     // relay via indexer fallback; both lanes must be recorded so Stage 3
     // role_tags reflects the four-lane model (§3.1 four-lane discipline).
+    //
+    // Per spec §3.1 "Both populated" row: if this interest also carries `#p`
+    // tag values, we additionally emit Inbox entries for those tagged pubkeys
+    // (via `route_p_tags_to_inbox`) after the Outbox entries are committed.
     if !interest.shape.authors.is_empty() {
         let mut per_relay: BTreeMap<RelayUrl, CaseAEntry> = BTreeMap::new();
 
@@ -170,6 +185,18 @@ pub(super) fn partition_interest(
                 interest_id: interest.id.clone(),
             });
         }
+
+        // "Both populated" split: also emit Inbox entries for any #p values.
+        if !p_tag_values.is_empty() {
+            route_p_tags_to_inbox(
+                &p_tag_values,
+                &base_shape,
+                &interest.lifecycle,
+                &interest.id,
+                mailbox_cache,
+                relay_entries,
+            );
+        }
         return;
     }
 
@@ -220,54 +247,23 @@ pub(super) fn partition_interest(
 
     // Case C: #p tag values → Inbox (tagged pubkey's read relays).
     //
-    // #p interests (DMs, notifications) MUST route to the tagged pubkey's READ
-    // relays (Inbox direction). Routing them to write relays violates the
-    // structural ban on private routes to non-inbox relays (§3.2).
+    // Structural ban: `#p` interests MUST route to inbox relays only. We never
+    // route to the author's write relays, and we do not fall back to the indexer
+    // set — that would route DM-relevant queries through a public relay without
+    // the recipient's explicit read-relay declaration (§3.1 / §3.2).
     //
-    // `inbox_relays()` = read_relays ∪ both_relays (NIP-65 §3.1: `both` means
-    // read + write, so both_relays are also valid Inbox targets).
-    //
-    // Phase 1 stub: mailbox data not yet populated from kind:10002 → falls back
-    // to indexer. The code path is correct; only the mailbox data is missing.
-    let p_tag_values: BTreeSet<Pubkey> = interest
-        .shape
-        .tags
-        .get("p")
-        .cloned()
-        .unwrap_or_default();
-
+    // When inbox relays are unknown, we emit NO relay entries (fail-closed) and
+    // emit a probe so the next recompile has data. The plan will have an empty
+    // per_relay map for this interest until kind:10002 arrives.
     if !p_tag_values.is_empty() {
-        for tagged_pk in &p_tag_values {
-            match mailbox_cache.get(tagged_pk) {
-                Some(ref snapshot) if snapshot.has_inbox_relays() => {
-                    for relay in snapshot.inbox_relays() {
-                        relay_entries.entry(relay.clone()).or_default().push(RelayEntry {
-                            base_shape: base_shape.clone(),
-                            authors_for_relay: BTreeSet::new(),
-                            addresses_for_relay: BTreeSet::new(),
-                            lifecycle: interest.lifecycle.clone(),
-                            sources: BTreeSet::from([RoutingSource::Nip65]),
-                            interest_id: interest.id.clone(),
-                        });
-                    }
-                }
-                _ => {
-                    mailbox_cache.request_probe(tagged_pk);
-                    for relay in indexer_relays {
-                        relay_entries.entry(relay.clone()).or_default().push(RelayEntry {
-                            base_shape: base_shape.clone(),
-                            authors_for_relay: BTreeSet::new(),
-                            addresses_for_relay: BTreeSet::new(),
-                            lifecycle: interest.lifecycle.clone(),
-                            sources: BTreeSet::from([RoutingSource::UserConfigured(
-                                UserConfiguredCategory::Indexer,
-                            )]),
-                            interest_id: interest.id.clone(),
-                        });
-                    }
-                }
-            }
-        }
+        route_p_tags_to_inbox(
+            &p_tag_values,
+            &base_shape,
+            &interest.lifecycle,
+            &interest.id,
+            mailbox_cache,
+            relay_entries,
+        );
         return;
     }
 
@@ -292,5 +288,44 @@ pub(super) fn partition_interest(
             sources: BTreeSet::from([fallback_source.clone()]),
             interest_id: interest.id.clone(),
         });
+    }
+}
+
+// ─── Inbox routing helper ─────────────────────────────────────────────────────
+
+/// Route `#p` tag values to their inbox relays (read ∪ both).
+///
+/// Structural ban: if inbox relays are unknown for a tagged pubkey, emit
+/// NO relay entries for that pubkey (fail-closed). A probe is emitted so
+/// the next recompile has data (§3.2 — IndexerProbe side-effect).
+///
+/// Called from Case A ("both populated" split) and Case C.
+fn route_p_tags_to_inbox(
+    p_tag_values: &BTreeSet<Pubkey>,
+    base_shape: &InterestShape,
+    lifecycle: &InterestLifecycle,
+    interest_id: &InterestId,
+    mailbox_cache: &dyn MailboxCache,
+    relay_entries: &mut BTreeMap<RelayUrl, Vec<RelayEntry>>,
+) {
+    for tagged_pk in p_tag_values {
+        match mailbox_cache.get(tagged_pk) {
+            Some(ref snapshot) if snapshot.has_inbox_relays() => {
+                for relay in snapshot.inbox_relays() {
+                    relay_entries.entry(relay.clone()).or_default().push(RelayEntry {
+                        base_shape: base_shape.clone(),
+                        authors_for_relay: BTreeSet::new(),
+                        addresses_for_relay: BTreeSet::new(),
+                        lifecycle: lifecycle.clone(),
+                        sources: BTreeSet::from([RoutingSource::Nip65]),
+                        interest_id: interest_id.clone(),
+                    });
+                }
+            }
+            // Inbox unknown or empty: fail-closed. Probe and emit nothing.
+            _ => {
+                mailbox_cache.request_probe(tagged_pk);
+            }
+        }
     }
 }
