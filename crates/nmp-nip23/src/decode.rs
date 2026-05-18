@@ -8,6 +8,7 @@
 //! `nmp_nipNN::try_from_event(&event)` without learning per-crate vocabulary.
 
 use nmp_core::store::StoredEvent;
+use nmp_core::substrate::KernelEvent;
 use serde::{Deserialize, Serialize};
 
 use crate::kinds::KIND_LONG_FORM_ARTICLE;
@@ -61,24 +62,57 @@ pub struct ArticleRecord {
 /// NDK pitfall).
 pub fn try_from_event(event: &StoredEvent) -> Option<ArticleRecord> {
     let raw = event.raw.as_ref();
-    if raw.kind != KIND_LONG_FORM_ARTICLE {
+    decode_borrowed(&raw.id, &raw.pubkey, raw.kind, raw.created_at, &raw.tags, &raw.content)
+}
+
+/// Decode directly from a borrowed [`KernelEvent`] — the view-substrate event
+/// shape — without first re-wrapping it in a `StoredEvent`/`Arc<RawEvent>`.
+///
+/// The hot insert path in `view::accumulator` calls this on every delivered
+/// event; per D8 (zero per-event alloc after warmup) it must not allocate an
+/// intermediate `RawEvent` + `Arc` just to satisfy [`try_from_event`]'s
+/// `&StoredEvent` signature. The only allocations here are the owned `String`s
+/// the immutable `ArticleRecord` output unavoidably owns.
+pub fn try_from_kernel_event(event: &KernelEvent) -> Option<ArticleRecord> {
+    decode_borrowed(
+        &event.id,
+        &event.author,
+        event.kind,
+        event.created_at,
+        &event.tags,
+        &event.content,
+    )
+}
+
+/// Shared decode core over borrowed event fields. Both `try_from_event`
+/// (store side) and `try_from_kernel_event` (view side) funnel through here so
+/// the kind/`d`-tag gating and tag normalisation stay defined exactly once.
+fn decode_borrowed(
+    id: &str,
+    pubkey: &str,
+    kind: u32,
+    created_at: u64,
+    tags: &[Vec<String>],
+    content: &str,
+) -> Option<ArticleRecord> {
+    if kind != KIND_LONG_FORM_ARTICLE {
         return None;
     }
 
-    let d_tag = first_tag_value(&raw.tags, "d")?.to_string();
+    let d_tag = first_tag_value(tags, "d")?.to_string();
 
     Some(ArticleRecord {
-        event_id: raw.id.clone(),
-        author: raw.pubkey.clone(),
+        event_id: id.to_string(),
+        author: pubkey.to_string(),
         d_tag,
-        title: first_tag_value(&raw.tags, "title").map(str::to_string),
-        image: first_tag_value(&raw.tags, "image").map(str::to_string),
-        summary: first_tag_value(&raw.tags, "summary").map(str::to_string),
-        published_at: first_tag_value(&raw.tags, "published_at")
+        title: first_tag_value(tags, "title").map(str::to_string),
+        image: first_tag_value(tags, "image").map(str::to_string),
+        summary: first_tag_value(tags, "summary").map(str::to_string),
+        published_at: first_tag_value(tags, "published_at")
             .and_then(|s| s.parse::<u64>().ok()),
-        created_at: raw.created_at,
-        content: raw.content.clone(),
-        tags: raw.tags.clone(),
+        created_at,
+        content: content.to_string(),
+        tags: tags.to_vec(),
     })
 }
 

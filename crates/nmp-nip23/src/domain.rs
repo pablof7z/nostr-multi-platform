@@ -122,6 +122,19 @@ pub fn decode_and_route(event: &StoredEvent, handle: &DomainHandle) -> Result<()
         return Ok(());
     };
 
+    // NIP-33 replaceable semantics (D4 single-writer correctness): a relay can
+    // redeliver an older revision of the same `(author, d_tag)` after the newer
+    // one already landed (reconnect backfill, multi-relay fan-in). Writing it
+    // unconditionally would clobber the current record with stale data. Keep
+    // whichever `created_at` is newer; on a tie we keep the incumbent (the
+    // store's event-id tie-break refinement is tracked separately as a
+    // backlog item — codex review #4 — and intentionally not duplicated here).
+    if let Some(existing) = get(handle, &record.author, &record.d_tag)? {
+        if existing.created_at >= record.created_at {
+            return Ok(());
+        }
+    }
+
     let serialized = serde_json::to_vec(&record)
         .map_err(|e| StoreError::Io(format!("serialize ArticleRecord: {e}")))?;
 

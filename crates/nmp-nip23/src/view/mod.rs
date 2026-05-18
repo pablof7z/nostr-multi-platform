@@ -163,18 +163,27 @@ mod tests {
     }
 
     #[test]
-    fn detail_view_payload_none_when_no_event_seen() {
-        let (state, _) = ArticleDetailView::open(
+    fn detail_view_payload_is_coord_placeholder_when_no_event_seen() {
+        // D1: the payload is always renderable. Before the authoritative
+        // event arrives, `article` is a deterministic placeholder synthesised
+        // from the coord and `source == "placeholder"` — never `Option::None`.
+        let coord = NaddrCoord {
+            pubkey: "alice".into(),
+            kind: KIND_LONG_FORM_ARTICLE,
+            d_tag: "intro".into(),
+        };
+        let (state, opened) = ArticleDetailView::open(
             &ViewContext::default(),
-            ArticleDetailSpec {
-                coord: NaddrCoord {
-                    pubkey: "alice".into(),
-                    kind: KIND_LONG_FORM_ARTICLE,
-                    d_tag: "intro".into(),
-                },
-            },
+            ArticleDetailSpec { coord: coord.clone() },
         );
+        assert_eq!(opened.source, "placeholder");
+        assert_eq!(opened.article.author, coord.pubkey);
+        assert_eq!(opened.article.d_tag, coord.d_tag);
+        assert!(opened.article.event_id.is_empty());
+
         let payload = ArticleDetailView::snapshot(&ViewContext::default(), &state);
-        assert!(payload.article.is_none());
+        assert_eq!(payload.source, "placeholder");
+        assert_eq!(payload.article.author, "alice");
+        assert_eq!(payload.article.d_tag, "intro");
     }
 }

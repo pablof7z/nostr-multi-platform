@@ -6,13 +6,11 @@
 //! that tuple; produces sorted `Vec<ArticleRecord>` snapshots views consume.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
-use nmp_core::store::{RawEvent, StoredEvent};
 use nmp_core::substrate::{EventId, KernelEvent};
 use serde::{Deserialize, Serialize};
 
-use crate::decode::{try_from_event, ArticleRecord};
+use crate::decode::{try_from_kernel_event, ArticleRecord};
 
 /// In-memory state for the two `ViewModule` impls. Public so each view can
 /// declare it as its `State` associated type; the inner map is intentionally
@@ -32,7 +30,7 @@ impl ArticleAccumulator {
     /// — `None` if the event is not a valid article or is staler than the
     /// existing record for the same `(author, d_tag)` pair.
     pub fn insert(&mut self, event: &KernelEvent) -> Option<ArticleViewDelta> {
-        let record = decode_kernel_event(event)?;
+        let record = try_from_kernel_event(event)?;
         let key = Self::key_of(&record);
         if let Some(existing) = self.records.get(&key) {
             if existing.created_at >= record.created_at {
@@ -81,25 +79,4 @@ impl ArticleAccumulator {
 pub enum ArticleViewDelta {
     Updated(EventId),
     Removed(EventId),
-}
-
-/// Convert a `KernelEvent` (the view-substrate event shape) into the store's
-/// `StoredEvent` so we can reuse the canonical decoder. `StoredEvent` carries
-/// arrival metadata, but the decoder only reads `raw` — `received_at_ms = 0`
-/// is harmless.
-fn decode_kernel_event(event: &KernelEvent) -> Option<ArticleRecord> {
-    let raw = RawEvent {
-        id: event.id.clone(),
-        pubkey: event.author.clone(),
-        created_at: event.created_at,
-        kind: event.kind,
-        tags: event.tags.clone(),
-        content: event.content.clone(),
-        sig: String::new(),
-    };
-    let stored = StoredEvent {
-        raw: Arc::new(raw),
-        received_at_ms: 0,
-    };
-    try_from_event(&stored)
 }
