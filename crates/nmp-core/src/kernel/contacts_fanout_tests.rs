@@ -64,8 +64,6 @@ fn install_relay_list(kernel: &mut Kernel, author: &str, write: &[&str]) {
 /// but lives outside this audit's scope. When the fix lands, the implementor
 /// removes `#[ignore]` and the test becomes the green sentinel.
 #[test]
-#[ignore = "T100/P2 residual: kind:3 ingest does not yet re-fan-out the timeline; \
-            fix proposal in docs/perf/m11/t100-status.md"]
 fn kind3_arrival_fans_out_timeline_onto_new_follows_write_relays() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 

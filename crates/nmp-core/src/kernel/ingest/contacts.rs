@@ -52,6 +52,37 @@ impl Kernel {
                 new_follows: follows.clone(),
             });
 
+        // T100/P2: mirror the kind:10002 A1 direct-flip pattern
+        // (ingest/relay_list.rs:71-86) so the timeline re-fans on follow-set
+        // change. The compile/registry machinery is dormant in production
+        // (T142 territory); until then, flipping `timeline_requested = false`
+        // and CLOSE-ing prior `seed-timeline-*` subs is the production seam
+        // that makes the next emission re-plan onto the new follows' write
+        // relays. Active-account gated so arbitrary peers' kind:3 don't
+        // disturb our subs.
+        let is_active = self.active_account.as_deref() == Some(event.pubkey.as_str());
+        if is_active && self.timeline_requested {
+            let prior_follows: BTreeSet<&str> = self
+                .seed_contacts
+                .get(&event.pubkey)
+                .map(|v| v.iter().map(String::as_str).collect())
+                .unwrap_or_default();
+            let new_follows: BTreeSet<&str> = follows.iter().map(String::as_str).collect();
+            if prior_follows != new_follows {
+                self.timeline_requested = false;
+                self.log(format!(
+                    "kind:3 arrival → re-plan timeline for {} (follows {} → {})",
+                    short_hex(&event.pubkey),
+                    prior_follows.len(),
+                    new_follows.len()
+                ));
+                let closes = self.close_subscriptions_with_prefixes(&["seed-timeline-"]);
+                for close in closes {
+                    self.defer_outbound(close);
+                }
+            }
+        }
+
         self.seed_contacts.insert(event.pubkey, follows);
     }
 }
