@@ -333,9 +333,20 @@ fn route_p_tags_to_inbox(
     for tagged_pk in p_tag_values {
         match mailbox_cache.get(tagged_pk) {
             Some(ref snapshot) if snapshot.has_inbox_relays() => {
+                // Narrow `#p` to the singleton `{tagged_pk}` for this relay.
+                // Without this, Bob's inbox relay would receive a REQ with
+                // `#p=[Bob, Carol]` — leaking Carol's tag onto Bob's relay
+                // and over-fetching events that should arrive via Carol's
+                // own inbox relay. Each tagged_pk's relays must only see
+                // queries for that pubkey.
+                let mut per_pk_shape = base_shape.clone();
+                per_pk_shape.tags.insert(
+                    "p".to_string(),
+                    std::iter::once(tagged_pk.clone()).collect(),
+                );
                 for relay in snapshot.inbox_relays() {
                     relay_entries.entry(relay.clone()).or_default().push(RelayEntry {
-                        base_shape: base_shape.clone(),
+                        base_shape: per_pk_shape.clone(),
                         authors_for_relay: authors_for_inbox.clone(),
                         addresses_for_relay: BTreeSet::new(),
                         lifecycle: lifecycle.clone(),

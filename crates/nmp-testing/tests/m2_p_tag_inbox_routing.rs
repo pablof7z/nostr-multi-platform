@@ -317,3 +317,76 @@ fn p_tag_inbox_uses_both_relays_when_no_explicit_reads() {
         "indexer must NOT be used when inbox relays (even just both_relays) exist"
     );
 }
+
+// ─── Test 6 — multi-#p with mixed known/unknown inbox scopes per-pubkey ─────
+
+/// `#p=[Bob, Carol]` where Bob has inbox relays and Carol doesn't.
+/// - Bob's relay must receive a REQ with `#p=[Bob]` only (NOT `[Bob, Carol]`)
+///   so we don't over-fetch Carol-tagged events on Bob's relay.
+/// - Carol must trigger `request_probe` and produce no relay entries
+///   (fail-closed, per the structural ban).
+#[test]
+fn multi_p_tag_scopes_filter_per_tagged_pubkey() {
+    let bob = pubkey("bob");
+    let carol = pubkey("carol");
+
+    let mut cache = InMemoryMailboxCache::new();
+    cache.put(
+        bob.clone(),
+        MailboxSnapshot {
+            write_relays: vec![],
+            read_relays: vec![relay("wss://bob-read.example")],
+            both_relays: vec![],
+        },
+    );
+    // Carol has no mailbox in cache → fail-closed for Carol.
+
+    let indexer = vec![relay("wss://purplepag.es")];
+    let compiler = SubscriptionCompiler::new(&cache, &indexer);
+
+    let mut tags: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    tags.insert("p".to_string(), [bob.clone(), carol.clone()].into_iter().collect());
+
+    let interest = LogicalInterest {
+        id: interest_id(6),
+        scope: InterestScope::Global,
+        shape: InterestShape {
+            kinds: [4u32].into_iter().collect(),
+            tags,
+            ..Default::default()
+        },
+        hints: vec![],
+        lifecycle: InterestLifecycle::Tailing,
+    };
+
+    let plan = compiler.compile(&[interest]).expect("compile");
+
+    // Bob's relay must appear with #p scoped to {Bob} only.
+    let bob_inbox = plan.per_relay.get("wss://bob-read.example")
+        .expect("Bob's read relay must appear");
+    assert_eq!(bob_inbox.sub_shapes.len(), 1, "one sub-shape on Bob's read");
+    let bob_p = bob_inbox.sub_shapes[0].shape.tags.get("p")
+        .expect("Bob's relay sub-shape must have a #p filter");
+    assert_eq!(
+        bob_p.len(), 1,
+        "Bob's relay #p must be scoped to exactly one pubkey (the relay's owner)"
+    );
+    assert!(
+        bob_p.contains(&bob),
+        "Bob's relay #p must contain Bob (not Carol — that would leak Carol's tag)"
+    );
+    assert!(
+        !bob_p.contains(&carol),
+        "Bob's relay must NOT see Carol in #p (per-pubkey scoping)"
+    );
+
+    // Total relay count: only Bob's relay (Carol's unknown inbox fails closed).
+    assert_eq!(
+        plan.per_relay.len(), 1,
+        "only Bob's relay should appear; Carol's unknown inbox fails closed"
+    );
+    assert!(
+        !plan.per_relay.contains_key("wss://purplepag.es"),
+        "indexer must NOT be used as fallback for Carol's unknown inbox"
+    );
+}
