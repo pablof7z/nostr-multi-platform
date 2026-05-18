@@ -18,6 +18,8 @@ mod identity_state;
 mod ingest;
 mod nostr;
 mod outbox;
+#[cfg(test)]
+mod outbox_tests;
 mod publish_cmd;
 mod requests;
 mod status;

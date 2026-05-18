@@ -57,7 +57,33 @@ impl Kernel {
                 relay_list.write_relays.len(),
                 relay_list.both_relays.len()
             ));
-            self.author_relay_lists.insert(event.pubkey, relay_list);
+            let is_timeline_author = self.timeline_authors.contains(&event.pubkey);
+            self.author_relay_lists.insert(event.pubkey.clone(), relay_list);
+            // T105 / A1 recompilation trigger: a kind:10002 arrived for an
+            // author already in the follow-feed. The current `seed-timeline-*`
+            // subs are partitioned by the previous (likely bootstrap) routing
+            // — re-plan so the next emission picks up the resolved write
+            // relays. Mark the timeline as not-yet-requested so the next
+            // `maybe_open_timeline` re-fans out the partition; the existing
+            // seed-timeline subs stay live until the actor's CLOSE goes out
+            // on the next pending_view drain (the new subs use distinct
+            // urlhash sub-ids, so they don't collide).
+            if is_timeline_author && self.timeline_requested {
+                self.timeline_requested = false;
+                self.log(format!(
+                    "NIP-65 arrival → re-plan timeline for {}",
+                    short_hex(&event.pubkey)
+                ));
+                // Close the prior bootstrap-routed seed-timeline subs so
+                // they're not double-billed against the new per-relay subs.
+                // The actual CLOSE frames are queued via `pending_view_requests`
+                // → `defer_outbound`; the next emission carries both the new
+                // resolved-relay REQs and the explicit CLOSEs of the old subs.
+                let closes = self.close_subscriptions_with_prefixes(&["seed-timeline-"]);
+                for close in closes {
+                    self.defer_outbound(close);
+                }
+            }
         }
     }
 }
