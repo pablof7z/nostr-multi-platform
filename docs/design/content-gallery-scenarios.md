@@ -55,10 +55,24 @@ Therefore this gallery uses the **pre-tokenized DTO** strategy, which is
    `embeds` map — this **is** the relay-free in-process fixture store that
    `EmbedClaimRegistry` would serve at runtime.
 
-The Rust side performs all real tokenizing / NIP-23 parsing / recursion
-guarding; only the **cross-language transport** changes. The proposed
-`ContentTreeDto` schema (§5) is offered as the candidate shape for T93 to
-canonicalize.
+The Rust side performs all real tokenizing / NIP-23 parsing; only the
+**cross-language transport** changes. The proposed `ContentTreeDto` schema
+(§5) is offered as the candidate shape for T93 to canonicalize.
+
+**Projection-gap note (forcing function).** `nmp_content::RenderContext`
+(the PD-015 depth budget + `visited`-set cycle guard) is *also* non-serde
+with no FFI projection. A flat URI→entry map cannot pre-bake depth/cycle
+collapse: a cyclic URI legitimately appears at multiple depths but the map
+has one slot per URI. Therefore the bundle carries only **resolution
+facts** (the resolved target + its rendered body), plus the two
+*context-independent* collapse facts that are properties of the URI/kind
+rather than of any render path: `"dangling"` (URI absent from the
+relay-free store) and `"unsupported"` (kind has no NMP view). The PD-015
+depth + cycle guard is enforced **at render time in the Swift walker**
+(STAGE 3), mirroring `RenderContext::should_collapse` semantics
+(`depth >= max_depth (4)` OR `visited.contains(into)`); the bundle proves
+the cycle is *renderable* by guaranteeing each cycle body really contains
+the back-reference that trips the renderer's `visited` set.
 
 ### 1.2 Canonical doctrines exercised
 

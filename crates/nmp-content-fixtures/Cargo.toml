@@ -1,0 +1,25 @@
+[package]
+name = "nmp-content-fixtures"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Offline signed-event + pre-tokenized DTO bundle generator for the NmpGallery content showcase. Consumes nmp-content/nmp-nip23/nmp-signers as-is; never publishes to a relay."
+
+[lib]
+name = "nmp_content_fixtures"
+
+[[bin]]
+name = "build-bundle"
+path = "src/bin/build-bundle.rs"
+
+[dependencies]
+nmp-content = { path = "../nmp-content" }
+nmp-core = { path = "../nmp-core" }
+nmp-nip23 = { path = "../nmp-nip23" }
+nmp-signers = { path = "../nmp-signers" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+url = "2.5"
+
+[dev-dependencies]
+nmp-core = { path = "../nmp-core" }

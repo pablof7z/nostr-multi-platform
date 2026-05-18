@@ -733,6 +733,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-content-fixtures"
+version = "0.1.0"
+dependencies = [
+ "nmp-content",
+ "nmp-core",
+ "nmp-nip23",
+ "nmp-signers",
+ "serde",
+ "serde_json",
+ "url",
+]
+
+[[package]]
 name = "nmp-core"
 version = "0.1.0"
 dependencies = [
