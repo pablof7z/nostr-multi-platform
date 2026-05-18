@@ -8,6 +8,26 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
+### PD-015 (resolved 2026-05-18 autonomously, recommendation-accepted) — Recursion depth default = 4 in nmp-content
+
+**Decision (autonomous):** accepted the content-rendering designer's recommendation (in `docs/design/content-rendering.md` §12). `RenderContext::max_depth = 4` by default, configurable per app. Beyond depth 4 the embed card MUST collapse to a "see full thread" link rather than recurse. nmp-content-impl (T78, currently in flight) was sent this directive via SendMessage.
+
+### PD-014 (resolved 2026-05-18 autonomously, recommendation-accepted) — Starter scaffold delivery: `nmp init` static + `nmp add component <name>` opt-in
+
+**Decision (autonomous):** accepted the recommendation. `nmp init` plants the full set of starter components (jsrepo / shadcn model) at project bootstrap. `nmp add component <name>` lazy-fetches opt-in extras. Starter MUST work without network on first build. This is M16 scope; recording here so M16 dispatch picks it up.
+
+### PD-013 (resolved 2026-05-18 autonomously, recommendation-accepted) — `EmbedClaimRegistry` as ViewModule, not kernel-internal cache
+
+**Decision (autonomous):** accepted the recommendation. The registry lives as a `ViewModule` per ADR-0009. D0-clean (app code never sees a "kernel cache"). Debug-inspectable via the existing D8 diagnostics surface. Slight perf cost vs kernel-internal is dwarfed by the observability win.
+
+### PD-012 (resolved 2026-05-18 autonomously, recommendation-accepted) — Markdown crate: `pulldown-cmark` (not `comrak`)
+
+**Decision (autonomous):** accepted the recommendation. `pulldown-cmark` for stricter CommonMark adherence + smaller dep tree. Revisit if NIP-23 grows GFM-isms (tables, strikethrough, task lists).
+
+### PD-011 (resolved 2026-05-18 autonomously, recommendation-accepted) — `nmp-content` separate from `nmp-nip21`
+
+**Decision (autonomous):** accepted the recommendation. `nmp-nip21` owns `nostr:` URI parsing (wire format). `nmp-content` owns tokenizer / hashtag / URL / media / NIP-30 emoji / markdown (render format). Different change radius. T68 already landed `nmp-nip21` (`65e6812`); T78 (`nmp-content-impl`, in flight) consumes it.
+
 ### PD-010 (resolved 2026-05-18 autonomously, recommendation-accepted) — Uniform `try_from_event` decoder name
 
 **Decision (autonomous):** accepted the kind-wrappers designer's recommendation (in `docs/design/kind-wrappers.md` §12). Every protocol module exposes `pub fn try_from_event(&StoredEvent) -> Option<XxxRecord>` as the uniform decoder vocabulary. Searchability wins; per-module bespoke names like `decode_article` are forbidden. nmp-nip23-impl (T79, currently in flight) was sent this directive via SendMessage.
