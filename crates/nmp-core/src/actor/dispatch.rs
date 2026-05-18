@@ -50,7 +50,18 @@ pub(super) fn dispatch_command(
             kernel.start();
             spawn_missing_relays(relay_controls, relay_tx, kernel, next_relay_generation);
             emit_now(kernel, *running, update_tx, last_emit);
-            Some(Vec::new())
+            // T127: boot-resume for the publish engine. Closes Residual 3
+            // from T117 — `accepted_locally` rows persisted by a previous
+            // process come back as `InFlight` and any due retries dispatch
+            // immediately. Today the production store is fresh in-memory
+            // per process so this is a no-op; once the M3 LMDB store lands
+            // the resume call will drive the resurrected rows back through
+            // the actor's normal outbound path. `spawn_missing_relays`
+            // above ran first, so workers will spawn on demand for any
+            // URL the resumed frames target (idempotent via
+            // `ensure_relay_worker`). Frames flow through the regular
+            // `send_all_outbound` call in `run_actor`.
+            Some(kernel.resume_publish_engine())
         }
         ActorCommand::Configure {
             visible_limit,

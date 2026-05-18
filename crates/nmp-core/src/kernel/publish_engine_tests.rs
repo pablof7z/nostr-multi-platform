@@ -293,3 +293,184 @@ fn t117_actor_restart_with_pending_resumes_from_pending_retries() {
         "store cleared after the resumed publish completed"
     );
 }
+
+// ── T127 follow-up — actor-tick + boot-resume wiring ─────────────────────────
+//
+// T117 left two honest residuals on the table:
+//   - **Residual 1 (actor-tick):** the publish engine was only ticked
+//     opportunistically from `kernel::ingest::handle_message` (one inbound
+//     frame → one tick). On a quiet socket (no acks, no relay traffic) a
+//     transient retry queued in `pending_retries` would wait forever. T127
+//     adds a periodic tick in the actor's idle path (`actor/mod.rs::run_actor`,
+//     the `Ok(None)` branch of `next_actor_msg`).
+//   - **Residual 3 (boot-resume):** `Kernel::resume_publish_engine` shipped
+//     in T117 but had no production call site. T127 wires it into the
+//     actor's `Start` handler (`actor/dispatch.rs`).
+//
+// The actor wiring is two lines; the FSM behavior is already proved by the
+// T117 tests above. These T127 tests lock the *kernel-level contract* that
+// the actor consumes — same convention as `t117_actor_restart_with_pending_
+// resumes_from_pending_retries`, which is also kernel-level despite the
+// "actor" in its name.
+
+#[test]
+fn t127_quiet_socket_tick_progresses_pending_retry_without_inbound() {
+    // Residual 1 contract: a transient failure schedules a retry into
+    // `pending_retries`; on a quiet socket (no further inbound frames, so
+    // no opportunistic tick in `handle_message`) the only thing that drives
+    // the engine is the actor's periodic tick. This test calls
+    // `tick_publish_engine(now_ms)` exactly once (the actor's idle-path
+    // call) and asserts a retry frame is dispatched. Distinct from the T117
+    // transient test (`t117_transient_failure_retries_with_1s_4s_backoff_
+    // then_gives_up`), which interleaves ticks with synthetic OK-false
+    // acks — this one proves the tick alone is sufficient when no further
+    // wire activity occurs.
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let signed = fake_signed(
+        "aa".repeat(32).as_str(),
+        "bb".repeat(32).as_str(),
+        1,
+        "quiet-socket tick test",
+    );
+    let outbound = kernel.run_publish_engine_at(&signed, &[], 0);
+    assert_eq!(outbound.len(), 2, "two outbox-fallback relays expected");
+
+    // r2 settles immediately so the engine isn't tracking it any more —
+    // the rest of the test is single-relay (r1).
+    let _ = kernel.handle_publish_ok_at(FALLBACK_R2, ok_payload(&signed.id, true, ""), 10);
+
+    // r1 attempt 1 → transient io failure → engine schedules
+    // pending_retries[r1] = 100 + 1_000 = 1_100. NB: this `handle_publish_ok`
+    // call is the *last* inbound the kernel sees in this test — every
+    // subsequent tick must come from the actor's idle-path call alone.
+    let post_ack = kernel.handle_publish_ok_at(
+        FALLBACK_R1,
+        ok_payload(&signed.id, false, "io: connection reset"),
+        100,
+    );
+    assert!(
+        post_ack.is_empty(),
+        "on_ack records the verdict but does not eagerly dispatch — \
+         the retry must come from the next tick"
+    );
+
+    // Tick BEFORE the backoff is due — engine must NOT dispatch yet
+    // (proves the tick isn't accidentally firing every retry on every call).
+    let too_early = kernel.tick_publish_engine(500);
+    assert!(
+        too_early.is_empty(),
+        "tick before 1s backoff window must be a no-op; got {} frames",
+        too_early.len()
+    );
+
+    // Tick AFTER the backoff is due — exactly what the actor's
+    // `tick_publish_engine_for_now` call on the next idle poll produces.
+    // No new inbound frames, no opportunistic ingest-tick — this single
+    // call must dispatch the retry on its own.
+    let retry = kernel.tick_publish_engine(1_500);
+    assert_eq!(
+        retry.len(),
+        1,
+        "quiet-socket retry must dispatch from the actor tick alone"
+    );
+    assert_eq!(retry[0].relay_url, FALLBACK_R1);
+    assert!(
+        retry[0].text.contains("EVENT"),
+        "retry frame must be a NIP-01 EVENT publish, got: {}",
+        retry[0].text
+    );
+}
+
+#[test]
+fn t127_start_path_drives_resume_publish_engine() {
+    // Residual 3 contract: the actor's `Start` handler (in
+    // `actor/dispatch.rs`) now calls `kernel.resume_publish_engine()` and
+    // returns its outbound frames. This test exercises the kernel-side
+    // half of that contract: given a populated `PublishStore` (the LMDB
+    // future, simulated today by sharing an `Arc<dyn PublishStore>`
+    // across two kernel instances), a freshly-constructed kernel that
+    // sees its first `resume_publish_engine` call MUST re-dispatch every
+    // due `pending_retries` row.
+    //
+    // The actor wiring this test pins is the *call* — `Start` invokes
+    // `resume_publish_engine` exactly once and routes the returned frames
+    // through `send_all_outbound`. The downstream behaviour (the FSM
+    // bringing each row back into `InFlight` and dispatching) is exactly
+    // what's asserted here.
+    let store: Arc<dyn PublishStore> = Arc::new(InMemoryPublishStore::new());
+
+    let signed = fake_signed(
+        "cc".repeat(32).as_str(),
+        "dd".repeat(32).as_str(),
+        1,
+        "boot-resume test",
+    );
+
+    // Kernel A: drive a transient failure so the durable store carries one
+    // `pending_retries` row with a past-due deadline. Mirror of T117's
+    // restart test, but the deadline is set so that resume must dispatch
+    // **immediately** (the engine compares against wall-clock `now` and
+    // the seeded deadline is 0).
+    {
+        let mut kernel_a = Kernel::with_publish_store(DEFAULT_VISIBLE_LIMIT, Arc::clone(&store));
+        let outbound = kernel_a.run_publish_engine_at(&signed, &[], 0);
+        assert_eq!(outbound.len(), 2);
+        let _ = kernel_a.handle_publish_ok_at(FALLBACK_R2, ok_payload(&signed.id, true, ""), 10);
+        let _ = kernel_a.handle_publish_ok_at(FALLBACK_R1, ok_payload(&signed.id, false, "io: down"), 100);
+
+        let pending = store.load_pending().unwrap();
+        assert_eq!(pending.len(), 1, "store carries one durable row pre-restart");
+    }
+
+    // Kernel B: this is exactly the state the actor's `Start` handler
+    // produces — a fresh kernel sharing the same `Arc<dyn PublishStore>`.
+    // The first `resume_publish_engine` call (which `Start` invokes once,
+    // after `spawn_missing_relays`) must dispatch the due retry on r1.
+    let mut kernel_b = Kernel::with_publish_store(DEFAULT_VISIBLE_LIMIT, Arc::clone(&store));
+    let resumed = kernel_b.resume_publish_engine();
+    assert_eq!(
+        resumed.len(),
+        1,
+        "Start-equivalent resume must dispatch the persisted r1 retry; got {} frames",
+        resumed.len()
+    );
+    assert_eq!(resumed[0].relay_url, FALLBACK_R1);
+    assert!(
+        resumed[0].text.contains("EVENT"),
+        "resumed frame must be a NIP-01 EVENT publish, got: {}",
+        resumed[0].text
+    );
+
+    // The actor's `Start` calls `resume_publish_engine` exactly once per
+    // Start command (a Stop → Start cycle reconstructs `relay_controls`
+    // and resets `startup_sent`, but the kernel survives — so the engine
+    // state survives too and the second resume's behaviour matters less
+    // than the first). Locking the once-per-Start invariant is the actor
+    // wiring's job, not the kernel's. Ack the dispatched retry so the
+    // store clears and we exit clean — proves the resumed publish
+    // completes end-to-end through the same path the actor drives.
+    let _ = kernel_b.handle_publish_ok_at(FALLBACK_R1, ok_payload(&signed.id, true, ""), now_ms_after_resume(&signed));
+    let snap = kernel_b.publish_status_snapshot();
+    assert_eq!(
+        snap.recent_ok.len(),
+        1,
+        "resumed publish must complete after the OK ack"
+    );
+    assert!(
+        store.load_pending().unwrap().is_empty(),
+        "store cleared after the resumed publish completed"
+    );
+}
+
+/// Helper for the boot-resume test: `handle_publish_ok_at` needs a `now_ms`
+/// strictly past the engine's most recent recorded ack timestamp, otherwise
+/// `apply_ack`'s late-ack idempotence path would discard the OK as stale.
+/// `resume_publish_engine` uses wall-clock `now_epoch_ms()`, so this returns
+/// the same wall-clock time the engine already saw.
+fn now_ms_after_resume(_signed: &SignedEvent) -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}

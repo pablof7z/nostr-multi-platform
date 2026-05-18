@@ -185,6 +185,32 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
                         pending,
                     );
                 }
+                // T127: actor-tick for the publish engine. The 250ms idle poll
+                // in `next_actor_msg` (`tick.rs`) already paces this; no
+                // additional throttle (the engine's own pending_retries gate
+                // skips dispatch work when nothing is due). D8 — when
+                // `in_flight` is empty the tick is heap-free:
+                //   - `PublishEngine::tick` collects `Vec<PublishHandle>`
+                //     from an empty iterator (Rust's `FromIterator for Vec`
+                //     special-cases empty → `Vec::new()`, no allocation),
+                //   - `QueueDispatcher::drain` swaps in `Vec::new()` via
+                //     `mem::take` (no allocation when the queue was empty),
+                //   - the kernel returns `drained.into_iter().map(..).collect()`
+                //     which is also heap-free for an empty source.
+                // Closes Residual 1 from T117 — transient retries fire even
+                // on a quiet socket (no inbound traffic).
+                if running {
+                    let retry_frames = kernel.tick_publish_engine_for_now();
+                    if !retry_frames.is_empty() {
+                        send_all_outbound(
+                            &mut relay_controls,
+                            &relay_tx,
+                            &mut kernel,
+                            &mut next_relay_generation,
+                            retry_frames,
+                        );
+                    }
+                }
                 // Only emit when state actually changed; do not emit on every
                 // idle tick (D8: zero false-wakeup allocations after warmup).
                 if kernel.changed_since_emit() {

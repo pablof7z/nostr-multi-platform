@@ -281,16 +281,10 @@ impl Kernel {
     }
 
     /// Resume any pending publishes that survived a kernel restart. Called by
-    /// the actor (and by integration tests) once after construction. Returns
-    /// any outbound frames the engine emitted as it brought live relays back
-    /// into `InFlight` from a `Pending` / due-`RelayError` state.
-    ///
-    /// `dead_code` allowed because the actor-side resume hook lands with
-    /// the follow-up T-publish-engine-actor-tick (separate task — `actor/mod.rs`
-    /// is currently locked by T114). The integration test
-    /// `t117_actor_restart_with_pending_resumes_from_pending_retries`
-    /// exercises it crate-internally to lock the contract.
-    #[allow(dead_code)]
+    /// the actor (T127, `actor/dispatch.rs::Start`) once per `Start` command,
+    /// and by integration tests directly. Returns any outbound frames the
+    /// engine emitted as it brought live relays back into `InFlight` from a
+    /// `Pending` / due-`RelayError` state.
     pub(crate) fn resume_publish_engine(&mut self) -> Vec<OutboundMessage> {
         let now_ms = now_epoch_ms();
         if let Err(err) = self.publish_engine.resume_from_store(now_ms) {
