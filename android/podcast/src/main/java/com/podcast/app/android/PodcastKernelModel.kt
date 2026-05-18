@@ -3,6 +3,7 @@ package com.podcast.app.android
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.podcast.app.android.bridge.FeedFetcher
 import com.podcast.app.android.bridge.PodcastKernelBridge
 import com.podcast.app.android.model.PodcastFeedView
 import com.podcast.app.android.model.PodcastLibraryView
@@ -30,15 +31,19 @@ private const val TAG = "NmpPodcast"
  * side has zero business logic or derived state (D5/D8). Decode fails closed
  * (D1).
  *
- * **T-podcast-android-3 (THIS COMMIT)** — episode list wired:
- *   - [episodes] StateFlow carries the FeedView for the selected podcast.
- *   - [onPodcastSelected] fetches episodes for a given podcast id via
- *     [bridge.episodes]. No Kotlin-side fabrication; empty list renders an
- *     honest empty state.
- *   - [selectedPodcastId] tracks navigation selection for the episode screen.
- *   - HTTP-fetch gap: `ingestBytes` is wired (bridge method exists) but the
- *     host-side OkHttp fetch is NOT called on subscribe yet (T-podcast-gap-3).
- *     Episode lists are empty until the host fetch capability lands.
+ * **T-podcast-android-4** — host-side OkHttp fetch wired (Option A from
+ * T-podcast-gap-3). After a successful subscribe, [onAddPodcastPressed] launches
+ * a background coroutine via [FeedFetcher] that:
+ *   1. Downloads the raw RSS/Atom bytes from the feed URL.
+ *   2. Passes them to [bridge.ingestBytes] → Rust parser → episode table.
+ *   3. Re-fetches the library snapshot so `episodeCount` is updated.
+ *   4. If [selectedPodcastId] is set to the new podcast, re-fetches episodes too.
+ *
+ * Network or parse failures surface as toast events (D6 — never silent).
+ * The episode list is empty until the fetch completes — correct and honest.
+ *
+ * Prior note (T-podcast-android-3): "HTTP-fetch gap: host-side OkHttp fetch
+ * NOT called on subscribe yet (T-podcast-gap-3)" — resolved in this iteration.
  */
 class PodcastKernelModel : ViewModel() {
 
@@ -50,6 +55,7 @@ class PodcastKernelModel : ViewModel() {
     }
 
     private val bridge = PodcastKernelBridge()
+    private val fetcher = FeedFetcher()
 
     private val _library = MutableStateFlow(PodcastLibraryView())
     val library: StateFlow<PodcastLibraryView> = _library.asStateFlow()
@@ -90,31 +96,66 @@ class PodcastKernelModel : ViewModel() {
     }
 
     /**
-     * Subscribe to a podcast feed. Called by [LibraryScreen] after the user
-     * confirms a URL in the AddPodcast dialog.
+     * Subscribe to a podcast feed, then fetch + ingest its bytes (T-podcast-android-4).
      *
-     * Success path (bridge returns true):
-     *   - Refresh [library] from the podcast snapshot directly.
-     * Failure path (bridge returns false — dedup or invalid URL):
-     *   - Emit a [toastEvent] so the UI can surface a toast (D6).
+     * Subscribe path:
+     *   - [bridge.subscribe] adds the feed URL to the Rust state.
+     *   - On success: refresh [library] from the podcast snapshot.
+     *   - On failure (dedup / invalid URL): emit a [toastEvent] (D6).
+     *
+     * Fetch path (runs only after a successful subscribe):
+     *   - [FeedFetcher.fetchAndIngest] downloads bytes via OkHttp and calls
+     *     [bridge.ingestBytes] so the Rust parser populates the episode table.
+     *   - Success: refresh [library] (episodeCount now reflects parsed episodes).
+     *     If the newly added podcast is currently selected, also refresh [episodes].
+     *   - Failure: emit a descriptive [toastEvent] (D6 — never silent).
      */
     fun onAddPodcastPressed(feedUrl: String, title: String? = null, author: String? = null) {
         viewModelScope.launch(Dispatchers.IO) {
             Log.i(TAG, "onAddPodcastPressed: feedUrl=$feedUrl")
             val added = bridge.subscribe(feedUrl, title, author)
-            if (added) {
-                Log.i(TAG, "subscribe succeeded — refreshing library")
-                val snap = bridge.snapshot()
-                if (snap != null) {
-                    val view = decodePodcastSnapshot(snap)
-                    withContext(Dispatchers.Main) {
-                        if (view != null) _library.value = view
-                    }
-                }
-            } else {
+            if (!added) {
                 Log.w(TAG, "subscribe returned false — dedup or invalid URL for: $feedUrl")
                 withContext(Dispatchers.Main) {
                     _toastEvent.tryEmit("Could not add podcast. Check the feed URL.")
+                }
+                return@launch
+            }
+
+            Log.i(TAG, "subscribe succeeded — refreshing library then fetching feed bytes")
+            // Refresh library so the new podcast row is visible immediately
+            // (episodeCount = 0 is honest until the fetch completes).
+            val snapAfterSubscribe = bridge.snapshot()
+            if (snapAfterSubscribe != null) {
+                val view = decodePodcastSnapshot(snapAfterSubscribe)
+                withContext(Dispatchers.Main) {
+                    if (view != null) _library.value = view
+                }
+            }
+
+            // Host-side fetch: download feed bytes and ingest into Rust state.
+            val fetchResult = fetcher.fetchAndIngest(bridge, feedUrl)
+            when (fetchResult) {
+                is FeedFetcher.FetchResult.Success -> {
+                    Log.i(TAG, "fetchAndIngest OK — ${fetchResult.episodeCount} episodes")
+                    // Re-read library so episodeCount is updated in the podcast row.
+                    val snapAfterIngest = bridge.snapshot()
+                    val updatedLibrary = snapAfterIngest?.let { decodePodcastSnapshot(it) }
+                    // If this podcast is currently selected, refresh the episode list.
+                    val curId = _selectedPodcastId.value
+                    val updatedEpisodes = if (curId != null) {
+                        bridge.episodes(curId)?.let { decodeFeedView(it) }
+                    } else null
+                    withContext(Dispatchers.Main) {
+                        if (updatedLibrary != null) _library.value = updatedLibrary
+                        if (updatedEpisodes != null) _episodes.value = updatedEpisodes
+                    }
+                }
+                is FeedFetcher.FetchResult.Failure -> {
+                    Log.w(TAG, "fetchAndIngest failed: ${fetchResult.reason}")
+                    withContext(Dispatchers.Main) {
+                        _toastEvent.tryEmit("Feed downloaded but could not be read: ${fetchResult.reason}")
+                    }
                 }
             }
         }
