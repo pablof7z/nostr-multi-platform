@@ -58,7 +58,7 @@ impl Kernel {
             && !self
                 .wire_subs
                 .keys()
-                .any(|sub_id| sub_id.starts_with("diag-firehose-"))
+                .any(|(_relay_url, sub_id)| sub_id.starts_with("diag-firehose-"))
         {
             requests.extend(self.firehose_requests());
         }
@@ -86,7 +86,10 @@ impl Kernel {
     ) -> Vec<OutboundMessage> {
         // Two-pass: can't `remove` while holding a `&mut` iterator on the map.
         let mut closes = Vec::new();
-        let mut to_evict: Vec<String> = Vec::new();
+        // #170: evict by the full `(relay_url, sub_id)` key — the same sub_id
+        // may be live on multiple relays; a sub_id-only evict would drop a
+        // sibling relay's row that no prefix targeted.
+        let mut to_evict: Vec<(String, String)> = Vec::new();
         for sub in self.wire_subs.values() {
             if prefixes.iter().any(|prefix| sub.id.starts_with(prefix))
                 && !matches!(sub.state.as_str(), "closed" | "closed_by_relay")
@@ -96,11 +99,11 @@ impl Kernel {
                     relay_url: sub.relay_url.clone(),
                     text: json!(["CLOSE", sub.id]).to_string(),
                 });
-                to_evict.push(sub.id.clone());
+                to_evict.push((sub.relay_url.clone(), sub.id.clone()));
             }
         }
-        for sub_id in to_evict {
-            self.wire_subs.remove(&sub_id);
+        for key in to_evict {
+            self.wire_subs.remove(&key);
         }
         if !closes.is_empty() {
             self.changed_since_emit = true;
@@ -146,7 +149,7 @@ impl Kernel {
         ));
         let paused = self.relay_auth_paused(role);
         self.wire_subs.insert(
-            sub_id.to_string(),
+            (relay_url.clone(), sub_id.to_string()),
             WireSub {
                 id: sub_id.to_string(),
                 role,
@@ -232,10 +235,10 @@ impl Kernel {
                         .role_for_relay_url(relay_url)
                         .unwrap_or(RelayRole::Content);
                     if matches!(lifecycle, InterestLifecycle::Tailing) {
-                        self.register_persistent_sub(sub_id.clone());
+                        self.register_persistent_sub(relay_url.clone(), sub_id.clone());
                     }
                     self.wire_subs.insert(
-                        sub_id.clone(),
+                        (relay_url.clone(), sub_id.clone()),
                         WireSub {
                             id: sub_id.clone(),
                             role,
@@ -250,9 +253,10 @@ impl Kernel {
                         },
                     );
                 }
-                WireFrame::Close { sub_id, .. } => {
-                    self.unregister_persistent_sub(sub_id);
-                    self.wire_subs.remove(sub_id);
+                WireFrame::Close { relay_url, sub_id } => {
+                    self.unregister_persistent_sub(relay_url, sub_id);
+                    self.wire_subs
+                        .remove(&(relay_url.clone(), sub_id.clone()));
                 }
             }
         }

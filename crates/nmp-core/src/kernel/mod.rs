@@ -207,12 +207,19 @@ pub(crate) struct Kernel {
     profile_req_seq: u64,
     timeline_requested: bool,
     contacts_deadline: Option<Instant>,
-    wire_subs: HashMap<String, WireSub>,
-    /// Subscription ids that must survive EOSE (the kernel's default policy
-    /// is to auto-CLOSE any non-seed/non-firehose sub on EOSE). Protocol lanes
-    /// like NWC (kind:23195 listener) register here so the wire-side
-    /// subscription is kept open for the connection lifetime.
-    persistent_subs: HashSet<String>,
+    /// Wire-sub bookkeeping keyed by `(relay_url, sub_id)`. #170: the M2
+    /// planner deliberately reuses the same `sub-*` id across relay URLs for
+    /// one filter (NIP-01 §1 sub ids are per-connection; `subs/wire.rs`). A
+    /// `sub_id`-only key let the second relay's REQ clobber the first's row
+    /// and a CLOSE for one relay evict a still-live sibling. Same precedent
+    /// as `plan_diff` (#161) and `LifecycleGate.known_subs` (#166).
+    wire_subs: HashMap<(String, String), WireSub>,
+    /// `(relay_url, sub_id)` pairs that must survive EOSE (the kernel's
+    /// default policy is to auto-CLOSE any non-seed/non-firehose sub on
+    /// EOSE). Protocol lanes like NWC (kind:23195 listener) register here so
+    /// the wire-side subscription is kept open for the connection lifetime.
+    /// #170: relay-scoped so a CLOSE for one relay never un-pins a sibling.
+    persistent_subs: HashSet<(String, String)>,
     last_emitted_items: Vec<TimelineItem>,
     update_sequence: u64,
     events_since_last_update: u64,
@@ -556,20 +563,28 @@ impl Kernel {
     /// Used by long-lived protocol lanes (NWC kind:23195 listener) where the
     /// subscription must remain open for the connection lifetime. Inverse of
     /// [`unregister_persistent_sub`]. Idempotent.
-    pub(crate) fn register_persistent_sub(&mut self, sub_id: impl Into<String>) {
-        self.persistent_subs.insert(sub_id.into());
+    pub(crate) fn register_persistent_sub(
+        &mut self,
+        relay_url: impl Into<String>,
+        sub_id: impl Into<String>,
+    ) {
+        self.persistent_subs.insert((relay_url.into(), sub_id.into()));
     }
 
-    /// Remove `sub_id` from the persistent set. Called when the protocol lane
-    /// (e.g. wallet disconnect) tears down its subscription. Idempotent.
-    pub(crate) fn unregister_persistent_sub(&mut self, sub_id: &str) {
-        self.persistent_subs.remove(sub_id);
+    /// Remove `(relay_url, sub_id)` from the persistent set. Called when the
+    /// protocol lane (e.g. wallet disconnect) or the planner withdraws its
+    /// subscription on that relay. Idempotent. #170: relay-scoped so closing
+    /// the sub on one relay never un-pins a sibling relay still carrying it.
+    pub(crate) fn unregister_persistent_sub(&mut self, relay_url: &str, sub_id: &str) {
+        self.persistent_subs
+            .remove(&(relay_url.to_string(), sub_id.to_string()));
     }
 
-    /// True when `sub_id` is registered as persistent — EOSE handlers consult
-    /// this to skip the default auto-CLOSE policy.
-    pub(crate) fn is_persistent_sub(&self, sub_id: &str) -> bool {
-        self.persistent_subs.contains(sub_id)
+    /// True when `(relay_url, sub_id)` is registered as persistent — EOSE
+    /// handlers consult this to skip the default auto-CLOSE policy.
+    pub(crate) fn is_persistent_sub(&self, relay_url: &str, sub_id: &str) -> bool {
+        self.persistent_subs
+            .contains(&(relay_url.to_string(), sub_id.to_string()))
     }
 
     pub(crate) fn start(&mut self) {

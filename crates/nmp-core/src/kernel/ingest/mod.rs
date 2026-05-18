@@ -103,8 +103,9 @@ impl Kernel {
                 let keep_live = sub_id == "seed-timeline"
                     || sub_id.starts_with("seed-timeline-")
                     || sub_id.starts_with("diag-firehose-")
-                    || self.is_persistent_sub(sub_id);
-                if let Some(sub) = self.wire_subs.get_mut(sub_id) {
+                    || self.is_persistent_sub(relay_url, sub_id);
+                let wire_key = (relay_url.to_string(), sub_id.to_string());
+                if let Some(sub) = self.wire_subs.get_mut(&wire_key) {
                     sub.eose_at = Some(Instant::now());
                     if keep_live {
                         sub.state = "live".to_string();
@@ -136,14 +137,18 @@ impl Kernel {
                     // leave the resolved sub open. Pull the recorded URL from
                     // the WireSub set on req_for_relay; fall back to the
                     // delivering relay's URL when the sub_id is unknown.
-                    let relay_url = self
+                    // #170: the CLOSE travels back on the SAME socket the
+                    // EOSE arrived on (relay_url) — the wire_subs key is now
+                    // relay-scoped so the row, if any, is this relay's row,
+                    // not a sibling's. Fall back to the delivering URL.
+                    let close_url = self
                         .wire_subs
-                        .get(sub_id)
+                        .get(&wire_key)
                         .map(|sub| sub.relay_url.clone())
-                        .unwrap_or_else(|| role.url().to_string());
+                        .unwrap_or_else(|| relay_url.to_string());
                     outbound.push(OutboundMessage {
                         role,
-                        relay_url,
+                        relay_url: close_url,
                         text: json!(["CLOSE", sub_id]).to_string(),
                     });
                     // T133: evict the row now that the CLOSE outbound is
@@ -153,7 +158,7 @@ impl Kernel {
                     // table unboundedly across long sessions (every
                     // profile-claim, thread-ids, thread-replies, and discovery
                     // oneshot completes via this EOSE→CLOSE path).
-                    self.wire_subs.remove(sub_id);
+                    self.wire_subs.remove(&wire_key);
                 }
                 self.changed_since_emit = true;
                 self.log(format!("EOSE {sub_id}"));
@@ -192,7 +197,11 @@ impl Kernel {
                 // below — the classification lands on RelayHealth.last_close_reason
                 // (the diagnostic surface), so dropping the per-sub close_reason
                 // here loses nothing the UI cares about.
-                self.wire_subs.remove(&sub_id);
+                // #170: relay-scoped — a relay-initiated CLOSED only kills the
+                // sub on the relay that sent it; a sibling relay carrying the
+                // same sub_id keeps its row.
+                self.wire_subs
+                    .remove(&(relay_url.to_string(), sub_id.clone()));
                 if sub_id.starts_with("thread-ids-") {
                     self.thread_ids_inflight = false;
                 }
@@ -275,7 +284,10 @@ impl Kernel {
         self.events_since_last_update = self.events_since_last_update.saturating_add(1);
         self.last_event_at = Some(now);
         self.first_event_at.get_or_insert(now);
-        if let Some(sub) = self.wire_subs.get_mut(sub_id) {
+        if let Some(sub) = self
+            .wire_subs
+            .get_mut(&(relay_url.to_string(), sub_id.to_string()))
+        {
             if sub.state == "opening" {
                 sub.state = "live".to_string();
             }

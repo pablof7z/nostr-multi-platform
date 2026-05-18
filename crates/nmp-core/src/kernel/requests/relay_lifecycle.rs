@@ -65,7 +65,7 @@ impl Kernel {
         // across reconnect churn is exactly the long-session leak T133 fixes.
         // `retrying` (set by `relay_failed`) is preserved — that's a transient
         // state where the sub may resume after backoff.
-        self.wire_subs.retain(|_id, sub| sub.role != role);
+        self.wire_subs.retain(|_key, sub| sub.role != role);
         self.changed_since_emit = true;
         if let Some(driver) = self.nip42_drivers.get_mut(&role) {
             driver.reset_on_disconnect();

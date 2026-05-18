@@ -139,7 +139,7 @@ pub(crate) fn wallet_connect(
         Arc::new(move |unsigned: &UnsignedEvent| sign_with(&client_keys, unsigned)),
     );
     // Pin the kind:23195 listener so EOSE doesn't auto-CLOSE it.
-    kernel.register_persistent_sub(sub_id.clone());
+    kernel.register_persistent_sub(relay.clone(), sub_id.clone());
 
     sync_wallet_status(wallet, kernel);
 
@@ -202,7 +202,7 @@ fn wallet_disconnect_inner(
         return Vec::new();
     };
     // Tear down kernel-side wallet-lane registrations.
-    kernel.unregister_persistent_sub(&conn.sub_id);
+    kernel.unregister_persistent_sub(&conn.relay_url, &conn.sub_id);
     kernel.clear_relay_auth_signer(RelayRole::Wallet);
     let close_msg = serde_json::to_string(&json!(["CLOSE", &conn.sub_id])).unwrap_or_default();
     kernel.set_wallet_status(Some(WalletStatus {

@@ -192,7 +192,8 @@ fn m2_follow_feed_sub_survives_eose() {
         Message::Text(eose),
     );
 
-    let state = kernel.wire_sub_state_for_test(&sub_id);
+    let state =
+        kernel.wire_sub_state_for_test_on_relay("wss://alice-t140.relay/", &sub_id);
     assert_eq!(
         state.as_deref(),
         Some("live"),
