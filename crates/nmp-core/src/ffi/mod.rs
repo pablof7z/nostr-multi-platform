@@ -45,8 +45,8 @@ pub use testing::{nmp_app_inject_pre_verified_events, nmp_app_inject_signed_even
 // under the test-support gate.
 #[cfg(any(test, feature = "test-support"))]
 pub use timeline::{
-    nmp_app_claim_profile, nmp_app_close_author, nmp_app_open_author, nmp_app_open_firehose_tag,
-    nmp_app_open_uri, nmp_app_release_profile,
+    nmp_app_claim_profile, nmp_app_close_author, nmp_app_close_thread, nmp_app_open_author,
+    nmp_app_open_firehose_tag, nmp_app_open_thread, nmp_app_open_uri, nmp_app_release_profile,
 };
 
 // test-support: expose identity / publish / relay-edit FFI entry-points so
