@@ -68,6 +68,64 @@ Format: one entry per decision. Surface every entry in every status update until
 
 **Naming-conflict note for the orchestrator:** the parent agent dispatched this builder-guide-planner work under the label "T59 docs-planner — builder-guide TOC + per-section briefs." That collides with PD-005's `T59: iOS signer binding for NIP-42`. The builder-guide-planner agent could not call `TaskCreate` (tool not in its deferred-tool list) and is therefore unable to register a fresh T-number itself. Orchestrator should either rename the docs-planner task to a non-colliding T-number when registering completion, or treat the docs-planner work as untyped follow-up keyed by SHA (`8fd2764` for PLAN.md, `8a79c33` for codex fixes).
 
+### PD-018 — T75: doctrine-lint D8 ships dormant on production code (opt-in marker)
+
+**Decision (autonomous, 2026-05-18, T75):** the D8 rule (hot-path no per-event
+allocation) ships scoped to functions carrying an explicit standalone
+`// hot path` marker comment. **No production function currently carries the
+marker, so D8 fires on zero shipping code today.** D0/D6/D7 are live and
+enforcing; D8 is a dormant gate that activates per-function as authors opt in.
+
+**Why dormant rather than name-pattern-scoped (as the brief specified):**
+
+The brief said scope D8 to `ingest_*` / `handle_*` / `*_event*`-named
+functions. Applied literally to the current tree, that is a false-positive
+storm: `kernel/ingest/timeline.rs::ingest_timeline_event` (the real per-event
+hot path) contains two legitimate `format!` calls — but both are on **error
+paths** (`sig verify failed`, `store insert error`) that are cold-by-
+construction even inside a hot function. `kernel/ingest/auth_handlers.rs`'s
+`handle_*` functions are AUTH-handshake setup, not per-event, and `format!`
+freely there. Flagging these would violate the brief's hard constraint:
+"No false positives in current `nmp-core` … if any, narrow the rule." The
+brief itself anticipates this — "This is fuzzy; start with the easiest
+patterns and iterate" — and grants the narrowing.
+
+The opt-in marker is the narrowest honest enforcement: hot-path authors take
+on the discipline by annotating; existing code is unaffected until a refactor
+makes a hot path allocation-clean enough to mark. Marking a function today
+would require refactoring its error-path `format!`s out of the function body
+(hoist to a cold helper), which is out of scope for "add a lint."
+
+**Validation that the rule works** (despite firing on zero prod code): the
+smoke test (`cargo test -p nmp-testing --test doctrine_lint_smoke`) proves
+end-to-end that D8 fires on a `// hot path`-marked fixture function and that
+the `// doctrine-allow: D8` opt-out suppresses it. Rule logic + tracker are
+unit-tested (brace-aware fn-scope tracking, marker-vs-prose discrimination).
+
+**Follow-up to fully activate D8:** brainstorm item #24 (dhat-rs allocation-
+count gate) promotes the comment marker to a real `#[hot_path]` proc-macro
+attribute and pairs it with a runtime allocation assertion. At that point a
+hot-path author refactors error `format!`s to cold helpers and marks the
+function — D8 then enforces on shipping code.
+
+**Also in this commit (source edits outside `bin/doctrine-lint/`):**
+`crates/nmp-core/src/kernel/status.rs` gained two `// doctrine-allow: D6 — …`
+trailing annotations on the pre-existing `RelayHealth::relay` /
+`relay_mut` `.expect("relay health initialized for every role")` calls.
+These are genuine invariant assertions (the `RelayRole` enum is fixed and the
+constructor seeds every variant); the annotation documents the rationale
+inline rather than refactoring the accessor to return `Option`. This is the
+brief's sanctioned narrowing mechanism, used minimally (2 lines).
+
+**If wrong:** revert the single commit. The lint is self-contained
+(`crates/nmp-testing/bin/doctrine-lint/` + the CI workflow); the only
+out-of-crate footprint is the 2-line `status.rs` annotation and the
+`nmp-testing/Cargo.toml` `[[bin]]`/`[[test]]` registration. To make D8
+strict-by-name-pattern instead of opt-in, change `d8::file_in_scope` +
+remove the marker gate in `HotPathTracker` — but expect to then either
+refactor `ingest_timeline_event`/`auth_handlers.rs` or `// doctrine-allow`
+their cold-path `format!`s.
+
 ### PD-005 — T59: iOS signer binding for NIP-42 (deferred from T58)
 
 **Decision (autonomous, 2026-05-18, T58):** T58 shipped the kernel-side NIP-42 wiring (parsers + per-relay driver + AuthGate routing + 5 spec'd integration tests + 2 bonus regressions). iOS signer binding is deferred to a follow-up task T59.

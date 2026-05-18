@@ -222,13 +222,13 @@ impl Kernel {
     pub(super) fn relay(&self, role: RelayRole) -> &RelayHealth {
         self.relays
             .get(&role)
-            .expect("relay health initialized for every role")
+            .expect("relay health initialized for every role") // doctrine-allow: D6 — RelayRole enum is fixed and the constructor seeds every variant; panicking here means a new role was added without updating the seed (a logic bug, not a runtime error)
     }
 
     pub(super) fn relay_mut(&mut self, role: RelayRole) -> &mut RelayHealth {
         self.relays
             .get_mut(&role)
-            .expect("relay health initialized for every role")
+            .expect("relay health initialized for every role") // doctrine-allow: D6 — see `Self::relay` for the invariant rationale
     }
 
     pub(super) fn total_counters(&self) -> Counters {

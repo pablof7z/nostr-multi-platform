@@ -39,6 +39,22 @@ path = "bin/firehose-bench/main.rs"
 name = "ffi-stress"
 path = "bin/ffi-stress/main.rs"
 
+# Doctrine-lint — D0+D6+D7+D8 grep gates (Tier 1 item #8 from
+# docs/perf/parallel-work-brainstorm-2026-05-18.md). Grep-based static
+# analyzer with `#[cfg(test)]` module tracking; runs in CI on push +
+# pull_request via `.github/workflows/doctrine-lint.yml`.
+# `cargo run -p nmp-testing --bin doctrine-lint -- --crate nmp-core`
+[[bin]]
+name = "doctrine-lint"
+path = "bin/doctrine-lint/main.rs"
+
+# Doctrine-lint smoke test — runs the binary against fixtures under
+# bin/doctrine-lint/fixtures/ and asserts pass/fail per rule.
+# `cargo test -p nmp-testing --test doctrine_lint_smoke`
+[[test]]
+name = "doctrine_lint_smoke"
+path = "bin/doctrine-lint/tests.rs"
+
 # M2 subscription compiler audit gate — Assertions 1–5 (phase 1 subset).
 # `cargo test -p nmp-testing --test m2_subscription_compilation_audit`
 [[test]]
