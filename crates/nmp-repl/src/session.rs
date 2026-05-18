@@ -82,15 +82,13 @@ impl Default for Session {
             follows_cache: None,
             lifecycle: SubscriptionLifecycle::new(),
             mailbox_cache: InMemoryMailboxCache::new(),
-            // Multiple indexers so one rate-limited relay (e.g.
-            // purplepag.es returning AUTH + CLOSED) does not zero out
-            // discovery — `fetch_follows` falls through in listed order,
-            // showing every attempt + terminal status.
-            indexer_relays: vec![
-                "wss://purplepag.es".to_string(),
-                "wss://relay.nostr.band".to_string(),
-                "wss://relay.damus.io".to_string(),
-            ],
+            // Single canonical indexer (original default). `set-indexer`
+            // overrides it. The instrumented `fetch_follows` shows the
+            // connect attempt + its terminal status (EOSE / CLOSED / AUTH /
+            // error) so a rate-limited or dead indexer is visible, never
+            // silent. No hardcoded fallback list — relay choice is operator
+            // config, not a baked-in default.
+            indexer_relays: vec!["wss://purplepag.es".to_string()],
             app_relays: Vec::new(),
             dead_relays: BTreeSet::new(),
             max_connections: 30,
