@@ -128,3 +128,170 @@ impl OutboundMessage {
         }
     }
 }
+
+/// Canonicalize a relay URL so that all call sites (add, remove, pool-key)
+/// agree on the same string key.
+///
+/// # Rules (per URL semantics + NIP-01 relay URL conventions)
+/// - Lowercase scheme and authority (host[:port]).
+/// - Strip a single trailing `/` **only when the path is empty** (i.e.
+///   `wss://r.ex/` → `wss://r.ex`). Non-empty paths are preserved verbatim
+///   including any trailing slash (`wss://r.ex/nostr/` is unchanged).
+/// - Reject any URL whose scheme is not `ws` or `wss` (after lowercasing).
+/// - Preserve path, query, and fragment exactly as given (only scheme+host
+///   are lowercased).
+/// - Leading/trailing ASCII whitespace is stripped before parsing.
+///
+/// Returns `None` when the URL cannot be canonicalized (bad scheme, missing
+/// authority, etc.). The caller MUST NOT spawn a relay worker in that case.
+pub(crate) fn canonical_relay_url(raw: &str) -> Option<String> {
+    let s = raw.trim();
+    // Find the scheme separator "://".
+    let sep = s.find("://")?;
+    let scheme = s[..sep].to_ascii_lowercase();
+    if scheme != "ws" && scheme != "wss" {
+        return None;
+    }
+    // Everything after "://" — split authority from path+query+fragment.
+    let rest = &s[sep + 3..];
+    if rest.is_empty() {
+        return None; // no authority
+    }
+    // Authority ends at the first '/', '?', or '#'.
+    let (authority, path_etc) = if let Some(pos) = rest.find(['/', '?', '#']) {
+        (&rest[..pos], &rest[pos..])
+    } else {
+        (rest, "")
+    };
+    if authority.is_empty() {
+        return None; // e.g. "wss:///path" — no host
+    }
+    let authority_lower = authority.to_ascii_lowercase();
+    // Strip trailing '/' only when path is exactly "/" (empty path notation).
+    let path_etc_norm = if path_etc == "/" { "" } else { path_etc };
+    Some(format!("{scheme}://{authority_lower}{path_etc_norm}"))
+}
+
+#[cfg(test)]
+mod canonical_url_tests {
+    use super::canonical_relay_url;
+
+    #[test]
+    fn t_canonicalize_lowercase_scheme_and_host() {
+        assert_eq!(
+            canonical_relay_url("WSS://R.Ex"),
+            Some("wss://r.ex".to_string()),
+            "scheme and host must be lowercased"
+        );
+    }
+
+    #[test]
+    fn t_canonicalize_strip_empty_path_trailing_slash() {
+        assert_eq!(
+            canonical_relay_url("wss://r.ex/"),
+            Some("wss://r.ex".to_string()),
+            "trailing slash on empty path must be stripped"
+        );
+    }
+
+    #[test]
+    fn t_canonicalize_case_and_trailing_slash_combined() {
+        assert_eq!(
+            canonical_relay_url("WSS://R.Ex/"),
+            Some("wss://r.ex".to_string()),
+            "uppercase scheme+host AND empty-path trailing slash"
+        );
+    }
+
+    #[test]
+    fn t_canonicalize_preserve_nonempty_path() {
+        assert_eq!(
+            canonical_relay_url("wss://r.ex/nostr"),
+            Some("wss://r.ex/nostr".to_string()),
+            "non-empty path must be preserved"
+        );
+    }
+
+    #[test]
+    fn t_canonicalize_preserve_nonempty_path_with_trailing_slash() {
+        // A relay with a real path retains its trailing slash.
+        assert_eq!(
+            canonical_relay_url("wss://r.ex/nostr/"),
+            Some("wss://r.ex/nostr/".to_string()),
+            "trailing slash on non-empty path must be preserved"
+        );
+    }
+
+    #[test]
+    fn t_canonicalize_path_distinctness() {
+        // A relay with a real path is distinct from the no-path form.
+        let with_path = canonical_relay_url("wss://r.ex/nostr");
+        let no_path = canonical_relay_url("wss://r.ex");
+        assert_ne!(with_path, no_path, "wss://r.ex/nostr must be distinct from wss://r.ex");
+    }
+
+    #[test]
+    fn t_canonicalize_preserve_port() {
+        assert_eq!(
+            canonical_relay_url("wss://r.ex:7777/"),
+            Some("wss://r.ex:7777".to_string()),
+            "port must be preserved, empty-path slash stripped"
+        );
+    }
+
+    #[test]
+    fn t_canonicalize_preserve_query() {
+        assert_eq!(
+            canonical_relay_url("WSS://R.Ex?foo=bar"),
+            Some("wss://r.ex?foo=bar".to_string()),
+            "query string must be preserved, scheme+host lowercased"
+        );
+    }
+
+    #[test]
+    fn t_canonicalize_ws_scheme() {
+        assert_eq!(
+            canonical_relay_url("ws://r.ex/"),
+            Some("ws://r.ex".to_string()),
+            "ws:// scheme is valid"
+        );
+    }
+
+    #[test]
+    fn t_canonicalize_reject_http() {
+        assert_eq!(
+            canonical_relay_url("http://r.ex"),
+            None,
+            "http scheme must be rejected"
+        );
+    }
+
+    #[test]
+    fn t_canonicalize_reject_https() {
+        assert_eq!(
+            canonical_relay_url("https://r.ex"),
+            None,
+            "https scheme must be rejected"
+        );
+    }
+
+    #[test]
+    fn t_canonicalize_reject_empty() {
+        assert_eq!(canonical_relay_url(""), None, "empty string must be rejected");
+    }
+
+    #[test]
+    fn t_canonicalize_trims_whitespace() {
+        assert_eq!(
+            canonical_relay_url("  wss://r.ex/  "),
+            // Note: only leading/trailing whitespace is stripped from the raw
+            // input. The trailing "  " is after the full URL so it's part of
+            // path_etc — we do NOT strip inner whitespace. In practice relay
+            // URLs do not contain embedded spaces, and `trim()` on the whole
+            // input handles the common FFI/copy-paste case.
+            // After trim → "wss://r.ex/" → empty path → strip slash.
+            Some("wss://r.ex".to_string()),
+            "leading/trailing whitespace must be stripped"
+        );
+    }
+}

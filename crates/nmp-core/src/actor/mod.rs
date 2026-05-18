@@ -21,6 +21,8 @@ mod relay_mgmt;
 mod tick;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod relay_url_canonical_tests;
 
 use commands::{IdentityRuntime, WalletRuntime};
 pub(crate) use commands::{

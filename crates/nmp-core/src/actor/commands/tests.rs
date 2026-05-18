@@ -589,3 +589,60 @@ fn publish_note_reply_to_unknown_parent_falls_back_and_kicks_hydration() {
         "cold-reply must enqueue parent for T121 thread hydration"
     );
 }
+
+// ── T-relay-url-normalize — add_relay canonicalization ───────────────────────
+
+/// T-normalize-cmd-1: `add_relay` with uppercase + trailing slash must return
+/// the canonical (lowercased, slash-stripped) URL.
+#[test]
+fn add_relay_canonicalizes_url() {
+    let (_id, mut kernel) = fresh();
+    let result = add_relay(&mut kernel, "WSS://Relay.Damus.IO/", "both");
+    assert_eq!(
+        result,
+        Some("wss://relay.damus.io".to_string()),
+        "T-normalize-cmd-1: add_relay must return canonical URL (lowercase scheme+host, no empty-path slash)"
+    );
+    let rows = kernel.relay_edit_rows_snapshot();
+    assert_eq!(rows.len(), 1, "exactly one row added");
+    assert_eq!(
+        rows[0].url, "wss://relay.damus.io",
+        "RelayEditRow must store the canonical URL"
+    );
+}
+
+/// T-normalize-cmd-2: adding the same relay via two URL-equivalent forms must
+/// dedup to a single `RelayEditRow` (not two rows).
+#[test]
+fn add_relay_case_slash_variants_dedup_to_one_row() {
+    let (_id, mut kernel) = fresh();
+    let r1 = add_relay(&mut kernel, "WSS://R.Ex/", "both");
+    let r2 = add_relay(&mut kernel, "wss://r.ex", "read");
+    assert!(r1.is_some(), "first add must succeed");
+    assert!(r2.is_some(), "second add must succeed (role update)");
+    let rows = kernel.relay_edit_rows_snapshot();
+    assert_eq!(
+        rows.len(),
+        1,
+        "T-normalize-cmd-2: URL-equivalent adds must dedup to one RelayEditRow, got {:?}",
+        rows
+    );
+    assert_eq!(rows[0].url, "wss://r.ex");
+    assert_eq!(rows[0].role, "read", "second add must update the role");
+}
+
+/// T-normalize-cmd-3: `remove_relay` with a URL-variant that differs from the
+/// add form (trailing slash vs not) must still remove the row.
+#[test]
+fn remove_relay_canonical_matches_add_form() {
+    let (_id, mut kernel) = fresh();
+    add_relay(&mut kernel, "wss://r.ex", "both");
+    assert_eq!(kernel.relay_edit_rows_snapshot().len(), 1, "row must exist after add");
+    // Remove with trailing slash (different bytes, same canonical form).
+    remove_relay(&mut kernel, "wss://r.ex/");
+    assert_eq!(
+        kernel.relay_edit_rows_snapshot().len(),
+        0,
+        "T-normalize-cmd-3: remove_relay with trailing-slash variant must remove the row"
+    );
+}
