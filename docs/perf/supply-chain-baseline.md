@@ -1,9 +1,9 @@
 # Supply-Chain Security Baseline
 
-**Captured**: 2026-05-18  
-**Commit**: 1af1d22c6f64400d8a41eed811c2dc5b2d04c24a  
-**Tools**: cargo-audit 0.22.1, cargo-deny 0.19.6  
-**Cargo.lock**: 178 crate dependencies
+- **Captured**: 2026-05-18
+- **Commit**: 1af1d22c6f64400d8a41eed811c2dc5b2d04c24a
+- **Tools**: cargo-audit 0.22.1, cargo-deny 0.19.6
+- **Cargo.lock**: 178 crate dependencies
 
 This document records the first-run output of `cargo audit` and `cargo deny check` so that future regressions are immediately visible by diff.
 
@@ -102,7 +102,7 @@ These are expected from the ecosystem convergence between `nostr@0.44.2` (pins r
 
 `.github/workflows/supply-chain.yml` runs on every PR and every push to master.
 
-- **audit job**: `cargo audit` via `taiki-e/install-action`. Currently passes with `--deny warnings=0` (unmaintained warnings are non-blocking). Remove the `|| true` escape hatch once `instant` and `paste` are resolved.
+- **audit job**: `cargo audit` via `taiki-e/install-action`. Warning-only advisories are non-blocking; actual vulnerabilities fail the job.
 - **deny job**: `EmbarkStudios/cargo-deny-action@v2` using `deny.toml` at repo root. Currently fails on advisories (same 2 unmaintained crates). Licenses, bans, and sources pass.
 
 ### Next steps to clear this baseline
