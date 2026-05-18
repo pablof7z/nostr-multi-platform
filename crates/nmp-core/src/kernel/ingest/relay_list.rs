@@ -58,51 +58,27 @@ impl Kernel {
                 relay_list.write_relays.len(),
                 relay_list.both_relays.len()
             ));
-            let is_timeline_author = self.timeline_authors.contains(&event.pubkey);
             // Capture created_at before `relay_list` moves into the map.
             let nip65_created_at = relay_list.created_at;
             self.author_relay_lists.insert(event.pubkey.clone(), relay_list);
             // A1: a kind:10002 replaced an author's mailbox. Fan a
-            // Nip65Arrived trigger into the lifecycle inbox so the
+            // Nip65Arrived trigger into the lifecycle inbox so the M2
             // subscription compiler recompiles on the next tick — the
             // author now routes via their declared NIP-65 write relays
-            // instead of the indexer-discovery probe. Mirrors the A11
-            // FollowListChanged pattern in `ingest/contacts.rs`. Per D8,
-            // multiple kind:10002 arrivals within one tick collapse to a
-            // single compile pass. This closes the auto-probe round-trip:
+            // instead of the indexer-discovery probe. Per D8, multiple
+            // kind:10002 arrivals within one tick collapse to a single
+            // compile pass. This closes the auto-probe round-trip:
             // recompile emits the kinds:[10002] discovery REQ → relay
             // answers → ingest_relay_list lands it here → this trigger
             // re-plans the author onto their resolved write relays.
+            // T140: the M1 seed-timeline-* workaround (flip timeline_requested,
+            // CLOSE old subs) is retired — drain_lifecycle_tick handles
+            // re-routing via the Nip65Arrived trigger above.
             self.lifecycle
                 .enqueue_trigger(CompileTrigger::Nip65Arrived {
                     pubkey: event.pubkey.clone(),
                     created_at: nip65_created_at,
                 });
-            // T105 / A1 recompilation trigger: a kind:10002 arrived for an
-            // author already in the follow-feed. The current `seed-timeline-*`
-            // subs are partitioned by the previous (likely bootstrap) routing
-            // — re-plan so the next emission picks up the resolved write
-            // relays. Mark the timeline as not-yet-requested so the next
-            // `maybe_open_timeline` re-fans out the partition; the existing
-            // seed-timeline subs stay live until the actor's CLOSE goes out
-            // on the next pending_view drain (the new subs use distinct
-            // urlhash sub-ids, so they don't collide).
-            if is_timeline_author && self.timeline_requested {
-                self.timeline_requested = false;
-                self.log(format!(
-                    "NIP-65 arrival → re-plan timeline for {}",
-                    short_hex(&event.pubkey)
-                ));
-                // Close the prior bootstrap-routed seed-timeline subs so
-                // they're not double-billed against the new per-relay subs.
-                // The actual CLOSE frames are queued via `pending_view_requests`
-                // → `defer_outbound`; the next emission carries both the new
-                // resolved-relay REQs and the explicit CLOSEs of the old subs.
-                let closes = self.close_subscriptions_with_prefixes(&["seed-timeline-"]);
-                for close in closes {
-                    self.defer_outbound(close);
-                }
-            }
         }
     }
 }
