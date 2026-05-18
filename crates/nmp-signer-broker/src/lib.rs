@@ -59,5 +59,8 @@ pub mod relay_client;
 pub mod transport;
 
 pub use broker::BunkerBroker;
-pub use ffi::{nmp_app_cancel_bunker_handshake, nmp_signer_broker_init};
+pub use ffi::{
+    nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_broker_free_string,
+    nmp_signer_broker_init,
+};
 pub use transport::BrokerTransport;

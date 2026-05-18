@@ -114,6 +114,18 @@ final class KernelHandle {
         nmp_app_cancel_bunker_handshake(raw)
     }
 
+    /// Generate a fresh `nostrconnect://` URI for the QR-code NIP-46 sign-in
+    /// flow. Returns `nil` if the broker is not yet initialised (which would
+    /// be unusual — it's init'd in `KernelHandle.init()`). Each call produces
+    /// a new ephemeral keypair and session secret.
+    func nostrConnectURI(relay: String = "wss://relay.damus.io") -> String? {
+        relay.withCString { relayPtr in
+            guard let ptr = nmp_app_nostrconnect_uri(raw, relayPtr) else { return nil }
+            defer { nmp_broker_free_string(ptr) }
+            return String(cString: ptr)
+        }
+    }
+
     func createAccount() {
         nmp_app_create_new_account(raw)
     }

@@ -163,6 +163,10 @@ final class KernelModel: ObservableObject {
         kernel.cancelBunkerHandshake()
         bunkerHandshake = nil
     }
+
+    func nostrConnectURI() -> String? {
+        kernel.nostrConnectURI()
+    }
     func createAccount() {
         kmLog.info("createAccount dispatched")
         kernel.createAccount()

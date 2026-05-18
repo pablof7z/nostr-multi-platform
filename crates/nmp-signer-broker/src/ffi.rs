@@ -86,3 +86,48 @@ pub extern "C" fn nmp_app_cancel_bunker_handshake(_app: *mut NmpApp) {
         broker.cancel();
     }
 }
+
+/// Return a freshly generated `nostrconnect://` URI string. The caller MUST
+/// free the returned pointer via `nmp_broker_free_string`. Returns null if
+/// the broker is not yet initialised (i.e. `nmp_signer_broker_init` has not
+/// been called) or if the string contains interior NUL bytes (impossible in
+/// practice but guarded for D6).
+///
+/// `relay_url` may be null; if so, `wss://relay.damus.io` is used as the
+/// default relay.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn nmp_app_nostrconnect_uri(
+    _app: *mut NmpApp,
+    relay_url: *const std::os::raw::c_char,
+) -> *mut std::os::raw::c_char {
+    let relay: &str = if relay_url.is_null() {
+        "wss://relay.damus.io"
+    } else {
+        // SAFETY: caller guarantees non-null => valid C string for the call duration.
+        match unsafe { std::ffi::CStr::from_ptr(relay_url).to_str() } {
+            Ok(s) => s,
+            Err(_) => "wss://relay.damus.io",
+        }
+    };
+    let Some(broker) = GLOBAL_BROKER.get() else {
+        return std::ptr::null_mut();
+    };
+    let uri = broker.nostrconnect_uri(relay);
+    match std::ffi::CString::new(uri) {
+        Ok(cs) => cs.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+/// Free a string returned by `nmp_app_nostrconnect_uri`. Null-safe (no-op).
+#[allow(unsafe_code)]
+#[no_mangle]
+pub extern "C" fn nmp_broker_free_string(ptr: *mut std::os::raw::c_char) {
+    if ptr.is_null() {
+        return;
+    }
+    // SAFETY: ptr was created by CString::into_raw() in this module.
+    unsafe { drop(std::ffi::CString::from_raw(ptr)) };
+}

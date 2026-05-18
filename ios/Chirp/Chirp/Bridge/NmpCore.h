@@ -115,6 +115,12 @@ void nmp_app_open_uri(void *app, const char *uri);
 // Idempotent / safe when nothing is in flight.
 void nmp_signer_broker_init(void *app);
 void nmp_app_cancel_bunker_handshake(void *app);
+// Generate a nostrconnect:// URI for the QR-code NIP-46 sign-in flow.
+// The returned string must be freed via nmp_broker_free_string.
+// Returns NULL if the broker is not yet initialised.
+// relay_url may be NULL (uses wss://relay.damus.io as default).
+char *nmp_app_nostrconnect_uri(void *app, const char *relay_url);
+void nmp_broker_free_string(char *ptr);
 
 // ── T146: nmp-app-chirp per-app FFI ──────────────────────────────────────
 //
