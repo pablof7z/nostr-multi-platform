@@ -233,3 +233,101 @@ fn bootstrap_lane_close(
     let _ = BOOTSTRAP_DISCOVERY_RELAYS;
     []
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// T126 — one-socket-per-URL invariant.
+    ///
+    /// Two `ensure_relay_worker` calls for the same byte-identical URL across
+    /// different `RelayRole` lanes must yield exactly one `RelayControl` in the
+    /// pool. The second call must return `false` (no new worker spawned) and
+    /// the existing `tx` must be retained. `role` is a diagnostic-lane label
+    /// only; it MUST NOT participate in pool keying.
+    ///
+    /// Worker threads spawned here will fail DNS / TCP-connect against
+    /// `wss://127.0.0.1:1/` (port 1 — connection refused on all hosts) and
+    /// exit; we test the synchronous keying decision in `ensure_relay_worker`.
+    #[test]
+    fn same_url_two_roles_yields_one_control() {
+        let mut kernel = Kernel::new(80);
+        let (relay_tx, _relay_rx) = std::sync::mpsc::channel::<RelayEvent>();
+        let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
+        let mut next_relay_generation = 1_u64;
+        let url = "wss://127.0.0.1:1/".to_string();
+
+        let spawned_a = ensure_relay_worker(
+            &mut relay_controls,
+            &relay_tx,
+            &mut kernel,
+            &mut next_relay_generation,
+            RelayRole::Content,
+            url.clone(),
+        );
+        let spawned_b = ensure_relay_worker(
+            &mut relay_controls,
+            &relay_tx,
+            &mut kernel,
+            &mut next_relay_generation,
+            RelayRole::Indexer,
+            url.clone(),
+        );
+
+        assert!(spawned_a, "first call must spawn");
+        assert!(!spawned_b, "second call MUST short-circuit on URL match");
+        assert_eq!(
+            relay_controls.len(),
+            1,
+            "T126: one socket per URL — got {} entries",
+            relay_controls.len()
+        );
+        let control = relay_controls.get(&url).expect("entry must exist");
+        assert_eq!(
+            control.role,
+            RelayRole::Content,
+            "role field is set at first insert and not rebound on subsequent ensure calls"
+        );
+
+        // Cleanly drain workers so they don't outlive the test.
+        let mut connected = HashSet::new();
+        close_relays(&mut relay_controls, &mut connected, &mut kernel);
+    }
+
+    /// T126 — three-role coverage including the post-`2afa4b1` Wallet lane.
+    ///
+    /// Locks in that the NWC wallet relay path does NOT bypass URL-keyed
+    /// dedup: a wallet URL that collides with a content/indexer URL shares
+    /// one socket. This is the future-proof case the invariant doc §1
+    /// requires ("RoutingSource / RelayRole / … are aggregations over URLs,
+    /// never multiplexing keys").
+    #[test]
+    fn same_url_three_roles_including_wallet_yields_one_control() {
+        let mut kernel = Kernel::new(80);
+        let (relay_tx, _relay_rx) = std::sync::mpsc::channel::<RelayEvent>();
+        let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
+        let mut next_relay_generation = 1_u64;
+        let url = "wss://127.0.0.1:1/".to_string();
+
+        for role in [RelayRole::Content, RelayRole::Indexer, RelayRole::Wallet] {
+            let _ = ensure_relay_worker(
+                &mut relay_controls,
+                &relay_tx,
+                &mut kernel,
+                &mut next_relay_generation,
+                role,
+                url.clone(),
+            );
+        }
+
+        assert_eq!(
+            relay_controls.len(),
+            1,
+            "T126: one socket per URL across Content+Indexer+Wallet — got {}",
+            relay_controls.len()
+        );
+
+        let mut connected = HashSet::new();
+        close_relays(&mut relay_controls, &mut connected, &mut kernel);
+    }
+}
