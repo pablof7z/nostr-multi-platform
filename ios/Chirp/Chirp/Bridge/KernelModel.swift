@@ -35,6 +35,9 @@ final class KernelModel: ObservableObject {
     @Published private(set) var appMetrics = AppRuntimeMetrics()
     @Published var visibleLimit: UInt32 = 80
     @Published var emitHz: UInt32 = 4
+    // NIP-46 bunker handshake progress (Stage 3 backend emits this).
+    // Live data once Stage 3 lands; see snapshot field `bunker_handshake`.
+    @Published private(set) var bunkerHandshake: BunkerHandshake?
 
     var hasActiveAccount: Bool { activeAccount != nil }
 
@@ -127,6 +130,14 @@ final class KernelModel: ObservableObject {
     }
 
     func signInBunker(_ uri: String) { kernel.signInBunker(uri) }
+    /// Cancel an in-flight NIP-46 handshake. UI-only stub today — Stage 4
+    /// broker will expose `nmp_app_cancel_bunker_handshake` and this method
+    /// will dispatch to the kernel. Clearing the local mirror gives the
+    /// sheet an immediate visual reset; the next snapshot will reconcile.
+    // TODO: wired by Stage 4 broker — symbol is a no-op until then.
+    func cancelBunkerHandshake() {
+        bunkerHandshake = nil
+    }
     func createAccount() {
         kmLog.info("createAccount dispatched")
         kernel.createAccount()
@@ -179,6 +190,7 @@ final class KernelModel: ObservableObject {
         if let r = update.relayEditRows { relayEditRows = r }
         threadView = update.threadView
         walletStatus = update.walletStatus
+        bunkerHandshake = update.bunkerHandshake
         // Perf diagnostics.
         if let li = update.logicalInterests { logicalInterests = li }
         if let ws = update.wireSubscriptions { wireSubscriptions = ws }

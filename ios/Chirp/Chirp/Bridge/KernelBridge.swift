@@ -250,6 +250,17 @@ struct KernelUpdate: Decodable {
     let relayEditRows: [RelayEditRow]?
     // NIP-47 wallet projection. Optional so older kernels still decode (D1).
     let walletStatus: WalletStatusData?
+    // NIP-46 bunker handshake progress (Stage 3 backend emits this).
+    // Optional so older kernels still decode (D1).
+    let bunkerHandshake: BunkerHandshake?
+}
+
+/// NIP-46 (`bunker://`) handshake progress, projected from the kernel snapshot.
+/// Stage values: `"connecting"`, `"awaiting_pubkey"`, `"ready"`, `"failed"`,
+/// `"idle"`. `message` is a human-readable progress / error hint.
+struct BunkerHandshake: Decodable, Equatable {
+    let stage: String
+    let message: String?
 }
 
 // ─── Perf-diagnostic types ────────────────────────────────────────────────

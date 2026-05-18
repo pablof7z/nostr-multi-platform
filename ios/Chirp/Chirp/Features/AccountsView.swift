@@ -182,6 +182,14 @@ private struct AddAccountSheet: View {
     @State private var nsec = ""
     @State private var bunkerURI = ""
     @State private var selectedTab = 0
+    /// Set to `true` once the user taps "Connect" on the bunker tab. Drives
+    /// the disabled / progress states. Reset on success, failure-retry, or
+    /// manual cancel.
+    @State private var bunkerSubmitted = false
+    /// NIP-46 account ids present when the sheet opened. A newly-arrived
+    /// `signer_kind == "nip46"` account whose id isn't in this set is
+    /// treated as a successful handshake → dismiss.
+    @State private var initialNip46Ids: Set<String> = []
 
     var body: some View {
         NavigationStack {
@@ -216,6 +224,27 @@ private struct AddAccountSheet: View {
                         .foregroundStyle(ChirpColor.textSecondary)
                 }
             }
+            .onAppear {
+                initialNip46Ids = Set(
+                    model.accounts
+                        .filter { $0.signerKind.lowercased() == "nip46" }
+                        .map(\.id)
+                )
+            }
+            .onChange(of: model.accounts) { _, newValue in
+                // Auto-dismiss on successful bunker handshake: any nip46
+                // account whose id wasn't present when the sheet opened.
+                guard bunkerSubmitted else { return }
+                let arrivedNip46 = newValue.first { account in
+                    account.signerKind.lowercased() == "nip46"
+                        && !initialNip46Ids.contains(account.id)
+                }
+                if arrivedNip46 != nil {
+                    bunkerSubmitted = false
+                    bunkerURI = ""
+                    dismiss()
+                }
+            }
         }
     }
 
@@ -245,7 +274,12 @@ private struct AddAccountSheet: View {
         .padding(.horizontal, ChirpSpace.l)
     }
 
-    // ── Bunker (NIP-46, parse-only today) ────────────────────────────────
+    // ── Bunker (NIP-46) ──────────────────────────────────────────────────
+    //
+    // Live progress is mirrored from `model.bunkerHandshake`, which the
+    // kernel populates from snapshot field `bunker_handshake` (Stage 3
+    // backend). Stage 4 broker is what actually drives the stage
+    // transitions; this view is read-only until the user retries.
 
     private var bunkerSection: some View {
         GlassCard {
@@ -260,34 +294,66 @@ private struct AddAccountSheet: View {
                         .font(ChirpFont.mono)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                        .disabled(isHandshakeInFlight)
                 }
 
-                // Surface the current parse-only status gracefully
-                HStack(spacing: ChirpSpace.xs) {
-                    Image(systemName: "info.circle")
-                        .font(.system(size: 12))
-                    Text("Bunker signing is in progress. You'll be directed to use nsec in the meantime.")
-                        .font(ChirpFont.caption)
-                        .fixedSize(horizontal: false, vertical: true)
+                if bunkerSubmitted, let handshake = model.bunkerHandshake,
+                   handshake.stage.lowercased() != "idle" {
+                    BunkerHandshakeProgress(
+                        handshake: handshake,
+                        onCancel: cancelHandshake
+                    )
                 }
-                .foregroundStyle(ChirpColor.textSecondary)
-                .padding(ChirpSpace.s)
-                .background(ChirpColor.surface, in: RoundedRectangle(
-                    cornerRadius: ChirpSpace.radiusSmall, style: .continuous))
 
                 ChirpPrimaryButton(
-                    title: "Connect",
+                    title: connectButtonTitle,
                     systemImage: "network"
                 ) {
-                    model.signInBunker(bunkerURI.trimmingCharacters(in: .whitespacesAndNewlines))
-                    // Toast from model.lastErrorToast will be shown by RootShell
-                    dismiss()
+                    let trimmed = bunkerURI.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else { return }
+                    bunkerSubmitted = true
+                    model.signInBunker(trimmed)
                 }
-                .disabled(bunkerURI.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .opacity(bunkerURI.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1.0)
+                .disabled(isConnectDisabled)
+                .opacity(isConnectDisabled ? 0.45 : 1.0)
             }
         }
         .padding(.horizontal, ChirpSpace.l)
+    }
+
+    // ── Bunker helpers ───────────────────────────────────────────────────
+
+    private var trimmedBunkerURI: String {
+        bunkerURI.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// True while we're waiting for the broker — i.e. the user has submitted
+    /// AND the snapshot reports a non-terminal stage. `"failed"` re-enables
+    /// the form so the user can retry.
+    private var isHandshakeInFlight: Bool {
+        guard bunkerSubmitted else { return false }
+        guard let stage = model.bunkerHandshake?.stage.lowercased() else {
+            // Submitted but no snapshot yet — treat as in-flight so the
+            // user can't double-submit before the kernel responds.
+            return true
+        }
+        return stage != "failed" && stage != "idle"
+    }
+
+    private var isConnectDisabled: Bool {
+        trimmedBunkerURI.isEmpty || isHandshakeInFlight
+    }
+
+    private var connectButtonTitle: String {
+        if model.bunkerHandshake?.stage.lowercased() == "failed" {
+            return "Retry"
+        }
+        return "Connect"
+    }
+
+    private func cancelHandshake() {
+        model.cancelBunkerHandshake()
+        bunkerSubmitted = false
     }
 
     // ── Create new identity ───────────────────────────────────────────────
@@ -317,5 +383,89 @@ private struct AddAccountSheet: View {
             }
         }
         .padding(.horizontal, ChirpSpace.l)
+    }
+}
+
+// ── Bunker handshake progress UI ──────────────────────────────────────────
+
+/// Live progress block shown beneath the bunker URI field while a NIP-46
+/// handshake is in flight. Mirrors the `bunker_handshake` snapshot field.
+private struct BunkerHandshakeProgress: View {
+    let handshake: BunkerHandshake
+    let onCancel: () -> Void
+
+    private var isFailed: Bool {
+        handshake.stage.lowercased() == "failed"
+    }
+
+    private var isTerminal: Bool {
+        let stage = handshake.stage.lowercased()
+        return stage == "ready" || stage == "failed"
+    }
+
+    private var stageLabel: String {
+        switch handshake.stage.lowercased() {
+        case "connecting": return "Connecting to bunker relays…"
+        case "awaiting_pubkey": return "Awaiting bunker approval…"
+        case "ready": return "Connected"
+        case "failed": return "Bunker handshake failed"
+        default: return handshake.stage
+        }
+    }
+
+    private var accent: Color {
+        isFailed ? ChirpColor.like : ChirpColor.accent
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ChirpSpace.s) {
+            HStack(spacing: ChirpSpace.s) {
+                if isTerminal {
+                    Image(systemName: isFailed
+                          ? "exclamationmark.triangle.fill"
+                          : "checkmark.circle.fill")
+                        .foregroundStyle(accent)
+                        .font(.system(size: 14, weight: .semibold))
+                } else {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .controlSize(.small)
+                        .tint(accent)
+                }
+                Text(stageLabel)
+                    .font(ChirpFont.callout)
+                    .foregroundStyle(ChirpColor.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+
+            if let message = handshake.message, !message.isEmpty {
+                Text(message)
+                    .font(ChirpFont.caption)
+                    .foregroundStyle(isFailed ? ChirpColor.like : ChirpColor.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !isTerminal {
+                Button(action: onCancel) {
+                    Text("Cancel handshake")
+                        .font(ChirpFont.caption.weight(.semibold))
+                        .foregroundStyle(ChirpColor.textSecondary)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, ChirpSpace.xs)
+            }
+        }
+        .padding(ChirpSpace.s)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            (isFailed ? ChirpColor.like.opacity(0.10) : ChirpColor.accentSoft),
+            in: RoundedRectangle(cornerRadius: ChirpSpace.radiusSmall, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: ChirpSpace.radiusSmall, style: .continuous)
+                .strokeBorder(accent.opacity(0.25), lineWidth: 1)
+        )
+        .animation(.smooth(duration: 0.2), value: handshake.stage)
     }
 }
