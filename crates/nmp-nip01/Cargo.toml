@@ -7,6 +7,7 @@ description = "NIP-01 short text notes (kind:1) relation surface as an NMP proto
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
+nmp-threading = { path = "../nmp-threading" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
