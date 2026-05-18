@@ -16,7 +16,7 @@ crates/nmp-nip42/
 ├── Cargo.toml            — pure-Rust, depends on nmp-core only (no nmp-nip* deps)
 └── src/
     ├── lib.rs            — public surface + module declarations
-    ├── state.rs          — canonical `RelayAuthState` + `From` to subs placeholder
+    ├── state.rs          — canonical `RelayAuthState` + one-way translator to subs placeholder
     ├── frame.rs          — `parse_auth_frame` / `parse_ok_frame`
     ├── builder.rs        — `build_auth_event` (kind:22242 template), validator, wire-frame renderer
     └── flow.rs           — `Nip42Driver` per-relay handshake driver + `run_handshake` helper
@@ -63,7 +63,7 @@ test result: ok. 25 passed; 0 failed
 - `cargo test --workspace --lib` — 100% green (24 nmp-core + 77 publish + 29 subs + 25 nmp-nip42 + others — 157+ total).
 - `cargo clippy -p nmp-nip42 --all-targets -- -D warnings` — clean.
 - `cargo fmt -p nmp-nip42 -- --check` — clean.
-- File sizes: all under the 300 LOC soft cap (`state.rs` 137, `frame.rs` 129, `builder.rs` 174, `flow.rs` 312 — `flow.rs` slightly over soft cap due to test module padding; impl is 200 LOC).
+- File sizes (LOC): `lib.rs` 56, `state.rs` 143, `frame.rs` 129, `builder.rs` 190, `flow.rs` 463. `flow.rs` exceeds the 300 LOC soft cap due to in-file test module padding (impl is ~200 LOC); under the 500 LOC hard cap. Test extraction to a sibling file is the codex-noted follow-up.
 
 ---
 

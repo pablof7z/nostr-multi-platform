@@ -46,14 +46,23 @@ pub fn parse_auth_frame(frame: &[Value], relay_url: &str) -> Option<AuthChalleng
 
 /// Parse an `["OK", <event_id>, <accepted>, <reason>]` frame into the
 /// fields the AUTH matcher needs. Returns `None` only when the frame
-/// is malformed (missing or wrong-typed fields); non-AUTH OKs still parse
-/// and the caller decides whether to route to AUTH or to publish.
+/// is malformed (missing or wrong-typed required fields); non-AUTH OKs
+/// still parse and the caller decides whether to route to AUTH or to
+/// publish.
+///
+/// Required fields: tag ("OK"), event_id (non-empty string), accepted
+/// (strict bool — NIP-01 specs a boolean; a missing or non-bool field is
+/// a malformed frame, not an implied false). Optional: reason (defaults
+/// to empty string when missing). Strict bool parsing is the
+/// security-conscious choice — silently treating a malformed `accepted`
+/// as `false` could promote an unparseable success into a spurious failure
+/// (and vice versa for a buggy relay sending non-bool truthy values).
 pub fn parse_ok_frame(frame: &[Value]) -> Option<AuthOk> {
     if frame.first().and_then(Value::as_str) != Some("OK") {
         return None;
     }
     let event_id = frame.get(1).and_then(Value::as_str)?.to_string();
-    let accepted = frame.get(2).and_then(Value::as_bool).unwrap_or(false);
+    let accepted = frame.get(2).and_then(Value::as_bool)?;
     let reason = frame
         .get(3)
         .and_then(Value::as_str)
@@ -125,5 +134,24 @@ mod tests {
         assert!(parse_ok_frame(&[json!("OK")]).is_none());
         assert!(parse_ok_frame(&[json!("OK"), json!("")]).is_none());
         assert!(parse_ok_frame(&[json!("NOK"), json!("a")]).is_none());
+    }
+
+    #[test]
+    fn ok_parser_rejects_missing_or_non_bool_accepted() {
+        // Missing accepted field — NIP-01 specs a 3-element minimum.
+        assert!(parse_ok_frame(&[json!("OK"), json!("a".repeat(64))]).is_none());
+        // Wrong-type accepted field — string where bool was expected.
+        assert!(
+            parse_ok_frame(&[json!("OK"), json!("a".repeat(64)), json!("true"), json!("")])
+                .is_none()
+        );
+        // Wrong-type accepted field — number where bool was expected.
+        assert!(
+            parse_ok_frame(&[json!("OK"), json!("a".repeat(64)), json!(1), json!("")]).is_none()
+        );
+        // null accepted field.
+        assert!(
+            parse_ok_frame(&[json!("OK"), json!("a".repeat(64)), Value::Null, json!("")]).is_none()
+        );
     }
 }

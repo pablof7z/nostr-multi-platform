@@ -5,10 +5,12 @@
 //! task shipped so the trigger inbox and auth-gate could land without
 //! waiting for this crate (see `docs/plan/m8-subscription-lifecycle.md` §3).
 //!
-//! Bidirectional conversion lives in this module so consumers can fan
-//! transitions into the lifecycle inbox via `CompileTrigger::
-//! RelayAuthStateChanged { state: subs::RelayAuthState, .. }` without
-//! taking a direct dependency on this crate from `nmp-core::subs`.
+//! One-way translation lives in this module: callers fan transitions into
+//! the lifecycle inbox via `CompileTrigger::RelayAuthStateChanged
+//! { state: subs::RelayAuthState, .. }` without taking a direct dependency
+//! on this crate from `nmp-core::subs`. There is no reverse translation —
+//! the subs placeholder is consumed by `AuthGate` only and is never
+//! returned to this crate.
 
 use serde::{Deserialize, Serialize};
 

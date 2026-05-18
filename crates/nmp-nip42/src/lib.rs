@@ -5,9 +5,12 @@
 //!
 //! - [`state::RelayAuthState`] — canonical per-relay NIP-42 lifecycle.
 //!   `nmp_core::subs::trigger::RelayAuthState` is the seam placeholder; this
-//!   crate's enum is the authoritative one. A `From` round-trip lives in
-//!   [`state`] so consumers in `nmp-core::subs` can fan the state into the
-//!   trigger inbox without depending on this crate.
+//!   crate's enum is the authoritative one. A free function
+//!   [`state::relay_auth_state_to_subs`] translates one-way to the
+//!   placeholder so consumers in `nmp-core::subs` can fan the state into
+//!   the trigger inbox without depending on this crate. The reverse
+//!   translation is not needed (the subs placeholder is only consumed by
+//!   `AuthGate`, never emitted back to this crate).
 //! - [`frame::AuthChallenge`] — `["AUTH", <challenge>]` parser.
 //! - [`frame::AuthOk`] — `["OK", <event_id>, <accepted>, <reason>]` matcher
 //!   for in-flight kind:22242 events. (OKs for non-auth events are not this
@@ -22,7 +25,7 @@
 //!
 //! - **D0** — no app nouns. The crate exposes only protocol primitives
 //!   (challenge, auth state, signed-event template) and a stateful driver.
-//! - **D5** — the [`Signer`](nmp_core::publish::traits::Signer) reports a
+//! - **D7** — the [`Signer`](nmp_core::publish::traits::Signer) reports a
 //!   signed event; this crate decides the FSM transitions and what to emit
 //!   on the wire. Pause/flush of held REQs is owned by
 //!   [`nmp_core::subs::auth_gate::AuthGate`], not here.

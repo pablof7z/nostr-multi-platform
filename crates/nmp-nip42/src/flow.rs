@@ -148,6 +148,19 @@ impl Nip42Driver {
     ///
     /// Idempotent: if there is no pending challenge (e.g. caller raced a
     /// disconnect), returns an empty outcome.
+    ///
+    /// # Race-safety
+    ///
+    /// This method does NOT correlate the signer result with the challenge
+    /// the signer was originally invoked for. That is safe for the
+    /// synchronous path used by [`run_handshake`] — the signer call
+    /// happens between `on_auth_frame` and `deliver_signed` in the same
+    /// stack frame. **For async signers** (NIP-46 bunker via
+    /// `SignerOp::Pending` polling) use [`Self::deliver_signed_for`] with
+    /// the challenge the signer was invoked for. If a fresh AUTH challenge
+    /// arrives mid-handshake (relay reconnect, relay-initiated re-auth)
+    /// the stale signer result will be silently discarded by the
+    /// challenge-match check there.
     pub fn deliver_signed(&mut self, result: Result<SignedEvent, Nip42Error>) -> HandshakeOutcome {
         let Some(challenge) = self.challenge.clone() else {
             return HandshakeOutcome::empty();
@@ -155,6 +168,42 @@ impl Nip42Driver {
         if !matches!(self.state, RelayAuthState::ChallengeReceived) {
             return HandshakeOutcome::empty();
         }
+        self.apply_signed_result(challenge, result)
+    }
+
+    /// Deliver a signer result correlated to a specific challenge value.
+    ///
+    /// Returns an empty outcome (no state change) when `expected_challenge`
+    /// no longer matches the driver's current in-flight challenge — the
+    /// canonical async-race guard. Use this from any signer path that can
+    /// resolve out-of-order with `on_auth_frame` (NIP-46 bunker, threaded
+    /// Keychain prompts, etc.).
+    ///
+    /// `expected_challenge` is the challenge string the signer was invoked
+    /// for. Callers obtain it from [`Self::pending_challenge`] before
+    /// dispatching the signer call and pass the same value here when the
+    /// result returns.
+    pub fn deliver_signed_for(
+        &mut self,
+        expected_challenge: &str,
+        result: Result<SignedEvent, Nip42Error>,
+    ) -> HandshakeOutcome {
+        let Some(challenge) = self.challenge.clone() else {
+            return HandshakeOutcome::empty();
+        };
+        if challenge.challenge != expected_challenge
+            || !matches!(self.state, RelayAuthState::ChallengeReceived)
+        {
+            return HandshakeOutcome::empty();
+        }
+        self.apply_signed_result(challenge, result)
+    }
+
+    fn apply_signed_result(
+        &mut self,
+        challenge: AuthChallenge,
+        result: Result<SignedEvent, Nip42Error>,
+    ) -> HandshakeOutcome {
         match result {
             Ok(signed) => match validate_signed_for(&signed, &challenge) {
                 Ok(()) => {
@@ -441,6 +490,48 @@ mod tests {
         assert_eq!(outcome.new_state, Some(RelayAuthState::Authenticating));
         assert_eq!(outcome.wire_frames.len(), 1);
         assert!(outcome.wire_frames[0].contains(&id));
+    }
+
+    #[test]
+    fn deliver_signed_for_rejects_stale_signer_result() {
+        let mut driver = Nip42Driver::new();
+        let ch1 = challenge_for("wss://r", "first");
+        driver.on_auth_frame(ch1.clone());
+        // Hand the signer the first challenge. Before it returns, the
+        // relay sends a fresh challenge (reconnect, re-auth mid-session).
+        let ch2 = challenge_for("wss://r", "second");
+        driver.on_auth_frame(ch2);
+        assert_eq!(*driver.state(), RelayAuthState::ChallengeReceived);
+        // First signer call resolves late — must be discarded.
+        let id = "1".repeat(64);
+        let mut signer = good_signer_returning(&id);
+        let stale = signer(&build_auth_event(&ch1, "p".repeat(64), 1));
+        let outcome = driver.deliver_signed_for(&ch1.challenge, stale);
+        assert_eq!(
+            outcome,
+            HandshakeOutcome::empty(),
+            "stale signer result must be discarded"
+        );
+        assert_eq!(*driver.state(), RelayAuthState::ChallengeReceived);
+        assert_eq!(
+            driver.pending_challenge().unwrap().challenge,
+            "second",
+            "current challenge unchanged by stale delivery"
+        );
+    }
+
+    #[test]
+    fn deliver_signed_for_accepts_current_challenge() {
+        let mut driver = Nip42Driver::new();
+        let ch = challenge_for("wss://r", "live");
+        driver.on_auth_frame(ch.clone());
+        let id = "8".repeat(64);
+        let mut signer = good_signer_returning(&id);
+        let signed = signer(&build_auth_event(&ch, "p".repeat(64), 1));
+        let outcome = driver.deliver_signed_for(&ch.challenge, signed);
+        assert_eq!(outcome.new_state, Some(RelayAuthState::Authenticating));
+        assert_eq!(outcome.wire_frames.len(), 1);
+        assert_eq!(*driver.state(), RelayAuthState::Authenticating);
     }
 
     #[test]
