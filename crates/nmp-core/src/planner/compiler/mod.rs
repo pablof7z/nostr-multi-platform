@@ -59,30 +59,85 @@ const MERGE_LATTICE_VERSION: u8 = 1;
 /// | No author/addr/p        | Read      | active-account read relays (hashtag firehose)    |
 pub struct SubscriptionCompiler<'a> {
     mailbox_cache: &'a dyn MailboxCache,
+    /// Discovery-only relay set (kind:0/3/10002 lookups).
+    ///
+    /// Per the routing-rules clarification (T134), the indexer set is NEVER
+    /// a content fallback for case_a/case_b. It survives on the compiler for
+    /// two reasons:
+    /// 1. Case D's cold-start fallback when both `active_account_read_relays`
+    ///    and `app_relays` are empty (kernel-driven discovery bootstrap).
+    /// 2. So the kernel can drive discovery REQs through the same compile
+    ///    surface without growing a parallel routing path. If a caller
+    ///    doesn't drive discovery this way today, they pass `&[]`.
     indexer_relays: &'a [RelayUrl],
     /// Active account read relays — for no-author/no-address interests.
-    /// Phase 1: empty → falls through to indexer set.
+    /// Phase 1: empty → falls through to `app_relays`, then indexer set.
     /// Phase 2: populated from active account's kind:10002 read-relays.
     active_account_read_relays: &'a [RelayUrl],
+    /// Operator-configured app relays (T134).
+    ///
+    /// Additive to NIP-65 for authored REQs (case_a / case_b) and unioned
+    /// with `active_account_read_relays` for the no-author firehose (case_d).
+    /// When an author has no NIP-65 mailbox AND no app_relays are configured,
+    /// the author is reported via `CompiledPlan::unroutable_authors`.
+    app_relays: &'a [RelayUrl],
 }
 
 impl<'a> SubscriptionCompiler<'a> {
     /// Construct a compiler bound to a mailbox cache and indexer set.
+    ///
+    /// `active_account_read_relays` and `app_relays` default to empty —
+    /// callers that need them use [`Self::with_active_account_read_relays`]
+    /// or [`Self::with_relays`].
     pub fn new(mailbox_cache: &'a dyn MailboxCache, indexer_relays: &'a [RelayUrl]) -> Self {
-        Self { mailbox_cache, indexer_relays, active_account_read_relays: &[] }
+        Self {
+            mailbox_cache,
+            indexer_relays,
+            active_account_read_relays: &[],
+            app_relays: &[],
+        }
     }
 
     /// Construct with explicit active-account read relays.
     ///
+    /// `app_relays` defaults to empty — callers that need to specify app
+    /// relays use [`Self::with_relays`].
+    ///
     /// When `active_account_read_relays` is non-empty, no-author interests
-    /// (hashtag firehose, global search) route to those relays instead of the
-    /// indexer set, using `RoutingSource::UserConfigured(AccountRead)`.
+    /// (hashtag firehose, global search) route to those relays unioned with
+    /// `app_relays`, using `RoutingSource::UserConfigured(AccountRead)`
+    /// and `RoutingSource::UserConfigured(AppRelay)` respectively.
     pub fn with_active_account_read_relays(
         mailbox_cache: &'a dyn MailboxCache,
         indexer_relays: &'a [RelayUrl],
         active_account_read_relays: &'a [RelayUrl],
     ) -> Self {
-        Self { mailbox_cache, indexer_relays, active_account_read_relays }
+        Self {
+            mailbox_cache,
+            indexer_relays,
+            active_account_read_relays,
+            app_relays: &[],
+        }
+    }
+
+    /// Construct with the full relay context — indexer (discovery), active-
+    /// account read (firehose), and operator-configured app relays.
+    ///
+    /// Production callers (the subscription lifecycle) use this form so
+    /// app_relays land on the additive NIP-65 lane in case_a/case_b and on
+    /// the union with active-account read relays in case_d.
+    pub fn with_relays(
+        mailbox_cache: &'a dyn MailboxCache,
+        indexer_relays: &'a [RelayUrl],
+        active_account_read_relays: &'a [RelayUrl],
+        app_relays: &'a [RelayUrl],
+    ) -> Self {
+        Self {
+            mailbox_cache,
+            indexer_relays,
+            active_account_read_relays,
+            app_relays,
+        }
     }
 
     /// Compile a set of logical interests into a `CompiledPlan`.
@@ -116,13 +171,20 @@ impl<'a> SubscriptionCompiler<'a> {
     ) -> Result<CompiledPlan, PlannerError> {
         // ── Stages 1 + 2: author-partitioned relay entry collection ──────────
         let mut relay_entries: BTreeMap<RelayUrl, Vec<RelayEntry>> = BTreeMap::new();
+        // Authors that ended up with zero relay entries (no NIP-65 mailbox
+        // AND no app_relays configured) are collected here so the kernel
+        // can surface a UI diagnostic. Derived state — NOT part of `plan_id`
+        // hashing (see `plan::CompiledPlan::unroutable_authors`).
+        let mut unroutable_authors: BTreeSet<crate::planner::interest::Pubkey> = BTreeSet::new();
         for interest in interests {
             partition_interest(
                 interest,
                 self.mailbox_cache,
                 self.indexer_relays,
                 self.active_account_read_relays,
+                self.app_relays,
                 &mut relay_entries,
+                &mut unroutable_authors,
             );
         }
 
@@ -183,8 +245,20 @@ impl<'a> SubscriptionCompiler<'a> {
         }
 
         // ── Stage 4: Plan-id binding ──────────────────────────────────────────
+        //
+        // `unroutable_authors` is intentionally NOT fed into `compute_plan_id`
+        // — it is derived state. Mailbox snapshots already feed the plan-id
+        // hash via `compute_plan_id`, so a NIP-65 arrival that moves an author
+        // out of the unroutable set will invalidate the plan-id correctly
+        // without us having to mix the unroutable set itself into the hash.
+        // App-relays are likewise excluded so the kernel can toggle them at
+        // runtime without churning sub-ids.
         let plan_id = compute_plan_id(interests, self.mailbox_cache, ctx, MERGE_LATTICE_VERSION);
-        Ok(CompiledPlan { plan_id, per_relay })
+        Ok(CompiledPlan {
+            plan_id,
+            per_relay,
+            unroutable_authors,
+        })
     }
 }
 

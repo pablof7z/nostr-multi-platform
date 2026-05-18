@@ -40,6 +40,7 @@ fn make_plan(relay: &str, since: Option<u64>) -> CompiledPlan {
     CompiledPlan {
         plan_id: "test".into(),
         per_relay: relays,
+        unroutable_authors: BTreeSet::new(),
     }
 }
 

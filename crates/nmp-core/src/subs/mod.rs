@@ -101,6 +101,18 @@ pub struct SubscriptionLifecycle {
     registry: InterestRegistry,
     inbox: TriggerInbox,
     indexer_relays: Vec<RelayUrl>,
+    /// Operator-configured app relays (T134).
+    ///
+    /// Threaded into the compiler on every recompile so author REQs ride
+    /// the additive `UserConfigured(AppRelay)` lane on top of NIP-65 (or
+    /// substitute when NIP-65 is unknown). Set via [`Self::set_app_relays`];
+    /// defaults to empty so legacy lifecycle tests stay green.
+    app_relays: Vec<RelayUrl>,
+    /// Active account read relays — for no-author/no-address interests
+    /// (hashtag firehose, global search). Set via
+    /// [`Self::set_active_account_read_relays`]; defaults to empty so the
+    /// no-author firehose falls back to `app_relays`, then indexer.
+    active_account_read_relays: Vec<RelayUrl>,
     /// The plan currently believed-to-be-live on the wire.
     current_plan: Option<CompiledPlan>,
     /// Per-sub lifecycle bookkeeping (OneShot, BoundedTime).
@@ -142,6 +154,8 @@ impl SubscriptionLifecycle {
             registry: InterestRegistry::new(),
             inbox: TriggerInbox::new(),
             indexer_relays: vec!["wss://purplepag.es".to_string()],
+            app_relays: Vec::new(),
+            active_account_read_relays: Vec::new(),
             current_plan: None,
             lifecycle_gate: LifecycleGate::new(),
             auth_gate: AuthGate::new(),
@@ -149,6 +163,26 @@ impl SubscriptionLifecycle {
             coverage_hook: None,
             watermark_fn: None,
         }
+    }
+
+    /// Install (or replace) the operator-configured app relay list (T134).
+    ///
+    /// The next recompile threads this list into the compiler so author
+    /// REQs ride the additive `UserConfigured(AppRelay)` lane on top of
+    /// (or in place of) NIP-65 write relays. Setting an empty list reverts
+    /// to pure-NIP-65 routing; authors that subsequently lose their NIP-65
+    /// mailbox land in `CompiledPlan::unroutable_authors`.
+    pub fn set_app_relays(&mut self, relays: Vec<RelayUrl>) {
+        self.app_relays = relays;
+    }
+
+    /// Install (or replace) the active-account read relay list (T134).
+    ///
+    /// Used by case_d (no-author firehose) as the primary routing target,
+    /// unioned with `app_relays`. The kernel populates this from the active
+    /// account's kind:10002 read-relays.
+    pub fn set_active_account_read_relays(&mut self, relays: Vec<RelayUrl>) {
+        self.active_account_read_relays = relays;
     }
 
     /// Install (or replace) the post-compile [`PlanCoverageHook`].
@@ -210,7 +244,12 @@ impl SubscriptionLifecycle {
         mailbox_cache: &dyn MailboxCache,
     ) -> Result<Vec<WireFrame>, PlannerError> {
         let interests = self.registry.iter_active();
-        let compiler = SubscriptionCompiler::new(mailbox_cache, &self.indexer_relays);
+        let compiler = SubscriptionCompiler::with_relays(
+            mailbox_cache,
+            &self.indexer_relays,
+            &self.active_account_read_relays,
+            &self.app_relays,
+        );
         let mut plan = compiler.compile(&interests)?;
         self.compile_count = self.compile_count.saturating_add(1);
 

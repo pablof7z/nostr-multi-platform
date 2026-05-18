@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use super::interest::{InterestId, InterestShape, RelayUrl};
+use super::interest::{InterestId, InterestShape, Pubkey, RelayUrl};
 
 // ─── UserConfiguredCategory ──────────────────────────────────────────────────
 
@@ -33,11 +33,26 @@ pub enum UserConfiguredCategory {
     AccountWrite,
     /// Kernel-configured indexer relay (e.g. purplepag.es).
     ///
-    /// This is the sub-category that represents indexer fallback routing in
-    /// diagnostics — it is lane 4 (User-configured), not a fifth lane. The
-    /// indexer set is an operator policy choice applied by the kernel when
-    /// NIP-65 mailboxes are unknown. Never used for writes (D3).
+    /// Discovery-only: the indexer set is used to fetch kind:0 / kind:3 /
+    /// kind:10002 lookups while NIP-65 mailboxes are being populated. It is
+    /// NEVER a content fallback for kind:1 / kind:30023 / etc. — content
+    /// REQs only ride NIP-65 write relays (or `AppRelay`). The only way an
+    /// indexer URL ends up carrying content is if an author independently
+    /// declares it in their own kind:10002 write set, in which case it is
+    /// routed by `Nip65`, not by being-the-indexer. Never used for writes (D3).
     Indexer,
+    /// Operator-configured app relays. Additive to NIP-65 in both directions;
+    /// substitutes when NIP-65 is unknown. Distinct from [`Indexer`] (which is
+    /// discovery-only, never content).
+    ///
+    /// REQ-side semantics:
+    /// - Author with NIP-65 mailbox → union of `outbox_relays` AND `app_relays`.
+    /// - Author with no NIP-65 mailbox → `app_relays` only (no indexer fallback
+    ///   for content). If `app_relays` is also empty, the author lands in
+    ///   `CompiledPlan::unroutable_authors` and the kernel surfaces a toast.
+    ///
+    /// [`Indexer`]: UserConfiguredCategory::Indexer
+    AppRelay,
     /// Operator-injected relay for debug/testing purposes.
     Debug,
 }
@@ -172,6 +187,17 @@ pub struct CompiledPlan {
 
     /// Per-relay plans, keyed by relay URL for diffing.
     pub per_relay: BTreeMap<RelayUrl, RelayPlan>,
+
+    /// Authors that had neither a NIP-65 mailbox nor an app-relay landing
+    /// pad — they produced zero relay entries and the kernel must surface a
+    /// diagnostic (e.g. a toast) so the user knows the request will not fly.
+    ///
+    /// Derived state, NOT part of `plan_id` hashing — adding or removing
+    /// app relays at runtime must not invalidate a plan's identity for the
+    /// wire-emitter's diff. The kernel reads this set to drive UI signal,
+    /// not the wire-emitter.
+    #[serde(default)]
+    pub unroutable_authors: BTreeSet<Pubkey>,
 }
 
 impl CompiledPlan {
@@ -180,6 +206,7 @@ impl CompiledPlan {
         Self {
             plan_id: plan_id.into(),
             per_relay: BTreeMap::new(),
+            unroutable_authors: BTreeSet::new(),
         }
     }
 }

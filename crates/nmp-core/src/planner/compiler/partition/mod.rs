@@ -99,8 +99,17 @@ pub(super) fn partition_interest(
     mailbox_cache: &dyn MailboxCache,
     indexer_relays: &[RelayUrl],
     active_account_read_relays: &[RelayUrl],
+    app_relays: &[RelayUrl],
     relay_entries: &mut BTreeMap<RelayUrl, Vec<RelayEntry>>,
+    unroutable: &mut BTreeSet<Pubkey>,
 ) {
+    // Note: `indexer_relays` is still threaded for backwards-compatibility with
+    // discovery-flavoured callers but is no longer consulted by Case A or Case
+    // B. Per the routing-rules clarification, indexer relays are discovery-only
+    // (kind:0/3/10002) — never a content fallback. Case D still consults them
+    // for the empty-active-account fallback (hashtag firehose).
+    let _ = indexer_relays;
+
     let base_shape = InterestShape {
         authors: BTreeSet::new(),
         kinds: interest.shape.kinds.clone(),
@@ -138,15 +147,23 @@ pub(super) fn partition_interest(
             &p_tag_values,
             &base_shape,
             mailbox_cache,
-            indexer_relays,
+            app_relays,
             relay_entries,
+            unroutable,
         );
         return;
     }
 
     // Case B: no explicit authors, but address-pointer pubkeys → Outbox.
     if !interest.shape.addresses.is_empty() {
-        case_b_addresses::route(interest, &base_shape, mailbox_cache, indexer_relays, relay_entries);
+        case_b_addresses::route(
+            interest,
+            &base_shape,
+            mailbox_cache,
+            app_relays,
+            relay_entries,
+            unroutable,
+        );
         return;
     }
 
@@ -163,11 +180,15 @@ pub(super) fn partition_interest(
         return;
     }
 
-    // Case D: no authors, addresses, or #p → active-account read relays / indexer.
+    // Case D: no authors, addresses, or #p → active-account read relays ∪
+    // app relays (hashtag firehose). Indexer remains as a last-resort fallback
+    // when BOTH sets are empty so the kernel-driven discovery REQs still have
+    // somewhere to land in cold-start scenarios.
     case_d_no_author::route(
         interest,
         &base_shape,
         active_account_read_relays,
+        app_relays,
         indexer_relays,
         relay_entries,
     );
