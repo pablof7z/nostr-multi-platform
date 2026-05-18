@@ -84,10 +84,19 @@ pub const DEFAULT_SELECT_MAX_CONNECTIONS: usize = 30;
 /// covered by at most this many surviving relays.
 pub const DEFAULT_SELECT_MAX_PER_USER: usize = 2;
 
-/// Max pubkeys per implicit kind:10002 discovery REQ. Mirrors the kernel's
-/// `Kernel::DISCOVERY_BATCH` — relays that reject large author filters
-/// gracefully drop events, so ≤50 is the conservative-safe ceiling.
-const MAILBOX_PROBE_BATCH: usize = 50;
+/// Max pubkeys per implicit kind:10002 discovery REQ.
+///
+/// 500 (not the kernel's conservative `DISCOVERY_BATCH = 50`): a 50-author
+/// batch turns a ~1000-follow cold start into ~20 separate REQs blasted at
+/// one indexer in a burst — exactly the pattern that triggers relay
+/// rate-limiting (observed: purplepag.es answering AUTH + CLOSED
+/// "rate limit exceeded"). 500 collapses the same cold start to ~2 REQs.
+/// Mainstream relays (damus, nos.lol, primal, strfry-based) accept
+/// author filters in the hundreds; a relay that truncates a large filter
+/// degrades gracefully (the still-unknown authors stay in
+/// `probed_mailboxes` unprobed-successfully and a later `refresh` retries).
+/// Fewer REQs ≫ marginally-wider filter risk.
+const MAILBOX_PROBE_BATCH: usize = 500;
 
 pub use inbox::TriggerInbox;
 pub use oneshot::{OneshotApi, OneshotToken};
@@ -1284,20 +1293,27 @@ mod tests {
         assert!(l.probed_mailboxes().is_empty());
     }
 
-    /// >50 unknown authors batch into multiple probe REQs (≤50 each).
+    /// Unknown authors split into `ceil(n / MAILBOX_PROBE_BATCH)` probe
+    /// REQs. Batch-size-aware so it survives tuning the constant.
     #[test]
     fn many_unknown_authors_batch_into_chunks() {
         let mut l = SubscriptionLifecycle::new();
         let empty = InMemoryMailboxCache::new();
-        for i in 0..120u32 {
-            let seed = format!("z{i:03}");
+        // Two full batches + a partial → exercises chunking at any batch size.
+        let n = MAILBOX_PROBE_BATCH * 2 + 7;
+        for i in 0..n as u32 {
+            let seed = format!("z{i:05}");
             l.registry_mut().push(follow(u64::from(i) + 1, &seed));
         }
         let frames = l.recompile_and_diff(&empty).expect("compile");
         let probes = probe_reqs(&frames);
-        // 120 authors / 50 per batch = 3 batches (50 + 50 + 20), one indexer.
-        assert_eq!(probes.len(), 3, "120 authors must split into 3 probe REQs");
-        assert_eq!(l.probed_mailboxes().len(), 120);
+        let expected = n.div_ceil(MAILBOX_PROBE_BATCH); // 3
+        assert_eq!(
+            probes.len(),
+            expected,
+            "{n} authors / {MAILBOX_PROBE_BATCH} per batch must be {expected} probe REQs",
+        );
+        assert_eq!(l.probed_mailboxes().len(), n);
     }
 
     // ─── current-plan diagnostics accessors (nmp-repl seam) ──────────────────
