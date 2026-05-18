@@ -2,7 +2,6 @@
 // Full reactivity contracts in docs/design/podcast/podcast-core.md §C.
 
 use serde::{Deserialize, Serialize};
-use url::Url;
 
 use crate::domain::records::SettingsRecord;
 

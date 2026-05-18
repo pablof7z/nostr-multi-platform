@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use podcast_core::domain::ids::{EpisodeId, GuestId, InsightId};
+use podcast_core::domain::ids::{EpisodeId, GuestId};
 use podcast_core::domain::records::SummaryStyle;
 
 // --- Summarize ---
