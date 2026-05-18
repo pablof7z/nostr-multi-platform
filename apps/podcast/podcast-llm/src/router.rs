@@ -11,7 +11,10 @@ pub enum LlmRoute {
     #[default]
     AppleIntelligence,
     /// rig.rs provider (cross-platform fallback).
-    RigProvider { provider: RigProvider, model: String },
+    RigProvider {
+        provider: RigProvider,
+        model: String,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

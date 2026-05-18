@@ -21,7 +21,11 @@ pub struct PodcastIndexClient;
 
 impl PodcastIndexClient {
     /// Search for podcasts by term.
-    pub async fn search(&self, _term: &str, _limit: u32) -> Result<Vec<PodcastIndexPodcast>, IndexError> {
+    pub async fn search(
+        &self,
+        _term: &str,
+        _limit: u32,
+    ) -> Result<Vec<PodcastIndexPodcast>, IndexError> {
         Err(IndexError::NotImplemented)
     }
 

@@ -4,14 +4,14 @@
 //                  RecommendationService.swift (235 LOC).
 // Full implementation target: docs/design/podcast/podcast-rag.md.
 
+pub mod actions;
 pub mod embedding;
 pub mod store;
-pub mod actions;
 
 #[cfg(test)]
 mod tests {
-    use super::store::{VectorStore, StoreError};
     use super::embedding::EmbedRequest;
+    use super::store::{StoreError, VectorStore};
 
     #[test]
     fn podcast_rag_vector_store_stub_returns_not_implemented() {
@@ -23,7 +23,9 @@ mod tests {
 
     #[test]
     fn podcast_rag_embed_request_serializes() {
-        let req = EmbedRequest { text: "hello world".to_string() };
+        let req = EmbedRequest {
+            text: "hello world".to_string(),
+        };
         let json = serde_json::to_string(&req).expect("serialize embed request");
         assert!(json.contains("hello world"));
     }

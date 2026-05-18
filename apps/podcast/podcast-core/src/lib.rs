@@ -1,8 +1,8 @@
-// D0: podcast nouns live ONLY in nmp-podcast-* crates, never in nmp-core.
+// D0: podcast nouns live in app modules like apps/podcast, never in nmp-core.
 // This crate is the central domain crate for the podcast app.
 
-pub mod domain;
 pub mod actions;
+pub mod domain;
 pub mod views;
 
 pub use domain::ids::*;

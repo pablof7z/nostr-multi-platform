@@ -1,5 +1,5 @@
 // Type-safe ID aliases for all podcast domain records.
-// Using ulid::Ulid to match the nmp-core convention.
+// Using ulid::Ulid gives every podcast record an opaque stable ID.
 
 pub type PodcastId = ulid::Ulid;
 pub type EpisodeId = ulid::Ulid;

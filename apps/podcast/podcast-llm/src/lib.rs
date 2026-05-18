@@ -5,14 +5,14 @@
 //                  InsightService.swift (233, matchExcerpt part).
 // Full implementation target: docs/design/podcast/podcast-llm.md.
 
-pub mod router;
 pub mod actions;
 pub mod prompts;
+pub mod router;
 
 #[cfg(test)]
 mod tests {
+    use super::prompts::{EXTRACT_CHAPTERS_SYSTEM, SUMMARIZE_SYSTEM};
     use super::router::{select_route, LlmRoute};
-    use super::prompts::{SUMMARIZE_SYSTEM, EXTRACT_CHAPTERS_SYSTEM};
 
     #[test]
     fn podcast_llm_default_route_is_apple_intelligence() {

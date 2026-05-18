@@ -20,18 +20,30 @@ pub enum PlaybackState {
 pub enum AudioCapabilityEvent {
     StateChanged(PlaybackState),
     /// Emitted at ≤4 Hz while playing (D8: coalesced, not per-frame).
-    Tick { current_s: f64, duration_s: f64 },
-    Error { reason: String },
+    Tick {
+        current_s: f64,
+        duration_s: f64,
+    },
+    Error {
+        reason: String,
+    },
 }
 
 /// Requests sent to the capability from action modules.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum AudioCapabilityRequest {
-    Load { url_or_path: String, start_s: Option<f64> },
+    Load {
+        url_or_path: String,
+        start_s: Option<f64>,
+    },
     Play,
     Pause,
     Resume,
-    Seek { to_s: f64 },
-    SetRate { rate: f32 },
+    Seek {
+        to_s: f64,
+    },
+    SetRate {
+        rate: f32,
+    },
     Stop,
 }

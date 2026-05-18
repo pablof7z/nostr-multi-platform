@@ -26,7 +26,10 @@ mod tests {
 
     #[test]
     fn podcast_audio_capability_event_serializes() {
-        let event = AudioCapabilityEvent::Tick { current_s: 42.5, duration_s: 3600.0 };
+        let event = AudioCapabilityEvent::Tick {
+            current_s: 42.5,
+            duration_s: 3600.0,
+        };
         let json = serde_json::to_string(&event).expect("serialize tick event");
         assert!(json.contains("42.5"));
     }
