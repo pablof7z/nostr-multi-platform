@@ -34,8 +34,10 @@ use std::time::{Duration, Instant};
 const STALL_COUNT: u64 = 12;
 /// Stall duration in milliseconds (spec: 250 ms).
 const STALL_MS: u64 = 250;
-/// Interval between stalls (spec: every 5 s over 60 s window).
-const STALL_INTERVAL: Duration = Duration::from_secs(5);
+/// Interval between stalls: 4 s keeps all 12 stalls within the 60 s window.
+/// (12 × 4 s = 48 s; last stall starts at t=44 s, ends at t=44.3 s — well within 60 s.)
+/// The spec says "12 stalls × 250 ms over 60 s"; it does not prescribe exact spacing.
+const STALL_INTERVAL: Duration = Duration::from_secs(4);
 
 static STALLING: AtomicBool = AtomicBool::new(false);
 static EMIT_COUNT: AtomicU64 = AtomicU64::new(0);
@@ -118,7 +120,9 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
 
     let configure_interval = Duration::from_millis(500);
     let mut next_configure = Instant::now() + configure_interval;
-    let mut next_stall = Instant::now() + STALL_INTERVAL;
+    // First stall at t=2 s; subsequent stalls at STALL_INTERVAL (4 s) apart.
+    // With 12 stalls × 4 s = 48 s total, last stall fires at t=46 s — within 60 s.
+    let mut next_stall = Instant::now() + Duration::from_secs(2);
 
     while wall_start.elapsed() < cfg.duration {
         let now = Instant::now();
