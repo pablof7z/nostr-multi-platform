@@ -112,18 +112,18 @@ impl<T> TimeCached<T> {
     /// The boundary is inclusive: when `now == anchor + ttl` the value is
     /// considered stale and is recomputed.
     pub fn get_or_refresh(&mut self, now: Instant, refresh: impl FnOnce() -> T) -> &T {
-        if self.is_stale(now) || self.value.is_none() {
-            self.value = Some(refresh());
+        // When stale, clear the slot and re-anchor; `get_or_insert_with` then
+        // runs `refresh` exactly once and hands back a borrow of the stored
+        // value. When fresh, `value` is `Some` by construction (the only way
+        // `is_stale` is false is via a prior call that populated it), so the
+        // closure does not run. The `&mut T` returned by `get_or_insert_with`
+        // carries the "value is present" proof in the type system, so there
+        // is no panic path here at all (no `unwrap`/`expect`/`unreachable!`).
+        if self.is_stale(now) {
+            self.value = None;
             self.anchored_at = Some(now);
         }
-        // SAFETY-OF-LOGIC: the branch above guarantees `value` is `Some` here;
-        // `is_stale` is `true` whenever `anchored_at` is `None`, so a `None`
-        // value always takes the refresh path. `expect` is unreachable in
-        // practice and is only present to satisfy D6 (no `unwrap`/`panic` in
-        // non-test code) with an explicit, documented invariant message.
-        self.value
-            .as_ref()
-            .expect("get_or_refresh ensures value is Some")
+        self.value.get_or_insert_with(refresh)
     }
 
     /// Borrow the currently cached value without consulting the clock or
