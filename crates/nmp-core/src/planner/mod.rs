@@ -65,4 +65,12 @@ pub use interest::{
     RelayUrl,
 };
 pub use lattice::{merge, MergeOutcome};
-pub use plan::{CompiledPlan, PlannerError, RelayPlan, RoutingSource, SubShape, UserConfiguredCategory};
+pub use plan::{
+    canonical_filter_hash,
+    CompiledPlan,
+    PlannerError,
+    RelayPlan,
+    RoutingSource,
+    SubShape,
+    UserConfiguredCategory,
+};

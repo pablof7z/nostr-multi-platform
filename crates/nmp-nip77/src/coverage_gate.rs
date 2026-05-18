@@ -118,21 +118,39 @@ pub fn decide_strategy(_key: &WatermarkKey, inputs: GateInputs) -> SyncStrategy 
     }
 }
 
-/// Compute the simple coverage percentage helper documented in the task
-/// description (`coverage > 95% and recent` → `SkipReq`).  The store's
-/// `Coverage` enum already collapses staleness into the `CompleteAsOf` vs
-/// `PartialUpTo` distinction, so the percentage path is informational only —
-/// useful for diagnostics + tests that want to assert "we cleared 95 %".
-pub fn coverage_pct(coverage: Coverage, now_s: u64) -> u8 {
+/// Recency of a `(filter, relay)` watermark, normalised to `[0.0, 1.0]`.
+///
+/// This is **not** an event-count coverage ratio (we never claimed to know how
+/// many events the relay actually holds). It is a *recency* signal — the
+/// fraction of wall-clock time, between the unix epoch and `now_s`, that the
+/// watermark covers. `CompleteAsOf` collapses to `1.0` because that variant
+/// already encodes the "fresh enough to be authoritative" decision made by
+/// the store's staleness window.
+///
+/// | Coverage variant     | Returned ratio                          |
+/// |----------------------|-----------------------------------------|
+/// | `CompleteAsOf(_)`    | `1.0` (cache is authoritative)          |
+/// | `PartialUpTo(ts)`    | `ts / now_s`, clamped to `[0.0, 1.0]`   |
+/// | `Unknown`            | `0.0` (no signal)                       |
+///
+/// **Use cases.** Diagnostics surfaces (ADR-0007 wire view), firehose-bench
+/// instrumentation, and tests that assert a watermark crossed a freshness
+/// threshold. The planner gate itself never calls this — it consumes the
+/// stronger `Coverage::CompleteAsOf` signal directly via `decide_strategy`.
+///
+/// The previous `coverage_pct` name and `u8` percentage return type
+/// misleadingly suggested this number measured cache completeness; it never
+/// did. Renamed in the T53 follow-up per the M4 codex review at
+/// `docs/perf/codex-reviews/076173d.md` (P3 misleading public helper).
+pub fn freshness_ratio(coverage: Coverage, now_s: u64) -> f32 {
     match coverage {
-        Coverage::CompleteAsOf(_) => 100,
-        Coverage::Unknown => 0,
+        Coverage::CompleteAsOf(_) => 1.0,
+        Coverage::Unknown => 0.0,
         Coverage::PartialUpTo(ts) => {
             if now_s == 0 || ts == 0 {
-                return 0;
+                return 0.0;
             }
-            let ratio = (ts as f64 / now_s as f64).clamp(0.0, 1.0);
-            (ratio * 100.0).round() as u8
+            ((ts as f64 / now_s as f64).clamp(0.0, 1.0)) as f32
         }
     }
 }
@@ -242,9 +260,28 @@ mod tests {
     }
 
     #[test]
-    fn coverage_pct_collapses_complete_to_100() {
-        assert_eq!(coverage_pct(Coverage::CompleteAsOf(1), 100), 100);
-        assert_eq!(coverage_pct(Coverage::Unknown, 100), 0);
-        assert_eq!(coverage_pct(Coverage::PartialUpTo(96), 100), 96);
+    fn freshness_ratio_collapses_complete_to_one() {
+        assert_eq!(freshness_ratio(Coverage::CompleteAsOf(1), 100), 1.0);
+        assert_eq!(freshness_ratio(Coverage::Unknown, 100), 0.0);
+        // PartialUpTo: 96 of "now=100" seconds → 0.96 recency.
+        let r = freshness_ratio(Coverage::PartialUpTo(96), 100);
+        assert!((r - 0.96).abs() < 1e-5, "expected ~0.96, got {r}");
+    }
+
+    #[test]
+    fn freshness_ratio_zero_guard_on_zero_now_or_zero_ts() {
+        // P3 corrected semantics — every degenerate input maps to 0.0, never
+        // panics or returns a >1.0 ratio.
+        assert_eq!(freshness_ratio(Coverage::PartialUpTo(100), 0), 0.0);
+        assert_eq!(freshness_ratio(Coverage::PartialUpTo(0), 100), 0.0);
+    }
+
+    #[test]
+    fn freshness_ratio_clamps_overshoot() {
+        // P3 regression — a misconfigured watermark (`ts > now`) must not
+        // report freshness > 1.0; the `CompleteAsOf` variant is the only
+        // path that earns the `1.0` authoritative claim.
+        let r = freshness_ratio(Coverage::PartialUpTo(200), 100);
+        assert_eq!(r, 1.0, "overshoot must clamp to 1.0, not {r}");
     }
 }

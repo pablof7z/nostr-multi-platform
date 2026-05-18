@@ -76,9 +76,13 @@ where the 95 %+ savings appear.
 
 - Live measurement against a real NIP-77 relay (defer to M11 hardware
   proof window or M11.5 highlighter slice).
-- Wire `apply_coverage_filter` into the M2 planner's hot path (currently
-  exposed at the crate-public API but not yet called from the actor; the
-  actor remains M1-era code).
-- Add `canonical_filter_hash(&Filter) -> [u8; 32]` to `nmp-core::store`
-  per `docs/design/lmdb/watermarks.md` §3, so the planner gate doesn't
-  need to take a custom canonicalisation closure.
+- ~~Wire `apply_coverage_filter` into the M2 planner's hot path~~
+  **[LANDED — T53 follow-up]**. `SubscriptionLifecycle::set_coverage_hook`
+  is the seam; the actor installs `apply_coverage_filter` as the hook.
+  Coverage is exercised end-to-end by
+  `crates/nmp-testing/tests/framework_magic_contract.rs::c10_watermark_gates_backfill_and_authoritative_miss`.
+- Add a real `canonical_filter_hash(&Filter) -> [u8; 32]` to
+  `nmp-core::store` per `docs/design/lmdb/watermarks.md` §3 (BLAKE3-CBOR).
+  The T53 follow-up promoted `simple_shape_hash` to
+  `nmp_core::planner::canonical_filter_hash`, so the swap is a one-edit
+  replacement when the canonical encoder lands.

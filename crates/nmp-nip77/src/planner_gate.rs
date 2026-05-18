@@ -123,6 +123,14 @@ fn apply_strategy_to_sub(
         SyncStrategy::ReqSince(since) => {
             if sub.shape.since.map(|s| s < *since).unwrap_or(true) {
                 sub.shape.since = Some(*since);
+                // Mutating `shape.since` changes wire identity. The
+                // wire-emitter keys sub-ids by `canonical_filter_hash`
+                // (`subs::wire::sub_id_for`), so we must recompute it here —
+                // otherwise the diff against the prior plan would see no
+                // change and the new `since` would never reach the relay.
+                // See the M4 codex review at
+                // `docs/perf/codex-reviews/076173d.md` (P1 plan-identity).
+                sub.recompute_hash();
                 (true, GateDecision::BumpedSince(*since))
             } else {
                 (true, GateDecision::Kept)

@@ -148,6 +148,120 @@ fn req_since_no_op_when_existing_since_already_newer() {
 }
 
 #[test]
+fn bumping_since_recomputes_canonical_filter_hash() {
+    // P1 regression — the M4 codex review (076173d.md) flagged that
+    // `apply_coverage_filter` mutated `shape.since` without refreshing the
+    // sub-shape's `canonical_filter_hash`. Because the wire-emitter keys
+    // sub-ids by that hash, the bumped REQ never reached the relay — the
+    // diff treated old + bumped as identical.
+    let store = MemEventStore::new();
+    let caps = InMemoryCapabilityCache::new();
+    store
+        .write_watermark(WatermarkRow {
+            key: WatermarkKey {
+                filter_hash: [0xAA; 32],
+                relay_url: "wss://legacy/".into(),
+            },
+            synced_up_to: 1_000,
+            last_sync_method: SyncMethod::ReqScan,
+            last_negentropy_state: None,
+            bytes_saved_vs_req: 0,
+            updated_at: 1_000,
+        })
+        .unwrap();
+    caps.set(
+        "wss://legacy/",
+        RelayCapabilities {
+            supports_nip77: false,
+        },
+    );
+
+    // Seed both `canonical_filter_hash` and the compiler-equivalent hash for
+    // the unmutated shape. Coverage gate must produce a different hash after
+    // bumping `since`.
+    let mut plan = make_plan("wss://legacy/", None);
+    let hash_before = plan.per_relay["wss://legacy/"].sub_shapes[0]
+        .canonical_filter_hash
+        .clone();
+
+    let report = apply_coverage_filter(&mut plan, &store, &caps, canon_static);
+    assert_eq!(report.count_bumped(), 1, "expected ReqSince bump");
+
+    let bumped_sub = &plan.per_relay["wss://legacy/"].sub_shapes[0];
+    assert_eq!(
+        bumped_sub.shape.since,
+        Some(1_001),
+        "since should advance past synced_up_to"
+    );
+    assert_ne!(
+        bumped_sub.canonical_filter_hash, hash_before,
+        "mutating `since` must invalidate the canonical filter hash so the \
+         wire-emitter routes a new REQ frame to the relay"
+    );
+
+    // Cross-check: recomputing the hash from scratch matches the post-gate
+    // value (i.e. the gate uses the same algorithm the compiler does).
+    use nmp_core::planner::canonical_filter_hash as canon;
+    assert_eq!(
+        bumped_sub.canonical_filter_hash,
+        canon(&bumped_sub.shape),
+        "post-gate hash must equal the canonical hash of the mutated shape"
+    );
+}
+
+#[test]
+fn bumped_plan_diff_emits_close_and_req() {
+    // Integration-flavoured P1 regression — model the actor's plan-emit path
+    // (prior plan → coverage gate → next plan → plan_diff) and assert that the
+    // diff is non-empty when the gate bumps `since`. Without the
+    // `recompute_hash` fix this would return an empty diff and the relay
+    // would silently keep its stale REQ.
+    let store = MemEventStore::new();
+    let caps = InMemoryCapabilityCache::new();
+    store
+        .write_watermark(WatermarkRow {
+            key: WatermarkKey {
+                filter_hash: [0xAA; 32],
+                relay_url: "wss://legacy/".into(),
+            },
+            synced_up_to: 1_000,
+            last_sync_method: SyncMethod::ReqScan,
+            last_negentropy_state: None,
+            bytes_saved_vs_req: 0,
+            updated_at: 1_000,
+        })
+        .unwrap();
+    caps.set(
+        "wss://legacy/",
+        RelayCapabilities {
+            supports_nip77: false,
+        },
+    );
+
+    let prior = make_plan("wss://legacy/", None);
+    let mut next = prior.clone();
+    let report = apply_coverage_filter(&mut next, &store, &caps, canon_static);
+    assert_eq!(report.count_bumped(), 1);
+
+    let frames = nmp_core::subs::plan_diff(Some(&prior), Some(&next), &[]);
+    let closes = frames
+        .iter()
+        .filter(|f| matches!(f, nmp_core::subs::WireFrame::Close { .. }))
+        .count();
+    let reqs = frames
+        .iter()
+        .filter(|f| matches!(f, nmp_core::subs::WireFrame::Req { .. }))
+        .count();
+    assert_eq!(
+        (closes, reqs),
+        (1, 1),
+        "bumped `since` must produce one CLOSE (old sub-id) and one REQ \
+         (new sub-id); identical sub-ids would mean the relay keeps the stale \
+         REQ. Frames observed: {frames:?}"
+    );
+}
+
+#[test]
 fn neg_then_req_keeps_subshape_unchanged() {
     let store = MemEventStore::new();
     let caps = InMemoryCapabilityCache::new();

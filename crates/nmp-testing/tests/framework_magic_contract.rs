@@ -4,12 +4,11 @@
 //! Intentionally NOT milestone-prefixed; see
 //! `docs/design/framework-magic/test-scaffolding.md` §1.
 //!
-//! Active on master: C1, C2, C3, C4, C6, C9, meta-test (7 of 14).
+//! Active on master: C1, C2, C3, C4, C6, C9, C10, meta-test (8 of 14).
 //! Ignored pending milestone implementation:
 //!   C5  `#[ignore = "pending M2 FollowListChanged trigger"]`
 //!   C7  `#[ignore = "pending M2 PublishPlanner + M6 SendNote consumer"]`
 //!   C8  `#[ignore = "pending M2 wire-emitter auto-close + buffer"]`
-//!   C10 `#[ignore = "pending M4 sync engine + watermark consult"]`
 //!   C11 `#[ignore = "pending M6 signers + KeyringCapability"]`
 //!   C12 `#[ignore = "pending M8 multi-account state machine"]`
 //!   C13 `#[ignore = "pending M2 projection cache + ViewModule surface"]`
@@ -354,14 +353,15 @@ fn c9_provenance_merges_across_relay_redeliveries() {
 }
 
 // ── C10 ───────────────────────────────────────────────────────────────────────
-
-/// C10: Watermarks gate backfill; cache miss becomes authoritative; NIP-77 default.
-/// Design: `docs/design/framework-magic/sync.md` §C10.
-#[test]
-#[ignore = "pending M4 sync engine + planner watermark consultation"]
-fn c10_watermark_gates_backfill_and_authoritative_miss() {
-    unimplemented!("M4: sync engine must consult (filter_sig, relay) watermark before REQ");
-}
+//
+// C10's body lives in the sibling test binary `framework_magic_c10.rs` so the
+// wired SubscriptionLifecycle proof can grow without breaking AGENTS.md's
+// 500 LOC ceiling on this file. The contract meta-test below keys off the
+// `framework-magic.md` doc table, not file location — splitting is invisible
+// at the contract layer.
+//
+// Test binary: `crates/nmp-testing/tests/framework_magic_c10.rs`
+// Test name:   `c10_watermark_gates_backfill_and_authoritative_miss`
 
 // ── C11 ───────────────────────────────────────────────────────────────────────
 

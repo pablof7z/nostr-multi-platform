@@ -6,6 +6,8 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 use super::interest::{InterestId, InterestShape, RelayUrl};
 
@@ -94,6 +96,44 @@ pub struct SubShape {
     /// Blake3 hash of the serialised `shape` for stable wire-subscription identity.
     /// Placeholder: populated by the compiler stage 4. Format: 8 hex chars.
     pub canonical_filter_hash: String,
+}
+
+impl SubShape {
+    /// Recompute [`Self::canonical_filter_hash`] from the current `shape`.
+    ///
+    /// Required by any post-compile pass that mutates the shape (the M4
+    /// coverage gate is the only current consumer — it bumps `since` after the
+    /// compiler runs). Without this call the wire-emitter's diff would treat
+    /// the mutated shape as identical to the pre-mutation one and skip the
+    /// REQ frame — leaving the relay on a stale `since`. See
+    /// `docs/design/subscription-compilation/compiler.md` §3.3 and the M4
+    /// codex review at `docs/perf/codex-reviews/076173d.md` (P1 plan-identity
+    /// bug).
+    pub fn recompute_hash(&mut self) {
+        self.canonical_filter_hash = canonical_filter_hash(&self.shape);
+    }
+}
+
+/// Canonical filter hash — single source of truth for `(filter, relay)`
+/// identity across the planner, wire-emitter, and watermark store.
+///
+/// The current implementation is the stop-gap `DefaultHasher` digest produced
+/// by the compiler since M2 (see `compiler/mod.rs::simple_shape_hash`). It is
+/// stable across recompiles of an identical `InterestShape` because every
+/// collection field uses a sorted container (`BTreeSet` / `BTreeMap`) and the
+/// JSON serialisation is therefore deterministic.
+///
+/// Replacement target — once the BLAKE3-CBOR canonical encoding described in
+/// `docs/design/lmdb/watermarks.md` §3 lands, this function swaps to the
+/// 32-byte BLAKE3 hex form; the eight-character window will widen accordingly.
+/// All callers (compiler, planner gate, wire-emitter, watermark store) read
+/// this single helper so the swap is one edit.
+pub fn canonical_filter_hash(shape: &InterestShape) -> String {
+    let mut h = DefaultHasher::new();
+    if let Ok(json) = serde_json::to_string(shape) {
+        json.hash(&mut h);
+    }
+    format!("{:08x}", h.finish() & 0xffff_ffff)
 }
 
 // ─── RelayPlan ───────────────────────────────────────────────────────────────

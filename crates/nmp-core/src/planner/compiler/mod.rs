@@ -34,7 +34,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::planner::{
     interest::{InterestId, InterestLifecycle, InterestShape, LogicalInterest, RelayUrl},
     lattice::{merge, MergeOutcome},
-    plan::{CompiledPlan, PlannerError, RelayPlan, RoutingSource, SubShape},
+    plan::{canonical_filter_hash, CompiledPlan, PlannerError, RelayPlan, RoutingSource, SubShape},
 };
 use partition::{partition_interest, RelayEntry};
 use plan_id::compute_plan_id;
@@ -171,7 +171,7 @@ impl<'a> SubscriptionCompiler<'a> {
             let relay_sub_shapes: Vec<SubShape> = sub_shapes
                 .into_iter()
                 .map(|(shape, _lifecycle, ids)| {
-                    let hash = simple_shape_hash(&shape);
+                    let hash = canonical_filter_hash(&shape);
                     SubShape { shape, originating_interests: ids, canonical_filter_hash: hash }
                 })
                 .collect();
@@ -189,14 +189,8 @@ impl<'a> SubscriptionCompiler<'a> {
 }
 
 // ─── Canonical filter hash ────────────────────────────────────────────────────
-
-fn simple_shape_hash(shape: &InterestShape) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    let mut h = DefaultHasher::new();
-    if let Ok(json) = serde_json::to_string(shape) {
-        json.hash(&mut h);
-    }
-    format!("{:08x}", h.finish() & 0xffff_ffff)
-}
+//
+// The canonical hash function moved to `plan::canonical_filter_hash` so any
+// post-compile pass that mutates a `SubShape` can recompute its
+// `canonical_filter_hash` without having to import a compiler-private helper.
+// See `plan::canonical_filter_hash` for the BLAKE3-CBOR migration target.

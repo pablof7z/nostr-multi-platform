@@ -27,6 +27,8 @@ pub(crate) mod registry;
 pub(crate) mod trigger;
 pub(crate) mod wire;
 
+use std::sync::Arc;
+
 use auth_gate::AuthGate;
 use lifecycle_gate::LifecycleGate;
 
@@ -34,6 +36,22 @@ use crate::planner::{
     CompiledPlan, InMemoryMailboxCache, InterestId, MailboxSnapshot, PlannerError, RelayUrl,
     SubscriptionCompiler,
 };
+
+/// Post-compile plan-mutation hook (M4 negentropy coverage gate).
+///
+/// The lifecycle owns the *seam* into which `nmp-nip77`'s
+/// `apply_coverage_filter` is installed by the actor at startup. The hook runs
+/// between `compile()` and `plan_diff()` — i.e. after the M2 compiler
+/// produces the plan but before the wire-emitter diffs against the prior
+/// plan. The hook is free to drop sub-shapes, bump `since`, or otherwise
+/// rewrite the plan; any sub-shape whose `shape` is mutated MUST call
+/// [`crate::planner::SubShape::recompute_hash`] (see the M4 codex review's P1
+/// finding in `docs/perf/codex-reviews/076173d.md`).
+///
+/// Direction: `nmp-core` defines the seam, `nmp-nip77` installs the policy —
+/// keeping coverage-gate / NIP-77 vocabulary out of `nmp-core` per D0
+/// ("kernel never grows app nouns").
+pub type PlanCoverageHook = Arc<dyn Fn(&mut CompiledPlan) + Send + Sync>;
 
 pub use inbox::TriggerInbox;
 pub use pool::{ConnectionPool, InMemoryPool, PoolSendOutcome};
@@ -67,6 +85,10 @@ pub struct SubscriptionLifecycle {
     auth_gate: AuthGate,
     /// Monotonic compile counter for test assertions.
     compile_count: u64,
+    /// Optional post-compile plan-mutation hook (see [`PlanCoverageHook`]).
+    /// Set via [`Self::set_coverage_hook`]; absent by default so the kernel
+    /// links cleanly without any NIP-77 dependency.
+    coverage_hook: Option<PlanCoverageHook>,
 }
 
 impl Default for SubscriptionLifecycle {
@@ -87,7 +109,18 @@ impl SubscriptionLifecycle {
             lifecycle_gate: LifecycleGate::new(),
             auth_gate: AuthGate::new(),
             compile_count: 0,
+            coverage_hook: None,
         }
+    }
+
+    /// Install (or replace) the post-compile [`PlanCoverageHook`].
+    ///
+    /// The actor calls this once at startup with
+    /// `Arc::new(|plan| { nmp_nip77::apply_coverage_filter(plan, …); })`
+    /// — `nmp-core` itself never knows the hook's identity. C10 is the
+    /// `nmp-testing` contract test that exercises this seam end-to-end.
+    pub fn set_coverage_hook(&mut self, hook: PlanCoverageHook) {
+        self.coverage_hook = Some(hook);
     }
 
     /// Mutable access to the registry — view modules push interests through
@@ -124,8 +157,17 @@ impl SubscriptionLifecycle {
     pub fn recompile_and_diff(&mut self) -> Result<Vec<WireFrame>, PlannerError> {
         let interests = self.registry.iter_active();
         let compiler = SubscriptionCompiler::new(&self.mailboxes, &self.indexer_relays);
-        let plan = compiler.compile(&interests)?;
+        let mut plan = compiler.compile(&interests)?;
         self.compile_count = self.compile_count.saturating_add(1);
+
+        // D2 negentropy-first: let the coverage-gate hook (M4) rewrite the
+        // plan before the wire-emitter sees it — skipping authoritative
+        // (filter, relay) pairs and bumping `since` on pairs we already have
+        // a watermark for. With no hook installed (the kernel-only path) the
+        // plan flows through unchanged.
+        if let Some(hook) = self.coverage_hook.as_ref() {
+            hook(&mut plan);
+        }
 
         let prior = self.current_plan.as_ref();
         let raw_frames = plan_diff(prior, Some(&plan), &interests);
