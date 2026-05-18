@@ -14,6 +14,7 @@ mod auth;
 mod closed_reason;
 #[cfg(test)]
 mod closed_classifier_tests;
+mod event_observer;
 #[cfg(test)]
 mod event_observer_tests;
 mod discovery;
@@ -298,12 +299,9 @@ pub(crate) struct Kernel {
     /// debounces repeated phases and returns the transition verdict the
     /// actor uses to drive the observer callback.
     lifecycle_phase: LifecyclePhase,
-    /// T146 — kernel event observer slot. Shared `Arc<Mutex<…>>` with the
-    /// FFI surface and any per-app crates (`nmp-app-chirp`,
-    /// `nmp-app-podcast`, …). Fired by `notify_event_observers` after every
-    /// `EventStore::insert` returning `Inserted | Replaced`. `None` when the
-    /// kernel is constructed outside the actor (tests, codegen) and no
-    /// registrations exist; observers then never fire (zero overhead).
+    /// T146 — kernel event observer slot. Integration lives in
+    /// `kernel/event_observer.rs`; `None` until the actor binds the
+    /// shared `Arc<Mutex<…>>` via `set_event_observers_handle`.
     event_observers: Option<crate::actor::KernelEventObserverSlot>,
 }
 
@@ -460,53 +458,6 @@ impl Kernel {
             .as_ref()
             .map(|c| c.load(Ordering::Relaxed))
             .unwrap_or(0)
-    }
-
-    /// T146 — install the actor's shared kernel event observer slot. The
-    /// `Arc<Mutex<…>>` is shared with the FFI surface (`ffi/event_observer
-    /// .rs`) and any per-app crate that has called
-    /// `NmpApp::event_observers_slot()`; the same registrations are
-    /// therefore visible to both the actor thread and external Rust
-    /// callers. Idempotent — re-binding replaces the prior handle (so
-    /// existing registrations on the old slot become unreachable from the
-    /// kernel; callers that hold the prior `Arc` keep their own view). The
-    /// actor calls this once immediately after constructing a kernel.
-    pub(crate) fn set_event_observers_handle(
-        &mut self,
-        handle: crate::actor::KernelEventObserverSlot,
-    ) {
-        self.event_observers = Some(handle);
-    }
-
-    /// T146 — extract the event observer handle before a `Reset` replaces
-    /// the kernel. The slot's `Arc<Mutex<…>>` is shared with the FFI
-    /// surface and per-app crates, so it MUST survive Reset (otherwise
-    /// every registration would silently stop firing).
-    pub(crate) fn take_event_observers_handle_for_reset(
-        &mut self,
-    ) -> Option<crate::actor::KernelEventObserverSlot> {
-        self.event_observers.take()
-    }
-
-    /// T146 — fan one accepted event out to every registered observer.
-    /// Called from `ingest/timeline.rs` (and the test-support fixture)
-    /// after `EventStore::insert` returns `Inserted | Replaced`. Best-
-    /// effort: missing slot, poisoned mutex, or serialization failure on
-    /// the C-ABI side are all silent no-ops (D6). The no-observers fast
-    /// path is branch-free — no allocation, no lock taken past the slot's
-    /// `Option`.
-    ///
-    /// `KernelEvent` is the FFI-stable shape from `substrate::view`; the
-    /// caller composes it from the kernel's `StoredEvent` (same fields,
-    /// just cloned into the FFI struct). D0 — kernel emits, per-app crates
-    /// compose. ADR-0009.
-    pub(in crate::kernel) fn notify_event_observers(
-        &self,
-        event: &crate::substrate::KernelEvent,
-    ) {
-        if let Some(slot) = &self.event_observers {
-            crate::actor::notify_observers(slot, event);
-        }
     }
 
     /// T114b — number of `claim_profile` requests dropped because a pubkey's

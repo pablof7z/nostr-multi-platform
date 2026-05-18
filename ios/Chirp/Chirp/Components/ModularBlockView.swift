@@ -7,7 +7,8 @@ import SwiftUI
 // surface (font, padding, action buttons, divider) is byte-identical to
 // the pre-modular look.
 //
-// `Module` renders the chained events vertically:
+// `Module` renders the chained events vertically, root-first newest-last:
+//
 //   ●  @alice
 //   │   Original tweet text...
 //   │
@@ -15,12 +16,29 @@ import SwiftUI
 //       Reply text...
 //   [Show this thread]   (if hasGap or root mismatches the chain top)
 //
-// The vertical line is a 1.5pt rounded rect in `ChirpColor.hairline`-ish
-// territory (system tertiary label), positioned in the avatar column so it
-// connects the bottom of avatar N to the top of avatar N+1. Self-thread vs
-// cross-author render the same shape; the renderer suppresses the
-// "Replying to @x" header on a self-thread (would be tautological).
+// Layout invariants:
+//   • Each event = one row containing a fixed-width avatar column (44pt
+//     avatar + ChirpSpace.m trailing) and an expanding text column.
+//   • The vertical connecting line is a 1.5pt rounded rect drawn as an
+//     overlay on the avatar column, anchored to the avatar's bottom edge
+//     and extending downward through the inter-row spacing into the top
+//     edge of the next row's avatar. Drawn for every event EXCEPT the
+//     last one in the module.
+//   • Self-thread vs cross-author render with the same machinery; the
+//     "Replying to @x" header that legacy reply rows show is suppressed
+//     here (per spec — it would be tautological inside a single block).
 // ─────────────────────────────────────────────────────────────────────────
+
+/// Module renderer constants kept together so the line geometry stays in
+/// lockstep with the avatar size + row spacing.
+private enum ModuleLayout {
+    static let avatarSize: CGFloat = 44
+    /// Vertical gap between two adjacent event rows inside a module. The
+    /// line extends through this gap.
+    static let interRowSpacing: CGFloat = ChirpSpace.m
+    /// Stroke width of the connecting line.
+    static let lineWidth: CGFloat = 1.5
+}
 
 struct ModularBlockView: View {
     let block: TimelineBlock
@@ -63,7 +81,7 @@ struct ModularBlockView: View {
     // ── Module stack with vertical connecting line ───────────────────────
 
     private func moduleStack(events: [String], hasGap: Bool, root: ThreadPointer?) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: ModuleLayout.interRowSpacing) {
             ForEach(Array(events.enumerated()), id: \.element) { (index, id) in
                 let isLast = (index == events.count - 1)
                 moduleRow(id: id, isLast: isLast)
@@ -71,12 +89,13 @@ struct ModularBlockView: View {
 
             if shouldShowGapPill(hasGap: hasGap, root: root, events: events) {
                 showThisThreadPill(rootID: rootEventID(root: root) ?? events.first ?? "")
-                    .padding(.leading, ChirpSpace.l + 44 + ChirpSpace.m)
-                    .padding(.bottom, ChirpSpace.m)
+                    .padding(.leading, ModuleLayout.avatarSize + ChirpSpace.m)
+                    .padding(.top, ChirpSpace.xs)
             }
 
             Divider()
                 .background(ChirpColor.hairline)
+                .padding(.top, ChirpSpace.m)
         }
         .padding(.vertical, ChirpSpace.m)
         .padding(.horizontal, ChirpSpace.l)
@@ -85,17 +104,17 @@ struct ModularBlockView: View {
         .listRowBackground(Color.clear)
     }
 
+    /// One event row inside a module. Layout: avatar column (fixed 44pt,
+    /// possibly with a connecting line extending downward) + content
+    /// column (expanding). The whole row is a `Button` so tap → thread,
+    /// matching the affordance the existing `NoteRowView` provides on
+    /// standalone blocks.
     private func moduleRow(id: String, isLast: Bool) -> some View {
         let item = items[id]
         let card = cards[id]
         let display = displayPubkey(item: item, card: card)
         let content = item?.content ?? card?.content ?? ""
 
-        // Tap = navigate to the thread for this event id (legacy
-        // `ThreadScreen` consumes `ThreadViewPayload` — the M2 migration of
-        // the thread surface itself is out of scope for this PR). Same
-        // affordance the existing `NoteRowView` provides on standalone
-        // rows; without it module rows would silently swallow taps.
         return Button {
             router.push(.thread(eventID: id))
         } label: {
@@ -113,38 +132,39 @@ struct ModularBlockView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.bottom, isLast ? 0 : ChirpSpace.m)
     }
 
-    // The avatar column carries both the avatar and (for all but the last
-    // row) the connecting vertical line. Implementing it as a `ZStack` keeps
-    // the line in the avatar's horizontal lane without forcing each row to
-    // calculate its own neighbour's geometry — the line spans the full
-    // height of the row below the avatar.
+    /// Avatar + the connecting line that runs from the avatar's bottom
+    /// edge through the inter-row gap into the next avatar. The line is
+    /// drawn as an `.overlay` on the avatar so its x-position
+    /// automatically tracks the avatar centre; alignment `.bottom` +
+    /// negative `.bottom` padding lets the line extend BELOW the avatar
+    /// without changing the avatar's own intrinsic height. `clipped:
+    /// false` is the default on `.overlay`, so the extension renders into
+    /// the inter-row gap without disturbing the parent layout.
     private func avatarColumn(item: TimelineItem?, card: ChirpEventCard?, isLast: Bool) -> some View {
         let pubkey = item?.authorPubkey ?? card?.authorPubkey ?? ""
-        return ZStack(alignment: .top) {
-            // Vertical line — drawn first so the avatar overlays it. Skip
-            // the line on the last row of the module (no successor).
+        return ChirpAvatar(
+            url: item?.authorPictureUrl ?? "identicon:\(pubkey.prefix(8))",
+            initials: item?.authorAvatarInitials ?? defaultInitials(pubkey: pubkey),
+            colorHex: item?.authorAvatarColor ?? defaultColor(pubkey: pubkey),
+            size: ModuleLayout.avatarSize
+        )
+        .overlay(alignment: .bottom) {
             if !isLast {
-                GeometryReader { geo in
-                    RoundedRectangle(cornerRadius: 1)
-                        .fill(Color(uiColor: .tertiaryLabel))
-                        .frame(width: 1.5,
-                               height: geo.size.height - 44 + ChirpSpace.m + ChirpSpace.m)
-                        .position(x: 22, // half of 44pt avatar
-                                  y: 44 + (geo.size.height - 44) / 2)
-                }
-                .frame(width: 44)
+                // Connecting line runs from avatar bottom into the next
+                // row's avatar top. Spans the inter-row gap (interRowSpacing)
+                // and the next avatar's height to reach its centre.
+                RoundedRectangle(cornerRadius: ModuleLayout.lineWidth / 2)
+                    .fill(Color(uiColor: .tertiaryLabel))
+                    .frame(
+                        width: ModuleLayout.lineWidth,
+                        height: ModuleLayout.interRowSpacing + ModuleLayout.avatarSize / 2
+                    )
+                    .offset(y: ModuleLayout.interRowSpacing + ModuleLayout.avatarSize / 2)
             }
-            ChirpAvatar(
-                url: item?.authorPictureUrl ?? "identicon:\(pubkey.prefix(8))",
-                initials: item?.authorAvatarInitials ?? defaultInitials(pubkey: pubkey),
-                colorHex: item?.authorAvatarColor ?? defaultColor(pubkey: pubkey),
-                size: 44
-            )
         }
-        .frame(width: 44, alignment: .top)
+        .frame(width: ModuleLayout.avatarSize, alignment: .top)
     }
 
     private func authorHeader(display: String, item: TimelineItem?, card: ChirpEventCard?) -> some View {
