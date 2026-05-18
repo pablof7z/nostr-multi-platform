@@ -21,6 +21,11 @@ impl Kernel {
         relay.connected_at = Some(Instant::now());
         relay.last_error = None;
         relay.auth = "not_required".to_string();
+        // T120 (G8 / G11): a fresh socket clears any prior denial — the
+        // remote may have changed policy or the user re-paid. The classifier
+        // re-stamps `denied` if the new socket also rejects us.
+        relay.denied = false;
+        relay.last_close_reason = None;
         self.changed_since_emit = true;
         self.log(format!("{} relay connected", role.key()));
         // M5+M2+M8 wiring: on reconnect the NIP-42 driver resets — the relay

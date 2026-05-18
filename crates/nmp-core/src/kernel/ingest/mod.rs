@@ -9,6 +9,7 @@
 //! `verify_and_persist` is the shared store-insertion path for non-timeline kinds.
 
 mod auth_handlers;
+mod closed;
 mod contacts;
 mod profile;
 mod relay_list;
@@ -168,7 +169,11 @@ impl Kernel {
                 self.log(format!("NOTICE {} {notice}", role.key()));
             }
             "CLOSED" => {
-                let sub_id = array.get(1).and_then(Value::as_str).unwrap_or("unknown");
+                let sub_id = array
+                    .get(1)
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown")
+                    .to_string();
                 let reason = array
                     .get(2)
                     .and_then(Value::as_str)
@@ -181,7 +186,11 @@ impl Kernel {
                 // told us the subscription is dead. Evict the row instead of
                 // leaving it with `state="closed_by_relay"` (which previously
                 // accumulated on the diagnostic surface across long sessions).
-                self.wire_subs.remove(sub_id);
+                // T120: the per-frame reason still flows through the classifier
+                // below — the classification lands on RelayHealth.last_close_reason
+                // (the diagnostic surface), so dropping the per-sub close_reason
+                // here loses nothing the UI cares about.
+                self.wire_subs.remove(&sub_id);
                 if sub_id.starts_with("thread-ids-") {
                     self.thread_ids_inflight = false;
                 }
@@ -189,10 +198,13 @@ impl Kernel {
                     self.thread_replies_inflight = false;
                 }
                 self.changed_since_emit = true;
-                self.log(format!(
-                    "CLOSED {sub_id} {}",
-                    reason.unwrap_or_else(|| "".to_string())
-                ));
+                // T120 (G8 / G11): apply the NIP-01 reason-prefix policy
+                // table. The classifier routes by reason (auth-required
+                // pauses the AuthGate; restricted/blocked mark relay
+                // denied; rate-limited records for the reconnect worker;
+                // error/invalid/unsupported log + give up). Pre-T120 every
+                // CLOSED folded to the generic "closed_by_relay" mark.
+                self.classify_and_route_closed(role, &sub_id, reason.as_deref());
             }
             "OK" => {
                 // M5+M2+M8 wiring: an OK frame may be the ack of an in-flight

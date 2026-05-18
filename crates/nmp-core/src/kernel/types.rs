@@ -147,6 +147,16 @@ pub(super) struct RelayStatus {
     pub(super) last_error: Option<String>,
     pub(super) bytes_rx: u64,
     pub(super) bytes_tx: u64,
+    /// T120 (G8 / G11): relay has denied this client by policy
+    /// (NIP-01 CLOSED reason `restricted:`, `blocked:`, or `shadowbanned:`).
+    /// Set once a denial classification arrives; surfaces in diagnostics so
+    /// UIs and reconnect workers can suppress retries against this relay.
+    pub(super) denied: bool,
+    /// T120 (G8 / G11): diagnostic key for the most recent NIP-01 CLOSED
+    /// reason prefix (`auth-required`, `rate-limited`, `restricted`, …) —
+    /// matches `CloseReason::as_key()`. `None` until the first classified
+    /// CLOSED frame arrives.
+    pub(super) last_close_reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -220,6 +230,14 @@ pub(super) struct RelayHealth {
     /// `authenticated` | `failed`). Mutated by `handle_auth_challenge` /
     /// `handle_auth_ok` per D8 (without bumping `changed_since_emit`).
     pub(super) auth: String,
+    /// T120 (G8 / G11): set when the relay has denied this client by policy
+    /// (NIP-01 CLOSED `restricted:` / `blocked:` / `shadowbanned:`). The
+    /// reconnect/REQ machinery should treat a denied relay as offline-for-
+    /// this-client; recovery is a fresh socket only (relay edit, etc.).
+    pub(super) denied: bool,
+    /// T120 (G8 / G11): the diagnostic key of the most recently classified
+    /// NIP-01 CLOSED reason. `None` until the first classified frame arrives.
+    pub(super) last_close_reason: Option<String>,
 }
 
 impl Default for RelayHealth {
@@ -233,6 +251,8 @@ impl Default for RelayHealth {
             reconnect_count: 0,
             counters: Counters::default(),
             auth: "not_required".to_string(),
+            denied: false,
+            last_close_reason: None,
         }
     }
 }

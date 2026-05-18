@@ -11,6 +11,9 @@
 //! - `tests`        — unit tests (cfg(test) only)
 
 mod auth;
+mod closed_reason;
+#[cfg(test)]
+mod closed_classifier_tests;
 mod discovery;
 #[cfg(test)]
 mod discovery_tests;

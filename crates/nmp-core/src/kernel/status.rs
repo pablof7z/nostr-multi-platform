@@ -34,6 +34,8 @@ impl Kernel {
             last_error: relay.last_error.clone(),
             bytes_rx: relay.counters.bytes_rx,
             bytes_tx: relay.counters.bytes_tx,
+            denied: relay.denied,
+            last_close_reason: relay.last_close_reason.clone(),
         }
     }
 
