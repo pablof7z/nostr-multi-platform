@@ -80,10 +80,9 @@ impl<T> From<T> for Placeholder<T> {
 /// scheme is detectable by the UI to render avatar initials + color instead
 /// of a network image fetch.
 pub fn picture_placeholder(pubkey: &str) -> String {
-    let prefix = if pubkey.len() >= 16 {
-        &pubkey[..16]
-    } else {
-        pubkey
-    };
+    // Char-based truncation: pubkeys are ASCII hex in practice, but slicing on
+    // a raw byte index would panic on a non-char-boundary if a non-ASCII string
+    // ever crosses this public helper. `take(16)` is byte-equivalent for ASCII.
+    let prefix: String = pubkey.chars().take(16).collect();
     format!("identicon:{prefix}")
 }
