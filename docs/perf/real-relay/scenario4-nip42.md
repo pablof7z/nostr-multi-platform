@@ -22,15 +22,10 @@ The relay acknowledged with `OK=true` for our auth event id.
 
 Proves the NIP-42 challenge/response handshake works against a relay that genuinely requires it.
 
-## Known limitation
+## T115 — typed API assertions
 
-The AUTH wire format (kind:22242 builder, `["AUTH", {event}]` frame, OK
-parser) is **inlined as a consumer copy** in `real_relay_nip42.rs` rather
-than imported from `nmp-nip42`, because `nmp-nip42` is not currently a
-dev-dependency of `nmp-testing` and `Cargo.toml` was outside this session's
-file-disjoint territory. Live wire behaviour is genuinely validated; the
-`nmp_nip42::{build_auth_event, wire_frame_for, parse_auth_frame,
-parse_ok_frame}` Rust API is not directly exercised by this test. A
-follow-up should add `nmp-nip42` to `crates/nmp-testing/Cargo.toml`'s
-dev-dependencies and replace the inlined helpers with the crate's public
-surface so a refactor breaking that API is caught here.
+`nmp-nip42` is now a dev-dependency of `nmp-testing` (T115). The AUTH wire
+helpers (`build_auth_event`, `wire_frame_for`, `parse_auth_frame`,
+`parse_ok_frame`, `AuthChallenge`, `AuthOk`) come from the crate's public
+surface rather than an inlined consumer copy. A refactor breaking the
+`nmp_nip42` API will now be caught by this test at compile time.

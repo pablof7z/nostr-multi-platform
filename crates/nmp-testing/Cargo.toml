@@ -21,6 +21,7 @@ nmp-nip01 = { path = "../nmp-nip01" }
 nmp-nip22 = { path = "../nmp-nip22" }
 nmp-nip23 = { path = "../nmp-nip23" }
 nmp-nip29 = { path = "../nmp-nip29" }
+nmp-nip42 = { path = "../nmp-nip42" }
 nmp-nip57 = { path = "../nmp-nip57" }
 nmp-reactions = { path = "../nmp-reactions" }
 nmp-signers = { path = "../nmp-signers" }

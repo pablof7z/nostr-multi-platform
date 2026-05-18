@@ -14,13 +14,13 @@
 //! - If a relay challenges but rejects our signed event (`OK=false`),
 //!   that is a FAIL — report it with the relay's stated reason.
 //!
-//! Doctrine D0: this test is a *consumer* of protocol primitives only.
-//! The four NIP-42 wire helpers (`parse_auth_frame`, `parse_ok_frame`,
-//! kind:22242 template, `["AUTH", <event>]` framing) are inlined here
-//! verbatim from `nmp-nip42`'s public surface — `nmp-nip42` is not a
-//! dependency of `nmp-testing` and the test territory forbids touching
-//! `Cargo.toml`. The signing path uses `nmp-signers::LocalKeySigner`
-//! (a real dev-dependency), exactly as production would.
+//! T115: this test imports `nmp-nip42` directly as a dev-dependency (added to
+//! `crates/nmp-testing/Cargo.toml`). The four NIP-42 wire helpers
+//! (`parse_auth_frame`, `parse_ok_frame`, `build_auth_event`,
+//! `nmp_nip42::builder::wire_frame_for`) now come from the crate's public
+//! surface, so any refactor breaking that API is caught here. The signing path
+//! uses `nmp-signers::LocalKeySigner` (a real dev-dependency), exactly as
+//! production would.
 //!
 //! ```bash
 //! cargo test -p nmp-testing --test real_relay_nip42 -- --ignored --nocapture
@@ -32,9 +32,9 @@ mod common;
 use std::time::{Duration, Instant};
 
 use common::{report_page, send_text, try_open, write_report, Verdict};
-use nmp_core::substrate::{SignedEvent, UnsignedEvent};
+use nmp_nip42::{build_auth_event, parse_auth_frame, parse_ok_frame, AuthChallenge, AuthOk};
 use nmp_signers::{LocalKeySigner, Signer, SignerOp};
-use serde_json::{json, Value};
+use serde_json::Value;
 
 /// Auth-required public relay candidates, probed in order. The first to
 /// emit an `["AUTH", …]` frame wins; the rest only appear in the SKIP
@@ -53,94 +53,7 @@ const CHALLENGE_BUDGET: Duration = Duration::from_secs(6);
 /// Time spent awaiting the `["OK", <auth-id>, …]` ack after sending AUTH.
 const OK_BUDGET: Duration = Duration::from_secs(8);
 
-// --- inlined nmp-nip42 public surface (consumer copy, D0) -----------------
-
-/// Mirrors `nmp_nip42::frame::AuthChallenge`.
-struct AuthChallenge {
-    challenge: String,
-    relay_url: String,
-}
-
-/// Mirrors `nmp_nip42::frame::parse_auth_frame`: an `["AUTH", <challenge>]`
-/// with a non-empty challenge string, else `None`.
-fn parse_auth_frame(frame: &[Value], relay_url: &str) -> Option<AuthChallenge> {
-    if frame.first().and_then(Value::as_str) != Some("AUTH") {
-        return None;
-    }
-    let challenge = frame.get(1).and_then(Value::as_str)?.to_string();
-    if challenge.is_empty() {
-        return None;
-    }
-    Some(AuthChallenge {
-        challenge,
-        relay_url: relay_url.to_string(),
-    })
-}
-
-/// Mirrors `nmp_nip42::frame::AuthOk`.
-struct AuthOk {
-    event_id: String,
-    accepted: bool,
-    reason: String,
-}
-
-/// Mirrors `nmp_nip42::frame::parse_ok_frame`: strict-bool `accepted`,
-/// non-empty event id, optional reason.
-fn parse_ok_frame(frame: &[Value]) -> Option<AuthOk> {
-    if frame.first().and_then(Value::as_str) != Some("OK") {
-        return None;
-    }
-    let event_id = frame.get(1).and_then(Value::as_str)?.to_string();
-    let accepted = frame.get(2).and_then(Value::as_bool)?;
-    let reason = frame
-        .get(3)
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
-    if event_id.is_empty() {
-        return None;
-    }
-    Some(AuthOk {
-        event_id,
-        accepted,
-        reason,
-    })
-}
-
-/// Mirrors `nmp_nip42::builder::build_auth_event`: kind:22242, the two
-/// mandatory tags, empty content.
-fn build_auth_event(ch: &AuthChallenge, pubkey: String, created_at: u64) -> UnsignedEvent {
-    UnsignedEvent {
-        pubkey,
-        kind: 22242,
-        tags: vec![
-            vec!["relay".to_string(), ch.relay_url.clone()],
-            vec!["challenge".to_string(), ch.challenge.clone()],
-        ],
-        content: String::new(),
-        created_at,
-    }
-}
-
-/// Mirrors `nmp_nip42::builder::wire_frame_for`: `["AUTH", <event_json>]`
-/// in standard NIP-01 signed-event object shape.
-fn wire_frame_for(signed: &SignedEvent) -> String {
-    json!([
-        "AUTH",
-        {
-            "id": signed.id,
-            "pubkey": signed.unsigned.pubkey,
-            "created_at": signed.unsigned.created_at,
-            "kind": signed.unsigned.kind,
-            "tags": signed.unsigned.tags,
-            "content": signed.unsigned.content,
-            "sig": signed.sig,
-        }
-    ])
-    .to_string()
-}
-
-// --- scenario -------------------------------------------------------------
+// --- scenario helpers -------------------------------------------------------
 
 /// Parse a text frame into a JSON array of `Value`s (the kernel's
 /// `handle_text` does the same outer split before dispatch).
@@ -150,6 +63,14 @@ fn frame_array(text: &str) -> Option<Vec<Value>> {
         .as_array()
         .cloned()
 }
+
+/// Render the wire frame the kernel pushes to the relay:
+/// `["AUTH", <event_json>]`. Delegates to `nmp_nip42::builder::wire_frame_for`.
+fn wire_frame_for(signed: &nmp_core::substrate::SignedEvent) -> String {
+    nmp_nip42::builder::wire_frame_for(signed)
+}
+
+// --- scenario ----------------------------------------------------------------
 
 #[test]
 #[ignore = "real-relay (run with --ignored)"]
