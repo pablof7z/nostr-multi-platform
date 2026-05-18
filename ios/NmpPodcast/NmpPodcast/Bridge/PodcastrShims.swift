@@ -2,6 +2,7 @@ import SwiftUI
 import Combine
 import CoreSpotlight
 import os.log
+import UserNotifications
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PodcastrShims.swift
@@ -18,10 +19,24 @@ import os.log
 // Each stub is documented with the gap task it blocks.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// MARK: - DownloadState (verbatim match to Podcastr's DownloadState.swift)
+//
+// Top-level so Episode can typealias it and DownloadsManagerView patterns compile.
+
+enum EpisodeDownloadState: Codable, Hashable {
+    case notDownloaded
+    case queued
+    /// progress is 0...1; bytesWritten may be nil.
+    case downloading(progress: Double, bytesWritten: Int64?)
+    /// localFileURL and byteCount.
+    case downloaded(localFileURL: URL, byteCount: Int64)
+    case failed(message: String)
+}
+
 // MARK: - Domain models
 
 /// T-podcast-gap-001: Full Episode model backed by kernel snapshot.
-struct Episode: Identifiable, Hashable {
+struct Episode: Identifiable, Hashable, Codable {
     let id: UUID
     var podcastID: UUID = UUID()
     var guid: String = ""
@@ -42,8 +57,8 @@ struct Episode: Identifiable, Hashable {
 // MARK: - AutoDownloadPolicy
 
 /// Stub policy controlling per-show auto-download behaviour.
-struct AutoDownloadPolicy: Equatable, Hashable {
-    enum Mode: Equatable, Hashable {
+struct AutoDownloadPolicy: Equatable, Hashable, Codable {
+    enum Mode: Equatable, Hashable, Codable {
         case off
         case latestN(Int)
         case allNew
@@ -55,7 +70,7 @@ struct AutoDownloadPolicy: Equatable, Hashable {
 }
 
 /// T-podcast-gap-001: Full Podcast/Show model backed by kernel snapshot.
-struct Podcast: Identifiable, Hashable {
+struct Podcast: Identifiable, Hashable, Codable {
     let id: UUID
     var title: String = ""
     var author: String = ""
@@ -71,6 +86,8 @@ struct Podcast: Identifiable, Hashable {
     var notificationsEnabled: Bool = true
     /// Auto-download policy for this show. Stub — returns default policy.
     var autoDownload: AutoDownloadPolicy = .default
+    /// Language tag from RSS feed (e.g. "en"). Nil until kernel exposes feed metadata.
+    var language: String? = nil
 
     /// Sentinel used by AllPodcastsListView to exclude the "unknown" fallback row.
     static let unknownID: UUID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
@@ -87,7 +104,7 @@ struct Podcast: Identifiable, Hashable {
     var artworkSymbol: String { "antenna.radiowaves.left.and.right" }
 }
 
-struct Chapter: Identifiable, Hashable {
+struct Chapter: Identifiable, Hashable, Codable {
     let id: UUID
     var title: String = ""
     var startTime: TimeInterval = 0
@@ -99,13 +116,13 @@ extension [Chapter] {
     func active(at playhead: TimeInterval) -> Chapter? { nil }
 }
 
-struct TranscriptSegment: Identifiable, Hashable {
+struct TranscriptSegment: Identifiable, Hashable, Codable {
     let id: UUID
     var text: String = ""
     var startTime: TimeInterval = 0
 }
 
-struct Clip: Identifiable, Hashable {
+struct Clip: Identifiable, Hashable, Codable {
     let id: UUID
     var episodeID: UUID = UUID()
     var startSeconds: TimeInterval = 0
@@ -113,25 +130,46 @@ struct Clip: Identifiable, Hashable {
     var title: String = ""
 }
 
-struct Note: Identifiable, Hashable {
+struct Note: Identifiable, Hashable, Codable {
     let id: UUID
     var text: String = ""
     var createdAt: Date = Date()
+    var deleted: Bool = false
 }
 
-struct AgentMemory: Identifiable, Hashable {
+struct AgentMemory: Identifiable, Hashable, Codable {
     let id: UUID
     var content: String = ""
+    var deleted: Bool = false
 }
 
-struct NostrConversation: Identifiable, Hashable {
+/// Minimal stub for an agent activity log entry.
+struct AgentActivityEntry: Identifiable, Hashable, Codable {
+    let id: UUID
+    var undone: Bool = false
+}
+
+struct NostrConversation: Identifiable, Hashable, Codable {
     let id: UUID
     var rootEventID: String = ""
 }
 
+/// Stub Nostr friend / contact row.
+struct Friend: Identifiable, Hashable, Codable {
+    let id: UUID
+    var identifier: String = ""  // pubkey hex or npub
+    var displayName: String = ""
+}
+
+/// Stub pending NIP-46 or agent approval row.
+struct NostrPendingApproval: Identifiable, Hashable, Codable {
+    let id: UUID
+    var pubkeyHex: String = ""
+}
+
 // MARK: - AppState
 
-struct AppState {
+struct AppState: Codable, Sendable {
     /// Initialized with UserDefaults-persisted critical flags so the onboarding
     /// gate survives app restarts. Full Settings disk persistence: T-podcast-gap-004.
     var settings: Settings = {
@@ -145,6 +183,27 @@ struct AppState {
     var notes: [Note] = []
     var nostrConversations: [NostrConversation] = []
     var lastPlayedEpisodeID: UUID? = nil
+
+    // MARK: - Fields added for verbatim-3 Settings screen shims
+
+    /// User-followed podcast subscriptions. Stub returns empty list; real
+    /// data flows from the kernel library snapshot (T-podcast-gap-003).
+    var subscriptions: [Podcast] = []
+
+    /// User-defined podcast categories. Stub returns empty list.
+    var categories: [PodcastCategory] = []
+
+    /// Nostr contacts / friends. Stub returns empty list.
+    var friends: [Friend] = []
+
+    /// Agent memory entries (long-term memory bank). Stub returns empty.
+    var agentMemories: [AgentMemory] = []
+
+    /// Agent activity log entries for the undo subsystem. Stub returns empty.
+    var agentActivity: [AgentActivityEntry] = []
+
+    /// Pending NIP-46 / agent approval rows awaiting user decision. Stub empty.
+    var nostrPendingApprovals: [NostrPendingApproval] = []
 }
 
 // MARK: - AppStateStore
@@ -239,6 +298,51 @@ final class AppStateStore {
     func setSubscriptionAutoDownload(_ podcastID: UUID, policy: AutoDownloadPolicy) {}
     func flushPendingPositions() {}
     func clearTriageDecision(_ id: UUID) {}
+
+    // MARK: - Derived helpers added for verbatim-3 Settings screen shims
+
+    /// Active (non-deleted) notes. Mirrors Podcastr's AppStateStore+DerivedViews.
+    var activeNotes: [Note] { state.notes.filter { !$0.deleted } }
+
+    /// Active (non-deleted) agent memories. Mirrors AppStateStore+Memories.
+    var activeMemories: [AgentMemory] { state.agentMemories.filter { !$0.deleted } }
+
+    /// Count of non-undone agent activity entries. Mirrors AppStateStore+AgentActivity.
+    var activeAgentActivityCount: Int { state.agentActivity.filter { !$0.undone }.count }
+
+    /// Pending Nostr approval rows. Mirrors AppStateStore+Nostr.
+    var pendingNostrApprovals: [NostrPendingApproval] { state.nostrPendingApprovals }
+
+    /// Alphabetically-sorted list of subscribed podcasts. Mirrors
+    /// AppStateStore+Subscriptions.sortedFollowedPodcasts. Falls back to
+    /// allPodcasts (kernel-backed) when state.subscriptions is empty, so the
+    /// list is non-empty once the kernel delivers library data.
+    var sortedFollowedPodcasts: [Podcast] {
+        let base = state.subscriptions.isEmpty ? allPodcasts : state.subscriptions
+        return base.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
+
+    /// Wipes all user data from AppState. Stub resets in-memory state only.
+    /// Real implementation persists deletion (T-podcast-gap-004).
+    func clearAllData() {
+        state = AppState()
+    }
+
+    /// Export OPML data for the subscriptions list. Stub returns nil
+    /// (real implementation serialises sortedFollowedPodcasts — T-podcast-gap-004).
+    func exportOPML() -> URL? { nil }
+
+    /// Mutates the download state of an episode in place. Stub no-ops since
+    /// EpisodeDownloadService owns live state (T-podcast-gap-005).
+    func setEpisodeDownloadState(_ id: UUID, state newState: EpisodeDownloadState) {
+        // In-memory update for the stub; real impl writes to SQLite persistence.
+        guard let idx = state.episodes.firstIndex(where: { $0.id == id }) else { return }
+        switch newState {
+        case .downloaded: state.episodes[idx].isDownloaded = true
+        case .notDownloaded: state.episodes[idx].isDownloaded = false
+        default: break
+        }
+    }
 }
 
 struct PendingFriendInvite: Identifiable {
@@ -255,6 +359,24 @@ final class UserIdentityStore {
     static let shared = UserIdentityStore()
     var publicKeyHex: String? = nil
 
+    /// What kind of identity is currently active.
+    enum Mode: String, Sendable, Codable {
+        case none
+        case localKey
+        case remoteSigner
+    }
+    /// Current signer mode. Stub returns .none (no identity configured).
+    var mode: Mode = .none
+
+    /// Nostr public key in bech32 npub format. Nil when no identity.
+    var npub: String? { nil }
+
+    /// Short display form: first-10 + "…" + last-6 of the full npub.
+    var npubShort: String? {
+        guard let full = npub, full.count > 16 else { return npub }
+        return "\(full.prefix(10))…\(full.suffix(6))"
+    }
+
     func start() {}
 }
 
@@ -262,7 +384,7 @@ final class UserIdentityStore {
 
 struct UserProfileDisplay {
     var displayName: String
-    var slug: String?
+    var slug: String   // non-optional in Podcastr API
     var pictureURL: URL?
 
     static func from(identity: UserIdentityStore) -> UserProfileDisplay? {
@@ -291,6 +413,10 @@ struct AgentResponder {
 @MainActor
 final class NostrStack {
     static let shared = NostrStack()
+
+    /// Whether any relay WebSocket is currently connected.
+    /// Stub returns false (no live relay connections in NMP kernel path).
+    private(set) var relaysConnected: Bool = false
 
     func bind(store: AppStateStore) async {}
     func start() async {}
@@ -479,8 +605,10 @@ final class EpisodeMetadataIndexer {
 @MainActor
 final class EpisodeDownloadService {
     static let shared = EpisodeDownloadService()
-    /// Live progress map keyed by episodeID (0-1). Empty stub.
+    /// Live download progress map keyed by episodeID (0-1). Empty stub.
     var progress: [UUID: Double] = [:]
+    /// Expected byte counts from URLSession response headers. Empty stub.
+    var expectedBytes: [UUID: Int64] = [:]
     func attach(appStore: AppStateStore) {}
     func ensureDownloadEnqueued(episodeID: UUID) {}
     func download(episodeID: UUID) {}
@@ -543,10 +671,16 @@ struct SubscriptionService {
 
 // MARK: - PodcastCategory
 
-/// Stub category model used by LibraryGridCell and HomeCategoryCard.
-struct PodcastCategory: Identifiable, Hashable {
-    let id: UUID
+/// Category model mirroring Podcastr's PodcastCategory domain type.
+struct PodcastCategory: Identifiable, Hashable, Codable {
+    var id: UUID
     var name: String = ""
+    var slug: String = ""
+    var description: String = ""
+    var colorHex: String? = nil
+    /// UUIDs of subscriptions placed in this category by the categorisation service.
+    var subscriptionIDs: [UUID] = []
+    var generatedAt: Date = Date()
 }
 
 // MARK: - AppShadow / appShadow view modifier
@@ -593,16 +727,9 @@ extension Episode {
     /// Enclosure URL for sharing. Falls back to a placeholder when fileURL is nil.
     var enclosureURL: URL { fileURL ?? URL(string: "https://example.com/episode")! }
 
-    /// Download state enum with associated values matching Podcastr semantics.
-    enum DownloadState {
-        case notDownloaded
-        /// Persisted progress (0-1) and a transient speed placeholder.
-        case downloading(Double, Double)
-        case queued
-        case downloaded
-        case failed
-    }
-    var downloadState: DownloadState { isDownloaded ? .downloaded : .notDownloaded }
+    /// Download state enum matching Podcastr's DownloadState (DownloadState.swift).
+    typealias DownloadState = EpisodeDownloadState
+    var downloadState: DownloadState { isDownloaded ? .downloaded(localFileURL: fileURL ?? URL(string: "file:///")!, byteCount: 0) : .notDownloaded }
 
     /// Transcript state enum matching Podcastr semantics.
     enum TranscriptState {
@@ -647,6 +774,14 @@ final class WikiHomeViewModel {
 
 enum NotificationService {
     static let episodeIDUserInfoKey = "episodeID"
+
+    /// Requests user permission for alerts, sound, and badge notifications.
+    /// Stub delegates to UNUserNotificationCenter directly. Returns true if granted.
+    @MainActor
+    static func requestAuthorization() async -> Bool {
+        let center = UNUserNotificationCenter.current()
+        return (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+    }
 }
 
 // MARK: - LivePodcastAgentToolDeps
@@ -711,3 +846,296 @@ enum EpisodeShowNotesFormatter {
 }
 
 // Note: Double.clamped01 is defined in Design/NumberExtensions.swift
+
+// MARK: - DataExport (verbatim-3)
+//
+// Pure service used by DataExportView. Verbatim copy from Podcastr would pull
+// in the entire AppState Codable chain; instead we ship a functionally
+// identical shim that satisfies the type checker and produces valid JSON for
+// the honest empty AppState (T-podcast-gap-004).
+
+enum DataExport {
+
+    struct Payload: Codable, Sendable {
+        var schemaVersion: Int
+        var generatedAt: Date
+        var appVersion: String?
+        var buildNumber: String?
+        var sourceBundleIdentifier: String?
+        var state: AppState
+    }
+
+    static let currentSchemaVersion = 1
+
+    private static let encoder: JSONEncoder = {
+        let e = JSONEncoder()
+        e.dateEncodingStrategy = .iso8601
+        e.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return e
+    }()
+
+    private static let filenameDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd-HHmm"
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
+
+    struct Stats: Sendable, Hashable {
+        var subscriptions: Int
+        var episodes: Int
+        var notes: Int
+        var friends: Int
+        var memories: Int
+        var agentActivity: Int
+
+        var totalRecords: Int {
+            subscriptions + episodes + notes + friends + memories + agentActivity
+        }
+    }
+
+    static func stats(for state: AppState) -> Stats {
+        Stats(
+            subscriptions: state.subscriptions.count,
+            episodes: state.episodes.count,
+            notes: state.notes.filter { !$0.deleted }.count,
+            friends: state.friends.count,
+            memories: state.agentMemories.filter { !$0.deleted }.count,
+            agentActivity: state.agentActivity.count
+        )
+    }
+
+    static func redactedState(from state: AppState) -> AppState {
+        var copy = state
+        copy.settings.legacyOpenRouterAPIKey = nil
+        return copy
+    }
+
+    static func makePayload(from state: AppState, now: Date = Date()) -> Payload {
+        let info = Bundle.main.infoDictionary
+        return Payload(
+            schemaVersion: currentSchemaVersion,
+            generatedAt: now,
+            appVersion: info?["CFBundleShortVersionString"] as? String,
+            buildNumber: info?["CFBundleVersion"] as? String,
+            sourceBundleIdentifier: Bundle.main.bundleIdentifier,
+            state: redactedState(from: state)
+        )
+    }
+
+    static func encode(_ payload: Payload) throws -> Data {
+        try encoder.encode(payload)
+    }
+
+    static func suggestedFilename(at date: Date = Date()) -> String {
+        "Podcastr-Export-\(filenameDateFormatter.string(from: date)).json"
+    }
+
+    static func writeTemporaryFile(_ data: Data, filename: String) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(filename)
+        try data.write(to: url, options: [.atomic])
+        return url
+    }
+
+    static func writeExport(of state: AppState, now: Date = Date()) throws -> URL {
+        let payload = makePayload(from: state, now: now)
+        let data = try encode(payload)
+        let filename = suggestedFilename(at: now)
+        return try writeTemporaryFile(data, filename: filename)
+    }
+}
+
+// MARK: - OPMLExport (verbatim-3)
+
+/// Minimal OPML exporter for SubscriptionsListView. Mirrors Podcastr's
+/// OPMLExport struct — functionally equivalent shim.
+struct OPMLExport: Sendable {
+    func exportOPML(
+        podcasts: [Podcast],
+        title: String = "Podcastr Subscriptions",
+        dateCreated: Date = Date()
+    ) -> Data {
+        var lines: [String] = []
+        lines.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
+        lines.append("<opml version=\"2.0\">")
+        lines.append("  <head>")
+        lines.append("    <title>\(escape(title))</title>")
+        lines.append("  </head>")
+        lines.append("  <body>")
+        lines.append("    <outline text=\"feeds\" title=\"feeds\">")
+        for podcast in podcasts {
+            if let feedURL = podcast.feedURL {
+                let text = escape(podcast.title)
+                lines.append("      <outline type=\"rss\" text=\"\(text)\" title=\"\(text)\" xmlUrl=\"\(feedURL.absoluteString)\" />")
+            }
+        }
+        lines.append("    </outline>")
+        lines.append("  </body>")
+        lines.append("</opml>")
+        return lines.joined(separator: "\n").data(using: .utf8) ?? Data()
+    }
+
+    private func escape(_ s: String) -> String {
+        s.replacingOccurrences(of: "&", with: "&amp;")
+         .replacingOccurrences(of: "<", with: "&lt;")
+         .replacingOccurrences(of: ">", with: "&gt;")
+         .replacingOccurrences(of: "\"", with: "&quot;")
+    }
+}
+
+// MARK: - PodcastCategorizationService stub (verbatim-3)
+
+/// Categorisation pipeline errors mirroring Podcastr's CategorizationError.
+enum CategorizationError: LocalizedError {
+    case noAPIKey(provider: String)
+    case noSubscriptions
+    case noModelSelected
+    case invalidResponse
+    case httpError(status: Int, body: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .noAPIKey(let provider):
+            return "\(provider) is not connected. Add a key in Settings → Intelligence → Providers."
+        case .noSubscriptions:
+            return "Add at least one podcast subscription before generating categories."
+        case .noModelSelected:
+            return "Choose a categorization model in Settings → Intelligence → Models."
+        case .invalidResponse:
+            return "The model returned an unexpected response. Try again."
+        case .httpError(let status, _):
+            return "HTTP error \(status). Check your API key and try again."
+        }
+    }
+}
+
+/// Stub category recomputation service used by CategoriesRecomputeSheet.
+/// Real implementation calls the LLM categorisation pipeline (T-podcast-gap-006).
+@Observable
+@MainActor
+final class PodcastCategorizationService {
+    static let shared = PodcastCategorizationService()
+
+    private(set) var lastRun: Date? = nil
+    private(set) var isRunning: Bool = false
+
+    func recompute(store: AppStateStore) async throws -> [PodcastCategory] { [] }
+}
+
+// MARK: - AutoDownloadPolicy additions (verbatim-3)
+
+extension AutoDownloadPolicy {
+    /// Short human-readable label for the SubscriptionsListView row.
+    var summaryLabel: String? {
+        switch mode {
+        case .off: return nil
+        case .latestN(let n): return "Latest \(n)"
+        case .allNew: return "All new"
+        }
+    }
+}
+
+// MARK: - EpisodeDownloadStore stub (verbatim-3)
+
+/// Stub matching Podcastr's on-disk download enumerator used by
+/// StorageSettingsView.compute(store:). Returns an empty list until a real
+/// download engine is wired (T-podcast-gap-005).
+@MainActor
+final class EpisodeDownloadStore {
+    static let shared = EpisodeDownloadStore()
+
+    struct FileEntry: Sendable {
+        let url: URL
+        let bytes: Int64
+        let episodeID: UUID?
+    }
+
+    func enumerateOnDisk() -> [FileEntry] { [] }
+}
+
+// MARK: - Bridge stub destinations for Settings NavigationLinks (verbatim-3)
+//
+// These are NavigationLink destinations referenced by the verbatim Settings
+// screen that belong to their own verbatim-N iterations. Honest empty-state
+// stubs here keep the verbatim SettingsView body byte-for-byte while the
+// NavigationLink pushes a recognisable placeholder, not a crash.
+
+/// T-podcast-ios-verbatim-4: Identity root screen. Own verbatim iteration.
+struct IdentityRootView: View {
+    var body: some View {
+        ContentUnavailableView(
+            "Identity",
+            systemImage: "person.crop.circle",
+            description: Text("Identity screen restores in T-podcast-ios-verbatim-4.")
+        )
+        .navigationTitle("Identity")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// T-podcast-ios-verbatim-N: Categories list. Own verbatim iteration.
+struct CategoriesListView: View {
+    var body: some View {
+        ContentUnavailableView(
+            "Categories",
+            systemImage: "square.grid.2x2.fill",
+            description: Text("Categories screen restores in a future verbatim iteration.")
+        )
+        .navigationTitle("Categories")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// T-podcast-ios-verbatim-N: Agent settings. Own verbatim iteration.
+struct AgentSettingsView: View {
+    var body: some View {
+        ContentUnavailableView(
+            "Agent",
+            systemImage: "brain.head.profile",
+            description: Text("Agent settings restore in a future verbatim iteration.")
+        )
+        .navigationTitle("Agent")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// T-podcast-ios-verbatim-N: AI providers settings. Own verbatim iteration.
+struct AIProvidersSettingsView: View {
+    var body: some View {
+        ContentUnavailableView(
+            "Providers",
+            systemImage: "key.viewfinder",
+            description: Text("AI Providers screen restores in a future verbatim iteration.")
+        )
+        .navigationTitle("Providers")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// T-podcast-ios-verbatim-N: AI models settings. Own verbatim iteration.
+struct AIModelsSettingsView: View {
+    var body: some View {
+        ContentUnavailableView(
+            "Models",
+            systemImage: "slider.horizontal.3",
+            description: Text("AI Models screen restores in a future verbatim iteration.")
+        )
+        .navigationTitle("Models")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// T-podcast-ios-verbatim-N: Networking settings. Own verbatim iteration.
+struct NetworkingSettingsView: View {
+    var body: some View {
+        ContentUnavailableView(
+            "Networking",
+            systemImage: "network",
+            description: Text("Networking settings restore in a future verbatim iteration.")
+        )
+        .navigationTitle("Networking")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
