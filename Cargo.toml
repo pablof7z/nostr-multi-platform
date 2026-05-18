@@ -1,6 +1,11 @@
 [workspace]
 members = [
     "apps/fixture/nmp-app-fixture",
+    "apps/podcast/podcast-core",
+    "apps/podcast/podcast-feeds",
+    "apps/podcast/podcast-audio",
+    "apps/podcast/podcast-rag",
+    "apps/podcast/podcast-llm",
     "crates/fixture-todo-core",
     "crates/nmp-codegen",
     "crates/nmp-core",
