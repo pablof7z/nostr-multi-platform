@@ -47,6 +47,17 @@ which routes through the identical envelope path the kernel will use.
 **If the user disagrees:** revert the single `feat(ios-keychain):` commit;
 the Swift side is self-contained and re-derivable against a different
 kernel-side envelope shape once T63 defines one.
+### PD-020 (resolved 2026-05-18 autonomously) — T81 SubKey/triple: `iter_active` dedups by `(scope, key)`, not by `InterestId`
+
+**Decision (autonomous, T81 / SubKey + ownership triple):** The `InterestRegistry` is now keyed by the `(owner, key, scope)` triple from `docs/design/nostrdb-notedeck-lessons.md` §3.2. Two design ambiguities were resolved by making a call:
+
+1. **Dedup unit.** notedeck's model is "many owners share one live `(scope, key)` sub". The pre-existing registry deduped by `InterestId`. I made `(scope, key)` the dedup unit: `iter_active()` returns exactly one `LogicalInterest` per `(scope, key)` regardless of how many owners are attached, with an owner refcount that GCs the slot when the last owner leaves. This is the notedeck semantic and is what the task's "dedup across owners" test asks for. Consequence: the legacy `push(LogicalInterest)` surface maps `InterestId → SubKey` and a single synthetic owner, so two interests with *different* ids still occupy different slots (legacy behaviour preserved); but a future caller that attaches two owners to the same `SubKey` gets one sub, not two. Documented inline in `registry.rs`.
+
+2. **`InterestScope::ActiveAccount` → `SubScope`.** `LogicalInterest::scope` has three variants (`ActiveAccount`, `Account(pk)`, `Global`); `SubScope` has two (`Account(pk)`, `Global`) per §3.4. `ActiveAccount` does not name a concrete pubkey until compile time, so in the registry it shares the `Global` slot space (it is not isolated per-account until M8 resolves the active pubkey). `Account(pk)` maps to `SubScope::Account(pk)` and is isolated. Documented inline as `legacy_scope`.
+
+**Also:** `registry.rs` is 368 LOC. The task's "≤300/500" budget reads as "split if it pushes over"; non-test code is ~210 LOC and the 500-LOC hard ceiling is satisfied. The >300 is the `#[cfg(test)] mod tests` block — splitting a private test module into a sibling file would churn the test layout for no readability gain, so I kept it inline. `sub_key.rs` is 197 LOC. Public surface unchanged for all existing callers (`push`/`withdraw`/`iter_active`); new surface (`SubKey`, `SubOwnerKey`, `SubScope`, `SubIdentity`, `ensure_sub`, `set_sub`, `drop_owner`) is additive.
+
+**If the user disagrees:** the dedup-by-`(scope,key)` call is the load-bearing one. Reverting to dedup-by-`InterestId` while keeping the triple would mean `iter_active` returns N interests for N owners of the same `SubKey` — which contradicts the notedeck §3.2 "keep the live wire sub alive while any owner is attached" model and the task's dedup-across-owners test. The commit (`feat(subs): SubKey + ownership triple`) can be amended.
 
 ### PD-016 (resolved 2026-05-18 autonomously) — T62 lifecycle re-plan: A11 needs no dedicated drain_tick arm
 

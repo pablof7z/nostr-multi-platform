@@ -24,6 +24,7 @@ pub(crate) mod inbox;
 pub(crate) mod lifecycle_gate;
 pub(crate) mod pool;
 pub(crate) mod registry;
+pub(crate) mod sub_key;
 pub(crate) mod trigger;
 pub(crate) mod wire;
 
@@ -56,6 +57,7 @@ pub type PlanCoverageHook = Arc<dyn Fn(&mut CompiledPlan) + Send + Sync>;
 pub use inbox::TriggerInbox;
 pub use pool::{ConnectionPool, InMemoryPool, PoolSendOutcome};
 pub use registry::InterestRegistry;
+pub use sub_key::{SubIdentity, SubKey, SubKeyBuilder, SubOwnerKey, SubScope};
 pub use trigger::{AccountId, CompileTrigger, InvalidateReason, RelayAuthState, SignerId};
 pub use wire::{plan_diff, WireFrame};
 
