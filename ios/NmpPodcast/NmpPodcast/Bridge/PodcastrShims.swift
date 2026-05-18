@@ -132,7 +132,13 @@ struct NostrConversation: Identifiable, Hashable {
 // MARK: - AppState
 
 struct AppState {
-    var settings: Settings = Settings()
+    /// Initialized with UserDefaults-persisted critical flags so the onboarding
+    /// gate survives app restarts. Full Settings disk persistence: T-podcast-gap-004.
+    var settings: Settings = {
+        var s = Settings()
+        s.hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+        return s
+    }()
     var episodes: [Episode] = []
     var podcasts: [Podcast] = []
     var clips: [Clip] = []
@@ -211,10 +217,15 @@ final class AppStateStore {
 
     /// Mutates `state.settings` in-place. Called by OnboardingView handlers
     /// and Settings screens to persist preferences. The real Podcastr AppStateStore
-    /// persists to disk; this shim updates in-memory state only (sufficient for
-    /// T-podcast-ios-verbatim-2 — full persistence is T-podcast-gap-004).
+    /// persists to disk; this shim updates in-memory state and mirrors
+    /// persistence-critical fields to UserDefaults so they survive app restart.
+    /// Full Settings disk persistence is T-podcast-gap-004.
     func updateSettings(_ settings: Settings) {
         state.settings = settings
+        // Mirror the onboarding-gate flag to UserDefaults so the flow is not
+        // shown again after the user completes it. T-podcast-gap-004 covers
+        // full disk serialisation of the Settings value.
+        UserDefaults.standard.set(settings.hasCompletedOnboarding, forKey: "hasCompletedOnboarding")
     }
 
     func episode(id: UUID) -> Episode? { nil }
