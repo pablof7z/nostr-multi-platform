@@ -154,9 +154,7 @@ pub(crate) fn profile_thrashing() -> Scenario {
                 "dedup_ratio",
                 dedup_ratio,
                 DEDUP_RATIO_GATE,
-                Some(
-                    "new wire subs / mount cycles; kernel dedup keeps this near zero".to_string(),
-                ),
+                Some("new wire subs / mount cycles; kernel dedup keeps this near zero".to_string()),
             ),
             gate_eq(
                 "leaked_subscriptions",

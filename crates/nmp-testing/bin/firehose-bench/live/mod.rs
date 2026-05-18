@@ -45,9 +45,7 @@ pub(super) fn drain_until(rx: &Receiver<String>, ceiling: Duration) -> Option<St
     let deadline = Instant::now() + ceiling;
     let first = wait_update(rx, deadline);
     if first.is_none() {
-        eprintln!(
-            "drain timeout — snapshot may be stale; gate will fail closed"
-        );
+        eprintln!("drain timeout — snapshot may be stale; gate will fail closed");
         return None;
     }
     // Drain any additional updates that arrived while we waited.
@@ -143,7 +141,10 @@ mod tests {
             tx.send(r#"{"wire_subscriptions":[]}"#.to_string()).unwrap();
         });
         let result = drain_until(&rx, Duration::from_secs(2));
-        assert!(result.is_some(), "drain_until must return Some when update arrives within ceiling");
+        assert!(
+            result.is_some(),
+            "drain_until must return Some when update arrives within ceiling"
+        );
     }
 
     /// No sender: `drain_until` must return `None` after the ceiling elapses.
@@ -152,7 +153,10 @@ mod tests {
         let (_tx, rx) = mpsc::channel::<String>();
         // Short ceiling so the test completes quickly.
         let result = drain_until(&rx, Duration::from_millis(100));
-        assert!(result.is_none(), "drain_until must return None when no update arrives before ceiling");
+        assert!(
+            result.is_none(),
+            "drain_until must return None when no update arrives before ceiling"
+        );
     }
 
     /// Multiple rapid updates: `drain_until` must return the latest, not the first.
@@ -164,6 +168,10 @@ mod tests {
         tx.send("second".to_string()).unwrap();
         tx.send("third".to_string()).unwrap();
         let result = drain_until(&rx, Duration::from_secs(1));
-        assert_eq!(result.as_deref(), Some("third"), "drain_until must return the newest update");
+        assert_eq!(
+            result.as_deref(),
+            Some("third"),
+            "drain_until must return the newest update"
+        );
     }
 }

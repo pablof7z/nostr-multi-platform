@@ -11,8 +11,8 @@
 //! - filled-timeline ≤ 5 000 ms
 
 use super::{drain, metric, round2, wait_connected, wait_update, Scenario};
-use crate::scenarios::{finish_scenario, gate_max};
 use crate::report::ScenarioMetrics;
+use crate::scenarios::{finish_scenario, gate_max};
 use nmp_core::testing::{spawn_actor, ActorCommand};
 use std::time::{Duration, Instant};
 
