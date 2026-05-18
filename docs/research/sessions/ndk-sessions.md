@@ -149,7 +149,7 @@ export interface NDKSignerStatic<T extends NDKSigner> {
 Notable choices:
 - `pubkey` getter is **sync** but can throw `"Not ready"` for NIP-07/NIP-46 — caller must call `blockUntilReady()` first. Documented at `index.ts:21-23`.
 - `sign` returns only the signature string, not a signed event. The caller assembles.
-- `encryption*` are required on the interface but split by scheme (`"nip04" | "nip44"`); querying via `encryptionEnabled(scheme?)` returns the supported subset.
+- `encrypt`/`decrypt` are required, but `encryptionEnabled?` is optional capability-probing — implementations that lack any encryption scheme can omit it entirely. The schemes themselves are split by string (`"nip04" | "nip44"`). Total: **8 required + 2 optional** members (`relays?` and `encryptionEnabled?` are the two optionals).
 - Serialization is via two methods: `toPayload()` returns `{type, payload}` JSON; the registry (`registry.ts:7-14`) dispatches to `static fromPayload`. Adding a new signer type means calling `registerSigner("name", Class)` at module import (e.g. `private-key/index.ts:241`, `nip07/index.ts:302`, `nip46/index.ts:613`, `mobile/src/signers/nip55.ts:185`).
 
 **Applies to NMP:** the **type-tagged registry** for signer serialization is the right pattern. NMP already has `IdentityModule::Descriptor` (`crates/nmp-core/src/substrate/identity.rs:11`) which is the moral equivalent. Make sure the registry is in `nmp-core` so extension modules (e.g. an NIP-46 module) can register without core knowing the type.
@@ -232,7 +232,7 @@ export interface SessionStorage {
 
 ## 8. Errors (`sessions/src/utils/errors.ts`)
 
-Six typed errors all extending `SessionError extends Error`. The discriminator is `error.name` (set in each constructor). `SignerDeserializationError`, `StorageError`, `SessionNotFoundError`, `NoActiveSessionError`, `NDKNotInitializedError`. **Applies to NMP:** NMP's `IdentityError` enum (`identity.rs:50-53`) currently has only two variants; the equivalent set is needed when M6 lands — at minimum `NotFound(pubkey)`, `NotActive`, `SignerRestoreFailed(reason)`, `KeyringUnavailable`, `Timeout(op, ms)`.
+Six error classes total — base `SessionError extends Error` plus five typed subclasses. The discriminator is `error.name` (set in each constructor). Subclasses: `SignerDeserializationError`, `StorageError`, `SessionNotFoundError`, `NoActiveSessionError`, `NDKNotInitializedError`. **Applies to NMP:** NMP's `IdentityError` enum (`identity.rs:50-53`) currently has only two variants; the equivalent set is needed when M6 lands — at minimum `NotFound(pubkey)`, `NotActive`, `SignerRestoreFailed(reason)`, `KeyringUnavailable`, `Timeout(op, ms)`.
 
 ## 9. Auto-save (`manager.ts:467-477`)
 

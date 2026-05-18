@@ -79,15 +79,13 @@ ActivateAccount { pubkey: String },
 RemoveAccount { pubkey: String, wipe: bool },
 ```
 
-**Recommendation:** these five intents are the right primitives. Add three more for M6 completeness:
+**Recommendation:** these five intents are the right primitives. Add ONE more for M6 completeness:
 
 ```rust
 GenerateNewAccount { display_name: Option<String>, passphrase: String }, // create + nip-49 encrypt + publish kind:0/10002 if requested
-ListAccounts,                                                            // returns Vec<AccountRecord> in AppState
-RenameAccount { pubkey: String, display_name: String },                  // touches metadata only
 ```
 
-`ListAccounts` is implicit (always in `AppState.sessions.accounts`); `RenameAccount` is metadata-only and writes through `KeyringCapability` (since the keyring already holds the account record).
+**Defer to M8** (per `docs/plan/m8-multi-account.md` per `docs/plan/m6-signers-write.md`): account-metadata editing (`RenameAccount`), the multi-account switcher UI, and any full N-account state-machine UX. The account list is **always** readable from `AppState.session.accounts` (no `ListAccounts` action needed — it's snapshot state per D8). The data-model multi-account support is M6 invariant (don't bake "single account" into any schema); the *UX surface* for it is M8.
 
 **Enumeration**: read-only via `AppState.session.accounts: Vec<AccountRecord>`. Reactive: the actor emits `AppUpdate::FullState` (or a `SessionDelta` variant) on add/remove/activate.
 
@@ -107,17 +105,18 @@ NDK: persists `{pubkey, signerPayload, lastActive, preferences}` per session + g
 
 Applesauce: persists `{id, type, pubkey, signer, metadata}` per account (`types.ts:12-23`). No active marker. No derived state.
 
-**Recommendation for NMP:**
+**Recommendation for NMP** — split `AccountRecord` into `AccountPublic` (LMDB-owned) and `AccountSecret` (Keyring-owned) so D4 single-writer-per-fact holds:
 
 | Lives in LMDB (`nmp-core` event store / domain stores) | Lives in `KeyringCapability` | In-memory only |
 | --- | --- | --- |
-| All received events (kind:0, 3, 10000, 10001, 10002, etc.) | Encrypted `AccountRecord` per account (one keyring entry per `AccountId`) | `ActiveAccount` (derived on activate) |
-| `FollowSet`, `MuteSet`, `RelayList` per pubkey (derived domain stores) | Encrypted bunker `local_signer` private keys (with the bunker descriptor) | Subscription handles per active account |
-| Last-active timestamp per account (so resume picks "most recent") | NIP-49-encrypted nsec bytes | Action ledger entries (already specified in M6) |
+| All received events (kind:0, 3, 10000, 10001, 10002, etc.) | `AccountSecret` per account: secret-key material ONLY (NIP-49-encrypted nsec OR bunker `local_signer.private_key` + bunker URI metadata) | `ActiveAccount` (derived on activate) |
+| `FollowSet`, `MuteSet`, `RelayList` per pubkey (derived domain stores) | (Keyring holds nothing else — opaque blob, threat-model-isolated) | Subscription handles per active account |
+| `AccountPublic` per account: `{AccountId, pubkey, namespace, display_name, last_active, created_at}` (mutable fields via dedicated actor messages — LMDB is sole writer) | | Action ledger entries (already specified in M6) |
+| `active_account_pubkey: Option<Hexpubkey>` (UX-friendly resume) | | |
 
-Two things go in the keyring, NOT LMDB: (a) encrypted nsec for human accounts, (b) the NIP-46 `local_signer` private key per bunker connection. The keyring blob is opaque to `KeyringCapability` per `api-surface.md:198-203`; NMP serializes the `AccountRecord` (including the bunker `local_signer.private_key`) into bytes, then asks the keyring to store them.
+**D4 invariant:** the secret descriptor lives ONLY in Keyring; the public record lives ONLY in LMDB. They're linked by `AccountId`. Mutating `display_name` or `last_active` is a single LMDB write — no Keyring round-trip. Mutating signer descriptor (e.g., bunker pairing rotation) is a single Keyring write — no LMDB touch.
 
-LMDB stores the *index* — `AccountId → keyring_key` — plus the public account record (display name, namespace, pubkey, last_active, created_at). The keyring stores the secret material.
+**Why split:** the keyring's threat model (passcode-gated, hardware-backed where available) is different from LMDB's. LMDB is on-disk-encrypted at the OS level only. Co-locating mutable display-name with secret material would force the secret into a code path that mutates often, breaking the principle of minimum surface area for the secret.
 
 **Why split:** the keyring's threat model (passcode-gated, hardware-backed where available) is different from LMDB's. LMDB is on-disk-encrypted at the OS level only.
 
@@ -155,7 +154,7 @@ RPC setup mirrors `nip46/index.ts:315-368`: open a long-lived subscription on `{
 
 **On websocket churn:** the subscription must auto-reconnect (NDK uses NDK's normal pool retry; applesauce uses `repeat() + retry()`, `nostr-connect-signer.ts:153-161`). NMP's relay pool already retries; the NIP-46 client should ride that machinery.
 
-**Secret parameter handling:** the secret is **only** valid for the initial `connect` call; it is NOT a long-term token. After ack, the bunker authorizes by `local_signer.pubkey`. The secret can be persisted in `BunkerUri.secret` (some bunkers re-validate on every reconnect; AlbyHub does this) — NDK persists it (`nip46/index.ts:547`), applesauce does too (`nostr-connect-account.ts:24-29`). **NMP: persist it.**
+**Secret parameter handling:** the secret is **only** valid for the initial `connect` call; it is NOT a long-term token. After ack, the bunker authorizes by `local_signer.pubkey`. The secret CAN be persisted in `BunkerUri.secret` for bunkers that re-validate on every reconnect (e.g., AlbyHub) — NDK persists it (`nip46/index.ts:547`); **applesauce does NOT** — `nostr-connect-account.ts:24-29` stores only `clientKey`, `remote`, and `relays`, deliberately treating the secret as one-shot. **NMP: persist it in Keyring** (per NDK pattern). The cost is one extra Keyring field; the benefit covers bunker re-validation flows without re-pairing.
 
 ### 1.8 NIP-07 wasm wrapping
 
@@ -193,7 +192,7 @@ M6 deliverables per `docs/plan/m6-signers-write.md:11-19`:
 
 | Dimension | NDK | applesauce | NMP recommendation |
 | --- | --- | --- | --- |
-| Signer trait size | 9 required + 1 optional method | 2 required + 2 optional namespaces | 3 required + 2 optional (matches applesauce) |
+| Signer trait size | 8 required + 2 optional members (`relays?`, `encryptionEnabled?`) | 2 required + 2 optional namespaces | 3 required + 2 optional (matches applesauce) |
 | Return shape for sign | sig string only | full signed event | full signed event (already in `identity.rs:65-69`) |
 | Sync `pubkey` accessor | yes, throws if not ready | no, async only | async only |
 | Type-tagged signer registry | yes (`registry.ts:7-14`) | yes (`manager.ts:33-42`) | `IdentityModule::NAMESPACE` (already in `identity.rs:9`) |
@@ -215,7 +214,7 @@ M6 deliverables per `docs/plan/m6-signers-write.md:11-19`:
 | --- | --- | --- |
 | D0 (no app nouns in kernel) | "HumanAccount" / "Bunker" naming risks app-coupling | These are `IdentityModule` namespaces, not core enum variants. The kernel only knows `IdentityScopeKind::{HumanAccount, AppLocal, ExternalSigner, Ephemeral}` (`identity.rs:27-32`) — that's the right abstraction level. |
 | D1 (best-effort rendering) | Account display-name takes a moment to load on switch | `ActiveAccount.display_name: Option<String>` is a placeholder field; view payload renders pubkey-truncation until loaded. |
-| D2 (negentropy first) | Account-bootstrap subscriptions are REQ-based | First fetch of kind:0/3/10002 is REQ; subsequent reconciliation can use NIP-77 (M7+). |
+| D2 (negentropy first) | Account-bootstrap subscriptions span historical reconciliation + live-tail | M4 (NIP-77) lands BEFORE M6 per plan. Account bootstrap uses NIP-77 reconciliation for historical kind:0/3/10000/10001/10002 when the relay supports it; REQ is live-tail/fallback only. Per-relay capability cache (from M4) decides at compile time. |
 | D3 (outbox auto) | Bootstrap subscription needs to know the user's outbox before having read kind:10002 | Bootstrap goes to default-relay list on first activation; rewires to outbox once kind:10002 lands. **Same idempotent re-compile pattern as views.** |
 | D4 (single writer per fact) | NDK's session struct holds derived state | NMP splits: domain stores own derived state; account record owns identity only. |
 | D5 (snapshots bounded by what's open) | Per-account `walletEnabled` opt-in is the right shape | NDK already does this — copy verbatim (`sessions/src/manager.ts:322-394`). |
