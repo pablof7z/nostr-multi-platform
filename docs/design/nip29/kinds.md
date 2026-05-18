@@ -125,7 +125,7 @@ All require `["h", <group_id>]` and are signed by a current admin (member of the
 
 - **Required:** `["h", <group_id>]`
 - **Content:** empty
-- **Effect:** relay initialises the group with the signer as the founding admin; emits initial 39001 + 39002 + 39003.
+- **Effect:** relay initialises the group with the signer as the founding admin; emits initial **39001 + 39002** (39003 is optional and many NIP-29 relays do not emit it; the `CreateGroup` action and exit-gate tests treat 39003 as best-effort, never blocking on it).
 - **Owner:** emitted by `CreateGroup` ActionModule (which then emits the follow-up 9002 for metadata).
 
 #### Kind 9008 — Delete group

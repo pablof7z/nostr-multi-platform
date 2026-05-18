@@ -76,7 +76,7 @@ A is the strongest, requires NIP-11 to be reliable + relays to set their `pubkey
 
 > Any host relay that also accepts ordinary parameterized events would forward a user-signed kind:39001 carrying the room's `d` tag if it accepts the write. Since `GroupAdmins`/`GroupMembers` are derived *only* from these snapshots, accepting any signer-from-host-relay lets a malicious user spoof admin/membership state simply by signing and pushing a kind:39001. TLS authenticates the connection, not `event.pubkey`.
 
-Policy B (TOFU) defeats the spoof: the first 39000–39003 we see for `(host_relay_url, group_id)` records `(group_id, signer_pubkey)`; subsequent metadata events for the same group from a *different* signer are rejected with a typed `MetadataSignerChanged` error until the user explicitly accepts a rotation. Policy A (NIP-11 strict) is even tighter — accept only metadata signed by the relay's declared NIP-11 `pubkey` — and is the auto-upgrade path when NIP-11 declares a pubkey.
+Policy B (TOFU) defeats the spoof: the first **kind:39000** (group identity) we see for `(host_relay_url, group_id)` records `(group_id, signer_pubkey)` as the cached signer for that group. **39001/39002/39003 cannot establish the pin** (the rule below in step 3); they're held in a quarantine buffer until 39000 lands, then replayed against the now-known signer. Subsequent metadata events for the same group from a *different* signer are rejected with a typed `MetadataSignerChanged` error until the user explicitly accepts a rotation. Policy A (NIP-11 strict) is even tighter — accept only metadata signed by the relay's declared NIP-11 `pubkey` — and is the auto-upgrade path when NIP-11 declares a pubkey.
 
 The ingest hook for 39000–39003 enforces:
 
