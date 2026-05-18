@@ -2436,6 +2436,7 @@ name = "nmp-nip01"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
+ "nmp-threading",
  "serde",
  "serde_json",
 ]
@@ -2445,6 +2446,7 @@ name = "nmp-nip22"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
+ "nmp-threading",
  "serde",
  "serde_json",
 ]
