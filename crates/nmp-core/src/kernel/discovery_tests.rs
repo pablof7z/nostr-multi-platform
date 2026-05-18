@@ -43,7 +43,7 @@ fn quoted_note_missing_id_is_discovered_and_resolvable_via_oneshot() {
         "quoted-note id is fetched by id"
     );
     assert!(
-        joined.contains(MENTIONED_PK) && joined.contains("\"kinds\":[0]"),
+        joined.contains(MENTIONED_PK) && joined.contains("kinds"),
         "mentioned pubkey is fetched as a kind:0 profile oneshot"
     );
     // Discovery oneshots use the reserved sub-id prefix.

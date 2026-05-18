@@ -152,11 +152,14 @@ impl InterestShape {
     }
 
     /// Convenience constructor for a one-shot profile fetch.
+    ///
+    /// Fetches all indexer-relevant replaceable events for the author:
+    /// kind:0 (profile), kind:3 (contact list), kind:10002 (NIP-65 relay list).
     pub fn profile_for(pubkey: Pubkey) -> Self {
         Self {
             authors: [pubkey].into_iter().collect(),
-            kinds: [0u32].into_iter().collect(),
-            limit: Some(1),
+            kinds: [0u32, 3, 10002].into_iter().collect(),
+            limit: Some(3),
             ..Default::default()
         }
     }

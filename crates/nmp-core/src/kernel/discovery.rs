@@ -123,8 +123,8 @@ impl Kernel {
             let (batch, remainder) = pubkeys.split_at(pubkeys.len().min(Self::DISCOVERY_BATCH));
             let shape = InterestShape {
                 authors: batch.iter().cloned().collect(),
-                kinds: [0u32].into_iter().collect(),
-                limit: Some(batch.len() as u32),
+                kinds: [0u32, 3, 10002].into_iter().collect(),
+                limit: Some(batch.len() as u32 * 3),
                 ..Default::default()
             };
             let token = {
@@ -137,7 +137,7 @@ impl Kernel {
                 RelayRole::Indexer,
                 &sub_id,
                 "discovery: referenced profiles",
-                json!({ "kinds": [0], "authors": batch, "limit": batch.len() }),
+                json!({ "kinds": [0, 3, 10002], "authors": batch, "limit": batch.len() * 3 }),
             ));
             if !remainder.is_empty() {
                 self.unknown_ids.put_back_pubkeys(remainder.iter().cloned());

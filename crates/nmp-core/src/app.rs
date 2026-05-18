@@ -254,7 +254,7 @@ mod open_uri_tests {
         );
         assert!(r.interest.shape.kinds.contains(&KIND_METADATA));
         assert!(r.interest.shape.authors.contains(PK));
-        assert_eq!(r.interest.shape.limit, Some(1));
+        assert_eq!(r.interest.shape.limit, Some(3), "one event per kind (profile, contacts, relay list)");
         assert!(r.interest.shape.relay_pin.is_none());
         assert!(r.interest.hints.is_empty());
     }

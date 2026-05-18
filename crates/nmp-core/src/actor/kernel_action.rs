@@ -149,7 +149,7 @@ mod tests {
         let interest = &active[0];
         assert!(interest.shape.kinds.contains(&0), "kind:0 metadata filter");
         assert!(interest.shape.authors.contains(PK), "author pinned to npub");
-        assert_eq!(interest.shape.limit, Some(1));
+        assert_eq!(interest.shape.limit, Some(3), "one event per kind (profile, contacts, relay list)");
     }
 
     #[test]
