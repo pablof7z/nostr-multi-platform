@@ -8,6 +8,21 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
+### PD-004 — M6 `IdentityId = pubkey_hex` vs ULID for "same nsec, two accounts"
+
+**Decision (autonomous, 2026-05-18, T43):** keep `IdentityId = pubkey_hex` for the M6 landing.  ULID-based account ids are required before M8 (multi-account UX) ships, per `docs/research/sessions/synthesis.md` §1.2 (applesauce allows two accounts for the same pubkey — "same nsec, different relay policy" or "same bunker user from two devices").
+
+**Why now:**
+
+- The M6 demo is single-active-account (paste nsec / paste bunker / generate, then compose).  One-account-per-pubkey is fine for the demo.
+- Switching to ULID is a 30-line change confined to `crates/nmp-signers/src/identity/manager.rs` — keying the `accounts` HashMap by ULID instead of `pubkey_hex` plus storing `pubkey` as a field on a small `AccountSlot { id: ULID, pubkey, signer }` record.
+- `IdentityId` is a type alias for `String` today; the API surface does not change.
+- Doing the switch before any UX flow lands keeps the eventual migration trivial.
+
+**Recommendation:** ULID-rekey before M8 dispatch (filed as a sub-task on the M6 follow-up checklist in ADR-0015).  No user input needed unless you'd rather defer past M8.
+
+---
+
 ### PD-003 — M7 publishing-pipeline scope (task #45) shipped as substrate-only ahead of M3/M6/M8 wiring
 
 **Decision (autonomous):** shipped `crates/nmp-core/src/publish/` with engine + state machine + trait shims + 20 tests. Did NOT wire it into the actor / FFI / iOS slice. Did NOT use MockRelay (does not exist). Did NOT exercise real LMDB persistence.

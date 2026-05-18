@@ -1,0 +1,27 @@
+[package]
+name = "nmp-signers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Signer trait + Local nsec / NIP-46 bunker / NIP-07 implementations + multi-account IdentityModule for nmp-core."
+
+[lib]
+name = "nmp_signers"
+
+[features]
+default = []
+# Feature flag for the wasm-only NIP-07 implementation.  Off by default;
+# enabling without a wasm target is a compile error (intentional — see
+# `signers/nip07.rs`).
+wasm = []
+
+[dependencies]
+nmp-core = { path = "../nmp-core" }
+nostr = { version = "0.44", features = ["std", "nip04", "nip44", "nip49"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+url = "2.5"
+
+[dev-dependencies]
+# No proc-macro fuzz crate — we keep the dep surface small and roll our own
+# deterministic generator (see `fuzz/bunker_uri.rs`).
