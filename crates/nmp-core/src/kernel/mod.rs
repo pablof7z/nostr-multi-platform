@@ -47,6 +47,8 @@ mod auth_fail_closed_tests;
 mod auth_test_helpers;
 #[cfg(test)]
 mod auth_tests;
+#[cfg(test)]
+mod contacts_fanout_tests;
 
 use crate::relay::{
     OutboundMessage, RelayRole, CONTENT_RELAY_URL, DEFAULT_EMIT_HZ, FIATJAF_PUBKEY,
