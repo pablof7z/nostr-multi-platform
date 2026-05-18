@@ -67,16 +67,31 @@ pub(crate) fn publish_note(
     let Some(pubkey) = identity.active_pubkey() else {
         return toast_no_account(kernel, "publish");
     };
+
+    // T144: a kind:1 reply needs full NIP-10 structure (root forwarding,
+    // parent-author re-notification, dedup) not just a minimal reply marker.
+    // We can't depend on `nmp-nip01` here (it depends on `nmp-core`, so the
+    // edge would cycle), but we *can* use the same `crate::tags` primitives
+    // its `Note::reply_to` builder is composed of — byte-identical output.
+    //
+    // See PD-024 (`docs/perf/pending-user-decisions.md`) for the rationale.
     let mut tags: Vec<Vec<String>> = Vec::new();
+    let mut hydration_kick: Option<String> = None;
     if let Some(reply) = reply_to_id.filter(|r| crate::kernel::is_hex_id(r)) {
-        // NIP-10 minimal reply marker.
-        tags.push(vec![
-            "e".to_string(),
-            reply.to_string(),
-            String::new(),
-            "reply".to_string(),
-        ]);
+        match kernel.reply_tags_for_parent(reply) {
+            Some(reply_tags) => tags = reply_tags,
+            None => {
+                // Cold reply — parent not in `kernel.events`. Emit a minimal
+                // reply marker so the event is at least thread-discoverable,
+                // and enqueue a one-shot hydration REQ (T121) so the next
+                // reply on this id can be built with full NIP-10 structure
+                // once the parent lands.
+                tags.push(crate::tags::e_tag(reply, None, Some("reply")));
+                hydration_kick = Some(reply.to_string());
+            }
+        }
     }
+
     let unsigned = UnsignedEvent {
         pubkey,
         kind: 1,
@@ -84,13 +99,19 @@ pub(crate) fn publish_note(
         content: content.to_string(),
         created_at: now_secs(),
     };
-    match sign_active(identity, &unsigned) {
+    let mut outbound = match sign_active(identity, &unsigned) {
         Ok(signed) => kernel.publish_signed(&signed, &[]),
         Err(reason) => {
             kernel.set_last_error_toast(Some(reason));
-            Vec::new()
+            return Vec::new();
         }
+    };
+
+    if let Some(id) = hydration_kick {
+        outbound.extend(kernel.kick_thread_hydration(id));
     }
+
+    outbound
 }
 
 pub(crate) fn react(

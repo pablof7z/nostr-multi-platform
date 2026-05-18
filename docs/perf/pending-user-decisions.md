@@ -61,6 +61,27 @@ Each `decode_and_route` takes `&nmp_core::store::StoredEvent` and `&nmp_core::st
 
 ---
 
+### PD-024 (2026-05-18, resolved autonomously) — T144 publish-reply wiring: inline `nmp_core::tags` primitives, not `nmp_nip01` delegation
+
+**Three divergences from the T144 task spec — all from constraints the task didn't model.**
+
+**1. Cycle blocks literal "import `nmp_nip01`" wording.**
+`nmp-nip01/Cargo.toml` line 9 already does `nmp-core = { path = "../nmp-core" }`. Adding `nmp-core → nmp-nip01` (which `publish.rs` would need to call `Note::reply_to`) is a cargo-rejected cycle. The task's "Relations facade imports `nmp-nip01` already" is true but lives in `nmp-reactions`, not `nmp-core`.
+
+**Resolution:** inline the NIP-10 reply construction using `nmp_core::tags::{e_tag, p_tag, parse_nip10}` — the *exact primitives* `nmp_nip01::Note::reply_to` is built on (`crates/nmp-nip01/src/build.rs:128-131` calls `e_tag` and `p_tag`; `crates/nmp-nip01/src/decode.rs:85` calls `parse_nip10`). Output is byte-identical; no cycle; LOC overhead ~30 in `publish.rs`. The doctrine destination — per-protocol-crate `ActionModule` impls (`publish.rs:38-43`) — is unchanged and still pending.
+
+**2. Task's "Direct reply (no root)" test assertion was wrong.**
+Task said: assert `["e", id_parent, ..., "root"]` only, *no reply marker*. But `Note::reply_to` (`build.rs:127-129`) always emits both root **and** reply tags, and its own test (`build.rs:212`) asserts `keys == vec!["e", "e", "p"]` even when parent is itself the thread root. Mirroring the builder means two `e` tags pointing at the same id with different markers. Wrote the test that way.
+
+**3. Test placement — `kernel.events` is private.**
+The new integration tests need to seed a parent into `kernel.events` to exercise the parsed-NIP-10-refs path. External `nmp-testing/tests/` integration tests can't touch private fields. Placed the new tests alongside the existing `publish_note_signs_and_enqueues_via_outbox_fallback` in `crates/nmp-core/src/actor/commands/tests.rs` — same visibility scope as the existing `kernel.events.insert(...)` test pattern at `crates/nmp-core/src/kernel/tests.rs:90`.
+
+**Files affected:** `crates/nmp-core/src/actor/commands/publish.rs`, `crates/nmp-core/src/actor/commands/tests.rs`. No `Cargo.toml` edits; no nmp-nip01 dep introduced.
+
+**Why autonomous-resolution (vs. asking):** the inlining produces the same correctness goal stated in the commit body (root forwarding, parent-author p-tag, dedup, edge cases). Pivoting to ActionModule restructure is a much larger refactor outside this task's scope. User-acknowledge if the literal "delegate to nmp-nip01" wording mattered for some downstream reason I'm missing.
+
+---
+
 ### PD-023 (2026-05-18) — T136 Gate-1 STOP: pick `nostr-lmdb` env-injection path
 
 **Decision deferred (genuine user choice needed).** T136 Gate 1 audited

@@ -37,6 +37,7 @@ mod publish_engine_wire;
 mod replay;
 #[cfg(test)]
 mod replay_tests;
+mod reply;
 mod requests;
 #[cfg(test)]
 mod retention_tests;

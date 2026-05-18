@@ -153,6 +153,45 @@ impl Kernel {
         self.changed_since_emit = true;
     }
 
+    /// Seed a fully-formed kind:1 note into the kernel's read-cache (`events`).
+    ///
+    /// Used by the T144 publish-reply tests in `actor/commands/tests.rs` to
+    /// stage a parent note so `publish_note(..., Some(parent_id))` exercises
+    /// the warm-reply path (`reply_tags_for_parent`) rather than the
+    /// cold-reply hydration fallback. Bypasses the store entirely — purely a
+    /// read-cache fixture. The `tags` argument can carry whatever NIP-10
+    /// structure the test needs to assert root-forwarding on.
+    #[allow(dead_code)]
+    pub(crate) fn seed_kind1_for_reply_test(
+        &mut self,
+        id: &str,
+        author: &str,
+        created_at: u64,
+        tags: Vec<Vec<String>>,
+        content: &str,
+    ) {
+        self.events.insert(
+            id.to_string(),
+            StoredEvent {
+                id: id.to_string(),
+                author: author.to_string(),
+                kind: 1,
+                created_at,
+                tags,
+                content: content.to_string(),
+                relay_count: 1,
+            },
+        );
+    }
+
+    /// Read-only check that an id is sitting on the T121 thread-hydration
+    /// queue (either pending or already requested). Used by the cold-reply
+    /// test to assert the hydration REQ was kicked.
+    #[allow(dead_code)]
+    pub(crate) fn is_thread_hydration_requested(&self, id: &str) -> bool {
+        self.requested_thread_ids.contains(id) || self.pending_thread_ids.contains(id)
+    }
+
     /// Sort the timeline once after a batch inject (deferred sort).
     ///
     /// Call this after a loop of `ingest_pre_verified_event` calls to amortize
