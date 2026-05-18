@@ -21,7 +21,7 @@ A naive implementation would have `nmp-nip29`'s view modules construct their own
 
 So the host-relay-pin **must live inside the compiler**, surfaced by a typed signal `nmp-nip29` emits when it declares its dependencies.
 
-## 3. The third routing lane: `RelayPinnedInterest`
+## 3. The third routing lane: `RelayPinned`
 
 Today the compiler reads a `LogicalInterest`'s filter and dispatches to one of two lanes (paraphrasing `subscription-compilation/compiler.md` §3 step 2):
 
@@ -34,9 +34,9 @@ M11.5 adds:
 
 | Lane | Filter shape | Resolves via |
 |---|---|---|
-| C: relay-pinned | filter carries a `pin_to: RelayUrl` annotation | direct routing to `pin_to`, no NIP-65 lookup |
+| C: relay-pinned | filter carries a `relay_pin: RelayUrl` annotation | direct routing to `relay_pin`, no NIP-65 lookup |
 
-The `pin_to` annotation is not a regular Nostr filter field — it's an out-of-band hint carried by the `LogicalInterest` type itself, **not** sent on the wire. When a `LogicalInterest` arrives at the compiler with `pin_to: Some(url)`, the compiler skips lanes A + B entirely and produces a one-relay plan targeting `pin_to`. The `#h` value is *also* on the filter (relays expect it), but the pin is what determines routing.
+The `relay_pin` annotation is not a regular Nostr filter field — it's an out-of-band hint carried by the `LogicalInterest` type itself, **not** sent on the wire. When a `LogicalInterest` arrives at the compiler with `relay_pin: Some(url)`, the compiler skips lanes A + B entirely and produces a one-relay plan targeting `relay_pin`. The `#h` value is *also* on the filter (relays expect it), but the pin is what determines routing.
 
 Concretely, `nmp-nip29`'s `ViewModule::dependencies()` constructs interests like:
 
@@ -45,10 +45,10 @@ LogicalInterest::new()
     .filter(Filter::new()
         .kinds([Kind::Custom(9)])
         .custom_tag('h', [group_id.local_id.clone()]))
-    .pin_to(group_id.host_relay_url.clone())   // <-- third-lane signal
+    .relay_pin(group_id.host_relay_url.clone())   // <-- third-lane signal
 ```
 
-The compiler's filter-merge lattice (`compiler.md` §3 step 3) extends to include `pin_to` as a merge-key: two interests with identical filters but different `pin_to` cannot merge, because they go to different relays. Interests with `pin_to = None` cannot merge with interests with `pin_to = Some(_)` for the same reason.
+The compiler's filter-merge lattice (`compiler.md` §3 step 3) extends to include `relay_pin` as a merge-key: two interests with identical filters but different `relay_pin` cannot merge, because they go to different relays. Interests with `relay_pin = None` cannot merge with interests with `relay_pin = Some(_)` for the same reason.
 
 ## 4. Multi-host aggregation: `JoinedGroups` view
 
@@ -66,7 +66,7 @@ Issue the 39001/39002 subscription on every relay in the user's pool. Reject: mo
 
 ### 4.3 Strategy C — per-host-relay registry, multi-sourced ✅
 
-The framework maintains a `JoinedHostsCache` of `(pubkey, host_relay_url, group_id)` rows. The `JoinedGroups` view's dependency is the cross-product `(current_pubkey, host_relay_url)` for every host_relay in the cache, producing one `RelayPinnedInterest` per host relay for the 39001/39002 subscriptions.
+The framework maintains a `JoinedHostsCache` of `(pubkey, host_relay_url, group_id)` rows. The `JoinedGroups` view's dependency is the cross-product `(current_pubkey, host_relay_url)` for every host_relay in the cache, producing one `RelayPinned` per host relay for the 39001/39002 subscriptions.
 
 The cache is **populated from three trusted sources** (each gives a verified host_relay_url), plus a **bootstrap discovery channel** that produces *candidates* that must be verified before they enter the cache:
 
@@ -110,11 +110,11 @@ The "h-tag override is exclusive" is non-negotiable: publishing a group chat mes
 How the planner resolves the host relay from the `h` tag value:
 
 - The `PublishPlan` type (M2 §7) gains an `Option<RelayPin>` field carried alongside the signed event. The pin is set by the action that constructs the plan, *not* derived from the event's tags at plan time.
-- For NIP-29-native publishes invoked via an `nmp-nip29::ActionModule`, the action's input includes the full `GroupId { host_relay_url, local_id }`. The action sets `pin_to: Some(group_id.host_relay_url)` on the resulting `PublishPlan` before handing it to the planner. The publisher trusts the action; the planner sees only the typed pin.
+- For NIP-29-native publishes invoked via an `nmp-nip29::ActionModule`, the action's input includes the full `GroupId { host_relay_url, local_id }`. The action sets `relay_pin: Some(group_id.host_relay_url)` on the resulting `PublishPlan` before handing it to the planner. The publisher trusts the action; the planner sees only the typed pin.
 - For first-time publishes (CreateGroup, JoinRequest from an invite URI, explicit group import) the `GroupId` exists on the action input *before* any cache entry — the action carries `host_relay_url` directly into the pin without consulting `JoinedHostsCache`. The cache materialises *after* the publish succeeds (via the source-1 path in §4.3), so there's no chicken-and-egg.
-- For cross-protocol "publish in protocol X, then host-pin share into a group" flows (e.g. publish-and-share-highlight per `feature-inventory.md` §2.1), the *composing action lives in `highlighter-core`*, not in the X protocol crate. `nmp-nip84::PublishHighlight` stays group-unaware (it constructs a `PublishPlan` with `pin_to: None`, routing per author write relays). The composing action `highlighter-core::PublishHighlightAndShareToGroup` invokes `nmp-nip84::PublishHighlight` for the kind:9802 leg, awaits its `ActionId`, then invokes `nmp-nip29::ShareEventIntoGroup` (which takes a typed `GroupId` and sets `pin_to: Some(host)`) for the kind:16 host-pinned leg. **No protocol crate ever imports another protocol crate's `GroupId` or any other NIP-specific type; sequencing happens at the app layer.**
+- For cross-protocol "publish in protocol X, then host-pin share into a group" flows (e.g. publish-and-share-highlight per `feature-inventory.md` §2.1), the *composing action lives in `highlighter-core`*, not in the X protocol crate. `nmp-nip84::PublishHighlight` stays group-unaware (it constructs a `PublishPlan` with `relay_pin: None`, routing per author write relays). The composing action `highlighter-core::PublishHighlightAndShareToGroup` invokes `nmp-nip84::PublishHighlight` for the kind:9802 leg, awaits its `ActionId`, then invokes `nmp-nip29::ShareEventIntoGroup` (which takes a typed `GroupId` and sets `relay_pin: Some(host)`) for the kind:16 host-pinned leg. **No protocol crate ever imports another protocol crate's `GroupId` or any other NIP-specific type; sequencing happens at the app layer.**
 
-This means **no string-typed `h` tags pass through the planner without a `RelayPin` carrier** — the carrier is on the `PublishPlan` itself, set by the action that knows the pin. The planner consults the typed pin field for routing; **it does NOT inspect event tags to *derive* routing**. However — to prevent the privacy leak that would otherwise occur if a (possibly future, possibly third-party) action constructs an h-tagged event without setting `pin_to` — the planner DOES perform a single **defensive structural check** before dispatch: *if the event being published carries any `["h", _]` tag AND `pin_to` is `None`, the publish is rejected at construction time with a typed `MissingHostPinForGroupEvent` error*. The action must either set `pin_to` (correct) or strip the `h` tag (also correct; the event then routes normally). The test `nip29_publish_refuses_unpinned_h_tag_event` asserts this. This is the *only* tag-inspection the planner performs for NIP-29 — and it's a refusal, not a routing decision, so the "planner is crate-agnostic" property holds.
+This means **no string-typed `h` tags pass through the planner without a `RelayPin` carrier** — the carrier is on the `PublishPlan` itself, set by the action that knows the pin. The planner consults the typed pin field for routing; **it does NOT inspect event tags to *derive* routing**. However — to prevent the privacy leak that would otherwise occur if a (possibly future, possibly third-party) action constructs an h-tagged event without setting `relay_pin` — the planner DOES perform a single **defensive structural check** before dispatch: *if the event being published carries any `["h", _]` tag AND `relay_pin` is `None`, the publish is rejected at construction time with a typed `MissingHostPinForGroupEvent` error*. The action must either set `relay_pin` (correct) or strip the `h` tag (also correct; the event then routes normally). The test `nip29_publish_refuses_unpinned_h_tag_event` asserts this. This is the *only* tag-inspection the planner performs for NIP-29 — and it's a refusal, not a routing decision, so the "planner is crate-agnostic" property holds.
 
 ## 6. The "publish-and-share" dual-route problem (the load-bearing test case)
 
@@ -135,7 +135,7 @@ This composition is **how cross-protocol surfaces stay clean in NMP**: each prot
 
 Most NIP-29 host relays require NIP-42 authentication for *any* operation, not just reads. M5's NIP-42 surface must therefore land before M11.5 — which it does in the milestone ladder (M5 is in M0–M10).
 
-`nmp-nip29` declares all its `RelayPinnedInterest`s + publishes as **auth-mandatory** (a new annotation on `LogicalInterest` and on `PublishPlan`). The auth-paused relay state (`docs/design/subscription-compilation.md` §10 open question 6) applies: if the host relay's auth state is `ChallengeReceived`, all `nmp-nip29` activity for that host is paused until auth completes, then resumes.
+`nmp-nip29` declares all its `RelayPinned`s + publishes as **auth-mandatory** (a new annotation on `LogicalInterest` and on `PublishPlan`). The auth-paused relay state (`docs/design/subscription-compilation.md` §10 open question 6) applies: if the host relay's auth state is `ChallengeReceived`, all `nmp-nip29` activity for that host is paused until auth completes, then resumes.
 
 This is also why `nmp-nip29` cannot run against a relay pool with anonymous-only members for its host relays — the framework will refuse to plan a NIP-29 action against an un-authenticatable relay.
 
@@ -143,11 +143,11 @@ This is also why `nmp-nip29` cannot run against a relay pool with anonymous-only
 
 These tests live in `nmp-testing/tests/` and run as part of the M11.5 exit gate audit:
 
-1. `nip29_filter_routes_only_to_host_relay` — given a `RelayPinnedInterest` for a kind:9 `#h` query and a pool of 5 relays where only one is the host, the compiler produces a plan with exactly one wire-frame targeting only the host.
+1. `nip29_filter_routes_only_to_host_relay` — given a `RelayPinned` for a kind:9 `#h` query and a pool of 5 relays where only one is the host, the compiler produces a plan with exactly one wire-frame targeting only the host.
 2. `nip29_publish_routes_only_to_host_relay` — given a kind:9 chat publish with an `h` tag and a pool where the author has 3 NIP-65 write relays plus the host relay, the publish planner produces a plan targeting only the host.
-3. `nip29_publish_refuses_unpinned_h_tag_event` — given a publish whose event carries any `["h", _]` tag and whose `PublishPlan.pin_to` is `None`, the planner refuses with typed `MissingHostPinForGroupEvent` at construction time. This is the privacy-leak prevention: the only structural inspection the planner does on event tags, and it's a refusal rather than a routing derivation.
-4. `nip29_pin_to_blocks_filter_merge` — two `LogicalInterest`s with identical filter shapes but different `pin_to` values do not merge into one wire-frame.
-5. `nip29_joined_groups_fans_out_across_hosts` — given a cache containing two host relays, the `JoinedGroups` view's dependency expansion produces exactly two `RelayPinnedInterest`s, one per host.
+3. `nip29_publish_refuses_unpinned_h_tag_event` — given a publish whose event carries any `["h", _]` tag and whose `PublishPlan.relay_pin` is `None`, the planner refuses with typed `MissingHostPinForGroupEvent` at construction time. This is the privacy-leak prevention: the only structural inspection the planner does on event tags, and it's a refusal rather than a routing derivation.
+4. `nip29_relay_pin_blocks_filter_merge` — two `LogicalInterest`s with identical filter shapes but different `relay_pin` values do not merge into one wire-frame.
+5. `nip29_joined_groups_fans_out_across_hosts` — given a cache containing two host relays, the `JoinedGroups` view's dependency expansion produces exactly two `RelayPinned`s, one per host.
 6. `nip29_share_into_group_dual_routes_correctly` — the composed action `PublishHighlight` + `ShareEventIntoGroup` produces two wire-frame writes, one to author write-relays (highlight), one to host relay (share), in that order.
 7. `nip29_unauth_host_relay_pauses_module_activity` — a host relay in `ChallengeReceived` causes all module activity for that host to pause, surfacing in the diagnostics lane as `LogicalInterestStatus::AuthPaused`.
 

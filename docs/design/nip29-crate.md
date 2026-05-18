@@ -20,7 +20,7 @@ NIP-29 is *structurally different* from every other NIP the framework has touche
 4. **The `previous`-tag chain** is a relay-enforced anti-forgery mechanism with no analog in any other Nostr NIP. *Outbound* publishes must attach `previous` references (per `moderation.md` §2); *ingest* preserves the tags but does not re-validate (the relay already did, and re-validating client-side would risk dropping valid events during cold-cache / historical backfill).
 5. **The "group" is a security boundary**, not just a noun. A private group's 39000 may be hidden from non-members; a closed group rejects join requests. The crate's view modules must respect membership state when projecting.
 
-Treating NIP-29 as "just another kind range" would force NMP's kernel actor or M2 compiler to grow group-aware special cases, violating ADR-0009 doctrine D0 ("the kernel never grows app nouns"). The crate is the boundary where the special cases live; the kernel sees a generic `RelayPinnedInterest` and `RelayPinnedPublish` it already knows how to handle (see `routing.md`).
+Treating NIP-29 as "just another kind range" would force NMP's kernel actor or M2 compiler to grow group-aware special cases, violating ADR-0009 doctrine D0 ("the kernel never grows app nouns"). The crate is the boundary where the special cases live; the kernel sees a generic `RelayPinned` and `RelayPinnedPublish` it already knows how to handle (see `routing.md`).
 
 ## 2. Crate placement in the workspace
 
@@ -125,7 +125,7 @@ This contradicts the M2 outbox planner's default behavior, which routes:
 
 NIP-29 needs a **third routing lane**: the `h`-tag lane. Any filter with `#h: [group_id]` routes to the host relay; any publish of an event with an `h` tag routes to the host relay. The author's NIP-65 mailboxes don't enter into it.
 
-Full design of how this lands in the compiler and publisher is in [`nip29/routing.md`](nip29/routing.md). The summary is: `nmp-nip29` declares its interests as a typed `RelayPinnedInterest` (carries `host_relay_url` explicitly), and the M2 compiler short-circuits its three-lane logic when it sees that variant.
+Full design of how this lands in the compiler and publisher is in [`nip29/routing.md`](nip29/routing.md). The summary is: `nmp-nip29` declares its interests as a typed `RelayPinned` (carries `host_relay_url` explicitly), and the M2 compiler short-circuits its three-lane logic when it sees that variant.
 
 ## 5. The "group identity" type
 
@@ -177,7 +177,7 @@ For kind:16 (generic repost): the *h-tagged* repost is owned by `nmp-nip29::Grou
 
 ## 8. Open questions for follow-up ADRs
 
-1. **Where does the host-relay-pin routing rule live in the planner?** Two viable shapes: (a) `nmp-nip29` returns a typed `RelayPinnedInterest` that the compiler's outer dispatch handles, vs (b) the compiler grows a generic "honor pin-hints from any crate" mechanism and `nmp-nip29` participates via a trait. (b) is cleaner long-term (other relay-pinned NIPs may emerge) but (a) ships M11.5 faster. ADR needed.
+1. **Where does the host-relay-pin routing rule live in the planner?** Two viable shapes: (a) `nmp-nip29` returns a typed `RelayPinned` that the compiler's outer dispatch handles, vs (b) the compiler grows a generic "honor pin-hints from any crate" mechanism and `nmp-nip29` participates via a trait. (b) is cleaner long-term (other relay-pinned NIPs may emerge) but (a) ships M11.5 faster. ADR needed.
 2. **Trust model for relay-signed metadata.** Resolved: M11.5 ships policy A (NIP-11 strict) when NIP-11 declares a relay pubkey, otherwise B (TOFU per `(host_relay_url, group_id)`). Policy C (accept-any-from-host) is explicitly rejected — codex review surfaced a P1 spoofing vector where any host relay also accepting parameterized writes lets a malicious user forge a 39001/39002 admitting themselves as admin. See `moderation.md` §4. The remaining ADR-level question is rotation UX (silent accept on first warning vs explicit prompt); deferred to post-M11.5.
 3. **`JoinedGroups` aggregation across multiple host relays.** A user may be in groups on `groups.0xchat.com` + `relay.highlighter.com` + `relay29.fiatjaf.com` simultaneously. The view runs against the union; the M2 compiler must produce one plan per host relay. Confirm in an ADR that the planner handles this without a per-crate scatter-gather helper.
 4. **Membership-as-security-boundary in projections.** Resolved: M11.5 **gates private-group projections** explicitly per `moderation.md` §6. The gate empties `GroupChat`/`GroupDiscussions`/`GroupMembers`/`GroupHome` for any group whose 39000 carries the `private` marker AND whose latest 39002 does not contain the current user's pubkey. Public groups are never gated (the room preview surface in `feature-inventory.md` §1.1 needs this). This is mandatory, not best-effort — without the gate, cached private-group chat would leak after the user is removed from the group.

@@ -117,8 +117,8 @@ This `PublishPlan` field lives in the **protocol crate**, not in `nmp-core`
 **Negative:**
 
 - `InterestShape` now has 9 fields where it had 8; serializers in any
-  external consumer must accept the new field (mitigated by `serde` field
-  defaults — `relay_pin` defaults to `None` on deserialisation).
+  external consumer must accept the new field (mitigated by `Option<T>` serde behaviour
+  — missing `relay_pin` deserialises to `None`).
 - The plan-id hash now varies on `relay_pin`; an interest's plan-id is no
   longer compatible across pinned-vs-unpinned re-issues. This is the desired
   behaviour (different routing should produce different plans).

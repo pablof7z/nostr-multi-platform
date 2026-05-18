@@ -22,7 +22,7 @@
 - **M10 (Blossom + long-running capabilities):** pending.
 - **M10.5 (FFI hardening + iOS empirical proof):** S2 6/6 + S3 6/6 + S4 6/6 + S5 5/5 PASS with VerifiedEvent injection. Round-4 in flight (`m105-round4-fixes`). **Hard gate before M11 iOS deploy.**
 - **M11 (rebuild of `/Users/pablofernandez/src/podcast` on NMP):** 🟡 Step 0 in flight (`m11-step0-impl` — Swift verbatim + 5 podcast crates scaffold; some files already landed in `apps/podcast/`).
-- **M11.5 (rebuild of `/Users/pablofernandez/Work/hl/app` Highlighter + `nmp-nip29` crate):** ✅ Step 0 LANDED (`5178cfc` — full nmp-nip29 + nmp-highlighter-core + ios/NmpHighlighter Swift Sources verbatim + planner case_e_pin_to + Rule 9 group-id merge).
+- **M11.5 (rebuild of `/Users/pablofernandez/Work/hl/app` Highlighter + `nmp-nip29` crate):** ✅ Step 0 LANDED (`5178cfc` — full nmp-nip29 + nmp-highlighter-core + ios/NmpHighlighter Swift Sources verbatim + planner case_e_relay_pin + Rule 9 group-id merge).
 - **M13 (WoT), M14 (UniFFI), M15 (cross-platform), M16 (CLI), M17 (v1 release):** scoped, pending.
 - **Framework-magic contract** (kind:3 auto-tracking, `bunker://` onboarding, new-nsec creation, outbox-by-default-on-publish): designed at [`docs/design/framework-magic.md`](docs/design/framework-magic.md). 14 tests in `crates/nmp-testing/tests/framework_magic_contract.rs` — **7 of 14 passing on master; 7 ignored pending M2 (C5/C8/C13), M4 (C10), M6 (C7/C11), M8 (C12)**.
 - **E2E pipeline tests** (`d0b7df6`): 6-scenario `crates/nmp-testing/tests/e2e_full_pipeline.rs` + audit companion forcing test-de-ignoring as milestones land.
