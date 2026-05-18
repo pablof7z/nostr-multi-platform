@@ -24,5 +24,22 @@
 	<true/>
 	<key>UILaunchScreen</key>
 	<dict/>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>nostrsigner</string>
+		<string>primal</string>
+		<string>nostrconnect</string>
+	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.example.Chirp.nip46</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>chirp</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

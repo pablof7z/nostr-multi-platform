@@ -7,12 +7,20 @@ import SwiftUI
 struct OnboardingView: View {
     @EnvironmentObject private var model: KernelModel
     @State private var nsec = ""
+    @State private var bunkerUri = ""
+    @State private var detectedSigner: DetectedSigner? = nil
     @State private var mode: Mode = .welcome
     @State private var animateGradient = false
     @State private var logoAppeared = false
     @State private var contentAppeared = false
 
-    enum Mode { case welcome, importKey }
+    enum Mode { case welcome, importKey, bunkerConnect }
+
+    enum DetectedSigner: String {
+        case amber = "Amber"
+        case primal = "Primal"
+        case other = "Signer"
+    }
 
     var body: some View {
         ZStack {
@@ -131,9 +139,103 @@ struct OnboardingView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
 
+                // Bunker connect card
+                if mode == .bunkerConnect {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: ChirpSpace.m) {
+                            ChirpSectionHeader(title: "Remote signer")
+
+                            if let signer = detectedSigner {
+                                Label(
+                                    "\(signer.rawValue) detected — copy your bunker:// URI from \(signer.rawValue) and paste it below.",
+                                    systemImage: "checkmark.seal.fill"
+                                )
+                                .font(ChirpFont.caption)
+                                .foregroundStyle(Color.green.opacity(0.9))
+                            }
+
+                            HStack(spacing: ChirpSpace.s) {
+                                SecureField("bunker://…", text: $bunkerUri)
+                                    .font(ChirpFont.mono)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+
+                                if let clip = UIPasteboard.general.string,
+                                   clip.hasPrefix("bunker://") {
+                                    Button {
+                                        bunkerUri = clip
+                                    } label: {
+                                        HStack(spacing: 3) {
+                                            Image(systemName: "doc.on.clipboard")
+                                                .font(.system(size: 12, weight: .semibold))
+                                            Text("Paste")
+                                                .font(.system(.caption, design: .rounded).weight(.semibold))
+                                        }
+                                        .foregroundStyle(ChirpColor.accent)
+                                        .padding(.horizontal, ChirpSpace.s)
+                                        .padding(.vertical, 5)
+                                        .background(ChirpColor.accentSoft, in: Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .transition(.scale.combined(with: .opacity))
+                                }
+                            }
+
+                            if let handshake = model.bunkerHandshake, handshake.stage != "idle" {
+                                HStack(spacing: ChirpSpace.xs) {
+                                    if handshake.stage == "connecting" || handshake.stage == "awaiting_pubkey" {
+                                        ProgressView().tint(ChirpColor.accent)
+                                    } else if handshake.stage == "ready" {
+                                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                                    } else if handshake.stage == "failed" {
+                                        Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
+                                    }
+                                    Text(handshake.message ?? handshake.stage)
+                                        .font(ChirpFont.caption)
+                                        .foregroundStyle(.white.opacity(0.8))
+                                }
+                            }
+
+                            HStack(spacing: ChirpSpace.s) {
+                                ChirpPrimaryButton(title: "Connect", systemImage: "arrow.right.circle.fill") {
+                                    model.signInBunker(bunkerUri.trimmingCharacters(in: .whitespacesAndNewlines))
+                                }
+                                .disabled(bunkerUri.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                .opacity(bunkerUri.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1.0)
+
+                                if model.bunkerHandshake?.stage == "connecting" || model.bunkerHandshake?.stage == "awaiting_pubkey" {
+                                    Button("Cancel") {
+                                        model.cancelBunkerHandshake()
+                                    }
+                                    .font(ChirpFont.callout)
+                                    .foregroundStyle(.white.opacity(0.7))
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, ChirpSpace.l)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+
                 // Action buttons
                 VStack(spacing: ChirpSpace.m) {
                     if mode == .welcome {
+                        if let signer = detectedSigner {
+                            ChirpPrimaryButton(
+                                title: "Connect with \(signer.rawValue)",
+                                systemImage: "link.badge.plus"
+                            ) {
+                                withAnimation(.smooth) { mode = .bunkerConnect }
+                            }
+                        }
+
+                        if let clip = UIPasteboard.general.string, clip.hasPrefix("bunker://") {
+                            ChirpPrimaryButton(title: "Paste bunker:// URI", systemImage: "doc.on.clipboard") {
+                                bunkerUri = clip
+                                withAnimation(.smooth) { mode = .bunkerConnect }
+                            }
+                        }
+
                         ChirpPrimaryButton(title: "I have a key", systemImage: "key.fill") {
                             withAnimation(.smooth) { mode = .importKey }
                         }
@@ -168,6 +270,20 @@ struct OnboardingView: View {
             }
             withAnimation(.smooth(duration: 0.5).delay(0.4)) {
                 contentAppeared = true
+            }
+            detectSignerApps()
+        }
+    }
+
+    private func detectSignerApps() {
+        let schemes: [(String, DetectedSigner)] = [
+            ("nostrsigner://", .amber),
+            ("primal://", .primal),
+        ]
+        for (scheme, signer) in schemes {
+            if let url = URL(string: scheme), UIApplication.shared.canOpenURL(url) {
+                detectedSigner = signer
+                return
             }
         }
     }

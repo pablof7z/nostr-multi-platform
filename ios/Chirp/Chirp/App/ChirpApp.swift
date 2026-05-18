@@ -19,6 +19,14 @@ struct ChirpApp: App {
                 .tint(ChirpColor.accent)
                 .preferredColorScheme(.dark)
                 .task { model.start() }
+                .onOpenURL { url in
+                    guard url.scheme?.lowercased() == "chirp" else { return }
+                    if let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
+                       let bunkerUri = comps.queryItems?.first(where: { $0.name == "bunker_uri" || $0.name == "uri" })?.value,
+                       bunkerUri.hasPrefix("bunker://") {
+                        model.signInBunker(bunkerUri)
+                    }
+                }
         }
         .onChange(of: scenePhase) { _, newPhase in
             // D7: Swift reports the fact; the kernel decides what each
