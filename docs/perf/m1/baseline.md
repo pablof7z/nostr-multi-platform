@@ -49,8 +49,10 @@ Observations:
 - Kernel dedup kept zero new profile-claim REQs for the 3 seed pubkeys
 - The spec's "OpenView/CloseView dispatch rate ≤ 60 % of mount rate" describes
   the **platform debounce layer** (ADR-0005 shadow), not the kernel actor.  The
-  equivalent kernel invariant — no new wire REQs per already-cached pubkey — is
-  measured by `dedup_ratio` and verified at 0.
+  kernel-side dedup invariant validated here (no new wire REQs per
+  already-cached pubkey, `dedup_ratio=0`) is **necessary-but-not-sufficient**;
+  the platform debounce gate (OpenView/CloseView dispatch rate ≤ 60 % of mount
+  rate) remains deferred to M14 per T22.
 
 ---
 
@@ -105,16 +107,19 @@ message arrived.  This prevented time-gated events (the 3-second
 Added a 250 ms `recv_timeout` when `running=true`.  The `Ok(None)` arm flushes
 `pending_view_requests()` so the timer check fires on every tick.
 
-**Doctrine review (D0–D5):**
-- D0 (single-threaded kernel): unchanged — still one actor thread
-- D1 (mailbox drives state): the poll only calls `pending_view_requests()`, which
-  is a read of already-computed state.  No new state machine.
-- D2 (no blocking I/O in kernel): timer is a Rust `recv_timeout`; no syscall
-  other than the existing channel wait
-- D3 (relay adapter owns WebSocket): no relay code touched
-- D4 (emit only on change): `emit_now` is called only when `changed_since_emit`
-  is true (unchanged)
-- D5 (capabilities report): no capability decisions added
+**Doctrine review (D0–D8, policy doctrines D0–D5 + substrate invariants D6–D8):**
+- D0 (kernel boundary): `ActorCommand` and `spawn_actor` are now gated behind
+  `feature = "test-support"`; they do not appear in the stable `nmp-core` API.
+- D1 (best-effort rendering): unchanged — still one actor thread; no render path touched
+- D2 (negentropy first): no subscription policy changed
+- D3 (outbox automatic): no relay code touched
+- D4 (single writer per fact): the poll only calls `pending_view_requests()`,
+  which is idempotent and reads already-computed state
+- D5 (snapshots bounded): no new view kinds added
+- D6 (errors never cross FFI): no FFI surface changed
+- D7 (capabilities report): no capability decisions added
+- D8 (reactivity contract): `emit_now` is now gated on `changed_since_emit()`
+  in the idle-tick path, restoring the zero-false-wakeup invariant
 
 ### 2. `requests.rs` — `maybe_open_timeline()` in `pending_view_requests()`
 
@@ -123,10 +128,10 @@ messages).  With the 250 ms poll, the actor now calls `pending_view_requests()`
 every tick, which checks the `contacts_deadline` and opens the seed-timeline when
 it expires, even if no relay traffic has arrived.
 
-**Doctrine review (D0–D5):**
-- D0–D4: Same reasoning as above.  `maybe_open_timeline()` is idempotent; it
-  sets a flag after opening so it only fires once.
-- D5: No change — relay connections already existed before this call path.
+**Doctrine review (D0–D8):**
+- D0–D5: Same reasoning as above.  `maybe_open_timeline()` is idempotent; it
+  sets a flag after opening so it only fires once.  No new domain nouns added.
+- D6–D8: No FFI, capability, or reactivity-budget changes.
 
 ---
 

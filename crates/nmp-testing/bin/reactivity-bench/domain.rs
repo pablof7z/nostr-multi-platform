@@ -343,7 +343,7 @@ where
 
 pub(crate) fn extend_hits(
     scratch: &mut Vec<usize>,
-    marks: &mut Vec<u32>,
+    marks: &mut [u32],
     mark_generation: u32,
     hits: Option<&Vec<usize>>,
 ) {

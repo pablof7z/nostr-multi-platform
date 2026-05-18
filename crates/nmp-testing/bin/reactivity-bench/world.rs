@@ -280,7 +280,7 @@ impl BenchWorld {
                 content_len: 140,
             },
             StreamKind::ProfileForSharedAuthor => {
-                if index % 50 == 0 {
+                if index.is_multiple_of(50) {
                     Event {
                         id: self.take_event_id(),
                         kind: 0,
@@ -305,7 +305,7 @@ impl BenchWorld {
                 }
             }
             StreamKind::ThreadEvents => {
-                let is_reaction = index % 11 != 0;
+                let is_reaction = !index.is_multiple_of(11);
                 Event {
                     id: self.take_event_id(),
                     kind: if is_reaction { 7 } else { 1 },
@@ -343,7 +343,7 @@ impl BenchWorld {
             _ => 1,
         };
         let mut e_tags = SmallTags::empty();
-        if kind == 7 || (index % 23 == 0 && index > 0) {
+        if kind == 7 || (index.is_multiple_of(23) && index > 0) {
             e_tags.push((index % 10_000) as u32);
         }
         Event {
@@ -357,7 +357,7 @@ impl BenchWorld {
             } else {
                 None
             },
-            hashtag_nostr: index % 17 == 0,
+            hashtag_nostr: index.is_multiple_of(17),
             content_len: 80 + (rng.next_mod(200) as usize),
         }
     }

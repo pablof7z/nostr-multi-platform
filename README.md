@@ -92,7 +92,7 @@
 | `docs/aim.md` | Project north star + RMP-bible distillation. **Read first.** |
 | `docs/plan.md` + `docs/plan/` | Milestone ladder (M0–M17) with exit gates per milestone. |
 | `docs/plan/scope-adjustments-2026-05-18.md` | Live scope shifts (DMs + Wallet deferred; Highlighter added; framework-magic contract). |
-| `docs/product-spec.md` + `docs/product-spec/` | What we ship at v1. The cardinal doctrine D0–D5 lives in §1.5. |
+| `docs/product-spec.md` + `docs/product-spec/` | What we ship at v1. The cardinal doctrine D0–D8 lives in §1.5. |
 | `docs/decisions/` | ADR-0001..0010 (and counting). |
 | `docs/design/` | Per-subsystem design docs — subscription compilation, LMDB schema, FFI hardening, podcast rebuild, framework-magic, NIP-29 crate. |
 | `docs/research/` | Reverse-engineering notes on NDK + Applesauce — outbox, kind:3 auto-tracking, signers, gotchas, missing-features deltas. |
@@ -105,7 +105,7 @@
 ## Worth reading before contributing
 
 1. `docs/aim.md` — the north star.
-2. `docs/product-spec.md` §1.5 — the doctrine D0–D5.
+2. `docs/product-spec.md` §1.5 — the cardinal doctrine D0–D8.
 3. `docs/plan.md` — the milestone ladder.
 4. `docs/decisions/0009-app-extension-kernel-boundary.md` — why the kernel is a kernel.
 5. `docs/decisions/0010-generated-app-enum-vs-type-erased-registry.md` — how FFI types are generated.

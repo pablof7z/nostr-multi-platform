@@ -6,7 +6,7 @@
 
 > **Each milestone is gated.** Every milestone ends with: a runnable artifact, automated tests in `nmp-testing`, a measured-numbers report in `docs/perf/m<N>/`, and an explicit ADR if a design decision was revised in flight. **No silent endings.** **No "for later" carve-outs** — if a slice is in the milestone scope, it ships in that milestone, or the milestone is not done.
 
-> **The doctrine is final** (`docs/product-spec.md` §1.5): D0 kernel never grows app nouns · D1 best-effort rendering with placeholders · D2 reactivity contract (composite reverse index, ≤60Hz/view, working-set bound) · D3 errors never cross FFI · D4 one writer per fact · D5 capabilities report, never decide. Every PR is reviewed against this rubric; a change that makes any doctrine harder to enforce is rewritten or rejected.
+> **The doctrine is final** (`docs/product-spec.md` §1.5, D0–D8): D0 kernel never grows app nouns · D1 best-effort rendering with placeholders · D2 negentropy first, REQ second · D3 outbox routing automatic, manual relay is the opt-out · D4 single writer per fact; caches derive · D5 snapshots bounded by open views · D6 errors never cross FFI as exceptions · D7 capabilities report, never decide policy · D8 reactivity contract (composite reverse index, ≤60 Hz/view, working-set bounded). Every PR is reviewed against this rubric; a change that makes any doctrine harder to enforce is rewritten or rejected.
 
 ---
 
