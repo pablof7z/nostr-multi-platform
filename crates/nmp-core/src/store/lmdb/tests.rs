@@ -3,56 +3,18 @@
 //! Mirrors `mem/tests.rs` — same scenarios, same expected outcomes. The
 //! per-test fixture uses `tempfile::tempdir()` to spin up a fresh
 //! `LmdbEventStore` so each test owns its own LMDB env.
+//!
+//! Kind:5 deletion scenarios live in the sibling `tests_kind5.rs` so this
+//! file stays under the 500-LOC hard cap.
 
 #![cfg(feature = "lmdb-backend")]
 
 use std::ops::ControlFlow;
 
-use tempfile::tempdir;
+use crate::store::types::{ClaimerId, InsertOutcome, RawEvent, StoreQuery};
+use crate::store::{EventStore, StoreError};
 
-use crate::store::types::{ClaimerId, InsertOutcome, RawEvent, StoreQuery, VerifiedEvent};
-use crate::store::{EventStore, LmdbEventStore, StoreError};
-
-fn open_tmp() -> (LmdbEventStore, tempfile::TempDir) {
-    let dir = tempdir().expect("tempdir");
-    let store = LmdbEventStore::open(dir.path()).expect("open");
-    (store, dir)
-}
-
-fn signed_event(kind: u32, created_at: u64, content: &str, d_tag: Option<&str>) -> RawEvent {
-    use nostr::prelude::*;
-    let keys = Keys::generate();
-    let mut b = EventBuilder::new(Kind::from(kind as u16), content)
-        .custom_created_at(Timestamp::from_secs(created_at));
-    if let Some(d) = d_tag {
-        b = b.tag(Tag::identifier(d));
-    }
-    let ev = b.sign_with_keys(&keys).expect("sign");
-    let json = ev.try_as_json().expect("json");
-    serde_json::from_str(&json).expect("parse")
-}
-
-fn signed_event_with_keys(
-    keys: &nostr::Keys,
-    kind: u32,
-    created_at: u64,
-    content: &str,
-    d_tag: Option<&str>,
-) -> RawEvent {
-    use nostr::prelude::*;
-    let mut b = EventBuilder::new(Kind::from(kind as u16), content)
-        .custom_created_at(Timestamp::from_secs(created_at));
-    if let Some(d) = d_tag {
-        b = b.tag(Tag::identifier(d));
-    }
-    let ev = b.sign_with_keys(keys).expect("sign");
-    let json = ev.try_as_json().expect("json");
-    serde_json::from_str(&json).expect("parse")
-}
-
-fn verified(raw: RawEvent) -> VerifiedEvent {
-    VerifiedEvent::from_raw_unchecked(raw)
-}
+use super::test_fixtures::{open_tmp, signed_event, signed_event_with_keys, verified};
 
 // ─── Insert / outcome parity ─────────────────────────────────────────────────
 
@@ -139,71 +101,6 @@ fn nip40_expired_on_arrival_rejected() {
         .unwrap();
     assert!(matches!(o, InsertOutcome::Rejected { .. }), "got {o:?}");
     assert!(store.get_by_id(&id).unwrap().is_none(), "expired not stored");
-}
-
-// ─── kind:5 deletion parity ──────────────────────────────────────────────────
-
-#[test]
-fn kind5_self_delete_e_tag_writes_tombstone() {
-    use nostr::prelude::*;
-    let (store, _dir) = open_tmp();
-    let keys = Keys::generate();
-
-    let target = signed_event_with_keys(&keys, 1, 1000, "doomed", None);
-    let target_id = target.id_bytes();
-    store.insert(verified(target.clone()), &"wss://r/".into(), 1_000_000).unwrap();
-
-    // kind:5 referencing target.
-    let k5 = EventBuilder::new(Kind::EventDeletion, "")
-        .tag(Tag::event(
-            nostr::EventId::from_slice(&target_id).unwrap(),
-        ))
-        .custom_created_at(Timestamp::from_secs(2000))
-        .sign_with_keys(&keys)
-        .unwrap();
-    let k5_json = k5.try_as_json().unwrap();
-    let k5_raw: RawEvent = serde_json::from_str(&k5_json).unwrap();
-    store.insert(verified(k5_raw), &"wss://r/".into(), 2_000_000).unwrap();
-
-    // Tombstone present, target gone.
-    let tombs = store.tombstones_for(&target_id).unwrap();
-    assert!(!tombs.is_empty(), "tombstone must be recorded");
-    assert!(store.get_by_id(&target_id).unwrap().is_none(), "target purged");
-
-    // Re-delivery of the same target_id must surface as Tombstoned.
-    let o = store.insert(verified(target), &"wss://r/".into(), 3_000_000).unwrap();
-    assert!(matches!(o, InsertOutcome::Tombstoned { .. }), "got {o:?}");
-}
-
-#[test]
-fn kind5_foreign_target_silently_skipped() {
-    use nostr::prelude::*;
-    let (store, _dir) = open_tmp();
-    let alice = Keys::generate();
-    let bob = Keys::generate();
-
-    let alice_event = signed_event_with_keys(&alice, 1, 1000, "alice's note", None);
-    let alice_id = alice_event.id_bytes();
-    store.insert(verified(alice_event.clone()), &"wss://r/".into(), 1_000_000).unwrap();
-
-    // Bob tries to delete Alice's event — must be silently skipped, NOT
-    // rejected as InvalidDelete (parity with mem/insert.rs:271 continue).
-    let foreign_k5 = EventBuilder::new(Kind::EventDeletion, "")
-        .tag(Tag::event(nostr::EventId::from_slice(&alice_id).unwrap()))
-        .custom_created_at(Timestamp::from_secs(2000))
-        .sign_with_keys(&bob)
-        .unwrap();
-    let json = foreign_k5.try_as_json().unwrap();
-    let raw: RawEvent = serde_json::from_str(&json).unwrap();
-    let o = store.insert(verified(raw), &"wss://r/".into(), 2_000_000).unwrap();
-    // Bob's kind:5 itself is stored (it's a valid event of his), but the
-    // foreign target is not deleted.
-    assert!(
-        matches!(o, InsertOutcome::Inserted { .. }),
-        "foreign kind:5 must be stored, got {o:?}"
-    );
-    assert!(store.get_by_id(&alice_id).unwrap().is_some(),
-        "alice's event must survive bob's foreign deletion attempt");
 }
 
 // ─── query_visit parity ──────────────────────────────────────────────────────

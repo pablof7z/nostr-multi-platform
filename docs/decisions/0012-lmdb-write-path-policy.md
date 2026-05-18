@@ -88,14 +88,14 @@ Provenance helper (`mem/mod.rs:149-187`) — every Inserted/Duplicate/Replaced u
    - Tombstone write on every kind:5 delete (per `e`-tag target AND address-level for `a`-tags) with `max-merge` of `deleted_at` and union of `sources`. **Unconditional** — even if the target event was never stored, the tombstone is recorded so future arrivals are blocked correctly.
    - NIP-40 tombstone write on `ExpiredOnArrival` rejection (origin = `NIP40Expiry`).
 
-5. **Read-side compensation**: `tombstones_for` reads from the NMP-side tombstone sub-db, **not** from the fork's `deleted_ids`. The fork's `is_deleted` set is kept in sync (every NMP tombstone write also marks the corresponding fork entry) so that `save_event_with_txn`'s own `is_deleted` check still fires.
+5. **Read-side compensation**: `tombstones_for` reads from the NMP-side tombstone sub-db, **not** from the fork's `deleted_ids`. The fork's `deleted_ids` / `deleted_coordinates` sets are **deliberately left empty** by the adapter (see Amendment 2026-05-18 below) — re-delivery rejection is driven entirely by the NMP per-id / addr tombstone checks in step 4 / step 5 of the adapter pipeline, before `save_event_with_txn` is invoked.
 
 ## Consequences
 
 What the adapter must do that `save_event_with_txn` does **not**:
 
 - **Maintain a provenance LRU sub-db** (`event_id → Vec<ProvenanceEntry>`), shared txn with event write.
-- **Maintain a richer tombstone sub-db** (`target_id → TombstoneRow{deleter_pubkey, deleted_at, sources, origin, kind5_event_id}`) and an address-tombstone sub-db (`kind:pk:dtag → TombstoneRow`). Fork's `deleted_ids` / `deleted_coordinates` are kept in lockstep but are no longer authoritative for metadata.
+- **Maintain a richer tombstone sub-db** (`target_id → TombstoneRow{deleter_pubkey, deleted_at, sources, origin, kind5_event_id}`) and an address-tombstone sub-db (`kind:pk:dtag → TombstoneRow`). Fork's `deleted_ids` / `deleted_coordinates` are **left empty** by the adapter (see Amendment 2026-05-18); the NMP tombstone sub-dbs are the sole source of truth for deletion.
 - **Pre-query existing id** for replaceable / addressable kinds so `Replaced.replaced_id` and `Superseded.current_id` can be reported.
 - **Pre-filter kind:5 `e`/`a` tags** to drop foreign-author targets before invoking `save_event_with_txn`, preserving Mem's "silently skip foreign target" semantics.
 - **Remove foreign pre-tombstone** (deleter ≠ event.pubkey) before allowing insert.
@@ -112,3 +112,15 @@ Read methods that the fork's primitives **do not** match cleanly are wrapped in 
 - **Mirror Mem's entire pipeline in raw heed, bypassing `save_event_with_txn`.** Rejected: re-implements all 7 secondary indexes + NIP-09 / replaceable / addressable handling on top of the fork's existing primitives. Doubles the maintenance surface and means every upstream re-sync also has to re-validate NMP's hand-rolled pipeline. The compensate-around-the-primitive approach keeps the upstream-divergent surface minimal (8 sub-dbs + 5 pre/post hooks) and the re-sync delta small.
 
 - **Upstream PR to extend `save_event_with_txn` with NMP semantics.** Rejected for this milestone: would require upstream to accept provenance + extended tombstone metadata, neither of which fits their data model. PD-026's "one release cycle in our fork" stance applies.
+
+## Amendment 2026-05-18 — Drop fork `mark_deleted` / `mark_coordinate_deleted` calls
+
+**Context**: The original Gates C-E implementation called the fork's `mark_deleted(target_id)` and `mark_coordinate_deleted(coord, ts)` inside `handle_kind5`, intending to keep the fork's `deleted_ids` / `deleted_coordinates` indexes "in lockstep" with the NMP tombstone sub-dbs so `save_event_with_txn`'s pre-checks would still fire on re-deliveries.
+
+**Bug**: When a kind:5 references a target id `X` that is **not yet stored**, the adapter defaults `target_is_self = true` (so the tombstone is recorded for future arrivals). The original code then called `mark_deleted(X)` unconditionally. If `X` later arrived from a foreign author (Bob's kind:5 deleting Alice's not-yet-fetched event), step 4 in the adapter pipeline correctly identified it as a foreign pre-tombstone (`tomb.deleter_pubkey != event.pubkey ⇒ applies = false`), dropped the NMP tombstone, and proceeded to `save_event_with_txn`. But the fork's `is_deleted(X)` pre-check still saw the lingering `deleted_ids[X]` entry and rejected the event with `Deleted` — the adapter then mapped to `Tombstoned`, **diverging from Mem's `Inserted` outcome**.
+
+**Decision**: `handle_kind5` no longer calls `mark_deleted` or `mark_coordinate_deleted`. The fork's `deleted_ids` / `deleted_coordinates` sub-dbs remain empty for the adapter's lifetime. Re-delivery rejection of legitimate self-deletes is enforced by the NMP per-id tombstone check (step 4 of `insert::insert`) — which already inspects `tomb.deleter_pubkey` to distinguish self-delete (`applies = true ⇒ Tombstoned`) from foreign pre-tombstone (`applies = false ⇒ drop tombstone, proceed`). Address-level rejection is handled symmetrically by the addr-tombstone check (step 5).
+
+**Verification**: Read of fork `crates/nmp-nostr-lmdb/src/store/lmdb/mod.rs:461` (`is_deleted` reads only `deleted_ids`) and `:468` (`when_is_coordinate_deleted` reads only `deleted_coordinates`). Neither sub-db is written by any code path other than the explicit `mark_*` calls — which the adapter now never invokes — and the fork's own `handle_deletion_event` (which would invoke them) is never reached for kind:5 because `handle_kind5` bypasses `save_event_with_txn` and calls `Lmdb::store` directly.
+
+**Regression guard**: `tests_kind5::kind5_foreign_pre_tombstone_then_event_arrives_inserts`.

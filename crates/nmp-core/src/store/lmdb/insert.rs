@@ -81,9 +81,11 @@ pub(super) fn insert(
         }
         // Foreign pre-tombstone — drop and proceed (parity with mem/insert.rs:74-76).
         tombstones::delete(inner.tombstones, &mut txn, &id_bytes)?;
-        // Also clear the fork's `is_deleted` mark via... actually the fork has
-        // no public `clear_deleted`. Workaround: we never wrote the fork's
-        // mark for foreign pre-tombstones (we only mark when applies=true).
+        // No fork-side `clear_deleted` is needed: `handle_kind5` never calls
+        // the fork's `mark_deleted` (see rationale in that fn), so the fork's
+        // `deleted_ids` set stays empty for any id NMP wrote a tombstone for.
+        // `save_event_with_txn`'s `is_deleted` pre-check is therefore a no-op
+        // on this path.
     }
 
     // 5. Address tombstone check (param-replaceable).
@@ -290,8 +292,19 @@ fn handle_kind5(
             continue;
         }
 
-        // Tombstone write (max-merge), then mark fork's deleted_ids + remove
-        // event from fork if present.
+        // Tombstone write (max-merge). We deliberately do NOT call the fork's
+        // `mark_deleted` here: when the target is not yet stored we default
+        // `target_is_self = true` (we have to record SOMETHING in case it
+        // arrives later), but a foreign kind:5 referencing Alice's still-
+        // unfetched event must NOT poison the fork's `deleted_ids` set —
+        // otherwise step 4 will drop the NMP tombstone on Alice's arrival
+        // (foreign pre-tombstone path) only to have the fork re-reject the
+        // event with `Deleted`, diverging from Mem's `Inserted` outcome.
+        // Re-delivery rejection of legitimate self-deletes is handled by
+        // the NMP per-id tombstone check in step 4 (see `applies` logic).
+        // Verified by reading fork's `save_event_with_txn` (mod.rs:461):
+        // `is_deleted` reads ONLY `deleted_ids`, which is now never written
+        // by NMP on this path.
         let row = tombstones::kind5_row(
             target_id_bytes,
             kind5_id,
@@ -300,15 +313,6 @@ fn handle_kind5(
             source,
         );
         tombstones::merge_per_id(inner.tombstones, txn, &target_id_bytes, row)?;
-
-        // Mark deleted_ids on the fork (its `save_event_with_txn` pre-check
-        // for re-deliveries depends on this).
-        if let Ok(target_event_id) = EventId::from_slice(&target_id_bytes) {
-            inner
-                .lmdb
-                .mark_deleted(txn, &target_event_id)
-                .map_err(|e| StoreError::Io(format!("k5 mark_deleted: {e}")))?;
-        }
 
         // Remove the target's primary + indexes if it exists.
         if inner
@@ -369,11 +373,14 @@ fn handle_kind5(
                     .remove_replaceable(txn, &coord, Timestamp::from_secs(kind5_at))
                     .map_err(|e| StoreError::Io(format!("k5 remove_replaceable: {e}")))?;
             }
-            // Mark coordinate-deleted in the fork's index for future events.
-            inner
-                .lmdb
-                .mark_coordinate_deleted(txn, &coord.borrow(), Timestamp::from_secs(kind5_at))
-                .map_err(|e| StoreError::Io(format!("k5 mark_coord: {e}")))?;
+            // Note: we deliberately skip the fork's `mark_coordinate_deleted`
+            // for the same reason as `mark_deleted` above. Future-arrival
+            // rejection (a-tag tombstone) is handled by the NMP addr-tombstone
+            // check at step 5 — keeping the fork's `deleted_coordinates`
+            // index out of it preserves parity with Mem (which has no such
+            // index). Verified by reading fork's `save_event_with_txn`
+            // (mod.rs:468): `when_is_coordinate_deleted` reads ONLY
+            // `deleted_coordinates`, which NMP now never writes to.
         }
     }
 

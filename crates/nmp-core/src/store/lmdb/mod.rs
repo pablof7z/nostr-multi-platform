@@ -40,7 +40,11 @@ mod dump;
 mod store_impl;
 
 #[cfg(all(test, feature = "lmdb-backend"))]
+mod test_fixtures;
+#[cfg(all(test, feature = "lmdb-backend"))]
 mod tests;
+#[cfg(all(test, feature = "lmdb-backend"))]
+mod tests_kind5;
 
 use std::path::{Path, PathBuf};
 
