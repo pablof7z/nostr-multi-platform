@@ -2,7 +2,6 @@ import SwiftUI
 import Combine
 import CoreSpotlight
 import os.log
-import UserNotifications
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PodcastrShims.swift
@@ -16,194 +15,575 @@ import UserNotifications
 // KernelModel where kernel data exists. No logic lives here — logic is in
 // Rust (apps/podcast/).
 //
-// Each stub is documented with the gap task it blocks.
+// Domain structs (Episode, Podcast, Clip, Note, etc.) match Podcastr's actual
+// field shapes EXACTLY so verbatim view bodies compile without any edits.
 // ─────────────────────────────────────────────────────────────────────────────
-
-// MARK: - DownloadState (verbatim match to Podcastr's DownloadState.swift)
-//
-// Top-level so Episode can typealias it and DownloadsManagerView patterns compile.
-
-enum EpisodeDownloadState: Codable, Hashable {
-    case notDownloaded
-    case queued
-    /// progress is 0...1; bytesWritten may be nil.
-    case downloading(progress: Double, bytesWritten: Int64?)
-    /// localFileURL and byteCount.
-    case downloaded(localFileURL: URL, byteCount: Int64)
-    case failed(message: String)
-}
-
-// MARK: - Domain models
-
-/// T-podcast-gap-001: Full Episode model backed by kernel snapshot.
-struct Episode: Identifiable, Hashable, Codable {
-    let id: UUID
-    var podcastID: UUID = UUID()
-    var guid: String = ""
-    var title: String = ""
-    var description: String = ""
-    var publishedAt: Date = Date()
-    var duration: TimeInterval = 0
-    var imageURL: URL? = nil
-    var fileURL: URL? = nil
-    var isPlayed: Bool = false
-    var isDownloaded: Bool = false
-    var isStarred: Bool = false
-    var playbackPosition: TimeInterval = 0
-    var chapters: [Chapter]? = nil
-    var transcriptSegments: [TranscriptSegment]? = nil
-}
 
 // MARK: - AutoDownloadPolicy
 
-/// Stub policy controlling per-show auto-download behaviour.
-struct AutoDownloadPolicy: Equatable, Hashable, Codable {
-    enum Mode: Equatable, Hashable, Codable {
+struct AutoDownloadPolicy: Codable, Sendable, Hashable {
+    enum Mode: Codable, Sendable, Hashable {
         case off
         case latestN(Int)
         case allNew
     }
-    var mode: Mode = .off
-    var wifiOnly: Bool = true
-
-    static var `default`: AutoDownloadPolicy { AutoDownloadPolicy(mode: .off, wifiOnly: true) }
+    var mode: Mode
+    var wifiOnly: Bool
+    init(mode: Mode = .off, wifiOnly: Bool = true) {
+        self.mode = mode
+        self.wifiOnly = wifiOnly
+    }
+    static let `default` = AutoDownloadPolicy(mode: .allNew, wifiOnly: true)
+    var summaryLabel: String? {
+        switch mode {
+        case .off: return nil
+        case .latestN(let n):
+            let base = "Latest \(n)"
+            return wifiOnly ? "\(base) · Wi-Fi only" : base
+        case .allNew:
+            let base = "All new"
+            return wifiOnly ? "\(base) · Wi-Fi only" : base
+        }
+    }
 }
 
-/// T-podcast-gap-001: Full Podcast/Show model backed by kernel snapshot.
-struct Podcast: Identifiable, Hashable, Codable {
-    let id: UUID
-    var title: String = ""
-    var author: String = ""
-    var description: String = ""
-    var imageURL: URL? = nil
-    var feedURL: URL? = nil
-    /// Episode count from kernel LibraryView snapshot. Zero until kernel
-    /// exposes per-podcast episode rows (T-podcast-gap-003).
-    var episodeCount: Int = 0
-    /// Last RSS refresh timestamp. Nil until kernel exposes refresh metadata.
-    var lastRefreshedAt: Date? = nil
-    /// Notifications enabled for this show. Stub — always true.
-    var notificationsEnabled: Bool = true
-    /// Auto-download policy for this show. Stub — returns default policy.
-    var autoDownload: AutoDownloadPolicy = .default
-    /// Language tag from RSS feed (e.g. "en"). Nil until kernel exposes feed metadata.
-    var language: String? = nil
+// MARK: - DownloadState
 
-    /// Sentinel used by AllPodcastsListView to exclude the "unknown" fallback row.
-    static let unknownID: UUID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+enum DownloadState: Codable, Sendable, Hashable {
+    case notDownloaded
+    case queued
+    case downloading(progress: Double, bytesWritten: Int64?)
+    case downloaded(localFileURL: URL, byteCount: Int64)
+    case failed(message: String)
+}
 
-    /// Accent colour derived deterministically from title so the grid cells
-    /// have stable, distinct tints without querying a palette service.
-    var accentColor: Color {
-        let colours: [Color] = [.blue, .purple, .pink, .orange, .teal, .indigo, .cyan, .green]
-        let hash = abs(title.hashValue)
-        return colours[hash % colours.count]
+// MARK: - TranscriptState
+
+enum TranscriptState: Codable, Sendable, Hashable {
+    case none
+    case queued
+    case fetchingPublisher
+    case transcribing(progress: Double)
+    case ready(source: Source)
+    case failed(message: String)
+
+    enum Source: String, Codable, Sendable, Hashable {
+        case publisher, scribe, whisper, onDevice, assemblyAI, other
+    }
+}
+
+// MARK: - TriageDecision
+
+enum TriageDecision: String, Codable, Sendable, Hashable, CaseIterable {
+    case inbox
+    case archived
+}
+
+// MARK: - TranscriptKind
+
+enum TranscriptKind: String, Codable, Sendable, Hashable {
+    case srt, vtt, txt, json
+}
+
+// MARK: - Episode
+
+struct Episode: Codable, Sendable, Identifiable, Hashable {
+    var id: UUID
+    var podcastID: UUID
+    var guid: String
+    var title: String
+    var description: String
+    var pubDate: Date
+    var duration: TimeInterval?
+    var enclosureURL: URL
+    var enclosureMimeType: String?
+    var imageURL: URL?
+    var chapters: [Episode.Chapter]?
+    var persons: [Episode.Person]?
+    var soundBites: [Episode.SoundBite]?
+    var publisherTranscriptURL: URL?
+    var publisherTranscriptType: TranscriptKind?
+    var chaptersURL: URL?
+    var playbackPosition: TimeInterval
+    var played: Bool
+    var isStarred: Bool
+    var downloadState: DownloadState
+    var transcriptState: TranscriptState
+    var adSegments: [Episode.AdSegment]?
+    var generationSource: Episode.GenerationSource?
+    var triageDecision: TriageDecision?
+    var triageRationale: String?
+    var triageIsHero: Bool
+    var metadataIndexed: Bool
+
+    init(
+        id: UUID = UUID(),
+        podcastID: UUID,
+        guid: String,
+        title: String,
+        description: String = "",
+        pubDate: Date,
+        duration: TimeInterval? = nil,
+        enclosureURL: URL,
+        enclosureMimeType: String? = nil,
+        imageURL: URL? = nil,
+        chapters: [Episode.Chapter]? = nil,
+        persons: [Episode.Person]? = nil,
+        soundBites: [Episode.SoundBite]? = nil,
+        publisherTranscriptURL: URL? = nil,
+        publisherTranscriptType: TranscriptKind? = nil,
+        chaptersURL: URL? = nil,
+        playbackPosition: TimeInterval = 0,
+        played: Bool = false,
+        isStarred: Bool = false,
+        downloadState: DownloadState = .notDownloaded,
+        transcriptState: TranscriptState = .none,
+        adSegments: [Episode.AdSegment]? = nil,
+        generationSource: Episode.GenerationSource? = nil,
+        triageDecision: TriageDecision? = nil,
+        triageRationale: String? = nil,
+        triageIsHero: Bool = false,
+        metadataIndexed: Bool = false
+    ) {
+        self.id = id
+        self.podcastID = podcastID
+        self.guid = guid
+        self.title = title
+        self.description = description
+        self.pubDate = pubDate
+        self.duration = duration
+        self.enclosureURL = enclosureURL
+        self.enclosureMimeType = enclosureMimeType
+        self.imageURL = imageURL
+        self.chapters = chapters
+        self.persons = persons
+        self.soundBites = soundBites
+        self.publisherTranscriptURL = publisherTranscriptURL
+        self.publisherTranscriptType = publisherTranscriptType
+        self.chaptersURL = chaptersURL
+        self.playbackPosition = playbackPosition
+        self.played = played
+        self.isStarred = isStarred
+        self.downloadState = downloadState
+        self.transcriptState = transcriptState
+        self.adSegments = adSegments
+        self.generationSource = generationSource
+        self.triageDecision = triageDecision
+        self.triageRationale = triageRationale
+        self.triageIsHero = triageIsHero
+        self.metadataIndexed = metadataIndexed
     }
 
-    /// SF Symbol glyph to render when artwork_url is absent.
-    var artworkSymbol: String { "antenna.radiowaves.left.and.right" }
+    struct Chapter: Codable, Sendable, Hashable, Identifiable {
+        var id: UUID
+        var startTime: TimeInterval
+        var endTime: TimeInterval?
+        var title: String
+        var imageURL: URL?
+        var linkURL: URL?
+        var includeInTableOfContents: Bool
+        var isAIGenerated: Bool
+        var summary: String?
+        var sourceEpisodeID: String?
+
+        init(
+            id: UUID = UUID(),
+            startTime: TimeInterval,
+            endTime: TimeInterval? = nil,
+            title: String,
+            imageURL: URL? = nil,
+            linkURL: URL? = nil,
+            includeInTableOfContents: Bool = true,
+            isAIGenerated: Bool = false,
+            summary: String? = nil,
+            sourceEpisodeID: String? = nil
+        ) {
+            self.id = id; self.startTime = startTime; self.endTime = endTime
+            self.title = title; self.imageURL = imageURL; self.linkURL = linkURL
+            self.includeInTableOfContents = includeInTableOfContents
+            self.isAIGenerated = isAIGenerated; self.summary = summary
+            self.sourceEpisodeID = sourceEpisodeID
+        }
+    }
+
+    struct Person: Codable, Sendable, Hashable, Identifiable {
+        var id: UUID; var name: String; var role: String?; var group: String?
+        var imageURL: URL?; var linkURL: URL?
+        init(id: UUID = UUID(), name: String, role: String? = nil, group: String? = nil, imageURL: URL? = nil, linkURL: URL? = nil) {
+            self.id = id; self.name = name; self.role = role; self.group = group
+            self.imageURL = imageURL; self.linkURL = linkURL
+        }
+    }
+
+    struct SoundBite: Codable, Sendable, Hashable, Identifiable {
+        var id: UUID; var startTime: TimeInterval; var duration: TimeInterval; var title: String?
+        init(id: UUID = UUID(), startTime: TimeInterval, duration: TimeInterval, title: String? = nil) {
+            self.id = id; self.startTime = startTime; self.duration = duration; self.title = title
+        }
+    }
+
+    struct AdSegment: Codable, Sendable, Hashable, Identifiable {
+        var id: UUID; var start: TimeInterval; var end: TimeInterval; var kind: AdKind
+        init(id: UUID = UUID(), start: TimeInterval, end: TimeInterval, kind: AdKind) {
+            self.id = id; self.start = start; self.end = end; self.kind = kind
+        }
+        enum AdKind: String, Codable, Sendable, Hashable, CaseIterable {
+            case preroll, midroll, postroll
+        }
+    }
+
+    enum GenerationSource: Sendable, Equatable, Hashable, Codable {
+        case inAppChat(conversationID: UUID)
+        case nostr(rootEventID: String, peerPubkeyHex: String)
+    }
 }
 
-struct Chapter: Identifiable, Hashable, Codable {
+extension Episode {
+    // Triage convenience (not in LibraryDerivedDisplay)
+    var isInInbox: Bool { triageDecision == .inbox }
+    var isTriageArchived: Bool { triageDecision == .archived }
+    var isUntriaged: Bool { triageDecision == nil }
+}
+// Note: Episode.isUnplayed/isInProgress/playbackProgress/formattedDuration/plainTextSummary
+// are defined in verbatim Features/Library/LibraryDerivedDisplay.swift
+
+extension BidirectionalCollection where Element == Episode.Chapter {
+    func active(at playheadSeconds: TimeInterval) -> Episode.Chapter? {
+        if let hit = self.last(where: { $0.startTime <= playheadSeconds }) { return hit }
+        return self.first
+    }
+}
+
+// MARK: - Podcast
+
+struct Podcast: Codable, Sendable, Identifiable, Hashable {
+    enum Kind: String, Codable, Sendable, Hashable { case rss, synthetic }
+    enum NostrVisibility: String, Codable, Sendable, Hashable { case `private`, `public` }
+
+    static let unknownID = UUID(uuidString: "00000000-EEEE-EEEE-EEEE-000000000000")!
+    static let unknown = Podcast(id: Podcast.unknownID, kind: .synthetic, feedURL: nil, title: "Unknown")
+
+    var id: UUID
+    var kind: Kind
+    var feedURL: URL?
+    var title: String
+    var author: String
+    var imageURL: URL?
+    var description: String
+    var language: String?
+    var categories: [String]
+    var discoveredAt: Date
+    var ownerPubkeyHex: String?
+    var nostrVisibility: NostrVisibility
+    var nostrCoordinate: String?
+    var titleIsPlaceholder: Bool
+    var lastRefreshedAt: Date?
+    var etag: String?
+    var lastModified: String?
+
+    init(
+        id: UUID = UUID(),
+        kind: Kind = .rss,
+        feedURL: URL? = nil,
+        title: String,
+        author: String = "",
+        imageURL: URL? = nil,
+        description: String = "",
+        language: String? = nil,
+        categories: [String] = [],
+        discoveredAt: Date = Date(),
+        lastRefreshedAt: Date? = nil,
+        etag: String? = nil,
+        lastModified: String? = nil,
+        titleIsPlaceholder: Bool = false,
+        ownerPubkeyHex: String? = nil,
+        nostrVisibility: NostrVisibility = .public,
+        nostrCoordinate: String? = nil
+    ) {
+        self.id = id; self.kind = kind; self.feedURL = feedURL; self.title = title
+        self.author = author; self.imageURL = imageURL; self.description = description
+        self.language = language; self.categories = categories; self.discoveredAt = discoveredAt
+        self.lastRefreshedAt = lastRefreshedAt; self.etag = etag; self.lastModified = lastModified
+        self.titleIsPlaceholder = titleIsPlaceholder; self.ownerPubkeyHex = ownerPubkeyHex
+        self.nostrVisibility = nostrVisibility; self.nostrCoordinate = nostrCoordinate
+    }
+}
+
+// Note: Podcast.accentColor/accentHue/artworkSymbol defined in verbatim
+// Features/Library/LibraryDerivedDisplay.swift
+
+// MARK: - PodcastSubscription
+
+struct PodcastSubscription: Codable, Sendable, Identifiable, Hashable {
+    var podcastID: UUID
+    var subscribedAt: Date
+    var autoDownload: AutoDownloadPolicy
+    var notificationsEnabled: Bool
+    var defaultPlaybackRate: Double?
+    var id: UUID { podcastID }
+
+    init(podcastID: UUID, subscribedAt: Date = Date(), autoDownload: AutoDownloadPolicy = .default,
+         notificationsEnabled: Bool = true, defaultPlaybackRate: Double? = nil) {
+        self.podcastID = podcastID; self.subscribedAt = subscribedAt
+        self.autoDownload = autoDownload; self.notificationsEnabled = notificationsEnabled
+        self.defaultPlaybackRate = defaultPlaybackRate
+    }
+}
+
+// MARK: - PodcastCategory
+
+struct PodcastCategory: Codable, Sendable, Hashable, Identifiable {
+    var id: UUID
+    var name: String
+    var slug: String
+    var description: String
+    var colorHex: String?
+    var subscriptionIDs: [UUID]
+    var generatedAt: Date
+    var model: String?
+
+    init(id: UUID = UUID(), name: String, slug: String, description: String = "",
+         colorHex: String? = nil, subscriptionIDs: [UUID] = [],
+         generatedAt: Date = Date(), model: String? = nil) {
+        self.id = id; self.name = name; self.slug = slug; self.description = description
+        self.colorHex = colorHex; self.subscriptionIDs = subscriptionIDs
+        self.generatedAt = generatedAt; self.model = model
+    }
+}
+
+// MARK: - Clip
+
+struct Clip: Codable, Sendable, Hashable, Identifiable {
     let id: UUID
-    var title: String = ""
-    var startTime: TimeInterval = 0
-    var imageURL: URL? = nil
-    var includeInTableOfContents: Bool = true
+    let episodeID: UUID
+    let subscriptionID: UUID
+    var startMs: Int
+    var endMs: Int
+    let createdAt: Date
+    var caption: String?
+    var speakerID: String?
+    var transcriptText: String
+    var source: Source
+
+    enum Source: String, Codable, Sendable, Hashable {
+        case touch, auto, headphone, carplay, watch, siri, agent
+    }
+
+    init(id: UUID = UUID(), episodeID: UUID, subscriptionID: UUID, startMs: Int, endMs: Int,
+         createdAt: Date = Date(), caption: String? = nil, speakerID: String? = nil,
+         transcriptText: String = "", source: Source = .touch) {
+        self.id = id; self.episodeID = episodeID; self.subscriptionID = subscriptionID
+        self.startMs = startMs; self.endMs = endMs; self.createdAt = createdAt
+        self.caption = caption; self.speakerID = speakerID; self.transcriptText = transcriptText
+        self.source = source
+    }
+
+    var startSeconds: TimeInterval { TimeInterval(startMs) / 1000.0 }
+    var endSeconds: TimeInterval { TimeInterval(endMs) / 1000.0 }
+    var duration: TimeInterval { Double(endMs - startMs) / 1000 }
+    var durationSeconds: TimeInterval { max(0, endSeconds - startSeconds) }
 }
 
-extension [Chapter] {
-    func active(at playhead: TimeInterval) -> Chapter? { nil }
+// MARK: - NoteKind / NoteAuthor / Anchor / Note
+
+enum NoteKind: String, Codable, Hashable, Sendable { case free, reflection, systemEvent }
+enum NoteAuthor: String, Codable, Sendable, Hashable { case user, agent }
+
+enum Anchor: Codable, Hashable, Sendable {
+    case note(id: UUID)
+    case friend(id: UUID)
+    case episode(id: UUID, positionSeconds: TimeInterval)
 }
 
-struct TranscriptSegment: Identifiable, Hashable, Codable {
-    let id: UUID
-    var text: String = ""
-    var startTime: TimeInterval = 0
+struct Note: Codable, Identifiable, Hashable, Sendable {
+    var id: UUID
+    var text: String
+    var kind: NoteKind
+    var target: Anchor?
+    var createdAt: Date
+    var deleted: Bool
+    var author: NoteAuthor
+
+    init(text: String, kind: NoteKind = .free, target: Anchor? = nil, author: NoteAuthor = .user) {
+        self.id = UUID(); self.text = text; self.kind = kind; self.target = target
+        self.createdAt = Date(); self.deleted = false; self.author = author
+    }
 }
 
-struct Clip: Identifiable, Hashable, Codable {
-    let id: UUID
-    var episodeID: UUID = UUID()
-    var startSeconds: TimeInterval = 0
-    var endSeconds: TimeInterval = 0
-    var title: String = ""
+// MARK: - AgentMemory / CompiledAgentMemory
+
+struct AgentMemory: Codable, Identifiable, Hashable, Sendable {
+    var id: UUID; var content: String; var createdAt: Date; var deleted: Bool
+    init(content: String) { self.id = UUID(); self.content = content; self.createdAt = Date(); self.deleted = false }
 }
 
-struct Note: Identifiable, Hashable, Codable {
-    let id: UUID
-    var text: String = ""
-    var createdAt: Date = Date()
-    var deleted: Bool = false
+struct CompiledAgentMemory: Codable, Hashable, Sendable {
+    var text: String; var compiledAt: Date; var sourceMemoryCount: Int; var sourceMemoryIDs: [UUID]
 }
 
-struct AgentMemory: Identifiable, Hashable, Codable {
-    let id: UUID
-    var content: String = ""
-    var deleted: Bool = false
+// MARK: - Friend
+
+struct Friend: Codable, Identifiable, Hashable, Sendable {
+    var id: UUID; var displayName: String; var identifier: String; var addedAt: Date
+    var avatarURL: String?; var about: String?
+    init(displayName: String, identifier: String) {
+        self.id = UUID(); self.displayName = displayName; self.identifier = identifier
+        self.addedAt = Date()
+    }
+    var shortIdentifier: String {
+        let half = 8
+        guard identifier.count > half * 2 else { return identifier }
+        return "\(identifier.prefix(half))…\(identifier.suffix(half))"
+    }
 }
 
-/// Minimal stub for an agent activity log entry.
-struct AgentActivityEntry: Identifiable, Hashable, Codable {
-    let id: UUID
-    var undone: Bool = false
+// MARK: - ThreadingTopic / ThreadingMention
+
+struct ThreadingTopic: Codable, Hashable, Identifiable, Sendable {
+    var id: UUID; var slug: String; var displayName: String; var definition: String?
+    var episodeMentionCount: Int; var contradictionCount: Int; var lastMentionedAt: Date?
+    init(id: UUID = UUID(), slug: String, displayName: String, definition: String? = nil,
+         episodeMentionCount: Int = 0, contradictionCount: Int = 0, lastMentionedAt: Date? = nil) {
+        self.id = id; self.slug = slug; self.displayName = displayName; self.definition = definition
+        self.episodeMentionCount = max(0, episodeMentionCount)
+        self.contradictionCount = max(0, contradictionCount); self.lastMentionedAt = lastMentionedAt
+    }
 }
 
-struct NostrConversation: Identifiable, Hashable, Codable {
-    let id: UUID
-    var rootEventID: String = ""
+struct ThreadingMention: Codable, Hashable, Identifiable, Sendable {
+    var id: UUID; var topicID: UUID; var episodeID: UUID; var startMS: Int; var endMS: Int
+    var snippet: String; var confidence: Double; var isContradictory: Bool
+    init(id: UUID = UUID(), topicID: UUID, episodeID: UUID, startMS: Int, endMS: Int,
+         snippet: String, confidence: Double = 0.7, isContradictory: Bool = false) {
+        self.id = id; self.topicID = topicID; self.episodeID = episodeID
+        self.startMS = max(0, startMS); self.endMS = max(self.startMS, endMS)
+        self.snippet = snippet; self.confidence = max(0, min(1, confidence))
+        self.isContradictory = isContradictory
+    }
+    var formattedTimestamp: String {
+        let totalSeconds = startMS / 1_000
+        let hours = totalSeconds / 3_600; let minutes = (totalSeconds % 3_600) / 60; let seconds = totalSeconds % 60
+        if hours > 0 { return String(format: "%d:%02d:%02d", hours, minutes, seconds) }
+        return String(format: "%d:%02d", minutes, seconds)
+    }
 }
 
-/// Stub Nostr friend / contact row.
-struct Friend: Identifiable, Hashable, Codable {
-    let id: UUID
-    var identifier: String = ""  // pubkey hex or npub
-    var displayName: String = ""
+// Note: Settings struct defined in verbatim Services/Settings.swift
+
+// MARK: - CategorySettings
+
+struct CategorySettings: Codable, Sendable, Hashable {
+    var categoryID: UUID
+    var autoDownloadOverride: AutoDownloadPolicy?
+    var transcriptionEnabled: Bool = true
+    var ragEnabled: Bool = true
+    var briefingsEnabled: Bool = true
+    var wikiEnabled: Bool = true
+    init(categoryID: UUID) { self.categoryID = categoryID }
 }
 
-/// Stub pending NIP-46 or agent approval row.
-struct NostrPendingApproval: Identifiable, Hashable, Codable {
-    let id: UUID
-    var pubkeyHex: String = ""
+// MARK: - Nostr types (stubs for UI compatibility)
+
+struct NostrConversationRecord: Codable, Identifiable, Hashable, Sendable {
+    var rootEventID: String; var counterpartyPubkey: String; var firstSeen: Date; var lastTouched: Date
+    var turns: [NostrConversationTurn]
+    var id: String { rootEventID }
+}
+struct NostrConversationTurn: Codable, Hashable, Sendable {
+    enum Direction: String, Codable, Hashable, Sendable { case incoming, outgoing }
+    var eventID: String; var direction: Direction; var pubkey: String; var createdAt: Date; var content: String
+    var rawEventJSON: String?
+}
+struct NostrProfileMetadata: Codable, Equatable, Hashable, Sendable {
+    var pubkey: String; var name: String?; var displayName: String?; var about: String?
+    var picture: String?; var nip05: String?; var fetchedFromCreatedAt: Int
+    var bestLabel: String? { displayName ?? name }
+    var pictureURL: URL? { picture.flatMap { URL(string: $0) } }
+}
+struct NostrPendingApproval: Codable, Identifiable, Hashable, Sendable {
+    var id: UUID; var pubkeyHex: String; var displayName: String?; var about: String?
+    var pictureURL: String?; var receivedAt: Date; var content: String?
+    var shortPubkey: String { pubkeyHex.count > 16 ? "\(pubkeyHex.prefix(8))…\(pubkeyHex.suffix(8))" : pubkeyHex }
+    init(pubkeyHex: String, displayName: String? = nil, about: String? = nil, pictureURL: String? = nil, content: String? = nil) {
+        self.id = UUID(); self.pubkeyHex = pubkeyHex; self.displayName = displayName
+        self.about = about; self.pictureURL = pictureURL; self.receivedAt = Date(); self.content = content
+    }
+}
+
+// MARK: - AgentActivity
+
+enum AgentActivityKind: Codable, Hashable, Sendable {
+    case noteCreated(noteID: UUID)
+    case memoryRecorded(memoryID: UUID)
+}
+
+struct AgentActivityEntry: Codable, Identifiable, Hashable, Sendable {
+    var id: UUID
+    var batchID: UUID
+    var timestamp: Date
+    var kind: AgentActivityKind
+    var summary: String
+    var undone: Bool
+
+    init(batchID: UUID, kind: AgentActivityKind, summary: String) {
+        self.id = UUID()
+        self.batchID = batchID
+        self.timestamp = Date()
+        self.kind = kind
+        self.summary = summary
+        self.undone = false
+    }
+}
+
+// MARK: - AgentScheduledTask
+
+struct AgentScheduledTask: Codable, Identifiable, Hashable, Sendable {
+    var id: UUID; var label: String; var cronExpression: String?; var nextRunAt: Date?
+}
+
+// MARK: - PendingFriendMessage
+
+struct PendingFriendMessage: Codable, Identifiable, Hashable, Sendable {
+    var id: UUID; var friendID: UUID; var conversationID: UUID; var sentAt: Date
 }
 
 // MARK: - AppState
 
 struct AppState: Codable, Sendable {
-    /// Initialized with UserDefaults-persisted critical flags so the onboarding
-    /// gate survives app restarts. Full Settings disk persistence: T-podcast-gap-004.
-    var settings: Settings = {
-        var s = Settings()
-        s.hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
-        return s
-    }()
-    var episodes: [Episode] = []
     var podcasts: [Podcast] = []
-    var clips: [Clip] = []
+    var subscriptions: [PodcastSubscription] = []
+    var episodes: [Episode] = []
     var notes: [Note] = []
-    var nostrConversations: [NostrConversation] = []
-    var lastPlayedEpisodeID: UUID? = nil
-
-    // MARK: - Fields added for verbatim-3 Settings screen shims
-
-    /// User-followed podcast subscriptions. Stub returns empty list; real
-    /// data flows from the kernel library snapshot (T-podcast-gap-003).
-    var subscriptions: [Podcast] = []
-
-    /// User-defined podcast categories. Stub returns empty list.
-    var categories: [PodcastCategory] = []
-
-    /// Nostr contacts / friends. Stub returns empty list.
     var friends: [Friend] = []
-
-    /// Agent memory entries (long-term memory bank). Stub returns empty.
     var agentMemories: [AgentMemory] = []
-
-    /// Agent activity log entries for the undo subsystem. Stub returns empty.
-    var agentActivity: [AgentActivityEntry] = []
-
-    /// Pending NIP-46 / agent approval rows awaiting user decision. Stub empty.
+    var compiledMemory: CompiledAgentMemory? = nil
+    var categories: [PodcastCategory] = []
+    var categorySettings: [UUID: CategorySettings] = [:]
+    var settings: Settings = Settings()
+    var nostrAllowedPubkeys: Set<String> = []
+    var nostrBlockedPubkeys: Set<String> = []
     var nostrPendingApprovals: [NostrPendingApproval] = []
+    var nostrConversations: [NostrConversationRecord] = []
+    var nostrProfileCache: [String: NostrProfileMetadata] = [:]
+    var nostrRespondedEventIDs: Set<String> = []
+    var nostrSinceCursor: Int? = nil
+    var agentActivity: [AgentActivityEntry] = []
+    var clips: [Clip] = []
+    var threadingTopics: [ThreadingTopic] = []
+    var threadingMentions: [ThreadingMention] = []
+    var agentScheduledTasks: [AgentScheduledTask] = []
+    var pendingFriendMessages: [PendingFriendMessage] = []
+    var lastPlayedEpisodeID: UUID? = nil
+}
+
+// MARK: - EpisodeTriageCounts
+
+struct EpisodeTriageCounts {
+    var inbox: Int = 0
+    var archived: Int = 0
+    var shows: Int = 0
+    var isEmpty: Bool { inbox == 0 && archived == 0 }
+    mutating func add(_ other: EpisodeTriageCounts) { inbox += other.inbox; archived += other.archived; shows += other.shows }
 }
 
 // MARK: - AppStateStore
@@ -216,139 +596,131 @@ struct AppState: Codable, Sendable {
 final class AppStateStore {
     var state: AppState = AppState()
     var pendingFriendInvite: PendingFriendInvite? = nil
+    var unplayedCountByShow: [UUID: Int] = [:]
+    var hasDownloadedByShow: Set<UUID> = []
+    var hasTranscribedByShow: Set<UUID> = []
+    var activeNostrCounterparty: String? = nil
 
-    // T-podcast-ios-3: Kernel model reference injected at startup so
-    // allPodcasts reads live from the kernel snapshot instead of the
-    // empty state.podcasts stub. Set via bind(kernelModel:) in PodcastApp.
-    var _kernelModel: KernelModel?
-
-    /// All known podcasts. Proxied through the kernel snapshot when the
-    /// kernel model has been bound; falls back to state.podcasts (empty)
-    /// until binding occurs.
-    var allPodcasts: [Podcast] {
-        guard let km = _kernelModel else { return state.podcasts }
-        return km.library.podcasts.compactMap { row in
-            guard let uuid = UUID(uuidString: row.id) else { return nil }
-            return Podcast(
-                id: uuid,
-                title: row.title,
-                author: row.author,
-                imageURL: row.artworkURL,
-                feedURL: nil,
-                episodeCount: Int(row.episodeCount)
-            )
+    var allPodcasts: [Podcast] { state.podcasts }
+    var allEpisodesSorted: [Episode] { state.episodes.sorted { $0.pubDate > $1.pubDate } }
+    var activeNotes: [Note] { state.notes.filter { !$0.deleted } }
+    var sortedFollowedPodcasts: [Podcast] { state.subscriptions.compactMap { podcast(id: $0.podcastID) }.sorted { $0.title < $1.title } }
+    var sortedFollowedPodcastsByRecency: [Podcast] {
+        let podcastByID = Dictionary(uniqueKeysWithValues: state.podcasts.map { ($0.id, $0) })
+        let followed = state.subscriptions.compactMap { podcastByID[$0.podcastID] }.filter { $0.kind == .rss }
+        return followed.sorted { lhs, rhs in
+            let lDate = state.episodes.filter { $0.podcastID == lhs.id }.map(\.pubDate).max()
+            let rDate = state.episodes.filter { $0.podcastID == rhs.id }.map(\.pubDate).max()
+            switch (lDate, rDate) {
+            case let (l?, r?): return l > r
+            case (.some, .none): return true
+            case (.none, .some): return false
+            case (.none, .none): return lhs.title < rhs.title
+            }
         }
     }
 
-    var allEpisodesSorted: [Episode] { state.episodes.sorted { $0.publishedAt > $1.publishedAt } }
+    var inProgressEpisodes: [Episode] { state.episodes.filter { $0.isInProgress } }
 
-    /// Bind to the kernel model. Called once at app startup so that
-    /// allPodcasts and related helpers read live kernel data.
-    func bind(kernelModel: KernelModel) {
-        _kernelModel = kernelModel
+    func bind(kernelModel: Any) {}
+    func podcast(id: UUID) -> Podcast? { state.podcasts.first { $0.id == id } }
+    func podcast(feedURL: URL) -> Podcast? { state.podcasts.first { $0.feedURL == feedURL } }
+    func episode(id: UUID) -> Episode? { state.episodes.first { $0.id == id } }
+    func clip(id: UUID) -> Clip? { state.clips.first { $0.id == id } }
+    func allClips() -> [Clip] { state.clips.sorted { $0.createdAt > $1.createdAt } }
+    func clips(forEpisode id: UUID) -> [Clip] { state.clips.filter { $0.episodeID == id } }
+    func episodes(forPodcast id: UUID) -> [Episode] { state.episodes.filter { $0.podcastID == id } }
+    func subscription(podcastID: UUID) -> PodcastSubscription? { state.subscriptions.first { $0.podcastID == podcastID } }
+    func category(id: UUID) -> PodcastCategory? { state.categories.first { $0.id == id } }
+    func category(forPodcast podcastID: UUID) -> PodcastCategory? { state.categories.first { $0.subscriptionIDs.contains(podcastID) } }
+
+    // Note: unplayedCount/hasDownloadedEpisode/hasTranscribedEpisode defined in
+    // verbatim Features/Library/LibraryDerivedDisplay.swift
+
+    func triageCounts(allowedSubscriptionIDs: Set<UUID>?) -> EpisodeTriageCounts {
+        var counts = EpisodeTriageCounts()
+        let episodes = state.episodes.filter { ep in
+            guard let allowed = allowedSubscriptionIDs else { return true }
+            return allowed.contains(ep.podcastID)
+        }
+        for ep in episodes {
+            switch ep.triageDecision {
+            case .inbox: counts.inbox += 1
+            case .archived: counts.archived += 1
+            case .none: break
+            }
+        }
+        return counts
     }
 
-    func podcast(id: UUID) -> Podcast? {
-        allPodcasts.first { $0.id == id }
+    func inboxEpisodeIDs(allowedSubscriptionIDs: Set<UUID>?) -> [UUID] {
+        state.episodes.filter { ep in
+            ep.triageDecision == .inbox
+            && (allowedSubscriptionIDs == nil || allowedSubscriptionIDs!.contains(ep.podcastID))
+        }.sorted { $0.pubDate > $1.pubDate }.map(\.id)
     }
 
-    func podcast(feedURL: URL) -> Podcast? {
-        allPodcasts.first { $0.feedURL == feedURL }
-    }
+    func notes(forEpisode episodeID: UUID) -> [Note] { state.notes.filter { n in
+        guard let t = n.target, case .episode(let id, _) = t else { return false }
+        return id == episodeID && !n.deleted
+    }}
 
-    /// All episodes for a given podcast. Returns empty until the kernel
-    /// snapshot includes per-podcast episode rows (T-podcast-gap-003).
-    func episodes(forPodcast podcastID: UUID) -> [Episode] { [] }
-
-    /// Whether the user actively follows (is subscribed to) a podcast.
-    /// Returns a non-nil sentinel when the podcast is in the kernel library,
-    /// since every kernel-library row is by definition a subscription.
-    func subscription(podcastID: UUID) -> Podcast? {
-        allPodcasts.first { $0.id == podcastID }
-    }
-
-    /// Remove a podcast subscription from the kernel library.
-    /// Routes through the kernel model when bound; no-op otherwise.
-    func deletePodcast(podcastID: UUID) {
-        guard let km = _kernelModel else { return }
-        km.unsubscribe(podcastID: podcastID.uuidString)
-    }
-
-    /// Mutates `state.settings` in-place. Called by OnboardingView handlers
-    /// and Settings screens to persist preferences. The real Podcastr AppStateStore
-    /// persists to disk; this shim updates in-memory state and mirrors
-    /// persistence-critical fields to UserDefaults so they survive app restart.
-    /// Full Settings disk persistence is T-podcast-gap-004.
-    func updateSettings(_ settings: Settings) {
-        state.settings = settings
-        // Mirror the onboarding-gate flag to UserDefaults so the flow is not
-        // shown again after the user completes it. T-podcast-gap-004 covers
-        // full disk serialisation of the Settings value.
-        UserDefaults.standard.set(settings.hasCompletedOnboarding, forKey: "hasCompletedOnboarding")
-    }
-
-    func episode(id: UUID) -> Episode? { nil }
-    func clip(id: UUID) -> Clip? { nil }
+    // Mutations (all no-op stubs — logic is in Rust)
+    func setSubscriptionNotificationsEnabled(_ podcastID: UUID, enabled: Bool) {}
+    func setSubscriptionAutoDownload(_ podcastID: UUID, policy: AutoDownloadPolicy?) {}
     func setEpisodePlaybackPosition(_ id: UUID, position: TimeInterval) {}
     func setLastPlayedEpisode(_ id: UUID) {}
     func markEpisodePlayed(_ id: UUID) {}
     func markEpisodeUnplayed(_ id: UUID) {}
     func toggleEpisodeStarred(_ id: UUID) {}
-    func setSubscriptionNotificationsEnabled(_ podcastID: UUID, enabled: Bool) {}
-    func setSubscriptionAutoDownload(_ podcastID: UUID, policy: AutoDownloadPolicy) {}
+    func setEpisodeStarred(_ id: UUID, _ starred: Bool) {}
     func flushPendingPositions() {}
     func clearTriageDecision(_ id: UUID) {}
+    func deletePodcast(podcastID: UUID) {}
+    func resetEpisodeProgress(_ id: UUID) {}
+    func deleteClip(id: UUID) {}
+    func deleteNote(_ id: UUID) {}
+    func setCategories(_ categories: [PodcastCategory]) {}
+    func moveSubscription(_ podcastID: UUID, toCategory categoryID: UUID) -> Bool { false }
+    func addSubscription(podcastID: UUID) -> Bool { false }
+    func mostRecentEpisode(forPodcast podcastID: UUID) -> Episode? { nil }
 
-    // MARK: - Derived helpers added for verbatim-3 Settings screen shims
+    @discardableResult
+    func addClip(_ clip: Clip) -> Clip { clip }
 
-    /// Active (non-deleted) notes. Mirrors Podcastr's AppStateStore+DerivedViews.
-    var activeNotes: [Note] { state.notes.filter { !$0.deleted } }
+    @discardableResult
+    func addNote(text: String, kind: NoteKind = .free, target: Anchor? = nil) -> Note {
+        Note(text: text, kind: kind, target: target)
+    }
+    @discardableResult
+    func addNote(text: String, kind: NoteKind = .free, target: Anchor? = nil, author: NoteAuthor) -> Note {
+        Note(text: text, kind: kind, target: target, author: author)
+    }
 
-    /// Active (non-deleted) agent memories. Mirrors AppStateStore+Memories.
-    var activeMemories: [AgentMemory] { state.agentMemories.filter { !$0.deleted } }
-
-    /// Count of non-undone agent activity entries. Mirrors AppStateStore+AgentActivity.
+    // MARK: - Agent Activity helpers
+    func agentActivity(forBatch batchID: UUID) -> [AgentActivityEntry] {
+        state.agentActivity.filter { $0.batchID == batchID }.sorted { $0.timestamp > $1.timestamp }
+    }
+    var sortedAgentActivity: [AgentActivityEntry] { state.agentActivity.sorted { $0.timestamp > $1.timestamp } }
     var activeAgentActivityCount: Int { state.agentActivity.filter { !$0.undone }.count }
-
-    /// Pending Nostr approval rows. Mirrors AppStateStore+Nostr.
-    var pendingNostrApprovals: [NostrPendingApproval] { state.nostrPendingApprovals }
-
-    /// Alphabetically-sorted list of subscribed podcasts. Mirrors
-    /// AppStateStore+Subscriptions.sortedFollowedPodcasts. Falls back to
-    /// allPodcasts (kernel-backed) when state.subscriptions is empty, so the
-    /// list is non-empty once the kernel delivers library data.
-    var sortedFollowedPodcasts: [Podcast] {
-        let base = state.subscriptions.isEmpty ? allPodcasts : state.subscriptions
-        return base.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    func recordAgentActivity(_ entry: AgentActivityEntry) { state.agentActivity.append(entry) }
+    func undoAgentActivity(_ entryID: UUID) {
+        guard let idx = state.agentActivity.firstIndex(where: { $0.id == entryID }) else { return }
+        guard !state.agentActivity[idx].undone else { return }
+        state.agentActivity[idx].undone = true
     }
-
-    /// Wipes all user data from AppState. Stub resets in-memory state only.
-    /// Real implementation persists deletion (T-podcast-gap-004).
-    func clearAllData() {
-        state = AppState()
+    func undoAgentActivityBatch(_ batchID: UUID) {
+        let ids = state.agentActivity.filter { $0.batchID == batchID && !$0.undone }.map(\.id)
+        for id in ids { undoAgentActivity(id) }
     }
-
-    /// Export OPML data for the subscriptions list. Stub returns nil
-    /// (real implementation serialises sortedFollowedPodcasts — T-podcast-gap-004).
-    func exportOPML() -> URL? { nil }
-
-    /// Mutates the download state of an episode in place. Stub no-ops since
-    /// EpisodeDownloadService owns live state (T-podcast-gap-005).
-    func setEpisodeDownloadState(_ id: UUID, state newState: EpisodeDownloadState) {
-        // In-memory update for the stub; real impl writes to SQLite persistence.
-        guard let idx = state.episodes.firstIndex(where: { $0.id == id }) else { return }
-        switch newState {
-        case .downloaded: state.episodes[idx].isDownloaded = true
-        case .notDownloaded: state.episodes[idx].isDownloaded = false
-        default: break
-        }
-    }
+    func pruneStaleActivityEntries() {}
+    func deleteAgentMemory(_ id: UUID) {}
 }
 
-struct PendingFriendInvite: Identifiable {
-    let id: UUID = UUID()
-    var npub: String
-    var name: String?
+struct PendingFriendInvite: Equatable, Identifiable {
+    let npub: String
+    let name: String?
+    var id: String { npub }
 }
 
 // MARK: - UserIdentityStore
@@ -359,14 +731,24 @@ final class UserIdentityStore {
     static let shared = UserIdentityStore()
     var publicKeyHex: String? = nil
 
-    /// What kind of identity is currently active.
-    enum Mode: String, Sendable, Codable {
+    enum Mode: Equatable {
         case none
         case localKey
         case remoteSigner
     }
-    /// Current signer mode. Stub returns .none (no identity configured).
+
+    enum RemoteSignerState: Equatable {
+        case idle
+        case connecting
+        case reconnecting
+        case awaitingAuthorization(URL)
+        case connected(String)
+        case failed(String)
+    }
+
     var mode: Mode = .none
+    var remoteSignerState: RemoteSignerState = .idle
+    var isRemoteSigner: Bool { mode == .remoteSigner }
 
     /// Nostr public key in bech32 npub format. Nil when no identity.
     var npub: String? { nil }
@@ -540,10 +922,7 @@ struct AgentResponder {
 final class NostrStack {
     static let shared = NostrStack()
 
-    /// Whether any relay WebSocket is currently connected.
-    /// Stub returns false (no live relay connections in NMP kernel path).
-    private(set) var relaysConnected: Bool = false
-
+    var relaysConnected: Bool = false
     func bind(store: AppStateStore) async {}
     func start() async {}
 }
@@ -551,15 +930,59 @@ final class NostrStack {
 // MARK: - AgentAskCoordinator / AgentChatSession
 
 @Observable
-final class AgentAskCoordinator {}
+@MainActor
+final class AgentAskCoordinator {
+    struct PendingAsk: Identifiable, Equatable {
+        let id: UUID
+        let question: String
+        let context: String?
+        let createdAt: Date
+    }
+    private(set) var current: PendingAsk? = nil
+    static let timeoutSeconds: TimeInterval = 5 * 60
+    func ask(question: String, context: String?) async -> String { "user declined to answer" }
+    func resolve(_ id: UUID, with answer: String) {}
+    func decline(_ id: UUID) {}
+}
 
+@Observable
 @MainActor
 final class AgentChatSession {
-    var messages: [String] = []
+    enum Phase: Equatable {
+        case idle
+        case sending
+        case failed(String)
+    }
 
-    init(store: AppStateStore, playback: PlaybackState, askCoordinator: AgentAskCoordinator) {}
+    var messages: [ChatMessage] = []
+    var phase: Phase = .idle
+    var loadedFromHistory: Bool = false
+    var lastFailedMessage: String?
+    var isUpgraded: Bool = false
+    var enabledSkills: Set<String> = []
+    private(set) var currentConversationID: UUID = UUID()
 
+    let history: ChatHistoryStore = .shared
+
+    init(store: AppStateStore, playback: PlaybackState, askCoordinator: AgentAskCoordinator, history: ChatHistoryStore = .shared) {}
+
+    var streamingContent: String? = nil
+    var currentToolName: String? = nil
+
+    var canSend: Bool {
+        if case .sending = phase { return false }
+        return true
+    }
+    var canRegenerate: Bool { false }
+    func cancelSend() {}
+    func startSend(_ text: String, source: AgentRunSource = .typedChat) {}
+    func retry() {}
+    func regenerateLast() {}
+    func startNewConversation() async {}
+    func checkAndDrainPendingContext() {}
+    func consumeSeededDraftWithAutoSend() -> (draft: String, autoSend: Bool)? { nil }
     func switchToConversation(_ id: UUID) async {}
+    func setCurrentConversationID(_ id: UUID) { currentConversationID = id }
 }
 
 // MARK: - AgentScheduledTaskRunner
@@ -583,29 +1006,36 @@ final class PlaybackState {
     var onEpisodeFinished: ((UUID) -> Void)? = nil
     var onFlushPositions: (() -> Void)? = nil
     var onEnsureDownloadEnqueued: ((UUID) -> Void)? = nil
-    var onClearTriageDecision: ((UUID) -> Void)? = nil
+    var onClearTriageDecision: (UUID) -> Void = { _ in }
     var onSegmentFinished: (() -> Void)? = nil
     var onClipRequested: (() -> Void)? = nil
     var resolveShowName: ((Episode) -> String)? = nil
-    var resolveShowImage: ((Episode) -> URL?)? = nil
-    var resolveNavigableChapters: ((Episode) -> [Chapter])? = nil
+    var resolveShowImage: (Episode) -> URL? = { _ in nil }
+    var resolveNavigableChapters: ((Episode) -> [Episode.Chapter])? = nil
 
     var engine: PlaybackEngine = PlaybackEngine()
 
-    /// Current playback position in seconds. Zero until real playback exists.
-    var currentTime: TimeInterval { 0 }
-    /// Queue of episode IDs. Empty stub.
-    var queue: [UUID] { [] }
+    // Properties used in verbatim MiniPlayerView
+    var isPlaying: Bool = false
+    var currentTime: TimeInterval = 0
+    var duration: TimeInterval = 0
+    var rate: Float = 1.0
+    var volume: Float = 1.0
+    var skipForwardSeconds: Int = 30
 
     func setEpisode(_ episode: Episode) {}
     func play() {}
     func pause() {}
+    func togglePlayPause() {}
+    func skipForward() {}
+    func skipBackward() {}
+    func seek(to time: TimeInterval) {}
+    func seekForward(seconds: TimeInterval = 30) {}
+    func seekBackward(seconds: TimeInterval = 15) {}
     func navigationalSeek(to time: TimeInterval) {}
     func playNext(_ resolver: (UUID) -> Episode?) -> Bool { false }
     func applyPreferences(from settings: Settings) {}
-    func isQueued(_ episodeID: UUID) -> Bool { false }
-    func enqueue(_ episodeID: UUID) {}
-    func removeFromQueue(_ episodeID: UUID) {}
+    func skipToChapter(_ chapter: Episode.Chapter) {}
 }
 
 final class PlaybackEngine {
@@ -633,8 +1063,6 @@ enum SpotlightIndexer {
 
     static func deepLink(from activity: NSUserActivity) -> DeepLink? { nil }
 }
-
-// MARK: - DeepLinkHandler
 
 enum DeepLinkHandler {
     enum Link {
@@ -677,22 +1105,18 @@ enum DeepLinkHandler {
     }
 }
 
-// MARK: - FeedbackWorkflow
-
-/// Must be both @Observable (for RootView's @State var feedbackWorkflow = FeedbackWorkflow())
-/// and ObservableObject-compatible (for ScreenshotAnnotationView's @ObservedObject).
-/// Using class with @Published so @ObservedObject compiles, and making it compatible
-/// with @State by providing an initializer.
-final class FeedbackWorkflow: ObservableObject {
-    enum Phase { case composing, awaitingScreenshot, annotating }
-    @Published var phase: Phase = .composing
-    @Published var draft: String = ""
-    @Published var screenshot: UIImage? = nil
-    @Published var annotatedImage: UIImage? = nil
-    var isAnnotationVisible: Bool { phase == .annotating }
-}
+// Note: FeedbackWorkflow defined in verbatim Features/Feedback/FeedbackWorkflow.swift
 
 // MARK: - ShakeFeedbackKit shims
+
+struct ShakeFeedbackConfig {
+    var appName: String
+    var clientTag: String
+    var projectATag: String
+    init(appName: String, clientTag: String, projectATag: String) {
+        self.appName = appName; self.clientTag = clientTag; self.projectATag = projectATag
+    }
+}
 
 struct ShakeFeedbackStore {
     enum Config { case podcastr }
@@ -747,17 +1171,78 @@ final class EpisodeMetadataIndexer {
 @MainActor
 final class EpisodeDownloadService {
     static let shared = EpisodeDownloadService()
-    /// Live download progress map keyed by episodeID (0-1). Empty stub.
+    /// Live progress map keyed by episodeID (0-1). Empty stub.
     var progress: [UUID: Double] = [:]
-    /// Expected byte counts from URLSession response headers. Empty stub.
-    var expectedBytes: [UUID: Int64] = [:]
     func attach(appStore: AppStateStore) {}
     func ensureDownloadEnqueued(episodeID: UUID) {}
     func download(episodeID: UUID) {}
     func cancel(episodeID: UUID) {}
     func delete(episodeID: UUID) {}
+    func delete(episode: Episode) {}
     func handleEventsForBackgroundURLSession(identifier: String, completionHandler: @escaping () -> Void) {}
 }
+
+// MARK: - EpisodeDownloadStore
+
+struct OnDiskFile: Sendable {
+    var url: URL
+    var episodeID: UUID?
+    var bytes: Int64
+    init(url: URL, episodeID: UUID? = nil, bytes: Int64 = 0) {
+        self.url = url; self.episodeID = episodeID; self.bytes = bytes
+    }
+}
+
+final class EpisodeDownloadStore: @unchecked Sendable {
+    static let shared = EpisodeDownloadStore()
+    func allDownloads() -> [UUID] { [] }
+    func totalBytes() -> Int64 { 0 }
+    func delete(episodeID: UUID) {}
+    func enumerateOnDisk() -> [OnDiskFile] { [] }
+}
+
+// MARK: - TranscriptIngestService
+
+@MainActor
+final class TranscriptIngestService {
+    static let shared = TranscriptIngestService()
+    func ingest(episodeID: UUID) async {}
+    func cancel(episodeID: UUID) {}
+    func isIngesting(episodeID: UUID) -> Bool { false }
+}
+
+// MARK: - AudioConversationManager
+
+@Observable
+@MainActor
+final class VoiceCaptionLog {
+    private(set) var entries: [VoiceCaption] = []
+    func appendPartial(_ speaker: VoiceCaption.Speaker, text: String) -> UUID { UUID() }
+    func appendFinal(_ speaker: VoiceCaption.Speaker, text: String) {}
+    func update(id: UUID, text: String, stability: VoiceCaption.Stability) {}
+    func finalize(id: UUID, text: String) {}
+}
+
+@Observable
+@MainActor
+final class AudioConversationManager {
+    static let shared = AudioConversationManager()
+    private(set) var state: AudioConversationState = .idle
+    private(set) var isAmbient: Bool = false
+    private(set) var isUserBargingIn: Bool = false
+    let captions = VoiceCaptionLog()
+    var isActive: Bool = false
+    func start(store: AppStateStore) {}
+    func startPushToTalk() {}
+    func endPushToTalk() {}
+    func stopPushToTalk() {}
+    func exitAmbientMode() {}
+    func enterAmbientMode() {}
+    func interruptCurrentSpeech() {}
+    func stop() {}
+}
+
+// Note: OPMLExport defined in verbatim Services/OPMLExport.swift
 
 // MARK: - AutoSnipController
 
@@ -769,161 +1254,81 @@ final class AutoSnipController {
     func attach(playback: PlaybackState, store: AppStateStore) {}
 }
 
+// MARK: - RAGService (wikiRAG extension)
+
+extension RAGService {
+    struct WikiRAGSearch: WikiRAGSearchProtocol {}
+    @MainActor var wikiRAG: any WikiRAGSearchProtocol { WikiRAGSearch() }
+}
+
 // MARK: - InboxTriageService / ThreadingInferenceService
 
 @MainActor
 final class InboxTriageService {
     static let shared = InboxTriageService()
+    var isRunning: Bool = false
+    var lastCompletedAt: Date? = nil
+    func triageNewEpisodes(store: AppStateStore) {}
 }
 
 @MainActor
 final class ThreadingInferenceService {
     static let shared = ThreadingInferenceService()
-    struct ActiveTopic: Identifiable {
-        let id: UUID = UUID()
+    struct ActiveTopic: Sendable, Equatable, Identifiable {
+        let topic: ThreadingTopic
+        let unplayedEpisodeCount: Int
+        var id: UUID { topic.id }
     }
+    func attach(store: AppStateStore) {}
+    func topActiveTopics(limit: Int, subscriptionFilter: Set<UUID>?) -> [ActiveTopic] { [] }
 }
 
-// MARK: - SubscriptionService
+// MARK: - SubscriptionRefreshService
 
-/// Stub subscription service. Real implementation calls Rust podcast-feeds
-/// for RSS fetch + parse (T-podcast-gap-003). Today this is an honest no-op
-/// that satisfies the type-checker for verbatim Podcastr views.
-struct SubscriptionService {
-    enum AddError: Error, LocalizedError {
-        case alreadySubscribed
-        case transport(String)
-
-        var errorDescription: String? {
-            switch self {
-            case .alreadySubscribed: return "Already subscribed to this podcast."
-            case .transport(let msg): return msg
-            }
-        }
-    }
-
-    let store: AppStateStore
-
-    func addSubscription(feedURLString: String) async throws -> Podcast {
-        throw AddError.transport("RSS fetch not yet implemented (T-podcast-gap-003)")
-    }
-
-    func refresh(_ podcast: Podcast) async {}
+@MainActor
+final class SubscriptionRefreshService {
+    static let shared = SubscriptionRefreshService()
+    func refreshAll(store: AppStateStore) async {}
 }
 
-// MARK: - PodcastCategory
+// Note: LibraryFilter defined in verbatim Features/Library/LibraryFilters.swift
+// Note: HomeEpisodeRoute defined in verbatim Features/Home/HomeEpisodeRoute.swift
+// Note: HomeCategoryScope defined in verbatim Features/Home/HomeCategoryScope.swift
+// Note: HomeAgentPick/HomeAgentPicksBundle/HomeInboxBundleBuilder defined in verbatim Features/Home/HomeInboxBundle.swift
 
-/// Category model mirroring Podcastr's PodcastCategory domain type.
-struct PodcastCategory: Identifiable, Hashable, Codable {
-    var id: UUID
-    var name: String = ""
+// MARK: - EpisodeNavTarget (used in ClippingsView as private, but referenced in PodcastrShims for other uses)
+// Note: ClippingsView defines EpisodeNavTarget privately, so we don't need a top-level shim.
+
+// MARK: - WikiPage
+
+struct WikiPage: Codable, Hashable, Identifiable, Sendable {
+    static let currentSchemaVersion: Int = 1
+    var id: UUID = UUID()
     var slug: String = ""
-    var description: String = ""
-    var colorHex: String? = nil
-    /// UUIDs of subscriptions placed in this category by the categorisation service.
-    var subscriptionIDs: [UUID] = []
+    var title: String = ""
+    var kind: WikiPageKind = .topic
+    var scope: WikiScope = .global
+    var summary: String = ""
+    var sections: [WikiSection] = []
+    var citations: [WikiCitation] = []
+    var confidence: Double = 0
     var generatedAt: Date = Date()
-}
+    var model: String = ""
+    var compileRevision: Int = 0
+    var schemaVersion: Int = 1
+    var isPinned: Bool = false
 
-// MARK: - AppShadow / appShadow view modifier
-
-extension View {
-    func appShadow(_ shadow: Any) -> some View { self }
-}
-
-// MARK: - AllEpisodesEpisodeList stub
-
-/// Stub list of episodes for the AllEpisodesView. Real implementation renders
-/// EpisodeRow × N with kernel-backed episode data (T-podcast-gap-002).
-struct AllEpisodesEpisodeList: View {
-    let episodes: [Episode]
-    let podcastsByID: [UUID: Podcast]
-    @Binding var voiceOverDetailRoute: LibraryEpisodeRoute?
-    @Binding var visibleCount: Int
-    let totalCount: Int
-
-    var body: some View { EmptyView() }
-}
-
-// MARK: - Episode property stubs required by Podcastr verbatim views
-
-extension Episode {
-    /// Whether this episode has been fully played.
-    var played: Bool { isPlayed }
-    /// Whether playback has started but not completed.
-    var isInProgress: Bool { playbackPosition > 0 && !isPlayed }
-    /// Playback progress 0-1. Returns 0 until kernel exposes position data.
-    var playbackProgress: Double { 0 }
-    /// Publication date. Returns publishedAt (already exists on Episode).
-    var pubDate: Date { publishedAt }
-    /// Plain-text summary for the episode row. Returns empty until kernel exposes description data.
-    var plainTextSummary: String { "" }
-    /// Human-readable duration string. Stub returns empty.
-    var formattedDuration: String {
-        guard duration > 0 else { return "" }
-        let h = Int(duration) / 3600
-        let m = (Int(duration) % 3600) / 60
-        let s = Int(duration) % 60
-        return h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
+    var allClaims: [WikiClaim] {
+        sections.sorted { $0.ordinal < $1.ordinal }.flatMap(\.claims)
     }
-    /// Enclosure URL for sharing. Falls back to a placeholder when fileURL is nil.
-    var enclosureURL: URL { fileURL ?? URL(string: "https://example.com/episode")! }
-
-    /// Download state enum matching Podcastr's DownloadState (DownloadState.swift).
-    typealias DownloadState = EpisodeDownloadState
-    var downloadState: DownloadState { isDownloaded ? .downloaded(localFileURL: fileURL ?? URL(string: "file:///")!, byteCount: 0) : .notDownloaded }
-
-    /// Transcript state enum matching Podcastr semantics.
-    enum TranscriptState {
-        case none
-        case queued
-        case fetchingPublisher
-        case transcribing(Double)
-        case ready
-        case failed
-    }
-    var transcriptState: TranscriptState { .none }
 }
 
-// MARK: - LibraryFilter
-
-enum LibraryFilter: String {
-    case all
-}
-
-// MARK: - HomeEpisodeRoute
-
-struct HomeEpisodeRoute: Hashable {}
-
-// MARK: - EpisodeNavTarget
-
-struct EpisodeNavTarget: Identifiable {
-    let id: UUID
-}
-
-// MARK: - WikiPage / WikiHomeViewModel
-
-struct WikiPage: Identifiable, Hashable {
-    let id: UUID = UUID()
-}
-
-@Observable
-final class WikiHomeViewModel {
-    var searchQuery: String = ""
-}
+// Note: WikiHomeViewModel defined in verbatim Features/Wiki/WikiHomeViewModel.swift
 
 // MARK: - NotificationService
 
 enum NotificationService {
     static let episodeIDUserInfoKey = "episodeID"
-
-    /// Requests user permission for alerts, sound, and badge notifications.
-    /// Stub delegates to UNUserNotificationCenter directly. Returns true if granted.
-    @MainActor
-    static func requestAuthorization() async -> Bool {
-        let center = UNUserNotificationCenter.current()
-        return (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
-    }
 }
 
 // MARK: - LivePodcastAgentToolDeps
@@ -948,188 +1353,1104 @@ extension Notification.Name {
 extension View {
     // Note: onShake is defined in Design/ShakeDetector.swift (verbatim from Podcastr)
     func nostrApprovalPresenter() -> some View { self }
-    func nostrAgentSurface() -> some View { self }
-    func agentAskPresenter(coordinator: AgentAskCoordinator) -> some View { self }
-    // Note: tabBarMinimizeBehavior is native on iOS 26 (SwiftUI framework)
-    // Note: tabViewBottomAccessory is native on iOS 26 (SwiftUI framework)
+    // Note: nostrAgentSurface() defined in verbatim Features/Agent/NostrAgentSurface.swift
+    // Note: agentAskPresenter() defined in verbatim Features/Agent/AgentAskPresenter.swift
 }
 
-// MARK: - ShakeDetector compatibility
-// Note: ShakeDetector.swift handles UIWindow motionEnded override.
-// No extension on UIApplication needed here.
+// Note: EpisodeShowNotesFormatter defined in verbatim Features/EpisodeDetail/EpisodeShowNotesFormatter.swift
+// Note: HomeCategoryPickerSheet defined in verbatim Features/Home/HomeCategoryPickerSheet.swift
 
-// MARK: - PlayerShareSheet stub
+// MARK: - NDKSwiftCore shims (NDKSwiftCore not linked in NmpPodcast target)
 
-/// Stub matching the static helper that EpisodeRowContextMenu references.
-/// Real implementation lives in the Player feature (out of scope this iteration).
-enum PlayerShareSheet {
-    /// Gate threshold: a playhead under 2 seconds is treated as non-meaningful.
-    static func isMeaningfulPlayhead(_ time: TimeInterval) -> Bool {
-        time > 2.0
+struct NDKRelay: Identifiable, Hashable {
+    var id: String { url }
+    var url: String = ""
+    var managedByNDK: Bool = false
+}
+
+enum NDKRelayConnectionState { case connected, disconnected, connecting, failed }
+enum NDKRelayOrigin: String { case manual, outbox, inbox }
+
+struct NDKRelaySubscriptionInfo: Identifiable {
+    var id: UUID = UUID()
+    var filterDescription: String = ""
+}
+
+struct NDKRelayInformation {
+    var name: String?
+    var description: String?
+    var pubkey: String?
+    var software: String?
+    var version: String?
+    var contact: String?
+    var supportedNIPs: [Int]?
+}
+
+struct NDKPrivateKeySigner {
+    var privateKeyForNIP59: String = ""
+    init(nsec: String) throws {}
+    init(privateKey: String) throws {}
+    static func generate() throws -> NDKPrivateKeySigner { try NDKPrivateKeySigner(privateKey: "") }
+}
+
+// MARK: - Nostr event types (Nip46/NostrSigner.swift types not copied to NmpPodcast)
+
+struct NostrEventDraft: Sendable, Equatable {
+    var kind: Int; var content: String; var tags: [[String]]; var createdAt: Int
+    init(kind: Int, content: String = "", tags: [[String]] = [], createdAt: Int = Int(Date().timeIntervalSince1970)) {
+        self.kind = kind; self.content = content; self.tags = tags; self.createdAt = createdAt
     }
 }
 
-// MARK: - EpisodeShowNotesFormatter stub
+struct SignedNostrEvent: Sendable, Equatable, Codable {
+    let id: String; let pubkey: String; let created_at: Int; let kind: Int
+    let tags: [[String]]; let content: String; let sig: String
+    // Note: rootEventID and projectATags defined in verbatim Features/Feedback/FeedbackModels.swift
+}
 
-/// Stub matching Podcastr's formatter used by ShowDetailHeader.
-/// Returns the raw string stripped of any HTML tags — a very lightweight
-/// "plain text" conversion sufficient for the three-line cap in the header.
-enum EpisodeShowNotesFormatter {
-    static func plainText(from raw: String) -> String {
-        // Strip HTML tags with a simple regex-free pass for the stub.
-        var result = raw
-        while let open = result.firstIndex(of: "<"),
-              let close = result[open...].firstIndex(of: ">") {
-            result.removeSubrange(open...close)
+protocol NostrSigner: Sendable {
+    func publicKey() async throws -> String
+    func sign(_ draft: NostrEventDraft) async throws -> SignedNostrEvent
+}
+
+// MARK: - Transcript types (Transcript.swift not copied; used by EpisodeDetail verbatim files)
+
+struct Segment: Codable, Sendable, Hashable, Identifiable {
+    let id: UUID
+    let start: TimeInterval
+    let end: TimeInterval
+    let speakerID: UUID?
+    let text: String
+    let words: [Word]?
+    init(id: UUID = UUID(), start: TimeInterval, end: TimeInterval, speakerID: UUID? = nil, text: String, words: [Word]? = nil) {
+        self.id = id; self.start = start; self.end = end; self.speakerID = speakerID; self.text = text; self.words = words
+    }
+}
+
+struct Word: Codable, Sendable, Hashable {
+    let start: TimeInterval; let end: TimeInterval; let text: String
+    init(start: TimeInterval, end: TimeInterval, text: String) {
+        self.start = start; self.end = end; self.text = text
+    }
+}
+
+struct Speaker: Codable, Sendable, Hashable, Identifiable {
+    let id: UUID
+    let label: String
+    let displayName: String?
+    init(id: UUID = UUID(), label: String, displayName: String? = nil) {
+        self.id = id; self.label = label; self.displayName = displayName
+    }
+}
+
+struct Transcript: Codable, Sendable, Hashable {
+    var segments: [Segment] = []
+    var speakers: [Speaker] = []
+    func speaker(for id: UUID?) -> Speaker? {
+        guard let id else { return nil }
+        return speakers.first { $0.id == id }
+    }
+}
+
+// MARK: - Domain types referenced by verbatim Home/Wiki/Clippings views
+
+struct Chunk: Sendable, Hashable, Codable, Identifiable {
+    var id: UUID = UUID()
+    var episodeID: UUID = UUID()
+    var podcastID: UUID = UUID()
+    var text: String = ""
+    var startMS: Int = 0
+    var endMS: Int = 0
+    var speakerID: UUID? = nil
+}
+
+enum ChunkScope: Sendable, Hashable, Codable {
+    case all
+    case podcast(UUID)
+    case episodes(Set<UUID>)
+    case episode(UUID)
+    case speaker(UUID)
+}
+
+struct ChunkMatch: Sendable, Hashable {
+    var chunk: Chunk
+    var score: Float
+    var textHighlights: [Range<String.Index>]
+    init(chunk: Chunk = Chunk(), score: Float = 0, textHighlights: [Range<String.Index>] = []) {
+        self.chunk = chunk; self.score = score; self.textHighlights = textHighlights
+    }
+}
+
+enum WikiPageKind: String, Codable, CaseIterable, Sendable {
+    case topic, person, show, index
+    var displayName: String {
+        switch self { case .topic: "Topic"; case .person: "Person"; case .show: "Show"; case .index: "Index" }
+    }
+}
+
+struct WikiStorage: Sendable {
+    let root: URL
+    static let inventoryFilename = "_inventory.json"
+    init(root: URL? = nil) {
+        self.root = root ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("nmp/wiki")
+    }
+    static let shared = WikiStorage()
+    func write(_ page: WikiPage) throws {}
+    func delete(slug: String, scope: WikiScope) throws {}
+    func delete(pageID: UUID) throws {}
+    func allPages(scope: WikiScope) throws -> [WikiPage] { [] }
+    func allPages() throws -> [WikiPage] { [] }
+}
+
+struct RAGSearch: Sendable {
+    struct Options: Sendable {
+        var k: Int; var overfetchMultiplier: Int; var hybrid: Bool; var rerank: Bool
+        init(k: Int = 5, overfetchMultiplier: Int = 4, hybrid: Bool = true, rerank: Bool = true) {
+            self.k = max(1, k); self.overfetchMultiplier = max(1, overfetchMultiplier)
+            self.hybrid = hybrid; self.rerank = rerank
         }
-        return result
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    func search(query: String, scope: ChunkScope? = nil, options: Options = Options()) async throws -> [ChunkMatch] { [] }
+}
+
+final class RAGService: @unchecked Sendable {
+    static let shared = RAGService()
+    let search = RAGSearch()
+}
+
+@Observable
+@MainActor
+final class RationaleNarrator {
+    static let shared = RationaleNarrator()
+    private(set) var narratingPickID: UUID? = nil
+    func attach(playback: PlaybackState) {}
+    func narrate(pick: HomeAgentPick, episode: Episode?) async {}
+    func speak(pickID: UUID, text: String, voiceID: String, ttsModel: String) async {}
+    func stop() {}
+}
+
+// MARK: - RelativeTimestamp
+
+enum RelativeTimestamp {
+    static func compact(_ date: Date, now: Date = Date()) -> String {
+        let interval = max(0, now.timeIntervalSince(date))
+        if interval < 5  { return "just now" }
+        if interval < 60 { return "\(Int(interval))s ago" }
+        if interval < 3_600 { return "\(Int(interval / 60))m ago" }
+        return "\(Int(interval / 3_600))h ago"
+    }
+    static func extended(_ date: Date, now: Date = Date()) -> String {
+        let interval = max(0, now.timeIntervalSince(date))
+        if interval < 60        { return "just now" }
+        if interval < 3_600     { return "\(Int(interval / 60))m ago" }
+        if interval < 86_400    { return "\(Int(interval / 3_600))h ago" }
+        if interval < 604_800   { return "\(Int(interval / 86_400))d ago" }
+        if interval < 2_419_200 { return "\(Int(interval / 604_800))w ago" }
+        return date.shortDateTime
     }
 }
 
-// Note: Double.clamped01 is defined in Design/NumberExtensions.swift
+// MARK: - AppStateStore + Threading helpers
 
-// MARK: - PodcastCategorizationService stub (verbatim-3)
+extension AppStateStore {
+    func threadingMentions(forTopic id: UUID) -> [ThreadingMention] { [] }
+    var pendingNostrApprovals: [NostrPendingApproval] { state.nostrPendingApprovals }
+}
 
-/// Categorisation pipeline errors mirroring Podcastr's CategorizationError.
+// MARK: - Missing View stubs (Settings/Agent leaf destinations not on tab path)
+
+import SwiftUI
+
+struct CategoriesListView: View {
+    var body: some View { ContentUnavailableView("Categories", systemImage: "square.grid.2x2") }
+}
+
+struct AgentSettingsView: View {
+    var body: some View { ContentUnavailableView("Agent Settings", systemImage: "brain") }
+}
+
+struct AIModelsSettingsView: View {
+    var body: some View { ContentUnavailableView("AI Models", systemImage: "cpu") }
+}
+
+struct OpenRouterSettingsView: View {
+    var body: some View { ContentUnavailableView("OpenRouter", systemImage: "network") }
+}
+
+struct ThreadingTopicListView: View {
+    var body: some View { ContentUnavailableView("Topics", systemImage: "link") }
+}
+
+struct AIProvidersSettingsView: View {
+    var body: some View { ContentUnavailableView("AI Providers", systemImage: "cpu") }
+}
+
+struct NostrConversationsView: View {
+    var body: some View { ContentUnavailableView("Conversations", systemImage: "bubble.left.and.bubble.right") }
+}
+
+struct CategoryDetailView: View {
+    @Environment(AppStateStore.self) private var store
+    let categoryID: UUID
+    var body: some View { ContentUnavailableView("Category", systemImage: "square.grid.2x2") }
+}
+
+// MARK: - SubscriptionService shim (logic lives in Rust; Swift side is no-op)
+
+final class SubscriptionService {
+    enum AddError: Error, LocalizedError, Equatable {
+        case invalidURL
+        case alreadySubscribed(title: String)
+        case transport(String)
+        case http(Int)
+        case parse(String)
+        var errorDescription: String? {
+            switch self {
+            case .invalidURL: return "That doesn\'t look like a valid feed URL."
+            case .alreadySubscribed(let title): return "You\'re already subscribed to \(title)."
+            case .transport(let message): return "Couldn\'t reach the feed: \(message)"
+            case .http(let status): return "HTTP \(status)"
+            case .parse(let message): return message
+            }
+        }
+    }
+
+    init(store: AppStateStore) {}
+
+    func addSubscription(feedURLString: String) async throws -> Podcast {
+        throw AddError.parse("Not available in this build")
+    }
+
+    func fetchForAdoption(opmlEntry: Podcast) async throws -> SubscriptionImportPayload? { nil }
+
+    func refresh(podcastID: UUID) async throws {}
+    func refresh(_ podcast: Podcast) async {}
+}
+
+struct SubscriptionImportPayload {
+    var podcast: Podcast
+    var episodes: [Episode]
+}
+
+// MARK: - AppStateStore + SubscriptionService helpers
+
+extension AppStateStore {
+    struct SubscriptionAddResult { var imported: Int; var skipped: Int }
+    func addSubscriptions(_ payloads: [SubscriptionImportPayload]) -> SubscriptionAddResult {
+        SubscriptionAddResult(imported: 0, skipped: payloads.count)
+    }
+    func updateSettings(_ settings: Settings) {}
+}
+
+// MARK: - Settings mutating helpers
+
+extension Settings {
+    mutating func markOpenRouterManual() {}
+}
+
+// MARK: - OPMLImport shim
+
+struct OPMLEntry {
+    var title: String; var xmlURL: URL?
+}
+
+final class OPMLImport {
+    func parseOPML(data: Data) throws -> [Podcast] { [] }
+}
+
+// MARK: - BYOK shims
+// Note: OpenRouterCredentialStore defined in Services/OpenRouterCredentialStore.swift
+// Note: PodcastBYOKCredentialImporter defined in Services/BYOKCredentialImporter.swift
+
+// Note: BYOKConnectError defined in Services/BYOKModels.swift
+// Note: BYOKConnectService defined in Services/BYOKConnectService.swift
+
+// MARK: - Agent types
+
+struct ChatMessage: Identifiable, Equatable, Codable {
+    enum Role: Equatable {
+        case user
+        case assistant
+        case toolBatch(batchID: UUID, count: Int)
+        case error
+        case skillActivated(skillID: String, displayName: String)
+    }
+    let id: UUID
+    let role: Role
+    let text: String
+    let timestamp: Date
+    init(id: UUID = UUID(), role: Role, text: String, timestamp: Date = Date()) {
+        self.id = id; self.role = role; self.text = text; self.timestamp = timestamp
+    }
+    init(from decoder: Decoder) throws {
+        id = UUID(); role = .assistant; text = ""; timestamp = Date()
+    }
+    func encode(to encoder: Encoder) throws {}
+}
+
+// Note: AgentActivityKind and AgentActivityEntry defined above in MARK: - AgentActivity
+
+// Note: LLMProvider, LLMModelReference, LLMProviderCredentialResolver, STTProvider, HeadphoneGestureAction defined in verbatim Services/ files
+
+// MARK: - MarkdownView shim
+
+struct MarkdownView: View {
+    let text: String
+    var horizontalPadding: CGFloat = 0
+    var verticalPadding: CGFloat = 0
+    var maxWidth: CGFloat = .infinity
+    var alignment: Alignment = .leading
+    var controlSize: ControlSize = .regular
+    var cornerRadius: CGFloat = 0
+    var body: some View { Text(text) }
+}
+
+// MARK: - ChatConversation / ChatHistoryStore shims
+
+struct ChatConversation: Identifiable, Codable, Equatable, Sendable {
+    let id: UUID
+    var title: String = ""
+    var messages: [ChatMessage] = []
+    var isUpgraded: Bool = false
+    var enabledSkills: Set<String> = []
+    var isScheduledTask: Bool = false
+    let createdAt: Date
+    var updatedAt: Date
+    init(id: UUID = UUID(), title: String = "", createdAt: Date = Date()) {
+        self.id = id; self.title = title; self.createdAt = createdAt; self.updatedAt = createdAt
+    }
+}
+
+@MainActor
+final class ChatHistoryStore {
+    static let shared = ChatHistoryStore()
+    var conversations: [ChatConversation] = []
+    var mostRecent: ChatConversation? { nil }
+    func conversation(id: UUID) -> ChatConversation? { nil }
+    func save(_ conversation: ChatConversation) {}
+    func delete(id: UUID) {}
+}
+
+// MARK: - AgentChatHistoryView shim
+
+struct AgentChatHistoryView: View {
+    let history: ChatHistoryStore
+    let currentID: UUID
+    let onSelect: (ChatConversation) -> Void
+    let onNew: () -> Void
+    var body: some View { ContentUnavailableView("History", systemImage: "clock") }
+}
+
+// MARK: - AgentChatTranscriptExport shim
+
+enum AgentChatTranscriptExport {
+    static func write(_ messages: [ChatMessage], batchSummaries: [UUID: [String]] = [:]) -> URL? { nil }
+    static func format(_ messages: [ChatMessage], batchSummaries: [UUID: [String]] = [:]) -> String { "" }
+}
+
+// MARK: - Agent tool types
+
+enum AgentRunSource: String, Codable, Sendable {
+    case typedChat, voiceMessage, nostrInbound, manual, scheduledTask
+}
+
+enum AgentRunOutcome: String, Codable, Sendable {
+    case completed, turnsExhausted, failed, cancelled
+}
+
+enum AgentSkillID {
+    static let podcastGeneration = "podcast_generation"
+    static let wikiResearch = "wiki_research"
+    static let conversationHistory = "conversation_history"
+    static let youtubeIngestion = "youtube_ingestion"
+}
+
+enum AgentTools {
+    enum Names {
+        static let createNote       = "create_note"
+        static let recordMemory     = "record_memory"
+        static let upgradeThinking  = "upgrade_thinking"
+        static let useSkill         = "use_skill"
+        static let ask              = "ask"
+        static let scheduleTask     = "schedule_task"
+        static let cancelScheduledTask = "cancel_scheduled_task"
+        static let listScheduledTasks  = "list_scheduled_tasks"
+        static let listConversations   = "list_conversations"
+        static let searchConversations = "search_conversations"
+    }
+    static let summaryTruncationLength = 40
+    static func toolSuccess(_ payload: [String: Any] = [:]) -> String { "{\"success\":true}" }
+    static func toolError(_ message: String) -> String { "{\"error\":\"\(message)\"}" }
+    static func truncated(_ s: String) -> String {
+        s.count > summaryTruncationLength ? "\(s.prefix(summaryTruncationLength))…" : s
+    }
+}
+
+// MARK: - Voice types
+
+enum AudioConversationState: Equatable, Sendable {
+    case idle
+    case listening
+    case thinking
+    case speaking
+    case duckedWhileBriefing
+    case error(VoiceError)
+}
+
+// MARK: - VoiceBriefingHandle
+
+@MainActor
+protocol VoiceBriefingHandle: AnyObject {
+    func waitUntilFinished() async
+}
+
+enum VoiceError: Error, Equatable, Sendable {
+    case permissionDenied
+    case recognizerUnavailable
+    case ttsFailed(String)
+    case agentFailed(String)
+    case audioRouteFailed(String)
+    case unknown(String)
+}
+
+struct VoiceCaption: Identifiable, Equatable, Sendable {
+    enum Speaker: String, Sendable, Equatable { case user, agent }
+    enum Stability: String, Sendable, Equatable { case partial, final }
+    let id: UUID
+    let speaker: Speaker
+    let text: String
+    let stability: Stability
+    init(id: UUID = UUID(), speaker: Speaker, text: String, stability: Stability) {
+        self.id = id; self.speaker = speaker; self.text = text; self.stability = stability
+    }
+}
+
+// MARK: - Blossom / Photo upload
+
+protocol BlossomUploading: Sendable {
+    func upload(data: Data, contentType: String, signer: any NostrSigner) async throws -> URL
+}
+
+// MARK: - iTunes discovery
+
+enum ITunesSearchClient {
+    struct Result: Decodable, Sendable, Hashable, Identifiable {
+        let collectionId: Int
+        let collectionName: String
+        let artistName: String?
+        let feedUrl: String?
+        let artworkUrl600: String?
+        let artworkUrl100: String?
+        let primaryGenreName: String?
+        let trackCount: Int?
+        var id: Int { collectionId }
+        var feedURL: URL? { feedUrl.flatMap { URL(string: $0) } }
+        var artworkURL: URL? {
+            if let s = artworkUrl600, let u = URL(string: s) { return u }
+            if let s = artworkUrl100, let u = URL(string: s) { return u }
+            return nil
+        }
+    }
+    static func search(term: String) async throws -> [Result] { [] }
+}
+
+// MARK: - Wiki content types
+
+struct WikiCitation: Codable, Hashable, Identifiable, Sendable {
+    var id: UUID = UUID()
+    var episodeID: UUID = UUID()
+    var startMS: Int = 0
+    var endMS: Int = 0
+    var quoteSnippet: String = ""
+    var speaker: String? = nil
+    var verificationConfidence: WikiConfidenceBand = .medium
+
+    var durationMS: Int { max(0, endMS - startMS) }
+    var formattedTimestamp: String {
+        let totalSeconds = startMS / 1_000
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let seconds = totalSeconds % 60
+        if hours > 0 { return String(format: "%d:%02d:%02d", hours, minutes, seconds) }
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
+enum WikiConfidenceBand: String, Codable, Hashable, Sendable, CaseIterable {
+    case high, medium, low
+
+    var label: String {
+        switch self {
+        case .high: "high"
+        case .medium: "medium"
+        case .low: "low"
+        }
+    }
+
+    var accessibilityValue: String {
+        switch self {
+        case .high: "high evidence"
+        case .medium: "medium evidence"
+        case .low: "low evidence"
+        }
+    }
+}
+
+struct WikiClaim: Codable, Hashable, Identifiable, Sendable {
+    var id: UUID = UUID()
+    var text: String = ""
+    var citations: [WikiCitation] = []
+    var confidence: WikiConfidenceBand = .medium
+    var isGeneralKnowledge: Bool = false
+    var isContestedByUser: Bool = false
+}
+
+enum WikiSectionKind: String, Codable, Hashable, Sendable {
+    case definition, consensus, contradictions, citations, other
+}
+
+struct WikiSection: Codable, Hashable, Identifiable, Sendable {
+    var id: UUID = UUID()
+    var heading: String = ""
+    var kind: WikiSectionKind = .other
+    var ordinal: Int = 0
+    var claims: [WikiClaim] = []
+    var editorialNote: String? = nil
+}
+
+enum WikiScope: Codable, Hashable, Sendable {
+    case global
+    case subscription(UUID)
+    case episode(UUID)
+    case podcast(UUID)
+
+    var pathComponent: String {
+        switch self {
+        case .global: "global"
+        case .subscription(let id): "subscription_\(id.uuidString)"
+        case .episode(let id): "episode_\(id.uuidString)"
+        case .podcast(let id): "podcast_\(id.uuidString)"
+        }
+    }
+}
+
+struct WikiVerifyResult: Sendable {
+    var page: WikiPage
+    init(page: WikiPage) { self.page = page }
+}
+
+protocol WikiRAGSearchProtocol: Sendable {}
+
+struct WikiOpenRouterClient {
+    static func live(model: String) -> WikiOpenRouterClient { WikiOpenRouterClient() }
+    func generate(topic: String, scope: WikiScope, citations: [WikiCitation]) async throws -> WikiPage {
+        WikiPage()
+    }
+}
+
+struct WikiGenerator: Sendable {
+    init(rag: any WikiRAGSearchProtocol, client: WikiOpenRouterClient = .live(model: ""), storage: WikiStorage = .shared, model: String = "") {}
+    init(storage: WikiStorage, rag: RAGSearch, llm: LLMModelReference) {}
+    func generate(for page: WikiPage, scope: WikiScope) async throws -> WikiPage { page }
+    func verify(_ page: WikiPage) async throws -> WikiVerifyResult { WikiVerifyResult(page: page) }
+    func audit(prior page: WikiPage) async throws -> WikiVerifyResult { WikiVerifyResult(page: page) }
+    func persist(_ page: WikiPage) throws {}
+    func compileTopic(topic: String, scope: WikiScope) async throws -> WikiVerifyResult { WikiVerifyResult(page: WikiPage()) }
+    func compilePerson(name: String, scope: WikiScope) async throws -> WikiVerifyResult { WikiVerifyResult(page: WikiPage()) }
+    func compileShow(showName: String, scope: WikiScope) async throws -> WikiVerifyResult { WikiVerifyResult(page: WikiPage()) }
+}
+
+enum WikiGeneratorError: LocalizedError {
+    case insufficientEvidence(query: String)
+    case unknown
+    var errorDescription: String? {
+        switch self {
+        case .insufficientEvidence(let q): return "Insufficient evidence to generate a wiki page for \(q)."
+        case .unknown: return "Unknown wiki generator error."
+        }
+    }
+}
+
+enum WikiClientError: LocalizedError {
+    case missingCredential(provider: String)
+    case httpError(status: Int, body: String)
+    case malformedResponse
+    var errorDescription: String? {
+        switch self {
+        case .missingCredential(let provider): return "\(provider) is not connected. Add a key in Settings."
+        case .httpError(let status, let body): return "Wiki API error (\(status)): \(String(body.prefix(200)))"
+        case .malformedResponse: return "Malformed response from wiki API"
+        }
+    }
+}
+
+// Note: DataExport defined in verbatim Services/DataExport.swift
+
+// MARK: - Podcast categorization
+
 enum CategorizationError: LocalizedError {
     case noAPIKey(provider: String)
     case noSubscriptions
     case noModelSelected
-    case invalidResponse
-    case httpError(status: Int, body: String)
 
     var errorDescription: String? {
         switch self {
-        case .noAPIKey(let provider):
-            return "\(provider) is not connected. Add a key in Settings → Intelligence → Providers."
-        case .noSubscriptions:
-            return "Add at least one podcast subscription before generating categories."
-        case .noModelSelected:
-            return "Choose a categorization model in Settings → Intelligence → Models."
-        case .invalidResponse:
-            return "The model returned an unexpected response. Try again."
-        case .httpError(let status, _):
-            return "HTTP error \(status). Check your API key and try again."
+        case .noAPIKey(let provider): return "No API key for \(provider)."
+        case .noSubscriptions: return "No subscriptions to categorize."
+        case .noModelSelected: return "No model selected."
         }
     }
 }
 
-/// Stub category recomputation service used by CategoriesRecomputeSheet.
-/// Real implementation calls the LLM categorisation pipeline (T-podcast-gap-006).
 @Observable
 @MainActor
 final class PodcastCategorizationService {
     static let shared = PodcastCategorizationService()
-
+    var isRunning: Bool = false
     private(set) var lastRun: Date? = nil
-    private(set) var isRunning: Bool = false
-
-    func recompute(store: AppStateStore) async throws -> [PodcastCategory] { [] }
+    func recompute(store: AppStateStore) async throws {}
 }
 
-// MARK: - AutoDownloadPolicy additions (verbatim-3)
+// MARK: - Nostr podcast discovery
 
-extension AutoDownloadPolicy {
-    /// Short human-readable label for the SubscriptionsListView row.
-    var summaryLabel: String? {
-        switch mode {
-        case .off: return nil
-        case .latestN(let n): return "Latest \(n)"
-        case .allNew: return "All new"
+@Observable
+@MainActor
+final class NostrPodcastDiscoveryService {
+    struct ShowResult: Identifiable, Sendable {
+        var id: String { pubkey }
+        let coordinate: String
+        let pubkey: String
+        let title: String
+        let author: String
+        let imageURL: URL?
+        let description: String
+        let categories: [String]
+        let createdAt: Int
+    }
+    var isLoading: Bool = false
+    var shows: [ShowResult] = []
+    func fetchShows(relayURL: URL) async -> [ShowResult] { [] }
+    func subscribe(to show: ShowResult, store: AppStateStore, relayURL: URL) async -> Podcast {
+        Podcast(feedURL: nil, title: show.title)
+    }
+    static func podcastID(for coordinate: String) -> UUID { UUID() }
+}
+
+// MARK: - Episode audit log
+
+@MainActor
+final class EpisodeAuditLogStore {
+    static let shared = EpisodeAuditLogStore()
+    func entries(for episodeID: UUID) -> [AuditLogEntry] { [] }
+    struct AuditLogEntry: Identifiable {
+        var id: UUID = UUID()
+        var timestamp: Date = Date()
+        var summary: String = ""
+    }
+}
+
+// MARK: - NotificationService (extended)
+
+extension NotificationService {
+    static func requestAuthorization() async -> Bool { false }
+    static func scheduleEpisodeNotification(episode: Episode, podcast: Podcast) async {}
+}
+
+// MARK: - TranscriptStore / ChaptersHydration / AIChapterCompiler shims
+
+final class TranscriptStore: @unchecked Sendable {
+    static let shared = TranscriptStore()
+    func save(_ transcript: Transcript) throws {}
+    func load(episodeID: UUID) -> Transcript? { nil }
+    func delete(episodeID: UUID) {}
+}
+
+@MainActor
+final class ChaptersHydrationService {
+    static let shared = ChaptersHydrationService()
+    func hydrateIfNeeded(episode: Episode, store: AppStateStore) {}
+}
+
+@MainActor
+final class AIChapterCompiler {
+    static let shared = AIChapterCompiler()
+    func compileIfNeeded(episodeID: UUID, store: AppStateStore) async {}
+}
+
+// MARK: - PlayerShareSheet shim
+
+struct PlayerShareSheet: View {
+    @Bindable var state: PlaybackState
+    let episode: Episode
+    let showName: String
+    var body: some View { EmptyView() }
+    static func isMeaningfulPlayhead(_ currentTime: TimeInterval) -> Bool { currentTime > 5 }
+}
+
+// Note: WikiEvidenceGrade defined in verbatim Features/Wiki/EvidenceGradedRule.swift
+// Note: FeedbackThread / FeedbackReply defined in verbatim Features/Feedback/FeedbackModels.swift
+
+// MARK: - UserIdentityStore feedback/identity helpers
+
+extension UserIdentityStore {
+    var hasIdentity: Bool { publicKeyHex != nil }
+    var npub: String? {
+        guard let hex = publicKeyHex, let bytes = Data(hexString: hex), bytes.count == 32 else { return nil }
+        return Bech32.encode(hrp: "npub", data: bytes)
+    }
+    var npubShort: String? {
+        guard let full = npub, full.count > 16 else { return npub }
+        return "\(full.prefix(10))…\(full.suffix(6))"
+    }
+    func publishFeedbackNote(category: FeedbackCategory, body: String, parentEventID: String?, replyToPubkey: String?) async throws -> SignedNostrEvent {
+        throw NSError(domain: "stub", code: 0)
+    }
+}
+
+// MARK: - BlossomUploader shim
+
+struct BlossomUploader: BlossomUploading {
+    static let defaultServer = URL(string: "https://blossom.primal.net")!
+    func upload(data: Data, contentType: String, signer: any NostrSigner) async throws -> URL {
+        throw NSError(domain: "stub", code: 0)
+    }
+}
+
+// Note: ElevenLabsCredentialStore, AssemblyAICredentialStore, OpenRouterCredentialStore defined in verbatim Services/ files
+
+// MARK: - EpisodeDownloadService extras
+
+extension EpisodeDownloadService {
+    static func formatBytes(_ bytes: Int64) -> String {
+        let kb = Double(bytes) / 1024
+        let mb = kb / 1024
+        if mb >= 1 { return String(format: "%.1f MB", mb) }
+        if kb >= 1 { return String(format: "%.0f KB", kb) }
+        return "\(bytes) B"
+    }
+}
+
+// MARK: - EpisodeAuditEvent.Kind extra
+
+extension EpisodeAuditEvent.Kind {
+    var iconName: String {
+        switch rawValue {
+        case "transcript.retry": return "arrow.clockwise"
+        default: return "info.circle"
+        }
+    }
+    var displayLabel: String {
+        switch rawValue {
+        case "transcript.retry": return "Retry requested"
+        default: return rawValue.replacingOccurrences(of: ".", with: " ").capitalized
         }
     }
 }
 
-// MARK: - EpisodeDownloadStore stub (verbatim-3)
+// MARK: - AppStateStore transcript state
 
-/// Stub matching Podcastr's on-disk download enumerator used by
-/// StorageSettingsView.compute(store:). Returns an empty list until a real
-/// download engine is wired (T-podcast-gap-005).
+extension AppStateStore {
+    func setEpisodeTranscriptState(_ id: UUID, state: TranscriptState) {}
+}
+
+// MARK: - TranscriptIngestService expanded
+
+extension TranscriptIngestService {
+    func ingest(episodeID: UUID, forceProvider: STTProvider?) async {}
+}
+
+// MARK: - NostrProfileFetcher shim
+
 @MainActor
-final class EpisodeDownloadStore {
-    static let shared = EpisodeDownloadStore()
-
-    struct FileEntry: Sendable {
-        let url: URL
-        let bytes: Int64
-        let episodeID: UUID?
-    }
-
-    func enumerateOnDisk() -> [FileEntry] { [] }
+final class NostrProfileFetcher {
+    static let shared = NostrProfileFetcher()
+    init() {}
+    init(store: AppStateStore) {}
+    func fetchProfile(pubkeyHex: String) async -> NostrProfileMetadata? { nil }
+    func fetchProfiles(for pubkeys: [String]) async {}
 }
 
-// MARK: - Bridge stub destinations for Settings NavigationLinks (verbatim-3)
-//
-// These are NavigationLink destinations referenced by the verbatim Settings
-// screen that belong to their own verbatim-N iterations. Honest empty-state
-// stubs here keep the verbatim SettingsView body byte-for-byte while the
-// NavigationLink pushes a recognisable placeholder, not a crash.
+// MARK: - VoiceNoteRealtimeSTT shim
 
-// T-podcast-ios-verbatim-4: IdentityRootView is now restored verbatim at
-// Features/Identity/IdentityRootView.swift — the stub destination is removed.
+@MainActor
+final class VoiceNoteRealtimeSTT: ObservableObject {
+    @Published private(set) var isRecording: Bool = false
+    @Published private(set) var isStarting: Bool = false
+    @Published private(set) var level: Float = 0
+    @Published private(set) var transcript: String = ""
+    @Published private(set) var errorMessage: String? = nil
+    @Published private(set) var statusMessage: String = "Idle"
+    func start(modelID: String = "") async throws {}
+    func stop() async -> String { transcript }
+    func cancel() {}
+}
 
-/// T-podcast-ios-verbatim-N: Categories list. Own verbatim iteration.
-struct CategoriesListView: View {
+// MARK: - EpisodeAuditEvent shim
+
+struct EpisodeAuditEvent: Codable, Sendable, Hashable, Identifiable {
+    var id: UUID = UUID()
+    var episodeID: UUID = UUID()
+    var timestamp: Date = Date()
+    var kind: Kind = "info"
+    var severity: Severity = .info
+    var summary: String = ""
+    var details: [Detail] = []
+
+    struct Detail: Codable, Sendable, Hashable {
+        var label: String; var value: String
+        init(_ label: String, _ value: String) { self.label = label; self.value = value }
+    }
+    enum Severity: String, Codable, Sendable, Hashable {
+        case info, success, warning, failure
+    }
+    struct Kind: Codable, Sendable, Hashable, RawRepresentable, ExpressibleByStringLiteral {
+        let rawValue: String
+        init(rawValue: String) { self.rawValue = rawValue }
+        init(stringLiteral value: String) { self.rawValue = value }
+        static let transcriptRetryRequested: Kind = "transcript.retry"
+    }
+
+    init(id: UUID = UUID(), episodeID: UUID, timestamp: Date = Date(), kind: Kind, severity: Severity = .info, summary: String, details: [Detail] = []) {
+        self.id = id; self.episodeID = episodeID; self.timestamp = timestamp
+        self.kind = kind; self.severity = severity; self.summary = summary; self.details = details
+    }
+}
+
+// MARK: - EpisodeAuditLogStore (expanded)
+
+extension EpisodeAuditLogStore {
+    func eventsNewestFirst(for episodeID: UUID) -> [EpisodeAuditEvent] { [] }
+    func clear(episodeID: UUID) {}
+    @discardableResult
+    func record(episodeID: UUID, kind: EpisodeAuditEvent.Kind, severity: EpisodeAuditEvent.Severity = .info, summary: String, details: [EpisodeAuditEvent.Detail] = []) -> EpisodeAuditEvent {
+        EpisodeAuditEvent(episodeID: episodeID, kind: kind, severity: severity, summary: summary, details: details)
+    }
+}
+
+// MARK: - EpisodeDownloadService (expanded)
+
+extension EpisodeDownloadService {
+    var expectedBytes: [UUID: Int64] { [:] }
+}
+
+// MARK: - AppStateStore download state
+
+extension AppStateStore {
+    func setEpisodeDownloadState(_ id: UUID, state: DownloadState) {}
+    func clearAllData() {}
+    var activeMemories: [String] { [] }
+    // Note: activeAgentActivityCount defined in main AppStateStore body
+}
+
+// MARK: - UserIdentityStore (expanded)
+
+extension UserIdentityStore {
+    var profileDisplayName: String? { nil }
+    var signer: (any NostrSigner)? { nil }
+    func publishProfile(name: String?, displayName: String?, about: String?, picture: String?) async throws -> SignedNostrEvent? { nil }
+}
+
+// MARK: - ITunesSearchClient (expanded)
+
+extension ITunesSearchClient {
+    static func search(_ term: String) async throws -> [Result] { [] }
+    static func topPodcasts() async throws -> [Result] { [] }
+}
+
+// MARK: - PlaybackState (queue support)
+
+extension PlaybackState {
+    func isQueued(_ episodeID: UUID) -> Bool { false }
+    func enqueue(_ episodeID: UUID) {}
+    func removeFromQueue(_ episodeID: UUID) {}
+}
+
+// MARK: - EpisodeComment / NostrCommentService
+
+enum CommentTarget: Hashable, Sendable {
+    case episode(guid: String)
+    case clip(id: UUID)
+}
+
+struct EpisodeComment: Identifiable, Hashable, Sendable {
+    let id: String
+    let target: CommentTarget
+    let authorPubkeyHex: String
+    let content: String
+    let createdAt: Date
+    var authorShortKey: String { authorPubkeyHex.prefix(4) + "…" + authorPubkeyHex.suffix(4) }
+}
+
+@MainActor
+final class NostrCommentService {
+    init(relayURLProvider: @escaping () -> URL? = { nil }) {}
+    init(store: AppStateStore) {}
+
+    struct Subscription {
+        var stream: AsyncStream<EpisodeComment> { AsyncStream { _ in } }
+        var comments: AsyncStream<[EpisodeComment]> { AsyncStream { _ in } }
+        func cancel() {}
+    }
+
+    func subscribe(target: CommentTarget) -> Subscription { Subscription() }
+    func publish(content: String, target: CommentTarget, signer: any NostrSigner) async throws -> SignedNostrEvent {
+        throw NSError(domain: "stub", code: 0)
+    }
+}
+
+// MARK: - Bech32 encoding shim
+
+enum Bech32 {
+    static func encode(hrp: String, data: Data) -> String {
+        "\(hrp)1" + data.map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+// MARK: - Data hex init shim
+
+extension Data {
+    init?(hexString hex: String) {
+        let len = hex.count
+        guard len % 2 == 0 else { return nil }
+        var data = Data(capacity: len / 2)
+        var i = hex.startIndex
+        while i < hex.endIndex {
+            let j = hex.index(i, offsetBy: 2)
+            guard let byte = UInt8(hex[i..<j], radix: 16) else { return nil }
+            data.append(byte)
+            i = j
+        }
+        self = data
+    }
+}
+
+// MARK: - Nostr UI shims
+
+struct NostrProfileAvatar: View {
+    var profile: NostrProfileMetadata?
     var body: some View {
-        ContentUnavailableView(
-            "Categories",
-            systemImage: "square.grid.2x2.fill",
-            description: Text("Categories screen restores in a future verbatim iteration.")
-        )
-        .navigationTitle("Categories")
-        .navigationBarTitleDisplayMode(.inline)
+        Image(systemName: "person.circle.fill")
+            .resizable()
+            .foregroundStyle(.secondary)
     }
 }
 
-/// T-podcast-ios-verbatim-N: Agent settings. Own verbatim iteration.
-struct AgentSettingsView: View {
+enum NostrNpub {
+    static func shortNpub(fromHex hex: String) -> String {
+        let prefix = hex.prefix(8)
+        let suffix = hex.suffix(4)
+        return "npub\(prefix)…\(suffix)"
+    }
+}
+
+// MARK: - DownloadProgressBadge shim
+
+struct DownloadProgressBadge: View {
+    var episode: Episode
+    var liveProgress: Double?
     var body: some View {
-        ContentUnavailableView(
-            "Agent",
-            systemImage: "brain.head.profile",
-            description: Text("Agent settings restore in a future verbatim iteration.")
-        )
-        .navigationTitle("Agent")
-        .navigationBarTitleDisplayMode(.inline)
+        let progress = liveProgress ?? 0
+        ZStack {
+            Circle()
+                .stroke(Color.secondary.opacity(0.3), lineWidth: 2)
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(Color.accentColor, lineWidth: 2)
+                .rotationEffect(.degrees(-90))
+        }
     }
 }
 
-/// T-podcast-ios-verbatim-N: AI providers settings. Own verbatim iteration.
-struct AIProvidersSettingsView: View {
+// MARK: - BriefingScope / BriefingLength / BriefingStyle / BriefingRequest
+
+enum BriefingScope: String, Codable, Sendable, Hashable, CaseIterable {
+    case mySubscriptions
+    case thisShow
+    case thisTopic
+    case thisWeek
+
+    var displayName: String {
+        switch self {
+        case .mySubscriptions: "my subscriptions"
+        case .thisShow:        "this show"
+        case .thisTopic:       "this topic"
+        case .thisWeek:        "this week"
+        }
+    }
+}
+
+enum BriefingLength: String, Codable, Sendable, Hashable, CaseIterable {
+    case quick
+    case medium
+    case long
+    case extended
+}
+
+enum BriefingStyle: String, Codable, Sendable, Hashable, CaseIterable {
+    case morning
+    case weeklyTLDR
+    case catchUpOnShow
+    case topicAcrossLibrary
+}
+
+struct BriefingRequest: Codable, Sendable, Hashable, Identifiable {
+    var id: UUID = UUID()
+    var scope: BriefingScope = .mySubscriptions
+    var length: BriefingLength = .medium
+    var style: BriefingStyle = .morning
+    var freeformQuery: String? = nil
+    var requestedAt: Date = Date()
+}
+
+// MARK: - BriefingComposeSheet
+
+struct BriefingComposeSheet: View {
+    var onCompose: (BriefingRequest) -> Void = { _ in }
+    var initialFreeformQuery: String = ""
+    var initialScope: BriefingScope? = nil
     var body: some View {
-        ContentUnavailableView(
-            "Providers",
-            systemImage: "key.viewfinder",
-            description: Text("AI Providers screen restores in a future verbatim iteration.")
-        )
-        .navigationTitle("Providers")
-        .navigationBarTitleDisplayMode(.inline)
+        ContentUnavailableView("Briefing", systemImage: "doc.text")
     }
 }
 
-/// T-podcast-ios-verbatim-N: AI models settings. Own verbatim iteration.
-struct AIModelsSettingsView: View {
+// MARK: - AgentIdentityQRView
+
+struct AgentIdentityQRView: View {
+    let npub: String
+    let name: String
     var body: some View {
-        ContentUnavailableView(
-            "Models",
-            systemImage: "slider.horizontal.3",
-            description: Text("AI Models screen restores in a future verbatim iteration.")
-        )
-        .navigationTitle("Models")
-        .navigationBarTitleDisplayMode(.inline)
+        ContentUnavailableView("QR Code", systemImage: "qrcode")
     }
 }
 
-/// T-podcast-ios-verbatim-N: Networking settings. Own verbatim iteration.
+// MARK: - ClipShareSheet
+
+struct ClipShareSheet: View {
+    let clip: Clip
+    let episode: Episode
+    let podcast: Podcast?
+    var body: some View {
+        ContentUnavailableView("Share Clip", systemImage: "scissors")
+    }
+}
+
+// MARK: - Missing view stubs (T-podcast-ios-RESTART)
+
+struct AgentNotesView: View {
+    var spotlightTargetID: UUID? = nil
+    var body: some View { ContentUnavailableView("Notes", systemImage: "note.text") }
+}
+
+struct AgentMemoriesView: View {
+    var spotlightTargetID: UUID? = nil
+    var body: some View { ContentUnavailableView("Memories", systemImage: "brain") }
+}
+
 struct NetworkingSettingsView: View {
-    var body: some View {
-        ContentUnavailableView(
-            "Networking",
-            systemImage: "network",
-            description: Text("Networking settings restore in a future verbatim iteration.")
-        )
-        .navigationTitle("Networking")
-        .navigationBarTitleDisplayMode(.inline)
-    }
+    var body: some View { ContentUnavailableView("Networking", systemImage: "network") }
+}
+
+struct NostrConversationDetailView: View {
+    let conversation: NostrConversationRecord
+    var body: some View { ContentUnavailableView("Conversation", systemImage: "message") }
 }

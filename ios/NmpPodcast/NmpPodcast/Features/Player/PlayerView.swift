@@ -9,8 +9,8 @@ import SwiftUI
 // /Users/pablofernandez/Work/podcast/App/Sources/Features/Player/PlayerView.swift
 
 struct PlayerView: View {
-    let state: PlaybackState
-    var glassNamespace: Namespace.ID
+    @Bindable var state: PlaybackState
+    let glassNamespace: Namespace.ID
 
     var body: some View {
         ContentUnavailableView(
