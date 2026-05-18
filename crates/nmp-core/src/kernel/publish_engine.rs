@@ -7,7 +7,7 @@
 //! one-shotted a single `EVENT` frame and stamped `accepted_locally`. T117
 //! routes every kernel publish through the engine instead.
 //!
-//! Doctrine map (canonical per `docs/product-spec/overview-and-dx.md` §1.5):
+//! Doctrine map (canonical per `docs/product-spec/doctrine.md`):
 //! - **D3** (outbox automatic): the engine is built against
 //!   `Nip65OutboxResolver`; every `Publish` uses `PublishTarget::Auto` so the
 //!   resolver decides relays — no hardcoded URLs.

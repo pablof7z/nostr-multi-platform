@@ -453,7 +453,7 @@ fn nip42_kind_22242_tags_delivering_relay_url_not_bootstrap() {
 fn extract_relay_tag(wire: &str) -> String {
     let v: serde_json::Value = serde_json::from_str(wire).expect("AUTH frame is valid JSON");
     let arr = v.as_array().expect("AUTH frame is a JSON array");
-    assert_eq!(arr.get(0).and_then(|s| s.as_str()), Some("AUTH"));
+    assert_eq!(arr.first().and_then(|s| s.as_str()), Some("AUTH"));
     let event = arr.get(1).expect("AUTH frame has event payload");
     let tags = event
         .get("tags")
@@ -461,7 +461,7 @@ fn extract_relay_tag(wire: &str) -> String {
         .expect("event has tags array");
     for tag in tags {
         let parts = tag.as_array().expect("tag is array");
-        if parts.get(0).and_then(|s| s.as_str()) == Some("relay") {
+        if parts.first().and_then(|s| s.as_str()) == Some("relay") {
             return parts
                 .get(1)
                 .and_then(|s| s.as_str())
