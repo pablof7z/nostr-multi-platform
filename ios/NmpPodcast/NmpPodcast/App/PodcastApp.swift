@@ -47,6 +47,11 @@ struct PodcastApp: App {
                 .environmentObject(kernelModel)
                 .task { CarPlayController.shared.attach(store: store) }
                 .task { kernelModel.start() }
+                // T-podcast-ios-3: bind AppStateStore to KernelModel so that
+                // store.allPodcasts / subscription / deletePodcast proxy through
+                // the kernel snapshot. Verbatim Podcastr views read `store`; the
+                // kernel owns the truth.
+                .task { store.bind(kernelModel: kernelModel) }
                 .task {
                     // Order matters: NDK must exist before UserIdentityStore's
                     // generated-profile self-publish path reaches the signer

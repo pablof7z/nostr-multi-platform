@@ -46,6 +46,23 @@ struct Podcast: Identifiable, Hashable {
     var author: String = ""
     var imageURL: URL? = nil
     var feedURL: URL? = nil
+    /// Episode count from kernel LibraryView snapshot. Zero until kernel
+    /// exposes per-podcast episode rows (T-podcast-gap-003).
+    var episodeCount: Int = 0
+
+    /// Sentinel used by AllPodcastsListView to exclude the "unknown" fallback row.
+    static let unknownID: UUID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+
+    /// Accent colour derived deterministically from title so the grid cells
+    /// have stable, distinct tints without querying a palette service.
+    var accentColor: Color {
+        let colours: [Color] = [.blue, .purple, .pink, .orange, .teal, .indigo, .cyan, .green]
+        let hash = abs(title.hashValue)
+        return colours[hash % colours.count]
+    }
+
+    /// SF Symbol glyph to render when artwork_url is absent.
+    var artworkSymbol: String { "antenna.radiowaves.left.and.right" }
 }
 
 struct Chapter: Identifiable, Hashable {
@@ -119,15 +136,72 @@ struct AppState {
 
 // MARK: - AppStateStore
 
+/// T-podcast-ios-3: AppStateStore is @MainActor so it can safely read from
+/// KernelModel (which is also @MainActor). Verbatim Podcastr views already
+/// run on the main actor; this annotation ensures consistent isolation.
 @Observable
+@MainActor
 final class AppStateStore {
     var state: AppState = AppState()
     var pendingFriendInvite: PendingFriendInvite? = nil
 
-    var allPodcasts: [Podcast] { state.podcasts }
+    // T-podcast-ios-3: Kernel model reference injected at startup so
+    // allPodcasts reads live from the kernel snapshot instead of the
+    // empty state.podcasts stub. Set via bind(kernelModel:) in PodcastApp.
+    var _kernelModel: KernelModel?
+
+    /// All known podcasts. Proxied through the kernel snapshot when the
+    /// kernel model has been bound; falls back to state.podcasts (empty)
+    /// until binding occurs.
+    var allPodcasts: [Podcast] {
+        guard let km = _kernelModel else { return state.podcasts }
+        return km.library.podcasts.compactMap { row in
+            guard let uuid = UUID(uuidString: row.id) else { return nil }
+            return Podcast(
+                id: uuid,
+                title: row.title,
+                author: row.author,
+                imageURL: row.artworkURL,
+                feedURL: nil,
+                episodeCount: Int(row.episodeCount)
+            )
+        }
+    }
+
     var allEpisodesSorted: [Episode] { state.episodes.sorted { $0.publishedAt > $1.publishedAt } }
 
-    func podcast(id: UUID) -> Podcast? { nil }
+    /// Bind to the kernel model. Called once at app startup so that
+    /// allPodcasts and related helpers read live kernel data.
+    func bind(kernelModel: KernelModel) {
+        _kernelModel = kernelModel
+    }
+
+    func podcast(id: UUID) -> Podcast? {
+        allPodcasts.first { $0.id == id }
+    }
+
+    func podcast(feedURL: URL) -> Podcast? {
+        allPodcasts.first { $0.feedURL == feedURL }
+    }
+
+    /// All episodes for a given podcast. Returns empty until the kernel
+    /// snapshot includes per-podcast episode rows (T-podcast-gap-003).
+    func episodes(forPodcast podcastID: UUID) -> [Episode] { [] }
+
+    /// Whether the user actively follows (is subscribed to) a podcast.
+    /// Returns a non-nil sentinel when the podcast is in the kernel library,
+    /// since every kernel-library row is by definition a subscription.
+    func subscription(podcastID: UUID) -> Podcast? {
+        allPodcasts.first { $0.id == podcastID }
+    }
+
+    /// Remove a podcast subscription from the kernel library.
+    /// Routes through the kernel model when bound; no-op otherwise.
+    func deletePodcast(podcastID: UUID) {
+        guard let km = _kernelModel else { return }
+        km.unsubscribe(podcastID: podcastID.uuidString)
+    }
+
     func episode(id: UUID) -> Episode? { nil }
     func clip(id: UUID) -> Clip? { nil }
     func setEpisodePlaybackPosition(_ id: UUID, position: TimeInterval) {}
@@ -385,6 +459,73 @@ final class ThreadingInferenceService {
     struct ActiveTopic: Identifiable {
         let id: UUID = UUID()
     }
+}
+
+// MARK: - SubscriptionService
+
+/// Stub subscription service. Real implementation calls Rust podcast-feeds
+/// for RSS fetch + parse (T-podcast-gap-003). Today this is an honest no-op
+/// that satisfies the type-checker for verbatim Podcastr views.
+struct SubscriptionService {
+    enum AddError: Error, LocalizedError {
+        case alreadySubscribed
+        case transport(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .alreadySubscribed: return "Already subscribed to this podcast."
+            case .transport(let msg): return msg
+            }
+        }
+    }
+
+    let store: AppStateStore
+
+    func addSubscription(feedURLString: String) async throws -> Podcast {
+        throw AddError.transport("RSS fetch not yet implemented (T-podcast-gap-003)")
+    }
+
+    func refresh(_ podcast: Podcast) async {}
+}
+
+// MARK: - PodcastCategory
+
+/// Stub category model used by LibraryGridCell and HomeCategoryCard.
+struct PodcastCategory: Identifiable, Hashable {
+    let id: UUID
+    var name: String = ""
+}
+
+// MARK: - AppShadow / appShadow view modifier
+
+extension View {
+    func appShadow(_ shadow: Any) -> some View { self }
+}
+
+// MARK: - AllEpisodesEpisodeList stub
+
+/// Stub list of episodes for the AllEpisodesView. Real implementation renders
+/// EpisodeRow × N with kernel-backed episode data (T-podcast-gap-002).
+struct AllEpisodesEpisodeList: View {
+    let episodes: [Episode]
+    let podcastsByID: [UUID: Podcast]
+    @Binding var voiceOverDetailRoute: LibraryEpisodeRoute?
+    @Binding var visibleCount: Int
+    let totalCount: Int
+
+    var body: some View { EmptyView() }
+}
+
+// MARK: - Episode property stubs required by Podcastr AllEpisodesFilter
+
+extension Episode {
+    /// Whether this episode has been fully played.
+    var played: Bool { isPlayed }
+    /// Whether playback has started but not completed.
+    var isInProgress: Bool { playbackPosition > 0 && !isPlayed }
+    /// Download state enum compatible with Podcastr's filter logic.
+    enum DownloadState { case notDownloaded, downloading, queued, downloaded }
+    var downloadState: DownloadState { isDownloaded ? .downloaded : .notDownloaded }
 }
 
 // MARK: - LibraryFilter

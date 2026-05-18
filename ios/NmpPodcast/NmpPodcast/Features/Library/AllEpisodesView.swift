@@ -46,63 +46,107 @@ struct LibraryEpisodeRoute: Hashable {
 
 // MARK: - AllEpisodesView
 //
-// T-podcast-gap-002: The verbatim AllEpisodesView body references Episode
-// computed properties (played, isInProgress, downloadState, isStarred) and
-// Podcast.accentColor that require a full kernel episode data model not yet
-// exposed. This stub renders Podcastr's library empty state with a
-// kernel-backed podcast count.
+// T-podcast-ios-3 (Step 2): Wire AppStateStore.allPodcasts (kernel-backed) into
+// the Library tab. Rows are tappable NavigationLinks to ShowDetailView.
+// The kernel delivers: id, title, author, artwork_url, episode_count.
 //
-// Wire to KernelModel.library for the podcast list. Episodes populate once
-// the kernel exposes nmp_app_podcast_snapshot with episode rows.
+// The verbatim Podcastr AllEpisodesView shows all-episodes-across-subscriptions
+// (needs T-podcast-gap-002 episode data). This stub intentionally shows the
+// podcast grid instead — an honest, kernel-backed representation.
 
 struct AllEpisodesView: View {
-    @EnvironmentObject private var kernelModel: KernelModel
+    @Environment(AppStateStore.self) private var store
+    @State private var showAddShow = false
 
     var body: some View {
-        let podcasts = kernelModel.library.podcasts
+        let podcasts = store.allPodcasts
         Group {
             if podcasts.isEmpty {
                 ContentUnavailableView(
-                    "No episodes yet.",
+                    "No Podcasts",
                     systemImage: "tray",
-                    description: Text("Subscribe to podcasts from the Home tab to see episodes here.")
+                    description: Text("Subscribe to podcasts to build your library.")
                 )
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            showAddShow = true
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .accessibilityLabel("Add podcast")
+                        .accessibilityIdentifier("addPodcastButton")
+                    }
+                }
             } else {
                 List {
                     Section {
                         ForEach(podcasts) { podcast in
-                            HStack(spacing: 12) {
-                                CachedAsyncImageShim(url: podcast.artworkURL)
-                                    .frame(width: 48, height: 48)
-                                    .clipShape(RoundedRectangle(cornerRadius: 8))
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(podcast.title)
-                                        .font(.subheadline)
-                                        .fontWeight(.medium)
-
-                                    if !podcast.author.isEmpty {
-                                        Text(podcast.author)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-
-                                    Text("\(podcast.episodeCount) episodes")
-                                        .font(.caption2)
-                                        .foregroundStyle(.tertiary)
+                            NavigationLink(value: podcast) {
+                                podcastRow(podcast)
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                Button(role: .destructive) {
+                                    store.deletePodcast(podcastID: podcast.id)
+                                } label: {
+                                    Label("Unsubscribe", systemImage: "minus.circle")
                                 }
                             }
-                            .padding(.vertical, 4)
                         }
                     } header: {
-                        Text("Your Podcasts")
+                        Text("Your Podcasts (\(podcasts.count))")
                     }
                 }
                 .listStyle(.plain)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            showAddShow = true
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .accessibilityLabel("Add podcast")
+                        .accessibilityIdentifier("addPodcastButton")
+                    }
+                }
             }
         }
         .navigationTitle("Library")
         .navigationBarTitleDisplayMode(.large)
+        .navigationDestination(for: Podcast.self) { podcast in
+            ShowDetailView(podcast: podcast)
+        }
+        .sheet(isPresented: $showAddShow) {
+            AddShowSheet()
+        }
+    }
+
+    @ViewBuilder
+    private func podcastRow(_ podcast: Podcast) -> some View {
+        HStack(spacing: 12) {
+            CachedAsyncImageShim(url: podcast.imageURL)
+                .frame(width: 48, height: 48)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(podcast.title.isEmpty ? "Untitled" : podcast.title)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+
+                if !podcast.author.isEmpty {
+                    Text(podcast.author)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Text("\(podcast.episodeCount) episodes")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 
