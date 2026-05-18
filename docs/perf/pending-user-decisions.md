@@ -8,6 +8,59 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
+### PD-027 (2026-05-18) — T141 STOP: spec's pragmatic path (explicit-arms) is blocked by a Cargo dependency cycle; registry wiring has no production caller
+
+**Decision deferred (genuine user choice needed). NO code changes landed.**
+
+T141 asks the kernel ingest catch-all at `crates/nmp-core/src/kernel/ingest/mod.rs:317-321` to dispatch kinds 7 / 1111 / 9735 to `ReactionsDomain::decode_and_route` / `CommentsDomain::decode_and_route` / `ZapsDomain::decode_and_route`. The spec offered a "pragmatic explicit-arms" path inside `nmp-core` (adding the three NIP crates as deps) and flagged a fallback ("if a cycle, we need a typed-event-trait seam instead"). The cycle fires. The pragmatic path is impossible. The fallback ships a seam with no production caller.
+
+**Cycle evidence (the three NIP crates already depend on nmp-core):**
+
+```
+crates/nmp-reactions/Cargo.toml:9: nmp-core = { path = "../nmp-core" }
+crates/nmp-nip22/Cargo.toml:9:     nmp-core = { path = "../nmp-core" }
+crates/nmp-nip57/Cargo.toml:9:     nmp-core = { path = "../nmp-core" }
+```
+
+Each `decode_and_route` takes `&nmp_core::store::StoredEvent` and `&nmp_core::store::DomainHandle`. Adding `nmp-reactions / nmp-nip22 / nmp-nip57` to `crates/nmp-core/Cargo.toml` makes Cargo refuse the workspace.
+
+**Registry seam exists but is unwired in production:**
+
+- `nmp_core::substrate::ModuleRegistry::register_domain<M: DomainModule>` exists (`crates/nmp-core/src/substrate/mod.rs:55-58`).
+- Each NIP crate already defines a `pub fn register(registry: &mut ModuleRegistry)` (`nmp-reactions/src/lib.rs:69`, `nmp-nip22/src/lib.rs:29`, `nmp-nip57/src/lib.rs:33`, plus `nmp-nip01`, `nmp-nip23`, `nmp-nip29`, `nmp-nip51`).
+- Grep for production callers of those `register()` fns: **zero hits**. Only the in-crate `tests/substrate_registry.rs` and `fixture-todo-core` construct a `ModuleRegistry`. No `app.rs`, no `nmp-cli`, no `nmp-codegen`, no FFI init builds one.
+- The `Kernel` struct (`crates/nmp-core/src/kernel/mod.rs:143`) is `pub(crate)`; it has no constructor that accepts a `ModuleRegistry` or a `kind → dispatch fn` table.
+
+**Consequence:** building option A in this worktree ships the trait method + Kernel registry plumbing AND the production bug stays open until someone (in a separate change) decides where the per-app wiring lives. The user has been auditing this exact class of "computed-but-not-on-wire" gap (HB52 commit `bb77c04`).
+
+**The three viable paths and what each costs:**
+
+- **A. Typed-event-trait seam (spec's fallback).** Add `fn ingest_kinds() -> &'static [u32]` (already exists) + `fn decode_and_route(&self, event: &StoredEvent, handle: &DomainHandle) -> Result<(), StoreError>` (default no-op) to `DomainModule`. Extend `ModuleRegistry` to record per-kind fn pointers on `register_domain<M>`. Add `Kernel::with_registry(registry: ModuleRegistry)`. Kernel catch-all consults registry → `decode_and_route` per matching domain. **Unanswered:** who calls `Kernel::with_registry(...)` in production? Today the kernel is built inside `crate::actor`; the actor lives in `nmp-core` and CANNOT import the per-NIP crates (same D0 reason this task hit). So the wiring point is either (1) FFI init in `nmp-core/src/ffi/`, which would force `nmp-core` to depend on the NIP crates (cycle); (2) a new orchestration crate above all of them; or (3) `nmp-codegen` generates per-app glue. Option (3) matches PD-009 + the kind-wrappers.md §6 plan but is broader than T141.
+- **B. Move kernel ingest/dispatch to a higher crate** (`nmp-app` or similar) that imports both nmp-core and every NIP crate. Surgical break of nmp-core's role as "the kernel" — large architectural move; merits its own ADR.
+- **C. Refactor the three NIP crates to not depend on nmp-core.** Extract `StoredEvent`, `DomainHandle`, `StoreError`, `KernelEvent`, the `DomainModule` trait into a new `nmp-substrate-types` crate that both `nmp-core` and the NIP crates depend on. Resolves the cycle cleanly. **Cost:** ripples through every NIP crate's `use` declarations and pulls `KernelEvent` / `EventId` out of nmp-core into the shared crate. Not trivial but mechanical.
+
+**Recommendation if forced to pick:** **C + A together**, in two steps. C in a dedicated commit (mechanical extract; touches imports only). A in T141 itself (now possible because the cycle is gone) — explicit arms inside `kernel/ingest/mod.rs` calling `nmp_reactions::decode_and_route`, etc. Skips B entirely (B has worse downstream implications). C also unblocks the future M2 hot-path (T140) and the codegen dispatch (T145) the spec mentioned.
+
+**Why this is a real user decision:** the cost of C is touching ~10 crates' `use` statements + a docs sweep. That's a 200-400 LOC mechanical refactor that the agent can do autonomously, but it changes the crate-graph shape in a way that should be visible to the user before it lands. Doing A without C ships a half-fix.
+
+**Files I would touch if you say "go option C+A":**
+
+1. New crate: `crates/nmp-substrate-types/{Cargo.toml, src/lib.rs}` re-exporting `StoredEvent`, `DomainHandle`, `StoreError`, `KernelEvent`, `EventId`, `DomainModule`, `DomainRegistry`, `DomainMigration`, `DomainIndex`, `MigrationTx`, `ViewModule`, `ViewContext`, `ViewDependencies`, `ProjectionChange`.
+2. Move the trait definitions out of `nmp-core/src/substrate/{domain.rs,view.rs}` and `nmp-core/src/store/types/events.rs` (DomainHandle stays implementation-side in nmp-core; trait types move).
+3. `nmp-core/Cargo.toml` gets `nmp-substrate-types = { path = "../nmp-substrate-types" }`; re-exports from `crate::store` + `crate::substrate` stay source-compatible.
+4. NIP crates swap `use nmp_core::store::{…}` / `use nmp_core::substrate::{…}` for `use nmp_substrate_types::{…}`. Their `nmp-core` dep stays for `MemEventStore`-driven tests but not the trait surface.
+5. Add the three new files `crates/nmp-core/src/kernel/ingest/{reactions,comments,zaps}.rs` per the original T141 spec, but now they can import the NIP crates.
+6. Three new arms in `kernel/ingest/mod.rs` catch-all (kind 7 / 1111 / 9735), each calling `verify_and_persist` then the per-NIP `decode_and_route` on a `DomainHandle` opened from `store.domain_open(NAMESPACE)`.
+7. Integration tests in `crates/nmp-testing/tests/ingest_t141_routing.rs` per the spec's four cases.
+
+**What I'm doing right now:** nothing to the code. This entry is the only artifact. Committing only the doc, push to master, surface PD-027 on the next heartbeat.
+
+**Files affected by this entry:** `docs/perf/pending-user-decisions.md` (this file).
+
+**Question for the user:** confirm option (C+A), or pick (A-only with a temporary registry shim and someone wires it later), or (B) a new orchestration crate. **The task spec's literal "pragmatic" path (A inside `nmp-core` with explicit NIP-crate deps) cannot be implemented.**
+
+---
+
 ### PD-023 (2026-05-18) — T136 Gate-1 STOP: pick `nostr-lmdb` env-injection path
 
 **Decision deferred (genuine user choice needed).** T136 Gate 1 audited
