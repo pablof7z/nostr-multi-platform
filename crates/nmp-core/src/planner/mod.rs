@@ -64,5 +64,5 @@ pub use interest::{
     Pubkey,
     RelayUrl,
 };
-pub use lattice::MergeOutcome;
+pub use lattice::{merge, MergeOutcome};
 pub use plan::{CompiledPlan, PlannerError, RelayPlan, RoutingSource, SubShape, UserConfiguredCategory};

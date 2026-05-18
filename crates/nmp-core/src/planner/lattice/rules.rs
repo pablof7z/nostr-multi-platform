@@ -134,3 +134,24 @@ pub(super) fn rule8_addresses(
         Some(union)
     }
 }
+
+/// Rule 9 — `pin_to` hard-routing-pin equality.
+///
+/// Two shapes are mergeable on this dimension iff their `pin_to` values are
+/// *identical* (both `None`, or both `Some(same_url)`). A `None` does NOT
+/// absorb a `Some(_)` — unlike Rule 1's wildcard for kinds, the routing pin is
+/// a hard override that suppresses the four-lane routing entirely, so mixing
+/// pinned + unpinned interests would either narrow the unpinned scope (if the
+/// pin won) or leak the pinned content to other relays (if `None` won).
+///
+/// Two interests with `pin_to = Some(host_a)` and `pin_to = Some(host_b)`
+/// where `host_a != host_b` go to *different relays* and therefore cannot be
+/// merged into a single wire frame regardless of how compatible their other
+/// fields are.
+///
+/// This is the lattice half of the host-relay-pin contract
+/// (`docs/design/nip29/routing.md` §3). The partition half lives in
+/// `planner::compiler::partition::case_e_pin_to`.
+pub(super) fn rule9_pin_to(a: &InterestShape, b: &InterestShape) -> bool {
+    a.pin_to == b.pin_to
+}

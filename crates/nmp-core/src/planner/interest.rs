@@ -109,6 +109,28 @@ pub struct InterestShape {
     ///
     /// Design: `docs/design/subscription-compilation/intro.md` §2.1 (T24).
     pub addresses: BTreeSet<NaddrCoord>,
+
+    /// Hard routing pin: when `Some`, all four-lane routing (Cases A/B/C/D)
+    /// is suppressed and the interest goes to exactly this relay.
+    ///
+    /// This is the third routing lane required by NIP-29 relay-based groups:
+    /// the group only exists on one host relay, so NIP-65 mailbox routing is
+    /// irrelevant. The host-relay-pin contract is documented in
+    /// `docs/design/nip29/routing.md` §3 ("`RelayPinnedInterest`").
+    ///
+    /// Merge lattice **Rule 9** (in `planner::lattice::rules::rule9_pin_to`):
+    /// two shapes with different `pin_to` values refuse to merge — they go to
+    /// different relays and must produce distinct wire frames. Wildcard
+    /// (`None`) does NOT absorb a concrete pin (unlike Rule 1's wildcard for
+    /// kinds): a pinned interest is a hard routing override, mixing it with
+    /// an unpinned interest would either narrow the unpinned scope or leak the
+    /// pinned content to other relays.
+    ///
+    /// `pin_to` is purely an out-of-band routing hint; it is NEVER serialized
+    /// onto the wire as part of the filter. The relay receives only the
+    /// regular filter shape (kinds + tags + since/until/limit/event_ids
+    /// + addresses); routing happens entirely on the client side.
+    pub pin_to: Option<RelayUrl>,
 }
 
 impl InterestShape {

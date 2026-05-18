@@ -12,12 +12,14 @@
 //! - `case_b_addresses` — Case B: address-pointer pubkeys → outbox relays
 //! - `case_c_p_tags`    — Case C: `#p` tag values → inbox relays (structural ban)
 //! - `case_d_no_author` — Case D: no author/address/p → active-account or indexer
+//! - `case_e_pin_to`    — Case E: `pin_to` hard-pin → host relay only (NIP-29)
 //! - `inbox_helper`     — `route_p_tags_to_inbox` shared by Cases A and C
 
 mod case_a_authors;
 mod case_b_addresses;
 mod case_c_p_tags;
 mod case_d_no_author;
+mod case_e_pin_to;
 mod inbox_helper;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -107,7 +109,17 @@ pub(super) fn partition_interest(
         limit: interest.shape.limit,
         event_ids: interest.shape.event_ids.clone(),
         addresses: BTreeSet::new(),
+        pin_to: interest.shape.pin_to.clone(),
     };
+
+    // Case E (NIP-29 host-relay-pin): hard-pin short-circuits the four-lane
+    // dispatch entirely. Authors / addresses / #p on the same interest are
+    // retained on the wire filter but ignored for routing. This is the third
+    // routing lane required by `docs/design/nip29/routing.md` §3.
+    if let Some(pin_url) = &interest.shape.pin_to {
+        case_e_pin_to::route(interest, &base_shape, pin_url, relay_entries);
+        return;
+    }
 
     // Extract #p tag values once — used in Case A (if authors + #p) and Case C.
     let p_tag_values: BTreeSet<Pubkey> = interest

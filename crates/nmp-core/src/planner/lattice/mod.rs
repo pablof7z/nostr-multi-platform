@@ -18,13 +18,16 @@
 //! 6. `lifecycle` — identical lifecycles only.
 //! 7. `event_ids` — union, capped.
 //! 8. `addresses` — union, capped; requires other fields mergeable per 1–7.
+//! 9. `pin_to` — host-relay-pin equality; `None` does NOT absorb `Some(_)`.
+//!    The third-routing-lane half of the NIP-29 contract
+//!    (`docs/design/nip29/routing.md` §3).
 
 mod rules;
 
 use crate::planner::interest::{InterestLifecycle, InterestShape};
 use rules::{
     rule1_kinds, rule2_tags, rule3_since, rule4_until, rule5_limit, rule6_lifecycle,
-    rule7_event_ids, rule8_addresses,
+    rule7_event_ids, rule8_addresses, rule9_pin_to,
 };
 
 /// Per-relay cap for merged value sets (tags, ids, addresses).
@@ -54,6 +57,13 @@ pub fn merge(
 ) -> MergeOutcome {
     // Rule 6 first — cheapest check, prune early.
     if !rule6_lifecycle(lifecycle_a, lifecycle_b) {
+        return MergeOutcome::Refused;
+    }
+
+    // Rule 9 second — also cheap (Option equality), and a refusal here means
+    // the two interests will definitely be sent to different relays. Pruning
+    // before the more expensive set unions saves work on host-pinned views.
+    if !rule9_pin_to(a, b) {
         return MergeOutcome::Refused;
     }
 
@@ -107,6 +117,8 @@ pub fn merge(
         limit: None, // Rule 5 guarantees both are None
         event_ids: merged_event_ids,
         addresses: merged_addresses,
+        // Rule 9 guaranteed equality above; either side carries the result.
+        pin_to: a.pin_to.clone(),
     })
 }
 
@@ -385,5 +397,66 @@ mod tests {
         };
         let b = a.clone();
         assert_eq!(merge(&a, &b, &tailing(), &one_shot()), MergeOutcome::Refused);
+    }
+
+    // ── Rule 9 — pin_to (host-relay-pin) ─────────────────────────────────────
+    //
+    // NIP-29 / `docs/design/nip29/routing.md` §3: a `Some(host)` `pin_to` is a
+    // hard routing override, must NOT merge across different hosts, must NOT
+    // merge with `None`, must merge with identical `Some(host)`.
+
+    #[test]
+    fn rule9_identical_pin_to_merges() {
+        let mut a = InterestShape { kinds: [9].into_iter().collect(), ..Default::default() };
+        a.pin_to = Some("wss://groups.example.com".into());
+        let mut b = a.clone();
+        // Add a different h tag value so we don't trivially merge by identity
+        let mut tags = BTreeMap::new();
+        tags.insert("h".to_string(), ["room-a".to_string()].into_iter().collect::<BTreeSet<_>>());
+        a.tags = tags;
+        let mut tags_b = BTreeMap::new();
+        tags_b.insert("h".to_string(), ["room-b".to_string()].into_iter().collect::<BTreeSet<_>>());
+        b.tags = tags_b;
+        let r = merge(&a, &b, &tailing(), &tailing());
+        if let MergeOutcome::Merged(s) = r {
+            assert_eq!(s.pin_to.as_deref(), Some("wss://groups.example.com"));
+            // Tag values union across the same dimension (Rule 2).
+            assert_eq!(s.tags.get("h").unwrap().len(), 2);
+        } else {
+            panic!("expected Merged; identical pin_to must merge");
+        }
+    }
+
+    #[test]
+    fn rule9_different_pin_to_refuse() {
+        // Two host-pinned interests targeting DIFFERENT hosts must NOT collapse
+        // into a single wire frame — they're literally going to different relays.
+        let mut a = InterestShape { kinds: [9].into_iter().collect(), ..Default::default() };
+        a.pin_to = Some("wss://groups.example.com".into());
+        let mut b = InterestShape { kinds: [9].into_iter().collect(), ..Default::default() };
+        b.pin_to = Some("wss://other.example.com".into());
+        assert_eq!(merge(&a, &b, &tailing(), &tailing()), MergeOutcome::Refused,
+            "different pin_to must refuse — they go to different relays");
+    }
+
+    #[test]
+    fn rule9_pinned_does_not_absorb_unpinned() {
+        // Unlike Rule 1's wildcard kinds, `None` does NOT absorb `Some(_)`:
+        // mixing pinned + unpinned would either leak pinned content or narrow
+        // the unpinned scope — both correctness regressions.
+        let mut pinned = InterestShape { kinds: [9].into_iter().collect(), ..Default::default() };
+        pinned.pin_to = Some("wss://groups.example.com".into());
+        let unpinned = InterestShape { kinds: [9].into_iter().collect(), ..Default::default() };
+        // pinned ∪ unpinned must refuse in BOTH directions (symmetric refusal).
+        assert_eq!(merge(&pinned, &unpinned, &tailing(), &tailing()), MergeOutcome::Refused);
+        assert_eq!(merge(&unpinned, &pinned, &tailing(), &tailing()), MergeOutcome::Refused);
+    }
+
+    #[test]
+    fn rule9_both_none_merges() {
+        // The common case (no pin on either side) is unaffected by Rule 9.
+        let a = shape_with_kinds(&[1, 6]);
+        let b = shape_with_kinds(&[1, 6]);
+        assert!(matches!(merge(&a, &b, &tailing(), &tailing()), MergeOutcome::Merged(_)));
     }
 }

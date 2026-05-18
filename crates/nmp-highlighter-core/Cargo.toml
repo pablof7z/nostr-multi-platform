@@ -1,0 +1,14 @@
+[package]
+name = "nmp-highlighter-core"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+description = "Highlighter app-specific extension crate. Composes nmp-nip29 + (future) nmp-nip84 / nmp-nip22 / nmp-nip23 views and actions into the surfaces the Highlighter iOS app consumes."
+
+[dependencies]
+nmp-core = { path = "../nmp-core" }
+nmp-nip29 = { path = "../nmp-nip29" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
