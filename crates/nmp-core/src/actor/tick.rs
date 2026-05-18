@@ -2,7 +2,9 @@
 //! the `emit_interval` utility.  Separated from the main loop so that the D8
 //! invariant ("emit only when state changed") is concentrated in one file.
 
+use crate::app::KernelUpdate;
 use crate::kernel::Kernel;
+use crate::update_envelope::{wrap_snapshot, wrap_update};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
@@ -56,9 +58,22 @@ pub(super) fn emit_now(
     update_tx: &Sender<String>,
     last_emit: &mut Instant,
 ) {
-    let update = kernel.make_update(running);
-    let _ = update_tx.send(update);
+    // Snapshot frame: wrap the already-serialized snapshot as
+    // `{"t":"snapshot","v":…}` (D8 — borrowed RawValue, one outer alloc, no
+    // re-parse). D6 — a wrap failure drops the frame, never unwinds.
+    if let Some(frame) = wrap_snapshot(kernel.make_update(running)) {
+        let _ = update_tx.send(frame);
+    }
     *last_emit = Instant::now();
+}
+
+/// Push a discrete [`KernelUpdate`] onto the channel as the tagged
+/// `{"t":"update","v":…}` frame so consumers decode the **one**
+/// [`crate::UpdateEnvelope`] type (D6 — the tag is the discriminant).
+pub(super) fn emit_kernel_update(update: &KernelUpdate, update_tx: &Sender<String>) {
+    if let Some(frame) = wrap_update(update) {
+        let _ = update_tx.send(frame);
+    }
 }
 
 // ── D8 regression test ───────────────────────────────────────────────────────
@@ -66,6 +81,8 @@ pub(super) fn emit_now(
 #[cfg(test)]
 mod tests {
     use crate::actor::{run_actor, ActorCommand};
+    use crate::app::KernelAction;
+    use crate::update_envelope::UpdateEnvelope;
     use std::sync::mpsc;
     use std::thread;
     use std::time::Duration;
@@ -96,6 +113,56 @@ mod tests {
             idle_count, 0,
             "D8 regression: actor emitted {idle_count} snapshot(s) without any \
              Start command or state change; expected 0"
+        );
+    }
+
+    /// End-to-end: a live actor emits BOTH wire shapes on the single channel,
+    /// and every frame decodes as exactly one `UpdateEnvelope` (the canonical
+    /// T103 contract). `Start` yields a snapshot frame; `Kernel(OpenView)`
+    /// yields a discrete update frame followed by a snapshot frame.
+    #[test]
+    fn live_actor_frames_are_all_decodable_envelopes() {
+        let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
+        let (upd_tx, upd_rx) = mpsc::channel::<String>();
+        thread::spawn(move || run_actor(cmd_rx, upd_tx));
+
+        cmd_tx
+            .send(ActorCommand::Start {
+                visible_limit: 50,
+                emit_hz: 30,
+            })
+            .unwrap();
+        cmd_tx
+            .send(ActorCommand::Kernel(KernelAction::OpenView {
+                namespace: "profile".into(),
+                key: "pk".into(),
+            }))
+            .unwrap();
+
+        // Let the actor process both commands and flush.
+        thread::sleep(Duration::from_millis(300));
+        let _ = cmd_tx.send(ActorCommand::Shutdown);
+
+        let mut updates = 0usize;
+        let mut snapshots = 0usize;
+        while let Ok(frame) = upd_rx.try_recv() {
+            // Every frame MUST decode as the single discriminated type — this
+            // is exactly what each host does.
+            match serde_json::from_str::<UpdateEnvelope>(&frame)
+                .unwrap_or_else(|e| panic!("undecodable frame on channel: {e}: {frame}"))
+            {
+                UpdateEnvelope::Update(_) => updates += 1,
+                UpdateEnvelope::Snapshot(_) => snapshots += 1,
+            }
+        }
+
+        assert!(
+            updates >= 1,
+            "expected ≥1 discrete update frame from Kernel(OpenView); got {updates}"
+        );
+        assert!(
+            snapshots >= 1,
+            "expected ≥1 snapshot frame from Start/emit; got {snapshots}"
         );
     }
 }

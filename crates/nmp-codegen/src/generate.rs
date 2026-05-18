@@ -21,6 +21,7 @@ pub fn generate_modules(manifest_path: &Path, out_dir: &Path) -> Result<Generati
         ("src/lib.rs", lib_rs()),
         ("src/action.rs", action_rs(&manifest)),
         ("src/update.rs", update_rs(&manifest)),
+        ("src/envelope.rs", envelope_rs()),
         ("src/view_spec.rs", view_spec_rs(&manifest)),
         ("src/capability.rs", capability_rs(&manifest)),
         ("src/domain.rs", domain_rs(&manifest)),
@@ -43,7 +44,7 @@ pub fn generate_modules(manifest_path: &Path, out_dir: &Path) -> Result<Generati
 
 fn cargo_toml(manifest: &AppManifest) -> String {
     let mut out = format!(
-        "[package]\nname = \"{}\"\nversion.workspace = true\nedition.workspace = true\nlicense.workspace = true\n\n[dependencies]\nnmp-core = {{ path = \"../../../crates/nmp-core\" }}\n",
+        "[package]\nname = \"{}\"\nversion.workspace = true\nedition.workspace = true\nlicense.workspace = true\n\n[dependencies]\nnmp-core = {{ path = \"../../../crates/nmp-core\" }}\nserde = {{ version = \"1.0\", features = [\"derive\"] }}\nserde_json = \"1.0\"\n",
         app_crate_name(&manifest.name)
     );
     for module in manifest.ordered_modules() {
@@ -62,11 +63,13 @@ fn lib_rs() -> String {
         "pub mod action;",
         "pub mod capability;",
         "pub mod domain;",
+        "pub mod envelope;",
         "pub mod ffi;",
         "pub mod update;",
         "pub mod view_spec;",
         "",
         "pub use action::AppAction;",
+        "pub use envelope::UpdateEnvelope;",
         "pub use ffi::FfiApp;",
         "pub use update::AppUpdate;",
         "pub use view_spec::ViewSpec;",
@@ -93,6 +96,40 @@ fn update_rs(manifest: &AppManifest) -> String {
         "Update",
         "pub fn namespace(&self) -> &'static str",
     )
+}
+
+/// The canonical update-channel envelope, projected for the host crate.
+///
+/// Every frame on the single update channel is one tagged outer object —
+/// `{"t":"update","v":<KernelUpdate>}` or `{"t":"snapshot","v":<snapshot>}` —
+/// so the host decodes exactly **one** discriminated type. This MUST stay
+/// byte-identical to `nmp_core::UpdateEnvelope`'s serde contract (tag `t`,
+/// content `v`, snake_case variants); see
+/// `docs/design/0001-ffi-update-channel-envelope.md`.
+///
+/// The discrete arm wraps `nmp_core::KernelUpdate` **directly** (not the
+/// projected `AppUpdate`): only `Kernel(_)` discrete updates ever flow on the
+/// streaming channel — module-projected `AppUpdate` variants return through
+/// `FfiApp::dispatch`, not `update_tx`. Carrying module updates here later is
+/// purely **additive** (a new snake_case variant on the same `t`
+/// discriminator). The snapshot interior is intentionally opaque
+/// (`serde_json::Value`) — this type models the discriminator, not the
+/// snapshot's ~30 internal fields.
+fn envelope_rs() -> String {
+    [
+        "use serde::{Deserialize, Serialize};",
+        "",
+        "#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]",
+        "#[serde(tag = \"t\", content = \"v\", rename_all = \"snake_case\")]",
+        "pub enum UpdateEnvelope {",
+        "    /// A discrete update — apply as a delta.",
+        "    Update(nmp_core::KernelUpdate),",
+        "    /// A full snapshot — replace rendered state.",
+        "    Snapshot(serde_json::Value),",
+        "}",
+        "",
+    ]
+    .join("\n")
 }
 
 fn view_spec_rs(manifest: &AppManifest) -> String {

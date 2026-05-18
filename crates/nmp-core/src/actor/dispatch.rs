@@ -19,7 +19,7 @@ use super::kernel_action::dispatch_kernel_action;
 use super::relay_mgmt::{
     close_relays, maybe_send_startup, send_all_outbound, spawn_missing_relays,
 };
-use super::tick::emit_now;
+use super::tick::{emit_kernel_update, emit_now};
 use super::{ActorCommand, RelayControl};
 
 #[allow(clippy::too_many_arguments)]
@@ -173,12 +173,10 @@ pub(super) fn dispatch_command(
         }
         ActorCommand::Kernel(action) => {
             let update = dispatch_kernel_action(kernel, action);
-            // Discrete FFI update (not the periodic snapshot): serialize and
-            // push directly. D6 — serde never panics on these plain enums; a
-            // failure degrades to a no-op send rather than unwinding.
-            if let Ok(json) = serde_json::to_string(&update) {
-                let _ = update_tx.send(json);
-            }
+            // Discrete FFI update: emit as the tagged `{"t":"update","v":…}`
+            // envelope so consumers decode the single `UpdateEnvelope` type
+            // (D6 — the tag is the discriminant, no key sniffing).
+            emit_kernel_update(&update, update_tx);
             emit_now(kernel, *running, update_tx, last_emit);
             Some(Vec::new())
         }

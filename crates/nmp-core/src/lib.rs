@@ -11,12 +11,14 @@ mod relay_worker;
 pub mod store;
 pub mod subs;
 pub mod substrate;
+mod update_envelope;
 pub mod util;
 
 pub use app::{
     resolve_open_uri, AppState, KernelAction, KernelUpdate, KernelViewSpec, OpenUriError,
     OpenUriRouting, VIEW_ADDRESSABLE, VIEW_PROFILE, VIEW_THREAD,
 };
+pub use update_envelope::{wrap_snapshot, wrap_update, UpdateEnvelope, WireEnvelope};
 pub use ffi::NmpApp;
 
 // Re-export the FFI entry-points so the ffi-stress harness (and any other
