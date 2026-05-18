@@ -2,5 +2,7 @@
 /ios/DerivedData/
 /ios/NmpStress/DerivedData/
 /ios/NmpStress/NmpStress.xcodeproj/
+/ios/NmpPulse/NmpPulse.xcodeproj/
+/ios/NmpPulse/build/
 .claude/
 .codex-review*/

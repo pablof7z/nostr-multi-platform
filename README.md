@@ -106,6 +106,7 @@
 | `crates/` | `nmp-core` (substrate), `nmp-codegen` (per-app FFI crate generator), `nmp-testing` (mock relay, harnesses, scenarios), `fixture-todo-core` (non-Nostr extension-module proof). |
 | `apps/` | Generated per-app crates (`apps/fixture/nmp-app-fixture`, future `apps/twitter/nmp-app-twitter`, `apps/podcast/nmp-app-podcast`, `apps/hl/nmp-app-hl`). |
 | `ios/NmpStress` | iOS SwiftUI shell wired to the Rust kernel via raw C FFI (will migrate to UniFFI in M14). |
+| `ios/NmpPulse` | T66 e2e validation app. L1 scaffold (timeline-only) ships; sign-in / compose / multi-account filed as T66a. See `ios/NmpPulse/README.md`. |
 | `AGENTS.md` | Rules: file-size limit 300 LOC soft / 500 hard. |
 
 ## Worth reading before contributing
