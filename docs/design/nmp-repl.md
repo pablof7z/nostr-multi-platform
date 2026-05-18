@@ -14,14 +14,20 @@ renderer.
 ## 1 — TL;DR
 
 `nmp-repl` is an interactive terminal that compiles and executes Nostr
-subscription plans against the live network using the production planner
-(`nmp_core::planner::SubscriptionCompiler` + `apply_selection`). Operators
-type filter-shaped commands like `req kinds=1 authors=$follows`; the REPL
-resolves variables (kind:3 follows, NIP-65 mailboxes) on demand, runs the
-outbox selector with configurable budgets, fans out to the resulting relay
-set on bounded worker threads, and streams a live per-relay status table
-back to the terminal. Built for diagnosing outbox correctness, relay
-coverage, and unroutable-author surfaces — not for end-user reading.
+subscription plans against the live network by driving the **production
+`nmp_core::subs::SubscriptionLifecycle`** — the exact code path the app
+uses. The REPL does *not* reimplement the outbox: `recompile_and_diff`
+performs implicit kind:10002 discovery, NIP-65 routing, the dead-relay
+filter, and `apply_selection` internally; the REPL only ticks it and fans
+out the `WireFrame::Req`s it produces. **This is the whole point — we test
+real code, not a parallel reimplementation.** Operators type filter-shaped
+commands like `req kinds=1 authors=$follows`; the REPL resolves variables
+(kind:3 follows is a thin targeted fetch — variable resolution, not outbox),
+drives the lifecycle's discovery-convergence tick loop, then fans the
+converged content plan out to the resulting relay set on bounded worker
+threads and streams a live per-relay status table back to the terminal.
+Built for diagnosing outbox correctness, relay coverage, and
+unroutable-author surfaces — not for end-user reading.
 
 ---
 
@@ -236,65 +242,97 @@ non-goal).
 
 ---
 
-## 7 — Discovery pipeline
+## 7 — Lifecycle-driven discovery + content pipeline
 
-Mirrors `outbox_perf.rs` phases A → B → C → D. Each phase prints a single
-status line before it starts, then either updates that line on completion
-or appends the next phase line below it. No live painting during A/B/C —
-those are fast and serial.
+The REPL drives the production `nmp_core::subs::SubscriptionLifecycle`. It
+does **not** hand-roll mailbox discovery, compilation, or selection —
+`recompile_and_diff` does all of that internally (implicit kind:10002
+discovery REQs, NIP-65 routing, the dead-relay filter, `apply_selection`).
+`req` is a tick loop around that one production call.
+
+One `SubscriptionLifecycle` lives per session (not per `req`). Per-session
+ownership is the better diagnostic behaviour: the lifecycle's
+`probed_mailboxes` set and the `InMemoryMailboxCache` persist across `req`s,
+so a second `req` does not re-probe authors already discovered. Both are
+`Session` fields (not one wrapper) — `recompile_and_diff` borrows the cache
+`&` while `cache.put` needs `&mut`; the mutations never overlap in time so a
+split borrow at the call site is the cleanest ownership.
 
 ### 7.1 Flow on `req`
 
-1. **Expand variables.** Walk `FilterAst.authors / ids / tags`. For each
-   `Value::Var(name)`, look up in `Session`. Errors here abort before any
-   I/O.
-2. **Phase A — kind:3.** If `$follows` was used AND `follows_cache` is
-   `None`, connect to indexer; REQ `{kinds:[3], authors:[seed], limit:1}`;
-   parse `p` tags; store. If cache hit, skip the phase, log
-   `phase A: cached (N follows)`.
-3. **Phase B — kind:10002.** Compute the set of authors needed for
-   compilation: `(filter_authors ∪ follows_used)`. For each author missing
-   from `mailbox_cache`, REQ `{kinds:[10002], authors:[...]}` against the
-   indexer. Parse via `parse_kind10002` (copied verbatim from
-   `outbox_perf.rs:384`). Normalise URLs with `normalize_url`
-   (`outbox_perf.rs:415`).
-4. **Phase C — compile.** Build a `LogicalInterest` from the AST:
-   ```rust
-   InterestShape {
-       authors: expanded_authors,
-       kinds:   filter.kinds.unwrap_or_default(),
-       tags:    expanded_tags,
-       since:   filter.since,
-       until:   filter.until,
-       limit:   filter.limit,
-       event_ids: expanded_ids,
-       ..Default::default()
-   }
-   ```
-   Call `SubscriptionCompiler::with_relays(&mailbox_cache, &indexer_relays,
-   &[], &app_relays).compile(&[interest])`. Capture
-   `plan.unroutable_authors` for reporting. Then
-   `apply_selection(&mut plan, max_connections, max_per_user)`. Print one
-   line: `outbox: N relays, M authors-on-wire, K unroutable`.
-5. **Phase D — fanout.** Pass the `(relay_url, Vec<author>)` map to the
-   renderer + worker pool (§9).
+1. **Apply session config onto the lifecycle.** `set_indexer_relays`,
+   `set_app_relays`, `set_selection_budget(max_connections, max_per_user)`,
+   and `mark_relay_dead` for each `dead_relays` entry — so config changes
+   between `req`s take effect.
+2. **Expand `$follows`** (variable resolution — *not* outbox). If `$follows`
+   is referenced and `follows_cache` is empty, do the thin kind:3 fetch
+   (`{kinds:[3], authors:[seed], limit:1}`) against the first reachable
+   indexer; parse `p` tags; cache. This is exactly what a real
+   following-feed ViewModule does to turn `$follows` into a concrete
+   `LogicalInterest` author set. `$relays` / `$inbox` read the seed's
+   kind:10002 from the lifecycle's mailbox cache.
+3. **Build + register the interest.** Construct one `LogicalInterest`
+   (`InterestId(1)`, `Global`, `Tailing`) from the parsed filter +
+   expanded authors; `lifecycle.registry_mut().push(interest)` (same id
+   replaces the prior slot — single-writer registry, D4).
+4. **Discovery-convergence tick loop:**
+   1. `lifecycle.recompile_and_diff(&mailbox_cache)` → `Vec<WireFrame>`.
+   2. Partition by sub_id prefix: `mailbox-probe-*` = implicit kind:10002
+      discovery REQs (the lifecycle auto-emits these for any author whose
+      mailbox is neither cached nor previously probed); everything else is
+      content.
+   3. If probe frames exist, print `discovery: probing N mailboxes via
+      indexer (K REQs)` and run them synchronously (`fanout::run_discovery`)
+      against the indexer. For each kind:10002 response: `parse_kind10002`
+      → `cache.put(pubkey, snapshot)` →
+      `lifecycle.enqueue_trigger(CompileTrigger::Nip65Arrived { … })`.
+   4. `lifecycle.drain_tick(&mailbox_cache)` consumes the `Nip65Arrived`
+      triggers; the next iteration's compile routes those authors via
+      their declared NIP-65 write relays. `probed_mailboxes` dedups, so an
+      author with no kind:10002 is probed exactly once and the loop
+      converges in 1–2 iterations.
+   5. When a compile yields **no** probe frames, discovery is done.
+5. **Materialise the converged content plan.** `recompile_and_diff` returns
+   only the *delta* vs. the prior plan, so once the plan stabilises a
+   recompile yields little or nothing even though live subscriptions exist.
+   The REPL therefore reads the **full** in-effect REQ set via the
+   read-only core accessor `SubscriptionLifecycle::current_plan_frames()`
+   (one `WireFrame::Req` per `(relay, sub_shape)` in `current_plan`; probe
+   REQs are absent by construction — they live outside `current_plan`).
+   Unroutable authors come from `current_plan_unroutable()`. Print
+   `outbox: N relays, M authors-on-wire, K unroutable`.
+6. **Content fanout + live render.** Partition the content REQs per relay
+   and hand them to the worker pool (§9). Each worker sends the lifecycle's
+   `filter_json` **verbatim** (not rebuilt from the AST). The per-relay
+   live table (§8) is unchanged.
 
 ### 7.2 Caching rules
 
-- `set-seed` clears both `follows_cache` and `mailbox_cache`.
-- `refresh follows` clears `follows_cache` only.
-- `refresh mailboxes` clears `mailbox_cache` only.
-- `refresh` / `refresh all` clears both.
-- Cache hits log `(cached)`; misses log a phase timing.
+- `set-seed` clears `follows_cache` AND replaces the lifecycle + its
+  mailbox cache with fresh instances (`reset_lifecycle`) — a new identity
+  makes the probed set and cache meaningless.
+- `refresh follows` clears `follows_cache` only (variable-expansion state,
+  independent of the lifecycle).
+- `refresh mailboxes` calls `lifecycle.clear_probed_mailboxes()` and drops
+  the mailbox cache so the next `req` re-probes every still-unknown author.
+- `refresh` / `refresh all` clears `follows_cache` + does the
+  `refresh mailboxes` work.
 - `seen_ids` survives `refresh` — it's a session artefact, not discovery.
 
-### 7.3 Indexer connection reuse
+### 7.3 Indexer / probe socket handling
 
-Phase A and Phase B can share one socket to the first indexer URL (as
-`outbox_perf.rs` does — phase A returns the open socket; phase B reuses
-it; close after B). If the indexer set has >1 URL, race the first
-successful connect; abort the rest. Don't fan kind:3 across multiple
-indexers in v1 — first response wins.
+The kind:3 follows fetch dials the indexer set sequentially and uses the
+first reachable URL (v1; multi-indexer fan is a §12 follow-up).
+
+**Finding (lifecycle behaviour, surfaced not papered over):** implicit
+kind:10002 probe REQs are appended in `recompile_and_diff` *after*
+`auth_gate.partition` and `lifecycle_gate.observe_diff`, and are **not**
+inserted into `current_plan`. The lifecycle therefore never tracks them and
+never emits a CLOSE for a probe sub. In production the actor lets the
+indexer socket drop. The REPL closes each probe sub client-side after EOSE
+(`fanout::run_discovery`) so it doesn't leak an open kind:10002 sub. This
+is documented in `fanout.rs` and is intrinsic to the production code, not a
+REPL-side workaround for a REPL bug.
 
 ---
 

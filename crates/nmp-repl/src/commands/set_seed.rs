@@ -24,8 +24,11 @@ pub fn run(session: &mut Session, input: SeedInput) -> Result<()> {
     }
     println!("  seed: {hex}");
     session.seed_hex = Some(hex);
-    // Pitfall §13: set-seed clears both caches.
+    // Pitfall §13: set-seed clears the follows cache AND replaces the
+    // lifecycle + its mailbox cache with fresh instances (a new identity
+    // means the per-session `probed_mailboxes` dedup and any cached
+    // kind:10002 are meaningless).
     session.follows_cache = None;
-    session.mailbox_cache.clear();
+    session.reset_lifecycle();
     Ok(())
 }
