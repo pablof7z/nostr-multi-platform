@@ -577,6 +577,7 @@ version = "0.1.0"
 dependencies = [
  "fixture-todo-core",
  "nmp-core",
+ "nmp-nip29",
 ]
 
 [[package]]
@@ -649,6 +650,7 @@ name = "nmp-testing"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
+ "nmp-nip29",
  "nmp-nip77",
  "paste",
  "serde",

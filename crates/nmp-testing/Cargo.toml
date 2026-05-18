@@ -17,6 +17,7 @@ serde_json = "1.0"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core" }
+nmp-nip29 = { path = "../nmp-nip29" }
 
 [[bin]]
 name = "reactivity-bench"
@@ -54,3 +55,10 @@ path = "tests/m8_subscription_lifecycle.rs"
 [[test]]
 name = "framework_magic_contract"
 path = "tests/framework_magic_contract.rs"
+
+# M11.5 T56 — NIP-29 lifecycle integration + relay-pin routing.
+# Consumer-facing: imports nmp-nip29 + nmp-core as external crates.
+# `cargo test -p nmp-testing --test nip29_lifecycle`
+[[test]]
+name = "nip29_lifecycle"
+path = "tests/nip29_lifecycle.rs"
