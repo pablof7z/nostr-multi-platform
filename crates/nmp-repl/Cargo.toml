@@ -1,0 +1,36 @@
+[package]
+name = "nmp-repl"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Interactive diagnostic REPL for the NMP planner + outbox."
+
+[lib]
+name = "nmp_repl"
+path = "src/lib.rs"
+
+[[bin]]
+name = "nmp-repl"
+path = "src/main.rs"
+
+[dependencies]
+# Planner + bech32 helpers — the entire reason this crate exists.
+nmp-core    = { path = "../nmp-core" }
+
+# Wire stack — pinned identical to nmp-core so we share one rustls.
+tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+rustls      = { version = "0.23", default-features = false, features = ["ring"] }
+serde       = { version = "1.0",  features = ["derive"] }
+serde_json  = "1.0"
+
+# NIP-05 HTTP resolver — sync, shares the rustls/ring stack via `tls` feature.
+ureq        = { version = "2", default-features = false, features = ["tls", "json"] }
+
+# Line editor with history + tab completion.
+rustyline   = "14"
+
+# Cursor positioning + colour for the live status table.
+crossterm   = "0.28"
+
+# Date parsing for `since=YYYY-MM-DD`. nmp-core already uses chrono 0.4.
+chrono      = { version = "0.4", default-features = false, features = ["clock"] }

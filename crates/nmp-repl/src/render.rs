@@ -1,0 +1,494 @@
+//! Live status renderer. Owns the terminal between rustyline `readline()`
+//! calls. No concurrent painting; the main thread drains the fanout
+//! channel and updates rows in place.
+//!
+//! `--json` mode short-circuits the table and emits one JSON line per
+//! `RelayEvent` state transition.
+
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::io::{stdout, Write};
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
+
+use crossterm::{
+    cursor::{MoveTo, MoveToColumn},
+    style::{Color, Print, ResetColor, SetForegroundColor},
+    terminal::{Clear, ClearType},
+    ExecutableCommand, QueueableCommand,
+};
+use serde_json::json;
+
+use crate::fanout::{RelayEvent, RelayStats};
+use crate::session::Session;
+use crate::ws::truncate;
+
+#[derive(Clone, Debug)]
+enum RowState {
+    Connecting,
+    ReqSent,
+    Receiving,
+    Eose { elapsed: Duration },
+    Error { msg: String },
+    Timeout,
+}
+
+#[derive(Clone, Debug)]
+struct Row {
+    relay: String,
+    authors: usize,
+    state: RowState,
+    events: u64,
+    new: u64,
+    elapsed: Option<Duration>,
+}
+
+/// Aggregate stats returned to the caller for the post-run summary line and
+/// the `RunSummary` in the session.
+#[derive(Default, Debug)]
+pub struct FanoutSummary {
+    pub deliveries: u64,
+    pub unique_events: u64,
+    pub new_events: u64,
+    pub wall: Duration,
+    pub relays: usize,
+    pub per_relay: BTreeMap<String, RelayStats>,
+}
+
+/// Drain the worker channel, painting rows in place. Returns the aggregate
+/// summary when all workers exit or the wall deadline elapses.
+pub fn drive(
+    session: &mut Session,
+    rx: mpsc::Receiver<RelayEvent>,
+    per_relay: &BTreeMap<String, Vec<String>>,
+    wall_deadline: Instant,
+) -> FanoutSummary {
+    if session.json {
+        return drive_json(session, rx, per_relay, wall_deadline);
+    }
+    drive_table(session, rx, per_relay, wall_deadline)
+}
+
+fn drive_table(
+    session: &mut Session,
+    rx: mpsc::Receiver<RelayEvent>,
+    per_relay: &BTreeMap<String, Vec<String>>,
+    wall_deadline: Instant,
+) -> FanoutSummary {
+    // ── Build the row table. Sort by author count desc. ─────────────────
+    let mut rows_by_relay: HashMap<String, usize> = HashMap::new();
+    let mut rows: Vec<Row> = Vec::new();
+    let mut pairs: Vec<(&String, &Vec<String>)> = per_relay.iter().collect();
+    pairs.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then_with(|| a.0.cmp(b.0)));
+    for (relay, authors) in &pairs {
+        rows_by_relay.insert((*relay).clone(), rows.len());
+        rows.push(Row {
+            relay: (*relay).clone(),
+            authors: authors.len(),
+            state: RowState::Connecting,
+            events: 0,
+            new: 0,
+            elapsed: None,
+        });
+    }
+
+    let mut stdout = stdout();
+
+    // Print initial rows.
+    for r in &rows {
+        let _ = writeln!(stdout, "{}", format_row(r, session.verbose));
+    }
+    let _ = stdout.flush();
+
+    // After the rows, cursor is one line below the last row. Capture the
+    // row-zero position by moving up `rows.len()` lines.
+    let n_rows = rows.len();
+    if n_rows == 0 {
+        let _ = writeln!(stdout, "  (no relays in plan)");
+        return FanoutSummary::default();
+    }
+
+    // Drain.
+    let mut deliveries = 0u64;
+    let mut unique: HashSet<String> = HashSet::new();
+    let mut new_events = 0u64;
+    let mut per_relay_stats: BTreeMap<String, RelayStats> = BTreeMap::new();
+    let mut needs_repaint: HashSet<usize> = HashSet::new();
+    let mut last_paint = Instant::now();
+    let started = Instant::now();
+    let paint_interval = Duration::from_millis(80);
+
+    loop {
+        let now = Instant::now();
+        if now >= wall_deadline {
+            // Mark anything not in a terminal state as Timeout.
+            for r in rows.iter_mut() {
+                if matches!(r.state, RowState::Connecting | RowState::ReqSent | RowState::Receiving) {
+                    r.state = RowState::Timeout;
+                }
+            }
+            paint_dirty(&mut stdout, &rows, n_rows, &mut needs_repaint, session.verbose, true);
+            break;
+        }
+        let remaining = wall_deadline.saturating_duration_since(now);
+        let timeout = remaining.min(Duration::from_millis(100));
+        match rx.recv_timeout(timeout) {
+            Ok(ev) => apply_event(
+                ev,
+                &mut rows,
+                &rows_by_relay,
+                &mut deliveries,
+                &mut unique,
+                &mut new_events,
+                &mut per_relay_stats,
+                &mut session.seen_ids,
+                &mut needs_repaint,
+            ),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                paint_dirty(&mut stdout, &rows, n_rows, &mut needs_repaint, session.verbose, true);
+                break;
+            }
+        }
+        if last_paint.elapsed() >= paint_interval {
+            paint_dirty(&mut stdout, &rows, n_rows, &mut needs_repaint, session.verbose, false);
+            last_paint = Instant::now();
+        }
+    }
+
+    let wall = started.elapsed();
+    let dedup = if deliveries == 0 {
+        0.0
+    } else {
+        unique.len() as f64 / deliveries as f64
+    };
+    let _ = writeln!(
+        stdout,
+        "  fanout: {} relays, {} deliveries, {} new (dedup {:.2}), wall {:?}",
+        rows.len(),
+        deliveries,
+        new_events,
+        dedup,
+        wall
+    );
+    let _ = stdout.flush();
+
+    FanoutSummary {
+        deliveries,
+        unique_events: unique.len() as u64,
+        new_events,
+        wall,
+        relays: rows.len(),
+        per_relay: per_relay_stats,
+    }
+}
+
+fn drive_json(
+    session: &mut Session,
+    rx: mpsc::Receiver<RelayEvent>,
+    per_relay: &BTreeMap<String, Vec<String>>,
+    wall_deadline: Instant,
+) -> FanoutSummary {
+    let started = Instant::now();
+    let mut deliveries = 0u64;
+    let mut unique: HashSet<String> = HashSet::new();
+    let mut new_events = 0u64;
+    let mut per_relay_stats: BTreeMap<String, RelayStats> = BTreeMap::new();
+    let mut authors_by_relay: HashMap<String, usize> = HashMap::new();
+    for (k, v) in per_relay {
+        authors_by_relay.insert(k.clone(), v.len());
+    }
+
+    loop {
+        let now = Instant::now();
+        if now >= wall_deadline {
+            break;
+        }
+        let remaining = wall_deadline.saturating_duration_since(now);
+        let timeout = remaining.min(Duration::from_millis(200));
+        match rx.recv_timeout(timeout) {
+            Ok(ev) => {
+                let line = match &ev {
+                    RelayEvent::Connecting { relay } => json!({
+                        "relay": relay,
+                        "state": "connecting",
+                        "authors": authors_by_relay.get(relay).copied().unwrap_or(0),
+                    }),
+                    RelayEvent::ReqSent { relay } => json!({
+                        "relay": relay,
+                        "state": "req_sent",
+                    }),
+                    RelayEvent::Frame { relay, event_id } => {
+                        deliveries += 1;
+                        let is_new = session.seen_ids.insert(event_id.clone());
+                        if is_new {
+                            new_events += 1;
+                        }
+                        unique.insert(event_id.clone());
+                        let stats = per_relay_stats.entry(relay.clone()).or_default();
+                        stats.events += 1;
+                        json!({
+                            "relay": relay,
+                            "state": "event",
+                            "event_id": event_id,
+                            "new": is_new,
+                        })
+                    }
+                    RelayEvent::Eose { relay, elapsed } => {
+                        let stats = per_relay_stats.entry(relay.clone()).or_default();
+                        stats.eose = true;
+                        stats.elapsed = Some(*elapsed);
+                        json!({
+                            "relay": relay,
+                            "state": "eose",
+                            "elapsed_ms": elapsed.as_millis() as u64,
+                        })
+                    }
+                    RelayEvent::Error { relay, msg } => json!({
+                        "relay": relay,
+                        "state": "error",
+                        "msg": msg,
+                    }),
+                    RelayEvent::Done { relay, stats } => {
+                        let entry = per_relay_stats.entry(relay.clone()).or_default();
+                        entry.authors_in_req = stats.authors_in_req;
+                        entry.connected |= stats.connected;
+                        entry.eose |= stats.eose;
+                        entry.elapsed = entry.elapsed.or(stats.elapsed);
+                        if entry.time_to_first.is_none() {
+                            entry.time_to_first = stats.time_to_first;
+                        }
+                        json!({
+                            "relay": relay,
+                            "state": "done",
+                            "events": stats.events,
+                            "elapsed_ms": stats.elapsed.map(|d| d.as_millis() as u64),
+                            "eose": stats.eose,
+                            "error": stats.error,
+                        })
+                    }
+                };
+                println!("{line}");
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => continue,
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+
+    let wall = started.elapsed();
+    println!(
+        "{}",
+        json!({
+            "state": "summary",
+            "relays": per_relay.len(),
+            "deliveries": deliveries,
+            "new": new_events,
+            "unique": unique.len(),
+            "wall_ms": wall.as_millis() as u64,
+        })
+    );
+
+    FanoutSummary {
+        deliveries,
+        unique_events: unique.len() as u64,
+        new_events,
+        wall,
+        relays: per_relay.len(),
+        per_relay: per_relay_stats,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn apply_event(
+    ev: RelayEvent,
+    rows: &mut [Row],
+    rows_by_relay: &HashMap<String, usize>,
+    deliveries: &mut u64,
+    unique: &mut HashSet<String>,
+    new_events: &mut u64,
+    per_relay_stats: &mut BTreeMap<String, RelayStats>,
+    seen_ids: &mut HashSet<String>,
+    needs_repaint: &mut HashSet<usize>,
+) {
+    let bump_dirty = |idx: usize, set: &mut HashSet<usize>| {
+        set.insert(idx);
+    };
+    match ev {
+        RelayEvent::Connecting { relay } => {
+            if let Some(&idx) = rows_by_relay.get(&relay) {
+                rows[idx].state = RowState::Connecting;
+                bump_dirty(idx, needs_repaint);
+            }
+        }
+        RelayEvent::ReqSent { relay } => {
+            if let Some(&idx) = rows_by_relay.get(&relay) {
+                rows[idx].state = RowState::ReqSent;
+                bump_dirty(idx, needs_repaint);
+            }
+        }
+        RelayEvent::Frame { relay, event_id } => {
+            *deliveries += 1;
+            let is_new = seen_ids.insert(event_id.clone());
+            if is_new {
+                *new_events += 1;
+            }
+            unique.insert(event_id);
+            if let Some(&idx) = rows_by_relay.get(&relay) {
+                rows[idx].state = RowState::Receiving;
+                rows[idx].events += 1;
+                if is_new {
+                    rows[idx].new += 1;
+                }
+                bump_dirty(idx, needs_repaint);
+            }
+            let stats = per_relay_stats.entry(relay).or_default();
+            stats.events += 1;
+        }
+        RelayEvent::Eose { relay, elapsed } => {
+            if let Some(&idx) = rows_by_relay.get(&relay) {
+                rows[idx].state = RowState::Eose { elapsed };
+                rows[idx].elapsed = Some(elapsed);
+                bump_dirty(idx, needs_repaint);
+            }
+            let stats = per_relay_stats.entry(relay).or_default();
+            stats.eose = true;
+            stats.elapsed = Some(elapsed);
+        }
+        RelayEvent::Error { relay, msg } => {
+            if let Some(&idx) = rows_by_relay.get(&relay) {
+                // Don't downgrade a terminal EOSE row to Error from a NOTICE.
+                if !matches!(rows[idx].state, RowState::Eose { .. }) {
+                    rows[idx].state = RowState::Error { msg: msg.clone() };
+                    bump_dirty(idx, needs_repaint);
+                }
+            }
+            let stats = per_relay_stats.entry(relay).or_default();
+            stats.error = Some(msg);
+        }
+        RelayEvent::Done { relay, stats } => {
+            if let Some(&idx) = rows_by_relay.get(&relay) {
+                rows[idx].elapsed = stats.elapsed;
+                // If we haven't seen EOSE, mark error or timeout.
+                if !stats.connected {
+                    rows[idx].state = RowState::Error {
+                        msg: stats.error.clone().unwrap_or_else(|| "connect refused".to_string()),
+                    };
+                } else if !stats.eose && stats.error.is_some() {
+                    rows[idx].state = RowState::Error {
+                        msg: stats.error.clone().unwrap_or_default(),
+                    };
+                }
+                bump_dirty(idx, needs_repaint);
+            }
+            let entry = per_relay_stats.entry(relay).or_default();
+            entry.authors_in_req = stats.authors_in_req;
+            entry.connected |= stats.connected;
+            entry.eose |= stats.eose;
+            entry.elapsed = entry.elapsed.or(stats.elapsed);
+            if entry.time_to_first.is_none() {
+                entry.time_to_first = stats.time_to_first;
+            }
+            if entry.error.is_none() {
+                entry.error = stats.error;
+            }
+        }
+    }
+}
+
+fn paint_dirty(
+    out: &mut std::io::Stdout,
+    rows: &[Row],
+    n_rows: usize,
+    dirty: &mut HashSet<usize>,
+    verbose: bool,
+    force_all: bool,
+) {
+    if rows.is_empty() {
+        return;
+    }
+    // Move cursor up from below-last-row to row 0.
+    let _ = out.queue(MoveToColumn(0));
+    let _ = out.queue(crossterm::cursor::MoveUp(n_rows as u16));
+
+    for (i, row) in rows.iter().enumerate() {
+        let need = force_all || dirty.contains(&i);
+        if need {
+            let _ = out.queue(MoveToColumn(0));
+            let _ = out.queue(Clear(ClearType::CurrentLine));
+            let (color, line) = format_row_with_color(row, verbose);
+            if let Some(c) = color {
+                let _ = out.queue(SetForegroundColor(c));
+            }
+            let _ = out.queue(Print(line));
+            if color.is_some() {
+                let _ = out.queue(ResetColor);
+            }
+        }
+        if i + 1 < n_rows {
+            let _ = out.queue(crossterm::cursor::MoveDown(1));
+            let _ = out.queue(MoveToColumn(0));
+        }
+    }
+    // Park cursor below the last row.
+    let _ = out.queue(MoveToColumn(0));
+    let _ = out.queue(crossterm::cursor::MoveDown(1));
+    let _ = out.flush();
+    dirty.clear();
+    // The outer `_ = stdout` macro doesn't run if we returned early.
+    let _ = MoveTo(0, 0); // keep crossterm linked.
+}
+
+fn format_row(row: &Row, verbose: bool) -> String {
+    format_row_with_color(row, verbose).1
+}
+
+fn format_row_with_color(row: &Row, verbose: bool) -> (Option<Color>, String) {
+    let url = if verbose {
+        row.relay.clone()
+    } else {
+        truncate(&row.relay, 48)
+    };
+    let (glyph, color, tail) = match &row.state {
+        RowState::Connecting => (" ", None, "[connecting…]".to_string()),
+        RowState::ReqSent => (" ", None, "[streaming…]".to_string()),
+        RowState::Receiving => (
+            " ",
+            None,
+            format!("{} events  {}/{} new", row.events, row.new, row.events),
+        ),
+        RowState::Eose { elapsed } => (
+            ">",
+            Some(Color::Green),
+            format!(
+                "{} events  {} new in {}ms",
+                row.events,
+                row.new,
+                elapsed.as_millis()
+            ),
+        ),
+        RowState::Error { msg } => ("x", Some(Color::Red), truncate(msg, 60)),
+        RowState::Timeout => ("x", Some(Color::Yellow), "[wall timeout]".to_string()),
+    };
+    let line = format!(
+        "{glyph} REQ {url:<48} {authors:>4} authors  {tail}",
+        url = url,
+        authors = row.authors
+    );
+    (color, line)
+}
+
+/// Print the "outbox: N relays, M authors-on-wire, K unroutable" line
+/// directly to stdout, with crossterm color for the unroutable count when
+/// non-zero.
+pub fn print_outbox_line(relays: usize, authors_on_wire: usize, unroutable: usize) {
+    let mut stdout = stdout();
+    let _ = stdout.execute(Print(format!(
+        "  outbox: {} relays, {} authors-on-wire, ",
+        relays, authors_on_wire
+    )));
+    if unroutable > 0 {
+        let _ = stdout.execute(SetForegroundColor(Color::Yellow));
+    }
+    let _ = stdout.execute(Print(format!("{} unroutable", unroutable)));
+    let _ = stdout.execute(ResetColor);
+    let _ = stdout.execute(Print("\n"));
+}
