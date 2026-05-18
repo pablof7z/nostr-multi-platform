@@ -7,15 +7,29 @@
 //!
 //! ## Sub-id stability
 //!
-//! `sub_id_for` derives a stable wire sub-id from `(plan_id, shape's
-//! canonical_filter_hash)`. The same shape appearing in two consecutive plans
-//! gets the same sub-id and is therefore a no-op in the diff; a shape that
-//! drops out produces a CLOSE; a shape that appears produces a REQ.
+//! `sub_id_for` derives a stable wire sub-id from the shape's
+//! `canonical_filter_hash`. Per NIP-01 §1, subscription ids are
+//! per-connection: the same filter on two different relay connections may
+//! legitimately reuse the same sub-id string. Therefore `sub_id_for` does NOT
+//! include the relay URL — the wire id is stable for the filter, not the relay.
+//!
+//! ## Relay-scoped diff keying
+//!
+//! The diff sets are keyed by `(relay_url, sub_id)` — NOT by `sub_id` alone.
+//! This is the critical distinction from the wire id: a sub is "present" only
+//! on the specific relay that carries it. Without relay-scoped keying, two
+//! relays sharing the same filter hash would share a single diff entry, causing:
+//! - **Dead-relay exclusion**: surviving relay contributes sub_id → no CLOSE
+//!   emitted for the dead relay.
+//! - **App-relay add**: new relay's sub_id already present via prior relay →
+//!   REQ skipped on the newly-added relay.
+//!
+//! Codex F-CROSS-1 (HIGH) — fixed here.
 //!
 //! ## D8 cost shape
 //!
 //! `plan_diff` is O(N_prior + N_next) where N is the number of `SubShape`s.
-//! No per-event allocation; only one `BTreeSet` and one `Vec::with_capacity`.
+//! No per-event allocation; two `BTreeSet`s and one `Vec::with_capacity`.
 
 use std::collections::BTreeSet;
 
@@ -53,17 +67,21 @@ pub fn plan_diff(
     next: Option<&CompiledPlan>,
     next_interests: &[LogicalInterest],
 ) -> Vec<WireFrame> {
-    let prior_sub_ids = collect_sub_ids(prior);
-    let next_sub_ids = collect_sub_ids(next);
+    // Keys are (relay_url, sub_id) — relay-scoped so that two relays carrying
+    // the same filter hash are tracked independently. See module doc for the
+    // distinction between the wire sub-id string (per-filter stable) and the
+    // diff key (per-relay, per-filter — the unit of subscription presence).
+    let prior_keys = collect_relay_sub_keys(prior);
+    let next_keys = collect_relay_sub_keys(next);
 
     let mut frames = Vec::new();
 
-    // CLOSE for sub_ids in prior but not in next.
+    // CLOSE for (relay, sub_id) pairs in prior but not in next.
     if let Some(plan) = prior {
         for (relay_url, relay_plan) in &plan.per_relay {
             for shape in &relay_plan.sub_shapes {
                 let sub_id = sub_id_for(&plan.plan_id, shape);
-                if !next_sub_ids.contains(&sub_id) {
+                if !next_keys.contains(&(relay_url.clone(), sub_id.clone())) {
                     frames.push(WireFrame::Close {
                         relay_url: relay_url.clone(),
                         sub_id,
@@ -73,12 +91,12 @@ pub fn plan_diff(
         }
     }
 
-    // REQ for sub_ids in next but not in prior.
+    // REQ for (relay, sub_id) pairs in next but not in prior.
     if let Some(plan) = next {
         for (relay_url, relay_plan) in &plan.per_relay {
             for shape in &relay_plan.sub_shapes {
                 let sub_id = sub_id_for(&plan.plan_id, shape);
-                if !prior_sub_ids.contains(&sub_id) {
+                if !prior_keys.contains(&(relay_url.clone(), sub_id.clone())) {
                     frames.push(emit_req(relay_url.clone(), shape, next_interests, sub_id));
                 }
             }
@@ -88,12 +106,17 @@ pub fn plan_diff(
     frames
 }
 
-fn collect_sub_ids(plan: Option<&CompiledPlan>) -> BTreeSet<String> {
+/// Collect all `(relay_url, sub_id)` pairs from a plan.
+///
+/// Keying by the pair — not by `sub_id` alone — is what makes the diff
+/// relay-scoped: a sub-shape present on relay A is distinct from the same
+/// sub-shape on relay B, even when they share a `canonical_filter_hash`.
+fn collect_relay_sub_keys(plan: Option<&CompiledPlan>) -> BTreeSet<(RelayUrl, String)> {
     let mut out = BTreeSet::new();
     if let Some(plan) = plan {
-        for relay_plan in plan.per_relay.values() {
+        for (relay_url, relay_plan) in &plan.per_relay {
             for shape in &relay_plan.sub_shapes {
-                out.insert(sub_id_for(&plan.plan_id, shape));
+                out.insert((relay_url.clone(), sub_id_for(&plan.plan_id, shape)));
             }
         }
     }
