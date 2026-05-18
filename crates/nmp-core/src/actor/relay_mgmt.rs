@@ -11,7 +11,7 @@
 //! per-URL health a first-class part of the FFI projection.
 
 use crate::kernel::Kernel;
-use crate::relay::{OutboundMessage, RelayRole, BOOTSTRAP_DISCOVERY_RELAYS};
+use crate::relay::{canonical_relay_url, OutboundMessage, RelayRole, BOOTSTRAP_DISCOVERY_RELAYS};
 use crate::relay_worker::{spawn_relay_worker, RelayCommand, RelayEvent};
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
@@ -59,6 +59,14 @@ pub(super) fn spawn_missing_relays(
 /// spawned (the URL was previously unseen). On-demand path: any
 /// `OutboundMessage` carrying a URL the pool has never seen gets a fresh
 /// socket here before `send_outbound` enqueues the frame.
+///
+/// T-relay-url-normalize: `relay_url` is passed through
+/// [`canonical_relay_url`] before the pool-key lookup so that URL-equivalent
+/// forms (differing only in case, trailing-slash-on-empty-path, or leading
+/// whitespace) all resolve to the same pool entry. If the URL cannot be
+/// canonicalized (e.g. a bootstrap seed that is already lowercase+clean), the
+/// original string is used unchanged — existing bootstrap behaviour is
+/// preserved.
 pub(super) fn ensure_relay_worker(
     relay_controls: &mut HashMap<String, RelayControl>,
     relay_tx: &Sender<RelayEvent>,
@@ -67,19 +75,23 @@ pub(super) fn ensure_relay_worker(
     role: RelayRole,
     relay_url: String,
 ) -> bool {
-    if relay_controls.contains_key(&relay_url) {
+    // Canonicalize the URL so all callers (add, send_outbound, bootstrap)
+    // agree on the pool key. Fall back to the raw string for URLs that don't
+    // parse as ws/wss (e.g. bootstrap seeds that are already canonical).
+    let key = canonical_relay_url(&relay_url).unwrap_or_else(|| relay_url.clone());
+    if relay_controls.contains_key(&key) {
         return false;
     }
     let generation = *next_relay_generation;
     *next_relay_generation = generation.saturating_add(1);
     kernel.relay_connecting(role);
     relay_controls.insert(
-        relay_url.clone(),
+        key.clone(),
         RelayControl {
             generation,
             role,
-            relay_url: relay_url.clone(),
-            tx: spawn_relay_worker(role, relay_url, generation, relay_tx.clone()),
+            relay_url: key.clone(),
+            tx: spawn_relay_worker(role, key, generation, relay_tx.clone()),
         },
     );
     true
@@ -185,13 +197,19 @@ pub(super) fn send_outbound(
 /// in the pool — future `ensure_relay_worker` calls for the same URL will
 /// spawn a fresh worker (T126 invariant preserved).
 ///
+/// T-relay-url-normalize: `url` is canonicalized before the pool-key lookup so
+/// that removing `"wss://R.Ex/"` correctly finds the entry stored under the
+/// canonical key `"wss://r.ex"`. If the URL cannot be canonicalized, the raw
+/// string is tried as-is (idempotent, no panic).
+///
 /// Returns `true` if a worker was found and shut down, `false` if the URL was
 /// not in the pool (idempotent, no panic).
 pub(super) fn shutdown_relay_worker(
     relay_controls: &mut HashMap<String, RelayControl>,
     url: &str,
 ) -> bool {
-    let Some(control) = relay_controls.remove(url) else {
+    let key = canonical_relay_url(url).unwrap_or_else(|| url.to_string());
+    let Some(control) = relay_controls.remove(&key) else {
         return false;
     };
     // Best-effort send: if the worker channel is already closed the worker
@@ -249,8 +267,14 @@ mod tests {
     /// the existing `tx` must be retained. `role` is a diagnostic-lane label
     /// only; it MUST NOT participate in pool keying.
     ///
+    /// T-relay-url-normalize: `ensure_relay_worker` now canonicalizes the URL
+    /// before the pool lookup. The canonical key for `wss://127.0.0.1:1/` is
+    /// `wss://127.0.0.1:1` (empty-path trailing slash stripped). This test
+    /// uses the canonical form for the pool-key lookup so it reflects the
+    /// correct post-normalization behaviour.
+    ///
     /// Worker threads spawned here will fail DNS / TCP-connect against
-    /// `wss://127.0.0.1:1/` (port 1 — connection refused on all hosts) and
+    /// `wss://127.0.0.1:1` (port 1 — connection refused on all hosts) and
     /// exit; we test the synchronous keying decision in `ensure_relay_worker`.
     #[test]
     fn same_url_two_roles_yields_one_control() {
@@ -258,7 +282,9 @@ mod tests {
         let (relay_tx, _relay_rx) = std::sync::mpsc::channel::<RelayEvent>();
         let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
         let mut next_relay_generation = 1_u64;
-        let url = "wss://127.0.0.1:1/".to_string();
+        // Supply with trailing slash — canonical form strips it.
+        let raw_url = "wss://127.0.0.1:1/".to_string();
+        let canonical_key = "wss://127.0.0.1:1"; // expected pool key after canonicalization
 
         let spawned_a = ensure_relay_worker(
             &mut relay_controls,
@@ -266,7 +292,7 @@ mod tests {
             &mut kernel,
             &mut next_relay_generation,
             RelayRole::Content,
-            url.clone(),
+            raw_url.clone(),
         );
         let spawned_b = ensure_relay_worker(
             &mut relay_controls,
@@ -274,18 +300,19 @@ mod tests {
             &mut kernel,
             &mut next_relay_generation,
             RelayRole::Indexer,
-            url.clone(),
+            raw_url.clone(),
         );
 
         assert!(spawned_a, "first call must spawn");
-        assert!(!spawned_b, "second call MUST short-circuit on URL match");
+        assert!(!spawned_b, "second call MUST short-circuit on canonical URL match");
         assert_eq!(
             relay_controls.len(),
             1,
             "T126: one socket per URL — got {} entries",
             relay_controls.len()
         );
-        let control = relay_controls.get(&url).expect("entry must exist");
+        // Pool key is the canonical form (no trailing slash), not the raw input.
+        let control = relay_controls.get(canonical_key).expect("entry must exist under canonical key");
         assert_eq!(
             control.role,
             RelayRole::Content,
