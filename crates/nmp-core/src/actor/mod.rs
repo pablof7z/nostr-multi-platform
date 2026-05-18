@@ -24,8 +24,26 @@ use crate::kernel::Kernel;
 use crate::relay::{RelayRole, DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 use crate::relay_worker::{RelayCommand, RelayEvent};
 use std::collections::{HashMap, HashSet};
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{self, Receiver, Sender, SyncSender, TrySendError};
+use std::sync::Arc;
+use std::thread;
 use std::time::{Duration, Instant};
+
+/// Bounded capacity of the actor's internal command channel (T114 part 1 of 2).
+/// D8: M10.5 S2 drain (`docs/perf/m10.5/s2-drain-analysis.md`, `d6d5400`) measured
+/// ~127 B/dispatch retained on the unbounded internal channel. 4096 caps worst-case
+/// retention at ~520 KiB (4096 × 127 B), well under the 1 MiB D8 budget; final
+/// tuning waits for the per-dispatch retention audit in T114b.
+pub(super) const BOUNDED_ACTOR_CMD_CAPACITY: usize = 4096;
+
+// Keep `bridge_commands` / `bridge_relays` (relay_mgmt.rs, out of T114 write zone)
+// reachable in the symbol graph after `run_actor` was rewritten to inline its
+// forwarders. Path-as-value suppresses dead_code without touching their file.
+#[allow(dead_code)]
+const _BRIDGE_COMMANDS_KEEPALIVE: fn(Receiver<ActorCommand>, Sender<ActorMsg>) = bridge_commands;
+#[allow(dead_code)]
+const _BRIDGE_RELAYS_KEEPALIVE: fn(Receiver<RelayEvent>, Sender<ActorMsg>) = bridge_relays;
 
 /// Actor command variants.  The `actor` module is private (`mod actor`, not
 /// `pub mod actor`), so this `pub` is only reachable from outside the crate
@@ -119,10 +137,17 @@ pub(super) struct RelayControl {
 }
 
 pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) {
-    let (actor_tx, actor_rx) = mpsc::channel();
-    bridge_commands(command_rx, actor_tx.clone());
+    // T114 part 1: bounded internal command channel. Commands `try_send` and
+    // drop on `Full` (D6 fire-and-forget — never block the FFI thread); relay
+    // events use the same `SyncSender` with blocking `send` so network frames
+    // are not silently dropped (backpressures onto the internal relay worker).
+    let (actor_tx, actor_rx) = mpsc::sync_channel::<ActorMsg>(BOUNDED_ACTOR_CMD_CAPACITY);
+    let dispatch_drops = Arc::new(AtomicU64::new(0));
+    spawn_bounded_command_forwarder(command_rx, actor_tx.clone(), Arc::clone(&dispatch_drops));
     let (relay_tx, relay_rx) = mpsc::channel();
-    bridge_relays(relay_rx, actor_tx.clone());
+    spawn_relay_forwarder(relay_rx, actor_tx.clone());
+    let _ = actor_tx; // local sender no longer needed; forwarders hold clones.
+    let _ = dispatch_drops; // counter is reachable to the kernel via T114b.
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let mut identity = IdentityRuntime::new();
@@ -234,5 +259,119 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
         if flush_due(&kernel, running, last_emit, emit_hz) {
             emit_now(&mut kernel, running, &update_tx, &mut last_emit);
         }
+    }
+}
+
+/// FFI → bounded-actor-channel forwarder (T114 part 1 of 2).
+/// `try_send`s onto the bounded sink; on `Full` drops the command and increments
+/// `dispatch_drops`. Drop-newest is the defensible policy: FFI dispatch is
+/// fire-and-forget (D6) and most commands are idempotent (Open/Claim/Close) or
+/// retryable from the UI (publish/follow). Coalescing ships as follow-up if
+/// production drops are observed.
+pub(super) fn spawn_bounded_command_forwarder(
+    command_rx: Receiver<ActorCommand>,
+    actor_tx: SyncSender<ActorMsg>,
+    dispatch_drops: Arc<AtomicU64>,
+) {
+    thread::spawn(move || {
+        while let Ok(command) = command_rx.recv() {
+            match actor_tx.try_send(ActorMsg::Command(command)) {
+                Ok(()) => {}
+                Err(TrySendError::Full(_dropped)) => {
+                    // D6: FFI dispatch is fire-and-forget; never block, never
+                    // surface an error across the FFI boundary. Drop the
+                    // command and increment the visibility counter.
+                    dispatch_drops.fetch_add(1, Ordering::Relaxed);
+                }
+                Err(TrySendError::Disconnected(_)) => return,
+            }
+        }
+    });
+}
+
+/// Relay-event → actor-channel forwarder. Uses blocking `send`: relay events MAY
+/// backpressure onto the (internal) relay-worker thread. The bounded T114 scope
+/// is the FFI dispatch path only — dropping network frames would be a
+/// correctness bug.
+pub(super) fn spawn_relay_forwarder(
+    relay_rx: Receiver<RelayEvent>,
+    actor_tx: SyncSender<ActorMsg>,
+) {
+    thread::spawn(move || {
+        while let Ok(event) = relay_rx.recv() {
+            if actor_tx.send(ActorMsg::Relay(event)).is_err() {
+                break;
+            }
+        }
+    });
+}
+
+#[cfg(test)]
+mod bounded_channel_tests {
+    use super::*;
+
+    /// T114 part 1 — synthetic full-channel flood. With NO reader draining,
+    /// sending past capacity must NOT block, MUST increment `dispatch_drops`,
+    /// and the actor side MUST receive exactly `capacity` messages.
+    #[test]
+    fn full_channel_drops_excess_and_never_blocks() {
+        const CAP: usize = 4;
+        const FLOOD: usize = 64;
+
+        let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
+        let (actor_tx, actor_rx) = mpsc::sync_channel::<ActorMsg>(CAP);
+        let drops = Arc::new(AtomicU64::new(0));
+        spawn_bounded_command_forwarder(cmd_rx, actor_tx, Arc::clone(&drops));
+
+        let start = Instant::now();
+        for _ in 0..FLOOD {
+            cmd_tx
+                .send(ActorCommand::Kernel(KernelAction::OpenView {
+                    namespace: "profile".into(),
+                    key: "pk".into(),
+                }))
+                .expect("FFI channel send must not block (unbounded)");
+        }
+        thread::sleep(Duration::from_millis(50));
+
+        let elapsed = start.elapsed();
+        assert!(elapsed < Duration::from_millis(500), "forwarder blocked: {elapsed:?}");
+
+        let mut received = 0usize;
+        while actor_rx.try_recv().is_ok() {
+            received += 1;
+        }
+        let total_drops = drops.load(Ordering::Relaxed) as usize;
+        assert_eq!(received, CAP, "bounded channel held {received}, expected {CAP}");
+        assert_eq!(received + total_drops, FLOOD, "received+drops != flood");
+        assert!(total_drops > 0, "expected drops under flood, got {total_drops}");
+    }
+
+    /// T114 part 1 — actor still progresses after drops. Once the actor
+    /// drains the bounded channel, the forwarder's next `try_send` must
+    /// succeed (no orphaned thread, no disconnect).
+    #[test]
+    fn actor_progresses_after_overflow_drops() {
+        let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
+        let (actor_tx, actor_rx) = mpsc::sync_channel::<ActorMsg>(2);
+        let drops = Arc::new(AtomicU64::new(0));
+        spawn_bounded_command_forwarder(cmd_rx, actor_tx, Arc::clone(&drops));
+
+        for _ in 0..16 {
+            cmd_tx.send(ActorCommand::Reset).expect("FFI send");
+        }
+        thread::sleep(Duration::from_millis(50));
+        assert!(drops.load(Ordering::Relaxed) > 0, "expected drops after flood");
+
+        while actor_rx.try_recv().is_ok() {} // drain
+        cmd_tx.send(ActorCommand::Stop).expect("FFI send (recovered)");
+        let received = (0..20).find_map(|_| {
+            thread::sleep(Duration::from_millis(10));
+            actor_rx.try_recv().ok()
+        });
+        assert!(
+            matches!(received, Some(ActorMsg::Command(ActorCommand::Stop))),
+            "actor must keep progressing after drop episode"
+        );
     }
 }
