@@ -286,3 +286,45 @@ fn kind10002_stale_redelivery_does_not_overwrite_relay_list_cache() {
         "D4 violation: stale v1 overwrote v2 relay list cache"
     );
 }
+
+/// P2 — kind:10002 empty relay list clears the cache entry.
+///
+/// When a canonical *newer* kind:10002 carries an empty relay list, the author
+/// has explicitly cleared their NIP-65 metadata.  The old cache entry must be
+/// *removed* rather than left stale.
+#[test]
+fn kind10002_empty_relay_list_clears_cache_entry() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    // v1 — non-empty relay list; populates the cache.
+    let tags_v1: Vec<Vec<String>> = vec![
+        vec!["r".to_string(), "wss://v1-read.example/".to_string(), "read".to_string()],
+        vec!["r".to_string(), "wss://v1-write.example/".to_string(), "write".to_string()],
+    ];
+    let o1 = kernel
+        .inject_replaceable_event(ID_V1, PK_A, 1000, 10002, tags_v1, RELAY, 1_000_000)
+        .expect("v1 store insert must succeed");
+    assert!(
+        matches!(o1, InsertOutcome::Inserted { .. }),
+        "v1 must be freshly inserted, got {o1:?}"
+    );
+    assert!(
+        kernel.author_relay_lists.contains_key(PK_A),
+        "cache must be populated after v1"
+    );
+
+    // v2 — newer event with an EMPTY relay list (author cleared NIP-65).
+    let o2 = kernel
+        .inject_replaceable_event(ID_V2, PK_A, 2000, 10002, vec![], RELAY, 2_000_000)
+        .expect("v2 store insert must succeed");
+    assert!(
+        matches!(o2, InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. }),
+        "v2 must supersede v1 in the store, got {o2:?}"
+    );
+
+    // Cache entry must be removed — empty list clears the stale relay metadata.
+    assert!(
+        !kernel.author_relay_lists.contains_key(PK_A),
+        "empty kind:10002 must remove stale cache entry"
+    );
+}

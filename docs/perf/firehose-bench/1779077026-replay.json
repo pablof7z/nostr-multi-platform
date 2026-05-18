@@ -1,0 +1,553 @@
+{
+  "tool": "firehose-bench",
+  "status": "prototype",
+  "mode": "replay",
+  "scale": "standard",
+  "started_at_unix": 1779077026,
+  "scenarios": [
+    {
+      "name": "cold_start",
+      "description": "Empty store startup into first timeline paint and filled timeline.",
+      "virtual_duration_seconds": 5,
+      "events_processed": 10000,
+      "gates": [
+        {
+          "name": "first_item_ms",
+          "measured": 60.0,
+          "budget": 800.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "filled_timeline_ms",
+          "measured": 740.0,
+          "budget": 5000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "peak_memory_mb",
+          "measured": 56.0,
+          "budget": 200.0,
+          "passed": true,
+          "note": null
+        }
+      ],
+      "metrics": {
+        "first_item_ms": 60.0,
+        "filled_timeline_ms": 740.0,
+        "peak_memory_mb": 56.0,
+        "memory_drift_mb": null,
+        "ingest_to_emit_p99_ms": null,
+        "view_batch_hz": null,
+        "max_deltas_per_view_sec": null,
+        "dropped_events": null,
+        "relay_connections": null,
+        "open_close_dispatch_rate_per_sec": null,
+        "mount_unmount_rate_per_sec": null,
+        "projection_cache_hit_rate": null,
+        "leaked_subscriptions": null,
+        "detect_disconnect_p99_ms": null,
+        "reconnect_p99_ms": null,
+        "event_loss": null,
+        "cross_account_bleed": null,
+        "action_atomicity_failures": null,
+        "per_account_memory_mb": null,
+        "nip77_bytes_ratio": null,
+        "req_only_bytes_mb": null,
+        "nip77_bytes_mb": null,
+        "decrypt_p99_ms": null,
+        "nse_peak_memory_mb": null,
+        "db_conflicts": null,
+        "fd_growth": null,
+        "panics": null,
+        "trace_records": 10000,
+        "synthetic_runtime_ms": 0
+      },
+      "passed": true,
+      "observations": [
+        "Modeled cold start is comfortably under the proposed gates; real storage open and FFI startup still need measurement."
+      ]
+    },
+    {
+      "name": "sustained_firehose",
+      "description": "Following timeline plus hashtag firehose under sustained bursty traffic.",
+      "virtual_duration_seconds": 1800,
+      "events_processed": 900000,
+      "gates": [
+        {
+          "name": "memory_drift_mb",
+          "measured": 33.0,
+          "budget": 50.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "dropped_events",
+          "measured": 0.0,
+          "budget": 0.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "ingest_to_emit_p99_ms",
+          "measured": 25.6,
+          "budget": 50.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "view_batch_hz",
+          "measured": 58.0,
+          "budget": 60.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "max_deltas_per_view_sec",
+          "measured": 57.0,
+          "budget": 60.0,
+          "passed": true,
+          "note": "ADR-0002 per-view budget"
+        },
+        {
+          "name": "relay_connections",
+          "measured": 54.0,
+          "budget": 80.0,
+          "passed": true,
+          "note": null
+        }
+      ],
+      "metrics": {
+        "first_item_ms": null,
+        "filled_timeline_ms": null,
+        "peak_memory_mb": null,
+        "memory_drift_mb": 33.0,
+        "ingest_to_emit_p99_ms": 25.6,
+        "view_batch_hz": 58.0,
+        "max_deltas_per_view_sec": 57.0,
+        "dropped_events": 0,
+        "relay_connections": 54,
+        "open_close_dispatch_rate_per_sec": null,
+        "mount_unmount_rate_per_sec": null,
+        "projection_cache_hit_rate": null,
+        "leaked_subscriptions": null,
+        "detect_disconnect_p99_ms": null,
+        "reconnect_p99_ms": null,
+        "event_loss": null,
+        "cross_account_bleed": null,
+        "action_atomicity_failures": null,
+        "per_account_memory_mb": null,
+        "nip77_bytes_ratio": null,
+        "req_only_bytes_mb": null,
+        "nip77_bytes_mb": null,
+        "decrypt_p99_ms": null,
+        "nse_peak_memory_mb": null,
+        "db_conflicts": null,
+        "fd_growth": null,
+        "panics": null,
+        "trace_records": 900000,
+        "synthetic_runtime_ms": 0
+      },
+      "passed": true,
+      "observations": [
+        "The modeled pipeline only passes because ADR-0002 per-view coalescing is assumed.",
+        "Synthetic burst checksum retained to prevent optimization: 68151fa3d8e3c520"
+      ]
+    },
+    {
+      "name": "profile_thrashing",
+      "description": "Simulated fast scroll mounting and unmounting profile/avatar wrappers.",
+      "virtual_duration_seconds": 600,
+      "events_processed": 30000,
+      "gates": [
+        {
+          "name": "memory_drift_mb",
+          "measured": 0.4,
+          "budget": 1.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "open_close_dispatch_rate_per_sec",
+          "measured": 22.5,
+          "budget": 30.0,
+          "passed": true,
+          "note": "ADR-0005 wrapper dedupe/grace-period absorption"
+        },
+        {
+          "name": "projection_cache_hit_rate",
+          "measured": 0.68,
+          "budget": 0.5,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "leaked_subscriptions",
+          "measured": 0.0,
+          "budget": 0.0,
+          "passed": true,
+          "note": null
+        }
+      ],
+      "metrics": {
+        "first_item_ms": null,
+        "filled_timeline_ms": null,
+        "peak_memory_mb": null,
+        "memory_drift_mb": 0.4,
+        "ingest_to_emit_p99_ms": null,
+        "view_batch_hz": null,
+        "max_deltas_per_view_sec": null,
+        "dropped_events": null,
+        "relay_connections": null,
+        "open_close_dispatch_rate_per_sec": 22.5,
+        "mount_unmount_rate_per_sec": 50.0,
+        "projection_cache_hit_rate": 0.68,
+        "leaked_subscriptions": 0,
+        "detect_disconnect_p99_ms": null,
+        "reconnect_p99_ms": null,
+        "event_loss": null,
+        "cross_account_bleed": null,
+        "action_atomicity_failures": null,
+        "per_account_memory_mb": null,
+        "nip77_bytes_ratio": null,
+        "req_only_bytes_mb": null,
+        "nip77_bytes_mb": null,
+        "decrypt_p99_ms": null,
+        "nse_peak_memory_mb": null,
+        "db_conflicts": null,
+        "fd_growth": null,
+        "panics": null,
+        "trace_records": 30000,
+        "synthetic_runtime_ms": null
+      },
+      "passed": true,
+      "observations": [
+        "ADR-0005 domain-keyed wrappers are the right primitive for this scenario; ViewId-keyed shadows would make dedupe much harder."
+      ]
+    },
+    {
+      "name": "relay_disconnect_storm",
+      "description": "Synthetic relay flapping with resubscribe and gap-fill behavior.",
+      "virtual_duration_seconds": 1800,
+      "events_processed": 64,
+      "gates": [
+        {
+          "name": "detect_disconnect_p99_ms",
+          "measured": 4200.0,
+          "budget": 10000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "reconnect_p99_ms",
+          "measured": 18500.0,
+          "budget": 30000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "event_loss",
+          "measured": 0.0,
+          "budget": 0.0,
+          "passed": true,
+          "note": null
+        }
+      ],
+      "metrics": {
+        "first_item_ms": null,
+        "filled_timeline_ms": null,
+        "peak_memory_mb": null,
+        "memory_drift_mb": null,
+        "ingest_to_emit_p99_ms": null,
+        "view_batch_hz": null,
+        "max_deltas_per_view_sec": null,
+        "dropped_events": null,
+        "relay_connections": null,
+        "open_close_dispatch_rate_per_sec": null,
+        "mount_unmount_rate_per_sec": null,
+        "projection_cache_hit_rate": null,
+        "leaked_subscriptions": null,
+        "detect_disconnect_p99_ms": 4200.0,
+        "reconnect_p99_ms": 18500.0,
+        "event_loss": 0,
+        "cross_account_bleed": null,
+        "action_atomicity_failures": null,
+        "per_account_memory_mb": null,
+        "nip77_bytes_ratio": null,
+        "req_only_bytes_mb": null,
+        "nip77_bytes_mb": null,
+        "decrypt_p99_ms": null,
+        "nse_peak_memory_mb": null,
+        "db_conflicts": null,
+        "fd_growth": null,
+        "panics": null,
+        "trace_records": 64,
+        "synthetic_runtime_ms": null
+      },
+      "passed": true,
+      "observations": [
+        "This must be rerun against real relay adapters; current numbers are policy targets, not socket measurements."
+      ]
+    },
+    {
+      "name": "multi_account",
+      "description": "Five concurrent account scopes with overlapping follows and sends.",
+      "virtual_duration_seconds": 600,
+      "events_processed": 10000,
+      "gates": [
+        {
+          "name": "cross_account_bleed",
+          "measured": 0.0,
+          "budget": 0.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "action_atomicity_failures",
+          "measured": 0.0,
+          "budget": 0.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "per_account_memory_mb",
+          "measured": 42.0,
+          "budget": 100.0,
+          "passed": true,
+          "note": null
+        }
+      ],
+      "metrics": {
+        "first_item_ms": null,
+        "filled_timeline_ms": null,
+        "peak_memory_mb": null,
+        "memory_drift_mb": null,
+        "ingest_to_emit_p99_ms": null,
+        "view_batch_hz": null,
+        "max_deltas_per_view_sec": null,
+        "dropped_events": null,
+        "relay_connections": null,
+        "open_close_dispatch_rate_per_sec": null,
+        "mount_unmount_rate_per_sec": null,
+        "projection_cache_hit_rate": null,
+        "leaked_subscriptions": null,
+        "detect_disconnect_p99_ms": null,
+        "reconnect_p99_ms": null,
+        "event_loss": null,
+        "cross_account_bleed": 0,
+        "action_atomicity_failures": 0,
+        "per_account_memory_mb": 42.0,
+        "nip77_bytes_ratio": null,
+        "req_only_bytes_mb": null,
+        "nip77_bytes_mb": null,
+        "decrypt_p99_ms": null,
+        "nse_peak_memory_mb": null,
+        "db_conflicts": null,
+        "fd_growth": null,
+        "panics": null,
+        "trace_records": 10000,
+        "synthetic_runtime_ms": null
+      },
+      "passed": true,
+      "observations": [
+        "The app-kernel API shape should include account scope from v1 even though account switching policy is post-v1."
+      ]
+    },
+    {
+      "name": "negentropy_efficiency",
+      "description": "Modeled NIP-77 backfill vs REQ-only fallback for a 30-day timeline.",
+      "virtual_duration_seconds": 120,
+      "events_processed": 10000,
+      "gates": [
+        {
+          "name": "nip77_bytes_ratio",
+          "measured": 0.036,
+          "budget": 0.05,
+          "passed": true,
+          "note": "<= 5% of REQ bytes means >= 95% bytes saved"
+        }
+      ],
+      "metrics": {
+        "first_item_ms": null,
+        "filled_timeline_ms": null,
+        "peak_memory_mb": null,
+        "memory_drift_mb": null,
+        "ingest_to_emit_p99_ms": null,
+        "view_batch_hz": null,
+        "max_deltas_per_view_sec": null,
+        "dropped_events": null,
+        "relay_connections": null,
+        "open_close_dispatch_rate_per_sec": null,
+        "mount_unmount_rate_per_sec": null,
+        "projection_cache_hit_rate": null,
+        "leaked_subscriptions": null,
+        "detect_disconnect_p99_ms": null,
+        "reconnect_p99_ms": null,
+        "event_loss": null,
+        "cross_account_bleed": null,
+        "action_atomicity_failures": null,
+        "per_account_memory_mb": null,
+        "nip77_bytes_ratio": 0.036,
+        "req_only_bytes_mb": 180.0,
+        "nip77_bytes_mb": 6.48,
+        "decrypt_p99_ms": null,
+        "nse_peak_memory_mb": null,
+        "db_conflicts": null,
+        "fd_growth": null,
+        "panics": null,
+        "trace_records": 10000,
+        "synthetic_runtime_ms": null
+      },
+      "passed": true,
+      "observations": [
+        "Use real NIP-77 relay support or LocalRelay before treating this as measured protocol efficiency."
+      ]
+    },
+    {
+      "name": "background_decryption",
+      "description": "Simulated notification-service-extension decrypt burst.",
+      "virtual_duration_seconds": 5,
+      "events_processed": 100,
+      "gates": [
+        {
+          "name": "decrypt_p99_ms",
+          "measured": 3.0121,
+          "budget": 200.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "nse_peak_memory_mb",
+          "measured": 8.5,
+          "budget": 24.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "db_conflicts",
+          "measured": 0.0,
+          "budget": 0.0,
+          "passed": true,
+          "note": null
+        }
+      ],
+      "metrics": {
+        "first_item_ms": null,
+        "filled_timeline_ms": null,
+        "peak_memory_mb": null,
+        "memory_drift_mb": null,
+        "ingest_to_emit_p99_ms": null,
+        "view_batch_hz": null,
+        "max_deltas_per_view_sec": null,
+        "dropped_events": null,
+        "relay_connections": null,
+        "open_close_dispatch_rate_per_sec": null,
+        "mount_unmount_rate_per_sec": null,
+        "projection_cache_hit_rate": null,
+        "leaked_subscriptions": null,
+        "detect_disconnect_p99_ms": null,
+        "reconnect_p99_ms": null,
+        "event_loss": null,
+        "cross_account_bleed": null,
+        "action_atomicity_failures": null,
+        "per_account_memory_mb": null,
+        "nip77_bytes_ratio": null,
+        "req_only_bytes_mb": null,
+        "nip77_bytes_mb": null,
+        "decrypt_p99_ms": 3.01,
+        "nse_peak_memory_mb": 8.5,
+        "db_conflicts": 0,
+        "fd_growth": null,
+        "panics": null,
+        "trace_records": 100,
+        "synthetic_runtime_ms": 1
+      },
+      "passed": true,
+      "observations": [
+        "Fake decrypt checksum retained to prevent optimization: 31889ce9be0febef"
+      ]
+    },
+    {
+      "name": "soak",
+      "description": "Virtual 24-hour alternating workload for long-run memory and descriptor drift.",
+      "virtual_duration_seconds": 86400,
+      "events_processed": 2160000,
+      "gates": [
+        {
+          "name": "memory_growth_mb",
+          "measured": 38.0,
+          "budget": 100.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "fd_growth",
+          "measured": 0.0,
+          "budget": 0.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "panics",
+          "measured": 0.0,
+          "budget": 0.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "view_batch_hz",
+          "measured": 44.0,
+          "budget": 60.0,
+          "passed": true,
+          "note": null
+        }
+      ],
+      "metrics": {
+        "first_item_ms": null,
+        "filled_timeline_ms": null,
+        "peak_memory_mb": null,
+        "memory_drift_mb": 38.0,
+        "ingest_to_emit_p99_ms": null,
+        "view_batch_hz": 44.0,
+        "max_deltas_per_view_sec": null,
+        "dropped_events": null,
+        "relay_connections": null,
+        "open_close_dispatch_rate_per_sec": null,
+        "mount_unmount_rate_per_sec": null,
+        "projection_cache_hit_rate": null,
+        "leaked_subscriptions": null,
+        "detect_disconnect_p99_ms": null,
+        "reconnect_p99_ms": null,
+        "event_loss": null,
+        "cross_account_bleed": null,
+        "action_atomicity_failures": null,
+        "per_account_memory_mb": null,
+        "nip77_bytes_ratio": null,
+        "req_only_bytes_mb": null,
+        "nip77_bytes_mb": null,
+        "decrypt_p99_ms": null,
+        "nse_peak_memory_mb": null,
+        "db_conflicts": null,
+        "fd_growth": 0,
+        "panics": 0,
+        "trace_records": 2160000,
+        "synthetic_runtime_ms": null
+      },
+      "passed": true,
+      "observations": [
+        "Real soak still must run in live mode once relay/storage/runtime exist."
+      ]
+    }
+  ],
+  "overall_passed": true,
+  "limitations": [
+    "This is a deterministic prototype harness. Real relay sockets, LMDB/SQLite writes, UniFFI marshaling, platform wrappers, and NSE calls are modeled because those runtime pieces do not exist yet.",
+    "Replay mode is CI-shaped and deterministic. Capture mode currently writes a synthetic trace manifest, not live WebSocket frames."
+  ],
+  "observations": [
+    "Prototype replay gates pass, but they mainly validate the planned budgets and wrapper/cache lifecycle model, not real I/O behavior.",
+    "The highest-risk unmeasured surfaces are durable storage latency, real relay burstiness, UniFFI/platform-shadow memory, and actual NIP-77 support.",
+    "Next implementation step: replace synthetic storage/relay models with the real actor, relay adapter, storage backend, and generated wrapper shadow."
+  ]
+}

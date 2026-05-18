@@ -1,9 +1,24 @@
+//! Kernel — the actor-owned event-processing core.
+//!
+//! Sub-modules:
+//! - `types`        — pure data types shared across the kernel
+//! - `ingest`       — relay frame parsing, event dispatch, and kind-specific ingest
+//! - `requests`     — relay state transitions, startup/view REQs, req/defer primitives
+//! - `status`       — diagnostics, metrics, and update-payload assembly
+//! - `update`       — diff/emit logic for the FFI update loop
+//! - `nostr`        — NostrEvent deserialization + helper functions
+//! - `test_support` — signature-free injection helpers (test / test-support feature)
+//! - `tests`        — unit tests (cfg(test) only)
+
 mod ingest;
 mod nostr;
 mod requests;
 mod status;
+#[cfg(any(test, feature = "test-support"))]
+mod test_support;
 #[cfg(test)]
 mod tests;
+mod types;
 mod update;
 
 use crate::relay::{
@@ -21,278 +36,21 @@ use nostr::*;
 pub(crate) use nostr::{is_hex_id, is_hex_pubkey};
 
 use crate::store::{EventStore, MemEventStore};
+use types::*;
 
-#[derive(Clone)]
-struct SeedAccount {
-    name: &'static str,
-    pubkey: &'static str,
-}
-
-fn seed_accounts() -> Vec<SeedAccount> {
-    vec![
-        SeedAccount {
-            name: "pablof7z",
-            pubkey: TEST_PUBKEY,
-        },
-        SeedAccount {
-            name: "fiatjaf",
-            pubkey: FIATJAF_PUBKEY,
-        },
-        SeedAccount {
-            name: "jb55",
-            pubkey: JB55_PUBKEY,
-        },
-    ]
-}
-
-#[derive(Clone, Debug)]
-struct StoredEvent {
-    id: String,
-    author: String,
-    kind: u32,
-    created_at: u64,
-    tags: Vec<Vec<String>>,
-    content: String,
-    relay_count: u32,
-}
-
-#[derive(Clone, Debug, Default)]
-struct Profile {
-    event_id: String,
-    created_at: u64,
-    display: String,
-    picture_url: Option<String>,
-    nip05: String,
-    about: String,
-    avatar_initials: String,
-    avatar_color: String,
-}
-
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-struct TimelineItem {
-    id: String,
-    author_pubkey: String,
-    author_display: String,
-    author_picture_url: Option<String>,
-    author_avatar_initials: String,
-    author_avatar_color: String,
-    author_avatar_source: String,
-    content: String,
-    content_preview: String,
-    created_at_display: String,
-    relay_count: u32,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct ProfileCard {
-    pubkey: String,
-    npub: String,
-    display: String,
-    picture_url: Option<String>,
-    nip05: String,
-    about: String,
-    avatar_initials: String,
-    avatar_color: String,
-    source: String,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct AuthorViewPayload {
-    pubkey: String,
-    state: String,
-    profile: ProfileCard,
-    items: Vec<TimelineItem>,
-    note_count: usize,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct ThreadViewPayload {
-    focused_event_id: String,
-    root_event_id: String,
-    state: String,
-    items: Vec<TimelineItem>,
-    previous_count: usize,
-    next_count: usize,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct RelayStatus {
-    role: String,
-    relay_url: String,
-    connection: String,
-    auth: String,
-    nip77_negentropy: String,
-    active_wire_subscriptions: usize,
-    reconnect_count: u32,
-    last_connected_at_ms: Option<u128>,
-    last_event_at_ms: Option<u128>,
-    last_notice: Option<String>,
-    last_error: Option<String>,
-    bytes_rx: u64,
-    bytes_tx: u64,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct WireSubscriptionStatus {
-    wire_id: String,
-    relay_url: String,
-    filter_summary: String,
-    state: String,
-    logical_consumer_count: u32,
-    opened_at_ms: u128,
-    last_event_at_ms: Option<u128>,
-    eose_at_ms: Option<u128>,
-    close_reason: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct LogicalInterestStatus {
-    key: String,
-    state: String,
-    refcount: u32,
-    relay_urls: Vec<String>,
-    cache_coverage: String,
-    warming_until_ms: Option<u128>,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct Metrics {
-    generated_events: u64,
-    note_events: u64,
-    profile_events: u64,
-    duplicate_events: u64,
-    delete_events: u64,
-    stored_events: usize,
-    tombstones: usize,
-    visible_items: usize,
-    visible_profiled_items: usize,
-    visible_placeholder_avatar_items: usize,
-    open_views: u32,
-    events_since_last_update: u64,
-    diagnostic_firehose_events: u64,
-    inserted_count: usize,
-    updated_count: usize,
-    removed_count: usize,
-    events_per_second_configured: u32,
-    emit_hz_configured: u32,
-    update_sequence: u64,
-    estimated_store_bytes: usize,
-    payload_bytes: usize,
-    store_to_payload_ratio: f64,
-    actor_queue_depth: u32,
-    frames_rx: u64,
-    events_rx: u64,
-    eose_rx: u64,
-    notices_rx: u64,
-    closed_rx: u64,
-    bytes_rx: u64,
-    bytes_tx: u64,
-    contacts_authors: usize,
-    timeline_authors: usize,
-    first_event_ms: Option<u128>,
-    target_profile_loaded_ms: Option<u128>,
-    timeline_opened_ms: Option<u128>,
-    timeline_first_item_ms: Option<u128>,
-    update_emitted_ms: Option<u128>,
-    last_event_to_emit_ms: Option<u128>,
-    max_event_to_emit_ms: u128,
-    max_events_per_update: u64,
-}
-
-#[derive(Clone, Debug, Serialize)]
-struct KernelUpdate {
-    rev: u64,
-    update_kind: &'static str,
-    running: bool,
-    relay_url: &'static str,
-    test_npub: &'static str,
-    profile: ProfileCard,
-    items: Vec<TimelineItem>,
-    author_view: Option<AuthorViewPayload>,
-    thread_view: Option<ThreadViewPayload>,
-    inserted: Vec<TimelineItem>,
-    updated: Vec<TimelineItem>,
-    removed: Vec<String>,
-    metrics: Metrics,
-    relay_status: RelayStatus,
-    relay_statuses: Vec<RelayStatus>,
-    logical_interests: Vec<LogicalInterestStatus>,
-    wire_subscriptions: Vec<WireSubscriptionStatus>,
-    logs: Vec<String>,
-}
-
-#[derive(Clone, Debug, Default)]
-struct Counters {
-    frames_rx: u64,
-    events_rx: u64,
-    eose_rx: u64,
-    notices_rx: u64,
-    closed_rx: u64,
-    bytes_rx: u64,
-    bytes_tx: u64,
-}
-
-struct WireSub {
-    id: String,
-    role: RelayRole,
-    filter_summary: String,
-    state: String,
-    opened_at: Instant,
-    last_event_at: Option<Instant>,
-    eose_at: Option<Instant>,
-    close_reason: Option<String>,
-}
-
-#[derive(Clone, Debug)]
-struct RelayHealth {
-    connection: String,
-    connected_at: Option<Instant>,
-    last_event_at: Option<Instant>,
-    last_notice: Option<String>,
-    last_error: Option<String>,
-    reconnect_count: u32,
-    counters: Counters,
-}
-
-impl Default for RelayHealth {
-    fn default() -> Self {
-        Self {
-            connection: "offline".to_string(),
-            connected_at: None,
-            last_event_at: None,
-            last_notice: None,
-            last_error: None,
-            reconnect_count: 0,
-            counters: Counters::default(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default)]
-struct AuthorRelayList {
-    /// Event id of the kind:10002 that produced this relay list.  Used as a
-    /// tiebreak when two events share the same `created_at`: lexicographically
-    /// smaller event id wins (mirrors the store's supersession logic).
-    event_id: String,
-    created_at: u64,
-    read_relays: Vec<String>,
-    write_relays: Vec<String>,
-    both_relays: Vec<String>,
-}
-
-#[derive(Clone, Debug)]
-struct ViewInterest {
-    key: String,
-    refcount: u32,
-}
-
+/// The kernel owns all Nostr protocol state for the active app session.
+///
+/// It is driven by the actor loop in `crate::relay` through a simple message-
+/// passing interface: relay frames arrive via `handle_message`, view intents
+/// arrive via `open_*` / `close_*`, and the actor reads snapshots via `emit`.
+///
+/// The `EventStore` (`self.store`) is the single authoritative writer for all
+/// persisted events (D4).  The lightweight `events` read-cache is a derived
+/// projection populated only after the store confirms insertion or replacement.
 pub(crate) struct Kernel {
     /// Pluggable event store. D4: the single writer for all Nostr events.
     ///
     /// `MemEventStore` by default; replace with `LmdbEventStore` in M3 phase 2.
-    /// `ingest_timeline_event` routes every new event through `store.insert()`.
-    /// `events: HashMap<String, kernel::StoredEvent>` is kept as a lightweight
-    /// read-cache (timeline ordering + content display) derived from store outcomes.
     store: Box<dyn EventStore>,
     rev: u64,
     visible_limit: usize,
@@ -417,145 +175,5 @@ impl Kernel {
 
     pub(crate) fn changed_since_emit(&self) -> bool {
         self.changed_since_emit
-    }
-
-    /// Deliver a replaceable event (kind:0, 3, or 10002) to the kernel,
-    /// bypassing signature verification.
-    ///
-    /// Mirrors the production `handle_event` dispatch for replaceable kinds but
-    /// uses `VerifiedEvent::from_raw_unchecked` so unit tests don't need real
-    /// secp256k1 signatures.  Returns the `InsertOutcome` so callers can assert
-    /// on supersession behaviour.
-    ///
-    /// Test-support only — gated on `cfg(any(test, feature = "test-support"))`.
-    #[cfg(any(test, feature = "test-support"))]
-    #[allow(clippy::too_many_arguments, dead_code)]
-    pub(crate) fn inject_replaceable_event(
-        &mut self,
-        id: &str,
-        pubkey: &str,
-        created_at: u64,
-        kind: u32,
-        tags: Vec<Vec<String>>,
-        relay_url: &str,
-        received_at_ms: u64,
-    ) -> Option<crate::store::InsertOutcome> {
-        use crate::store::{InsertOutcome, RawEvent, VerifiedEvent};
-        let raw = RawEvent {
-            id: id.to_string(),
-            pubkey: pubkey.to_string(),
-            created_at,
-            kind,
-            tags: tags.clone(),
-            content: String::new(),
-            sig: "a".repeat(128),
-        };
-        let verified = VerifiedEvent::from_raw_unchecked(raw);
-        let outcome = match self.store.insert(verified, &relay_url.to_string(), received_at_ms) {
-            Ok(o) => o,
-            Err(_) => return None,
-        };
-        if matches!(outcome, InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. }) {
-            let event = NostrEvent {
-                id: id.to_string(),
-                pubkey: pubkey.to_string(),
-                created_at,
-                kind,
-                tags,
-                content: String::new(),
-                sig: "a".repeat(128),
-            };
-            match kind {
-                0 => self.ingest_profile(event),
-                3 => self.ingest_contacts(event),
-                10002 => self.ingest_relay_list(event),
-                _ => {}
-            }
-        }
-        Some(outcome)
-    }
-
-    /// Ingest a pre-verified event through the real kernel ingest path.
-    ///
-    /// Calls `ingest_timeline_event` directly with a `VerifiedEvent` that has
-    /// already been constructed by the caller (either via `try_from_raw` for
-    /// the full-verify path, or via `from_raw_unchecked` for the perf-harness
-    /// fast path).  This is the test-support substitute for the relay delivery
-    /// path; it exercises the same hot path as `handle_event` without a live
-    /// relay connection.
-    ///
-    /// D7: capability boundary respected — this method is gated behind
-    /// `cfg(any(test, feature = "test-support"))` and is never part of the
-    /// production FFI surface.
-    #[cfg(any(test, feature = "test-support"))]
-    pub(crate) fn ingest_pre_verified_event(
-        &mut self,
-        role: crate::relay::RelayRole,
-        sub_id: &str,
-        verified: crate::store::VerifiedEvent,
-    ) {
-        use crate::store::InsertOutcome;
-
-        let raw = verified.into_raw();
-        let relay_url = role.url().to_string();
-        let received_at_ms = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
-
-        // Re-wrap as VerifiedEvent for the store; from_raw_unchecked is used
-        // here because the caller has already verified (or intentionally
-        // bypassed) verification.  The store is the single authoritative writer
-        // per D4.
-        let verified_for_store = crate::store::VerifiedEvent::from_raw_unchecked(raw.clone());
-
-        let proceed = match self.store.insert(verified_for_store, &relay_url, received_at_ms) {
-            Ok(outcome) => matches!(
-                outcome,
-                InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. }
-            ),
-            Err(e) => {
-                self.log(format!("test ingest store error: {e}"));
-                !self.events.contains_key(&raw.id)
-            }
-        };
-
-        if !proceed {
-            return;
-        }
-
-        let id = raw.id.clone();
-        let cached = StoredEvent {
-            id: raw.id.clone(),
-            author: raw.pubkey.clone(),
-            kind: raw.kind,
-            created_at: raw.created_at,
-            tags: raw.tags.clone(),
-            content: raw.content.clone(),
-            relay_count: 1,
-        };
-        self.events.insert(id.clone(), cached);
-        // diag-firehose-stress sub_id: always appended to timeline.
-        // sort_timeline() is NOT called here; callers that inject a batch of
-        // events must call kernel.sort_timeline_if_needed() once after the loop
-        // to avoid O(n²·log n) sort overhead for large batches.
-        if sub_id.starts_with("diag-firehose-") {
-            self.diagnostic_firehose_events =
-                self.diagnostic_firehose_events.saturating_add(1);
-            self.timeline.push_back(id);
-        }
-        self.events_since_last_update =
-            self.events_since_last_update.saturating_add(1);
-        self.changed_since_emit = true;
-    }
-
-    /// Sort the timeline once after a batch inject (deferred sort).
-    ///
-    /// Call this after a loop of `ingest_pre_verified_event` calls to amortize
-    /// the O(n log n) sort cost across the whole batch rather than paying it
-    /// per-event.
-    #[cfg(any(test, feature = "test-support"))]
-    pub(crate) fn sort_timeline_deferred(&mut self) {
-        self.sort_timeline();
     }
 }
