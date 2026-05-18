@@ -2,48 +2,56 @@ import SwiftUI
 
 // MARK: - IdentityAvatarView
 //
-// Verbatim Podcastr IdentityAvatarView requires a user identity/profile image.
-// This stub renders the same visual shape (circular avatar with initials fallback).
-//
-// Podcastr source:
-// /Users/pablofernandez/Work/podcast/App/Sources/Features/Identity/IdentityAvatarView.swift
+// Reusable avatar for every Identity surface. T0 paper, 1pt hairline ring,
+// no breathing/rotation per identity-05-synthesis §4.2. Falls back to the
+// display-name initial when the picture URL is empty / fails.
 
 struct IdentityAvatarView: View {
+
     let url: URL?
     let initial: Character?
-    let size: CGFloat
+    var size: CGFloat = 96
+    /// Tints the hairline ring. Default is the muted hairline colour; the
+    /// Settings row tints `accent.live` (red) when remote signer failed and
+    /// `warning` (orange) when last-acked age > 24h (per §4.1).
+    var ringColor: Color = AppTheme.Tint.hairline
 
     var body: some View {
-        Group {
+        ZStack {
+            Circle()
+                .fill(AppTheme.Tint.surfaceMuted)
             if let url {
-                AsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } placeholder: {
-                    initialsView
+                CachedAsyncImage(url: url, targetSize: CGSize(width: size, height: size)) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    default:
+                        initialView
+                    }
                 }
+                .clipShape(Circle())
             } else {
-                initialsView
+                initialView
             }
         }
         .frame(width: size, height: size)
-        .clipShape(Circle())
+        .overlay(
+            Circle()
+                .strokeBorder(ringColor, lineWidth: 1)
+        )
+        .accessibilityHidden(true)
     }
 
-    private var initialsView: some View {
-        Circle()
-            .fill(Color.accentColor.opacity(0.2))
-            .overlay {
-                if let initial {
-                    Text(String(initial))
-                        .font(.system(size: size * 0.4, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.accentColor)
-                } else {
-                    Image(systemName: "person.fill")
-                        .font(.system(size: size * 0.45))
-                        .foregroundStyle(Color.accentColor.opacity(0.6))
-                }
-            }
+    @ViewBuilder
+    private var initialView: some View {
+        if let initial {
+            Text(String(initial).uppercased())
+                .font(.system(size: size * 0.42, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+        } else {
+            Image(systemName: "person.crop.circle")
+                .font(.system(size: size * 0.6))
+                .foregroundStyle(.tertiary)
+        }
     }
 }
