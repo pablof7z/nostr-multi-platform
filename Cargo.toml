@@ -24,6 +24,7 @@ members = [
     "crates/nmp-nip77",
     "crates/nmp-nwc",
     "crates/nmp-reactions",
+    "crates/nmp-signer-broker",
     "crates/nmp-signer-iface",
     "crates/nmp-signers",
     "crates/nmp-testing",
