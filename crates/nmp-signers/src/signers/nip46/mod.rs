@@ -30,6 +30,7 @@
 //!   kernel-side reconnect path.  This scaffold does not yet replay in-flight
 //!   requests after a subscription rebuild.
 
+mod handle;
 mod mapper;
 
 use std::collections::HashMap;
