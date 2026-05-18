@@ -15,7 +15,34 @@
 //!   `unwrap_and_process_welcome` to recover the `&Welcome` value those
 //!   ops require without this crate ever naming an MLS type, and
 //! * the local key-package publication timestamp + `d` tag (snapshot
-//!   `age_secs` / `stale`).
+//!   `age_secs` / `stale`), and
+//! * a `group_id_hex → Vec<RelayUrl>` cache of each group's configured
+//!   relay list. Marmot groups are relay-pinned (kind:445 commits /
+//!   messages MUST go to the group relay, not the author outbox), but
+//!   neither `MarmotService` nor `mdk-core`'s `group_types::Group`
+//!   surfaces the relay list to a non-`nmp-marmot` consumer
+//!   (`MDK::get_relays` exists but is not re-exported, and adding an
+//!   accessor would touch `nmp-marmot`). We therefore cache the relays at
+//!   the points where they ARE observable to this crate: the
+//!   `create_group` dispatch envelope (`relays` array) and the
+//!   `welcome_types::Welcome::group_relays` set recovered on
+//!   `accept_welcome` / gift-wrap ingest. A cache MISS (e.g. a group
+//!   joined in a session before this code landed) degrades the publish to
+//!   author-outbox `Auto` — documented limitation, NOT a regression
+//!   (those events previously did not reach relays at all).
+//!
+//! ## Outbound relay seam — CLOSED (this is the publish direction)
+//!
+//! The dispatch ops now publish their signed events to relays INTERNALLY
+//! via [`crate::marmot::publish`] (the `nmp-core`
+//! `nmp_app_publish_signed_event*` kernel capabilities, called against the
+//! retained `*mut NmpApp`). They no longer rely on a non-existent Swift
+//! relay path. The op result still carries the signed event JSON
+//! (`event` / `events` / `evolution_event` / `welcome_rumors`) but it is
+//! now INFORMATIONAL only — publish already happened (fire-and-forget;
+//! success == "submitted to the kernel publish pipeline"). The INBOUND
+//! ingest seam (`{"op":"ingest_signed_event"}`) is a SEPARATE seam and is
+//! still open (see seam #2 below).
 //!
 //! ## Threading
 //!
@@ -57,8 +84,8 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
-use nostr::{Event, JsonUtil};
+use nmp_core::{KernelEventObserver, NmpApp};
+use nostr::{Event, JsonUtil, RelayUrl};
 
 use nmp_marmot::service::MarmotService;
 
@@ -92,6 +119,14 @@ struct Inner {
     key_package_published_at: Option<u64>,
     /// `d` tag of the most recent key-package publication.
     key_package_d_tag: Option<String>,
+    /// `group_id_hex` → the group's configured (relay-pinned) relay list,
+    /// seeded from the `create_group` envelope + `Welcome::group_relays`.
+    /// A MISS → publish falls back to `Auto` (documented limitation).
+    group_relays: HashMap<String, Vec<RelayUrl>>,
+    /// The live `*mut NmpApp` the owning `MarmotHandle` retains. `null`
+    /// for the in-memory test projection (publish degrades to a silent
+    /// no-op there — the D6 fire-and-forget contract).
+    app: *mut NmpApp,
 }
 
 /// Owned Marmot projection. `Mutex` because `on_kernel_event` takes `&self`
@@ -101,10 +136,21 @@ pub struct MarmotProjection {
     inner: Mutex<Inner>,
 }
 
+// SAFETY: identical rationale to `MarmotHandle` — Swift drives every FFI
+// call from one serialized bridge dispatch queue; the only `!Send`/`!Sync`
+// material is the `app` raw pointer, which is never mutated cross-thread
+// and is only ever read to forward a fire-and-forget publish to the kernel
+// actor channel (same validity rule as the observer register/unregister).
+unsafe impl Send for MarmotProjection {}
+unsafe impl Sync for MarmotProjection {}
+
 impl MarmotProjection {
     /// Build the projection around an already-constructed [`MarmotService`].
     /// The FFI layer owns service construction (it must parse the signer
     /// seam key + resolve the app-support DB path) so this stays infallible.
+    /// `app` starts `null`; the FFI `register` path calls
+    /// [`MarmotProjection::set_app`] with the retained pointer. Tests that
+    /// build the projection directly leave it `null` → publish no-ops.
     pub fn new(service: MarmotService) -> Self {
         Self {
             inner: Mutex::new(Inner {
@@ -112,7 +158,19 @@ impl MarmotProjection {
                 pending_welcomes: HashMap::new(),
                 key_package_published_at: None,
                 key_package_d_tag: None,
+                group_relays: HashMap::new(),
+                app: std::ptr::null_mut(),
             }),
+        }
+    }
+
+    /// Record the live `*mut NmpApp` so the dispatch ops can publish
+    /// internally. Called once by `nmp_app_chirp_marmot_register` with the
+    /// same pointer the `MarmotHandle` retains for its lifetime. D6 —
+    /// poisoned mutex silently no-ops (publish then degrades to no-op).
+    pub fn set_app(&self, app: *mut NmpApp) {
+        if let Ok(mut inner) = self.inner.lock() {
+            inner.app = app;
         }
     }
 
@@ -208,6 +266,64 @@ impl<'a> InnerHandle<'a> {
     pub(crate) fn record_key_package(&mut self, d_tag: String, now_secs: u64) {
         self.inner.key_package_published_at = Some(now_secs);
         self.inner.key_package_d_tag = Some(d_tag);
+    }
+
+    /// Seed / overwrite the relay-pinned relay list for a group. Called
+    /// from `create_group` (envelope `relays`) and `accept_welcome` /
+    /// gift-wrap ingest (`Welcome::group_relays`). Empty list is ignored
+    /// (keep any prior, more-specific entry).
+    pub(crate) fn cache_group_relays(
+        &mut self,
+        group_id_hex: String,
+        relays: Vec<RelayUrl>,
+    ) {
+        if relays.is_empty() {
+            return;
+        }
+        self.inner.group_relays.insert(group_id_hex, relays);
+    }
+
+    /// The cached relay-pinned relays for a group, or `&[]` on a miss
+    /// (caller falls back to `Auto` — documented limitation).
+    pub(crate) fn group_relays(&self, group_id_hex: &str) -> Vec<RelayUrl> {
+        self.inner
+            .group_relays
+            .get(group_id_hex)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// Publish a signed event to the group's relay-pinned relays
+    /// (`Explicit`); a cache miss → `Auto` (empty relay set falls through
+    /// to the author outbox — the kernel symbol's documented behaviour).
+    /// Used for kind:445 (group message / commit) and the kind:1059
+    /// gift-wrap inbox-routing approximation.
+    pub(crate) fn publish_group_pinned(
+        &self,
+        group_id_hex: &str,
+        event: &nostr::Event,
+    ) {
+        let relays = self.group_relays(group_id_hex);
+        crate::marmot::publish::publish_to(self.inner.app, event, &relays);
+    }
+
+    /// Publish a signed event to an EXPLICIT relay set (`Explicit`; empty
+    /// → `Auto`). Used by `create_group` / `invite` while a borrowed
+    /// `PendingGroupChange` is still live (the relay-pinned cache is keyed
+    /// by group and the relays are already known from the envelope, so we
+    /// route directly without a `&mut self` cache read/write).
+    pub(crate) fn publish_explicit(
+        &self,
+        event: &nostr::Event,
+        relays: &[RelayUrl],
+    ) {
+        crate::marmot::publish::publish_to(self.inner.app, event, relays);
+    }
+
+    /// Publish a signed event to the author NIP-65 outbox (`Auto`).
+    /// Correct for kind:30443 / kind:443 key-packages.
+    pub(crate) fn publish_author_outbox(&self, event: &nostr::Event) {
+        crate::marmot::publish::publish_auto(self.inner.app, event);
     }
 
     /// Cache an incoming gift-wrap as a pending Welcome (no MLS type held).

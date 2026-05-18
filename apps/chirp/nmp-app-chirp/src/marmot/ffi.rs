@@ -32,19 +32,28 @@
 //!   `MarmotService` errors all degrade to `null` / `{"ok":false}` rather
 //!   than panicking across the FFI.
 //!
-//! ## Deferred signer / publish seam
+//! ## Outbound relay seam — CLOSED
 //!
 //! Where an op produces events that must reach relays
 //! (`publish_key_package`'s kind:30443/443, `create_group` /
-//! `invite`'s kind:445 commit + kind:1059 gift-wraps, `send`'s kind:445),
-//! this crate performs the `MarmotService` op and returns the
-//! ready-to-publish **signed** event JSON in the result (`events`,
-//! `gift_wraps`, …). The Swift relay layer publishes them. On a publish
-//! result the caller MUST call back with `publish_key_package` again on
-//! failure is NOT required — the MDK pending-commit is resolved here
-//! (commit on success path is taken eagerly because the events are signed
-//! and handed off; clear-on-failure is exposed via the `clear_pending`
-//! op). See each op's rustdoc.
+//! `invite`'s kind:445 commit + kind:1059 gift-wraps, `send`'s kind:445,
+//! `accept_welcome`'s post-join kind:445 self-update), this crate performs
+//! the `MarmotService` op and then publishes the signed events INTERNALLY
+//! via [`crate::marmot::publish`] (the `nmp-core`
+//! `nmp_app_publish_signed_event*` kernel capabilities, called against the
+//! retained `*mut NmpApp`). There is NO Swift relay path — that hook never
+//! existed (see `MarmotBridge.swift`). The result still carries the signed
+//! event JSON (`event` / `events` / `evolution_event` / `welcome_rumors`)
+//! but it is now INFORMATIONAL only; publish already happened
+//! (fire-and-forget — success == "submitted to the kernel publish
+//! pipeline"). Routing per kind: kind:445 → group-pinned relays
+//! (`Explicit`, cache miss → `Auto`); kind:30443/443 → author outbox
+//! (`Auto`); kind:1059 gift-wrap → group relays as a documented
+//! inbox-routing approximation. The MDK pending-commit is still resolved
+//! here (commit eagerly because the events are produced + submitted;
+//! clear-on-failure is exposed via the `clear_pending` op). The INBOUND
+//! ingest seam (`{"op":"ingest_signed_event"}`) is a SEPARATE seam and is
+//! still open. See each op's rustdoc.
 
 use std::ffi::{c_char, CStr, CString};
 use std::sync::Arc;
@@ -131,6 +140,11 @@ pub extern "C" fn nmp_app_chirp_marmot_register(
     // SAFETY: caller guarantees `app` is valid for this call.
     let app_ref = unsafe { &*app };
     let projection = Arc::new(MarmotProjection::new(service));
+    // Retain the live app pointer so the dispatch ops can publish their
+    // signed events to relays INTERNALLY (closed outbound seam). The
+    // `MarmotHandle` keeps `app` valid for the projection's whole lifetime
+    // (it is freed only in `unregister`, after the observer is dropped).
+    projection.set_app(app);
     let observer_id = app_ref.register_event_observer(
         Arc::clone(&projection) as Arc<dyn nmp_core::KernelEventObserver>,
     );

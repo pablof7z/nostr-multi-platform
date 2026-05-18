@@ -12,6 +12,9 @@
 //! * [`ops`] — dispatch + read-projection handlers; the ONLY place
 //!   `mdk-core` input types are named (FFI translation-layer exception,
 //!   documented in `Cargo.toml`).
+//! * [`publish`] — the internal relay-publish bridge that CLOSES the
+//!   outbound seam (calls the `nmp-core` `nmp_app_publish_signed_event*`
+//!   kernel capabilities against the retained `*mut NmpApp`).
 //! * [`ffi`] — the six `#[no_mangle] extern "C"` symbols.
 //!
 //! ## Doctrine
@@ -24,4 +27,5 @@
 pub mod ffi;
 pub mod ops;
 pub mod payload;
+pub mod publish;
 pub mod state;
