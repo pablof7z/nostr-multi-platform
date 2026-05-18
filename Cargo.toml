@@ -6,6 +6,7 @@ members = [
     "crates/nmp-core",
     "crates/nmp-highlighter-core",
     "crates/nmp-nip29",
+    "crates/nmp-nip77",
     "crates/nmp-signers",
     "crates/nmp-testing",
 ]

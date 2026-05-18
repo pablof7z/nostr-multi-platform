@@ -1,0 +1,17 @@
+[package]
+name = "nmp-nip77"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "nmp_nip77"
+
+[dependencies]
+nmp-core = { path = "../nmp-core" }
+negentropy = { version = "0.5", default-features = false, features = ["std"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+nmp-core = { path = "../nmp-core", features = ["test-support"] }
