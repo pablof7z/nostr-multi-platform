@@ -487,3 +487,81 @@ fn t121_thread_hydration_routes_ids_by_resolved_author_write_relays() {
         }
     }
 }
+
+#[test]
+fn hashtag_firehose_routes_to_active_account_inbox_relays_not_bootstrap() {
+    // T122 / codex R2: a hashtag firehose REQ (kind:1 with #t filter) is
+    // inbox-direction — the user IS the recipient of their own hashtag
+    // interest. With an active account whose kind:10002 declares read
+    // relays, `open_firehose_tag` must fan out exactly onto those read
+    // relays, never onto the bootstrap discovery seed.
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    // ALICE is the active account. Her NIP-65 declares two read relays
+    // (one pure read marker, one shared "both" marker) and a write relay
+    // that MUST NOT appear in the hashtag firehose fan-out.
+    install_relay_list(
+        &mut kernel,
+        ALICE,
+        &["wss://alice.write/"],
+        &["wss://alice.inbox1/"],
+        &["wss://alice.inbox2/"],
+    );
+    kernel.active_account = Some(ALICE.to_string());
+
+    // Trigger the hashtag firehose. `can_send=true` runs the emit branch
+    // synchronously and returns the resolved OutboundMessage fan-out.
+    let outbound = kernel.open_firehose_tag("nostr".to_string(), true);
+    assert!(
+        !outbound.is_empty(),
+        "open_firehose_tag must emit at least one REQ when can_send=true"
+    );
+
+    // Every frame is a diagnostic firehose REQ (sub_id prefix + filter).
+    for m in &outbound {
+        assert!(
+            m.text.starts_with("[\"REQ\",\"diag-firehose-"),
+            "every frame is a diag-firehose REQ, got: {}",
+            m.text
+        );
+        assert!(
+            m.text.contains("\"#t\":[\"nostr\"]"),
+            "every frame carries the #t filter for the requested tag, got: {}",
+            m.text
+        );
+    }
+
+    // The exact fan-out target set is the active account's read+both relays,
+    // sorted/deduped per `recipient_read_relays`.
+    let urls: std::collections::BTreeSet<String> =
+        outbound.iter().map(|m| m.relay_url.clone()).collect();
+    let expected: std::collections::BTreeSet<String> = [
+        "wss://alice.inbox1/".to_string(),
+        "wss://alice.inbox2/".to_string(),
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(
+        urls, expected,
+        "hashtag firehose URL set must equal the active account's read+both relays exactly; \
+         got {urls:?}, expected {expected:?}"
+    );
+
+    // D3 enforcement: the bootstrap discovery seed MUST NOT carry the
+    // hashtag firehose now that the active account has a cached kind:10002.
+    for m in &outbound {
+        assert!(
+            !BOOTSTRAP_DISCOVERY_RELAYS.contains(&m.relay_url.as_str()),
+            "hashtag firehose MUST NOT route to bootstrap once active account has kind:10002; \
+             leaked to {}",
+            m.relay_url
+        );
+    }
+
+    // The user's WRITE relay is not an inbox relay; it must not appear.
+    assert!(
+        !urls.contains("wss://alice.write/"),
+        "hashtag firehose is inbox-direction; the active account's write relay \
+         must NOT be a routing target, got urls = {urls:?}"
+    );
+}

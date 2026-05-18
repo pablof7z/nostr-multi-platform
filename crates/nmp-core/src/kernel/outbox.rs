@@ -92,7 +92,10 @@ impl Kernel {
     /// the relays a `#p`-tagged pubkey reads, where notifications/DMs land).
     ///
     /// Cold-start: no cached kind:10002 ⇒ the bootstrap discovery seed.
-    #[allow(dead_code)] // Reserved for inbox emitters (NIP-04/17/65 read fan-out)
+    ///
+    /// T122 / codex R2: also serves the active account's hashtag firehose —
+    /// the user is the recipient of their own hashtag interest, so the
+    /// routing destination is their declared read relays.
     pub(crate) fn recipient_read_relays(&self, recipient: &str) -> Vec<String> {
         match self.author_relay_lists.get(recipient) {
             Some(list) if !list.read_relays.is_empty() || !list.both_relays.is_empty() => {

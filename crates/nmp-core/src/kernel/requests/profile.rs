@@ -199,12 +199,32 @@ impl Kernel {
             return Vec::new();
         };
         self.diagnostic_firehose_seq = self.diagnostic_firehose_seq.saturating_add(1);
-        vec![self.req(
-            RelayRole::Content,
-            &format!("diag-firehose-{}", self.diagnostic_firehose_seq),
-            &format!("diagnostic hashtag firehose #{tag}"),
-            json!({"kinds":[1],"#t":[tag],"limit":500}),
-        )]
+        let seq = self.diagnostic_firehose_seq;
+
+        // T122 / codex R2: hashtag firehose REQs are inbox-direction (D3) —
+        // the user IS the recipient of their own hashtag interest, so the
+        // routing destination is the active account's NIP-65 *read* relays
+        // (kind:10002 read + both markers). Cold-start (no active account
+        // selected, or no kind:10002 cached) falls back to the bootstrap
+        // discovery seed via `recipient_read_relays`/`bootstrap_discovery_relays`.
+        let relays = match self.active_account.clone() {
+            Some(pubkey) => self.recipient_read_relays(&pubkey),
+            None => Self::bootstrap_discovery_relays(),
+        };
+
+        relays
+            .into_iter()
+            .map(|relay_url| {
+                let tag_suffix = relay_tag(&relay_url);
+                self.req_for_relay(
+                    RelayRole::Content,
+                    relay_url,
+                    &format!("diag-firehose-{seq}-{tag_suffix}"),
+                    &format!("diagnostic hashtag firehose #{tag}"),
+                    json!({"kinds":[1],"#t":[tag],"limit":500}),
+                )
+            })
+            .collect()
     }
 
     pub(crate) fn pending_profile_claim_requests(&mut self) -> Vec<OutboundMessage> {
