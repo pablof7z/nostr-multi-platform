@@ -140,7 +140,21 @@ impl Kernel {
             content: raw.content.clone(),
             relay_count: 1,
         };
+        // T146 — fan out to registered event observers. Mirrors the
+        // production path in `ingest/timeline.rs`. Per-app projections
+        // (e.g. `Nip10ModularTimelineView` in `nmp-app-chirp`) ingest the
+        // same KernelEvents through the test-support path as production
+        // (D0 — kernel emits, per-app crates compose).
+        let kernel_event = crate::substrate::KernelEvent {
+            id: cached.id.clone(),
+            author: cached.author.clone(),
+            kind: cached.kind,
+            created_at: cached.created_at,
+            tags: cached.tags.clone(),
+            content: cached.content.clone(),
+        };
         self.events.insert(id.clone(), cached);
+        self.notify_event_observers(&kernel_event);
         // diag-firehose-stress sub_id: always appended to timeline.
         // sort_timeline() is NOT called here; callers that inject a batch of
         // events must call kernel.sort_timeline_deferred() once after the loop

@@ -5,6 +5,7 @@
 //! (split to keep each file under the 300-LOC soft cap).
 
 mod capability;
+mod event_observer;
 mod identity;
 mod lifecycle;
 mod timeline;
@@ -32,6 +33,14 @@ pub use capability::{
 pub use lifecycle::{
     nmp_app_lifecycle_background, nmp_app_lifecycle_foreground, nmp_app_set_lifecycle_callback,
 };
+
+// T146 — kernel event observer FFI exposed through the test-support facade
+// so integration tests in `nmp-testing` (and the in-tree FFI smoke in
+// `event_observer.rs`) can register callbacks. Swift / Kotlin shells
+// consume the same `#[no_mangle] extern "C"` symbols directly via the
+// static lib.
+#[cfg(any(test, feature = "test-support"))]
+pub use event_observer::{nmp_app_register_event_observer, nmp_app_unregister_event_observer};
 
 // Re-exported so `crate::ffi::nmp_app_inject_*` stays byte-stable for the
 // test-support facade in `lib.rs`. The symbols stay `#[no_mangle] extern "C"`
@@ -77,6 +86,10 @@ pub use capability::{
 pub use lifecycle::{
     nmp_app_lifecycle_background, nmp_app_lifecycle_foreground, nmp_app_set_lifecycle_callback,
 };
+// T146 — kernel event observer FFI symbols reachable via Rust paths so the
+// Android JNI shim can pull the symbol bodies into the cdylib CGU.
+#[cfg(feature = "android-ffi")]
+pub use event_observer::{nmp_app_register_event_observer, nmp_app_unregister_event_observer};
 #[cfg(feature = "android-ffi")]
 pub use timeline::{
     nmp_app_claim_profile, nmp_app_close_author, nmp_app_close_thread, nmp_app_open_author,
@@ -86,8 +99,9 @@ pub use timeline::{
 pub use wallet::{nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wallet_pay_invoice};
 
 use crate::actor::{
-    new_lifecycle_observer_slot, run_actor_with_lifecycle_observer, ActorCommand,
-    LifecycleObserverSlot,
+    new_event_observer_slot, new_lifecycle_observer_slot, register_rust_observer,
+    run_actor_with_observers, unregister_observer, ActorCommand, KernelEventObserver,
+    KernelEventObserverId, KernelEventObserverSlot, LifecycleObserverSlot,
 };
 use crate::relay::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 use std::ffi::{c_char, c_uint, c_void, CStr, CString};
@@ -112,6 +126,15 @@ pub struct NmpApp {
     /// thread: registrations through [`lifecycle::nmp_app_set_lifecycle_callback`]
     /// are visible to the actor without crossing the FFI on each event.
     lifecycle_observer: LifecycleObserverSlot,
+    /// T146 — kernel event observer slot. Shared `Arc` with the actor
+    /// thread (and thus the kernel, which `crate::actor::run_actor_with_
+    /// observers` binds onto the kernel via `set_event_observers_handle`).
+    /// Per-app crates (e.g. `nmp-app-chirp`) reach this slot through
+    /// [`NmpApp::register_event_observer`] /
+    /// [`NmpApp::unregister_event_observer`]; the C-ABI variant goes
+    /// through `ffi::event_observer::nmp_app_register_event_observer`. Both
+    /// paths mutate the same `Mutex<…>` the actor reads.
+    event_observers: KernelEventObserverSlot,
     actor: Mutex<Option<JoinHandle<()>>>,
     update_listener: Mutex<Option<JoinHandle<()>>>,
 }
@@ -148,8 +171,20 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // `ActorCommand::LifecycleEvent`. Both see the same `Mutex<Option<...>>`.
     let lifecycle_observer = new_lifecycle_observer_slot();
     let actor_lifecycle_observer = Arc::clone(&lifecycle_observer);
+    // T146 — shared kernel event observer slot. Same pattern as the
+    // lifecycle slot: the `NmpApp` keeps one clone (used by Rust + C-ABI
+    // registration entry points), the actor thread carries another for the
+    // kernel's fan-out path (`set_event_observers_handle`). Registrations
+    // mutate the inner `Mutex` visible to both sides.
+    let event_observers = new_event_observer_slot();
+    let actor_event_observers = Arc::clone(&event_observers);
     let actor = thread::spawn(move || {
-        run_actor_with_lifecycle_observer(command_rx, update_tx, actor_lifecycle_observer);
+        run_actor_with_observers(
+            command_rx,
+            update_tx,
+            actor_lifecycle_observer,
+            actor_event_observers,
+        );
     });
     let update_listener = thread::spawn(move || {
         while let Ok(update) = update_rx.recv() {
@@ -168,6 +203,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         update_callback,
         capability_callback: Arc::new(Mutex::new(None)),
         lifecycle_observer,
+        event_observers,
         actor: Mutex::new(Some(actor)),
         update_listener: Mutex::new(Some(update_listener)),
     }))
@@ -181,6 +217,35 @@ impl NmpApp {
     /// has no idea the broker exists).
     pub fn actor_sender(&self) -> Sender<ActorCommand> {
         self.tx.clone()
+    }
+
+    /// T146 — register a typed Rust observer. Returns an opaque id the
+    /// caller retains to unregister later via
+    /// [`Self::unregister_event_observer`]. Used by per-app crates such as
+    /// `nmp-app-chirp` which depend on `nmp-core` + a protocol crate
+    /// (`nmp-nip01`) and need typed `&KernelEvent` access on the kernel's
+    /// ingest fan-out. D0 — `nmp-core` never names the protocol crate; this
+    /// trait is the seam.
+    pub fn register_event_observer(
+        &self,
+        observer: Arc<dyn KernelEventObserver>,
+    ) -> KernelEventObserverId {
+        register_rust_observer(&self.event_observers, observer)
+    }
+
+    /// T146 — unregister a previously-registered observer. Idempotent;
+    /// unknown ids are silent no-ops (D6).
+    pub fn unregister_event_observer(&self, id: KernelEventObserverId) {
+        unregister_observer(&self.event_observers, id);
+    }
+
+    /// T146 — clone of the kernel event observer slot. The `ffi::event_observer`
+    /// FFI surface uses this to plug C-ABI registrations into the same slot
+    /// that backs the typed Rust API above. Crate-private because external
+    /// Rust callers should go through
+    /// [`Self::register_event_observer`] / [`Self::unregister_event_observer`].
+    pub(crate) fn event_observers_slot(&self) -> KernelEventObserverSlot {
+        Arc::clone(&self.event_observers)
     }
 }
 

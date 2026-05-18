@@ -267,9 +267,17 @@ pub(super) fn dispatch_command(
             // forwarder thread and must NOT be replaced; the counter is
             // process-lifetime).
             let drops_handle = kernel.take_dispatch_drops_handle_for_reset();
+            // T146 — preserve the event observer slot across Reset for the
+            // same reason: the `Arc<Mutex<…>>` is shared with the FFI
+            // surface and per-app crates; replacing it would silently
+            // disconnect every registered observer.
+            let event_observers_handle = kernel.take_event_observers_handle_for_reset();
             *kernel = Kernel::new(kernel.visible_limit());
             if let Some(handle) = drops_handle {
                 kernel.set_dispatch_drops_handle(handle);
+            }
+            if let Some(handle) = event_observers_handle {
+                kernel.set_event_observers_handle(handle);
             }
             *startup_sent = false;
             if *running {
