@@ -89,7 +89,7 @@ URI shell itself parses in <1 µs.
 
 - ADR-0015 (this commit) — full design rationale, synthesis reconciliation,
   follow-ups.
-- PD-004 — `IdentityId` → ULID before M8.
+- PD-003 — `IdentityId` → ULID before M8.
 - `docs/plan/m6-signers-write.md` — milestone scope.
 - `docs/plan/m5-nip42.md` — depends on `Signer` trait + `signer_active()`
   to route AUTH challenges.

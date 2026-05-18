@@ -33,7 +33,7 @@ The task's own escape clause: "If one missing: define minimal trait shim that #4
 
 **What shipped:**
 - `PublishEngine` with deterministic per-(event,relay) state machine: Pending → InFlight → Ok | RelayError | TimedOut → FailedAfterRetries
-- Retry policy: AUTH-REQUIRED → reauth +1 retry; transient → up to 3 total attempts (initial + 2 retries) at 1s/4s
+- Retry policy: AUTH-REQUIRED → reauth +1 retry; transient → 3 retries at 1s/4s/16s
 - `PublishStatusView` with bounded snapshot (rev counter, in_flight, recent_ok cap 32, recent_errors cap 32)
 - Traits: `Signer`, `RelayDispatcher`, `OutboxResolver`, `PublishStore` — each with in-memory/noop/static test impl
 - 11 unit tests (state machine + engine), 9 integration tests (NIP-65 routing, retry, give-up, restart, dedup, outcome classification)
@@ -89,3 +89,4 @@ Product-spec now has D0–D8 with an explicit "two kinds" distinction:
 - **D6–D8: substrate invariants** — runtime / FFI / hot-path constraints (errors-never-FFI, capabilities-report, reactivity-contract).
 
 Conflicts still resolve in listed order (D0 wins over D8). README aligned. T19 framework-magic-reconciler in flight will absorb D0–D8 into the framework-magic docs (sending them an updated brief alongside this commit).
+
