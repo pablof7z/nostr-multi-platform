@@ -39,7 +39,29 @@
          </BuildableReference>
       </MacroExpansion>
       <Testables>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "7A87735F31D0BA189C58ECF3"
+               BuildableName = "ChirpTests.xctest"
+               BlueprintName = "ChirpTests"
+               ReferencedContainer = "container:Chirp.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "161066BB635A370D0AA69F57"
+               BuildableName = "ChirpUITests.xctest"
+               BlueprintName = "ChirpUITests"
+               ReferencedContainer = "container:Chirp.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
+      <CommandLineArguments>
+      </CommandLineArguments>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"

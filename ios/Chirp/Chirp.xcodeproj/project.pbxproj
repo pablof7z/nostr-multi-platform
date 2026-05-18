@@ -11,6 +11,7 @@
 		0D422FF23569CEEFFC4AB10E /* HomeFeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F03417D370984DB9AC4212B /* HomeFeedView.swift */; };
 		159A0AB673722908A2785D5C /* ComposeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C239DE349111247765A86A53 /* ComposeView.swift */; };
 		192CF49D1BB3B5A4799329E4 /* ChirpApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E58C0EC2EAF4941E587B9B94 /* ChirpApp.swift */; };
+		2355CCF12E5CA31216977162 /* SmokeScenariosTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31B7447F6D5C5E1571BF6A03 /* SmokeScenariosTests.swift */; };
 		28DDB51A3E188547CD78D215 /* ChirpTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40C90EE715FD709B3C9BDCC /* ChirpTheme.swift */; };
 		5A64FFA65566FF2762F1A8B7 /* WalletView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 900229FDEE3330B7264E8A33 /* WalletView.swift */; };
 		683374BB2BBCDF65807EEFC8 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C88FE40DE954EED68068786 /* DiagnosticsView.swift */; };
@@ -31,13 +32,33 @@
 		EADA12AFFA8D08461F19DFA7 /* NoteContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ED689DD9659151162F819BC /* NoteContentView.swift */; };
 		FD278220A9E454AE75608FE8 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABF5AA8E2264637D1CA3BCA4 /* SearchView.swift */; };
 		FDD2055AA0756C779D63C6C4 /* NmpPulseCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = D54123F5D11729471B341A4E /* NmpPulseCapabilities.swift */; };
+		FF5483FCDF48B8892ABE5F53 /* ChirpUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25460F5E697F421F8C7BE89E /* ChirpUITests.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		262DA061E0A40EFFB64C3C15 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F9902D8B13CCB06443824441 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 063AA418A76E467C127B2092;
+			remoteInfo = Chirp;
+		};
+		70A0A290CCEFBB43D4CACA20 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F9902D8B13CCB06443824441 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 063AA418A76E467C127B2092;
+			remoteInfo = Chirp;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		1B303905AEF1833128E7C6BC /* KernelBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KernelBridge.swift; sourceTree = "<group>"; };
 		1ED689DD9659151162F819BC /* NoteContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteContentView.swift; sourceTree = "<group>"; };
+		25460F5E697F421F8C7BE89E /* ChirpUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChirpUITests.swift; sourceTree = "<group>"; };
 		2C01000494AC737F8F8E286D /* ThreadScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadScreen.swift; sourceTree = "<group>"; };
 		2F9E4580C1A561577607FE7A /* AccountsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountsView.swift; sourceTree = "<group>"; };
+		31B7447F6D5C5E1571BF6A03 /* SmokeScenariosTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmokeScenariosTests.swift; sourceTree = "<group>"; };
 		31F55FC6A139DA43D434DBF9 /* RootShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootShell.swift; sourceTree = "<group>"; };
 		3808C5C6482C44109C442925 /* KernelModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KernelModel.swift; sourceTree = "<group>"; };
 		4F03417D370984DB9AC4212B /* HomeFeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFeedView.swift; sourceTree = "<group>"; };
@@ -58,9 +79,11 @@
 		C239DE349111247765A86A53 /* ComposeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposeView.swift; sourceTree = "<group>"; };
 		C40C90EE715FD709B3C9BDCC /* ChirpTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChirpTheme.swift; sourceTree = "<group>"; };
 		C79DFA56568C01E3AE76955E /* NotificationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsView.swift; sourceTree = "<group>"; };
+		CF9F1342DAEFAF5D00A119FA /* ChirpTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ChirpTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D32D744B5446C909E7AEEB8F /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		D54123F5D11729471B341A4E /* NmpPulseCapabilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NmpPulseCapabilities.swift; sourceTree = "<group>"; };
 		E58C0EC2EAF4941E587B9B94 /* ChirpApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChirpApp.swift; sourceTree = "<group>"; };
+		F3554BAD41A86827FFAF1D06 /* ChirpUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ChirpUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -80,6 +103,8 @@
 			isa = PBXGroup;
 			children = (
 				BE212C39877A658DFB0C98FA /* Chirp.app */,
+				CF9F1342DAEFAF5D00A119FA /* ChirpTests.xctest */,
+				F3554BAD41A86827FFAF1D06 /* ChirpUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -120,6 +145,14 @@
 			path = Capabilities;
 			sourceTree = "<group>";
 		};
+		505BB62CA7F7EF2B716CA57D /* ChirpTests */ = {
+			isa = PBXGroup;
+			children = (
+				31B7447F6D5C5E1571BF6A03 /* SmokeScenariosTests.swift */,
+			);
+			path = ChirpTests;
+			sourceTree = "<group>";
+		};
 		715349A5CCFD688F835ADDB2 /* Chirp */ = {
 			isa = PBXGroup;
 			children = (
@@ -132,6 +165,14 @@
 				32B5905F69FD6EE892022E18 /* Theme */,
 			);
 			path = Chirp;
+			sourceTree = "<group>";
+		};
+		78A0701FAA4CB5F258E94B90 /* ChirpUITests */ = {
+			isa = PBXGroup;
+			children = (
+				25460F5E697F421F8C7BE89E /* ChirpUITests.swift */,
+			);
+			path = ChirpUITests;
 			sourceTree = "<group>";
 		};
 		935D67AACBA8594449383214 /* App */ = {
@@ -157,6 +198,8 @@
 			isa = PBXGroup;
 			children = (
 				715349A5CCFD688F835ADDB2 /* Chirp */,
+				505BB62CA7F7EF2B716CA57D /* ChirpTests */,
+				78A0701FAA4CB5F258E94B90 /* ChirpUITests */,
 				26E6F52A54743D11DFA78B83 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -181,6 +224,42 @@
 			productReference = BE212C39877A658DFB0C98FA /* Chirp.app */;
 			productType = "com.apple.product-type.application";
 		};
+		161066BB635A370D0AA69F57 /* ChirpUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D1861D1F3BF10A1C9D960847 /* Build configuration list for PBXNativeTarget "ChirpUITests" */;
+			buildPhases = (
+				CB8EABD5668C771D54290F12 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				8532F164361FAA8A8C69318E /* PBXTargetDependency */,
+			);
+			name = ChirpUITests;
+			packageProductDependencies = (
+			);
+			productName = ChirpUITests;
+			productReference = F3554BAD41A86827FFAF1D06 /* ChirpUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		7A87735F31D0BA189C58ECF3 /* ChirpTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3E1CBAE1B15120AF76627DCD /* Build configuration list for PBXNativeTarget "ChirpTests" */;
+			buildPhases = (
+				BDFBCF954229B14EBFA094DE /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				7B46853C5EB6B543ADE41D7F /* PBXTargetDependency */,
+			);
+			name = ChirpTests;
+			packageProductDependencies = (
+			);
+			productName = ChirpTests;
+			productReference = CF9F1342DAEFAF5D00A119FA /* ChirpTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -191,6 +270,15 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					063AA418A76E467C127B2092 = {
+						DevelopmentTeam = 456SHKPP26;
+						ProvisioningStyle = Automatic;
+					};
+					161066BB635A370D0AA69F57 = {
+						DevelopmentTeam = 456SHKPP26;
+						ProvisioningStyle = Automatic;
+						TestTargetID = 063AA418A76E467C127B2092;
+					};
+					7A87735F31D0BA189C58ECF3 = {
 						DevelopmentTeam = 456SHKPP26;
 						ProvisioningStyle = Automatic;
 					};
@@ -211,11 +299,29 @@
 			projectRoot = "";
 			targets = (
 				063AA418A76E467C127B2092 /* Chirp */,
+				7A87735F31D0BA189C58ECF3 /* ChirpTests */,
+				161066BB635A370D0AA69F57 /* ChirpUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXSourcesBuildPhase section */
+		BDFBCF954229B14EBFA094DE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				2355CCF12E5CA31216977162 /* SmokeScenariosTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CB8EABD5668C771D54290F12 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				FF5483FCDF48B8892ABE5F53 /* ChirpUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		EE812C034A7568790A8F7328 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -248,6 +354,19 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		7B46853C5EB6B543ADE41D7F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 063AA418A76E467C127B2092 /* Chirp */;
+			targetProxy = 70A0A290CCEFBB43D4CACA20 /* PBXContainerItemProxy */;
+		};
+		8532F164361FAA8A8C69318E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 063AA418A76E467C127B2092 /* Chirp */;
+			targetProxy = 262DA061E0A40EFFB64C3C15 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		078888E0E7264D0D14F863E2 /* Release */ = {
@@ -335,6 +454,40 @@
 				SWIFT_VERSION = 6.0;
 			};
 			name = Release;
+		};
+		0F751F1EA19B2A58701AB4BF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.ChirpUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Chirp;
+			};
+			name = Debug;
+		};
+		1C6EA4A1BC54014BB53ED511 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.ChirpTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Chirp.app/Chirp";
+			};
+			name = Debug;
 		};
 		4AC550F33127223ECAB7403F /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -429,9 +582,52 @@
 			};
 			name = Debug;
 		};
+		88F4ABC0F2B15808EE24705D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.ChirpTests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Chirp.app/Chirp";
+			};
+			name = Release;
+		};
+		D9191FBB512183F5DDFDB080 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.ChirpUITests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Chirp;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		3E1CBAE1B15120AF76627DCD /* Build configuration list for PBXNativeTarget "ChirpTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1C6EA4A1BC54014BB53ED511 /* Debug */,
+				88F4ABC0F2B15808EE24705D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		44649860CA8F9C9EA0EA2354 /* Build configuration list for PBXProject "Chirp" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -446,6 +642,15 @@
 			buildConfigurations = (
 				74AFC5401470246E77F06BF3 /* Debug */,
 				078888E0E7264D0D14F863E2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D1861D1F3BF10A1C9D960847 /* Build configuration list for PBXNativeTarget "ChirpUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0F751F1EA19B2A58701AB4BF /* Debug */,
+				D9191FBB512183F5DDFDB080 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
