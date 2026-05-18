@@ -110,7 +110,11 @@ impl IdentityRuntime {
 
     /// Stable signer-kind label for the active account, or `None` if no
     /// account is active. `"local"` for nsec / generated keys; whatever the
-    /// remote signer returns (`"nip46"`, …) for remote handles.
+    /// remote signer returns (`"nip46"`, …) for remote handles. Exposed for
+    /// the broker (Stage 4) and diagnostic-snapshot consumers; today
+    /// `sync_kernel` resolves the per-row kind inline so this helper has no
+    /// in-tree caller yet.
+    #[allow(dead_code)]
     pub(crate) fn active_signer_kind(&self) -> Option<&'static str> {
         if let Some(handle) = self.active_remote() {
             return Some(handle.signer_kind());

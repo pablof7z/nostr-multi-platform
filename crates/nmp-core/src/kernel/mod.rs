@@ -118,16 +118,6 @@ use types::*;
 /// the audit table in `retention_tests.rs` for the per-structure rationale.
 pub(crate) const MAX_CLAIMS_PER_PUBKEY: usize = 256;
 
-/// The kernel owns all Nostr protocol state for the active app session.
-///
-/// It is driven by the actor loop in `crate::relay` through a simple message-
-/// passing interface: relay frames arrive via `handle_message`, view intents
-/// arrive via `open_*` / `close_*`, and the actor reads snapshots via `emit`.
-///
-/// The `EventStore` (`self.store`) is the single authoritative writer for all
-/// persisted events (D4).  The lightweight `events` read-cache is a derived
-/// projection populated only after the store confirms insertion or replacement.
-
 /// Per-relay-role NIP-42 credentials. The closure signs the kind:22242 with
 /// whatever keypair is appropriate for that role (user identity for Content /
 /// Indexer; NWC client secret for Wallet). `pubkey_hex` is stamped on the
@@ -138,6 +128,15 @@ pub(crate) struct RelayAuthCredentials {
     pub(crate) pubkey_hex: String,
 }
 
+/// The kernel owns all Nostr protocol state for the active app session.
+///
+/// It is driven by the actor loop in `crate::relay` through a simple message-
+/// passing interface: relay frames arrive via `handle_message`, view intents
+/// arrive via `open_*` / `close_*`, and the actor reads snapshots via `emit`.
+///
+/// The `EventStore` (`self.store`) is the single authoritative writer for all
+/// persisted events (D4).  The lightweight `events` read-cache is a derived
+/// projection populated only after the store confirms insertion or replacement.
 pub(crate) struct Kernel {
     /// Pluggable event store. D4: the single writer for all Nostr events.
     ///

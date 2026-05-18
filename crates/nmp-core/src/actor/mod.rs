@@ -93,14 +93,22 @@ pub enum ActorCommand {
     /// trait object's concrete type lives in `nmp-signers` but `nmp-core`
     /// only sees `dyn RemoteSignerHandle` (defined in
     /// [`crate::remote_signer`]).
+    ///
+    /// Constructed by the broker crate (Stage 4) which depends on both
+    /// `nmp-core` and `nmp-signers`; only test code instantiates it today.
+    #[allow(dead_code)]
     AddRemoteSigner {
         handle: Box<dyn crate::RemoteSignerHandle>,
     },
-    /// Broker → actor: drop a remote signer by user pubkey hex.
+    /// Broker → actor: drop a remote signer by user pubkey hex. See
+    /// [`Self::AddRemoteSigner`] for the cross-crate construction story.
+    #[allow(dead_code)]
     RemoveRemoteSigner { identity_id: String },
     /// Broker → actor: progress event for the bunker handshake UI. Actor
     /// stores the latest into a kernel snapshot field; the broker is the
-    /// sole writer. Stage `"idle"` clears the projection.
+    /// sole writer. Stage `"idle"` clears the projection. Constructed by
+    /// the broker crate (Stage 4).
+    #[allow(dead_code)]
     BunkerHandshakeProgress {
         /// `"connecting"` | `"awaiting_pubkey"` | `"ready"` | `"failed"` | `"idle"`.
         stage: String,
