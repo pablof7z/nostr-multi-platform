@@ -329,6 +329,14 @@ pub(crate) fn sign_in_nsec(
     outbound
 }
 
+/// Pubkeys every fresh account follows out-of-the-box (hex, kind:3).
+const DEFAULT_FOLLOWS: &[&str] = &[
+    // npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft
+    "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52",
+    // fiatjaf
+    "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+];
+
 pub(crate) fn create_account(
     identity: &mut IdentityRuntime,
     kernel: &mut Kernel,
@@ -340,7 +348,35 @@ pub(crate) fn create_account(
     kernel.reconcile_follow_feed_after_identity_change();
     let mut outbound = kernel.active_account_bootstrap_requests();
     outbound.extend(retarget_timeline(identity, kernel, relays_ready));
+    outbound.extend(publish_initial_follows(identity, kernel));
     outbound
+}
+
+fn publish_initial_follows(
+    identity: &IdentityRuntime,
+    kernel: &mut Kernel,
+) -> Vec<OutboundMessage> {
+    let Some(author) = identity.active_pubkey() else {
+        return Vec::new();
+    };
+    let tags = DEFAULT_FOLLOWS
+        .iter()
+        .map(|p| vec!["p".to_string(), p.to_string()])
+        .collect::<Vec<_>>();
+    let unsigned = UnsignedEvent {
+        pubkey: author,
+        kind: 3,
+        tags,
+        content: String::new(),
+        created_at: now_secs(),
+    };
+    match sign_active(identity, &unsigned) {
+        Ok(signed) => kernel.publish_signed(&signed, &[]),
+        Err(reason) => {
+            kernel.set_last_error_toast(Some(reason));
+            Vec::new()
+        }
+    }
 }
 
 pub(crate) fn switch_active(
