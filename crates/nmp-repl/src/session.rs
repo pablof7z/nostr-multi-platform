@@ -23,7 +23,8 @@
 //! cache. `refresh follows` only drops `follows_cache` (variable-expansion
 //! state, independent of the outbox lifecycle).
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use nmp_core::planner::InMemoryMailboxCache;
@@ -73,6 +74,20 @@ pub struct Session {
     // Output modes
     pub verbose: bool,
     pub json: bool,
+
+    // ── MLS / Marmot (bypass-kernel, direct-WebSocket) ───────────────────
+    // The identity used for MLS ops (KeyPackage signing, gift-wrap, kind:0).
+    // Set by `create-account` or `load-key`. Distinct from `seed_hex` (the
+    // read-only diagnostic seed); `load-key`/`create-account` ALSO set
+    // `seed_hex` so the prompt + `req` reflect the active identity.
+    pub mls_keys: Option<nostr::Keys>,
+    // The MDK-driving service (in-memory MLS store). `Arc<Mutex<…>>` because
+    // `MarmotService` is `!Sync`-friendly only behind a lock and the wire
+    // helpers borrow the session mutably elsewhere.
+    pub mls_service: Option<Arc<Mutex<nmp_marmot::service::MarmotService>>>,
+    // Pending welcomes discovered by `mls-poll`, keyed by gift-wrap (kind:1059)
+    // event id hex → (the original gift-wrap Event, group_name, inviter_npub).
+    pub mls_pending_welcomes: HashMap<String, (nostr::Event, String, String)>,
 }
 
 impl Default for Session {
@@ -98,6 +113,9 @@ impl Default for Session {
             last_run: None,
             verbose: false,
             json: false,
+            mls_keys: None,
+            mls_service: None,
+            mls_pending_welcomes: HashMap::new(),
         }
     }
 }

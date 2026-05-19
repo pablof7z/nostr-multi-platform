@@ -81,6 +81,7 @@ Per doctrine D3, NIP-65 routing is the long-term default policy for reads and wr
 | Subscription with `p` tag filter or notifications | Union of each tagged pubkey's inbox relays. |
 | Subscription with neither | Active session's read relays. |
 | Publish of any signed event | Author's write relays. |
+| Publish of discovery events (kind:0, 3, 1xxxx) | Also fan out to user's configured indexer relays (in addition to write relays above). |
 | Publish with `p` tags (DMs, mentions, reactions) | Author's write relays **plus** each tagged pubkey's inbox relays. |
 | DM (NIP-17 gift-wrapped) | **Only** resolved recipient inbox relays. Never the author's write relays. Never the active session's "default" relays. Missing recipient inbox relays fail closed. |
 | Discovery (kind-10002 fetch for unknown pubkeys) | Configurable indexer relay set (default: a curated list of high-coverage relays). |
@@ -96,7 +97,7 @@ Per doctrine D3, NIP-65 routing is the long-term default policy for reads and wr
 
 - First contact with an unknown pubkey → enqueue kind-10002 fetch from indexer relays.
 - Fresher kind-10002 arrives → invalidate dependent subscriptions, recompute relay sets, re-issue REQs as needed.
-- Kind-10002 missing for a pubkey after N seconds → fall back to indexer set for reads only; do not publish to indexers.
+- Kind-10002 missing for a pubkey after N seconds → fall back to indexer set for reads only; do not publish content events to indexers.
 
 The gossip cache is the `nostr-gossip` crate; backend selection (in-memory vs SQLite) follows the storage backend choice. Watermarks (§7.1) intersect with outbox: a sync watermark is keyed by `(filter, relay)` and naturally tracks per-author per-relay coverage.
 

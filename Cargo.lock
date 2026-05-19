@@ -3374,8 +3374,10 @@ dependencies = [
  "nmp-core",
  "nmp-nip59",
  "nostr",
+ "rustls",
  "serde",
  "serde_json",
+ "tungstenite",
 ]
 
 [[package]]
@@ -3518,7 +3520,10 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "crossterm",
+ "mdk-sqlite-storage",
  "nmp-core",
+ "nmp-marmot",
+ "nostr",
  "rustls",
  "rustyline",
  "serde",

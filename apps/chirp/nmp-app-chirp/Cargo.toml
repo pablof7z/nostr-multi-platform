@@ -24,16 +24,6 @@ nmp-threading = { path = "../../../crates/nmp-threading" }
 # typed `MarmotService` translation layer; no MLS type crosses its C-ABI
 # (`group_id` is hex, errors are strings).
 nmp-marmot = { path = "../../../crates/nmp-marmot" }
-# FFI translation-layer exception to the "nmp-marmot is the SOLE importer
-# of mdk-core/openmls" kernel-boundary doctrine (nmp-marmot/src/lib.rs).
-# This crate's marmot module IS the typed-translation-layer that doctrine
-# anticipates ("When an actor/FFI consumer lands, it needs a typed
-# translation layer (opaque group_id: Vec<u8>, string errors)"). No MLS
-# type crosses the C-ABI; `mdk-core` types appear ONLY at the input
-# construction sites that bridge C-ABI primitives (hex `group_id`, JSON
-# config fields) into `MarmotService` arguments (`NostrGroupConfigData`,
-# `GroupId`) — which are unnamed-able any other way.
-mdk-core = "0.8.0"
 # `nostr` reconstructs typed `Event` / `Keys` / `PublicKey` / `RelayUrl`
 # values from the C-ABI JSON and builds the kind:444 message rumor.
 # Pinned to the workspace `0.44` graph (nmp-core + mdk-core re-export the
@@ -57,3 +47,7 @@ nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
 # smoke tests can spin up a real `MarmotService` without a keyring /
 # on-disk SQLite file (mirrors `crates/nmp-marmot/src/tests.rs`).
 mdk-sqlite-storage = { version = "0.8.0", features = ["test-utils"] }
+# The Marmot FFI smoke tests build a `NostrGroupConfigData` to drive the
+# real `create_group` round-trip. Logic moved to `nmp-marmot`, so this is
+# now a dev-only dependency (Chirp ships zero MLS types in production).
+mdk-core = "0.8.0"

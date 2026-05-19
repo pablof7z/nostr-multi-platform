@@ -41,7 +41,7 @@
 //! `invite`'s kind:445 commit + kind:1059 gift-wraps, `send`'s kind:445,
 //! `accept_welcome`'s post-join kind:445 self-update), this crate performs
 //! the `MarmotService` op and then publishes the signed events INTERNALLY
-//! via [`crate::marmot::publish`] (the `nmp-core`
+//! via [`nmp_marmot::projection::publish`] (the `nmp-core`
 //! `nmp_app_publish_signed_event*` kernel capabilities, called against the
 //! retained `*mut NmpApp`). There is NO Swift relay path — that hook never
 //! existed (see `MarmotBridge.swift`). The result still carries the signed
@@ -60,7 +60,7 @@
 //! `nmp_app_chirp_marmot_register` also registers a raw signed-event tap
 //! (`nmp-core` `RawEventObserver`, Rust-trait API) for kinds
 //! `[444, 445, 1059]`. The kernel delivers every accepted inbound signed
-//! event of those kinds to [`crate::marmot::tap`], which drives them
+//! event of those kinds to [`nmp_marmot::projection::tap`], which drives them
 //! through the SAME `ops::ingest_signed_event_core` the back-compat
 //! `{"op":"ingest_signed_event"}` dispatch op uses — so welcomes /
 //! messages received from relays surface in the next snapshot with no
@@ -85,8 +85,8 @@ use serde_json::{json, Value};
 use nmp_core::substrate::ViewModule;
 use nmp_marmot::service::MarmotService;
 
-use crate::marmot::state::MarmotProjection;
-use crate::marmot::tap::MarmotIngestTap;
+use nmp_marmot::projection::state::MarmotProjection;
+use nmp_marmot::projection::tap::MarmotIngestTap;
 
 /// Default page size for [`nmp_app_chirp_marmot_group_messages`].
 const DEFAULT_MESSAGE_PAGE: usize = 200;
@@ -107,7 +107,7 @@ pub struct MarmotHandle {
     observer_id: KernelEventObserverId,
     /// Raw signed-event tap (the CLOSED inbound ingest seam — drives
     /// kind:1059/445 into `MarmotService` via the shared core; see
-    /// [`crate::marmot::tap`]). Separate kernel slot from `observer_id`.
+    /// [`nmp_marmot::projection::tap`]). Separate kernel slot from `observer_id`.
     raw_observer_id: RawEventObserverId,
     app: *mut NmpApp,
 }
@@ -274,7 +274,7 @@ pub extern "C" fn nmp_app_chirp_marmot_group_messages(
     };
     let rows = handle
         .projection
-        .with_inner(|h| crate::marmot::ops::group_messages(h, &gid_hex, DEFAULT_MESSAGE_PAGE))
+        .with_inner(|h| nmp_marmot::projection::ops::group_messages(h, &gid_hex, DEFAULT_MESSAGE_PAGE))
         .unwrap_or_default();
     match serde_json::to_string(&rows) {
         Ok(s) => to_c_string(&s),
@@ -302,7 +302,7 @@ pub extern "C" fn nmp_app_chirp_marmot_dispatch(
     };
     let result = handle
         .projection
-        .with_inner(|h| crate::marmot::ops::dispatch(h, &v, now_secs()))
+        .with_inner(|h| nmp_marmot::projection::ops::dispatch(h, &v, now_secs()))
         .unwrap_or_else(|| err("projection mutex poisoned"));
     to_c_json(&result)
 }

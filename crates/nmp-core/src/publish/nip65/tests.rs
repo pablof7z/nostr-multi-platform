@@ -41,7 +41,7 @@ fn store_kind10002(store: &dyn EventStore, author_hex: &str, tags: Vec<Vec<Strin
 }
 
 fn mk_resolver(store: Arc<dyn EventStore>) -> Nip65OutboxResolver {
-    Nip65OutboxResolver::new(store)
+    Nip65OutboxResolver::new(store, Arc::new(std::sync::Mutex::new(Vec::new())))
 }
 
 #[test]
@@ -56,7 +56,7 @@ fn nip65_resolver_uses_author_writes_when_present() {
         ],
     );
     let resolver = mk_resolver(store);
-    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto);
+    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1);
     assert!(out.contains("wss://write.example"));
     // Read-only relays are NOT used for the author's own writes.
     assert!(!out.contains("wss://read.example"));
@@ -73,7 +73,7 @@ fn nip65_resolver_uses_author_writes_when_present() {
 fn nip65_resolver_returns_empty_when_no_kind10002() {
     let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
     let resolver = mk_resolver(store);
-    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto);
+    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1);
     assert!(
         out.is_empty(),
         "author with no kind:10002 must resolve to empty set (fail-closed, NoTargets); \
@@ -99,6 +99,7 @@ fn nip65_resolver_unions_recipient_reads_for_p_tags() {
         AUTHOR_HEX,
         &[RECIPIENT_HEX.to_string()],
         &PublishTarget::Auto,
+        1,
     );
     assert!(out.contains("wss://author-write.example"));
     assert!(out.contains("wss://recipient-read.example"));
@@ -118,6 +119,7 @@ fn nip65_resolver_returns_explicit_unchanged() {
         &PublishTarget::Explicit {
             relays: explicit.clone(),
         },
+        1,
     );
     assert_eq!(out, explicit.into_iter().collect::<BTreeSet<_>>());
 }
@@ -140,7 +142,7 @@ fn nip65_resolver_handles_malformed_kind10002_gracefully() {
         ],
     );
     let resolver = mk_resolver(store);
-    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto);
+    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1);
     assert!(out.contains("wss://valid.example"));
     assert!(!out.contains("https://example.com"));
     assert!(!out.contains("wss://wrong-tag.example"));
@@ -164,6 +166,7 @@ fn nip65_resolver_unmarked_tag_is_both() {
         AUTHOR_HEX,
         &[RECIPIENT_HEX.to_string()],
         &PublishTarget::Auto,
+        1,
     );
     // Unmarked counts as both → write goes here.
     assert!(out.contains("wss://both.example"));
@@ -179,7 +182,7 @@ fn nip65_resolver_invalid_author_hex_returns_empty() {
     let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
     let resolver = mk_resolver(store);
     // Short / non-hex author → lookup returns None → empty (fail-closed).
-    let out = resolver.resolve("not-hex", &[], &PublishTarget::Auto);
+    let out = resolver.resolve("not-hex", &[], &PublishTarget::Auto, 1);
     assert!(
         out.is_empty(),
         "unparseable author pubkey must resolve to empty set (fail-closed); \

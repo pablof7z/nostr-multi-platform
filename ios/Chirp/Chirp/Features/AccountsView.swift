@@ -245,7 +245,7 @@ private struct AddAccountSheet: View {
                 .foregroundStyle(.secondary)
 
             Button {
-                model.createAccount()
+                model.createAccount(profile: ["name": "New User"], relays: [("wss://relay.primal.net", "both"), ("wss://purplepag.es", "indexer")])
                 dismiss()
             } label: {
                 Label("Create new identity", systemImage: "sparkles")

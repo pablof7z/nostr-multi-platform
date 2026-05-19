@@ -125,19 +125,21 @@ This is the only `PublishPlanner` impl shipped in v1. The trait exists so a futu
 
 Inputs: a signed `event`, a `PublishPrivacy` mode, an optional `PublishOverride`.
 
-The algorithm deliberately does **not** accept an indexer set. Indexers are read-only
-discovery infrastructure (compiler Stage 2, §3.2). A publish planner that accepted an
-indexer argument would make it too easy to accidentally route writes to indexers.
-Compare: Applesauce's `ActionContext.publish(event, relays?)` is caller-responsibility —
-any action can pass any relays (`docs/research/applesauce/outbox.md` §7 lines 116-138).
-NMP's planner is structural: publish resolution and read-fallback are separate code paths.
+The algorithm does **not** accept an indexer set as a general write fallback. A publish
+planner that routed all events to indexers would leak content events (kind:1, 6, 7, …)
+to discovery infrastructure that has no use for them.
+
+**Exception — discovery kinds (kind:0, kind:3, kind:1xxxx).** Indexer relays exist
+specifically to serve profile, contact-list, and replaceable-event lookups. When the
+event being published is one of these kinds, the planner includes the user's configured
+indexer relays in the write set alongside the author's NIP-65 write relays. This is not
+a fallback — it is intentional fan-out so the user's profile and contacts remain
+discoverable via any indexer they have configured.
 
 The legitimate fallback when an author has no declared NIP-65 write relays is the
 operator-/user-configured **app-relay** set (`UserConfiguredCategory::AppRelay`). App
 relays are **additive** to NIP-65 in both directions (read and publish) — they are the
-correct cold-start substitution that the indexer was historically (and wrongly) being
-asked to provide on the read side. The "no indexer fallback" structural argument
-stands: app relays are a declared operator/user choice, not a global discovery commons.
+correct cold-start substitution, not the indexer.
 
 ```
 1. If `override_` is Some:
@@ -146,14 +148,15 @@ stands: app relays are a declared operator/user choice, not a global discovery c
         If any override relay is not a declared inbox, return Err(OverrideRejected).
      c. Apply the override (narrow the base set to override_relays).
      d. Set every PublishRouteReason::Override; continue to step 4.
-2. Resolve author write relays (no indexer fallback; app_relays are additive):
-     author_outbox = resolve_author_outbox_no_indexer(cache, user_configured, event.pubkey)
+2. Resolve author write relays:
+     author_outbox = resolve_author_outbox(cache, user_configured, event.pubkey)
      app_relays    = user_configured.app_relays()
      write_set     = author_outbox.relays ∪ app_relays
+     // Discovery kinds fan-out to indexer relays so the author remains discoverable.
+     if is_discovery_kind(event.kind):  // kind:0, kind:3, or 10000 ≤ kind ≤ 19999
+         write_set = write_set ∪ user_configured.indexer_relays()
      If write_set is empty:
          return Err(NoAuthorRelays { ... })  // fail; the kernel surfaces a toast.
-                                             // App relays are the legitimate fallback;
-                                             // indexers remain out of the publish path.
 3. Match on privacy:
    a. Public:
         // author_outbox.relays carries the Nip65 lane; app_relays carry

@@ -182,6 +182,7 @@ impl PublishEngine {
             &event.unsigned.pubkey,
             &helpers::collect_p_tags(&event),
             &target,
+            event.unsigned.kind,
         );
         if relays.is_empty() {
             self.emit_no_targets(&handle, &event, now_ms);

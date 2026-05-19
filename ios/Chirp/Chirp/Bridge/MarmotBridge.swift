@@ -331,6 +331,21 @@ final class MarmotStore: ObservableObject {
         dispatch(["op": "publish_key_package"])
     }
 
+    /// Fetch kind:1059/445/30443 from the configured write relays and ingest
+    /// any welcomes, messages, and key packages. Blocks the calling thread
+    /// for up to ~8s per relay (each filter); call from a background Task.
+    @discardableResult
+    func pollInbox(extraRelays: [String] = []) -> MarmotOpResult {
+        var op: [String: Any] = ["op": "poll_inbox"]
+        if !extraRelays.isEmpty {
+            op["relays"] = extraRelays
+        }
+        mbLog.info("pollInbox: dispatching with relays=\(extraRelays)")
+        let result = dispatch(op)
+        mbLog.info("pollInbox: result ok=\(result.ok) error=\(result.error ?? "none")")
+        return result
+    }
+
     /// Trigger key-package fetch for the given npubs from relays. Fire-and-
     /// forget. Check `snapshot.cachedKpPubkeys` on the next tick to see which
     /// ones arrived.

@@ -81,7 +81,13 @@ impl DesktopApp {
                 ui.horizontal(|ui| {
                     ui.label("Sign in to publish:");
                     if ui.button("Create new account").clicked() {
-                        self.bridge.create_account();
+                        self.bridge.create_account(
+                            [("name".to_string(), "New User".to_string())].into(),
+                            vec![
+                                ("wss://relay.primal.net".to_string(), "both".to_string()),
+                                ("wss://purplepag.es".to_string(), "indexer".to_string()),
+                            ],
+                        );
                         self.bridge.open_timeline();
                     }
                     ui.add(

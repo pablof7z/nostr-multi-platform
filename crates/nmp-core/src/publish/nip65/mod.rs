@@ -21,7 +21,7 @@
 //! exception across the resolver boundary.
 
 use std::collections::BTreeSet;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::store::{EventStore, PubKey, StoredEvent};
 
@@ -38,20 +38,33 @@ use super::traits::OutboxResolver;
 /// mirrors T134's subscription-side `unroutable_authors` semantics.
 pub struct Nip65OutboxResolver {
     store: Arc<dyn EventStore>,
+    /// Indexer relay URLs, kept in sync with the kernel's relay config.
+    /// Discovery kinds (kind:0, kind:3, kind:1xxxx) fan out to these in
+    /// addition to the author's NIP-65 write relays.
+    indexer_relays: Arc<Mutex<Vec<String>>>,
+}
+
+/// Returns true for kinds that index relays exist to serve: kind:0 (profile),
+/// kind:3 (contacts), and 10000–19999 (replaceable events per NIP-01).
+pub fn is_discovery_kind(kind: u32) -> bool {
+    kind == 0 || kind == 3 || (10000..20000).contains(&kind)
 }
 
 impl Nip65OutboxResolver {
-    /// Build a resolver backed by the given event store.
-    pub fn new(store: Arc<dyn EventStore>) -> Self {
-        Self { store }
+    /// Build a resolver backed by the given event store and a shared indexer
+    /// relay list. The kernel holds a clone of the Arc and updates it whenever
+    /// relay config changes, so the resolver always sees current URLs.
+    pub fn new(store: Arc<dyn EventStore>, indexer_relays: Arc<Mutex<Vec<String>>>) -> Self {
+        Self {
+            store,
+            indexer_relays,
+        }
     }
 
-    /// Compatibility constructor — identical to `new`. Previously accepted an
-    /// `indexer_fallback` slice; the fallback is removed (T-publish-resolver-
-    /// indexer; codex f81f735). Retained so call sites compile without change
-    /// during the migration; callers should migrate to `new`.
+    /// Compatibility constructor — accepts just a store, no indexer relay
+    /// fan-out. Used by tests that don't need the discovery-kind path.
     pub fn with_default_fallback(store: Arc<dyn EventStore>) -> Self {
-        Self::new(store)
+        Self::new(store, Arc::new(Mutex::new(Vec::new())))
     }
 
     /// Look up the latest kind:10002 for `author_hex` and parse it into
@@ -73,6 +86,7 @@ impl OutboxResolver for Nip65OutboxResolver {
         author_pubkey: &str,
         p_tags: &[String],
         target: &PublishTarget,
+        kind: u32,
     ) -> BTreeSet<RelayUrl> {
         // 1. Explicit targets win — the caller has opted out per D3.
         if let PublishTarget::Explicit { relays } = target {
@@ -81,14 +95,13 @@ impl OutboxResolver for Nip65OutboxResolver {
 
         let mut out: BTreeSet<RelayUrl> = BTreeSet::new();
 
-        // 2. Author write-relays.
+        // 2. Author write-relays (always).
         //
         // If the author has no kind:10002 on file (or has an empty write set),
-        // we return an empty relay set — fail-closed per D3 / subsystems.md:99
-        // ("do not publish to indexers"). The engine maps an empty resolve to
-        // `PublishEngineError::NoTargets` and surfaces a visible toast. This
-        // mirrors T134's subscription-side `unroutable_authors` discipline:
-        // unroutable is surfaced honestly, never silently widened.
+        // we return an empty relay set — fail-closed per D3. The engine maps an
+        // empty resolve to `PublishEngineError::NoTargets` and surfaces a visible
+        // toast. This mirrors T134's subscription-side `unroutable_authors`
+        // discipline: unroutable is surfaced honestly, never silently widened.
         if let Some((writes, _reads)) = self.lookup_kind10002(author_pubkey) {
             out.extend(writes);
         }
@@ -97,7 +110,15 @@ impl OutboxResolver for Nip65OutboxResolver {
         // (If both author-writes and all #p reads are empty, out is empty →
         // NoTargets. That is the correct outcome for a fully-unroutable author.)
 
-        // 3. Recipient read-relays — union for every `#p` tag.
+        // 3. Discovery kinds also fan out to indexer relays so the author's
+        // profile, contacts, and replaceable events are discoverable.
+        if is_discovery_kind(kind) {
+            if let Ok(guard) = self.indexer_relays.lock() {
+                out.extend(guard.iter().cloned());
+            }
+        }
+
+        // 4. Recipient read-relays — union for every `#p` tag.
         for p in p_tags {
             if let Some((_writes, reads)) = self.lookup_kind10002(p) {
                 out.extend(reads);

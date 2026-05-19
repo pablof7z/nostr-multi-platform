@@ -34,7 +34,7 @@
 //! ## Outbound relay seam — CLOSED (this is the publish direction)
 //!
 //! The dispatch ops now publish their signed events to relays INTERNALLY
-//! via [`crate::marmot::publish`] (the `nmp-core`
+//! via [`crate::projection::publish`] (the `nmp-core`
 //! `nmp_app_publish_signed_event*` kernel capabilities, called against the
 //! retained `*mut NmpApp`). They no longer rely on a non-existent Swift
 //! relay path. The op result still carries the signed event JSON
@@ -45,11 +45,11 @@
 //! ## Inbound ingest seam — CLOSED (this is the receive direction)
 //!
 //! The kernel now also exposes a parallel raw signed-event tap
-//! (`RawEventObserver`, sig included). `nmp_app_chirp_marmot_register`
-//! registers [`crate::marmot::tap`] against the retained `*mut NmpApp`
-//! for kinds `[444, 445, 1059]`; the kernel delivers every accepted
-//! inbound signed event of those kinds to it and it drives them through
-//! the shared `ops::ingest_signed_event_core` (kind:1059 →
+//! (`RawEventObserver`, sig included). The host shell's Marmot register
+//! path registers [`crate::projection::tap`] against the retained
+//! `*mut NmpApp` for kinds `[444, 445, 1059]`; the kernel delivers every
+//! accepted inbound signed event of those kinds to it and it drives them
+//! through the shared `ops::ingest_signed_event_core` (kind:1059 →
 //! `unwrap_and_process_welcome`; kind:445 → `process_message`; seeds the
 //! `group_id→relays` cache). Welcomes / messages received from relays
 //! therefore surface in the next `snapshot` automatically — no Swift
@@ -71,9 +71,9 @@
 //!
 //! 1. **Signer seam.** `MarmotService::new` needs `nostr::Keys`. No
 //!    kernel-level `Keys` provider exists for this crate yet, so
-//!    `nmp_app_chirp_marmot_register` takes the secret key hex/nsec
-//!    directly. Replace with a `KeyringCapability`-backed seam when one
-//!    lands on `NmpApp`.
+//!    the host shell's Marmot register path takes the secret key
+//!    hex/nsec directly. Replace with a `KeyringCapability`-backed seam
+//!    when one lands on `NmpApp`.
 //! 2. **Lossy-observer seam — RESOLVED (inbound ingest CLOSED).** The
 //!    kernel `KernelEventObserver` fan-out delivers a [`KernelEvent`]
 //!    (id/author/kind/created_at/tags/content) — it carries NO signature,
@@ -82,9 +82,9 @@
 //!    *metadata* (presence of the local identity's own kind:30443/443
 //!    key-package). Actual MLS ingest of kind:445 group messages and
 //!    kind:1059 gift-wraps is now driven automatically by the parallel
-//!    raw signed-event tap ([`crate::marmot::tap`], a
-//!    `nmp-core` `RawEventObserver` that DOES carry `sig`), registered in
-//!    `nmp_app_chirp_marmot_register`. The
+//!    raw signed-event tap ([`crate::projection::tap`], a
+//!    `nmp-core` `RawEventObserver` that DOES carry `sig`), registered by
+//!    the host shell. The
 //!    `{"op":"ingest_signed_event","event_json":"…"}` dispatch op is kept
 //!    as a back-compat alias over the SAME
 //!    `ops::ingest_signed_event_core`; it no longer requires a Swift
@@ -102,9 +102,9 @@ use nmp_core::substrate::KernelEvent;
 use nmp_core::{KernelEventObserver, NmpApp};
 use nostr::{Event, JsonUtil, RelayUrl};
 
-use nmp_marmot::service::MarmotService;
+use crate::service::MarmotService;
 
-use crate::marmot::payload::{
+use crate::projection::payload::{
     KeyPackageStatus, MarmotGroupRow, MarmotSnapshot, PendingWelcomeRow,
 };
 
@@ -138,7 +138,7 @@ struct Inner {
     /// seeded from the `create_group` envelope + `Welcome::group_relays`.
     /// A MISS → publish falls back to `Auto` (documented limitation).
     group_relays: HashMap<String, Vec<RelayUrl>>,
-    /// The live `*mut NmpApp` the owning `MarmotHandle` retains. `null`
+    /// The live `*mut NmpApp` the owning host Marmot handle retains. `null`
     /// for the in-memory test projection (publish degrades to a silent
     /// no-op there — the D6 fire-and-forget contract).
     app: *mut NmpApp,
@@ -151,11 +151,12 @@ pub struct MarmotProjection {
     inner: Mutex<Inner>,
 }
 
-// SAFETY: identical rationale to `MarmotHandle` — Swift drives every FFI
-// call from one serialized bridge dispatch queue; the only `!Send`/`!Sync`
-// material is the `app` raw pointer, which is never mutated cross-thread
-// and is only ever read to forward a fire-and-forget publish to the kernel
-// actor channel (same validity rule as the observer register/unregister).
+// SAFETY: identical rationale to the host's Marmot handle — Swift drives
+// every FFI call from one serialized bridge dispatch queue; the only
+// `!Send`/`!Sync` material is the `app` raw pointer, which is never mutated
+// cross-thread and is only ever read to forward a fire-and-forget publish
+// to the kernel actor channel (same validity rule as the observer
+// register/unregister).
 unsafe impl Send for MarmotProjection {}
 unsafe impl Sync for MarmotProjection {}
 
@@ -180,8 +181,8 @@ impl MarmotProjection {
     }
 
     /// Record the live `*mut NmpApp` so the dispatch ops can publish
-    /// internally. Called once by `nmp_app_chirp_marmot_register` with the
-    /// same pointer the `MarmotHandle` retains for its lifetime. D6 —
+    /// internally. Called once by the host shell's Marmot register path
+    /// with the same pointer the handle retains for its lifetime. D6 —
     /// poisoned mutex silently no-ops (publish then degrades to no-op).
     pub fn set_app(&self, app: *mut NmpApp) {
         if let Ok(mut inner) = self.inner.lock() {
@@ -191,7 +192,7 @@ impl MarmotProjection {
 
     /// Borrow the inner state under the lock for an FFI op. Returns `None`
     /// on a poisoned mutex (D6 — caller degrades to null / `{"ok":false}`).
-    pub(crate) fn with_inner<R>(
+    pub fn with_inner<R>(
         &self,
         f: impl FnOnce(&mut InnerHandle<'_>) -> R,
     ) -> Option<R> {
@@ -271,13 +272,17 @@ impl MarmotProjection {
 
 /// Lock-scoped accessor passed to FFI dispatch handlers. Keeps the `Mutex`
 /// guard internal so handlers cannot leak it.
-pub(crate) struct InnerHandle<'a> {
+pub struct InnerHandle<'a> {
     inner: &'a mut Inner,
 }
 
 impl<'a> InnerHandle<'a> {
     pub(crate) fn service(&self) -> &MarmotService {
         &self.inner.service
+    }
+
+    pub(crate) fn me_pubkey_hex(&self) -> String {
+        self.inner.service.public_key().to_hex()
     }
 
     pub(crate) fn record_key_package(&mut self, d_tag: String, now_secs: u64) {
@@ -321,7 +326,7 @@ impl<'a> InnerHandle<'a> {
         event: &nostr::Event,
     ) {
         let relays = self.group_relays(group_id_hex);
-        crate::marmot::publish::publish_to(self.inner.app, event, &relays);
+        crate::projection::publish::publish_to(self.inner.app, event, &relays);
     }
 
     /// Publish a signed event to an EXPLICIT relay set (`Explicit`; empty
@@ -334,13 +339,13 @@ impl<'a> InnerHandle<'a> {
         event: &nostr::Event,
         relays: &[RelayUrl],
     ) {
-        crate::marmot::publish::publish_to(self.inner.app, event, relays);
+        crate::projection::publish::publish_to(self.inner.app, event, relays);
     }
 
     /// Publish a signed event to the author NIP-65 outbox (`Auto`).
     /// Correct for kind:30443 / kind:443 key-packages.
     pub(crate) fn publish_author_outbox(&self, event: &nostr::Event) {
-        crate::marmot::publish::publish_auto(self.inner.app, event);
+        crate::projection::publish::publish_auto(self.inner.app, event);
     }
 
     /// Read the user's current write-relay URLs from the shared kernel
@@ -350,7 +355,8 @@ impl<'a> InnerHandle<'a> {
             return Vec::new();
         }
         // SAFETY: identical rationale to `publish_auto` — `app` is the live
-        // `*mut NmpApp` retained by `MarmotHandle` for the handle's lifetime.
+        // `*mut NmpApp` retained by the host Marmot handle for the handle's
+        // lifetime.
         let app_ref = unsafe { &*self.inner.app };
         app_ref.write_relay_urls()
     }
@@ -400,7 +406,7 @@ impl KernelEventObserver for MarmotProjection {
     /// Metadata-only `KernelEvent` observer (see module rustdoc): a
     /// [`KernelEvent`] has no signature so we cannot feed kind:445 /
     /// kind:1059 into MDK from here — that is now done automatically by
-    /// the parallel raw signed-event tap ([`crate::marmot::tap`]). This
+    /// the parallel raw signed-event tap ([`crate::projection::tap`]). This
     /// observer only tracks metadata: if the local identity has published
     /// a key-package and the kernel re-ingests it (e.g. relay echo), keep
     /// the `published` flag warm so the snapshot reflects reality even
@@ -409,7 +415,7 @@ impl KernelEventObserver for MarmotProjection {
         if event.kind != MLS_KEY_PACKAGE_KIND && event.kind != MLS_KEY_PACKAGE_KIND_LEGACY
         {
             // kind:445 / kind:1059 require a signed event — driven by the
-            // raw signed-event tap (`crate::marmot::tap`), not here.
+            // raw signed-event tap (`crate::projection::tap`), not here.
             return;
         }
         let Ok(mut inner) = self.inner.lock() else {

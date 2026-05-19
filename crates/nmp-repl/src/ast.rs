@@ -17,6 +17,31 @@ pub enum Command {
     Refresh(RefreshScope),
     Expand(VarName),
     Help(Option<String>),
+
+    // ── MLS / Marmot (bypass-kernel, direct-WebSocket) ───────────────────
+    /// `create-account [name]` — generate keys, publish kind:0 + kind:10002.
+    CreateAccount(Option<String>),
+    /// `load-key <nsec|hex>` — adopt an existing identity.
+    LoadKey(String),
+    /// `mls-init` — build the in-memory MarmotService, publish KeyPackages.
+    MlsInit,
+    /// `mls-status` — snapshot groups / welcomes / key-package cache.
+    MlsStatus,
+    /// `mls-create <name>` — create a solo MLS group.
+    MlsCreate(String),
+    /// `mls-fetch-kp <npub>` — fetch + cache a peer's KeyPackage.
+    MlsFetchKp(String),
+    /// `mls-invite <group_hex> <npub>` — add a member + send the Welcome.
+    MlsInvite(String, String),
+    /// `mls-poll` — inbox sweep: welcomes, group messages, key packages.
+    MlsPoll,
+    /// `mls-accept [welcome_hex]` — accept a pending Welcome (or list them).
+    MlsAccept(Option<String>),
+    /// `mls-send <group_hex> <text...>` — encrypt + publish a group message.
+    MlsSend(String, String),
+    /// `mls-messages <group_hex>` — print decrypted message history.
+    MlsMessages(String),
+
     Quit,
     /// Empty line — no-op.
     Noop,

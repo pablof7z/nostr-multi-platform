@@ -8,7 +8,7 @@
 //! ## Outbound relay seam — CLOSED (publish direction)
 //!
 //! Every op that produces relay-bound events now publishes them
-//! INTERNALLY via [`crate::marmot::publish`] (the `nmp-core`
+//! INTERNALLY via [`crate::projection::publish`] (the `nmp-core`
 //! `nmp_app_publish_signed_event*` kernel capabilities, called against the
 //! retained `*mut NmpApp`) — there is no Swift relay path. Per-kind
 //! routing:
@@ -20,7 +20,7 @@
 //!   `Welcome::group_relays`; a cache MISS degrades to author-outbox
 //!   `Auto` (documented limitation — those events previously did not reach
 //!   relays at all, so this is strictly better, not a regression).
-//! * **kind:30443 + kind:443** key-package → `publish_author_outbox`
+//! * **kind:30443 + kind:443** key-package → `publish_explicit`
 //!   (`Auto` / NIP-65 outbox is correct for key packages). BOTH are
 //!   dual-published through 2026-05-31.
 //! * **kind:1059** gift-wrap Welcome → the Chirp layer has no NIP-65
@@ -40,7 +40,7 @@
 //! `unwrap_and_process_welcome`; kind:445 → `process_message`; seed the
 //! `group_id→relays` cache from `Welcome::group_relays`). It now has TWO
 //! callers sharing that one path: the automatic
-//! [`crate::marmot::tap`] raw-event observer (registered against the
+//! [`crate::projection::tap`] raw-event observer (registered against the
 //! retained `*mut NmpApp` in `nmp_app_chirp_marmot_register`; the kernel
 //! delivers every accepted inbound signed kind:1059/445 to it) and the
 //! back-compat `{"op":"ingest_signed_event"}` dispatch op. The tap makes
@@ -69,9 +69,15 @@ use serde_json::{json, Value};
 
 use mdk_core::prelude::{GroupId, NostrGroupConfigData};
 
-use crate::marmot::ffi::err;
-use crate::marmot::payload::MarmotMessageRow;
-use crate::marmot::state::{hex_encode, parse_signed_event, InnerHandle};
+use crate::projection::payload::MarmotMessageRow;
+use crate::projection::state::{hex_encode, parse_signed_event, InnerHandle};
+
+/// `{"ok":false,"error":"…"}` — local copy of the FFI shell's `err`
+/// helper so this layer carries no `crate::marmot::ffi` dependency
+/// (Chirp is now a thin C-ABI shell over these modules).
+fn err(msg: &str) -> serde_json::Value {
+    serde_json::json!({ "ok": false, "error": msg })
+}
 
 /// Decode a hex MLS group id into a `GroupId`.
 fn group_id_from_hex(hex: &str) -> Result<GroupId, String> {
@@ -119,6 +125,23 @@ fn parse_relays(urls: &[String]) -> Result<Vec<RelayUrl>, String> {
         .collect()
 }
 
+/// Resolve the write-relay set for relay-bearing ops.
+///
+/// The app-wired NIP-65 write relays (`h.write_relay_urls()`, recovered
+/// from the live `NmpApp`) are authoritative for the FFI host path. When
+/// the projection is driven WITHOUT an app wired (a reusable host that
+/// supplies relays directly — e.g. the FFI round-trip tests, or any
+/// non-Chirp consumer), fall back to the envelope `relays` array. This
+/// keeps `nmp-marmot::projection` host-agnostic: relays come from the
+/// kernel when available, otherwise from the caller's op envelope.
+fn resolve_write_relays(h: &InnerHandle<'_>, v: &Value) -> Vec<String> {
+    let app_relays = h.write_relay_urls();
+    if !app_relays.is_empty() {
+        return app_relays;
+    }
+    str_array(v, "relays")
+}
+
 /// Pull `signed_key_package_events_json` (array of signed kind:30443/443
 /// event JSON strings OR objects) — the KeyPackage-cache seam escape hatch.
 fn signed_key_package_events(v: &Value) -> Result<Vec<nostr::Event>, String> {
@@ -140,7 +163,7 @@ fn signed_key_package_events(v: &Value) -> Result<Vec<nostr::Event>, String> {
 }
 
 /// Newest-N decrypted application messages for one group, newest first.
-pub(crate) fn group_messages(
+pub fn group_messages(
     h: &mut InnerHandle<'_>,
     group_id_hex: &str,
     page: usize,
@@ -170,7 +193,7 @@ pub(crate) fn group_messages(
 }
 
 /// Route + execute one dispatch op envelope.
-pub(crate) fn dispatch(h: &mut InnerHandle<'_>, v: &Value, now_secs: u64) -> Value {
+pub fn dispatch(h: &mut InnerHandle<'_>, v: &Value, now_secs: u64) -> Value {
     let op = match str_field(v, "op") {
         Ok(o) => o,
         Err(e) => return err(&e),
@@ -186,6 +209,7 @@ pub(crate) fn dispatch(h: &mut InnerHandle<'_>, v: &Value, now_secs: u64) -> Val
         "decline_welcome" => decline_welcome(h, v),
         "ingest_signed_event" => ingest_signed_event(h, v),
         "clear_pending" => clear_pending(h, v),
+        "poll_inbox" => poll_inbox(h, v),
         other => Err(format!("unknown op `{other}`")),
     };
     match r {
@@ -207,20 +231,20 @@ fn publish_key_package(
     _v: &Value,
     now_secs: u64,
 ) -> Result<Value, String> {
-    let urls = h.write_relay_urls();
+    let urls = resolve_write_relays(h, _v);
     if urls.is_empty() {
         return Err("no write relays configured — add one in Settings > Relays".to_string());
     }
     let relays = parse_relays(&urls)?;
     let pubn = h
         .service()
-        .publish_key_package(relays)
+        .publish_key_package(relays.clone())
         .map_err(|e| e.to_string())?;
-    // kind:30443 + legacy kind:443 → author NIP-65 outbox (Auto). Both
-    // dual-published through 2026-05-31 (mdk-api.md §7.4). Internal
+    // kind:30443 + legacy kind:443 → explicit write-relays from Settings.
+    // Both dual-published through 2026-05-31 (mdk-api.md §7.4). Internal
     // publish — fire-and-forget via the kernel publish pipeline.
-    h.publish_author_outbox(&pubn.event_30443);
-    h.publish_author_outbox(&pubn.event_443);
+    h.publish_explicit(&pubn.event_30443, &relays);
+    h.publish_explicit(&pubn.event_443, &relays);
     h.record_key_package(pubn.d_tag.clone(), now_secs);
     Ok(json!({
         "d_tag": pubn.d_tag,
@@ -288,7 +312,7 @@ fn create_group(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    let urls = h.write_relay_urls();
+    let urls = resolve_write_relays(h, v);
     if urls.is_empty() {
         return Err("no write relays configured — add one in Settings > Relays".to_string());
     }
@@ -519,10 +543,11 @@ fn decline_welcome(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> 
 ///
 /// TWO callers, ONE path:
 ///
-/// * the automatic [`crate::marmot::tap`] raw-event observer (the kernel
-///   delivers every accepted inbound signed kind:1059/445 here) — it
-///   discards the `Result` (D6: a poisoned/duplicate/malformed event is a
-///   silent no-op on the actor thread, never a panic across the FFI), and
+/// * the automatic [`crate::projection::tap`] raw-event observer (the
+///   kernel delivers every accepted inbound signed kind:1059/445 here) —
+///   it discards the `Result` (D6: a poisoned/duplicate/malformed event
+///   is a silent no-op on the actor thread, never a panic across the
+///   FFI), and
 /// * the manual `{"op":"ingest_signed_event"}` dispatch op (back-compat /
 ///   tests) — it maps `Ok(None)` (unsupported kind) and any `Err` to the
 ///   `{"ok":false,"error":…}` envelope, exactly as before.
@@ -608,6 +633,93 @@ fn clear_pending(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
     let pending = h.service().self_update(&gid).map_err(|e| e.to_string())?;
     pending.clear().map_err(|e| e.to_string())?;
     Ok(json!({ "cleared": true }))
+}
+
+/// Fetch kind:1059/445/443/30443 from `relays` (defaults to write-relay URLs)
+/// and drive each event through `ingest_signed_event_core`. Returns counts.
+/// Accepts an optional `"relays"` JSON array to override the write-relay list.
+fn poll_inbox(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
+    use std::collections::HashMap;
+    use std::time::Duration;
+
+    const WALL: Duration = Duration::from_secs(8);
+    const WINDOW_SECS: u64 = 7 * 24 * 60 * 60;
+
+    let me = h.me_pubkey_hex();
+
+    // Caller may override relay list; fall back to configured write relays.
+    let relay_urls: Vec<String> = if let Some(arr) = v.get("relays").and_then(Value::as_array) {
+        arr.iter().filter_map(|u| u.as_str().map(str::to_string)).collect()
+    } else {
+        h.write_relay_urls()
+    };
+    if relay_urls.is_empty() {
+        return Err("poll_inbox: no relays configured — add one in Settings > Relays".into());
+    }
+
+    let since = now_unix_secs().saturating_sub(WINDOW_SECS);
+    let welcome_filter = serde_json::json!({
+        "kinds": [1059], "#p": [me], "since": since, "limit": 200,
+    });
+    let message_filter = serde_json::json!({
+        "kinds": [445], "since": since, "limit": 200,
+    });
+    let kp_filter = serde_json::json!({
+        "kinds": [30443, 443], "since": since, "limit": 50,
+    });
+
+    // Collect unique events across relays (de-dup by event id).
+    let mut all_events: HashMap<String, nostr::Event> = HashMap::new();
+    for relay_url in &relay_urls {
+        for filter in [&welcome_filter, &message_filter, &kp_filter] {
+            let raw = crate::projection::fetch::fetch_events(relay_url, filter, WALL);
+            for ev_json in raw {
+                if let Ok(ev) =
+                    serde_json::from_value::<nostr::Event>(ev_json)
+                {
+                    all_events.entry(ev.id.to_hex()).or_insert(ev);
+                }
+            }
+        }
+    }
+
+    let mut n_welcomes = 0u32;
+    let mut n_messages = 0u32;
+    let mut n_kps = 0u32;
+    for (_id, ev) in all_events {
+        match ev.kind {
+            nostr::Kind::MlsKeyPackage | nostr::Kind::Custom(30443) => {
+                if h.service().validate_peer_key_package(&ev).is_ok() {
+                    h.service().cache_key_package(ev);
+                    n_kps += 1;
+                }
+            }
+            nostr::Kind::GiftWrap => {
+                if let Ok(_) = ingest_signed_event_core(h, &ev) {
+                    n_welcomes += 1;
+                }
+            }
+            nostr::Kind::MlsGroupMessage => {
+                if let Ok(_) = ingest_signed_event_core(h, &ev) {
+                    n_messages += 1;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(serde_json::json!({
+        "welcomes": n_welcomes,
+        "messages": n_messages,
+        "key_packages": n_kps,
+    }))
+}
+
+fn now_unix_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 fn restore(h: &mut InnerHandle<'_>, wid: &str, gift: nostr::Event) {

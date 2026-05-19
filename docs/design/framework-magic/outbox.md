@@ -29,7 +29,7 @@ The "via the public view path" framing matters: M2's test exercises the compiler
 
 ## C7. Write fan-out: outbox + recipient-inbox; private events fail closed
 
-**Statement.** Every publish action's signed event is routed by the `PublishPlanner` (`docs/design/subscription-compilation/outbox.md` §7.1) according to a `PublishPrivacy` mode the action declares. **Public** events go to author write relays. **PublicWithNotifications** events go to author writes ∪ recipient inboxes (`#p` tagged pubkeys). **PrivateToRecipients** events (gift-wrapped per NIP-59) go to **only** resolved recipient inbox relays — never the author's writes, never the active session's defaults, never the indexer set. If any recipient has no declared inbox, the publish fails closed with `PublishPlanError::PrivateRecipientUnroutable`.
+**Statement.** Every publish action's signed event is routed by the `PublishPlanner` (`docs/design/subscription-compilation/outbox.md` §7.1) according to a `PublishPrivacy` mode the action declares. **Public** events go to author write relays. Discovery kinds (kind:0, kind:3, kind:1xxxx) additionally fan out to user-configured indexer relays so the author remains discoverable. **PublicWithNotifications** events go to author writes ∪ recipient inboxes (`#p` tagged pubkeys). **PrivateToRecipients** events (gift-wrapped per NIP-59) go to **only** resolved recipient inbox relays — never the author's writes, never the active session's defaults, never the indexer set. If any recipient has no declared inbox, the publish fails closed with `PublishPlanError::PrivateRecipientUnroutable`.
 
 **Framework does:** the algorithm at `docs/design/subscription-compilation/outbox.md` §7.3 (write fan-out, all 6 numbered steps), specifically:
 

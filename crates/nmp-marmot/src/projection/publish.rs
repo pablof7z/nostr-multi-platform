@@ -12,8 +12,8 @@
 //! This module closes that seam by publishing INTERNALLY through the
 //! kernel: it calls the two landed `nmp-core` capability symbols
 //! ([`nmp_app_publish_signed_event`] / [`nmp_app_publish_signed_event_to`])
-//! against the `*mut NmpApp` the [`crate::marmot::ffi::MarmotHandle`]
-//! already retains. Both are generic kernel capabilities (no MLS/Marmot
+//! against the `*mut NmpApp` the host shell's Marmot handle already
+//! retains. Both are generic kernel capabilities (no MLS/Marmot
 //! nouns kernel-side — D0 holds); they verify Schnorr + id and route
 //! fire-and-forget via the actor channel.
 //!
@@ -73,9 +73,9 @@ pub(crate) fn publish_auto(app: *mut NmpApp, event: &Event) {
     let Ok(cjson) = CString::new(event.as_json()) else {
         return;
     };
-    // SAFETY: `app` is the live `*mut NmpApp` retained by `MarmotHandle`
-    // for the handle's lifetime (same validity rule as the observer
-    // register/unregister calls); the kernel symbol reconstructs
+    // SAFETY: `app` is the live `*mut NmpApp` retained by the host's
+    // Marmot handle for the handle's lifetime (same validity rule as the
+    // observer register/unregister calls); the kernel symbol reconstructs
     // `&NmpApp` from the same pointer value (cast to/from `c_void` is
     // pointer-identity-preserving). `cjson` is a valid nul-terminated C
     // string for the duration of the call. The callee is fire-and-forget.

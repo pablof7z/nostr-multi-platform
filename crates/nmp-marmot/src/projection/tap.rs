@@ -5,12 +5,12 @@
 //! decrypt a kind:445 message) could not be fed from it — historically the
 //! Chirp layer relied on a `{"op":"ingest_signed_event"}` dispatch op
 //! called from a Swift relay path that never existed (see
-//! [`crate::marmot::state`]'s seam #2). The kernel now also exposes a
+//! [`crate::projection::state`]'s seam #2). The kernel now also exposes a
 //! parallel **raw signed-event tap** (`RawEventObserver`) that delivers the
 //! verbatim flat NIP-01 object *including `sig`* after the kernel's own
 //! Schnorr + id gate. This module registers that tap and drives every
 //! accepted inbound kind:1059 / kind:445 into the SAME
-//! [`crate::marmot::ops::ingest_signed_event_core`] the back-compat
+//! [`crate::projection::ops::ingest_signed_event_core`] the back-compat
 //! dispatch op uses — so welcomes / messages received from relays surface
 //! in the next `nmp_app_chirp_marmot_snapshot` with zero Swift change.
 //!
@@ -18,8 +18,8 @@
 //!
 //! Registered through the in-process Rust-trait API
 //! ([`nmp_core::NmpApp::register_raw_event_observer`]) — the same shape as
-//! the existing `KernelEventObserver` registration in
-//! [`crate::marmot::ffi`], no C-ABI hop. The kernel owns the
+//! the existing `KernelEventObserver` registration in the Chirp FFI shell,
+//! no C-ABI hop. The kernel owns the
 //! `Arc<dyn RawEventObserver>`; the tap holds an `Arc<MarmotProjection>`.
 //! No reference cycle: `MarmotHandle` separately owns the projection and
 //! the returned `RawEventObserverId`; nothing in the projection points
@@ -45,8 +45,8 @@ use std::sync::Arc;
 use nmp_core::{KindFilter, RawEventObserver};
 use nostr::{Event, JsonUtil};
 
-use crate::marmot::ops::ingest_signed_event_core;
-use crate::marmot::state::MarmotProjection;
+use crate::projection::ops::ingest_signed_event_core;
+use crate::projection::state::MarmotProjection;
 
 /// Kinds the inbound tap subscribes to: kind:1059 gift-wrap welcome,
 /// kind:445 group message / commit / proposal, and kind:444 defensively
@@ -62,17 +62,17 @@ pub(crate) const TAP_KINDS: [u32; 5] = [443, 444, 445, 1059, 30443];
 /// projection. Holds an `Arc<MarmotProjection>` (the same projection the
 /// owning `MarmotHandle` retains); the kernel owns this observer as an
 /// `Arc<dyn RawEventObserver>` until `unregister_raw_event_observer`.
-pub(crate) struct MarmotIngestTap {
+pub struct MarmotIngestTap {
     projection: Arc<MarmotProjection>,
 }
 
 impl MarmotIngestTap {
-    pub(crate) fn new(projection: Arc<MarmotProjection>) -> Self {
+    pub fn new(projection: Arc<MarmotProjection>) -> Self {
         Self { projection }
     }
 
     /// The kind filter to register this tap with.
-    pub(crate) fn kind_filter() -> KindFilter {
+    pub fn kind_filter() -> KindFilter {
         KindFilter::from_kinds(TAP_KINDS)
     }
 }

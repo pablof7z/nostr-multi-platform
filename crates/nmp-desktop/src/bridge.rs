@@ -5,6 +5,7 @@
 //! exactly as the iOS FFI layer does. A reader thread drains JSON snapshots,
 //! decodes them into [`Snapshot`], and parks the freshest one behind a mutex.
 
+use std::collections::HashMap;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -77,8 +78,8 @@ impl KernelBridge {
     }
 
     /// Generate a fresh keypair and sign in with it (so compose can publish).
-    pub fn create_account(&self) {
-        let _ = self.tx.send(ActorCommand::CreateAccount);
+    pub fn create_account(&self, profile: HashMap<String, String>, relays: Vec<(String, String)>) {
+        let _ = self.tx.send(ActorCommand::CreateAccount { profile, relays });
     }
 
     /// Sign in with an existing `nsec…` / hex secret.

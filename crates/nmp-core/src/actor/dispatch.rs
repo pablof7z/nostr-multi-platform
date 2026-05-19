@@ -127,8 +127,8 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(Vec::new())
         }
-        ActorCommand::CreateAccount => {
-            let outbound = commands::create_account(identity, kernel, relays_ready);
+        ActorCommand::CreateAccount { profile, relays } => {
+            let outbound = commands::create_account(identity, kernel, relays_ready, &profile, &relays);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
