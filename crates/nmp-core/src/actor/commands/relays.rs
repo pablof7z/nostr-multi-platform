@@ -30,6 +30,7 @@ fn normalize_role(role: &str) -> Option<&'static str> {
         "read" => Some("read"),
         "write" => Some("write"),
         "both" | "" => Some("both"),
+        "indexer" => Some("indexer"),
         _ => None,
     }
 }

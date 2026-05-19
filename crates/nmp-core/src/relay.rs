@@ -59,6 +59,9 @@ pub(crate) enum RelayRole {
     /// connected; NOT included in `all()` so it does not block the startup
     /// bootstrap gate or appear in the standard relay-statuses projection.
     Wallet,
+    /// NIP-46 bunker relay. Spawned on demand when a bunker is configured;
+    /// NOT included in `all()` so it does not block the startup bootstrap gate.
+    Bunker,
 }
 
 impl RelayRole {

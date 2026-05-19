@@ -90,7 +90,7 @@ use std::time::{Duration, Instant};
 pub(crate) fn has_role(role: &str, needle: &str) -> bool {
     let r = role.to_ascii_lowercase();
     let n = needle.to_ascii_lowercase();
-    r == n || r == "both"
+    r == n || r == "both" || (r == "indexer" && n == "write")
 }
 
 /// Actor command variants.  The `actor` module is private (`mod actor`, not
