@@ -123,7 +123,10 @@ fn find_toast_in_updates(
                     return true;
                 }
             }
-            Err(_) => break,
+            // Timeout: the actor may be mid-block in relay_rx.recv_timeout
+            // (up to 250ms idle wait). Keep polling until the 3-second
+            // deadline — a single empty slot does NOT mean the channel is done.
+            Err(_) => continue,
         }
     }
     false
