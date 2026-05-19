@@ -18,8 +18,8 @@ use std::sync::{Arc, Mutex};
 use nmp_core::substrate::{SignedEvent, UnsignedEvent};
 use nmp_signers::signers::{Nip46Rpc, Nip46Transport};
 use nmp_signers::{
-    parse_bunker_uri, AccountManager, Kind3RewireObserver, LocalKeySigner, Nip46Signer,
-    Nip46SignerHandle, Signer, SignerBackend, SignerError, SignerOp, SignerPayload,
+    parse_bunker_uri, AccountManager, ActiveChangeEvent, ActiveChangeObserver, LocalKeySigner,
+    Nip46Signer, Nip46SignerHandle, Signer, SignerBackend, SignerError, SignerOp, SignerPayload,
 };
 use nostr::nips::nip19::FromBech32;
 use nostr::{PublicKey, SecretKey};
@@ -186,11 +186,37 @@ fn t4_three_accounts_switch_flips_signer_active() {
     }
 }
 
+/// Minimal `ActiveChangeObserver` probe. Replaces the deleted
+/// `Kind3RewireObserver`, which was dead production scaffolding — active-account
+/// subscription rebuilds are handled directly by the `SwitchActive` actor
+/// command in `nmp-core`, never via an observer.
+#[derive(Debug, Default)]
+struct ProbeObserver {
+    events: Mutex<Vec<ActiveChangeEvent>>,
+}
+
+impl ProbeObserver {
+    fn drain(&self) -> Vec<ActiveChangeEvent> {
+        match self.events.lock() {
+            Ok(mut g) => std::mem::take(&mut *g),
+            Err(_) => Vec::new(),
+        }
+    }
+}
+
+impl ActiveChangeObserver for ProbeObserver {
+    fn on_active_change(&self, event: &ActiveChangeEvent) {
+        if let Ok(mut g) = self.events.lock() {
+            g.push(event.clone());
+        }
+    }
+}
+
 #[test]
 fn t5_kind3_rewire_fires_per_real_switch() {
     let mut mgr = AccountManager::new()
         .with_post_condition_timeout(std::time::Duration::from_millis(500));
-    let obs = Arc::new(Kind3RewireObserver::new());
+    let obs = Arc::new(ProbeObserver::default());
     mgr.observe(obs.clone());
 
     let id_a = mgr.add(Arc::new(LocalKeySigner::generate())).unwrap();

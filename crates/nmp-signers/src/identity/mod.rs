@@ -8,22 +8,26 @@
 //! here, not in the `Signer` trait — keeping the trait minimal and pushing
 //! defence-in-depth into the manager.
 //!
-//! kind:3 auto-rewire (`Kind3RewireObserver`) listens for active-account flips
-//! and re-derives the active account's follow-set + relay-list.  The kernel
-//! installs this observer at startup; tests can install a no-op or instrumented
-//! observer.
+//! ## `ActiveChangeObserver` — wiring status
+//!
+//! `AccountManager` exposes an `ActiveChangeObserver` hook for active-account
+//! transitions. It has **no production consumer**: the NMP kernel does not use
+//! `AccountManager` at all — `nmp-core` owns its own `IdentityRuntime` and
+//! rebuilds kind:3 / kind:10002 subscriptions directly on the `SwitchActive`
+//! actor command (`nmp-core/src/actor/commands/identity.rs::switch_active`,
+//! dispatched from `actor/dispatch.rs`). That direct-dispatch path superseded
+//! the observer pattern, so the canned observers (`Kind3RewireObserver`,
+//! `ActiveAccountReactor`) were deleted as dead scaffolding.
+//!
+//! The `ActiveChangeObserver` trait + `AccountManager::observe()` are retained
+//! only because `nmp-testing` and the in-crate test suites still exercise
+//! `AccountManager`'s transition semantics through it.
 
-mod active_account_reactor;
 mod manager;
-mod rewire;
 
 #[cfg(test)]
 mod tests;
 
-pub use active_account_reactor::{
-    bundle_for, ActiveAccountReactor, ActiveSwitch, ActiveSwitchCommand,
-};
 pub use manager::{
     AccountError, AccountManager, ActiveChangeEvent, ActiveChangeObserver, IdentityId,
 };
-pub use rewire::{Kind3RewireEvent, Kind3RewireObserver};

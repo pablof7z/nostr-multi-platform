@@ -1,10 +1,44 @@
 //! Identity-module unit tests.  Integration tests (cross-module) live under
 //! `tests/`.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use super::*;
 use crate::signers::{LocalKeySigner, Signer};
+
+/// Minimal `ActiveChangeObserver` probe for asserting `AccountManager`
+/// transition semantics. Replaces the deleted `Kind3RewireObserver` (which was
+/// dead production scaffolding — active-account subscription rebuilds are
+/// handled directly by the `SwitchActive` actor command in `nmp-core`).
+#[derive(Debug, Default)]
+struct ProbeObserver {
+    events: Mutex<Vec<ActiveChangeEvent>>,
+}
+
+impl ProbeObserver {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn pending_count(&self) -> usize {
+        self.events.lock().map(|g| g.len()).unwrap_or(0)
+    }
+
+    fn drain(&self) -> Vec<ActiveChangeEvent> {
+        match self.events.lock() {
+            Ok(mut g) => std::mem::take(&mut *g),
+            Err(_) => Vec::new(),
+        }
+    }
+}
+
+impl ActiveChangeObserver for ProbeObserver {
+    fn on_active_change(&self, event: &ActiveChangeEvent) {
+        if let Ok(mut g) = self.events.lock() {
+            g.push(event.clone());
+        }
+    }
+}
 
 #[test]
 fn add_and_active_lifecycle() {
@@ -79,7 +113,7 @@ fn switch_to_same_is_noop() {
     let id = mgr.add(Arc::new(LocalKeySigner::generate())).unwrap();
     mgr.switch_active(&id).unwrap();
 
-    let obs = Arc::new(Kind3RewireObserver::new());
+    let obs = Arc::new(ProbeObserver::new());
     mgr.observe(obs.clone());
     mgr.switch_active(&id).unwrap();
     assert_eq!(obs.pending_count(), 0, "no-op switch must not fire observers");
@@ -88,7 +122,7 @@ fn switch_to_same_is_noop() {
 #[test]
 fn observer_fires_on_active_change() {
     let mut mgr = AccountManager::new();
-    let obs = Arc::new(Kind3RewireObserver::new());
+    let obs = Arc::new(ProbeObserver::new());
     mgr.observe(obs.clone());
 
     let id_a = mgr.add(Arc::new(LocalKeySigner::generate())).unwrap();

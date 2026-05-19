@@ -16,8 +16,8 @@ use std::sync::{Arc, Mutex};
 use nmp_core::substrate::UnsignedEvent;
 use nmp_signers::signers::{Nip46Rpc, Nip46Transport, Nip07Payload};
 use nmp_signers::{
-    AccountManager, ActiveChangeEvent, ActiveChangeObserver, Kind3RewireObserver,
-    LocalKeySigner, Nip07Signer, Nip46SignerHandle, Signer, SignerError,
+    AccountManager, ActiveChangeEvent, ActiveChangeObserver, LocalKeySigner, Nip07Signer,
+    Nip46SignerHandle, Signer, SignerError,
 };
 
 const SAMPLE_PK: &str = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
@@ -315,9 +315,28 @@ fn nip46_response_with_legitimate_created_at_skew_is_accepted() {
 // ============================================================================
 
 /// Records every observer event in insertion order.
+///
+/// Replaces the deleted `Kind3RewireObserver`, which was dead production
+/// scaffolding — active-account subscription rebuilds are handled directly by
+/// the `SwitchActive` actor command in `nmp-core`, never via an observer.
 #[derive(Debug, Default)]
 struct RecordingObserver {
     events: Mutex<Vec<ActiveChangeEvent>>,
+}
+
+impl RecordingObserver {
+    /// Pending event count without draining.
+    fn pending_count(&self) -> usize {
+        self.events.lock().map(|g| g.len()).unwrap_or(0)
+    }
+
+    /// Drain recorded events in insertion order, clearing the buffer.
+    fn drain(&self) -> Vec<ActiveChangeEvent> {
+        match self.events.lock() {
+            Ok(mut g) => std::mem::take(&mut *g),
+            Err(_) => Vec::new(),
+        }
+    }
 }
 
 impl ActiveChangeObserver for RecordingObserver {
@@ -330,20 +349,17 @@ impl ActiveChangeObserver for RecordingObserver {
 fn remove_active_account_clears_state_atomically() {
     let mut mgr = AccountManager::new()
         .with_post_condition_timeout(std::time::Duration::from_millis(500));
-    let rewire = Arc::new(Kind3RewireObserver::new());
     let recorder = Arc::new(RecordingObserver::default());
-    mgr.observe(rewire.clone());
     mgr.observe(recorder.clone());
 
     let id_a = mgr.add(Arc::new(LocalKeySigner::generate())).unwrap();
     let id_b = mgr.add(Arc::new(LocalKeySigner::generate())).unwrap();
 
-    // Activate A, then remove A — expect: active cleared, rewire fires once
-    // with current=None, recorder shows the synthetic None event.
+    // Activate A, then remove A — expect: active cleared, observer fires once
+    // with current=None (the kind:3 / active-account teardown signal).
     mgr.switch_active(&id_a).unwrap();
-    assert_eq!(rewire.pending_count(), 1, "switch fires once");
-    let _ = rewire.drain();
-    recorder.events.lock().unwrap().clear();
+    assert_eq!(recorder.pending_count(), 1, "switch fires once");
+    let _ = recorder.drain();
 
     mgr.remove(&id_a).unwrap();
 
@@ -351,41 +367,29 @@ fn remove_active_account_clears_state_atomically() {
     assert!(mgr.active().is_none(), "active slot cleared");
     assert!(mgr.signer_active().is_none(), "signer_active is None");
 
-    // (b) kind:3 rewire subscription teardown signal fired.
-    let rewire_events = rewire.drain();
+    // (b) kind:3 teardown signal fired exactly once with current=None.
+    //     AppUpdate::FullState (active_account = None) equivalent: the
+    //     ActiveChangeEvent with current=None is what a consumer would
+    //     translate into the FFI FullState emission.
+    let recorded = recorder.drain();
     assert_eq!(
-        rewire_events.len(),
+        recorded.len(),
         1,
-        "exactly one rewire event on active removal"
+        "exactly one observer event on active removal"
     );
-    assert_eq!(rewire_events[0].previous.as_deref(), Some(id_a.as_str()));
-    assert_eq!(
-        rewire_events[0].current, None,
-        "rewire current=None signals 'tear down active-account subs'"
-    );
-
-    // (c) AppUpdate::FullState (active_account = None) equivalent: the
-    // ActiveChangeEvent with current=None is what the kernel translates into
-    // the FFI FullState emission.
-    let recorded = recorder.events.lock().unwrap().clone();
-    assert_eq!(recorded.len(), 1, "one observer event on active removal");
     assert_eq!(recorded[0].previous.as_deref(), Some(id_a.as_str()));
-    assert!(recorded[0].current.is_none());
+    assert!(
+        recorded[0].current.is_none(),
+        "current=None signals 'tear down active-account subs'"
+    );
     assert!(recorded[0].current_pubkey.is_none());
 
-    // (d) Idempotent — calling remove on already-removed account is a no-op
+    // (c) Idempotent — calling remove on already-removed account is a no-op
     // (no observer fires, no error returned).
-    rewire.drain();
-    recorder.events.lock().unwrap().clear();
     mgr.remove(&id_a)
         .expect("idempotent remove must not error on already-removed account");
     assert_eq!(
-        rewire.pending_count(),
-        0,
-        "no rewire event on idempotent re-remove"
-    );
-    assert_eq!(
-        recorder.events.lock().unwrap().len(),
+        recorder.pending_count(),
         0,
         "no observer fire on idempotent re-remove"
     );
@@ -401,20 +405,20 @@ fn remove_non_active_account_does_not_fire_observer() {
     // active-change observers (the active signer didn't change).
     let mut mgr = AccountManager::new()
         .with_post_condition_timeout(std::time::Duration::from_millis(500));
-    let rewire = Arc::new(Kind3RewireObserver::new());
-    mgr.observe(rewire.clone());
+    let recorder = Arc::new(RecordingObserver::default());
+    mgr.observe(recorder.clone());
 
     let id_a = mgr.add(Arc::new(LocalKeySigner::generate())).unwrap();
     let id_b = mgr.add(Arc::new(LocalKeySigner::generate())).unwrap();
     mgr.switch_active(&id_a).unwrap();
-    rewire.drain();
+    let _ = recorder.drain();
 
     mgr.remove(&id_b).unwrap();
 
     assert_eq!(
-        rewire.pending_count(),
+        recorder.pending_count(),
         0,
-        "removing non-active account fires no rewire event"
+        "removing non-active account fires no observer event"
     );
     assert_eq!(mgr.active().as_deref(), Some(id_a.as_str()), "A still active");
 }
