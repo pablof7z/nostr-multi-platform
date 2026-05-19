@@ -118,7 +118,7 @@ impl Kernel {
             warming_until_ms: None,
         });
         interests.push(LogicalInterestStatus {
-            key: "SeedTimeline(fiatjaf,jb55,pablof7z)".to_string(),
+            key: "Timeline".to_string(),
             state: if !self.timeline.is_empty() {
                 "tailing".to_string()
             } else if self.timeline_requested {

@@ -274,14 +274,21 @@ fn empty_follows_clears_timeline_authors_and_interests() {
     kernel.seed_contacts.remove(ALICE);
     kernel.register_follow_feed_for_active_account();
 
-    assert!(
-        kernel.follow_feed_interest_ids_for_test().is_empty(),
-        "T140: empty/no-follows must CLEAR stale follow_feed_interest_ids"
+    assert_eq!(
+        kernel.follow_feed_interest_ids_for_test().len(),
+        1,
+        "T140: empty/no-follows must CLEAR stale follow interests, but the \
+         active user's own self-interest remains"
     );
     assert!(
         !kernel.timeline_authors_for_test().contains(BOB),
         "T140: empty/no-follows must drop stale follow-derived timeline_authors \
          (BOB must no longer be present)"
+    );
+    assert!(
+        kernel.timeline_authors_for_test().contains(ALICE),
+        "T140: active user's own pubkey must remain in timeline_authors \
+         even with empty follows"
     );
 }
 
@@ -347,5 +354,49 @@ fn empty_kind_10002_emits_nip65_arrived() {
         closed_stale,
         "T140: empty kind:10002 must enqueue Nip65Arrived so the next drain \
          recompiles and CLOSEs the stale-relay follow-feed sub; got {after:?}"
+    );
+}
+
+// ─── no hardcoded seeds in timeline_authors ──────────────────────────────────
+
+/// After the active account's kind:3 arrives, `timeline_authors` must contain
+/// the follows plus the active user's own pubkey, and must NOT contain any
+/// hardcoded seed pubkeys.
+#[test]
+fn active_account_timeline_authors_excludes_seeds() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.active_account = Some(ALICE.to_string());
+
+    kernel
+        .inject_replaceable_event(
+            "0000000000000000000000000000000000000000000000000000000000000004",
+            ALICE,
+            2_000,
+            3,
+            vec![vec!["p".to_string(), BOB.to_string()]],
+            "wss://alice-t140.relay/",
+            2_000_000,
+        )
+        .expect("inject kind:3");
+
+    assert!(
+        kernel.timeline_authors_for_test().contains(BOB),
+        "timeline_authors must contain follow BOB"
+    );
+    assert!(
+        kernel.timeline_authors_for_test().contains(ALICE),
+        "timeline_authors must contain active user ALICE"
+    );
+    assert!(
+        !kernel.timeline_authors_for_test().contains(TEST_PUBKEY),
+        "timeline_authors must NOT contain hardcoded TEST_PUBKEY"
+    );
+    assert!(
+        !kernel.timeline_authors_for_test().contains(FIATJAF_PUBKEY),
+        "timeline_authors must NOT contain hardcoded FIATJAF_PUBKEY"
+    );
+    assert!(
+        !kernel.timeline_authors_for_test().contains(JB55_PUBKEY),
+        "timeline_authors must NOT contain hardcoded JB55_PUBKEY"
     );
 }

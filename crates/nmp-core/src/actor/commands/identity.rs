@@ -323,7 +323,10 @@ pub(crate) fn sign_in_nsec(
     let id = identity.add(keys);
     identity.active = Some(id);
     sync_kernel(identity, kernel);
-    retarget_timeline(identity, kernel, relays_ready)
+    kernel.reconcile_follow_feed_after_identity_change();
+    let mut outbound = kernel.active_account_bootstrap_requests();
+    outbound.extend(retarget_timeline(identity, kernel, relays_ready));
+    outbound
 }
 
 pub(crate) fn create_account(
@@ -334,7 +337,10 @@ pub(crate) fn create_account(
     let id = identity.add(Keys::generate());
     identity.active = Some(id);
     sync_kernel(identity, kernel);
-    retarget_timeline(identity, kernel, relays_ready)
+    kernel.reconcile_follow_feed_after_identity_change();
+    let mut outbound = kernel.active_account_bootstrap_requests();
+    outbound.extend(retarget_timeline(identity, kernel, relays_ready));
+    outbound
 }
 
 pub(crate) fn switch_active(
@@ -358,7 +364,9 @@ pub(crate) fn switch_active(
     // the prior account's follow interests + emit the CLOSE diff (stale-feed /
     // privacy leak fix). Runs AFTER sync_kernel set kernel.active_account.
     kernel.reconcile_follow_feed_after_identity_change();
-    retarget_timeline(identity, kernel, relays_ready)
+    let mut outbound = kernel.active_account_bootstrap_requests();
+    outbound.extend(retarget_timeline(identity, kernel, relays_ready));
+    outbound
 }
 
 pub(crate) fn remove_account(

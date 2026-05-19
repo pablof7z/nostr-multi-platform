@@ -78,17 +78,22 @@ impl Kernel {
             self.follow_feed_interest_ids.insert(id);
         }
 
+        // Also register an interest for the active user themselves so their own
+        // notes appear in the timeline.
+        if let Some(ref me) = self.active_account {
+            let interest = follow_feed_interest(me);
+            let id = interest.id.clone();
+            self.lifecycle.registry_mut().push(interest);
+            self.follow_feed_interest_ids.insert(id);
+        }
+
         // Rebuild the `timeline_authors` derived cache from the new follow set
         // so `should_store_event` / `ingest_timeline_event` gate correctly.
         // `timeline_authors` is a denormalized read-cache over the M2 registry
-        // (D4: the registry is the single source of truth; this is a
-        // projection). T140: the seed-author bootstrap feed is opened by
-        // `startup_requests()` (`seed-bootstrap` REQ + seed pubkeys seeded
-        // here), independent of the follow set — UNION the seed accounts in so
-        // a follow-set replace / account switch never drops the seed feed.
+        // (D4: the registry is the single source of truth; this is a projection).
         let mut authors: BTreeSet<String> = follows.iter().cloned().collect();
-        for seed in seed_accounts() {
-            authors.insert(seed.pubkey.to_string());
+        if let Some(ref me) = self.active_account {
+            authors.insert(me.clone());
         }
         self.timeline_authors = authors;
     }
@@ -158,10 +163,10 @@ impl Kernel {
     /// that left the *previous* account's `follow_feed_interest_ids` and
     /// follow-derived `timeline_authors` live after an account switch or a
     /// missing kind:3. `sync_follow_feed_interests(&[])` withdraws every stale
-    /// interest, clears the id set, and resets `timeline_authors` to the
-    /// seed-only baseline; the trigger drives `drain_tick` to emit the CLOSE
-    /// diff for the now-withdrawn subs. Calling it unconditionally is the
-    /// correct CLEAR semantics.
+    /// interest, clears the id set, and resets `timeline_authors` to empty;
+    /// the trigger drives `drain_tick` to emit the CLOSE diff for the
+    /// now-withdrawn subs. Calling it unconditionally is the correct CLEAR
+    /// semantics.
     pub(crate) fn register_follow_feed_for_active_account(&mut self) {
         let Some(active_pk) = self.active_account.clone() else {
             return;
@@ -190,16 +195,16 @@ impl Kernel {
     ///
     /// - `active_account = Some(new)`: delegate to
     ///   `register_follow_feed_for_active_account()` — it withdraws the prior
-    ///   account's interests and installs the new account's follows (or the
-    ///   seed-only baseline when the new account has no cached kind:3), and
-    ///   enqueues the recompile trigger.
+    ///   account's interests and installs the new account's follows (or clears
+    ///   to empty when the new account has no cached kind:3), and enqueues the
+    ///   recompile trigger.
     /// - `active_account = None` (logged out of the last account):
     ///   `register_follow_feed_for_active_account()` early-returns, so do the
     ///   CLEAR here — `sync_follow_feed_interests(&[])` withdraws every stale
-    ///   interest, resets `timeline_authors` to the seed-only baseline, and we
-    ///   enqueue a `FollowListChanged{ new_follows: [] }` so `drain_tick`
-    ///   emits the CLOSE diff that tears down the prior account's follow-feed
-    ///   subs (privacy leak + stale-feed fix).
+    ///   interest, resets `timeline_authors` to empty, and we enqueue a
+    ///   `FollowListChanged{ new_follows: [] }` so `drain_tick` emits the CLOSE
+    ///   diff that tears down the prior account's follow-feed subs (privacy
+    ///   leak + stale-feed fix).
     pub(crate) fn reconcile_follow_feed_after_identity_change(&mut self) {
         match self.active_account.clone() {
             Some(_) => self.register_follow_feed_for_active_account(),

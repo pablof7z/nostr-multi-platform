@@ -6,14 +6,16 @@
 
 use super::*;
 
-// ── Seed accounts ─────────────────────────────────────────────────────────────
+// ── Seed accounts (test fixtures only) ──────────────────────────────────────
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub(super) struct SeedAccount {
     pub(super) name: &'static str,
     pub(super) pubkey: &'static str,
 }
 
+#[allow(dead_code)]
 pub(super) fn seed_accounts() -> Vec<SeedAccount> {
     vec![
         SeedAccount {

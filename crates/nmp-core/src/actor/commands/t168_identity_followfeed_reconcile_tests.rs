@@ -130,16 +130,22 @@ fn t168_switch_active_reconciles_followfeed_to_new_account() {
     switch_active(&mut id, &mut kernel, &second_id, false);
     let frames = kernel.drain_lifecycle_tick();
 
-    assert!(
-        kernel.follow_feed_interest_ids_for_test().is_empty(),
-        "T168: switching to the second account (empty follows) must withdraw \
-         A's follow-feed interests; still registered: {:?}",
+    assert_eq!(
+        kernel.follow_feed_interest_ids_for_test().len(),
+        1,
+        "T168: switching to the second account must withdraw A's follow-feed \
+         interests; the new account's self-interest remains: {:?}",
         kernel.follow_feed_interest_ids_for_test()
     );
     assert!(
         !kernel.timeline_authors_for_test().contains(ALICE),
         "T168: ALICE (account A's follow) must NOT remain in timeline_authors \
          after switching to a different account — stale-feed leak"
+    );
+    assert!(
+        kernel.timeline_authors_for_test().contains(&second_id),
+        "T168: second account's own pubkey must be in timeline_authors \
+         after switch"
     );
     assert!(
         close_count(&frames) >= 1,

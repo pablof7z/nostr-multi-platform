@@ -39,8 +39,10 @@ pub(crate) const TEST_NPUB: &str =
     "npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft";
 pub(crate) const TEST_PUBKEY: &str =
     "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52";
+#[allow(dead_code)]
 pub(crate) const FIATJAF_PUBKEY: &str =
     "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+#[allow(dead_code)]
 pub(crate) const JB55_PUBKEY: &str =
     "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245";
 
