@@ -286,14 +286,25 @@ fn create_group(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
         .to_string();
     let relays = parse_relays(&str_array(v, "relays"))?;
     let invitee_npubs = str_array(v, "invitee_npubs");
-    let kp_events = signed_key_package_events(v)?;
-    if kp_events.is_empty() {
-        return Ok(json!({
-            "ok": false,
-            "error": "key_package_unavailable",
-            "needs": invitee_npubs,
-            "hint": "supply signed_key_package_events_json (KeyPackage-cache seam)"
-        }));
+    let mut kp_events = signed_key_package_events(v)?;
+    // If no explicit key packages were supplied but invitees are named, try
+    // the service's kp_cache (populated by the app's raw-event tap when the
+    // kernel delivers peers' kind:30443 events). Solo groups (no invitees)
+    // skip this entirely — MDK allows creating a group with just the creator.
+    if kp_events.is_empty() && !invitee_npubs.is_empty() {
+        let pubkeys: Vec<PublicKey> = invitee_npubs
+            .iter()
+            .filter_map(|s| PublicKey::parse(s).ok())
+            .collect();
+        kp_events = h.service().cached_key_packages(&pubkeys);
+        if kp_events.is_empty() {
+            return Ok(json!({
+                "ok": false,
+                "error": "key_package_unavailable",
+                "needs": invitee_npubs,
+                "hint": "call fetch_key_packages first; results arrive via the kernel tap"
+            }));
+        }
     }
     let admins = vec![h.service().public_key()];
     let config = NostrGroupConfigData::new(
@@ -331,14 +342,23 @@ fn create_group(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
 fn invite(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
     let gid = group_id_from_hex(str_field(v, "group_id_hex")?)?;
     let invitee_npubs = str_array(v, "invitee_npubs");
-    let kp_events = signed_key_package_events(v)?;
+    let mut kp_events = signed_key_package_events(v)?;
+    // Fall back to the service's kp_cache (populated by the tap) when no
+    // explicit events were supplied. invite requires at least one invitee.
     if kp_events.is_empty() {
-        return Ok(json!({
-            "ok": false,
-            "error": "key_package_unavailable",
-            "needs": invitee_npubs,
-            "hint": "supply signed_key_package_events_json (KeyPackage-cache seam)"
-        }));
+        let pubkeys: Vec<PublicKey> = invitee_npubs
+            .iter()
+            .filter_map(|s| PublicKey::parse(s).ok())
+            .collect();
+        kp_events = h.service().cached_key_packages(&pubkeys);
+        if kp_events.is_empty() {
+            return Ok(json!({
+                "ok": false,
+                "error": "key_package_unavailable",
+                "needs": invitee_npubs,
+                "hint": "call fetch_key_packages first; results arrive via the kernel tap"
+            }));
+        }
     }
     let group_id_hex = hex_encode(gid.as_slice());
     // Resolve the relay-pinned relays BEFORE creating the borrowed
@@ -539,6 +559,13 @@ pub(crate) fn ingest_signed_event_core(
             Ok(_) => Ok(Some(json!({ "kind": 445, "processed": true }))),
             Err(e) => Err(e.to_string()),
         }
+    } else if kind == 30443 || kind == 443 {
+        // KeyPackage: cache the full signed event by author pubkey in the
+        // shared MarmotService cache (protocol logic, not Chirp-specific).
+        // Any NMP app's tap can call this; create_group/add_members use it
+        // as a fallback when the caller supplies no explicit kp_events.
+        h.service().cache_key_package(event.clone());
+        Ok(Some(json!({ "kind": kind, "cached": true, "author": event.pubkey.to_hex() })))
     } else {
         // Defensive: the tap filter also admits kind:444 (and a bad
         // filter could admit anything). Not an error for the automatic

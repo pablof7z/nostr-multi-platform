@@ -52,7 +52,11 @@ use crate::marmot::state::MarmotProjection;
 /// kind:445 group message / commit / proposal, and kind:444 defensively
 /// (the wire welcome is the 1059 gift-wrap, but admitting 444 costs
 /// nothing — the shared core silently skips it).
-pub(crate) const TAP_KINDS: [u32; 3] = [444, 445, 1059];
+/// Kinds the inbound tap subscribes to: key-packages (30443/443) so the
+/// kp_cache in `MarmotService` is populated when peers' events arrive;
+/// kind:1059 gift-wrap welcome; kind:445 group message/commit; kind:444
+/// welcome rumor (defensive — the wire welcome is the 1059 gift-wrap).
+pub(crate) const TAP_KINDS: [u32; 5] = [443, 444, 445, 1059, 30443];
 
 /// Raw signed-event observer that bridges the kernel tap into the Marmot
 /// projection. Holds an `Arc<MarmotProjection>` (the same projection the

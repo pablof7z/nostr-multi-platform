@@ -79,6 +79,12 @@ pub struct MarmotSnapshot {
     pub groups: Vec<MarmotGroupRow>,
     pub pending_welcomes: Vec<PendingWelcomeRow>,
     pub key_package: KeyPackageStatus,
+    /// Pubkeys (hex) of peers whose signed KeyPackage events are cached in
+    /// `MarmotService::kp_cache`. Populated by the tap when the kernel
+    /// delivers a peer's kind:30443/443 event. Swift checks this to know
+    /// when `fetch_key_packages` has delivered results and a retry of
+    /// `create_group`/`invite` will succeed.
+    pub cached_kp_pubkeys: Vec<String>,
 }
 
 impl MarmotSnapshot {
@@ -88,6 +94,7 @@ impl MarmotSnapshot {
             groups: Vec::new(),
             pending_welcomes: Vec::new(),
             key_package: KeyPackageStatus::default(),
+            cached_kp_pubkeys: Vec::new(),
         }
     }
 }

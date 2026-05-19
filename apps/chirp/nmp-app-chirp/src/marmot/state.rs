@@ -259,10 +259,12 @@ impl MarmotProjection {
             None => KeyPackageStatus::default(),
         };
 
+        let cached_kp_pubkeys = inner.service.cached_kp_pubkeys();
         MarmotSnapshot {
             groups,
             pending_welcomes,
             key_package,
+            cached_kp_pubkeys,
         }
     }
 }

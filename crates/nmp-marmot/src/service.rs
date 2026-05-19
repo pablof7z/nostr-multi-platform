@@ -34,7 +34,9 @@
 //!
 //! `openmls` is NEVER imported directly — only `mdk_core::prelude` re-exports.
 
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Mutex;
 
 use mdk_core::key_packages::KeyPackageEventData;
 use mdk_core::prelude::{
@@ -177,6 +179,13 @@ impl<'a> Drop for PendingGroupChange<'a> {
 pub struct MarmotService {
     mdk: MDK<MdkSqliteStorage>,
     keys: Keys,
+    /// `author_pubkey_hex` → most-recent full signed kind:30443/443 event for
+    /// that peer. Populated by the app's raw-event tap when the kernel
+    /// delivers a peer's KeyPackage. Any app using Marmot can populate this
+    /// cache (the tap is a thin per-app kernel bridge); the protocol logic
+    /// (cache lookup in `create_group`/`add_members`) lives here so all
+    /// NMP apps get it for free.
+    kp_cache: Mutex<HashMap<String, Event>>,
 }
 
 impl MarmotService {
@@ -198,6 +207,7 @@ impl MarmotService {
         Ok(Self {
             mdk: MDK::new(storage),
             keys,
+            kp_cache: Mutex::new(HashMap::new()),
         })
     }
 
@@ -208,12 +218,46 @@ impl MarmotService {
         Self {
             mdk: MDK::builder(storage).with_config(config).build(),
             keys,
+            kp_cache: Mutex::new(HashMap::new()),
         }
     }
 
     /// The local identity public key (binds the MLS credential).
     pub fn public_key(&self) -> PublicKey {
         self.keys.public_key()
+    }
+
+    // ── KeyPackage cache (populated by the app's raw-event tap) ─────────────
+
+    /// Cache a peer's full signed kind:30443/443 event by author pubkey.
+    /// Called by the app's raw-event tap when the kernel delivers a peer's
+    /// KeyPackage. Overwrites silently — always keep the newest one received.
+    pub fn cache_key_package(&self, event: Event) {
+        if let Ok(mut cache) = self.kp_cache.lock() {
+            cache.insert(event.pubkey.to_hex(), event);
+        }
+    }
+
+    /// Retrieve cached full signed events for the given pubkeys. Returns only
+    /// the pubkeys whose events are cached. Used by `create_group`/`add_members`
+    /// as a fallback when the caller does not supply explicit key-package events.
+    pub fn cached_key_packages(&self, pubkeys: &[PublicKey]) -> Vec<Event> {
+        let Ok(cache) = self.kp_cache.lock() else {
+            return Vec::new();
+        };
+        pubkeys
+            .iter()
+            .filter_map(|pk| cache.get(&pk.to_hex()).cloned())
+            .collect()
+    }
+
+    /// Pubkeys (hex) that have a cached KeyPackage. Surfaced in the snapshot so
+    /// the Swift layer can know when `fetch_key_packages` has delivered results.
+    pub fn cached_kp_pubkeys(&self) -> Vec<String> {
+        self.kp_cache
+            .lock()
+            .map(|cache| cache.keys().cloned().collect())
+            .unwrap_or_default()
     }
 
     // ── KeyPackage (kind:30443 + legacy 443, author-write outbox) ────────────
