@@ -36,21 +36,16 @@ impl RemoteSignerHandle for Nip46Signer {
     }
 
     fn deliver_rpc_response(&self, response_json: &str) {
-        let v: serde_json::Value = match serde_json::from_str(response_json) {
-            Ok(v) => v,
-            Err(e) => {
-                // D6: no panics across FFI — log and drop.
-                eprintln!("nip46 deliver_rpc_response: invalid JSON: {e}");
-                return;
-            }
+        // D6: no panics or stray stdio across FFI. Malformed input is dropped
+        // silently — the originating `sign()` SignerOp times out on its own, so
+        // a dropped envelope degrades gracefully without an `eprintln!` in
+        // library code. `nmp-signers` carries no `tracing` dep by design.
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(response_json) else {
+            return;
         };
 
-        let id = match v.get("id").and_then(|x| x.as_str()) {
-            Some(id) => id,
-            None => {
-                eprintln!("nip46 deliver_rpc_response: missing id field");
-                return;
-            }
+        let Some(id) = v.get("id").and_then(|x| x.as_str()) else {
+            return;
         };
 
         // Prefer an explicit non-null `error` over `result`.  Some bunkers
@@ -66,13 +61,9 @@ impl RemoteSignerHandle for Nip46Signer {
             }
         }
 
-        match v.get("result").and_then(|x| x.as_str()) {
-            Some(result) => {
-                self.resolve_response(id, Ok(result.to_string()));
-            }
-            None => {
-                eprintln!("nip46 deliver_rpc_response: missing result field");
-            }
+        // No usable `result` — drop and let the pending `sign()` time out.
+        if let Some(result) = v.get("result").and_then(|x| x.as_str()) {
+            self.resolve_response(id, Ok(result.to_string()));
         }
     }
 

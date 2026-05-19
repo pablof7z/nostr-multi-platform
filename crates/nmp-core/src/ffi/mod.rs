@@ -305,12 +305,18 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
 }
 
 impl NmpApp {
-    /// Send a command to the actor thread, logging at error level if the
-    /// channel is disconnected (actor thread panicked or exited).
+    /// Send a command to the actor thread.
+    ///
+    /// D6: a disconnected channel (actor thread panicked or exited) must
+    /// degrade gracefully — never panic, never write to stderr from library
+    /// code. The send is best-effort; the dropped command is the failure
+    /// signal.
+    ///
+    /// TODO(D7): actor-thread death is currently invisible to the FFI caller.
+    /// Surface it through the lifecycle observer so the shell can react,
+    /// rather than silently dropping the command here.
     pub(crate) fn send_cmd(&self, cmd: ActorCommand) {
-        if let Err(_) = self.tx.send(cmd) {
-            eprintln!("NMP_FFI_ERR: actor command channel disconnected — actor thread may have panicked");
-        }
+        let _ = self.tx.send(cmd);
     }
 
     /// Clone of the actor command sender. Used by `nmp-signer-broker` to push
