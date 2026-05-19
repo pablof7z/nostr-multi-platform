@@ -1,0 +1,21 @@
+[package]
+name = "nmp-content"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Layer A content-rendering substrate — tokenizer, embed claim registry, recursion guard."
+
+[lib]
+name = "nmp_content"
+
+[dependencies]
+nmp-core = { path = "../nmp-core" }
+pulldown-cmark = { version = "0.13", default-features = false }
+regex = "1.11"
+serde = { version = "1.0", features = ["derive"] }
+smallvec = { version = "1.13", features = ["serde"] }
+url = { version = "2.5", features = ["serde"] }
+
+[dev-dependencies]
+proptest = "1"
+serde_json = "1.0"

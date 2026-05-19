@@ -1,0 +1,74 @@
+{
+  "tool": "firehose-bench",
+  "status": "live",
+  "mode": "live",
+  "scale": "standard",
+  "started_at_unix": 1779068929,
+  "scenarios": [
+    {
+      "name": "cold_start",
+      "description": "Live: cold-start against primal + purplepag.es with real WebSocket I/O.",
+      "virtual_duration_seconds": 60,
+      "events_processed": 200,
+      "gates": [
+        {
+          "name": "first_item_ms",
+          "measured": 294.8143,
+          "budget": 800.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "filled_timeline_ms",
+          "measured": 3604.1481,
+          "budget": 5000.0,
+          "passed": true,
+          "note": null
+        }
+      ],
+      "metrics": {
+        "first_item_ms": 294.81,
+        "filled_timeline_ms": 3604.15,
+        "peak_memory_mb": null,
+        "memory_drift_mb": null,
+        "ingest_to_emit_p99_ms": null,
+        "view_batch_hz": null,
+        "max_deltas_per_view_sec": null,
+        "dropped_events": null,
+        "relay_connections": null,
+        "open_close_dispatch_rate_per_sec": null,
+        "mount_unmount_rate_per_sec": null,
+        "projection_cache_hit_rate": null,
+        "leaked_subscriptions": null,
+        "detect_disconnect_p99_ms": null,
+        "reconnect_p99_ms": null,
+        "event_loss": null,
+        "cross_account_bleed": null,
+        "action_atomicity_failures": null,
+        "per_account_memory_mb": null,
+        "nip77_bytes_ratio": null,
+        "req_only_bytes_mb": null,
+        "nip77_bytes_mb": null,
+        "decrypt_p99_ms": null,
+        "nse_peak_memory_mb": null,
+        "db_conflicts": null,
+        "fd_growth": null,
+        "panics": null,
+        "trace_records": 200,
+        "synthetic_runtime_ms": 3927
+      },
+      "passed": true,
+      "observations": [
+        "peak_visible_items=200",
+        "hardware=M3_Max developer machine",
+        "relays=wss://relay.primal.net + wss://purplepag.es"
+      ]
+    }
+  ],
+  "overall_passed": true,
+  "limitations": [
+    "Live mode exercises cold_start and profile_thrashing against real relays (M1 scope).",
+    "Scenarios requiring LMDB, NIP-65 outbox, NIP-77, NIP-42 auth, multi-account, NSE, or soak are not implemented for M1."
+  ],
+  "observations": []
+}

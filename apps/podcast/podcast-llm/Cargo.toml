@@ -1,0 +1,17 @@
+[package]
+name = "podcast-llm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+nmp-core = { path = "../../../crates/nmp-core" }
+podcast-core = { path = "../podcast-core" }
+podcast-rag = { path = "../podcast-rag" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1"
+tracing = "0.1"
+
+[dev-dependencies]
+nmp-testing = { path = "../../../crates/nmp-testing" }

@@ -1,0 +1,138 @@
+[package]
+name = "nmp-testing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# Enable LMDB-backed store tests. Passes through to nmp-core's lmdb-backend feature.
+lmdb-backend = ["nmp-core/lmdb-backend"]
+
+[dependencies]
+nmp-core = { path = "../nmp-core", features = ["test-support"] }
+nmp-nip77 = { path = "../nmp-nip77" }
+paste = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+nmp-core = { path = "../nmp-core" }
+nmp-nip01 = { path = "../nmp-nip01" }
+nmp-nip22 = { path = "../nmp-nip22" }
+nmp-nip23 = { path = "../nmp-nip23" }
+nmp-nip29 = { path = "../nmp-nip29" }
+nmp-nip42 = { path = "../nmp-nip42" }
+nmp-nip57 = { path = "../nmp-nip57" }
+nmp-reactions = { path = "../nmp-reactions" }
+nmp-signers = { path = "../nmp-signers" }
+nmp-signer-broker = { path = "../nmp-signer-broker" }
+nmp-signer-iface = { path = "../nmp-signer-iface" }
+# Real-relay smoke test dependencies (real_relay_smoke.rs).
+# NIP-46 mock-bunker integration test (nip46_bunker_signing.rs) needs nip04/nip44.
+nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+# Marmot exit-gate integration tests (marmot_*.rs).
+# nmp-marmot drives MarmotService; test-utils gates new_unencrypted / new_in_memory.
+# mdk-core exposes MessageProcessingResult + NostrGroupConfigData + GroupId for assertions.
+# tempfile provides ephemeral SQLite paths for state-fork (post-compromise test).
+nmp-marmot = { path = "../nmp-marmot" }
+mdk-core = "0.8.0"
+mdk-sqlite-storage = { version = "0.8.0", features = ["test-utils"] }
+tempfile = "3"
+
+[[bin]]
+name = "reactivity-bench"
+path = "bin/reactivity-bench/main.rs"
+
+[[bin]]
+name = "firehose-bench"
+path = "bin/firehose-bench/main.rs"
+
+# M10.5 FFI hardening harness — S1..S5 (phase 1)
+# Links nmp_app_* FFI symbols via the Rust rlib dependency with test-support
+# feature; exercises the identical code paths Swift uses via extern "C" ABI.
+[[bin]]
+name = "ffi-stress"
+path = "bin/ffi-stress/main.rs"
+
+# Doctrine-lint — D0+D6+D7+D8 grep gates (Tier 1 item #8 from
+# docs/perf/parallel-work-brainstorm-2026-05-18.md). Grep-based static
+# analyzer with `#[cfg(test)]` module tracking; runs in CI on push +
+# pull_request via `.github/workflows/doctrine-lint.yml`.
+# `cargo run -p nmp-testing --bin doctrine-lint -- --crate nmp-core`
+[[bin]]
+name = "doctrine-lint"
+path = "bin/doctrine-lint/main.rs"
+
+# Doctrine-lint smoke test — runs the binary against fixtures under
+# bin/doctrine-lint/fixtures/ and asserts pass/fail per rule.
+# `cargo test -p nmp-testing --test doctrine_lint_smoke`
+[[test]]
+name = "doctrine_lint_smoke"
+path = "bin/doctrine-lint/tests.rs"
+
+# M2 subscription compiler audit gate — Assertions 1–5 (phase 1 subset).
+# `cargo test -p nmp-testing --test m2_subscription_compilation_audit`
+[[test]]
+name = "m2_subscription_compilation_audit"
+path = "tests/m2_subscription_compilation_audit.rs"
+
+# M8-subs — subscription lifecycle integration tests (Task #46).
+# Pins the seam between M2's CompiledPlan and the wire: registry, trigger
+# inbox, wire-emitter, connection pool. Eight tests defined in
+# `docs/plan/m8-subscription-lifecycle.md` §6.
+# `cargo test -p nmp-testing --test m8_subscription_lifecycle`
+[[test]]
+name = "m8_subscription_lifecycle"
+path = "tests/m8_subscription_lifecycle.rs"
+
+# Framework magic contract — 13 behaviour tests (C1-C13) + coverage meta-test.
+# Cross-cutting; intentionally not milestone-prefixed.
+# `cargo test -p nmp-testing --test framework_magic_contract`
+[[test]]
+name = "framework_magic_contract"
+path = "tests/framework_magic_contract.rs"
+
+# M11.5 T56 — NIP-29 lifecycle integration + relay-pin routing.
+# Consumer-facing: imports nmp-nip29 + nmp-core as external crates.
+# `cargo test -p nmp-testing --test nip29_lifecycle`
+[[test]]
+name = "nip29_lifecycle"
+path = "tests/nip29_lifecycle.rs"
+
+# T66 pulse-builder — real-relay smoke for Nip65OutboxResolver + kind:1 round-trip.
+# All tests `#[ignore]` by default; run explicitly:
+#   cargo test -p nmp-testing --test real_relay_smoke -- --ignored --nocapture
+[[test]]
+name = "real_relay_smoke"
+path = "tests/real_relay_smoke.rs"
+
+# Marmot milestone exit-gate integration tests.
+# Run all five: `cargo test -p nmp-testing --test 'marmot_*'`
+# Or per-file, e.g.: `cargo test -p nmp-testing --test marmot_key_package_lifecycle`
+[[test]]
+name = "marmot_key_package_lifecycle"
+path = "tests/marmot_key_package_lifecycle.rs"
+
+[[test]]
+name = "marmot_message_roundtrip"
+path = "tests/marmot_message_roundtrip.rs"
+
+[[test]]
+name = "marmot_forward_secrecy"
+path = "tests/marmot_forward_secrecy.rs"
+
+[[test]]
+name = "marmot_post_compromise"
+path = "tests/marmot_post_compromise.rs"
+
+[[test]]
+name = "marmot_key_package_rotation"
+path = "tests/marmot_key_package_rotation.rs"
+
+# Marmot perf measurement harness (produces timing numbers for perf-measurements.md).
+# `cargo test -p nmp-testing --test marmot_perf -- --nocapture`
+[[test]]
+name = "marmot_perf"
+path = "tests/marmot_perf.rs"

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    NmpPodcast Android shell. The Rust kernel + future podcast feed module
+    open relay/HTTP connections directly, so the app needs INTERNET.
+    T-podcast-android-7: added FOREGROUND_SERVICE + FOREGROUND_SERVICE_MEDIA_PLAYBACK
+    (required on API 34+) and POST_NOTIFICATIONS (API 33+) for the ExoPlayer
+    MediaSessionService foreground notification. POST_NOTIFICATIONS is requested
+    at runtime by media3 — declared here for correctness.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:allowBackup="false"
+        android:label="NmpPodcast"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.NoActionBar">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!--
+            T-podcast-android-7: media3 MediaSessionService keeps ExoPlayer
+            alive when the screen is off / app is backgrounded.
+            foregroundServiceType="mediaPlayback" required on API 34+.
+        -->
+        <service
+            android:name=".playback.PodcastPlaybackService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>

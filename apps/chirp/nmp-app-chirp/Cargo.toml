@@ -1,0 +1,59 @@
+[package]
+name = "nmp-app-chirp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Per-app Chirp glue. Owns the Nip10ModularTimelineView instance, drives it from KernelEventObserver fan-out, and surfaces the projected blocks over a static-lib FFI for the iOS shell."
+
+[lib]
+name = "nmp_app_chirp"
+# Static lib so the iOS shell can link `-lnmp_app_chirp` alongside
+# `-lnmp_core`. The crate's `#[no_mangle] extern "C"` symbols
+# (`nmp_app_chirp_register`, `nmp_app_chirp_snapshot`,
+# `nmp_app_chirp_snapshot_free`, `nmp_app_chirp_unregister`) land in their
+# own archive because doctrine D0 forbids `nmp-core -> nmp-nip01 /
+# nmp-threading`, so we cannot re-export them through `libnmp_core.a` the
+# way `android-ffi` does (T146 / ADR-0009).
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+nmp-core = { path = "../../../crates/nmp-core" }
+nmp-nip01 = { path = "../../../crates/nmp-nip01" }
+nmp-threading = { path = "../../../crates/nmp-threading" }
+# Marmot (MLS-over-Nostr). This crate's `src/marmot/` module consumes the
+# typed `MarmotService` translation layer; no MLS type crosses its C-ABI
+# (`group_id` is hex, errors are strings).
+nmp-marmot = { path = "../../../crates/nmp-marmot" }
+# FFI translation-layer exception to the "nmp-marmot is the SOLE importer
+# of mdk-core/openmls" kernel-boundary doctrine (nmp-marmot/src/lib.rs).
+# This crate's marmot module IS the typed-translation-layer that doctrine
+# anticipates ("When an actor/FFI consumer lands, it needs a typed
+# translation layer (opaque group_id: Vec<u8>, string errors)"). No MLS
+# type crosses the C-ABI; `mdk-core` types appear ONLY at the input
+# construction sites that bridge C-ABI primitives (hex `group_id`, JSON
+# config fields) into `MarmotService` arguments (`NostrGroupConfigData`,
+# `GroupId`) — which are unnamed-able any other way.
+mdk-core = "0.8.0"
+# `nostr` reconstructs typed `Event` / `Keys` / `PublicKey` / `RelayUrl`
+# values from the C-ABI JSON and builds the kind:444 message rumor.
+# Pinned to the workspace `0.44` graph (nmp-core + mdk-core re-export the
+# same graph — no version duplication).
+nostr = { version = "0.44", default-features = false, features = ["std"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# Keyring for encrypted Marmot MLS DB. `mdk-sqlite-storage` requires a
+# platform-specific keyring store to be initialized before use.
+keyring-core = "1"
+apple-native-keyring-store = { version = "1.0", features = ["protected"] }
+
+[dev-dependencies]
+# Test-support gates expose `nmp_app_new` / `nmp_app_free` (and the
+# `nmp_app_register_event_observer` FFI symbol via Rust path) so the FFI
+# smoke tests in `src/ffi.rs` can spin up a real `NmpApp` rather than mocking
+# the slot. Matches the pattern in the other protocol crates (`nmp-nip01`,
+# `nmp-nip22`, `nmp-reactions`).
+nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
+# `test-utils` gates `MdkSqliteStorage::new_in_memory` so the Marmot FFI
+# smoke tests can spin up a real `MarmotService` without a keyring /
+# on-disk SQLite file (mirrors `crates/nmp-marmot/src/tests.rs`).
+mdk-sqlite-storage = { version = "0.8.0", features = ["test-utils"] }

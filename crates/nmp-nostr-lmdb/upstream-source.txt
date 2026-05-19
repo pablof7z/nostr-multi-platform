@@ -1,0 +1,110 @@
+NMP fork basis
+==============
+
+Upstream:         rust-nostr/nostr  (https://github.com/rust-nostr/nostr)
+Crate:            nostr-lmdb
+Vendored version: 0.44.1                  (crates.io tarball)
+Upstream sha1:    72aa1c6048ae57f13e6ce972466e0dd56e9c2918
+Path in upstream: database/nostr-lmdb
+Vendored from:    ~/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nostr-lmdb-0.44.1/
+Vendored on:      2026-05-18
+Vendored by:      T136b Gate A (PD-026 Option B)
+Workspace nostr version pin: nostr = "0.44"  (crates/nmp-core/Cargo.toml)
+
+
+Why this fork exists
+--------------------
+
+PD-026 (resolved 2026-05-18) selected "Option B — pinned local fork" over
+either an upstream PR or a hand-rolled heed layer. The blocker that the
+T136 Gate-1 audit identified is the lack of an env-injection seam: NMP
+needs to own the `heed::Env` so that NMP-side sub-dbs (watermarks,
+provenance, claims, domain rows) commit atomically with event writes
+inside a single `RwTxn` (ADR-0011).
+
+The audit doc (docs/design/lmdb/env-injection-status.md) overestimated the
+extraction work. Reality verified during Gate A:
+
+  *  `Lmdb::save_event_with_txn` ALREADY exists at upstream
+     `src/store/lmdb/mod.rs:389` and ALREADY contains the full
+     NIP-09 deletion / replaceable / addressable / coordinate-tombstone
+     policy operating on a caller-owned `&mut RwTxn`. The
+     411-LOC `ingester.rs` is purely batching + flume plumbing +
+     error fan-out around this primitive — no policy lives there.
+
+  *  Therefore Gate A reduces to (a) factor `Lmdb::new` so the env
+     creation step is separable, (b) add `Lmdb::with_env(env)` taking
+     a caller-owned env, (c) promote the methods NMP needs from
+     `pub(crate)` to `pub`. No policy-extraction refactor required.
+
+This file documents that finding so a future re-sync against upstream
+0.45+ does not re-invent extraction work that is not needed.
+
+
+Surgical changes carried in this fork
+-------------------------------------
+
+The vendored source is intentionally close to upstream verbatim — any
+re-sync diff should be small and inspectable. Tracked changes:
+
+  1. src/store/lmdb/mod.rs
+     * `Lmdb::new()` factored into:
+         - `Lmdb::open_env(path, map_size, max_readers, additional_dbs)`
+           (pure heed::Env construction; pub for callers that want
+           the env wrapped already, primarily tests).
+         - `Lmdb::open_databases_on_env(env, run_migrations)`
+           (opens the 11 databases on an existing env; runs migrate()
+           by default to preserve upstream behavior).
+         - `Lmdb::new()` kept as a thin orchestration of the two
+           (path-only path, identical pre-refactor behavior).
+     * `Lmdb::with_env(env: Env) -> Result<Lmdb, Error>` — the
+       primary new public constructor; delegates to
+       `open_databases_on_env(env, run_migrations = true)`.
+     * Visibility promotions from `pub(crate)` to `pub`:
+         - `save_event_with_txn`     (the policy primitive)
+         - `read_txn`, `write_txn`   (txn lifecycle)
+         - `get_event_by_id`, `has_event`, `is_deleted`
+         - `mark_deleted`
+         - `ci_iter`, `tc_iter`, `ac_iter`, `akc_iter`, `kc_iter`,
+           `atc_iter`, `ktc_iter`
+         - `wipe`
+       (Already-`pub`: `delete`, `count`, `query`,
+        `find_replaceable_event`, `find_addressable_event`,
+        `remove_replaceable`, `remove_addressable`.)
+     * The `Lmdb::env(&self) -> &Env` accessor (so NMP can open its
+       own sub-dbs on the shared env).
+     * The `Lmdb` struct itself promoted from `pub(crate)` to `pub`
+       (re-exported at the crate root).
+
+  2. src/store/error.rs — `Error` enum promoted to `pub` at crate
+     root (was already `pub`, re-export only).
+
+  3. src/lib.rs — re-export `Lmdb` and `Error` for downstream callers.
+     The upstream `NostrLMDB` / `Store` / `Ingester` types are kept
+     intact (re-sync delta stays small) but are not used by NMP —
+     NMP wraps `Lmdb` directly through `with_env`.
+
+  4. Cargo.toml — workspace-style dep rewrites to concrete versions
+     (this crate is part of the NMP workspace, not the rust-nostr
+     workspace).
+
+
+Re-sync plan
+------------
+
+When upstream nostr-lmdb publishes a new version we want (likely 0.45
+once `nostr 0.45` lands):
+
+  1. Snapshot the current fork: `git checkout -b fork-resync-0.45-baseline`
+     and tag the pre-resync state.
+  2. Diff our fork against the 0.44.1 baseline to extract the surgical
+     changes as a patch series.
+  3. `cargo fetch` the new upstream and overlay our patch series on top.
+  4. Re-run `cargo test -p nmp-nostr-lmdb` and the LMDB
+     crash-restart integration test (`crates/nmp-testing/tests/lmdb_persistence.rs`).
+  5. File the same patch series upstream as a PR once it has lived in
+     our fork for one release cycle — by then the maintenance signal
+     justifies the upstream ask.
+
+The patch series is small (visibility + factor — no semantic change),
+which keeps the re-sync cost bounded.

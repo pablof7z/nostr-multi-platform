@@ -1,0 +1,12 @@
+[app]
+name = "fixture"
+display_name = "NMP Fixture"
+
+[modules]
+kernel = "nmp-core"
+protocol = []
+app = ["fixture-todo-core"]
+
+[platforms]
+desktop = true
+ios = false

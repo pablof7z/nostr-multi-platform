@@ -1,0 +1,7 @@
+{
+  "format": "synthetic-firehose-trace-manifest-v1",
+  "captured_at_unix": 1779046847,
+  "scenario_count": 8,
+  "total_records": 251028,
+  "note": "Prototype capture manifest; replace with frame-level relay capture once relay adapters exist."
+}

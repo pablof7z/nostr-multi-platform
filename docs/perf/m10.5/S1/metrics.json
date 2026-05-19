@@ -1,0 +1,76 @@
+{
+  "schema_version": 1,
+  "tool": "ffi-stress",
+  "scenario": "S1-mount-unmount",
+  "started_at_unix": 1779085703,
+  "wall_seconds": 600.000782333,
+  "passed": false,
+  "gates": [
+    {
+      "name": "rss_growth_bytes",
+      "op": "<=",
+      "threshold": 5242880.0,
+      "measured": 1359872.0,
+      "passed": true,
+      "note": "G-S1: RSS growth <= 5 MiB (spec)"
+    },
+    {
+      "name": "cycles_completed",
+      "op": ">=",
+      "threshold": 540000.0,
+      "measured": 463207.0,
+      "passed": false,
+      "note": "G-S1: cycles >= 90% nominal (spec); EXPECTED FAIL on macOS host: unobservable on macOS Rust harness (sleep(1ms)≈1.5ms caps at ~67%); XCUITest on iOS simulator/device required for G-S1.cycles_completed"
+    },
+    {
+      "name": "net_heap_slope_bytes_per_sec",
+      "op": "<=",
+      "threshold": 0.0,
+      "measured": 0.0,
+      "passed": true,
+      "note": "G-S1/D8: net heap slope <= 0 bytes/sec post-warmup (transient allocs excluded)"
+    },
+    {
+      "name": "unmatched_claims",
+      "op": "==",
+      "threshold": 0.0,
+      "measured": 0.0,
+      "passed": true,
+      "note": "G-S1: unmatched claim count == 0 (every claim paired with release)"
+    },
+    {
+      "name": "listener_cpu_proxy_pct",
+      "op": "<=",
+      "threshold": 5.0,
+      "measured": 0.15440213201019476,
+      "passed": true,
+      "note": "G-S1: listener thread CPU proxy <= 5% of wall time"
+    },
+    {
+      "name": "wall_seconds_over",
+      "op": "<=",
+      "threshold": 5.0,
+      "measured": 0.0007823329999609996,
+      "passed": true,
+      "note": "G-S1: wall duration == target ± 5 s"
+    }
+  ],
+  "notes": [
+    "Warmup duration: 30.0 s; steady-state cycles: 439935; callback fires: 926414",
+    "Claim/release pairing verified structurally: every cycle fires both calls in order. Kernel-side refcount audit via actor-channel drain is a phase-2 deliverable."
+  ],
+  "measurements": {
+    "callback_count": 926414,
+    "cycles_steady_state": 439935,
+    "cycles_total": 463207,
+    "listener_cpu_proxy_pct": 0.15440213201019476,
+    "net_heap_delta_bytes": 0,
+    "net_heap_slope_bytes_per_sec": 0.0,
+    "nominal_cycles": 600000,
+    "rss_growth_bytes": 1359872,
+    "ss_allocs": 172539669,
+    "ss_gross_bytes_allocated": 75493860721,
+    "unmatched_claims": 0,
+    "wall_seconds": 600.000782333
+  }
+}

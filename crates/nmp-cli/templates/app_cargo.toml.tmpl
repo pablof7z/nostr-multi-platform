@@ -1,0 +1,12 @@
+[package]
+name = "{{pkg}}"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+# Resolved to the absolute path of the nmp checkout that ran `nmp init`,
+# so this crate compiles standalone with `cargo check`.
+nmp-core = { path = "{{nmp_core}}" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"

@@ -1,0 +1,19 @@
+/target/
+/ios/DerivedData/
+/ios/NmpStress/DerivedData/
+/ios/NmpStress/NmpStress.xcodeproj/
+/ios/NmpPulse/NmpPulse.xcodeproj/
+/ios/NmpPulse/build/
+.claude/
+.codex-review*/
+.codex-worktrees/
+
+# Chirp Xcode build output
+ios/Chirp/build/
+ios/Chirp/Chirp.xcodeproj/xcuserdata/
+ios/Chirp/Chirp.xcodeproj/project.xcworkspace/xcuserdata/
+
+# NmpPodcast Xcode build output (T156)
+ios/NmpPodcast/build/
+ios/NmpPodcast/NmpPodcast.xcodeproj/xcuserdata/
+ios/NmpPodcast/NmpPodcast.xcodeproj/project.xcworkspace/xcuserdata/

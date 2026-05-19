@@ -1,0 +1,45 @@
+[workspace]
+members = [
+    "apps/chirp/nmp-app-chirp",
+    "apps/fixture/nmp-app-fixture",
+    "apps/podcast/nmp-app-podcast",
+    "apps/podcast/podcast-core",
+    "apps/podcast/podcast-feeds",
+    "apps/podcast/podcast-audio",
+    "apps/podcast/podcast-rag",
+    "apps/podcast/podcast-llm",
+    "crates/fixture-todo-core",
+    "crates/nmp-cli",
+    "crates/nmp-codegen",
+    "crates/nmp-content",
+    "crates/nmp-content-fixtures",
+    "crates/nmp-core",
+    "crates/nmp-highlighter-core",
+    "crates/nmp-marmot",
+    "crates/nmp-nip01",
+    "crates/nmp-nip22",
+    "crates/nmp-nip23",
+    "crates/nmp-nip29",
+    "crates/nmp-nip42",
+    "crates/nmp-nip42-types",
+    "crates/nmp-nip51",
+    "crates/nmp-nip57",
+    "crates/nmp-nip59",
+    "crates/nmp-nip77",
+    "crates/nmp-nostr-lmdb",
+    "crates/nmp-nwc",
+    "crates/nmp-reactions",
+    "crates/nmp-repl",
+    "crates/nmp-signer-broker",
+    "crates/nmp-signer-iface",
+    "crates/nmp-signers",
+    "crates/nmp-testing",
+    "crates/nmp-threading",
+    "crates/nmp-desktop",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+version = "0.1.0"

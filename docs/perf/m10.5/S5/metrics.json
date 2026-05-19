@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "tool": "ffi-stress",
+  "scenario": "S5-reentrancy",
+  "started_at_unix": 1779086651,
+  "wall_seconds": 30.508947542,
+  "passed": true,
+  "gates": [
+    {
+      "name": "deadlocks",
+      "op": "==",
+      "threshold": 0.0,
+      "measured": 0.0,
+      "passed": true,
+      "note": "G-S5: zero deadlocks (5 s external watchdog; epoch-absolute timestamps)"
+    },
+    {
+      "name": "reentrant_dispatches",
+      "op": ">=",
+      "threshold": 100.0,
+      "measured": 11959.0,
+      "passed": true,
+      "note": "G-S5: dispatch-from-callback emits processed >= 100 over 30 s"
+    },
+    {
+      "name": "rev_monotonic",
+      "op": "==",
+      "threshold": 1.0,
+      "measured": 1.0,
+      "passed": true,
+      "note": "G-S5: out-of-order callback->dispatch pairs == 0 (rev monotonic)"
+    },
+    {
+      "name": "avg_cb_ms",
+      "op": "<=",
+      "threshold": 2.0,
+      "measured": 0.008915864955263818,
+      "passed": true,
+      "note": "G-S5: listener thread CPU per emit avg <= 2 ms"
+    },
+    {
+      "name": "dispatch_loss",
+      "op": "==",
+      "threshold": 0.0,
+      "measured": 0.0,
+      "passed": true,
+      "note": "G-S5: dispatch loss == 0"
+    }
+  ],
+  "notes": [
+    "Emits: 11959; reentrant dispatches: 11959; deadlocks: 0; avg callback: 0.009 ms",
+    "External watchdog: shared OnceLock<Instant> epoch; CB_IN_FLIGHT_TS_MS=0 means idle; non-zero stores epoch-relative entry ms. Watchdog fires exit(1) when (epoch.elapsed_ms - entry_ms) > 5000 — correctly measures wall-time in flight.",
+    "Reentrant dispatch is fire-and-forget (bible #3): nmp_app_open_author enqueues to actor mpsc channel; does not block listener thread or re-lock any mutex."
+  ],
+  "measurements": {
+    "avg_cb_ms": 0.008915864955263818,
+    "deadlocks": 0,
+    "dispatch_loss": 0,
+    "emit_count": 11959,
+    "inject_count": 200,
+    "reentrant_dispatches": 11959,
+    "rev_monotonic": true,
+    "wall_seconds": 30.508947542,
+    "watchdog_fired": false
+  }
+}

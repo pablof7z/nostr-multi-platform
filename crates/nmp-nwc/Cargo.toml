@@ -1,0 +1,16 @@
+[package]
+name = "nmp-nwc"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+description = "NIP-47 Nostr Wallet Connect client — URI parsing, NIP-44 encrypted request/response, kind:23194 builder, kind:23195 decoder."
+
+[dependencies]
+nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+url = "2"

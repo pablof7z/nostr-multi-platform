@@ -1,0 +1,665 @@
+{
+  "tool": "reactivity-bench",
+  "started_at_unix": 1779050935,
+  "scale": "standard",
+  "scenarios": [
+    {
+      "name": "quiet_idle",
+      "cached_events": 10000,
+      "hot_events_resident": 10000,
+      "replay_events": 1000,
+      "event_rate_per_sec": 1,
+      "open_views": 10,
+      "interested_events": 104,
+      "candidate_view_hits": 104,
+      "false_wakeups": 0,
+      "candidates_per_delta": 1.0,
+      "false_wakeup_rate": 0.0,
+      "raw_deltas": 104,
+      "coalesced_deltas": 104,
+      "batches": 104,
+      "duration_ms": 1,
+      "lookup_p50_ns": 292,
+      "lookup_p99_ns": 500,
+      "recompute_p50_ns": 250,
+      "recompute_p99_ns": 458,
+      "max_batch_hz": 0.104,
+      "coalesced_deltas_per_sec": 0.104,
+      "max_deltas_per_view_per_sec": 0.023,
+      "estimated_working_set_memory_bytes": 2690655,
+      "steady_state_allocations_measured": false,
+      "steady_state_events_measured": 0,
+      "steady_state_allocations": 0,
+      "steady_state_allocated_bytes": 0,
+      "steady_state_allocations_per_event": null,
+      "steady_state_peak_heap_bytes": 788518,
+      "gates": [
+        {
+          "name": "lookup_p99_ns",
+          "measured": 500.0,
+          "budget": 100000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "recompute_p99_ns",
+          "measured": 458.0,
+          "budget": 1000000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "view_batch_hz",
+          "measured": 0.104,
+          "budget": 60.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "max_deltas_per_view_per_sec",
+          "measured": 0.023,
+          "budget": 60.0,
+          "passed": true,
+          "note": "ADR-0002 gate: per-view, not absolute"
+        },
+        {
+          "name": "false_wakeup_rate",
+          "measured": 0.0,
+          "budget": 0.1,
+          "passed": true,
+          "note": "ADR-0001 gate"
+        },
+        {
+          "name": "candidates_per_delta",
+          "measured": 1.0,
+          "budget": 1.25,
+          "passed": true,
+          "note": "candidate hits divided by raw pre-coalesced deltas"
+        },
+        {
+          "name": "estimated_working_set_memory_bytes",
+          "measured": 2690655.0,
+          "budget": 104857600.0,
+          "passed": true,
+          "note": "hot_event_limit=10000; cached_events=10000 disk-modeled"
+        },
+        {
+          "name": "steady_state_allocations",
+          "measured": null,
+          "budget": 0.0,
+          "passed": true,
+          "note": "not applicable: replay_events=1000 does not exceed 1000-event warmup"
+        }
+      ],
+      "passed": true,
+      "notes": []
+    },
+    {
+      "name": "following_timeline_scroll",
+      "cached_events": 100000,
+      "hot_events_resident": 10000,
+      "replay_events": 10000,
+      "event_rate_per_sec": 100,
+      "open_views": 1,
+      "interested_events": 4963,
+      "candidate_view_hits": 4963,
+      "false_wakeups": 0,
+      "candidates_per_delta": 1.0,
+      "false_wakeup_rate": 0.0,
+      "raw_deltas": 4963,
+      "coalesced_deltas": 4070,
+      "batches": 3978,
+      "duration_ms": 24,
+      "lookup_p50_ns": 292,
+      "lookup_p99_ns": 583,
+      "recompute_p50_ns": 167,
+      "recompute_p99_ns": 5208,
+      "max_batch_hz": 39.78,
+      "coalesced_deltas_per_sec": 40.7,
+      "max_deltas_per_view_per_sec": 40.7,
+      "estimated_working_set_memory_bytes": 4246032,
+      "steady_state_allocations_measured": true,
+      "steady_state_events_measured": 9000,
+      "steady_state_allocations": 0,
+      "steady_state_allocated_bytes": 0,
+      "steady_state_allocations_per_event": 0.0,
+      "steady_state_peak_heap_bytes": 1450810,
+      "gates": [
+        {
+          "name": "lookup_p99_ns",
+          "measured": 583.0,
+          "budget": 100000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "recompute_p99_ns",
+          "measured": 5208.0,
+          "budget": 1000000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "view_batch_hz",
+          "measured": 39.78,
+          "budget": 60.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "max_deltas_per_view_per_sec",
+          "measured": 40.7,
+          "budget": 60.0,
+          "passed": true,
+          "note": "ADR-0002 gate: per-view, not absolute"
+        },
+        {
+          "name": "false_wakeup_rate",
+          "measured": 0.0,
+          "budget": 0.1,
+          "passed": true,
+          "note": "ADR-0001 gate"
+        },
+        {
+          "name": "candidates_per_delta",
+          "measured": 1.0,
+          "budget": 1.25,
+          "passed": true,
+          "note": "candidate hits divided by raw pre-coalesced deltas"
+        },
+        {
+          "name": "estimated_working_set_memory_bytes",
+          "measured": 4246032.0,
+          "budget": 104857600.0,
+          "passed": true,
+          "note": "hot_event_limit=10000; cached_events=100000 disk-modeled"
+        },
+        {
+          "name": "steady_state_allocations",
+          "measured": 0.0,
+          "budget": 0.0,
+          "passed": true,
+          "note": "measured 9000 events after warmup; 0 bytes allocated"
+        }
+      ],
+      "passed": true,
+      "notes": [
+        "within-view coalescing reduced raw deltas 4963 -> 4070 (40.70/view/sec max)"
+      ]
+    },
+    {
+      "name": "hashtag_firehose",
+      "cached_events": 1000000,
+      "hot_events_resident": 10000,
+      "replay_events": 20000,
+      "event_rate_per_sec": 2000,
+      "open_views": 1,
+      "interested_events": 20000,
+      "candidate_view_hits": 20000,
+      "false_wakeups": 0,
+      "candidates_per_delta": 1.0,
+      "false_wakeup_rate": 0.0,
+      "raw_deltas": 20000,
+      "coalesced_deltas": 589,
+      "batches": 589,
+      "duration_ms": 9,
+      "lookup_p50_ns": 83,
+      "lookup_p99_ns": 125,
+      "recompute_p50_ns": 125,
+      "recompute_p99_ns": 167,
+      "max_batch_hz": 58.9,
+      "coalesced_deltas_per_sec": 58.9,
+      "max_deltas_per_view_per_sec": 58.9,
+      "estimated_working_set_memory_bytes": 18120272,
+      "steady_state_allocations_measured": true,
+      "steady_state_events_measured": 19000,
+      "steady_state_allocations": 0,
+      "steady_state_allocated_bytes": 0,
+      "steady_state_allocations_per_event": 0.0,
+      "steady_state_peak_heap_bytes": 1452459,
+      "gates": [
+        {
+          "name": "lookup_p99_ns",
+          "measured": 125.0,
+          "budget": 100000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "recompute_p99_ns",
+          "measured": 167.0,
+          "budget": 1000000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "view_batch_hz",
+          "measured": 58.9,
+          "budget": 60.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "max_deltas_per_view_per_sec",
+          "measured": 58.9,
+          "budget": 60.0,
+          "passed": true,
+          "note": "ADR-0002 gate: per-view, not absolute"
+        },
+        {
+          "name": "false_wakeup_rate",
+          "measured": 0.0,
+          "budget": 0.1,
+          "passed": true,
+          "note": "ADR-0001 gate"
+        },
+        {
+          "name": "candidates_per_delta",
+          "measured": 1.0,
+          "budget": 1.25,
+          "passed": true,
+          "note": "candidate hits divided by raw pre-coalesced deltas"
+        },
+        {
+          "name": "estimated_working_set_memory_bytes",
+          "measured": 18120272.0,
+          "budget": 104857600.0,
+          "passed": true,
+          "note": "hot_event_limit=10000; cached_events=1000000 disk-modeled"
+        },
+        {
+          "name": "steady_state_allocations",
+          "measured": 0.0,
+          "budget": 0.0,
+          "passed": true,
+          "note": "measured 19000 events after warmup; 0 bytes allocated"
+        }
+      ],
+      "passed": true,
+      "notes": [
+        "catch_all views considered on every insert: 1",
+        "within-view coalescing reduced raw deltas 20000 -> 589 (58.90/view/sec max)"
+      ]
+    },
+    {
+      "name": "profile_fanout",
+      "cached_events": 10000,
+      "hot_events_resident": 10000,
+      "replay_events": 5000,
+      "event_rate_per_sec": 100,
+      "open_views": 50,
+      "interested_events": 4972,
+      "candidate_view_hits": 168978,
+      "false_wakeups": 0,
+      "candidates_per_delta": 1.0,
+      "false_wakeup_rate": 0.0,
+      "raw_deltas": 168978,
+      "coalesced_deltas": 115308,
+      "batches": 2500,
+      "duration_ms": 475,
+      "lookup_p50_ns": 1208,
+      "lookup_p99_ns": 3625,
+      "recompute_p50_ns": 82208,
+      "recompute_p99_ns": 196166,
+      "max_batch_hz": 50.0,
+      "coalesced_deltas_per_sec": 2306.16,
+      "max_deltas_per_view_per_sec": 46.38,
+      "estimated_working_set_memory_bytes": 4125494,
+      "steady_state_allocations_measured": true,
+      "steady_state_events_measured": 4000,
+      "steady_state_allocations": 0,
+      "steady_state_allocated_bytes": 0,
+      "steady_state_allocations_per_event": 0.0,
+      "steady_state_peak_heap_bytes": 3547495,
+      "gates": [
+        {
+          "name": "lookup_p99_ns",
+          "measured": 3625.0,
+          "budget": 100000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "recompute_p99_ns",
+          "measured": 196166.0,
+          "budget": 1000000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "view_batch_hz",
+          "measured": 50.0,
+          "budget": 60.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "max_deltas_per_view_per_sec",
+          "measured": 46.38,
+          "budget": 60.0,
+          "passed": true,
+          "note": "ADR-0002 gate: per-view, not absolute"
+        },
+        {
+          "name": "false_wakeup_rate",
+          "measured": 0.0,
+          "budget": 0.1,
+          "passed": true,
+          "note": "ADR-0001 gate"
+        },
+        {
+          "name": "candidates_per_delta",
+          "measured": 1.0,
+          "budget": 1.25,
+          "passed": true,
+          "note": "candidate hits divided by raw pre-coalesced deltas"
+        },
+        {
+          "name": "estimated_working_set_memory_bytes",
+          "measured": 4125494.0,
+          "budget": 104857600.0,
+          "passed": true,
+          "note": "hot_event_limit=10000; cached_events=10000 disk-modeled"
+        },
+        {
+          "name": "steady_state_allocations",
+          "measured": 0.0,
+          "budget": 0.0,
+          "passed": true,
+          "note": "measured 4000 events after warmup; 0 bytes allocated"
+        }
+      ],
+      "passed": true,
+      "notes": [
+        "shared author kind:0 fan-out touched 5000 timeline views before flush coalescing",
+        "within-view coalescing reduced raw deltas 168978 -> 115308 (46.38/view/sec max)"
+      ]
+    },
+    {
+      "name": "thread_blowup",
+      "cached_events": 10000,
+      "hot_events_resident": 10000,
+      "replay_events": 5500,
+      "event_rate_per_sec": 500,
+      "open_views": 2,
+      "interested_events": 5500,
+      "candidate_view_hits": 10500,
+      "false_wakeups": 0,
+      "candidates_per_delta": 1.0,
+      "false_wakeup_rate": 0.0,
+      "raw_deltas": 10500,
+      "coalesced_deltas": 1224,
+      "batches": 612,
+      "duration_ms": 4,
+      "lookup_p50_ns": 292,
+      "lookup_p99_ns": 417,
+      "recompute_p50_ns": 209,
+      "recompute_p99_ns": 292,
+      "max_batch_hz": 55.63636363636363,
+      "coalesced_deltas_per_sec": 111.27272727272727,
+      "max_deltas_per_view_per_sec": 55.63636363636363,
+      "estimated_working_set_memory_bytes": 1787102,
+      "steady_state_allocations_measured": true,
+      "steady_state_events_measured": 4500,
+      "steady_state_allocations": 0,
+      "steady_state_allocated_bytes": 0,
+      "steady_state_allocations_per_event": 0.0,
+      "steady_state_peak_heap_bytes": 3549285,
+      "gates": [
+        {
+          "name": "lookup_p99_ns",
+          "measured": 417.0,
+          "budget": 100000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "recompute_p99_ns",
+          "measured": 292.0,
+          "budget": 1000000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "view_batch_hz",
+          "measured": 55.63636363636363,
+          "budget": 60.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "max_deltas_per_view_per_sec",
+          "measured": 55.63636363636363,
+          "budget": 60.0,
+          "passed": true,
+          "note": "ADR-0002 gate: per-view, not absolute"
+        },
+        {
+          "name": "false_wakeup_rate",
+          "measured": 0.0,
+          "budget": 0.1,
+          "passed": true,
+          "note": "ADR-0001 gate"
+        },
+        {
+          "name": "candidates_per_delta",
+          "measured": 1.0,
+          "budget": 1.25,
+          "passed": true,
+          "note": "candidate hits divided by raw pre-coalesced deltas"
+        },
+        {
+          "name": "estimated_working_set_memory_bytes",
+          "measured": 1787102.0,
+          "budget": 104857600.0,
+          "passed": true,
+          "note": "hot_event_limit=10000; cached_events=10000 disk-modeled"
+        },
+        {
+          "name": "steady_state_allocations",
+          "measured": 0.0,
+          "budget": 0.0,
+          "passed": true,
+          "note": "measured 4500 events after warmup; 0 bytes allocated"
+        }
+      ],
+      "passed": true,
+      "notes": [
+        "thread state after replay: replies=500, reactions=10000",
+        "within-view coalescing reduced raw deltas 10500 -> 1224 (55.64/view/sec max)"
+      ]
+    },
+    {
+      "name": "account_switch",
+      "cached_events": 10000,
+      "hot_events_resident": 10000,
+      "replay_events": 10,
+      "event_rate_per_sec": 10,
+      "open_views": 5,
+      "interested_events": 1,
+      "candidate_view_hits": 1,
+      "false_wakeups": 0,
+      "candidates_per_delta": 1.0,
+      "false_wakeup_rate": 0.0,
+      "raw_deltas": 1,
+      "coalesced_deltas": 1,
+      "batches": 1,
+      "duration_ms": 1,
+      "lookup_p50_ns": 250,
+      "lookup_p99_ns": 417,
+      "recompute_p50_ns": 208,
+      "recompute_p99_ns": 625,
+      "max_batch_hz": 1.0,
+      "coalesced_deltas_per_sec": 1.0,
+      "max_deltas_per_view_per_sec": 1.0,
+      "estimated_working_set_memory_bytes": 2684607,
+      "steady_state_allocations_measured": false,
+      "steady_state_events_measured": 0,
+      "steady_state_allocations": 0,
+      "steady_state_allocated_bytes": 0,
+      "steady_state_allocations_per_event": null,
+      "steady_state_peak_heap_bytes": 3549285,
+      "gates": [
+        {
+          "name": "lookup_p99_ns",
+          "measured": 417.0,
+          "budget": 100000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "recompute_p99_ns",
+          "measured": 625.0,
+          "budget": 1000000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "view_batch_hz",
+          "measured": 1.0,
+          "budget": 60.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "max_deltas_per_view_per_sec",
+          "measured": 1.0,
+          "budget": 60.0,
+          "passed": true,
+          "note": "ADR-0002 gate: per-view, not absolute"
+        },
+        {
+          "name": "false_wakeup_rate",
+          "measured": 0.0,
+          "budget": 0.1,
+          "passed": true,
+          "note": "ADR-0001 gate"
+        },
+        {
+          "name": "candidates_per_delta",
+          "measured": 1.0,
+          "budget": 1.25,
+          "passed": true,
+          "note": "candidate hits divided by raw pre-coalesced deltas"
+        },
+        {
+          "name": "estimated_working_set_memory_bytes",
+          "measured": 2684607.0,
+          "budget": 104857600.0,
+          "passed": true,
+          "note": "hot_event_limit=10000; cached_events=10000 disk-modeled"
+        },
+        {
+          "name": "steady_state_allocations",
+          "measured": null,
+          "budget": 0.0,
+          "passed": true,
+          "note": "not applicable: replay_events=10 does not exceed 1000-event warmup"
+        }
+      ],
+      "passed": true,
+      "notes": [
+        "account switch path re-registered views; insert-path coalesced to 1 deltas"
+      ]
+    },
+    {
+      "name": "working_set_100_views",
+      "cached_events": 1000000,
+      "hot_events_resident": 10000,
+      "replay_events": 10000,
+      "event_rate_per_sec": 200,
+      "open_views": 100,
+      "interested_events": 10000,
+      "candidate_view_hits": 10000,
+      "false_wakeups": 0,
+      "candidates_per_delta": 1.0,
+      "false_wakeup_rate": 0.0,
+      "raw_deltas": 10000,
+      "coalesced_deltas": 9864,
+      "batches": 2500,
+      "duration_ms": 44,
+      "lookup_p50_ns": 417,
+      "lookup_p99_ns": 667,
+      "recompute_p50_ns": 1500,
+      "recompute_p99_ns": 2125,
+      "max_batch_hz": 50.0,
+      "coalesced_deltas_per_sec": 197.28,
+      "max_deltas_per_view_per_sec": 2.58,
+      "estimated_working_set_memory_bytes": 19794430,
+      "steady_state_allocations_measured": true,
+      "steady_state_events_measured": 9000,
+      "steady_state_allocations": 0,
+      "steady_state_allocated_bytes": 0,
+      "steady_state_allocations_per_event": 0.0,
+      "steady_state_peak_heap_bytes": 4930964,
+      "gates": [
+        {
+          "name": "lookup_p99_ns",
+          "measured": 667.0,
+          "budget": 100000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "recompute_p99_ns",
+          "measured": 2125.0,
+          "budget": 1000000.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "view_batch_hz",
+          "measured": 50.0,
+          "budget": 60.0,
+          "passed": true,
+          "note": null
+        },
+        {
+          "name": "max_deltas_per_view_per_sec",
+          "measured": 2.58,
+          "budget": 60.0,
+          "passed": true,
+          "note": "ADR-0002 gate: per-view, not absolute"
+        },
+        {
+          "name": "false_wakeup_rate",
+          "measured": 0.0,
+          "budget": 0.1,
+          "passed": true,
+          "note": "ADR-0001 gate"
+        },
+        {
+          "name": "candidates_per_delta",
+          "measured": 1.0,
+          "budget": 1.25,
+          "passed": true,
+          "note": "candidate hits divided by raw pre-coalesced deltas"
+        },
+        {
+          "name": "estimated_working_set_memory_bytes",
+          "measured": 19794430.0,
+          "budget": 104857600.0,
+          "passed": true,
+          "note": "hot_event_limit=10000; cached_events=1000000 disk-modeled"
+        },
+        {
+          "name": "steady_state_allocations",
+          "measured": 0.0,
+          "budget": 0.0,
+          "passed": true,
+          "note": "measured 9000 events after warmup; 0 bytes allocated"
+        }
+      ],
+      "passed": true,
+      "notes": [
+        "working-set gate scenario: cached_events=1000000, hot_events=10000, open_views=100",
+        "within-view coalescing reduced raw deltas 10000 -> 9864 (2.58/view/sec max)"
+      ]
+    }
+  ],
+  "overall_passed": true,
+  "caveats": [
+    "Memory is an estimate of the actor hot working set plus reverse-index/view structures; cached cold event bodies are modeled as disk-resident.",
+    "Allocation measurement uses a process-wide counting GlobalAlloc and samples only the insert -> lookup -> recompute -> delta-buffer path after warmup."
+  ]
+}
