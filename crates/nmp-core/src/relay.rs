@@ -20,7 +20,7 @@ pub(crate) const DEFAULT_VISIBLE_LIMIT: usize = 80;
 pub(crate) const DEFAULT_EMIT_HZ: u32 = 4;
 pub(crate) const TIMELINE_AUTHOR_LIMIT: usize = 500;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(crate) const BOOTSTRAP_DISCOVERY_RELAYS: &[&str] =
     &["wss://relay.damus.io", "wss://purplepag.es"];
 
@@ -76,19 +76,21 @@ impl RelayRole {
             Self::Content => "content",
             Self::Indexer => "indexer",
             Self::Wallet => "wallet",
+            Self::Bunker => "bunker",
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn bootstrap_url(self) -> &'static str {
         match self {
             Self::Content => BOOTSTRAP_DISCOVERY_RELAYS[0],
             Self::Indexer => BOOTSTRAP_DISCOVERY_RELAYS[1],
             Self::Wallet => "",
+            Self::Bunker => "",
         }
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn url(self) -> &'static str {
         self.bootstrap_url()
     }

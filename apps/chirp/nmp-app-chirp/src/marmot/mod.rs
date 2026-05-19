@@ -1,25 +1,10 @@
-//! Marmot (MLS-over-Nostr) per-app projection for Chirp.
+//! Marmot (MLS-over-Nostr) per-app C-ABI shell for Chirp.
 //!
-//! A second FFI projection alongside the NIP-10 modular timeline, built to
-//! the SAME shape as `crate::{ffi, state, payload}`:
-//!
-//! * [`payload`] — flat, decoder-free DTOs (the iOS shell mirrors the
-//!   serde shape verbatim).
-//! * [`state`] — `MarmotProjection`: owns the `nmp-marmot`
-//!   `MarmotService` + the FFI-local bookkeeping it does not surface
-//!   (pending-welcome cache, key-package publish timestamp). Implements
-//!   `KernelEventObserver` (metadata-only; see the lossy-observer seam).
-//! * [`ops`] — dispatch + read-projection handlers; the ONLY place
-//!   `mdk-core` input types are named (FFI translation-layer exception,
-//!   documented in `Cargo.toml`).
-//! * [`publish`] — the internal relay-publish bridge that CLOSES the
-//!   outbound seam (calls the `nmp-core` `nmp_app_publish_signed_event*`
-//!   kernel capabilities against the retained `*mut NmpApp`).
-//! * [`tap`] — the inbound raw-event observer that CLOSES the inbound
-//!   ingest seam (registers a `RawEventObserver` against the retained
-//!   `*mut NmpApp` and drives accepted kind:1059/445 events through the
-//!   shared `ops::ingest_signed_event_core`).
-//! * [`ffi`] — the six `#[no_mangle] extern "C"` symbols.
+//! All business logic now lives in `nmp_marmot::projection`
+//! (`ops` / `state` / `payload` / `publish` / `tap`). Chirp retains ONLY
+//! the six `#[no_mangle] extern "C"` symbols in [`ffi`] — proof that the
+//! NMP crates are reusable from any host. No MLS / MDK type crosses this
+//! C-ABI (`group_id` is hex, errors are strings).
 //!
 //! ## Doctrine
 //!
@@ -29,8 +14,3 @@
 //!   never panics across the boundary.
 
 pub mod ffi;
-pub mod ops;
-pub mod payload;
-pub mod publish;
-pub mod state;
-pub mod tap;

@@ -15,8 +15,8 @@
 //! tests below.
 
 use super::*;
-use crate::marmot::tap::MarmotIngestTap;
-use crate::marmot::{ops, state::MarmotProjection};
+use nmp_marmot::projection::tap::MarmotIngestTap;
+use nmp_marmot::projection::{ops, state::MarmotProjection};
 
 use mdk_core::prelude::NostrGroupConfigData;
 use mdk_sqlite_storage::MdkSqliteStorage;

@@ -8,7 +8,7 @@
 //! ## Outbound relay seam — CLOSED (publish direction)
 //!
 //! Every op that produces relay-bound events now publishes them
-//! INTERNALLY via [`crate::marmot::publish`] (the `nmp-core`
+//! INTERNALLY via [`crate::projection::publish`] (the `nmp-core`
 //! `nmp_app_publish_signed_event*` kernel capabilities, called against the
 //! retained `*mut NmpApp`) — there is no Swift relay path. Per-kind
 //! routing:
@@ -40,7 +40,7 @@
 //! `unwrap_and_process_welcome`; kind:445 → `process_message`; seed the
 //! `group_id→relays` cache from `Welcome::group_relays`). It now has TWO
 //! callers sharing that one path: the automatic
-//! [`crate::marmot::tap`] raw-event observer (registered against the
+//! [`crate::projection::tap`] raw-event observer (registered against the
 //! retained `*mut NmpApp` in `nmp_app_chirp_marmot_register`; the kernel
 //! delivers every accepted inbound signed kind:1059/445 to it) and the
 //! back-compat `{"op":"ingest_signed_event"}` dispatch op. The tap makes
@@ -69,9 +69,15 @@ use serde_json::{json, Value};
 
 use mdk_core::prelude::{GroupId, NostrGroupConfigData};
 
-use crate::marmot::ffi::err;
-use crate::marmot::payload::MarmotMessageRow;
-use crate::marmot::state::{hex_encode, parse_signed_event, InnerHandle};
+use crate::projection::payload::MarmotMessageRow;
+use crate::projection::state::{hex_encode, parse_signed_event, InnerHandle};
+
+/// `{"ok":false,"error":"…"}` — local copy of the FFI shell's `err`
+/// helper so this layer carries no `crate::marmot::ffi` dependency
+/// (Chirp is now a thin C-ABI shell over these modules).
+fn err(msg: &str) -> serde_json::Value {
+    serde_json::json!({ "ok": false, "error": msg })
+}
 
 /// Decode a hex MLS group id into a `GroupId`.
 fn group_id_from_hex(hex: &str) -> Result<GroupId, String> {
@@ -119,6 +125,23 @@ fn parse_relays(urls: &[String]) -> Result<Vec<RelayUrl>, String> {
         .collect()
 }
 
+/// Resolve the write-relay set for relay-bearing ops.
+///
+/// The app-wired NIP-65 write relays (`h.write_relay_urls()`, recovered
+/// from the live `NmpApp`) are authoritative for the FFI host path. When
+/// the projection is driven WITHOUT an app wired (a reusable host that
+/// supplies relays directly — e.g. the FFI round-trip tests, or any
+/// non-Chirp consumer), fall back to the envelope `relays` array. This
+/// keeps `nmp-marmot::projection` host-agnostic: relays come from the
+/// kernel when available, otherwise from the caller's op envelope.
+fn resolve_write_relays(h: &InnerHandle<'_>, v: &Value) -> Vec<String> {
+    let app_relays = h.write_relay_urls();
+    if !app_relays.is_empty() {
+        return app_relays;
+    }
+    str_array(v, "relays")
+}
+
 /// Pull `signed_key_package_events_json` (array of signed kind:30443/443
 /// event JSON strings OR objects) — the KeyPackage-cache seam escape hatch.
 fn signed_key_package_events(v: &Value) -> Result<Vec<nostr::Event>, String> {
@@ -140,7 +163,7 @@ fn signed_key_package_events(v: &Value) -> Result<Vec<nostr::Event>, String> {
 }
 
 /// Newest-N decrypted application messages for one group, newest first.
-pub(crate) fn group_messages(
+pub fn group_messages(
     h: &mut InnerHandle<'_>,
     group_id_hex: &str,
     page: usize,
@@ -170,7 +193,7 @@ pub(crate) fn group_messages(
 }
 
 /// Route + execute one dispatch op envelope.
-pub(crate) fn dispatch(h: &mut InnerHandle<'_>, v: &Value, now_secs: u64) -> Value {
+pub fn dispatch(h: &mut InnerHandle<'_>, v: &Value, now_secs: u64) -> Value {
     let op = match str_field(v, "op") {
         Ok(o) => o,
         Err(e) => return err(&e),
@@ -207,7 +230,7 @@ fn publish_key_package(
     _v: &Value,
     now_secs: u64,
 ) -> Result<Value, String> {
-    let urls = h.write_relay_urls();
+    let urls = resolve_write_relays(h, _v);
     if urls.is_empty() {
         return Err("no write relays configured — add one in Settings > Relays".to_string());
     }
@@ -288,7 +311,7 @@ fn create_group(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    let urls = h.write_relay_urls();
+    let urls = resolve_write_relays(h, v);
     if urls.is_empty() {
         return Err("no write relays configured — add one in Settings > Relays".to_string());
     }
@@ -519,10 +542,11 @@ fn decline_welcome(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> 
 ///
 /// TWO callers, ONE path:
 ///
-/// * the automatic [`crate::marmot::tap`] raw-event observer (the kernel
-///   delivers every accepted inbound signed kind:1059/445 here) — it
-///   discards the `Result` (D6: a poisoned/duplicate/malformed event is a
-///   silent no-op on the actor thread, never a panic across the FFI), and
+/// * the automatic [`crate::projection::tap`] raw-event observer (the
+///   kernel delivers every accepted inbound signed kind:1059/445 here) —
+///   it discards the `Result` (D6: a poisoned/duplicate/malformed event
+///   is a silent no-op on the actor thread, never a panic across the
+///   FFI), and
 /// * the manual `{"op":"ingest_signed_event"}` dispatch op (back-compat /
 ///   tests) — it maps `Ok(None)` (unsupported kind) and any `Err` to the
 ///   `{"ok":false,"error":…}` envelope, exactly as before.

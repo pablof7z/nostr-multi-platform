@@ -44,13 +44,16 @@ pub use state::ChirpModularTimeline;
 //
 // A second FFI projection over the same kernel substrate. Mirrors the
 // timeline symbols' naming / lifetime / free conventions. The iOS agent
-// links these alongside the timeline symbols. See `crate::marmot`.
+// links these alongside the timeline symbols. Chirp owns ONLY the C-ABI
+// shell ([`marmot::ffi`]); all business logic lives in
+// `nmp_marmot::projection` (the reusable-from-any-host proof). The Rust
+// type re-exports below resolve to that canonical home.
 pub use marmot::ffi::{
     nmp_app_chirp_marmot_dispatch, nmp_app_chirp_marmot_group_messages,
     nmp_app_chirp_marmot_register, nmp_app_chirp_marmot_snapshot,
     nmp_app_chirp_marmot_string_free, nmp_app_chirp_marmot_unregister, MarmotHandle,
 };
-pub use marmot::payload::{
+pub use nmp_marmot::projection::payload::{
     KeyPackageStatus, MarmotGroupRow, MarmotMessageRow, MarmotSnapshot, PendingWelcomeRow,
 };
-pub use marmot::state::MarmotProjection;
+pub use nmp_marmot::projection::state::MarmotProjection;

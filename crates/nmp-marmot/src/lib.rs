@@ -47,6 +47,7 @@
 pub mod action;
 pub mod domain;
 pub mod interest;
+pub mod projection;
 pub mod service;
 pub mod view;
 
