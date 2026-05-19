@@ -20,17 +20,9 @@ pub use accumulator::{ListAccumulator, ListViewDelta};
 pub use detail::{DetailState, ListDetailPayload, ListDetailSpec, ListDetailView};
 pub use list::{ListListPayload, ListListSpec, ListView};
 
-use nmp_core::substrate::ModuleRegistry;
-
 /// Hex-encoded pubkey alias — surfaced here so view specs don't force callers
 /// to import the planner module for one type alias (mirrors nip23).
 pub type PublicKey = String;
-
-/// Register the two ViewModules into a `ModuleRegistry`.
-pub fn register_all(registry: &mut ModuleRegistry) {
-    registry.register_view::<ListView>();
-    registry.register_view::<ListDetailView>();
-}
 
 #[cfg(test)]
 mod tests {

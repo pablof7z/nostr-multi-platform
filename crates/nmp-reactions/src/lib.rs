@@ -62,11 +62,9 @@ pub use view::{
     ReactionViewDelta, RepostsPayload, RepostsSpec, RepostsView,
 };
 
-use nmp_core::substrate::ModuleRegistry;
-
-/// Register every module produced by `nmp-reactions` into a kernel
-/// `ModuleRegistry`. Called by per-app generated code (`nmp-codegen`).
-pub fn register(registry: &mut ModuleRegistry) {
-    registry.register_domain::<ReactionsDomain>();
-    view::register_all(registry);
-}
+// NOTE: `nmp-reactions` exposes its `DomainModule` / `ViewModule` impls
+// (`ReactionsDomain`, `ReactionSummaryView`, `RepostsView`) as public types.
+// The former `register(&mut ModuleRegistry)` entry point was deleted:
+// `ModuleRegistry` only collected name strings and the kernel never read
+// them. The live extension path is `KernelEventObserver` — see
+// `nmp_core::substrate` module docs.

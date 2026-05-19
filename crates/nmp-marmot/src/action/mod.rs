@@ -19,16 +19,3 @@ pub use actions::{
     SendMessageAction, UpdateKeysAction,
 };
 pub use publish_plan::{PublishPlan, PublishPlanError, RelayPin};
-
-use nmp_core::substrate::ModuleRegistry;
-
-/// Register all 7 `ActionModule` impls into a kernel `ModuleRegistry`.
-pub fn register_all(registry: &mut ModuleRegistry) {
-    registry.register_action::<PublishKeyPackageAction>();
-    registry.register_action::<CreateGroupAction>();
-    registry.register_action::<InviteMemberAction>();
-    registry.register_action::<SendMessageAction>();
-    registry.register_action::<LeaveGroupAction>();
-    registry.register_action::<RemoveMemberAction>();
-    registry.register_action::<UpdateKeysAction>();
-}

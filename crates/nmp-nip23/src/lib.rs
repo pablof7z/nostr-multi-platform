@@ -46,12 +46,9 @@ pub use view::{
     ArticleListPayload, ArticleListSpec, ArticleListView, ArticleViewDelta, PublicKey,
 };
 
-use nmp_core::substrate::ModuleRegistry;
-
-/// Register every module produced by `nmp-nip23` into a kernel
-/// `ModuleRegistry`. Called by per-app generated code (`nmp-codegen`) so the
-/// kernel knows the crate's domain + view populations exist.
-pub fn register(registry: &mut ModuleRegistry) {
-    registry.register_domain::<ArticlesDomain>();
-    view::register_all(registry);
-}
+// NOTE: `nmp-nip23` exposes its `DomainModule` / `ViewModule` impls
+// (`ArticlesDomain`, `ArticleListView`, `ArticleDetailView`) as public types.
+// The former `register(&mut ModuleRegistry)` entry point was deleted:
+// `ModuleRegistry` only collected name strings and the kernel never read
+// them. The live extension path is `KernelEventObserver` — see
+// `nmp_core::substrate` module docs.

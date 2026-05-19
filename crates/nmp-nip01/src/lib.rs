@@ -41,13 +41,9 @@ pub use view::{
     ThreadPayload, ThreadSpec, ThreadState, ThreadView,
 };
 
-use nmp_core::substrate::ModuleRegistry;
-
-/// Register every module produced by `nmp-nip01` into a kernel
-/// `ModuleRegistry`. Called by per-app generated code (`nmp-codegen`).
-pub fn register(registry: &mut ModuleRegistry) {
-    registry.register_domain::<RepliesDomain>();
-    registry.register_view::<RepliesView>();
-    registry.register_view::<ThreadView>();
-    registry.register_view::<Nip10ModularTimelineView>();
-}
+// NOTE: `nmp-nip01` exposes its `DomainModule` / `ViewModule` impls
+// (`RepliesDomain`, `RepliesView`, `ThreadView`, `Nip10ModularTimelineView`)
+// as public types. The former `register(&mut ModuleRegistry)` entry point
+// was deleted: `ModuleRegistry` only collected name strings and the kernel
+// never read them. The live extension path is `KernelEventObserver` — see
+// `nmp_core::substrate` module docs.

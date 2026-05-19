@@ -2,9 +2,9 @@
 //! zapped event id (when present).
 
 use nmp_core::store::{DomainHandle, StoreError, StoredEvent};
-use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule, DomainRegistry};
+use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 
-use crate::decode::{try_from_event, ZapReceiptRecord};
+use crate::decode::try_from_event;
 use crate::kinds::KIND_ZAP_RECEIPT;
 
 pub const NAMESPACE: &str = "nmp.nip57.zaps";
@@ -27,10 +27,6 @@ impl DomainModule for ZapsDomain {
 
     fn indexes() -> Vec<DomainIndex> {
         Vec::new()
-    }
-
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<ZapReceiptRecord>();
     }
 }
 

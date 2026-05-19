@@ -48,21 +48,3 @@ pub use records::{
     GroupVisibility, GroupAccessPolicy,
 };
 
-use nmp_core::substrate::ModuleRegistry;
-
-/// Register all 13 `DomainModule` impls into a kernel `ModuleRegistry`.
-pub fn register_all(registry: &mut ModuleRegistry) {
-    registry.register_domain::<GroupModule>();
-    registry.register_domain::<GroupAdminsModule>();
-    registry.register_domain::<GroupMembersModule>();
-    registry.register_domain::<GroupRolesModule>();
-    registry.register_domain::<GroupChatMessageModule>();
-    registry.register_domain::<GroupDiscussionModule>();
-    registry.register_domain::<GroupArtifactModule>();
-    registry.register_domain::<GroupRepostModule>();
-    registry.register_domain::<GroupHighlightModule>();
-    registry.register_domain::<GroupReactionModule>();
-    registry.register_domain::<GroupCommentModule>();
-    registry.register_domain::<GroupModerationEventModule>();
-    registry.register_domain::<GroupContextEventModule>();
-}

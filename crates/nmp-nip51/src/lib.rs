@@ -69,11 +69,8 @@ pub use view::{
     ListListSpec, ListView, ListViewDelta, PublicKey,
 };
 
-use nmp_core::substrate::ModuleRegistry;
-
-/// Register every module produced by `nmp-nip51` into a kernel
-/// `ModuleRegistry`. Called by per-app generated code (`nmp-codegen`).
-pub fn register(registry: &mut ModuleRegistry) {
-    registry.register_domain::<Nip51Domain>();
-    view::register_all(registry);
-}
+// NOTE: `nmp-nip51` exposes its `DomainModule` / `ViewModule` impls
+// (`Nip51Domain`, `ListView`, `ListDetailView`) as public types. The former
+// `register(&mut ModuleRegistry)` entry point was deleted: `ModuleRegistry`
+// only collected name strings and the kernel never read them. The live
+// extension path is `KernelEventObserver` — see `nmp_core::substrate` docs.

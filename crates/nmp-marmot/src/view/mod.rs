@@ -23,13 +23,3 @@ pub use views::{
     KeyPackageLookupPayload, KeyPackageLookupSpec, KeyPackageLookupView,
     MemberEntry, MemberListPayload, MemberListSpec, MemberListView,
 };
-
-use nmp_core::substrate::ModuleRegistry;
-
-/// Register all 4 `ViewModule` impls into a kernel `ModuleRegistry`.
-pub fn register_all(registry: &mut ModuleRegistry) {
-    registry.register_view::<GroupListView>();
-    registry.register_view::<GroupMessagesView>();
-    registry.register_view::<MemberListView>();
-    registry.register_view::<KeyPackageLookupView>();
-}

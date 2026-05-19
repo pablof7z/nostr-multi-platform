@@ -30,10 +30,6 @@ impl DomainModule for TodoDomainModule {
             },
         }]
     }
-
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<TodoRecord>();
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
@@ -254,36 +250,9 @@ pub enum Update {
     ActionAccepted,
 }
 
-pub fn module_descriptors() -> ModuleRegistry {
-    let mut registry = ModuleRegistry::default();
-    registry.register_domain::<TodoDomainModule>();
-    registry.register_view::<TodoViewModule>();
-    registry.register_action::<TodoActionModule>();
-    registry.register_capability::<TodoCapabilityModule>();
-    registry.register_identity::<TodoIdentityModule>();
-    registry
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn fixture_registers_all_extension_families() {
-        let registry = module_descriptors();
-        let families = registry
-            .descriptors()
-            .iter()
-            .map(|descriptor| descriptor.family)
-            .collect::<Vec<_>>();
-
-        assert_eq!(families.len(), 5);
-        assert!(families.contains(&ModuleFamily::Domain));
-        assert!(families.contains(&ModuleFamily::View));
-        assert!(families.contains(&ModuleFamily::Action));
-        assert!(families.contains(&ModuleFamily::Capability));
-        assert!(families.contains(&ModuleFamily::Identity));
-    }
 
     #[test]
     fn action_rejects_empty_todo_title() {

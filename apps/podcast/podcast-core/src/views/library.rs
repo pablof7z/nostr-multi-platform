@@ -169,7 +169,6 @@ impl LibraryViewModule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_core::substrate::{ModuleFamily, ModuleRegistry};
 
     fn ctx() -> ViewContext {
         ViewContext::default()
@@ -306,15 +305,8 @@ mod tests {
         );
     }
 
-    // ─── ModuleRegistry integration ───────────────────────────────────────────
-
     #[test]
-    fn library_view_module_registers_in_module_registry() {
-        let mut reg = ModuleRegistry::default();
-        reg.register_view::<LibraryViewModule>();
-        let descriptors = reg.descriptors();
-        assert_eq!(descriptors.len(), 1);
-        assert_eq!(descriptors[0].namespace, "podcast.library");
-        assert_eq!(descriptors[0].family, ModuleFamily::View);
+    fn library_view_module_namespace_is_stable() {
+        assert_eq!(LibraryViewModule::NAMESPACE, "podcast.library");
     }
 }

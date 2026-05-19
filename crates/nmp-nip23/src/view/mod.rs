@@ -19,18 +19,10 @@ pub use accumulator::{ArticleAccumulator, ArticleViewDelta};
 pub use detail::{ArticleDetailPayload, ArticleDetailSpec, ArticleDetailView};
 pub use list::{ArticleListPayload, ArticleListSpec, ArticleListView};
 
-use nmp_core::substrate::ModuleRegistry;
-
 /// Hex-encoded pubkey alias matching `nmp_core::planner::Pubkey` — surfaced
 /// here so the view specs don't force callers to import the planner module
 /// for one type alias.
 pub type PublicKey = String;
-
-/// Register the two ViewModules into a `ModuleRegistry`.
-pub fn register_all(registry: &mut ModuleRegistry) {
-    registry.register_view::<ArticleListView>();
-    registry.register_view::<ArticleDetailView>();
-}
 
 #[cfg(test)]
 mod tests {

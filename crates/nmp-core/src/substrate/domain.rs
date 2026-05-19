@@ -24,7 +24,6 @@ pub trait DomainModule: Send + Sync + 'static {
 
     fn migrations() -> Vec<DomainMigration>;
     fn indexes() -> Vec<DomainIndex>;
-    fn register(registry: &mut DomainRegistry);
 }
 
 pub struct DomainMigration {
@@ -50,20 +49,5 @@ impl MigrationTx {
 
     pub fn writes(&self) -> &[(Vec<u8>, Vec<u8>)] {
         &self.writes
-    }
-}
-
-#[derive(Default)]
-pub struct DomainRegistry {
-    records: Vec<&'static str>,
-}
-
-impl DomainRegistry {
-    pub fn register_record<T: 'static>(&mut self) {
-        self.records.push(std::any::type_name::<T>());
-    }
-
-    pub fn records(&self) -> &[&'static str] {
-        &self.records
     }
 }

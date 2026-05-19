@@ -6,9 +6,3 @@
 mod welcome_wrap;
 
 pub use welcome_wrap::{WelcomeWrapInput, WelcomeWrapModule, WelcomeWrapStep, WrapPlan};
-
-use nmp_core::substrate::ModuleRegistry;
-
-pub fn register_all(registry: &mut ModuleRegistry) {
-    registry.register_action::<WelcomeWrapModule>();
-}

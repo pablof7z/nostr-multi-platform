@@ -7,9 +7,9 @@
 //! enumerate direct replies without re-scanning the event store.
 
 use nmp_core::store::{DomainHandle, StoreError, StoredEvent};
-use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule, DomainRegistry};
+use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 
-use crate::decode::{try_from_event, NoteRecord};
+use crate::decode::try_from_event;
 use crate::kinds::KIND_SHORT_NOTE;
 
 /// Domain-store namespace.
@@ -34,10 +34,6 @@ impl DomainModule for RepliesDomain {
 
     fn indexes() -> Vec<DomainIndex> {
         Vec::new()
-    }
-
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<NoteRecord>();
     }
 }
 

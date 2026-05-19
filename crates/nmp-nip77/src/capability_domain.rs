@@ -17,9 +17,7 @@
 //! intentionally narrow — capability ground truth lives in this module only,
 //! per D4 (single writer per fact).
 
-use nmp_core::substrate::{
-    DomainIndex, DomainMigration, DomainModule, DomainRegistry,
-};
+use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 use serde::{Deserialize, Serialize};
 
 use crate::capability::{CapabilityCache, RelayCapabilities};
@@ -60,10 +58,6 @@ impl DomainModule for CapabilityDomain {
                     .map(|row| row.supports_nip77.to_string().into_bytes())
             },
         }]
-    }
-
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<CapabilityRow>();
     }
 }
 

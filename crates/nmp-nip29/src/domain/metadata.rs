@@ -9,9 +9,8 @@
 //! moderation actions never mutate them; they flip only on the relay's
 //! republished 39001/39002 snapshot.
 
-use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule, DomainRegistry};
+use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 
-use super::records::{GroupMembershipSnapshot, GroupMetadataRecord, GroupRolesRecord};
 
 macro_rules! noop_migrations {
     () => {
@@ -32,41 +31,25 @@ pub struct GroupModule;
 impl DomainModule for GroupModule {
     const NAMESPACE: &'static str = "nip29.group";
     const SCHEMA_VERSION: u32 = 1;
-    noop_migrations!();
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<GroupMetadataRecord>();
-    }
-}
+    noop_migrations!();}
 
 /// Kind 39001 — admin set snapshot.
 pub struct GroupAdminsModule;
 impl DomainModule for GroupAdminsModule {
     const NAMESPACE: &'static str = "nip29.group_admins";
     const SCHEMA_VERSION: u32 = 1;
-    noop_migrations!();
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<GroupMembershipSnapshot>();
-    }
-}
+    noop_migrations!();}
 
 /// Kind 39002 — member set snapshot.
 pub struct GroupMembersModule;
 impl DomainModule for GroupMembersModule {
     const NAMESPACE: &'static str = "nip29.group_members";
     const SCHEMA_VERSION: u32 = 1;
-    noop_migrations!();
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<GroupMembershipSnapshot>();
-    }
-}
+    noop_migrations!();}
 
 /// Kind 39003 — relay-declared role catalog (optional; absence = empty).
 pub struct GroupRolesModule;
 impl DomainModule for GroupRolesModule {
     const NAMESPACE: &'static str = "nip29.group_roles";
     const SCHEMA_VERSION: u32 = 1;
-    noop_migrations!();
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<GroupRolesRecord>();
-    }
-}
+    noop_migrations!();}

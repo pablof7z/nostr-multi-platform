@@ -26,11 +26,8 @@ pub use domain::{decode_and_route, list_by_target, ZapsDomain, NAMESPACE};
 pub use kinds::{KIND_ZAP_RECEIPT, KIND_ZAP_REQUEST};
 pub use view::{ZapEntry, ZapsDelta, ZapsPayload, ZapsSpec, ZapsState, ZapsView};
 
-use nmp_core::substrate::ModuleRegistry;
-
-/// Register every module produced by `nmp-nip57` into a kernel
-/// `ModuleRegistry`. Called by per-app generated code (`nmp-codegen`).
-pub fn register(registry: &mut ModuleRegistry) {
-    registry.register_domain::<ZapsDomain>();
-    registry.register_view::<ZapsView>();
-}
+// NOTE: `nmp-nip57` exposes its `DomainModule` / `ViewModule` impls
+// (`ZapsDomain`, `ZapsView`) as public types. The former
+// `register(&mut ModuleRegistry)` entry point was deleted: `ModuleRegistry`
+// only collected name strings and the kernel never read them. The live
+// extension path is `KernelEventObserver` — see `nmp_core::substrate` docs.

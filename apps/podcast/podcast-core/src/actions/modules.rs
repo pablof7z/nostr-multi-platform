@@ -191,7 +191,6 @@ impl ActionModule for UnsubscribePodcastModule {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_core::substrate::{ModuleFamily, ModuleRegistry};
 
     fn ctx() -> ActionContext {
         ActionContext::default()
@@ -238,13 +237,8 @@ mod tests {
     }
 
     #[test]
-    fn subscribe_module_registers_correct_namespace() {
-        let mut reg = ModuleRegistry::default();
-        reg.register_action::<SubscribePodcastModule>();
-        let d = reg.descriptors();
-        assert_eq!(d.len(), 1);
-        assert_eq!(d[0].namespace, "podcast.subscribe");
-        assert_eq!(d[0].family, ModuleFamily::Action);
+    fn subscribe_module_namespace_is_stable() {
+        assert_eq!(SubscribePodcastModule::NAMESPACE, "podcast.subscribe");
     }
 
     // ─── UnsubscribePodcastModule ─────────────────────────────────────────────
@@ -278,20 +272,7 @@ mod tests {
     }
 
     #[test]
-    fn unsubscribe_module_registers_correct_namespace() {
-        let mut reg = ModuleRegistry::default();
-        reg.register_action::<UnsubscribePodcastModule>();
-        let d = reg.descriptors();
-        assert_eq!(d.len(), 1);
-        assert_eq!(d[0].namespace, "podcast.unsubscribe");
-        assert_eq!(d[0].family, ModuleFamily::Action);
-    }
-
-    #[test]
-    fn both_action_modules_register_without_collision() {
-        let mut reg = ModuleRegistry::default();
-        reg.register_action::<SubscribePodcastModule>();
-        reg.register_action::<UnsubscribePodcastModule>();
-        assert_eq!(reg.descriptors().len(), 2);
+    fn unsubscribe_module_namespace_is_stable() {
+        assert_eq!(UnsubscribePodcastModule::NAMESPACE, "podcast.unsubscribe");
     }
 }

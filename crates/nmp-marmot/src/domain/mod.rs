@@ -24,7 +24,7 @@ pub use records::{
     MarmotGroupRecord, MarmotKeyPackageRecord, MarmotMessageRecord, MarmotWelcomeRecord,
 };
 
-use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule, DomainRegistry};
+use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 
 macro_rules! noop_migrations {
     () => {
@@ -47,9 +47,6 @@ impl DomainModule for MarmotGroupModule {
     const NAMESPACE: &'static str = "marmot.group";
     const SCHEMA_VERSION: u32 = 1;
     noop_migrations!();
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<MarmotGroupRecord>();
-    }
 }
 
 /// Decrypted message records, keyed by group + epoch + sender.
@@ -58,9 +55,6 @@ impl DomainModule for MarmotMessageModule {
     const NAMESPACE: &'static str = "marmot.message";
     const SCHEMA_VERSION: u32 = 1;
     noop_migrations!();
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<MarmotMessageRecord>();
-    }
 }
 
 /// Tracks own and peers' published KeyPackages (as Nostr events) +
@@ -70,9 +64,6 @@ impl DomainModule for MarmotKeyPackageModule {
     const NAMESPACE: &'static str = "marmot.key_package";
     const SCHEMA_VERSION: u32 = 1;
     noop_migrations!();
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<MarmotKeyPackageRecord>();
-    }
 }
 
 /// Tracks pending inbound Welcome messages.
@@ -81,15 +72,4 @@ impl DomainModule for MarmotWelcomeModule {
     const NAMESPACE: &'static str = "marmot.welcome";
     const SCHEMA_VERSION: u32 = 1;
     noop_migrations!();
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<MarmotWelcomeRecord>();
-    }
-}
-
-/// Register all 4 `DomainModule` impls into a kernel `ModuleRegistry`.
-pub fn register_all(registry: &mut nmp_core::substrate::ModuleRegistry) {
-    registry.register_domain::<MarmotGroupModule>();
-    registry.register_domain::<MarmotMessageModule>();
-    registry.register_domain::<MarmotKeyPackageModule>();
-    registry.register_domain::<MarmotWelcomeModule>();
 }

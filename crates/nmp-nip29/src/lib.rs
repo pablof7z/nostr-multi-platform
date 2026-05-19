@@ -44,14 +44,12 @@ pub mod action;
 pub use group_id::GroupId;
 pub use kinds::{event_is_group_event, group_id_from_tags, GroupEventClass, KindClass};
 
-/// Register every module produced by `nmp-nip29` into a kernel
-/// `ModuleRegistry`. Called by per-app generated code (`nmp-codegen`) at
-/// startup so the kernel knows the 13/7/15 trait-family populations exist.
-pub fn register(registry: &mut nmp_core::substrate::ModuleRegistry) {
-    domain::register_all(registry);
-    view::register_all(registry);
-    action::register_all(registry);
-}
+// NOTE: `nmp-nip29` exposes its 13 `DomainModule` / 7 `ViewModule` / 15
+// `ActionModule` impls as public types under `domain`, `view`, and `action`.
+// The former `register(&mut ModuleRegistry)` entry point was deleted:
+// `ModuleRegistry` only collected name strings and the kernel never read
+// them. The live extension path is `KernelEventObserver` — see
+// `nmp_core::substrate` module docs.
 
 #[cfg(test)]
 mod tests;

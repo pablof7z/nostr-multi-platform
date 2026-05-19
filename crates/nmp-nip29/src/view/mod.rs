@@ -36,15 +36,3 @@ pub use home::{GroupHomeView, HomePayload, HomeSpec};
 pub use joined::{JoinedGroupsView, JoinedPayload, JoinedSpec};
 pub use members::{GroupMembersView, MembersPayload, MembersSpec};
 pub use shared::{EventAccumulator, EventAccumulatorDelta};
-
-use nmp_core::substrate::ModuleRegistry;
-
-pub fn register_all(registry: &mut ModuleRegistry) {
-    registry.register_view::<JoinedGroupsView>();
-    registry.register_view::<GroupHomeView>();
-    registry.register_view::<GroupChatView>();
-    registry.register_view::<GroupDiscussionsView>();
-    registry.register_view::<GroupArtifactsView>();
-    registry.register_view::<GroupMembersView>();
-    registry.register_view::<GroupExplorerView>();
-}

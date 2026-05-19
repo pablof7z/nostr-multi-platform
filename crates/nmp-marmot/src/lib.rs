@@ -16,10 +16,10 @@
 //! ## Two-layer architecture
 //!
 //! 1. **Substrate module layer** ([`domain`], [`view`], [`action`]) — mirrors
-//!    `nmp-nip29`. Stateless trait impls registered into the kernel
-//!    `ModuleRegistry`. ActionModules emit an unsigned [`action::PublishPlan`]
-//!    + [`action::RelayPin`] carrier; the actor's signer-bridge signs. These
-//!    impls carry NO MDK types — they satisfy registry wiring + the
+//!    `nmp-nip29`. Stateless `DomainModule` / `ViewModule` / `ActionModule`
+//!    trait impls, exported as public types. ActionModules emit an unsigned
+//!    [`action::PublishPlan`] + [`action::RelayPin`] carrier; the actor's
+//!    signer-bridge signs. These impls carry NO MDK types — they satisfy the
 //!    kernel-boundary grep.
 //! 2. **Service layer** ([`service::MarmotService`]) — the real MDK-driving
 //!    API. Holds an `MDK<S>` + `nostr::Keys`. This is what the in-crate
@@ -65,13 +65,13 @@ pub mod mls_types {
     pub use mdk_core::prelude::{GroupId, MessageProcessingResult, NostrGroupConfigData};
 }
 
-/// Register every `nmp-marmot` substrate module into the kernel registry.
-/// Called by per-app generated code (`nmp-codegen`) at startup.
-pub fn register(registry: &mut nmp_core::substrate::ModuleRegistry) {
-    domain::register_all(registry);
-    view::register_all(registry);
-    action::register_all(registry);
-}
+// NOTE: `nmp-marmot` exposes its 4 `DomainModule` / 4 `ViewModule` / 7
+// `ActionModule` impls as public types under `domain`, `view`, and `action`.
+// The former `register(&mut ModuleRegistry)` entry point was deleted:
+// `ModuleRegistry` only collected name strings and the kernel never read
+// them. The live extension path is `KernelEventObserver` — see
+// `nmp_core::substrate` module docs; the Marmot projection registers one in
+// `projection/`.
 
 #[cfg(test)]
 mod tests;

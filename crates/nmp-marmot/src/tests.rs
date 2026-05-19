@@ -1,9 +1,8 @@
 //! `nmp-marmot` in-crate tests.
 //!
 //! Two families:
-//! 1. **Substrate module wiring** — `register()` populates the kernel
-//!    registry; ActionModules emit correctly-pinned `PublishPlan`s;
-//!    interest helpers route correctly.
+//! 1. **Substrate module behaviour** — `ActionModule` impls emit
+//!    correctly-pinned `PublishPlan`s; interest helpers route correctly.
 //! 2. **MDK + NIP-59 round-trip** — publish key package → create group →
 //!    gift-wrap Welcome → unwrap → join → message round-trip using in-memory
 //!    storage + explicit keys, driven entirely through the public
@@ -25,15 +24,7 @@ use crate::interest::{group_messages_interest, key_packages_for, welcomes_for};
 use crate::service::MarmotService;
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 
-// ─── Module wiring ───────────────────────────────────────────────────────────
-
-#[test]
-fn register_populates_kernel_registry() {
-    let mut registry = nmp_core::substrate::ModuleRegistry::default();
-    // Contract: register() wires every family (4 domain + 3 view + 7 action)
-    // without a duplicate-namespace panic.
-    crate::register(&mut registry);
-}
+// ─── ActionModule behaviour ──────────────────────────────────────────────────
 
 #[test]
 fn create_group_action_emits_pinned_plan() {

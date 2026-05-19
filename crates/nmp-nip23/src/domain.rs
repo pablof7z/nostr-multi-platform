@@ -13,7 +13,7 @@
 //! indexes documented below — never re-decode.
 
 use nmp_core::store::{DomainHandle, StoreError, StoredEvent};
-use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule, DomainRegistry};
+use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 
 use crate::decode::{try_from_event, ArticleRecord};
 use crate::kinds::KIND_LONG_FORM_ARTICLE;
@@ -48,10 +48,6 @@ impl DomainModule for ArticlesDomain {
         // its own composite keys per ADR-0001 and queries them via
         // `DomainHandle::scan_prefix`. No backend index registrations needed.
         Vec::new()
-    }
-
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<ArticleRecord>();
     }
 }
 

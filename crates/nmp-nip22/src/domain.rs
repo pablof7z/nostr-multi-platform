@@ -6,9 +6,9 @@
 //! re-touching the event store.
 
 use nmp_core::store::{DomainHandle, StoreError, StoredEvent};
-use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule, DomainRegistry};
+use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 
-use crate::decode::{try_from_event, CommentPointer, CommentRecord};
+use crate::decode::{try_from_event, CommentPointer};
 use crate::kinds::KIND_COMMENT;
 
 pub const NAMESPACE: &str = "nmp.nip22.comments";
@@ -31,10 +31,6 @@ impl DomainModule for CommentsDomain {
 
     fn indexes() -> Vec<DomainIndex> {
         Vec::new()
-    }
-
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<CommentRecord>();
     }
 }
 

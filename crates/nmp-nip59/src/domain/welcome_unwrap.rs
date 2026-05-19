@@ -12,14 +12,14 @@
 //!
 //! The actual NIP-44 decryption (calling `unwrap_gift_wrap`) requires the
 //! receiver's `Keys`. The `DomainModule` interface exposes only
-//! `migrations()`, `indexes()`, and `register()` — it cannot perform
-//! per-event side-effects inline. The kernel's future event-ingest pipeline
+//! `migrations()` and `indexes()` — it cannot perform per-event
+//! side-effects inline. The kernel's future event-ingest pipeline
 //! will provide a `process_event(event: &Event, ctx: &IngestContext)` hook;
 //! for this milestone `WelcomeUnwrapModule` declares its ingest kind and
 //! the record shape that MDK processing will materialise, but the actual
 //! decryption + MDK dispatch is performed by the actor layer.
 
-use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule, DomainRegistry};
+use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 use serde::{Deserialize, Serialize};
 
 /// A record materialised when an incoming kind:1059 gift-wrap is unwrapped
@@ -59,9 +59,5 @@ impl DomainModule for WelcomeUnwrapModule {
 
     fn indexes() -> Vec<DomainIndex> {
         Vec::new()
-    }
-
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<WelcomeRecord>();
     }
 }

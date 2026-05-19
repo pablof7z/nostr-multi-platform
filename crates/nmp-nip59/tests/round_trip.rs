@@ -81,16 +81,3 @@ fn gift_wrap_with_expiration() {
         .expect("unwrap_gift_wrap with expiration should succeed");
     assert_eq!(unwrapped.rumor.content, rumor.content);
 }
-
-#[test]
-fn register_populates_module_registry() {
-    let mut registry = nmp_core::substrate::ModuleRegistry::default();
-    nmp_nip59::register(&mut registry);
-
-    let descriptors = registry.descriptors();
-    // WelcomeWrap (Action) and WelcomeUnwrap (Domain) must be registered.
-    let has_wrap_action = descriptors.iter().any(|d| d.namespace == "nip59.welcome_wrap");
-    let has_unwrap_domain = descriptors.iter().any(|d| d.namespace == "nip59.welcome_unwrap");
-    assert!(has_wrap_action, "WelcomeWrap action must be registered");
-    assert!(has_unwrap_domain, "WelcomeUnwrap domain must be registered");
-}

@@ -122,7 +122,7 @@ impl ModularTimelineState {
     }
 }
 
-/// `ViewModule` impl. Codegen picks this up via `crate::register()`.
+/// `ViewModule` impl, exported as a public type for per-app composition.
 pub struct Nip10ModularTimelineView;
 
 impl ViewModule for Nip10ModularTimelineView {

@@ -4,9 +4,8 @@
 //! These modules exist to keep protocol-crate isolation intact: `nmp-nip25`
 //! never knows about groups; `nmp-nip29` never knows about public reactions.
 
-use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule, DomainRegistry};
+use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 
-use super::records::{GroupCommentRecord, GroupReactionRecord};
 
 macro_rules! noop_migrations {
     () => {
@@ -25,11 +24,7 @@ pub struct GroupReactionModule;
 impl DomainModule for GroupReactionModule {
     const NAMESPACE: &'static str = "nip29.group_reaction";
     const SCHEMA_VERSION: u32 = 1;
-    noop_migrations!();
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<GroupReactionRecord>();
-    }
-}
+    noop_migrations!();}
 
 /// Kind 1111 with h tag — h-tagged NIP-22 comment.
 ///
@@ -41,8 +36,4 @@ pub struct GroupCommentModule;
 impl DomainModule for GroupCommentModule {
     const NAMESPACE: &'static str = "nip29.group_comment";
     const SCHEMA_VERSION: u32 = 1;
-    noop_migrations!();
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<GroupCommentRecord>();
-    }
-}
+    noop_migrations!();}

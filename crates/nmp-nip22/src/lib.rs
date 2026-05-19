@@ -27,12 +27,9 @@ pub use meta_timeline::{
 };
 pub use view::{CommentsDelta, CommentsPayload, CommentsSpec, CommentsState, CommentsView};
 
-use nmp_core::substrate::ModuleRegistry;
-
-/// Register every module produced by `nmp-nip22` into a kernel
-/// `ModuleRegistry`. Called by per-app generated code (`nmp-codegen`).
-pub fn register(registry: &mut ModuleRegistry) {
-    registry.register_domain::<CommentsDomain>();
-    registry.register_view::<CommentsView>();
-    registry.register_view::<Nip22ModularTimelineView>();
-}
+// NOTE: `nmp-nip22` exposes its `DomainModule` / `ViewModule` impls
+// (`CommentsDomain`, `CommentsView`, `Nip22ModularTimelineView`) as public
+// types. The former `register(&mut ModuleRegistry)` entry point was deleted:
+// `ModuleRegistry` only collected name strings and the kernel never read
+// them. The live extension path is `KernelEventObserver` — see
+// `nmp_core::substrate` module docs.

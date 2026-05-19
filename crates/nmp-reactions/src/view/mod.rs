@@ -20,14 +20,6 @@ pub use accumulator::{ReactionAccumulator, ReactionViewDelta};
 pub use reposts::{RepostsPayload, RepostsSpec, RepostsView};
 pub use summary::{ReactionSummaryPayload, ReactionSummarySpec, ReactionSummaryView};
 
-use nmp_core::substrate::ModuleRegistry;
-
-/// Register the two ViewModules into a `ModuleRegistry`.
-pub fn register_all(registry: &mut ModuleRegistry) {
-    registry.register_view::<ReactionSummaryView>();
-    registry.register_view::<RepostsView>();
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

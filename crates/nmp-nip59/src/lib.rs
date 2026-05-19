@@ -48,9 +48,8 @@ pub use wrap::{gift_wrap, unwrap_gift_wrap, UnwrappedGift};
 mod error;
 mod wrap;
 
-/// Register every module produced by `nmp-nip59` into a kernel
-/// `ModuleRegistry`. Called by per-app generated code at startup.
-pub fn register(registry: &mut nmp_core::substrate::ModuleRegistry) {
-    action::register_all(registry);
-    domain::register_all(registry);
-}
+// NOTE: `nmp-nip59` exposes its `ActionModule` / `DomainModule` impls
+// (`WelcomeWrapModule`, `WelcomeUnwrapModule`) as public types. The former
+// `register(&mut ModuleRegistry)` entry point was deleted: `ModuleRegistry`
+// only collected name strings and the kernel never read them. The live
+// extension path is `KernelEventObserver` — see `nmp_core::substrate` docs.

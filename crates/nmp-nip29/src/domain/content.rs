@@ -7,12 +7,7 @@
 //! Routing per `routing.md` §3: host-pinned via `relay_pin` on the
 //! `LogicalInterest` (lattice Rule 9 + partition Case E).
 
-use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule, DomainRegistry};
-
-use super::records::{
-    GroupArtifactRecord, GroupChatMessageRecord, GroupDiscussionRecord, GroupHighlightRecord,
-    GroupRepostRecord,
-};
+use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 
 macro_rules! noop_migrations {
     () => {
@@ -26,52 +21,32 @@ pub struct GroupChatMessageModule;
 impl DomainModule for GroupChatMessageModule {
     const NAMESPACE: &'static str = "nip29.group_chat_message";
     const SCHEMA_VERSION: u32 = 1;
-    noop_migrations!();
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<GroupChatMessageRecord>();
-    }
-}
+    noop_migrations!();}
 
 /// Kind 11 with `["t","discussion"]` — discussion root.
 pub struct GroupDiscussionModule;
 impl DomainModule for GroupDiscussionModule {
     const NAMESPACE: &'static str = "nip29.group_discussion";
     const SCHEMA_VERSION: u32 = 1;
-    noop_migrations!();
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<GroupDiscussionRecord>();
-    }
-}
+    noop_migrations!();}
 
 /// Kind 11 without `t=discussion` — artifact share (URL / ISBN / NIP-23 ref).
 pub struct GroupArtifactModule;
 impl DomainModule for GroupArtifactModule {
     const NAMESPACE: &'static str = "nip29.group_artifact";
     const SCHEMA_VERSION: u32 = 1;
-    noop_migrations!();
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<GroupArtifactRecord>();
-    }
-}
+    noop_migrations!();}
 
 /// Kind 16 with h tag — generic repost into the group.
 pub struct GroupRepostModule;
 impl DomainModule for GroupRepostModule {
     const NAMESPACE: &'static str = "nip29.group_repost";
     const SCHEMA_VERSION: u32 = 1;
-    noop_migrations!();
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<GroupRepostRecord>();
-    }
-}
+    noop_migrations!();}
 
 /// Kind 9802 with h tag — NIP-84 highlight published directly into a group.
 pub struct GroupHighlightModule;
 impl DomainModule for GroupHighlightModule {
     const NAMESPACE: &'static str = "nip29.group_highlight";
     const SCHEMA_VERSION: u32 = 1;
-    noop_migrations!();
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<GroupHighlightRecord>();
-    }
-}
+    noop_migrations!();}

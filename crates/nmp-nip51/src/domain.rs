@@ -18,7 +18,7 @@
 //! length-stable encoding exists to prevent.
 
 use nmp_core::store::{DomainHandle, StoreError, StoredEvent};
-use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule, DomainRegistry};
+use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 
 use crate::decode::{try_from_event, ListRecord};
 use crate::kinds::ALL_KINDS;
@@ -46,10 +46,6 @@ impl DomainModule for Nip51Domain {
         // and queries them via `DomainHandle::scan_prefix` per ADR-0001. No
         // backend-maintained secondary indexes are needed.
         Vec::new()
-    }
-
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<ListRecord>();
     }
 }
 

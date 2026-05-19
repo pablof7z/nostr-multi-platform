@@ -22,7 +22,7 @@
 
 use nmp_core::planner::NaddrCoord;
 use nmp_core::store::{DomainHandle, StoreError, StoredEvent};
-use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule, DomainRegistry};
+use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 
 use crate::decode::{try_from_event, ReactionTarget, SocialKind, SocialRecord};
 use crate::kinds::SOCIAL_KINDS;
@@ -52,10 +52,6 @@ impl DomainModule for ReactionsDomain {
         // `keys::*` (ADR-0001) and queried with `DomainHandle::scan_prefix`;
         // no backend-maintained secondary indexes are needed.
         Vec::new()
-    }
-
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<SocialRecord>();
     }
 }
 
