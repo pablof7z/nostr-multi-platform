@@ -38,11 +38,40 @@
 //! * **C-string lifetime** — the `*const c_char` payload is borrowed for
 //!   the duration of the callback only; consumers must copy any bytes they
 //!   need. Same contract as `event_observer.rs` / `ffi/mod.rs`.
+//!
+//! ## Actor-thread decoupling
+//!
+//! `notify_raw_observers` runs on the **actor thread** — the same thread
+//! that drives relay ingest. A slow Swift / Kotlin callback blocking here
+//! would stall all relay ingest. So the **C-ABI** fan-out is decoupled
+//! exactly like `event_observer.rs`: the slot owns a bounded
+//! [`std::sync::mpsc::sync_channel`] and a single background drain thread
+//! (spawned in `new_raw_event_observer_slot`). `notify_raw_observers`
+//! serializes the verbatim JSON once, `try_send`s a `(snapshot, payload)`
+//! envelope, and returns immediately. **Rust** trait observers stay
+//! synchronous on the actor thread — their trait contract already mandates
+//! "must be cheap and must not panic". On channel overflow the envelope is
+//! dropped (D6 backpressure); the first overflow per slot logs once.
 
 use crate::store::RawEvent;
 use std::collections::BTreeSet;
 use std::ffi::{c_char, c_void, CString};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
+
+/// Bound on the per-slot C-ABI fan-out channel. See the equivalent constant
+/// in `event_observer.rs` for the rationale.
+const C_FANOUT_CHANNEL_BOUND: usize = 1024;
+
+/// One unit of decoupled C-ABI raw fan-out work: the snapshot of matching C
+/// registrations captured under the lock, plus the verbatim NIP-01 JSON
+/// serialized once. The drain thread owns this and invokes each callback.
+struct CRawFanoutEnvelope {
+    registrations: Vec<RawEventObserverRegistration>,
+    payload: Arc<CString>,
+}
 
 /// C-ABI shape: `(context, *const c_char)` where the C string is a
 /// nul-terminated JSON encoding of the verbatim signed event
@@ -103,19 +132,28 @@ pub trait RawEventObserver: Send + Sync {
 }
 
 /// Slot contents: zero or more Rust + C-ABI registrations (each with its
-/// own kind filter), plus a monotonic id allocator.
+/// own kind filter), a monotonic id allocator, and the C-ABI fan-out
+/// channel sender.
 pub struct RawObserverInner {
     rust: Vec<(RawEventObserverId, KindFilter, Arc<dyn RawEventObserver>)>,
     c_abi: Vec<(RawEventObserverId, RawEventObserverRegistration)>,
     next_id: u64,
+    /// Sender half of the bounded C-ABI fan-out channel. Dropping the whole
+    /// `RawObserverInner` drops this sender, ending the drain thread.
+    c_fanout_tx: SyncSender<CRawFanoutEnvelope>,
+    /// Set once on the first channel overflow so the warning logs exactly
+    /// once per slot.
+    overflow_logged: AtomicBool,
 }
 
 impl RawObserverInner {
-    fn new() -> Self {
+    fn new(c_fanout_tx: SyncSender<CRawFanoutEnvelope>) -> Self {
         Self {
             rust: Vec::new(),
             c_abi: Vec::new(),
             next_id: 1,
+            c_fanout_tx,
+            overflow_logged: AtomicBool::new(false),
         }
     }
 
@@ -139,9 +177,39 @@ impl RawObserverInner {
 /// kernel holds another for invocation.
 pub type RawEventObserverSlot = Arc<Mutex<RawObserverInner>>;
 
-/// Construct an empty slot. Called once in `nmp_app_new`.
+/// Invoke one decoupled C-ABI raw fan-out envelope. Runs on the per-slot
+/// drain thread, never on the actor thread. Each callback is wrapped in
+/// [`crate::ffi_guard::guard_ffi_callback`].
+fn drain_c_raw_envelope(envelope: CRawFanoutEnvelope) {
+    let ptr = envelope.payload.as_ptr();
+    for registration in &envelope.registrations {
+        crate::ffi_guard::guard_ffi_callback("raw event observer", || {
+            (registration.callback)(registration.context as *mut c_void, ptr);
+        });
+    }
+}
+
+/// Construct an empty slot, spawning its background C-ABI drain thread.
+///
+/// The drain thread lives for the life of the slot: it exits when the last
+/// `Arc` to the `RawObserverInner` is dropped (which drops `c_fanout_tx`).
+/// The slot's `Arc` is shared by `NmpApp` and the kernel actor and survives
+/// `ActorCommand::Reset`, so the thread is spawned exactly once. The
+/// `JoinHandle` is detached — there is no synchronous join point; the
+/// dropped sender ends the thread cleanly on teardown.
+///
+/// Called once in `nmp_app_new`.
 pub fn new_raw_event_observer_slot() -> RawEventObserverSlot {
-    Arc::new(Mutex::new(RawObserverInner::new()))
+    let (tx, rx) = sync_channel::<CRawFanoutEnvelope>(C_FANOUT_CHANNEL_BOUND);
+    let _drain: JoinHandle<()> = std::thread::Builder::new()
+        .name("nmp-raw-observer-drain".into())
+        .spawn(move || {
+            while let Ok(envelope) = rx.recv() {
+                drain_c_raw_envelope(envelope);
+            }
+        })
+        .expect("spawn raw event observer drain thread");
+    Arc::new(Mutex::new(RawObserverInner::new(tx)))
 }
 
 /// Register an in-process Rust observer with a kind filter. Returns an
@@ -178,6 +246,13 @@ pub fn register_c_raw_observer(
 
 /// Unregister by id (works for either Rust or C-ABI registrations).
 /// Idempotent: unknown ids are silent no-ops.
+///
+/// For C-ABI registrations: an envelope already enqueued for the drain
+/// thread captured its snapshot *before* this call and will still fire
+/// once. The foreign caller's contract is unchanged — do not free the
+/// registration's `context` pointer until you have fenced against any
+/// in-flight callback (the decoupling only widens that pre-existing
+/// window by the drain latency).
 pub fn unregister_raw_observer(slot: &RawEventObserverSlot, id: RawEventObserverId) {
     if let Ok(mut guard) = slot.lock() {
         guard.rust.retain(|(rid, _, _)| *rid != id);
@@ -201,12 +276,17 @@ pub fn raw_observers_idle_for_kind(slot: &RawEventObserverSlot, kind: u32) -> bo
 /// long enough to clone the matching registrations, so observers
 /// re-registering inside their callback cannot deadlock.
 ///
-/// The C-ABI payload (the flat NIP-01 JSON, `sig` included) is serialized
-/// once and shared across every matching C observer. Serialization failure
-/// is a D6 silent no-op.
+/// **Rust** observers fire synchronously on the calling (actor) thread.
+/// **C-ABI** observers are decoupled: the verbatim JSON is serialized once,
+/// a `(snapshot, payload)` envelope is `try_send`-posted to the slot's
+/// bounded channel, and the per-slot drain thread invokes the foreign
+/// callbacks — `notify_raw_observers` never blocks on a callback's
+/// duration. On channel overflow the envelope is dropped (D6 backpressure);
+/// the first overflow per slot logs once. Serialization failure is a D6
+/// silent no-op.
 pub fn notify_raw_observers(slot: &RawEventObserverSlot, raw: &RawEvent) {
     let kind = raw.kind;
-    let (rust_snapshot, c_snapshot) = {
+    let (rust_snapshot, c_snapshot, c_fanout_tx) = {
         let Ok(guard) = slot.lock() else {
             return;
         };
@@ -225,7 +305,7 @@ pub fn notify_raw_observers(slot: &RawEventObserverSlot, raw: &RawEvent) {
         if rust.is_empty() && c_abi.is_empty() {
             return;
         }
-        (rust, c_abi)
+        (rust, c_abi, guard.c_fanout_tx.clone())
     };
 
     // Serialize once. `RawEvent`'s struct field order is the NIP-01 order
@@ -243,13 +323,22 @@ pub fn notify_raw_observers(slot: &RawEventObserverSlot, raw: &RawEvent) {
         let Ok(cstr) = CString::new(payload) else {
             return;
         };
-        for registration in &c_snapshot {
-            // UB guard: the foreign callback may panic / raise; a single
-            // panicking observer must not unwind across the C ABI nor stop
-            // the remaining observers from firing.
-            crate::ffi_guard::guard_ffi_callback("raw event observer", || {
-                (registration.callback)(registration.context as *mut c_void, cstr.as_ptr());
-            });
+        let envelope = CRawFanoutEnvelope {
+            registrations: c_snapshot,
+            payload: Arc::new(cstr),
+        };
+        if let Err(err) = c_fanout_tx.try_send(envelope) {
+            // Channel full (slow callback) or disconnected (drain thread
+            // gone). Drop the envelope — D6 best-effort. Log the first
+            // overflow per slot.
+            if let Ok(guard) = slot.lock() {
+                if !guard.overflow_logged.swap(true, Ordering::Relaxed) {
+                    eprintln!(
+                        "[nmp-core] raw event observer fan-out channel full \
+                         ({err}); dropping events — a registered callback is too slow"
+                    );
+                }
+            }
         }
     }
 }
@@ -258,10 +347,26 @@ pub fn notify_raw_observers(slot: &RawEventObserverSlot, raw: &RawEvent) {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU32, Ordering};
+    use std::time::{Duration, Instant};
 
     static C_CALLS: AtomicU32 = AtomicU32::new(0);
     static LAST_KIND: AtomicU32 = AtomicU32::new(0);
     static SERIAL: Mutex<()> = Mutex::new(());
+
+    /// Block until `cond` holds or `timeout` elapses. C-ABI raw observers
+    /// fire on the per-slot drain thread, so assertions on their side
+    /// effects must poll rather than read immediately after
+    /// `notify_raw_observers`.
+    fn wait_until(timeout: Duration, mut cond: impl FnMut() -> bool) -> bool {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if cond() {
+                return true;
+            }
+            std::thread::yield_now();
+        }
+        cond()
+    }
 
     extern "C" fn c_observer_shim(_ctx: *mut c_void, payload: *const c_char) {
         C_CALLS.fetch_add(1, Ordering::SeqCst);
@@ -371,8 +476,54 @@ mod tests {
         );
         notify_raw_observers(&slot, &raw("nope", 1)); // filtered
         notify_raw_observers(&slot, &raw("yes", 1059)); // delivered
-        assert_eq!(C_CALLS.load(Ordering::SeqCst), 1);
-        assert_eq!(LAST_KIND.load(Ordering::SeqCst), 1059);
+        // C-ABI observers fire on the per-slot drain thread — poll on the
+        // LAST side effect (`LAST_KIND`, written after `C_CALLS`) so the
+        // wait does not race ahead of the callback body completing.
+        assert!(
+            wait_until(Duration::from_secs(5), || {
+                LAST_KIND.load(Ordering::SeqCst) == 1059
+            }),
+            "delivered kind:1059 callback must run on the drain thread"
+        );
+        assert_eq!(
+            C_CALLS.load(Ordering::SeqCst),
+            1,
+            "exactly one C-ABI callback (the kind:1059 one; kind:1 filtered)"
+        );
+    }
+
+    #[test]
+    fn notify_raw_does_not_block_on_slow_c_observer() {
+        // Actor-thread decoupling invariant: a slow foreign callback must NOT
+        // delay `notify_raw_observers`.
+        static SLOW_CALLS: AtomicU32 = AtomicU32::new(0);
+        extern "C" fn slow_shim(_ctx: *mut c_void, _payload: *const c_char) {
+            std::thread::sleep(Duration::from_millis(200));
+            SLOW_CALLS.fetch_add(1, Ordering::SeqCst);
+        }
+        let _g = SERIAL.lock().unwrap();
+        SLOW_CALLS.store(0, Ordering::SeqCst);
+        let slot = new_raw_event_observer_slot();
+        register_c_raw_observer(
+            &slot,
+            RawEventObserverRegistration {
+                context: 0,
+                callback: slow_shim,
+                kinds: KindFilter::default(),
+            },
+        );
+        let started = Instant::now();
+        notify_raw_observers(&slot, &raw("slow", 1));
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < Duration::from_millis(100),
+            "notify_raw_observers must return immediately, not block on the \
+             200ms callback — took {elapsed:?}"
+        );
+        assert!(
+            wait_until(Duration::from_secs(5), || SLOW_CALLS.load(Ordering::SeqCst) == 1),
+            "slow callback must still fire on the drain thread"
+        );
     }
 
     #[test]
