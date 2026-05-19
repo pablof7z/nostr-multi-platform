@@ -26,7 +26,7 @@ impl Kernel {
             .count();
         let visible_placeholder_avatar_items = items.len().saturating_sub(visible_profiled_items);
         let counters = self.total_counters();
-        let mut update = KernelUpdate {
+        let update = KernelUpdate {
             rev: self.rev,
             update_kind: "ViewBatch",
             running,
@@ -64,8 +64,15 @@ impl Kernel {
                 emit_hz_configured: DEFAULT_EMIT_HZ,
                 update_sequence: self.update_sequence,
                 estimated_store_bytes: self.estimated_store_bytes(),
-                payload_bytes: 0,
-                store_to_payload_ratio: 0.0,
+                // Diagnostic only. Sourced from the PREVIOUS tick's serialized
+                // length so this struct is serialized exactly once below
+                // (no serialize-then-discard just to size the field). `0` on
+                // the very first tick; lags the real snapshot by one tick.
+                payload_bytes: self.last_payload_bytes,
+                store_to_payload_ratio: ratio(
+                    self.estimated_store_bytes(),
+                    self.last_payload_bytes,
+                ),
                 actor_queue_depth: 0,
                 frames_rx: counters.frames_rx,
                 events_rx: counters.events_rx,
@@ -106,12 +113,10 @@ impl Kernel {
             bunker_handshake: self.bunker_handshake_snapshot().cloned(),
         };
 
-        let first = serde_json::to_string(&update).unwrap_or_else(|_| "{}".to_string());
-        update.metrics.payload_bytes = first.len();
-        update.metrics.store_to_payload_ratio = ratio(
-            update.metrics.estimated_store_bytes,
-            update.metrics.payload_bytes,
-        );
+        // Serialize the snapshot exactly once. The on-wire `payload_bytes`
+        // metric above already reflects the previous tick's size; the perf log
+        // below uses this tick's true length so the diagnostic stays accurate.
+        let serialized = serde_json::to_string(&update).unwrap_or_else(|_| "{}".to_string());
         if batch_events > 0 || !inserted.is_empty() || !updated.is_empty() || !removed.is_empty() {
             self.log(format!(
                 "NMP_PERF rust_update rev={} batch_events={} inserted={} updated={} removed={} visible={} payload_bytes={} event_to_emit_ms={} max_event_to_emit_ms={}",
@@ -121,7 +126,7 @@ impl Kernel {
                 updated.len(),
                 removed.len(),
                 self.last_emitted_items.len(),
-                update.metrics.payload_bytes,
+                serialized.len(),
                 last_event_to_emit_ms
                     .map(|value| value.to_string())
                     .unwrap_or_else(|| "none".to_string()),
@@ -130,7 +135,10 @@ impl Kernel {
         }
         self.events_since_last_update = 0;
         self.changed_since_emit = false;
-        serde_json::to_string(&update).unwrap_or(first)
+        // Remember this tick's size so the next tick's `payload_bytes` metric
+        // can be set without a throwaway serialize.
+        self.last_payload_bytes = serialized.len();
+        serialized
     }
 
     pub(super) fn visible_items(&self) -> Vec<TimelineItem> {

@@ -227,6 +227,15 @@ pub(crate) struct Kernel {
     persistent_subs: HashSet<(String, String)>,
     last_emitted_items: Vec<TimelineItem>,
     update_sequence: u64,
+    /// Serialized length (bytes) of the snapshot emitted on the PREVIOUS
+    /// `make_update` tick. The `Metrics::payload_bytes` diagnostic is sourced
+    /// from this value so `make_update` serializes the `KernelUpdate` exactly
+    /// once per tick instead of serializing-then-discarding to size the field.
+    /// The reported `payload_bytes` therefore lags the actual snapshot by one
+    /// tick — acceptable for a diagnostic field (no consumer treats it as
+    /// authoritative; both the iOS bridge and the S3 harness measure the real
+    /// frame length themselves). `0` on the first tick.
+    last_payload_bytes: usize,
     events_since_last_update: u64,
     max_event_to_emit_ms: u128,
     max_events_per_update: u64,
@@ -450,6 +459,7 @@ impl Kernel {
             persistent_subs: HashSet::new(),
             last_emitted_items: Vec::new(),
             update_sequence: 0,
+            last_payload_bytes: 0,
             events_since_last_update: 0,
             max_event_to_emit_ms: 0,
             max_events_per_update: 0,
