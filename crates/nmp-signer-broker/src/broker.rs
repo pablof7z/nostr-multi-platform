@@ -537,9 +537,12 @@ impl RemoteSignerHandle for ArcRemoteSigner {
 struct NoopRelay;
 impl RelayClient for NoopRelay {
     fn send(&self, _frame: String) -> Result<(), crate::relay_client::RelayError> {
-        // Silently drop — by the time anyone is calling `send` on the real
-        // session, the worker has already swapped this out.
-        Ok(())
+        // The worker swaps this placeholder out for the real transport once
+        // the relay socket is up. If `send` is reached while `NoopRelay` is
+        // still installed, the handshake raced ahead of the connection —
+        // surface that as an error instead of silently dropping the frame
+        // (a dropped sign request must never be reported as success).
+        Err(crate::relay_client::RelayError::Disconnected)
     }
     fn shutdown(&self) {}
 }

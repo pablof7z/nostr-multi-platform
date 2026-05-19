@@ -137,11 +137,16 @@ impl LocalKeySigner {
 
     fn sign_now(&self, unsigned: UnsignedEvent) -> Result<SignedEvent, SignerError> {
         let kind = Kind::from_u16(unsigned.kind as u16);
+        // Hard-fail on any malformed tag rather than silently dropping it.
+        // A dropped tag would produce a signed event that differs from the
+        // caller's intent — the actor's `sign_with` enforces the same
+        // post-condition (D6 — correctness hazard for kind-agnostic publish).
         let tags = unsigned
             .tags
             .iter()
-            .filter_map(|t| Tag::parse(t).ok())
-            .collect::<Vec<_>>();
+            .map(|t| Tag::parse(t))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| SignerError::Backend(format!("malformed tag: {e}")))?;
         let builder = EventBuilder::new(kind, &unsigned.content)
             .tags(tags)
             .custom_created_at(Timestamp::from(unsigned.created_at));
