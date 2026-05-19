@@ -281,6 +281,10 @@ impl<'a> InnerHandle<'a> {
         &self.inner.service
     }
 
+    pub(crate) fn me_pubkey_hex(&self) -> String {
+        self.inner.service.public_key().to_hex()
+    }
+
     pub(crate) fn record_key_package(&mut self, d_tag: String, now_secs: u64) {
         self.inner.key_package_published_at = Some(now_secs);
         self.inner.key_package_d_tag = Some(d_tag);

@@ -36,12 +36,19 @@ pub fn run(session: &mut Session) -> Result<()> {
     let since = now_secs().saturating_sub(POLL_WINDOW_SECS);
     let mut all_events: HashMap<String, nostr::Event> = HashMap::new();
 
-    // Two queries per relay: an inbox query for ourselves (kind:1059 gift-
-    // wraps are `#p`-tagged to recipient; kind:445 is a topic stream) and an
-    // open KP query (no author filter so peers' KPs land too).
-    let inbox_filter = json!({
-        "kinds": [1059, 445],
+    // Three queries per relay:
+    // - kind:1059 gift-wraps addressed to us (`#p` is correct for gift-wraps)
+    // - kind:445 group messages (NO `#p` filter — Marmot group messages are
+    //   NOT tagged to recipients; MDK's `process_message` acts as the filter)
+    // - kind:30443/443 KeyPackages (open sweep, no author filter)
+    let welcome_filter = json!({
+        "kinds": [1059],
         "#p": [me_pubkey.to_hex()],
+        "since": since,
+        "limit": 200,
+    });
+    let message_filter = json!({
+        "kinds": [445],
         "since": since,
         "limit": 200,
     });
@@ -52,7 +59,11 @@ pub fn run(session: &mut Session) -> Result<()> {
     });
 
     for relay in session.app_relays.clone() {
-        for (label, filter) in [("inbox", &inbox_filter), ("key-packages", &kp_filter)] {
+        for (label, filter) in [
+            ("inbox", &welcome_filter),
+            ("messages", &message_filter),
+            ("key-packages", &kp_filter),
+        ] {
             let events = publish::fetch_events(&relay, filter, FETCH_WALL);
             println!("  {relay} [{label}]: {} events", events.len());
             for ev_json in events {

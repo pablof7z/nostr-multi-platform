@@ -15,6 +15,7 @@ struct OnboardingView: View {
     @State var mode: Mode = .welcome
     @State var logoAppeared = false
     @State var contentAppeared = false
+    @State var displayName = ""
     @State var nostrConnectURL: String? = nil
     @State var qrCodeImage: UIImage? = nil
     @State var showQR = false
@@ -55,9 +56,15 @@ struct OnboardingView: View {
 
                     nip46SignerCard
 
+                    TextField("Your name", text: $displayName)
+                        .textFieldStyle(.roundedBorder)
+                        .padding(.horizontal, 4)
+
                     Button {
                         // CRITICAL DISPATCH — do not remove
-                        model.createAccount(profile: ["name": "New User"], relays: [("wss://relay.damus.io", "both")])
+                        let name = displayName.trimmingCharacters(in: .whitespaces)
+                        let profile: [String: String] = name.isEmpty ? ["name": "New User"] : ["name": name]
+                        model.createAccount(profile: profile, relays: [("wss://relay.primal.net", "both"), ("wss://purplepag.es", "indexer")])
                     } label: {
                         Text("Create a new identity")
                             .font(.headline)

@@ -91,7 +91,7 @@ final class KernelModel: ObservableObject {
     private func addDefaultRelaysIfNeeded() {
         guard relayEditRows.isEmpty else { return }
         let defaults = [
-            ("wss://r.f7z.io", "both"),
+            ("wss://relay.primal.net", "both"),
             ("wss://purplepag.es", "indexer"),
         ]
         for (url, role) in defaults {
@@ -214,7 +214,7 @@ final class KernelModel: ObservableObject {
             ?? "wss://r.f7z.io"
         return kernel.nostrConnectURI(relay: relay)
     }
-    func createAccount(profile: [String: String] = ["name": "New User"], relays: [(String, String)] = [("wss://relay.damus.io", "both")]) {
+    func createAccount(profile: [String: String] = ["name": "New User"], relays: [(String, String)] = [("wss://relay.primal.net", "both"), ("wss://purplepag.es", "indexer")]) {
         NSLog("ChirpDebug: createAccount tapped")
         kmLog.info("createAccount dispatched")
         kernel.createAccount(profile: profile, relays: relays)

@@ -1,9 +1,12 @@
-//! `mls-init` — build the in-memory `MarmotService` and publish KeyPackages.
+//! `mls-init` — build the `MarmotService` and publish KeyPackages.
 //!
 //! Requires a prior `create-account` / `load-key` (so we have `mls_keys`).
-//! Uses an in-memory SQLite MLS store (`MdkSqliteStorage::new_in_memory`) so
-//! the REPL is single-process and stateless — perfect for the two-instance
-//! end-to-end test.
+//! Uses a persistent unencrypted SQLite store at
+//! `~/.cache/nmp-repl/mls/<pubkey_hex>.sqlite` so MLS state (key packages,
+//! group ratchet trees, welcomed groups) survives across REPL sessions. This
+//! is critical for the two-terminal test: Bob can close his session after
+//! `mls-init` and reopen it later; his key material is still present when
+//! Alice's welcome arrives via `mls-poll`.
 //!
 //! # USAGE — two-party MLS round-trip via two REPL instances
 //!
@@ -48,8 +51,12 @@ pub fn run(session: &mut Session) -> Result<()> {
     let keys = require_keys(session)?;
     let relays = relay_urls(session)?;
 
-    let storage = MdkSqliteStorage::new_in_memory()
-        .map_err(|e| ReplError::Other(format!("init in-memory mls storage: {e}")))?;
+    let pubkey_hex = keys.public_key().to_hex();
+    let db_path = mls_db_path(&pubkey_hex)?;
+    println!("  mls db: {db_path}");
+
+    let storage = MdkSqliteStorage::new_unencrypted(&db_path)
+        .map_err(|e| ReplError::Other(format!("open mls storage at {db_path}: {e}")))?;
     let svc = MarmotService::from_storage(storage, keys, Default::default());
 
     let pub_result = svc
@@ -66,6 +73,32 @@ pub fn run(session: &mut Session) -> Result<()> {
     );
 
     session.mls_service = Some(Arc::new(Mutex::new(svc)));
-    println!("  mls service initialised (in-memory store)");
+    println!("  mls service initialised (persistent store)");
     Ok(())
+}
+
+/// `~/.cache/nmp-repl/mls/<pubkey_hex>.sqlite`
+fn mls_db_path(pubkey_hex: &str) -> Result<String> {
+    let base = if let Ok(xdg) = std::env::var("XDG_CACHE_HOME") {
+        if !xdg.is_empty() {
+            std::path::PathBuf::from(xdg)
+        } else {
+            home_cache()?
+        }
+    } else {
+        home_cache()?
+    };
+    let dir = base.join("nmp-repl").join("mls");
+    std::fs::create_dir_all(&dir)
+        .map_err(|e| ReplError::Other(format!("create mls cache dir: {e}")))?;
+    Ok(dir
+        .join(format!("{pubkey_hex}.sqlite"))
+        .to_string_lossy()
+        .into_owned())
+}
+
+fn home_cache() -> Result<std::path::PathBuf> {
+    let home = std::env::var("HOME")
+        .map_err(|_| ReplError::Other("$HOME not set".into()))?;
+    Ok(std::path::PathBuf::from(home).join(".cache"))
 }

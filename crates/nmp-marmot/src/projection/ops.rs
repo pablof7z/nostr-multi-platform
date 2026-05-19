@@ -209,6 +209,7 @@ pub fn dispatch(h: &mut InnerHandle<'_>, v: &Value, now_secs: u64) -> Value {
         "decline_welcome" => decline_welcome(h, v),
         "ingest_signed_event" => ingest_signed_event(h, v),
         "clear_pending" => clear_pending(h, v),
+        "poll_inbox" => poll_inbox(h, v),
         other => Err(format!("unknown op `{other}`")),
     };
     match r {
@@ -632,6 +633,93 @@ fn clear_pending(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
     let pending = h.service().self_update(&gid).map_err(|e| e.to_string())?;
     pending.clear().map_err(|e| e.to_string())?;
     Ok(json!({ "cleared": true }))
+}
+
+/// Fetch kind:1059/445/443/30443 from `relays` (defaults to write-relay URLs)
+/// and drive each event through `ingest_signed_event_core`. Returns counts.
+/// Accepts an optional `"relays"` JSON array to override the write-relay list.
+fn poll_inbox(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
+    use std::collections::HashMap;
+    use std::time::Duration;
+
+    const WALL: Duration = Duration::from_secs(8);
+    const WINDOW_SECS: u64 = 7 * 24 * 60 * 60;
+
+    let me = h.me_pubkey_hex();
+
+    // Caller may override relay list; fall back to configured write relays.
+    let relay_urls: Vec<String> = if let Some(arr) = v.get("relays").and_then(Value::as_array) {
+        arr.iter().filter_map(|u| u.as_str().map(str::to_string)).collect()
+    } else {
+        h.write_relay_urls()
+    };
+    if relay_urls.is_empty() {
+        return Err("poll_inbox: no relays configured — add one in Settings > Relays".into());
+    }
+
+    let since = now_unix_secs().saturating_sub(WINDOW_SECS);
+    let welcome_filter = serde_json::json!({
+        "kinds": [1059], "#p": [me], "since": since, "limit": 200,
+    });
+    let message_filter = serde_json::json!({
+        "kinds": [445], "since": since, "limit": 200,
+    });
+    let kp_filter = serde_json::json!({
+        "kinds": [30443, 443], "since": since, "limit": 50,
+    });
+
+    // Collect unique events across relays (de-dup by event id).
+    let mut all_events: HashMap<String, nostr::Event> = HashMap::new();
+    for relay_url in &relay_urls {
+        for filter in [&welcome_filter, &message_filter, &kp_filter] {
+            let raw = crate::projection::fetch::fetch_events(relay_url, filter, WALL);
+            for ev_json in raw {
+                if let Ok(ev) =
+                    serde_json::from_value::<nostr::Event>(ev_json)
+                {
+                    all_events.entry(ev.id.to_hex()).or_insert(ev);
+                }
+            }
+        }
+    }
+
+    let mut n_welcomes = 0u32;
+    let mut n_messages = 0u32;
+    let mut n_kps = 0u32;
+    for (_id, ev) in all_events {
+        match ev.kind {
+            nostr::Kind::MlsKeyPackage | nostr::Kind::Custom(30443) => {
+                if h.service().validate_peer_key_package(&ev).is_ok() {
+                    h.service().cache_key_package(ev);
+                    n_kps += 1;
+                }
+            }
+            nostr::Kind::GiftWrap => {
+                if let Ok(_) = ingest_signed_event_core(h, &ev) {
+                    n_welcomes += 1;
+                }
+            }
+            nostr::Kind::MlsGroupMessage => {
+                if let Ok(_) = ingest_signed_event_core(h, &ev) {
+                    n_messages += 1;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(serde_json::json!({
+        "welcomes": n_welcomes,
+        "messages": n_messages,
+        "key_packages": n_kps,
+    }))
+}
+
+fn now_unix_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 fn restore(h: &mut InnerHandle<'_>, wid: &str, gift: nostr::Event) {
