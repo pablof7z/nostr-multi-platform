@@ -374,7 +374,9 @@ impl Kernel {
     pub(super) fn log(&mut self, message: impl Into<String>) {
         let stamp = now_hms();
         let line = format!("{stamp} {}", message.into());
-        eprintln!("NMP_CORE {line}");
+        // D6: library code performs no I/O side effects. The line is kept in
+        // the bounded ring buffer below; it surfaces via the kernel snapshot
+        // (D7: the kernel reports, the platform decides what to show).
         self.logs.push_back(line);
         while self.logs.len() > 80 {
             self.logs.pop_front();

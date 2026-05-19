@@ -380,13 +380,11 @@ fn build_event_store() -> Arc<dyn EventStore> {
     #[cfg(feature = "lmdb-backend")]
     {
         if let Ok(path) = std::env::var("NMP_LMDB_PATH") {
-            match crate::store::LmdbEventStore::open(std::path::Path::new(&path)) {
-                Ok(s) => return Arc::new(s),
-                Err(e) => {
-                    eprintln!(
-                        "nmp-core: NMP_LMDB_PATH={path} set but LmdbEventStore::open failed ({e}); falling back to MemEventStore"
-                    );
-                }
+            // D6: library code performs no I/O side effects. If the LMDB
+            // store cannot be opened, fall back to the in-memory store
+            // silently rather than printing to the host's stderr.
+            if let Ok(s) = crate::store::LmdbEventStore::open(std::path::Path::new(&path)) {
+                return Arc::new(s);
             }
         }
     }

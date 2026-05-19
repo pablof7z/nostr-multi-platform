@@ -152,8 +152,10 @@ fn run_worker(
         loop {
             match cmd_rx.try_recv() {
                 Ok(WorkerCmd::Send(frame)) => {
-                    if let Err(e) = socket.send(tungstenite::Message::Text(frame)) {
-                        eprintln!("nmp-signer-broker: relay write failed: {e}");
+                    // D6: no stderr I/O from library code. A write failure
+                    // ends this worker; the broker's reconnect logic handles
+                    // the outer failure path.
+                    if socket.send(tungstenite::Message::Text(frame)).is_err() {
                         let _ = socket.close(None);
                         return;
                     }
@@ -185,8 +187,9 @@ fn run_worker(
                 // Ignore binary frames; NIP-01 is text-only.
             }
             Ok(tungstenite::Message::Ping(payload)) => {
-                if let Err(e) = socket.send(tungstenite::Message::Pong(payload)) {
-                    eprintln!("nmp-signer-broker: pong write failed: {e}");
+                // D6: no stderr I/O from library code. A failed pong ends
+                // this worker; the broker reconnects.
+                if socket.send(tungstenite::Message::Pong(payload)).is_err() {
                     return;
                 }
             }
@@ -203,8 +206,9 @@ fn run_worker(
                 // Cycle back and check for outgoing writes.
                 continue;
             }
-            Err(e) => {
-                eprintln!("nmp-signer-broker: relay read failed: {e}");
+            Err(_) => {
+                // D6: no stderr I/O from library code. A read failure ends
+                // this worker; the broker's reconnect logic handles it.
                 return;
             }
         }

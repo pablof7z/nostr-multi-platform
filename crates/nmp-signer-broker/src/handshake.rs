@@ -282,23 +282,18 @@ fn await_response(
             // Stray event addressed to us from a different signer; ignore.
             continue;
         }
-        let plaintext = match nip44::decrypt(
+        // D6: no stderr I/O from library code. A decrypt failure means this
+        // event is not for us (or is malformed) — skip it silently.
+        let Ok(plaintext) = nip44::decrypt(
             local_keys.secret_key(),
             &remote_pubkey,
             ciphertext.as_bytes(),
-        ) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("nmp-signer-broker: nip44 decrypt failed: {e}");
-                continue;
-            }
+        ) else {
+            continue;
         };
-        let rpc: Value = match serde_json::from_str(&plaintext) {
-            Ok(v) => v,
-            Err(e) => {
-                eprintln!("nmp-signer-broker: rpc parse failed: {e}");
-                continue;
-            }
+        // D6: a malformed RPC payload is skipped silently.
+        let Ok(rpc) = serde_json::from_str::<Value>(&plaintext) else {
+            continue;
         };
         let id_match = rpc.get("id").and_then(|v| v.as_str()) == Some(expected_id);
         if !id_match {

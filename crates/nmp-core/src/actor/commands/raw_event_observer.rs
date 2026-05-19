@@ -51,12 +51,11 @@
 //! envelope, and returns immediately. **Rust** trait observers stay
 //! synchronous on the actor thread — their trait contract already mandates
 //! "must be cheap and must not panic". On channel overflow the envelope is
-//! dropped (D6 backpressure); the first overflow per slot logs once.
+//! dropped silently (D6 backpressure — library code performs no I/O).
 
 use crate::store::RawEvent;
 use std::collections::BTreeSet;
 use std::ffi::{c_char, c_void, CString};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -141,9 +140,6 @@ pub struct RawObserverInner {
     /// Sender half of the bounded C-ABI fan-out channel. Dropping the whole
     /// `RawObserverInner` drops this sender, ending the drain thread.
     c_fanout_tx: SyncSender<CRawFanoutEnvelope>,
-    /// Set once on the first channel overflow so the warning logs exactly
-    /// once per slot.
-    overflow_logged: AtomicBool,
 }
 
 impl RawObserverInner {
@@ -153,7 +149,6 @@ impl RawObserverInner {
             c_abi: Vec::new(),
             next_id: 1,
             c_fanout_tx,
-            overflow_logged: AtomicBool::new(false),
         }
     }
 
@@ -281,9 +276,9 @@ pub fn raw_observers_idle_for_kind(slot: &RawEventObserverSlot, kind: u32) -> bo
 /// a `(snapshot, payload)` envelope is `try_send`-posted to the slot's
 /// bounded channel, and the per-slot drain thread invokes the foreign
 /// callbacks — `notify_raw_observers` never blocks on a callback's
-/// duration. On channel overflow the envelope is dropped (D6 backpressure);
-/// the first overflow per slot logs once. Serialization failure is a D6
-/// silent no-op.
+/// duration. On channel overflow the envelope is dropped silently (D6
+/// backpressure — library code performs no I/O). Serialization failure is a
+/// D6 silent no-op.
 pub fn notify_raw_observers(slot: &RawEventObserverSlot, raw: &RawEvent) {
     let kind = raw.kind;
     let (rust_snapshot, c_snapshot, c_fanout_tx) = {
@@ -327,19 +322,10 @@ pub fn notify_raw_observers(slot: &RawEventObserverSlot, raw: &RawEvent) {
             registrations: c_snapshot,
             payload: Arc::new(cstr),
         };
-        if let Err(err) = c_fanout_tx.try_send(envelope) {
-            // Channel full (slow callback) or disconnected (drain thread
-            // gone). Drop the envelope — D6 best-effort. Log the first
-            // overflow per slot.
-            if let Ok(guard) = slot.lock() {
-                if !guard.overflow_logged.swap(true, Ordering::Relaxed) {
-                    eprintln!(
-                        "[nmp-core] raw event observer fan-out channel full \
-                         ({err}); dropping events — a registered callback is too slow"
-                    );
-                }
-            }
-        }
+        // Channel full (slow callback) or disconnected (drain thread gone).
+        // Drop the envelope — D6 best-effort: library code performs no I/O
+        // side effects, so the overflow is absorbed silently.
+        let _ = c_fanout_tx.try_send(envelope);
     }
 }
 

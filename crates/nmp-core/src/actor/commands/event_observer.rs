@@ -51,7 +51,6 @@
 
 use crate::substrate::KernelEvent;
 use std::ffi::{c_char, c_void, CString};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -106,9 +105,6 @@ pub struct ObserverInner {
     /// Dropping the whole `ObserverInner` drops this sender, which makes the
     /// drain thread's `recv()` return `Err` and the thread exit cleanly.
     c_fanout_tx: SyncSender<CFanoutEnvelope>,
-    /// Set once on the first channel overflow so the warning logs exactly
-    /// once per slot rather than per dropped event.
-    overflow_logged: AtomicBool,
 }
 
 impl ObserverInner {
@@ -118,7 +114,6 @@ impl ObserverInner {
             c_abi: Vec::new(),
             next_id: 1,
             c_fanout_tx,
-            overflow_logged: AtomicBool::new(false),
         }
     }
 
@@ -292,20 +287,10 @@ pub fn notify_observers(slot: &KernelEventObserverSlot, event: &KernelEvent) {
             registrations: c_snapshot,
             payload: Arc::new(cstr),
         };
-        if let Err(err) = c_fanout_tx.try_send(envelope) {
-            // Channel full (slow callback) or disconnected (drain thread
-            // gone). Drop the envelope — D6 best-effort. Log the first
-            // overflow per slot so the condition is visible without
-            // flooding the log on every dropped frame.
-            if let Ok(guard) = slot.lock() {
-                if !guard.overflow_logged.swap(true, Ordering::Relaxed) {
-                    eprintln!(
-                        "[nmp-core] kernel event observer fan-out channel full \
-                         ({err}); dropping events — a registered callback is too slow"
-                    );
-                }
-            }
-        }
+        // Channel full (slow callback) or disconnected (drain thread gone).
+        // Drop the envelope — D6 best-effort: library code performs no I/O
+        // side effects, so the overflow is absorbed silently.
+        let _ = c_fanout_tx.try_send(envelope);
     }
 }
 
