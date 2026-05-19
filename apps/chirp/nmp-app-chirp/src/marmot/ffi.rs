@@ -79,9 +79,6 @@ use keyring_core::set_default_store;
 use nmp_core::{
     ActorCommand, KernelAction, KernelEventObserverId, NmpApp, RawEventObserver, RawEventObserverId,
 };
-use nmp_core::planner::{
-    InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
-};
 use nostr::Keys;
 use serde_json::{json, Value};
 
@@ -128,53 +125,38 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
-/// Stable `InterestId` for the Marmot gift-wrap inbox subscription,
-/// deterministic per pubkey (same hash pattern as `follow_feed_interest_id`
-/// in the kernel's contacts ingest).
-fn giftwrap_interest_id(pubkey: &str) -> InterestId {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    "marmot.giftwrap".hash(&mut h);
-    pubkey.hash(&mut h);
-    InterestId(h.finish())
-}
-
-/// Tailing `LogicalInterest` for kind:1059 `#p <pubkey>` — subscribes to
-/// all gift-wrap events addressed to `pubkey` on the account's inbox relays.
-/// The kernel's raw-event tap then drives every accepted event into
-/// `MarmotService::ingest_signed_event_core` automatically (event-driven
-/// Welcome delivery).
-fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
-    use std::collections::{BTreeMap, BTreeSet};
-    let mut tags = BTreeMap::new();
-    let mut p_values = BTreeSet::new();
-    p_values.insert(pubkey.to_string());
-    tags.insert("p".to_string(), p_values);
-    LogicalInterest {
-        id: giftwrap_interest_id(pubkey),
-        scope: InterestScope::Account(pubkey.to_string()),
-        shape: InterestShape {
-            kinds: [1059u32].into_iter().collect(),
-            tags,
-            ..Default::default()
-        },
-        hints: vec![],
-        lifecycle: InterestLifecycle::Tailing,
-    }
-}
-
 /// Inner registration logic shared by `nmp_app_chirp_marmot_register` and
 /// `nmp_app_chirp_marmot_register_active`. `app` must be non-null and valid.
 fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) -> *mut MarmotHandle {
     // Initialize a credential store for `MdkSqliteStorage`. Try the Apple
     // protected store first (required on device); fall back to the in-memory
     // mock store on the simulator where entitlements are missing (-34018).
+    //
+    // TODO(D7): this multi-step credential-store fallback strategy (Apple
+    // protected store → mock store on simulator → retry loop deleting a stale
+    // DB) is policy, not glue — it should move into `nmp-marmot` as a
+    // `pub fn initialize_credential_store(...)` so every NMP app gets the same
+    // behavior. It stays inline here for now ONLY because the obvious home is
+    // a protocol crate and the policy is genuinely Apple-platform-coupled
+    // (`apple-native-keyring-store`); pushing that crate into `nmp-marmot`
+    // (which lib.rs declares the SOLE importer of mdk-core/openmls and is
+    // otherwise platform-agnostic) needs a deliberate dependency-graph
+    // decision. Once `MarmotService::new` accepts a store-init strategy (or a
+    // pre-built `Box<dyn keyring_core::Store>`), this whole block collapses to
+    // one `nmp-marmot` call + `return null_mut()` on error.
     let mut use_mock = false;
     if let Ok(store) = AppleStore::new() {
         set_default_store(store);
     } else {
-        use_mock = true;
-        set_default_store(keyring_core::mock::Store::new().unwrap());
+        // D6: mock store construction can fail — never `unwrap()` across the
+        // FFI. Degrade to a null handle so Swift sees a clean failure.
+        match keyring_core::mock::Store::new() {
+            Ok(store) => {
+                use_mock = true;
+                set_default_store(store);
+            }
+            Err(_) => return std::ptr::null_mut(),
+        }
     }
 
     let service = match MarmotService::new(
@@ -197,7 +179,12 @@ fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) -> *mut Marmo
                     // on the simulator, the retry above also fails. Switch to
                     // the mock store and try one final time.
                     if !use_mock {
-                        set_default_store(keyring_core::mock::Store::new().unwrap());
+                        // D6: mock store construction can fail — never
+                        // `unwrap()` across the FFI; degrade to a null handle.
+                        match keyring_core::mock::Store::new() {
+                            Ok(store) => set_default_store(store),
+                            Err(_) => return std::ptr::null_mut(),
+                        }
                         match MarmotService::new(
                             db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone(),
                         ) {
@@ -233,8 +220,11 @@ fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) -> *mut Marmo
         return std::ptr::null_mut();
     }
 
+    // D7: the gift-wrap inbox subscription (kind:1059 `#p` filter, deterministic
+    // id, account scope) is protocol policy — it lives in `nmp-marmot`, not in
+    // this glue. The FFI only resolves the concrete pubkey and forwards.
     let pubkey_hex = keys.public_key().to_hex();
-    app_ref.push_interest(giftwrap_inbox_interest(&pubkey_hex));
+    app_ref.push_interest(nmp_marmot::interest::giftwrap_inbox_interest(&pubkey_hex));
 
     Box::into_raw(Box::new(MarmotHandle {
         projection,
