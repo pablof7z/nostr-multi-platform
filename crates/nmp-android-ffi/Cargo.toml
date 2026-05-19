@@ -21,7 +21,3 @@ crate-type = ["cdylib"]
 # contract to ios NmpCore.h.
 nmp-core = { path = "../nmp-core", features = ["android-ffi"] }
 jni = "0.21"
-# Podcast per-app glue — called via Rust paths (not extern "C" redecl) so
-# the linker sees the symbol bodies and includes them in the cdylib. D0 holds:
-# nmp-core never gains podcast nouns; this crate is the composition point.
-nmp-app-podcast = { path = "../../apps/podcast/nmp-app-podcast" }

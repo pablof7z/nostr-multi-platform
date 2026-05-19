@@ -30,8 +30,6 @@ use nmp_core::{
     nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start, nmp_app_stop, NmpApp,
 };
 
-mod podcast;
-
 /// Owns the kernel handle, the snapshot receiver, and the boxed sender that the
 /// kernel holds as an opaque callback context. Freed exactly once in
 /// `nativeFree` (mirrors Swift `KernelHandle.deinit`).
