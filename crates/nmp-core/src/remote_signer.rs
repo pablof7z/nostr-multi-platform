@@ -32,4 +32,9 @@ pub trait RemoteSignerHandle: Send + Sync + std::fmt::Debug {
     /// already-decrypted RPC payload body (`{"id":"...","result":"..."}`).
     /// No-op for signers that don't have a relay-driven response path.
     fn deliver_rpc_response(&self, response_json: &str);
+
+    /// Called by the actor before the signer is removed. Implementations that
+    /// hold in-flight async requests should resolve them with an error so
+    /// callers fail fast rather than waiting for a timeout.
+    fn disconnect(&self) {}
 }

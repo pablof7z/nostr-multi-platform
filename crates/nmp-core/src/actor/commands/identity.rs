@@ -89,9 +89,13 @@ impl IdentityRuntime {
     /// Drop the remote signer (if any) for `identity_id`. If it was active,
     /// fall back to the next account in `order` (mirroring `remove_account`).
     pub(crate) fn remove_remote(&mut self, identity_id: &str) {
-        if self.remote_signers.remove(identity_id).is_none() {
+        let Some(handle) = self.remote_signers.remove(identity_id) else {
             return;
-        }
+        };
+        // Drain in-flight requests before dropping so blocked callers fail
+        // fast rather than waiting for the remote-sign timeout.
+        handle.disconnect();
+        drop(handle);
         // Only drop from `order` if no local key for the same pubkey survives.
         if !self.keys.contains_key(identity_id) {
             self.order.retain(|x| x != identity_id);
@@ -483,7 +487,16 @@ pub(crate) fn remove_account(
     identity_id: &str,
 ) -> Vec<OutboundMessage> {
     let had_local = identity.keys.remove(identity_id).is_some();
-    let had_remote = identity.remote_signers.remove(identity_id).is_some();
+    let had_remote = match identity.remote_signers.remove(identity_id) {
+        Some(handle) => {
+            // Drain in-flight requests before dropping so blocked callers
+            // fail fast rather than waiting for the remote-sign timeout.
+            handle.disconnect();
+            drop(handle);
+            true
+        }
+        None => false,
+    };
     if !had_local && !had_remote {
         return Vec::new();
     }

@@ -75,6 +75,10 @@ impl RemoteSignerHandle for Nip46Signer {
             }
         }
     }
+
+    fn disconnect(&self) {
+        self.drain_pending_with_error("signer disconnected");
+    }
 }
 
 #[cfg(test)]
@@ -212,6 +216,35 @@ mod tests {
             .expect_err("error envelope must surface as Err");
         match err {
             SignerError::Rejected(m) => assert!(m.contains("user denied")),
+            other => panic!("expected Rejected, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn disconnect_drains_pending_immediately() {
+        // A `sign()` in flight leaves a Pending one-shot in `pending`.
+        // disconnect() must resolve it with Err(Rejected) at once so the
+        // SignerOp::wait caller fails fast instead of hanging for the timeout.
+        let remote_user = LocalKeySigner::generate();
+        let (signer, _transport) = build_signer_with_remote(&remote_user);
+
+        let unsigned = UnsignedEvent {
+            pubkey: remote_user.pubkey().to_hex(),
+            kind: 1,
+            tags: vec![],
+            content: "in flight".to_string(),
+            created_at: 1_700_000_000,
+        };
+        let op = RemoteSignerHandle::sign(&signer, &unsigned);
+
+        // End the session: every pending request resolves immediately.
+        RemoteSignerHandle::disconnect(&signer);
+
+        let err = op
+            .wait(Duration::from_millis(100))
+            .expect_err("disconnect must surface as Err, not a timeout");
+        match err {
+            SignerError::Rejected(m) => assert!(m.contains("disconnected")),
             other => panic!("expected Rejected, got {other:?}"),
         }
     }

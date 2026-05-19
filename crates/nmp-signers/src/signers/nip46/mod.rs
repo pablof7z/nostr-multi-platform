@@ -188,6 +188,17 @@ impl Nip46Signer {
         }
     }
 
+    /// Resolve every in-flight RPC with an error. Called when the signer
+    /// session ends (e.g. account removal) so blocked `SignerOp::wait` callers
+    /// fail immediately instead of hanging until the sign timeout elapses.
+    pub fn drain_pending_with_error(&self, msg: &str) {
+        if let Ok(mut pending) = self.pending.lock() {
+            for (_id, sender) in pending.drain() {
+                let _ = sender.send(Err(SignerError::Rejected(msg.to_string())));
+            }
+        }
+    }
+
     /// The cached remote user pubkey (sync).
     pub fn remote_user_pubkey(&self) -> PublicKey {
         self.remote_user_pubkey
