@@ -52,6 +52,8 @@ mod lifecycle;
 mod recompile;
 
 #[cfg(test)]
+mod coverage_hook_tests;
+#[cfg(test)]
 mod discovery_tests;
 #[cfg(test)]
 mod lifecycle_tests;
@@ -89,6 +91,22 @@ pub use wire::{plan_diff, WireFrame};
 /// Direction: `nmp-core` defines the seam, `nmp-nip77` installs the policy —
 /// keeping coverage-gate / NIP-77 vocabulary out of `nmp-core` per D0
 /// ("kernel never grows app nouns").
+///
+// TODO(D2): coverage hook NOT installed in the production kernel. The seam
+// below is mechanically sound (pinned by `subs::coverage_hook_tests`), but
+// neither `actor::run_actor` nor the `nmp-core/src/ffi` app surface ever
+// calls `SubscriptionLifecycle::set_coverage_hook`. The only real wiring of
+// `nmp_nip77::apply_coverage_filter` lives in
+// `nmp-testing/tests/framework_magic_c10.rs`. Until an app-layer kernel
+// assembly step installs the hook at startup, the shipping kernel does NOT
+// enforce D2 ("negentropy before REQ") — every plan flows straight to raw
+// REQ. The wiring cannot live in `nmp-core` (D0: a `nmp-core → nmp-nip77`
+// dep is an app-noun leak *and* a cycle, since `nmp-nip77` consumes
+// `nmp-core`); it belongs in the crate that assembles the kernel for the
+// shell. This is a systemic state: the sibling `set_watermark_fn` seam is
+// likewise only wired in tests. Tracking sentinel:
+// `subs::coverage_hook_tests::d2_production_kernel_installs_coverage_hook`
+// (`#[ignore]`d). 2026-05-20 D2 audit.
 pub type PlanCoverageHook = Arc<dyn Fn(&mut CompiledPlan) + Send + Sync>;
 
 /// T129 watermark resolver — returns the most-recent stored `created_at`
