@@ -26,7 +26,7 @@ final class ChirpRouter: ObservableObject {
     func popToRoot() { path = NavigationPath() }
 }
 
-enum ChirpTab: Hashable { case home, search, notifications, groups, wallet, settings }
+enum ChirpTab: Hashable { case home, search, groups, wallet, settings }
 
 struct RootShell: View {
     @EnvironmentObject private var model: KernelModel
@@ -54,10 +54,6 @@ struct RootShell: View {
             tabStack { SearchView() }
                 .tabItem { Label("Search", systemImage: "magnifyingglass") }
                 .tag(ChirpTab.search)
-
-            tabStack { NotificationsView() }
-                .tabItem { Label("Activity", systemImage: "bell.fill") }
-                .tag(ChirpTab.notifications)
 
             tabStack { MarmotGroupsView() }
                 .tabItem { Label("Groups", systemImage: "lock.shield.fill") }

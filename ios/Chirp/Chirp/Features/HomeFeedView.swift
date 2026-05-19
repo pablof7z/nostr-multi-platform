@@ -21,6 +21,8 @@ struct HomeFeedView: View {
 
     /// Controls the top-level "new note" compose sheet (toolbar button).
     @State private var showCompose = false
+    /// Controls the Activity sheet from the toolbar bell button.
+    @State private var showActivity = false
 
     var body: some View {
         ZStack {
@@ -32,10 +34,15 @@ struct HomeFeedView: View {
         }
         .navigationTitle("Chirp")
         .navigationBarTitleDisplayMode(.large)
-        .toolbar { composeButton }
+        .toolbar { toolbarContent }
         .task { model.openTimeline() }
         .sheet(isPresented: $showCompose) {
             ComposeView()
+        }
+        .sheet(isPresented: $showActivity) {
+            NavigationStack {
+                NotificationsView()
+            }
         }
     }
 
@@ -97,10 +104,22 @@ struct HomeFeedView: View {
         }
     }
 
-    // ── Toolbar: compose ──────────────────────────────────────────────────
+    // ── Toolbar: compose + activity ───────────────────────────────────────
 
     @ToolbarContentBuilder
-    private var composeButton: some ToolbarContent {
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Button {
+                showActivity = true
+            } label: {
+                Image(systemName: "bell")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(ChirpColor.accent)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Activity")
+        }
+
         ToolbarItem(placement: .navigationBarTrailing) {
             Button {
                 showCompose = true
