@@ -284,7 +284,7 @@ work, not the second half of a shipped T63.
 **What I shipped instead:** the honestly-buildable slice, single commit —
 a self-contained `KeychainCapability.swift` (Foundation + Security only,
 zero Rust link dependency) conforming to the **generic** envelope shape that
-*does* exist in `substrate/capability.rs`, plus `NmpPulseCapabilities`
+*does* exist in `substrate/capability.rs`, plus `ChirpCapabilities`
 injection holder wired into `KernelModel` start/stop, plus a dedicated
 XCTest target that round-trips store→retrieve→overwrite→delete against the
 simulator's real Keychain. The capability defines the keyring request/result
@@ -297,7 +297,7 @@ wiring, and the `nmp_app_*` FFI capability-callback socket that routes a
 `CapabilityRequest` to `KeychainCapability.handleJSON(_:)`. Inventing those
 here would blow past the single-commit boundary and conflate two tasks.
 Until the socket lands, the (also-deferred) Onboarding flow calls
-`NmpPulseCapabilities.persistImportedSecret(accountID:secret:)` directly,
+`ChirpCapabilities.persistImportedSecret(accountID:secret:)` directly,
 which routes through the identical envelope path the kernel will use.
 
 **If the user disagrees:** revert the single `feat(ios-keychain):` commit;
