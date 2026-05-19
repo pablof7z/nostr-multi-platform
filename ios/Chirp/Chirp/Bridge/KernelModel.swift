@@ -214,10 +214,10 @@ final class KernelModel: ObservableObject {
             ?? "wss://r.f7z.io"
         return kernel.nostrConnectURI(relay: relay)
     }
-    func createAccount() {
+    func createAccount(profile: [String: String] = ["name": "New User"], relays: [(String, String)] = [("wss://relay.damus.io", "both")]) {
         NSLog("ChirpDebug: createAccount tapped")
         kmLog.info("createAccount dispatched")
-        kernel.createAccount()
+        kernel.createAccount(profile: profile, relays: relays)
     }
     func switchActive(_ identityID: String) { kernel.switchActive(identityID: identityID) }
     func removeAccount(_ identityID: String) { kernel.removeAccount(identityID: identityID) }

@@ -20,7 +20,7 @@
 //!   `Welcome::group_relays`; a cache MISS degrades to author-outbox
 //!   `Auto` (documented limitation — those events previously did not reach
 //!   relays at all, so this is strictly better, not a regression).
-//! * **kind:30443 + kind:443** key-package → `publish_author_outbox`
+//! * **kind:30443 + kind:443** key-package → `publish_explicit`
 //!   (`Auto` / NIP-65 outbox is correct for key packages). BOTH are
 //!   dual-published through 2026-05-31.
 //! * **kind:1059** gift-wrap Welcome → the Chirp layer has no NIP-65
@@ -237,13 +237,13 @@ fn publish_key_package(
     let relays = parse_relays(&urls)?;
     let pubn = h
         .service()
-        .publish_key_package(relays)
+        .publish_key_package(relays.clone())
         .map_err(|e| e.to_string())?;
-    // kind:30443 + legacy kind:443 → author NIP-65 outbox (Auto). Both
-    // dual-published through 2026-05-31 (mdk-api.md §7.4). Internal
+    // kind:30443 + legacy kind:443 → explicit write-relays from Settings.
+    // Both dual-published through 2026-05-31 (mdk-api.md §7.4). Internal
     // publish — fire-and-forget via the kernel publish pipeline.
-    h.publish_author_outbox(&pubn.event_30443);
-    h.publish_author_outbox(&pubn.event_443);
+    h.publish_explicit(&pubn.event_30443, &relays);
+    h.publish_explicit(&pubn.event_443, &relays);
     h.record_key_package(pubn.d_tag.clone(), now_secs);
     Ok(json!({
         "d_tag": pubn.d_tag,

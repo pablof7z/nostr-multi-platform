@@ -81,7 +81,10 @@ impl DesktopApp {
                 ui.horizontal(|ui| {
                     ui.label("Sign in to publish:");
                     if ui.button("Create new account").clicked() {
-                        self.bridge.create_account();
+                        self.bridge.create_account(
+                            [("name".to_string(), "New User".to_string())].into(),
+                            vec![("wss://relay.damus.io".to_string(), "both".to_string())],
+                        );
                         self.bridge.open_timeline();
                     }
                     ui.add(

@@ -111,8 +111,16 @@ pub enum ActorCommand {
     /// wired (D0 forbids `nmp-core -> nmp-signers`); this validates the URI
     /// shape and surfaces a `last_error_toast` directing the user to nsec.
     SignInBunker { uri: String },
-    /// T66a identity — generate a fresh keypair and sign in with it.
-    CreateAccount,
+    /// Create a new keypair, publish a kind:0 metadata event and a kind:10002
+    /// relay-list event, then register the identity and make it active.
+    ///
+    /// `profile` is a map of key/value pairs that is JSON-serialised into the
+    /// kind:0 `content` field.  `relays` is a list of `(url, role)` tuples
+    /// where `role` is `"read"`, `"write"` or `"both"`.
+    CreateAccount {
+        profile: HashMap<String, String>,
+        relays: Vec<(String, String)>,
+    },
     /// T66a identity — switch the active account (synchronous re-bind +
     /// timeline retarget, mirrors AccountManager::switch_active semantics).
     SwitchActive { identity_id: String },

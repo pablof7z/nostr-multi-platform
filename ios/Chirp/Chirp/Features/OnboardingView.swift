@@ -57,7 +57,7 @@ struct OnboardingView: View {
 
                     Button {
                         // CRITICAL DISPATCH — do not remove
-                        model.createAccount()
+                        model.createAccount(profile: ["name": "New User"], relays: [("wss://relay.damus.io", "both")])
                     } label: {
                         Text("Create a new identity")
                             .font(.headline)

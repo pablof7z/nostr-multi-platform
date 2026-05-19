@@ -24,9 +24,9 @@ pub(crate) const TIMELINE_AUTHOR_LIMIT: usize = 500;
 pub(crate) const BOOTSTRAP_DISCOVERY_RELAYS: &[&str] =
     &["wss://relay.damus.io", "wss://purplepag.es"];
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(crate) const CONTENT_RELAY_URL: &str = BOOTSTRAP_DISCOVERY_RELAYS[0];
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 pub(crate) const INDEXER_RELAY_URL: &str = BOOTSTRAP_DISCOVERY_RELAYS[1];
 
 #[cfg(test)]

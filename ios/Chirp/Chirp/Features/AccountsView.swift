@@ -245,7 +245,7 @@ private struct AddAccountSheet: View {
                 .foregroundStyle(.secondary)
 
             Button {
-                model.createAccount()
+                model.createAccount(profile: ["name": "New User"], relays: [("wss://relay.damus.io", "both")])
                 dismiss()
             } label: {
                 Label("Create new identity", systemImage: "sparkles")

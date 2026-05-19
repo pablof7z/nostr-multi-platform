@@ -34,11 +34,43 @@ pub extern "C" fn nmp_app_signin_bunker(app: *mut NmpApp, uri: *const c_char) {
 }
 
 #[no_mangle]
-pub extern "C" fn nmp_app_create_new_account(app: *mut NmpApp) {
+pub extern "C" fn nmp_app_create_new_account(
+    app: *mut NmpApp,
+    profile_json: *const c_char,
+    relays_json: *const c_char,
+) {
     let Some(app) = app_ref(app) else {
         return;
     };
-    app.send_cmd(ActorCommand::CreateAccount);
+    let Some(profile_json) = c_string_argument(profile_json) else {
+        return;
+    };
+    let Some(relays_json) = c_string_argument(relays_json) else {
+        return;
+    };
+
+    let profile: std::collections::HashMap<String, String> =
+        match serde_json::from_str(&profile_json) {
+            Ok(p) => p,
+            Err(_) => {
+                app.send_cmd(ActorCommand::ShowToast {
+                    message: "Failed to decode profile JSON".to_string(),
+                });
+                return;
+            }
+        };
+
+    let relays: Vec<(String, String)> = match serde_json::from_str(&relays_json) {
+        Ok(r) => r,
+        Err(_) => {
+            app.send_cmd(ActorCommand::ShowToast {
+                message: "Failed to decode relays JSON".to_string(),
+            });
+            return;
+        }
+    };
+
+    app.send_cmd(ActorCommand::CreateAccount { profile, relays });
 }
 
 #[no_mangle]
