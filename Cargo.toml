@@ -43,3 +43,37 @@ resolver = "2"
 edition = "2021"
 license = "MIT"
 version = "0.1.0"
+
+# Shared third-party dependency versions. Declare the *version* and the
+# default-features posture here only; each member crate adds its own
+# `features = [...]` at the use site via `dep.workspace = true`, since the
+# feature sets diverge per crate (e.g. nostr: nip04/nip44/nip49/std vary).
+# Single source of truth for versions prevents duplicate-version builds when
+# one crate's manifest drifts.
+#
+# CRITICAL — `default-features`: a bare `dep = "x.y"` entry implies
+# `default-features = true`, and Cargo *silently ignores* a member-side
+# `default-features = false` when the workspace entry has defaults on. So
+# `rustls`/`tungstenite` are declared with `default-features = false` here:
+# every member uses `features = ["ring"]` (NOT the `aws-lc-rs` default crypto
+# provider). A bare entry pulls aws-lc-rs + a C toolchain into the build.
+#
+# TODO: `nostr` is left as a bare entry because its feature posture is split
+#   across the workspace — most crates want defaults ON, `nmp-marmot` /
+#   `nmp-nostr-lmdb` want `default-features = false, features = ["std"]`.
+#   Switching the workspace entry to `default-features = false` would require
+#   adding explicit feature lists to the defaults-on crates in the same pass;
+#   deferred to keep this commit scoped. Feature unification keeps `std` on
+#   regardless, so this is a clarity gap, not a build-correctness one.
+#
+# TODO: migrate the remaining crates to `*.workspace = true`. Done so far:
+#   nmp-core, nmp-nip01, nmp-marmot, nmp-signers, nmp-nip77.
+#   Still copy-pasting versions: nmp-nip59, nmp-nwc, nmp-nostr-lmdb,
+#   nmp-signer-broker, nmp-testing, nmp-repl, nmp-content, nmp-reactions,
+#   nmp-threading, nmp-nip22/23/29/42/51/57, nmp-cli, nmp-codegen, etc.
+[workspace.dependencies]
+nostr = "0.44"
+serde = "1.0"
+serde_json = "1.0"
+rustls = { version = "0.23", default-features = false }
+tungstenite = { version = "0.24", default-features = false }

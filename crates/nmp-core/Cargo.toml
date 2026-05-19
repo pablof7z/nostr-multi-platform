@@ -24,13 +24,13 @@ android-ffi = []
 bech32 = "0.11"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 nmp-nip42-types = { path = "../nmp-nip42-types" }
-nostr = { version = "0.44", features = ["nip44"] }
+nostr = { workspace = true, features = ["nip44"] }
 nmp-nwc = { path = "../nmp-nwc" }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
-rustls = { version = "0.23", default-features = false, features = ["ring"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = { version = "1.0", features = ["raw_value"] }
-tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+rustls = { workspace = true, default-features = false, features = ["ring"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["raw_value"] }
+tungstenite = { workspace = true, default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
 
 # LMDB backend — feature-gated. The fork at crates/nmp-nostr-lmdb carries the
 # env-injection seam (ADR-0011); heed / nostr-database are the underlying

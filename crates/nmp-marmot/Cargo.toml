@@ -11,16 +11,16 @@ nmp-core = { path = "../nmp-core" }
 # Welcome (kind:444) rumors. nmp-marmot is the SOLE importer of mdk-core /
 # openmls; nip59 is a sibling protocol crate carrying no MLS types.
 nmp-nip59 = { path = "../nmp-nip59" }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-# nostr 0.44 — pinned to the workspace version (nmp-core uses "0.44"); mdk-core
-# 0.8.0 re-exports the same nostr graph, so no version duplication.
-nostr = { version = "0.44", default-features = false, features = ["std"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+# nostr 0.44 — version pinned via [workspace.dependencies]; mdk-core 0.8.0
+# re-exports the same nostr graph, so no version duplication.
+nostr = { workspace = true, default-features = false, features = ["std"] }
 mdk-core = "0.8.0"
 mdk-sqlite-storage = "0.8.0"
-# WebSocket fetch for `poll_inbox` op — pinned to the nmp-core versions.
-tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
-rustls = { version = "0.23", default-features = false, features = ["ring"] }
+# WebSocket fetch for `poll_inbox` op — versions pinned via [workspace.dependencies].
+tungstenite = { workspace = true, default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+rustls = { workspace = true, default-features = false, features = ["ring"] }
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }

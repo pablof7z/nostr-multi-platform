@@ -85,6 +85,7 @@ use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
+use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tungstenite::Message;
@@ -345,6 +346,8 @@ pub(crate) struct Kernel {
     /// by `set_relay_edit_rows`. The `Nip65OutboxResolver` holds a clone of
     /// this Arc and reads it on every discovery-kind publish.
     indexer_relays_handle: Arc<Mutex<Vec<String>>>,
+    /// Kernel must not cross thread boundaries — D4 single-writer enforced at type level.
+    _not_send: PhantomData<*const ()>,
 }
 
 /// Construct the kernel's `EventStore`.
@@ -479,6 +482,7 @@ impl Kernel {
             raw_event_observers: None,
             relay_edit_rows_handle: None,
             indexer_relays_handle,
+            _not_send: PhantomData,
         }
     }
 
