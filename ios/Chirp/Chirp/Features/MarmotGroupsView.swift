@@ -40,7 +40,7 @@ struct MarmotGroupsView: View {
                     polling = true
                     Task.detached(priority: .userInitiated) {
                         _ = await MainActor.run {
-                            model.marmot.pollInbox(extraRelays: ["wss://nos.lol", "wss://r.f7z.io"])
+                            model.marmot.pollInbox(extraRelays: ["wss://nos.lol", "wss://relay.primal.net"])
                         }
                         await MainActor.run { polling = false }
                     }
@@ -123,7 +123,7 @@ struct MarmotGroupsView: View {
                         polling = true
                         Task.detached(priority: .userInitiated) {
                             _ = await MainActor.run {
-                                model.marmot.pollInbox(extraRelays: ["wss://nos.lol", "wss://r.f7z.io"])
+                                model.marmot.pollInbox(extraRelays: ["wss://nos.lol", "wss://relay.primal.net"])
                             }
                             await MainActor.run { polling = false }
                         }

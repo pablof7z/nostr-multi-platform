@@ -1,7 +1,9 @@
-//! Minimal synchronous WebSocket fetch helper for `poll_inbox`.
+//! Minimal synchronous WebSocket helper for `poll_inbox` (read) and
+//! `publish_key_package` (write).
 //!
 //! Issues a single REQ against one relay, collects EVENTs until EOSE (or
-//! wall deadline), closes. No retry, no outbox routing. Mirrors the logic in
+//! wall deadline), closes. `send_event` sends an EVENT and waits for OK.
+//! No retry, no outbox routing. Mirrors the logic in
 //! `nmp-repl/src/publish.rs:fetch_events`.
 
 use std::io::ErrorKind;
@@ -48,6 +50,35 @@ pub fn fetch_events(relay_url: &str, filter_json: &Value, wall: Duration) -> Vec
         }
     }
     out
+}
+
+/// Publish a signed event to `relay_url`. Waits up to `wall` for an OK/NOTICE.
+/// Returns `Ok(true)` on relay acceptance, `Ok(false)` on rejection/timeout,
+/// `Err` on connection failure.
+pub fn send_event(relay_url: &str, event_json: &str, wall: Duration) -> Result<bool, ()> {
+    let mut sock = connect(relay_url)?;
+    let msg = format!("[\"EVENT\",{}]", event_json);
+    sock.send(Message::Text(msg)).map_err(|_| ())?;
+
+    let deadline = Instant::now() + wall;
+    while Instant::now() < deadline {
+        match sock.read() {
+            Ok(Message::Text(s)) => {
+                let v: Value = match serde_json::from_str(&s) { Ok(v) => v, Err(_) => continue };
+                match v.get(0).and_then(Value::as_str) {
+                    Some("OK") => return Ok(v.get(2).and_then(Value::as_bool).unwrap_or(true)),
+                    Some("NOTICE") => return Ok(false),
+                    _ => {}
+                }
+            }
+            Ok(Message::Close(_)) => break,
+            Ok(_) => {}
+            Err(tungstenite::Error::Io(e))
+                if e.kind() == ErrorKind::WouldBlock || e.kind() == ErrorKind::TimedOut => {}
+            Err(_) => break,
+        }
+    }
+    Ok(false)
 }
 
 fn connect(url: &str) -> Result<Sock, ()> {

@@ -250,6 +250,16 @@ pub enum ActorCommand {
     /// and routes it to `kernel.set_last_error_toast` so the error becomes
     /// observable state, never a silent no-op.
     ShowToast { message: String },
+    /// Register a `LogicalInterest` into the subscription registry and trigger
+    /// a recompile. Idempotent: same `InterestId` replaces the previous entry.
+    ///
+    /// Used by protocol crates (e.g. `nmp-marmot`) to register persistent
+    /// relay subscriptions (e.g. kind:1059 `#p <pubkey>`) that should remain
+    /// live for the session without Swift/Kotlin involvement (D0). The kernel
+    /// will emit the appropriate `REQ` frames to connected relays on the next
+    /// compile pass; matching inbound events then flow through the raw-event
+    /// tap into `MarmotService` automatically (D4 / event-driven delivery).
+    PushInterest(crate::planner::LogicalInterest),
 }
 
 /// One per-URL relay-worker handle. T105: `relay_url` (NOT `role`) is the

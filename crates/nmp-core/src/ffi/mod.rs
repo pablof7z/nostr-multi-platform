@@ -354,6 +354,18 @@ impl NmpApp {
         Arc::clone(&self.raw_event_observers)
     }
 
+    /// Push a `LogicalInterest` into the subscription registry and schedule a
+    /// recompile. Idempotent: same `InterestId` replaces the prior entry.
+    ///
+    /// Used by protocol crates (e.g. `nmp-marmot`) to register persistent
+    /// relay subscriptions — kind:1059 `#p <pubkey>` for gift-wrap Welcome
+    /// delivery, per-group kind:445 feeds, etc. The kernel emits REQ frames
+    /// on the next compile pass; matching inbound events then flow through the
+    /// raw-event tap automatically, with no Swift polling needed.
+    pub fn push_interest(&self, interest: crate::planner::LogicalInterest) {
+        self.send_cmd(crate::actor::ActorCommand::PushInterest(interest));
+    }
+
     /// Return the user's current write-relay URLs (rows whose role is
     /// `"write"` or `"both"`), read from the shared kernel relay-edit
     /// projection. Empty when the user has not configured any write relays.

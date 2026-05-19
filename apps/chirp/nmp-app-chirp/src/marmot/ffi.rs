@@ -79,6 +79,9 @@ use keyring_core::set_default_store;
 use nmp_core::{
     ActorCommand, KernelAction, KernelEventObserverId, NmpApp, RawEventObserver, RawEventObserverId,
 };
+use nmp_core::planner::{
+    InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
+};
 use nostr::Keys;
 use serde_json::{json, Value};
 
@@ -123,6 +126,41 @@ fn now_secs() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
+}
+
+/// Stable `InterestId` for the Marmot gift-wrap inbox subscription,
+/// deterministic per pubkey (same hash pattern as `follow_feed_interest_id`
+/// in the kernel's contacts ingest).
+fn giftwrap_interest_id(pubkey: &str) -> InterestId {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    "marmot.giftwrap".hash(&mut h);
+    pubkey.hash(&mut h);
+    InterestId(h.finish())
+}
+
+/// Tailing `LogicalInterest` for kind:1059 `#p <pubkey>` — subscribes to
+/// all gift-wrap events addressed to `pubkey` on the account's inbox relays.
+/// The kernel's raw-event tap then drives every accepted event into
+/// `MarmotService::ingest_signed_event_core` automatically (event-driven
+/// Welcome delivery).
+fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
+    use std::collections::{BTreeMap, BTreeSet};
+    let mut tags = BTreeMap::new();
+    let mut p_values = BTreeSet::new();
+    p_values.insert(pubkey.to_string());
+    tags.insert("p".to_string(), p_values);
+    LogicalInterest {
+        id: giftwrap_interest_id(pubkey),
+        scope: InterestScope::Account(pubkey.to_string()),
+        shape: InterestShape {
+            kinds: [1059u32].into_iter().collect(),
+            tags,
+            ..Default::default()
+        },
+        hints: vec![],
+        lifecycle: InterestLifecycle::Tailing,
+    }
 }
 
 /// Register a Marmot projection against `app`.
@@ -236,6 +274,12 @@ pub extern "C" fn nmp_app_chirp_marmot_register(
         app_ref.unregister_event_observer(observer_id);
         return std::ptr::null_mut();
     }
+
+    // Register a tailing kind:1059 `#p <pubkey>` subscription so the kernel
+    // sends a REQ to the user's inbox relays and inbound gift-wrap Welcomes
+    // arrive event-driven — no Swift polling needed (D4).
+    let pubkey_hex = keys.public_key().to_hex();
+    app_ref.push_interest(giftwrap_inbox_interest(&pubkey_hex));
 
     Box::into_raw(Box::new(MarmotHandle {
         projection,

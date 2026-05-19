@@ -240,15 +240,27 @@ fn publish_key_package(
         .service()
         .publish_key_package(relays.clone())
         .map_err(|e| e.to_string())?;
-    // kind:30443 + legacy kind:443 → explicit write-relays from Settings.
-    // Both dual-published through 2026-05-31 (mdk-api.md §7.4). Internal
-    // publish — fire-and-forget via the kernel publish pipeline.
+    // kind:30443 + legacy kind:443 — dual path:
+    //   1. kernel fire-and-forget (existing path, may be unreliable in sim)
+    //   2. direct WebSocket publish (same approach as poll_inbox reads)
+    use nostr::JsonUtil as _;
+    use std::time::Duration as D;
+    const SEND_WALL: D = D::from_secs(6);
     h.publish_explicit(&pubn.event_30443, &relays);
     h.publish_explicit(&pubn.event_443, &relays);
+    let mut ok_count = 0u32;
+    for url in &urls {
+        let j443 = pubn.event_443.as_json();
+        let j30443 = pubn.event_30443.as_json();
+        if crate::projection::fetch::send_event(url, &j30443, SEND_WALL).unwrap_or(false) {
+            ok_count += 1;
+        }
+        let _ = crate::projection::fetch::send_event(url, &j443, SEND_WALL);
+    }
     h.record_key_package(pubn.d_tag.clone(), now_secs);
     Ok(json!({
         "d_tag": pubn.d_tag,
-        // INFORMATIONAL only — both events already submitted (Auto outbox).
+        "direct_ok": ok_count,
         "events": [
             pubn.event_30443.as_json(),
             pubn.event_443.as_json(),
@@ -674,18 +686,17 @@ fn poll_inbox(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
         for filter in [&welcome_filter, &message_filter, &kp_filter] {
             let raw = crate::projection::fetch::fetch_events(relay_url, filter, WALL);
             for ev_json in raw {
-                if let Ok(ev) =
-                    serde_json::from_value::<nostr::Event>(ev_json)
-                {
+                if let Ok(ev) = serde_json::from_value::<nostr::Event>(ev_json) {
                     all_events.entry(ev.id.to_hex()).or_insert(ev);
                 }
             }
         }
     }
-
     let mut n_welcomes = 0u32;
     let mut n_messages = 0u32;
     let mut n_kps = 0u32;
+    let mut errors: Vec<String> = Vec::new();
+    let total_events = all_events.len();
     for (_id, ev) in all_events {
         match ev.kind {
             nostr::Kind::MlsKeyPackage | nostr::Kind::Custom(30443) => {
@@ -695,13 +706,16 @@ fn poll_inbox(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
                 }
             }
             nostr::Kind::GiftWrap => {
-                if let Ok(_) = ingest_signed_event_core(h, &ev) {
-                    n_welcomes += 1;
+                let eid = ev.id.to_hex();
+                match ingest_signed_event_core(h, &ev) {
+                    Ok(_) => { n_welcomes += 1; }
+                    Err(e) => { errors.push(format!("gift_wrap {eid}: {e}")); }
                 }
             }
             nostr::Kind::MlsGroupMessage => {
-                if let Ok(_) = ingest_signed_event_core(h, &ev) {
-                    n_messages += 1;
+                match ingest_signed_event_core(h, &ev) {
+                    Ok(_) => { n_messages += 1; }
+                    Err(e) => { errors.push(format!("message: {e}")); }
                 }
             }
             _ => {}
@@ -712,6 +726,8 @@ fn poll_inbox(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
         "welcomes": n_welcomes,
         "messages": n_messages,
         "key_packages": n_kps,
+        "total_events": total_events,
+        "errors": errors,
     }))
 }
 

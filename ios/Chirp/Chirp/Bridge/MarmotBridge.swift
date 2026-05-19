@@ -140,9 +140,25 @@ struct MarmotOpResult: Decodable, Equatable {
     let ok: Bool
     let error: String?
     let needs: [String]?
+    let errors: [String]?
+    let totalEvents: Int?
+    let welcomes: Int?
+    let messages: Int?
+    let keyPackages: Int?
 
-    static let bridgeUnavailable = MarmotOpResult(
-        ok: false, error: "marmot bridge unavailable", needs: nil)
+    enum CodingKeys: String, CodingKey {
+        case ok, error, needs, errors
+        case totalEvents = "total_events"
+        case welcomes, messages
+        case keyPackages = "key_packages"
+    }
+
+    static let bridgeUnavailable = MarmotOpResult.failure("marmot bridge unavailable")
+
+    static func failure(_ message: String) -> MarmotOpResult {
+        MarmotOpResult(ok: false, error: message, needs: nil,
+                       errors: nil, totalEvents: nil, welcomes: nil, messages: nil, keyPackages: nil)
+    }
 }
 
 // ── KernelHandle Marmot extension (C-FFI lifetime owner) ──────────────────
@@ -220,18 +236,18 @@ extension KernelHandle {
             nmp_app_chirp_marmot_dispatch(handle, $0)
         }
         guard let ptr else {
-            return MarmotOpResult(ok: false, error: "dispatch returned null", needs: nil)
+            return .failure("dispatch returned null")
         }
         defer { nmp_app_chirp_marmot_string_free(ptr) }
         let payload = String(cString: ptr)
         guard let data = payload.data(using: .utf8) else {
-            return MarmotOpResult(ok: false, error: "dispatch payload not utf8", needs: nil)
+            return .failure("dispatch payload not utf8")
         }
         do {
             return try JSONDecoder().decode(MarmotOpResult.self, from: data)
         } catch {
-            mbLog.error("marmotDispatch decode failed: \(error.localizedDescription) — payload: \(payload.prefix(200))")
-            return MarmotOpResult(ok: false, error: "undecodable dispatch result", needs: nil)
+            mbLog.error("marmotDispatch decode failed: \(error.localizedDescription) — payload: \(payload.prefix(400))")
+            return .failure("undecodable dispatch result")
         }
     }
 
@@ -319,7 +335,7 @@ final class MarmotStore: ObservableObject {
         guard let data = try? JSONSerialization.data(withJSONObject: action),
               let json = String(data: data, encoding: .utf8)
         else {
-            return MarmotOpResult(ok: false, error: "could not encode action", needs: nil)
+            return .failure("could not encode action")
         }
         let result = kernel.marmotDispatch(actionJSON: json)
         refresh()
@@ -342,7 +358,11 @@ final class MarmotStore: ObservableObject {
         }
         mbLog.info("pollInbox: dispatching with relays=\(extraRelays)")
         let result = dispatch(op)
-        mbLog.info("pollInbox: result ok=\(result.ok) error=\(result.error ?? "none")")
+        mbLog.info("pollInbox: ok=\(result.ok) total_events=\(result.totalEvents ?? -1) welcomes=\(result.welcomes ?? -1) messages=\(result.messages ?? -1) kps=\(result.keyPackages ?? -1)")
+        if let errs = result.errors, !errs.isEmpty {
+            mbLog.error("pollInbox: ingest errors: \(errs.joined(separator: " | "))")
+        }
+        if let e = result.error { mbLog.error("pollInbox: top-level error: \(e)") }
         return result
     }
 

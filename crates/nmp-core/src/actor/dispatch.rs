@@ -334,6 +334,17 @@ pub(super) fn dispatch_command(
             emit_now(kernel, *running, update_tx, last_emit);
             Some(Vec::new())
         }
+        ActorCommand::PushInterest(interest) => {
+            kernel.lifecycle_mut().registry_mut().push(interest);
+            kernel.lifecycle_mut().enqueue_trigger(
+                crate::subs::CompileTrigger::InvalidateCompile {
+                    reason: crate::subs::InvalidateReason::External(
+                        "push-interest".to_string(),
+                    ),
+                },
+            );
+            Some(Vec::new())
+        }
         ActorCommand::Shutdown => {
             close_relays(relay_controls, connected_relays, kernel);
             connected_urls.clear();
