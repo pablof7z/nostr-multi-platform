@@ -334,6 +334,32 @@ pub trait EventStore: Send + Sync {
     /// Release all pins held by `claimer`.
     fn release(&self, claimer: ClaimerId) -> Result<(), StoreError>;
 
+    /// Pin `ids` and return a [`ClaimGuard`] that releases them on drop.
+    ///
+    /// Prefer this over a bare `claim`/`release` pair: if the caller errors out
+    /// between the two calls, `release` is never reached and the claim leaks
+    /// permanently (`ClaimerId` is monotonic and never reused). The guard makes
+    /// release run on every exit path, including early `?` returns and panics.
+    ///
+    /// Callers that need a non-default per-view ceiling must still call
+    /// [`register_view_cover`](Self::register_view_cover) beforehand.
+    ///
+    /// The `where Self: Sized` bound keeps `EventStore` `dyn`-compatible —
+    /// returning `ClaimGuard<'a, Self>` references `Self`, which cannot live in
+    /// a vtable. Callers holding a `&dyn EventStore` construct the guard via
+    /// [`ClaimGuard::new`] after calling [`claim`](Self::claim) directly.
+    fn claim_guarded<'a>(
+        &'a self,
+        claimer: ClaimerId,
+        ids: &[EventId],
+    ) -> Result<ClaimGuard<'a, Self>, StoreError>
+    where
+        Self: Sized,
+    {
+        self.claim(claimer, ids)?;
+        Ok(ClaimGuard::new(self, claimer))
+    }
+
     /// Soft hint: keep these in hot LRU on a best-effort basis.
     fn hot_set_hint(&self, ids: &[EventId]) -> Result<(), StoreError>;
 
@@ -357,4 +383,117 @@ pub trait EventStore: Send + Sync {
 
     /// Dump all store contents in the requested format.
     fn dump(&self, out: &mut dyn std::io::Write, format: DumpFormat) -> Result<DumpStats, StoreError>;
+}
+
+// ─── ClaimGuard ───────────────────────────────────────────────────────────────
+
+/// RAII guard that releases an event-store claim when dropped.
+///
+/// Acquire via [`EventStore::claim_guarded`] rather than calling
+/// `claim`/`release` directly. The guard guarantees [`EventStore::release`]
+/// runs on every exit path — early `?` returns, panics, normal scope exit —
+/// closing the leak window where a claimed but never-released `ClaimerId`
+/// pins events against GC forever.
+///
+/// Generic over `S` (rather than `dyn EventStore`) so it works with both the
+/// `dyn`-dispatched default trait method and concrete backends without a
+/// coercion at the call site.
+pub struct ClaimGuard<'a, S: EventStore + ?Sized> {
+    store: &'a S,
+    claimer: ClaimerId,
+}
+
+impl<'a, S: EventStore + ?Sized> ClaimGuard<'a, S> {
+    /// Wrap an already-acquired claim. Prefer [`EventStore::claim_guarded`],
+    /// which performs the `claim` and constructs the guard atomically.
+    pub fn new(store: &'a S, claimer: ClaimerId) -> Self {
+        Self { store, claimer }
+    }
+
+    /// The `ClaimerId` this guard will release on drop.
+    pub fn claimer(&self) -> ClaimerId {
+        self.claimer
+    }
+}
+
+impl<S: EventStore + ?Sized> Drop for ClaimGuard<'_, S> {
+    fn drop(&mut self) {
+        // Drop must not panic. `release` returning an error means the store
+        // lock was poisoned — the claim is already unreachable, so swallowing
+        // is the correct (and only safe) choice here.
+        let _ = self.store.release(self.claimer);
+    }
+}
+
+// ─── Tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod claim_guard_tests {
+    use super::*;
+    use crate::store::types::{ClaimerId, EventId, StoreError};
+    use crate::store::MemEventStore;
+
+    fn make_id(b: u8) -> EventId {
+        let mut id = [0u8; 32];
+        id[0] = b;
+        id
+    }
+
+    #[test]
+    fn guard_releases_claim_on_scope_exit() {
+        // After the guard drops, the per-view slots it consumed must be free
+        // again — so a fresh claim filling the entire ceiling succeeds. If the
+        // guard failed to release, this second claim would hit `OverPinned`.
+        let store = MemEventStore::new();
+        let c = ClaimerId(101);
+        store.register_view_cover(c, 2).unwrap();
+
+        {
+            let guard = store.claim_guarded(c, &[make_id(1), make_id(2)]).unwrap();
+            assert_eq!(guard.claimer(), c);
+        }
+
+        store
+            .claim(c, &[make_id(3), make_id(4)])
+            .expect("ClaimGuard::drop must free the ceiling slots on scope exit");
+    }
+
+    #[test]
+    fn guard_releases_claim_on_early_return() {
+        // Simulate a caller that errors out after claiming — the guard must
+        // still release, which is the whole point of the RAII type.
+        let store = MemEventStore::new();
+        let c = ClaimerId(102);
+        store.register_view_cover(c, 1).unwrap();
+
+        fn fallible(store: &MemEventStore, c: ClaimerId) -> Result<(), StoreError> {
+            let _guard = store.claim_guarded(c, &[make_id(7)])?;
+            // Bail before the guard's natural scope end.
+            Err(StoreError::Io("simulated downstream failure".into()))
+        }
+
+        let result = fallible(&store, c);
+        assert!(result.is_err(), "helper is expected to error");
+
+        // The ceiling of 1 is fully consumed by the leaked-style claim; only a
+        // successful release frees the slot for this follow-up claim.
+        store
+            .claim(c, &[make_id(8)])
+            .expect("claim must be released even when the caller returns early via `?`");
+    }
+
+    #[test]
+    fn claim_guarded_surfaces_over_ceiling_error() {
+        // claim_guarded must propagate the underlying claim error and NOT
+        // construct a guard when the claim itself fails.
+        let store = MemEventStore::new();
+        let c = ClaimerId(103);
+        store.register_view_cover(c, 1).unwrap();
+
+        let result = store.claim_guarded(c, &[make_id(1), make_id(2)]);
+        assert!(
+            matches!(result, Err(StoreError::OverPinned { .. })),
+            "claim_guarded must surface OverPinned instead of guarding a failed claim",
+        );
+    }
 }

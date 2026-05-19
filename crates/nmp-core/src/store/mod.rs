@@ -19,7 +19,7 @@ mod lmdb;
 mod mem;
 pub mod types;
 
-pub use events::{DomainHandle, DomainScanIter, EventIter, EventStore};
+pub use events::{ClaimGuard, DomainHandle, DomainScanIter, EventIter, EventStore};
 pub use lmdb::LmdbEventStore;
 pub use mem::MemEventStore;
 pub use types::{

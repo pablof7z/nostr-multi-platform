@@ -7,7 +7,7 @@ Status: `[ ]` pending · `[~]` in-progress · `[x]` done
 
 ## CRITICAL — UB / crash risk
 
-- [ ] **`catch_unwind` on all C-callback fanout** — `crates/nmp-core/src/ffi/event_observer.rs:182`, `raw_event_tap.rs:247`, `lifecycle.rs:84`. Every `(registration.callback)(ctx, ptr)` invocation is a foreign call that can unwind across FFI = UB. Wrap each in `catch_unwind`; on panic emit a toast, do not propagate. The actor-thread `catch_unwind` in `ffi/mod.rs:240` does NOT cover these.
+- [x] **`catch_unwind` on all C-callback fanout** — `crates/nmp-core/src/ffi/event_observer.rs:182`, `raw_event_tap.rs:247`, `lifecycle.rs:84`. Every `(registration.callback)(ctx, ptr)` invocation is a foreign call that can unwind across FFI = UB. Wrap each in `catch_unwind`; on panic emit a toast, do not propagate. The actor-thread `catch_unwind` in `ffi/mod.rs:240` does NOT cover these. (fixed `7a2c556f`)
 - [x] D6: `expect()` at `ViewModule` boundary — `nmp-nip01/src/view.rs` (fixed `0483fe28`)
 - [x] D6: `expect()` at grouper public API — `nmp-threading/src/grouper.rs` (fixed `44223c5b`)
 - [x] D6: `unwrap()` in marmot FFI + gift-wrap policy in wrong layer — `marmot/ffi.rs` (fixed `7150202c`)
@@ -35,7 +35,7 @@ Status: `[ ]` pending · `[~]` in-progress · `[x]` done
 
 ## MEDIUM — architectural hygiene
 
-- [ ] **`[workspace.dependencies]`** — `nostr = "0.44"`, `serde`, `rustls`, etc. are copy-pasted across ~12 manifests. One drift = duplicate-version build. Hoist all shared third-party deps into `[workspace.dependencies]`; use `dep.workspace = true` per crate.
+- [x] **`[workspace.dependencies]`** — `nostr = "0.44"`, `serde`, `rustls`, etc. are copy-pasted across ~12 manifests. One drift = duplicate-version build. Hoist all shared third-party deps into `[workspace.dependencies]`; use `dep.workspace = true` per crate. (fixed `0d8a1b44`)
 - [ ] **`ChirpCapabilities.swift` JSON substring matching** — `:50,61` use `envelope.resultJSON.contains("\"status\":\"ok\"")`. Brittle; will false-positive if any payload contains that literal. Use `JSONDecoder` like the rest of the file. Also: `retrieveSecret` collapses 3-state `KeyringResult` (Ok/NotFound/Error) to `String?` — caller can't distinguish missing from failed.
 - [ ] **`nmp-substrate-types` dead directory** — `crates/nmp-substrate-types/src/` exists with PD-029 content but no `Cargo.toml`, not a workspace member, referenced nowhere. Finish the refactor or delete the directory.
 - [ ] **`make_update` double-serializes** — `kernel/update.rs` calls `serde_json::to_string` twice per tick (once to measure `payload_bytes`, once for the actual payload). Cache or restructure.
@@ -70,7 +70,7 @@ Status: `[ ]` pending · `[~]` in-progress · `[x]` done
 
 - [ ] **`ViewModule` has zero runtime callers — extension system is dead scaffolding** — `substrate/mod.rs:56-93` stores only name strings; no dispatch closures. Per-kind dispatch is hardcoded in `kernel/ingest/mod.rs:343-382`. 10+ `ViewModule` impls across protocol crates are never called by the kernel. The real shipping extension path is `KernelEventObserver` — undocumented and at odds with the builder guide. **Decision needed:** build the generic dispatch runtime, OR collapse to `KernelEventObserver` + composition crates as the documented v1 architecture. Do not keep both paths aspirationally alive.
 - [ ] **NMP reimplemented the relay pool it promised to borrow** — `aim.md §3` says NMP depends on `nostr-sdk` for "relay pool management, subscription routing, async streaming." `nmp-core/Cargo.toml` depends on `nostr` (types) and `tungstenite` (raw WebSocket) — NOT `nostr-sdk`. `relay_worker/` is 1079 LOC reimplementing the SDK's transport layer. **Decision needed:** formally adopt the fork as intentional (write ADR) and stop claiming dependency on the SDK; or migrate back to the SDK. The current state — saying one thing, doing another — is invisible from inside.
-- [ ] **No `cargo test` in CI** — `.github/workflows/` has `doctrine-lint`, `file-size-gate`, `s2-retention-gate`, `supply-chain` — no build or test workflow. `lmdb-backend` feature may not compile; no automated proof anything works. Add a `cargo test` matrix CI workflow.
+- [x] **No `cargo test` in CI** — `.github/workflows/` has `doctrine-lint`, `file-size-gate`, `s2-retention-gate`, `supply-chain` — no build or test workflow. `lmdb-backend` feature may not compile; no automated proof anything works. Add a `cargo test` matrix CI workflow. (fixed `e847650e`)
 - [ ] **Priority inversion: MLS shipped before write path** — `nmp-marmot` (OpenMLS encrypted groups, highest-complexity surface) is built and wired. Write path, LMDB persistence, and multi-account are still aspirational. Ship fundamentals before exotic features.
 
 ---
@@ -79,3 +79,11 @@ Status: `[ ]` pending · `[~]` in-progress · `[x]` done
 
 - [x] D6 panics at public API boundaries — nmp-nip01, nmp-threading, marmot/ffi.rs (2026-05-20)
 - [x] D7 gift-wrap subscription policy moved from marmot/ffi.rs → nmp-marmot::interest (2026-05-20)
+- [x] Secret key zeroization (`Zeroizing<String>` on all key material) (2026-05-20)
+- [x] `Debug` redaction on `SignerPayload`/`LocalKeyMaterial` — no more plaintext key in logs (2026-05-20)
+- [x] `NoopRelay::send` returns error instead of silent Ok (2026-05-20)
+- [x] Silent tag drop in `LocalKeySigner::sign_now` → hard-fail (2026-05-20)
+- [x] Observer fanout decoupled from actor thread via bounded channel (2026-05-20)
+- [x] `cargo test` CI workflow added — first build gate in the repo (2026-05-20)
+- [x] `[workspace.dependencies]` hoisted to workspace root (2026-05-20)
+- [x] `catch_unwind` on all C-callback fanout sites (2026-05-20)
