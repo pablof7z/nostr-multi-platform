@@ -253,14 +253,18 @@ impl<R: ParentResolver> Grouper<R> {
             self.pending_ancestor_ids.remove(id);
         }
 
-        let block = if chain.len() == 1 {
-            TimelineBlock::Standalone(chain.into_iter().next().expect("non-empty"))
-        } else {
-            TimelineBlock::Module {
+        // `walk_chain` always seeds the chain with `event.id`, so it is
+        // non-empty in practice. If that invariant is ever violated we
+        // degrade silently (skip placement) rather than panic across the
+        // public API boundary.
+        let block = match chain.as_slice() {
+            [_] => TimelineBlock::Standalone(chain.into_iter().next()?),
+            [] => return None,
+            _ => TimelineBlock::Module {
                 events: chain,
                 has_gap,
                 root: terminal_root,
-            }
+            },
         };
         self.blocks.insert(0, block);
         Some(GroupDelta::BlockInserted(0))
@@ -308,9 +312,13 @@ impl<R: ParentResolver> Grouper<R> {
                     *root = root_hint.clone();
                 }
                 // Mismatched root: chain top is not the declared root id.
-                let top = events.first().expect("non-empty");
-                if root_id_mismatched(root.as_ref(), top) {
-                    *has_gap = true;
+                // `events` was just pushed to above, so `first()` is `Some`
+                // in practice; the `if let` keeps a panic off the public
+                // API path if that ever stops holding.
+                if let Some(top) = events.first() {
+                    if root_id_mismatched(root.as_ref(), top) {
+                        *has_gap = true;
+                    }
                 }
                 true
             }
@@ -374,14 +382,19 @@ impl<R: ParentResolver> Grouper<R> {
                         self.pending_ancestor_ids.insert(id.clone());
                         break;
                     };
-                    let child_id = chain.first().expect("non-empty");
-                    let child = self.by_id.get(child_id);
-                    if gap_between(
-                        Some(&parent_event),
-                        child,
-                        self.policy.max_lookback_gap_secs,
-                    ) {
-                        has_gap = true;
+                    // `chain` is seeded non-empty and only ever grows, so
+                    // `first()` is `Some` in practice. The `if let` keeps a
+                    // panic off the public API path; the gap check is purely
+                    // additive, so skipping it on an empty chain is safe.
+                    if let Some(child_id) = chain.first() {
+                        let child = self.by_id.get(child_id);
+                        if gap_between(
+                            Some(&parent_event),
+                            child,
+                            self.policy.max_lookback_gap_secs,
+                        ) {
+                            has_gap = true;
+                        }
                     }
                     chain.insert(0, id.clone());
                     if chain.len() >= max_size {
@@ -398,12 +411,15 @@ impl<R: ParentResolver> Grouper<R> {
         }
 
         // Mismatched-root detection: chain top is not the declared root id.
+        // `chain` is non-empty in practice; the `if let` keeps a panic off
+        // the public API path, and this diagnostic is purely additive.
         if let Some(ThreadPointer::Event { id: rid, .. }) =
             terminal_root.as_ref().or(root_hint.as_ref())
         {
-            let top = chain.first().expect("non-empty");
-            if top != rid {
-                has_gap = true;
+            if let Some(top) = chain.first() {
+                if top != rid {
+                    has_gap = true;
+                }
             }
         }
 
