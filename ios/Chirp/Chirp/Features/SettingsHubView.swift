@@ -17,16 +17,20 @@ struct SettingsHubView: View {
                 }
             }
 
-            Section("Relays") {
+            // ── Relays ────────────────────────────────────────────────────
+            Section {
                 NavigationLink(destination: RelaySettingsView()) {
-                    HStack {
-                        Label("Relays", systemImage: "antenna.radiowaves.left.and.right")
-                        Spacer()
-                        Text(relaySubtitle)
-                            .foregroundStyle(.secondary)
-                            .font(.caption)
-                    }
+                    settingsRow(
+                        icon: "antenna.radiowaves.left.and.right",
+                        iconColor: ChirpColor.accent,
+                        title: "Relays",
+                        subtitle: relaySubtitle
+                    )
                 }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            } header: {
+                ChirpSectionHeader(title: "Relays")
             }
 
             Section("Encrypted Groups (Marmot)") {
@@ -70,11 +74,87 @@ struct SettingsHubView: View {
         .navigationTitle("Settings")
     }
 
+    // ── Active account subtitle ───────────────────────────────────────────
+
     private var relaySubtitle: String {
         let count = model.relayEditRows.count
         return count == 0 ? "No relays configured" : "\(count) relay\(count == 1 ? "" : "s")"
     }
+
+    private var activeAccountSubtitle: String {
+        guard let activeID = model.activeAccount,
+              let account = model.accounts.first(where: { $0.id == activeID })
+        else { return "No active account" }
+        return account.displayName.isEmpty ? shortNpub(account.npub) : account.displayName
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+
+    @ViewBuilder
+    private func settingsRow(
+        icon: String,
+        iconColor: Color,
+        title: String,
+        subtitle: String
+    ) -> some View {
+        HStack(spacing: ChirpSpace.m) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(iconColor.opacity(0.15))
+                    .frame(width: 32, height: 32)
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(iconColor)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(ChirpFont.callout.weight(.medium))
+                    .foregroundStyle(ChirpColor.textPrimary)
+                Text(subtitle)
+                    .font(ChirpFont.caption)
+                    .foregroundStyle(ChirpColor.textTertiary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.vertical, ChirpSpace.xs)
+    }
+
+    @ViewBuilder
+    private func roadmapItem(cx: String, title: String, description: String) -> some View {
+        HStack(alignment: .top, spacing: ChirpSpace.m) {
+            Text(cx)
+                .font(.system(.caption2, design: .rounded).weight(.bold))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(ChirpColor.accent, in: Capsule())
+                .fixedSize()
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(ChirpFont.callout.weight(.medium))
+                    .foregroundStyle(ChirpColor.textPrimary)
+                Text(description)
+                    .font(ChirpFont.caption)
+                    .foregroundStyle(ChirpColor.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func shortNpub(_ npub: String) -> String {
+        guard npub.count >= 16 else { return npub }
+        return "\(npub.prefix(10))…\(npub.suffix(6))"
+    }
 }
+
+// ── Marmot key-package status row ─────────────────────────────────────────
+//
+// Surfaces the local MLS key-package state (published? · age · stale) and a
+// publish / rotate action calling the `publish_key_package` dispatch op.
+// Key-package visibility lives in Settings, not a top-level screen, per the
+// milestone scope.
 
 private struct MarmotKeyPackageRow: View {
     @EnvironmentObject private var model: KernelModel

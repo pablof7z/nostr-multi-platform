@@ -293,15 +293,22 @@ final class KernelModel: ObservableObject {
         // T66a projections — mirror only; never derive (D8).
         if let a = update.accounts { accounts = a }
         activeAccount = update.activeAccount
-        // Auto-register Marmot when a local account becomes active.
-        // signInNsec: use cachedSecretKey (Swift has it already).
-        // createAccount: Swift never saw the nsec — call registerActive()
-        // which reads the key from the Rust-side slot the actor writes
-        // before emitting this snapshot (race-free by construction).
+        // Auto-register Marmot when a local account becomes active. Three
+        // sources of the secret key, tried in order:
+        //   1. `cachedSecretKey` — Swift already has it (post `signInNsec`).
+        //   2. Keychain — `signInNsec` persisted it; recall on cold relaunch.
+        //   3. `registerActive()` — `createAccount` never surfaced the nsec to
+        //      Swift, so read it from the Rust-side slot the actor writes
+        //      before emitting this snapshot (race-free by construction).
         if !marmot.isRegistered, let active = activeAccount,
            let account = accounts.first(where: { $0.id == active }),
            account.signerKind == "local" {
             if let secret = cachedSecretKey {
+                marmot.registerIfNeeded(secretKey: secret)
+            } else if let secret = capabilities.retrieveSecret(
+                accountID: Self.marmotKeychainAccountID
+            ) {
+                cachedSecretKey = secret
                 marmot.registerIfNeeded(secretKey: secret)
             } else {
                 marmot.registerActive()

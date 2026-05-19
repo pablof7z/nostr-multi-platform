@@ -433,7 +433,7 @@
 					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/debug",
 					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/release",
 				);
-				OTHER_LDFLAGS = "$(inherited) -lnmp_app_chirp -lnmp_signer_broker";
+				OTHER_LDFLAGS = "$(inherited) -lnmp_app_chirp -lnmp_signer_broker -lnmp_core";
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.Chirp;
 				PRODUCT_NAME = Chirp;
 				SDKROOT = iphoneos;
@@ -621,7 +621,7 @@
 					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/debug",
 					"$(SRCROOT)/../../target/aarch64-apple-ios-sim/release",
 				);
-				OTHER_LDFLAGS = "$(inherited) -lnmp_app_chirp -lnmp_signer_broker";
+				OTHER_LDFLAGS = "$(inherited) -lnmp_app_chirp -lnmp_signer_broker -lnmp_core";
 				PRODUCT_BUNDLE_IDENTIFIER = com.example.Chirp;
 				PRODUCT_NAME = Chirp;
 				SDKROOT = iphoneos;

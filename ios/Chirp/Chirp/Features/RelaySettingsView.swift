@@ -1,5 +1,7 @@
 import SwiftUI
 
+// OWNER: Phase-2 Agent C (Relay settings). Replace whole file.
+
 struct RelaySettingsView: View {
     @EnvironmentObject private var model: KernelModel
 
@@ -14,40 +16,39 @@ struct RelaySettingsView: View {
         List {
             if model.relayEditRows.isEmpty {
                 Section {
-                    ContentUnavailableView(
-                        "No relays",
+                    ChirpPlaceholder(
                         systemImage: "antenna.radiowaves.left.and.right",
-                        description: Text("Tap + to add a relay.")
+                        title: "No relays",
+                        subtitle: "Tap + to add a relay."
                     )
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
             } else {
-                Section("Configured relays") {
+                Section {
                     ForEach(model.relayEditRows) { relay in
-                        HStack {
-                            Text(relay.url)
-                                .font(.callout.monospaced())
-                                .lineLimit(1)
-                            Spacer()
-                            Text(relay.role.capitalized)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(roleColor(relay.role))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 3)
-                                .background(roleColor(relay.role).opacity(0.12), in: Capsule())
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture { openEdit(relay) }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                model.removeRelay(url: relay.url)
-                            } label: {
-                                Label("Remove", systemImage: "trash")
+                        RelayConfigRow(relay: relay)
+                            .contentShape(Rectangle())
+                            .onTapGesture { openEdit(relay) }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    model.removeRelay(url: relay.url)
+                                } label: {
+                                    Label("Remove", systemImage: "trash")
+                                }
                             }
-                        }
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
                     }
+                } header: {
+                    ChirpSectionHeader(title: "Configured relays")
+                        .padding(.bottom, ChirpSpace.xs)
                 }
             }
         }
+        .listStyle(.plain)
+        .background(Color(.systemBackground))
         .navigationTitle("Relays")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -55,6 +56,8 @@ struct RelaySettingsView: View {
                     openAdd()
                 } label: {
                     Image(systemName: "plus")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(ChirpColor.accent)
                 }
             }
         }
@@ -67,6 +70,8 @@ struct RelaySettingsView: View {
             )
         }
     }
+
+    // ── Sheet helpers ─────────────────────────────────────────────────────
 
     private func openAdd() {
         sheetURL = ""
@@ -87,15 +92,58 @@ struct RelaySettingsView: View {
         guard !url.isEmpty else { return }
         model.addRelay(url: url, role: sheetRole)
     }
+}
 
-    private func roleColor(_ role: String) -> Color {
-        switch role {
-        case "read": return .accentColor
-        case "write": return .green
-        default: return .accentColor
+// ── Relay config row ──────────────────────────────────────────────────────
+
+private struct RelayConfigRow: View {
+    let relay: RelayEditRow
+
+    var body: some View {
+        HStack(spacing: ChirpSpace.m) {
+            Image(systemName: "antenna.radiowaves.left.and.right")
+                .foregroundStyle(roleColor)
+                .font(.system(size: 14, weight: .medium))
+                .frame(width: 20)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(relay.url)
+                    .font(ChirpFont.mono)
+                    .foregroundStyle(ChirpColor.textPrimary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            Text(relay.role.capitalized)
+                .font(.system(.caption2, design: .rounded).weight(.semibold))
+                .foregroundStyle(roleColor)
+                .padding(.horizontal, ChirpSpace.s)
+                .padding(.vertical, 3)
+                .background(roleColor.opacity(0.12), in: Capsule())
+        }
+        .padding(.vertical, ChirpSpace.s)
+        .padding(.horizontal, ChirpSpace.m)
+        .background(
+            Color(.secondarySystemBackground).opacity(0.6),
+            in: RoundedRectangle(cornerRadius: ChirpSpace.radiusSmall, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: ChirpSpace.radiusSmall, style: .continuous)
+                .strokeBorder(ChirpColor.hairline, lineWidth: 1)
+        )
+    }
+
+    private var roleColor: Color {
+        switch relay.role {
+        case "read": return Color.blue
+        case "write": return ChirpColor.positive
+        default: return ChirpColor.accent
         }
     }
 }
+
+// ── Add / Edit relay sheet ────────────────────────────────────────────────
 
 private struct RelayEditSheet: View {
     @Binding var url: String
@@ -110,40 +158,61 @@ private struct RelayEditSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Relay URL") {
-                    TextField("wss://relay.example.com", text: $url)
-                        .font(.callout.monospaced())
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .keyboardType(.URL)
-                        .disabled(isEditing)
-                }
+            ScrollView {
+                VStack(spacing: ChirpSpace.xl) {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: ChirpSpace.m) {
+                            ChirpSectionHeader(title: "Relay URL")
 
-                Section("Role") {
-                    Picker("Role", selection: $role) {
-                        ForEach(roles, id: \.self) { r in
-                            Text(r.capitalized).tag(r)
+                            HStack(spacing: ChirpSpace.s) {
+                                Image(systemName: "antenna.radiowaves.left.and.right")
+                                    .foregroundStyle(ChirpColor.accent)
+                                    .font(.system(size: 15))
+                                TextField("wss://relay.example.com", text: $url)
+                                    .font(ChirpFont.mono)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+                                    .keyboardType(.URL)
+                                    .disabled(isEditing)
+                            }
                         }
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
+                    .padding(.horizontal, ChirpSpace.l)
+
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: ChirpSpace.m) {
+                            ChirpSectionHeader(title: "Role")
+
+                            Picker("Role", selection: $role) {
+                                ForEach(roles, id: \.self) { r in
+                                    Text(r.capitalized).tag(r)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                        }
+                    }
+                    .padding(.horizontal, ChirpSpace.l)
+
+                    ChirpPrimaryButton(
+                        title: isEditing ? "Update relay" : "Add relay",
+                        systemImage: isEditing ? "checkmark.circle" : "plus.circle"
+                    ) {
+                        onSave()
+                        dismiss()
+                    }
+                    .disabled(trimmedURL.isEmpty)
+                    .opacity(trimmedURL.isEmpty ? 0.45 : 1.0)
+                    .padding(.horizontal, ChirpSpace.l)
                 }
+                .padding(.top, ChirpSpace.l)
             }
+            .background(Color(.systemBackground))
             .navigationTitle(isEditing ? "Edit Relay" : "Add Relay")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        onSave()
-                        dismiss()
-                    } label: {
-                        Text(isEditing ? "Update" : "Add")
-                    }
-                    .disabled(trimmedURL.isEmpty)
+                        .foregroundStyle(ChirpColor.textSecondary)
                 }
             }
         }
