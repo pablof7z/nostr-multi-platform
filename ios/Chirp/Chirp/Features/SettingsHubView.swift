@@ -3,11 +3,7 @@ import SwiftUI
 struct SettingsHubView: View {
     @EnvironmentObject private var model: KernelModel
 
-    @State private var newRelayURL = ""
-    @State private var newRelayRole = "both"
     @State private var showRoadmap = false
-
-    private let relayRoles = ["both", "read", "write"]
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -22,51 +18,15 @@ struct SettingsHubView: View {
             }
 
             Section("Relays") {
-                if model.relayEditRows.isEmpty {
-                    Text("No relays configured")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(model.relayEditRows) { relay in
-                        HStack {
-                            Text(relay.url)
-                                .lineLimit(1)
-                            Spacer()
-                            Text(relay.role.capitalized)
-                                .foregroundStyle(.secondary)
-                                .font(.caption)
-                        }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                model.removeRelay(url: relay.url)
-                            } label: {
-                                Label("Remove", systemImage: "trash")
-                            }
-                        }
+                NavigationLink(destination: RelaySettingsView()) {
+                    HStack {
+                        Label("Relays", systemImage: "antenna.radiowaves.left.and.right")
+                        Spacer()
+                        Text(relaySubtitle)
+                            .foregroundStyle(.secondary)
+                            .font(.caption)
                     }
                 }
-
-                TextField("wss://relay.example.com", text: $newRelayURL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
-
-                Picker("Role", selection: $newRelayRole) {
-                    ForEach(relayRoles, id: \.self) { role in
-                        Text(role.capitalized).tag(role)
-                    }
-                }
-                .pickerStyle(.segmented)
-
-                Button {
-                    let url = newRelayURL.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !url.isEmpty else { return }
-                    model.addRelay(url: url, role: newRelayRole)
-                    newRelayURL = ""
-                    newRelayRole = "both"
-                } label: {
-                    Label("Add Relay", systemImage: "plus")
-                }
-                .disabled(newRelayURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
 
             Section("Encrypted Groups (Marmot)") {
@@ -108,6 +68,11 @@ struct SettingsHubView: View {
             }
         }
         .navigationTitle("Settings")
+    }
+
+    private var relaySubtitle: String {
+        let count = model.relayEditRows.count
+        return count == 0 ? "No relays configured" : "\(count) relay\(count == 1 ? "" : "s")"
     }
 }
 
