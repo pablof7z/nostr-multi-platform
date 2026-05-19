@@ -420,6 +420,55 @@ impl Kernel {
             Arc::clone(&publish_store),
             Arc::clone(&indexer_relays_handle),
         );
+
+        // T129 — install the store-backed watermark resolver on the
+        // subscription lifecycle. On reconnect, `recompile_and_diff` bumps
+        // each non-ephemeral sub-shape's `since` to the newest stored
+        // `created_at` matching that shape, so the relay does not re-emit
+        // events already on disk. The closure captures a clone of the
+        // `EventStore` handle and translates the `InterestShape` into a
+        // `StoreQuery`: `AuthorKind` when the shape is scoped to exactly one
+        // author with ≥1 kind, `KindTime` when there are no authors but ≥1
+        // kind, and `None` (no rewrite) otherwise. `query_visit` with
+        // `limit = 1` early-stops at the newest stored match on the relevant
+        // secondary index (D8: no per-emit allocation).
+        let watermark_store = Arc::clone(&store);
+        let watermark_fn: crate::subs::WatermarkFn =
+            Arc::new(move |shape: &crate::planner::InterestShape| {
+                // `InterestShape::{authors,kinds}` are `BTreeSet`s; the
+                // `StoreQuery` variants take `Vec<u32>`.
+                let kinds: Vec<u32> = shape.kinds.iter().copied().collect();
+                let query = if shape.authors.len() == 1 && !kinds.is_empty() {
+                    // Exactly one author + ≥1 kind → `idx_author_kind` scan.
+                    // Malformed hex → no watermark (never query the zero pubkey).
+                    let author_hex = shape.authors.iter().next()?;
+                    let author = hex_to_pubkey_bytes(author_hex)?;
+                    crate::store::StoreQuery::AuthorKind {
+                        author,
+                        kinds,
+                        since: None,
+                        until: None,
+                    }
+                } else if !kinds.is_empty() {
+                    // No (or multi-) author + ≥1 kind → `idx_kind_time` scan.
+                    crate::store::StoreQuery::KindTime {
+                        kinds,
+                        since: None,
+                        until: None,
+                    }
+                } else {
+                    return None;
+                };
+                let mut ts: Option<u64> = None;
+                let _ = watermark_store.query_visit(&query, 1, &mut |ev| {
+                    ts = Some(ev.raw.created_at);
+                    std::ops::ControlFlow::Break(())
+                });
+                ts
+            });
+        let mut lifecycle = SubscriptionLifecycle::new();
+        lifecycle.set_watermark_fn(watermark_fn);
+
         Self {
             store,
             rev: 0,
@@ -477,7 +526,7 @@ impl Kernel {
                 .into_iter()
                 .map(|role| (role, Nip42DriverState::new()))
                 .collect(),
-            lifecycle: SubscriptionLifecycle::new(),
+            lifecycle,
             unknown_ids: UnknownIds::new(),
             oneshot: OneshotApi::new(),
             oneshot_subs: HashMap::new(),

@@ -103,8 +103,9 @@ pub use wire::{plan_diff, WireFrame};
 // REQ. The wiring cannot live in `nmp-core` (D0: a `nmp-core → nmp-nip77`
 // dep is an app-noun leak *and* a cycle, since `nmp-nip77` consumes
 // `nmp-core`); it belongs in the crate that assembles the kernel for the
-// shell. This is a systemic state: the sibling `set_watermark_fn` seam is
-// likewise only wired in tests. Tracking sentinel:
+// shell. (The sibling `set_watermark_fn` seam is store-backed and lives
+// entirely inside `nmp-core`, so T129 IS wired in `Kernel::with_publish_store`
+// — only this coverage hook remains unwired.) Tracking sentinel:
 // `subs::coverage_hook_tests::d2_production_kernel_installs_coverage_hook`
 // (`#[ignore]`d). 2026-05-20 D2 audit.
 pub type PlanCoverageHook = Arc<dyn Fn(&mut CompiledPlan) + Send + Sync>;
