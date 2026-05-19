@@ -23,7 +23,7 @@
 //! - **D8** (no per-event alloc on the resolve path): the `QueueDispatcher`
 //!   appends to a single buffer; the kernel drains in bulk per publish call.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::publish::{
     Nip65OutboxResolver, NoopSigner, PublishAction, PublishEngine, PublishStore, PublishTarget,
@@ -37,14 +37,16 @@ use super::publish_engine_wire::{describe_engine_error, now_epoch_ms, split_ok_m
 use super::Kernel;
 
 /// Build the kernel's publish engine over a fresh `Nip65OutboxResolver` rooted
-/// in the shared `EventStore`. The engine is mandatory on every Kernel
-/// constructor.
+/// in the shared `EventStore`. `indexer_relays` is a shared handle the kernel
+/// keeps in sync with its relay config; the resolver reads it on every publish
+/// so discovery-kind fan-out always uses current URLs.
 pub(super) fn build_engine(
     event_store: Arc<dyn EventStore>,
     dispatcher: Arc<QueueDispatcher>,
     publish_store: Arc<dyn PublishStore>,
+    indexer_relays: Arc<Mutex<Vec<String>>>,
 ) -> PublishEngine {
-    let resolver = Nip65OutboxResolver::new(event_store);
+    let resolver = Nip65OutboxResolver::new(event_store, indexer_relays);
     PublishEngine::new(
         Arc::new(resolver),
         dispatcher as Arc<dyn RelayDispatcher>,

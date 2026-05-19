@@ -341,6 +341,10 @@ pub(crate) struct Kernel {
     /// importing kernel internals. Synced by `set_relay_edit_rows` in
     /// `identity_state.rs`.
     relay_edit_rows_handle: Option<Arc<Mutex<Vec<RelayEditRow>>>>,
+    /// Shared list of indexer relay URLs, kept in sync with `relay_edit_rows`
+    /// by `set_relay_edit_rows`. The `Nip65OutboxResolver` holds a clone of
+    /// this Arc and reads it on every discovery-kind publish.
+    indexer_relays_handle: Arc<Mutex<Vec<String>>>,
 }
 
 /// Construct the kernel's `EventStore`.
@@ -389,10 +393,12 @@ impl Kernel {
     ) -> Self {
         let store: Arc<dyn EventStore> = build_event_store();
         let publish_dispatcher = Arc::new(crate::publish::QueueDispatcher::new());
+        let indexer_relays_handle: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let publish_engine = publish_engine::build_engine(
             Arc::clone(&store),
             Arc::clone(&publish_dispatcher),
             Arc::clone(&publish_store),
+            Arc::clone(&indexer_relays_handle),
         );
         Self {
             store,
@@ -472,6 +478,7 @@ impl Kernel {
             event_observers: None,
             raw_event_observers: None,
             relay_edit_rows_handle: None,
+            indexer_relays_handle,
         }
     }
 
@@ -483,6 +490,7 @@ impl Kernel {
             RelayRole::Content => matches!(row_role, "both" | "write" | "read"),
             RelayRole::Indexer => matches!(row_role, "indexer" | "both"),
             RelayRole::Wallet => false,
+            RelayRole::Bunker => false,
         };
         let mut urls: Vec<String> = self
             .relay_edit_rows
@@ -496,6 +504,7 @@ impl Kernel {
                 RelayRole::Content => vec!["wss://relay.damus.io".to_string()],
                 RelayRole::Indexer => vec!["wss://purplepag.es".to_string()],
                 RelayRole::Wallet => Vec::new(),
+                RelayRole::Bunker => Vec::new(),
             };
         }
         urls

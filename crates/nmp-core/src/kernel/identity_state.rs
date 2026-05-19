@@ -166,8 +166,8 @@ impl super::Kernel {
     }
 
     /// Replace the editable relay projection (D4: actor is sole writer).
-    /// Also syncs the shared handle so FFI-side reads (e.g. Marmot dispatch)
-    /// see the latest rows without importing kernel internals.
+    /// Also syncs the shared handles so FFI-side reads (e.g. Marmot dispatch)
+    /// and the publish engine's discovery fan-out see the latest rows.
     pub(crate) fn set_relay_edit_rows(&mut self, rows: Vec<RelayEditRow>) {
         if self.relay_edit_rows != rows {
             self.relay_edit_rows = rows.clone();
@@ -175,8 +175,16 @@ impl super::Kernel {
         }
         if let Some(handle) = self.relay_edit_rows_handle.as_ref() {
             if let Ok(mut guard) = handle.lock() {
-                *guard = rows;
+                *guard = rows.clone();
             }
+        }
+        let indexer_urls: Vec<String> = rows
+            .iter()
+            .filter(|r| crate::actor::has_role(&r.role, "indexer"))
+            .map(|r| r.url.clone())
+            .collect();
+        if let Ok(mut guard) = self.indexer_relays_handle.lock() {
+            *guard = indexer_urls;
         }
     }
 

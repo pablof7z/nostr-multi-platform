@@ -57,6 +57,7 @@ pub trait OutboxResolver: Send + Sync {
         author_pubkey: &str,
         p_tags: &[String],
         target: &PublishTarget,
+        kind: u32,
     ) -> BTreeSet<RelayUrl>;
 }
 
@@ -75,6 +76,7 @@ impl OutboxResolver for StaticOutbox {
         author: &str,
         p_tags: &[String],
         target: &PublishTarget,
+        _kind: u32,
     ) -> BTreeSet<RelayUrl> {
         if let PublishTarget::Explicit { relays } = target {
             return relays.iter().cloned().collect();
@@ -103,6 +105,7 @@ impl OutboxResolver for NoopOutboxResolver {
         _author: &str,
         _p_tags: &[String],
         target: &PublishTarget,
+        _kind: u32,
     ) -> BTreeSet<RelayUrl> {
         if let PublishTarget::Explicit { relays } = target {
             return relays.iter().cloned().collect();
