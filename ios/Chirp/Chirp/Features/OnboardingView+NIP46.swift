@@ -85,24 +85,6 @@ extension OnboardingView {
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .foregroundStyle(.white)
-
-                        if let clip = UIPasteboard.general.string, clip.hasPrefix("bunker://") {
-                            Button {
-                                bunkerUri = clip
-                            } label: {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "doc.on.clipboard")
-                                        .font(.system(size: 12, weight: .semibold))
-                                    Text("Paste")
-                                        .font(.system(.caption, design: .rounded).weight(.semibold))
-                                }
-                                .foregroundStyle(ChirpColor.accent)
-                                .padding(.horizontal, ChirpSpace.s)
-                                .padding(.vertical, 5)
-                                .background(ChirpColor.accentSoft, in: Capsule())
-                            }
-                            .buttonStyle(.plain)
-                        }
                     }
                 }
 

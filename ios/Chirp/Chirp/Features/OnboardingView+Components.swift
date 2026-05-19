@@ -80,33 +80,12 @@ extension OnboardingView {
             VStack(alignment: .leading, spacing: ChirpSpace.m) {
                 ChirpSectionHeader(title: "Private key")
 
-                // nsec input with clipboard paste affordance
+                // nsec input
                 HStack(spacing: ChirpSpace.s) {
                     SecureField("nsec1…", text: $nsec)
                         .font(ChirpFont.mono)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-
-                    // Paste from clipboard button
-                    if let clip = UIPasteboard.general.string,
-                       clip.hasPrefix("nsec") {
-                        Button {
-                            nsec = clip
-                        } label: {
-                            HStack(spacing: 3) {
-                                Image(systemName: "doc.on.clipboard")
-                                    .font(.system(size: 12, weight: .semibold))
-                                Text("Paste")
-                                    .font(.system(.caption, design: .rounded).weight(.semibold))
-                            }
-                            .foregroundStyle(ChirpColor.accent)
-                            .padding(.horizontal, ChirpSpace.s)
-                            .padding(.vertical, 5)
-                            .background(ChirpColor.accentSoft, in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .transition(.scale.combined(with: .opacity))
-                    }
                 }
 
                 ChirpPrimaryButton(title: "Sign in", systemImage: "key.fill") {
