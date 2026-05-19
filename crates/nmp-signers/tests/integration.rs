@@ -317,7 +317,7 @@ fn t6_nip46_handshake_and_sign_round_trip() {
     };
     assert_eq!(np.remote_pubkey_hex, SAMPLE_PK);
     assert_eq!(np.relays, vec!["wss://relay.example.com".to_string()]);
-    assert_eq!(np.secret.as_deref(), Some("s1"));
+    assert_eq!(np.secret.as_deref().map(String::as_str), Some("s1"));
     assert_eq!(
         np.cached_remote_user_pubkey_hex.as_deref(),
         Some(remote_user_pubkey.to_hex()).as_deref()

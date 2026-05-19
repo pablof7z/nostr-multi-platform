@@ -39,6 +39,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{SignedEvent, UnsignedEvent};
 use nostr::{Keys, PublicKey, SecretKey};
+use zeroize::Zeroizing;
 
 use crate::bunker::{parse_bunker_uri, BunkerParseError, BunkerUri};
 use super::payload::{Nip46Payload, SignerPayload};
@@ -158,13 +159,13 @@ impl Nip46Signer {
         let remote_user_pubkey = PublicKey::from_hex(remote_user_pubkey_hex).map_err(|e| {
             SignerError::Backend(format!("invalid cached remote pubkey: {e}"))
         })?;
-        let local_sk = SecretKey::from_hex(&p.local_secret_hex)
+        let local_sk = SecretKey::from_hex(p.local_secret_hex.as_str())
             .map_err(|e| SignerError::Backend(format!("invalid local secret: {e}")))?;
         let mut extra = Vec::new();
         let uri = BunkerUri {
             remote_pubkey_hex: p.remote_pubkey_hex.clone(),
             relays: p.relays.clone(),
-            secret: p.secret.clone(),
+            secret: p.secret.as_deref().map(String::from),
             permissions: p.permissions.clone(),
             extra: std::mem::take(&mut extra),
         };
@@ -272,10 +273,10 @@ impl Signer for Nip46Signer {
 
     fn to_payload(&self) -> SignerPayload {
         SignerPayload::Nip46(Nip46Payload {
-            local_secret_hex: self.local_keys.secret_key().to_secret_hex(),
+            local_secret_hex: Zeroizing::new(self.local_keys.secret_key().to_secret_hex()),
             remote_pubkey_hex: self.uri.remote_pubkey_hex.clone(),
             relays: self.uri.relays.clone(),
-            secret: self.uri.secret.clone(),
+            secret: self.uri.secret.clone().map(Zeroizing::new),
             permissions: self.uri.permissions.clone(),
             cached_remote_user_pubkey_hex: Some(self.remote_user_pubkey.to_hex()),
         })
