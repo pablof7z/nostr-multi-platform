@@ -66,7 +66,7 @@ final class KernelModel: ObservableObject {
     private var cachedSecretKey: String?
 
     /// Platform capability implementations injected for the kernel to use.
-    let capabilities = NmpPulseCapabilities()
+    let capabilities = ChirpCapabilities()
 
     init() {
         if let v = ProcessInfo.processInfo.environment["NMP_VISIBLE_LIMIT"].flatMap(UInt32.init) {
@@ -164,12 +164,15 @@ final class KernelModel: ObservableObject {
     // business logic, no cached state (D5/D8) — the @Published properties
     // above are a pure mirror of the kernel snapshot.
 
+    private static let marmotKeychainAccountID = "chirp.marmot.cached_secret"
+
     func signInNsec(_ secret: String) {
         kmLog.info("signInNsec dispatched (len=\(secret.count))")
         // Cache the secret so the Marmot MLS DB can be registered. This is
         // the only nsec seam Chirp exposes to Swift; bunker/NIP-46 sign-in
         // never reaches here (see `Bridge/MarmotBridge.swift` limitation).
         cachedSecretKey = secret
+        capabilities.persistImportedSecret(accountID: Self.marmotKeychainAccountID, secret: secret)
         kernel.signInNsec(secret)
         marmot.registerIfNeeded(secretKey: secret)
     }
@@ -266,6 +269,16 @@ final class KernelModel: ObservableObject {
         // T66a projections — mirror only; never derive (D8).
         if let a = update.accounts { accounts = a }
         activeAccount = update.activeAccount
+        // Auto-register Marmot on cold relaunch when an nsec-backed account
+        // is already active. `signInNsec` persists the secret to the keychain;
+        // here we recall it and lazily register the projection.
+        if !marmot.isRegistered, let active = activeAccount,
+           let account = accounts.first(where: { $0.id == active }),
+           account.signerKind == "local",
+           let secret = capabilities.retrieveSecret(accountID: Self.marmotKeychainAccountID) {
+            cachedSecretKey = secret
+            marmot.registerIfNeeded(secretKey: secret)
+        }
         if let q = update.publishQueue { publishQueue = q }
         lastErrorToast = update.lastErrorToast
         if let r = update.relayEditRows { relayEditRows = r }
