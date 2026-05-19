@@ -50,7 +50,6 @@ final class PodcastPlayerStore {
     @ObservationIgnored nonisolated(unsafe) var rangesObserver: NSKeyValueObservation?
     @ObservationIgnored nonisolated(unsafe) var errorObserver: NSKeyValueObservation?
     @ObservationIgnored nonisolated(unsafe) var playbackEndObserver: NSObjectProtocol?
-    @ObservationIgnored var positionPersistenceTask: Task<Void, Never>?
     @ObservationIgnored var transcriptTask: Task<Void, Never>?
     @ObservationIgnored var waveformTask: Task<Void, Never>?
 
@@ -143,8 +142,6 @@ final class PodcastPlayerStore {
         configureRemoteCommandCenter()
         updateNowPlayingInfo()
         fetchAndApplyArtwork(from: artifact.preview.image)
-
-        startPositionPersistence()
 
         let transcriptUrl = artifact.preview.transcriptUrl
         if !transcriptUrl.isEmpty, let tUrl = URL(string: transcriptUrl) {

@@ -84,7 +84,7 @@ mod tests {
 
     use nmp_core::substrate::UnsignedEvent;
     use nmp_core::RemoteSignerHandle;
-    use nmp_signer_iface::{Nip46Rpc, Nip46Transport, SignerError, SignerOp};
+    use nmp_signer_iface::{Nip46Rpc, Nip46Transport, SignerError};
 
     use crate::signers::traits::Signer;
     use crate::{LocalKeySigner, Nip46SignerHandle};
@@ -111,22 +111,6 @@ mod tests {
         let transport = Arc::new(StubTransport::default());
         let signer = handle.complete(transport.clone(), remote_user.pubkey());
         (signer, transport)
-    }
-
-    fn poll_with_timeout<T: Send + 'static>(
-        op: &mut SignerOp<T>,
-        timeout: Duration,
-    ) -> Result<T, SignerError> {
-        let deadline = std::time::Instant::now() + timeout;
-        loop {
-            if let Some(r) = op.poll() {
-                return r;
-            }
-            if std::time::Instant::now() >= deadline {
-                return Err(SignerError::Timeout("poll deadline".to_string()));
-            }
-            std::thread::sleep(Duration::from_millis(10));
-        }
     }
 
     #[test]
@@ -164,7 +148,7 @@ mod tests {
 
         // Drive sign() via the trait-method-under-test (RemoteSignerHandle::sign)
         // so the test covers the adapter path, not just the inner Signer impl.
-        let mut op = RemoteSignerHandle::sign(&signer, &unsigned);
+        let op = RemoteSignerHandle::sign(&signer, &unsigned);
 
         // Inspect the queued RPC to learn its id.
         let sent = transport.sent.lock().unwrap().clone();
@@ -193,8 +177,9 @@ mod tests {
         .to_string();
         RemoteSignerHandle::deliver_rpc_response(&signer, &envelope);
 
-        let signed =
-            poll_with_timeout(&mut op, Duration::from_secs(2)).expect("signed event arrives");
+        let signed = op
+            .wait(Duration::from_secs(2))
+            .expect("signed event arrives");
         assert_eq!(signed.id, real_signed.id);
         assert_eq!(signed.sig, real_signed.sig);
         assert_eq!(signed.unsigned.pubkey, remote_pubkey.to_hex());
@@ -212,7 +197,7 @@ mod tests {
             content: "denied".to_string(),
             created_at: 1_700_000_000,
         };
-        let mut op = RemoteSignerHandle::sign(&signer, &unsigned);
+        let op = RemoteSignerHandle::sign(&signer, &unsigned);
         let rpc_id = transport.sent.lock().unwrap()[0].id.clone();
 
         let envelope = serde_json::json!({
@@ -222,7 +207,8 @@ mod tests {
         .to_string();
         RemoteSignerHandle::deliver_rpc_response(&signer, &envelope);
 
-        let err = poll_with_timeout(&mut op, Duration::from_secs(2))
+        let err = op
+            .wait(Duration::from_secs(2))
             .expect_err("error envelope must surface as Err");
         match err {
             SignerError::Rejected(m) => assert!(m.contains("user denied")),
@@ -244,7 +230,7 @@ mod tests {
             content: "robust".to_string(),
             created_at: 1_700_000_000,
         };
-        let mut op = RemoteSignerHandle::sign(&signer, &unsigned);
+        let op = RemoteSignerHandle::sign(&signer, &unsigned);
         let rpc_id = transport.sent.lock().unwrap()[0].id.clone();
 
         // Garbage in — silent drop.
@@ -260,7 +246,8 @@ mod tests {
         .to_string();
         RemoteSignerHandle::deliver_rpc_response(&signer, &envelope);
 
-        let err = poll_with_timeout(&mut op, Duration::from_secs(2))
+        let err = op
+            .wait(Duration::from_secs(2))
             .expect_err("error envelope must surface");
         assert!(matches!(err, SignerError::Rejected(_)));
     }

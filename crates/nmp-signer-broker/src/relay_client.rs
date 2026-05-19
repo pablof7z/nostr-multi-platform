@@ -30,7 +30,7 @@
 //! [`TungsteniteRelayClient`] uses a blocking `tungstenite` socket on its
 //! own thread.
 
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Once;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -150,7 +150,7 @@ fn run_worker(
         // Drain pending writes (non-blocking).
         let mut shutdown = false;
         loop {
-            match cmd_rx.recv_timeout(Duration::from_millis(0)) {
+            match cmd_rx.try_recv() {
                 Ok(WorkerCmd::Send(frame)) => {
                     if let Err(e) = socket.send(tungstenite::Message::Text(frame)) {
                         eprintln!("nmp-signer-broker: relay write failed: {e}");
@@ -162,8 +162,8 @@ fn run_worker(
                     shutdown = true;
                     break;
                 }
-                Err(RecvTimeoutError::Timeout) => break,
-                Err(RecvTimeoutError::Disconnected) => {
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
                     shutdown = true;
                     break;
                 }

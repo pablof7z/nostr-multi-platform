@@ -6,17 +6,6 @@ import UIKit
 extension PodcastPlayerStore {
     // MARK: - Position persistence
 
-    func startPositionPersistence() {
-        positionPersistenceTask?.cancel()
-        positionPersistenceTask = Task {
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 5 * 1_000_000_000)
-                guard !Task.isCancelled else { break }
-                persistPosition()
-            }
-        }
-    }
-
     func persistPosition() {
         guard let artifact = currentArtifact, isPlaying else { return }
         let guid = artifact.preview.podcastItemGuid
@@ -58,6 +47,7 @@ extension PodcastPlayerStore {
 
     func installTimeObserver(on player: AVPlayer) {
         let interval = CMTime(seconds: 0.25, preferredTimescale: 600)
+        var lastPersistWall = Date.distantPast
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -68,6 +58,12 @@ extension PodcastPlayerStore {
                 // lock screen scrubber accurate without excessive churn.
                 if Int(seconds) != previousWhole {
                     self.updateNowPlayingInfo()
+                }
+                // Wall-clock-gated persistence: piggy-back on the existing
+                // time observer rather than running a parallel polling task.
+                if Date().timeIntervalSince(lastPersistWall) >= 5 {
+                    lastPersistWall = Date()
+                    self.persistPosition()
                 }
             }
         }
@@ -279,8 +275,6 @@ extension PodcastPlayerStore {
     }
 
     func tearDownPlayer() {
-        positionPersistenceTask?.cancel()
-        positionPersistenceTask = nil
         transcriptTask?.cancel()
         transcriptTask = nil
         waveformTask?.cancel()

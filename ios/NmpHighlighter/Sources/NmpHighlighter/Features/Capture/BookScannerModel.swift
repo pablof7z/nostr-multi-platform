@@ -30,7 +30,7 @@ final class BookScannerModel: NSObject {
     private var metadataOutput: AVCaptureMetadataOutput?
     private var previewLayerBounds: CGRect = .zero
     private var firstVisibleAt: Date?
-    private var tipTimer: Timer?
+    @ObservationIgnored private var clearBoxesTask: Task<Void, Never>?
     private var resultHandler: ((String) -> Void)?
 
     /// Returns once the camera session is started (or permission is resolved
@@ -58,12 +58,10 @@ final class BookScannerModel: NSObject {
         guard permission == .granted else { return }
 
         await configureAndStart()
-        startTipTimer()
     }
 
     func stop() {
-        tipTimer?.invalidate()
-        tipTimer = nil
+        clearBoxesTask?.cancel()
         let session = self.session
         sessionQueue.async {
             if session.isRunning { session.stopRunning() }
@@ -162,27 +160,6 @@ final class BookScannerModel: NSObject {
         }
     }
 
-    // MARK: - Tip timer
-
-    /// Accumulates seconds-since-first-barcode-seen. Resets whenever nothing
-    /// has been visible for a while — the tip only shows when the user IS
-    /// trying, just not succeeding.
-    private func startTipTimer() {
-        tipTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                if self.detectedBoxes.isEmpty {
-                    self.firstVisibleAt = nil
-                    self.visibleButUndecodedSeconds = 0
-                } else {
-                    if self.firstVisibleAt == nil { self.firstVisibleAt = Date() }
-                    if let since = self.firstVisibleAt {
-                        self.visibleButUndecodedSeconds = Date().timeIntervalSince(since)
-                    }
-                }
-            }
-        }
-    }
 }
 
 // MARK: - Metadata delegate
@@ -202,11 +179,34 @@ extension BookScannerModel: AVCaptureMetadataOutputObjectsDelegate {
         Task { @MainActor in
             guard !self.locked else { return }
             self.detectedBoxes = codes.map(\.bounds)
-            if let first = codes.first {
-                // The raw payload goes to the view; it decides whether it's
-                // a book (and calls `lock()` + stop) or a false positive
-                // that should flash "not a book".
-                self.resultHandler?(first.payload)
+            if codes.isEmpty {
+                self.firstVisibleAt = nil
+                self.visibleButUndecodedSeconds = 0
+                self.clearBoxesTask?.cancel()
+            } else {
+                if self.firstVisibleAt == nil { self.firstVisibleAt = Date() }
+                if let since = self.firstVisibleAt {
+                    self.visibleButUndecodedSeconds = Date().timeIntervalSince(since)
+                }
+                // Debounced clear: if no new detection within 500ms, the
+                // barcode has left the frame and the delegate stops firing.
+                self.clearBoxesTask?.cancel()
+                self.clearBoxesTask = Task { [weak self] in
+                    try? await Task.sleep(for: .milliseconds(500))
+                    guard !Task.isCancelled else { return }
+                    await MainActor.run {
+                        guard let self else { return }
+                        self.detectedBoxes = []
+                        self.firstVisibleAt = nil
+                        self.visibleButUndecodedSeconds = 0
+                    }
+                }
+                if let first = codes.first {
+                    // The raw payload goes to the view; it decides whether it's
+                    // a book (and calls `lock()` + stop) or a false positive
+                    // that should flash "not a book".
+                    self.resultHandler?(first.payload)
+                }
             }
         }
     }

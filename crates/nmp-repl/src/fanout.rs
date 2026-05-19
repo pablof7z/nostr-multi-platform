@@ -269,16 +269,13 @@ pub fn launch(
             }
             let job = {
                 let lock = work_rx.lock().unwrap();
-                lock.try_recv()
+                lock.recv()
             };
             match job {
                 Ok((url, reqs)) => {
                     run_relay_thread(url, reqs, msg_tx.clone(), global_deadline);
                 }
-                Err(mpsc::TryRecvError::Empty) => {
-                    thread::sleep(Duration::from_millis(50));
-                }
-                Err(mpsc::TryRecvError::Disconnected) => return,
+                Err(_) => return,
             }
         });
     }

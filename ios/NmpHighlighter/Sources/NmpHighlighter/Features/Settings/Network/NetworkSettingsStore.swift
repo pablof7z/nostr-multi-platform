@@ -27,7 +27,6 @@ final class NetworkSettingsStore {
     private(set) var wifiOnlyEnabled: Bool = UserDefaults.standard.bool(forKey: wifiOnlyDefaultsKey)
 
     @ObservationIgnored private let core: SafeHighlighterCore
-    @ObservationIgnored private var pollTask: Task<Void, Never>?
     @ObservationIgnored private var pathMonitor: NWPathMonitor?
     @ObservationIgnored private var inFlightNip11: Set<String> = []
 
@@ -147,15 +146,6 @@ final class NetworkSettingsStore {
     }
 
     func startLiveUpdates() {
-        // Already running
-        guard pollTask == nil else { return }
-        pollTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(2))
-                guard let self else { return }
-                await self.refreshDiagnostics()
-            }
-        }
         if wifiOnlyEnabled && pathMonitor == nil {
             startPathMonitor()
         }
@@ -163,8 +153,6 @@ final class NetworkSettingsStore {
     }
 
     func stopLiveUpdates() {
-        pollTask?.cancel()
-        pollTask = nil
         // Leave the path monitor running — Wi-Fi-only enforcement should
         // keep working after the user leaves the Network screen.
     }
