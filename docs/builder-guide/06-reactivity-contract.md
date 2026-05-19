@@ -141,9 +141,23 @@ nothing changed so the buffer stays empty.
 - **`catch_all_filter` for anything indexable.** It forces the view onto the
   every-insert slow path and emits a debug guardrail warning. Reserve it for
   genuine full-text / regex / time-window scans.
-- **Polling instead of observing.** The UI must consume `ViewBatch` /
-  snapshots, never poll the kernel for state. Polling defeats the rev guard
-  and the 60Hz pacing and reintroduces the work the loop exists to avoid.
+- **Polling instead of observing — forbidden at every layer.** This is not
+  just a UI rule; it applies to all code in the repo:
+  - *UI → kernel*: consume `ViewBatch` / snapshots pushed by the actor; never
+    call `getState()` on a timer. Polling defeats the rev guard and the 60 Hz
+    pacing.
+  - *Rust internals*: never `try_recv` + `thread::sleep` in a loop. Use
+    blocking `recv()` / `recv_timeout()` so threads wake exactly when work
+    arrives. `recv_timeout(Duration::ZERO)` is `try_recv()` — neither belongs
+    in a spin loop.
+  - *iOS background tasks*: no `Task { while !cancelled { sleep; doWork() } }`.
+    Piggy-back on an existing periodic event (e.g. a `periodicTimeObserver`)
+    with a wall-clock gate, or react to OS callbacks (`NWPathMonitor`,
+    `AVFoundation` delegates, `NotificationCenter`).
+  - *Test helpers*: no `poll()` + `sleep` loops. Use the blocking `.wait()`
+    method on `SignerOp` or equivalent blocking primitives.
+  Every sleep-poll loop is a latency tax, a CPU wake-lock, and a false-wake
+  source. If you feel the urge to write one, find the event that replaces it.
 
 See also: [05 — Kernel substrate — the 5 trait families](05-substrate-traits.md) ·
 [07 — Subscription planner — Interest → CompiledPlan → wire](07-subscription-planner.md) ·

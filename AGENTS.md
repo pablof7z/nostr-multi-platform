@@ -26,3 +26,14 @@ Everything else — state, business rules, derived data, routing decisions, erro
 **App Rust crates (`apps/<app>/`)** hold the Rust side of features that are specific to that application's domain and would not generalize to other Nostr apps. Example: a podcast app's audio playback engine, chapter parsing, or feed-subscription state. These belong in the app's own Rust crates, not in NMP. NMP does not accumulate app-specific logic.
 
 The line is not protocol vs. product — a product-level feature (e.g., NIP-29 group chat, Marmot MLS encrypted groups) belongs in an NMP crate if other Nostr apps would use it. The line is **generic Nostr building block vs. this app's proprietary domain**.
+
+## No polling — ever
+
+Polling is forbidden at every layer of the stack. This means no `sleep` + check loops, no `Timer.scheduledTimer` querying state, no `try_recv` + `sleep` spin loops, no `Task { while !cancelled { sleep; checkState() } }` tasks.
+
+Use blocking primitives or event-driven patterns instead:
+- **Rust channels**: block with `recv()` / `recv_timeout()`; drain with `try_recv()` (not in a sleep loop).
+- **iOS**: consume `ViewBatch` snapshots pushed by the kernel; use `AVFoundation` / `NWPathMonitor` / `NotificationCenter` callbacks for OS events.
+- **Background persistence**: piggy-back on an existing event tick with a wall-clock gate — do not spawn a parallel sleep loop.
+
+Full rationale: `docs/builder-guide/06-reactivity-contract.md` §Anti-patterns and Doctrine D8.
