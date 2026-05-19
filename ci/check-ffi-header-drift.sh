@@ -109,7 +109,16 @@ RUST_SYMBOLS="$(
         fi
         # awk: when we see a `#[no_mangle]` line, arm a flag; the next
         # `pub extern "C" fn nmp_app_<name>` line emits <name> and disarms.
+        # The first rule also covers the single-line form
+        # `#[no_mangle] pub extern "C" fn nmp_app_X(...)` so a future style
+        # change cannot silently drop a symbol.
         awk '
+            /#\[no_mangle\][[:space:]]*pub[[:space:]]+extern[[:space:]]+"C"[[:space:]]+fn[[:space:]]+nmp_app_/ {
+                match($0, /nmp_app_[A-Za-z0-9_]+/)
+                if (RSTART > 0) print substr($0, RSTART, RLENGTH)
+                armed = 0
+                next
+            }
             /#\[no_mangle\]/ { armed = 1; next }
             armed && /pub[[:space:]]+extern[[:space:]]+"C"[[:space:]]+fn[[:space:]]+nmp_app_/ {
                 match($0, /nmp_app_[A-Za-z0-9_]+/)
