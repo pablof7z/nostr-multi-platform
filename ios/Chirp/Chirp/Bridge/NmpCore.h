@@ -4,9 +4,11 @@
 #include <stdint.h>
 
 // Pulse uses the same Path-A FFI shape as NmpStress — raw C bridge over the
-// kernel actor. This header MUST stay in sync with the symbols exported from
-// `crates/nmp-core/src/ffi.rs`. The M14 UniFFI codegen path will supersede
-// this; until then it's hand-maintained.
+// kernel actor. This header MUST stay in sync with the non-test-gated
+// `#[no_mangle] extern "C" fn nmp_app_*` symbols exported from
+// `crates/nmp-core/src/ffi/`. The M14 UniFFI codegen path will supersede
+// this; until then it's hand-maintained and verified by the CI gate
+// `ci/check-ffi-header-drift.sh`.
 
 void *nmp_app_new(void);
 void nmp_app_free(void *app);
@@ -39,6 +41,59 @@ void nmp_app_unfollow(void *app, const char *pubkey);
 void nmp_app_add_relay(void *app, const char *url, const char *role);
 void nmp_app_remove_relay(void *app, const char *url);
 void nmp_app_open_timeline(void *app);
+
+// ── Verbatim signed-event publish ────────────────────────────────────────
+//
+// `nmp_app_publish_signed_event` routes a fully-formed, externally-signed
+// flat NIP-01 event `{id,pubkey,created_at,kind,tags,content,sig}` to the
+// author's NIP-65 outbox. The kernel's signer is never consulted; Schnorr
+// signature + event-id hash are still verified on the actor side and
+// forged/garbled events are dropped (never published). Fire-and-forget
+// (D6): null app / null / non-UTF-8 `event_json` are silent no-ops;
+// malformed JSON surfaces via `last_error_toast`.
+void nmp_app_publish_signed_event(void *app, const char *event_json);
+
+// Explicit-relay-target sibling of `nmp_app_publish_signed_event`: routes
+// the verbatim event to exactly the relays in `relays_json` (a JSON array
+// of relay-URL strings) instead of the NIP-65 outbox. A null / non-UTF-8 /
+// empty-array `relays_json` falls back to Auto (outbox) behaviour, byte-
+// identical to `nmp_app_publish_signed_event`. Same verify / no-re-sign /
+// fire-and-forget (D6) semantics; malformed input surfaces as a toast.
+void nmp_app_publish_signed_event_to(void *app, const char *event_json, const char *relays_json);
+
+// ── T146 — kernel event observer ─────────────────────────────────────────
+//
+// `nmp_app_register_event_observer` registers a callback that fires on the
+// actor thread once per event accepted into the kernel `EventStore`
+// (insertions/replacements only). The callback receives a nul-terminated
+// JSON encoding of `KernelEvent` `{id,author,kind,created_at,tags,content}`;
+// the pointer is borrowed for the callback's duration only — copy any bytes
+// you need. Returns a non-zero `u64` id on success, `0` on failure (null
+// app, null callback, poisoned mutex). The id is required to unregister.
+//
+// `nmp_app_unregister_event_observer` drops a registration by id.
+// Idempotent (D6): unknown ids / null app are silent no-ops.
+typedef void (*NmpEventObserverCallback)(void *context, const char *event_json);
+uint64_t nmp_app_register_event_observer(void *app, void *context, NmpEventObserverCallback callback);
+void nmp_app_unregister_event_observer(void *app, uint64_t id);
+
+// ── Raw signed-event tap ─────────────────────────────────────────────────
+//
+// `nmp_app_register_raw_event_observer` registers a callback that fires
+// once per accepted inbound event whose `kind` matches `kinds_json`, with a
+// nul-terminated JSON encoding of the VERBATIM flat NIP-01 signed event
+// `{id,pubkey,created_at,kind,tags,content,sig}` (the `sig` is preserved
+// byte-for-byte — the whole point). `kinds_json` is a JSON array of u32
+// kinds (e.g. `"[445,1059]"`); a null pointer, `"[]"`, or unparseable
+// input means "deliver every kind". The payload pointer is borrowed for
+// the callback's duration only. Returns a non-zero `u64` id on success,
+// `0` on failure (null app, null callback, poisoned mutex).
+//
+// `nmp_app_unregister_raw_event_observer` drops a registration by id.
+// Idempotent (D6): unknown ids / null app are silent no-ops.
+typedef void (*NmpRawEventObserverCallback)(void *context, const char *event_json);
+uint64_t nmp_app_register_raw_event_observer(void *app, void *context, NmpRawEventObserverCallback callback, const char *kinds_json);
+void nmp_app_unregister_raw_event_observer(void *app, uint64_t id);
 
 // NIP-47 Nostr Wallet Connect. All fire-and-forget (D6); outcomes arrive via
 // the snapshot's `wallet_status` and `last_error_toast` fields.

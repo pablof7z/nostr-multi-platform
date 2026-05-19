@@ -4,6 +4,12 @@
 //! The whole module is gated on `cfg(any(test, feature = "test-support"))`;
 //! these symbols are never part of the production FFI ABI (D0).  Re-exported
 //! from `ffi/mod.rs` so `crate::ffi::nmp_app_inject_*` paths stay byte-stable.
+//!
+//! The file-level `#![cfg(...)]` below is redundant with the gated
+//! `mod testing;` declaration in `ffi/mod.rs`, but kept deliberately: it makes
+//! this file self-describing as test-only, so the `ci/check-ffi-header-drift.sh`
+//! gate can recognise it (and any future tooling) without parsing `mod.rs`.
+#![cfg(any(test, feature = "test-support"))]
 
 use super::{app_ref, NmpApp};
 use crate::actor::ActorCommand;
