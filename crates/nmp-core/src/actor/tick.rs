@@ -20,13 +20,15 @@ pub(super) fn compute_wait(
     last_emit: Instant,
     emit_hz: u32,
 ) -> Duration {
-    if running && kernel.changed_since_emit() {
+    let wait = if running && kernel.changed_since_emit() {
         emit_interval(emit_hz)
             .checked_sub(last_emit.elapsed())
             .unwrap_or(Duration::ZERO)
     } else {
         Duration::from_millis(250)
-    }
+    };
+    // Prevent busy-waiting if emit_hz is accidentally very high.
+    wait.max(Duration::from_millis(1))
 }
 
 pub(super) fn emit_interval(emit_hz: u32) -> Duration {

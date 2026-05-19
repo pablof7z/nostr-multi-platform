@@ -184,6 +184,23 @@ extension KernelHandle {
         return false
     }
 
+    /// Register a Marmot projection using the actor-owned active key.
+    /// Swift never sees the nsec — it stays in Rust. Call from `apply()`
+    /// after `createAccount` succeeds. Idempotent: drops a prior handle first.
+    @discardableResult
+    func registerMarmotActive(appSupportDir: String) -> Bool {
+        unregisterMarmotIfNeeded()
+        let handle: UnsafeMutableRawPointer? = appSupportDir.withCString { dirPtr in
+            nmp_app_chirp_marmot_register_active(raw, dirPtr)
+        }
+        if let handle {
+            marmotHandle = handle
+            return true
+        }
+        mbLog.error("nmp_app_chirp_marmot_register_active returned NULL — no active local key?")
+        return false
+    }
+
     /// Drop the Marmot observer registration if one exists. Idempotent.
     /// MUST run before `nmp_app_free` (FFI contract).
     func unregisterMarmotIfNeeded() {
@@ -311,6 +328,21 @@ final class MarmotStore: ObservableObject {
             return
         }
         let ok = kernel.registerMarmot(secretKey: secretKey, appSupportDir: dir)
+        isRegistered = ok
+        if ok { refresh() }
+    }
+
+    /// Register using the Rust-side active key (no nsec needed from Swift).
+    /// Called from `KernelModel.apply()` after `createAccount` — the actor
+    /// writes the key to its slot before emitting the snapshot, so by the
+    /// time this runs the slot is guaranteed to be populated. Idempotent.
+    func registerActive() {
+        guard !isRegistered else { return }
+        guard let dir = Self.appSupportDir() else {
+            mbLog.error("application-support dir unavailable — Marmot registerActive skipped")
+            return
+        }
+        let ok = kernel.registerMarmotActive(appSupportDir: dir)
         isRegistered = ok
         if ok { refresh() }
     }

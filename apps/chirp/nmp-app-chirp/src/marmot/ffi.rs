@@ -163,6 +163,87 @@ fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
     }
 }
 
+/// Inner registration logic shared by `nmp_app_chirp_marmot_register` and
+/// `nmp_app_chirp_marmot_register_active`. `app` must be non-null and valid.
+fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) -> *mut MarmotHandle {
+    // Initialize a credential store for `MdkSqliteStorage`. Try the Apple
+    // protected store first (required on device); fall back to the in-memory
+    // mock store on the simulator where entitlements are missing (-34018).
+    let mut use_mock = false;
+    if let Ok(store) = AppleStore::new() {
+        set_default_store(store);
+    } else {
+        use_mock = true;
+        set_default_store(keyring_core::mock::Store::new().unwrap());
+    }
+
+    let service = match MarmotService::new(
+        db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone(),
+    ) {
+        Ok(s) => s,
+        Err(_) => {
+            // Stale DB: if the keyring was uninitialized on first creation,
+            // the SQLite file exists but has no encryption key entry. Delete
+            // the DB (+ WAL/SHM) and retry exactly once.
+            let _ = std::fs::remove_file(db_path);
+            let _ = std::fs::remove_file(format!("{}-wal", db_path));
+            let _ = std::fs::remove_file(format!("{}-shm", db_path));
+            match MarmotService::new(
+                db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone(),
+            ) {
+                Ok(s) => s,
+                Err(_) => {
+                    // If the Apple store failed because of missing entitlements
+                    // on the simulator, the retry above also fails. Switch to
+                    // the mock store and try one final time.
+                    if !use_mock {
+                        set_default_store(keyring_core::mock::Store::new().unwrap());
+                        match MarmotService::new(
+                            db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone(),
+                        ) {
+                            Ok(s) => s,
+                            Err(_) => return std::ptr::null_mut(),
+                        }
+                    } else {
+                        return std::ptr::null_mut();
+                    }
+                }
+            }
+        }
+    };
+
+    // SAFETY: caller guarantees `app` is non-null and valid.
+    let app_ref = unsafe { &*app };
+    let projection = Arc::new(MarmotProjection::new(service));
+    projection.set_app(app);
+    let observer_id = app_ref.register_event_observer(
+        Arc::clone(&projection) as Arc<dyn nmp_core::KernelEventObserver>,
+    );
+    if observer_id.0 == 0 {
+        return std::ptr::null_mut(); // poisoned slot — soft fail.
+    }
+
+    let tap = Arc::new(MarmotIngestTap::new(Arc::clone(&projection)));
+    let raw_observer_id = app_ref.register_raw_event_observer(
+        MarmotIngestTap::kind_filter(),
+        tap as Arc<dyn RawEventObserver>,
+    );
+    if raw_observer_id.0 == 0 {
+        app_ref.unregister_event_observer(observer_id);
+        return std::ptr::null_mut();
+    }
+
+    let pubkey_hex = keys.public_key().to_hex();
+    app_ref.push_interest(giftwrap_inbox_interest(&pubkey_hex));
+
+    Box::into_raw(Box::new(MarmotHandle {
+        projection,
+        observer_id,
+        raw_observer_id,
+        app,
+    }))
+}
+
 /// Register a Marmot projection against `app`.
 ///
 /// * `app` — the live `NmpApp` (from `nmp_app_new`). MUST outlive the
@@ -194,99 +275,35 @@ pub extern "C" fn nmp_app_chirp_marmot_register(
         return std::ptr::null_mut();
     };
     let db_path = format!("{}/marmot-mls-state.sqlite", dir.trim_end_matches('/'));
+    register_with_keys(app, keys, &db_path)
+}
 
-    // Initialize a credential store for `MdkSqliteStorage`. Try the Apple
-    // protected store first (required on device); fall back to the in-memory
-    // mock store on the simulator where entitlements are missing (-34018).
-    let mut use_mock = false;
-    if let Ok(store) = AppleStore::new() {
-        set_default_store(store);
-    } else {
-        use_mock = true;
-        set_default_store(keyring_core::mock::Store::new().unwrap());
-    }
-
-    let service = match MarmotService::new(
-        &db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone(),
-    ) {
-        Ok(s) => s,
-        Err(_) => {
-            // Stale DB: if the keyring was uninitialized on first creation,
-            // the SQLite file exists but has no encryption key entry. Delete
-            // the DB (+ WAL/SHM) and retry exactly once.
-            let _ = std::fs::remove_file(&db_path);
-            let _ = std::fs::remove_file(format!("{}-wal", db_path));
-            let _ = std::fs::remove_file(format!("{}-shm", db_path));
-            match MarmotService::new(
-                &db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone(),
-            ) {
-                Ok(s) => s,
-                Err(_) => {
-                    // If the Apple store failed because of missing entitlements
-                    // on the simulator, the retry above also fails. Switch to
-                    // the mock store and try one final time.
-                    if !use_mock {
-                        set_default_store(keyring_core::mock::Store::new().unwrap());
-                        match MarmotService::new(
-                            &db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone(),
-                        ) {
-                            Ok(s) => s,
-                            Err(_) => return std::ptr::null_mut(),
-                        }
-                    } else {
-                        return std::ptr::null_mut();
-                    }
-                }
-            }
-        }
-    };
-
-    // SAFETY: caller guarantees `app` is valid for this call.
-    let app_ref = unsafe { &*app };
-    let projection = Arc::new(MarmotProjection::new(service));
-    // Retain the live app pointer so the dispatch ops can publish their
-    // signed events to relays INTERNALLY (closed outbound seam). The
-    // `MarmotHandle` keeps `app` valid for the projection's whole lifetime
-    // (it is freed only in `unregister`, after the observer is dropped).
-    projection.set_app(app);
-    let observer_id = app_ref.register_event_observer(
-        Arc::clone(&projection) as Arc<dyn nmp_core::KernelEventObserver>,
-    );
-    if observer_id.0 == 0 {
-        return std::ptr::null_mut(); // poisoned slot — soft fail.
-    }
-
-    // CLOSE the inbound ingest seam: register the raw signed-event tap so
-    // accepted inbound kind:1059 welcomes / kind:445 group messages from
-    // relays drive `MarmotService` automatically (the next snapshot poll
-    // surfaces the new pending-welcomes / messages — no Swift path). The
-    // kernel owns the `Arc<dyn RawEventObserver>`; the tap holds an
-    // `Arc<MarmotProjection>` (no cycle — nothing in the projection points
-    // back). Torn down in `unregister` before `app` is freed.
-    let tap = Arc::new(MarmotIngestTap::new(Arc::clone(&projection)));
-    let raw_observer_id = app_ref.register_raw_event_observer(
-        MarmotIngestTap::kind_filter(),
-        tap as Arc<dyn RawEventObserver>,
-    );
-    if raw_observer_id.0 == 0 {
-        // Poisoned raw-tap slot — soft fail, but undo the kernel-event
-        // observer we already registered so we leak nothing.
-        app_ref.unregister_event_observer(observer_id);
+/// Register a Marmot projection using the actor-owned active local key.
+/// Swift never sees the secret — the key is read from the slot the actor
+/// writes after every identity mutation. Returns a non-null handle on
+/// success; `null` if no local account is active or `db_dir` is NULL (D6).
+#[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn nmp_app_chirp_marmot_register_active(
+    app: *mut NmpApp,
+    db_dir: *const c_char,
+) -> *mut MarmotHandle {
+    if app.is_null() {
         return std::ptr::null_mut();
     }
-
-    // Register a tailing kind:1059 `#p <pubkey>` subscription so the kernel
-    // sends a REQ to the user's inbox relays and inbound gift-wrap Welcomes
-    // arrive event-driven — no Swift polling needed (D4).
-    let pubkey_hex = keys.public_key().to_hex();
-    app_ref.push_interest(giftwrap_inbox_interest(&pubkey_hex));
-
-    Box::into_raw(Box::new(MarmotHandle {
-        projection,
-        observer_id,
-        raw_observer_id,
-        app,
-    }))
+    // SAFETY: app is non-null and valid for this call.
+    let app_ref = unsafe { &*app };
+    let Some(sk) = app_ref.active_local_nsec() else {
+        return std::ptr::null_mut();
+    };
+    let Ok(keys) = Keys::parse(&sk) else {
+        return std::ptr::null_mut();
+    };
+    let Some(dir) = c_str_opt(db_dir) else {
+        return std::ptr::null_mut();
+    };
+    let db_path = format!("{}/marmot-mls-state.sqlite", dir.trim_end_matches('/'));
+    register_with_keys(app, keys, &db_path)
 }
 
 /// JSON snapshot. Null handle / serialize failure → null (D6). Caller owns

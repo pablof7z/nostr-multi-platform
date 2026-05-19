@@ -169,6 +169,13 @@ pub struct NmpApp {
     /// onto the kernel so external Rust callers (e.g. `nmp-app-chirp` Marmot
     /// dispatch) can read the user's current relay list without crossing FFI.
     relay_edit_rows: Arc<Mutex<Vec<crate::kernel::RelayEditRow>>>,
+    /// Active local (nsec-backed) secret key in bech32 form (`nsec1…`). The
+    /// actor thread writes this after every identity mutation that changes
+    /// the active local key (create, sign-in, switch, remove). Remote-signer
+    /// accounts leave this `None`. Per-app crates (e.g. `nmp-app-chirp`
+    /// Marmot) read it via [`NmpApp::active_local_nsec`] so they can
+    /// register a signer without Swift ever seeing the key.
+    active_local_nsec: Arc<Mutex<Option<String>>>,
     actor: Mutex<Option<JoinHandle<()>>>,
     update_listener: Mutex<Option<JoinHandle<()>>>,
 }
@@ -224,6 +231,10 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     let relay_edit_rows: Arc<Mutex<Vec<crate::kernel::RelayEditRow>>> =
         Arc::new(Mutex::new(Vec::new()));
     let actor_relay_edit_rows = Arc::clone(&relay_edit_rows);
+    // Active local (nsec) key slot. The actor updates this after every
+    // identity mutation; per-app crates read via NmpApp::active_local_nsec.
+    let active_local_nsec: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let actor_active_local_nsec = Arc::clone(&active_local_nsec);
     // Clone so we can report actor panics through the same listener pipe.
     let update_tx_panic = update_tx.clone();
     let actor = thread::spawn(move || {
@@ -235,6 +246,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 actor_event_observers,
                 actor_raw_event_observers,
                 actor_relay_edit_rows,
+                actor_active_local_nsec,
             );
         }));
         if let Err(e) = result {
@@ -272,6 +284,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         event_observers,
         raw_event_observers,
         relay_edit_rows,
+        active_local_nsec,
         actor: Mutex::new(Some(actor)),
         update_listener: Mutex::new(Some(update_listener)),
     }))
@@ -364,6 +377,17 @@ impl NmpApp {
     /// raw-event tap automatically, with no Swift polling needed.
     pub fn push_interest(&self, interest: crate::planner::LogicalInterest) {
         self.send_cmd(crate::actor::ActorCommand::PushInterest(interest));
+    }
+
+    /// Return the active local (nsec-backed) secret key in `nsec1…` bech32
+    /// form, or `None` when no local account is active (remote signer or no
+    /// account). The actor writes this slot synchronously before emitting
+    /// each identity-change snapshot, so callers inside `apply()` callbacks
+    /// always see the up-to-date value. Used by per-app crates (e.g.
+    /// `nmp-app-chirp` Marmot registration) so the key stays Rust-owned
+    /// (D0 — Swift never sees it for the `createAccount` path).
+    pub fn active_local_nsec(&self) -> Option<String> {
+        self.active_local_nsec.lock().ok()?.clone()
     }
 
     /// Return the user's current write-relay URLs (rows whose role is

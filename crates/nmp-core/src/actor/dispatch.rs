@@ -8,6 +8,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::Sender;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use crate::kernel::Kernel;
@@ -22,6 +23,15 @@ use super::relay_mgmt::{
 };
 use super::tick::{emit_kernel_update, emit_now, maybe_emit_after_dispatch};
 use super::{ActorCommand, RelayControl};
+
+/// Write the active account's bech32 secret key (or `None`) to `slot`.
+/// Called synchronously BEFORE `maybe_emit_after_dispatch` so the value is
+/// visible before Swift's `apply()` runs.
+fn update_nsec_slot(identity: &IdentityRuntime, slot: &Arc<Mutex<Option<String>>>) {
+    if let Ok(mut guard) = slot.lock() {
+        *guard = identity.active_nsec_bech32();
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn dispatch_command(
@@ -41,6 +51,7 @@ pub(super) fn dispatch_command(
     startup_sent: &mut bool,
     relays_ready: bool,
     lifecycle_observer: &LifecycleObserverSlot,
+    active_local_nsec: &Arc<Mutex<Option<String>>>,
 ) -> Option<Vec<OutboundMessage>> {
     match command {
         ActorCommand::Start {
@@ -119,6 +130,7 @@ pub(super) fn dispatch_command(
         }
         ActorCommand::SignInNsec { secret } => {
             let outbound = commands::sign_in_nsec(identity, kernel, &secret, relays_ready);
+            update_nsec_slot(identity, active_local_nsec);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
@@ -129,28 +141,33 @@ pub(super) fn dispatch_command(
         }
         ActorCommand::CreateAccount { profile, relays } => {
             let outbound = commands::create_account(identity, kernel, relays_ready, &profile, &relays);
+            update_nsec_slot(identity, active_local_nsec);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::SwitchActive { identity_id } => {
             let outbound =
                 commands::switch_active(identity, kernel, &identity_id, relays_ready);
+            update_nsec_slot(identity, active_local_nsec);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::RemoveAccount { identity_id } => {
             let outbound = commands::remove_account(identity, kernel, &identity_id);
+            update_nsec_slot(identity, active_local_nsec);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::AddRemoteSigner { handle } => {
             let outbound =
                 commands::add_remote_signer(identity, kernel, handle, relays_ready);
+            update_nsec_slot(identity, active_local_nsec);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::RemoveRemoteSigner { identity_id } => {
             let outbound = commands::remove_remote_signer(identity, kernel, &identity_id);
+            update_nsec_slot(identity, active_local_nsec);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }

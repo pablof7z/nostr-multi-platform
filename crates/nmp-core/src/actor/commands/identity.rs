@@ -106,6 +106,12 @@ impl IdentityRuntime {
         self.active.clone()
     }
 
+    /// Bech32-encode the active account's secret key (`nsec1…`). Returns
+    /// `None` for remote signers (no local key) and when no account is active.
+    pub(crate) fn active_nsec_bech32(&self) -> Option<String> {
+        self.active_keys()?.secret_key().to_bech32().ok()
+    }
+
     /// Stable signer-kind label for the active account, or `None` if no
     /// account is active. `"local"` for nsec / generated keys; whatever the
     /// remote signer returns (`"nip46"`, …) for remote handles. Exposed for

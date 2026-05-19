@@ -296,6 +296,7 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
         new_event_observer_slot(),
         new_raw_event_observer_slot(),
         Arc::new(Mutex::new(Vec::new())),
+        Arc::new(Mutex::new(None)),
     );
 }
 
@@ -317,6 +318,7 @@ pub fn run_actor_with_lifecycle_observer(
         new_event_observer_slot(),
         new_raw_event_observer_slot(),
         Arc::new(Mutex::new(Vec::new())),
+        Arc::new(Mutex::new(None)),
     );
 }
 
@@ -338,6 +340,7 @@ pub fn run_actor_with_observers(
     event_observers: KernelEventObserverSlot,
     raw_event_observers: RawEventObserverSlot,
     relay_edit_rows: Arc<Mutex<Vec<crate::kernel::RelayEditRow>>>,
+    active_local_nsec: Arc<Mutex<Option<String>>>,
 ) {
     // Dual-channel design: relay events get their own dedicated channel.
     // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.
@@ -414,6 +417,7 @@ pub fn run_actor_with_observers(
                         &mut startup_sent,
                         relays_ready,
                         &lifecycle_observer,
+                        &active_local_nsec,
                     );
                     let Some(outbound) = outbound else {
                         return; // Shutdown

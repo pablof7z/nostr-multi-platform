@@ -12,10 +12,13 @@ use crate::error::{ReplError, Result};
 use crate::publish;
 use crate::session::Session;
 
-pub fn run(session: &mut Session, name: Option<String>) -> Result<()> {
+pub fn run(session: &mut Session, name: Option<String>, relays: Vec<String>) -> Result<()> {
+    if !relays.is_empty() {
+        session.app_relays = relays;
+    }
     if session.app_relays.is_empty() {
         return Err(ReplError::Other(
-            "no app relays — run 'set-app-relays wss://…' first".into(),
+            "no app relays — run 'set-app-relays wss://…' first, or pass relays as args".into(),
         ));
     }
 

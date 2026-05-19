@@ -172,6 +172,10 @@ void nmp_app_chirp_unregister(void *handle);
 // Fire-and-forget: every entry point degrades silently on null pointers,
 // poisoned mutexes, or (de)serialization failure (D6).
 void *nmp_app_chirp_marmot_register(void *app, const char *secret_key_hex, const char *db_dir);
+/// Register using the actor-owned key — Swift never sees the nsec. Reads
+/// the active local key from the slot the actor writes after identity
+/// mutations. Returns NULL if no local account is active (D6).
+void *nmp_app_chirp_marmot_register_active(void *app, const char *db_dir);
 char *nmp_app_chirp_marmot_snapshot(void *handle);
 char *nmp_app_chirp_marmot_group_messages(void *handle, const char *group_id_hex);
 char *nmp_app_chirp_marmot_dispatch(void *handle, const char *action_json);

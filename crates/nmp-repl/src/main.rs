@@ -183,7 +183,7 @@ fn dispatch(session: &mut Session, cmd: Command) -> Result<bool, String> {
         Command::Expand(var) => commands::expand::run(session, var)
             .map(|_| false)
             .map_err(|e| e.to_string()),
-        Command::CreateAccount(name) => commands::create_account::run(session, name)
+        Command::CreateAccount(name, relays) => commands::create_account::run(session, name, relays)
             .map(|_| false)
             .map_err(|e| e.to_string()),
         Command::LoadKey(input) => commands::load_key::run(session, input)

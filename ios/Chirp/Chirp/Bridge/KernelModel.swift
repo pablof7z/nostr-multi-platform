@@ -78,8 +78,9 @@ final class KernelModel: ObservableObject {
             emitHz = v
         }
         kernel.listen { [weak self] result in
-            Task { @MainActor [weak self] in
-                self?.apply(result: result)
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                MainActor.assumeIsolated { self.apply(result: result) }
             }
         }
     }
@@ -215,7 +216,6 @@ final class KernelModel: ObservableObject {
         return kernel.nostrConnectURI(relay: relay)
     }
     func createAccount(profile: [String: String] = ["name": "New User"], relays: [(String, String)] = [("wss://relay.primal.net", "both"), ("wss://purplepag.es", "indexer")]) {
-        NSLog("ChirpDebug: createAccount tapped")
         kmLog.info("createAccount dispatched")
         kernel.createAccount(profile: profile, relays: relays)
     }
@@ -261,7 +261,6 @@ final class KernelModel: ObservableObject {
 
     private func apply(result: KernelUpdateResult) {
         let update = result.update
-        NSLog("ChirpDebug: apply called rev=%llu activeAccount=%@ running=%d", update.rev, update.activeAccount ?? "nil", update.running)
         guard update.rev > rev else { return }
 
         let applyStart = ContinuousClock.now
@@ -294,15 +293,19 @@ final class KernelModel: ObservableObject {
         // T66a projections — mirror only; never derive (D8).
         if let a = update.accounts { accounts = a }
         activeAccount = update.activeAccount
-        // Auto-register Marmot on cold relaunch when an nsec-backed account
-        // is already active. `signInNsec` persists the secret to the keychain;
-        // here we recall it and lazily register the projection.
+        // Auto-register Marmot when a local account becomes active.
+        // signInNsec: use cachedSecretKey (Swift has it already).
+        // createAccount: Swift never saw the nsec — call registerActive()
+        // which reads the key from the Rust-side slot the actor writes
+        // before emitting this snapshot (race-free by construction).
         if !marmot.isRegistered, let active = activeAccount,
            let account = accounts.first(where: { $0.id == active }),
-           account.signerKind == "local",
-           let secret = capabilities.retrieveSecret(accountID: Self.marmotKeychainAccountID) {
-            cachedSecretKey = secret
-            marmot.registerIfNeeded(secretKey: secret)
+           account.signerKind == "local" {
+            if let secret = cachedSecretKey {
+                marmot.registerIfNeeded(secretKey: secret)
+            } else {
+                marmot.registerActive()
+            }
         }
         if let q = update.publishQueue { publishQueue = q }
         lastErrorToast = update.lastErrorToast

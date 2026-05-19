@@ -354,7 +354,9 @@ fn run_connected_relay(
             Err(tungstenite::Error::Io(error))
                 if matches!(
                     error.kind(),
-                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                    std::io::ErrorKind::WouldBlock
+                        | std::io::ErrorKind::TimedOut
+                        | std::io::ErrorKind::Interrupted
                 ) => {}
             Err(error) => {
                 let error_str = error.to_string();

@@ -136,7 +136,7 @@ final class KernelHandle {
     func createAccount(profile: [String: String], relays: [(String, String)]) {
         let profileJson = try! JSONSerialization.data(withJSONObject: profile, options: [])
         let profileStr = String(data: profileJson, encoding: .utf8)!
-        let relaysJson = try! JSONSerialization.data(withJSONObject: relays, options: [])
+        let relaysJson = try! JSONSerialization.data(withJSONObject: relays.map { [$0.0, $0.1] }, options: [])
         let relaysStr = String(data: relaysJson, encoding: .utf8)!
         profileStr.withCString { profilePtr in
             relaysStr.withCString { relaysPtr in
@@ -307,21 +307,14 @@ private final class KernelUpdateSink {
 }
 
 private let nmpUpdateCallback: NmpUpdateCallback = { context, pointer in
-    guard let context, let pointer else {
-        kbLog.error("NMP_DBG callback: nil context or pointer")
-        return
-    }
+    guard let context, let pointer else { return }
     let payload = String(cString: pointer)
     if payload.contains("\"t\":\"panic\"") {
-        kbLog.fault("NMP_ACTOR_PANIC: \(payload)")
+        kbLog.fault("NMP_ACTOR_PANIC detected")
         NSLog("NMP_ACTOR_PANIC: %@", payload)
         return
     }
-    guard let result = KernelHandle.decode(pointer: pointer) else {
-        kbLog.error("NMP_DBG callback: decode returned nil")
-        return
-    }
-    kbLog.info("NMP_DBG callback: decoded rev=\(result.update.rev) activeAccount=\(result.update.activeAccount ?? "nil")")
+    guard let result = KernelHandle.decode(pointer: pointer) else { return }
     let sink = Unmanaged<KernelUpdateSink>.fromOpaque(context).takeUnretainedValue()
     sink.handler(result)
 }

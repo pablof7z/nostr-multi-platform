@@ -437,13 +437,17 @@ fn parse_single_arg(
 }
 
 fn parse_create_account(args: &[&str]) -> Result<Command, String> {
-    match args.len() {
-        0 => Ok(Command::CreateAccount(None)),
-        1 => Ok(Command::CreateAccount(Some(args[0].to_string()))),
-        _ => Err(
-            "parse error: create-account takes at most one argument: [display-name]".to_string(),
-        ),
-    }
+    // Grammar: create-account [name] [relay…]
+    // The first non-URL arg (if any) is the name; all wss:// args are relays.
+    let (name, relays) = match args {
+        [] => (None, vec![]),
+        [first, rest @ ..] if !first.starts_with("wss://") && !first.starts_with("ws://") => {
+            let relays = rest.iter().map(|s| s.to_string()).collect();
+            (Some(first.to_string()), relays)
+        }
+        all => (None, all.iter().map(|s| s.to_string()).collect()),
+    };
+    Ok(Command::CreateAccount(name, relays))
 }
 
 fn parse_load_key(args: &[&str]) -> Result<Command, String> {
@@ -720,13 +724,23 @@ mod tests {
     fn create_account_optional_name() {
         assert_eq!(
             parse_line("create-account").unwrap(),
-            Command::CreateAccount(None)
+            Command::CreateAccount(None, vec![])
         );
         assert_eq!(
             parse_line("create-account alice").unwrap(),
-            Command::CreateAccount(Some("alice".to_string()))
+            Command::CreateAccount(Some("alice".to_string()), vec![])
         );
-        assert!(parse_line("create-account alice bob").is_err());
+        assert_eq!(
+            parse_line("create-account alice wss://relay.primal.net").unwrap(),
+            Command::CreateAccount(
+                Some("alice".to_string()),
+                vec!["wss://relay.primal.net".to_string()]
+            )
+        );
+        assert_eq!(
+            parse_line("create-account wss://relay.primal.net").unwrap(),
+            Command::CreateAccount(None, vec!["wss://relay.primal.net".to_string()])
+        );
     }
 
     #[test]
