@@ -18,11 +18,21 @@ use crate::relay::OutboundMessage;
 use crate::remote_signer::RemoteSignerHandle;
 use crate::substrate::{SignedEvent, UnsignedEvent};
 
-/// `SignerOp::wait` timeout for remote-signer signs. Bunker UX can require a
-/// user tap on the phone — long enough to cover that, short enough that a
-/// crashed broker doesn't wedge the actor indefinitely. The publish callsites
-/// (`publish.rs`) surface the error as `last_error_toast` per D6.
-const REMOTE_SIGN_TIMEOUT: Duration = Duration::from_secs(45);
+/// `SignerOp::wait` timeout for remote-signer signs.
+///
+/// This blocks the actor thread — relay ingest, subscription management, and
+/// UI emits all stall for its full duration. The previous 45s value froze the
+/// whole actor for up to 45 seconds on every NIP-46 sign; 5s bounds that worst
+/// case while a non-blocking `SignerOp::poll` path is the documented follow-up.
+///
+/// Trade-off: 5s is too short to cover an interactive user-approval tap on the
+/// bunker device. If the remote does not turn around within 5s the sign fails
+/// with `SignerError::Timeout`, which `sign_active` formats into a string and
+/// the publish callsites (`publish.rs`) surface as `last_error_toast` per D6 —
+/// the user sees a toast and re-issues the action rather than the actor
+/// wedging. A fast (already-approved / auto-approving) bunker comfortably
+/// completes inside 5s.
+const REMOTE_SIGN_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// IdentityId is the hex pubkey (matches NDK / applesauce / `AccountManager`).
 pub(crate) type IdentityId = String;
@@ -202,9 +212,10 @@ pub(crate) fn now_secs() -> u64 {
 /// are the fallback for nsec-imported accounts.
 ///
 /// For remote signers the call blocks the actor thread for up to
-/// `REMOTE_SIGN_TIMEOUT` (45s) — long enough for NIP-46 user-approval UX,
-/// short enough that a crashed broker doesn't wedge the actor forever.
-/// `SignerError` is `Display`-formatted into the toast string.
+/// `REMOTE_SIGN_TIMEOUT` (5s) — bounded so a slow or crashed broker cannot
+/// freeze relay ingest / subscriptions / UI for the old 45s window. On
+/// timeout the `SignerError::Timeout` is `Display`-formatted into the toast
+/// string (D6); a non-blocking `SignerOp::poll` path is the follow-up.
 pub(crate) fn sign_active(
     identity: &IdentityRuntime,
     unsigned: &UnsignedEvent,

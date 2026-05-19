@@ -116,7 +116,7 @@ fn bunker_sign_event_round_trip_on_the_wire() {
         created_at: 1_700_000_500,
     };
 
-    // 45s is the production REMOTE_SIGN_TIMEOUT; we don't need that here —
+    // The production REMOTE_SIGN_TIMEOUT is 5s; we don't need that here —
     // the mock turns around in milliseconds. 10s is generous.
     let signed = handle
         .sign(&unsigned)
