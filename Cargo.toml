@@ -2,12 +2,6 @@
 members = [
     "apps/chirp/nmp-app-chirp",
     "apps/fixture/nmp-app-fixture",
-    "apps/podcast/nmp-app-podcast",
-    "apps/podcast/podcast-core",
-    "apps/podcast/podcast-feeds",
-    "apps/podcast/podcast-audio",
-    "apps/podcast/podcast-rag",
-    "apps/podcast/podcast-llm",
     "crates/fixture-todo-core",
     "crates/nmp-cli",
     "crates/nmp-codegen",
