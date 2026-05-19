@@ -246,11 +246,15 @@ impl Kernel {
     }
 
     // ─── T140 fix-forward test accessors ─────────────────────────────────────
+    // These are only ever called from #[cfg(test)] modules within nmp-core.
+    // The test-support feature exposes the rest of this module to downstream
+    // crates, but these kernel-internal accessors are not part of that surface.
 
     /// Mirror the actor wiring: register planner `WireFrame`s into the kernel's
     /// `wire_subs` / persistent-sub bookkeeping. Production path is
     /// `actor::outbound::wire_frames_to_outbound`; tests drive it directly so
     /// the EOSE keep-live assertion exercises the same registration code.
+    #[cfg(test)]
     pub(crate) fn register_wire_frames_for_test(
         &mut self,
         frames: &[crate::subs::WireFrame],
@@ -261,6 +265,7 @@ impl Kernel {
     /// Diagnostic `state` of the wire sub tracked for `(relay_url, sub_id)`,
     /// or `None` if no row exists. #170: relay-scoped key — the same `sub_id`
     /// may legitimately be live on multiple relay connections.
+    #[cfg(test)]
     pub(crate) fn wire_sub_state_for_test_on_relay(
         &self,
         relay_url: &str,
@@ -272,14 +277,15 @@ impl Kernel {
     }
 
     /// Snapshot of the registered M2 follow-feed `InterestId`s.
+    #[cfg(test)]
     pub(crate) fn follow_feed_interest_ids_for_test(
         &self,
     ) -> Vec<crate::planner::InterestId> {
         self.follow_feed_interest_ids.iter().cloned().collect()
     }
 
-    /// True when `pubkey` is present in the follow-derived `timeline_authors`
-    /// projection.
+    /// Snapshot of the follow-derived `timeline_authors` projection.
+    #[cfg(test)]
     pub(crate) fn timeline_authors_for_test(&self) -> &std::collections::BTreeSet<String> {
         &self.timeline_authors
     }
