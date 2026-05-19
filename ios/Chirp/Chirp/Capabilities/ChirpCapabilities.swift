@@ -80,9 +80,36 @@ final class ChirpCapabilities {
         return json
     }
 
+    /// Remove a previously-persisted secret from the keychain.
+    /// Returns `true` iff the Keychain reported success or the item was absent.
+    /// Never throws (D6).
+    @discardableResult
+    func deleteSecret(accountID: String) -> Bool {
+        let request = CapabilityRequest(
+            namespace: KeychainCapability.namespace,
+            correlationID: UUID().uuidString,
+            payloadJSON: Self.deletePayload(accountID: accountID))
+        let envelope = keyring.handle(request)
+        return envelope.resultJSON.contains("\"status\":\"ok\"")
+    }
+
     private static func retrievePayload(accountID: String) -> String {
         let payload: [String: String] = [
             "op": "retrieve",
+            "account_id": accountID,
+        ]
+        guard
+            let data = try? JSONSerialization.data(withJSONObject: payload),
+            let json = String(data: data, encoding: .utf8)
+        else {
+            return "{}"
+        }
+        return json
+    }
+
+    private static func deletePayload(accountID: String) -> String {
+        let payload: [String: String] = [
+            "op": "delete",
             "account_id": accountID,
         ]
         guard

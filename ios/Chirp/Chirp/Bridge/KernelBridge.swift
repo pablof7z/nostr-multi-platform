@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import os.log
 
@@ -7,6 +8,10 @@ let kbLog = Logger(subsystem: "com.example.Chirp", category: "KernelBridge")
 final class KernelHandle {
     let raw: UnsafeMutableRawPointer
     private var updateSink: KernelUpdateSink?
+    /// Strong reference to the registered capabilities object. Held so the
+    /// context pointer passed to `nmpCapabilityCallback` stays valid until
+    /// `deinit` unregisters the callback.
+    private var retainedCapabilities: ChirpCapabilities?
     /// T146 — opaque handle returned by `nmp_app_chirp_register`. The
     /// modular-timeline bridge extension manages its lifetime; see
     /// `Bridge/ModularTimelineBridge.swift`.
@@ -37,7 +42,23 @@ final class KernelHandle {
         // Same contract for the Marmot observer registration.
         unregisterMarmotIfNeeded()
         nmp_app_set_update_callback(raw, nil, nil)
+        // Unregister the capability callback before releasing `retainedCapabilities`
+        // so no callback fires with a dangling context pointer.
+        nmp_app_set_capability_callback(raw, nil, nil)
+        retainedCapabilities = nil
         nmp_app_free(raw)
+    }
+
+    /// Register the native keyring capability handler. The Rust kernel routes
+    /// every keyring `CapabilityRequest` through this seam. Must be called
+    /// before `start()` so the handler is in place for any capability requests
+    /// the actor issues during startup.
+    func registerCapabilityHandler(_ capabilities: ChirpCapabilities) {
+        retainedCapabilities = capabilities
+        nmp_app_set_capability_callback(
+            raw,
+            Unmanaged.passUnretained(capabilities).toOpaque(),
+            nmpCapabilityCallback)
     }
 
     func listen(_ handler: @escaping (KernelUpdateResult) -> Void) {
@@ -304,6 +325,19 @@ private final class KernelUpdateSink {
     init(handler: @escaping (KernelUpdateResult) -> Void) {
         self.handler = handler
     }
+}
+
+/// C capability callback — receives `CapabilityRequest` JSON from Rust and
+/// returns a malloc-allocated `CapabilityEnvelope` JSON string that Rust frees
+/// via `nmp_app_free_string` / `CString::from_raw`. Uses `strdup` so the
+/// allocation is compatible with Rust's `CString::from_raw` on Apple platforms
+/// (both use the system malloc allocator).
+private let nmpCapabilityCallback: NmpCapabilityCallback = { context, requestJSON in
+    guard let context, let requestJSON else { return nil }
+    let capabilities = Unmanaged<ChirpCapabilities>.fromOpaque(context).takeUnretainedValue()
+    let requestStr = String(cString: requestJSON)
+    let resultStr = capabilities.keyring.handleJSON(requestStr)
+    return resultStr.withCString { strdup($0) }
 }
 
 private let nmpUpdateCallback: NmpUpdateCallback = { context, pointer in

@@ -83,6 +83,9 @@ final class KernelModel: ObservableObject {
                 MainActor.assumeIsolated { self.apply(result: result) }
             }
         }
+        // Register the keychain capability handler before start() so the kernel
+        // can route capability requests to the iOS Keychain from the first tick.
+        kernel.registerCapabilityHandler(capabilities)
     }
 
 
@@ -106,13 +109,16 @@ final class KernelModel: ObservableObject {
         addDefaultRelaysIfNeeded()
         kernel.start(visibleLimit: visibleLimit, emitHz: emitHz)
         isRunning = true
-        // NMP_DBG: keychain restore disabled — was triggering crash in parse_secret
-        // (stored nsec causes invalid &str at 0x800000000000000c in actor thread)
-        // UITest affordance: NMP_TEST_NSEC auto-signs-in without driving onboarding.
+        // Restore the saved nsec from the keychain so the user stays signed in
+        // across cold launches. NMP_TEST_NSEC overrides the keychain for UITests.
         if let nsec = ProcessInfo.processInfo.environment["NMP_TEST_NSEC"] {
             cachedSecretKey = nsec
             kernel.signInNsec(nsec)
             marmot.registerIfNeeded(secretKey: nsec)
+        } else if let stored = capabilities.retrieveSecret(accountID: Self.marmotKeychainAccountID) {
+            cachedSecretKey = stored
+            kernel.signInNsec(stored)
+            marmot.registerIfNeeded(secretKey: stored)
         }
     }
 
@@ -220,7 +226,16 @@ final class KernelModel: ObservableObject {
         kernel.createAccount(profile: profile, relays: relays)
     }
     func switchActive(_ identityID: String) { kernel.switchActive(identityID: identityID) }
-    func removeAccount(_ identityID: String) { kernel.removeAccount(identityID: identityID) }
+    func removeAccount(_ identityID: String) {
+        // Clear the stored credentials when removing the active account so the
+        // user starts at onboarding on next launch (D7: policy lives here,
+        // not in the capability).
+        if identityID == activeAccount {
+            cachedSecretKey = nil
+            capabilities.deleteSecret(accountID: Self.marmotKeychainAccountID)
+        }
+        kernel.removeAccount(identityID: identityID)
+    }
     func publishNote(_ content: String, replyToID: String? = nil) {
         kernel.publishNote(content: content, replyToID: replyToID)
     }
