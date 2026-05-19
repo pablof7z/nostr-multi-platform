@@ -188,7 +188,7 @@ fn handle_supersession(
 
     let existing_id: Option<String> = st
         .events
-        .iter()
+        .iter() // O(N) — full scan: no index over (pubkey, kind, d_tag).
         .filter(|(_, ev)| {
             ev.raw.pubkey == pubkey_hex
                 && ev.raw.kind == kind

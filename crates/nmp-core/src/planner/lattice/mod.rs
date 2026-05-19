@@ -45,10 +45,21 @@ pub enum MergeOutcome {
     Refused,
 }
 
+/// Merges two filter shapes into one.
+///
 /// Attempt to merge shape `b` into shape `a` on a given relay.
 ///
 /// Returns `Merged(result)` iff all 9 rules pass; `Refused` otherwise.
 /// Neither `a` nor `b` is modified on refusal.
+///
+/// # ⚠ Superset semantics
+///
+/// The merged shape is a **superset** of both inputs — it matches everything
+/// either input matches, *plus* combinations neither input asked for (e.g.,
+/// cross-products of author sets and tag sets). This is correct for
+/// wire-coalescing (fewer REQs is better), but callers must not assume the
+/// merged sub-shape is a tight filter. Store ingest applies author-gating
+/// independently to filter over-delivered events.
 ///
 /// Design: §3.3 Rules 1–9
 pub fn merge(

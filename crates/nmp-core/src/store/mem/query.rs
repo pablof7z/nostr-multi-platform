@@ -1,6 +1,19 @@
 //! Read / scan / watermark / dump methods for `MemEventStore`.
 //!
 //! These are pure reads; all state mutation lives in `insert.rs` and `gc.rs`.
+//!
+//! # Performance characteristics
+//!
+//! **All scans are O(N) full table scans followed by O(N log N) sort.** The
+//! `EventStore` trait advertises named indexes, but this backend has none —
+//! every query iterates the entire event map, sorts, and truncates.
+//!
+//! This is acceptable for tests and small WASM builds (the intended use cases).
+//! For production workloads, use the LMDB backend (`--features lmdb-backend`),
+//! which has real B-tree indexes.
+//!
+//! Replaceable-event supersession (`handle_supersession`) is likewise O(N) per
+//! insert. Do not use this backend for high-throughput relay connections.
 
 use std::ops::ControlFlow;
 
