@@ -266,8 +266,12 @@ impl Kernel {
             return false;
         }
 
-        let seed_count = seed_accounts().len();
-        self.seed_contacts.len() >= seed_count
+        let has_active_contacts = self
+            .active_account
+            .as_ref()
+            .and_then(|pk| self.seed_contacts.get(pk))
+            .is_some();
+        has_active_contacts
             || self
                 .contacts_deadline
                 .map(|deadline| Instant::now() >= deadline)
