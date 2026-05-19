@@ -73,6 +73,9 @@ use std::ffi::{c_char, CStr, CString};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use apple_native_keyring_store::protected::Store as AppleStore;
+use keyring_core::set_default_store;
+
 use nmp_core::{
     ActorCommand, KernelAction, KernelEventObserverId, NmpApp, RawEventObserver, RawEventObserverId,
 };
@@ -153,13 +156,32 @@ pub extern "C" fn nmp_app_chirp_marmot_register(
         return std::ptr::null_mut();
     };
     let db_path = format!("{}/marmot-mls-state.sqlite", dir.trim_end_matches('/'));
-    let Ok(service) = MarmotService::new(
-        &db_path,
-        KEYRING_SERVICE_ID,
-        KEYRING_DB_KEY_ID,
-        keys,
-    ) else {
+
+    // Initialize the Apple keyring store once per process. `MdkSqliteStorage`
+    // requires this before it can create or open an encrypted DB.
+    let Ok(store) = AppleStore::new() else {
         return std::ptr::null_mut();
+    };
+    set_default_store(store);
+
+    let service = match MarmotService::new(
+        &db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone(),
+    ) {
+        Ok(s) => s,
+        Err(_) => {
+            // Stale DB: if the keyring was uninitialized on first creation,
+            // the SQLite file exists but has no encryption key entry. Delete
+            // the DB (+ WAL/SHM) and retry exactly once.
+            let _ = std::fs::remove_file(&db_path);
+            let _ = std::fs::remove_file(format!("{}-wal", db_path));
+            let _ = std::fs::remove_file(format!("{}-shm", db_path));
+            match MarmotService::new(
+                &db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys,
+            ) {
+                Ok(s) => s,
+                Err(_) => return std::ptr::null_mut(),
+            }
+        }
     };
 
     // SAFETY: caller guarantees `app` is valid for this call.

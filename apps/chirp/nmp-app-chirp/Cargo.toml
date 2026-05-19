@@ -41,6 +41,10 @@ mdk-core = "0.8.0"
 nostr = { version = "0.44", default-features = false, features = ["std"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# Keyring for encrypted Marmot MLS DB. `mdk-sqlite-storage` requires a
+# platform-specific keyring store to be initialized before use.
+keyring-core = "1"
+apple-native-keyring-store = { version = "1.0", features = ["protected"] }
 
 [dev-dependencies]
 # Test-support gates expose `nmp_app_new` / `nmp_app_free` (and the
