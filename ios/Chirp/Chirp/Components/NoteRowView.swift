@@ -36,31 +36,25 @@ struct NoteRowView: View {
                     likeTapped: $likeTapped,
                     showReply: $showReply
                 )
-                .padding(.top, ChirpSpace.m)
-                // hairline divider lives at the bottom via listRowSeparator(hidden)
-                // + an explicit Divider here for full-bleed styling
+                .padding(.top, 8)
                 Divider()
-                    .background(ChirpColor.hairline)
-                    .padding(.top, ChirpSpace.m)
+                    .padding(.top, 8)
             }
-            .padding(.vertical, ChirpSpace.m)
-            .padding(.horizontal, ChirpSpace.l)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 16)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .listRowInsets(EdgeInsets())
-        .listRowSeparator(.hidden)
-        .listRowBackground(Color.clear)
         .sheet(isPresented: $showReply) {
             ComposeView(replyToID: item.id)
         }
     }
 
     private var rowContent: some View {
-        HStack(alignment: .top, spacing: ChirpSpace.m) {
+        HStack(alignment: .top, spacing: 8) {
             avatarButton
 
-            VStack(alignment: .leading, spacing: ChirpSpace.xs) {
+            VStack(alignment: .leading, spacing: 4) {
                 authorHeader
                 noteContent
                 relayChip
@@ -88,22 +82,22 @@ struct NoteRowView: View {
     // ── Author name + truncated pubkey + timestamp ────────────────────────
 
     private var authorHeader: some View {
-        HStack(alignment: .firstTextBaseline, spacing: ChirpSpace.xs) {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(item.authorDisplay)
-                .font(ChirpFont.headline)
-                .foregroundStyle(ChirpColor.textPrimary)
+                .font(.headline)
+                .foregroundStyle(.primary)
                 .lineLimit(1)
 
             Text(shortPubkey(item.authorPubkey))
-                .font(ChirpFont.mono)
-                .foregroundStyle(ChirpColor.textTertiary)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
 
             Spacer(minLength: 0)
 
             Text(item.createdAtDisplay)
-                .font(ChirpFont.caption)
-                .foregroundStyle(ChirpColor.textSecondary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -111,22 +105,22 @@ struct NoteRowView: View {
 
     private var noteContent: some View {
         let (text, isRepost) = effectiveContent(item.content)
-        return VStack(alignment: .leading, spacing: ChirpSpace.xs) {
+        return VStack(alignment: .leading, spacing: 4) {
             if isRepost {
                 HStack(spacing: 3) {
                     Image(systemName: "arrow.2.squarepath")
                         .font(.system(size: 11, weight: .medium))
                     Text("Repost")
-                        .font(ChirpFont.caption)
+                        .font(.caption)
                 }
-                .foregroundStyle(ChirpColor.textTertiary)
+                .foregroundStyle(.secondary)
             }
             if !text.isEmpty {
-                NoteContentView(content: text, font: ChirpFont.body)
-                    .foregroundStyle(ChirpColor.textPrimary)
+                NoteContentView(content: text, font: .body)
+                    .foregroundStyle(.primary)
             }
         }
-        .padding(.top, ChirpSpace.xs)
+        .padding(.top, 4)
     }
 
     // Kind:6 reposts carry the full reposted-event JSON as their content field.
@@ -155,14 +149,10 @@ struct NoteRowView: View {
                 Image(systemName: "antenna.radiowaves.left.and.right")
                     .font(.system(size: 10, weight: .medium))
                 Text("\(item.relayCount)")
-                    .font(ChirpFont.caption)
+                    .font(.caption)
             }
-            .foregroundStyle(ChirpColor.textTertiary)
-            .padding(.horizontal, ChirpSpace.s)
-            .padding(.vertical, 3)
-            .background(ChirpColor.surface.opacity(0.6),
-                        in: Capsule())
-            .padding(.top, ChirpSpace.xs)
+            .foregroundStyle(.secondary)
+            .padding(.top, 4)
         }
     }
 
@@ -191,8 +181,7 @@ struct NoteActionsRow: View {
         HStack(spacing: 0) {
             actionButton(
                 icon: "bubble.left",
-                label: "Reply",
-                color: ChirpColor.textSecondary
+                label: "Reply"
             ) {
                 showReply = true
             }
@@ -201,8 +190,7 @@ struct NoteActionsRow: View {
 
             actionButton(
                 icon: "arrow.2.squarepath",
-                label: "Repost",
-                color: ChirpColor.textSecondary
+                label: "Repost"
             ) {
                 // Repost command not yet on kernel surface — no-op.
             }
@@ -215,13 +203,12 @@ struct NoteActionsRow: View {
 
             actionButton(
                 icon: "bolt",
-                label: "Zap",
-                color: ChirpColor.zap
+                label: "Zap"
             ) {
                 // Zap command not yet on kernel surface — no-op.
             }
         }
-        .padding(.horizontal, ChirpSpace.xs)
+        .padding(.horizontal, 4)
     }
 
     // ── Like with spring animation + haptic ──────────────────────────────
@@ -236,7 +223,7 @@ struct NoteActionsRow: View {
             HStack(spacing: 5) {
                 Image(systemName: likeTapped ? "heart.fill" : "heart")
                     .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(likeTapped ? ChirpColor.like : ChirpColor.textSecondary)
+                    .foregroundStyle(likeTapped ? .red : .secondary)
                     .scaleEffect(likeTapped ? 1.25 : 1.0)
                     .animation(.spring(response: 0.3, dampingFraction: 0.5), value: likeTapped)
             }
@@ -251,13 +238,12 @@ struct NoteActionsRow: View {
     private func actionButton(
         icon: String,
         label: String,
-        color: Color,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: 15, weight: .regular))
-                .foregroundStyle(color)
+                .foregroundStyle(.secondary)
                 .frame(minWidth: 44, minHeight: 32, alignment: .center)
         }
         .buttonStyle(.borderless)

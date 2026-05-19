@@ -10,7 +10,7 @@ struct ProfileNoteRow: View {
 
     var body: some View {
         Button(action: onRowTap) {
-            HStack(alignment: .top, spacing: ChirpSpace.m) {
+            HStack(alignment: .top, spacing: 8) {
                 Button(action: onAvatarTap) {
                     ChirpAvatar(
                         url: item.authorPictureUrl,
@@ -21,46 +21,46 @@ struct ProfileNoteRow: View {
                 }
                 .buttonStyle(.plain)
 
-                VStack(alignment: .leading, spacing: ChirpSpace.xs) {
-                    HStack(spacing: ChirpSpace.s) {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 4) {
                         Text(item.authorDisplay)
-                            .font(ChirpFont.headline)
-                            .foregroundStyle(ChirpColor.textPrimary)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
                             .lineLimit(1)
                         Spacer()
                         Text(item.createdAtDisplay)
-                            .font(ChirpFont.caption)
-                            .foregroundStyle(ChirpColor.textTertiary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
 
-                    NoteContentView(content: item.content, font: ChirpFont.body)
-                        .foregroundStyle(ChirpColor.textPrimary)
+                    NoteContentView(content: item.content, font: .body)
+                        .foregroundStyle(.primary)
 
                     // Like action row
-                    HStack(spacing: ChirpSpace.xl) {
+                    HStack(spacing: 24) {
                         Button(action: onLike) {
                             Label("Like", systemImage: "heart")
-                                .font(ChirpFont.caption)
-                                .foregroundStyle(ChirpColor.textTertiary)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                                 .labelStyle(.iconOnly)
                         }
                         .buttonStyle(.plain)
 
                         if item.relayCount > 0 {
-                            HStack(spacing: ChirpSpace.xs) {
+                            HStack(spacing: 4) {
                                 Image(systemName: "antenna.radiowaves.left.and.right")
-                                    .font(ChirpFont.caption)
+                                    .font(.caption)
                                 Text("\(item.relayCount)")
-                                    .font(ChirpFont.caption)
+                                    .font(.caption)
                             }
-                            .foregroundStyle(ChirpColor.textTertiary)
+                            .foregroundStyle(.secondary)
                         }
                     }
-                    .padding(.top, ChirpSpace.xs)
+                    .padding(.top, 4)
                 }
             }
-            .padding(.vertical, ChirpSpace.s)
-            .padding(.horizontal, ChirpSpace.l)
+            .padding(.vertical, 4)
+            .padding(.horizontal, 16)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

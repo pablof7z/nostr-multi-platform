@@ -3,141 +3,120 @@ import CoreImage
 
 extension OnboardingView {
 
-    // MARK: — Remote signer (NIP-46) GlassCard
+    // MARK: — Remote signer (NIP-46) card
 
     var nip46SignerCard: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: ChirpSpace.m) {
-                ChirpSectionHeader(title: "Remote signer (NIP-46)")
+        VStack(alignment: .leading, spacing: ChirpSpace.m) {
+            Text("Remote signer (NIP-46)")
+                .font(.caption)
 
-                // QR code toggle
-                Button {
-                    withAnimation(.smooth) { showQR.toggle() }
-                } label: {
-                    HStack {
-                        Image(systemName: "qrcode")
-                            .foregroundStyle(ChirpColor.accent)
-                        Text(showQR ? "Hide QR code" : "Show nostrconnect:// QR")
-                            .font(ChirpFont.callout)
-                            .foregroundStyle(.white)
-                        Spacer()
-                        Image(systemName: showQR ? "chevron.up" : "chevron.down")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.6))
+            // QR code toggle
+            Button {
+                withAnimation(.smooth) { showQR.toggle() }
+            } label: {
+                HStack {
+                    Image(systemName: "qrcode")
+                        .foregroundStyle(Color.accentColor)
+                    Text(showQR ? "Hide QR code" : "Show nostrconnect:// QR")
+                        .font(ChirpFont.callout)
+                    Spacer()
+                    Image(systemName: showQR ? "chevron.up" : "chevron.down")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .buttonStyle(.plain)
+
+            if showQR {
+                VStack(spacing: ChirpSpace.s) {
+                    if let qr = qrCodeImage {
+                        Image(uiImage: qr)
+                            .resizable()
+                            .interpolation(.none)
+                            .scaledToFit()
+                            .frame(maxWidth: 200)
+                            .padding(16)
+                            .background(Color(.systemBackground))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color(.separator), lineWidth: 1)
+                            )
+                    } else {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color(.secondarySystemBackground))
+                            .frame(width: 200, height: 200)
+                            .overlay { ProgressView().tint(Color.accentColor) }
                     }
+                    Text("Scan with any NIP-46 signer app")
+                        .font(ChirpFont.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            // Open in signer app — only when a compatible app is installed
+            if let signer = detectedSigner, let url = nostrConnectURL {
+                Button {
+                    openSignerApp(url)
+                } label: {
+                    Label("Open in \(signer.rawValue)", systemImage: "arrow.up.forward.app")
+                        .font(ChirpFont.callout)
                 }
                 .buttonStyle(.plain)
+            }
 
-                if showQR {
-                    VStack(spacing: ChirpSpace.s) {
-                        if let qr = qrCodeImage {
-                            Image(uiImage: qr)
-                                .resizable()
-                                .interpolation(.none)
-                                .scaledToFit()
-                                .frame(maxWidth: 200)
-                                .padding(16)
-                                .background(.white)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
-                        } else {
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(.white.opacity(0.1))
-                                .frame(width: 200, height: 200)
-                                .overlay { ProgressView().tint(ChirpColor.accent) }
-                        }
-                        Text("Scan with any NIP-46 signer app")
-                            .font(ChirpFont.caption)
-                            .foregroundStyle(.white.opacity(0.65))
-                    }
-                    .frame(maxWidth: .infinity)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                }
+            Divider()
 
-                // Open in signer app — only when a compatible app is installed
-                if let signer = detectedSigner, let url = nostrConnectURL {
-                    Button {
-                        openSignerApp(url)
-                    } label: {
-                        HStack {
-                            Image(systemName: "arrow.up.forward.app")
-                                .foregroundStyle(ChirpColor.accent)
-                            Text("Open in \(signer.rawValue)")
-                                .font(ChirpFont.callout)
-                                .foregroundStyle(.white)
-                            Spacer()
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
+            // Paste bunker:// URI — always visible
+            VStack(alignment: .leading, spacing: ChirpSpace.s) {
+                Text("Or paste a bunker:// URI")
+                    .font(ChirpFont.caption)
+                    .foregroundStyle(.secondary)
 
-                // Divider
-                Divider().background(.white.opacity(0.2))
+                TextField("bunker://…", text: $bunkerUri)
+                    .font(ChirpFont.mono)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            }
 
-                // Paste bunker:// URI — always visible
-                VStack(alignment: .leading, spacing: ChirpSpace.s) {
-                    Text("Or paste a bunker:// URI")
-                        .font(ChirpFont.caption)
-                        .foregroundStyle(.white.opacity(0.65))
-
-                    HStack(spacing: ChirpSpace.s) {
-                        TextField("bunker://…", text: $bunkerUri)
-                            .font(ChirpFont.mono)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .foregroundStyle(.white)
-
-                        if let clip = UIPasteboard.general.string, clip.hasPrefix("bunker://") {
-                            Button {
-                                bunkerUri = clip
-                            } label: {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "doc.on.clipboard")
-                                        .font(.system(size: 12, weight: .semibold))
-                                    Text("Paste")
-                                        .font(.system(.caption, design: .rounded).weight(.semibold))
-                                }
-                                .foregroundStyle(ChirpColor.accent)
-                                .padding(.horizontal, ChirpSpace.s)
-                                .padding(.vertical, 5)
-                                .background(ChirpColor.accentSoft, in: Capsule())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-
-                // Handshake progress
-                if let handshake = model.bunkerHandshake, handshake.stage != "idle" {
-                    HStack(spacing: ChirpSpace.s) {
-                        if handshake.stage == "connecting" || handshake.stage == "awaiting_pubkey" {
-                            ProgressView().tint(ChirpColor.accent).scaleEffect(0.8)
-                        } else if handshake.stage == "ready" {
-                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                        } else if handshake.stage == "failed" {
-                            Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
-                        }
-                        Text(handshake.message ?? handshake.stage)
-                            .font(ChirpFont.caption)
-                            .foregroundStyle(.white.opacity(0.8))
-                    }
-                }
-
+            // Handshake progress
+            if let handshake = model.bunkerHandshake, handshake.stage != "idle" {
                 HStack(spacing: ChirpSpace.s) {
-                    ChirpPrimaryButton(title: "Connect", systemImage: "arrow.right.circle.fill") {
-                        model.signInBunker(bunkerUri.trimmingCharacters(in: .whitespacesAndNewlines))
+                    if handshake.stage == "connecting" || handshake.stage == "awaiting_pubkey" {
+                        ProgressView().tint(Color.accentColor).scaleEffect(0.8)
+                    } else if handshake.stage == "ready" {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    } else if handshake.stage == "failed" {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
                     }
-                    .disabled(bunkerUri.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .opacity(bunkerUri.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.5 : 1.0)
+                    Text(handshake.message ?? handshake.stage)
+                        .font(ChirpFont.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
 
-                    if let stage = model.bunkerHandshake?.stage,
-                       stage == "connecting" || stage == "awaiting_pubkey" {
-                        Button("Cancel") { model.cancelBunkerHandshake() }
-                            .font(ChirpFont.callout)
-                            .foregroundStyle(.white.opacity(0.7))
-                    }
+            HStack(spacing: ChirpSpace.s) {
+                Button {
+                    model.signInBunker(bunkerUri.trimmingCharacters(in: .whitespacesAndNewlines))
+                } label: {
+                    Label("Connect", systemImage: "arrow.right.circle.fill")
+                        .font(ChirpFont.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(bunkerUri.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                if let stage = model.bunkerHandshake?.stage,
+                   stage == "connecting" || stage == "awaiting_pubkey" {
+                    Button("Cancel") { model.cancelBunkerHandshake() }
+                        .font(ChirpFont.callout)
                 }
             }
         }
+        .padding(.horizontal, ChirpSpace.l)
     }
 
     // MARK: — Helpers

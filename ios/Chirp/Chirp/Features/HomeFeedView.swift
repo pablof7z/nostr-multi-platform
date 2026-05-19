@@ -59,9 +59,6 @@ struct HomeFeedView: View {
                 ModularBlockView(block: block, cards: cardLookup, items: itemLookup)
             }
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .background(ChirpColor.bg)
         .animation(.smooth, value: blocks.count)
         .accessibilityIdentifier("timeline-list")
         .refreshable {
@@ -106,8 +103,6 @@ struct HomeFeedView: View {
                 showCompose = true
             } label: {
                 Image(systemName: "square.and.pencil")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(ChirpColor.accent)
             }
             .buttonStyle(.borderless)
             .accessibilityLabel("New note")

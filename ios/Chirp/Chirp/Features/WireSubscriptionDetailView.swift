@@ -5,7 +5,7 @@ struct WireSubscriptionDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: ChirpSpace.xl) {
+            VStack(spacing: 24) {
                 statsSection
                 detailsSection
                 timingSection
@@ -13,8 +13,8 @@ struct WireSubscriptionDetailView: View {
                     closeReasonSection(reason)
                 }
             }
-            .padding(.horizontal, ChirpSpace.l)
-            .padding(.vertical, ChirpSpace.xl)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 24)
         }
         .background(Color(.systemBackground))
         .navigationTitle("Subscription")
@@ -24,26 +24,28 @@ struct WireSubscriptionDetailView: View {
     // ── Stats tiles ───────────────────────────────────────────────────────
 
     private var statsSection: some View {
-        VStack(alignment: .leading, spacing: ChirpSpace.m) {
-            ChirpSectionHeader(title: "Stats")
-            HStack(spacing: ChirpSpace.m) {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Stats")
+                .font(.headline)
+                .foregroundStyle(.primary)
+            HStack(spacing: 12) {
                 WireMetricTile(
                     label: "Events Rx",
                     value: sub.eventsRx.map { $0.formatted(.number.notation(.compactName)) } ?? "—",
                     icon: "arrow.down.circle",
-                    color: ChirpColor.positive
+                    color: .green
                 )
                 WireMetricTile(
                     label: "Consumers",
                     value: "\(sub.logicalConsumerCount)",
                     icon: "person.2",
-                    color: ChirpColor.accent
+                    color: .accentColor
                 )
                 WireMetricTile(
                     label: "EOSE",
                     value: sub.eoseAtMs != nil ? "Done" : "Pending",
                     icon: sub.eoseAtMs != nil ? "checkmark.circle.fill" : "clock",
-                    color: sub.eoseAtMs != nil ? ChirpColor.positive : ChirpColor.textTertiary
+                    color: sub.eoseAtMs != nil ? .green : .secondary
                 )
             }
         }
@@ -52,74 +54,78 @@ struct WireSubscriptionDetailView: View {
     // ── Subscription details ──────────────────────────────────────────────
 
     private var detailsSection: some View {
-        VStack(alignment: .leading, spacing: ChirpSpace.m) {
-            ChirpSectionHeader(title: "Details")
-            GlassCard {
-                VStack(spacing: 0) {
-                    SubDetailRow(label: "ID") {
-                        Text(sub.wireId)
-                            .font(ChirpFont.mono)
-                            .foregroundStyle(ChirpColor.textSecondary)
-                            .lineLimit(3)
-                            .multilineTextAlignment(.trailing)
-                            .textSelection(.enabled)
-                    }
-                    SubDetailDivider()
-                    SubDetailRow(label: "State") {
-                        Text(sub.state.capitalized)
-                            .font(ChirpFont.callout.weight(.semibold))
-                            .foregroundStyle(stateColor(sub.state))
-                    }
-                    SubDetailDivider()
-                    SubDetailRow(label: "Relay") {
-                        Text(sub.relayUrl)
-                            .font(ChirpFont.mono)
-                            .foregroundStyle(ChirpColor.textSecondary)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.trailing)
-                    }
-                    SubDetailDivider()
-                    SubDetailRow(label: "Filter") {
-                        Text(sub.filterSummary)
-                            .font(ChirpFont.caption)
-                            .foregroundStyle(ChirpColor.textSecondary)
-                            .multilineTextAlignment(.trailing)
-                    }
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Details")
+                .font(.headline)
+                .foregroundStyle(.primary)
+            VStack(spacing: 0) {
+                SubDetailRow(label: "ID") {
+                    Text(sub.wireId)
+                        .font(.body.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                        .multilineTextAlignment(.trailing)
+                        .textSelection(.enabled)
+                }
+                SubDetailDivider()
+                SubDetailRow(label: "State") {
+                    Text(sub.state.capitalized)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(stateColor(sub.state))
+                }
+                SubDetailDivider()
+                SubDetailRow(label: "Relay") {
+                    Text(sub.relayUrl)
+                        .font(.body.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.trailing)
+                }
+                SubDetailDivider()
+                SubDetailRow(label: "Filter") {
+                    Text(sub.filterSummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.trailing)
                 }
             }
+            .padding(.horizontal, 12)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
         }
     }
 
     // ── Timing ────────────────────────────────────────────────────────────
 
     private var timingSection: some View {
-        VStack(alignment: .leading, spacing: ChirpSpace.m) {
-            ChirpSectionHeader(title: "Timing")
-            GlassCard {
-                VStack(spacing: 0) {
-                    SubDetailRow(label: "Opened") {
-                        Text(msToRelative(sub.openedAtMs))
-                            .font(ChirpFont.mono)
-                            .foregroundStyle(ChirpColor.textSecondary)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Timing")
+                .font(.headline)
+                .foregroundStyle(.primary)
+            VStack(spacing: 0) {
+                SubDetailRow(label: "Opened") {
+                    Text(msToRelative(sub.openedAtMs))
+                        .font(.body.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+                if let ms = sub.lastEventAtMs {
+                    SubDetailDivider()
+                    SubDetailRow(label: "Last Event") {
+                        Text(msToRelative(ms))
+                            .font(.body.monospaced())
+                            .foregroundStyle(.secondary)
                     }
-                    if let ms = sub.lastEventAtMs {
-                        SubDetailDivider()
-                        SubDetailRow(label: "Last Event") {
-                            Text(msToRelative(ms))
-                                .font(ChirpFont.mono)
-                                .foregroundStyle(ChirpColor.textSecondary)
-                        }
-                    }
-                    if let ms = sub.eoseAtMs {
-                        SubDetailDivider()
-                        SubDetailRow(label: "EOSE At") {
-                            Text(msToRelative(ms))
-                                .font(ChirpFont.mono)
-                                .foregroundStyle(ChirpColor.positive)
-                        }
+                }
+                if let ms = sub.eoseAtMs {
+                    SubDetailDivider()
+                    SubDetailRow(label: "EOSE At") {
+                        Text(msToRelative(ms))
+                            .font(.body.monospaced())
+                            .foregroundStyle(.green)
                     }
                 }
             }
+            .padding(.horizontal, 12)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
         }
     }
 
@@ -127,16 +133,18 @@ struct WireSubscriptionDetailView: View {
 
     @ViewBuilder
     private func closeReasonSection(_ reason: String) -> some View {
-        VStack(alignment: .leading, spacing: ChirpSpace.m) {
-            ChirpSectionHeader(title: "Close Reason")
-            GlassCard {
-                Text(reason)
-                    .font(ChirpFont.caption)
-                    .foregroundStyle(ChirpColor.like)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, ChirpSpace.xs)
-                    .textSelection(.enabled)
-            }
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Close Reason")
+                .font(.headline)
+                .foregroundStyle(.primary)
+            Text(reason)
+                .font(.caption)
+                .foregroundStyle(.red)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 8)
+                .padding(.horizontal, 12)
+                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                .textSelection(.enabled)
         }
     }
 
@@ -144,9 +152,9 @@ struct WireSubscriptionDetailView: View {
 
     private func stateColor(_ s: String) -> Color {
         switch s.lowercased() {
-        case "open", "active", "live": return ChirpColor.positive
-        case "pending", "warming", "opening", "auth_paused": return ChirpColor.zap
-        default: return ChirpColor.textTertiary
+        case "open", "active", "live": return .green
+        case "pending", "warming", "opening", "auth_paused": return .orange
+        default: return .secondary
         }
     }
 
@@ -169,22 +177,21 @@ private struct WireMetricTile: View {
     let color: Color
 
     var body: some View {
-        GlassCard {
-            VStack(spacing: ChirpSpace.xs) {
-                Image(systemName: icon)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(color)
-                Text(value)
-                    .font(ChirpFont.headline)
-                    .foregroundStyle(ChirpColor.textPrimary)
-                    .monospacedDigit()
-                Text(label)
-                    .font(ChirpFont.caption)
-                    .foregroundStyle(ChirpColor.textTertiary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, ChirpSpace.xs)
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(color)
+            Text(value)
+                .font(.headline)
+                .foregroundStyle(.primary)
+                .monospacedDigit()
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
@@ -195,18 +202,18 @@ private struct SubDetailRow<Value: View>: View {
     var body: some View {
         HStack(alignment: .top) {
             Text(label)
-                .font(ChirpFont.caption.weight(.medium))
-                .foregroundStyle(ChirpColor.textTertiary)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
                 .frame(width: 80, alignment: .leading)
-            Spacer(minLength: ChirpSpace.s)
+            Spacer(minLength: 8)
             value
         }
-        .padding(.vertical, ChirpSpace.s)
+        .padding(.vertical, 8)
     }
 }
 
 private struct SubDetailDivider: View {
     var body: some View {
-        Divider().background(ChirpColor.hairline)
+        Divider()
     }
 }

@@ -8,10 +8,8 @@ import SwiftUI
 // surfaces inbound welcomes with Accept / Decline. Toolbar "+" opens a
 // create-group sheet (name / description / invitee npubs).
 //
-// Reuses the frozen Chirp design system (ChirpColor / ChirpFont /
-// ChirpSpace / GlassCard / ChirpPlaceholder / ChirpPrimaryButton). D6: any
-// nil / decode failure surfaces as the empty state, never a crash — the
-// store already collapses every failure to `.empty`.
+// D6: any nil / decode failure surfaces as the empty state, never a crash —
+// the store already collapses every failure to `.empty`.
 //
 // Key-package status deliberately lives in Settings (SettingsHubView), not
 // here, per the milestone scope.
@@ -54,22 +52,18 @@ struct MarmotGroupsView: View {
                     ForEach(store.pendingWelcomes) { welcome in
                         PendingInviteRow(welcome: welcome)
                             .environmentObject(model)
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
                     }
                 } header: {
-                    ChirpSectionHeader(title: "Pending Invites")
+                    Text("Pending Invites")
                 }
             }
 
             Section {
                 if store.groups.isEmpty {
                     Text("No encrypted groups yet")
-                        .font(ChirpFont.callout)
-                        .foregroundStyle(ChirpColor.textTertiary)
-                        .padding(.vertical, ChirpSpace.xs)
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.vertical, 4)
                 } else {
                     ForEach(store.groups) { group in
                         NavigationLink {
@@ -78,17 +72,12 @@ struct MarmotGroupsView: View {
                         } label: {
                             GroupRow(group: group)
                         }
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
                     }
                 }
             } header: {
-                ChirpSectionHeader(title: "Groups")
+                Text("Groups")
             }
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .background(ChirpColor.bg)
         .animation(.smooth, value: store.groups.count)
         .animation(.smooth, value: store.pendingWelcomes.count)
     }
@@ -118,7 +107,6 @@ struct MarmotGroupsView: View {
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(ChirpColor.accent)
             }
             .buttonStyle(.borderless)
             .disabled(!store.isRegistered)
@@ -133,39 +121,39 @@ private struct GroupRow: View {
     let group: MarmotGroup
 
     var body: some View {
-        HStack(spacing: ChirpSpace.m) {
+        HStack(spacing: 8) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(ChirpColor.accentSoft)
+                    .fill(Color(.secondarySystemBackground))
                     .frame(width: 40, height: 40)
                 Image(systemName: "lock.shield.fill")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(ChirpColor.accent)
+                    .foregroundStyle(Color.accentColor)
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(group.name.isEmpty ? "Untitled group" : group.name)
-                    .font(ChirpFont.callout.weight(.medium))
-                    .foregroundStyle(ChirpColor.textPrimary)
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
                 Text("\(group.members.count) member\(group.members.count == 1 ? "" : "s")")
-                    .font(ChirpFont.caption)
-                    .foregroundStyle(ChirpColor.textTertiary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Spacer()
 
             if group.unread > 0 {
                 Text("\(group.unread)")
-                    .font(.system(.caption2, design: .rounded).weight(.bold))
+                    .font(.caption2.weight(.bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
-                    .background(ChirpColor.accent, in: Capsule())
+                    .background(Color.accentColor, in: Capsule())
                     .accessibilityLabel("\(group.unread) unread")
             }
         }
-        .padding(.vertical, ChirpSpace.xs)
+        .padding(.vertical, 4)
         .contentShape(Rectangle())
     }
 }
@@ -179,53 +167,48 @@ private struct PendingInviteRow: View {
     @State private var busy = false
 
     var body: some View {
-        GlassCard {
-            VStack(alignment: .leading, spacing: ChirpSpace.s) {
-                HStack(spacing: ChirpSpace.s) {
-                    Image(systemName: "envelope.badge.fill")
-                        .foregroundStyle(ChirpColor.accent)
-                    Text(welcome.groupName.isEmpty ? "Group invite" : welcome.groupName)
-                        .font(ChirpFont.headline)
-                        .foregroundStyle(ChirpColor.textPrimary)
-                }
-                Text("From \(shortNpub(welcome.inviterNpub))")
-                    .font(ChirpFont.caption)
-                    .foregroundStyle(ChirpColor.textTertiary)
-
-                HStack(spacing: ChirpSpace.m) {
-                    Button {
-                        busy = true
-                        _ = model.marmot.acceptWelcome(welcomeIDHex: welcome.idHex)
-                        busy = false
-                    } label: {
-                        Text("Accept")
-                            .font(ChirpFont.callout.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, ChirpSpace.s)
-                            .background(ChirpColor.accent, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        busy = true
-                        _ = model.marmot.declineWelcome(welcomeIDHex: welcome.idHex)
-                        busy = false
-                    } label: {
-                        Text("Decline")
-                            .font(ChirpFont.callout.weight(.semibold))
-                            .foregroundStyle(ChirpColor.textSecondary)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, ChirpSpace.s)
-                            .background(ChirpColor.surface, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .disabled(busy)
-                .opacity(busy ? 0.5 : 1.0)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "envelope.badge.fill")
+                    .foregroundStyle(Color.accentColor)
+                Text(welcome.groupName.isEmpty ? "Group invite" : welcome.groupName)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
             }
+            Text("From \(shortNpub(welcome.inviterNpub))")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 12) {
+                Button {
+                    busy = true
+                    _ = model.marmot.acceptWelcome(welcomeIDHex: welcome.idHex)
+                    busy = false
+                } label: {
+                    Text("Accept")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    busy = true
+                    _ = model.marmot.declineWelcome(welcomeIDHex: welcome.idHex)
+                    busy = false
+                } label: {
+                    Text("Decline")
+                        .font(.callout.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.bordered)
+            }
+            .disabled(busy)
+            .opacity(busy ? 0.5 : 1.0)
         }
-        .padding(.vertical, ChirpSpace.xs)
+        .padding(.vertical, 4)
     }
 
     private func shortNpub(_ npub: String) -> String {
@@ -262,55 +245,61 @@ struct MarmotCreateGroupSheet: View {
             ZStack {
                 Color(.systemBackground).ignoresSafeArea()
                 ScrollView {
-                    VStack(alignment: .leading, spacing: ChirpSpace.l) {
-                        GlassCard {
-                            VStack(alignment: .leading, spacing: ChirpSpace.m) {
-                                field("Group name", text: $name, placeholder: "Trusted circle")
-                                Divider().background(ChirpColor.hairline)
-                                field("Description", text: $groupDescription,
-                                      placeholder: "Optional")
-                                Divider().background(ChirpColor.hairline)
-                                VStack(alignment: .leading, spacing: ChirpSpace.xs) {
-                                    Text("Invitee npubs")
-                                        .font(ChirpFont.caption)
-                                        .foregroundStyle(ChirpColor.textTertiary)
-                                    TextEditor(text: $inviteeText)
-                                        .font(ChirpFont.mono)
-                                        .scrollContentBackground(.hidden)
-                                        .frame(minHeight: 90)
-                                        .textInputAutocapitalization(.never)
-                                        .autocorrectionDisabled()
-                                        .overlay(alignment: .topLeading) {
-                                            if inviteeText.isEmpty {
-                                                Text("npub1…, npub1… (comma or newline separated)")
-                                                    .font(ChirpFont.mono)
-                                                    .foregroundStyle(ChirpColor.textTertiary)
-                                                    .allowsHitTesting(false)
-                                                    .padding(.top, 8)
-                                            }
+                    VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            field("Group name", text: $name, placeholder: "Trusted circle")
+                            Divider()
+                            field("Description", text: $groupDescription,
+                                  placeholder: "Optional")
+                            Divider()
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Invitee npubs")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                TextEditor(text: $inviteeText)
+                                    .font(.body.monospaced())
+                                    .scrollContentBackground(.hidden)
+                                    .frame(minHeight: 90)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+                                    .overlay(alignment: .topLeading) {
+                                        if inviteeText.isEmpty {
+                                            Text("npub1…, npub1… (comma or newline separated)")
+                                                .font(.body.monospaced())
+                                                .foregroundStyle(.secondary)
+                                                .allowsHitTesting(false)
+                                                .padding(.top, 8)
                                         }
-                                }
+                                    }
                             }
                         }
-                        .padding(.horizontal, ChirpSpace.l)
+                        .padding(.horizontal, 16)
 
                         if let errorMessage {
                             Text(errorMessage)
-                                .font(ChirpFont.caption)
-                                .foregroundStyle(ChirpColor.like)
-                                .padding(.horizontal, ChirpSpace.l)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                                .padding(.horizontal, 16)
                         }
 
-                        ChirpPrimaryButton(title: "Create group",
-                                           systemImage: "lock.shield.fill") {
+                        Button {
                             create()
+                        } label: {
+                            HStack {
+                                Image(systemName: "lock.shield.fill")
+                                Text("Create group")
+                            }
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
                         }
+                        .buttonStyle(.borderedProminent)
                         .disabled(trimmedName.isEmpty || busy)
                         .opacity(trimmedName.isEmpty || busy ? 0.45 : 1.0)
-                        .padding(.horizontal, ChirpSpace.l)
-                        .padding(.bottom, ChirpSpace.xl)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 32)
                     }
-                    .padding(.top, ChirpSpace.l)
+                    .padding(.top, 16)
                 }
             }
             .navigationTitle("New Group")
@@ -318,8 +307,6 @@ struct MarmotCreateGroupSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
-                        .font(ChirpFont.callout)
-                        .foregroundStyle(ChirpColor.textSecondary)
                 }
             }
         }
@@ -344,13 +331,13 @@ struct MarmotCreateGroupSheet: View {
 
     @ViewBuilder
     private func field(_ label: String, text: Binding<String>, placeholder: String) -> some View {
-        VStack(alignment: .leading, spacing: ChirpSpace.xs) {
+        VStack(alignment: .leading, spacing: 4) {
             Text(label)
-                .font(ChirpFont.caption)
-                .foregroundStyle(ChirpColor.textTertiary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
             TextField(placeholder, text: text)
-                .font(ChirpFont.body)
-                .foregroundStyle(ChirpColor.textPrimary)
+                .font(.body)
+                .foregroundStyle(.primary)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
         }

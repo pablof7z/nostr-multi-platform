@@ -4,10 +4,9 @@ import SwiftUI
 // MarmotInviteSheet — invite one or more npubs into an existing MLS group.
 //
 // Presented from MarmotGroupChatView's overflow menu. Mirrors the
-// create-group sheet's composer idiom (GlassCard + TextEditor +
-// ChirpPrimaryButton). Calls `invite`; surfaces `key_package_unavailable`
-// (`needs`) inline so the user knows which invitees haven't published a
-// key package yet.
+// create-group sheet's composer idiom (TextEditor). Calls `invite`;
+// surfaces `key_package_unavailable` (`needs`) inline so the user knows
+// which invitees haven't published a key package yet.
 // ─────────────────────────────────────────────────────────────────────────
 
 struct MarmotInviteSheet: View {
@@ -32,53 +31,59 @@ struct MarmotInviteSheet: View {
             ZStack {
                 Color(.systemBackground).ignoresSafeArea()
                 ScrollView {
-                    VStack(alignment: .leading, spacing: ChirpSpace.l) {
+                    VStack(alignment: .leading, spacing: 16) {
                         Text("Inviting to \(group.name.isEmpty ? "this group" : group.name)")
-                            .font(ChirpFont.callout)
-                            .foregroundStyle(ChirpColor.textSecondary)
-                            .padding(.horizontal, ChirpSpace.l)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 16)
 
-                        GlassCard {
-                            VStack(alignment: .leading, spacing: ChirpSpace.xs) {
-                                Text("Invitee npubs")
-                                    .font(ChirpFont.caption)
-                                    .foregroundStyle(ChirpColor.textTertiary)
-                                TextEditor(text: $inviteeText)
-                                    .font(ChirpFont.mono)
-                                    .scrollContentBackground(.hidden)
-                                    .frame(minHeight: 120)
-                                    .textInputAutocapitalization(.never)
-                                    .autocorrectionDisabled()
-                                    .overlay(alignment: .topLeading) {
-                                        if inviteeText.isEmpty {
-                                            Text("npub1…, npub1… (comma or newline separated)")
-                                                .font(ChirpFont.mono)
-                                                .foregroundStyle(ChirpColor.textTertiary)
-                                                .allowsHitTesting(false)
-                                                .padding(.top, 8)
-                                        }
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Invitee npubs")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            TextEditor(text: $inviteeText)
+                                .font(.body.monospaced())
+                                .scrollContentBackground(.hidden)
+                                .frame(minHeight: 120)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .overlay(alignment: .topLeading) {
+                                    if inviteeText.isEmpty {
+                                        Text("npub1…, npub1… (comma or newline separated)")
+                                            .font(.body.monospaced())
+                                            .foregroundStyle(.secondary)
+                                            .allowsHitTesting(false)
+                                            .padding(.top, 8)
                                     }
-                            }
+                                }
                         }
-                        .padding(.horizontal, ChirpSpace.l)
+                        .padding(.horizontal, 16)
 
                         if let errorMessage {
                             Text(errorMessage)
-                                .font(ChirpFont.caption)
-                                .foregroundStyle(ChirpColor.like)
-                                .padding(.horizontal, ChirpSpace.l)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                                .padding(.horizontal, 16)
                         }
 
-                        ChirpPrimaryButton(title: "Send invites",
-                                           systemImage: "person.badge.plus") {
+                        Button {
                             sendInvites()
+                        } label: {
+                            HStack {
+                                Image(systemName: "person.badge.plus")
+                                Text("Send invites")
+                            }
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
                         }
+                        .buttonStyle(.borderedProminent)
                         .disabled(invitees.isEmpty || busy)
                         .opacity(invitees.isEmpty || busy ? 0.45 : 1.0)
-                        .padding(.horizontal, ChirpSpace.l)
-                        .padding(.bottom, ChirpSpace.xl)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 32)
                     }
-                    .padding(.top, ChirpSpace.l)
+                    .padding(.top, 16)
                 }
             }
             .navigationTitle("Invite")
@@ -86,8 +91,6 @@ struct MarmotInviteSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
-                        .font(ChirpFont.callout)
-                        .foregroundStyle(ChirpColor.textSecondary)
                 }
             }
         }

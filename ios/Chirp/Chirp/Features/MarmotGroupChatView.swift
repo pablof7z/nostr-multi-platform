@@ -5,8 +5,8 @@ import SwiftUI
 //
 // • Message rows reuse the NoteRow visual idiom (abbreviated sender npub +
 //   content + relative time), styled with the frozen design system.
-// • Composer reuses the ComposeView idiom (GlassCard + TextEditor +
-//   ChirpPrimaryButton) inline at the bottom, calling `send`.
+// • Composer reuses the ComposeView idiom (TextEditor inline at the bottom,
+//   calling `send`).
 // • Header shows member count + an Invite button (→ MarmotInviteSheet).
 // • Overflow menu carries the "Leave group" destructive action.
 //
@@ -41,10 +41,10 @@ struct MarmotGroupChatView: View {
     var body: some View {
         VStack(spacing: 0) {
             messageStream
-            Divider().background(ChirpColor.hairline)
+            Divider()
             composer
         }
-        .background(ChirpColor.bg)
+        .background(Color(.systemBackground))
         .navigationTitle(liveGroup.name.isEmpty ? "Group" : liveGroup.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarContent }
@@ -82,9 +82,8 @@ struct MarmotGroupChatView: View {
                                 .id(message.id)
                         }
                     }
-                    .padding(.vertical, ChirpSpace.s)
+                    .padding(.vertical, 4)
                 }
-                .scrollContentBackground(.hidden)
                 .onChange(of: messages.count) { _, _ in
                     if let last = messages.last {
                         withAnimation(.smooth) { proxy.scrollTo(last.id, anchor: .bottom) }
@@ -97,26 +96,24 @@ struct MarmotGroupChatView: View {
     // ── Composer (ComposeView idiom) ──────────────────────────────────────
 
     private var composer: some View {
-        HStack(alignment: .bottom, spacing: ChirpSpace.s) {
-            GlassCard {
-                TextEditor(text: $draft)
-                    .focused($composerFocused)
-                    .font(ChirpFont.body)
-                    .foregroundStyle(ChirpColor.textPrimary)
-                    .scrollContentBackground(.hidden)
-                    .background(Color.clear)
-                    .frame(minHeight: 38, maxHeight: 120)
-                    .overlay(alignment: .topLeading) {
-                        if draft.isEmpty {
-                            Text("Encrypted message…")
-                                .font(ChirpFont.body)
-                                .foregroundStyle(ChirpColor.textTertiary)
-                                .allowsHitTesting(false)
-                                .padding(.top, 8)
-                                .padding(.leading, 4)
-                        }
+        HStack(alignment: .bottom, spacing: 8) {
+            TextEditor(text: $draft)
+                .focused($composerFocused)
+                .font(.body)
+                .foregroundStyle(.primary)
+                .scrollContentBackground(.hidden)
+                .background(Color.clear)
+                .frame(minHeight: 38, maxHeight: 120)
+                .overlay(alignment: .topLeading) {
+                    if draft.isEmpty {
+                        Text("Encrypted message…")
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                            .allowsHitTesting(false)
+                            .padding(.top, 8)
+                            .padding(.leading, 4)
                     }
-            }
+                }
 
             Button {
                 sendDraft()
@@ -125,15 +122,15 @@ struct MarmotGroupChatView: View {
                     .font(.system(size: 30))
                     .foregroundStyle(
                         trimmedDraft.isEmpty || sending
-                            ? ChirpColor.accent.opacity(0.4)
-                            : ChirpColor.accent)
+                            ? Color.secondary
+                            : Color.accentColor)
             }
             .buttonStyle(.plain)
             .disabled(trimmedDraft.isEmpty || sending)
             .accessibilityLabel("Send")
         }
-        .padding(.horizontal, ChirpSpace.m)
-        .padding(.vertical, ChirpSpace.s)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
     }
 
     private func sendDraft() {
@@ -155,11 +152,11 @@ struct MarmotGroupChatView: View {
         ToolbarItem(placement: .principal) {
             VStack(spacing: 1) {
                 Text(liveGroup.name.isEmpty ? "Group" : liveGroup.name)
-                    .font(ChirpFont.headline)
-                    .foregroundStyle(ChirpColor.textPrimary)
+                    .font(.headline)
+                    .foregroundStyle(.primary)
                 Text("\(liveGroup.members.count) member\(liveGroup.members.count == 1 ? "" : "s")")
-                    .font(ChirpFont.caption)
-                    .foregroundStyle(ChirpColor.textTertiary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         ToolbarItem(placement: .navigationBarTrailing) {
@@ -178,7 +175,6 @@ struct MarmotGroupChatView: View {
             } label: {
                 Image(systemName: "ellipsis.circle")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(ChirpColor.accent)
             }
             .accessibilityLabel("Group options")
         }
@@ -191,35 +187,35 @@ private struct MarmotMessageRow: View {
     let message: MarmotMessage
 
     var body: some View {
-        HStack(alignment: .top, spacing: ChirpSpace.m) {
+        HStack(alignment: .top, spacing: 8) {
             ZStack {
-                Circle().fill(ChirpColor.avatar(from: colorHex))
+                Circle().fill(Color(.secondarySystemBackground))
                 Text(initials)
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
             }
             .frame(width: 36, height: 36)
-            .overlay(Circle().strokeBorder(ChirpColor.hairline))
+            .overlay(Circle().stroke(Color(.separator), lineWidth: 1))
 
-            VStack(alignment: .leading, spacing: ChirpSpace.xs) {
-                HStack(spacing: ChirpSpace.s) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
                     Text(shortNpub(message.senderNpub))
-                        .font(ChirpFont.callout.weight(.semibold))
-                        .foregroundStyle(ChirpColor.textPrimary)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.primary)
                         .lineLimit(1)
                     Text(relativeTime(message.createdAt))
-                        .font(ChirpFont.caption)
-                        .foregroundStyle(ChirpColor.textTertiary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     Spacer()
                 }
                 Text(message.content)
-                    .font(ChirpFont.body)
-                    .foregroundStyle(ChirpColor.textPrimary)
+                    .font(.body)
+                    .foregroundStyle(.primary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.vertical, ChirpSpace.s)
-        .padding(.horizontal, ChirpSpace.l)
+        .padding(.vertical, 4)
+        .padding(.horizontal, 16)
     }
 
     private var colorHex: String {

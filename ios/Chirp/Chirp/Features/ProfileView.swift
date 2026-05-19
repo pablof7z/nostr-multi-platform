@@ -24,16 +24,15 @@ struct ProfileView: View {
         ScrollView {
             VStack(spacing: 0) {
                 profileHeader
-                    .padding(.bottom, ChirpSpace.s)
+                    .padding(.bottom, 8)
 
                 Divider()
-                    .background(ChirpColor.hairline)
 
                 notesSection
             }
         }
         .accessibilityIdentifier("profile-detail-list")
-        .background(ChirpColor.bg.ignoresSafeArea())
+        .background(Color(.systemBackground).ignoresSafeArea())
         .navigationTitle(profile?.display ?? "Profile")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -47,19 +46,28 @@ struct ProfileView: View {
         }
         .animation(.smooth(duration: 0.3), value: model.profile)
         .animation(.smooth(duration: 0.25), value: model.items.count)
+        .toolbar {
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
+                Button {
+                    model.follow(pubkey)
+                } label: {
+                    Text("Follow")
+                }
+
+                Button {
+                    model.unfollow(pubkey)
+                } label: {
+                    Image(systemName: "person.badge.minus")
+                }
+            }
+        }
     }
 
     // MARK: – Header
 
     @ViewBuilder
     private var profileHeader: some View {
-        ZStack(alignment: .bottomLeading) {
-            // Banner gradient
-            bannerGradient
-                .frame(height: 140)
-                .clipped()
-
-            // Avatar overlapping the banner bottom edge
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .bottom, spacing: 0) {
                 ChirpAvatar(
                     url: profile?.pictureUrl,
@@ -67,117 +75,60 @@ struct ProfileView: View {
                     colorHex: profile?.avatarColor ?? "7B66FF",
                     size: 82
                 )
-                .overlay(
-                    Circle()
-                        .strokeBorder(ChirpColor.bg, lineWidth: 3)
-                )
-                .offset(y: 28)
-                .padding(.leading, ChirpSpace.l)
+                .padding(.leading, 16)
 
                 Spacer()
-
-                // Follow action pill aligned to bottom of banner
-                followPill
-                    .padding(.trailing, ChirpSpace.l)
-                    .padding(.bottom, ChirpSpace.xs)
             }
-        }
-        .padding(.bottom, 36) // room for avatar overflow
+            .padding(.top, 16)
 
-        // Meta block below avatar
-        VStack(alignment: .leading, spacing: ChirpSpace.xs) {
-            // Display name
-            Text(profile?.display ?? "Loading…")
-                .font(ChirpFont.title)
-                .foregroundStyle(ChirpColor.textPrimary)
-                .redacted(reason: isPlaceholder ? .placeholder : [])
+            // Meta block below avatar
+            VStack(alignment: .leading, spacing: 4) {
+                // Display name
+                Text(profile?.display ?? "Loading…")
+                    .font(.title)
+                    .foregroundStyle(.primary)
+                    .redacted(reason: isPlaceholder ? .placeholder : [])
 
-            // NIP-05 verified badge
-            if let nip05 = profile?.nip05, !nip05.isEmpty {
-                HStack(spacing: ChirpSpace.xs) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(ChirpColor.accent)
-                    Text(nip05)
-                        .font(ChirpFont.callout)
-                        .foregroundStyle(ChirpColor.textSecondary)
-                }
-            }
-
-            // npub — monospaced, truncated, tappable to copy
-            if let npub = profile?.npub, !npub.isEmpty {
-                Button(action: copyNpub) {
-                    HStack(spacing: ChirpSpace.xs) {
-                        Text(truncatedNpub(npub))
-                            .font(ChirpFont.mono)
-                            .foregroundStyle(ChirpColor.textTertiary)
-                        Image(systemName: copiedNpub ? "checkmark" : "doc.on.doc")
-                            .font(.system(size: 11))
-                            .foregroundStyle(copiedNpub ? ChirpColor.positive : ChirpColor.textTertiary)
-                            .animation(.bouncy, value: copiedNpub)
+                // NIP-05 verified badge
+                if let nip05 = profile?.nip05, !nip05.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.accentColor)
+                        Text(nip05)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
                     }
                 }
-                .buttonStyle(.plain)
-            }
 
-            // About / bio
-            if let about = profile?.about, !about.isEmpty {
-                Text(about)
-                    .font(ChirpFont.body)
-                    .foregroundStyle(ChirpColor.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, ChirpSpace.xs)
-                    .redacted(reason: isPlaceholder ? .placeholder : [])
-            }
-        }
-        .padding(.horizontal, ChirpSpace.l)
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
+                // npub — monospaced, truncated, tappable to copy
+                if let npub = profile?.npub, !npub.isEmpty {
+                    Button(action: copyNpub) {
+                        HStack(spacing: 4) {
+                            Text(truncatedNpub(npub))
+                                .font(.body.monospaced())
+                                .foregroundStyle(.secondary)
+                            Image(systemName: copiedNpub ? "checkmark" : "doc.on.doc")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .animation(.bouncy, value: copiedNpub)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
 
-    @ViewBuilder
-    private var bannerGradient: some View {
-        Group {
-            if let profile {
-                ChirpColor.avatar(from: profile.avatarColor)
-            } else {
-                ChirpColor.avatar(from: "7B66FF")
+                // About / bio
+                if let about = profile?.about, !about.isEmpty {
+                    Text(about)
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 4)
+                        .redacted(reason: isPlaceholder ? .placeholder : [])
+                }
             }
-        }
-        .overlay(
-            LinearGradient(
-                colors: [Color.clear, ChirpColor.bg.opacity(0.55)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
-    }
-
-    @ViewBuilder
-    private var followPill: some View {
-        HStack(spacing: ChirpSpace.s) {
-            Button {
-                model.follow(pubkey)
-            } label: {
-                Text("Follow")
-                    .font(ChirpFont.headline)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, ChirpSpace.l)
-                    .padding(.vertical, 8)
-                    .background(ChirpColor.accent, in: Capsule())
-            }
-            .buttonStyle(.plain)
-
-            Button {
-                model.unfollow(pubkey)
-            } label: {
-                Image(systemName: "person.badge.minus")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(ChirpColor.textSecondary)
-                    .padding(8)
-                    .background(.ultraThinMaterial, in: Circle())
-                    .overlay(Circle().strokeBorder(ChirpColor.hairline))
-            }
-            .buttonStyle(.plain)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -195,15 +146,17 @@ struct ProfileView: View {
         } else {
             LazyVStack(spacing: 0) {
                 HStack {
-                    ChirpSectionHeader(title: "Posts")
+                    Text("Posts")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
                     Spacer()
                     Text("\(model.items.count)")
-                        .font(ChirpFont.callout)
-                        .foregroundStyle(ChirpColor.textTertiary)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                         .accessibilityIdentifier("profile-notes-count-value")
                 }
-                .padding(.horizontal, ChirpSpace.l)
-                .padding(.vertical, ChirpSpace.m)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
 
                 ForEach(model.items) { item in
                     ProfileNoteRow(
@@ -221,7 +174,6 @@ struct ProfileView: View {
 
                     if item.id != model.items.last?.id {
                         Divider()
-                            .background(ChirpColor.hairline)
                             .padding(.leading, 68)
                     }
                 }

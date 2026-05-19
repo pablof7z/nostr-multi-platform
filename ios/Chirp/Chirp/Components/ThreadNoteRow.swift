@@ -15,13 +15,13 @@ struct ThreadNoteRow: View {
             // Accent hairline for focused note
             if isFocused {
                 Rectangle()
-                    .fill(ChirpColor.accent)
+                    .fill(Color.accentColor)
                     .frame(width: 2)
                     .cornerRadius(1)
-                    .padding(.vertical, ChirpSpace.xs)
+                    .padding(.vertical, 4)
             }
 
-            HStack(alignment: .top, spacing: ChirpSpace.m) {
+            HStack(alignment: .top, spacing: 8) {
                 Button(action: onAvatarTap) {
                     ChirpAvatar(
                         url: item.authorPictureUrl,
@@ -33,61 +33,61 @@ struct ThreadNoteRow: View {
                 .buttonStyle(.plain)
                 .animation(.smooth(duration: 0.2), value: isFocused)
 
-                VStack(alignment: .leading, spacing: ChirpSpace.xs) {
-                    HStack(spacing: ChirpSpace.s) {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 4) {
                         Text(item.authorDisplay)
-                            .font(isFocused ? ChirpFont.headline : ChirpFont.callout)
+                            .font(isFocused ? .headline : .callout)
                             .fontWeight(isFocused ? .semibold : .regular)
-                            .foregroundStyle(ChirpColor.textPrimary)
+                            .foregroundStyle(.primary)
                             .lineLimit(1)
                         Spacer()
                         Text(item.createdAtDisplay)
-                            .font(ChirpFont.caption)
-                            .foregroundStyle(ChirpColor.textTertiary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
 
                     NoteContentView(
                         content: item.content,
-                        font: isFocused ? ChirpFont.body : ChirpFont.callout
+                        font: isFocused ? .body : .callout
                     )
-                    .foregroundStyle(ChirpColor.textPrimary)
-                    .padding(.bottom, isFocused ? ChirpSpace.xs : 0)
+                    .foregroundStyle(.primary)
+                    .padding(.bottom, isFocused ? 4 : 0)
 
                     // Action row
-                    HStack(spacing: ChirpSpace.xl) {
+                    HStack(spacing: 24) {
                         Button(action: onLike) {
                             Label("Like", systemImage: "heart")
-                                .font(ChirpFont.caption)
-                                .foregroundStyle(ChirpColor.like.opacity(0.6))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                                 .labelStyle(.iconOnly)
                         }
                         .buttonStyle(.plain)
 
                         Button(action: onReply) {
                             Label("Reply", systemImage: "arrowshape.turn.up.left")
-                                .font(ChirpFont.caption)
-                                .foregroundStyle(ChirpColor.accent.opacity(0.7))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                                 .labelStyle(.iconOnly)
                         }
                         .buttonStyle(.plain)
 
                         if item.relayCount > 0 {
-                            HStack(spacing: ChirpSpace.xs) {
+                            HStack(spacing: 4) {
                                 Image(systemName: "antenna.radiowaves.left.and.right")
-                                    .font(ChirpFont.caption)
+                                    .font(.caption)
                                 Text("\(item.relayCount)")
-                                    .font(ChirpFont.caption)
+                                    .font(.caption)
                             }
-                            .foregroundStyle(ChirpColor.textTertiary)
+                            .foregroundStyle(.secondary)
                         }
                     }
-                    .padding(.top, ChirpSpace.xs)
+                    .padding(.top, 4)
                 }
             }
-            .padding(.vertical, isFocused ? ChirpSpace.m : ChirpSpace.s)
-            .padding(.horizontal, ChirpSpace.l)
+            .padding(.vertical, isFocused ? 8 : 4)
+            .padding(.horizontal, 16)
         }
-        .background(isFocused ? ChirpColor.accentSoft : Color.clear)
+        .background(isFocused ? Color.accentColor.opacity(0.08) : Color.clear)
         .animation(.smooth(duration: 0.25), value: isFocused)
     }
 }

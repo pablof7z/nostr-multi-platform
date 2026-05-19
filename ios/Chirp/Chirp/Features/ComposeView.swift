@@ -30,68 +30,70 @@ struct ComposeView: View {
                     .ignoresSafeArea()
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: ChirpSpace.m) {
+                    VStack(alignment: .leading, spacing: 16) {
                         // Reply context banner
                         if let replyToID {
                             replyBanner(for: replyToID)
                         }
 
                         // Compose area
-                        GlassCard {
-                            VStack(alignment: .leading, spacing: ChirpSpace.s) {
-                                TextEditor(text: $text)
-                                    .focused($editorFocused)
-                                    .font(ChirpFont.body)
-                                    .foregroundStyle(ChirpColor.textPrimary)
-                                    .scrollContentBackground(.hidden)
-                                    .background(Color.clear)
-                                    .frame(minHeight: 140)
-                                    .overlay(alignment: .topLeading) {
-                                        if text.isEmpty {
-                                            Text(isReply ? "Write your reply…" : "What's happening?")
-                                                .font(ChirpFont.body)
-                                                .foregroundStyle(ChirpColor.textTertiary)
-                                                .allowsHitTesting(false)
-                                                .padding(.top, 8)
-                                                .padding(.leading, 4)
-                                        }
+                        VStack(alignment: .leading, spacing: 8) {
+                            TextEditor(text: $text)
+                                .focused($editorFocused)
+                                .font(.body)
+                                .foregroundStyle(.primary)
+                                .scrollContentBackground(.hidden)
+                                .background(Color.clear)
+                                .frame(minHeight: 140)
+                                .overlay(alignment: .topLeading) {
+                                    if text.isEmpty {
+                                        Text(isReply ? "Write your reply…" : "What's happening?")
+                                            .font(.body)
+                                            .foregroundStyle(.secondary)
+                                            .allowsHitTesting(false)
+                                            .padding(.top, 8)
+                                            .padding(.leading, 4)
                                     }
-
-                                Divider()
-                                    .background(ChirpColor.hairline)
-
-                                // Character counter
-                                HStack {
-                                    Spacer()
-                                    Text("\(charRemaining)")
-                                        .font(ChirpFont.caption)
-                                        .foregroundStyle(
-                                            isOverLimit ? ChirpColor.like :
-                                            charRemaining <= 20 ? ChirpColor.zap :
-                                            ChirpColor.textTertiary
-                                        )
-                                        .contentTransition(.numericText())
-                                        .animation(.smooth(duration: 0.2), value: charRemaining)
                                 }
+
+                            Divider()
+
+                            // Character counter
+                            HStack {
+                                Spacer()
+                                Text("\(charRemaining)")
+                                    .font(.caption)
+                                    .foregroundStyle(
+                                        isOverLimit ? .red :
+                                        charRemaining <= 20 ? .orange :
+                                        .secondary
+                                    )
+                                    .contentTransition(.numericText())
+                                    .animation(.smooth(duration: 0.2), value: charRemaining)
                             }
                         }
-                        .padding(.horizontal, ChirpSpace.l)
+                        .padding(.horizontal, 16)
 
                         // Post button — inside scroll so it's above keyboard
-                        ChirpPrimaryButton(
-                            title: isReply ? "Reply" : "Post",
-                            systemImage: isReply ? "arrowshape.turn.up.left.fill" : "paperplane.fill"
-                        ) {
+                        Button {
                             model.publishNote(trimmed, replyToID: replyToID)
                             dismiss()
+                        } label: {
+                            HStack {
+                                Image(systemName: isReply ? "arrowshape.turn.up.left.fill" : "paperplane.fill")
+                                Text(isReply ? "Reply" : "Post")
+                            }
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
                         }
                         .disabled(isEmpty || isOverLimit)
                         .opacity(isEmpty || isOverLimit ? 0.45 : 1.0)
                         .animation(.smooth(duration: 0.2), value: isEmpty)
-                        .padding(.horizontal, ChirpSpace.l)
-                        .padding(.bottom, ChirpSpace.xl)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 32)
                     }
-                    .padding(.top, ChirpSpace.l)
+                    .padding(.top, 16)
                 }
             }
             .navigationTitle(isReply ? "Reply" : "New Post")
@@ -99,15 +101,6 @@ struct ComposeView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
-                        .font(ChirpFont.callout)
-                        .foregroundStyle(ChirpColor.textSecondary)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    // Character arc indicator for the remaining chars
-                    if !text.isEmpty {
-                        CharacterArcView(remaining: charRemaining, limit: characterLimit)
-                            .frame(width: 24, height: 24)
-                    }
                 }
             }
         }
@@ -121,60 +114,29 @@ struct ComposeView: View {
 
     @ViewBuilder
     private func replyBanner(for id: String) -> some View {
-        HStack(spacing: ChirpSpace.s) {
+        HStack(spacing: 8) {
             Image(systemName: "arrowshape.turn.up.left.fill")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(ChirpColor.accent)
+                .foregroundStyle(Color.accentColor)
 
             Text("Replying to a note")
-                .font(ChirpFont.callout)
-                .foregroundStyle(ChirpColor.textSecondary)
+                .font(.callout)
+                .foregroundStyle(.secondary)
 
             Spacer()
 
             Text(shortID(id))
-                .font(ChirpFont.mono)
-                .foregroundStyle(ChirpColor.textTertiary)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, ChirpSpace.l)
-        .padding(.vertical, ChirpSpace.s)
-        .background(ChirpColor.accentSoft, in: RoundedRectangle(
-            cornerRadius: ChirpSpace.radiusSmall, style: .continuous))
-        .padding(.horizontal, ChirpSpace.l)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color(.secondarySystemBackground))
+        .padding(.horizontal, 16)
     }
 
     private func shortID(_ id: String) -> String {
         guard id.count >= 12 else { return id }
         return "\(id.prefix(6))…\(id.suffix(4))"
-    }
-}
-
-// ── Character arc — thin progress ring that fills as limit approaches ─────
-
-private struct CharacterArcView: View {
-    let remaining: Int
-    let limit: Int
-
-    private var progress: Double {
-        let used = limit - remaining
-        return Double(max(0, min(used, limit))) / Double(limit)
-    }
-
-    private var ringColor: Color {
-        if remaining < 0 { return ChirpColor.like }
-        if remaining <= 20 { return ChirpColor.zap }
-        return ChirpColor.accent
-    }
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .stroke(ChirpColor.hairline.opacity(0.5), lineWidth: 2.5)
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(ringColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-                .animation(.smooth(duration: 0.15), value: progress)
-        }
     }
 }

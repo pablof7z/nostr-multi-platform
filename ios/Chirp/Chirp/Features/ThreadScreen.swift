@@ -23,7 +23,7 @@ struct ThreadScreen: View {
                 loadingState
             }
         }
-        .background(ChirpColor.bg.ignoresSafeArea())
+        .background(Color(.systemBackground).ignoresSafeArea())
         .navigationTitle("Thread")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -43,7 +43,7 @@ struct ThreadScreen: View {
     // MARK: – Loading state
 
     private var loadingState: some View {
-        VStack(spacing: ChirpSpace.xl) {
+        VStack(spacing: 24) {
             ChirpPlaceholder(
                 systemImage: "bubble.left.and.bubble.right",
                 title: "Loading thread…",
@@ -94,19 +94,19 @@ struct ThreadScreen: View {
 
                 // More replies below affordance
                 if thread.nextCount > 0 {
-                    HStack(spacing: ChirpSpace.s) {
+                    HStack(spacing: 4) {
                         Image(systemName: "ellipsis.bubble")
                             .font(.system(size: 13))
                         Text("\(thread.nextCount) more repl\(thread.nextCount == 1 ? "y" : "ies")")
-                            .font(ChirpFont.callout)
+                            .font(.callout)
                     }
-                    .foregroundStyle(ChirpColor.textTertiary)
-                    .padding(.vertical, ChirpSpace.m)
-                    .padding(.horizontal, ChirpSpace.l)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 16)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                Spacer(minLength: ChirpSpace.xxl)
+                Spacer(minLength: 32)
             }
         }
         .accessibilityIdentifier("thread-detail-list")
@@ -124,18 +124,18 @@ struct ThreadScreen: View {
     // MARK: – Sub-views
 
     private func earlierAffordance(count: Int) -> some View {
-        HStack(spacing: ChirpSpace.s) {
+        HStack(spacing: 4) {
             Image(systemName: "arrow.up.circle")
                 .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(ChirpColor.accent)
+                .foregroundStyle(Color.accentColor)
             Text("Show \(count) earlier \(count == 1 ? "note" : "notes")")
-                .font(ChirpFont.callout)
-                .foregroundStyle(ChirpColor.accent)
+                .font(.callout)
+                .foregroundStyle(Color.accentColor)
             Spacer()
         }
-        .padding(.vertical, ChirpSpace.m)
-        .padding(.horizontal, ChirpSpace.l)
-        .background(ChirpColor.accentSoft)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 16)
+        .background(Color.accentColor.opacity(0.08))
         .contentShape(Rectangle())
         .onTapGesture {
             // No kernel command exists to expand context yet — haptic feedback only.
@@ -149,10 +149,10 @@ struct ThreadScreen: View {
         HStack {
             // Align with avatar leading edge
             Spacer()
-                .frame(width: ChirpSpace.l + (isFocused ? 46 : 38) / 2 - 1)
+                .frame(width: 16 + (isFocused ? 46 : 38) / 2 - 1)
             Rectangle()
-                .fill(isFocused ? ChirpColor.accent.opacity(0.4) : ChirpColor.hairline)
-                .frame(width: 2, height: ChirpSpace.m)
+                .fill(isFocused ? Color.accentColor.opacity(0.4) : Color(.separator))
+                .frame(width: 2, height: 8)
                 .cornerRadius(1)
             Spacer()
         }

@@ -7,7 +7,7 @@ struct RelayDetailView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: ChirpSpace.xl) {
+            VStack(spacing: 24) {
                 statusSection
                 if !wireSubscriptions.isEmpty {
                     subsOverviewSection
@@ -17,8 +17,8 @@ struct RelayDetailView: View {
                     logicalInterestsSection
                 }
             }
-            .padding(.horizontal, ChirpSpace.l)
-            .padding(.vertical, ChirpSpace.xl)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 24)
         }
         .background(Color(.systemBackground))
         .navigationTitle(shortURL(relay.relayUrl))
@@ -28,107 +28,108 @@ struct RelayDetailView: View {
     // ── Connection status ─────────────────────────────────────────────────
 
     private var statusSection: some View {
-        VStack(alignment: .leading, spacing: ChirpSpace.m) {
-            ChirpSectionHeader(title: "Status")
-            GlassCard {
-                VStack(spacing: 0) {
-                    RelayDetailRow(label: "URL") {
-                        Text(relay.relayUrl)
-                            .font(ChirpFont.mono)
-                            .foregroundStyle(ChirpColor.textSecondary)
-                            .lineLimit(2)
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Status")
+                .font(.headline)
+                .foregroundStyle(.primary)
+            VStack(spacing: 0) {
+                RelayDetailRow(label: "URL") {
+                    Text(relay.relayUrl)
+                        .font(.body.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.trailing)
+                }
+                RelayDetailDivider()
+                RelayDetailRow(label: "Role") {
+                    Text(relay.role.capitalized)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(roleColor)
+                }
+                RelayDetailDivider()
+                RelayDetailRow(label: "Connection") {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(connectionColor)
+                            .frame(width: 8, height: 8)
+                        Text(relay.connection.capitalized)
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(connectionColor)
+                    }
+                }
+                RelayDetailDivider()
+                RelayDetailRow(label: "Auth") {
+                    Text(relay.auth)
+                        .font(.body.monospaced())
+                        .foregroundStyle(authColor)
+                }
+                RelayDetailDivider()
+                RelayDetailRow(label: "Active Subs") {
+                    Text("\(relay.activeWireSubscriptions)")
+                        .font(.body.monospaced())
+                        .foregroundStyle(relay.activeWireSubscriptions > 10 ? .red : .primary)
+                        .monospacedDigit()
+                }
+                RelayDetailDivider()
+                RelayDetailRow(label: "Reconnects") {
+                    Text("\(relay.reconnectCount)")
+                        .font(.body.monospaced())
+                        .foregroundStyle(relay.reconnectCount > 0 ? .orange : .secondary)
+                        .monospacedDigit()
+                }
+                if let rx = relay.bytesRx, rx > 0 {
+                    RelayDetailDivider()
+                    RelayDetailRow(label: "Bytes Rx") {
+                        Text(formatBytes(rx))
+                            .font(.body.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if let tx = relay.bytesTx, tx > 0 {
+                    RelayDetailDivider()
+                    RelayDetailRow(label: "Bytes Tx") {
+                        Text(formatBytes(tx))
+                            .font(.body.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if let ms = relay.lastConnectedAtMs {
+                    RelayDetailDivider()
+                    RelayDetailRow(label: "Last Connected") {
+                        Text(msToRelative(ms))
+                            .font(.body.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if let ms = relay.lastEventAtMs {
+                    RelayDetailDivider()
+                    RelayDetailRow(label: "Last Event") {
+                        Text(msToRelative(ms))
+                            .font(.body.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if let notice = relay.lastNotice {
+                    RelayDetailDivider()
+                    RelayDetailRow(label: "Last Notice") {
+                        Text(notice)
+                            .font(.caption)
+                            .foregroundStyle(.orange)
                             .multilineTextAlignment(.trailing)
                     }
+                }
+                if let error = relay.lastError {
                     RelayDetailDivider()
-                    RelayDetailRow(label: "Role") {
-                        Text(relay.role.capitalized)
-                            .font(ChirpFont.callout.weight(.semibold))
-                            .foregroundStyle(roleColor)
-                    }
-                    RelayDetailDivider()
-                    RelayDetailRow(label: "Connection") {
-                        HStack(spacing: ChirpSpace.xs) {
-                            Circle()
-                                .fill(connectionColor)
-                                .frame(width: 8, height: 8)
-                                .shadow(color: connectionColor.opacity(0.6), radius: 3)
-                            Text(relay.connection.capitalized)
-                                .font(ChirpFont.callout.weight(.medium))
-                                .foregroundStyle(connectionColor)
-                        }
-                    }
-                    RelayDetailDivider()
-                    RelayDetailRow(label: "Auth") {
-                        Text(relay.auth)
-                            .font(ChirpFont.mono)
-                            .foregroundStyle(authColor)
-                    }
-                    RelayDetailDivider()
-                    RelayDetailRow(label: "Active Subs") {
-                        Text("\(relay.activeWireSubscriptions)")
-                            .font(ChirpFont.mono)
-                            .foregroundStyle(relay.activeWireSubscriptions > 10 ? ChirpColor.like : ChirpColor.textPrimary)
-                            .monospacedDigit()
-                    }
-                    RelayDetailDivider()
-                    RelayDetailRow(label: "Reconnects") {
-                        Text("\(relay.reconnectCount)")
-                            .font(ChirpFont.mono)
-                            .foregroundStyle(relay.reconnectCount > 0 ? ChirpColor.zap : ChirpColor.textTertiary)
-                            .monospacedDigit()
-                    }
-                    if let rx = relay.bytesRx, rx > 0 {
-                        RelayDetailDivider()
-                        RelayDetailRow(label: "Bytes Rx") {
-                            Text(formatBytes(rx))
-                                .font(ChirpFont.mono)
-                                .foregroundStyle(ChirpColor.textSecondary)
-                        }
-                    }
-                    if let tx = relay.bytesTx, tx > 0 {
-                        RelayDetailDivider()
-                        RelayDetailRow(label: "Bytes Tx") {
-                            Text(formatBytes(tx))
-                                .font(ChirpFont.mono)
-                                .foregroundStyle(ChirpColor.textSecondary)
-                        }
-                    }
-                    if let ms = relay.lastConnectedAtMs {
-                        RelayDetailDivider()
-                        RelayDetailRow(label: "Last Connected") {
-                            Text(msToRelative(ms))
-                                .font(ChirpFont.mono)
-                                .foregroundStyle(ChirpColor.textSecondary)
-                        }
-                    }
-                    if let ms = relay.lastEventAtMs {
-                        RelayDetailDivider()
-                        RelayDetailRow(label: "Last Event") {
-                            Text(msToRelative(ms))
-                                .font(ChirpFont.mono)
-                                .foregroundStyle(ChirpColor.textSecondary)
-                        }
-                    }
-                    if let notice = relay.lastNotice {
-                        RelayDetailDivider()
-                        RelayDetailRow(label: "Last Notice") {
-                            Text(notice)
-                                .font(ChirpFont.caption)
-                                .foregroundStyle(ChirpColor.zap)
-                                .multilineTextAlignment(.trailing)
-                        }
-                    }
-                    if let error = relay.lastError {
-                        RelayDetailDivider()
-                        RelayDetailRow(label: "Last Error") {
-                            Text(error)
-                                .font(ChirpFont.caption)
-                                .foregroundStyle(ChirpColor.like)
-                                .multilineTextAlignment(.trailing)
-                        }
+                    RelayDetailRow(label: "Last Error") {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.trailing)
                     }
                 }
             }
+            .padding(.horizontal, 12)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
         }
     }
 
@@ -138,34 +139,36 @@ struct RelayDetailView: View {
         let activeSubs = wireSubscriptions.filter { ["open", "live", "active"].contains($0.state) }
         let eosedSubs = wireSubscriptions.filter { $0.eoseAtMs != nil }
         let totalEvents = wireSubscriptions.compactMap(\.eventsRx).reduce(0, +)
-        return VStack(alignment: .leading, spacing: ChirpSpace.m) {
-            ChirpSectionHeader(title: "Subscription Overview")
-            HStack(spacing: ChirpSpace.m) {
+        return VStack(alignment: .leading, spacing: 12) {
+            Text("Subscription Overview")
+                .font(.headline)
+                .foregroundStyle(.primary)
+            HStack(spacing: 12) {
                 RelayMetricTile(
                     label: "Total",
                     value: "\(wireSubscriptions.count)",
                     icon: "dot.radiowaves.left.and.right",
-                    color: ChirpColor.accent
+                    color: .accentColor
                 )
                 RelayMetricTile(
                     label: "Active",
                     value: "\(activeSubs.count)",
                     icon: "bolt.fill",
-                    color: activeSubs.isEmpty ? ChirpColor.textTertiary : ChirpColor.positive
+                    color: activeSubs.isEmpty ? .secondary : .green
                 )
             }
-            HStack(spacing: ChirpSpace.m) {
+            HStack(spacing: 12) {
                 RelayMetricTile(
                     label: "Events Rx",
                     value: totalEvents.formatted(.number.notation(.compactName)),
                     icon: "arrow.down.circle",
-                    color: ChirpColor.positive
+                    color: .green
                 )
                 RelayMetricTile(
                     label: "EOSE'd",
                     value: "\(eosedSubs.count)",
                     icon: "checkmark.circle",
-                    color: ChirpColor.textSecondary
+                    color: .secondary
                 )
             }
         }
@@ -174,39 +177,43 @@ struct RelayDetailView: View {
     // ── Wire subscriptions ────────────────────────────────────────────────
 
     private var wireSubsSection: some View {
-        VStack(alignment: .leading, spacing: ChirpSpace.m) {
-            ChirpSectionHeader(title: "Wire Subscriptions (\(wireSubscriptions.count))")
-            GlassCard {
-                VStack(spacing: 0) {
-                    ForEach(Array(wireSubscriptions.enumerated()), id: \.element.id) { index, sub in
-                        NavigationLink(destination: WireSubscriptionDetailView(sub: sub)) {
-                            WireSubRow(sub: sub)
-                        }
-                        .buttonStyle(.plain)
-                        if index < wireSubscriptions.count - 1 {
-                            Divider().background(ChirpColor.hairline)
-                        }
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Wire Subscriptions (\(wireSubscriptions.count))")
+                .font(.headline)
+                .foregroundStyle(.primary)
+            VStack(spacing: 0) {
+                ForEach(Array(wireSubscriptions.enumerated()), id: \.element.id) { index, sub in
+                    NavigationLink(destination: WireSubscriptionDetailView(sub: sub)) {
+                        WireSubRow(sub: sub)
+                    }
+                    .buttonStyle(.plain)
+                    if index < wireSubscriptions.count - 1 {
+                        Divider()
                     }
                 }
             }
+            .padding(.horizontal, 12)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
         }
     }
 
     // ── Logical interests ─────────────────────────────────────────────────
 
     private var logicalInterestsSection: some View {
-        VStack(alignment: .leading, spacing: ChirpSpace.m) {
-            ChirpSectionHeader(title: "Logical Interests (\(logicalInterests.count))")
-            GlassCard {
-                VStack(spacing: 0) {
-                    ForEach(Array(logicalInterests.enumerated()), id: \.element.id) { index, interest in
-                        LogicalInterestRow(interest: interest)
-                        if index < logicalInterests.count - 1 {
-                            Divider().background(ChirpColor.hairline)
-                        }
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Logical Interests (\(logicalInterests.count))")
+                .font(.headline)
+                .foregroundStyle(.primary)
+            VStack(spacing: 0) {
+                ForEach(Array(logicalInterests.enumerated()), id: \.element.id) { index, interest in
+                    LogicalInterestRow(interest: interest)
+                    if index < logicalInterests.count - 1 {
+                        Divider()
                     }
                 }
             }
+            .padding(.horizontal, 12)
+            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
         }
     }
 
@@ -214,23 +221,23 @@ struct RelayDetailView: View {
 
     private var connectionColor: Color {
         let s = relay.connection.lowercased()
-        if s == "connected" { return ChirpColor.positive }
-        if s.contains("connect") { return ChirpColor.zap }
-        return ChirpColor.like
+        if s == "connected" { return .green }
+        if s.contains("connect") { return .orange }
+        return .red
     }
 
     private var authColor: Color {
         let s = relay.auth.lowercased()
-        if s == "ok" || s == "authenticated" { return ChirpColor.positive }
-        if s == "pending" { return ChirpColor.zap }
-        return ChirpColor.textTertiary
+        if s == "ok" || s == "authenticated" { return .green }
+        if s == "pending" { return .orange }
+        return .secondary
     }
 
     private var roleColor: Color {
         switch relay.role {
-        case "read": return Color.blue
-        case "write": return ChirpColor.positive
-        default: return ChirpColor.accent
+        case "read": return .accentColor
+        case "write": return .green
+        default: return .accentColor
         }
     }
 
@@ -264,22 +271,21 @@ private struct RelayMetricTile: View {
     let color: Color
 
     var body: some View {
-        GlassCard {
-            VStack(spacing: ChirpSpace.xs) {
-                Image(systemName: icon)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(color)
-                Text(value)
-                    .font(ChirpFont.headline)
-                    .foregroundStyle(ChirpColor.textPrimary)
-                    .monospacedDigit()
-                Text(label)
-                    .font(ChirpFont.caption)
-                    .foregroundStyle(ChirpColor.textTertiary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, ChirpSpace.xs)
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(color)
+            Text(value)
+                .font(.headline)
+                .foregroundStyle(.primary)
+                .monospacedDigit()
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 8)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
@@ -289,49 +295,49 @@ private struct WireSubRow: View {
     let sub: WireSubscriptionStatus
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ChirpSpace.xs) {
-            HStack(alignment: .center, spacing: ChirpSpace.s) {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .center, spacing: 8) {
                 Text(shortID(sub.wireId))
-                    .font(ChirpFont.mono)
-                    .foregroundStyle(ChirpColor.textPrimary)
+                    .font(.body.monospaced())
+                    .foregroundStyle(.primary)
                 Spacer(minLength: 0)
                 stateChip
             }
             Text(sub.filterSummary)
-                .font(ChirpFont.caption)
-                .foregroundStyle(ChirpColor.textSecondary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
                 .lineLimit(2)
-            HStack(spacing: ChirpSpace.s) {
+            HStack(spacing: 8) {
                 if sub.logicalConsumerCount > 0 {
                     Label("\(sub.logicalConsumerCount) consumer\(sub.logicalConsumerCount == 1 ? "" : "s")", systemImage: "person.2")
-                        .font(ChirpFont.caption)
-                        .foregroundStyle(ChirpColor.textTertiary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
                 if let rx = sub.eventsRx, rx > 0 {
                     Label("\(rx.formatted(.number.notation(.compactName))) events", systemImage: "arrow.down.circle")
-                        .font(ChirpFont.caption)
-                        .foregroundStyle(ChirpColor.positive)
+                        .font(.caption)
+                        .foregroundStyle(.green)
                 }
                 if sub.eoseAtMs != nil {
                     Label("EOSE", systemImage: "checkmark.circle")
-                        .font(ChirpFont.caption)
-                        .foregroundStyle(ChirpColor.positive)
+                        .font(.caption)
+                        .foregroundStyle(.green)
                 }
                 if let reason = sub.closeReason {
                     Label(reason, systemImage: "xmark.circle")
-                        .font(ChirpFont.caption)
-                        .foregroundStyle(ChirpColor.like)
+                        .font(.caption)
+                        .foregroundStyle(.red)
                         .lineLimit(1)
                 }
             }
         }
-        .padding(.vertical, ChirpSpace.s)
+        .padding(.vertical, 8)
     }
 
     private var stateChip: some View {
         let color = stateColor(sub.state)
         return Text(sub.state.capitalized)
-            .font(.system(.caption2, design: .rounded).weight(.semibold))
+            .font(.caption2.weight(.semibold))
             .foregroundStyle(color)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
@@ -345,10 +351,10 @@ private struct WireSubRow: View {
 
     private func stateColor(_ s: String) -> Color {
         switch s.lowercased() {
-        case "open", "active", "live": return ChirpColor.positive
-        case "pending", "warming", "opening", "auth_paused": return ChirpColor.zap
-        case "closed", "done": return ChirpColor.textTertiary
-        default: return ChirpColor.textTertiary
+        case "open", "active", "live": return .green
+        case "pending", "warming", "opening", "auth_paused": return .orange
+        case "closed", "done": return .secondary
+        default: return .secondary
         }
     }
 }
@@ -359,32 +365,32 @@ private struct LogicalInterestRow: View {
     let interest: LogicalInterestStatus
 
     var body: some View {
-        VStack(alignment: .leading, spacing: ChirpSpace.xs) {
-            HStack(alignment: .center, spacing: ChirpSpace.s) {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(alignment: .center, spacing: 8) {
                 Text(interest.key)
-                    .font(ChirpFont.caption)
-                    .foregroundStyle(ChirpColor.textPrimary)
+                    .font(.caption)
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 0)
                 stateChip
             }
-            HStack(spacing: ChirpSpace.m) {
+            HStack(spacing: 12) {
                 Label("×\(interest.refcount)", systemImage: "link")
-                    .font(ChirpFont.caption)
-                    .foregroundStyle(ChirpColor.textTertiary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Text(interest.cacheCoverage)
-                    .font(ChirpFont.caption)
-                    .foregroundStyle(ChirpColor.textTertiary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, ChirpSpace.s)
+        .padding(.vertical, 8)
     }
 
     private var stateChip: some View {
         let color = stateColor(interest.state)
         return Text(interest.state.capitalized)
-            .font(.system(.caption2, design: .rounded).weight(.semibold))
+            .font(.caption2.weight(.semibold))
             .foregroundStyle(color)
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
@@ -393,9 +399,9 @@ private struct LogicalInterestRow: View {
 
     private func stateColor(_ s: String) -> Color {
         switch s.lowercased() {
-        case "satisfied", "active": return ChirpColor.positive
-        case "warming", "pending": return ChirpColor.zap
-        default: return ChirpColor.textTertiary
+        case "satisfied", "active": return .green
+        case "warming", "pending": return .orange
+        default: return .secondary
         }
     }
 }
@@ -409,18 +415,18 @@ private struct RelayDetailRow<Value: View>: View {
     var body: some View {
         HStack(alignment: .top) {
             Text(label)
-                .font(ChirpFont.caption.weight(.medium))
-                .foregroundStyle(ChirpColor.textTertiary)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
                 .frame(width: 120, alignment: .leading)
-            Spacer(minLength: ChirpSpace.s)
+            Spacer(minLength: 8)
             value
         }
-        .padding(.vertical, ChirpSpace.s)
+        .padding(.vertical, 8)
     }
 }
 
 private struct RelayDetailDivider: View {
     var body: some View {
-        Divider().background(ChirpColor.hairline)
+        Divider()
     }
 }

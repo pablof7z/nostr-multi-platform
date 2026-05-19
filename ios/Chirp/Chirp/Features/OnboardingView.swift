@@ -13,7 +13,6 @@ struct OnboardingView: View {
     @State var bunkerUri = ""
     @State var detectedSigner: DetectedSigner? = nil
     @State var mode: Mode = .welcome
-    @State var animateGradient = false
     @State var logoAppeared = false
     @State var contentAppeared = false
     @State var nostrConnectURL: String? = nil
@@ -29,57 +28,57 @@ struct OnboardingView: View {
     }
 
     var body: some View {
-        ZStack {
-            onboardingBackground
-            decorativeOrbs
+        VStack(spacing: ChirpSpace.xl) {
+            Spacer()
 
-            // Main content
-            VStack(spacing: ChirpSpace.xl) {
-                Spacer()
+            logoBrand
 
-                logoBrand
+            Spacer()
 
-                Spacer()
-
-                // Import key card
-                if mode == .importKey {
-                    importKeyCard
-                }
-
-                // Action buttons
-                VStack(spacing: ChirpSpace.m) {
-                    if mode == .welcome {
-                        ChirpPrimaryButton(title: "I have a key", systemImage: "key.fill") {
-                            withAnimation(.smooth) { mode = .importKey }
-                        }
-
-                        nip46SignerCard
-
-                        Button("Create a new identity") {
-                            // CRITICAL DISPATCH — do not remove
-                            model.createAccount()
-                        }
-                        .font(ChirpFont.headline)
-                        .foregroundStyle(.white)
-                        .transition(.opacity)
-                    } else {
-                        Button("Back") {
-                            withAnimation(.smooth) { mode = .welcome }
-                        }
-                        .font(ChirpFont.callout)
-                        .foregroundStyle(.white.opacity(0.8))
-                        .transition(.opacity)
-                    }
-                }
-                .padding(.horizontal, ChirpSpace.l)
-                .opacity(contentAppeared ? 1 : 0)
-                .offset(y: contentAppeared ? 0 : 16)
-
-                Spacer().frame(height: ChirpSpace.xxl)
+            // Import key card
+            if mode == .importKey {
+                importKeyCard
             }
+
+            // Action buttons
+            VStack(spacing: ChirpSpace.m) {
+                if mode == .welcome {
+                    Button {
+                        withAnimation(.smooth) { mode = .importKey }
+                    } label: {
+                        Label("I have a key", systemImage: "key.fill")
+                            .font(ChirpFont.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    nip46SignerCard
+
+                    Button {
+                        // CRITICAL DISPATCH — do not remove
+                        model.createAccount()
+                    } label: {
+                        Text("Create a new identity")
+                            .font(ChirpFont.headline)
+                    }
+                    .transition(.opacity)
+                } else {
+                    Button("Back") {
+                        withAnimation(.smooth) { mode = .welcome }
+                    }
+                    .font(ChirpFont.callout)
+                    .transition(.opacity)
+                }
+            }
+            .padding(.horizontal, ChirpSpace.l)
+            .opacity(contentAppeared ? 1 : 0)
+            .offset(y: contentAppeared ? 0 : 16)
+
+            Spacer().frame(height: ChirpSpace.xxl)
         }
+        .background(Color(.systemBackground))
         .onAppear {
-            animateGradient = true
             withAnimation(.spring(response: 0.7, dampingFraction: 0.65).delay(0.15)) {
                 logoAppeared = true
             }

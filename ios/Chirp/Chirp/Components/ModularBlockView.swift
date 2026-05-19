@@ -18,7 +18,7 @@ import SwiftUI
 //
 // Layout invariants:
 //   • Each event = one row containing a fixed-width avatar column (44pt
-//     avatar + ChirpSpace.m trailing) and an expanding text column.
+//     avatar + 8pt trailing) and an expanding text column.
 //   • The vertical connecting line is a 1.5pt rounded rect drawn as an
 //     overlay on the avatar column, anchored to the avatar's bottom edge
 //     and extending downward through the inter-row spacing into the top
@@ -35,7 +35,7 @@ private enum ModuleLayout {
     static let avatarSize: CGFloat = 44
     /// Vertical gap between two adjacent event rows inside a module. The
     /// line extends through this gap.
-    static let interRowSpacing: CGFloat = ChirpSpace.m
+    static let interRowSpacing: CGFloat = 8
     /// Stroke width of the connecting line.
     static let lineWidth: CGFloat = 1.5
 }
@@ -89,19 +89,15 @@ struct ModularBlockView: View {
 
             if shouldShowGapPill(hasGap: hasGap, root: root, events: events) {
                 showThisThreadPill(rootID: rootEventID(root: root) ?? events.first ?? "")
-                    .padding(.leading, ModuleLayout.avatarSize + ChirpSpace.m)
-                    .padding(.top, ChirpSpace.xs)
+                    .padding(.leading, ModuleLayout.avatarSize + 8)
+                    .padding(.top, 4)
             }
 
             Divider()
-                .background(ChirpColor.hairline)
-                .padding(.top, ChirpSpace.m)
+                .padding(.top, 8)
         }
-        .padding(.vertical, ChirpSpace.m)
-        .padding(.horizontal, ChirpSpace.l)
-        .listRowInsets(EdgeInsets())
-        .listRowSeparator(.hidden)
-        .listRowBackground(Color.clear)
+        .padding(.vertical, 8)
+        .padding(.horizontal, 16)
     }
 
     /// One event row inside a module. Layout: avatar column (fixed 44pt,
@@ -118,13 +114,13 @@ struct ModularBlockView: View {
         return Button {
             router.push(.thread(eventID: id))
         } label: {
-            HStack(alignment: .top, spacing: ChirpSpace.m) {
+            HStack(alignment: .top, spacing: 8) {
                 avatarColumn(item: item, card: card, isLast: isLast)
-                VStack(alignment: .leading, spacing: ChirpSpace.xs) {
+                VStack(alignment: .leading, spacing: 4) {
                     authorHeader(display: display, item: item, card: card)
                     if !content.isEmpty {
-                        NoteContentView(content: truncate(content, 1_200), font: ChirpFont.body)
-                            .foregroundStyle(ChirpColor.textPrimary)
+                        NoteContentView(content: truncate(content, 1_200), font: .body)
+                            .foregroundStyle(.primary)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -156,7 +152,7 @@ struct ModularBlockView: View {
                 // row's avatar top. Spans the inter-row gap (interRowSpacing)
                 // and the next avatar's height to reach its centre.
                 RoundedRectangle(cornerRadius: ModuleLayout.lineWidth / 2)
-                    .fill(Color(uiColor: .tertiaryLabel))
+                    .fill(Color(.tertiaryLabel))
                     .frame(
                         width: ModuleLayout.lineWidth,
                         height: ModuleLayout.interRowSpacing + ModuleLayout.avatarSize / 2
@@ -168,23 +164,23 @@ struct ModularBlockView: View {
     }
 
     private func authorHeader(display: String, item: TimelineItem?, card: ChirpEventCard?) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: ChirpSpace.xs) {
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
             Text(displayName(item: item, card: card))
-                .font(ChirpFont.headline)
-                .foregroundStyle(ChirpColor.textPrimary)
+                .font(.headline)
+                .foregroundStyle(.primary)
                 .lineLimit(1)
 
             Text(display)
-                .font(ChirpFont.mono)
-                .foregroundStyle(ChirpColor.textTertiary)
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
                 .lineLimit(1)
 
             Spacer(minLength: 0)
 
             if let ts = item?.createdAtDisplay ?? card.map(relativeTime(card:)) {
                 Text(ts)
-                    .font(ChirpFont.caption)
-                    .foregroundStyle(ChirpColor.textSecondary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -199,11 +195,8 @@ struct ModularBlockView: View {
             router.push(.thread(eventID: rootID))
         } label: {
             Text("Show this thread")
-                .font(ChirpFont.caption)
-                .foregroundStyle(ChirpColor.accent)
-                .padding(.horizontal, ChirpSpace.m)
-                .padding(.vertical, 4)
-                .background(ChirpColor.accent.opacity(0.1), in: Capsule())
+                .font(.caption)
+                .foregroundStyle(Color.accentColor)
         }
         .buttonStyle(.borderless)
         .accessibilityIdentifier("show-this-thread-\(rootID.prefix(8))")

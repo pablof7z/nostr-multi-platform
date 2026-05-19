@@ -1,27 +1,22 @@
 import SwiftUI
 
 // ─────────────────────────────────────────────────────────────────────────
-// FROZEN DESIGN SYSTEM — do not edit in Phase 2.
-// Phase-2 agents READ this and use these tokens/components. To add a NEW
-// component, create your own file under Components/ — never mutate this one
-// (last-writer-wins would break sibling screens).
-//
-// Aesthetic: iOS 26 "liquid glass" — translucent layered materials, soft
-// depth, rounded SF Pro, restrained violet accent, dark-first & adaptive.
+// Native iOS design system — semantic colors, standard fonts, plain spacing.
+// All custom styling removed; uses SwiftUI defaults and system materials.
 // ─────────────────────────────────────────────────────────────────────────
 
 enum ChirpColor {
-    static let accent = Color(red: 0.52, green: 0.40, blue: 0.96)      // violet
-    static let accentSoft = Color(red: 0.52, green: 0.40, blue: 0.96).opacity(0.16)
+    static let accent = Color.accentColor
+    static let accentSoft = Color.accentColor.opacity(0.15)
     static let bg = Color(.systemBackground)
     static let surface = Color(.secondarySystemBackground)
-    static let hairline = Color.primary.opacity(0.08)
+    static let hairline = Color(.separator)
     static let textPrimary = Color.primary
     static let textSecondary = Color.secondary
-    static let textTertiary = Color.primary.opacity(0.45)
-    static let positive = Color(red: 0.20, green: 0.78, blue: 0.55)
-    static let zap = Color(red: 1.0, green: 0.74, blue: 0.20)
-    static let like = Color(red: 0.96, green: 0.28, blue: 0.42)
+    static let textTertiary = Color(.tertiaryLabel)
+    static let positive = Color.green
+    static let zap = Color.orange
+    static let like = Color.red
 
     /// Deterministic avatar gradient from a hex color string the kernel
     /// supplies (`avatarColor`). Falls back to the accent.
@@ -34,13 +29,13 @@ enum ChirpColor {
 }
 
 enum ChirpFont {
-    static let largeTitle = Font.system(.largeTitle, design: .rounded).weight(.bold)
-    static let title = Font.system(.title2, design: .rounded).weight(.semibold)
-    static let headline = Font.system(.headline, design: .rounded)
-    static let body = Font.system(.body, design: .default)
-    static let callout = Font.system(.callout, design: .default)
-    static let caption = Font.system(.caption, design: .rounded)
-    static let mono = Font.system(.footnote, design: .monospaced)
+    static let largeTitle = Font.largeTitle.weight(.bold)
+    static let title = Font.title2.weight(.semibold)
+    static let headline = Font.headline
+    static let body = Font.body
+    static let callout = Font.callout
+    static let caption = Font.caption
+    static let mono = Font.footnote.monospaced()
 }
 
 enum ChirpSpace {
@@ -54,23 +49,19 @@ enum ChirpSpace {
     static let radiusSmall: CGFloat = 12
 }
 
-// ── Shared frozen components ──────────────────────────────────────────────
+// ── Shared components ─────────────────────────────────────────────────────
 
-/// Glass card surface used for grouped content (compose, settings rows…).
+/// Plain content wrapper — no material, no rounded background.
 struct GlassCard<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
         content
             .padding(ChirpSpace.l)
-            .background(.ultraThinMaterial, in: RoundedRectangle(
-                cornerRadius: ChirpSpace.radius, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: ChirpSpace.radius,
-                style: .continuous).strokeBorder(ChirpColor.hairline))
-}
+    }
 }
 
 /// Circular avatar — uses the kernel-supplied picture URL with a
-/// deterministic gradient + initials placeholder (D1: never blank).
+/// plain placeholder fill + initials (D1: never blank).
 struct ChirpAvatar: View {
     let url: String?
     let initials: String
@@ -78,25 +69,24 @@ struct ChirpAvatar: View {
     var size: CGFloat = 44
     var body: some View {
         ZStack {
-            ChirpColor.avatar(from: colorHex)
+            Circle().fill(Color.secondary.opacity(0.2))
             if let url, let u = URL(string: url) {
                 AsyncImage(url: u) { img in
                     img.resizable().scaledToFill()
                 } placeholder: { Color.clear }
             }
             if url == nil || url?.isEmpty == true {
-                Text(initials).font(.system(size: size * 0.4,
-                    weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
+                Text(initials)
+                    .font(.system(size: size * 0.4, weight: .semibold))
+                    .foregroundStyle(.primary)
             }
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .overlay(Circle().strokeBorder(ChirpColor.hairline))
     }
 }
 
-/// Pill button — primary call to action with the accent fill.
+/// Primary call-to-action button — standard SwiftUI Button.
 struct ChirpPrimaryButton: View {
     let title: String
     var systemImage: String? = nil
@@ -105,29 +95,24 @@ struct ChirpPrimaryButton: View {
         Button(action: action) {
             HStack(spacing: ChirpSpace.s) {
                 if let systemImage { Image(systemName: systemImage) }
-                Text(title).font(ChirpFont.headline)
+                Text(title)
             }
-            .frame(maxWidth: .infinity).padding(.vertical, 14)
-            .background(ChirpColor.accent, in: Capsule())
-            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
         }
-        .buttonStyle(.plain)
     }
 }
 
-/// Section header used across feature screens for visual consistency.
+/// Plain section header.
 struct ChirpSectionHeader: View {
     let title: String
     var body: some View {
-        Text(title.uppercased())
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(ChirpColor.textTertiary)
-            .tracking(0.8)
+        Text(title)
+            .font(.caption)
     }
 }
 
-/// Standard empty / loading placeholder so every screen "feels finished"
-/// rather than blank while the kernel warms up (D1).
+/// Standard empty / loading placeholder.
 struct ChirpPlaceholder: View {
     let systemImage: String
     let title: String
@@ -136,11 +121,10 @@ struct ChirpPlaceholder: View {
         VStack(spacing: ChirpSpace.m) {
             Image(systemName: systemImage)
                 .font(.system(size: 44, weight: .light))
-                .foregroundStyle(ChirpColor.accent)
-            Text(title).font(ChirpFont.title)
+            Text(title)
             if let subtitle {
-                Text(subtitle).font(ChirpFont.callout)
-                    .foregroundStyle(ChirpColor.textSecondary)
+                Text(subtitle)
+                    .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
         }
