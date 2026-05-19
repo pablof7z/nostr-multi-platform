@@ -17,6 +17,17 @@ path = "src/main.rs"
 # Planner + bech32 helpers — the entire reason this crate exists.
 nmp-core    = { path = "../nmp-core" }
 
+# MLS-over-Nostr (Marmot) service layer. The REPL drives `MarmotService`
+# directly (no `NmpApp` kernel) so two REPL instances can exercise the full
+# end-to-end MLS flow over live relays via the raw WebSocket transport.
+nmp-marmot  = { path = "../nmp-marmot" }
+# `nostr` is pinned identical to nmp-marmot (which re-exports the mdk-core
+# graph) so there is exactly one `nostr` in the build.
+nostr       = { version = "0.44", default-features = false, features = ["std"] }
+# `test-utils` gates `MdkSqliteStorage::new_in_memory` — the REPL uses an
+# in-memory MLS store (no persistence needed for interactive testing).
+mdk-sqlite-storage = { version = "0.8.0", features = ["test-utils"] }
+
 # Wire stack — pinned identical to nmp-core so we share one rustls.
 tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
 rustls      = { version = "0.23", default-features = false, features = ["ring"] }

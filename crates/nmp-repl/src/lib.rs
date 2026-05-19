@@ -16,4 +16,5 @@ pub mod discovery;
 pub mod plan;
 pub mod fanout;
 pub mod render;
+pub mod publish;
 pub mod commands;

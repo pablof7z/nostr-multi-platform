@@ -49,6 +49,17 @@ pub fn parse_line(line: &str) -> Result<Command, String> {
         "refresh" => parse_refresh(args),
         "expand" => parse_expand(args),
         "help" => Ok(Command::Help(args.first().map(|s| s.to_string()))),
+        "create-account" => parse_create_account(args),
+        "load-key" => parse_load_key(args),
+        "mls-init" => parse_nullary(args, "mls-init").map(|_| Command::MlsInit),
+        "mls-status" => parse_nullary(args, "mls-status").map(|_| Command::MlsStatus),
+        "mls-create" => parse_single_arg(args, "mls-create", "<group-name>").map(Command::MlsCreate),
+        "mls-fetch-kp" => parse_single_arg(args, "mls-fetch-kp", "<npub>").map(Command::MlsFetchKp),
+        "mls-invite" => parse_mls_invite(args),
+        "mls-poll" => parse_nullary(args, "mls-poll").map(|_| Command::MlsPoll),
+        "mls-accept" => Ok(Command::MlsAccept(args.first().map(|s| s.to_string()))),
+        "mls-send" => parse_mls_send(args),
+        "mls-messages" => parse_single_arg(args, "mls-messages", "<group_hex>").map(Command::MlsMessages),
         "quit" | "exit" => Ok(Command::Quit),
         other => Err(format!(
             "parse error: unknown verb '{other}' (try 'help')"
@@ -403,6 +414,70 @@ fn parse_expand(args: &[&str]) -> Result<Command, String> {
     Ok(Command::Expand(VarName(name.to_string())))
 }
 
+// ── MLS / Marmot verbs ──────────────────────────────────────────────────────
+
+fn parse_nullary(args: &[&str], verb: &'static str) -> Result<(), String> {
+    if !args.is_empty() {
+        return Err(format!("parse error: {verb} takes no arguments"));
+    }
+    Ok(())
+}
+
+fn parse_single_arg(
+    args: &[&str],
+    verb: &'static str,
+    placeholder: &'static str,
+) -> Result<String, String> {
+    if args.len() != 1 {
+        return Err(format!(
+            "parse error: {verb} takes exactly one argument: {placeholder}"
+        ));
+    }
+    Ok(args[0].to_string())
+}
+
+fn parse_create_account(args: &[&str]) -> Result<Command, String> {
+    match args.len() {
+        0 => Ok(Command::CreateAccount(None)),
+        1 => Ok(Command::CreateAccount(Some(args[0].to_string()))),
+        _ => Err(
+            "parse error: create-account takes at most one argument: [display-name]".to_string(),
+        ),
+    }
+}
+
+fn parse_load_key(args: &[&str]) -> Result<Command, String> {
+    if args.len() != 1 {
+        return Err(
+            "parse error: load-key takes exactly one argument: <nsec | 64-hex>".to_string(),
+        );
+    }
+    Ok(Command::LoadKey(args[0].to_string()))
+}
+
+fn parse_mls_invite(args: &[&str]) -> Result<Command, String> {
+    if args.len() != 2 {
+        return Err(
+            "parse error: mls-invite takes two arguments: <group_hex> <npub>".to_string(),
+        );
+    }
+    Ok(Command::MlsInvite(args[0].to_string(), args[1].to_string()))
+}
+
+fn parse_mls_send(args: &[&str]) -> Result<Command, String> {
+    if args.len() < 2 {
+        return Err(
+            "parse error: mls-send takes <group_hex> followed by the message text".to_string(),
+        );
+    }
+    let group = args[0].to_string();
+    // Re-join the remaining tokens with single spaces. The line splitter
+    // collapsed runs of whitespace, so multi-space input becomes single-
+    // space — acceptable for a diagnostic REPL.
+    let text = args[1..].join(" ");
+    Ok(Command::MlsSend(group, text))
+}
+
 // ── tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -637,5 +712,97 @@ mod tests {
     fn control_chars_rejected() {
         let err = parse_line("req \x07 kinds=1").unwrap_err();
         assert!(err.contains("control character"), "got {err}");
+    }
+
+    // ── MLS / Marmot verbs ──────────────────────────────────────────────
+
+    #[test]
+    fn create_account_optional_name() {
+        assert_eq!(
+            parse_line("create-account").unwrap(),
+            Command::CreateAccount(None)
+        );
+        assert_eq!(
+            parse_line("create-account alice").unwrap(),
+            Command::CreateAccount(Some("alice".to_string()))
+        );
+        assert!(parse_line("create-account alice bob").is_err());
+    }
+
+    #[test]
+    fn load_key_requires_arg() {
+        assert_eq!(
+            parse_line("load-key nsec1abc").unwrap(),
+            Command::LoadKey("nsec1abc".to_string())
+        );
+        assert!(parse_line("load-key").is_err());
+    }
+
+    #[test]
+    fn mls_nullary_verbs() {
+        assert_eq!(parse_line("mls-init").unwrap(), Command::MlsInit);
+        assert_eq!(parse_line("mls-status").unwrap(), Command::MlsStatus);
+        assert_eq!(parse_line("mls-poll").unwrap(), Command::MlsPoll);
+        assert!(parse_line("mls-init foo").is_err());
+    }
+
+    #[test]
+    fn mls_create_requires_name() {
+        assert_eq!(
+            parse_line("mls-create TestGroup").unwrap(),
+            Command::MlsCreate("TestGroup".to_string())
+        );
+        assert!(parse_line("mls-create").is_err());
+    }
+
+    #[test]
+    fn mls_invite_two_args() {
+        assert_eq!(
+            parse_line("mls-invite abcd npub1xyz").unwrap(),
+            Command::MlsInvite("abcd".to_string(), "npub1xyz".to_string())
+        );
+        assert!(parse_line("mls-invite abcd").is_err());
+        assert!(parse_line("mls-invite").is_err());
+    }
+
+    #[test]
+    fn mls_accept_optional() {
+        assert_eq!(parse_line("mls-accept").unwrap(), Command::MlsAccept(None));
+        assert_eq!(
+            parse_line("mls-accept deadbeef").unwrap(),
+            Command::MlsAccept(Some("deadbeef".to_string()))
+        );
+    }
+
+    #[test]
+    fn mls_send_joins_message_text() {
+        assert_eq!(
+            parse_line("mls-send abcd hello bob").unwrap(),
+            Command::MlsSend("abcd".to_string(), "hello bob".to_string())
+        );
+        assert_eq!(
+            parse_line("mls-send abcd one").unwrap(),
+            Command::MlsSend("abcd".to_string(), "one".to_string())
+        );
+        assert!(parse_line("mls-send abcd").is_err());
+        assert!(parse_line("mls-send").is_err());
+    }
+
+    #[test]
+    fn mls_messages_requires_group() {
+        assert_eq!(
+            parse_line("mls-messages deadbeef").unwrap(),
+            Command::MlsMessages("deadbeef".to_string())
+        );
+        assert!(parse_line("mls-messages").is_err());
+    }
+
+    #[test]
+    fn mls_fetch_kp_requires_npub() {
+        assert_eq!(
+            parse_line("mls-fetch-kp npub1xyz").unwrap(),
+            Command::MlsFetchKp("npub1xyz".to_string())
+        );
+        assert!(parse_line("mls-fetch-kp").is_err());
     }
 }

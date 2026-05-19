@@ -51,6 +51,20 @@ pub mod projection;
 pub mod service;
 pub mod view;
 
+/// Re-exports of the handful of `mdk-core` types that appear in the public
+/// [`service::MarmotService`] signature. Callers that drive the service
+/// (round-trip tests in-crate; the diagnostic REPL out-of-crate) need to
+/// construct these without taking a direct `mdk-core` dependency — the
+/// kernel-boundary exit gate ("`nmp-marmot` is the SOLE importer of
+/// `mdk-core`/`openmls`") would otherwise force every caller across the
+/// boundary to import `mdk-core` themselves.
+///
+/// Add types here ONLY when they appear in `service`'s public API. This
+/// module deliberately does NOT re-export the wider MDK surface.
+pub mod mls_types {
+    pub use mdk_core::prelude::{GroupId, MessageProcessingResult, NostrGroupConfigData};
+}
+
 /// Register every `nmp-marmot` substrate module into the kernel registry.
 /// Called by per-app generated code (`nmp-codegen`) at startup.
 pub fn register(registry: &mut nmp_core::substrate::ModuleRegistry) {

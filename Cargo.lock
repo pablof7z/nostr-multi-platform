@@ -3518,7 +3518,10 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "crossterm",
+ "mdk-sqlite-storage",
  "nmp-core",
+ "nmp-marmot",
+ "nostr",
  "rustls",
  "rustyline",
  "serde",
