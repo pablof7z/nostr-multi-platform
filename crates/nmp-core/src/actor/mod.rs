@@ -451,16 +451,28 @@ pub fn run_actor_with_observers(
         }
 
         // ── Idle work (runs on every iteration after relay poll) ─────────
-        // Flush any time-gated view requests (e.g. contacts_deadline).
-        let pending = kernel.pending_view_requests();
-        if !pending.is_empty() {
-            send_all_outbound(
-                &mut relay_controls,
-                &relay_tx,
-                &mut kernel,
-                &mut next_relay_generation,
-                pending,
-            );
+        // Flush any time-gated view requests (e.g. contacts_deadline) and
+        // run the M2 planner tick only while the actor is running. Before
+        // Start these would spawn relay workers (via send_all_outbound) and
+        // trigger relay-lifecycle events that emit spurious snapshots on the
+        // update channel even though no consumer is listening — the root
+        // cause of the S2 retention leak (T114b / s2-retention-audit.md).
+        // The publish engine tick below already carries the same running gate
+        // for the same reason. Pending profile claims, deferred view
+        // requests, and lifecycle triggers all survive in kernel state until
+        // Start flushes them through spawn_missing_relays + the first
+        // running-gated idle tick.
+        if running {
+            let pending = kernel.pending_view_requests();
+            if !pending.is_empty() {
+                send_all_outbound(
+                    &mut relay_controls,
+                    &relay_tx,
+                    &mut kernel,
+                    &mut next_relay_generation,
+                    pending,
+                );
+            }
         }
         // T142 — M2 planner tick: drain the subscription lifecycle's trigger
         // inbox. Per D8, an empty inbox is a zero-cost no-op (single
@@ -470,7 +482,7 @@ pub fn run_actor_with_observers(
         // OutboundMessages and sent to the relay pool. Placed after M1
         // `pending_view_requests()` to ensure M1 CLOSE frames are enqueued
         // before M2 opens new subs (spec §3.1 placement rationale).
-        {
+        if running {
             let wire_frames = kernel.drain_lifecycle_tick();
             if !wire_frames.is_empty() {
                 let outbound = wire_frames_to_outbound(wire_frames, &mut kernel);
