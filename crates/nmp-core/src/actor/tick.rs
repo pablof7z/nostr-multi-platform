@@ -279,4 +279,48 @@ mod tests {
             "regression: running=true + view dispatch emitted a non-snapshot frame: {frame}"
         );
     }
+
+    /// Verify create_account emits a snapshot with activeAccount set.
+    #[test]
+    fn create_account_emits_snapshot_with_active_account() {
+        let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
+        let (upd_tx, upd_rx) = mpsc::channel::<String>();
+        thread::spawn(move || run_actor(cmd_rx, upd_tx));
+
+        cmd_tx
+            .send(ActorCommand::Start {
+                visible_limit: 50,
+                emit_hz: 30,
+            })
+            .unwrap();
+
+        // Wait for Start to process and emit initial snapshot.
+        thread::sleep(Duration::from_millis(100));
+
+        cmd_tx
+            .send(ActorCommand::CreateAccount {
+                profile: [("name".to_string(), "Test".to_string())]
+                    .into_iter()
+                    .collect(),
+                relays: vec![("wss://relay.primal.net".to_string(), "both".to_string())],
+            })
+            .unwrap();
+
+        // Wait for create_account to process and emit.
+        thread::sleep(Duration::from_millis(500));
+        let _ = cmd_tx.send(ActorCommand::Shutdown);
+
+        // Drain all snapshots and find the one with activeAccount.
+        let mut found_active = false;
+        while let Ok(frame) = upd_rx.try_recv() {
+            if let Ok(UpdateEnvelope::Snapshot(snap)) = serde_json::from_str::<UpdateEnvelope>(&frame) {
+                if let Some(active) = snap.get("active_account") {
+                    if !active.is_null() {
+                        found_active = true;
+                    }
+                }
+            }
+        }
+        assert!(found_active, "expected snapshot with activeAccount after CreateAccount");
+    }
 }
