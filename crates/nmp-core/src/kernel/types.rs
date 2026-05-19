@@ -358,6 +358,10 @@ pub(super) struct Metrics {
 #[derive(Clone, Debug, Serialize)]
 pub(super) struct KernelUpdate {
     pub(super) rev: u64,
+    /// Snapshot schema version (`KERNEL_SCHEMA_VERSION`). Lets a shell detect
+    /// a kernel-vs-shell schema mismatch and degrade gracefully (D1) instead
+    /// of mis-decoding a renamed/removed/retyped field.
+    pub(super) schema_version: u32,
     pub(super) update_kind: &'static str,
     pub(super) running: bool,
     pub(super) relay_url: &'static str,

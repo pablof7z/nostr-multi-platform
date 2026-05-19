@@ -1,6 +1,11 @@
 use super::*;
 use crate::substrate::placeholder::picture_placeholder;
 
+/// Snapshot schema version. Bump on any breaking field rename, removal,
+/// or type change. Shells on an older version log and degrade (D1) rather
+/// than mis-decode.
+pub const KERNEL_SCHEMA_VERSION: u32 = 1;
+
 impl Kernel {
     pub(crate) fn make_update(&mut self, running: bool) -> String {
         let emit_started = Instant::now();
@@ -28,6 +33,7 @@ impl Kernel {
         let counters = self.total_counters();
         let update = KernelUpdate {
             rev: self.rev,
+            schema_version: KERNEL_SCHEMA_VERSION,
             update_kind: "ViewBatch",
             running,
             relay_url: "",

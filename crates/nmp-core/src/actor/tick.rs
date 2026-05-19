@@ -178,7 +178,18 @@ mod tests {
                 .unwrap_or_else(|e| panic!("undecodable frame on channel: {e}: {frame}"))
             {
                 UpdateEnvelope::Update(_) => updates += 1,
-                UpdateEnvelope::Snapshot(_) => snapshots += 1,
+                UpdateEnvelope::Snapshot(v) => {
+                    // Every snapshot MUST carry a schema version so a shell can
+                    // detect a kernel-vs-shell mismatch and degrade (D1). This
+                    // pins the contract as a CI gate — removing the field can
+                    // no longer slip past `serde_json::Value`'s tolerance.
+                    assert_eq!(
+                        v["schema_version"],
+                        serde_json::json!(1),
+                        "snapshot frame must carry schema_version=1: {v}"
+                    );
+                    snapshots += 1;
+                }
             }
         }
 
