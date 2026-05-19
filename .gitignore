@@ -17,3 +17,7 @@ ios/Chirp/Chirp.xcodeproj/project.xcworkspace/xcuserdata/
 ios/NmpPodcast/build/
 ios/NmpPodcast/NmpPodcast.xcodeproj/xcuserdata/
 ios/NmpPodcast/NmpPodcast.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Xcode Instruments traces
+*.trace/
+*.trace
