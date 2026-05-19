@@ -31,6 +31,7 @@ rustls = { workspace = true, default-features = false, features = ["ring"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["raw_value"] }
 tungstenite = { workspace = true, default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+zeroize = { workspace = true }
 
 # LMDB backend — feature-gated. The fork at crates/nmp-nostr-lmdb carries the
 # env-injection seam (ADR-0011); heed / nostr-database are the underlying

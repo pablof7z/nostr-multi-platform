@@ -8,6 +8,7 @@
 use nmp_core::substrate::{SignedEvent, UnsignedEvent};
 use nostr::nips::{nip04, nip44};
 use nostr::{EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
+use zeroize::{Zeroize, Zeroizing};
 
 use super::payload::{LocalKeyMaterial, LocalPayload, SignerPayload};
 use super::traits::{Nip04, Nip44, Signer, SignerBackend, SignerError};
@@ -37,6 +38,21 @@ impl std::fmt::Debug for LocalKeySigner {
             .field("pubkey", &self.pubkey.to_hex())
             .field("encrypted_at_rest", &self.password.is_some())
             .finish()
+    }
+}
+
+impl Drop for LocalKeySigner {
+    /// Zero any Rust-owned secret copies on drop so freed heap memory does not
+    /// retain key material (recoverable via memory dumps / crash reports).
+    ///
+    /// `#[derive(ZeroizeOnDrop)]` is not applicable here: `nostr::Keys` does
+    /// not implement `Zeroize`. `Keys` is an external type that manages its
+    /// own secret memory; we only own the plaintext `password` copy, so we
+    /// zero that explicitly.
+    fn drop(&mut self) {
+        if let Some(ref mut pw) = self.password {
+            pw.zeroize();
+        }
     }
 }
 
@@ -120,8 +136,12 @@ impl LocalKeySigner {
 
     /// Access the underlying secret as hex (for export flows that explicitly
     /// want the raw value; callers should warn the user).
-    pub fn secret_hex(&self) -> String {
-        self.keys.secret_key().to_secret_hex()
+    ///
+    /// Returns a [`Zeroizing<String>`] so the exported copy is wiped from the
+    /// heap when the caller drops it — a plain `String` return would leave the
+    /// secret recoverable in freed memory.
+    pub fn secret_hex(&self) -> Zeroizing<String> {
+        Zeroizing::new(self.keys.secret_key().to_secret_hex())
     }
 
     fn from_secret_key(sk: SecretKey) -> Self {
@@ -216,7 +236,9 @@ impl Signer for LocalKeySigner {
                     .expect("EncryptedSecretKey -> bech32 should not fail");
                 LocalKeyMaterial::Ncryptsec(bech)
             }
-            None => LocalKeyMaterial::Raw(self.keys.secret_key().to_secret_hex()),
+            None => {
+                LocalKeyMaterial::Raw(Zeroizing::new(self.keys.secret_key().to_secret_hex()))
+            }
         };
         SignerPayload::Local(LocalPayload { key })
     }

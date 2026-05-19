@@ -22,6 +22,9 @@ nostr = { workspace = true, features = ["std", "nip04", "nip44", "nip49"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 url = "2.5"
+# `serde` feature: `Zeroizing<String>` serializes transparently (inner value,
+# no wrapper) so `LocalKeyMaterial::Raw` keeps wire compatibility on disk.
+zeroize = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
 # No proc-macro fuzz crate — we keep the dep surface small and roll our own

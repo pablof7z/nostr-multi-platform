@@ -8,6 +8,10 @@
 //! 6. Nip46Signer transport handshake + sign round-trip via stub transport.
 //! 7. bunker:// URI parses + round-trips for a real-world example with all
 //!    fields.
+//!
+//! Plus a zeroization wire-compatibility guard: wrapping
+//! `LocalKeyMaterial::Raw` in `Zeroizing<String>` must not change the on-disk
+//! JSON form.
 
 use std::sync::{Arc, Mutex};
 
@@ -317,6 +321,44 @@ fn t7_bunker_uri_full_round_trip() {
     let printed = parsed.to_string();
     let reparsed = parse_bunker_uri(&printed).unwrap();
     assert_eq!(parsed, reparsed);
+}
+
+/// Zeroization wire-compatibility guard: wrapping `LocalKeyMaterial::Raw` in
+/// `Zeroizing<String>` must NOT change the on-disk JSON form. `Zeroizing<T>`
+/// serializes transparently (inner value, no wrapper) via the `zeroize`
+/// `serde` feature, so a payload written before this change still parses and a
+/// freshly serialized payload matches the historical shape exactly.
+#[test]
+fn local_payload_raw_json_wire_form_unchanged_after_zeroize_wrap() {
+    use nmp_signers::signers::{LocalKeyMaterial, LocalPayload};
+
+    let signer = LocalKeySigner::generate();
+    let SignerPayload::Local(lp) = signer.to_payload() else {
+        panic!("expected local payload");
+    };
+    let LocalKeyMaterial::Raw(ref hex) = lp.key else {
+        panic!("expected raw key material");
+    };
+    let hex = hex.to_string();
+
+    // Serialized form: `value` is the bare hex string, not an object — proof
+    // `Zeroizing` is transparent on the wire.
+    let json = serde_json::to_string(&lp).expect("serialize LocalPayload");
+    let expected = format!(r#"{{"key":{{"form":"raw","value":"{hex}"}}}}"#);
+    assert_eq!(json, expected, "Zeroizing wrap must not alter JSON shape");
+
+    // A payload stored before the change (plain-string form) still parses.
+    let from_legacy: LocalPayload =
+        serde_json::from_str(&expected).expect("parse legacy JSON form");
+    let LocalKeyMaterial::Raw(ref restored) = from_legacy.key else {
+        panic!("expected raw key material");
+    };
+    assert_eq!(restored.as_str(), hex);
+
+    // Full round-trip: restored signer derives the same pubkey.
+    let restored_signer =
+        LocalKeySigner::from_payload(&from_legacy).expect("from_payload");
+    assert_eq!(restored_signer.pubkey(), signer.pubkey());
 }
 
 // --- helpers -------------------------------------------------------------

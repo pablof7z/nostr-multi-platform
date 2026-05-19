@@ -340,7 +340,7 @@ pub fn run_actor_with_observers(
     event_observers: KernelEventObserverSlot,
     raw_event_observers: RawEventObserverSlot,
     relay_edit_rows: Arc<Mutex<Vec<crate::kernel::RelayEditRow>>>,
-    active_local_nsec: Arc<Mutex<Option<String>>>,
+    active_local_nsec: Arc<Mutex<Option<zeroize::Zeroizing<String>>>>,
 ) {
     // Dual-channel design: relay events get their own dedicated channel.
     // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.

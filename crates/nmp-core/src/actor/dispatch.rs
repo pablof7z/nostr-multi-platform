@@ -11,6 +11,8 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use zeroize::Zeroizing;
+
 use crate::kernel::Kernel;
 use crate::relay::{OutboundMessage, RelayRole};
 use crate::relay_worker::RelayEvent;
@@ -27,9 +29,15 @@ use super::{ActorCommand, RelayControl};
 /// Write the active account's bech32 secret key (or `None`) to `slot`.
 /// Called synchronously BEFORE `maybe_emit_after_dispatch` so the value is
 /// visible before Swift's `apply()` runs.
-fn update_nsec_slot(identity: &IdentityRuntime, slot: &Arc<Mutex<Option<String>>>) {
+///
+/// The bech32 secret is wrapped in [`Zeroizing`] so the previous value is
+/// wiped from the heap when this overwrite drops it.
+fn update_nsec_slot(
+    identity: &IdentityRuntime,
+    slot: &Arc<Mutex<Option<Zeroizing<String>>>>,
+) {
     if let Ok(mut guard) = slot.lock() {
-        *guard = identity.active_nsec_bech32();
+        *guard = identity.active_nsec_bech32().map(Zeroizing::new);
     }
 }
 
@@ -51,7 +59,7 @@ pub(super) fn dispatch_command(
     startup_sent: &mut bool,
     relays_ready: bool,
     lifecycle_observer: &LifecycleObserverSlot,
-    active_local_nsec: &Arc<Mutex<Option<String>>>,
+    active_local_nsec: &Arc<Mutex<Option<Zeroizing<String>>>>,
 ) -> Option<Vec<OutboundMessage>> {
     match command {
         ActorCommand::Start {

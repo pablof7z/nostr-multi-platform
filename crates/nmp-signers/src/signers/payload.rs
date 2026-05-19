@@ -13,6 +13,7 @@
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroizing;
 
 /// Serializable representation of a signer.
 ///
@@ -51,7 +52,13 @@ pub struct LocalPayload {
 #[serde(tag = "form", content = "value", rename_all = "snake_case")]
 pub enum LocalKeyMaterial {
     /// Raw secret key, hex-encoded.  Caller-storage must be trusted.
-    Raw(String),
+    ///
+    /// Wrapped in [`Zeroizing`] so the secret hex is wiped from the heap when
+    /// the payload is dropped — a freed `String` would otherwise leave the key
+    /// recoverable in a memory dump or crash report. `Zeroizing<String>`
+    /// serializes transparently (inner value, no wrapper) via the `zeroize`
+    /// `serde` feature, so the on-disk JSON form is unchanged.
+    Raw(Zeroizing<String>),
     /// NIP-49 ncryptsec string (`ncryptsec1...`).
     Ncryptsec(String),
 }
@@ -64,12 +71,24 @@ pub enum LocalKeyMaterial {
 pub struct Nip46Payload {
     /// Ephemeral local key, hex.  Used for encrypting to / signing the
     /// 24133 RPCs sent to the remote.  Never used to sign user events.
+    ///
+    /// TODO(zeroize): this is plaintext secret key material in the same
+    /// security class as `LocalKeyMaterial::Raw`. Wrap in `Zeroizing<String>`
+    /// so it is wiped from the heap on drop. Deferred from the initial
+    /// zeroization pass (which scoped to `LocalKeyMaterial::Raw`,
+    /// `secret_hex()`, and `active_local_nsec`) to keep the change set ≤
+    /// the file-count budget; the wrap is mechanical (`zeroize`'s `serde`
+    /// feature keeps the JSON wire form transparent).
     pub local_secret_hex: String,
     /// Remote (bunker) pubkey, hex.
     pub remote_pubkey_hex: String,
     /// Relays the remote rendezvous on (kind:24133).
     pub relays: Vec<String>,
     /// Optional connection secret (from `?secret=...` in the bunker URI).
+    ///
+    /// TODO(zeroize): connection-credential material — wrap in
+    /// `Zeroizing<String>` in the same follow-up that handles
+    /// `local_secret_hex` above.
     pub secret: Option<String>,
     /// Permissions string passed in `?perms=...` (CSV of `sign_event:<kind>`).
     pub permissions: Option<String>,

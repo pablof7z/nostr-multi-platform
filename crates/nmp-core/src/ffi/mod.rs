@@ -130,6 +130,7 @@ use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
+use zeroize::Zeroizing;
 
 type UpdateCallback = extern "C" fn(*mut c_void, *const c_char);
 
@@ -175,7 +176,11 @@ pub struct NmpApp {
     /// accounts leave this `None`. Per-app crates (e.g. `nmp-app-chirp`
     /// Marmot) read it via [`NmpApp::active_local_nsec`] so they can
     /// register a signer without Swift ever seeing the key.
-    active_local_nsec: Arc<Mutex<Option<String>>>,
+    ///
+    /// Wrapped in [`Zeroizing`] so the bech32 secret is wiped from the heap
+    /// when the slot is overwritten or the app drops — a plain `String` would
+    /// leave the key recoverable in freed memory.
+    active_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>>,
     actor: Mutex<Option<JoinHandle<()>>>,
     update_listener: Mutex<Option<JoinHandle<()>>>,
 }
@@ -233,7 +238,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     let actor_relay_edit_rows = Arc::clone(&relay_edit_rows);
     // Active local (nsec) key slot. The actor updates this after every
     // identity mutation; per-app crates read via NmpApp::active_local_nsec.
-    let active_local_nsec: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let active_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>> = Arc::new(Mutex::new(None));
     let actor_active_local_nsec = Arc::clone(&active_local_nsec);
     // Clone so we can report actor panics through the same listener pipe.
     let update_tx_panic = update_tx.clone();
@@ -395,7 +400,7 @@ impl NmpApp {
     /// always see the up-to-date value. Used by per-app crates (e.g.
     /// `nmp-app-chirp` Marmot registration) so the key stays Rust-owned
     /// (D0 — Swift never sees it for the `createAccount` path).
-    pub fn active_local_nsec(&self) -> Option<String> {
+    pub fn active_local_nsec(&self) -> Option<Zeroizing<String>> {
         self.active_local_nsec.lock().ok()?.clone()
     }
 
