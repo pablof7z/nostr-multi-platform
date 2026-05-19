@@ -88,7 +88,9 @@ use std::time::{Duration, Instant};
 /// True when `role` (a `RelayEditRow.role` value) semantically includes
 /// `needle` (e.g. `"both"` matches `"read"` and `"write"`).
 pub(crate) fn has_role(role: &str, needle: &str) -> bool {
-    role == needle || role == "both"
+    let r = role.to_ascii_lowercase();
+    let n = needle.to_ascii_lowercase();
+    r == n || r == "both"
 }
 
 /// Actor command variants.  The `actor` module is private (`mod actor`, not

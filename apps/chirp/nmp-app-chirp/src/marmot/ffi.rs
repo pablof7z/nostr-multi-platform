@@ -157,12 +157,16 @@ pub extern "C" fn nmp_app_chirp_marmot_register(
     };
     let db_path = format!("{}/marmot-mls-state.sqlite", dir.trim_end_matches('/'));
 
-    // Initialize the Apple keyring store once per process. `MdkSqliteStorage`
-    // requires this before it can create or open an encrypted DB.
-    let Ok(store) = AppleStore::new() else {
-        return std::ptr::null_mut();
-    };
-    set_default_store(store);
+    // Initialize a credential store for `MdkSqliteStorage`. Try the Apple
+    // protected store first (required on device); fall back to the in-memory
+    // mock store on the simulator where entitlements are missing (-34018).
+    let mut use_mock = false;
+    if let Ok(store) = AppleStore::new() {
+        set_default_store(store);
+    } else {
+        use_mock = true;
+        set_default_store(keyring_core::mock::Store::new().unwrap());
+    }
 
     let service = match MarmotService::new(
         &db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone(),
@@ -176,10 +180,25 @@ pub extern "C" fn nmp_app_chirp_marmot_register(
             let _ = std::fs::remove_file(format!("{}-wal", db_path));
             let _ = std::fs::remove_file(format!("{}-shm", db_path));
             match MarmotService::new(
-                &db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys,
+                &db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone(),
             ) {
                 Ok(s) => s,
-                Err(_) => return std::ptr::null_mut(),
+                Err(_) => {
+                    // If the Apple store failed because of missing entitlements
+                    // on the simulator, the retry above also fails. Switch to
+                    // the mock store and try one final time.
+                    if !use_mock {
+                        set_default_store(keyring_core::mock::Store::new().unwrap());
+                        match MarmotService::new(
+                            &db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone(),
+                        ) {
+                            Ok(s) => s,
+                            Err(_) => return std::ptr::null_mut(),
+                        }
+                    } else {
+                        return std::ptr::null_mut();
+                    }
+                }
             }
         }
     };

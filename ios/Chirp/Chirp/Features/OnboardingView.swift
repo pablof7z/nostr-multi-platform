@@ -28,7 +28,7 @@ struct OnboardingView: View {
     }
 
     var body: some View {
-        VStack(spacing: ChirpSpace.xl) {
+        VStack(spacing: 32) {
             Spacer()
 
             logoBrand
@@ -41,13 +41,13 @@ struct OnboardingView: View {
             }
 
             // Action buttons
-            VStack(spacing: ChirpSpace.m) {
+            VStack(spacing: 16) {
                 if mode == .welcome {
                     Button {
                         withAnimation(.smooth) { mode = .importKey }
                     } label: {
                         Label("I have a key", systemImage: "key.fill")
-                            .font(ChirpFont.headline)
+                            .font(.headline)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
                     }
@@ -60,22 +60,22 @@ struct OnboardingView: View {
                         model.createAccount()
                     } label: {
                         Text("Create a new identity")
-                            .font(ChirpFont.headline)
+                            .font(.headline)
                     }
                     .transition(.opacity)
                 } else {
                     Button("Back") {
                         withAnimation(.smooth) { mode = .welcome }
                     }
-                    .font(ChirpFont.callout)
+                    .font(.callout)
                     .transition(.opacity)
                 }
             }
-            .padding(.horizontal, ChirpSpace.l)
+            .padding(.horizontal, 24)
             .opacity(contentAppeared ? 1 : 0)
             .offset(y: contentAppeared ? 0 : 16)
 
-            Spacer().frame(height: ChirpSpace.xxl)
+            Spacer().frame(height: 48)
         }
         .background(Color(.systemBackground))
         // NMP_DBG overlay — shows kernel state without needing device logs
