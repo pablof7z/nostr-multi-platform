@@ -43,7 +43,6 @@ struct MarmotInviteSheet: View {
                                 .foregroundStyle(.secondary)
                             TextEditor(text: $inviteeText)
                                 .font(.body.monospaced())
-                                .scrollContentBackground(.hidden)
                                 .frame(minHeight: 120)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()

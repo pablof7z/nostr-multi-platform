@@ -101,8 +101,6 @@ struct MarmotGroupChatView: View {
                 .focused($composerFocused)
                 .font(.body)
                 .foregroundStyle(.primary)
-                .scrollContentBackground(.hidden)
-                .background(Color.clear)
                 .frame(minHeight: 38, maxHeight: 120)
                 .overlay(alignment: .topLeading) {
                     if draft.isEmpty {

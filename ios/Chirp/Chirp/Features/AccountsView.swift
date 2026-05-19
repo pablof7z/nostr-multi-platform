@@ -122,7 +122,6 @@ private struct AddAccountSheet: View {
                     Text("New identity").tag(2)
                 }
                 .pickerStyle(.segmented)
-                .listRowBackground(Color.clear)
 
                 switch selectedTab {
                 case 0:

@@ -42,8 +42,6 @@ struct ComposeView: View {
                                 .focused($editorFocused)
                                 .font(.body)
                                 .foregroundStyle(.primary)
-                                .scrollContentBackground(.hidden)
-                                .background(Color.clear)
                                 .frame(minHeight: 140)
                                 .overlay(alignment: .topLeading) {
                                     if text.isEmpty {

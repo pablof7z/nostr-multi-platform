@@ -40,16 +40,16 @@ struct NoteContentView: View {
                         HStack(spacing: 10) {
                             Image(systemName: "play.rectangle.fill")
                                 .font(.title2)
-                                .foregroundStyle(.white)
+                                .foregroundStyle(.primary)
                             Text(url.lastPathComponent)
                                 .font(.caption.monospaced())
-                                .foregroundStyle(.white.opacity(0.7))
+                                .foregroundStyle(.secondary)
                                 .lineLimit(1)
                             Spacer()
                         }
                         .padding(12)
                         .frame(maxWidth: .infinity)
-                        .background(Color.black.opacity(0.72))
+                        .background(Color(.secondarySystemBackground))
                         .clipShape(RoundedRectangle(cornerRadius: 10))
                     }
                 }
@@ -110,12 +110,12 @@ enum NoteToken {
         case .hashtag(let tag):
             return Text("#\(tag)").foregroundStyle(Color.accentColor).bold()
         case .url(let u):
-            return Text(u).foregroundStyle(Color.blue)
+            return Text(u).foregroundStyle(Color.accentColor)
         case .mention(let bech32):
             // Show first 10 chars of the bech32 key — no profile lookup needed.
             let prefix = bech32.prefix(10)
             let kind = bech32.hasPrefix("npub1") ? "@" : "↩ "
-            return Text("\(kind)\(prefix)…").foregroundStyle(Color.indigo).bold()
+            return Text("\(kind)\(prefix)…").foregroundStyle(Color.accentColor).bold()
         case .image, .video:
             return Text("")
         }

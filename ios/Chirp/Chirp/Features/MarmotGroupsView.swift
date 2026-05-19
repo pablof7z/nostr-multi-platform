@@ -258,7 +258,6 @@ struct MarmotCreateGroupSheet: View {
                                     .foregroundStyle(.secondary)
                                 TextEditor(text: $inviteeText)
                                     .font(.body.monospaced())
-                                    .scrollContentBackground(.hidden)
                                     .frame(minHeight: 90)
                                     .textInputAutocapitalization(.never)
                                     .autocorrectionDisabled()
