@@ -4,6 +4,7 @@ pub mod bunker_hook;
 mod ffi;
 mod keepalive;
 mod kernel;
+mod kernel_reducer;
 pub mod nip19;
 pub mod nip21;
 pub mod planner;
@@ -22,6 +23,7 @@ pub use app::{
     resolve_open_uri, AppState, KernelAction, KernelUpdate, KernelViewSpec, OpenUriError,
     OpenUriRouting, VIEW_ADDRESSABLE, VIEW_PROFILE, VIEW_THREAD,
 };
+pub use kernel_reducer::KernelReducer;
 pub use bunker_hook::{register_bunker_hook, BunkerHookFn};
 pub use ffi::NmpApp;
 pub use remote_signer::RemoteSignerHandle;

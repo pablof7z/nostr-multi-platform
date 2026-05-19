@@ -15,7 +15,7 @@
 
 mod commands;
 mod dispatch;
-mod kernel_action;
+pub(crate) mod kernel_action;
 mod outbound;
 mod relay_mgmt;
 mod tick;

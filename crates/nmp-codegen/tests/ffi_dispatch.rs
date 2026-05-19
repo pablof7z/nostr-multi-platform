@@ -66,57 +66,65 @@ fn dispatch_is_not_the_old_diagnostics_stub() {
     );
 }
 
-/// Real routing: each pure `KernelAction` arm must map to the exact
-/// `KernelUpdate` the hand-written reducer emits. Asserting the constructor
-/// shapes textually is the anti-stub discriminator — a body that returns one
-/// update regardless of input cannot contain all of these.
+/// Real routing: `AppAction::Kernel(_)` is routed through the public
+/// `nmp_core::KernelReducer`, which delegates to the same hand-written
+/// `dispatch_kernel_action` reducer used by the actor loop. The generated
+/// `match` must branch on the action discriminant and must hand every
+/// `KernelAction` (without per-arm copy-paste) to `self.kernel.reduce(...)`.
 #[test]
-fn dispatch_routes_each_pure_kernel_arm() {
+fn dispatch_routes_kernel_arm_through_public_reducer() {
     let ffi = generate_fixture("pure-arms");
 
-    // Mirrors nmp_core::actor::kernel_action::dispatch_kernel_action.
-    let expected = [
-        "AppAction::Kernel(nmp_core::KernelAction::Start)",
-        "AppUpdate::Kernel(nmp_core::KernelUpdate::Started { rev: 0 })",
-        "AppAction::Kernel(nmp_core::KernelAction::Stop)",
-        "AppUpdate::Kernel(nmp_core::KernelUpdate::Stopped { rev: 0 })",
-        "nmp_core::KernelAction::OpenView { namespace, key }",
-        "nmp_core::KernelUpdate::ViewOpened { namespace, key }",
-        "nmp_core::KernelAction::CloseView { namespace, key }",
-        "nmp_core::KernelUpdate::ViewClosed { namespace, key }",
-        "nmp_core::KernelAction::RunDiagnostics",
-        "nmp_core::KernelUpdate::Diagnostics",
-    ];
-    for needle in expected {
-        assert!(
-            ffi.contains(needle),
-            "generated dispatch missing real routing fragment `{needle}`:\n{ffi}"
-        );
-    }
     assert!(
         ffi.contains("match action"),
         "generated dispatch must branch on the action discriminant:\n{ffi}"
     );
+    assert!(
+        ffi.contains("AppAction::Kernel(action)") && ffi.contains("self.kernel.reduce(action)"),
+        "Kernel arm must route through the public reducer:\n{ffi}"
+    );
 }
 
-/// Kernel-bound + module-projected ops have no reducer reachable from the
-/// generated crate. They must surface as a typed, app-noun-free rejection
-/// (D6: no panic across FFI, no fake success), referencing the follow-up.
+/// T-NMP-145-FF: `OpenUri` is no longer kernel-bound from the generator's
+/// perspective. `nmp-core` exposes a public `KernelReducer` that owns a
+/// `Kernel` and reduces every `KernelAction` (including `OpenUri`) to the
+/// correct `KernelUpdate`, registering subscription interest through the
+/// single-writer registry. The generated `FfiApp` owns a `KernelReducer` and
+/// routes every `AppAction::Kernel(_)` through `self.kernel.reduce(_)` — no
+/// per-arm match, no `UriRejected` rejection for OpenUri.
 #[test]
-fn uncovered_ops_surface_a_typed_rejection_not_a_panic() {
-    let ffi = generate_fixture("uncovered");
+fn dispatch_routes_kernel_actions_through_nmp_core_reducer() {
+    let ffi = generate_fixture("reducer-routing");
+    assert!(
+        ffi.contains("nmp_core::KernelReducer"),
+        "FfiApp must own a nmp_core::KernelReducer (T-NMP-145-FF):\n{ffi}"
+    );
+    assert!(
+        ffi.contains("self.kernel.reduce("),
+        "Kernel actions must route through self.kernel.reduce(...) (T-NMP-145-FF):\n{ffi}"
+    );
+    // OpenUri specifically is no longer a kernel-bound rejection.
+    assert!(
+        !ffi.contains("OpenUri is kernel-bound"),
+        "OpenUri must no longer be rejected as kernel-bound (T-NMP-145-FF):\n{ffi}"
+    );
+}
+
+/// Module-projected actions still have no reducer reachable from the
+/// generated crate (substrate modules expose no generic reducer surface).
+/// They must surface as a typed, app-noun-free rejection (D6: no panic
+/// across FFI, no fake success). OpenUri is no longer in this set — see
+/// `dispatch_routes_kernel_actions_through_nmp_core_reducer`.
+#[test]
+fn module_projected_ops_surface_a_typed_rejection_not_a_panic() {
+    let ffi = generate_fixture("module-uncovered");
     assert!(
         ffi.contains("KernelUpdate::UriRejected"),
-        "uncovered ops must surface KernelUpdate::UriRejected (D6 typed error):\n{ffi}"
+        "module-projected ops must surface KernelUpdate::UriRejected (D6 typed error):\n{ffi}"
     );
     assert!(
         ffi.contains("NMP-145"),
-        "the rejection reason must reference the NMP-145 follow-up boundary:\n{ffi}"
-    );
-    // OpenUri is the documented kernel-bound op that cannot be generated.
-    assert!(
-        ffi.contains("nmp_core::KernelAction::OpenUri { uri }"),
-        "OpenUri must be matched explicitly and routed to the rejection:\n{ffi}"
+        "the rejection reason must reference the NMP-145 boundary:\n{ffi}"
     );
 }
 
@@ -149,10 +157,10 @@ fn generate_zero_module() -> String {
     ffi
 }
 
-/// A zero-module manifest yields an `AppAction` with only `Kernel(_)`, so the
-/// six explicit `KernelAction` arms are exhaustive. Emitting a module
-/// catch-all there would be an `unreachable_patterns` warning (hard error
-/// under `deny(warnings)`) — the generator must omit it.
+/// A zero-module manifest yields an `AppAction` with only `Kernel(_)`, so
+/// the single `AppAction::Kernel(action)` arm is exhaustive. Emitting a
+/// module catch-all there would be an `unreachable_patterns` warning (hard
+/// error under `deny(warnings)`) — the generator must omit it.
 #[test]
 fn zero_module_manifest_omits_unreachable_catch_all() {
     let ffi = generate_zero_module();
@@ -160,12 +168,10 @@ fn zero_module_manifest_omits_unreachable_catch_all() {
         !ffi.contains("other =>"),
         "zero-module crate must not emit an unreachable module catch-all:\n{ffi}"
     );
-    // The kernel-bound OpenUri rejection is still present (it is a
-    // KernelAction variant, always reachable).
+    // The kernel arm still routes through the public reducer.
     assert!(
-        ffi.contains("nmp_core::KernelAction::OpenUri { uri }")
-            && ffi.contains("KernelUpdate::UriRejected"),
-        "OpenUri must still route to the typed rejection without modules:\n{ffi}"
+        ffi.contains("self.kernel.reduce("),
+        "zero-module crate must still route the kernel arm through the public reducer:\n{ffi}"
     );
     assert!(
         !ffi.contains("unimplemented!") && !ffi.contains("panic!"),
