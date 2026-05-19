@@ -165,7 +165,7 @@ impl Nip46Signer {
         let uri = BunkerUri {
             remote_pubkey_hex: p.remote_pubkey_hex.clone(),
             relays: p.relays.clone(),
-            secret: p.secret.as_deref().map(String::from),
+            secret: p.secret.clone(),
             permissions: p.permissions.clone(),
             extra: std::mem::take(&mut extra),
         };
@@ -276,7 +276,7 @@ impl Signer for Nip46Signer {
             local_secret_hex: Zeroizing::new(self.local_keys.secret_key().to_secret_hex()),
             remote_pubkey_hex: self.uri.remote_pubkey_hex.clone(),
             relays: self.uri.relays.clone(),
-            secret: self.uri.secret.clone().map(Zeroizing::new),
+            secret: self.uri.secret.clone(),
             permissions: self.uri.permissions.clone(),
             cached_remote_user_pubkey_hex: Some(self.remote_user_pubkey.to_hex()),
         })

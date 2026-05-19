@@ -25,7 +25,7 @@ fn parses_full_bunker_uri() {
     );
     let parsed = parse_bunker_uri(&uri).unwrap();
     assert_eq!(parsed.relays.len(), 2);
-    assert_eq!(parsed.secret.as_deref(), Some("abc123"));
+    assert_eq!(parsed.secret.as_deref().map(String::as_str), Some("abc123"));
     assert_eq!(parsed.permissions.as_deref(), Some("sign_event:1,nip04_encrypt"));
 }
 
@@ -124,7 +124,10 @@ fn deduplicates_repeated_relays() {
 fn handles_percent_encoded_secret() {
     let uri = format!("bunker://{PK}?relay=wss://r.example&secret=hello%20world");
     let parsed = parse_bunker_uri(&uri).unwrap();
-    assert_eq!(parsed.secret.as_deref(), Some("hello world"));
+    assert_eq!(
+        parsed.secret.as_deref().map(String::as_str),
+        Some("hello world")
+    );
 }
 
 #[test]
@@ -148,7 +151,7 @@ fn ignores_empty_query_pairs() {
     let uri = format!("bunker://{PK}?&relay=wss://r.example&&secret=foo&");
     let parsed = parse_bunker_uri(&uri).unwrap();
     assert_eq!(parsed.relays.len(), 1);
-    assert_eq!(parsed.secret.as_deref(), Some("foo"));
+    assert_eq!(parsed.secret.as_deref().map(String::as_str), Some("foo"));
 }
 
 #[test]

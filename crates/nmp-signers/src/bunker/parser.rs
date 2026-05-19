@@ -4,6 +4,8 @@
 
 use std::fmt;
 
+use zeroize::Zeroizing;
+
 /// Maximum accepted `bunker://` URI length in bytes.  Anything longer is a
 /// red flag (a real URI is ~150–300 bytes); reject fast rather than allocate.
 pub const MAX_BUNKER_URI_LEN: usize = 4 * 1024;
@@ -16,7 +18,11 @@ pub struct BunkerUri {
     /// One or more rendezvous relays (`ws://` or `wss://`).
     pub relays: Vec<String>,
     /// Optional connection secret (`?secret=...`).
-    pub secret: Option<String>,
+    ///
+    /// Wrapped in [`Zeroizing`] — a NIP-46 connection secret is sensitive
+    /// credential material and is wiped from the heap when the `BunkerUri`
+    /// is dropped.
+    pub secret: Option<Zeroizing<String>>,
     /// Optional permissions string (`?perms=sign_event:1,nip04_encrypt`).
     pub permissions: Option<String>,
     /// Unknown query params preserved for round-trip.
@@ -77,7 +83,7 @@ impl fmt::Display for BunkerUri {
         }
         if let Some(s) = &self.secret {
             sep(f, &mut first)?;
-            write!(f, "secret={}", url_encode(s))?;
+            write!(f, "secret={}", url_encode(s.as_str()))?;
         }
         if let Some(p) = &self.permissions {
             sep(f, &mut first)?;
@@ -123,7 +129,7 @@ pub fn parse_bunker_uri(input: &str) -> Result<BunkerUri, BunkerParseError> {
     let pubkey = normalise_pubkey(pubkey_clean)?;
 
     let mut relays: Vec<String> = Vec::new();
-    let mut secret: Option<String> = None;
+    let mut secret: Option<Zeroizing<String>> = None;
     let mut permissions: Option<String> = None;
     let mut extra: Vec<(String, String)> = Vec::new();
 
@@ -147,7 +153,7 @@ pub fn parse_bunker_uri(input: &str) -> Result<BunkerUri, BunkerParseError> {
                 }
                 "secret" => {
                     if !v.is_empty() {
-                        secret = Some(v);
+                        secret = Some(Zeroizing::new(v));
                     }
                 }
                 "perms" | "permissions" => {

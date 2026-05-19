@@ -336,7 +336,7 @@ fn t7_bunker_uri_full_round_trip() {
     let parsed = parse_bunker_uri(&uri).unwrap();
     assert_eq!(parsed.remote_pubkey_hex, SAMPLE_PK);
     assert_eq!(parsed.relays.len(), 2);
-    assert_eq!(parsed.secret.as_deref(), Some("ABC123"));
+    assert_eq!(parsed.secret.as_deref().map(String::as_str), Some("ABC123"));
     assert_eq!(
         parsed.permissions.as_deref(),
         Some("sign_event:1,nip04_encrypt")
