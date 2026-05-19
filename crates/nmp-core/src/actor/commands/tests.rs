@@ -58,7 +58,9 @@ fn sign_in_nsec_rejects_garbage_with_toast() {
 #[test]
 fn create_account_generates_fresh_active_key() {
     let (mut id, mut kernel) = fresh();
-    create_account(&mut id, &mut kernel, false);
+    let profile = std::collections::HashMap::new();
+    let relays: Vec<(String, String)> = vec![];
+    create_account(&mut id, &mut kernel, false, &profile, &relays);
     assert_eq!(kernel.account_snapshot().0.len(), 1);
     assert!(id.active_pubkey().is_some());
 }
@@ -67,7 +69,9 @@ fn create_account_generates_fresh_active_key() {
 fn switch_active_flips_status_synchronously() {
     let (mut id, mut kernel) = fresh();
     sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
-    create_account(&mut id, &mut kernel, false);
+    let profile = std::collections::HashMap::new();
+    let relays: Vec<(String, String)> = vec![];
+    create_account(&mut id, &mut kernel, false, &profile, &relays);
     let first_id = kernel.account_snapshot().0[0].id.clone();
     let second_active = id.active_pubkey().unwrap();
     assert_ne!(first_id, second_active);

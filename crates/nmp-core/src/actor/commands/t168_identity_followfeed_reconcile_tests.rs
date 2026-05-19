@@ -121,7 +121,9 @@ fn t168_switch_active_reconciles_followfeed_to_new_account() {
     // Add a freshly-generated second account (no kind:3 → empty follow set).
     // `create_account` makes it active; switch back to A (the account whose
     // follow-feed is live) so the `switch_active` under test moves A → second.
-    create_account(&mut id, &mut kernel, false);
+    let profile = std::collections::HashMap::new();
+    let relays: Vec<(String, String)> = vec![];
+    create_account(&mut id, &mut kernel, false, &profile, &relays);
     let second_id = id.active_pubkey().expect("second account active");
     switch_active(&mut id, &mut kernel, &a, false);
     let _ = kernel.drain_lifecycle_tick();
@@ -130,11 +132,12 @@ fn t168_switch_active_reconciles_followfeed_to_new_account() {
     switch_active(&mut id, &mut kernel, &second_id, false);
     let frames = kernel.drain_lifecycle_tick();
 
+    // The second account was created with DEFAULT_FOLLOWS (2 follows) + self-interest.
     assert_eq!(
         kernel.follow_feed_interest_ids_for_test().len(),
-        1,
+        3,
         "T168: switching to the second account must withdraw A's follow-feed \
-         interests; the new account's self-interest remains: {:?}",
+         interests and install the second account's default follows + self: {:?}",
         kernel.follow_feed_interest_ids_for_test()
     );
     assert!(
