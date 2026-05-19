@@ -286,3 +286,73 @@ impl ViewModule for MemberListView {
         }
     }
 }
+
+// ─── KeyPackageLookup ────────────────────────────────────────────────────────
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct KeyPackageLookupSpec {
+    /// Nostr pubkey (hex) to fetch KeyPackages for.
+    pub owner_pubkey: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
+pub struct KeyPackageLookupPayload {
+    pub owner_pubkey: String,
+    /// `true` once at least one kind:30443/443 event has arrived for this author.
+    pub found: bool,
+}
+
+/// One-shot view that registers a kind:30443/443 relay subscription for
+/// `owner_pubkey`. Opening this view (via `OpenView { namespace:
+/// "marmot.key_package_lookup", key: pubkey }`) causes the kernel planner to
+/// fetch the author's KeyPackage events from their NIP-65 write relays.
+///
+/// The actual signed-event caching is handled by the app's `RawEventObserver`
+/// tap (which receives the full signed event including `sig`) calling
+/// `MarmotService::cache_key_package`. This view exists solely to trigger the
+/// subscription — it is a subscription stub, not a data store.
+pub struct KeyPackageLookupView;
+
+impl ViewModule for KeyPackageLookupView {
+    const NAMESPACE: &'static str = "marmot.key_package_lookup";
+    type Spec = KeyPackageLookupSpec;
+    type Payload = KeyPackageLookupPayload;
+    type Delta = EventAccumulatorDelta;
+    type Key = String;
+    type State = EventAccumulator;
+
+    fn key(spec: &Self::Spec) -> Self::Key {
+        spec.owner_pubkey.clone()
+    }
+    fn dependencies(spec: &Self::Spec) -> ViewDependencies {
+        ViewDependencies {
+            kinds: vec![KIND_KEY_PACKAGE, KIND_KEY_PACKAGE_LEGACY],
+            authors: vec![spec.owner_pubkey.clone()],
+            ..Default::default()
+        }
+    }
+    fn open(_c: &ViewContext, spec: Self::Spec) -> (Self::State, Self::Payload) {
+        (
+            EventAccumulator::default(),
+            KeyPackageLookupPayload { owner_pubkey: spec.owner_pubkey, found: false },
+        )
+    }
+    fn on_event_inserted(_c: &ViewContext, s: &mut Self::State, e: &KernelEvent) -> Option<Self::Delta> {
+        s.insert(e)
+    }
+    fn on_event_removed(_c: &ViewContext, s: &mut Self::State, id: &EventId) -> Option<Self::Delta> {
+        s.remove(id)
+    }
+    fn on_event_replaced(_c: &ViewContext, s: &mut Self::State, old: &EventId, e: &KernelEvent) -> Option<Self::Delta> {
+        s.replace(old, e)
+    }
+    fn on_projection_changed(_c: &ViewContext, _s: &mut Self::State, _ch: &ProjectionChange) -> Option<Self::Delta> {
+        None
+    }
+    fn snapshot(_c: &ViewContext, state: &Self::State) -> Self::Payload {
+        KeyPackageLookupPayload {
+            owner_pubkey: String::new(),
+            found: !state.events.is_empty(),
+        }
+    }
+}

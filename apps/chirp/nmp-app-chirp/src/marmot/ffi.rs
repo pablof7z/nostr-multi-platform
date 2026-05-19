@@ -73,10 +73,13 @@ use std::ffi::{c_char, CStr, CString};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use nmp_core::{KernelEventObserverId, NmpApp, RawEventObserver, RawEventObserverId};
+use nmp_core::{
+    ActorCommand, KernelAction, KernelEventObserverId, NmpApp, RawEventObserver, RawEventObserverId,
+};
 use nostr::Keys;
 use serde_json::{json, Value};
 
+use nmp_core::substrate::ViewModule;
 use nmp_marmot::service::MarmotService;
 
 use crate::marmot::state::MarmotProjection;
@@ -261,6 +264,51 @@ pub extern "C" fn nmp_app_chirp_marmot_dispatch(
         .with_inner(|h| crate::marmot::ops::dispatch(h, &v, now_secs()))
         .unwrap_or_else(|| err("projection mutex poisoned"));
     to_c_json(&result)
+}
+
+/// Trigger the kernel to fetch KeyPackage events (kind:30443/443) for the
+/// named pubkeys from relays. `pubkeys_json` is a JSON array of pubkey
+/// strings (hex or npub bech32). Fire-and-forget — returns immediately.
+///
+/// For each parseable pubkey, sends an `OpenView { namespace:
+/// "marmot.key_package_lookup", key: pubkey_hex }` command to the kernel
+/// actor. The kernel planner resolves the author's NIP-65 write relays and
+/// fetches their kind:30443/443 events. When events arrive, the Marmot
+/// inbound tap caches them via `MarmotService::cache_key_package`; the next
+/// `nmp_app_chirp_marmot_snapshot` will include the pubkeys in
+/// `cached_kp_pubkeys`. Null handle / invalid JSON are silent no-ops (D6).
+#[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn nmp_app_chirp_marmot_fetch_key_packages(
+    handle: *mut MarmotHandle,
+    pubkeys_json: *const c_char,
+) {
+    let Some(handle) = (unsafe { handle.as_ref() }) else {
+        return;
+    };
+    if handle.app.is_null() {
+        return;
+    }
+    let Some(json_str) = c_str_opt(pubkeys_json) else {
+        return;
+    };
+    let Ok(pubkeys) = serde_json::from_str::<Vec<String>>(&json_str) else {
+        return;
+    };
+    // SAFETY: app pointer is valid for the handle's lifetime (same contract
+    // as unregister). We only read `actor_sender` — no mutation.
+    let app_ref = unsafe { &*handle.app };
+    let sender = app_ref.actor_sender();
+    for pk_str in pubkeys {
+        // Accept hex or bech32; normalise to hex for the view key.
+        let Ok(pk) = nostr::PublicKey::parse(&pk_str) else {
+            continue; // Unparseable — skip silently (D6).
+        };
+        let _ = sender.send(ActorCommand::Kernel(KernelAction::OpenView {
+            namespace: nmp_marmot::view::KeyPackageLookupView::NAMESPACE.to_string(),
+            key: pk.to_hex(),
+        }));
+    }
 }
 
 /// Free a string previously returned by snapshot / group_messages /
