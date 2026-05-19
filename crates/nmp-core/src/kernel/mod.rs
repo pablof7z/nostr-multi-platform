@@ -704,4 +704,11 @@ impl Kernel {
     pub(crate) fn lifecycle_mut(&mut self) -> &mut SubscriptionLifecycle {
         &mut self.lifecycle
     }
+
+    /// Pre-populate `seed_contacts` for a given pubkey with the specified follows.
+    /// Used during account creation so the follow-feed can be set up immediately
+    /// without waiting for the kind:3 event to round-trip from relays.
+    pub(crate) fn prepopulate_seed_contacts(&mut self, pubkey: String, follows: Vec<String>) {
+        self.seed_contacts.insert(pubkey, follows);
+    }
 }

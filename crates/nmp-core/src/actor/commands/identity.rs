@@ -352,8 +352,15 @@ pub(crate) fn create_account(
     relays: &[(String, String)],
 ) -> Vec<OutboundMessage> {
     let id = identity.add(Keys::generate());
-    identity.active = Some(id);
+    identity.active = Some(id.clone());
     sync_kernel(identity, kernel);
+
+    // Pre-populate seed_contacts so the follow-feed can be set up immediately
+    // without waiting for the published kind:3 to round-trip from relays.
+    let follows = DEFAULT_FOLLOWS.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    kernel.prepopulate_seed_contacts(id.clone(), follows);
+
+    kernel.reconcile_follow_feed_after_identity_change();
 
     // ── Publish kind:0 metadata ──────────────────────────────────
     let kind0_content = match serde_json::to_string(profile) {
@@ -400,7 +407,6 @@ pub(crate) fn create_account(
         }
     }
 
-    kernel.reconcile_follow_feed_after_identity_change();
     let mut outbound = kernel.active_account_bootstrap_requests();
     outbound.extend(retarget_timeline(identity, kernel, relays_ready));
     outbound.extend(publish_initial_follows(identity, kernel));
