@@ -5,12 +5,7 @@ import SwiftUI
 struct SettingsHubView: View {
     @EnvironmentObject private var model: KernelModel
 
-    // Relay add fields
-    @State private var newRelayURL = ""
-    @State private var newRelayRole = "both"  // kernel accepts "read" | "write" | "both"
     @State private var showRoadmap = false
-
-    private let relayRoles = ["both", "read", "write"]
 
     private var appVersion: String {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
@@ -36,36 +31,16 @@ struct SettingsHubView: View {
 
             // ── Relays ────────────────────────────────────────────────────
             Section {
-                // Existing relay rows
-                if model.relayEditRows.isEmpty {
-                    HStack {
-                        Image(systemName: "antenna.radiowaves.left.and.right")
-                            .foregroundStyle(ChirpColor.textTertiary)
-                        Text("No relays configured")
-                            .font(ChirpFont.callout)
-                            .foregroundStyle(ChirpColor.textTertiary)
-                    }
-                    .padding(.vertical, ChirpSpace.xs)
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                } else {
-                    ForEach(model.relayEditRows) { relay in
-                        RelayRow(relay: relay)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    model.removeRelay(url: relay.url)
-                                } label: {
-                                    Label("Remove", systemImage: "trash")
-                                }
-                            }
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                    }
+                NavigationLink(destination: RelaySettingsView()) {
+                    settingsRow(
+                        icon: "antenna.radiowaves.left.and.right",
+                        iconColor: ChirpColor.accent,
+                        title: "Relays",
+                        subtitle: relaySubtitle
+                    )
                 }
-
-                // Add relay row
-                addRelayRow
-
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             } header: {
                 ChirpSectionHeader(title: "Relays")
             }
@@ -152,68 +127,16 @@ struct SettingsHubView: View {
 
     // ── Active account subtitle ───────────────────────────────────────────
 
+    private var relaySubtitle: String {
+        let count = model.relayEditRows.count
+        return count == 0 ? "No relays configured" : "\(count) relay\(count == 1 ? "" : "s")"
+    }
+
     private var activeAccountSubtitle: String {
         guard let activeID = model.activeAccount,
               let account = model.accounts.first(where: { $0.id == activeID })
         else { return "No active account" }
         return account.displayName.isEmpty ? shortNpub(account.npub) : account.displayName
-    }
-
-    // ── Add relay row ─────────────────────────────────────────────────────
-
-    private var addRelayRow: some View {
-        VStack(alignment: .leading, spacing: ChirpSpace.s) {
-            HStack(spacing: ChirpSpace.s) {
-                Image(systemName: "plus.circle.fill")
-                    .foregroundStyle(ChirpColor.accent)
-                    .font(.system(size: 16))
-
-                TextField("wss://relay.example.com", text: $newRelayURL)
-                    .font(ChirpFont.mono)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
-            }
-
-            HStack(spacing: ChirpSpace.m) {
-                // Role picker
-                Picker("Role", selection: $newRelayRole) {
-                    ForEach(relayRoles, id: \.self) { role in
-                        Text(role.capitalized).tag(role)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 200)
-
-                Spacer()
-
-                // Add button
-                Button {
-                    let url = newRelayURL.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !url.isEmpty else { return }
-                    model.addRelay(url: url, role: newRelayRole)
-                    newRelayURL = ""
-                    newRelayRole = "both"
-                } label: {
-                    Text("Add")
-                        .font(ChirpFont.headline)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, ChirpSpace.m)
-                        .padding(.vertical, ChirpSpace.s)
-                        .background(
-                            newRelayURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                ? ChirpColor.accent.opacity(0.4)
-                                : ChirpColor.accent,
-                            in: Capsule()
-                        )
-                }
-                .buttonStyle(.plain)
-                .disabled(newRelayURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-        }
-        .padding(.vertical, ChirpSpace.xs)
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
@@ -274,47 +197,6 @@ struct SettingsHubView: View {
     private func shortNpub(_ npub: String) -> String {
         guard npub.count >= 16 else { return npub }
         return "\(npub.prefix(10))…\(npub.suffix(6))"
-    }
-}
-
-// ── Relay row ─────────────────────────────────────────────────────────────
-
-private struct RelayRow: View {
-    let relay: RelayEditRow
-
-    var body: some View {
-        HStack(spacing: ChirpSpace.m) {
-            Image(systemName: "antenna.radiowaves.left.and.right")
-                .foregroundStyle(roleColor)
-                .font(.system(size: 14, weight: .medium))
-                .frame(width: 20)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(relay.url)
-                    .font(ChirpFont.mono)
-                    .foregroundStyle(ChirpColor.textPrimary)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            // Role badge
-            Text(relay.role.capitalized)
-                .font(.system(.caption2, design: .rounded).weight(.semibold))
-                .foregroundStyle(roleColor)
-                .padding(.horizontal, ChirpSpace.s)
-                .padding(.vertical, 3)
-                .background(roleColor.opacity(0.12), in: Capsule())
-        }
-        .padding(.vertical, ChirpSpace.xs)
-    }
-
-    private var roleColor: Color {
-        switch relay.role {
-        case "read": return Color.blue
-        case "write": return ChirpColor.positive
-        default: return ChirpColor.accent  // "both"
-        }
     }
 }
 

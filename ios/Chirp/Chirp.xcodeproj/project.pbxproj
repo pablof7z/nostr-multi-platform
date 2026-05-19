@@ -41,8 +41,9 @@
 		EADA12AFFA8D08461F19DFA7 /* NoteContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ED689DD9659151162F819BC /* NoteContentView.swift */; };
 		F92DA1B7A5EF8D796F674546 /* TimelineBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4E597BC58FFF686CC596A91 /* TimelineBlock.swift */; };
 		FD278220A9E454AE75608FE8 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABF5AA8E2264637D1CA3BCA4 /* SearchView.swift */; };
-		FDD2055AA0756C779D63C6C4 /* NmpPulseCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = D54123F5D11729471B341A4E /* NmpPulseCapabilities.swift */; };
+		FDD2055AA0756C779D63C6C4 /* ChirpCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = D54123F5D11729471B341A4E /* ChirpCapabilities.swift */; };
 		FF5483FCDF48B8892ABE5F53 /* ChirpUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25460F5E697F421F8C7BE89E /* ChirpUITests.swift */; };
+		97F952E02B4741C48B66B610B4BEB358 /* RelaySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 036A405F763C4986A7E9301BB8EB812F /* RelaySettingsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -100,10 +101,11 @@
 		CF9F1342DAEFAF5D00A119FA /* ChirpTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ChirpTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D0F076F49C2C0FD895EB8D82 /* MarmotBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarmotBridge.swift; sourceTree = "<group>"; };
 		D32D744B5446C909E7AEEB8F /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
-		D54123F5D11729471B341A4E /* NmpPulseCapabilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NmpPulseCapabilities.swift; sourceTree = "<group>"; };
+		D54123F5D11729471B341A4E /* ChirpCapabilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChirpCapabilities.swift; sourceTree = "<group>"; };
 		E58C0EC2EAF4941E587B9B94 /* ChirpApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChirpApp.swift; sourceTree = "<group>"; };
 		F084A0E109F23A641626E2F9 /* MarmotInviteSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarmotInviteSheet.swift; sourceTree = "<group>"; };
 		F3554BAD41A86827FFAF1D06 /* ChirpUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ChirpUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		036A405F763C4986A7E9301BB8EB812F /* RelaySettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelaySettingsView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -154,6 +156,7 @@
 				23D004DA6D1AFB36F6FBBAE0 /* OnboardingView+NIP46.swift */,
 				985298ED1B842E892A6FA759 /* ProfileView.swift */,
 				9CD04CA5EB5E534F616BC342 /* RelayDetailView.swift */,
+				036A405F763C4986A7E9301BB8EB812F /* RelaySettingsView.swift */,
 				ABF5AA8E2264637D1CA3BCA4 /* SearchView.swift */,
 				7BA43E598F11A1CE9FEC7D6F /* SettingsHubView.swift */,
 				2C01000494AC737F8F8E286D /* ThreadScreen.swift */,
@@ -167,7 +170,7 @@
 			isa = PBXGroup;
 			children = (
 				50F5B25557B2147731A5F75C /* KeychainCapability.swift */,
-				D54123F5D11729471B341A4E /* NmpPulseCapabilities.swift */,
+				D54123F5D11729471B341A4E /* ChirpCapabilities.swift */,
 			);
 			path = Capabilities;
 			sourceTree = "<group>";
@@ -372,7 +375,7 @@
 				A1F822E727F303BB5ED1ABEA /* MarmotInviteSheet.swift in Sources */,
 				4A7A67B2FEBC3B7EABC7238C /* ModularBlockView.swift in Sources */,
 				6BE96583DDB7BC3A89DA1D79 /* ModularTimelineBridge.swift in Sources */,
-				FDD2055AA0756C779D63C6C4 /* NmpPulseCapabilities.swift in Sources */,
+				FDD2055AA0756C779D63C6C4 /* ChirpCapabilities.swift in Sources */,
 				EADA12AFFA8D08461F19DFA7 /* NoteContentView.swift in Sources */,
 				E6AF81962D62F30FDB2F4F35 /* NoteRowView.swift in Sources */,
 				BA5D10F42934B36256492BCC /* NotificationsView.swift in Sources */,
@@ -382,6 +385,7 @@
 				EA0318372F152947A645ADC8 /* ProfileNoteRow.swift in Sources */,
 				072991FD6319A37D692C27E4 /* ProfileView.swift in Sources */,
 				B38A5D94A5C43305C226EE4B /* RelayDetailView.swift in Sources */,
+				97F952E02B4741C48B66B610B4BEB358 /* RelaySettingsView.swift in Sources */,
 				72E6C28DE61F97428F972267 /* RootShell.swift in Sources */,
 				FD278220A9E454AE75608FE8 /* SearchView.swift in Sources */,
 				C5A3FCE92DF36AD33D083F83 /* SettingsHubView.swift in Sources */,
