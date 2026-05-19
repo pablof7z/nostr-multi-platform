@@ -299,8 +299,15 @@ private final class KernelUpdateSink {
 }
 
 private let nmpUpdateCallback: NmpUpdateCallback = { context, pointer in
-    guard let context, let pointer else { return }
-    guard let result = KernelHandle.decode(pointer: pointer) else { return }
+    guard let context, let pointer else {
+        kbLog.error("NMP_DBG callback: nil context or pointer")
+        return
+    }
+    guard let result = KernelHandle.decode(pointer: pointer) else {
+        kbLog.error("NMP_DBG callback: decode returned nil")
+        return
+    }
+    kbLog.info("NMP_DBG callback: decoded rev=\(result.update.rev) activeAccount=\(result.update.activeAccount ?? "nil")")
     let sink = Unmanaged<KernelUpdateSink>.fromOpaque(context).takeUnretainedValue()
     sink.handler(result)
 }
