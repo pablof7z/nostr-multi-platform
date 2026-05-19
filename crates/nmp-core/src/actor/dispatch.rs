@@ -17,7 +17,10 @@ use crate::kernel::Kernel;
 use crate::relay::{OutboundMessage, RelayRole};
 use crate::relay_worker::RelayEvent;
 
-use super::commands::{self, IdentityRuntime, LifecycleObserverSlot, WalletRuntime};
+use super::commands::{self, IdentityRuntime, LifecycleObserverSlot};
+// D0: NIP-47 NWC is an app noun — `WalletRuntime` only exists with `wallet`.
+#[cfg(feature = "wallet")]
+use super::commands::WalletRuntime;
 use super::kernel_action::dispatch_kernel_action;
 use super::relay_mgmt::{
     close_relays, ensure_relay_worker, maybe_send_startup, send_all_outbound,
@@ -46,7 +49,7 @@ pub(super) fn dispatch_command(
     command: ActorCommand,
     kernel: &mut Kernel,
     identity: &mut IdentityRuntime,
-    wallet: &mut WalletRuntime,
+    #[cfg(feature = "wallet")] wallet: &mut WalletRuntime,
     relay_controls: &mut HashMap<String, RelayControl>,
     relay_tx: &Sender<RelayEvent>,
     connected_relays: &mut HashSet<RelayRole>,
@@ -261,16 +264,19 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
+        #[cfg(feature = "wallet")]
         ActorCommand::WalletConnect { uri } => {
             let outbound = commands::wallet_connect(wallet, kernel, &uri);
             emit_now(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
+        #[cfg(feature = "wallet")]
         ActorCommand::WalletDisconnect => {
             let outbound = commands::wallet_disconnect(wallet, kernel);
             emit_now(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
+        #[cfg(feature = "wallet")]
         ActorCommand::WalletPayInvoice { bolt11, amount_msats } => {
             let outbound = commands::wallet_pay_invoice(wallet, kernel, &bolt11, amount_msats);
             emit_now(kernel, *running, update_tx, last_emit);
@@ -403,7 +409,7 @@ pub(super) fn dispatch_command(
 pub(super) fn handle_relay_event(
     event: RelayEvent,
     kernel: &mut Kernel,
-    wallet: &mut WalletRuntime,
+    #[cfg(feature = "wallet")] wallet: &mut WalletRuntime,
     relay_controls: &mut HashMap<String, RelayControl>,
     relay_tx: &Sender<RelayEvent>,
     next_relay_generation: &mut u64,
@@ -480,6 +486,8 @@ pub(super) fn handle_relay_event(
             // for kind:23195 responses before passing to kernel.handle_message.
             // The kernel silently drops unknown kinds, so letting it see wallet
             // events too is harmless; we just need to decrypt them first.
+            // D0: gated behind the `wallet` feature — NWC is an app noun.
+            #[cfg(feature = "wallet")]
             let wallet_text = if wallet.is_nwc_relay(&relay_url) {
                 match &message {
                     tungstenite::Message::Text(s) => Some(s.clone()),
@@ -490,6 +498,7 @@ pub(super) fn handle_relay_event(
             };
             let mut outbound = kernel.handle_message(role, &relay_url, message);
             outbound.extend(kernel.pending_view_requests());
+            #[cfg(feature = "wallet")]
             if let Some(text) = wallet_text {
                 let wallet_out = commands::handle_nwc_text(wallet, &text, kernel);
                 outbound.extend(wallet_out);

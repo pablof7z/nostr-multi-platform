@@ -95,6 +95,11 @@ pub(crate) struct BunkerHandshakeDto {
 /// NIP-47 wallet connection status projected onto the snapshot.
 /// Present when a wallet is (or was recently) connected; `None` when no
 /// wallet has been connected in this session.
+///
+/// D0: NIP-47 NWC is an app noun, not a kernel primitive — this type and its
+/// kernel projection are gated behind the `wallet` Cargo feature so the
+/// protocol-neutral kernel still compiles with `--no-default-features`.
+#[cfg(feature = "wallet")]
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub(crate) struct WalletStatus {
     /// `"connecting"` | `"ready"` | `"error"` | `"disconnected"`
@@ -189,6 +194,8 @@ impl super::Kernel {
     }
 
     /// Replace the wallet status projection (D4: actor is sole writer).
+    /// D0: gated behind the `wallet` feature — NIP-47 NWC is an app noun.
+    #[cfg(feature = "wallet")]
     pub(crate) fn set_wallet_status(&mut self, status: Option<WalletStatus>) {
         if self.wallet_status != status {
             self.wallet_status = status;
@@ -223,6 +230,8 @@ impl super::Kernel {
         &self.relay_edit_rows
     }
 
+    /// D0: gated behind the `wallet` feature — NIP-47 NWC is an app noun.
+    #[cfg(feature = "wallet")]
     pub(crate) fn wallet_status_snapshot(&self) -> Option<&WalletStatus> {
         self.wallet_status.as_ref()
     }

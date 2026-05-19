@@ -10,6 +10,9 @@ mod identity;
 mod lifecycle;
 mod raw_event_tap;
 mod timeline;
+// D0: NIP-47 NWC is an app noun — the `nmp_app_wallet_*` FFI symbols are
+// gated behind the `wallet` Cargo feature.
+#[cfg(feature = "wallet")]
 mod wallet;
 
 #[cfg(any(test, feature = "test-support"))]
@@ -114,7 +117,7 @@ pub use timeline::{
     nmp_app_claim_profile, nmp_app_close_author, nmp_app_close_thread, nmp_app_open_author,
     nmp_app_open_firehose_tag, nmp_app_open_thread, nmp_app_open_uri, nmp_app_release_profile,
 };
-#[cfg(feature = "android-ffi")]
+#[cfg(all(feature = "android-ffi", feature = "wallet"))]
 pub use wallet::{nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wallet_pay_invoice};
 
 use crate::actor::{

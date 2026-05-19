@@ -24,7 +24,10 @@ mod tests;
 #[cfg(test)]
 mod relay_url_canonical_tests;
 
-use commands::{IdentityRuntime, WalletRuntime};
+use commands::IdentityRuntime;
+// D0: NIP-47 NWC is an app noun — `WalletRuntime` only exists with `wallet`.
+#[cfg(feature = "wallet")]
+use commands::WalletRuntime;
 pub(crate) use commands::{
     new_event_observer_slot, new_observer_slot as new_lifecycle_observer_slot, notify_observers,
     register_c_observer, register_rust_observer, unregister_observer, KernelEventObserverSlot,
@@ -209,10 +212,16 @@ pub enum ActorCommand {
     CloseThread { event_id: String },
     /// NIP-47 wallet connect — parse the `nostr+walletconnect://` URI, subscribe
     /// for kind:23195 responses, and send get_info + get_balance requests.
+    /// D0: gated behind the `wallet` feature — NIP-47 NWC is an app noun.
+    #[cfg(feature = "wallet")]
     WalletConnect { uri: String },
     /// NIP-47 wallet disconnect — close the subscription and clear state.
+    /// D0: gated behind the `wallet` feature — NIP-47 NWC is an app noun.
+    #[cfg(feature = "wallet")]
     WalletDisconnect,
     /// NIP-47 pay invoice — sign and send a `pay_invoice` kind:23194 request.
+    /// D0: gated behind the `wallet` feature — NIP-47 NWC is an app noun.
+    #[cfg(feature = "wallet")]
     WalletPayInvoice { bolt11: String, amount_msats: Option<u64> },
     /// T118 / G3 — iOS scenePhase transition reported by the Pulse shell
     /// (or any conforming consumer). The actor folds the phase into the
@@ -378,6 +387,7 @@ pub fn run_actor_with_observers(
     // the other shared handles.
     kernel.set_relay_edit_rows_handle(Arc::clone(&relay_edit_rows));
     let mut identity = IdentityRuntime::new();
+    #[cfg(feature = "wallet")]
     let mut wallet = WalletRuntime::new();
     // T105: URL-keyed transport pool. One socket per resolved relay URL;
     // workers spawn on demand as OutboundMessages flow with new relay_urls.
@@ -404,6 +414,7 @@ pub fn run_actor_with_observers(
                         command,
                         &mut kernel,
                         &mut identity,
+                        #[cfg(feature = "wallet")]
                         &mut wallet,
                         &mut relay_controls,
                         &relay_tx,
@@ -468,6 +479,7 @@ pub fn run_actor_with_observers(
                     handle_relay_event(
                         event,
                         &mut kernel,
+                        #[cfg(feature = "wallet")]
                         &mut wallet,
                         &mut relay_controls,
                         &relay_tx,

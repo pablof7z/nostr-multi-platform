@@ -9,6 +9,17 @@ name = "nmp_core"
 crate-type = ["staticlib", "rlib"]
 
 [features]
+# Default feature set. `wallet` is on by default so the iOS Chirp shell (which
+# links `nmp-app-chirp -> nmp-core` with default features) keeps its NIP-47
+# screen. The D0 proof is that the kernel still compiles with
+# `--no-default-features`: NIP-47 NWC is an app noun, not a kernel primitive,
+# so `nmp-core` must not *require* `nmp-nwc` — it merely *permits* it.
+default = ["wallet"]
+# NIP-47 Nostr Wallet Connect support. Gates the `nmp-nwc` protocol dependency,
+# the `WalletStatus` snapshot projection, the `WalletRuntime` actor command arm,
+# and the `nmp_app_wallet_*` FFI symbols. D0: nmp-core never *owns* an app noun;
+# wallet state is opt-in protocol glue, not part of the protocol-neutral kernel.
+wallet = ["dep:nmp-nwc"]
 # Expose actor internals for live-bench harnesses and integration test binaries.
 # Never enable in production builds.
 test-support = []
@@ -25,7 +36,9 @@ bech32 = "0.11"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 nmp-nip42-types = { path = "../nmp-nip42-types" }
 nostr = { workspace = true, features = ["nip44"] }
-nmp-nwc = { path = "../nmp-nwc" }
+# NIP-47 NWC protocol crate. Optional + feature-gated (`wallet`): D0 says the
+# kernel never owns app nouns, so `nmp-core` must compile without it.
+nmp-nwc = { path = "../nmp-nwc", optional = true }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 rustls = { workspace = true, default-features = false, features = ["ring"] }
 serde = { workspace = true, features = ["derive"] }

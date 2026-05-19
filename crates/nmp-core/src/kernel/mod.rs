@@ -115,8 +115,11 @@ use auth::{AuthSignerFn, Nip42DriverState};
 pub(crate) use lifecycle::{LifecyclePhase, LifecycleTransition};
 pub(crate) use identity_state::{
     AccountSummary, BunkerHandshakeDto, PublishQueueEntry, RelayAckOutcome, RelayEditRow,
-    WalletStatus,
 };
+// D0: NIP-47 NWC is an app noun — `WalletStatus` is gated behind the `wallet`
+// feature so the protocol-neutral kernel compiles without `nmp-nwc`.
+#[cfg(feature = "wallet")]
+pub(crate) use identity_state::WalletStatus;
 use std::sync::atomic::{AtomicU64, Ordering};
 use types::*;
 
@@ -287,6 +290,11 @@ pub(crate) struct Kernel {
     publish_queue: Vec<PublishQueueEntry>,
     last_error_toast: Option<String>,
     relay_edit_rows: Vec<RelayEditRow>,
+    /// NIP-47 NWC wallet projection. D0: wallet is an app noun, not a kernel
+    /// primitive — the field (and its `WalletStatus` type) only exist when the
+    /// `wallet` Cargo feature is enabled. With `--no-default-features` the
+    /// kernel carries no wallet state at all.
+    #[cfg(feature = "wallet")]
     wallet_status: Option<WalletStatus>,
     /// Stage 3 of NIP-46 wiring: the broker pushes handshake progress through
     /// `ActorCommand::BunkerHandshakeProgress`; the actor stores the latest
@@ -479,6 +487,7 @@ impl Kernel {
             publish_queue: Vec::new(),
             last_error_toast: None,
             relay_edit_rows: Vec::new(),
+            #[cfg(feature = "wallet")]
             wallet_status: None,
             bunker_handshake: None,
             publish_engine,
@@ -597,6 +606,12 @@ impl Kernel {
     /// `nmp_signers::AccountManager::signer_active()` for `Content`/`Indexer`;
     /// other lanes (e.g. NWC `Wallet`) bind their own per-protocol keypair.
     /// Replaces any previously-bound signer for that role.
+    ///
+    /// Generic per-role NIP-42 primitive (D0). The only non-test caller today
+    /// is the `wallet` feature's NWC lane, so without that feature this is
+    /// dead code — `allow(dead_code)` keeps the D0-proof (`--no-default-features`)
+    /// build warning-clean without gating a kernel primitive on an app noun.
+    #[cfg_attr(not(feature = "wallet"), allow(dead_code))]
     pub(crate) fn set_relay_auth_signer(
         &mut self,
         role: RelayRole,
@@ -609,6 +624,10 @@ impl Kernel {
 
     /// Drop the signer for `role`. Challenges from that role are then recorded
     /// but never answered until a signer is rebound.
+    ///
+    /// Generic per-role NIP-42 primitive (D0); see `set_relay_auth_signer`
+    /// for the `allow(dead_code)` rationale.
+    #[cfg_attr(not(feature = "wallet"), allow(dead_code))]
     pub(crate) fn clear_relay_auth_signer(&mut self, role: RelayRole) {
         self.auth_signers.remove(&role);
     }

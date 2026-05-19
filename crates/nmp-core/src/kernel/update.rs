@@ -109,6 +109,7 @@ impl Kernel {
             // empty frames. `None` (→ JSON null) in steady state.
             last_planner_error: self.lifecycle.last_planner_error().map(str::to_owned),
             relay_edit_rows: self.relay_edit_rows_snapshot().to_vec(),
+            #[cfg(feature = "wallet")]
             wallet_status: self.wallet_status_snapshot().cloned(),
             bunker_handshake: self.bunker_handshake_snapshot().cloned(),
         };

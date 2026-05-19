@@ -105,10 +105,13 @@ pub use ffi::{
     nmp_app_unfollow,
     nmp_app_unregister_event_observer,
     nmp_app_unregister_raw_event_observer,
-    nmp_app_wallet_connect,
-    nmp_app_wallet_disconnect,
-    nmp_app_wallet_pay_invoice,
 };
+
+// D0: NIP-47 NWC is an app noun — the `nmp_app_wallet_*` FFI symbols are
+// gated behind the `wallet` Cargo feature. Re-exported via Rust paths for
+// the Android JNI shim only when both features are on.
+#[cfg(all(feature = "android-ffi", feature = "wallet"))]
+pub use ffi::{nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wallet_pay_invoice};
 
 // T118 / G3 — lifecycle observer wire-shape exposed for integration tests
 // (the `LifecycleObserverFn` is a plain `extern "C" fn` shape) and the
