@@ -2,54 +2,182 @@ import SwiftUI
 
 extension OnboardingView {
 
+    // MARK: — Welcome screen
+
+    var welcomeScreen: some View {
+        VStack(spacing: ChirpSpace.xl) {
+            Spacer()
+
+            logoBrand
+                .opacity(appeared ? 1 : 0)
+                .offset(y: appeared ? 0 : 20)
+
+            Spacer()
+
+            VStack(spacing: ChirpSpace.l) {
+                Button {
+                    withAnimation(.smooth(duration: 0.35)) { mode = .create }
+                } label: {
+                    Label("Create account", systemImage: "person.badge.plus")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    withAnimation(.smooth(duration: 0.35)) { mode = .signIn }
+                } label: {
+                    Label("I have an account", systemImage: "key.fill")
+                        .font(.subheadline.weight(.medium))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(.horizontal, ChirpSpace.l)
+            .opacity(appeared ? 1 : 0)
+            .offset(y: appeared ? 0 : 16)
+
+            Spacer().frame(height: 48)
+        }
+    }
+
+    // MARK: — Create account screen
+
+    var createScreen: some View {
+        VStack(spacing: 0) {
+            // Nav bar
+            HStack {
+                Button("Back") {
+                    withAnimation(.smooth(duration: 0.25)) { mode = .welcome }
+                }
+                .font(.subheadline)
+                Spacer()
+            }
+            .padding(.horizontal, ChirpSpace.l)
+            .padding(.vertical, ChirpSpace.m)
+
+            Spacer()
+
+            VStack(spacing: ChirpSpace.xl) {
+                Image(systemName: "person.badge.plus")
+                    .font(.system(size: 40, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+
+                VStack(spacing: ChirpSpace.s) {
+                    Text("Choose your display name")
+                        .font(.headline)
+
+                    Text("This is how others will see you on Nostr")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+
+                TextField("Satoshi", text: $displayName)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.body)
+                    .textInputAutocapitalization(.words)
+                    .frame(maxWidth: 280)
+                    .focused($nameFieldFocused)
+                    .onAppear { nameFieldFocused = true }
+
+                Button {
+                    let name = displayName.trimmingCharacters(in: .whitespaces)
+                    let profile: [String: String] = name.isEmpty ? ["name": "Anonymous"] : ["name": name]
+                    model.createAccount(profile: profile, relays: [
+                        ("wss://relay.primal.net", "both"),
+                        ("wss://purplepag.es", "indexer"),
+                    ])
+                } label: {
+                    Label("Create account", systemImage: "arrow.right.circle.fill")
+                        .font(.headline)
+                        .frame(maxWidth: 280)
+                        .padding(.vertical, 16)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(false) // always enabled, empty name → "Anonymous"
+            }
+            .padding(.horizontal, ChirpSpace.l)
+
+            Spacer()
+        }
+    }
+
+    // MARK: — Sign-in screen
+
+    var signInScreen: some View {
+        VStack(spacing: 0) {
+            // Nav bar
+            HStack {
+                Button("Back") {
+                    withAnimation(.smooth(duration: 0.25)) { mode = .welcome }
+                }
+                .font(.subheadline)
+                Spacer()
+            }
+            .padding(.horizontal, ChirpSpace.l)
+            .padding(.vertical, ChirpSpace.m)
+
+            ScrollView {
+                VStack(spacing: ChirpSpace.xl) {
+                    // Import with nsec
+                    VStack(alignment: .leading, spacing: ChirpSpace.m) {
+                        Text("Paste your private key")
+                            .font(.headline)
+
+                        SecureField("nsec1…", text: $nsec)
+                            .font(ChirpFont.mono)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .focused($nsecFieldFocused)
+
+                        Button {
+                            model.signInNsec(nsec.trimmingCharacters(in: .whitespacesAndNewlines))
+                        } label: {
+                            Label("Sign in", systemImage: "key.fill")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(nsec.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    .padding(.horizontal, ChirpSpace.l)
+
+                    Divider()
+                        .padding(.horizontal, ChirpSpace.l)
+
+                    // Remote signer
+                    Text("Or use a remote signer")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, ChirpSpace.l)
+
+                    nip46SignerCard
+                }
+                .padding(.vertical, ChirpSpace.l)
+            }
+        }
+    }
+
     // MARK: — Logo + brand
 
     var logoBrand: some View {
         VStack(spacing: ChirpSpace.m) {
             Image(systemName: "bird.fill")
-                .font(.system(size: 44, weight: .medium))
+                .font(.system(size: 48, weight: .medium))
                 .foregroundStyle(Color.accentColor)
-                .scaleEffect(logoAppeared ? 1 : 0.6)
-                .opacity(logoAppeared ? 1 : 0)
 
             VStack(spacing: ChirpSpace.xs) {
                 Text("Chirp")
                     .font(.largeTitle.weight(.bold))
 
-                Text("A polished Nostr client")
-                    .font(ChirpFont.callout)
+                Text("A Nostr client for iOS")
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
-            .opacity(contentAppeared ? 1 : 0)
-            .offset(y: contentAppeared ? 0 : 12)
         }
-    }
-
-    // MARK: — Import key card (mode == .importKey)
-
-    var importKeyCard: some View {
-        VStack(alignment: .leading, spacing: ChirpSpace.m) {
-            Text("Private key")
-                .font(.caption)
-
-            SecureField("nsec1…", text: $nsec)
-                .font(ChirpFont.mono)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-
-            Button {
-                // CRITICAL DISPATCH — do not remove
-                model.signInNsec(nsec.trimmingCharacters(in: .whitespacesAndNewlines))
-            } label: {
-                Label("Sign in", systemImage: "key.fill")
-                    .font(ChirpFont.headline)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(nsec.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        }
-        .padding(.horizontal, ChirpSpace.l)
-        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 }

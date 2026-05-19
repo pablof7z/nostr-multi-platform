@@ -5,6 +5,10 @@ use crate::error::Result;
 const SHORT: &str = "\
   verbs: set-seed, req, show, set-app-relays, set-indexer, set-dead,
          set-budget, refresh, expand, help, quit
+
+  mls:   load-key, mls-init, mls-status, mls-create, mls-fetch-kp,
+         mls-invite, mls-send, mls-poll, mls-accept, mls-messages
+
   variables: $me, $seed, $follows, $relays, $inbox
   type 'help <verb>' for grammar
 ";
@@ -81,6 +85,73 @@ const QUIT: &str = "\
     Exit the REPL.
 ";
 
+const LOAD_KEY: &str = "\
+  load-key <nsec|hex>
+    Import a secret key as the MLS identity for this session.
+    Must be called before any mls-* command.
+    examples:
+      load-key nsec1...
+      load-key fa984bd7...
+";
+
+const MLS_INIT: &str = "\
+  mls-init
+    Publish fresh key packages (kind:30443 + kind:443) to configured relays
+    so peers can invite you. Requires load-key first.
+";
+
+const MLS_STATUS: &str = "\
+  mls-status
+    Show local MLS state: groups, pending welcomes, key-package cache.
+";
+
+const MLS_CREATE: &str = "\
+  mls-create <name>
+    Create a new MLS group with the given name.
+    examples:
+      mls-create \"my group\"
+";
+
+const MLS_FETCH_KP: &str = "\
+  mls-fetch-kp <npub|hex>
+    Fetch and cache key packages for a peer. Run before mls-invite.
+    examples:
+      mls-fetch-kp npub1...
+";
+
+const MLS_INVITE: &str = "\
+  mls-invite [<group_id>] <npub|hex>
+    Invite a peer into a group. Omit group_id to use the most recent group.
+    Publishes a kind:1059 gift-wrap welcome to the peer.
+    examples:
+      mls-invite npub1...
+      mls-invite abc123 npub1...
+";
+
+const MLS_SEND: &str = "\
+  mls-send [<group_id>] <message>
+    Encrypt and publish a kind:445 message to a group.
+    examples:
+      mls-send \"hello world\"
+      mls-send abc123 \"hello world\"
+";
+
+const MLS_POLL: &str = "\
+  mls-poll
+    Fetch kind:1059/445 events from relays and process any pending
+    welcomes or messages.
+";
+
+const MLS_ACCEPT: &str = "\
+  mls-accept <welcome_id|group_id>
+    Accept a pending welcome and join the group.
+";
+
+const MLS_MESSAGES: &str = "\
+  mls-messages [<group_id>]
+    Print decrypted messages for a group.
+";
+
 pub fn run(arg: Option<String>) -> Result<()> {
     let text = match arg.as_deref() {
         None => SHORT,
@@ -94,6 +165,16 @@ pub fn run(arg: Option<String>) -> Result<()> {
         Some("refresh") => REFRESH,
         Some("expand") => EXPAND,
         Some("quit") | Some("exit") => QUIT,
+        Some("load-key") => LOAD_KEY,
+        Some("mls-init") => MLS_INIT,
+        Some("mls-status") => MLS_STATUS,
+        Some("mls-create") => MLS_CREATE,
+        Some("mls-fetch-kp") => MLS_FETCH_KP,
+        Some("mls-invite") => MLS_INVITE,
+        Some("mls-send") => MLS_SEND,
+        Some("mls-poll") => MLS_POLL,
+        Some("mls-accept") => MLS_ACCEPT,
+        Some("mls-messages") => MLS_MESSAGES,
         Some(other) => {
             println!("  (no help for '{other}'; type 'help' for the verb list)");
             return Ok(());

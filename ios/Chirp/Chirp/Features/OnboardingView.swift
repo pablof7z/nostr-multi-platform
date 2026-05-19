@@ -1,126 +1,68 @@
 import SwiftUI
 
-// OWNER: Phase-2 Agent C may polish visuals/animation. The two kernel
-// dispatches (signInNsec / createAccount) are the critical path and must
-// keep working — RootShell gates the whole app on `model.hasActiveAccount`.
+// Onboarding flow — three screens:
+//   1. Welcome    (logo + two primary actions)
+//   2. Create     (display name + create)
+//   3. SignIn     (nsec / NIP-46 / bunker://)
 //
-// Split: background + logo → OnboardingView+Components.swift
-//        NIP-46 signer card + helpers → OnboardingView+NIP46.swift
+// Screen components live in OnboardingView+Components.swift
+// NIP-46 helpers live in OnboardingView+NIP46.swift
 
 struct OnboardingView: View {
     @EnvironmentObject var model: KernelModel
+
+    // -- Navigation --
+    @State var mode: Mode = .welcome
+
+    // -- Animation --
+    @State var appeared = false
+
+    // -- Create --
+    @State var displayName = ""
+    @FocusState var nameFieldFocused: Bool
+
+    // -- Sign-in: nsec --
     @State var nsec = ""
+    @FocusState var nsecFieldFocused: Bool
+
+    // -- Sign-in: NIP-46 --
     @State var bunkerUri = ""
     @State var detectedSigner: DetectedSigner? = nil
-    @State var mode: Mode = .welcome
-    @State var logoAppeared = false
-    @State var contentAppeared = false
-    @State var displayName = ""
     @State var nostrConnectURL: String? = nil
     @State var qrCodeImage: UIImage? = nil
     @State var showQR = false
+    @State var nip46Tab: NIP46Tab = .qr
 
-    enum Mode { case welcome, importKey }
-
+    enum Mode { case welcome, create, signIn }
     enum DetectedSigner: String {
         case nostrSigner = "Nostr Signer"
         case primal = "Primal"
         case other = "Signer"
     }
+    enum NIP46Tab { case qr, uri }
+
+    // MARK: — Body
 
     var body: some View {
-        VStack(spacing: 32) {
-            Spacer()
+        ZStack {
+            Color(.systemBackground).ignoresSafeArea()
 
-            logoBrand
-
-            Spacer()
-
-            // Import key card
-            if mode == .importKey {
-                importKeyCard
+            switch mode {
+            case .welcome:  welcomeScreen
+            case .create:   createScreen
+            case .signIn:   signInScreen
             }
-
-            // Action buttons
-            VStack(spacing: 16) {
-                if mode == .welcome {
-                    Button {
-                        withAnimation(.smooth) { mode = .importKey }
-                    } label: {
-                        Label("I have a key", systemImage: "key.fill")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                    }
-                    .buttonStyle(.borderedProminent)
-
-                    nip46SignerCard
-
-                    TextField("Your name", text: $displayName)
-                        .textFieldStyle(.roundedBorder)
-                        .padding(.horizontal, 4)
-
-                    Button {
-                        // CRITICAL DISPATCH — do not remove
-                        let name = displayName.trimmingCharacters(in: .whitespaces)
-                        let profile: [String: String] = name.isEmpty ? ["name": "New User"] : ["name": name]
-                        model.createAccount(profile: profile, relays: [("wss://relay.primal.net", "both"), ("wss://purplepag.es", "indexer")])
-                    } label: {
-                        Text("Create a new identity")
-                            .font(.headline)
-                    }
-                    .transition(.opacity)
-                } else {
-                    Button("Back") {
-                        withAnimation(.smooth) { mode = .welcome }
-                    }
-                    .font(.callout)
-                    .transition(.opacity)
-                }
-            }
-            .padding(.horizontal, 24)
-            .opacity(contentAppeared ? 1 : 0)
-            .offset(y: contentAppeared ? 0 : 16)
-
-            Spacer().frame(height: 48)
-        }
-        .background(Color(.systemBackground))
-        // NMP_DBG overlay — shows kernel state without needing device logs
-        .overlay(alignment: .bottom) {
-            VStack(spacing: 2) {
-                Text("running=\(model.isRunning ? "Y" : "N") snaps=\(model.snapshotCount) rev=\(model.rev) accts=\(model.accounts.count)")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.8))
-                if let activeID = model.activeAccount {
-                    Text("active=\(activeID.prefix(8))…")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.green.opacity(0.9))
-                }
-                if let toast = model.lastErrorToast {
-                    Text("err=\(toast)")
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundStyle(.red.opacity(0.9))
-                        .lineLimit(2)
-                }
-            }
-            .padding(6)
-            .background(.black.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
-            .padding(.bottom, 12)
         }
         .onAppear {
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.65).delay(0.15)) {
-                logoAppeared = true
-            }
-            withAnimation(.smooth(duration: 0.5).delay(0.4)) {
-                contentAppeared = true
+            withAnimation(.easeOut(duration: 0.35).delay(0.05)) {
+                appeared = true
             }
             detectSignerApps()
-        }
-        .task {
-            detectSignerApps()
-            if let uri = model.nostrConnectURI() {
-                nostrConnectURL = uri
-                qrCodeImage = generateQRCode(from: uri)
+            Task {
+                if let uri = model.nostrConnectURI() {
+                    nostrConnectURL = uri
+                    qrCodeImage = generateQRCode(from: uri)
+                }
             }
         }
     }
