@@ -184,6 +184,24 @@ pub(crate) struct Kernel {
     relays: HashMap<RelayRole, RelayHealth>,
     profiles: HashMap<String, Profile>,
     events: HashMap<String, StoredEvent>,
+    /// Incrementally-maintained diagnostic counters for the `Metrics` snapshot
+    /// fields `note_events` / `duplicate_events` / `stored_events`. Maintained
+    /// at the `events` ingest/mutation sites so `make_update` (up to 60 Hz)
+    /// never has to walk the whole `events` HashMap to recompute them — see
+    /// `docs/perf` and the O(events) snapshot-emit violation this replaced.
+    ///
+    /// `events` is insert-only today (no eviction path mutates the HashMap;
+    /// `sort_timeline` truncates only the `timeline` VecDeque). The
+    /// `stored_events` counter therefore only ever increments; should an
+    /// eviction path be added, decrement it there to keep the invariant.
+    ///
+    /// Count of cached kind:1 events ever inserted into `events`.
+    metric_note_events: u64,
+    /// Count of cached events whose `relay_count` transitioned 1 → >1 (a relay
+    /// delivered an event already present in the read-cache).
+    metric_duplicate_events: u64,
+    /// Tracks `events.len()` — incremented on insert, decremented on eviction.
+    metric_stored_events: u64,
     timeline: VecDeque<String>,
     selected_author: Option<ViewInterest>,
     author_request_pending: bool,
@@ -483,6 +501,9 @@ impl Kernel {
                 .collect(),
             profiles: HashMap::new(),
             events: HashMap::new(),
+            metric_note_events: 0,
+            metric_duplicate_events: 0,
+            metric_stored_events: 0,
             timeline: VecDeque::new(),
             selected_author: None,
             author_request_pending: false,

@@ -85,6 +85,14 @@ impl Kernel {
                     InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. } => true,
                     InsertOutcome::Duplicate { sources_after, .. } => {
                         if let Some(cached) = self.events.get_mut(&event.id) {
+                            // Diagnostic counter: a cached event becomes a
+                            // "duplicate" the first time its relay_count
+                            // crosses 1 → >1. Subsequent bumps (2→3, …) do
+                            // not add a new duplicate event to the count.
+                            if cached.relay_count == 1 && sources_after > 1 {
+                                self.metric_duplicate_events =
+                                    self.metric_duplicate_events.saturating_add(1);
+                            }
                             cached.relay_count = sources_after;
                         }
                         return;
@@ -99,6 +107,12 @@ impl Kernel {
                 self.log(format!("store insert error: {e}"));
                 if self.events.contains_key(&event.id) {
                     if let Some(cached) = self.events.get_mut(&event.id) {
+                        // Diagnostic counter: count the 1 → >1 transition only
+                        // (mirrors the `InsertOutcome::Duplicate` arm above).
+                        if cached.relay_count == 1 {
+                            self.metric_duplicate_events =
+                                self.metric_duplicate_events.saturating_add(1);
+                        }
                         cached.relay_count = cached.relay_count.saturating_add(1);
                     }
                     return;
@@ -142,6 +156,12 @@ impl Kernel {
             tags: cached.tags.clone(),
             content: cached.content.clone(),
         };
+        // Diagnostic counters maintained incrementally so `make_update` never
+        // walks the whole `events` HashMap to recompute them (60 Hz hot path).
+        self.metric_stored_events = self.metric_stored_events.saturating_add(1);
+        if cached.kind == 1 {
+            self.metric_note_events = self.metric_note_events.saturating_add(1);
+        }
         self.events.insert(event.id.clone(), cached);
         self.notify_event_observers(&kernel_event);
         if sub_id.starts_with("diag-firehose-") {

@@ -47,15 +47,19 @@ impl Kernel {
             removed: removed.clone(),
             metrics: Metrics {
                 generated_events: counters.events_rx,
-                note_events: self.events.values().filter(|event| event.kind == 1).count() as u64,
+                // Diagnostic counters maintained incrementally at the `events`
+                // ingest/mutation sites — no per-emit HashMap scan (the 60 Hz
+                // snapshot path must stay O(1) in cached-event count).
+                note_events: self.metric_note_events,
                 profile_events: self.profiles.len() as u64,
-                duplicate_events: self
-                    .events
-                    .values()
-                    .filter(|event| event.relay_count > 1)
-                    .count() as u64,
+                duplicate_events: self.metric_duplicate_events,
                 delete_events: 0,
-                stored_events: self.events.len() + self.profiles.len() + self.seed_contacts.len(),
+                // `metric_stored_events` tracks `events.len()` (an O(1) read on
+                // its own); the profiles + seed_contacts terms are O(1) `len()`
+                // calls, so the historical sum is preserved unchanged.
+                stored_events: self.metric_stored_events as usize
+                    + self.profiles.len()
+                    + self.seed_contacts.len(),
                 tombstones: 0,
                 visible_items: self.last_emitted_items.len(),
                 visible_profiled_items,

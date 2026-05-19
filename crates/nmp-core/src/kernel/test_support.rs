@@ -153,6 +153,13 @@ impl Kernel {
             tags: cached.tags.clone(),
             content: cached.content.clone(),
         };
+        // Mirror the production ingest path's incremental diagnostic counters
+        // so the test-support inject path keeps `metric_*` in sync with
+        // `events` (the snapshot would otherwise drift under test harnesses).
+        self.metric_stored_events = self.metric_stored_events.saturating_add(1);
+        if cached.kind == 1 {
+            self.metric_note_events = self.metric_note_events.saturating_add(1);
+        }
         self.events.insert(id.clone(), cached);
         self.notify_event_observers(&kernel_event);
         // diag-firehose-stress sub_id: always appended to timeline.
@@ -196,6 +203,10 @@ impl Kernel {
                 relay_count: 1,
             },
         );
+        // Keep the incremental diagnostic counters in sync with `events`
+        // (this fixture inserts a kind:1 note directly into the read-cache).
+        self.metric_stored_events = self.metric_stored_events.saturating_add(1);
+        self.metric_note_events = self.metric_note_events.saturating_add(1);
     }
 
     /// Read-only check that an id is sitting on the T121 thread-hydration
