@@ -271,7 +271,16 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             };
             let callback = listener_callback.lock().ok().and_then(|guard| *guard);
             if let Some(registration) = callback {
-                (registration.callback)(registration.context as *mut c_void, payload.as_ptr());
+                // UB guard: the foreign update callback may panic / raise.
+                // This listener thread has no outer `catch_unwind` (unlike
+                // the actor thread above), so an unguarded unwind here is
+                // undefined behaviour across the C ABI boundary.
+                crate::ffi_guard::guard_ffi_callback("update listener", || {
+                    (registration.callback)(
+                        registration.context as *mut c_void,
+                        payload.as_ptr(),
+                    );
+                });
             }
         }
     });

@@ -2,6 +2,7 @@ mod actor;
 mod app;
 pub mod bunker_hook;
 mod ffi;
+mod ffi_guard;
 mod keepalive;
 mod kernel;
 mod kernel_reducer;

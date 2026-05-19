@@ -244,7 +244,12 @@ pub fn notify_raw_observers(slot: &RawEventObserverSlot, raw: &RawEvent) {
             return;
         };
         for registration in &c_snapshot {
-            (registration.callback)(registration.context as *mut c_void, cstr.as_ptr());
+            // UB guard: the foreign callback may panic / raise; a single
+            // panicking observer must not unwind across the C ABI nor stop
+            // the remaining observers from firing.
+            crate::ffi_guard::guard_ffi_callback("raw event observer", || {
+                (registration.callback)(registration.context as *mut c_void, cstr.as_ptr());
+            });
         }
     }
 }

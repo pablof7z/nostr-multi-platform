@@ -105,7 +105,15 @@ fn dispatch_capability(
     let Ok(request) = CString::new(request_json) else {
         return capability_error_envelope(request_json, "malformed-request");
     };
-    let raw = (registration.callback)(registration.context as *mut c_void, request.as_ptr());
+    // UB guard: the foreign handler may panic / raise an ObjC exception;
+    // an unwind across the C ABI boundary is undefined behaviour. A panic
+    // is treated as data (D6) — same shape as a NULL native return below.
+    let raw = match crate::ffi_guard::guard_ffi_callback("capability handler", || {
+        (registration.callback)(registration.context as *mut c_void, request.as_ptr())
+    }) {
+        Some(raw) => raw,
+        None => return capability_error_envelope(request_json, "handler-panicked"),
+    };
     if raw.is_null() {
         return capability_error_envelope(request_json, "handler-returned-null");
     }
