@@ -85,7 +85,7 @@ use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tungstenite::Message;
 
@@ -336,6 +336,11 @@ pub(crate) struct Kernel {
     /// from the single all-kinds ingest point after the existing
     /// Schnorr + id-hash gate. Generic capability (D0) — no protocol nouns.
     raw_event_observers: Option<crate::actor::RawEventObserverSlot>,
+    /// Shared handle to the relay-edit rows so the FFI layer (e.g. Marmot
+    /// dispatch) can read the current user-configured write relays without
+    /// importing kernel internals. Synced by `set_relay_edit_rows` in
+    /// `identity_state.rs`.
+    relay_edit_rows_handle: Option<Arc<Mutex<Vec<RelayEditRow>>>>,
 }
 
 /// Construct the kernel's `EventStore`.
@@ -466,6 +471,7 @@ impl Kernel {
             lifecycle_phase: LifecyclePhase::Inactive,
             event_observers: None,
             raw_event_observers: None,
+            relay_edit_rows_handle: None,
         }
     }
 
@@ -609,6 +615,24 @@ impl Kernel {
     pub(crate) fn clear_auth_signer(&mut self) {
         self.auth_signers.remove(&RelayRole::Content);
         self.auth_signers.remove(&RelayRole::Indexer);
+    }
+
+    /// Bind the shared `Arc<Mutex<Vec<RelayEditRow>>>` handle so the FFI
+    /// layer can read relay-edit rows without reaching into kernel internals.
+    pub(crate) fn set_relay_edit_rows_handle(
+        &mut self,
+        handle: Arc<Mutex<Vec<RelayEditRow>>>,
+    ) {
+        self.relay_edit_rows_handle = Some(handle);
+    }
+
+    /// Extract the relay-edit rows handle before a `Reset` replaces the
+    /// kernel. The underlying `Arc` is process-lifetime and must survive
+    /// across kernel reinstantiation.
+    pub(crate) fn take_relay_edit_rows_handle_for_reset(
+        &mut self,
+    ) -> Option<Arc<Mutex<Vec<RelayEditRow>>>> {
+        self.relay_edit_rows_handle.take()
     }
 
     /// Register a subscription id as persistent — EOSE will not auto-CLOSE it.

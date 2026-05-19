@@ -82,8 +82,14 @@ use crate::relay_worker::{RelayCommand, RelayEvent};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::AtomicU64;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
+/// True when `role` (a `RelayEditRow.role` value) semantically includes
+/// `needle` (e.g. `"both"` matches `"read"` and `"write"`).
+pub(crate) fn has_role(role: &str, needle: &str) -> bool {
+    role == needle || role == "both"
+}
 
 /// Actor command variants.  The `actor` module is private (`mod actor`, not
 /// `pub mod actor`), so this `pub` is only reachable from outside the crate
@@ -269,6 +275,7 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
         new_lifecycle_observer_slot(),
         new_event_observer_slot(),
         new_raw_event_observer_slot(),
+        Arc::new(Mutex::new(Vec::new())),
     );
 }
 
@@ -289,6 +296,7 @@ pub fn run_actor_with_lifecycle_observer(
         lifecycle_observer,
         new_event_observer_slot(),
         new_raw_event_observer_slot(),
+        Arc::new(Mutex::new(Vec::new())),
     );
 }
 
@@ -309,6 +317,7 @@ pub fn run_actor_with_observers(
     lifecycle_observer: LifecycleObserverSlot,
     event_observers: KernelEventObserverSlot,
     raw_event_observers: RawEventObserverSlot,
+    relay_edit_rows: Arc<Mutex<Vec<crate::kernel::RelayEditRow>>>,
 ) {
     // Dual-channel design: relay events get their own dedicated channel.
     // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.
@@ -340,6 +349,11 @@ pub fn run_actor_with_observers(
     // on. Survives `Reset` the same way the event-observer slot does so
     // external registrations stay live across a kernel rebuild.
     kernel.set_raw_event_observers_handle(Arc::clone(&raw_event_observers));
+    // Bind the shared relay-edit rows handle so external Rust callers
+    // (e.g. `nmp-app-chirp` Marmot dispatch) can read the user's current
+    // relay list without crossing FFI. Survives `Reset` the same way as
+    // the other shared handles.
+    kernel.set_relay_edit_rows_handle(Arc::clone(&relay_edit_rows));
     let mut identity = IdentityRuntime::new();
     let mut wallet = WalletRuntime::new();
     // T105: URL-keyed transport pool. One socket per resolved relay URL;

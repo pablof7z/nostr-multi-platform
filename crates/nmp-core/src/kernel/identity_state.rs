@@ -166,10 +166,17 @@ impl super::Kernel {
     }
 
     /// Replace the editable relay projection (D4: actor is sole writer).
+    /// Also syncs the shared handle so FFI-side reads (e.g. Marmot dispatch)
+    /// see the latest rows without importing kernel internals.
     pub(crate) fn set_relay_edit_rows(&mut self, rows: Vec<RelayEditRow>) {
         if self.relay_edit_rows != rows {
-            self.relay_edit_rows = rows;
+            self.relay_edit_rows = rows.clone();
             self.changed_since_emit = true;
+        }
+        if let Some(handle) = self.relay_edit_rows_handle.as_ref() {
+            if let Ok(mut guard) = handle.lock() {
+                *guard = rows;
+            }
         }
     }
 

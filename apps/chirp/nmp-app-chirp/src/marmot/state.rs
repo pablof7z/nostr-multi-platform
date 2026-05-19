@@ -343,6 +343,18 @@ impl<'a> InnerHandle<'a> {
         crate::marmot::publish::publish_auto(self.inner.app, event);
     }
 
+    /// Read the user's current write-relay URLs from the shared kernel
+    /// relay-edit projection. Empty when no write relays are configured.
+    pub(crate) fn write_relay_urls(&self) -> Vec<String> {
+        if self.inner.app.is_null() {
+            return Vec::new();
+        }
+        // SAFETY: identical rationale to `publish_auto` — `app` is the live
+        // `*mut NmpApp` retained by `MarmotHandle` for the handle's lifetime.
+        let app_ref = unsafe { &*self.inner.app };
+        app_ref.write_relay_urls()
+    }
+
     /// Cache an incoming gift-wrap as a pending Welcome (no MLS type held).
     pub(crate) fn cache_welcome(
         &mut self,

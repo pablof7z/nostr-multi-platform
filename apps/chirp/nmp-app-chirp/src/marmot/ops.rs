@@ -204,10 +204,14 @@ pub(crate) fn dispatch(h: &mut InnerHandle<'_>, v: &Value, now_secs: u64) -> Val
 
 fn publish_key_package(
     h: &mut InnerHandle<'_>,
-    v: &Value,
+    _v: &Value,
     now_secs: u64,
 ) -> Result<Value, String> {
-    let relays = parse_relays(&str_array(v, "relays"))?;
+    let urls = h.write_relay_urls();
+    if urls.is_empty() {
+        return Err("no write relays configured — add one in Settings > Relays".to_string());
+    }
+    let relays = parse_relays(&urls)?;
     let pubn = h
         .service()
         .publish_key_package(relays)
@@ -284,7 +288,11 @@ fn create_group(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    let relays = parse_relays(&str_array(v, "relays"))?;
+    let urls = h.write_relay_urls();
+    if urls.is_empty() {
+        return Err("no write relays configured — add one in Settings > Relays".to_string());
+    }
+    let relays = parse_relays(&urls)?;
     let invitee_npubs = str_array(v, "invitee_npubs");
     let mut kp_events = signed_key_package_events(v)?;
     // If no explicit key packages were supplied but invitees are named, try

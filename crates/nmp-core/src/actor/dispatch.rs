@@ -308,6 +308,11 @@ pub(super) fn dispatch_command(
             // disconnect every registered raw observer.
             let raw_event_observers_handle =
                 kernel.take_raw_event_observers_handle_for_reset();
+            // Preserve the relay-edit rows handle across Reset for the same
+            // reason: the `Arc<Mutex<…>>` is shared with the FFI surface
+            // and per-app crates; replacing it would silently return stale
+            // rows to Marmot dispatch.
+            let relay_edit_rows_handle = kernel.take_relay_edit_rows_handle_for_reset();
             *kernel = Kernel::new(kernel.visible_limit());
             if let Some(handle) = drops_handle {
                 kernel.set_dispatch_drops_handle(handle);
@@ -317,6 +322,9 @@ pub(super) fn dispatch_command(
             }
             if let Some(handle) = raw_event_observers_handle {
                 kernel.set_raw_event_observers_handle(handle);
+            }
+            if let Some(handle) = relay_edit_rows_handle {
+                kernel.set_relay_edit_rows_handle(handle);
             }
             *startup_sent = false;
             if *running {

@@ -261,11 +261,6 @@ final class MarmotStore: ObservableObject {
     @Published private(set) var snapshot: MarmotSnapshot = .empty
     @Published private(set) var isRegistered = false
 
-    /// Default Marmot relays. The dispatch ops take a `relays` array; Chirp
-    /// has no per-feature relay config surface so we use a sane default set
-    /// (same well-known relays the rest of the app reaches).
-    var defaultRelays: [String] { relayURLsProvider() }
-
     private unowned let kernel: KernelHandle
     private let relayURLsProvider: () -> [String]
 
@@ -333,7 +328,7 @@ final class MarmotStore: ObservableObject {
 
     @discardableResult
     func publishKeyPackage() -> MarmotOpResult {
-        dispatch(["op": "publish_key_package", "relays": defaultRelays])
+        dispatch(["op": "publish_key_package"])
     }
 
     /// Trigger key-package fetch for the given npubs from relays. Fire-and-
@@ -358,7 +353,6 @@ final class MarmotStore: ObservableObject {
             "op": "create_group",
             "name": name,
             "description": description,
-            "relays": defaultRelays,
             "invitee_npubs": inviteeNpubs,
             "signed_key_package_events_json": [String](),
         ])

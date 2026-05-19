@@ -165,6 +165,10 @@ pub struct NmpApp {
     /// Both paths mutate the same `Mutex<…>` the actor reads. Delivers the
     /// verbatim flat NIP-01 signed event (`sig` included), kind-filtered.
     raw_event_observers: RawEventObserverSlot,
+    /// Shared relay-edit rows handle. Cloned to the actor thread and bound
+    /// onto the kernel so external Rust callers (e.g. `nmp-app-chirp` Marmot
+    /// dispatch) can read the user's current relay list without crossing FFI.
+    relay_edit_rows: Arc<Mutex<Vec<crate::kernel::RelayEditRow>>>,
     actor: Mutex<Option<JoinHandle<()>>>,
     update_listener: Mutex<Option<JoinHandle<()>>>,
 }
@@ -214,6 +218,12 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // (`set_raw_event_observers_handle`).
     let raw_event_observers = new_raw_event_observer_slot();
     let actor_raw_event_observers = Arc::clone(&raw_event_observers);
+    // Shared relay-edit rows handle. Cloned to the actor thread and bound
+    // onto the kernel so external Rust callers can read the user's current
+    // relay list without crossing FFI.
+    let relay_edit_rows: Arc<Mutex<Vec<crate::kernel::RelayEditRow>>> =
+        Arc::new(Mutex::new(Vec::new()));
+    let actor_relay_edit_rows = Arc::clone(&relay_edit_rows);
     // Clone so we can report actor panics through the same listener pipe.
     let update_tx_panic = update_tx.clone();
     let actor = thread::spawn(move || {
@@ -224,6 +234,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 actor_lifecycle_observer,
                 actor_event_observers,
                 actor_raw_event_observers,
+                actor_relay_edit_rows,
             );
         }));
         if let Err(e) = result {
@@ -260,6 +271,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         lifecycle_observer,
         event_observers,
         raw_event_observers,
+        relay_edit_rows,
         actor: Mutex::new(Some(actor)),
         update_listener: Mutex::new(Some(update_listener)),
     }))
@@ -340,6 +352,22 @@ impl NmpApp {
     /// [`Self::unregister_raw_event_observer`].
     pub(crate) fn raw_event_observers_slot(&self) -> RawEventObserverSlot {
         Arc::clone(&self.raw_event_observers)
+    }
+
+    /// Return the user's current write-relay URLs (rows whose role is
+    /// `"write"` or `"both"`), read from the shared kernel relay-edit
+    /// projection. Empty when the user has not configured any write relays.
+    /// Used by per-app crates (e.g. `nmp-app-chirp` Marmot dispatch) so
+    /// relay resolution stays Rust-owned (D0).
+    pub fn write_relay_urls(&self) -> Vec<String> {
+        let Ok(guard) = self.relay_edit_rows.lock() else {
+            return Vec::new();
+        };
+        guard
+            .iter()
+            .filter(|r| r.role == "write" || r.role == "both")
+            .map(|r| r.url.clone())
+            .collect()
     }
 }
 
