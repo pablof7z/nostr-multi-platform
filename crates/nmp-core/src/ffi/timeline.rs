@@ -24,7 +24,7 @@ pub extern "C" fn nmp_app_open_author(app: *mut NmpApp, pubkey: *const c_char) {
         return;
     }
 
-    let _ = app.tx.send(ActorCommand::OpenAuthor { pubkey });
+    app.send_cmd(ActorCommand::OpenAuthor { pubkey });
 }
 
 #[no_mangle]
@@ -39,7 +39,7 @@ pub extern "C" fn nmp_app_open_thread(app: *mut NmpApp, event_id: *const c_char)
         return;
     }
 
-    let _ = app.tx.send(ActorCommand::OpenThread { event_id });
+    app.send_cmd(ActorCommand::OpenThread { event_id });
 }
 
 #[no_mangle]
@@ -51,7 +51,7 @@ pub extern "C" fn nmp_app_open_firehose_tag(app: *mut NmpApp, tag: *const c_char
         return;
     };
 
-    let _ = app.tx.send(ActorCommand::OpenFirehoseTag { tag });
+    app.send_cmd(ActorCommand::OpenFirehoseTag { tag });
 }
 
 /// Open whatever a `nostr:` URI (or bare NIP-19 entity) points at (T95/T80).
@@ -93,7 +93,7 @@ pub extern "C" fn nmp_app_claim_profile(
         return;
     }
 
-    let _ = app.tx.send(ActorCommand::ClaimProfile {
+    app.send_cmd(ActorCommand::ClaimProfile {
         pubkey,
         consumer_id,
     });
@@ -118,7 +118,7 @@ pub extern "C" fn nmp_app_release_profile(
         return;
     }
 
-    let _ = app.tx.send(ActorCommand::ReleaseProfile {
+    app.send_cmd(ActorCommand::ReleaseProfile {
         pubkey,
         consumer_id,
     });
@@ -136,7 +136,7 @@ pub extern "C" fn nmp_app_close_author(app: *mut NmpApp, pubkey: *const c_char) 
         return;
     }
 
-    let _ = app.tx.send(ActorCommand::CloseAuthor { pubkey });
+    app.send_cmd(ActorCommand::CloseAuthor { pubkey });
 }
 
 #[no_mangle]
@@ -151,5 +151,5 @@ pub extern "C" fn nmp_app_close_thread(app: *mut NmpApp, event_id: *const c_char
         return;
     }
 
-    let _ = app.tx.send(ActorCommand::CloseThread { event_id });
+    app.send_cmd(ActorCommand::CloseThread { event_id });
 }

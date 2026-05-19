@@ -82,7 +82,7 @@ pub extern "C" fn nmp_app_inject_pre_verified_events(
         })
         .collect();
 
-    let _ = app.tx.send(ActorCommand::IngestPreVerifiedEvents(events));
+    app.send_cmd(ActorCommand::IngestPreVerifiedEvents(events));
 }
 
 /// Inject `count` real Schnorr-signed kind-1 events into the kernel timeline
@@ -130,5 +130,5 @@ pub extern "C" fn nmp_app_inject_signed_events(
         })
         .collect();
 
-    let _ = app.tx.send(ActorCommand::IngestPreVerifiedEvents(events));
+    app.send_cmd(ActorCommand::IngestPreVerifiedEvents(events));
 }

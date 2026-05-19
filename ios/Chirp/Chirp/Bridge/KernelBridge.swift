@@ -125,7 +125,7 @@ final class KernelHandle {
     /// flow. Returns `nil` if the broker is not yet initialised (which would
     /// be unusual — it's init'd in `KernelHandle.init()`). Each call produces
     /// a new ephemeral keypair and session secret.
-    func nostrConnectURI(relay: String = "wss://relay.damus.io") -> String? {
+    func nostrConnectURI(relay: String) -> String? {
         relay.withCString { relayPtr in
             guard let ptr = nmp_app_nostrconnect_uri(raw, relayPtr) else { return nil }
             defer { nmp_broker_free_string(ptr) }
@@ -301,6 +301,12 @@ private final class KernelUpdateSink {
 private let nmpUpdateCallback: NmpUpdateCallback = { context, pointer in
     guard let context, let pointer else {
         kbLog.error("NMP_DBG callback: nil context or pointer")
+        return
+    }
+    let payload = String(cString: pointer)
+    if payload.contains("\"t\":\"panic\"") {
+        kbLog.fault("NMP_ACTOR_PANIC: \(payload)")
+        NSLog("NMP_ACTOR_PANIC: %@", payload)
         return
     }
     guard let result = KernelHandle.decode(pointer: pointer) else {

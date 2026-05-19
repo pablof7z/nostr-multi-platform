@@ -19,19 +19,19 @@ impl Kernel {
         };
 
         let mut requests = Vec::new();
-        requests.push(self.req(
+        requests.extend(self.req(
             RelayRole::Indexer,
             "profile-target",
             "self kind:0 profile via indexer",
             json!({"kinds":[0],"authors":[self_pk],"limit":1}),
         ));
-        requests.push(self.req(
+        requests.extend(self.req(
             RelayRole::Indexer,
             "target-relays",
             "self NIP-65 relay list",
             json!({"kinds":[10002],"authors":[self_pk],"limit":1}),
         ));
-        requests.push(self.req(
+        requests.extend(self.req(
             RelayRole::Indexer,
             "self-contacts",
             "self kind:3 contacts via indexer",

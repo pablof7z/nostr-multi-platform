@@ -21,7 +21,7 @@ pub extern "C" fn nmp_app_wallet_connect(app: *mut NmpApp, uri: *const c_char) {
     let Some(uri) = c_string_argument(uri) else {
         return;
     };
-    let _ = app.tx.send(ActorCommand::WalletConnect { uri });
+    app.send_cmd(ActorCommand::WalletConnect { uri });
 }
 
 /// Disconnect the current NIP-47 wallet.
@@ -33,7 +33,7 @@ pub extern "C" fn nmp_app_wallet_disconnect(app: *mut NmpApp) {
     let Some(app) = app_ref(app) else {
         return;
     };
-    let _ = app.tx.send(ActorCommand::WalletDisconnect);
+    app.send_cmd(ActorCommand::WalletDisconnect);
 }
 
 /// Pay a Lightning invoice via the connected NIP-47 wallet.
@@ -55,7 +55,7 @@ pub extern "C" fn nmp_app_wallet_pay_invoice(
     };
     let amount_msats = c_optional_string_argument(amount_msats_json)
         .and_then(|s| s.parse::<u64>().ok());
-    let _ = app.tx.send(ActorCommand::WalletPayInvoice {
+    app.send_cmd(ActorCommand::WalletPayInvoice {
         bolt11,
         amount_msats,
     });

@@ -16,32 +16,30 @@
 //! bootstrap seed is no longer consulted for that author (D3: outbox routing
 //! automatic — `docs/product-spec/overview-and-dx.md` §1.5).
 
-/// Cold-start discovery seed — the relays used for the very first NIP-65
-/// (kind:10002) relay-list fetch when the store has no cached relay list for
-/// the author yet. Gated to the cold-start discovery interest only; it is
-/// never a routing fallback for content REQs once a relay list is known.
-///
-/// Two large public relays; neither is authoritative, both are best-effort.
-pub(crate) const BOOTSTRAP_DISCOVERY_RELAYS: &[&str] =
-    &["wss://relay.damus.io", "wss://purplepag.es"];
-
-/// Diagnostics-only lane labels (relay-health rows, status payload). NOT a
-/// routing source (T105) — they alias the cold-start bootstrap seeds purely so
-/// the diagnostic surface has a stable string per lane until per-resolved-relay
-/// health tracking lands (M11). Never consult these for wire routing.
-pub(crate) const CONTENT_RELAY_URL: &str = BOOTSTRAP_DISCOVERY_RELAYS[0];
-pub(crate) const INDEXER_RELAY_URL: &str = BOOTSTRAP_DISCOVERY_RELAYS[1];
-
 pub(crate) const DEFAULT_VISIBLE_LIMIT: usize = 80;
 pub(crate) const DEFAULT_EMIT_HZ: u32 = 4;
 pub(crate) const TIMELINE_AUTHOR_LIMIT: usize = 500;
+
+#[cfg(test)]
+pub(crate) const BOOTSTRAP_DISCOVERY_RELAYS: &[&str] =
+    &["wss://relay.damus.io", "wss://purplepag.es"];
+
+#[cfg(test)]
+pub(crate) const CONTENT_RELAY_URL: &str = BOOTSTRAP_DISCOVERY_RELAYS[0];
+#[cfg(test)]
+pub(crate) const INDEXER_RELAY_URL: &str = BOOTSTRAP_DISCOVERY_RELAYS[1];
+
+#[cfg(test)]
 pub(crate) const TEST_NPUB: &str =
     "npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft";
+#[cfg(test)]
 pub(crate) const TEST_PUBKEY: &str =
     "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52";
+#[cfg(test)]
 #[allow(dead_code)]
 pub(crate) const FIATJAF_PUBKEY: &str =
     "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+#[cfg(test)]
 #[allow(dead_code)]
 pub(crate) const JB55_PUBKEY: &str =
     "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245";
@@ -78,27 +76,16 @@ impl RelayRole {
         }
     }
 
-    /// Cold-start bootstrap URL for this lane's *first* socket. NOT a routing
-    /// default — content/profile/thread REQs and publishes target the
-    /// resolved `OutboundMessage::relay_url`, not this. Used only so the very
-    /// first kind:10002 discovery fetch has a relay to dial before any NIP-65
-    /// list is cached.
+    #[cfg(test)]
     pub(crate) fn bootstrap_url(self) -> &'static str {
         match self {
-            // Distinct seeds per lane so the cold-start discovery fetch and
-            // the seed-timeline bootstrap do not collide on one socket.
             Self::Content => BOOTSTRAP_DISCOVERY_RELAYS[0],
             Self::Indexer => BOOTSTRAP_DISCOVERY_RELAYS[1],
-            // Wallet relay URL is dynamic (from NWC URI); no static bootstrap.
             Self::Wallet => "",
         }
     }
 
-    /// Lane bootstrap URL, retained under the legacy name for the
-    /// diagnostics/provenance call sites (relay-health rows, NIP-42 challenge
-    /// host, store provenance when a frame's resolved URL is not threaded
-    /// through). NOT a routing source — content/profile/thread/publish target
-    /// the resolved `OutboundMessage::relay_url`. Alias of [`Self::bootstrap_url`].
+    #[cfg(test)]
     pub(crate) fn url(self) -> &'static str {
         self.bootstrap_url()
     }

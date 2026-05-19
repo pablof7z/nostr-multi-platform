@@ -36,6 +36,7 @@ use std::collections::{BTreeMap, HashMap};
 use super::types::AuthorRelayList;
 use super::Kernel;
 use crate::planner::{MailboxCache, MailboxSnapshot, Pubkey};
+use crate::relay::RelayRole;
 
 impl Kernel {
     /// Partition `authors` by their NIP-65 **write** relays (outbox direction).
@@ -91,7 +92,7 @@ impl Kernel {
                 out.dedup();
                 out
             }
-            _ => Self::bootstrap_discovery_relays(),
+            _ => self.bootstrap_discovery_relays(),
         }
     }
 
@@ -115,7 +116,7 @@ impl Kernel {
                 out.dedup();
                 out
             }
-            _ => vec![crate::relay::INDEXER_RELAY_URL.to_string()],
+            _ => self.bootstrap_urls_for_role(RelayRole::Indexer),
         }
     }
 
@@ -140,17 +141,10 @@ impl Kernel {
                 out.dedup();
                 out
             }
-            _ => Self::bootstrap_discovery_relays(),
+            _ => self.bootstrap_discovery_relays(),
         }
     }
 
-    /// The cold-start discovery seed as an owned `Vec` (D3: discovery only).
-    pub(crate) fn bootstrap_discovery_relays() -> Vec<String> {
-        crate::relay::BOOTSTRAP_DISCOVERY_RELAYS
-            .iter()
-            .map(|s| (*s).to_string())
-            .collect()
-    }
 
     /// True iff every author in `authors` has a cached kind:10002 relay list
     /// (i.e. the next emission will route entirely off resolved relays, no
@@ -191,7 +185,7 @@ impl Kernel {
         for id in ids {
             let relays = match self.events.get(id) {
                 Some(event) => self.author_write_relays(&event.author),
-                None => Self::bootstrap_discovery_relays(),
+                None => self.bootstrap_discovery_relays(),
             };
             for relay in relays {
                 by_relay.entry(relay).or_default().push(id.clone());
@@ -244,14 +238,20 @@ impl Kernel {
     /// M11 will sharpen this to a per-URL lookup once the URL→role index is
     /// maintained by the relay-lifecycle manager.
     pub(crate) fn role_for_relay_url(&self, url: &str) -> Option<crate::relay::RelayRole> {
-        use crate::relay::{BOOTSTRAP_DISCOVERY_RELAYS, RelayRole};
-        if url == BOOTSTRAP_DISCOVERY_RELAYS[0] {
-            Some(RelayRole::Content)
-        } else if url == BOOTSTRAP_DISCOVERY_RELAYS[1] {
-            Some(RelayRole::Indexer)
-        } else {
-            None
+        use crate::relay::RelayRole;
+        for row in &self.relay_edit_rows {
+            if row.url == url {
+                if crate::actor::has_role(&row.role, "indexer") {
+                    return Some(RelayRole::Indexer);
+                }
+                if crate::actor::has_role(&row.role, "read")
+                    || crate::actor::has_role(&row.role, "write")
+                {
+                    return Some(RelayRole::Content);
+                }
+            }
         }
+        Some(RelayRole::Content)
     }
 }
 
@@ -349,7 +349,7 @@ mod tests {
         let relays = kernel.author_write_relays("never-seen");
         assert_eq!(
             relays,
-            BOOTSTRAP_DISCOVERY_RELAYS
+            kernel.bootstrap_discovery_relays()
                 .iter()
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>()
@@ -367,7 +367,7 @@ mod tests {
         let relays = kernel.author_write_relays("alice");
         assert_eq!(
             relays,
-            BOOTSTRAP_DISCOVERY_RELAYS
+            kernel.bootstrap_discovery_relays()
                 .iter()
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>()
@@ -490,7 +490,7 @@ mod tests {
         let publish_path = kernel.author_write_relays("alice");
         assert_eq!(
             publish_path,
-            BOOTSTRAP_DISCOVERY_RELAYS
+            kernel.bootstrap_discovery_relays()
                 .iter()
                 .map(|s| s.to_string())
                 .collect::<Vec<_>>()

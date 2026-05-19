@@ -12,7 +12,7 @@ impl Kernel {
         let relay = self.relay_mut(role);
         relay.connection = "connecting".to_string();
         self.changed_since_emit = true;
-        self.log(format!("connecting {} relay {}", role.key(), role.url()));
+        self.log(format!("connecting {} relay {}", role.key(), self.bootstrap_urls_for_role(role).first().cloned().unwrap_or_default()));
     }
 
     pub(crate) fn relay_connected(&mut self, role: RelayRole) {

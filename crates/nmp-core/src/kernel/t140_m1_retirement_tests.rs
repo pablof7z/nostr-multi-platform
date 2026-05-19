@@ -32,7 +32,7 @@
 
 use super::*;
 use crate::kernel::types::AuthorRelayList;
-use crate::relay::DEFAULT_VISIBLE_LIMIT;
+use crate::relay::{DEFAULT_VISIBLE_LIMIT, FIATJAF_PUBKEY, JB55_PUBKEY, TEST_PUBKEY};
 use crate::subs::WireFrame;
 
 const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";

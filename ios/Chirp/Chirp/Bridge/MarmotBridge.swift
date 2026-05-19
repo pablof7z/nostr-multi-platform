@@ -264,12 +264,14 @@ final class MarmotStore: ObservableObject {
     /// Default Marmot relays. The dispatch ops take a `relays` array; Chirp
     /// has no per-feature relay config surface so we use a sane default set
     /// (same well-known relays the rest of the app reaches).
-    let defaultRelays = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"]
+    var defaultRelays: [String] { relayURLsProvider() }
 
     private unowned let kernel: KernelHandle
+    private let relayURLsProvider: () -> [String]
 
-    init(kernel: KernelHandle) {
+    init(kernel: KernelHandle, relayURLsProvider: @escaping () -> [String]) {
         self.kernel = kernel
+        self.relayURLsProvider = relayURLsProvider
     }
 
     var groups: [MarmotGroup] { snapshot.groups }

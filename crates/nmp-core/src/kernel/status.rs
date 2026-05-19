@@ -77,7 +77,7 @@ impl Kernel {
         let relay = self.relay(role);
         RelayStatus {
             role: role.key().to_string(),
-            relay_url: role.url().to_string(),
+            relay_url: self.bootstrap_urls_for_role(role).first().cloned().unwrap_or_default(),
             connection: relay.connection.clone(),
             auth: relay.auth.clone(),
             nip77_negentropy: relay.nip77_probe_state.clone(),
@@ -102,7 +102,7 @@ impl Kernel {
 
     pub(super) fn logical_interests(&self) -> Vec<LogicalInterestStatus> {
         let mut interests = Vec::new();
-        let target_pk = self.active_account.as_deref().unwrap_or(TEST_PUBKEY);
+        let target_pk = self.active_account.as_deref().unwrap_or("");
         interests.push(LogicalInterestStatus {
             key: format!("Profile({})", short_hex(target_pk)),
             state: if self.profiles.contains_key(target_pk) {
@@ -113,7 +113,7 @@ impl Kernel {
                 "opening".to_string()
             },
             refcount: 1,
-            relay_urls: vec![INDEXER_RELAY_URL.to_string()],
+            relay_urls: self.bootstrap_urls_for_role(RelayRole::Indexer),
             cache_coverage: self.relay_list_coverage(target_pk),
             warming_until_ms: None,
         });
@@ -127,7 +127,7 @@ impl Kernel {
                 "backfilling".to_string()
             },
             refcount: 1,
-            relay_urls: vec![CONTENT_RELAY_URL.to_string(), INDEXER_RELAY_URL.to_string()],
+            relay_urls: self.bootstrap_discovery_relays(),
             cache_coverage: if self.timeline_requested {
                 "partial".to_string()
             } else {
@@ -179,7 +179,7 @@ impl Kernel {
                 ),
                 state: state.to_string(),
                 refcount: claim_count.min(u32::MAX as usize) as u32,
-                relay_urls: vec![INDEXER_RELAY_URL.to_string()],
+                relay_urls: self.bootstrap_urls_for_role(RelayRole::Indexer),
                 cache_coverage: format!(
                     "{loaded}/{} loaded, {pending} pending, {requested} requested, {active_reqs} active REQs",
                     claimed_authors.len()
@@ -191,7 +191,7 @@ impl Kernel {
             key: "NetworkDiagnostics".to_string(),
             state: "tailing".to_string(),
             refcount: 1,
-            relay_urls: vec![CONTENT_RELAY_URL.to_string(), INDEXER_RELAY_URL.to_string()],
+            relay_urls: self.bootstrap_discovery_relays(),
             cache_coverage: "local".to_string(),
             warming_until_ms: None,
         });
@@ -233,7 +233,7 @@ impl Kernel {
                     "opening".to_string()
                 },
                 refcount: interest.refcount,
-                relay_urls: vec![CONTENT_RELAY_URL.to_string()],
+                relay_urls: self.bootstrap_urls_for_role(RelayRole::Content),
                 cache_coverage: if item_count > 0 {
                     format!("{item_count} events")
                 } else {
@@ -255,7 +255,7 @@ impl Kernel {
                     "opening".to_string()
                 },
                 refcount: interest.refcount,
-                relay_urls: vec![CONTENT_RELAY_URL.to_string()],
+                relay_urls: self.bootstrap_urls_for_role(RelayRole::Content),
                 cache_coverage: format!("{} events", self.diagnostic_firehose_events),
                 warming_until_ms: None,
             });
@@ -323,7 +323,7 @@ impl Kernel {
     }
 
     pub(super) fn author_interest_relays(&self, pubkey: &str) -> Vec<String> {
-        let mut relays = vec![CONTENT_RELAY_URL.to_string(), INDEXER_RELAY_URL.to_string()];
+        let mut relays = self.bootstrap_discovery_relays();
         if let Some(list) = self.author_relay_lists.get(pubkey) {
             for relay in list
                 .write_relays

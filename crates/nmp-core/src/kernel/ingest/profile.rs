@@ -21,10 +21,6 @@ impl Kernel {
             .unwrap_or(true);
 
         if should_replace {
-            if event.pubkey == TEST_PUBKEY {
-                self.target_profile_loaded_at
-                    .get_or_insert_with(Instant::now);
-            }
             self.profiles.insert(event.pubkey, candidate);
         }
     }

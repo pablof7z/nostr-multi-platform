@@ -93,7 +93,7 @@ enum KeyringRequest: Decodable, Equatable {
 ///
 /// Note there is no error *exception*: a failure is data (`status == "error"`
 /// with an `os_status` code), satisfying D6.
-struct KeyringResult: Encodable, Equatable {
+struct KeyringResult: Codable, Equatable {
     let status: String          // "ok" | "not_found" | "error"
     let secret: String?         // populated only for a successful retrieve
     let osStatus: Int32?        // raw OSStatus for diagnostics; nil on success

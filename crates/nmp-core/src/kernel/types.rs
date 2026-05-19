@@ -15,8 +15,10 @@ pub(super) struct SeedAccount {
     pub(super) pubkey: &'static str,
 }
 
+#[cfg(test)]
 #[allow(dead_code)]
 pub(super) fn seed_accounts() -> Vec<SeedAccount> {
+    use crate::relay::{FIATJAF_PUBKEY, JB55_PUBKEY, TEST_PUBKEY};
     vec![
         SeedAccount {
             name: "pablof7z",

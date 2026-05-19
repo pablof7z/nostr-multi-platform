@@ -19,7 +19,7 @@ pub extern "C" fn nmp_app_signin_nsec(app: *mut NmpApp, secret: *const c_char) {
     let Some(secret) = c_string_argument(secret) else {
         return;
     };
-    let _ = app.tx.send(ActorCommand::SignInNsec { secret });
+    app.send_cmd(ActorCommand::SignInNsec { secret });
 }
 
 #[no_mangle]
@@ -30,7 +30,7 @@ pub extern "C" fn nmp_app_signin_bunker(app: *mut NmpApp, uri: *const c_char) {
     let Some(uri) = c_string_argument(uri) else {
         return;
     };
-    let _ = app.tx.send(ActorCommand::SignInBunker { uri });
+    app.send_cmd(ActorCommand::SignInBunker { uri });
 }
 
 #[no_mangle]
@@ -38,7 +38,7 @@ pub extern "C" fn nmp_app_create_new_account(app: *mut NmpApp) {
     let Some(app) = app_ref(app) else {
         return;
     };
-    let _ = app.tx.send(ActorCommand::CreateAccount);
+    app.send_cmd(ActorCommand::CreateAccount);
 }
 
 #[no_mangle]
@@ -49,7 +49,7 @@ pub extern "C" fn nmp_app_switch_active(app: *mut NmpApp, identity_id: *const c_
     let Some(identity_id) = c_string_argument(identity_id) else {
         return;
     };
-    let _ = app.tx.send(ActorCommand::SwitchActive { identity_id });
+    app.send_cmd(ActorCommand::SwitchActive { identity_id });
 }
 
 #[no_mangle]
@@ -60,7 +60,7 @@ pub extern "C" fn nmp_app_remove_account(app: *mut NmpApp, identity_id: *const c
     let Some(identity_id) = c_string_argument(identity_id) else {
         return;
     };
-    let _ = app.tx.send(ActorCommand::RemoveAccount { identity_id });
+    app.send_cmd(ActorCommand::RemoveAccount { identity_id });
 }
 
 #[no_mangle]
@@ -76,7 +76,7 @@ pub extern "C" fn nmp_app_publish_note(
         return;
     };
     let reply_to_id = c_optional_string_argument(reply_to_id_or_null);
-    let _ = app.tx.send(ActorCommand::PublishNote {
+    app.send_cmd(ActorCommand::PublishNote {
         content,
         reply_to_id,
     });
@@ -108,13 +108,13 @@ pub extern "C" fn nmp_app_publish_unsigned_event(
     };
     match serde_json::from_str::<crate::substrate::UnsignedEvent>(&json) {
         Ok(unsigned) => {
-            let _ = app.tx.send(ActorCommand::PublishUnsignedEvent(unsigned));
+            app.send_cmd(ActorCommand::PublishUnsignedEvent(unsigned));
         }
         Err(_) => {
             // D6 — surface the decode failure as a toast (error becomes state,
             // never a silent no-op across FFI). The FFI layer only has a channel
             // sender, so we delegate to the actor via ShowToast.
-            let _ = app.tx.send(ActorCommand::ShowToast {
+            app.send_cmd(ActorCommand::ShowToast {
                 message: "Failed to decode action payload".to_string(),
             });
         }
@@ -173,7 +173,7 @@ pub extern "C" fn nmp_app_publish_signed_event(app: *mut NmpApp, event_json: *co
             // Auto target (NIP-65 outbox) — empty `relays`. Back-compat:
             // this symbol's behavior is byte-identical to before the
             // explicit-target variant landed.
-            let _ = app.tx.send(ActorCommand::PublishSignedEvent {
+            app.send_cmd(ActorCommand::PublishSignedEvent {
                 raw,
                 relays: Vec::new(),
             });
@@ -183,7 +183,7 @@ pub extern "C" fn nmp_app_publish_signed_event(app: *mut NmpApp, event_json: *co
             // never a silent no-op across FFI). Signature/id verification
             // happens on the actor side (`commands::publish_signed_event`);
             // here we only guard the JSON-shape decode.
-            let _ = app.tx.send(ActorCommand::ShowToast {
+            app.send_cmd(ActorCommand::ShowToast {
                 message: "Failed to decode signed event payload".to_string(),
             });
         }
@@ -258,7 +258,7 @@ pub extern "C" fn nmp_app_publish_signed_event_to(
             Ok(list) => list,
             Err(_) => {
                 // Malformed / not a JSON string array → toast, no publish.
-                let _ = app.tx.send(ActorCommand::ShowToast {
+                app.send_cmd(ActorCommand::ShowToast {
                     message: "Failed to decode signed event relay targets".to_string(),
                 });
                 return;
@@ -272,7 +272,7 @@ pub extern "C" fn nmp_app_publish_signed_event_to(
                 .send(ActorCommand::PublishSignedEvent { raw, relays });
         }
         Err(_) => {
-            let _ = app.tx.send(ActorCommand::ShowToast {
+            app.send_cmd(ActorCommand::ShowToast {
                 message: "Failed to decode signed event payload".to_string(),
             });
         }
@@ -295,7 +295,7 @@ pub extern "C" fn nmp_app_react(
         return;
     }
     let reaction = c_optional_string_argument(reaction).unwrap_or_else(|| "+".to_string());
-    let _ = app.tx.send(ActorCommand::React {
+    app.send_cmd(ActorCommand::React {
         target_event_id,
         reaction,
     });
@@ -312,7 +312,7 @@ pub extern "C" fn nmp_app_follow(app: *mut NmpApp, pubkey: *const c_char) {
     if !is_hex_pubkey(&pubkey) {
         return;
     }
-    let _ = app.tx.send(ActorCommand::Follow { pubkey });
+    app.send_cmd(ActorCommand::Follow { pubkey });
 }
 
 #[no_mangle]
@@ -326,7 +326,7 @@ pub extern "C" fn nmp_app_unfollow(app: *mut NmpApp, pubkey: *const c_char) {
     if !is_hex_pubkey(&pubkey) {
         return;
     }
-    let _ = app.tx.send(ActorCommand::Unfollow { pubkey });
+    app.send_cmd(ActorCommand::Unfollow { pubkey });
 }
 
 #[no_mangle]
@@ -342,7 +342,7 @@ pub extern "C" fn nmp_app_add_relay(
         return;
     };
     let role = c_optional_string_argument(role).unwrap_or_else(|| "both".to_string());
-    let _ = app.tx.send(ActorCommand::AddRelay { url, role });
+    app.send_cmd(ActorCommand::AddRelay { url, role });
 }
 
 #[no_mangle]
@@ -353,7 +353,7 @@ pub extern "C" fn nmp_app_remove_relay(app: *mut NmpApp, url: *const c_char) {
     let Some(url) = c_string_argument(url) else {
         return;
     };
-    let _ = app.tx.send(ActorCommand::RemoveRelay { url });
+    app.send_cmd(ActorCommand::RemoveRelay { url });
 }
 
 #[no_mangle]
@@ -361,6 +361,6 @@ pub extern "C" fn nmp_app_open_timeline(app: *mut NmpApp) {
     let Some(app) = app_ref(app) else {
         return;
     };
-    let _ = app.tx.send(ActorCommand::OpenTimeline);
+    app.send_cmd(ActorCommand::OpenTimeline);
 }
 

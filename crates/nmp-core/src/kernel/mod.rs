@@ -79,8 +79,7 @@ mod auth_url_threading_tests;
 mod contacts_fanout_tests;
 
 use crate::relay::{
-    OutboundMessage, RelayRole, CONTENT_RELAY_URL, DEFAULT_EMIT_HZ, FIATJAF_PUBKEY,
-    INDEXER_RELAY_URL, JB55_PUBKEY, TEST_NPUB, TEST_PUBKEY, TIMELINE_AUTHOR_LIMIT,
+    OutboundMessage, RelayRole, DEFAULT_EMIT_HZ, TIMELINE_AUTHOR_LIMIT,
 };
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
@@ -468,6 +467,46 @@ impl Kernel {
             event_observers: None,
             raw_event_observers: None,
         }
+    }
+
+    /// Resolve the configured bootstrap URLs for a given `RelayRole` from the
+    /// app-provided `relay_edit_rows`.  Empty when the operator has not yet
+    /// configured any relays for that role.
+    pub(crate) fn bootstrap_urls_for_role(&self, role: RelayRole) -> Vec<String> {
+        let matches = |row_role: &str| match role {
+            RelayRole::Content => matches!(row_role, "both" | "write" | "read"),
+            RelayRole::Indexer => matches!(row_role, "indexer" | "both"),
+            RelayRole::Wallet => false,
+        };
+        let mut urls: Vec<String> = self
+            .relay_edit_rows
+            .iter()
+            .filter(|r| matches(&r.role))
+            .map(|r| r.url.clone())
+            .collect();
+        #[cfg(test)]
+        if urls.is_empty() {
+            urls = match role {
+                RelayRole::Content => vec!["wss://relay.damus.io".to_string()],
+                RelayRole::Indexer => vec!["wss://purplepag.es".to_string()],
+                RelayRole::Wallet => Vec::new(),
+            };
+        }
+        urls
+    }
+
+    /// The cold-start discovery seed as an owned `Vec`.  Reads from the
+    /// app-provided `relay_edit_rows`; returns an empty vec when nothing is
+    /// configured yet.
+    pub(crate) fn bootstrap_discovery_relays(&self) -> Vec<String> {
+        let mut urls: Vec<String> = self
+            .bootstrap_urls_for_role(RelayRole::Indexer)
+            .into_iter()
+            .chain(self.bootstrap_urls_for_role(RelayRole::Content))
+            .collect();
+        urls.sort();
+        urls.dedup();
+        urls
     }
 
     /// T114b — install the actor's FFI-channel drop counter so the diagnostic

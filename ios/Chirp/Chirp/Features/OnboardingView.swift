@@ -78,6 +78,28 @@ struct OnboardingView: View {
             Spacer().frame(height: ChirpSpace.xxl)
         }
         .background(Color(.systemBackground))
+        // NMP_DBG overlay — shows kernel state without needing device logs
+        .overlay(alignment: .bottom) {
+            VStack(spacing: 2) {
+                Text("running=\(model.isRunning ? "Y" : "N") snaps=\(model.snapshotCount) rev=\(model.rev) accts=\(model.accounts.count)")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.8))
+                if let activeID = model.activeAccount {
+                    Text("active=\(activeID.prefix(8))…")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.green.opacity(0.9))
+                }
+                if let toast = model.lastErrorToast {
+                    Text("err=\(toast)")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.red.opacity(0.9))
+                        .lineLimit(2)
+                }
+            }
+            .padding(6)
+            .background(.black.opacity(0.5), in: RoundedRectangle(cornerRadius: 6))
+            .padding(.bottom, 12)
+        }
         .onAppear {
             withAnimation(.spring(response: 0.7, dampingFraction: 0.65).delay(0.15)) {
                 logoAppeared = true

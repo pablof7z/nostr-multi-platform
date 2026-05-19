@@ -214,14 +214,32 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // (`set_raw_event_observers_handle`).
     let raw_event_observers = new_raw_event_observer_slot();
     let actor_raw_event_observers = Arc::clone(&raw_event_observers);
+    // Clone so we can report actor panics through the same listener pipe.
+    let update_tx_panic = update_tx.clone();
     let actor = thread::spawn(move || {
-        run_actor_with_observers(
-            command_rx,
-            update_tx,
-            actor_lifecycle_observer,
-            actor_event_observers,
-            actor_raw_event_observers,
-        );
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_actor_with_observers(
+                command_rx,
+                update_tx,
+                actor_lifecycle_observer,
+                actor_event_observers,
+                actor_raw_event_observers,
+            );
+        }));
+        if let Err(e) = result {
+            let msg = if let Some(s) = e.downcast_ref::<String>() {
+                s.clone()
+            } else if let Some(s) = e.downcast_ref::<&str>() {
+                s.to_string()
+            } else {
+                "unknown panic in actor thread".to_string()
+            };
+            let frame = format!(
+                "{{\"t\":\"panic\",\"m\":\"actor panicked: {}\"}}",
+                msg.replace('"', "\\\"").replace('\\', "\\\\")
+            );
+            let _ = update_tx_panic.send(frame);
+        }
     });
     let update_listener = thread::spawn(move || {
         while let Ok(update) = update_rx.recv() {
@@ -248,6 +266,14 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
 }
 
 impl NmpApp {
+    /// Send a command to the actor thread, logging at error level if the
+    /// channel is disconnected (actor thread panicked or exited).
+    pub(crate) fn send_cmd(&self, cmd: ActorCommand) {
+        if let Err(_) = self.tx.send(cmd) {
+            eprintln!("NMP_FFI_ERR: actor command channel disconnected — actor thread may have panicked");
+        }
+    }
+
     /// Clone of the actor command sender. Used by `nmp-signer-broker` to push
     /// `AddRemoteSigner` / `BunkerHandshakeProgress` back to the actor without
     /// importing private internals. Stage 4 of the NIP-46 wiring (D0 stays
@@ -361,7 +387,7 @@ pub extern "C" fn nmp_app_start(
         return;
     };
 
-    let _ = app.tx.send(ActorCommand::Start {
+    app.send_cmd(ActorCommand::Start {
         visible_limit: clamp_visible(visible_limit),
         emit_hz: clamp_emit_hz(emit_hz),
     });
@@ -378,7 +404,7 @@ pub extern "C" fn nmp_app_configure(
         return;
     };
 
-    let _ = app.tx.send(ActorCommand::Configure {
+    app.send_cmd(ActorCommand::Configure {
         visible_limit: clamp_visible(visible_limit),
         emit_hz: clamp_emit_hz(emit_hz),
     });
@@ -389,7 +415,7 @@ pub extern "C" fn nmp_app_stop(app: *mut NmpApp) {
     let Some(app) = app_ref(app) else {
         return;
     };
-    let _ = app.tx.send(ActorCommand::Stop);
+    app.send_cmd(ActorCommand::Stop);
 }
 
 #[no_mangle]
@@ -397,7 +423,7 @@ pub extern "C" fn nmp_app_reset(app: *mut NmpApp) {
     let Some(app) = app_ref(app) else {
         return;
     };
-    let _ = app.tx.send(ActorCommand::Reset);
+    app.send_cmd(ActorCommand::Reset);
 }
 
 pub(crate) fn app_ref<'a>(app: *mut NmpApp) -> Option<&'a NmpApp> {

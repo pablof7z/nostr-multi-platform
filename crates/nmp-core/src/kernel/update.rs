@@ -30,8 +30,8 @@ impl Kernel {
             rev: self.rev,
             update_kind: "ViewBatch",
             running,
-            relay_url: CONTENT_RELAY_URL,
-            test_npub: TEST_NPUB,
+            relay_url: "",
+            test_npub: "",
             profile: self.profile_card(),
             items,
             author_view: self.author_view(),
@@ -188,7 +188,7 @@ impl Kernel {
     pub(super) fn profile_card(&self) -> ProfileCard {
         match self.active_account.as_deref() {
             Some(pk) => self.profile_card_for(pk, None, "Waiting for kind:0 from indexer"),
-            None => self.profile_card_for(TEST_PUBKEY, Some(TEST_NPUB), "Waiting for kind:0 from indexer"),
+            None => self.profile_card_for("", None, "Waiting for kind:0 from indexer"),
         }
     }
 

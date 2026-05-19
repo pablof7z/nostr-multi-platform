@@ -121,7 +121,7 @@ impl Kernel {
             };
             let sub_id = format!("{ONESHOT_SUB_PREFIX}{}", token.0);
             self.oneshot_subs.insert(sub_id.clone(), (token, OneshotKind::Discovery));
-            out.push(self.req(
+            out.extend(self.req(
                 RelayRole::Content,
                 &sub_id,
                 "discovery: referenced events",
@@ -151,7 +151,7 @@ impl Kernel {
             };
             let sub_id = format!("{ONESHOT_SUB_PREFIX}{}", token.0);
             self.oneshot_subs.insert(sub_id.clone(), (token, OneshotKind::Discovery));
-            out.push(self.req(
+            out.extend(self.req(
                 RelayRole::Indexer,
                 &sub_id,
                 "discovery: referenced profiles",

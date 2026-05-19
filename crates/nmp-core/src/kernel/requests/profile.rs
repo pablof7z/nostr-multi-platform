@@ -209,7 +209,7 @@ impl Kernel {
         // discovery seed via `recipient_read_relays`/`bootstrap_discovery_relays`.
         let relays = match self.active_account.clone() {
             Some(pubkey) => self.recipient_read_relays(&pubkey),
-            None => Self::bootstrap_discovery_relays(),
+            None => self.bootstrap_discovery_relays(),
         };
 
         relays
@@ -329,18 +329,18 @@ impl Kernel {
         // recompilation trigger re-emits onto resolved relays after
         // ingest_relay_list lands the author's kind:10002.
         let mut requests = Vec::new();
-        for seed in crate::relay::BOOTSTRAP_DISCOVERY_RELAYS {
-            let tag = relay_tag(seed);
+        for seed in self.bootstrap_discovery_relays() {
+            let tag = relay_tag(&seed);
             requests.push(self.req_for_relay(
                 RelayRole::Indexer,
-                (*seed).to_string(),
+                seed.clone(),
                 &format!("author-relays-{seq}-{tag}"),
                 &format!("selected author NIP-65 {}", short_hex(&pubkey)),
                 json!({"kinds":[10002],"authors":[pubkey.clone()],"limit":1}),
             ));
             requests.push(self.req_for_relay(
                 RelayRole::Indexer,
-                (*seed).to_string(),
+                seed,
                 &format!("author-profile-{seq}-{tag}"),
                 &format!("selected author kind:0 {}", short_hex(&pubkey)),
                 json!({"kinds":[0],"authors":[pubkey.clone()],"limit":1}),

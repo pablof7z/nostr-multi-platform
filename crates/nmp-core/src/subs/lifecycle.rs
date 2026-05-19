@@ -37,7 +37,12 @@ impl SubscriptionLifecycle {
         Self {
             registry: InterestRegistry::new(),
             inbox: TriggerInbox::new(),
-            indexer_relays: vec!["wss://purplepag.es".to_string()],
+            indexer_relays: {
+                #[cfg(test)]
+                { vec!["wss://purplepag.es".to_string()] }
+                #[cfg(not(test))]
+                { Vec::new() }
+            },
             app_relays: Vec::new(),
             active_account_read_relays: Vec::new(),
             current_plan: None,
@@ -181,7 +186,8 @@ impl SubscriptionLifecycle {
     /// case-D cold-start fallback when both `app_relays` and the
     /// active-account read set are empty.
     ///
-    /// Default at construction is `vec!["wss://purplepag.es".to_string()]`.
+    /// Default at construction is `vec!["wss://purplepag.es".to_string()]` under
+    /// `#[cfg(test)]`; empty in production so the app-supplied set is authoritative.
     /// Set to an empty `Vec` to disable indexer fallback entirely (authors
     /// without a mailbox snapshot will still land in
     /// `CompiledPlan::unroutable_authors` — case A never falls back to the

@@ -56,7 +56,9 @@ final class KernelModel: ObservableObject {
     /// (the only nsec seam Chirp exposes — bunker/NIP-46 sign-in never
     /// surfaces a secret key, so Marmot stays empty then; documented in
     /// `Bridge/MarmotBridge.swift`). Refreshed on every kernel tick.
-    private(set) lazy var marmot = MarmotStore(kernel: kernel)
+    private(set) lazy var marmot = MarmotStore(kernel: kernel, relayURLsProvider: { [weak self] in
+        self?.relayEditRows.map { $0.url } ?? []
+    })
 
     /// Best-effort in-memory cache of the local secret used to register the
     /// Marmot MLS DB. Lost on cold relaunch (Marmot reappears empty until
@@ -82,11 +84,29 @@ final class KernelModel: ObservableObject {
         }
     }
 
+
+    /// Seed the kernel with a default relay set when the user has not yet
+    /// configured any relays.  This replaces the old hardcoded Rust-side
+    /// defaults with an explicit app-side default injected before start.
+    private func addDefaultRelaysIfNeeded() {
+        guard relayEditRows.isEmpty else { return }
+        let defaults = [
+            ("wss://r.f7z.io", "both"),
+            ("wss://purplepag.es", "indexer"),
+        ]
+        for (url, role) in defaults {
+            kernel.addRelay(url: url, role: role)
+        }
+    }
+
     func start() {
         guard !isRunning else { return }
         capabilities.start()
+        addDefaultRelaysIfNeeded()
         kernel.start(visibleLimit: visibleLimit, emitHz: emitHz)
         isRunning = true
+        // NMP_DBG: keychain restore disabled — was triggering crash in parse_secret
+        // (stored nsec causes invalid &str at 0x800000000000000c in actor thread)
         // UITest affordance: NMP_TEST_NSEC auto-signs-in without driving onboarding.
         if let nsec = ProcessInfo.processInfo.environment["NMP_TEST_NSEC"] {
             cachedSecretKey = nsec
@@ -123,6 +143,7 @@ final class KernelModel: ObservableObject {
         appMetrics = AppRuntimeMetrics()
         lastLogicalInterestSummary = ""
         capabilities.start()
+        addDefaultRelaysIfNeeded()
         kernel.start(visibleLimit: visibleLimit, emitHz: emitHz)
         isRunning = true
     }
@@ -189,9 +210,12 @@ final class KernelModel: ObservableObject {
     }
 
     func nostrConnectURI() -> String? {
-        kernel.nostrConnectURI()
+        let relay = relayEditRows.first { $0.role == "both" || $0.role == "write" }?.url
+            ?? "wss://r.f7z.io"
+        return kernel.nostrConnectURI(relay: relay)
     }
     func createAccount() {
+        NSLog("ChirpDebug: createAccount tapped")
         kmLog.info("createAccount dispatched")
         kernel.createAccount()
     }
@@ -237,6 +261,7 @@ final class KernelModel: ObservableObject {
 
     private func apply(result: KernelUpdateResult) {
         let update = result.update
+        NSLog("ChirpDebug: apply called rev=%llu activeAccount=%@ running=%d", update.rev, update.activeAccount ?? "nil", update.running)
         guard update.rev > rev else { return }
 
         let applyStart = ContinuousClock.now

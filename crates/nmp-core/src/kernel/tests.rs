@@ -1,5 +1,5 @@
 use super::*;
-use crate::relay::DEFAULT_VISIBLE_LIMIT;
+use crate::relay::{DEFAULT_VISIBLE_LIMIT, FIATJAF_PUBKEY, JB55_PUBKEY, TEST_PUBKEY};
 use crate::store::InsertOutcome;
 
 #[test]

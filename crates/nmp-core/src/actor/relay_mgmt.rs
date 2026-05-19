@@ -11,7 +11,7 @@
 //! per-URL health a first-class part of the FFI projection.
 
 use crate::kernel::Kernel;
-use crate::relay::{canonical_relay_url, OutboundMessage, RelayRole, BOOTSTRAP_DISCOVERY_RELAYS};
+use crate::relay::{canonical_relay_url, OutboundMessage, RelayRole};
 use crate::relay_worker::{spawn_relay_worker, RelayCommand, RelayEvent};
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
@@ -29,8 +29,8 @@ pub(super) fn all_relays_connected(connected_relays: &HashSet<RelayRole>) -> boo
         .all(|role| connected_relays.contains(&role))
 }
 
-/// Lane-bootstrap seeds: spawn one worker per `BOOTSTRAP_DISCOVERY_RELAYS`
-/// entry mapped to its `RelayRole`. Called from `Start` so the cold-start
+/// Lane-bootstrap seeds: spawn one worker per configured URL returned by
+/// `kernel.bootstrap_urls_for_role(role)`. Called from `Start` so the cold-start
 /// kind:10002 discovery fetch has a socket to leave on before any NIP-65
 /// list is cached. Per-author/recipient sockets spawn on demand in
 /// `send_outbound` as the kernel emits OutboundMessages targeting their
@@ -42,15 +42,16 @@ pub(super) fn spawn_missing_relays(
     next_relay_generation: &mut u64,
 ) {
     for role in RelayRole::all() {
-        let bootstrap = role.bootstrap_url().to_string();
-        ensure_relay_worker(
-            relay_controls,
-            relay_tx,
-            kernel,
-            next_relay_generation,
-            role,
-            bootstrap,
-        );
+        for url in kernel.bootstrap_urls_for_role(role) {
+            ensure_relay_worker(
+                relay_controls,
+                relay_tx,
+                kernel,
+                next_relay_generation,
+                role,
+                url,
+            );
+        }
     }
 }
 
@@ -266,8 +267,7 @@ fn bootstrap_lane_close(
         connected_relays.remove(&role);
         kernel.relay_closed(role);
     }
-    // Ensure cold-start bootstrap seeds re-appear in the next Start cycle.
-    let _ = BOOTSTRAP_DISCOVERY_RELAYS;
+    // Cold-start bootstrap seeds will be respawned from relay_edit_rows on the next Start cycle.
     []
 }
 

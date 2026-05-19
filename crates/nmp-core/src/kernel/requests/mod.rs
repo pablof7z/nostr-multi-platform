@@ -111,11 +111,11 @@ impl Kernel {
         closes
     }
 
-    /// Build a single REQ frame on `role`'s cold-start bootstrap socket.
+    /// Build REQ frames on every configured bootstrap socket for `role`.
     ///
     /// T105 transition shim: kept for diagnostic / one-off REQs (NIP-65
     /// discovery, indexer-only fetches) that legitimately leave on the
-    /// bootstrap lane. Per-author/recipient view emitters use
+    /// bootstrap lanes.  Emits one frame per configured bootstrap URL. Per-author/recipient view emitters use
     /// [`Self::req_for_relay`] to route to the planner-resolved URL instead.
     pub(crate) fn req(
         &mut self,
@@ -123,8 +123,12 @@ impl Kernel {
         sub_id: &str,
         summary: &str,
         filter: Value,
-    ) -> OutboundMessage {
-        self.req_for_relay(role, role.bootstrap_url().to_string(), sub_id, summary, filter)
+    ) -> Vec<OutboundMessage> {
+        let mut out = Vec::new();
+        for url in self.bootstrap_urls_for_role(role) {
+            out.push(self.req_for_relay(role, url, sub_id, summary, filter.clone()));
+        }
+        out
     }
 
     /// Build a single REQ frame addressed to `relay_url` on transport lane `role`.
