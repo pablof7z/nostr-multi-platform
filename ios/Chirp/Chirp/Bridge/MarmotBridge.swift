@@ -19,32 +19,32 @@ import os.log
 //   • D6 resilience: any nil pointer / decode failure → empty state, never
 //     a crash or throw across the bridge.
 //
-// ── KNOWN LIMITATION: signed-event ingest + relay publish seam ───────────
+// ── Relay seam status (2026-05-19) ────────────────────────────────────────
 //
-// The Marmot FFI is split-brain by design (ADR-0009 kernel boundary):
+// Both relay seams are NOW CLOSED at the Rust layer:
 //
-//   1. `dispatch` ops that produce events to publish (`publish_key_package`,
-//      `create_group`, `invite`, `send`, `leave`, `remove`,
-//      `accept_welcome`) return the ready-to-publish *signed* event JSON in
-//      their result (`events` / `welcome_rumors` / `gift_wraps` / `event`).
-//      The Swift relay layer is expected to publish them.
-//   2. `ingest_signed_event` MUST be called for every relay-received
-//      kind:1059 (gift-wrap) and kind:445 (group message / commit) or
-//      welcomes & messages never surface in the snapshot.
+//   Outbound: `dispatch` ops publish signed events INTERNALLY via
+//   `nmp_app_publish_signed_event*` kernel capabilities — no Swift relay
+//   path needed. The op result still carries the signed event JSON but
+//   it is INFORMATIONAL only.
 //
-// Chirp's kernel does NOT expose a raw signed-event stream to Swift (the
-// snapshot delivers *projected* `TimelineItem`s, not raw signed events),
-// and there is no Swift-side "publish this signed event JSON" hook (only
-// `nmp_app_publish_unsigned_event`, which signs kernel-side and is the
-// wrong shape for already-signed MLS gift-wraps/commits).
+//   Inbound: the kernel exposes a `RawEventObserver` tap registered for
+//   kinds [443, 444, 445, 1059, 30443]. Every accepted inbound signed
+//   event of those kinds is automatically processed by the Rust layer
+//   (welcomes / messages / key packages surface in the next snapshot).
 //
-// Consequence: group ops land in the local MDK SQLite state and the UI
-// exercises end-to-end against it, but produced events do NOT reach relays
-// and inbound 1059/445 are NOT ingested from this Chirp shell. The
-// milestone's E2E proof is the headless Rust tests; this Chirp surface is
-// additive. `MarmotStore.ingestSignedEvent(_:)` is implemented and ready
-// for the day a raw-signed-event seam exists — it simply has no caller in
-// the current Chirp kernel surface.
+// ── Key-package fetch ─────────────────────────────────────────────────────
+//
+// Before inviting a peer, their signed kind:30443 KeyPackage event must
+// be fetched from relays and cached locally (MDK requires it for MLS
+// group creation). Use `nmp_app_chirp_marmot_fetch_key_packages` to
+// trigger a kernel relay fetch for specific pubkeys; poll
+// `snapshot.cachedKpPubkeys` to know when they're available.
+//
+// ── Remaining limitation ──────────────────────────────────────────────────
+//
+// Bunker/NIP-46 sign-in never surfaces the secret key to Swift, so
+// Marmot stays in the empty state for NIP-46 users. NSec sign-in works.
 // ─────────────────────────────────────────────────────────────────────────
 
 private let mbLog = Logger(subsystem: "com.example.Chirp", category: "MarmotBridge")
@@ -103,14 +103,16 @@ struct MarmotSnapshot: Decodable, Equatable {
     let groups: [MarmotGroup]
     let pendingWelcomes: [MarmotPendingWelcome]
     let keyPackage: MarmotKeyPackage
+    let cachedKpPubkeys: [String]
 
     enum CodingKeys: String, CodingKey {
         case groups
         case pendingWelcomes = "pending_welcomes"
         case keyPackage = "key_package"
+        case cachedKpPubkeys = "cached_kp_pubkeys"
     }
 
-    static let empty = MarmotSnapshot(groups: [], pendingWelcomes: [], keyPackage: .empty)
+    static let empty = MarmotSnapshot(groups: [], pendingWelcomes: [], keyPackage: .empty, cachedKpPubkeys: [])
 }
 
 struct MarmotMessage: Decodable, Identifiable, Equatable {
@@ -232,6 +234,18 @@ extension KernelHandle {
             return MarmotOpResult(ok: false, error: "undecodable dispatch result", needs: nil)
         }
     }
+
+    /// Trigger the kernel to fetch kind:30443/443 KeyPackage events for the
+    /// given pubkeys. Fire-and-forget; results arrive asynchronously via the
+    /// Marmot tap. Poll `snapshot.cachedKpPubkeys` to know when available.
+    func fetchKeyPackagesForPeers(npubs: [String]) {
+        guard let handle = marmotHandle else { return }
+        guard let data = try? JSONSerialization.data(withJSONObject: npubs),
+              let json = String(data: data, encoding: .utf8) else { return }
+        json.withCString { ptr in
+            nmp_app_chirp_marmot_fetch_key_packages(handle, ptr)
+        }
+    }
 }
 
 // ── MarmotStore — @Published projection on the kernel tick ────────────────
@@ -320,9 +334,25 @@ final class MarmotStore: ObservableObject {
         dispatch(["op": "publish_key_package", "relays": defaultRelays])
     }
 
+    /// Trigger key-package fetch for the given npubs from relays. Fire-and-
+    /// forget. Check `snapshot.cachedKpPubkeys` on the next tick to see which
+    /// ones arrived.
+    func fetchKeyPackages(npubs: [String]) {
+        kernel.fetchKeyPackagesForPeers(npubs: npubs)
+    }
+
+    /// True if all of the given npubs have a cached key package locally.
+    func hasKeyPackages(for npubs: [String]) -> Bool {
+        let cached = Set(snapshot.cachedKpPubkeys)
+        return npubs.allSatisfy { cached.contains($0) }
+    }
+
     @discardableResult
     func createGroup(name: String, description: String, inviteeNpubs: [String]) -> MarmotOpResult {
-        dispatch([
+        if !inviteeNpubs.isEmpty {
+            fetchKeyPackages(npubs: inviteeNpubs)
+        }
+        return dispatch([
             "op": "create_group",
             "name": name,
             "description": description,
@@ -334,7 +364,13 @@ final class MarmotStore: ObservableObject {
 
     @discardableResult
     func invite(groupIDHex: String, inviteeNpubs: [String]) -> MarmotOpResult {
-        dispatch([
+        // Trigger a background fetch of invitees' key packages (if not cached).
+        // The dispatch op uses the kp_cache; if still missing it returns
+        // key_package_unavailable with `needs` populated.
+        if !inviteeNpubs.isEmpty {
+            fetchKeyPackages(npubs: inviteeNpubs)
+        }
+        return dispatch([
             "op": "invite",
             "group_id_hex": groupIDHex,
             "invitee_npubs": inviteeNpubs,
