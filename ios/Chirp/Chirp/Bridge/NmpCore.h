@@ -150,10 +150,21 @@ void nmp_app_set_lifecycle_callback(void *app, void *context, NmpLifecycleCallba
 //
 // `nmp_app_open_uri` opens whatever a `nostr:` URI (or bare NIP-19 entity)
 // points at.  Fire-and-forget (D6): null/invalid input is a silent no-op.
+//
+// `nmp_app_dispatch_action` is the single namespace-keyed entry point for the
+// `ActionModule` family (M6).  The caller names the action namespace (e.g.
+// `"nmp.publish"`) and passes the action as JSON; the returned heap-allocated
+// JSON string is `{"correlation_id":"<32-hex>"}` on accept or `{"error":"…"}`
+// on rejection, and MUST be freed via `nmp_app_free_string`.  D6: never NULL
+// for a non-NULL app.  SCOPE — this currently validates the action and
+// assigns a correlation id ONLY; it does NOT execute it.  A correlation id
+// means the action was *accepted*, not *published*; execution wiring and the
+// durable action ledger are an M6 follow-up.
 
 typedef char *(*NmpCapabilityCallback)(void *context, const char *request_json);
 void nmp_app_set_capability_callback(void *app, void *context, NmpCapabilityCallback callback);
 char *nmp_app_dispatch_capability(void *app, const char *request_json);
+char *nmp_app_dispatch_action(void *app, const char *namespace, const char *action_json);
 void nmp_app_free_string(char *ptr);
 void nmp_app_publish_unsigned_event(void *app, const char *unsigned_json);
 void nmp_app_open_uri(void *app, const char *uri);
