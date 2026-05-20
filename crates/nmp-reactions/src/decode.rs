@@ -30,6 +30,7 @@
 use nmp_core::planner::NaddrCoord;
 use nmp_core::store::StoredEvent;
 use nmp_core::substrate::KernelEvent;
+use nmp_core::tags::first_tag_value;
 use serde::{Deserialize, Serialize};
 
 use crate::kinds::{KIND_GENERIC_REPOST, KIND_REACTION, KIND_REPOST};
@@ -254,16 +255,11 @@ fn extract_emoji(tags: &[Vec<String>]) -> Option<EmojiRef> {
         })
 }
 
-/// Second column of the *first* tag whose first column equals `key`.
-fn first_tag_value<'a>(tags: &'a [Vec<String>], key: &str) -> Option<&'a str> {
-    tags.iter()
-        .find(|t| t.first().map(|s| s.as_str()) == Some(key))
-        .and_then(|t| t.get(1))
-        .map(String::as_str)
-}
-
 /// Second column of the *last* tag whose first column equals `key`. NIP-25
 /// target precedence: the last `e`/`a`/`p` tag is the authoritative one.
+///
+/// The "first" counterpart is the shared [`nmp_core::tags::first_tag_value`];
+/// only this last-wins reader is local because `nmp-core` has no equivalent.
 fn last_tag_value<'a>(tags: &'a [Vec<String>], key: &str) -> Option<&'a str> {
     tags.iter()
         .rev()

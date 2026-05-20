@@ -8,7 +8,6 @@
 //! refcount is exactly `handles.len()` — one source of truth.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use super::target::{ClaimHandle, EmbedTarget, ResolvedEvent};
 
@@ -35,21 +34,28 @@ impl Entry {
 
 /// State held inside the actor — the map of target → entry plus a counter
 /// for handle uniqueness.
+///
+/// `handle_seq` is a plain `u64`, not an atomic: the state lives behind the
+/// actor's exclusive `&mut` and every mutation path (`claim`) already holds
+/// that borrow, so a lock-free counter would only advertise a cross-thread
+/// contract this type does not have.
 pub struct EmbedClaimState {
     pub(super) entries: BTreeMap<EmbedTarget, Entry>,
-    handle_seq: AtomicU64,
+    handle_seq: u64,
 }
 
 impl EmbedClaimState {
     pub(super) fn new() -> Self {
         Self {
             entries: BTreeMap::new(),
-            handle_seq: AtomicU64::new(0),
+            handle_seq: 0,
         }
     }
 
-    fn next_handle_id(&self) -> u64 {
-        self.handle_seq.fetch_add(1, Ordering::Relaxed)
+    fn next_handle_id(&mut self) -> u64 {
+        let id = self.handle_seq;
+        self.handle_seq += 1;
+        id
     }
 }
 

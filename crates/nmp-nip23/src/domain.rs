@@ -29,7 +29,7 @@ const INGEST_KINDS: &[u32] = &[KIND_LONG_FORM_ARTICLE];
 pub struct ArticlesDomain;
 
 impl DomainModule for ArticlesDomain {
-    const NAMESPACE: &'static str = "nmp.nip23.articles";
+    const NAMESPACE: &'static str = NAMESPACE;
     const SCHEMA_VERSION: u32 = 1;
 
     fn ingest_kinds() -> &'static [u32] {
@@ -215,11 +215,6 @@ fn sort_by_published_desc(records: &mut [ArticleRecord]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn module_namespace_matches_constant() {
-        assert_eq!(<ArticlesDomain as DomainModule>::NAMESPACE, NAMESPACE);
-    }
 
     #[test]
     fn module_ingest_kinds_returns_30023_only() {

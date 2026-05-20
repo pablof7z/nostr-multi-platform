@@ -57,9 +57,13 @@ use crate::view::{ReactionSummarySpec, RepostsSpec};
 /// because the views would have nothing to find.
 #[derive(Clone, Debug, PartialEq)]
 pub struct RelationSpecs {
+    /// NIP-25 reaction summary (emoji counts) for the event.
     pub reactions: ReactionSummarySpec,
+    /// NIP-18 reposts of the event.
     pub reposts: RepostsSpec,
+    /// NIP-57 zap aggregate (total msats, zappers) for the event.
     pub zaps: ZapsSpec,
+    /// NIP-22 standalone comments on the event.
     pub comments: CommentsSpec,
     /// Direct replies — populated for kind:1 notes only.
     pub replies: Option<RepliesSpec>,
