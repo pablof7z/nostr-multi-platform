@@ -8,6 +8,20 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
+### PD-030 RESOLVED AUTONOMOUSLY (2026-05-20) — `publish/state.rs` test task brief was stale; filled real gaps instead of duplicating
+
+Task brief said `publish/state.rs` has "ZERO tests" and asked for `AckClass::Success/Duplicate/Blocked` variants classified by `message` substring matching. All three premises are wrong against current code:
+
+- `publish/tests.rs` already exhaustively covers `classify_ack` (the `classify_ack_maps_codes_to_engine_policy_d7_boundary` test pins every permanent code incl. duplicate/blocked, plus auth-required, transient, and `ok=true`) and has 5+ `apply_ack` integration tests over `InFlight`.
+- `AckClass` real variants are `AuthRequired / Transient / Permanent` — no Success/Duplicate/Blocked.
+- Classification keys off the `code` token field, not `message` substrings.
+
+Decision: rather than write tests against a fictional API or duplicate `publish/tests.rs`, I added an inline `#[cfg(test)] mod tests` in `state.rs` covering genuine gaps that file leaves: `is_terminal`, `attempt`, `RetryPolicy::default` + `backoff_for` ladder + saturation, the non-`InFlight` stale-ack idempotence guard in `apply_ack`, plus a minimal `classify_ack` smoke set for doc-by-test value. 14 new tests, all passing. No visibility widened.
+
+If the user wanted something else (e.g. the brief reflects a planned API change not yet in tree), revert the test commit and re-spec.
+
+---
+
 ### PD-029 RESOLVED AUTONOMOUSLY (2026-05-18, HB57) — picked **Option A: trait seam in nmp-substrate-types**
 
 User is asleep; decision made per autonomous-mode rule. Pattern-match: user has consistently chosen the cleanest long-term option over surgical/fast (PD-027 → substrate-types extract; PD-028 → ADR-first). Option A (trait seam, ~1-2 hr) is the recommended-clean choice; matches LSP-style backend pluggability; aligns `DomainHandle` with `EventStore` (also a trait); generalizes to future M2 hot-path (T140). Worktree agent dispatched at HB57.
