@@ -111,3 +111,88 @@ impl NwcResponse {
             .map(|r| r.preimage)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn nwc_method_strings_match_nip47() {
+        assert_eq!(NwcMethod::GetInfo.as_str(), "get_info");
+        assert_eq!(NwcMethod::GetBalance.as_str(), "get_balance");
+        assert_eq!(NwcMethod::PayInvoice.as_str(), "pay_invoice");
+        assert_eq!(NwcMethod::MakeInvoice.as_str(), "make_invoice");
+    }
+
+    fn response(result_type: &str, error: Option<NwcError>, result: serde_json::Value)
+        -> NwcResponse
+    {
+        NwcResponse {
+            result_type: result_type.to_string(),
+            error,
+            result: Some(result),
+        }
+    }
+
+    #[test]
+    fn balance_msats_reads_get_balance_result() {
+        let r = response("get_balance", None, json!({ "balance": 777_u64 }));
+        assert_eq!(r.balance_msats(), Some(777));
+    }
+
+    /// A `get_balance` accessor on a `pay_invoice` response must return None —
+    /// guards against reading a balance off the wrong result shape.
+    #[test]
+    fn balance_msats_wrong_result_type_is_none() {
+        let r = response("pay_invoice", None, json!({ "balance": 777_u64 }));
+        assert_eq!(r.balance_msats(), None);
+    }
+
+    /// Even with a populated `result`, an error response must yield None — the
+    /// wallet did not actually return a usable balance.
+    #[test]
+    fn balance_msats_with_error_is_none() {
+        let err = NwcError { code: "INTERNAL".into(), message: "boom".into() };
+        let r = response("get_balance", Some(err), json!({ "balance": 777_u64 }));
+        assert_eq!(r.balance_msats(), None);
+    }
+
+    #[test]
+    fn pay_preimage_reads_pay_invoice_result() {
+        let r = response("pay_invoice", None, json!({ "preimage": "deadbeef" }));
+        assert_eq!(r.pay_preimage(), Some("deadbeef".to_string()));
+    }
+
+    #[test]
+    fn pay_preimage_wrong_result_type_is_none() {
+        let r = response("get_balance", None, json!({ "preimage": "deadbeef" }));
+        assert_eq!(r.pay_preimage(), None);
+    }
+
+    /// A failed payment must never surface a preimage — that would falsely
+    /// signal the payment settled.
+    #[test]
+    fn pay_preimage_with_error_is_none() {
+        let err = NwcError {
+            code: "PAYMENT_FAILED".into(),
+            message: "no route".into(),
+        };
+        let r = response("pay_invoice", Some(err), json!({ "preimage": "deadbeef" }));
+        assert_eq!(r.pay_preimage(), None);
+    }
+
+    /// `result_type` matches but `result` is absent / malformed → None, no panic.
+    #[test]
+    fn accessors_handle_missing_or_malformed_result() {
+        let no_result = NwcResponse {
+            result_type: "get_balance".into(),
+            error: None,
+            result: None,
+        };
+        assert_eq!(no_result.balance_msats(), None);
+
+        let bad_shape = response("get_balance", None, json!({ "wrong_field": 1 }));
+        assert_eq!(bad_shape.balance_msats(), None);
+    }
+}

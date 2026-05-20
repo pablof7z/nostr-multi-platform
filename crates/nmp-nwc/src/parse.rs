@@ -259,4 +259,118 @@ mod tests {
         let uri = format!("nostr+walletconnect://{}?secret={}", wallet_pk, secret);
         assert_eq!(NwcUri::parse(&uri).unwrap_err(), ParseError::MissingRelay);
     }
+
+    /// Empty path segment before `?` — `MissingWalletPubkey`, not a panic.
+    #[test]
+    fn empty_wallet_pubkey_returns_error() {
+        let secret = "b".repeat(64);
+        let uri = format!("nostr+walletconnect://?relay=wss://r.io&secret={}", secret);
+        assert_eq!(
+            NwcUri::parse(&uri).unwrap_err(),
+            ParseError::MissingWalletPubkey
+        );
+    }
+
+    /// Wrong-length or non-hex wallet pubkey → `InvalidWalletPubkey`.
+    #[test]
+    fn invalid_wallet_pubkey_returns_error() {
+        let secret = "b".repeat(64);
+        // Too short.
+        let short = format!(
+            "nostr+walletconnect://{}?relay=wss://r.io&secret={}",
+            "a".repeat(63),
+            secret
+        );
+        assert_eq!(
+            NwcUri::parse(&short).unwrap_err(),
+            ParseError::InvalidWalletPubkey
+        );
+        // Non-hex character.
+        let nonhex = format!(
+            "nostr+walletconnect://{}?relay=wss://r.io&secret={}",
+            "g".repeat(64),
+            secret
+        );
+        assert_eq!(
+            NwcUri::parse(&nonhex).unwrap_err(),
+            ParseError::InvalidWalletPubkey
+        );
+    }
+
+    /// `relay=` present but no entry survives the ws/wss scheme gate.
+    #[test]
+    fn non_ws_relay_returns_invalid_relay_url() {
+        let wallet_pk = "a".repeat(64);
+        let secret = "b".repeat(64);
+        let uri = format!(
+            "nostr+walletconnect://{}?relay=http://insecure.example.com&secret={}",
+            wallet_pk, secret
+        );
+        assert_eq!(
+            NwcUri::parse(&uri).unwrap_err(),
+            ParseError::InvalidRelayUrl
+        );
+    }
+
+    /// A non-ws relay alongside a valid wss relay is silently dropped — the
+    /// connection still parses with only the valid relay retained.
+    #[test]
+    fn non_ws_relay_dropped_when_valid_relay_present() {
+        let wallet_pk = "a".repeat(64);
+        let secret = "b".repeat(64);
+        let uri = format!(
+            "nostr+walletconnect://{}?relay=http://bad.example&relay=wss://good.example&secret={}",
+            wallet_pk, secret
+        );
+        let parsed = NwcUri::parse(&uri).unwrap();
+        assert_eq!(parsed.relay_urls, vec!["wss://good.example"]);
+    }
+
+    /// `relay=` present but `secret=` absent → `MissingSecret`.
+    #[test]
+    fn missing_secret_returns_error() {
+        let wallet_pk = "a".repeat(64);
+        let uri = format!(
+            "nostr+walletconnect://{}?relay=wss://r.io",
+            wallet_pk
+        );
+        assert_eq!(NwcUri::parse(&uri).unwrap_err(), ParseError::MissingSecret);
+    }
+
+    /// Wrong-length or non-hex secret → `InvalidSecret`.
+    #[test]
+    fn invalid_secret_returns_error() {
+        let wallet_pk = "a".repeat(64);
+        let short = format!(
+            "nostr+walletconnect://{}?relay=wss://r.io&secret={}",
+            wallet_pk,
+            "b".repeat(10)
+        );
+        assert_eq!(
+            NwcUri::parse(&short).unwrap_err(),
+            ParseError::InvalidSecret
+        );
+        let nonhex = format!(
+            "nostr+walletconnect://{}?relay=wss://r.io&secret={}",
+            wallet_pk,
+            "z".repeat(64)
+        );
+        assert_eq!(
+            NwcUri::parse(&nonhex).unwrap_err(),
+            ParseError::InvalidSecret
+        );
+    }
+
+    /// Leading/trailing whitespace around the whole URI is tolerated.
+    #[test]
+    fn surrounding_whitespace_is_trimmed() {
+        let wallet_pk = "a".repeat(64);
+        let secret = "b".repeat(64);
+        let uri = format!(
+            "  nostr+walletconnect://{}?relay=wss://r.io&secret={}\n",
+            wallet_pk, secret
+        );
+        let parsed = NwcUri::parse(&uri).unwrap();
+        assert_eq!(parsed.wallet_pubkey_hex, wallet_pk);
+    }
 }

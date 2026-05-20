@@ -85,3 +85,104 @@ pub fn make_invoice_content(
         params_value,
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crypto;
+
+    const CLIENT_SECRET: &str =
+        "0101010101010101010101010101010101010101010101010101010101010101";
+    const WALLET_SECRET: &str =
+        "0202020202020202020202020202020202020202020202020202020202020202";
+
+    /// Build a request, then decrypt it back to the inner JSON. The wallet
+    /// would decrypt with its own secret; for assertion we round-trip via the
+    /// client secret (NIP-04 ECDH is symmetric).
+    fn decrypt_built(content: &str, wallet_pk: &str) -> Value {
+        let plaintext = crypto::decrypt(CLIENT_SECRET, wallet_pk, content).unwrap();
+        serde_json::from_str(&plaintext).unwrap()
+    }
+
+    fn wallet_pk() -> String {
+        crypto::client_pubkey_hex(WALLET_SECRET).unwrap()
+    }
+
+    #[test]
+    fn get_balance_request_shape() {
+        let wallet_pk = wallet_pk();
+        let content = get_balance_content(CLIENT_SECRET, &wallet_pk).unwrap();
+        let json = decrypt_built(&content, &wallet_pk);
+        assert_eq!(json["method"], "get_balance");
+        assert_eq!(json["params"], json!({}));
+    }
+
+    #[test]
+    fn get_info_request_shape() {
+        let wallet_pk = wallet_pk();
+        let content = get_info_content(CLIENT_SECRET, &wallet_pk).unwrap();
+        let json = decrypt_built(&content, &wallet_pk);
+        assert_eq!(json["method"], "get_info");
+        assert_eq!(json["params"], json!({}));
+    }
+
+    /// `pay_invoice` with an explicit amount override must carry the `amount`
+    /// field — a missing amount here would silently change what the user pays.
+    #[test]
+    fn pay_invoice_request_with_amount() {
+        let wallet_pk = wallet_pk();
+        let params = PayInvoiceParams {
+            invoice: "lnbc1exampleinvoice".to_string(),
+            amount: Some(21_000),
+        };
+        let content = pay_invoice_content(CLIENT_SECRET, &wallet_pk, params).unwrap();
+        let json = decrypt_built(&content, &wallet_pk);
+        assert_eq!(json["method"], "pay_invoice");
+        assert_eq!(json["params"]["invoice"], "lnbc1exampleinvoice");
+        assert_eq!(json["params"]["amount"], 21_000);
+    }
+
+    /// With `amount: None`, `skip_serializing_if` must omit the key entirely —
+    /// sending `amount: null` could be rejected or misinterpreted by a wallet.
+    #[test]
+    fn pay_invoice_request_omits_absent_amount() {
+        let wallet_pk = wallet_pk();
+        let params = PayInvoiceParams {
+            invoice: "lnbc1noamount".to_string(),
+            amount: None,
+        };
+        let content = pay_invoice_content(CLIENT_SECRET, &wallet_pk, params).unwrap();
+        let json = decrypt_built(&content, &wallet_pk);
+        assert_eq!(json["params"]["invoice"], "lnbc1noamount");
+        assert!(
+            json["params"].get("amount").is_none(),
+            "absent amount must be omitted, not serialized as null"
+        );
+    }
+
+    #[test]
+    fn make_invoice_request_shape() {
+        let wallet_pk = wallet_pk();
+        let params = MakeInvoiceParams {
+            amount: 5_000,
+            description: Some("coffee".to_string()),
+            expiry: None,
+        };
+        let content = make_invoice_content(CLIENT_SECRET, &wallet_pk, params).unwrap();
+        let json = decrypt_built(&content, &wallet_pk);
+        assert_eq!(json["method"], "make_invoice");
+        assert_eq!(json["params"]["amount"], 5_000);
+        assert_eq!(json["params"]["description"], "coffee");
+        assert!(
+            json["params"].get("expiry").is_none(),
+            "absent expiry must be omitted"
+        );
+    }
+
+    /// An invalid wallet pubkey must propagate as Err from the build layer,
+    /// never panic — D6.
+    #[test]
+    fn build_with_invalid_pubkey_errs() {
+        assert!(get_balance_content(CLIENT_SECRET, "not-a-pubkey").is_err());
+    }
+}
