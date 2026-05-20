@@ -22,6 +22,7 @@ use super::commands::{self, IdentityRuntime, LifecycleObserverSlot};
 #[cfg(feature = "wallet")]
 use super::commands::WalletRuntime;
 use super::kernel_action::dispatch_kernel_action;
+use super::pending_sign::PendingSign;
 use super::relay_mgmt::{
     close_relays, ensure_relay_worker, maybe_send_startup, send_all_outbound,
     shutdown_relay_worker, spawn_missing_relays,
@@ -63,6 +64,7 @@ pub(super) fn dispatch_command(
     relays_ready: bool,
     lifecycle_observer: &LifecycleObserverSlot,
     active_local_nsec: &Arc<Mutex<Option<Zeroizing<String>>>>,
+    pending_signs: &mut Vec<PendingSign>,
 ) -> Option<Vec<OutboundMessage>> {
     match command {
         ActorCommand::Start {
@@ -191,13 +193,19 @@ pub(super) fn dispatch_command(
             content,
             reply_to_id,
         } => {
-            let outbound =
-                commands::publish_note(identity, kernel, &content, reply_to_id.as_deref());
+            let outbound = commands::publish_note(
+                identity,
+                kernel,
+                &content,
+                reply_to_id.as_deref(),
+                pending_signs,
+            );
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::PublishUnsignedEvent(unsigned) => {
-            let outbound = commands::publish_unsigned_event(identity, kernel, unsigned);
+            let outbound =
+                commands::publish_unsigned_event(identity, kernel, unsigned, pending_signs);
             emit_now(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
@@ -210,18 +218,23 @@ pub(super) fn dispatch_command(
             target_event_id,
             reaction,
         } => {
-            let outbound =
-                commands::react(identity, kernel, &target_event_id, &reaction);
+            let outbound = commands::react(
+                identity,
+                kernel,
+                &target_event_id,
+                &reaction,
+                pending_signs,
+            );
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::Follow { pubkey } => {
-            let outbound = commands::follow(identity, kernel, &pubkey, true);
+            let outbound = commands::follow(identity, kernel, &pubkey, true, pending_signs);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::Unfollow { pubkey } => {
-            let outbound = commands::follow(identity, kernel, &pubkey, false);
+            let outbound = commands::follow(identity, kernel, &pubkey, false, pending_signs);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }

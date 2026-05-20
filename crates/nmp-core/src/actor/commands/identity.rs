@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use nmp_signer_iface::SignerOp;
 use nostr::nips::nip19::{FromBech32, ToBech32};
 use nostr::{EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
 use serde_json;
@@ -234,6 +235,35 @@ pub(crate) fn sign_active(
         .active_keys()
         .ok_or_else(|| "no active account — sign in first".to_string())?;
     sign_with(keys, unsigned)
+}
+
+/// Non-blocking sign with the active account.
+///
+/// Unlike [`sign_active`], this never blocks the actor thread. For a remote
+/// (NIP-46) signer it returns the `SignerOp` verbatim — typically
+/// `SignerOp::Pending`, which the caller must park (`PendingSign`) and
+/// `poll()` on future loop ticks. For a local nsec/generated key the sign is
+/// CPU-bound and resolves immediately into `SignerOp::Ready`.
+///
+/// `Err` (a `String`, surfaced as a toast per D6) covers the no-active-account
+/// case; a local-signing failure is folded into a `SignerOp::Ready(Err(..))`
+/// so the caller's single `poll()` match handles both signer kinds uniformly.
+pub(crate) fn sign_active_nonblocking(
+    identity: &IdentityRuntime,
+    unsigned: &UnsignedEvent,
+) -> Result<SignerOp<SignedEvent>, String> {
+    if let Some(handle) = identity.active_remote() {
+        return Ok(handle.sign(unsigned));
+    }
+    let keys = identity
+        .active_keys()
+        .ok_or_else(|| "no active account — sign in first".to_string())?;
+    match sign_with(keys, unsigned) {
+        Ok(signed) => Ok(SignerOp::ok(signed)),
+        Err(e) => Ok(SignerOp::err(nmp_signer_iface::SignerError::Backend(
+            format!("local sign failed: {e}"),
+        ))),
+    }
 }
 
 /// Bech32-encode a hex pubkey as `npub1…`. Falls back to the raw hex if the

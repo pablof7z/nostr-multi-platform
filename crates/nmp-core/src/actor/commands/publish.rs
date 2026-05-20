@@ -6,7 +6,8 @@
 //! an exception across FFI), then routes through `Kernel::publish_signed`
 //! which resolves the NIP-65 outbox (D3) and emits the wire `EVENT` frame.
 
-use crate::actor::commands::identity::{now_secs, sign_active, IdentityRuntime};
+use crate::actor::commands::identity::{now_secs, sign_active_nonblocking, IdentityRuntime};
+use crate::actor::pending_sign::PendingSign;
 use crate::kernel::Kernel;
 use crate::relay::OutboundMessage;
 use crate::substrate::UnsignedEvent;
@@ -45,14 +46,30 @@ pub(crate) fn publish_unsigned_event(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
     unsigned: UnsignedEvent,
+    pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
     if identity.active_pubkey().is_none() {
         return toast_no_account(kernel, "publish");
     }
-    match sign_active(identity, &unsigned) {
-        Ok(signed) => kernel.publish_signed(&signed, &[]),
+    // Non-blocking sign: a local key resolves now; a remote (NIP-46) signer
+    // returns a `Pending` op that is parked in `pending_signs` and `poll()`ed
+    // by the actor's idle section — the actor thread never blocks (D8).
+    let mut op = match sign_active_nonblocking(identity, &unsigned) {
+        Ok(op) => op,
         Err(reason) => {
             kernel.set_last_error_toast(Some(reason));
+            return Vec::new();
+        }
+    };
+    match op.poll() {
+        Some(Ok(signed)) => kernel.publish_signed(&signed, &[]),
+        Some(Err(e)) => {
+            kernel.set_last_error_toast(Some(format!("sign failed: {e}")));
+            Vec::new()
+        }
+        None => {
+            // Remote signer not yet responded — park the op for polling.
+            pending_signs.push(PendingSign::new(op, Vec::new()));
             Vec::new()
         }
     }
@@ -144,6 +161,7 @@ pub(crate) fn publish_note(
     kernel: &mut Kernel,
     content: &str,
     reply_to_id: Option<&str>,
+    pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
     let Some(pubkey) = identity.active_pubkey() else {
         return toast_no_account(kernel, "publish");
@@ -180,11 +198,27 @@ pub(crate) fn publish_note(
         content: content.to_string(),
         created_at: now_secs(),
     };
-    let mut outbound = match sign_active(identity, &unsigned) {
-        Ok(signed) => kernel.publish_signed(&signed, &[]),
+    // Non-blocking sign: remote (NIP-46) signers return a `Pending` op that is
+    // parked for the actor's idle-tick poll loop instead of blocking here.
+    let mut op = match sign_active_nonblocking(identity, &unsigned) {
+        Ok(op) => op,
         Err(reason) => {
             kernel.set_last_error_toast(Some(reason));
             return Vec::new();
+        }
+    };
+    let mut outbound = match op.poll() {
+        Some(Ok(signed)) => kernel.publish_signed(&signed, &[]),
+        Some(Err(e)) => {
+            kernel.set_last_error_toast(Some(format!("sign failed: {e}")));
+            return Vec::new();
+        }
+        None => {
+            // Remote signer pending — park the op. The signed note publishes
+            // once the broker responds; the hydration kick (independent of the
+            // reply event) still fires below so the parent can be fetched.
+            pending_signs.push(PendingSign::new(op, Vec::new()));
+            Vec::new()
         }
     };
 
@@ -200,6 +234,7 @@ pub(crate) fn react(
     kernel: &mut Kernel,
     target_event_id: &str,
     reaction: &str,
+    pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
     let Some(pubkey) = identity.active_pubkey() else {
         return toast_no_account(kernel, "react");
@@ -220,10 +255,23 @@ pub(crate) fn react(
         content,
         created_at: now_secs(),
     };
-    match sign_active(identity, &unsigned) {
-        Ok(signed) => kernel.publish_signed(&signed, &[]),
+    // Non-blocking sign: a remote signer's `Pending` op is parked for the
+    // actor's idle-tick poll loop rather than blocking the actor thread.
+    let mut op = match sign_active_nonblocking(identity, &unsigned) {
+        Ok(op) => op,
         Err(reason) => {
             kernel.set_last_error_toast(Some(reason));
+            return Vec::new();
+        }
+    };
+    match op.poll() {
+        Some(Ok(signed)) => kernel.publish_signed(&signed, &[]),
+        Some(Err(e)) => {
+            kernel.set_last_error_toast(Some(format!("sign failed: {e}")));
+            Vec::new()
+        }
+        None => {
+            pending_signs.push(PendingSign::new(op, Vec::new()));
             Vec::new()
         }
     }
@@ -236,6 +284,7 @@ pub(crate) fn follow(
     kernel: &mut Kernel,
     pubkey: &str,
     add: bool,
+    pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
     let Some(author) = identity.active_pubkey() else {
         return toast_no_account(kernel, if add { "follow" } else { "unfollow" });
@@ -263,10 +312,23 @@ pub(crate) fn follow(
         content: String::new(),
         created_at: now_secs(),
     };
-    match sign_active(identity, &unsigned) {
-        Ok(signed) => kernel.publish_signed(&signed, &[]),
+    // Non-blocking sign: a remote signer's `Pending` op is parked for the
+    // actor's idle-tick poll loop rather than blocking the actor thread.
+    let mut op = match sign_active_nonblocking(identity, &unsigned) {
+        Ok(op) => op,
         Err(reason) => {
             kernel.set_last_error_toast(Some(reason));
+            return Vec::new();
+        }
+    };
+    match op.poll() {
+        Some(Ok(signed)) => kernel.publish_signed(&signed, &[]),
+        Some(Err(e)) => {
+            kernel.set_last_error_toast(Some(format!("sign failed: {e}")));
+            Vec::new()
+        }
+        None => {
+            pending_signs.push(PendingSign::new(op, Vec::new()));
             Vec::new()
         }
     }

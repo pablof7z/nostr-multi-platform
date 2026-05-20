@@ -17,6 +17,7 @@ mod commands;
 mod dispatch;
 pub(crate) mod kernel_action;
 mod outbound;
+mod pending_sign;
 mod relay_mgmt;
 mod tick;
 #[cfg(test)]
@@ -69,6 +70,7 @@ pub use commands::{
     RawEventObserverRegistration,
 };
 use dispatch::{dispatch_command, handle_relay_event};
+use pending_sign::PendingSign;
 
 use crate::kernel::LifecyclePhase;
 
@@ -419,6 +421,11 @@ pub fn run_actor_with_observers(
     let mut emit_hz = DEFAULT_EMIT_HZ;
     let mut last_emit = Instant::now() - Duration::from_secs(1);
     let mut startup_sent = false;
+    // Remote (NIP-46) sign ops parked off the blocking path. `dispatch_command`
+    // pushes a `PendingSign` when a publish-command sign goes `Pending`; the
+    // idle section below `poll()`s each one per tick and publishes on
+    // completion. Lives outside the loop so parked ops survive across ticks.
+    let mut pending_signs: Vec<PendingSign> = Vec::new();
 
     loop {
         // ── Priority lane: commands ──────────────────────────────────────
@@ -449,6 +456,7 @@ pub fn run_actor_with_observers(
                         relays_ready,
                         &lifecycle_observer,
                         &active_local_nsec,
+                        &mut pending_signs,
                     );
                     let Some(outbound) = outbound else {
                         return; // Shutdown
@@ -590,6 +598,51 @@ pub fn run_actor_with_observers(
                     retry_frames,
                 );
             }
+        }
+        // ── Poll parked NIP-46 remote sign ops ───────────────────────────
+        // Non-blocking per D8: `SignerOp::poll` is a `try_recv`. Each parked
+        // op is checked once per tick — completed ones publish their signed
+        // event and are removed; timed-out ones surface a toast and are
+        // removed; still-pending ones stay for the next tick. An empty
+        // `pending_signs` makes this a single `Vec::retain_mut` over zero
+        // items — heap-free, no false wakeups.
+        if !pending_signs.is_empty() {
+            pending_signs.retain_mut(|ps| {
+                // Poll first: a result that landed on the same tick as the
+                // deadline must not be lost to the timeout check.
+                match ps.op.poll() {
+                    None => {
+                        if ps.timed_out() {
+                            kernel.set_last_error_toast(Some(
+                                "remote sign timed out".to_string(),
+                            ));
+                            false // Abandon — broker did not respond in time.
+                        } else {
+                            true // Still pending — keep for the next tick.
+                        }
+                    }
+                    Some(Ok(signed)) => {
+                        let outbound = kernel.publish_signed(&signed, &ps.p_tags);
+                        if running {
+                            send_all_outbound(
+                                &mut relay_controls,
+                                &relay_tx,
+                                &mut kernel,
+                                &mut next_relay_generation,
+                                outbound,
+                            );
+                            emit_now(&mut kernel, running, &update_tx, &mut last_emit);
+                        }
+                        false // Done — remove.
+                    }
+                    Some(Err(e)) => {
+                        kernel.set_last_error_toast(Some(format!(
+                            "remote sign failed: {e}"
+                        )));
+                        false // Done — remove.
+                    }
+                }
+            });
         }
         // Only emit when state actually changed; do not emit on every
         // idle tick (D8: zero false-wakeup allocations after warmup).

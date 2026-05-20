@@ -111,7 +111,7 @@ fn remove_active_account_clears_active_slot() {
 #[test]
 fn publish_note_without_account_toasts_and_no_outbound() {
     let (id, mut kernel) = fresh();
-    let outbound = publish_note(&id, &mut kernel, "hello pulse", None);
+    let outbound = publish_note(&id, &mut kernel, "hello pulse", None, &mut Vec::new());
     assert!(outbound.is_empty());
     assert!(kernel
         .last_error_toast_snapshot()
@@ -125,7 +125,7 @@ fn publish_note_signs_and_routes_via_nip65() {
     // NIP-65 write relays and produces non-empty outbound frames.
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
-    let outbound = publish_note(&id, &mut kernel, "hello pulse e2e", None);
+    let outbound = publish_note(&id, &mut kernel, "hello pulse e2e", None, &mut Vec::new());
     assert!(!outbound.is_empty());
     assert!(outbound[0].text.starts_with("[\"EVENT\""));
     let q = kernel.publish_queue_snapshot();
@@ -145,7 +145,7 @@ fn publish_unsigned_event_without_account_toasts_and_no_outbound() {
         content: "body".into(),
         created_at: 0,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned);
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
     assert!(outbound.is_empty());
     assert!(kernel
         .last_error_toast_snapshot()
@@ -169,7 +169,7 @@ fn publish_unsigned_event_signs_and_publishes_arbitrary_kind() {
         content: "# body".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned);
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
     assert!(!outbound.is_empty());
     assert!(outbound[0].text.contains("\"kind\":30023"));
     assert!(outbound[0]
@@ -206,7 +206,7 @@ fn publish_unsigned_event_rejects_oversized_kind_with_toast() {
         content: "should not publish".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned);
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
     assert!(
         outbound.is_empty(),
         "oversized kind must produce no outbound frames"
@@ -237,7 +237,7 @@ fn publish_unsigned_event_valid_kind_publishes_normally() {
         content: "valid kind".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned);
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
     assert!(!outbound.is_empty(), "valid kind:1 must produce outbound frames");
     assert_eq!(kernel.last_error_toast_snapshot(), None);
     let q = kernel.publish_queue_snapshot();
@@ -257,7 +257,7 @@ fn publish_unsigned_event_rejects_malformed_tag_with_toast() {
         content: "tag test".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned);
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
     assert!(
         outbound.is_empty(),
         "malformed tag must produce no outbound frames"
@@ -291,7 +291,7 @@ fn publish_unsigned_event_valid_tags_pass_through() {
         content: "body".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned);
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
     assert!(!outbound.is_empty());
     assert_eq!(kernel.last_error_toast_snapshot(), None);
     assert!(outbound[0].text.contains("\"d\""));
@@ -596,7 +596,7 @@ fn react_builds_kind7_with_e_tag() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
     let target = "a".repeat(64);
-    let outbound = react(&id, &mut kernel, &target, "❤");
+    let outbound = react(&id, &mut kernel, &target, "❤", &mut Vec::new());
     assert!(!outbound.is_empty());
     assert!(outbound[0].text.contains("\"kind\":7"));
     assert!(outbound[0].text.contains(&target));
@@ -608,7 +608,7 @@ fn follow_publishes_kind3_with_p_tag() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
     let target = "b".repeat(64);
-    let outbound = follow(&id, &mut kernel, &target, true);
+    let outbound = follow(&id, &mut kernel, &target, true, &mut Vec::new());
     assert!(!outbound.is_empty());
     assert!(outbound[0].text.contains("\"kind\":3"));
     assert!(outbound[0].text.contains(&target));
@@ -715,7 +715,7 @@ fn sign_in_bunker_without_broker_clears_progress_and_toasts() {
 fn snapshot_json_carries_new_projections() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
-    publish_note(&id, &mut kernel, "json shape check", None);
+    publish_note(&id, &mut kernel, "json shape check", None, &mut Vec::new());
     add_relay(&mut kernel, "wss://relay.damus.io", "both");
     let json = kernel.make_update(true);
     assert!(json.contains("\"accounts\""));
@@ -801,7 +801,7 @@ fn publish_note_reply_to_mid_thread_forwards_root_and_carries_p_tags() {
         "reply to root",
     );
 
-    let outbound = publish_note(&id, &mut kernel, "nested reply", Some(REPLY_B_ID));
+    let outbound = publish_note(&id, &mut kernel, "nested reply", Some(REPLY_B_ID), &mut Vec::new());
     let event = last_published_event_json(&outbound);
     assert_eq!(event["kind"], 1);
     assert_eq!(event["pubkey"].as_str().unwrap(), signed_pubkey(&id));
@@ -839,7 +839,7 @@ fn publish_note_reply_to_root_promotes_parent_to_root_and_emits_both_markers() {
 
     kernel.seed_kind1_for_reply_test(ROOT_A_ID, AUTHOR_A, 100, vec![], "root note");
 
-    let outbound = publish_note(&id, &mut kernel, "first reply", Some(ROOT_A_ID));
+    let outbound = publish_note(&id, &mut kernel, "first reply", Some(ROOT_A_ID), &mut Vec::new());
     let event = last_published_event_json(&outbound);
 
     let tags = tags_of(&event);
@@ -869,7 +869,7 @@ fn publish_note_reply_to_unknown_parent_falls_back_and_kicks_hydration() {
     // Sanity: parent must NOT be in cache for this path to fire.
     assert!(!kernel.is_thread_hydration_requested(COLD_PARENT_ID));
 
-    let outbound = publish_note(&id, &mut kernel, "cold reply", Some(COLD_PARENT_ID));
+    let outbound = publish_note(&id, &mut kernel, "cold reply", Some(COLD_PARENT_ID), &mut Vec::new());
     let event = last_published_event_json(&outbound);
 
     let tags = tags_of(&event);
