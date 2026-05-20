@@ -592,15 +592,34 @@ fn publish_signed_event_to_explicit_relays_still_rejects_tampered_sig() {
 }
 
 #[test]
-fn react_builds_kind7_with_e_tag() {
+fn react_builds_kind7_with_e_and_p_tags() {
+    // NIP-25 §1: a kind:7 reaction carries an `e` tag (the reacted-to event)
+    // AND a `p` tag (that event's author) so the author's relays route the
+    // reaction to their notification inbox. The target is seeded into the
+    // kernel read-cache with a known author distinct from the signer, so the
+    // emitted `p` tag's pubkey is unambiguous.
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
     let target = "a".repeat(64);
+    let target_author = "cccc000000000000000000000000000000000000000000000000000000000000";
+    kernel.seed_kind1_for_reply_test(&target, target_author, 100, vec![], "reacted-to note");
+
     let outbound = react(&id, &mut kernel, &target, "❤", &mut Vec::new());
     assert!(!outbound.is_empty());
     assert!(outbound[0].text.contains("\"kind\":7"));
     assert!(outbound[0].text.contains(&target));
     assert_eq!(kernel.publish_queue_snapshot().last().unwrap().kind, 7);
+
+    let event = last_published_event_json(&outbound);
+    let tags = tags_of(&event);
+    assert_eq!(
+        tags,
+        vec![
+            vec!["e".to_string(), target.clone()],
+            vec!["p".to_string(), target_author.to_string()],
+        ],
+        "reaction must carry an `e` tag for the target and a `p` tag for its author"
+    );
 }
 
 #[test]
@@ -663,12 +682,15 @@ fn react_to_malformed_event_id_toasts_and_refuses() {
 
 #[test]
 fn react_with_empty_reaction_defaults_to_plus() {
-    // publish.rs:257-261 — an empty/whitespace reaction string falls back to
-    // the NIP-25 default `"+"` (a "like"). The emitted kind:7 must carry
-    // `"content":"+"`, not an empty string.
+    // An empty/whitespace reaction string falls back to the NIP-25 default
+    // `"+"` (a "like"). The emitted kind:7 must carry `"content":"+"`, not an
+    // empty string. The target is seeded so the NIP-25 `p` tag is also exercised.
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
     let target = "a".repeat(64);
+    let target_author = "cccc000000000000000000000000000000000000000000000000000000000000";
+    kernel.seed_kind1_for_reply_test(&target, target_author, 100, vec![], "reacted-to note");
+
     let outbound = react(&id, &mut kernel, &target, "   ", &mut Vec::new());
     assert!(!outbound.is_empty(), "react must produce an EVENT frame");
     let event = last_published_event_json(&outbound);
@@ -677,14 +699,42 @@ fn react_with_empty_reaction_defaults_to_plus() {
         event["content"], "+",
         "empty/whitespace reaction must default to the NIP-25 `+` like"
     );
-    // The handler only emits an `e` tag for the target (publish.rs:265); it
-    // does NOT add a `p` tag for the reacted-to author. Pin the actual shape.
+    // NIP-25 §1: the reaction carries both an `e` tag for the target and a
+    // `p` tag naming the reacted-to event's author (notification routing).
     let tags = tags_of(&event);
-    assert_eq!(tags.len(), 1, "react emits exactly one tag");
-    assert_eq!(tags[0], vec!["e".to_string(), target.clone()]);
+    assert_eq!(
+        tags,
+        vec![
+            vec!["e".to_string(), target.clone()],
+            vec!["p".to_string(), target_author.to_string()],
+        ],
+        "react must emit an `e` tag for the target and a `p` tag for its author"
+    );
+}
+
+#[test]
+fn react_to_uncached_event_omits_p_tag_gracefully() {
+    // D6: when the reacted-to event is not in the kernel read-cache its author
+    // is unknown, so the `p` tag cannot be built. The reaction must still
+    // publish — degraded but valid NIP-25, with just the `e` tag — and must
+    // never panic. (The target id is a well-formed 64-hex id that is simply
+    // never seeded.)
+    let (mut id, mut kernel) = fresh();
+    sign_in_with_nip65(&mut id, &mut kernel);
+    let target = "d".repeat(64);
+
+    let outbound = react(&id, &mut kernel, &target, "❤", &mut Vec::new());
     assert!(
-        !tags.iter().any(|t| t.first().map(String::as_str) == Some("p")),
-        "react does not currently emit a `p` tag for the author"
+        !outbound.is_empty(),
+        "react to an uncached event must still publish a kind:7"
+    );
+    let event = last_published_event_json(&outbound);
+    assert_eq!(event["kind"], 7, "reaction must be kind:7");
+    let tags = tags_of(&event);
+    assert_eq!(
+        tags,
+        vec![vec!["e".to_string(), target.clone()]],
+        "uncached target → reaction carries only the `e` tag, no `p` tag"
     );
 }
 

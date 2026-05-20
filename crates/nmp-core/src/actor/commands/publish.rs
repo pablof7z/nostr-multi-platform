@@ -259,10 +259,23 @@ pub(crate) fn react(
     } else {
         reaction.to_string()
     };
+    // NIP-25 §1: a kind:7 reaction SHOULD carry both an `e` tag (the reacted-to
+    // event) and a `p` tag (that event's author) so the author's relays route
+    // the reaction to their notification inbox. Without the `p` tag the author
+    // never learns the reaction happened.
+    //
+    // D6: the author pubkey is resolved from the kernel read-cache. If the
+    // target event isn't cached (`None`) we still publish the reaction with
+    // just the `e` tag — degraded but valid NIP-25 — rather than panicking or
+    // refusing the publish.
+    let mut tags = vec![vec!["e".to_string(), target_event_id.to_string()]];
+    if let Some(author) = kernel.event_author(target_event_id) {
+        tags.push(vec!["p".to_string(), author]);
+    }
     let unsigned = UnsignedEvent {
         pubkey,
         kind: 7,
-        tags: vec![vec!["e".to_string(), target_event_id.to_string()]],
+        tags,
         content,
         created_at: now_secs(),
     };

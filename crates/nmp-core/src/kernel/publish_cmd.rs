@@ -57,6 +57,22 @@ impl Kernel {
         self.run_publish_engine(signed, p_tags, target)
     }
 
+    /// Hex pubkey of the author of `event_id_hex`, or `None` if that event is
+    /// not in the kernel's read-cache.
+    ///
+    /// Reads `self.events` — the same lightweight read-cache
+    /// `reply_tags_for_parent` consults for NIP-10 parent-author re-notification
+    /// — rather than the store directly. Production ingest
+    /// (`ingest/timeline.rs`) populates both in lockstep, so the read-cache is a
+    /// faithful view; the choice keeps reaction-author resolution byte-aligned
+    /// with the reply path and avoids a store round-trip on the publish hot
+    /// path. `None` is a normal result (the event simply hasn't been ingested);
+    /// the caller degrades gracefully (D6 — emit the reaction with only the `e`
+    /// tag, never panic).
+    pub(crate) fn event_author(&self, event_id_hex: &str) -> Option<String> {
+        self.events.get(event_id_hex).map(|e| e.author.clone())
+    }
+
     /// Latest kind:3 follow set for `author_hex` (hex pubkeys from `p` tags),
     /// read from the shared store. Empty if no kind:3 is known yet.
     pub(crate) fn current_follows(&self, author_hex: &str) -> Vec<String> {
