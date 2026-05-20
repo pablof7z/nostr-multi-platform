@@ -1,33 +1,24 @@
-use std::collections::BTreeSet;
-
 use nostr::nips::nip19::{FromBech32, ToBech32};
-use nostr::{EventBuilder, Keys, Kind, SecretKey, Tag};
+use nostr::{Keys, SecretKey};
 use serde_json::{json, Value};
 
 use crate::command::Command;
-use crate::profiles;
 use crate::render;
 use crate::session::{LastRun, Session};
-use crate::{wire, Result};
+use crate::Result;
 
 pub fn run(session: &mut Session, command: Command) -> Result<bool> {
     match command {
         Command::Help => render::help(),
         Command::Parity => render::parity(),
         Command::Diagnostics => render::diagnostics(session),
-        Command::SetRelays(relays) => {
-            session.relays = relays;
-            render::status_ok("updated app relays");
-        }
-        Command::SetIndexers(indexers) => {
-            session.indexers = indexers;
-            render::status_ok("updated indexer relays");
-        }
+        Command::SetRelays(relays) => set_relays(session, relays)?,
+        Command::SetIndexers(indexers) => set_indexers(session, indexers)?,
         Command::LoadKey(input) => load_key(session, &input)?,
         Command::CreateAccount(name) => create_account(session, &name)?,
-        Command::SyncFollows => sync_follows(session)?,
-        Command::Home => home(session)?,
-        Command::Notifications => notifications(session)?,
+        Command::SyncFollows => open_home(session, "sync-follows")?,
+        Command::Home => open_home(session, "home")?,
+        Command::Notifications => unsupported("notifications")?,
         Command::Profile(author) => profile(session, &author)?,
         Command::Thread(id) => thread(session, &id)?,
         Command::Search(tag) => search(session, &tag)?,
@@ -36,240 +27,153 @@ pub fn run(session: &mut Session, command: Command) -> Result<bool> {
         Command::React(id, reaction) => react(session, &id, &reaction)?,
         Command::Follow(pubkey) => follow(session, &pubkey, true)?,
         Command::Unfollow(pubkey) => follow(session, &pubkey, false)?,
-        Command::RawReq(filter) => raw_req(session, &filter)?,
+        Command::RawReq(_) => unsupported("raw-req")?,
         Command::Quit => return Ok(true),
         Command::Noop => {}
     }
     Ok(false)
 }
 
+fn set_relays(session: &mut Session, relays: Vec<String>) -> Result<()> {
+    let old = std::mem::replace(&mut session.relays, relays);
+    session.app.reset_relays(&old, &session.relays, "both")?;
+    render::status_ok("updated app relays");
+    Ok(())
+}
+
+fn set_indexers(session: &mut Session, indexers: Vec<String>) -> Result<()> {
+    let old = std::mem::replace(&mut session.indexers, indexers);
+    session
+        .app
+        .reset_relays(&old, &session.indexers, "indexer")?;
+    render::status_ok("updated indexer relays");
+    Ok(())
+}
+
 fn load_key(session: &mut Session, input: &str) -> Result<()> {
-    let secret = if input.starts_with("nsec1") {
-        SecretKey::from_bech32(input).map_err(|e| format!("bad nsec: {e}"))?
-    } else if input.len() == 64 && input.chars().all(|c| c.is_ascii_hexdigit()) {
-        SecretKey::from_hex(input).map_err(|e| format!("bad hex secret: {e}"))?
-    } else {
-        return Err("load-key expects nsec1... or 64-hex".into());
-    };
+    let secret = parse_secret(input)?;
     let keys = Keys::new(secret);
-    set_identity(session, keys)?;
-    render::status_ok("loaded identity");
+    let nsec = keys
+        .secret_key()
+        .to_bech32()
+        .map_err(|e| format!("encode nsec: {e}"))?;
+    session.app.sign_in_nsec(&nsec)?;
+    set_identity_label(session, &keys)?;
+    render::status_ok("loaded identity through NmpApp");
     Ok(())
 }
 
 fn create_account(session: &mut Session, name: &str) -> Result<()> {
-    let keys = Keys::generate();
     let profile = json!({ "name": name, "display_name": name }).to_string();
-    let kind0 = EventBuilder::new(Kind::Metadata, profile)
-        .sign_with_keys(&keys)
-        .map_err(|e| format!("sign kind:0: {e}"))?;
-    let relay_tags = session
+    let relays = session
         .relays
         .iter()
-        .map(|url| tag(["r", url.as_str(), "write"]))
-        .collect::<Result<Vec<_>>>()?;
-    let kind10002 = EventBuilder::new(Kind::RelayList, "")
-        .tags(relay_tags)
-        .sign_with_keys(&keys)
-        .map_err(|e| format!("sign kind:10002: {e}"))?;
-    set_identity(session, keys)?;
-    let (ok0, fail0) = wire::publish(&kind0, &session.relays, session.wall);
-    render::publish_result("kind:0 profile", &kind0.id.to_hex(), ok0, fail0);
-    let (ok1, fail1) = wire::publish(&kind10002, &session.relays, session.wall);
-    render::publish_result("kind:10002 relay list", &kind10002.id.to_hex(), ok1, fail1);
+        .map(|url| (url.clone(), "both".to_string()))
+        .collect::<Vec<_>>();
+    let relays_json = serde_json::to_string(&relays).map_err(|e| e.to_string())?;
+    session.app.create_account(&profile, &relays_json, false)?;
+    session.pubkey_hex = None;
+    render::status_ok("queued account creation through NmpApp");
     Ok(())
 }
 
-fn set_identity(session: &mut Session, keys: Keys) -> Result<()> {
+fn open_home(session: &mut Session, label: &str) -> Result<()> {
+    session.app.open_timeline();
+    render_snapshot(session, label);
+    Ok(())
+}
+
+fn profile(session: &mut Session, input: &str) -> Result<()> {
+    let author = normalize_pubkey(input)?;
+    session.app.open_author(&author)?;
+    render_snapshot(session, "profile");
+    Ok(())
+}
+
+fn thread(session: &mut Session, input: &str) -> Result<()> {
+    let id = normalize_event_id(input)?;
+    session.app.open_thread(&id)?;
+    render_snapshot(session, "thread");
+    Ok(())
+}
+
+fn search(session: &mut Session, input: &str) -> Result<()> {
+    let tag = input.trim_start_matches('#');
+    session.app.open_tag(tag)?;
+    render_snapshot(session, "search");
+    Ok(())
+}
+
+fn publish_note(session: &mut Session, text: &str, reply_to: Option<String>) -> Result<()> {
+    session.app.publish_note(text, reply_to.as_deref())?;
+    render::status_ok("queued note publish through NmpApp");
+    Ok(())
+}
+
+fn react(session: &mut Session, input: &str, reaction: &str) -> Result<()> {
+    let id = normalize_event_id(input)?;
+    session.app.react(&id, reaction)?;
+    render::status_ok("queued reaction through NmpApp");
+    Ok(())
+}
+
+fn follow(session: &mut Session, input: &str, add: bool) -> Result<()> {
+    let target = normalize_pubkey(input)?;
+    session.app.follow(&target, add)?;
+    render::status_ok(if add {
+        "queued follow through NmpApp"
+    } else {
+        "queued unfollow through NmpApp"
+    });
+    Ok(())
+}
+
+fn unsupported(command: &str) -> Result<()> {
+    Err(format!(
+        "{command} is not exposed by the Chirp app runtime yet; refusing to bypass NMP"
+    ))
+}
+
+fn render_snapshot(session: &mut Session, label: &str) {
+    let Some(snapshot) = session.app.chirp_snapshot() else {
+        render::status_warn("no Chirp snapshot available yet");
+        return;
+    };
+    let blocks = snapshot
+        .get("blocks")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    let cards = snapshot
+        .get("cards")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    session.last_run = Some(LastRun {
+        label: label.to_string(),
+        relays: session.relays.len(),
+        events: cards,
+        new_events: 0,
+    });
+    render::chirp_snapshot(&snapshot, blocks, cards);
+}
+
+fn parse_secret(input: &str) -> Result<SecretKey> {
+    if input.starts_with("nsec1") {
+        SecretKey::from_bech32(input).map_err(|e| format!("bad nsec: {e}"))
+    } else if input.len() == 64 && input.chars().all(|c| c.is_ascii_hexdigit()) {
+        SecretKey::from_hex(input).map_err(|e| format!("bad hex secret: {e}"))
+    } else {
+        Err("load-key expects nsec1... or 64-hex".into())
+    }
+}
+
+fn set_identity_label(session: &mut Session, keys: &Keys) -> Result<()> {
     let npub = keys
         .public_key()
         .to_bech32()
         .map_err(|e| format!("encode npub: {e}"))?;
     println!("  npub: {npub}");
     session.pubkey_hex = Some(keys.public_key().to_hex());
-    session.keys = Some(keys);
-    session.follows.clear();
-    session.profiles.clear();
     Ok(())
-}
-
-fn sync_follows(session: &mut Session) -> Result<()> {
-    let me = session.active_pubkey()?.to_string();
-    let events = run_fetch(
-        session,
-        "sync-follows",
-        json!({"kinds":[3], "authors":[me], "limit":1}),
-    );
-    let mut follows = BTreeSet::new();
-    for event in events {
-        for tag in event
-            .get("tags")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            if tag.get(0).and_then(Value::as_str) == Some("p") {
-                if let Some(pubkey) = tag.get(1).and_then(Value::as_str) {
-                    if pubkey.len() == 64 && pubkey.chars().all(|c| c.is_ascii_hexdigit()) {
-                        follows.insert(pubkey.to_lowercase());
-                    }
-                }
-            }
-        }
-    }
-    session.follows = follows;
-    render::status_ok(&format!("loaded {} follows", session.follows.len()));
-    Ok(())
-}
-
-fn home(session: &mut Session) -> Result<()> {
-    if session.follows.is_empty() {
-        render::status_warn("follow cache is empty; showing active account only");
-    }
-    let authors: Vec<String> = if session.follows.is_empty() {
-        vec![session.active_pubkey()?.into()]
-    } else {
-        session.follows.iter().cloned().collect()
-    };
-    fetch_and_print(
-        session,
-        "home",
-        json!({"kinds":[1], "authors":authors, "limit":100}),
-    )
-}
-
-fn notifications(session: &mut Session) -> Result<()> {
-    let me = session.active_pubkey()?.to_string();
-    fetch_and_print(
-        session,
-        "notifications",
-        json!({"kinds":[1,7], "#p":[me], "limit":100}),
-    )
-}
-
-fn profile(session: &mut Session, input: &str) -> Result<()> {
-    let author = normalize_pubkey(input)?;
-    fetch_and_print(
-        session,
-        "profile",
-        json!({"kinds":[0], "authors":[author], "limit":1}),
-    )
-}
-
-fn thread(session: &mut Session, input: &str) -> Result<()> {
-    let id = normalize_event_id(input)?;
-    fetch_and_print(
-        session,
-        "thread",
-        json!({"kinds":[1], "ids":[id.clone()], "#e":[id], "limit":100}),
-    )
-}
-
-fn search(session: &mut Session, input: &str) -> Result<()> {
-    let tag = input.trim_start_matches('#');
-    fetch_and_print(
-        session,
-        "search",
-        json!({"kinds":[1], "#t":[tag], "limit":100}),
-    )
-}
-
-fn raw_req(session: &mut Session, filter: &str) -> Result<()> {
-    let value: Value = serde_json::from_str(filter).map_err(|e| format!("bad JSON filter: {e}"))?;
-    fetch_and_print(session, "raw-req", value)
-}
-
-fn publish_note(session: &mut Session, text: &str, reply_to: Option<String>) -> Result<()> {
-    let keys = session.active_keys()?;
-    let mut tags = Vec::new();
-    if let Some(id) = reply_to {
-        tags.push(tag(["e", id.as_str(), "", "root"])?);
-        tags.push(tag(["e", id.as_str(), "", "reply"])?);
-    }
-    let event = EventBuilder::new(Kind::TextNote, text)
-        .tags(tags)
-        .sign_with_keys(keys)
-        .map_err(|e| format!("sign note: {e}"))?;
-    publish(session, &event, "kind:1 note")
-}
-
-fn react(session: &mut Session, input: &str, reaction: &str) -> Result<()> {
-    let keys = session.active_keys()?;
-    let id = normalize_event_id(input)?;
-    let event = EventBuilder::new(Kind::from_u16(7), reaction)
-        .tag(tag(["e", id.as_str()])?)
-        .sign_with_keys(keys)
-        .map_err(|e| format!("sign reaction: {e}"))?;
-    publish(session, &event, "kind:7 reaction")
-}
-
-fn follow(session: &mut Session, input: &str, add: bool) -> Result<()> {
-    let target = normalize_pubkey(input)?;
-    if add {
-        session.follows.insert(target);
-    } else {
-        session.follows.remove(&target);
-    }
-    let keys = session.active_keys()?;
-    let tags = session
-        .follows
-        .iter()
-        .map(|pubkey| tag(["p", pubkey.as_str()]))
-        .collect::<Result<Vec<_>>>()?;
-    let event = EventBuilder::new(Kind::from_u16(3), "")
-        .tags(tags)
-        .sign_with_keys(keys)
-        .map_err(|e| format!("sign contact list: {e}"))?;
-    let label = if add {
-        "kind:3 follow"
-    } else {
-        "kind:3 unfollow"
-    };
-    publish(session, &event, label)
-}
-
-fn publish(session: &mut Session, event: &nostr::Event, label: &str) -> Result<()> {
-    let (ok, fail) = wire::publish(event, &session.relays, session.wall);
-    render::publish_result(label, &event.id.to_hex(), ok, fail);
-    Ok(())
-}
-
-fn run_fetch(session: &mut Session, label: &str, filter: Value) -> Vec<Value> {
-    let events = wire::fetch(&session.relays, filter, session.wall);
-    let mut new_events = 0;
-    for event in &events {
-        if let Some(id) = event.get("id").and_then(Value::as_str) {
-            if session.seen_ids.insert(id.into()) {
-                new_events += 1;
-            }
-        }
-    }
-    session.last_run = Some(LastRun {
-        label: label.into(),
-        relays: session.relays.len(),
-        events: events.len(),
-        new_events,
-    });
-    events
-}
-
-fn fetch_and_print(session: &mut Session, label: &str, filter: Value) -> Result<()> {
-    let events = run_fetch(session, label, filter);
-    print_events(session, events);
-    Ok(())
-}
-
-fn print_events(session: &mut Session, events: Vec<Value>) {
-    profiles::remember_profiles(session, &events);
-    profiles::cache_note_authors(session, &events);
-    for event in &events {
-        render::event_with_profiles(session, event);
-    }
-    render::status_ok(&format!("{} events", events.len()));
-}
-
-fn tag<const N: usize>(parts: [&str; N]) -> Result<Tag> {
-    Tag::parse(parts).map_err(|e| format!("bad tag: {e}"))
 }
 
 fn normalize_pubkey(input: &str) -> Result<String> {

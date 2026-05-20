@@ -1,9 +1,6 @@
-use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
-use nostr::Keys;
-
-use crate::profiles::Profile;
+use crate::app::AppRuntime;
 
 #[derive(Debug, Clone)]
 pub struct LastRun {
@@ -13,31 +10,36 @@ pub struct LastRun {
     pub new_events: usize,
 }
 
-#[derive(Debug)]
 pub struct Session {
-    pub keys: Option<Keys>,
     pub pubkey_hex: Option<String>,
     pub relays: Vec<String>,
     pub indexers: Vec<String>,
-    pub follows: BTreeSet<String>,
-    pub profiles: BTreeMap<String, Profile>,
-    pub seen_ids: BTreeSet<String>,
     pub last_run: Option<LastRun>,
     pub wall: Duration,
+    pub app: AppRuntime,
 }
 
 impl Default for Session {
     fn default() -> Self {
+        let relays: Vec<String> = vec![
+            "wss://relay.primal.net".to_string(),
+            "wss://purplepag.es".to_string(),
+        ];
+        let indexers: Vec<String> = vec!["wss://purplepag.es".to_string()];
+        let app = AppRuntime::new();
+        for relay in &relays {
+            let _ = app.add_relay(relay, "both");
+        }
+        for relay in &indexers {
+            let _ = app.add_relay(relay, "indexer");
+        }
         Self {
-            keys: None,
             pubkey_hex: None,
-            relays: vec!["wss://relay.primal.net".into(), "wss://purplepag.es".into()],
-            indexers: vec!["wss://purplepag.es".into()],
-            follows: BTreeSet::new(),
-            profiles: BTreeMap::new(),
-            seen_ids: BTreeSet::new(),
+            relays,
+            indexers,
             last_run: None,
             wall: Duration::from_secs(8),
+            app,
         }
     }
 }
@@ -47,11 +49,5 @@ impl Session {
         self.pubkey_hex
             .as_deref()
             .ok_or_else(|| "no active identity - run load-key or create-account".to_string())
-    }
-
-    pub fn active_keys(&self) -> crate::Result<&Keys> {
-        self.keys
-            .as_ref()
-            .ok_or_else(|| "no signing key - run load-key or create-account".to_string())
     }
 }

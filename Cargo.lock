@@ -803,11 +803,10 @@ dependencies = [
 name = "chirp-repl"
 version = "0.1.0"
 dependencies = [
+ "nmp-app-chirp",
  "nmp-core",
  "nostr",
- "rustls",
  "serde_json",
- "tungstenite",
 ]
 
 [[package]]
