@@ -11,6 +11,7 @@
   - a short TLDR summary of what changed;
   - a detailed overview of the work performed;
   - any subjective decisions made, including tradeoffs or assumptions.
+- Do not open completed work as a draft pull request. If the work is ready and validated, open it as ready for review. Use draft PRs only when explicitly asked or when the work is intentionally incomplete.
 - After opening the PR, clean up the agent-owned worktree before completing the task.
 
 ## File Size
