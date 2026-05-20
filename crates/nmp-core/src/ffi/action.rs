@@ -52,7 +52,7 @@
 
 use std::ffi::{c_char, CStr, CString};
 
-use super::{app_ref, NmpApp};
+use super::{app_ref, app_ref_mut, c_string_argument, NmpApp};
 use crate::substrate::{ActionContext, ActionRejection};
 
 /// Dispatch a named action through the action registry.
@@ -92,6 +92,88 @@ pub extern "C" fn nmp_app_dispatch_action(
     CString::new(result)
         .unwrap_or_else(|_| c"{}".to_owned())
         .into_raw()
+}
+
+/// Host-supplied action executor callback.
+///
+/// Receives the already-validated `action_json` as a NUL-terminated C string.
+/// Returns `NULL` on success, or a NUL-terminated C string describing the
+/// failure. The returned error string is read immediately and copied into an
+/// owned Rust `String`; the host owns its lifetime and may free or reuse it
+/// after the callback returns.
+pub type NmpActionExecutor = unsafe extern "C" fn(*const c_char) -> *const c_char;
+
+/// Register a host-supplied executor for `namespace` against the app's
+/// action registry — the post-construction registration seam.
+///
+/// This is the C-ABI counterpart to [`NmpApp::register_action_executor`]: a
+/// host can wire an action namespace into the registry **without editing
+/// `nmp-core`**. The bridge closure copies the action JSON into a
+/// NUL-terminated C string, invokes `executor`, and maps its return value
+/// (`NULL` → `Ok(())`, non-NULL → `Err(message)`).
+///
+/// SCOPE (v1): this exposes *executor* registration only. The full
+/// [`nmp_app_dispatch_action`] path also requires a registered *module*
+/// (`ActionRegistry::start` validates the JSON shape against it), so a
+/// namespace wired through this symbol alone is reachable by the registry's
+/// internal `execute` path but not yet by `nmp_app_dispatch_action`. Module
+/// registration is the planned follow-up (`nmp_app_register_action_module`).
+///
+/// THREADING: this call takes `&mut NmpApp`. It MUST be invoked during host
+/// init — before `nmp_app_start` and before any `nmp_app_dispatch_action` —
+/// so no shared `&NmpApp` is live on another thread. See [`app_ref_mut`].
+///
+/// A null `app`, a null/empty/invalid `namespace`, or a null `executor` is a
+/// silent no-op (D6: a bad registration argument never crashes the host).
+///
+/// # Safety
+/// `app` must be a valid pointer from [`super::nmp_app_new`] (or null).
+/// `namespace` must be a valid UTF-8 NUL-terminated C string (or null).
+/// `executor`, when `Some`, must be a valid function pointer for the
+/// remaining lifetime of `app` — the registry retains it.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn nmp_app_register_action_executor(
+    app: *mut NmpApp,
+    namespace: *const c_char,
+    executor: Option<NmpActionExecutor>,
+) {
+    let Some(app) = app_ref_mut(app) else {
+        return;
+    };
+    let Some(ns) = c_string_argument(namespace) else {
+        return;
+    };
+    let Some(exec) = executor else {
+        return;
+    };
+    // Leak the namespace so it lives `'static` — the registry keys on
+    // `&'static str`. This is a registration-time-only call (host init), so
+    // the leak is bounded by the number of registered namespaces, not by
+    // runtime activity.
+    let ns: &'static str = Box::leak(ns.into_boxed_str());
+    app.register_action_executor(ns, move |action_json, _send| {
+        // The host executor speaks JSON only. The `_send` actor-command
+        // bridge is intentionally unused in v1: a host executor that needs
+        // to enqueue an `ActorCommand` uses a separate mechanism; the seam
+        // here proves post-construction registration works.
+        let cstr = CString::new(action_json).map_err(|e| e.to_string())?;
+        // SAFETY: `exec` is a valid function pointer per this symbol's
+        // safety contract; `cstr.as_ptr()` is a valid NUL-terminated C
+        // string live for the duration of the call.
+        let result_ptr = unsafe { exec(cstr.as_ptr()) };
+        if result_ptr.is_null() {
+            Ok(())
+        } else {
+            // SAFETY: a non-null return is, per the callback contract, a
+            // valid NUL-terminated C string. Copied immediately into an
+            // owned `String`; the host retains ownership of the pointer.
+            let msg = unsafe { CStr::from_ptr(result_ptr) }
+                .to_string_lossy()
+                .into_owned();
+            Err(msg)
+        }
+    });
 }
 
 /// Pure (FFI-free) core of [`nmp_app_dispatch_action`]: validate the action
@@ -326,5 +408,82 @@ mod tests {
                 "error should name the unwired namespace, got: {err}"
             );
         });
+    }
+
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+
+    /// THE SEAM PROOF (review #14): a host registers an action executor for a
+    /// namespace `nmp-core` has never heard of (`test.greeting`) *after*
+    /// `NmpApp` construction, and dispatching that namespace runs the
+    /// host-supplied closure. This is the post-construction registration the
+    /// project lacked: no edit to `default_registry()`, no per-verb C symbol.
+    #[test]
+    fn host_registered_executor_dispatches_successfully() {
+        let called = Arc::new(AtomicBool::new(false));
+        let called_in_closure = Arc::clone(&called);
+
+        let app = nmp_app_new();
+        // SAFETY: `nmp_app_new` never returns null; the pointer is valid
+        // until `nmp_app_free` below, and no other reference aliases it here.
+        let app_mut = unsafe { &mut *app };
+        app_mut.register_action_executor("test.greeting", move |action_json, _send| {
+            assert_eq!(action_json, r#"{"hello":"world"}"#);
+            called_in_closure.store(true, Ordering::SeqCst);
+            Ok(())
+        });
+
+        // `test_execute_action` drives the registry's `execute` path
+        // directly — the v1 seam exposes executor (not module) registration,
+        // so `nmp_app_dispatch_action`'s `start()` validation is bypassed.
+        app_mut
+            .test_execute_action("test.greeting", r#"{"hello":"world"}"#)
+            .expect("host-registered executor should run");
+
+        assert!(
+            called.load(Ordering::SeqCst),
+            "host-registered executor was never invoked"
+        );
+        nmp_app_free(app);
+    }
+
+    /// A host executor that returns `Err` propagates the failure message
+    /// back through the registry — the host is never handed a false success.
+    #[test]
+    fn host_registered_executor_propagates_error() {
+        let app = nmp_app_new();
+        // SAFETY: see `host_registered_executor_dispatches_successfully`.
+        let app_mut = unsafe { &mut *app };
+        app_mut.register_action_executor("test.failing", |_action_json, _send| {
+            Err("host rejected the action".to_string())
+        });
+
+        let err = app_mut
+            .test_execute_action("test.failing", "{}")
+            .expect_err("a failing host executor must surface an error");
+        assert_eq!(err, "host rejected the action");
+        nmp_app_free(app);
+    }
+
+    /// A namespace with no registered executor still returns the registry's
+    /// `Err` — registering one namespace does not accidentally answer for
+    /// another (D6: a missing executor is never silently swallowed).
+    #[test]
+    fn unregistered_namespace_after_host_registration_still_errs() {
+        let app = nmp_app_new();
+        // SAFETY: see `host_registered_executor_dispatches_successfully`.
+        let app_mut = unsafe { &mut *app };
+        app_mut.register_action_executor("test.greeting", |_json, _send| Ok(()));
+
+        let err = app_mut
+            .test_execute_action("test.unregistered", "{}")
+            .expect_err("an unregistered namespace must still error");
+        assert!(
+            err.contains("no executor registered") && err.contains("test.unregistered"),
+            "error should name the unregistered namespace, got: {err}"
+        );
+        nmp_app_free(app);
     }
 }
