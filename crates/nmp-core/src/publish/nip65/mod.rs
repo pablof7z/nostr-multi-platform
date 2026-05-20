@@ -7,14 +7,24 @@
 //! - For a publish authored by `A` with `#p` recipients `R1..Rn`:
 //!   - resolve write-relays of `A`
 //!   - union read-relays of each `Ri`
-//!   - if `A` has no kind:10002, return an **empty relay set** (fail-closed).
+//!   - if `A` has no kind:10002 **and** the event is not a discovery kind,
+//!     return an **empty relay set** (fail-closed).
+//!
+//! Discovery-kind carve-out: kind:0 / kind:3 / kind:10000–19999 additionally
+//! fan out to the configured indexer relays (see [`is_discovery_kind`]). For
+//! those kinds an author with no cached kind:10002 still resolves to the
+//! indexer set — never an empty set — because the indexers are precisely
+//! where a fresh account's profile / contacts / replaceable lists must be
+//! discoverable. Only **non-discovery** kinds (notes, reactions, …) are
+//! fail-closed when the author is uncached.
 //!
 //! D3 (outbox automatic): callers pass `PublishTarget::Auto`; this resolver
-//! picks relays from durable state, never from a hardcoded constant. An author
-//! with no cached kind:10002 is unroutable — the engine surfaces `NoTargets`
-//! so the UI can show "no relay to publish to" rather than silently widening
-//! to arbitrary public relays. This mirrors T134's subscription-side semantics
-//! (`CompiledPlan::unroutable_authors`).
+//! picks relays from durable state (or the indexer set for discovery kinds),
+//! never from a hardcoded per-kind constant. An author with no cached
+//! kind:10002 publishing a non-discovery kind is unroutable — the engine
+//! surfaces `NoTargets` so the UI can show "no relay to publish to" rather
+//! than silently widening to arbitrary public relays. This mirrors T134's
+//! subscription-side semantics (`CompiledPlan::unroutable_authors`).
 //!
 //! D7 (capabilities report): bad-shape kind:10002 tags (missing url, non-wss)
 //! are logged via `tracing::debug!` and skipped — never crash; never return an
@@ -31,11 +41,14 @@ use super::traits::OutboxResolver;
 /// Resolve `PublishTarget::Auto` to a concrete relay set per NIP-65, using an
 /// `EventStore` as the source of truth for kind:10002 lookups.
 ///
-/// When the author has no kind:10002 on file (or the lookup fails), the
-/// resolver returns an **empty relay set** — the engine maps this to
-/// `PublishEngineError::NoTargets` and surfaces it as a visible failure on
-/// the publish-status snapshot. This is fail-closed per doctrine (D3) and
-/// mirrors T134's subscription-side `unroutable_authors` semantics.
+/// When the author has no kind:10002 on file (or the lookup fails) and the
+/// event is **not** a discovery kind, the resolver returns an **empty relay
+/// set** — the engine maps this to `PublishEngineError::NoTargets` and
+/// surfaces it as a visible failure on the publish-status snapshot. This is
+/// fail-closed per doctrine (D3) and mirrors T134's subscription-side
+/// `unroutable_authors` semantics. Discovery kinds (kind:0 / kind:3 /
+/// kind:10000–19999) instead fan out to the indexer relays even for an
+/// uncached author — see [`is_discovery_kind`].
 pub struct Nip65OutboxResolver {
     store: Arc<dyn EventStore>,
     /// Indexer relay URLs, kept in sync with the kernel's relay config.
@@ -61,8 +74,15 @@ impl Nip65OutboxResolver {
         }
     }
 
-    /// Compatibility constructor — accepts just a store, no indexer relay
-    /// fan-out. Used by tests that don't need the discovery-kind path.
+    /// Test-only constructor — builds a resolver with an **empty** indexer
+    /// relay set, so discovery kinds get no fan-out and every kind resolves
+    /// purely from the author's cached kind:10002. Despite the historical
+    /// name there is no "default fallback": the indexer list is simply empty.
+    /// Used by the `nmp-testing` real-relay integration tests, which exercise
+    /// the pure NIP-65 path; production code always uses [`Self::new`] with a
+    /// live indexer handle. Not `#[cfg(test)]` because the consumers are
+    /// integration tests in a sibling crate.
+    #[doc(hidden)]
     pub fn with_default_fallback(store: Arc<dyn EventStore>) -> Self {
         Self::new(store, Arc::new(Mutex::new(Vec::new())))
     }
@@ -95,23 +115,25 @@ impl OutboxResolver for Nip65OutboxResolver {
 
         let mut out: BTreeSet<RelayUrl> = BTreeSet::new();
 
-        // 2. Author write-relays (always).
+        // 2. Author write-relays (when a kind:10002 is cached).
         //
         // If the author has no kind:10002 on file (or has an empty write set),
-        // we return an empty relay set — fail-closed per D3. The engine maps an
-        // empty resolve to `PublishEngineError::NoTargets` and surfaces a visible
-        // toast. This mirrors T134's subscription-side `unroutable_authors`
-        // discipline: unroutable is surfaced honestly, never silently widened.
+        // `out` stays empty here. For a non-discovery kind that is fail-closed
+        // per D3: the engine maps an empty resolve to
+        // `PublishEngineError::NoTargets` and surfaces a visible toast. This
+        // mirrors T134's subscription-side `unroutable_authors` discipline —
+        // unroutable is surfaced honestly, never silently widened. Discovery
+        // kinds escape the empty set via step 3 below.
         if let Some((writes, _reads)) = self.lookup_kind10002(author_pubkey) {
             out.extend(writes);
         }
-        // No kind:10002 → `out` remains empty. Fall through to #p handling
-        // so at least recipient inboxes are included if any are resolvable.
-        // (If both author-writes and all #p reads are empty, out is empty →
-        // NoTargets. That is the correct outcome for a fully-unroutable author.)
 
-        // 3. Discovery kinds also fan out to indexer relays so the author's
-        // profile, contacts, and replaceable events are discoverable.
+        // 3. Discovery kinds (kind:0 / kind:3 / kind:10000–19999) also fan out
+        // to the indexer relays so the author's profile, contacts, and
+        // replaceable events are discoverable. This is the ONLY cold-start
+        // widening in the resolver, and it is deliberately scoped to discovery
+        // kinds — a kind:1 note from an uncached author still resolves empty
+        // (NoTargets), it does not leak onto the indexers.
         if is_discovery_kind(kind) {
             if let Ok(guard) = self.indexer_relays.lock() {
                 out.extend(guard.iter().cloned());
