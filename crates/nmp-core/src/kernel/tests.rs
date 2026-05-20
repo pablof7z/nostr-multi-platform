@@ -168,11 +168,25 @@ fn close_author_refcounts_and_closes_view_subscriptions() {
     let _ = kernel.open_author(FIATJAF_PUBKEY.to_string(), true);
     let _ = kernel.open_author(FIATJAF_PUBKEY.to_string(), true);
 
+    // Precondition: opening the author actually seeded live wire-subs.
+    // Without this the eviction assertion below would be vacuous.
+    let open_subs = kernel.wire_subs_len_for_test();
+    assert!(
+        open_subs > 0,
+        "open_author must seed wire_subs rows; got {open_subs}"
+    );
+
     let first_close = kernel.close_author(FIATJAF_PUBKEY);
     assert!(first_close.is_empty());
     assert_eq!(
         kernel.selected_author.as_ref().map(|view| view.refcount),
         Some(1)
+    );
+    // Refcount still > 0 → subscriptions stay live; nothing evicted yet.
+    assert_eq!(
+        kernel.wire_subs_len_for_test(),
+        open_subs,
+        "a non-final close must not evict wire_subs"
     );
 
     let second_close = kernel.close_author(FIATJAF_PUBKEY);
@@ -185,6 +199,76 @@ fn close_author_refcounts_and_closes_view_subscriptions() {
     assert!(joined.contains("author-profile-1"));
     assert!(joined.contains("author-notes-1"));
     assert!(kernel.selected_author.is_none());
+    // The anti-leak invariant: the final close evicts every author wire-sub
+    // row, so a profile open/close cycle leaves zero residue.
+    assert_eq!(
+        kernel.wire_subs_len_for_test(),
+        0,
+        "final close_author must evict all author wire_subs rows"
+    );
+}
+
+#[test]
+fn close_thread_refcounts_and_closes_view_subscriptions() {
+    // Symmetric counterpart to `close_author_refcounts_and_closes_view_subscriptions`.
+    // Audits the FFI lifecycle leak the strategic review raised against
+    // `close_thread`: an open/close cycle MUST leave zero wire_subs residue.
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let focused_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    let _ = kernel.open_thread(focused_id.to_string(), true);
+    let _ = kernel.open_thread(focused_id.to_string(), true);
+
+    // Precondition: opening the thread seeded live wire-subs (thread-ids- /
+    // thread-replies- REQ frames). Without this the eviction check is vacuous.
+    let open_subs = kernel.wire_subs_len_for_test();
+    assert!(
+        open_subs > 0,
+        "open_thread must seed wire_subs rows; got {open_subs}"
+    );
+
+    let first_close = kernel.close_thread(focused_id);
+    assert!(
+        first_close.is_empty(),
+        "a non-final close must not emit CLOSE frames"
+    );
+    assert_eq!(
+        kernel.selected_thread.as_ref().map(|view| view.refcount),
+        Some(1),
+        "refcount must drop to 1 after one of two closes"
+    );
+    assert_eq!(
+        kernel.wire_subs_len_for_test(),
+        open_subs,
+        "a non-final close must not evict wire_subs"
+    );
+
+    let second_close = kernel.close_thread(focused_id);
+    let joined = second_close
+        .iter()
+        .map(|request| request.text.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(joined.contains("\"CLOSE\""), "final close must emit CLOSE frames");
+    assert!(
+        joined.contains("thread-ids-"),
+        "final close must CLOSE the thread-ids subscription"
+    );
+    assert!(
+        joined.contains("thread-replies-"),
+        "final close must CLOSE the thread-replies subscription"
+    );
+    assert!(
+        kernel.selected_thread.is_none(),
+        "final close must clear the selected thread interest"
+    );
+    // The anti-leak invariant: the final close evicts every thread wire-sub
+    // row, so a thread open/close cycle leaves zero residue.
+    assert_eq!(
+        kernel.wire_subs_len_for_test(),
+        0,
+        "final close_thread must evict all thread wire_subs rows"
+    );
 }
 
 #[test]
