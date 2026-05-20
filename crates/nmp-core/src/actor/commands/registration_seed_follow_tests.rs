@@ -57,6 +57,25 @@ fn p_tag_values(event: &Value) -> BTreeSet<String> {
         .collect()
 }
 
+fn filter_has_kind_and_authors(filter: &str, kind: u64, authors: &[&str]) -> bool {
+    let Ok(json) = serde_json::from_str::<Value>(filter) else {
+        return false;
+    };
+    let has_kind = json
+        .get("kinds")
+        .and_then(Value::as_array)
+        .is_some_and(|kinds| kinds.contains(&Value::from(kind)));
+    let has_authors = json
+        .get("authors")
+        .and_then(Value::as_array)
+        .is_some_and(|values| {
+            authors
+                .iter()
+                .all(|author| values.contains(&Value::from(*author)))
+        });
+    has_kind && has_authors
+}
+
 fn reqs_by_relay(frames: &[WireFrame]) -> BTreeMap<String, Vec<(&str, &InterestLifecycle)>> {
     let mut reqs = BTreeMap::new();
     for frame in frames {
@@ -107,6 +126,68 @@ fn create_account_installs_exact_default_followfeed_and_self() {
         [SEED_NPUB_HEX.to_string(), FIATJAF_HEX.to_string()]
             .into_iter()
             .collect()
+    );
+}
+
+#[test]
+fn create_account_followfeed_uses_configured_relay_before_mailboxes_arrive() {
+    let (mut identity, mut kernel) = fresh();
+    let profile = HashMap::new();
+    create_account(
+        &mut identity,
+        &mut kernel,
+        false,
+        &profile,
+        &onboarding_relays(),
+        false,
+    );
+    let active = identity.active_pubkey().expect("new account pubkey");
+
+    let frames = kernel.drain_lifecycle_tick();
+    let reqs = reqs_by_relay(&frames);
+    let read_relay = "wss://onboard-read.relay";
+    let frames_for_read = reqs
+        .get(read_relay)
+        .unwrap_or_else(|| panic!("missing app-relay follow-feed REQ; frames={frames:?}"));
+    for author in [SEED_NPUB_HEX, FIATJAF_HEX, &active] {
+        assert!(
+            frames_for_read.iter().any(|(filter, lifecycle)| {
+                matches!(lifecycle, InterestLifecycle::Tailing)
+                    && filter_has_kind_and_authors(filter, 1, &[author])
+                    && filter_has_kind_and_authors(filter, 6, &[author])
+            }),
+            "fresh account follow-feed must ride configured read relays before \
+             followed authors' kind:10002 mailboxes arrive; author={author}; frames={frames:?}"
+        );
+    }
+    assert!(
+        kernel.lifecycle_mut().current_plan_unroutable().is_empty(),
+        "configured read relays must keep default follows routable while mailboxes are unknown"
+    );
+}
+
+#[test]
+fn create_account_followfeed_probes_default_follow_mailboxes_via_indexer() {
+    let (mut identity, mut kernel) = fresh();
+    let profile = HashMap::new();
+    let relays = vec![(
+        "wss://onboard-indexer.relay/".to_string(),
+        "both,indexer".to_string(),
+    )];
+    create_account(&mut identity, &mut kernel, false, &profile, &relays, false);
+
+    let frames = kernel.drain_lifecycle_tick();
+    let reqs = reqs_by_relay(&frames);
+    let frames_for_indexer = reqs
+        .get("wss://onboard-indexer.relay")
+        .unwrap_or_else(|| panic!("missing indexer mailbox probe; frames={frames:?}"));
+    assert!(
+        frames_for_indexer.iter().any(|(filter, lifecycle)| {
+            matches!(lifecycle, InterestLifecycle::OneShot)
+                && filter_has_kind_and_authors(filter, 10002, &[SEED_NPUB_HEX, FIATJAF_HEX])
+        }),
+        "fresh account follow-feed must probe default follows' kind:10002 mailboxes; \
+         frames={frames:?}"
     );
 }
 
