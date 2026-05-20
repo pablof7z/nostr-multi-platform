@@ -424,7 +424,30 @@ pub(crate) fn create_account(
             created_at: now_secs(),
         };
         if let Ok(signed) = sign_active(identity, &unsigned_meta) {
-            kernel.publish_signed(&signed, &[]);
+            // Cold-start routing (same chicken-and-egg as kind:10002 below).
+            // A brand-new account has no kind:10002 on file, so the NIP-65
+            // outbox resolver (`PublishTarget::Auto`) would resolve
+            // `NoTargets` and the publish engine would silently drop this
+            // profile metadata — nobody would ever see the new account's
+            // display name. Route the initial kind:0 to the explicit
+            // cold-start target instead.
+            let target_relays = cold_start_publish_targets(kernel, relays);
+            if target_relays.is_empty() {
+                // D6: no usable cold-start relay — surface a toast, never
+                // panic. The account still exists locally; the user can add
+                // relays and re-publish their profile from Settings.
+                kernel.set_last_error_toast(Some(
+                    "could not publish profile — no cold-start relays available".to_string(),
+                ));
+            } else {
+                kernel.publish_signed_to(
+                    &signed,
+                    &[],
+                    crate::publish::PublishTarget::Explicit {
+                        relays: target_relays,
+                    },
+                );
+            }
         }
     }
 
@@ -455,7 +478,7 @@ pub(crate) fn create_account(
             // relays the user just declared (the canonical NIP-65 home of a
             // relay list — publish it to the relays it names) unioned with the
             // well-known discovery seed so others can find the new account.
-            let target_relays = cold_start_relay_list_targets(kernel, relays);
+            let target_relays = cold_start_publish_targets(kernel, relays);
             if target_relays.is_empty() {
                 // D6: no usable cold-start relay — surface a toast, never
                 // panic. The account still exists locally; the user can add
@@ -477,22 +500,24 @@ pub(crate) fn create_account(
 
     let mut outbound = kernel.active_account_bootstrap_requests();
     outbound.extend(retarget_timeline(identity, kernel, relays_ready));
-    outbound.extend(publish_initial_follows(identity, kernel));
+    outbound.extend(publish_initial_follows(identity, kernel, relays));
     outbound
 }
 
-/// Resolve the explicit relay set the *initial* kind:10002 relay list is
-/// published to on account creation (cold-start).
+/// Resolve the explicit relay set every *initial* event a brand-new account
+/// emits — kind:0 (profile metadata), kind:3 (contacts) and kind:10002 (relay
+/// list) — is published to on account creation (cold-start).
 ///
 /// A freshly-created account has no kind:10002 in the store, so the NIP-65
-/// outbox resolver cannot route its first relay list — it would resolve
-/// `NoTargets` and the publish engine would drop the event. This helper builds
-/// the explicit cold-start target instead:
+/// outbox resolver cannot route any of its first events — it would resolve
+/// `NoTargets` and the publish engine would drop them. This helper builds the
+/// explicit cold-start target instead:
 ///
-/// 1. The relays the user just declared in the relay list itself — a kind:10002
-///    belongs on the relays it names (canonical NIP-65); and
+/// 1. The relays the user just declared during onboarding — the only relays
+///    NMP knows the new account intends to write to; and
 /// 2. The kernel's well-known discovery seed (`bootstrap_discovery_relays`) so
-///    other clients performing relay-list discovery can find the new account.
+///    other clients performing relay-list / profile discovery can find the new
+///    account.
 ///
 /// The result is sorted + deduped. It is empty only when the user supplied no
 /// relays AND no discovery relays are configured — the caller treats an empty
@@ -500,9 +525,10 @@ pub(crate) fn create_account(
 ///
 /// This applies ONLY to cold-start: `create_account` is the sole caller, and a
 /// brand-new account by construction has no prior kind:10002. A user updating
-/// an existing relay list publishes through `publish_signed` (`Auto`), which
-/// routes to their already-declared write relays — that path is unaffected.
-fn cold_start_relay_list_targets(
+/// their profile / contacts / relay list later publishes through
+/// `publish_signed` (`Auto`), which routes to their already-declared write
+/// relays — that path is unaffected.
+fn cold_start_publish_targets(
     kernel: &Kernel,
     relays: &[(String, String)],
 ) -> Vec<String> {
@@ -516,9 +542,23 @@ fn cold_start_relay_list_targets(
     targets
 }
 
+/// Publish the cold-start kind:3 contacts list (`DEFAULT_FOLLOWS`) for a
+/// brand-new account.
+///
+/// Like kind:0 and kind:10002, this is a cold-start publish: the account has
+/// no kind:10002 on file, so the NIP-65 outbox resolver (`PublishTarget::Auto`)
+/// would resolve `NoTargets` and the publish engine would silently drop the
+/// contacts list — the new account's follows would never propagate. The
+/// initial kind:3 is therefore routed to the explicit cold-start target
+/// (`cold_start_publish_targets`), the same union of declared + discovery
+/// relays the initial kind:0 / kind:10002 use.
+///
+/// `relays` is the relay set the user declared during onboarding, threaded
+/// through from `create_account` so the cold-start target can be resolved.
 fn publish_initial_follows(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
+    relays: &[(String, String)],
 ) -> Vec<OutboundMessage> {
     let Some(author) = identity.active_pubkey() else {
         return Vec::new();
@@ -535,7 +575,27 @@ fn publish_initial_follows(
         created_at: now_secs(),
     };
     match sign_active(identity, &unsigned) {
-        Ok(signed) => kernel.publish_signed(&signed, &[]),
+        Ok(signed) => {
+            let target_relays = cold_start_publish_targets(kernel, relays);
+            if target_relays.is_empty() {
+                // D6: no usable cold-start relay — surface a toast, never
+                // panic. The follow set is already pre-populated locally
+                // (`prepopulate_seed_contacts`); the user can re-publish
+                // their contacts once relays are configured.
+                kernel.set_last_error_toast(Some(
+                    "could not publish contacts — no cold-start relays available".to_string(),
+                ));
+                Vec::new()
+            } else {
+                kernel.publish_signed_to(
+                    &signed,
+                    &[],
+                    crate::publish::PublishTarget::Explicit {
+                        relays: target_relays,
+                    },
+                )
+            }
+        }
         Err(reason) => {
             kernel.set_last_error_toast(Some(reason));
             Vec::new()
