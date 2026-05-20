@@ -47,6 +47,7 @@ struct ModularBlockView: View {
     /// display / avatar metadata. A missing entry falls back to the card's
     /// raw pubkey (D1 placeholders apply: identicon + truncated npub).
     let items: [String: TimelineItem]
+    let onLike: (String) -> Void
 
     @EnvironmentObject private var router: ChirpRouter
 
@@ -64,13 +65,13 @@ struct ModularBlockView: View {
     @ViewBuilder
     private func standaloneRow(id: String) -> some View {
         if let item = items[id] {
-            NoteRowView(item: item)
+            NoteRowView(item: item, onLike: onLike)
         } else if let card = cards[id] {
             // Card without a TimelineItem: build a synthetic item so the
             // standalone path stays consistent. This happens when an
             // ancestor of a reply lands but isn't in the kernel's visible
             // window (timeline_authors filter, visible_limit, etc.).
-            NoteRowView(item: syntheticItem(card: card, item: nil))
+            NoteRowView(item: syntheticItem(card: card, item: nil), onLike: onLike)
         } else {
             // Neither cached locally nor available as a kernel item — show
             // a minimal placeholder so the row count stays consistent.

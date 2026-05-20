@@ -64,25 +64,14 @@ struct HomeFeedView: View {
     // ── Timeline list ──────────────────────────────────────────────────────
 
     private var timeline: some View {
-        let blocks = effectiveBlocks
-        let cardLookup = Dictionary(uniqueKeysWithValues: model.modularTimeline.cards.map { ($0.id, $0) })
-        let itemLookup = Dictionary(uniqueKeysWithValues: model.items.map { ($0.id, $0) })
-
-        return List {
-            ForEach(Array(blocks.enumerated()), id: \.offset) { (_, block) in
-                ModularBlockView(block: block, cards: cardLookup, items: itemLookup)
-                    .listRowInsets(EdgeInsets())
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(ChirpColor.bg)
-            }
-        }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .contentMargins(.bottom, 20, for: .scrollContent)
-        .accessibilityIdentifier("timeline-list")
-        .refreshable {
-            model.openTimeline()
-        }
+        TimelineListView(
+            blocks: effectiveBlocks,
+            cards: model.modularTimeline.cards,
+            items: model.items,
+            onRefresh: { model.openTimeline() },
+            onLike: { model.react(targetEventID: $0, reaction: "❤") }
+        )
+        .equatable()
     }
 
     // T146 — render modular blocks if any have been projected; otherwise
@@ -165,6 +154,39 @@ struct HomeFeedView: View {
                 Image(systemName: "square.and.pencil")
             }
             .accessibilityLabel("New note")
+        }
+    }
+}
+
+private struct TimelineListView: View, Equatable {
+    let blocks: [TimelineBlock]
+    let cards: [ChirpEventCard]
+    let items: [TimelineItem]
+    let onRefresh: () -> Void
+    let onLike: (String) -> Void
+
+    nonisolated static func == (lhs: TimelineListView, rhs: TimelineListView) -> Bool {
+        lhs.blocks == rhs.blocks && lhs.cards == rhs.cards && lhs.items == rhs.items
+    }
+
+    var body: some View {
+        let cardLookup = Dictionary(uniqueKeysWithValues: cards.map { ($0.id, $0) })
+        let itemLookup = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+
+        return List {
+            ForEach(blocks, id: \.stableID) { block in
+                ModularBlockView(block: block, cards: cardLookup, items: itemLookup, onLike: onLike)
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(ChirpColor.bg)
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .contentMargins(.bottom, 20, for: .scrollContent)
+        .accessibilityIdentifier("timeline-list")
+        .refreshable {
+            onRefresh()
         }
     }
 }

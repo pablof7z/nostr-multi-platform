@@ -302,7 +302,10 @@ final class KernelModel: ObservableObject {
         testNpub = update.testNpub
         profile = update.profile
         authorView = update.authorView
-        items = update.items
+        let timelineItemsChanged = update.items != items
+        if timelineItemsChanged {
+            items = update.items
+        }
         // T146 — refresh the modular timeline snapshot in the same apply
         // pass. The grouper's state is fed by the kernel event observer
         // (which fires synchronously inside `EventStore::insert`), so by
@@ -311,7 +314,12 @@ final class KernelModel: ObservableObject {
         // round-trip per snapshot is the cost; reads are O(blocks + cards)
         // and avoid duplicating profile state (Swift looks the author up
         // in `items` for display name / avatar).
-        modularTimeline = kernel.chirpSnapshot()
+        if timelineItemsChanged {
+            let nextTimeline = kernel.chirpSnapshot()
+            if nextTimeline != modularTimeline {
+                modularTimeline = nextTimeline
+            }
+        }
         if !kernel.isMarmotRegistered {
             kernel.registerActiveMarmotIfAvailable()
         }
