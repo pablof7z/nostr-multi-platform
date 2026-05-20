@@ -14,7 +14,7 @@ use std::time::Instant;
 use zeroize::Zeroizing;
 
 use crate::kernel::Kernel;
-use crate::relay::{OutboundMessage, RelayRole};
+use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole};
 use crate::relay_worker::RelayEvent;
 
 use super::commands::{self, IdentityRuntime, LifecycleObserverSlot};
@@ -51,10 +51,10 @@ pub(super) fn dispatch_command(
     kernel: &mut Kernel,
     identity: &mut IdentityRuntime,
     #[cfg(feature = "wallet")] wallet: &mut WalletRuntime,
-    relay_controls: &mut HashMap<String, RelayControl>,
+    relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
     relay_tx: &Sender<RelayEvent>,
     connected_relays: &mut HashSet<RelayRole>,
-    connected_urls: &mut HashSet<String>,
+    connected_urls: &mut HashSet<CanonicalRelayUrl>,
     update_tx: &Sender<String>,
     last_emit: &mut Instant,
     next_relay_generation: &mut u64,
@@ -432,11 +432,11 @@ pub(super) fn handle_relay_event(
     event: RelayEvent,
     kernel: &mut Kernel,
     #[cfg(feature = "wallet")] wallet: &mut WalletRuntime,
-    relay_controls: &mut HashMap<String, RelayControl>,
+    relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
     relay_tx: &Sender<RelayEvent>,
     next_relay_generation: &mut u64,
     connected_relays: &mut HashSet<RelayRole>,
-    connected_urls: &mut HashSet<String>,
+    connected_urls: &mut HashSet<CanonicalRelayUrl>,
     update_tx: &Sender<String>,
     last_emit: &mut Instant,
     startup_sent: &mut bool,
@@ -462,7 +462,7 @@ pub(super) fn handle_relay_event(
             //
             // D7 preserved: actor reports the OS-level transition; the
             // kernel decides what to replay and rewrites `since`.
-            let is_reconnect = !connected_urls.insert(relay_url.clone());
+            let is_reconnect = !connected_urls.insert(CanonicalRelayUrl::parse_or_raw(&relay_url));
             if is_reconnect && running {
                 let replay = kernel.replay_on_reconnect(role, &relay_url);
                 if !replay.is_empty() {

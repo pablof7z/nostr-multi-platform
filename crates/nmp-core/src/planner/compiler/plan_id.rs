@@ -123,10 +123,6 @@ pub(super) fn compute_plan_id(
         let lifecycle_tag: u8 = match &interest.lifecycle {
             InterestLifecycle::Tailing => 0,
             InterestLifecycle::OneShot => 1,
-            InterestLifecycle::BoundedTime { until_ms } => {
-                h.feed_u64(*until_ms);
-                2
-            }
         };
         h.feed_bytes(&[lifecycle_tag]);
     }

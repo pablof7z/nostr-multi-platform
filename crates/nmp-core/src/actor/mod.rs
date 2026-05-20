@@ -91,7 +91,7 @@ use relay_mgmt::{
 use tick::{compute_wait, emit_now, flush_due};
 
 use crate::kernel::Kernel;
-use crate::relay::{RelayRole, DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{CanonicalRelayUrl, RelayRole, DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 use crate::relay_worker::{RelayCommand, RelayEvent};
 use std::collections::{HashMap, HashSet};
 use std::panic::{self, AssertUnwindSafe};
@@ -429,9 +429,11 @@ pub fn run_actor_with_observers(
     let mut wallet = WalletRuntime::new();
     // T105: URL-keyed transport pool. One socket per resolved relay URL;
     // workers spawn on demand as OutboundMessages flow with new relay_urls.
-    let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
+    // Keyed by `CanonicalRelayUrl` so the canonicalization invariant is
+    // compiler-enforced — a raw `&str` cannot index the pool.
+    let mut relay_controls: HashMap<CanonicalRelayUrl, RelayControl> = HashMap::new();
     let mut connected_relays = HashSet::new();
-    let mut connected_urls: HashSet<String> = HashSet::new(); // T116/G1 reconnect-replay discriminator.
+    let mut connected_urls: HashSet<CanonicalRelayUrl> = HashSet::new(); // T116/G1 reconnect-replay discriminator.
     let mut next_relay_generation = 1;
     let mut running = false;
     let mut emit_hz = DEFAULT_EMIT_HZ;
@@ -515,7 +517,10 @@ pub fn run_actor_with_observers(
         let wait = compute_wait(&kernel, running, last_emit, emit_hz);
         match relay_rx.recv_timeout(wait) {
             Ok(event) => {
-                let relay_url = event.relay_url().to_string();
+                // The pool is keyed by `CanonicalRelayUrl`; a relay worker is
+                // spawned with — and reports events under — its canonical key,
+                // so `parse_or_raw` round-trips to the same map entry.
+                let relay_url = CanonicalRelayUrl::parse_or_raw(event.relay_url());
                 let generation = event.generation();
                 if relay_controls
                     .get(&relay_url)

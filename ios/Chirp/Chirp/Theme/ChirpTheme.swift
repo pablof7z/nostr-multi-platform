@@ -110,7 +110,7 @@ struct ChirpAvatar: View {
     var size: CGFloat = 44
     var body: some View {
         ZStack {
-            Circle().fill(.quaternary)
+            Circle().fill(ChirpColor.avatar(from: colorHex))
             if let url, let u = URL(string: url) {
                 AsyncImage(url: u) { img in
                     img.resizable().scaledToFill()

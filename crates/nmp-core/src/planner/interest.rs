@@ -19,8 +19,9 @@ pub type Pubkey = String;
 /// Hex-encoded 64-char event id.
 pub type EventId = String;
 
-/// A `wss://` URL for a relay.
-pub type RelayUrl = String;
+/// A `wss://` URL for a relay. Single crate-wide definition lives in
+/// `crate::relay`; re-exported here so `planner` import paths are unchanged.
+pub use crate::relay::RelayUrl;
 
 /// Unix timestamp in seconds.
 pub type UnixSeconds = u64;
@@ -174,8 +175,6 @@ pub enum InterestLifecycle {
     Tailing,
     /// Send CLOSE on EOSE.
     OneShot,
-    /// Send CLOSE on EOSE or when the deadline (Unix ms) passes.
-    BoundedTime { until_ms: u64 },
 }
 
 // ─── InterestScope ───────────────────────────────────────────────────────────

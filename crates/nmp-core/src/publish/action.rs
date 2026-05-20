@@ -15,10 +15,11 @@ use crate::substrate::{
 /// entries and to address the action in the ledger when M6 wires the ledger.
 pub type PublishHandle = String;
 
-/// Relay URL — kept as a newtype-ish alias so it's grep-able and so the
-/// `RelayDispatcher` shim can be swapped for `nmp-nip01::RelayManager` from
-/// M8 without changing call sites.
-pub type RelayUrl = String;
+/// Relay URL — grep-able alias so the `RelayDispatcher` shim can be swapped
+/// for `nmp-nip01::RelayManager` from M8 without changing call sites. Single
+/// crate-wide definition lives in `crate::relay`; re-exported here so
+/// `publish` import paths are unchanged.
+pub use crate::relay::RelayUrl;
 
 /// Where a publish should go.
 ///

@@ -37,7 +37,7 @@ impl Kernel {
         self.wire_subs
             .values()
             .filter(|sub| !matches!(sub.state.as_str(), "closed" | "closed_by_relay"))
-            .map(|sub| (sub.id.clone(), sub.relay_url.clone()))
+            .map(|sub| (sub.id.clone(), sub.relay_url.to_string()))
             .collect()
     }
 
@@ -89,14 +89,14 @@ impl Kernel {
         // #170: evict by the full `(relay_url, sub_id)` key — the same sub_id
         // may be live on multiple relays; a sub_id-only evict would drop a
         // sibling relay's row that no prefix targeted.
-        let mut to_evict: Vec<(String, String)> = Vec::new();
+        let mut to_evict: Vec<(CanonicalRelayUrl, String)> = Vec::new();
         for sub in self.wire_subs.values() {
             if prefixes.iter().any(|prefix| sub.id.starts_with(prefix))
                 && !matches!(sub.state.as_str(), "closed" | "closed_by_relay")
             {
                 closes.push(OutboundMessage {
                     role: sub.role,
-                    relay_url: sub.relay_url.clone(),
+                    relay_url: sub.relay_url.to_string(),
                     text: json!(["CLOSE", sub.id]).to_string(),
                 });
                 to_evict.push((sub.relay_url.clone(), sub.id.clone()));
@@ -161,10 +161,9 @@ impl Kernel {
         filter: Value,
     ) -> OutboundMessage {
         // Canonical key for the `wire_subs` map; the raw `relay_url` is the
-        // routing target on the emitted frame. Falls back to the raw string
-        // for non-ws/wss inputs.
-        let wire_key_url = crate::relay::canonical_relay_url(&relay_url)
-            .unwrap_or_else(|| relay_url.clone());
+        // routing target on the emitted frame. Falls back to wrapping the raw
+        // string for non-ws/wss inputs (`parse_or_raw`).
+        let wire_key_url = CanonicalRelayUrl::parse_or_raw(&relay_url);
         self.log(format!(
             "REQ {sub_id}@{} ({}): {summary}",
             role.key(),
@@ -259,7 +258,6 @@ impl Kernel {
         frames: &[crate::subs::WireFrame],
     ) {
         use crate::planner::InterestLifecycle;
-        use crate::relay::canonical_relay_url;
         use crate::subs::WireFrame;
         for frame in frames {
             match frame {
@@ -271,15 +269,16 @@ impl Kernel {
                 } => {
                     // Canonical key so the EOSE handler's lookup (which uses
                     // the transport-stamped canonical delivering URL) hits the
-                    // same `wire_subs` / `persistent_subs` entry. Fall back to
-                    // the raw string only for URLs that do not parse as ws/wss.
-                    let key = canonical_relay_url(relay_url)
-                        .unwrap_or_else(|| relay_url.clone());
+                    // same `wire_subs` / `persistent_subs` entry. The
+                    // `CanonicalRelayUrl` newtype makes that invariant
+                    // compiler-enforced; `parse_or_raw` keeps the prior
+                    // fail-open behavior for URLs that do not parse as ws/wss.
+                    let key = CanonicalRelayUrl::parse_or_raw(relay_url);
                     let role = self
-                        .role_for_relay_url(&key)
+                        .role_for_relay_url(key.as_str())
                         .unwrap_or(RelayRole::Content);
                     if matches!(lifecycle, InterestLifecycle::Tailing) {
-                        self.register_persistent_sub(key.clone(), sub_id.clone());
+                        self.register_persistent_sub(key.as_str(), sub_id.clone());
                     }
                     self.wire_subs.insert(
                         (key.clone(), sub_id.clone()),
@@ -301,9 +300,8 @@ impl Kernel {
                     // Same canonicalization as the Req arm: a Close emitted
                     // with a non-canonical URL must still un-pin the sub and
                     // evict the row registered under the canonical key.
-                    let key = canonical_relay_url(relay_url)
-                        .unwrap_or_else(|| relay_url.clone());
-                    self.unregister_persistent_sub(&key, sub_id);
+                    let key = CanonicalRelayUrl::parse_or_raw(relay_url);
+                    self.unregister_persistent_sub(key.as_str(), sub_id);
                     self.wire_subs.remove(&(key, sub_id.clone()));
                 }
             }
