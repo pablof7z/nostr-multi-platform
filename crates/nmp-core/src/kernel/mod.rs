@@ -448,6 +448,48 @@ fn build_event_store(storage_path: Option<&str>) -> Arc<dyn EventStore> {
     Arc::new(MemEventStore::new())
 }
 
+/// Choose the [`PublishStore`](crate::publish::PublishStore) backing the
+/// publish engine.
+///
+/// Publish intents composed offline only survive an app kill if the store is
+/// durable - `PublishEngine::resume_from_store` replays exactly what
+/// `load_pending` returns at startup. There are three backends:
+///
+/// 1. [`FsPublishStore`](crate::publish::FsPublishStore) - JSON files under
+///    `{storage_path}/publish_intents/`. Durable **without** any feature flag,
+///    so it is the chosen backend whenever the host supplied a storage path.
+/// 2. [`DomainPublishStore`](crate::publish::DomainPublishStore) - LMDB-backed
+///    via the shared `EventStore`. Durable *only* with `--features
+///    lmdb-backend`; without it the underlying store is `MemEventStore` and
+///    intents are lost on restart. Kept as the fallback when no storage path
+///    is set but the event store still opened cleanly.
+/// 3. [`InMemoryPublishStore`](crate::publish::InMemoryPublishStore) - last
+///    resort (and the steady state for CI / in-process tests, which pass no
+///    storage path).
+///
+/// Resolution mirrors [`build_event_store`]: the FFI-supplied `storage_path`
+/// wins, then the `NMP_LMDB_PATH` env-var fallback. When a path resolves, the
+/// `FsPublishStore` is rooted at the *same* directory as the LMDB event store
+/// so one `storage_path` covers all durable kernel state.
+fn resolve_publish_store(
+    storage_path: Option<&str>,
+    event_store: &Arc<dyn EventStore>,
+) -> Arc<dyn crate::publish::PublishStore> {
+    let resolved: Option<String> = storage_path
+        .map(str::to_owned)
+        .or_else(|| std::env::var("NMP_LMDB_PATH").ok());
+    if let Some(path) = resolved {
+        // Durable, feature-flag-independent: offline intents survive restart.
+        return Arc::new(crate::publish::FsPublishStore::new(path));
+    }
+    // No storage path: fall back to the LMDB-domain store (durable only under
+    // `lmdb-backend`), then the in-memory store. This keeps CI/test behaviour
+    // (no storage path -> no on-disk artefacts) unchanged.
+    crate::publish::DomainPublishStore::open(Arc::clone(event_store))
+        .map(|store| Arc::new(store) as Arc<dyn crate::publish::PublishStore>)
+        .unwrap_or_else(|_| Arc::new(crate::publish::InMemoryPublishStore::new()))
+}
+
 fn load_profile_intents(
     publish_store: &Arc<dyn crate::publish::PublishStore>,
 ) -> HashMap<String, Profile> {
@@ -530,11 +572,8 @@ impl Kernel {
         storage_path: Option<&str>,
     ) -> Self {
         let store: Arc<dyn EventStore> = build_event_store(storage_path);
-        let publish_store = publish_store.unwrap_or_else(|| {
-            crate::publish::DomainPublishStore::open(Arc::clone(&store))
-                .map(|store| Arc::new(store) as Arc<dyn crate::publish::PublishStore>)
-                .unwrap_or_else(|_| Arc::new(crate::publish::InMemoryPublishStore::new()))
-        });
+        let publish_store = publish_store
+            .unwrap_or_else(|| resolve_publish_store(storage_path, &store));
         let local_profile_intents = load_profile_intents(&publish_store);
         let publish_dispatcher = Arc::new(crate::publish::QueueDispatcher::new());
         let indexer_relays_handle: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));

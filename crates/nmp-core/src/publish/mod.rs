@@ -32,6 +32,7 @@
 
 mod action;
 mod engine;
+mod fs_store;
 mod nip65;
 mod state;
 mod store;
@@ -48,6 +49,7 @@ pub use engine::{
     engine_error_to_failure, outcome_of, PublishEngine, PublishEngineError, TerminalOutcome,
     ENGINE_FAILURE_RELAY_URL,
 };
+pub use fs_store::FsPublishStore;
 pub use nip65::Nip65OutboxResolver;
 pub use state::{PerRelayState, PublishAttempt, RelayAck, RelayPlan, RetryPolicy, RetryVerdict};
 pub use store::DomainPublishStore;
