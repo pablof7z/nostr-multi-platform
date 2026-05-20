@@ -184,6 +184,17 @@ pub struct NmpApp {
     /// when the slot is overwritten or the app drops — a plain `String` would
     /// leave the key recoverable in freed memory.
     active_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>>,
+    /// FFI-supplied persistent storage directory for the LMDB `EventStore`
+    /// backend. Set by [`nmp_app_set_storage_path`] before
+    /// [`nmp_app_start`]. Shared `Arc` with the actor thread: the C-ABI
+    /// setter writes through this clone, the actor reads its clone when it
+    /// constructs the kernel (`run_actor_with_observers` →
+    /// `Kernel::with_storage_path` → `build_event_store`).
+    ///
+    /// `None` (the default until a host calls the setter) keeps the
+    /// in-memory store. The path is only honoured when the crate is built
+    /// with `--features lmdb-backend`; otherwise it is inert.
+    storage_path: Arc<Mutex<Option<String>>>,
     actor: Mutex<Option<JoinHandle<()>>>,
     update_listener: Mutex<Option<JoinHandle<()>>>,
 }
@@ -243,6 +254,12 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // identity mutation; per-app crates read via NmpApp::active_local_nsec.
     let active_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>> = Arc::new(Mutex::new(None));
     let actor_active_local_nsec = Arc::clone(&active_local_nsec);
+    // FFI-supplied LMDB storage path slot. `nmp_app_set_storage_path`
+    // writes through the `NmpApp`'s clone before `nmp_app_start`; the actor
+    // reads through this clone when it builds the kernel. Default `None`
+    // → in-memory store.
+    let storage_path: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let actor_storage_path = Arc::clone(&storage_path);
     // Clone so we can report actor panics through the same listener pipe.
     let update_tx_panic = update_tx.clone();
     let actor = thread::spawn(move || {
@@ -255,6 +272,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 actor_raw_event_observers,
                 actor_relay_edit_rows,
                 actor_active_local_nsec,
+                actor_storage_path,
             );
         }));
         if let Err(e) = result {
@@ -302,6 +320,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         raw_event_observers,
         relay_edit_rows,
         active_local_nsec,
+        storage_path,
         actor: Mutex::new(Some(actor)),
         update_listener: Mutex::new(Some(update_listener)),
     }))
@@ -461,6 +480,44 @@ pub extern "C" fn nmp_app_set_update_callback(
         context: context as usize,
         callback,
     });
+}
+
+/// Set the persistent storage directory for the LMDB `EventStore` backend.
+///
+/// Threads the host-supplied path through to the kernel so the
+/// `lmdb-backend` feature can be used in production (iOS / Android). When
+/// the crate is built without `--features lmdb-backend` the path is stored
+/// but inert — the in-memory store is always used.
+///
+/// Call ordering: this MUST be called before [`nmp_app_start`]. The kernel
+/// resolves its `EventStore` once, on the actor thread, when the first
+/// `Start` would otherwise need it; a path set after the kernel is built
+/// has no effect until the next process launch. A `NULL` or empty `path`
+/// clears any previously-set path (the kernel then falls back to the
+/// `NMP_LMDB_PATH` env var, or the in-memory store).
+///
+/// Mirrors the `app_ref` + `Mutex::lock` pattern of the other
+/// `nmp_app_set_*` setters — no panic can cross the C ABI boundary because
+/// the body performs no foreign callback and no panicking operation.
+///
+/// # Safety
+/// `app` must be a valid non-null pointer from [`nmp_app_new`], or null
+/// (a null `app` is a silent no-op). `path` must be a valid UTF-8
+/// null-terminated C string, or null. Invalid UTF-8 is treated as "unset".
+#[no_mangle]
+pub extern "C" fn nmp_app_set_storage_path(app: *mut NmpApp, path: *const c_char) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    // `c_optional_string_argument` collapses NULL / empty / whitespace to
+    // `None` and returns `Some(trimmed)` otherwise — exactly the
+    // "empty clears, non-empty sets" semantics documented above. It also
+    // rejects invalid UTF-8 (→ `None`), so no panic is possible here.
+    let resolved = c_optional_string_argument(path);
+    let Ok(mut slot) = app.storage_path.lock() else {
+        return;
+    };
+    *slot = resolved;
 }
 
 #[no_mangle]

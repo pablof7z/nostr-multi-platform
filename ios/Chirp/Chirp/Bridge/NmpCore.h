@@ -14,6 +14,10 @@ void *nmp_app_new(void);
 void nmp_app_free(void *app);
 typedef void (*NmpUpdateCallback)(void *context, const char *json);
 void nmp_app_set_update_callback(void *app, void *context, NmpUpdateCallback callback);
+// Persistent storage directory for the LMDB EventStore backend. Must be
+// called before `nmp_app_start`; a NULL or empty `path` clears it. Inert
+// unless nmp-core is built with the `lmdb-backend` feature.
+void nmp_app_set_storage_path(void *app, const char *path);
 void nmp_app_start(void *app, unsigned int events_per_second, unsigned int visible_limit, unsigned int emit_hz);
 void nmp_app_configure(void *app, unsigned int events_per_second, unsigned int visible_limit, unsigned int emit_hz);
 void nmp_app_stop(void *app);

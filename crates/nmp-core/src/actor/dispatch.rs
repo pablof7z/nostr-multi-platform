@@ -344,6 +344,13 @@ pub(super) fn dispatch_command(
             // and per-app crates; replacing it would silently return stale
             // rows to Marmot dispatch.
             let relay_edit_rows_handle = kernel.take_relay_edit_rows_handle_for_reset();
+            // NOTE: the FFI-supplied LMDB `storage_path` (from
+            // `nmp_app_set_storage_path`) is NOT re-threaded here — `Reset`
+            // rebuilds the kernel with the in-memory store unless the
+            // `NMP_LMDB_PATH` env-var fallback in `build_event_store` is
+            // set. `Reset` is a "wipe all state" command and is rare in
+            // production; persisting across it is a deliberate non-goal of
+            // the FFI-path wiring.
             *kernel = Kernel::new(kernel.visible_limit());
             if let Some(handle) = drops_handle {
                 kernel.set_dispatch_drops_handle(handle);

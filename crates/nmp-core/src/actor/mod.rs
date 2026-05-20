@@ -306,6 +306,7 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
         new_raw_event_observer_slot(),
         Arc::new(Mutex::new(Vec::new())),
         Arc::new(Mutex::new(None)),
+        Arc::new(Mutex::new(None)),
     );
 }
 
@@ -328,6 +329,7 @@ pub fn run_actor_with_lifecycle_observer(
         new_raw_event_observer_slot(),
         Arc::new(Mutex::new(Vec::new())),
         Arc::new(Mutex::new(None)),
+        Arc::new(Mutex::new(None)),
     );
 }
 
@@ -342,6 +344,7 @@ pub fn run_actor_with_lifecycle_observer(
 /// the top of every iteration so UI commands are NEVER dropped under relay
 /// event flood. Relay events use a separate channel read with
 /// `recv_timeout(compute_wait(…))` so emit-hz cadence is respected.
+#[allow(clippy::too_many_arguments)]
 pub fn run_actor_with_observers(
     command_rx: Receiver<ActorCommand>,
     update_tx: Sender<String>,
@@ -350,6 +353,12 @@ pub fn run_actor_with_observers(
     raw_event_observers: RawEventObserverSlot,
     relay_edit_rows: Arc<Mutex<Vec<crate::kernel::RelayEditRow>>>,
     active_local_nsec: Arc<Mutex<Option<zeroize::Zeroizing<String>>>>,
+    // FFI-supplied persistent LMDB storage path. Shared `Arc` with the
+    // `NmpApp`: the C-ABI `nmp_app_set_storage_path` writes through one
+    // clone before `nmp_app_start`; this actor thread reads the other when
+    // it constructs the kernel below. `None` (the test / web default)
+    // keeps the in-memory store.
+    storage_path: Arc<Mutex<Option<String>>>,
 ) {
     // Dual-channel design: relay events get their own dedicated channel.
     // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.
@@ -361,7 +370,18 @@ pub fn run_actor_with_observers(
     // the FFI surface and diagnostic snapshot don't change.
     let dispatch_drops = Arc::new(AtomicU64::new(0));
 
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // Resolve the FFI-supplied storage path once, here, before the kernel
+    // is built. The host calls `nmp_app_set_storage_path` before
+    // `nmp_app_start`; in practice this read wins the (theoretical) race
+    // with `nmp_app_new` spawning this thread. If the slot is still empty
+    // — or the lock is poisoned — the kernel falls back to the in-memory
+    // store, which is the safe default (no corruption, matches today's
+    // behaviour). The `lmdb-backend` feature gate lives inside
+    // `build_event_store`; this path is plumbed unconditionally.
+    let initial_storage_path: Option<String> =
+        storage_path.lock().ok().and_then(|guard| guard.clone());
+    let mut kernel =
+        Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, initial_storage_path.as_deref());
     // T114b — bind the FFI-channel drop counter so it surfaces on the
     // diagnostic snapshot (`Metrics::dispatch_drops_total`). A `Reset`
     // command replaces the kernel; we re-bind there so the counter stays

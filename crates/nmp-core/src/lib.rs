@@ -51,9 +51,9 @@ pub use ffi::{
     nmp_app_publish_signed_event, nmp_app_publish_signed_event_to,
     nmp_app_publish_unsigned_event, nmp_app_register_event_observer,
     nmp_app_register_raw_event_observer, nmp_app_release_profile,
-    nmp_app_set_capability_callback, nmp_app_set_lifecycle_callback, nmp_app_set_update_callback,
-    nmp_app_signin_nsec, nmp_app_start, nmp_app_unregister_event_observer,
-    nmp_app_unregister_raw_event_observer,
+    nmp_app_set_capability_callback, nmp_app_set_lifecycle_callback, nmp_app_set_storage_path,
+    nmp_app_set_update_callback, nmp_app_signin_nsec, nmp_app_start,
+    nmp_app_unregister_event_observer, nmp_app_unregister_raw_event_observer,
 };
 
 // android-ffi: expose the full FFI surface via Rust paths. nmp-android-ffi
@@ -96,6 +96,7 @@ pub use ffi::{
     nmp_app_remove_relay,
     nmp_app_set_capability_callback,
     nmp_app_set_lifecycle_callback,
+    nmp_app_set_storage_path,
     nmp_app_set_update_callback,
     nmp_app_signin_bunker,
     nmp_app_signin_nsec,

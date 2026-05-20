@@ -389,31 +389,61 @@ pub(crate) struct Kernel {
 ///
 /// Default: `MemEventStore` — used by all tests and the pre-M15 web target.
 ///
-/// When compiled with `--features lmdb-backend` AND the `NMP_LMDB_PATH`
-/// environment variable is set to a directory, an `LmdbEventStore` is
-/// opened on that path instead. This is opt-in even with the feature on,
-/// so existing test suites (which call `Kernel::new` without setting the
-/// env var) keep using the in-memory backend.
-fn build_event_store() -> Arc<dyn EventStore> {
+/// When compiled with `--features lmdb-backend`, an `LmdbEventStore` is
+/// opened when a persistent path is available. The path is resolved in
+/// priority order:
+///
+/// 1. `storage_path` — the FFI-supplied path threaded through from
+///    `nmp_app_set_storage_path` (production iOS / Android). When the host
+///    sets it before `nmp_app_start`, this is the path used.
+/// 2. `NMP_LMDB_PATH` environment variable — the pre-existing opt-in
+///    mechanism, kept for tests and tools that drive the kernel without
+///    the FFI surface.
+///
+/// When neither is present (the common case for the in-process test
+/// suites) the in-memory store is used. If the LMDB store cannot be
+/// opened, the function falls back to the in-memory store silently — D6:
+/// library code performs no I/O side effects / stderr writes.
+fn build_event_store(storage_path: Option<&str>) -> Arc<dyn EventStore> {
     #[cfg(feature = "lmdb-backend")]
     {
-        if let Ok(path) = std::env::var("NMP_LMDB_PATH") {
-            // D6: library code performs no I/O side effects. If the LMDB
-            // store cannot be opened, fall back to the in-memory store
-            // silently rather than printing to the host's stderr.
+        // Priority 1: FFI-supplied path. Priority 2: env-var fallback.
+        let resolved: Option<String> = storage_path
+            .map(str::to_owned)
+            .or_else(|| std::env::var("NMP_LMDB_PATH").ok());
+        if let Some(path) = resolved {
+            // D6: silent fallback to the in-memory store if the open fails.
             if let Ok(s) = crate::store::LmdbEventStore::open(std::path::Path::new(&path)) {
                 return Arc::new(s);
             }
         }
     }
+    // `storage_path` is unused when the `lmdb-backend` feature is off.
+    #[cfg(not(feature = "lmdb-backend"))]
+    let _ = storage_path;
     Arc::new(MemEventStore::new())
 }
 
 impl Kernel {
     pub(crate) fn new(visible_limit: usize) -> Self {
-        Self::with_publish_store(
+        Self::with_storage_path(visible_limit, None)
+    }
+
+    /// Construct a Kernel, optionally backing the `EventStore` with a
+    /// persistent LMDB path.
+    ///
+    /// `storage_path` is the FFI-supplied directory threaded through from
+    /// `nmp_app_set_storage_path`. It is only honoured when the crate is
+    /// built with `--features lmdb-backend`; without that feature (or when
+    /// `storage_path` is `None`) the in-memory store is used. The actor
+    /// thread is the sole caller that passes a non-`None` path — every test
+    /// site goes through [`Kernel::new`], which passes `None` and so keeps
+    /// the in-memory backend.
+    pub(crate) fn with_storage_path(visible_limit: usize, storage_path: Option<&str>) -> Self {
+        Self::with_publish_store_and_path(
             visible_limit,
             Arc::new(crate::publish::InMemoryPublishStore::new()),
+            storage_path,
         )
     }
 
@@ -423,11 +453,29 @@ impl Kernel {
     /// publish engine is built against this store + the kernel's NIP-65
     /// outbox resolver + a `QueueDispatcher` shared with the kernel for
     /// frame drainage.
+    ///
+    /// `#[cfg(test)]`: the production `Kernel::new` path now routes through
+    /// [`Kernel::with_storage_path`] (added for the FFI LMDB-path wiring),
+    /// so the only remaining callers of this externally-supplied-store
+    /// constructor are the `publish_engine_tests` cases.
+    #[cfg(test)]
     pub(crate) fn with_publish_store(
         visible_limit: usize,
         publish_store: Arc<dyn crate::publish::PublishStore>,
     ) -> Self {
-        let store: Arc<dyn EventStore> = build_event_store();
+        Self::with_publish_store_and_path(visible_limit, publish_store, None)
+    }
+
+    /// Inner constructor: externally-supplied publish store + optional
+    /// persistent LMDB `storage_path`. [`Kernel::with_publish_store`] (path
+    /// `None`) and [`Kernel::with_storage_path`] (in-memory publish store)
+    /// both funnel here so the body lives in exactly one place.
+    pub(crate) fn with_publish_store_and_path(
+        visible_limit: usize,
+        publish_store: Arc<dyn crate::publish::PublishStore>,
+        storage_path: Option<&str>,
+    ) -> Self {
+        let store: Arc<dyn EventStore> = build_event_store(storage_path);
         let publish_dispatcher = Arc::new(crate::publish::QueueDispatcher::new());
         let indexer_relays_handle: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
         let publish_engine = publish_engine::build_engine(
