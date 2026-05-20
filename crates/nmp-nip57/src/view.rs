@@ -22,8 +22,11 @@ pub struct ZapsSpec {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ZapEntry {
     /// Sender pubkey if known (uppercase `P` tag, else embedded request).
-    /// Receipts without a discoverable sender contribute to `total_msats` but
-    /// not to `zappers`.
+    /// `None` for anonymous receipts (NIP-57 permits a zap with no
+    /// discoverable sender). The entry is still counted in `zap_count`,
+    /// summed into `total_msats`, and present in `zappers` — the UI renders
+    /// such a row as an anonymous zapper (D1: a `None` here is the truthful
+    /// answer, not a not-yet-loaded placeholder).
     pub pubkey: Option<String>,
     pub msats: u64,
     /// Receipt event id — used as the dedupe key (NIP-57 doesn't forbid the
