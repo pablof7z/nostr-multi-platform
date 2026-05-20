@@ -1,5 +1,4 @@
 import Foundation
-import Security  // OSStatus + errSec* codes used in SecretLookup decoding.
 
 /// Capability injection point for Chirp.
 ///
@@ -8,16 +7,9 @@ import Security  // OSStatus + errSec* codes used in SecretLookup decoding.
 /// implementations are constructed and started, mirroring the thin-bridge
 /// pattern in `Bridge/KernelBridge.swift`.
 ///
-/// Currently it owns the `KeychainCapability` (at-rest secret storage). The
-/// kernel-side FFI socket that routes `CapabilityRequest`s here does not yet
-/// exist (the keyring `KeyringCapability` Rust contract + `nmp_app_*`
-/// capability callback are unbuilt — tracked in
-/// `docs/perf/pending-user-decisions.md` PD-019, and in `README.md` row
-/// "Keychain at-rest secret storage"). Until that lands, the Onboarding flow
-/// (also deferred — README "Onboarding (paste nsec / bunker / create)") calls
-/// `persistImportedSecret(accountID:secret:)` directly; when the FFI socket
-/// graduates, the kernel routes through `keyring.handleJSON(_:)` instead and
-/// this direct method becomes a thin shim over the same code path.
+/// Currently it owns the `KeychainCapability` (at-rest secret storage). Rust
+/// decides when to store, recall, or forget; Swift only executes the keyring
+/// request and reports the raw result.
 final class ChirpCapabilities {
     let keyring: KeychainCapability
 
@@ -34,114 +26,5 @@ final class ChirpCapabilities {
     /// Idempotent: mark capabilities inactive. Does not erase stored secrets.
     func stop() {
         keyring.stop()
-    }
-
-    /// Onboarding helper: persist an imported `nsec`/key for `accountID`.
-    ///
-    /// Routes through the same envelope path the kernel will use, so behavior
-    /// is identical pre- and post-FFI-wireup. Returns `true` iff the Keychain
-    /// reported success. Never throws (D6).
-    @discardableResult
-    func persistImportedSecret(accountID: String, secret: String) -> Bool {
-        let request = CapabilityRequest(
-            namespace: KeychainCapability.namespace,
-            correlationID: UUID().uuidString,
-            payloadJSON: Self.storePayload(accountID: accountID, secret: secret))
-        let envelope = keyring.handle(request)
-        return Self.decodeResult(envelope)?.status == "ok"
-    }
-
-    /// Retrieve a previously-persisted secret from the keychain.
-    ///
-    /// Returns a 3-state `SecretLookup` so callers can distinguish
-    /// "key not found" (legitimate first-launch / signed-out state) from a
-    /// genuine Keychain error — a distinction the prior `String?` return
-    /// silently collapsed. Never throws (D6).
-    func retrieveSecret(accountID: String) -> SecretLookup {
-        let request = CapabilityRequest(
-            namespace: KeychainCapability.namespace,
-            correlationID: UUID().uuidString,
-            payloadJSON: Self.retrievePayload(accountID: accountID))
-        let envelope = keyring.handle(request)
-        guard let result = Self.decodeResult(envelope) else {
-            // Undecodable envelope: surface as an error, not a (false)
-            // "not found" — preserving the distinction is the whole point.
-            return .error(errSecParam)
-        }
-        switch result.status {
-        case "ok":
-            // A successful retrieve always carries the secret; a missing
-            // payload here is a contract violation, treated as an error.
-            if let secret = result.secret { return .found(secret) }
-            return .error(errSecDecode)
-        case "not_found":
-            return .notFound
-        default:
-            return .error(OSStatus(result.osStatus ?? Int32(errSecParam)))
-        }
-    }
-
-    /// Decode a capability envelope's `result_json` into the shared
-    /// `KeyringResult` wire-shape. Returns `nil` if the JSON is malformed —
-    /// callers treat that as failure, matching the prior `contains()` behavior.
-    private static func decodeResult(_ envelope: CapabilityEnvelope) -> KeyringResult? {
-        guard let data = envelope.resultJSON.data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(KeyringResult.self, from: data)
-    }
-
-    private static func storePayload(accountID: String, secret: String) -> String {
-        let payload: [String: String] = [
-            "op": "store",
-            "account_id": accountID,
-            "secret": secret,
-        ]
-        guard
-            let data = try? JSONSerialization.data(withJSONObject: payload),
-            let json = String(data: data, encoding: .utf8)
-        else {
-            return "{}"
-        }
-        return json
-    }
-
-    /// Remove a previously-persisted secret from the keychain.
-    /// Returns `true` iff the Keychain reported success or the item was absent.
-    /// Never throws (D6).
-    @discardableResult
-    func deleteSecret(accountID: String) -> Bool {
-        let request = CapabilityRequest(
-            namespace: KeychainCapability.namespace,
-            correlationID: UUID().uuidString,
-            payloadJSON: Self.deletePayload(accountID: accountID))
-        let envelope = keyring.handle(request)
-        return Self.decodeResult(envelope)?.status == "ok"
-    }
-
-    private static func retrievePayload(accountID: String) -> String {
-        let payload: [String: String] = [
-            "op": "retrieve",
-            "account_id": accountID,
-        ]
-        guard
-            let data = try? JSONSerialization.data(withJSONObject: payload),
-            let json = String(data: data, encoding: .utf8)
-        else {
-            return "{}"
-        }
-        return json
-    }
-
-    private static func deletePayload(accountID: String) -> String {
-        let payload: [String: String] = [
-            "op": "delete",
-            "account_id": accountID,
-        ]
-        guard
-            let data = try? JSONSerialization.data(withJSONObject: payload),
-            let json = String(data: data, encoding: .utf8)
-        else {
-            return "{}"
-        }
-        return json
     }
 }

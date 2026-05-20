@@ -11,8 +11,8 @@
 //! The iOS shell calls [`ffi::nmp_app_chirp_register`] once at startup
 //! (after `nmp_app_new` succeeds). That call:
 //!
-//! 1. Builds a [`state::ChirpModularTimeline`] with the viewer's pubkey and
-//!    the default `ModulePolicy` (3-event modules, 72h gap threshold).
+//! 1. Builds a reusable `nmp_nip01::ModularTimelineProjection` with the
+//!    viewer's pubkey and the default `ModulePolicy`.
 //! 2. Registers it as a kernel event observer via
 //!    [`nmp_core::NmpApp::register_event_observer`]. From that moment on,
 //!    every kind:1 the kernel ingests fans out to the projection.
@@ -31,15 +31,15 @@
 pub mod ffi;
 #[cfg(feature = "marmot")]
 pub mod marmot;
-pub mod payload;
-pub mod state;
 
 pub use ffi::{
     nmp_app_chirp_register, nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free,
     nmp_app_chirp_unregister, ChirpHandle,
 };
-pub use payload::{ChirpEventCard, ChirpTimelineSnapshot};
-pub use state::ChirpModularTimeline;
+pub use nmp_nip01::{
+    ModularTimelineProjection as ChirpModularTimeline,
+    ModularTimelineSnapshot as ChirpTimelineSnapshot, TimelineEventCard as ChirpEventCard,
+};
 
 // ── Marmot (MLS encrypted groups) projection ─────────────────────────────
 //
@@ -54,10 +54,18 @@ pub use state::ChirpModularTimeline;
 // post-v1. Chirp opts in via its default feature set; a no-default-features
 // build excludes the whole projection (dependency, module, and FFI symbols).
 #[cfg(feature = "marmot")]
+pub use marmot::fetch::nmp_app_chirp_marmot_fetch_key_packages;
+#[cfg(feature = "marmot")]
 pub use marmot::ffi::{
     nmp_app_chirp_marmot_dispatch, nmp_app_chirp_marmot_group_messages,
-    nmp_app_chirp_marmot_register, nmp_app_chirp_marmot_snapshot,
-    nmp_app_chirp_marmot_string_free, nmp_app_chirp_marmot_unregister, MarmotHandle,
+    nmp_app_chirp_marmot_register, nmp_app_chirp_marmot_register_active,
+    nmp_app_chirp_marmot_snapshot, nmp_app_chirp_marmot_string_free,
+    nmp_app_chirp_marmot_unregister, MarmotHandle,
+};
+#[cfg(feature = "marmot")]
+pub use marmot::identity::{
+    nmp_app_chirp_identity_remove_account, nmp_app_chirp_identity_restore,
+    nmp_app_chirp_identity_sign_in_nsec,
 };
 #[cfg(feature = "marmot")]
 pub use nmp_marmot::projection::payload::{

@@ -8,8 +8,8 @@ import os.log
 // Mirrors `Bridge/ModularTimelineBridge.swift`: a thin extension on
 // `KernelHandle` that owns the lifetime of the opaque
 // `nmp_app_chirp_marmot_register` handle, plus an `@Observable`-style
-// `ObservableObject` (`MarmotStore`) that refreshes `…_marmot_snapshot` when
-// the kernel pushes snapshots and wraps each `…_marmot_dispatch` op.
+// `ObservableObject` (`MarmotStore`) that receives snapshots from
+// `KernelModel.apply` and wraps each `…_marmot_dispatch` user intent.
 //
 // Conventions matched verbatim from the modular-timeline bridge:
 //   • C symbols declared in `Bridge/NmpCore.h` (the project's bridging
@@ -35,16 +35,15 @@ import os.log
 //
 // ── Key-package fetch ─────────────────────────────────────────────────────
 //
-// Before inviting a peer, their signed kind:30443 KeyPackage event must
-// be fetched from relays and cached locally (MDK requires it for MLS
-// group creation). Use `nmp_app_chirp_marmot_fetch_key_packages` to
-// register kernel relay interests for specific pubkeys; observe
-// `snapshot.cachedKpPubkeys` to know when they're available.
+// Before inviting a peer, their signed kind:30443 KeyPackage event must be
+// fetched from relays and cached locally. Use
+// `nmp_app_chirp_marmot_fetch_key_packages` to trigger a kernel relay fetch;
+// `snapshot.cachedKpPubkeys` updates on subsequent kernel snapshots.
 //
 // ── Remaining limitation ──────────────────────────────────────────────────
 //
-// Bunker/NIP-46 sign-in never surfaces the secret key to Swift, so
-// Marmot stays in the empty state for NIP-46 users. NSec sign-in works.
+// Bunker/NIP-46 sign-in never has a local key, so Rust registration returns
+// no Marmot handle for those users. NSec/local account sign-in works.
 // ─────────────────────────────────────────────────────────────────────────
 
 private let mbLog = Logger(subsystem: "com.example.Chirp", category: "MarmotBridge")
@@ -157,42 +156,74 @@ struct MarmotOpResult: Decodable, Equatable {
 // ── KernelHandle Marmot extension (C-FFI lifetime owner) ──────────────────
 
 extension KernelHandle {
-    /// Register a Marmot projection. `secretKey` is hex OR `nsec…`; the
-    /// encrypted MLS SQLite DB is created at
-    /// `<appSupportDir>/marmot-mls-state.sqlite`. Idempotent: a prior
-    /// handle is dropped first. Returns `true` on success.
-    @discardableResult
-    func registerMarmot(secretKey: String, appSupportDir: String) -> Bool {
-        unregisterMarmotIfNeeded()
-        let handle: UnsafeMutableRawPointer? = secretKey.withCString { skPtr in
-            appSupportDir.withCString { dirPtr in
-                nmp_app_chirp_marmot_register(raw, skPtr, dirPtr)
-            }
+    private static func appSupportDir() -> String? {
+        let fm = FileManager.default
+        guard let url = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        else { return nil }
+        if !fm.fileExists(atPath: url.path) {
+            try? fm.createDirectory(at: url, withIntermediateDirectories: true)
         }
-        if let handle {
-            marmotHandle = handle
-            return true
-        }
-        mbLog.error("nmp_app_chirp_marmot_register returned NULL — Marmot unavailable")
-        return false
+        return url.path
     }
 
-    /// Register a Marmot projection using the actor-owned active key.
-    /// Swift never sees the nsec — it stays in Rust. Call from `apply()`
-    /// after `createAccount` succeeds. Idempotent: drops a prior handle first.
+    var isMarmotRegistered: Bool { marmotHandle != nil }
+
     @discardableResult
-    func registerMarmotActive(appSupportDir: String) -> Bool {
+    func restoreChirpIdentity(testNsec: String?) -> Bool {
         unregisterMarmotIfNeeded()
-        let handle: UnsafeMutableRawPointer? = appSupportDir.withCString { dirPtr in
+        let dir = Self.appSupportDir()
+        let handle: UnsafeMutableRawPointer?
+        if let testNsec {
+            handle = testNsec.withCString { testPtr in
+                if let dir {
+                    return dir.withCString { dirPtr in
+                        nmp_app_chirp_identity_restore(raw, dirPtr, testPtr)
+                    }
+                }
+                return nmp_app_chirp_identity_restore(raw, nil, testPtr)
+            }
+        } else if let dir {
+            handle = dir.withCString { dirPtr in
+                nmp_app_chirp_identity_restore(raw, dirPtr, nil)
+            }
+        } else {
+            handle = nmp_app_chirp_identity_restore(raw, nil, nil)
+        }
+        marmotHandle = handle
+        return handle != nil
+    }
+
+    @discardableResult
+    func signInNsecAndRegisterMarmot(_ secret: String) -> Bool {
+        unregisterMarmotIfNeeded()
+        let dir = Self.appSupportDir()
+        let handle: UnsafeMutableRawPointer? = secret.withCString { secretPtr in
+            if let dir {
+                return dir.withCString { dirPtr in
+                    nmp_app_chirp_identity_sign_in_nsec(raw, secretPtr, dirPtr)
+                }
+            }
+            return nmp_app_chirp_identity_sign_in_nsec(raw, secretPtr, nil)
+        }
+        marmotHandle = handle
+        return handle != nil
+    }
+
+    func removeAccountAndForgetSecret(identityID: String) {
+        unregisterMarmotIfNeeded()
+        identityID.withCString { nmp_app_chirp_identity_remove_account(raw, $0) }
+    }
+
+    @discardableResult
+    func registerActiveMarmotIfAvailable() -> Bool {
+        guard marmotHandle == nil, let dir = Self.appSupportDir() else { return false }
+        let handle: UnsafeMutableRawPointer? = dir.withCString { dirPtr in
             nmp_app_chirp_marmot_register_active(raw, dirPtr)
         }
-        if let handle {
-            marmotHandle = handle
-            return true
-        }
-        mbLog.error("nmp_app_chirp_marmot_register_active returned NULL — no active local key?")
-        return false
+        marmotHandle = handle
+        return handle != nil
     }
+
 
     /// Drop the Marmot observer registration if one exists. Idempotent.
     /// MUST run before `nmp_app_free` (FFI contract).
@@ -274,76 +305,25 @@ extension KernelHandle {
     }
 }
 
-// ── MarmotStore — @Published projection on the kernel tick ────────────────
+// ── MarmotStore — projection mirror pushed by KernelModel.apply ───────────
 
-/// Observable mirror of the Marmot snapshot, refreshed every kernel tick
-/// (`KernelModel.apply` calls `refresh()` in the same pass it refreshes the
-/// modular timeline — one extra JSON round-trip per snapshot, reads are
-/// O(groups + welcomes)). Registration happens lazily once a secret key is
-/// known (sign-in via nsec); bunker/NIP-46 sign-in never surfaces a secret
-/// to Swift so Marmot stays in the empty state then (documented limitation).
 @MainActor
 final class MarmotStore: ObservableObject {
     @Published private(set) var snapshot: MarmotSnapshot = .empty
     @Published private(set) var isRegistered = false
 
     private unowned let kernel: KernelHandle
-    private let relayURLsProvider: () -> [String]
 
-    init(kernel: KernelHandle, relayURLsProvider: @escaping () -> [String]) {
+    init(kernel: KernelHandle) {
         self.kernel = kernel
-        self.relayURLsProvider = relayURLsProvider
     }
 
     var groups: [MarmotGroup] { snapshot.groups }
     var pendingWelcomes: [MarmotPendingWelcome] { snapshot.pendingWelcomes }
     var keyPackage: MarmotKeyPackage { snapshot.keyPackage }
 
-    /// App-support directory (created if missing). The Marmot DB lives at
-    /// `<dir>/marmot-mls-state.sqlite` (owned by the Rust crate).
-    private static func appSupportDir() -> String? {
-        let fm = FileManager.default
-        guard let url = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-        else { return nil }
-        if !fm.fileExists(atPath: url.path) {
-            try? fm.createDirectory(at: url, withIntermediateDirectories: true)
-        }
-        return url.path
-    }
-
-    /// Register the projection with a known secret key. Idempotent / safe to
-    /// call repeatedly (the bridge drops a prior handle first). No-op if the
-    /// app-support dir can't be resolved.
-    func registerIfNeeded(secretKey: String) {
-        guard !isRegistered else { return }
-        guard let dir = Self.appSupportDir() else {
-            mbLog.error("application-support dir unavailable — Marmot register skipped")
-            return
-        }
-        let ok = kernel.registerMarmot(secretKey: secretKey, appSupportDir: dir)
-        isRegistered = ok
-        if ok { refresh() }
-    }
-
-    /// Register using the Rust-side active key (no nsec needed from Swift).
-    /// Called from `KernelModel.apply()` after `createAccount` — the actor
-    /// writes the key to its slot before emitting the snapshot, so by the
-    /// time this runs the slot is guaranteed to be populated. Idempotent.
-    func registerActive() {
-        guard !isRegistered else { return }
-        guard let dir = Self.appSupportDir() else {
-            mbLog.error("application-support dir unavailable — Marmot registerActive skipped")
-            return
-        }
-        let ok = kernel.registerMarmotActive(appSupportDir: dir)
-        isRegistered = ok
-        if ok { refresh() }
-    }
-
-    /// Pull the latest snapshot. Called from `KernelModel.apply` each tick.
-    func refresh() {
-        guard isRegistered else { return }
-        let next = kernel.marmotSnapshot()
+    func apply(snapshot next: MarmotSnapshot, isRegistered registered: Bool) {
+        isRegistered = registered
         if next != snapshot { snapshot = next }
     }
 
@@ -352,8 +332,8 @@ final class MarmotStore: ObservableObject {
     }
 
     // ── Dispatch op wrappers ──────────────────────────────────────────────
-    // Each encodes the op envelope, dispatches, refreshes the snapshot, and
-    // returns the decoded result so the caller can surface errors.
+    // Each encodes the op envelope and dispatches. The next kernel snapshot
+    // pushes the refreshed Marmot view; the UI does not poll from Swift.
 
     @discardableResult
     private func dispatch(_ action: [String: Any]) -> MarmotOpResult {
@@ -362,9 +342,7 @@ final class MarmotStore: ObservableObject {
         else {
             return .failure("could not encode action")
         }
-        let result = kernel.marmotDispatch(actionJSON: json)
-        refresh()
-        return result
+        return kernel.marmotDispatch(actionJSON: json)
     }
 
     @discardableResult

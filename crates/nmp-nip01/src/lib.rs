@@ -26,6 +26,7 @@ pub mod decode;
 pub mod domain;
 pub mod kinds;
 pub mod meta_timeline;
+pub mod timeline_projection;
 pub mod view;
 
 pub use build::{Note, NoteBuildError, NoteBuilder};
@@ -35,6 +36,9 @@ pub use kinds::KIND_SHORT_NOTE;
 pub use meta_timeline::{
     ModularTimelineDelta, ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState,
     Nip10ModularTimelineView, Nip10Resolver,
+};
+pub use timeline_projection::{
+    ModularTimelineProjection, ModularTimelineSnapshot, TimelineEventCard,
 };
 pub use view::{
     RepliesDelta, RepliesPayload, RepliesSpec, RepliesState, RepliesView, ThreadDelta, ThreadNode,
