@@ -13,7 +13,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "NmpPulseAndroid"
+rootProject.name = "NmpChirpAndroid"
 include(":app")
 include(":gallery")
 include(":podcast")

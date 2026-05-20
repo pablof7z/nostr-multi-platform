@@ -21,7 +21,6 @@ pub mod mls_status;
 pub mod mls_create;
 pub mod mls_fetch_kp;
 pub mod mls_invite;
-pub mod mls_poll;
 pub mod mls_accept;
 pub mod mls_send;
 pub mod mls_messages;

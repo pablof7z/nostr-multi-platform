@@ -2,7 +2,7 @@
 
 > Part of the [Build & Validation Plan](../plan.md). Arc 3 — WoT + cross-platform + release (M12 Wallet deferred post-v1).
 
-**Demo product:** Same Twitter slice and (where capabilities allow) podcast slice running on Android (Compose), Desktop (iced), and Web (wasm + React/Solid TBD). Cross-platform consistency test passes — same scripted scenario produces byte-identical `AppState` JSON on all four platforms.
+**Demo product:** Chirp and (where capabilities allow) podcast slice running on Android (Compose), Desktop (iced), and Web (wasm + React/Solid TBD). Cross-platform consistency test passes — same scripted scenario produces byte-identical `AppState` JSON on all four platforms.
 
 **Scope.**
 

@@ -70,7 +70,7 @@ Swift `ViewModels/` **disappear** — they become Rust ViewModules whose output 
 
 - **`nmp-core` gains zero podcast nouns.** No `Podcast`, `Episode`, `Transcript`, `Chapter`, `Player`, `Feed`, `Insight`, `Guest` types added to the kernel. Verified by grep + manual review at the commit.
 - **The capability families added in M11 are general** (audio playback, background work, local notifications, HTTP, embedding, KV-store). Their request/response shapes are not podcast-specific.
-- **Reactivity behavior is identical** to the Twitter slice — composite-key dependencies, delta coalescing, claim-based GC, ADR-0007 diagnostics all work for podcast view modules.
+- **Reactivity behavior is identical** to Chirp's social baseline — composite-key dependencies, delta coalescing, claim-based GC, ADR-0007 diagnostics all work for podcast view modules.
 - **No app-state leaks across the boundary in either direction:** no Nostr type appears in `podcast-core`'s public surface; no podcast type appears in `nmp-core`'s public surface.
 
 **Exit gate (product fidelity to `../podcast`).**

@@ -85,8 +85,8 @@ pub struct Session {
     // `MarmotService` is `!Sync`-friendly only behind a lock and the wire
     // helpers borrow the session mutably elsewhere.
     pub mls_service: Option<Arc<Mutex<nmp_marmot::service::MarmotService>>>,
-    // Pending welcomes discovered by `mls-poll`, keyed by gift-wrap (kind:1059)
-    // event id hex → (the original gift-wrap Event, group_name, inviter_npub).
+    // Pending welcomes keyed by gift-wrap (kind:1059) event id hex →
+    // (the original gift-wrap Event, group_name, inviter_npub).
     pub mls_pending_welcomes: HashMap<String, (nostr::Event, String, String)>,
 }
 

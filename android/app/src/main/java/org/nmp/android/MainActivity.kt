@@ -24,7 +24,7 @@ import org.nmp.android.ui.DiagnosticsScreen
 import org.nmp.android.ui.TimelineScreen
 
 /**
- * Single-activity Compose host. Mirrors iOS `RootView`'s TabView, but for L1
+ * Single-activity Compose host. Mirrors iOS Chirp `RootShell`'s tabs, but for L1
  * read-side parity there is no onboarding gate — see `android/README.md`
  * §Deviations. The kernel auto-loads the bootstrap-pubkey feed on `start()`.
  */

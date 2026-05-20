@@ -13,17 +13,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "aes"
-version = "0.8.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b169f7a6d4742236a0a00c541b845991d0ac43e546831af1249753ab4c3aa3a0"
-dependencies = [
- "cfg-if",
- "cipher",
- "cpufeatures",
-]
-
-[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -609,7 +598,20 @@ name = "nmp-android-ffi"
 version = "0.1.0"
 dependencies = [
  "jni",
+ "nmp-app-chirp",
  "nmp-core",
+]
+
+[[package]]
+name = "nmp-app-chirp"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "nmp-nip01",
+ "nmp-threading",
+ "nostr",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -619,7 +621,6 @@ dependencies = [
  "bech32",
  "chrono",
  "nmp-nip42-types",
- "nmp-nwc",
  "nmp-signer-iface",
  "nostr",
  "rustls",
@@ -630,18 +631,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "nmp-nip42-types"
+name = "nmp-nip01"
 version = "0.1.0"
 dependencies = [
+ "nmp-core",
+ "nmp-threading",
  "serde",
  "serde_json",
 ]
 
 [[package]]
-name = "nmp-nwc"
+name = "nmp-nip42-types"
 version = "0.1.0"
 dependencies = [
- "nostr",
  "serde",
  "serde_json",
 ]
@@ -654,12 +656,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-threading"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nostr"
 version = "0.44.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3aa5e3b6a278ed061835fe1ee293b71641e6bf8b401cfe4e1834bbf4ef0a34e1"
 dependencies = [
- "aes",
  "base64",
  "bech32",
  "bip39",

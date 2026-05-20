@@ -243,8 +243,8 @@ void nmp_app_chirp_marmot_unregister(void *handle);
 
 /// Trigger the kernel to fetch KeyPackage events (kind:30443/443) for the named
 /// pubkeys from relays. `pubkeys_json` is a JSON array of pubkey strings (hex
-/// or npub). Fire-and-forget; results arrive asynchronously. Poll
-/// `nmp_app_chirp_marmot_snapshot` → `cached_kp_pubkeys` to know when done.
+/// or npub). Fire-and-forget; results arrive asynchronously through the Marmot
+/// raw-event tap and appear in `cached_kp_pubkeys`.
 void nmp_app_chirp_marmot_fetch_key_packages(void *handle, const char *pubkeys_json);
 
 #endif

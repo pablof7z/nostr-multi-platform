@@ -7,7 +7,7 @@ const SHORT: &str = "\
          set-budget, refresh, expand, help, quit
 
   mls:   load-key, mls-init, mls-status, mls-create, mls-fetch-kp,
-         mls-invite, mls-send, mls-poll, mls-accept, mls-messages
+         mls-invite, mls-send, mls-accept, mls-messages
 
   variables: $me, $seed, $follows, $relays, $inbox
   type 'help <verb>' for grammar
@@ -136,12 +136,6 @@ const MLS_SEND: &str = "\
       mls-send abc123 \"hello world\"
 ";
 
-const MLS_POLL: &str = "\
-  mls-poll
-    Fetch kind:1059/445 events from relays and process any pending
-    welcomes or messages.
-";
-
 const MLS_ACCEPT: &str = "\
   mls-accept <welcome_id|group_id>
     Accept a pending welcome and join the group.
@@ -172,7 +166,6 @@ pub fn run(arg: Option<String>) -> Result<()> {
         Some("mls-fetch-kp") => MLS_FETCH_KP,
         Some("mls-invite") => MLS_INVITE,
         Some("mls-send") => MLS_SEND,
-        Some("mls-poll") => MLS_POLL,
         Some("mls-accept") => MLS_ACCEPT,
         Some("mls-messages") => MLS_MESSAGES,
         Some(other) => {

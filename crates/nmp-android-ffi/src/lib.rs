@@ -26,6 +26,10 @@ use jni::objects::{JClass, JString};
 use jni::sys::{jint, jlong, jstring};
 use jni::JNIEnv;
 
+use nmp_app_chirp::{
+    nmp_app_chirp_register, nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free,
+    nmp_app_chirp_unregister, ChirpHandle,
+};
 use nmp_core::{
     nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start, nmp_app_stop, NmpApp,
 };
@@ -35,6 +39,7 @@ use nmp_core::{
 /// `nativeFree` (mirrors Swift `KernelHandle.deinit`).
 pub(crate) struct Session {
     pub(crate) app: *mut NmpApp,
+    chirp: *mut ChirpHandle,
     rx: Receiver<String>,
     tx: *mut Sender<String>,
 }
@@ -54,7 +59,9 @@ extern "C" fn on_update(context: *mut c_void, json: *const c_char) {
     // alive until `nativeFree` clears the callback before reclaiming it.
     let tx = unsafe { &*(context as *const Sender<String>) };
     // Copy out of the borrowed buffer before it is invalidated (§3).
-    let owned = unsafe { CStr::from_ptr(json) }.to_string_lossy().into_owned();
+    let owned = unsafe { CStr::from_ptr(json) }
+        .to_string_lossy()
+        .into_owned();
     let _ = tx.send(owned); // dead receiver ⇒ silent no-op (D6)
 }
 
@@ -70,7 +77,8 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNew(
     let (tx, rx) = std::sync::mpsc::channel::<String>();
     let tx = Box::into_raw(Box::new(tx));
     nmp_app_set_update_callback(app, tx as *mut c_void, Some(on_update));
-    let session = Box::new(Session { app, rx, tx });
+    let chirp = nmp_app_chirp_register(app, std::ptr::null());
+    let session = Box::new(Session { app, chirp, rx, tx });
     Box::into_raw(session) as jlong
 }
 
@@ -107,13 +115,42 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNextUpdate<'l>(
     handle: jlong,
 ) -> jstring {
     let null = std::ptr::null_mut();
-    let Some(s) = session_ref(handle) else { return null };
+    let Some(s) = session_ref(handle) else {
+        return null;
+    };
     match s.rx.recv_timeout(Duration::from_millis(250)) {
         Ok(json) => match env.new_string(json) {
             Ok(js) => js.into_raw(),
             Err(_) => null,
         },
         Err(RecvTimeoutError::Timeout) | Err(RecvTimeoutError::Disconnected) => null,
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeChirpSnapshot<'l>(
+    env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    handle: jlong,
+) -> jstring {
+    let null = std::ptr::null_mut();
+    let Some(s) = session_ref(handle) else {
+        return null;
+    };
+    if s.chirp.is_null() {
+        return null;
+    }
+    let ptr = nmp_app_chirp_snapshot(s.chirp);
+    if ptr.is_null() {
+        return null;
+    }
+    let json = unsafe { CStr::from_ptr(ptr) }
+        .to_string_lossy()
+        .into_owned();
+    nmp_app_chirp_snapshot_free(ptr);
+    match env.new_string(json) {
+        Ok(js) => js.into_raw(),
+        Err(_) => null,
     }
 }
 
@@ -129,6 +166,9 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeFree(
     // SAFETY: `handle` was produced by `nativeNew`; freed exactly once.
     let s = unsafe { Box::from_raw(handle as *mut Session) };
     unsafe {
+        if !s.chirp.is_null() {
+            nmp_app_chirp_unregister(s.chirp);
+        }
         nmp_app_set_update_callback(s.app, std::ptr::null_mut(), None);
         nmp_app_free(s.app);
         drop(Box::from_raw(s.tx)); // reclaim the boxed Sender (callback cleared)

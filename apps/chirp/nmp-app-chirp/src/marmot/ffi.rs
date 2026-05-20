@@ -64,7 +64,7 @@
 //! through the SAME `ops::ingest_signed_event_core` the back-compat
 //! `{"op":"ingest_signed_event"}` dispatch op uses — so welcomes /
 //! messages received from relays surface in the next snapshot with no
-//! Swift involvement (the existing snapshot poll is unchanged).
+//! Swift involvement.
 //! `nmp_app_chirp_marmot_unregister` tears down BOTH kernel
 //! registrations (the lossy `KernelEvent` metadata observer AND the raw
 //! tap; distinct slots / ids). This was the last open seam.
@@ -76,13 +76,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use apple_native_keyring_store::protected::Store as AppleStore;
 use keyring_core::set_default_store;
 
-use nmp_core::{
-    ActorCommand, KernelAction, KernelEventObserverId, NmpApp, RawEventObserver, RawEventObserverId,
-};
+use nmp_core::{KernelEventObserverId, NmpApp, RawEventObserver, RawEventObserverId};
 use nostr::Keys;
 use serde_json::{json, Value};
 
-use nmp_core::substrate::ViewModule;
 use nmp_marmot::service::MarmotService;
 
 use nmp_marmot::projection::state::MarmotProjection;
@@ -388,11 +385,10 @@ pub extern "C" fn nmp_app_chirp_marmot_dispatch(
 /// named pubkeys from relays. `pubkeys_json` is a JSON array of pubkey
 /// strings (hex or npub bech32). Fire-and-forget — returns immediately.
 ///
-/// For each parseable pubkey, sends an `OpenView { namespace:
-/// "marmot.key_package_lookup", key: pubkey_hex }` command to the kernel
-/// actor. The kernel planner resolves the author's NIP-65 write relays and
-/// fetches their kind:30443/443 events. When events arrive, the Marmot
-/// inbound tap caches them via `MarmotService::cache_key_package`; the next
+/// For each parseable pubkey, pushes a KeyPackage `LogicalInterest` into the
+/// kernel. The kernel planner resolves the author's NIP-65 write relays and
+/// fetches their kind:30443/443 events. When events arrive, the Marmot inbound
+/// tap caches them via `MarmotService::cache_key_package`; a later
 /// `nmp_app_chirp_marmot_snapshot` will include the pubkeys in
 /// `cached_kp_pubkeys`. Null handle / invalid JSON are silent no-ops (D6).
 #[no_mangle]
@@ -414,18 +410,15 @@ pub extern "C" fn nmp_app_chirp_marmot_fetch_key_packages(
         return;
     };
     // SAFETY: app pointer is valid for the handle's lifetime (same contract
-    // as unregister). We only read `actor_sender` — no mutation.
+    // as unregister). `push_interest` is best-effort and does not mutate
+    // through this pointer directly.
     let app_ref = unsafe { &*handle.app };
-    let sender = app_ref.actor_sender();
     for pk_str in pubkeys {
         // Accept hex or bech32; normalise to hex for the view key.
         let Ok(pk) = nostr::PublicKey::parse(&pk_str) else {
             continue; // Unparseable — skip silently (D6).
         };
-        let _ = sender.send(ActorCommand::Kernel(KernelAction::OpenView {
-            namespace: nmp_marmot::view::KeyPackageLookupView::NAMESPACE.to_string(),
-            key: pk.to_hex(),
-        }));
+        app_ref.push_interest(nmp_marmot::interest::key_package_lookup_interest(&pk.to_hex()));
     }
 }
 

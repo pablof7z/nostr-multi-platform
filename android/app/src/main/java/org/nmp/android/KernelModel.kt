@@ -10,10 +10,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import org.nmp.android.model.ChirpTimelineSnapshot
 import org.nmp.android.model.KernelUpdate
 
 private const val TAG = "NmpCore"
@@ -62,9 +64,10 @@ class KernelModel : ViewModel() {
             while (isActive) {
                 val payload = bridge.nextUpdate() ?: continue
                 val update = decodeSnapshot(payload) ?: continue
-                if (update.rev <= _state.value.rev) continue   // mirror only
+                val applied = update.copy(modularTimeline = decodeChirpSnapshot())
+                if (applied.rev <= _state.value.rev) continue   // mirror only
                 withContext(Dispatchers.Main) {
-                    _state.value = update
+                    _state.value = applied
                     _snapshotCount.value += 1
                     _lastSnapshotAtMs.value = System.currentTimeMillis()
                 }
@@ -113,6 +116,16 @@ class KernelModel : ViewModel() {
         }.getOrElse { e ->
             Log.e(TAG, "KernelUpdate decode failed: ${e.message}; inner prefix: ${inner.toString().take(200)}")
             null
+        }
+    }
+
+    private fun decodeChirpSnapshot(): ChirpTimelineSnapshot {
+        val payload = bridge.chirpSnapshot() ?: return ChirpTimelineSnapshot()
+        return runCatching {
+            json.decodeFromString<ChirpTimelineSnapshot>(payload)
+        }.getOrElse { e ->
+            Log.e(TAG, "ChirpTimelineSnapshot decode failed: ${e.message}; payload prefix: ${payload.take(200)}")
+            ChirpTimelineSnapshot()
         }
     }
 

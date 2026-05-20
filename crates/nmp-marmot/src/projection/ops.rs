@@ -154,8 +154,9 @@ fn signed_key_package_events(v: &Value) -> Result<Vec<nostr::Event>, String> {
     for item in arr {
         let json = match item {
             Value::String(s) => s,
-            other => serde_json::to_string(&other)
-                .map_err(|e| format!("re-encode kp event: {e}"))?,
+            other => {
+                serde_json::to_string(&other).map_err(|e| format!("re-encode kp event: {e}"))?
+            }
         };
         out.push(parse_signed_event(&json)?);
     }
@@ -175,11 +176,7 @@ pub fn group_messages(
         return Vec::new();
     };
     // MDK returns ascending by display order; we want newest-N.
-    msgs.sort_by(|a, b| {
-        b.created_at
-            .cmp(&a.created_at)
-            .then(b.id.cmp(&a.id))
-    });
+    msgs.sort_by(|a, b| b.created_at.cmp(&a.created_at).then(b.id.cmp(&a.id)));
     msgs.into_iter()
         .take(page)
         .map(|m| MarmotMessageRow {
@@ -209,7 +206,6 @@ pub fn dispatch(h: &mut InnerHandle<'_>, v: &Value, now_secs: u64) -> Value {
         "decline_welcome" => decline_welcome(h, v),
         "ingest_signed_event" => ingest_signed_event(h, v),
         "clear_pending" => clear_pending(h, v),
-        "poll_inbox" => poll_inbox(h, v),
         other => Err(format!("unknown op `{other}`")),
     };
     match r {
@@ -240,9 +236,9 @@ fn publish_key_package(
         .service()
         .publish_key_package(relays.clone())
         .map_err(|e| e.to_string())?;
-    // kind:30443 + legacy kind:443 — dual path:
-    //   1. kernel fire-and-forget (existing path, may be unreliable in sim)
-    //   2. direct WebSocket publish (same approach as poll_inbox reads)
+    // kind:30443 + legacy kind:443 — dual publish path:
+    //   1. kernel fire-and-forget through the shared publish pipeline
+    //   2. direct WebSocket EVENT submit so the simulator path can verify OKs
     use nostr::JsonUtil as _;
     use std::time::Duration as D;
     const SEND_WALL: D = D::from_secs(6);
@@ -359,15 +355,8 @@ fn create_group(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
         }
     }
     let admins = vec![h.service().public_key()];
-    let config = NostrGroupConfigData::new(
-        name,
-        description,
-        None,
-        None,
-        None,
-        relays.clone(),
-        admins,
-    );
+    let config =
+        NostrGroupConfigData::new(name, description, None, None, None, relays.clone(), admins);
     let (group, pending) = h
         .service()
         .create_group(kp_events.clone(), config)
@@ -596,12 +585,7 @@ pub(crate) fn ingest_signed_event_core(
                     hex_encode(welcome.mls_group_id.as_slice()),
                     welcome.group_relays.iter().cloned().collect(),
                 );
-                h.cache_welcome(
-                    wid.clone(),
-                    event.clone(),
-                    group_name,
-                    sender.to_hex(),
-                );
+                h.cache_welcome(wid.clone(), event.clone(), group_name, sender.to_hex());
                 Ok(Some(json!({ "kind": 1059, "pending_welcome_id_hex": wid })))
             }
             Err(e) => Err(e.to_string()),
@@ -618,7 +602,9 @@ pub(crate) fn ingest_signed_event_core(
         // Any NMP app's tap can call this; create_group/add_members use it
         // as a fallback when the caller supplies no explicit kp_events.
         h.service().cache_key_package(event.clone());
-        Ok(Some(json!({ "kind": kind, "cached": true, "author": event.pubkey.to_hex() })))
+        Ok(Some(
+            json!({ "kind": kind, "cached": true, "author": event.pubkey.to_hex() }),
+        ))
     } else {
         // Defensive: the tap filter also admits kind:444 (and a bad
         // filter could admit anything). Not an error for the automatic
@@ -653,103 +639,6 @@ fn clear_pending(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
     let pending = h.service().self_update(&gid).map_err(|e| e.to_string())?;
     pending.clear().map_err(|e| e.to_string())?;
     Ok(json!({ "cleared": true }))
-}
-
-/// Fetch kind:1059/445/443/30443 from `relays` (defaults to write-relay URLs)
-/// and drive each event through `ingest_signed_event_core`. Returns counts.
-/// Accepts an optional `"relays"` JSON array to override the write-relay list.
-fn poll_inbox(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
-    use std::collections::HashMap;
-    use std::time::Duration;
-
-    const WALL: Duration = Duration::from_secs(8);
-    const WINDOW_SECS: u64 = 7 * 24 * 60 * 60;
-
-    let me = h.me_pubkey_hex();
-
-    // Caller may override relay list; fall back to configured write relays.
-    let relay_urls: Vec<String> = if let Some(arr) = v.get("relays").and_then(Value::as_array) {
-        arr.iter().filter_map(|u| u.as_str().map(str::to_string)).collect()
-    } else {
-        h.write_relay_urls()
-    };
-    if relay_urls.is_empty() {
-        return Err("poll_inbox: no relays configured — add one in Settings > Relays".into());
-    }
-
-    let since = now_unix_secs().saturating_sub(WINDOW_SECS);
-    let welcome_filter = serde_json::json!({
-        "kinds": [1059], "#p": [me], "since": since, "limit": 200,
-    });
-    let message_filter = serde_json::json!({
-        "kinds": [445], "since": since, "limit": 200,
-    });
-    let kp_filter = serde_json::json!({
-        "kinds": [30443, 443], "since": since, "limit": 50,
-    });
-
-    // Collect unique events across relays (de-dup by event id). A relay
-    // connection / send failure is recorded in `errors` (D6 — not swallowed)
-    // but does not abort the poll: other relays may still deliver.
-    let mut all_events: HashMap<String, nostr::Event> = HashMap::new();
-    let mut errors: Vec<String> = Vec::new();
-    for relay_url in &relay_urls {
-        for filter in [&welcome_filter, &message_filter, &kp_filter] {
-            match crate::projection::fetch::fetch_events(relay_url, filter, WALL) {
-                Ok(raw) => {
-                    for ev_json in raw {
-                        if let Ok(ev) = serde_json::from_value::<nostr::Event>(ev_json) {
-                            all_events.entry(ev.id.to_hex()).or_insert(ev);
-                        }
-                    }
-                }
-                Err(e) => errors.push(e),
-            }
-        }
-    }
-    let mut n_welcomes = 0u32;
-    let mut n_messages = 0u32;
-    let mut n_kps = 0u32;
-    let total_events = all_events.len();
-    for (_id, ev) in all_events {
-        match ev.kind {
-            nostr::Kind::MlsKeyPackage | nostr::Kind::Custom(30443) => {
-                if h.service().validate_peer_key_package(&ev).is_ok() {
-                    h.service().cache_key_package(ev);
-                    n_kps += 1;
-                }
-            }
-            nostr::Kind::GiftWrap => {
-                let eid = ev.id.to_hex();
-                match ingest_signed_event_core(h, &ev) {
-                    Ok(_) => { n_welcomes += 1; }
-                    Err(e) => { errors.push(format!("gift_wrap {eid}: {e}")); }
-                }
-            }
-            nostr::Kind::MlsGroupMessage => {
-                match ingest_signed_event_core(h, &ev) {
-                    Ok(_) => { n_messages += 1; }
-                    Err(e) => { errors.push(format!("message: {e}")); }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    Ok(serde_json::json!({
-        "welcomes": n_welcomes,
-        "messages": n_messages,
-        "key_packages": n_kps,
-        "total_events": total_events,
-        "errors": errors,
-    }))
-}
-
-fn now_unix_secs() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
 
 fn restore(h: &mut InnerHandle<'_>, wid: &str, gift: nostr::Event) {

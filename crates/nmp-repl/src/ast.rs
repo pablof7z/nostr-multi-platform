@@ -34,8 +34,6 @@ pub enum Command {
     MlsFetchKp(String),
     /// `mls-invite <group_hex> <npub>` — add a member + send the Welcome.
     MlsInvite(String, String),
-    /// `mls-poll` — inbox sweep: welcomes, group messages, key packages.
-    MlsPoll,
     /// `mls-accept [welcome_hex]` — accept a pending Welcome (or list them).
     MlsAccept(Option<String>),
     /// `mls-send <group_hex> <text...>` — encrypt + publish a group message.

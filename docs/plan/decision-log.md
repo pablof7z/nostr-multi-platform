@@ -11,7 +11,7 @@ ADRs live in `docs/decisions/`. Format per the template in older revisions of th
 - **ADR-0005**: Domain-keyed platform shadow + refcounted component wrappers.
 - **ADR-0006**: Vertical-slice-first delivery (modified by ADR-0009; the slice now layers on the kernel substrate).
 - **ADR-0007**: Diagnostics and non-Nostr data over the actor-owned bridge with explicit records, not raw callbacks or fake Nostr events.
-- **ADR-0008**: Twitter-clone iOS as the Phase 1a demo target (modified by ADR-0009 — repositioned as first canonical extension-module set).
+- **ADR-0008**: Initial Chirp social baseline on iOS as the Phase 1a demo target (modified by ADR-0009 — repositioned as first canonical extension-module set).
 - **ADR-0009**: App-extension kernel boundary. Five trait families, four layers, no app nouns in nmp-core.
 - **ADR-0010**: Per-app concrete enums generated at the FFI boundary. Codegen is critical-path v1 infrastructure.
 

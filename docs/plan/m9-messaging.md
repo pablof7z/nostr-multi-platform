@@ -2,7 +2,7 @@
 
 > Part of the [Build & Validation Plan](../plan.md). Arc 1 — Kernel substrate + Nostr social stack.
 
-**Demo product:** Twitter slice gets a DMs tab. End-to-end NIP-17 gift-wrapped messages between two test accounts. Background push triggers iOS Notification Service Extension decryption; opening the app shows the message already in place.
+**Demo product:** Chirp gets a DMs tab. End-to-end NIP-17 gift-wrapped messages between two test accounts. Background push triggers iOS Notification Service Extension decryption; opening the app shows the message already in place.
 
 **Scope.** Per spec §7.10 and §7.14:
 
@@ -20,4 +20,4 @@
 - NSE decrypt of an incoming gift-wrap: p99 ≤ 200 ms, peak memory ≤ 24 MB.
 - Backgrounded app receives a push, NSE decrypts and posts notification, app foregrounded shows the message in place (no re-fetch from relay).
 
-**Runnable artifact.** iOS Twitter slice with working DMs + push notifications. Report in `docs/perf/m9/messaging.md`.
+**Runnable artifact.** Chirp with working DMs + push notifications. Report in `docs/perf/m9/messaging.md`.

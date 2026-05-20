@@ -26,7 +26,7 @@ default = ["marmot", "wallet"]
 # Marmot (MLS-over-Nostr) projection. Gates the `nmp-marmot` dependency, the
 # `src/marmot/` C-ABI shell module, and the `nmp_app_chirp_marmot_*` FFI
 # symbols. Deferred post-v1; off in a no-default-features build.
-marmot = ["dep:nmp-marmot"]
+marmot = ["dep:nmp-marmot", "dep:keyring-core", "dep:apple-native-keyring-store"]
 # NIP-47 Nostr Wallet Connect. Forwards to `nmp-core/wallet` so the kernel
 # compiles the `nmp_app_wallet_*` FFI symbols the iOS shell links. Deferred
 # post-v1; off in a no-default-features build.
@@ -50,8 +50,8 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 # Keyring for encrypted Marmot MLS DB. `mdk-sqlite-storage` requires a
 # platform-specific keyring store to be initialized before use.
-keyring-core = "1"
-apple-native-keyring-store = { version = "1.0", features = ["protected"] }
+keyring-core = { version = "1", optional = true }
+apple-native-keyring-store = { version = "1.0", features = ["protected"], optional = true }
 
 [dev-dependencies]
 # Test-support gates expose `nmp_app_new` / `nmp_app_free` (and the

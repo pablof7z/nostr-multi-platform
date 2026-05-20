@@ -1,6 +1,6 @@
 //! `mls-accept [welcome_hex]` — finalize joining a group.
 //!
-//! Without an arg: lists pending welcomes (from the last `mls-poll`).
+//! Without an arg: lists pending welcomes already cached in the session.
 //! With an arg: accepts the welcome identified by its gift-wrap event id
 //! hex, runs the mandatory post-join `self_update` (MIP-02), and publishes
 //! the resulting evolution_event.
@@ -17,7 +17,7 @@ pub fn run(session: &mut Session, welcome_hex: Option<String>) -> Result<()> {
     let target = match welcome_hex {
         None => {
             if session.mls_pending_welcomes.is_empty() {
-                println!("  no pending welcomes (run 'mls-poll' first)");
+                println!("  no pending welcomes cached");
                 return Ok(());
             }
             println!("  pending welcomes:");
@@ -50,9 +50,9 @@ pub fn run(session: &mut Session, welcome_hex: Option<String>) -> Result<()> {
         .lock()
         .map_err(|_| ReplError::Other("mls service mutex poisoned".into()))?;
 
-    // Re-unwrap to get the Welcome handle. We do not retain the handle from
-    // `mls-poll` because it borrows the service — re-running is cheap and
-    // idempotent (`process_welcome` upserts on wrapper id).
+    // Re-unwrap to get the Welcome handle. We do not retain the handle because
+    // it borrows the service; re-running is cheap and idempotent
+    // (`process_welcome` upserts on wrapper id).
     let (welcome, _sender) = guard
         .unwrap_and_process_welcome(&gift_wrap)
         .map_err(|e| ReplError::Other(format!("unwrap_and_process_welcome: {e}")))?;

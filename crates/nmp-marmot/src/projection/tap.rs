@@ -83,7 +83,7 @@ impl RawEventObserver for MarmotIngestTap {
     /// (which copies every field we keep) before doing anything that could
     /// defer, satisfying the borrowed-payload contract. All failures are
     /// silent (D6); the projection mutation is the load-bearing effect a
-    /// later snapshot poll surfaces.
+    /// later snapshot refresh surfaces.
     fn on_raw_event(&self, _kind: u32, json: &str) {
         // Parse off the borrowed buffer immediately (owns its bytes after).
         let Ok(event) = Event::from_json(json) else {

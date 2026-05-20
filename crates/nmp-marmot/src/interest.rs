@@ -1,18 +1,17 @@
 //! Helpers for constructing Marmot `LogicalInterest`s.
 //!
-//! Per `docs/plan/marmot-mls.md` §Step 4 + mdk-api.md §4, the only interest
-//! the app layer pushes today is the inbound Welcome gift-wrap subscription
-//! ([`giftwrap_inbox_interest`]): kind:1059 `#p = self`, `Account`-scoped,
-//! routed to the recipient's NIP-65 inbox relays (NO relay pin). The kernel
-//! raw-event tap then drives accepted events into `MarmotService`.
+//! Per `docs/plan/marmot-mls.md` §Step 4 + mdk-api.md §4, every relay read the
+//! Marmot app needs is represented as a kernel interest:
 //!
-//! The KeyPackage event kinds (30443/443) and group-message kind (445) are
-//! exported as constants for the dispatch / publish-plan layers; the per-kind
-//! interest builders for them are not constructed yet (the projection drives
-//! key-package fetch + group polling directly via `poll_inbox`), so no
-//! speculative builders are kept here (Article VII — no future-proofing).
+//! - kind:1059 `#p = self` gift-wrap inbox, registered at Marmot startup;
+//! - kind:30443/443 KeyPackage lookup, registered when an invite flow needs a
+//!   peer's package; and
+//! - relay-pinned kind:445 group messages, registered when the group relays are
+//!   known from group creation or a Welcome.
+//!
+//! The raw-event tap then drives accepted signed events into `MarmotService`.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use nmp_core::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
@@ -40,6 +39,25 @@ fn giftwrap_interest_id(pubkey: &str) -> InterestId {
     InterestId(h.finish())
 }
 
+/// Stable id for a peer KeyPackage lookup subscription.
+fn key_package_lookup_interest_id(pubkey: &str) -> InterestId {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    "marmot.key_package_lookup".hash(&mut h);
+    pubkey.hash(&mut h);
+    InterestId(h.finish())
+}
+
+/// Stable id for one relay-pinned group-message subscription.
+fn group_message_interest_id(group_id_hex: &str, relay_url: &str) -> InterestId {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    "marmot.group_messages".hash(&mut h);
+    group_id_hex.hash(&mut h);
+    relay_url.hash(&mut h);
+    InterestId(h.finish())
+}
+
 /// Tailing `LogicalInterest` for kind:1059 `#p <pubkey>` gift-wraps — the
 /// event-driven Welcome-delivery subscription a per-app FFI bridge pushes at
 /// Marmot registration time. This is the policy seam: kind selection, the
@@ -53,10 +71,7 @@ fn giftwrap_interest_id(pubkey: &str) -> InterestId {
 /// `MarmotService::ingest_signed_event_core` automatically.
 pub fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
     let mut tags = BTreeMap::new();
-    tags.insert(
-        "p".to_string(),
-        [pubkey.to_string()].into_iter().collect(),
-    );
+    tags.insert("p".to_string(), [pubkey.to_string()].into_iter().collect());
     LogicalInterest {
         id: giftwrap_interest_id(pubkey),
         scope: InterestScope::Account(pubkey.to_string()),
@@ -68,6 +83,56 @@ pub fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
         hints: Vec::new(),
         lifecycle: InterestLifecycle::Tailing,
     }
+}
+
+/// Tailing author-scoped KeyPackage lookup for invite flows.
+///
+/// KeyPackage events are addressable replaceable events published to the
+/// author's outbox relays. The kernel planner owns that NIP-65 routing; the
+/// app only declares the peer pubkey and the event kinds it needs.
+pub fn key_package_lookup_interest(pubkey: &str) -> LogicalInterest {
+    let mut authors = BTreeSet::new();
+    authors.insert(pubkey.to_string());
+    LogicalInterest {
+        id: key_package_lookup_interest_id(pubkey),
+        scope: InterestScope::Global,
+        shape: InterestShape {
+            authors,
+            kinds: [KIND_KEY_PACKAGE, KIND_KEY_PACKAGE_LEGACY]
+                .into_iter()
+                .collect(),
+            limit: Some(4),
+            ..Default::default()
+        },
+        hints: Vec::new(),
+        lifecycle: InterestLifecycle::Tailing,
+    }
+}
+
+/// Relay-pinned tailing interests for group kind:445 traffic.
+///
+/// Marmot group traffic is bound to the group relays, not author outboxes. Each
+/// relay gets its own hard-pinned interest so the kernel keeps the corresponding
+/// REQ open and the raw-event tap receives messages without an inbox sweep.
+pub fn group_message_interests(
+    group_id_hex: &str,
+    relays: impl IntoIterator<Item = String>,
+) -> Vec<LogicalInterest> {
+    relays
+        .into_iter()
+        .map(|relay_url| LogicalInterest {
+            id: group_message_interest_id(group_id_hex, &relay_url),
+            scope: InterestScope::Global,
+            shape: InterestShape {
+                kinds: [KIND_GROUP_MESSAGE].into_iter().collect(),
+                limit: Some(200),
+                relay_pin: Some(relay_url.clone()),
+                ..Default::default()
+            },
+            hints: Vec::new(),
+            lifecycle: InterestLifecycle::Tailing,
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -95,5 +160,43 @@ mod tests {
             InterestScope::Account(ref pk) if pk == "selfpubkey"
         ));
         assert_eq!(i.id, giftwrap_interest_id("selfpubkey"));
+    }
+
+    #[test]
+    fn key_package_lookup_interest_targets_peer_package_kinds() {
+        let i = key_package_lookup_interest("peerpubkey");
+        assert!(i.shape.authors.contains("peerpubkey"));
+        assert!(i.shape.kinds.contains(&KIND_KEY_PACKAGE));
+        assert!(i.shape.kinds.contains(&KIND_KEY_PACKAGE_LEGACY));
+        assert_eq!(i.shape.limit, Some(4));
+        assert!(i.shape.relay_pin.is_none());
+        assert!(matches!(i.lifecycle, InterestLifecycle::Tailing));
+        assert_eq!(i.id, key_package_lookup_interest_id("peerpubkey"));
+    }
+
+    #[test]
+    fn group_message_interests_are_relay_pinned_and_tailing() {
+        let interests = group_message_interests(
+            "abcd",
+            ["wss://group-a/", "wss://group-b/"]
+                .into_iter()
+                .map(String::from),
+        );
+        assert_eq!(interests.len(), 2);
+        for i in &interests {
+            assert!(i.shape.kinds.contains(&KIND_GROUP_MESSAGE));
+            assert_eq!(i.shape.limit, Some(200));
+            assert!(matches!(i.lifecycle, InterestLifecycle::Tailing));
+            assert!(matches!(i.scope, InterestScope::Global));
+        }
+        assert_eq!(
+            interests[0].shape.relay_pin.as_deref(),
+            Some("wss://group-a/")
+        );
+        assert_eq!(
+            interests[1].shape.relay_pin.as_deref(),
+            Some("wss://group-b/")
+        );
+        assert_ne!(interests[0].id, interests[1].id);
     }
 }

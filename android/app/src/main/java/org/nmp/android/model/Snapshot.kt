@@ -4,7 +4,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * Decoded shape of the kernel JSON snapshot — a strict subset of the iOS
- * `KernelUpdate` (see `ios/NmpPulse/.../KernelBridge.swift`). Every field is
+ * `KernelUpdate` (see `ios/Chirp/.../KernelBridge.swift`). Every field is
  * nullable / defaulted so an older or trimmed kernel build still decodes and
  * the model keeps its prior value (D1: best-effort, fail-closed). Property
  * names are camelCase; JSON is snake_case via `JsonNamingStrategy.SnakeCase`.
@@ -18,6 +18,7 @@ data class KernelUpdate(
     val relayUrl: String = "",
     val testNpub: String = "",
     val items: List<TimelineItem> = emptyList(),
+    val modularTimeline: ChirpTimelineSnapshot = ChirpTimelineSnapshot(),
     val metrics: KernelMetricsLite? = null,
     val relayStatuses: List<RelayStatus> = emptyList(),
 )

@@ -5,8 +5,7 @@
 //! `~/.cache/nmp-repl/mls/<pubkey_hex>.sqlite` so MLS state (key packages,
 //! group ratchet trees, welcomed groups) survives across REPL sessions. This
 //! is critical for the two-terminal test: Bob can close his session after
-//! `mls-init` and reopen it later; his key material is still present when
-//! Alice's welcome arrives via `mls-poll`.
+//! `mls-init` and reopen it later without losing his key material.
 //!
 //! # USAGE — two-party MLS round-trip via two REPL instances
 //!
@@ -22,15 +21,12 @@
 //! > set-app-relays wss://relay.damus.io
 //! > load-key <bob_nsec>          # or create-account bob
 //! > mls-init
-//! > mls-poll                      # picks up Alice's gift-wrapped Welcome
-//! > mls-accept                    # accepts the first pending Welcome
-//! > mls-poll                      # picks up any messages
+//! > mls-accept                    # accepts a pending Welcome already cached
 //!
 //! # Alice
 //! > mls-send <group_hex> hello bob
 //!
 //! # Bob
-//! > mls-poll
 //! > mls-messages <group_hex>      # decrypted history
 //! ```
 //!

@@ -15,9 +15,9 @@ name = "nmp_android_ffi"
 crate-type = ["cdylib"]
 
 [dependencies]
-# Path-dep on the SAME kernel the iOS app consumes. nmp-core exposes a `rlib`
-# crate-type, so its `#[no_mangle] extern "C"` symbols link into this cdylib;
-# we redeclare them `extern "C"` (no Rust API is re-exported) — identical
-# contract to ios NmpCore.h.
+# Path-dep on the SAME kernel the iOS app consumes.
 nmp-core = { path = "../nmp-core", features = ["android-ffi"] }
+# Android registers the same Chirp modular timeline observer as iOS, but keeps
+# deferred post-v1 surfaces (Marmot/wallet) out of the Android .so.
+nmp-app-chirp = { path = "../../apps/chirp/nmp-app-chirp", default-features = false }
 jni = "0.21"

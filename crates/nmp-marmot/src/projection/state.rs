@@ -309,10 +309,6 @@ impl<'a> InnerHandle<'a> {
         &self.inner.service
     }
 
-    pub(crate) fn me_pubkey_hex(&self) -> String {
-        self.inner.service.public_key().to_hex()
-    }
-
     pub(crate) fn record_key_package(&mut self, d_tag: String, now_secs: u64) {
         self.inner.key_package_published_at = Some(now_secs);
         self.inner.key_package_d_tag = Some(d_tag);
@@ -330,7 +326,21 @@ impl<'a> InnerHandle<'a> {
         if relays.is_empty() {
             return;
         }
-        self.inner.group_relays.insert(group_id_hex, relays);
+        let relay_urls = relays.iter().map(|relay| relay.to_string()).collect::<Vec<_>>();
+        self.inner.group_relays.insert(group_id_hex.clone(), relays);
+        self.subscribe_group_messages(&group_id_hex, relay_urls);
+    }
+
+    fn subscribe_group_messages(&self, group_id_hex: &str, relay_urls: Vec<String>) {
+        if self.inner.app.is_null() {
+            return;
+        }
+        // SAFETY: `app` is the live NmpApp pointer retained by this projection
+        // for the host Marmot handle's lifetime; push_interest is best-effort.
+        let app_ref = unsafe { &*self.inner.app };
+        for interest in crate::interest::group_message_interests(group_id_hex, relay_urls) {
+            app_ref.push_interest(interest);
+        }
     }
 
     /// The cached relay-pinned relays for a group, or `&[]` on a miss
