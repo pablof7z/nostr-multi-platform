@@ -89,3 +89,158 @@ pub(crate) fn remove_relay(kernel: &mut Kernel, url: &str) {
         kernel.set_relay_edit_rows(rows);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::relay::DEFAULT_VISIBLE_LIMIT;
+
+    fn fresh_kernel() -> Kernel {
+        Kernel::new(DEFAULT_VISIBLE_LIMIT)
+    }
+
+    // --- normalize_role: pure function, no Kernel needed -------------------
+
+    #[test]
+    fn t_normalize_role_read() {
+        assert_eq!(normalize_role("read"), Some("read"));
+    }
+
+    #[test]
+    fn t_normalize_role_write() {
+        assert_eq!(normalize_role("write"), Some("write"));
+    }
+
+    #[test]
+    fn t_normalize_role_both() {
+        assert_eq!(normalize_role("both"), Some("both"));
+    }
+
+    #[test]
+    fn t_normalize_role_indexer() {
+        // `indexer` is a real canonical variant (used by the discovery lane).
+        assert_eq!(normalize_role("indexer"), Some("indexer"));
+    }
+
+    #[test]
+    fn t_normalize_role_unknown_is_none() {
+        assert_eq!(normalize_role("unknown"), None);
+        // The task description mentions "wallet" — confirm it is NOT accepted
+        // by the actual code (the doc/task list was inaccurate).
+        assert_eq!(normalize_role("wallet"), None);
+    }
+
+    #[test]
+    fn t_normalize_role_empty_defaults_to_both() {
+        // The `"both" | "" => Some("both")` arm is intentional: an empty role
+        // string defaults to "both" rather than being rejected.
+        assert_eq!(normalize_role(""), Some("both"));
+    }
+
+    #[test]
+    fn t_normalize_role_is_case_insensitive() {
+        // `normalize_role` lowercases via `to_ascii_lowercase()` before matching.
+        assert_eq!(normalize_role("READ"), Some("read"));
+        assert_eq!(normalize_role("Write"), Some("write"));
+        assert_eq!(normalize_role("BOTH"), Some("both"));
+    }
+
+    #[test]
+    fn t_normalize_role_trims_whitespace() {
+        // Leading/trailing whitespace is stripped before matching.
+        assert_eq!(normalize_role("  read  "), Some("read"));
+    }
+
+    // --- add_relay / remove_relay: need a Kernel --------------------------
+
+    #[test]
+    fn t_add_relay_valid_appears_in_state() {
+        let mut kernel = fresh_kernel();
+        let result = add_relay(&mut kernel, "wss://relay.example", "read");
+        assert_eq!(result, Some("wss://relay.example".to_string()));
+
+        let rows = kernel.relay_edit_rows_snapshot();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].url, "wss://relay.example");
+        assert_eq!(rows[0].role, "read");
+        // Success clears any prior error toast.
+        assert_eq!(kernel.last_error_toast_snapshot(), None);
+    }
+
+    #[test]
+    fn t_add_relay_invalid_url_returns_none_and_sets_toast() {
+        let mut kernel = fresh_kernel();
+        // `http://` is not a ws/wss scheme — canonicalization fails.
+        let result = add_relay(&mut kernel, "http://relay.example", "read");
+        assert_eq!(result, None);
+        assert!(kernel.relay_edit_rows_snapshot().is_empty());
+        assert!(kernel.last_error_toast_snapshot().is_some());
+    }
+
+    #[test]
+    fn t_add_relay_invalid_role_returns_none_and_sets_toast() {
+        let mut kernel = fresh_kernel();
+        let result = add_relay(&mut kernel, "wss://relay.example", "bogus-role");
+        assert_eq!(result, None);
+        // No row is added when the role is rejected.
+        assert!(kernel.relay_edit_rows_snapshot().is_empty());
+        assert!(kernel.last_error_toast_snapshot().is_some());
+    }
+
+    #[test]
+    fn t_add_relay_duplicate_updates_role_in_place() {
+        let mut kernel = fresh_kernel();
+        add_relay(&mut kernel, "wss://relay.example", "read");
+        // Re-adding the same URL with a different role updates the existing
+        // row instead of pushing a second one.
+        add_relay(&mut kernel, "wss://relay.example", "write");
+
+        let rows = kernel.relay_edit_rows_snapshot();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].role, "write");
+    }
+
+    #[test]
+    fn t_add_relay_canonicalizes_url() {
+        let mut kernel = fresh_kernel();
+        // Mixed-case scheme/host + trailing slash → canonical lowercase form.
+        let result = add_relay(&mut kernel, "WSS://Relay.Example/", "read");
+        assert_eq!(result, Some("wss://relay.example".to_string()));
+
+        let rows = kernel.relay_edit_rows_snapshot();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].url, "wss://relay.example");
+    }
+
+    #[test]
+    fn t_add_then_remove_relay() {
+        let mut kernel = fresh_kernel();
+        add_relay(&mut kernel, "wss://relay.example", "read");
+        assert_eq!(kernel.relay_edit_rows_snapshot().len(), 1);
+
+        remove_relay(&mut kernel, "wss://relay.example");
+        assert!(kernel.relay_edit_rows_snapshot().is_empty());
+    }
+
+    #[test]
+    fn t_remove_relay_canonicalizes_url() {
+        let mut kernel = fresh_kernel();
+        // Stored canonical: "wss://relay.example". Remove using a non-canonical
+        // form (trailing slash + mixed case) — canonicalization must still match.
+        add_relay(&mut kernel, "wss://relay.example", "read");
+        remove_relay(&mut kernel, "WSS://Relay.Example/");
+        assert!(kernel.relay_edit_rows_snapshot().is_empty());
+    }
+
+    #[test]
+    fn t_remove_relay_nonexistent_is_noop() {
+        let mut kernel = fresh_kernel();
+        add_relay(&mut kernel, "wss://relay.example", "read");
+        // Removing a URL that was never added leaves existing rows untouched.
+        remove_relay(&mut kernel, "wss://other.example");
+
+        let rows = kernel.relay_edit_rows_snapshot();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].url, "wss://relay.example");
+    }
+}
