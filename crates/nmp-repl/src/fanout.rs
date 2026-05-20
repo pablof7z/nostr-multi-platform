@@ -268,7 +268,7 @@ pub fn launch(
                 return;
             }
             let job = {
-                let lock = work_rx.lock().unwrap();
+                let lock = work_rx.lock().unwrap_or_else(|e| e.into_inner());
                 lock.recv()
             };
             match job {
