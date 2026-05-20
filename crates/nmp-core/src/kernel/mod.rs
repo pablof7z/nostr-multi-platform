@@ -24,6 +24,8 @@ mod raw_event_observer_tests;
 mod discovery;
 #[cfg(test)]
 mod discovery_tests;
+#[cfg(test)]
+mod eose_ok_notice_ingest_tests;
 mod identity_state;
 mod ingest;
 #[cfg(test)]
