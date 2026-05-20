@@ -3348,6 +3348,7 @@ dependencies = [
 name = "nmp-nip01"
 version = "0.1.0"
 dependencies = [
+ "nmp-content",
  "nmp-core",
  "nmp-threading",
  "serde",

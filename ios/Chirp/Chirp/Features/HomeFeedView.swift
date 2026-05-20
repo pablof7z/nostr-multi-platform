@@ -172,10 +172,27 @@ private struct TimelineListView: View, Equatable {
     var body: some View {
         let cardLookup = Dictionary(uniqueKeysWithValues: cards.map { ($0.id, $0) })
         let itemLookup = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
+        let profileLookup = Dictionary(
+            items.map {
+                ($0.authorPubkey, MentionProfile(
+                    display: $0.authorDisplay,
+                    pictureUrl: $0.authorPictureUrl,
+                    initials: $0.authorAvatarInitials,
+                    colorHex: $0.authorAvatarColor
+                ))
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
 
         return List {
             ForEach(blocks, id: \.stableID) { block in
-                ModularBlockView(block: block, cards: cardLookup, items: itemLookup, onLike: onLike)
+                ModularBlockView(
+                    block: block,
+                    cards: cardLookup,
+                    items: itemLookup,
+                    mentionProfiles: profileLookup,
+                    onLike: onLike
+                )
                     .listRowInsets(EdgeInsets())
                     .listRowSeparator(.hidden)
                     .listRowBackground(ChirpColor.bg)

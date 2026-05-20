@@ -155,12 +155,13 @@ enum ThreadPointer: Decodable, Equatable {
 /// payload `nmp-app-chirp` ships so blocks are self-renderable when an id
 /// is not in the kernel's visible-items window (e.g., an ancestor that
 /// arrived before its child took the row).
-struct ChirpEventCard: Decodable, Equatable, Hashable, Identifiable {
+struct ChirpEventCard: Decodable, Equatable, Identifiable {
     let id: String
     let authorPubkey: String
     let kind: UInt32
     let createdAt: UInt64
     let content: String
+    let contentTree: ContentTreeWire?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -168,6 +169,7 @@ struct ChirpEventCard: Decodable, Equatable, Hashable, Identifiable {
         case kind
         case createdAt = "created_at"
         case content
+        case contentTree = "content_tree"
     }
 }
 
@@ -177,4 +179,102 @@ struct ChirpTimelineSnapshot: Decodable, Equatable {
     let cards: [ChirpEventCard]
 
     static let empty = ChirpTimelineSnapshot(blocks: [], cards: [])
+}
+
+// ─── nmp-content ContentTreeWire mirror ──────────────────────────────────
+
+struct ContentTreeWire: Decodable, Equatable {
+    let nodes: [ContentWireNode]
+    let roots: [UInt32]
+    let mode: String?
+}
+
+enum ContentWireNode: Decodable, Equatable {
+    case text(String)
+    case mention(WireNostrUri)
+    case eventRef(WireNostrUri)
+    case hashtag(String)
+    case url(String)
+    case media(urls: [String], mediaKind: String)
+    case emoji(shortcode: String, url: String?)
+    case paragraph(children: [UInt32])
+    case heading(level: UInt8, children: [UInt32])
+    case emphasis(children: [UInt32])
+    case strong(children: [UInt32])
+    case inlineCode(String)
+    case softBreak
+    case hardBreak
+    case placeholder
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, text, uri, tag, url, urls, mediaKind = "media_kind"
+        case shortcode, level, children, code
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        switch try c.decode(String.self, forKey: .kind) {
+        case "text":
+            self = .text(try c.decode(String.self, forKey: .text))
+        case "mention":
+            self = .mention(try c.decode(WireNostrUri.self, forKey: .uri))
+        case "event_ref":
+            self = .eventRef(try c.decode(WireNostrUri.self, forKey: .uri))
+        case "hashtag":
+            self = .hashtag(try c.decode(String.self, forKey: .tag))
+        case "url":
+            self = .url(try c.decode(String.self, forKey: .url))
+        case "media":
+            self = .media(
+                urls: try c.decode([String].self, forKey: .urls),
+                mediaKind: try c.decode(String.self, forKey: .mediaKind)
+            )
+        case "emoji":
+            self = .emoji(
+                shortcode: try c.decode(String.self, forKey: .shortcode),
+                url: try c.decodeIfPresent(String.self, forKey: .url)
+            )
+        case "paragraph":
+            self = .paragraph(children: try c.decode([UInt32].self, forKey: .children))
+        case "heading":
+            self = .heading(
+                level: try c.decode(UInt8.self, forKey: .level),
+                children: try c.decode([UInt32].self, forKey: .children)
+            )
+        case "emphasis":
+            self = .emphasis(children: try c.decode([UInt32].self, forKey: .children))
+        case "strong":
+            self = .strong(children: try c.decode([UInt32].self, forKey: .children))
+        case "inline_code":
+            self = .inlineCode(try c.decode(String.self, forKey: .code))
+        case "soft_break":
+            self = .softBreak
+        case "hard_break":
+            self = .hardBreak
+        default:
+            self = .placeholder
+        }
+    }
+}
+
+struct WireNostrUri: Decodable, Equatable {
+    let uri: String
+    let kind: String
+    let primaryId: String
+    let relays: [String]
+    let author: String?
+    let eventKind: UInt32?
+
+    private enum CodingKeys: String, CodingKey {
+        case uri, kind, relays, author
+        case primaryId = "primary_id"
+        case eventKind = "event_kind"
+    }
+}
+
+struct MentionProfile: Equatable {
+    let display: String
+    let pictureUrl: String?
+    let initials: String
+    let colorHex: String
 }

@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use nmp_content::{tokenize_with_kind, ContentTreeWire, RenderMode};
 use nmp_core::substrate::{KernelEvent, ViewContext, ViewModule};
 use nmp_core::KernelEventObserver;
 use nmp_threading::TimelineBlock;
@@ -16,28 +17,32 @@ use crate::meta_timeline::{
     ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState, Nip10ModularTimelineView,
 };
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct TimelineEventCard {
     pub id: String,
     pub author_pubkey: String,
     pub kind: u32,
     pub created_at: u64,
     pub content: String,
+    pub content_tree: ContentTreeWire,
 }
 
 impl From<&KernelEvent> for TimelineEventCard {
     fn from(event: &KernelEvent) -> Self {
+        let content_tree =
+            tokenize_with_kind(&event.content, &event.tags, RenderMode::Auto, event.kind).to_wire();
         Self {
             id: event.id.clone(),
             author_pubkey: event.author.clone(),
             kind: event.kind,
             created_at: event.created_at,
             content: event.content.clone(),
+            content_tree,
         }
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ModularTimelineSnapshot {
     pub blocks: Vec<TimelineBlock>,
     pub cards: Vec<TimelineEventCard>,
@@ -103,6 +108,8 @@ impl KernelEventObserver for ModularTimelineProjection {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nmp_content::{WireNode, WireNostrUriKind};
+    use nmp_core::nip19::encode_npub;
     use nmp_threading::{ModulePolicy, TimelineBlock};
     use std::sync::Arc;
 
@@ -116,13 +123,22 @@ mod tests {
     }
 
     fn note(id: &str, ts: u64, tags: Vec<Vec<String>>) -> KernelEvent {
+        note_with_content(id, ts, tags, id)
+    }
+
+    fn note_with_content(
+        id: &str,
+        ts: u64,
+        tags: Vec<Vec<String>>,
+        content: &str,
+    ) -> KernelEvent {
         KernelEvent {
             id: id.into(),
             author: "auth".into(),
             kind: 1,
             created_at: ts,
             tags,
-            content: id.into(),
+            content: content.into(),
         }
     }
 
@@ -168,6 +184,29 @@ mod tests {
         let snap = proj.snapshot();
         assert_eq!(snap.blocks.len(), 1);
         assert!(matches!(snap.blocks[0], TimelineBlock::Standalone(_)));
+    }
+
+    #[test]
+    fn cards_include_content_tree_wire_for_mentions() {
+        const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        let mention = format!("nostr:{}", encode_npub(PK).expect("fixture npub encodes"));
+        let proj = ModularTimelineProjection::new(spec());
+        proj.on_kernel_event(&note_with_content(
+            "S",
+            1,
+            vec![],
+            &format!("hello {mention} #nostr"),
+        ));
+
+        let snap = proj.snapshot();
+        let card = snap.cards.iter().find(|c| c.id == "S").expect("card exists");
+        assert!(card.content_tree.nodes.iter().any(|node| {
+            matches!(
+                node,
+                WireNode::Mention { uri }
+                    if uri.kind == WireNostrUriKind::Profile && uri.primary_id == PK
+            )
+        }));
     }
 
     #[test]
