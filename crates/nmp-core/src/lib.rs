@@ -88,7 +88,6 @@ pub use ffi::{
     nmp_app_open_thread,
     nmp_app_open_timeline,
     nmp_app_open_uri,
-    nmp_app_publish_note,
     nmp_app_publish_signed_event,
     nmp_app_publish_signed_event_to,
     nmp_app_publish_unsigned_event,

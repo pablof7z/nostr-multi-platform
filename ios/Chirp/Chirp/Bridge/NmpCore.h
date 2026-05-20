@@ -39,7 +39,6 @@ void nmp_app_signin_bunker(void *app, const char *uri);
 void nmp_app_create_new_account(void *app, const char *profile_json, const char *relays_json, bool mls);
 void nmp_app_switch_active(void *app, const char *identity_id);
 void nmp_app_remove_account(void *app, const char *identity_id);
-void nmp_app_publish_note(void *app, const char *content, const char *reply_to_id_or_null);
 void nmp_app_react(void *app, const char *target_event_id, const char *reaction);
 void nmp_app_follow(void *app, const char *pubkey);
 void nmp_app_unfollow(void *app, const char *pubkey);

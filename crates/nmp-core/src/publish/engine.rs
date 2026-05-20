@@ -169,6 +169,17 @@ impl PublishEngine {
                 target,
             } => self.start_publish_inner(handle, event, target, now_ms),
             PublishAction::Cancel { handle } => self.cancel_publish(handle, now_ms),
+            // `PublishNote` is signed-and-published by the actor's
+            // `ActorCommand::PublishNote` handler; the engine only services
+            // pre-signed `Publish` (and `Cancel`). The `ActionRegistry`
+            // executor routes `PublishNote` to `ActorCommand::PublishNote`,
+            // never to this engine. Reaching here is a wiring bug, not a
+            // user error.
+            PublishAction::PublishNote { .. } => {
+                unreachable!(
+                    "PublishEngine::start_publish received PublishNote — wiring bug"
+                )
+            }
         }
     }
 
