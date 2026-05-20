@@ -508,7 +508,8 @@ impl NmpApp {
         request: &crate::substrate::CapabilityRequest,
     ) -> crate::substrate::CapabilityEnvelope {
         let json = serde_json::to_string(request).unwrap_or_else(|_| "{}".to_string());
-        let payload = capability::dispatch_capability(&self.capability_callback, &json);
+        let payload =
+            crate::capability_socket::dispatch_capability(&self.capability_callback, &json);
         serde_json::from_str(&payload).unwrap_or_else(|_| crate::substrate::CapabilityEnvelope {
             namespace: request.namespace.clone(),
             correlation_id: request.correlation_id.clone(),

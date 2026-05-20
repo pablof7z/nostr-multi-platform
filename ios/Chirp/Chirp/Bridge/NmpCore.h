@@ -160,10 +160,10 @@ void nmp_app_open_uri(void *app, const char *uri);
 
 // ── NIP-46 signer broker (Stage 4) ───────────────────────────────────────
 //
-// `libnmp_signer_broker.a` is a separate Rust static library (doctrine D0
-// forbids `nmp-core -> nmp-signers`, so the broker — which depends on both
-// — must live in its own archive). The two symbols below are exported from
-// that archive and MUST be reachable to the Chirp link step.
+// The signer broker lives outside nmp-core (doctrine D0 forbids
+// `nmp-core -> nmp-signers`) but Chirp links it through the aggregate
+// `libnmp_app_chirp.a` archive. That keeps process-global Rust state,
+// including the bunker hook, single-copy.
 //
 // Call `nmp_signer_broker_init(app)` exactly once, right after `nmp_app_new()`.
 // It registers a `bunker://` handler that drives the NIP-46 connect /
@@ -183,10 +183,9 @@ void nmp_broker_free_string(char *ptr);
 
 // ── T146: nmp-app-chirp per-app FFI ──────────────────────────────────────
 //
-// `libnmp_app_chirp.a` is a separate Rust static library: doctrine D0
-// forbids `nmp-core -> nmp-nip01 / nmp-threading`, so the Chirp-specific
-// glue that composes the modular timeline projection lives in its own
-// archive. The four symbols below are exported from that archive.
+// `libnmp_app_chirp.a` is the Chirp Rust aggregate archive: doctrine D0
+// keeps protocol/app glue outside nmp-core while still letting the iOS
+// shell link one Rust archive.
 //
 // Flow:
 // 1. Call `nmp_app_chirp_register(app, viewer_pubkey)` once after

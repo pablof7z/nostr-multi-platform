@@ -10,18 +10,11 @@ gen-modules-check:
     cargo run -p nmp-codegen -- gen modules --manifest apps/fixture/nmp.toml --out apps/fixture/nmp-app-fixture --check
 
 rust-ios-sim:
+    # Keep the standalone core archive fresh for shells that link nmp-core
+    # directly.
     cargo build -p nmp-core --features lmdb-backend --target aarch64-apple-ios-sim
-    # Stage 4 of NIP-46 wiring: `nmp-signer-broker` is a separate static lib
-    # (doctrine D0 forbids `nmp-core -> nmp-signer-broker`). Chirp's link
-    # step picks up `libnmp_signer_broker.a` from the same target dir via
-    # `OTHER_LDFLAGS = "$(inherited) -lnmp_core -lnmp_signer_broker"` in the
-    # pbxproj.
-    cargo build -p nmp-signer-broker --target aarch64-apple-ios-sim
-    # T146: `nmp-app-chirp` is a per-app crate composing Nip10ModularTimelineView
-    # with the kernel event observer slot. Same packaging rule as the broker —
-    # `nmp-core` cannot depend on `nmp-nip01 / nmp-threading` (cycle), so the
-    # Chirp glue ships its own static archive. Chirp's link step adds
-    # `-lnmp_app_chirp` in `ios/Chirp/project.yml`.
+    # Chirp links one aggregate archive so nmp-core static state is not
+    # duplicated across app, projection, and NIP-46 broker crates.
     cargo build -p nmp-app-chirp --target aarch64-apple-ios-sim
 
 gen-ios:

@@ -76,7 +76,7 @@ pub(super) fn dispatch_command(
             *startup_sent = false;
             kernel.set_visible_limit(visible_limit);
             kernel.start();
-            let mut outbound = session_persistence::restore_active_local(
+            let mut outbound = session_persistence::restore_active_session(
                 identity,
                 kernel,
                 capability_callback,
@@ -154,7 +154,7 @@ pub(super) fn dispatch_command(
             // the wrapper wipe the plaintext when it drops at end of scope.
             let outbound = commands::sign_in_nsec(identity, kernel, secret.as_str(), relays_ready);
             update_nsec_slot(identity, active_local_nsec);
-            session_persistence::persist_current_active_local(identity, capability_callback);
+            session_persistence::persist_current_active_session(identity, capability_callback);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
@@ -167,36 +167,46 @@ pub(super) fn dispatch_command(
             let outbound =
                 commands::create_account(identity, kernel, relays_ready, &profile, &relays);
             update_nsec_slot(identity, active_local_nsec);
-            session_persistence::persist_current_active_local(identity, capability_callback);
+            session_persistence::persist_current_active_session(identity, capability_callback);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::SwitchActive { identity_id } => {
             let outbound = commands::switch_active(identity, kernel, &identity_id, relays_ready);
             update_nsec_slot(identity, active_local_nsec);
-            session_persistence::persist_current_active_local(identity, capability_callback);
+            session_persistence::persist_current_active_session(identity, capability_callback);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::RemoveAccount { identity_id } => {
             let outbound = commands::remove_account(identity, kernel, &identity_id);
             update_nsec_slot(identity, active_local_nsec);
-            session_persistence::forget_local_account(&identity_id, capability_callback);
-            session_persistence::persist_current_active_local(identity, capability_callback);
+            session_persistence::forget_account(&identity_id, capability_callback);
+            session_persistence::persist_current_active_session(identity, capability_callback);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::AddRemoteSigner { handle } => {
+            let remote_identity_id = handle.pubkey_hex();
+            let remote_payload_json = handle.persistence_payload_json();
             let outbound = commands::add_remote_signer(identity, kernel, handle, relays_ready);
+            if let Some(payload_json) = remote_payload_json {
+                session_persistence::persist_remote_signer_payload(
+                    &remote_identity_id,
+                    &payload_json,
+                    capability_callback,
+                );
+            }
             update_nsec_slot(identity, active_local_nsec);
-            session_persistence::persist_current_active_local(identity, capability_callback);
+            session_persistence::persist_current_active_session(identity, capability_callback);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::RemoveRemoteSigner { identity_id } => {
             let outbound = commands::remove_remote_signer(identity, kernel, &identity_id);
             update_nsec_slot(identity, active_local_nsec);
-            session_persistence::persist_current_active_local(identity, capability_callback);
+            session_persistence::forget_account(&identity_id, capability_callback);
+            session_persistence::persist_current_active_session(identity, capability_callback);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }

@@ -26,7 +26,7 @@ pub use app::{
     VIEW_ADDRESSABLE, VIEW_PROFILE, VIEW_THREAD,
 };
 pub use kernel_reducer::KernelReducer;
-pub use bunker_hook::{register_bunker_hook, BunkerHookFn};
+pub use bunker_hook::{register_bunker_hook, BunkerHookFn, BunkerHookRequest};
 pub use ffi::NmpApp;
 pub use remote_signer::RemoteSignerHandle;
 pub use update_envelope::{

@@ -22,10 +22,19 @@ targets:
         LSRequiresIPhoneOS: true
         UILaunchScreen: {}
         UIApplicationSupportsIndirectInputEvents: true
+        LSApplicationQueriesSchemes:
+          - nostrsigner
+          - primal
+          - nostrconnect
+        CFBundleURLTypes:
+          - CFBundleURLName: com.example.Chirp.nip46
+            CFBundleURLSchemes:
+              - chirp
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.Chirp
         PRODUCT_NAME: Chirp
+        CODE_SIGN_ENTITLEMENTS: Chirp/Chirp.entitlements
         GENERATE_INFOPLIST_FILE: NO
         SWIFT_OBJC_BRIDGING_HEADER: Chirp/Bridge/NmpCore.h
         LIBRARY_SEARCH_PATHS:
@@ -33,15 +42,10 @@ targets:
           - $(SRCROOT)/../../target/aarch64-apple-ios-sim/release
           - $(SRCROOT)/../../target/aarch64-apple-ios/debug
           - $(SRCROOT)/../../target/aarch64-apple-ios/release
-        # T146 — `-lnmp_app_chirp` (per-app modular timeline glue) +
-        # `-lnmp_signer_broker` (NIP-46 bunker handshake) sit alongside
-        # `-lnmp_core`. The broker lib must come BEFORE nmp_core so its
-        # `bunker_hook::HOOK` static wins against nmp_core's private copy
-        # (b9820e5). The chirp lib slots in front of those for symbol
-        # resolution of its `nmp_app_chirp_*` entry points; it has its own
-        # strong references into `libnmp_core.a` (observer slot symbols)
-        # which the linker resolves from the trailing `-lnmp_core`.
-        OTHER_LDFLAGS: "$(inherited) -lnmp_app_chirp -lnmp_signer_broker -lnmp_core"
+        # Chirp links one aggregate Rust archive. It contains nmp-core,
+        # the NIP-46 signer broker, and the Chirp projection, keeping
+        # process-global Rust state such as the bunker hook single-copy.
+        OTHER_LDFLAGS: "$(inherited) -lnmp_app_chirp"
         ENABLE_USER_SCRIPT_SANDBOXING: NO
 
   ChirpTests:

@@ -19,6 +19,11 @@
 //! per call; the broker keeps the join handle so it can be cleanly torn
 //! down.
 
+mod nostrconnect;
+mod restore;
+#[cfg(test)]
+mod tests;
+
 use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
@@ -31,9 +36,7 @@ use nmp_signers::{parse_bunker_uri, Nip46Signer, Nip46SignerHandle};
 use nostr::{Keys, PublicKey};
 use serde_json::Value;
 
-use crate::handshake::{
-    build_req_frame, run_handshake, run_nostrconnect_handshake, HandshakeOutcome,
-};
+use crate::handshake::{build_req_frame, run_handshake, HandshakeOutcome};
 use crate::relay_client::{EventCallback, RelayClient, TungsteniteRelayClient};
 use crate::transport::BrokerTransport;
 
@@ -99,182 +102,6 @@ impl BunkerBroker {
                 signer: Mutex::new(None),
             });
         }
-    }
-
-    /// Begin the signer-initiated (`nostrconnect://`) handshake. Returns the
-    /// `nostrconnect://` URI **immediately** (it embeds the ephemeral client
-    /// pubkey + secret). Spawns a worker thread that:
-    /// 1. Connects to `relay_url`.
-    /// 2. Subscribes (REQ) for inbound kind:24133 events tagged to the
-    ///    ephemeral client pubkey.
-    /// 3. Waits for the signer app to dial the relay and send a `connect` RPC.
-    /// 4. Validates the secret, replies `ack`, sends `get_public_key`.
-    /// 5. Ships `AddRemoteSigner` to the actor on success.
-    ///
-    /// Progress is reported via `BunkerHandshakeProgress` snapshots using the
-    /// same stage strings as the `bunker://` path (`"connecting"`,
-    /// `"awaiting_pubkey"`, `"ready"`, `"failed"`). `"ready"` is terminal;
-    /// the broker does not emit `"idle"` — the UI clears its own card.
-    ///
-    /// Cancels any prior in-flight bunker or nostrconnect session (MVP
-    /// single-session contract).
-    pub fn start_nostrconnect_handshake(self: &Arc<Self>, relay_url: String) -> String {
-        // Cancel any prior session so a re-scan replaces cleanly.
-        self.cancel();
-
-        // Generate ephemeral keypair + secret now (must return URI synchronously).
-        let local_keys = Keys::generate();
-        let pubkey_hex = local_keys.public_key().to_hex();
-        // Independent CSPRNG-derived session secret — not from key material.
-        use rand::Rng;
-        let secret: String = rand::thread_rng()
-            .sample_iter(rand::distributions::Alphanumeric)
-            .take(16)
-            .map(char::from)
-            .collect();
-
-        // Percent-encode the relay URL for the URI.
-        let encoded_relay: String = relay_url
-            .bytes()
-            .flat_map(|b| match b {
-                b'A'..=b'Z'
-                | b'a'..=b'z'
-                | b'0'..=b'9'
-                | b'-'
-                | b'_'
-                | b'.'
-                | b'~' => vec![b as char],
-                _ => format!("%{b:02X}").chars().collect::<Vec<_>>(),
-            })
-            .collect();
-        let uri = format!(
-            "nostrconnect://{pubkey_hex}?relay={encoded_relay}&secret={secret}&name=Chirp&perms=sign_event%3A1%2Csign_event%3A7"
-        );
-
-        let me = Arc::clone(self);
-        let secret_for_thread = secret.clone();
-        let cancel = Arc::new(AtomicBool::new(false));
-        let cancel_for_thread = Arc::clone(&cancel);
-        let thread = std::thread::spawn(move || {
-            me.run_nostrconnect_thread(relay_url, local_keys, secret_for_thread, cancel_for_thread);
-        });
-
-        // Stage the session entry (placeholder relay/transport until the thread
-        // connects and installs the real ones).
-        if let Ok(mut guard) = self.active.lock() {
-            *guard = Some(ActiveSession {
-                relay: Arc::new(NoopRelay) as Arc<dyn RelayClient>,
-                cancel,
-                handshake_thread: Some(thread),
-                transport: BrokerTransport::new(
-                    Arc::new(NoopRelay) as Arc<dyn RelayClient>,
-                    Keys::generate(),
-                    Keys::generate().public_key(),
-                ),
-                signer: Mutex::new(None),
-            });
-        }
-
-        uri
-    }
-
-    /// Body of the nostrconnect:// worker thread.
-    fn run_nostrconnect_thread(
-        self: Arc<Self>,
-        relay_url: String,
-        local_keys: Keys,
-        expected_secret: String,
-        cancel: Arc<AtomicBool>,
-    ) {
-        // Set up inbound channel.
-        let (inbound_tx, inbound_rx) = mpsc::channel::<Value>();
-        let inbound_tx_for_cb = inbound_tx.clone();
-        let event_cb: EventCallback = Arc::new(move |event| {
-            let _ = inbound_tx_for_cb.send(event);
-        });
-
-        // Connect to the relay.
-        if cancel.load(std::sync::atomic::Ordering::Relaxed) {
-            self.emit_progress("failed", Some("cancelled"));
-            return;
-        }
-        self.emit_progress("connecting", Some(&format!("connecting to relay {relay_url}")));
-        let relay = match TungsteniteRelayClient::connect(&relay_url, Arc::clone(&event_cb)) {
-            Ok(c) => Arc::new(c) as Arc<dyn RelayClient>,
-            Err(e) => {
-                self.emit_progress("failed", Some(&format!("relay connect failed: {e}")));
-                return;
-            }
-        };
-
-        // Subscribe to inbound kind:24133 events p-tagged to our ephemeral pubkey.
-        let req_frame = build_req_frame(BUNKER_SUB_ID, &local_keys.public_key().to_hex());
-        if let Err(e) = relay.send(req_frame) {
-            self.emit_progress("failed", Some(&format!("REQ subscribe failed: {e}")));
-            return;
-        }
-
-        // Build a placeholder transport (we don't know the signer pubkey yet).
-        let placeholder_transport = BrokerTransport::new(
-            Arc::clone(&relay),
-            local_keys.clone(),
-            // Placeholder — will be replaced once we learn the signer pubkey.
-            local_keys.public_key(),
-        );
-        self.install_session(Arc::clone(&relay), Arc::clone(&placeholder_transport));
-
-        // Run the nostrconnect handshake (signer-initiated).
-        let mut progress_emitter = |stage: &str, msg: Option<&str>| {
-            self.emit_progress(stage, msg);
-        };
-        let outcome = match run_nostrconnect_handshake(
-            relay.as_ref(),
-            &inbound_rx,
-            &local_keys,
-            &expected_secret,
-            &cancel,
-            &mut progress_emitter,
-        ) {
-            Ok(o) => o,
-            Err(e) => {
-                self.emit_progress("failed", Some(&format!("{e}")));
-                return;
-            }
-        };
-
-        // Build the real transport now that we know the signer pubkey.
-        let signer_pk = match PublicKey::from_hex(&outcome.signer_pubkey_hex) {
-            Ok(pk) => pk,
-            Err(e) => {
-                self.emit_progress("failed", Some(&format!("signer pubkey decode: {e}")));
-                return;
-            }
-        };
-        let transport = BrokerTransport::new(Arc::clone(&relay), local_keys.clone(), signer_pk);
-        self.install_session(Arc::clone(&relay), Arc::clone(&transport));
-
-        // Build a Nip46SignerHandle from the nostrconnect URI. We reuse the
-        // bunker:// handle type by constructing a synthetic bunker:// URI —
-        // the handle is just a container for local_keys; the transport does the
-        // actual routing.
-        let synthetic_bunker_uri = format!(
-            "bunker://{}?relay={}",
-            outcome.signer_pubkey_hex, relay_url
-        );
-        let handle = match Nip46SignerHandle::from_bunker_uri_with_local_key(
-            &synthetic_bunker_uri,
-            local_keys.secret_key().clone(),
-        ) {
-            Ok(h) => h,
-            Err(e) => {
-                self.emit_progress("failed", Some(&format!("build signer handle: {e}")));
-                return;
-            }
-        };
-
-        self.complete_handshake(handle, transport, inbound_rx, HandshakeOutcome {
-            user_pubkey_hex: outcome.user_pubkey_hex,
-        });
     }
 
     /// Cancel the active session if any. Idempotent.
@@ -460,6 +287,15 @@ impl BunkerBroker {
         // `Arc<BrokerTransport>` directly. The signer will erase the type
         // internally as `Arc<dyn Nip46Transport>`.
         let signer = Arc::new(handle.complete(Arc::clone(&transport), user_pubkey));
+        self.install_completed_signer(signer, transport, inbound_rx);
+    }
+
+    fn install_completed_signer(
+        self: &Arc<Self>,
+        signer: Arc<Nip46Signer>,
+        transport: Arc<BrokerTransport>,
+        inbound_rx: mpsc::Receiver<Value>,
+    ) {
         transport.bind_signer(&signer);
 
         // Stash the signer on the active session so it stays alive past
@@ -531,8 +367,11 @@ impl RemoteSignerHandle for ArcRemoteSigner {
     fn signer_kind(&self) -> &'static str {
         self.0.signer_kind()
     }
+    fn persistence_payload_json(&self) -> Option<String> {
+        RemoteSignerHandle::persistence_payload_json(&*self.0)
+    }
     fn sign(&self, unsigned: &UnsignedEvent) -> SignerOp<nmp_core::substrate::SignedEvent> {
-        self.0.sign(unsigned)
+        RemoteSignerHandle::sign(&*self.0, unsigned)
     }
     fn deliver_rpc_response(&self, response_json: &str) {
         self.0.deliver_rpc_response(response_json);
@@ -554,121 +393,4 @@ impl RelayClient for NoopRelay {
         Err(crate::relay_client::RelayError::Disconnected)
     }
     fn shutdown(&self) {}
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::mpsc;
-    use std::time::Duration;
-
-    /// Broker construction is cheap and does not touch the network. Smoke
-    /// test that `new` builds without panic and `cancel` on an empty broker
-    /// is a no-op.
-    #[test]
-    fn new_and_cancel_are_noops_without_session() {
-        let (tx, _rx) = mpsc::channel::<ActorCommand>();
-        let broker = BunkerBroker::new(tx);
-        broker.cancel(); // no-op
-        broker.cancel(); // still no-op
-    }
-
-    #[test]
-    fn start_handshake_with_invalid_uri_emits_failed_progress() {
-        let (tx, rx) = mpsc::channel::<ActorCommand>();
-        let broker = BunkerBroker::new(tx);
-        broker.start_handshake("not-a-bunker-uri".to_string());
-        // The worker thread runs async; poll the receiver for the failed
-        // progress event.
-        let deadline = std::time::Instant::now() + Duration::from_secs(2);
-        let mut saw_failed = false;
-        while std::time::Instant::now() < deadline {
-            match rx.recv_timeout(Duration::from_millis(50)) {
-                Ok(ActorCommand::BunkerHandshakeProgress { stage, .. }) if stage == "failed" => {
-                    saw_failed = true;
-                    break;
-                }
-                Ok(_) => continue,
-                Err(_) => continue,
-            }
-        }
-        assert!(
-            saw_failed,
-            "expected a failed-progress event for invalid URI"
-        );
-        broker.cancel();
-    }
-
-    /// Safety property: the placeholder `NoopRelay` must never silently
-    /// swallow a frame. If a sign request reached it (the handshake raced
-    /// ahead of the real socket), `send` must return an error so the request
-    /// is never reported as successfully published.
-    #[test]
-    fn noop_relay_send_returns_disconnected_error() {
-        let result = NoopRelay.send("[\"EVENT\",{}]".to_string());
-        assert!(
-            matches!(result, Err(crate::relay_client::RelayError::Disconnected)),
-            "NoopRelay must reject sends, not drop them silently"
-        );
-    }
-
-    /// `NoopRelay::shutdown` is a no-op and must not panic.
-    #[test]
-    fn noop_relay_shutdown_is_a_noop() {
-        NoopRelay.shutdown();
-    }
-
-    /// `start_nostrconnect_handshake` must return a well-formed
-    /// `nostrconnect://` URI synchronously. The Chirp QR-code UI depends on
-    /// the exact shape: scheme, 64-hex client pubkey, percent-encoded relay,
-    /// a session secret, and the `name`/`perms` query params.
-    ///
-    /// Uses a syntactically-invalid relay URL so the worker thread fails the
-    /// connect immediately (no DNS lookup, no network) and `cancel()` joins a
-    /// thread that has already exited.
-    #[test]
-    fn start_nostrconnect_handshake_returns_well_formed_uri() {
-        let (tx, _rx) = mpsc::channel::<ActorCommand>();
-        let broker = BunkerBroker::new(tx);
-        // Not a valid ws/wss URL — `tungstenite::connect` rejects it fast.
-        let uri = broker.start_nostrconnect_handshake("not-a-url".to_string());
-        broker.cancel(); // tear down the (already-failed) worker thread.
-
-        assert!(
-            uri.starts_with("nostrconnect://"),
-            "uri must use the nostrconnect scheme: {uri:?}"
-        );
-        // Extract the authority (client pubkey) between scheme and `?`.
-        let after_scheme = uri.strip_prefix("nostrconnect://").unwrap();
-        let (pubkey_hex, query) = after_scheme
-            .split_once('?')
-            .expect("uri must carry a query string");
-        assert_eq!(pubkey_hex.len(), 64, "client pubkey must be 64 hex chars");
-        assert!(
-            pubkey_hex.chars().all(|c| c.is_ascii_hexdigit()),
-            "client pubkey must be hex: {pubkey_hex:?}"
-        );
-        // Relay must be percent-encoded (no raw `:` or `/`).
-        let relay_param = query
-            .split('&')
-            .find_map(|kv| kv.strip_prefix("relay="))
-            .expect("uri must carry a relay param");
-        assert!(
-            !relay_param.contains(':') && !relay_param.contains('/'),
-            "relay param must be percent-encoded: {relay_param:?}"
-        );
-        // Secret must be present and non-empty.
-        let secret = query
-            .split('&')
-            .find_map(|kv| kv.strip_prefix("secret="))
-            .expect("uri must carry a secret param");
-        assert_eq!(secret.len(), 16, "session secret is 16 chars");
-        assert!(
-            secret.chars().all(|c| c.is_ascii_alphanumeric()),
-            "session secret must be alphanumeric: {secret:?}"
-        );
-        // Chirp identity + permissions must be embedded.
-        assert!(query.contains("name=Chirp"), "uri must name the app: {query:?}");
-        assert!(query.contains("perms="), "uri must request perms: {query:?}");
-    }
 }

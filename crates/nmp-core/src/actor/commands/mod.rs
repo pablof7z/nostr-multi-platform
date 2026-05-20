@@ -72,7 +72,8 @@ mod wallet;
 
 pub(super) use identity::{
     add_remote_signer, bunker_handshake_progress, create_account, remove_account,
-    remove_remote_signer, sign_in_bunker, sign_in_nsec, switch_active, IdentityRuntime,
+    remove_remote_signer, restore_bunker_session, sign_in_bunker, sign_in_nsec, switch_active,
+    IdentityRuntime,
 };
 pub(super) use lifecycle::handle_lifecycle_event;
 pub(crate) use lifecycle::{

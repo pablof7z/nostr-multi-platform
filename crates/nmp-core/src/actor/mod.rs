@@ -25,10 +25,13 @@ mod relay_mgmt;
 #[cfg(test)]
 mod relay_url_canonical_tests;
 #[cfg(test)]
+mod session_persistence_tests;
+#[cfg(test)]
 mod tests;
 mod tick;
 
 use commands::IdentityRuntime;
+use crate::capability_socket::{new_capability_callback_slot, CapabilityCallbackSlot};
 // D0: NIP-47 NWC is an app noun — `WalletRuntime` only exists with `wallet`.
 #[cfg(feature = "wallet")]
 use commands::WalletRuntime;
@@ -371,6 +374,7 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
         new_raw_event_observer_slot(),
         Arc::new(Mutex::new(Vec::new())),
         Arc::new(Mutex::new(None)),
+        new_capability_callback_slot(),
         Arc::new(Mutex::new(None)),
     );
 }
@@ -394,6 +398,7 @@ pub fn run_actor_with_lifecycle_observer(
         new_raw_event_observer_slot(),
         Arc::new(Mutex::new(Vec::new())),
         Arc::new(Mutex::new(None)),
+        new_capability_callback_slot(),
         Arc::new(Mutex::new(None)),
     );
 }
@@ -418,6 +423,7 @@ pub fn run_actor_with_observers(
     raw_event_observers: RawEventObserverSlot,
     relay_edit_rows: Arc<Mutex<Vec<crate::kernel::RelayEditRow>>>,
     active_local_nsec: Arc<Mutex<Option<zeroize::Zeroizing<String>>>>,
+    capability_callback: CapabilityCallbackSlot,
     // FFI-supplied persistent LMDB storage path. Shared `Arc` with the
     // `NmpApp`: the C-ABI `nmp_app_set_storage_path` writes through one
     // clone before `nmp_app_start`; this actor thread reads the other when
@@ -536,6 +542,7 @@ pub fn run_actor_with_observers(
                         relays_ready,
                         &lifecycle_observer,
                         &active_local_nsec,
+                        &capability_callback,
                         &mut pending_signs,
                     );
                     let Some(outbound) = outbound else {

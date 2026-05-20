@@ -36,6 +36,7 @@ lmdb-backend = ["nmp-core/lmdb-backend"]
 
 [dependencies]
 nmp-core = { path = "../../../crates/nmp-core" }
+nmp-signer-broker = { path = "../../../crates/nmp-signer-broker" }
 nmp-nip01 = { path = "../../../crates/nmp-nip01" }
 nmp-threading = { path = "../../../crates/nmp-threading" }
 # Marmot (MLS-over-Nostr). This crate's `src/marmot/` module consumes the
