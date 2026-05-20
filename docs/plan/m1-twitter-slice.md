@@ -1,10 +1,14 @@
-# M1 — Read-only Twitter slice on iOS *(DONE — two exit-gate items deferred, see below)*
+# M1 — Chirp social baseline on iOS *(DONE — two exit-gate items deferred, see below)*
 
 > Part of the [Build & Validation Plan](../plan.md). Arc 1 — Kernel substrate + Nostr social stack.
 
-**Demo product:** `ios/NmpStress` — SwiftUI app pulling live from primal, rendering seed-driven timeline, profile cards, threads, diagnostics screen.
+**Demo product:** `ios/Chirp` — SwiftUI app pulling live from primal, rendering seed-driven timeline, profile cards, threads, diagnostics screen.
 
 **Scope.** Per ADR-0006 + ADR-0008 + ADR-0009: kind:0 Profile path end-to-end against a real relay, on iOS, through real FFI. Seed-driven discovery (union of follow lists from pablof7z + fiatjaf + jb55). Refcounted claim/release pattern per ADR-0005 (profile interest commit `23ae829`). Diagnostics surface per ADR-0007.
+
+This milestone is Chirp's first social baseline, not the full client goal. See
+[`chirp-showcase.md`](chirp-showcase.md) for the standing goal: Chirp should
+demonstrate every reusable feature NMP ships.
 
 **Subsystem deliverables.**
 
@@ -25,7 +29,7 @@
 - Firehose-bench `live profile_thrashing` (50/sec mount/unmount over 10 min) against primal: zero subscription leaks. *(Dispatch-rate gate moved to M14; RSS gate moved to M10.5 — see §Deferred below.)*
 - All reactivity-bench `--standard` gates continue to pass against the real kernel code path, not just the synthetic model.
 
-**Runnable artifact.** `just run-ios` launches the app on iPhone simulator pulled from real primal. `docs/perf/m1/baseline.md` published with measured numbers.
+**Runnable artifact.** `just run-ios` launches Chirp on iPhone simulator pulled from real primal. `docs/perf/m1/baseline.md` published with measured numbers.
 
 ---
 

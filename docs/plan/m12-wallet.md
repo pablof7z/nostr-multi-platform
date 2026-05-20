@@ -2,7 +2,7 @@
 
 > Part of the [Build & Validation Plan](../plan.md). Arc 3 — wallet/WoT + cross-platform + release.
 
-**Demo product:** Twitter slice gets a zap button on each post. Tapping it pays via NWC. Receiving zaps shows up in a zap-history view. Cashu nutzap claim works.
+**Demo product:** Chirp gets a zap button on each post. Tapping it pays via NWC. Receiving zaps shows up in a zap-history view. Cashu nutzap claim works.
 
 **Scope.** Per spec §7.9:
 
@@ -22,4 +22,4 @@
 - Nutzap claim from a Cashu mint: proofs land in the wallet; balance updates.
 - Wallet operations never block the UI thread.
 
-**Runnable artifact.** iOS Twitter slice with working zaps. Report in `docs/perf/m12/wallet.md`.
+**Runnable artifact.** Chirp with working zaps. Report in `docs/perf/m12/wallet.md`.

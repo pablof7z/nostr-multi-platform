@@ -37,7 +37,6 @@ const VERBS: &[&str] = &[
     "mls-create",
     "mls-fetch-kp",
     "mls-invite",
-    "mls-poll",
     "mls-accept",
     "mls-send",
     "mls-messages",
@@ -202,9 +201,6 @@ fn dispatch(session: &mut Session, cmd: Command) -> Result<bool, String> {
             .map(|_| false)
             .map_err(|e| e.to_string()),
         Command::MlsInvite(gid, npub) => commands::mls_invite::run(session, gid, npub)
-            .map(|_| false)
-            .map_err(|e| e.to_string()),
-        Command::MlsPoll => commands::mls_poll::run(session)
             .map(|_| false)
             .map_err(|e| e.to_string()),
         Command::MlsAccept(arg) => commands::mls_accept::run(session, arg)

@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -28,6 +28,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
+import org.nmp.android.model.ChirpEventCard
+import org.nmp.android.model.ModuleTimelineBlock
+import org.nmp.android.model.StandaloneTimelineBlock
+import org.nmp.android.model.TimelineBlock
 import org.nmp.android.model.TimelineItem
 
 /**
@@ -37,22 +41,32 @@ import org.nmp.android.model.TimelineItem
 @Composable
 fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
     val s by model.state.collectAsStateWithLifecycle()
+    val itemLookup = s.items.associateBy { it.id }
+    val cardLookup = s.modularTimeline.cards.associateBy { it.id }
+    val blocks = if (s.modularTimeline.blocks.isNotEmpty()) {
+        s.modularTimeline.blocks
+    } else {
+        s.items.map { StandaloneTimelineBlock(it.id) }
+    }
 
     Column(modifier.fillMaxSize()) {
         Row(
             Modifier.fillMaxWidth().padding(16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text("Pulse", style = MaterialTheme.typography.headlineSmall)
-            Text("rev ${s.rev}", style = MaterialTheme.typography.labelSmall)
+            Text("Chirp", style = MaterialTheme.typography.headlineSmall)
+            Text(
+                "rev ${s.rev} · ${s.modularTimeline.blocks.size} blocks",
+                style = MaterialTheme.typography.labelSmall,
+            )
         }
         HorizontalDivider()
-        if (s.items.isEmpty()) {
+        if (blocks.isEmpty()) {
             Placeholder(s.testNpub)
         } else {
             LazyColumn(Modifier.fillMaxSize()) {
-                items(s.items, key = { it.id }) { item ->
-                    NoteRow(item)
+                itemsIndexed(blocks, key = { index, block -> blockKey(index, block) }) { _, block ->
+                    TimelineBlockRow(block, itemLookup, cardLookup)
                     HorizontalDivider()
                 }
             }
@@ -79,26 +93,93 @@ private fun Placeholder(testNpub: String) {
 }
 
 @Composable
-private fun NoteRow(item: TimelineItem) {
+private fun TimelineBlockRow(
+    block: TimelineBlock,
+    items: Map<String, TimelineItem>,
+    cards: Map<String, ChirpEventCard>,
+) {
+    when (block) {
+        is StandaloneTimelineBlock -> NoteRow(block.eventId, items, cards)
+        is ModuleTimelineBlock -> ModuleBlockRow(block, items, cards)
+    }
+}
+
+@Composable
+private fun ModuleBlockRow(
+    block: ModuleTimelineBlock,
+    items: Map<String, TimelineItem>,
+    cards: Map<String, ChirpEventCard>,
+) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+        block.events.forEachIndexed { index, eventId ->
+            NoteRow(eventId, items, cards)
+            if (index < block.events.lastIndex) {
+                HorizontalDivider(Modifier.padding(start = 56.dp))
+            }
+        }
+        if (block.hasGap) {
+            Text(
+                "Thread has more context",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 56.dp, bottom = 8.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun NoteRow(
+    eventId: String,
+    items: Map<String, TimelineItem>,
+    cards: Map<String, ChirpEventCard>,
+) {
+    val item = items[eventId]
+    val card = cards[eventId]
+    val content = item?.contentPreview?.ifEmpty { item.content } ?: card?.content
+    if (content == null) {
+        MissingEventRow(eventId)
+        return
+    }
+    val author = item?.authorDisplay?.nonEmptyOrNull()
+        ?: card?.authorPubkey?.take(12)?.let { "$it…" }
+        ?: "unknown"
+    val initials = item?.authorAvatarInitials?.nonEmptyOrNull()
+        ?: author.take(2).uppercase()
+    val color = item?.authorAvatarColor.orEmpty()
+    val subtitle = item?.createdAtDisplay?.nonEmptyOrNull()
+        ?: card?.let { "kind ${it.kind}" }
+        ?: ""
+
     Column(Modifier.fillMaxWidth().padding(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Avatar(item.authorAvatarInitials, item.authorAvatarColor)
+            Avatar(initials, color)
             Spacer(Modifier.size(8.dp))
             Column {
                 Text(
-                    item.authorDisplay,
+                    author,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    item.createdAtDisplay,
+                    subtitle,
                     style = MaterialTheme.typography.labelSmall,
                 )
             }
         }
         Spacer(Modifier.size(6.dp))
-        NostrRichText(content = item.contentPreview.ifEmpty { item.content })
+        NostrRichText(content = content)
     }
+}
+
+@Composable
+private fun MissingEventRow(eventId: String) {
+    Text(
+        "Event pending ${eventId.take(8)}",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth().padding(12.dp),
+    )
 }
 
 @Composable
@@ -129,3 +210,10 @@ private fun parseHexColor(hex: String): Color? {
         blue = (v and 0xFF) / 255f,
     )
 }
+
+private fun blockKey(index: Int, block: TimelineBlock): String {
+    val ids = block.eventIds.joinToString(":")
+    return ids.ifEmpty { "block-$index" }
+}
+
+private fun String.nonEmptyOrNull(): String? = if (isEmpty()) null else this

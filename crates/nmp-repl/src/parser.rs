@@ -56,7 +56,6 @@ pub fn parse_line(line: &str) -> Result<Command, String> {
         "mls-create" => parse_single_arg(args, "mls-create", "<group-name>").map(Command::MlsCreate),
         "mls-fetch-kp" => parse_single_arg(args, "mls-fetch-kp", "<npub>").map(Command::MlsFetchKp),
         "mls-invite" => parse_mls_invite(args),
-        "mls-poll" => parse_nullary(args, "mls-poll").map(|_| Command::MlsPoll),
         "mls-accept" => Ok(Command::MlsAccept(args.first().map(|s| s.to_string()))),
         "mls-send" => parse_mls_send(args),
         "mls-messages" => parse_single_arg(args, "mls-messages", "<group_hex>").map(Command::MlsMessages),
@@ -756,7 +755,6 @@ mod tests {
     fn mls_nullary_verbs() {
         assert_eq!(parse_line("mls-init").unwrap(), Command::MlsInit);
         assert_eq!(parse_line("mls-status").unwrap(), Command::MlsStatus);
-        assert_eq!(parse_line("mls-poll").unwrap(), Command::MlsPoll);
         assert!(parse_line("mls-init foo").is_err());
     }
 

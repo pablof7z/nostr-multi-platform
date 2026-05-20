@@ -163,7 +163,7 @@ The on-disk layout from `aim.md` §5 is canonical. The long-term workspace conta
 
 The CLI is also published to npm as `@nmp/cli` for non-Rust developers, wrapping the same binary via npx.
 
-The v1 release does **not** ship every module above as a finished product module. Per [`docs/plan.md`](../plan.md), v1 first proves the kernel substrate and codegen with a non-Nostr fixture module, then ships the Twitter-clone slice as protocol/app modules over the kernel.
+The v1 release does **not** ship every module above as a finished product module. Per [`docs/plan.md`](../plan.md), v1 first proves the kernel substrate and codegen with a non-Nostr fixture module, then grows Chirp from the first social baseline into NMP's reference client. Any reusable module that does ship should be demonstrated in Chirp, or carry a documented platform exception.
 
 ### 4.2 Bindings
 

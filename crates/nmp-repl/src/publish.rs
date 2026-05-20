@@ -81,9 +81,8 @@ fn await_ok(sock: &mut ws::Sock, event_id: &str) -> OkResult {
             Frame::Other => {
                 // `OK` is not first-class in `Frame`; re-read it raw. The
                 // last raw message is not retained, so peek the socket's
-                // next text instead: in practice relays send OK promptly,
-                // so we poll a couple more times for the envelope.
-                if let Some(res) = poll_for_ok(sock, event_id, deadline) {
+                // next text instead: in practice relays send OK promptly.
+                if let Some(res) = await_raw_ok(sock, event_id, deadline) {
                     return res;
                 }
             }
@@ -101,7 +100,7 @@ fn await_ok(sock: &mut ws::Sock, event_id: &str) -> OkResult {
 
 /// `Frame::Other` collapses `OK` envelopes. Drain a few raw text frames
 /// looking for our `["OK", <id>, <bool>, <msg>]`.
-fn poll_for_ok(sock: &mut ws::Sock, event_id: &str, deadline: Instant) -> Option<OkResult> {
+fn await_raw_ok(sock: &mut ws::Sock, event_id: &str, deadline: Instant) -> Option<OkResult> {
     while Instant::now() < deadline {
         match sock.read() {
             Ok(tungstenite::Message::Text(s)) => {
@@ -137,7 +136,7 @@ fn poll_for_ok(sock: &mut ws::Sock, event_id: &str, deadline: Instant) -> Option
 /// terminal frame / `wall`, and return the raw event JSON values.
 ///
 /// `filter_json` is the bare filter object (NOT wrapped); this builds
-/// `["REQ", <sub>, <filter>]`. Used by `mls-poll` / `mls-fetch-kp`.
+/// `["REQ", <sub>, <filter>]`. Used by `mls-fetch-kp`.
 pub fn fetch_events(relay_url: &str, filter_json: &Value, wall: Duration) -> Vec<Value> {
     let sub = format!("repl-mls-{}", now_secs());
     let mut out = Vec::new();

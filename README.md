@@ -11,7 +11,7 @@
 > Full per-milestone status in [`docs/plan/status.md`](docs/plan/status.md); per-milestone scope in `docs/plan/m*.md`.
 
 - **M0 (kernel substrate + non-Nostr fixture):** ✅ DONE.
-- **M1 (read-only Twitter slice on live iOS):** ✅ DONE (`701d0e5` — firehose-bench `live` cold_start 258ms first-item / 3587ms filled-timeline; profile_thrashing 0 leaked subs).
+- **M1 (Chirp social baseline on live iOS):** ✅ DONE (`701d0e5` — firehose-bench `live` cold_start 258ms first-item / 3587ms filled-timeline; profile_thrashing 0 leaked subs). Chirp's broader goal is the full NMP showcase: every reusable feature NMP ships should become visible, testable, and debuggable there.
 - **M2 (subscription compilation + outbox + NIP-65):** ✅ planner + 5-case partition + Rule 9 group-id merge on master. 5 rounds of codex follow-up landed. Address-pointer support. **T105 keystone wired CompiledPlan to the live REQ + publish path** (5-commit chain `167d4bc..fada22b`); T132 reconciled dual cache seams (`f7ea534`); T129 addSinceFromCache (`0e32024`); T121 thread hydration outbox (`17d164a`); T122 firehose hashtag inbox; T104 typed `OneshotKind` retires `oneshot-disc-` string-prefix routing (`fd9e92e`); T100b kind:3 re-fan timeline (`91e948b`). Seven-lane routing model per joint ADR-0020+ADR-0021 (`4ce7ba6`). **T142 landed (`5deb4d4`): `drain_tick()` now driven from the actor idle loop — the M2 planner is on the live path (empty-registry no-op safe).** **T140 keystone CUTOVER COMPLETE (`abf23c52`):** the original T140 landed but a codex post-merge review (verdict REVERT) + orchestrator verification proved it had only *added* M2 alongside a still-live M1 `seed-timeline-*` path (duplicate wire REQs). The **T140-FF fix-forward** actually retired M1 — `maybe_open_timeline()` no longer emits the follow-feed REQ (seed feed covered by `startup_requests`), M2 follow-feed subs are EOSE-keep-live via `InterestLifecycle::Tailing`, `timeline_authors` is single-sourced from the M2 projection, `drain_tick()` is D6-clean (`last_planner_error()`), empty-follows clears stale interests. Proven by a negative-existence gate test (`live_follow_feed_path_emits_no_seed_timeline_req`). Residuals R1 (logout→None still leaks; #168) + R2 (`subs/mod.rs` 1453 LOC split; #169) filed.
 - **M3 (LMDB + insert invariants + claim GC):** ✅ **REAL on master** (`77ac7e0` T136b — `LmdbEventStore` 33-method trait + Mem-parity behind `--features lmdb-backend`; ADR-0012 `480f3b1` documents `MemEventStore`-canonical write-path policy per D4). EventStore trait + MemEventStore (sole writer per D4) + verify_and_persist outcome gating for kind:0/3/10002. Local `nmp-nostr-lmdb` fork (`4e8ca2d`) carries the env-injection seam upstream lacked. 1234 workspace tests passing.
 - **M4 (NIP-77 negentropy):** ✅ LANDED (`076173d` — `crates/nmp-nip77/` reconciler + wire + capability + capability_domain).
@@ -97,6 +97,7 @@
 |---|---|
 | `docs/aim.md` | Project north star + RMP-bible distillation. **Read first.** |
 | `docs/plan.md` + `docs/plan/` | Milestone ladder (M0–M17) with exit gates per milestone. |
+| `docs/plan/chirp-showcase.md` | Chirp's standing goal as the full-featured NMP reference client. |
 | `docs/plan/scope-adjustments-2026-05-18.md` | Live scope shifts (DMs + Wallet deferred; Highlighter added; framework-magic contract). |
 | `docs/product-spec.md` + `docs/product-spec/` | What we ship at v1. The cardinal doctrine D0–D8 lives in §1.5. |
 | `docs/decisions/` | ADR-0001..0010 (and counting). |
@@ -104,9 +105,8 @@
 | `docs/research/` | Reverse-engineering notes on NDK + Applesauce — outbox, kind:3 auto-tracking, signers, gotchas, missing-features deltas. |
 | `docs/perf/` | Empirical measurements + heartbeats + codex reviews + debt inventories. |
 | `crates/` | `nmp-core` (substrate), `nmp-codegen` (per-app FFI crate generator), `nmp-testing` (mock relay, harnesses, scenarios), `fixture-todo-core` (non-Nostr extension-module proof). |
-| `apps/` | Generated per-app crates (`apps/fixture/nmp-app-fixture`, future `apps/twitter/nmp-app-twitter`, `apps/podcast/nmp-app-podcast`, `apps/hl/nmp-app-hl`). |
-| `ios/NmpStress` | iOS SwiftUI shell wired to the Rust kernel via raw C FFI (will migrate to UniFFI in M14). |
-| `ios/NmpPulse` | T66 e2e validation app. L1 scaffold (timeline-only) ships; sign-in / compose / multi-account filed as T66a. See `ios/NmpPulse/README.md`. |
+| `apps/` | Generated per-app crates (`apps/fixture/nmp-app-fixture`, `apps/chirp/nmp-app-chirp`, `apps/podcast/nmp-app-podcast`, `apps/hl/nmp-app-hl`). |
+| `ios/Chirp` | Production Nostr client and full NMP showcase. Former NmpStress diagnostics and NmpPulse smoke coverage now live here. |
 | `AGENTS.md` | Rules: file-size limit 300 LOC soft / 500 hard. |
 
 ## Worth reading before contributing

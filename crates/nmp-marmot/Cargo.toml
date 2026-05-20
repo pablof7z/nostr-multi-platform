@@ -18,7 +18,8 @@ serde_json = { workspace = true }
 nostr = { workspace = true, features = ["std"] }
 mdk-core = "0.8.0"
 mdk-sqlite-storage = "0.8.0"
-# WebSocket fetch for `poll_inbox` op — versions pinned via [workspace.dependencies].
+# Direct EVENT submit fallback for `publish_key_package` — versions pinned via
+# [workspace.dependencies].
 tungstenite = { workspace = true, default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
 rustls = { workspace = true, default-features = false, features = ["ring"] }
 

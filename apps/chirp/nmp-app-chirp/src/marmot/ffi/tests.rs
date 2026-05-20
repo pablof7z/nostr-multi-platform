@@ -206,7 +206,7 @@ fn unknown_op_and_bad_json_degrade() {
 /// gift-wrap welcome: it must reach `MarmotService` via the SAME shared
 /// `ingest_signed_event_core` the dispatch op uses, and Bob's snapshot
 /// must then show a pending welcome — with NO Swift / dispatch call (the
-/// existing snapshot poll surfaces the new state). Builds a real gift-wrap
+/// next snapshot refresh surfaces the new state). Builds a real gift-wrap
 /// via the two-party in-memory pattern (the `nmp_nip59` path), exactly as
 /// `crates/nmp-marmot/src/tests.rs` does.
 #[test]
@@ -254,7 +254,7 @@ fn raw_tap_kind_1059_welcome_reaches_service_and_snapshot() {
     // Kernel delivers the verbatim signed kind:1059 to the tap.
     tap.on_raw_event(1059, &gift_json);
 
-    // The snapshot poll (unchanged, no Swift call) now surfaces it.
+    // The next snapshot refresh (unchanged, no Swift call) now surfaces it.
     let snap = bob_proj.snapshot(1);
     assert_eq!(
         snap.pending_welcomes.len(),

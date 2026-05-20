@@ -76,7 +76,7 @@ The framework has grown well beyond the in-memory kernel slice. Built and on mas
 - **Desktop shell.** `crates/nmp-desktop` (~580 LOC) links the kernel rlib directly.
 - **CLI** `crates/nmp-cli`: `gen` + `init` scaffolding commands.
 - **Android FFI** `crates/nmp-android-ffi` (CI-checked via `cargo check`).
-- **iOS apps** in `ios/`: `Chirp` (thin-shell reusability proof — C-ABI only),
+- **iOS apps** in `ios/`: `Chirp` (full NMP showcase client — C-ABI only),
   `NmpHighlighter`, `NmpPodcast`. Android shells under `android/`.
 - **Test + bench harness** `crates/nmp-testing` (~20,800 LOC): mock relays,
   reactivity-bench, firehose-bench. `nmp-repl` (~6,000 LOC) interactive harness.
@@ -107,7 +107,7 @@ The M0–M17 ladder predates the current codebase. Reality, milestone by milesto
 | Milestone | Ladder claim | Actual state |
 |---|---|---|
 | M0 Kernel + fixture | DONE | ✅ Built |
-| M1 Twitter slice on iOS | hardening | ✅ Built (Chirp + iOS shells) |
+| M1 Chirp social baseline on iOS | hardening | ✅ Built (Chirp + iOS shells) |
 | M2 Subscription compilation + outbox + kind:3 | design + impl | ✅ Planner/compiler built |
 | M3 Persistence (LMDB) | design + impl | ✅ `nmp-nostr-lmdb` + `lmdb-backend` feature |
 | M4 NIP-77 negentropy | pending | ✅ `nmp-nip77` built + wired |

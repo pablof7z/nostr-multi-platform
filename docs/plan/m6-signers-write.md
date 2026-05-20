@@ -25,4 +25,4 @@
 - Bug-extinction #10 (re-publish keeps event id): re-publish of an event preserves `id` and `sig`.
 - Compose flow on iOS: login → compose → publish → note visible on primal externally and in local timeline within one ViewBatch.
 
-**Runnable artifact.** iOS Twitter slice with working compose. Report in `docs/perf/m6/write-path.md`.
+**Runnable artifact.** Chirp with working compose. Report in `docs/perf/m6/write-path.md`.

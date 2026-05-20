@@ -2,7 +2,15 @@
 
 ## Chirp
 
-The production Nostr client. All active iOS development lives here.
+The production Nostr client and canonical iOS showcase for NMP. All active iOS
+development lives here.
+
+Chirp is expected to surface every reusable NMP feature before that feature is
+called product-ready, unless the feature has a documented platform exception.
+The old Twitter-like timeline is only the social baseline; Chirp's goal is a
+complete client that demonstrates the whole framework.
+
+See [`../docs/plan/chirp-showcase.md`](../docs/plan/chirp-showcase.md).
 
 ### Absorbed apps
 

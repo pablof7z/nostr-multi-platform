@@ -3,7 +3,7 @@ package org.nmp.android
 /**
  * Thin JNI wrapper around `libnmp_android_ffi.so`, which links the SAME
  * `nmp_app_*` Rust kernel the iOS app consumes. Direct mirror of
- * `ios/NmpPulse/.../KernelBridge.swift`'s `KernelHandle`.
+ * `ios/Chirp/.../KernelBridge.swift`'s `KernelHandle`.
  *
  * Doctrine: no business logic or cached state (D5/D8). Errors never cross FFI
  * (D6) — natives return only a handle / string / void; outcomes arrive in the
@@ -28,6 +28,9 @@ class KernelBridge {
     /** Blocking (≤250 ms) drain of the kernel snapshot channel; null on idle. */
     fun nextUpdate(): String? = if (handle != 0L) nativeNextUpdate(handle) else null
 
+    /** Full Chirp modular timeline projection produced by `nmp-app-chirp`. */
+    fun chirpSnapshot(): String? = if (handle != 0L) nativeChirpSnapshot(handle) else null
+
     /**
      * Expose the raw kernel Session pointer (jlong) so per-app bridges
      * (e.g. `PodcastKernelBridge`) can call `nmp_app_podcast_register(app)`
@@ -48,5 +51,6 @@ class KernelBridge {
     private external fun nativeStart(handle: Long, visibleLimit: Int, emitHz: Int)
     private external fun nativeStop(handle: Long)
     private external fun nativeNextUpdate(handle: Long): String?
+    private external fun nativeChirpSnapshot(handle: Long): String?
     private external fun nativeFree(handle: Long)
 }

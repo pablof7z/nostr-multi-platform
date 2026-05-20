@@ -2,7 +2,7 @@
 
 > Part of the [Build & Validation Plan](../plan.md). Arc 3 — WoT + cross-platform + release (M12 Wallet deferred post-v1).
 
-**Demo product:** Twitter slice gets a "score-filtered timeline" toggle. With it on, low-WoT-score authors are de-prioritized; toggling off restores chronological order.
+**Demo product:** Chirp gets a "score-filtered timeline" toggle. With it on, low-WoT-score authors are de-prioritized; toggling off restores chronological order.
 
 **Scope.** Per spec §7.7:
 
@@ -21,4 +21,4 @@
 - Score-filtered timeline visibly reorders / hides low-score authors; toggle off restores chronological.
 - New kind:3 arrival incrementally updates scores without full recompute.
 
-**Runnable artifact.** iOS Twitter slice with WoT toggle. Report in `docs/perf/m13/wot.md`.
+**Runnable artifact.** Chirp with WoT toggle. Report in `docs/perf/m13/wot.md`.

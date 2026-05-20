@@ -13,7 +13,7 @@ Every M11 exit-gate bullet maps to a single, named evidence artifact. This doc i
 |---|---|---|
 | `nmp-core` gains zero podcast nouns | `docs/perf/m11/kernel-boundary.md` with the grep output | `grep -RE 'Podcast\|Episode\|Transcript\|Chapter\|Player\|Feed\|Insight\|Guest\|RSS\|Audio\|MP3' crates/nmp-core/src/` (whitelist the `audio_playback.rs` trait file) → expected empty |
 | Capability families are general | `docs/perf/m11/capabilities-review.md` | Per-capability review against [`capabilities.md`](capabilities.md) §L — Request/Result must not name podcast nouns; a one-line reviewer signoff per capability |
-| Reactivity behavior identical to Twitter slice | `docs/perf/m11/reactivity.md` | Re-run `reactivity-bench --standard --fail-on-gate` with `podcast-core` views registered alongside the existing nip01 views; assert all gates pass |
+| Reactivity behavior identical to Chirp social baseline | `docs/perf/m11/reactivity.md` | Re-run `reactivity-bench --standard --fail-on-gate` with `podcast-core` views registered alongside the existing nip01 views; assert all gates pass |
 | No app-state leaks across the boundary in either direction | same as row 1 (kernel) + a sibling grep across `crates/nmp-core/src/` for `nostr\|relay\|nip` produces no hit inside `apps/podcast/` crates | the grep is added to CI |
 
 ---

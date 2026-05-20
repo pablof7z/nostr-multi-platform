@@ -72,7 +72,7 @@ When all four land, a plan-revisor agent folds the findings into `docs/plan/m2-s
 
 ```
 M0    Kernel substrate + fixture                                      ✅ DONE
-M1    Twitter slice on iOS                                            🟡 hardening
+M1    Chirp social baseline on iOS                                    🟡 hardening
 M2    Subscription compilation + outbox + KIND:3 auto-tracking        — design + impl
 M3    Persistence (LMDB) + insert invariants                          — design + impl
 M4    NIP-77 negentropy sync                                          — pending

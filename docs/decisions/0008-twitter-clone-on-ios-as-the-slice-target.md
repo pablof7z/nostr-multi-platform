@@ -1,10 +1,21 @@
-# ADR 0008: Twitter-clone on iOS as the Phase 1a demo target
+# ADR 0008: Initial Chirp social baseline on iOS as the Phase 1a demo target
 
 **Date:** 2026-05-17
 **Status:** accepted (positioning modified by ADR-0009)
 **Supersedes (in part):** ADR-0006 (in choice of demo target only — discipline preserved)
 **Relates to:** ADR-0005 (domain-keyed shadow), ADR-0007 (diagnostics bridge)
-**Modified by:** ADR-0009 — the Twitter clone is now built as **the first canonical extension module set** (`twitter-core` app crate on top of `nmp-nip01` / `nmp-nip02` / `nmp-nip10` / `nmp-nip25` protocol modules), not as a built-in feature of `nmp-core`. Sub-phase plan adjusted: 1a.0 (foundations) is followed by 1a.1 (**kernel substrate + non-Nostr fixture module**) BEFORE 1a.2 (first Nostr protocol module + desktop avatar slice). Twitter clone features layer on from 1a.4 onward.
+**Modified by:** ADR-0009 — the initial Chirp social baseline is now built as **the first canonical extension module set** (`twitter-core` app crate on top of `nmp-nip01` / `nmp-nip02` / `nmp-nip10` / `nmp-nip25` protocol modules), not as a built-in feature of `nmp-core`. Sub-phase plan adjusted: 1a.0 (foundations) is followed by 1a.1 (**kernel substrate + non-Nostr fixture module**) BEFORE 1a.2 (first Nostr protocol module + desktop avatar slice). Social-client features layer on from 1a.4 onward.
+
+## 2026-05-20 positioning update
+
+ADR-0008 defines the first social slice, not Chirp's product ceiling. Chirp has
+since become NMP's full showcase client: every reusable feature NMP ships should
+eventually have a Chirp surface, diagnostics path, smoke path, or documented
+platform exception. The timeline/profile/thread/compose workflow remains the
+minimum social baseline that proves the kernel can drive a recognizable client.
+It is not the final ambition for Chirp.
+
+See [`../plan/chirp-showcase.md`](../plan/chirp-showcase.md).
 
 ## Context
 
@@ -16,7 +27,7 @@ The right way to manage the added scope is to keep ADR-0006's walking-skeleton d
 
 ## Decision
 
-The Phase 1a demo target is **a simple Twitter-clone iOS app pulling from primal's relay**. Functionality at the end of 1a:
+The Phase 1a demo target was **the first Chirp social baseline on iOS, pulling from primal's relay**. Functionality at the end of 1a:
 
 - Open the app (no login required) → see a real, lively timeline.
 - Tap a post to see the thread.

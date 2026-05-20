@@ -8,8 +8,8 @@ import os.log
 // Mirrors `Bridge/ModularTimelineBridge.swift`: a thin extension on
 // `KernelHandle` that owns the lifetime of the opaque
 // `nmp_app_chirp_marmot_register` handle, plus an `@Observable`-style
-// `ObservableObject` (`MarmotStore`) that polls `…_marmot_snapshot` on the
-// existing kernel tick cadence and wraps each `…_marmot_dispatch` op.
+// `ObservableObject` (`MarmotStore`) that refreshes `…_marmot_snapshot` when
+// the kernel pushes snapshots and wraps each `…_marmot_dispatch` op.
 //
 // Conventions matched verbatim from the modular-timeline bridge:
 //   • C symbols declared in `Bridge/NmpCore.h` (the project's bridging
@@ -38,7 +38,7 @@ import os.log
 // Before inviting a peer, their signed kind:30443 KeyPackage event must
 // be fetched from relays and cached locally (MDK requires it for MLS
 // group creation). Use `nmp_app_chirp_marmot_fetch_key_packages` to
-// trigger a kernel relay fetch for specific pubkeys; poll
+// register kernel relay interests for specific pubkeys; observe
 // `snapshot.cachedKpPubkeys` to know when they're available.
 //
 // ── Remaining limitation ──────────────────────────────────────────────────
@@ -141,23 +141,16 @@ struct MarmotOpResult: Decodable, Equatable {
     let error: String?
     let needs: [String]?
     let errors: [String]?
-    let totalEvents: Int?
-    let welcomes: Int?
-    let messages: Int?
-    let keyPackages: Int?
 
     enum CodingKeys: String, CodingKey {
         case ok, error, needs, errors
-        case totalEvents = "total_events"
-        case welcomes, messages
-        case keyPackages = "key_packages"
     }
 
     static let bridgeUnavailable = MarmotOpResult.failure("marmot bridge unavailable")
 
     static func failure(_ message: String) -> MarmotOpResult {
         MarmotOpResult(ok: false, error: message, needs: nil,
-                       errors: nil, totalEvents: nil, welcomes: nil, messages: nil, keyPackages: nil)
+                       errors: nil)
     }
 }
 
@@ -268,9 +261,9 @@ extension KernelHandle {
         }
     }
 
-    /// Trigger the kernel to fetch kind:30443/443 KeyPackage events for the
+    /// Register kernel interests for kind:30443/443 KeyPackage events for the
     /// given pubkeys. Fire-and-forget; results arrive asynchronously via the
-    /// Marmot tap. Poll `snapshot.cachedKpPubkeys` to know when available.
+    /// Marmot tap.
     func fetchKeyPackagesForPeers(npubs: [String]) {
         guard let handle = marmotHandle else { return }
         guard let data = try? JSONSerialization.data(withJSONObject: npubs),
@@ -379,28 +372,8 @@ final class MarmotStore: ObservableObject {
         dispatch(["op": "publish_key_package"])
     }
 
-    /// Fetch kind:1059/445/30443 from the configured write relays and ingest
-    /// any welcomes, messages, and key packages. Blocks the calling thread
-    /// for up to ~8s per relay (each filter); call from a background Task.
-    @discardableResult
-    func pollInbox(extraRelays: [String] = []) -> MarmotOpResult {
-        var op: [String: Any] = ["op": "poll_inbox"]
-        if !extraRelays.isEmpty {
-            op["relays"] = extraRelays
-        }
-        mbLog.info("pollInbox: dispatching with relays=\(extraRelays)")
-        let result = dispatch(op)
-        mbLog.info("pollInbox: ok=\(result.ok) total_events=\(result.totalEvents ?? -1) welcomes=\(result.welcomes ?? -1) messages=\(result.messages ?? -1) kps=\(result.keyPackages ?? -1)")
-        if let errs = result.errors, !errs.isEmpty {
-            mbLog.error("pollInbox: ingest errors: \(errs.joined(separator: " | "))")
-        }
-        if let e = result.error { mbLog.error("pollInbox: top-level error: \(e)") }
-        return result
-    }
-
     /// Trigger key-package fetch for the given npubs from relays. Fire-and-
-    /// forget. Check `snapshot.cachedKpPubkeys` on the next tick to see which
-    /// ones arrived.
+    /// forget; the kernel pushes matching signed events through the Marmot tap.
     func fetchKeyPackages(npubs: [String]) {
         kernel.fetchKeyPackagesForPeers(npubs: npubs)
     }

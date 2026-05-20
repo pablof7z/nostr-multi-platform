@@ -2,7 +2,7 @@
 
 > Part of the [Build & Validation Plan](../plan.md). Arc 1 — Kernel substrate + Nostr social stack.
 
-**Demo product:** Twitter slice gets an account switcher. Logged-in users can add a second account, switch between them, and each account's timeline / contacts / reactions are correctly isolated.
+**Demo product:** Chirp gets an account switcher. Logged-in users can add a second account, switch between them, and each account's timeline / contacts / reactions are correctly isolated.
 
 **Scope.** Per spec doctrine D4 (single writer per fact) extended to account scope:
 
@@ -20,4 +20,4 @@
 - Switching accounts during an in-flight publish: the publish is account-tagged, completes correctly, lands in the originating account's timeline only.
 - Per-account signer never signs an event for the wrong account (test forces dispatch through a wrong-account signer; the action ledger rejects).
 
-**Runnable artifact.** Account switcher in iOS demo with two real test accounts. Report in `docs/perf/m8/multi-account.md`.
+**Runnable artifact.** Account switcher in Chirp with two real test accounts. Report in `docs/perf/m8/multi-account.md`.

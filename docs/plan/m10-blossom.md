@@ -2,7 +2,7 @@
 
 > Part of the [Build & Validation Plan](../plan.md). Arc 1 — Kernel substrate + Nostr social stack.
 
-**Demo product:** Twitter slice user can attach a photo to a compose, see upload progress, and the published note has a valid Blossom URL. Profile-picture upload also works.
+**Demo product:** Chirp user can attach a photo to a compose, see upload progress, and the published note has a valid Blossom URL. Profile-picture upload also works.
 
 **Scope.** Per spec §7.11. Establishes the **long-running capability lifecycle pattern** that the podcast app ([M11](m11-podcast.md)) builds on:
 
@@ -22,4 +22,4 @@
 - Slow-network upload remains responsive — main UI is never blocked.
 - Profile picture update through compose → kind:0 republish with new Blossom URL → in-place refinement across all open Profile / Timeline payloads (per doctrine D1).
 
-**Runnable artifact.** iOS Twitter slice with media compose. Report in `docs/perf/m10/blossom.md`.
+**Runnable artifact.** Chirp with media compose. Report in `docs/perf/m10/blossom.md`.

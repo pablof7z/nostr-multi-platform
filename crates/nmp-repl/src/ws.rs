@@ -12,7 +12,7 @@
 //!
 //! [`next_frame`] now parses the JSON envelope **once, here**, and returns a
 //! typed [`Frame`]. Callers no longer re-parse and no longer have to
-//! distinguish a benign poll-timeout from a socket close by string-matching
+//! distinguish a benign read timeout from a socket close by string-matching
 //! an empty string. CLOSED / AUTH / NOTICE / a relay-initiated WS Close are
 //! each first-class and terminal-aware at every call site.
 
@@ -25,9 +25,9 @@ use tungstenite::{stream::MaybeTlsStream, Message, WebSocket};
 
 pub type Sock = WebSocket<MaybeTlsStream<TcpStream>>;
 
-/// Per-read poll interval. Keeps reads cooperative so the wall deadline
+/// Per-read timeout. Keeps reads cooperative so the wall deadline
 /// gets enforced promptly. Matches `outbox_perf.rs:48`.
-pub const READ_POLL: Duration = Duration::from_millis(250);
+pub const READ_TIMEOUT: Duration = Duration::from_millis(250);
 
 /// One decoded relay → client frame. Parsed once in [`next_frame`] so no
 /// caller re-parses and none can silently swallow a terminal frame.
@@ -57,8 +57,8 @@ pub enum Frame {
     /// Connect/IO failure observed mid-read (socket dropped, reset, etc.).
     /// Terminal for everything on this socket.
     Io { kind: ErrorKind },
-    /// Benign read-poll timeout (`WouldBlock`/`TimedOut`). NOT terminal —
-    /// the caller loops and re-polls until its own wall deadline.
+    /// Benign read timeout (`WouldBlock`/`TimedOut`). NOT terminal — the
+    /// caller keeps reading until its own wall deadline.
     Timeout,
 }
 
@@ -81,8 +81,8 @@ pub fn try_connect_msg(url: &str) -> std::result::Result<Sock, String> {
         Err(e) => return Err(connect_err_msg(&e)),
     };
     let _ = match socket.get_ref() {
-        MaybeTlsStream::Plain(s) => s.set_read_timeout(Some(READ_POLL)),
-        MaybeTlsStream::Rustls(s) => s.get_ref().set_read_timeout(Some(READ_POLL)),
+        MaybeTlsStream::Plain(s) => s.set_read_timeout(Some(READ_TIMEOUT)),
+        MaybeTlsStream::Rustls(s) => s.get_ref().set_read_timeout(Some(READ_TIMEOUT)),
         _ => Ok(()),
     };
     Ok(socket)
