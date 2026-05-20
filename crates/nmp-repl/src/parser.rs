@@ -8,7 +8,8 @@
 use std::time::Duration;
 
 use crate::ast::{
-    BudgetPatch, Command, FilterAst, RefreshScope, SeedInput, ShowTopic, Value, VarName,
+    BudgetPatch, ChirpCommand, Command, FilterAst, RefreshScope, SeedInput, ShowTopic, Value,
+    VarName,
 };
 
 /// Parse a single line of input into a `Command`.
@@ -48,6 +49,7 @@ pub fn parse_line(line: &str) -> Result<Command, String> {
         "set-budget" => parse_set_budget(args),
         "refresh" => parse_refresh(args),
         "expand" => parse_expand(args),
+        "chirp" => parse_chirp(args),
         "help" => Ok(Command::Help(args.first().map(|s| s.to_string()))),
         "create-account" => parse_create_account(args),
         "load-key" => parse_load_key(args),
@@ -413,6 +415,78 @@ fn parse_expand(args: &[&str]) -> Result<Command, String> {
     Ok(Command::Expand(VarName(name.to_string())))
 }
 
+// ── Chirp parity verbs ─────────────────────────────────────────────────────
+
+fn parse_chirp(args: &[&str]) -> Result<Command, String> {
+    let Some(surface) = args.first() else {
+        return Err("parse error: chirp takes a surface (try 'help chirp')".to_string());
+    };
+    let rest = &args[1..];
+    let cmd = match *surface {
+        "home" => parse_chirp_nullary(rest, "chirp home").map(|_| ChirpCommand::Home)?,
+        "notifications" | "mentions" => {
+            parse_chirp_nullary(rest, "chirp notifications").map(|_| ChirpCommand::Notifications)?
+        }
+        "profile" => ChirpCommand::Profile(parse_chirp_one(rest, "chirp profile", "<npub|hex>")?),
+        "thread" => ChirpCommand::Thread(parse_chirp_one(rest, "chirp thread", "<note|id>")?),
+        "compose" => ChirpCommand::Compose(parse_chirp_text(rest, "chirp compose")?),
+        "reply" => {
+            if rest.len() < 2 {
+                return Err("parse error: chirp reply takes <note|id> <text>".to_string());
+            }
+            ChirpCommand::Reply(rest[0].to_string(), rest[1..].join(" "))
+        }
+        "react" => {
+            if rest.is_empty() || rest.len() > 2 {
+                return Err("parse error: chirp react takes <note|id> [reaction]".to_string());
+            }
+            ChirpCommand::React(rest[0].to_string(), rest.get(1).copied().unwrap_or("+").to_string())
+        }
+        "follow" => ChirpCommand::Follow(parse_chirp_one(rest, "chirp follow", "<npub|hex>")?),
+        "unfollow" => {
+            ChirpCommand::Unfollow(parse_chirp_one(rest, "chirp unfollow", "<npub|hex>")?)
+        }
+        "search" => ChirpCommand::SearchTag(parse_chirp_one(rest, "chirp search", "#tag")?),
+        "diagnostics" | "diag" => {
+            parse_chirp_nullary(rest, "chirp diagnostics").map(|_| ChirpCommand::Diagnostics)?
+        }
+        "parity" => parse_chirp_nullary(rest, "chirp parity").map(|_| ChirpCommand::Parity)?,
+        other => {
+            return Err(format!(
+                "parse error: unknown chirp surface '{other}' (try 'help chirp')"
+            ));
+        }
+    };
+    Ok(Command::Chirp(cmd))
+}
+
+fn parse_chirp_nullary(args: &[&str], verb: &'static str) -> Result<(), String> {
+    if !args.is_empty() {
+        return Err(format!("parse error: {verb} takes no arguments"));
+    }
+    Ok(())
+}
+
+fn parse_chirp_one(
+    args: &[&str],
+    verb: &'static str,
+    placeholder: &'static str,
+) -> Result<String, String> {
+    if args.len() != 1 {
+        return Err(format!(
+            "parse error: {verb} takes exactly one argument: {placeholder}"
+        ));
+    }
+    Ok(args[0].to_string())
+}
+
+fn parse_chirp_text(args: &[&str], verb: &'static str) -> Result<String, String> {
+    if args.is_empty() {
+        return Err(format!("parse error: {verb} takes message text"));
+    }
+    Ok(args.join(" "))
+}
+
 // ── MLS / Marmot verbs ──────────────────────────────────────────────────────
 
 fn parse_nullary(args: &[&str], verb: &'static str) -> Result<(), String> {
@@ -695,6 +769,65 @@ mod tests {
             parse_line("help req").unwrap(),
             Command::Help(Some("req".to_string()))
         );
+    }
+
+    #[test]
+    fn chirp_parses_read_surfaces() {
+        assert_eq!(
+            parse_line("chirp home").unwrap(),
+            Command::Chirp(ChirpCommand::Home)
+        );
+        assert_eq!(
+            parse_line("chirp notifications").unwrap(),
+            Command::Chirp(ChirpCommand::Notifications)
+        );
+        assert_eq!(
+            parse_line("chirp profile npub1abc").unwrap(),
+            Command::Chirp(ChirpCommand::Profile("npub1abc".to_string()))
+        );
+        assert_eq!(
+            parse_line("chirp thread note1abc").unwrap(),
+            Command::Chirp(ChirpCommand::Thread("note1abc".to_string()))
+        );
+        assert_eq!(
+            parse_line("chirp search #nostr").unwrap(),
+            Command::Chirp(ChirpCommand::SearchTag("#nostr".to_string()))
+        );
+    }
+
+    #[test]
+    fn chirp_parses_write_surfaces() {
+        assert_eq!(
+            parse_line("chirp compose hello nostr").unwrap(),
+            Command::Chirp(ChirpCommand::Compose("hello nostr".to_string()))
+        );
+        assert_eq!(
+            parse_line("chirp reply note1abc hello back").unwrap(),
+            Command::Chirp(ChirpCommand::Reply(
+                "note1abc".to_string(),
+                "hello back".to_string()
+            ))
+        );
+        assert_eq!(
+            parse_line("chirp react note1abc *").unwrap(),
+            Command::Chirp(ChirpCommand::React("note1abc".to_string(), "*".to_string()))
+        );
+        assert_eq!(
+            parse_line("chirp follow npub1abc").unwrap(),
+            Command::Chirp(ChirpCommand::Follow("npub1abc".to_string()))
+        );
+        assert_eq!(
+            parse_line("chirp unfollow npub1abc").unwrap(),
+            Command::Chirp(ChirpCommand::Unfollow("npub1abc".to_string()))
+        );
+    }
+
+    #[test]
+    fn chirp_rejects_bad_shapes() {
+        assert!(parse_line("chirp").is_err());
+        assert!(parse_line("chirp profile").is_err());
+        assert!(parse_line("chirp reply note1abc").is_err());
+        assert!(parse_line("chirp unknown").is_err());
     }
 
     #[test]

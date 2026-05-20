@@ -11,6 +11,7 @@ pub mod set_budget;
 pub mod refresh;
 pub mod expand;
 pub mod help;
+pub mod chirp;
 
 // ── MLS / Marmot (bypass-kernel, direct-WebSocket) ───────────────────────
 pub mod mls_util;

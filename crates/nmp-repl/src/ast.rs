@@ -17,6 +17,7 @@ pub enum Command {
     Refresh(RefreshScope),
     Expand(VarName),
     Help(Option<String>),
+    Chirp(ChirpCommand),
 
     // ── MLS / Marmot (bypass-kernel, direct-WebSocket) ───────────────────
     /// `create-account [name] [relay…]` — generate keys, publish kind:0 + kind:10002.
@@ -44,6 +45,24 @@ pub enum Command {
     Quit,
     /// Empty line — no-op.
     Noop,
+}
+
+/// Chirp app parity commands. These are high-level diagnostic aliases for the
+/// surfaces the Swift app exposes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ChirpCommand {
+    Home,
+    Notifications,
+    Profile(String),
+    Thread(String),
+    Compose(String),
+    Reply(String, String),
+    React(String, String),
+    Follow(String),
+    Unfollow(String),
+    SearchTag(String),
+    Diagnostics,
+    Parity,
 }
 
 /// Seed input form (pre-resolution); the executor normalises to hex.
