@@ -14,24 +14,18 @@
 //! read-back path is real: [`crate::ffi`]'s `nmp_app_dispatch_action` calls
 //! [`ActionRegistry::start`] and returns the resulting correlation id.
 //!
-//! # Scope (this module = validation; execution is one layer up)
+//! # Scope (validation + execution, both in the registry)
 //!
-//! This module performs **action validation + correlation-id assignment**
-//! and nothing else. It does NOT itself execute the action:
+//! This registry performs **action validation, correlation-id assignment,
+//! AND execution dispatch**:
 //!
-//! * `PublishModule::start` (see `publish/action.rs`) only checks that the
-//!   signed event carries a non-empty `id`/`sig` and returns an
-//!   `ActionPlan`. It does not touch the relay layer.
-//! * Durable persistence + replay of in-flight actions (the action ledger)
-//!   is a follow-up and out of scope here.
-//!
-//! So `ActionRegistry::start()` returning a correlation id means "the
-//! action was accepted and assigned an id". **Execution** of an accepted
-//! action is the caller's job: `ffi::action::execute_action` (the M6
-//! execution wiring) takes the same action JSON, converts a
-//! `PublishAction::Publish` into `ActorCommand::PublishSignedEvent`, and
-//! hands it to the actor for the actual relay dispatch. The remaining
-//! follow-up is the durable action ledger, not the execution path.
+//! * [`ActionRegistry::start`] validates and assigns a correlation id.
+//! * [`ActionRegistry::execute`] drives the validated action to the actor.
+//!   Each module registers an executor closure via
+//!   [`ActionRegistry::register_executor`]; `ffi::action::execute_action`
+//!   is now a one-liner that calls `execute`. This eliminates the hardcoded
+//!   `match namespace { "nmp.publish" => … }` that prevented any
+//!   module from running without editing `nmp-core`.
 //!
 //! # Type erasure
 //!
@@ -46,10 +40,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 
-use crate::substrate::{
-    ActionContext, ActionId, ActionInput, ActionModule, ActionPlan, ActionRejection,
-    ActionTransition,
-};
+use crate::substrate::{ActionContext, ActionId, ActionModule, ActionPlan, ActionRejection};
 
 /// Dyn-safe facade over [`ActionModule`].
 ///
@@ -67,14 +58,6 @@ trait ErasedActionModule: Send + Sync {
         action_json: &str,
     ) -> Result<ActionPlan<Value>, ActionRejection>;
 
-    /// Drive one [`ActionModule::reduce`] step with erased input/output.
-    #[allow(dead_code)] // Wired for completeness; the M6 ledger is the caller.
-    fn reduce(
-        &self,
-        ctx: &mut ActionContext,
-        id: ActionId,
-        input: ActionInput<Value>,
-    ) -> ActionTransition<Value, Value>;
 }
 
 /// Zero-sized adapter binding a concrete [`ActionModule`] `M` to the
@@ -104,73 +87,26 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
         })
     }
 
-    fn reduce(
-        &self,
-        ctx: &mut ActionContext,
-        id: ActionId,
-        input: ActionInput<Value>,
-    ) -> ActionTransition<Value, Value> {
-        // Translate the erased input back into the module's typed `Step`.
-        let typed_input = match input {
-            ActionInput::Started => ActionInput::Started,
-            ActionInput::ResumedAfterRestart { step } => {
-                match serde_json::from_value::<M::Step>(step) {
-                    Ok(s) => ActionInput::ResumedAfterRestart { step: s },
-                    Err(e) => {
-                        return ActionTransition::Fail {
-                            reason: format!("step deserialize: {e}"),
-                            transient: false,
-                        };
-                    }
-                }
-            }
-            ActionInput::CapabilityResult { value } => ActionInput::CapabilityResult { value },
-            ActionInput::RelayOk { relay_url } => ActionInput::RelayOk { relay_url },
-            ActionInput::Timeout => ActionInput::Timeout,
-            ActionInput::Cancel => ActionInput::Cancel,
-        };
-        let transition = M::reduce(ctx, id, typed_input);
-        // Erase the typed transition back to `serde_json::Value`.
-        match transition {
-            ActionTransition::Continue { step, status } => ActionTransition::Continue {
-                step: serde_json::to_value(&step).unwrap_or(Value::Null),
-                status,
-            },
-            ActionTransition::Complete { output } => ActionTransition::Complete {
-                output: serde_json::to_value(&output).unwrap_or(Value::Null),
-            },
-            ActionTransition::Fail { reason, transient } => {
-                ActionTransition::Fail { reason, transient }
-            }
-            ActionTransition::AwaitCapability {
-                request_namespace,
-                payload,
-                next_step,
-            } => ActionTransition::AwaitCapability {
-                request_namespace,
-                payload,
-                next_step: serde_json::to_value(&next_step).unwrap_or(Value::Null),
-            },
-            ActionTransition::AwaitUserApproval { prompt, next_step } => {
-                ActionTransition::AwaitUserApproval {
-                    prompt,
-                    next_step: serde_json::to_value(&next_step).unwrap_or(Value::Null),
-                }
-            }
-        }
-    }
 }
+
+/// Dyn-safe executor closure type. Receives the already-validated action
+/// JSON and a `send` callback that routes an [`ActorCommand`] to the actor.
+/// Returns `Ok(())` when the actor command was queued, `Err(msg)` on decode
+/// or dispatch failure.
+type ExecutorFn =
+    Box<dyn Fn(&str, &dyn Fn(crate::actor::ActorCommand)) -> Result<(), String> + Send + Sync>;
 
 /// Namespace-keyed registry of [`ActionModule`]s.
 ///
-/// Stateless apart from the module table: every registered module is a ZST
-/// adapter, so the registry is cheap to construct and `Send + Sync` (the
-/// adapters are too). [`Self::start`] is the live dispatch path — it
-/// validates an action and assigns a correlation id;
-/// `ffi::action::execute_action` performs the actual execution. See the
-/// module-level docs for the validation-vs-execution split.
+/// Stateless apart from the module and executor tables: every registered
+/// module is a ZST adapter (cheap, `Send + Sync`). [`Self::start`] validates
+/// and assigns a correlation id; [`Self::execute`] drives the validated
+/// action to the actor. A module with no registered executor returns
+/// `Err("no executor registered for namespace '…'")` from `execute` — the
+/// caller surfaces this as `{"error":…}` (D6).
 pub struct ActionRegistry {
     modules: HashMap<&'static str, Box<dyn ErasedActionModule>>,
+    executors: HashMap<&'static str, ExecutorFn>,
 }
 
 impl Default for ActionRegistry {
@@ -180,10 +116,12 @@ impl Default for ActionRegistry {
 }
 
 impl ActionRegistry {
-    /// An empty registry. Call [`Self::register`] for each module.
+    /// An empty registry. Call [`Self::register`] and
+    /// [`Self::register_executor`] for each module.
     pub fn new() -> Self {
         Self {
             modules: HashMap::new(),
+            executors: HashMap::new(),
         }
     }
 
@@ -196,6 +134,21 @@ impl ActionRegistry {
         );
     }
 
+    /// Register an executor closure for `namespace`. The closure receives the
+    /// validated action JSON and a `send` callback; it converts the action to
+    /// an [`ActorCommand`] and calls `send(cmd)`. A second registration
+    /// replaces the first.
+    pub fn register_executor(
+        &mut self,
+        namespace: &'static str,
+        f: impl Fn(&str, &dyn Fn(crate::actor::ActorCommand)) -> Result<(), String>
+            + Send
+            + Sync
+            + 'static,
+    ) {
+        self.executors.insert(namespace, Box::new(f));
+    }
+
     /// Validate `action_json` against the module registered under
     /// `namespace`, returning a fresh correlation id plus the erased
     /// [`ActionPlan`].
@@ -205,10 +158,6 @@ impl ActionRegistry {
     /// `ActionRejection::Invalid` (surfaced from the adapter). The
     /// correlation id is generated *after* validation succeeds so a rejected
     /// action never consumes one.
-    ///
-    /// NOTE: this method only validates. A returned id means the action was
-    /// accepted; `ffi::action::execute_action` is what then drives it to the
-    /// actor for execution (see the module docs).
     pub fn start(
         &self,
         ctx: &mut ActionContext,
@@ -222,26 +171,31 @@ impl ActionRegistry {
         Ok((new_action_id(), plan))
     }
 
-    /// Drive one reduce step for an in-flight action. Returns `None` when
-    /// `namespace` is not registered.
+    /// Execute the validated action by invoking the registered executor for
+    /// `namespace`. The `send` callback routes the resulting
+    /// [`ActorCommand`] to the actor (D8: non-blocking channel send only).
     ///
-    /// Wired for completeness — the M6 action ledger is the intended caller.
-    /// No code drives `reduce` today (the publish engine drives transitions
-    /// in-process), so this is `#[allow(dead_code)]`.
-    #[allow(dead_code)]
-    pub fn reduce(
+    /// Returns `Err` when no executor is registered — the caller surfaces
+    /// this as `{"error":…}` (D6: a missing executor is never silently
+    /// swallowed). This eliminates the `match namespace { "nmp.publish" => …
+    /// _ => Err }` that was the only execution path and blocked all other
+    /// modules from running without editing `nmp-core`.
+    pub(crate) fn execute(
         &self,
-        ctx: &mut ActionContext,
         namespace: &str,
-        id: ActionId,
-        input: ActionInput<Value>,
-    ) -> Option<ActionTransition<Value, Value>> {
-        let module = self.modules.get(namespace)?;
-        Some(module.reduce(ctx, id, input))
+        action_json: &str,
+        send: &dyn Fn(crate::actor::ActorCommand),
+    ) -> Result<(), String> {
+        match self.executors.get(namespace) {
+            Some(exec) => exec(action_json, send),
+            None => Err(format!(
+                "no executor registered for namespace '{namespace}'"
+            )),
+        }
     }
 
     /// `true` when a module is registered under `namespace`.
-    #[allow(dead_code)] // Test/diagnostic helper.
+    #[cfg(test)]
     pub fn contains(&self, namespace: &str) -> bool {
         self.modules.contains_key(namespace)
     }
@@ -271,11 +225,62 @@ fn new_action_id() -> ActionId {
 /// Only [`crate::publish::PublishModule`] is registered here. NIP-29 group
 /// actions and the NIP-59 welcome-wrap module are *app* nouns (D0 —
 /// `nmp-core` never names a protocol crate); the app host registers those
-/// against its own registry instance.
+/// against its own registry instance via [`ActionRegistry::register`] +
+/// [`ActionRegistry::register_executor`].
 pub fn default_registry() -> ActionRegistry {
+    use crate::actor::ActorCommand;
+    use crate::publish::PublishAction;
+
     let mut registry = ActionRegistry::new();
     registry.register::<crate::publish::PublishModule>();
+    registry.register_executor("nmp.publish", |action_json, send| {
+        let action: PublishAction = serde_json::from_str(action_json)
+            .map_err(|e| format!("publish action decode failed: {e}"))?;
+        match action {
+            PublishAction::Publish { event, target, .. } => {
+                // D8 — non-blocking channel send only; the actor loop
+                // owns signing/publishing (D4). The event is already
+                // signed; the actor re-verifies it before publishing.
+                send(ActorCommand::PublishSignedEvent {
+                    raw: signed_event_to_raw(event),
+                    relays: relays_for_target(&target),
+                });
+                Ok(())
+            }
+            // No publish-engine cancel command yet; the registry
+            // already marked the action `Cancelled`.
+            PublishAction::Cancel { .. } => Ok(()),
+        }
+    });
     registry
+}
+
+/// Convert a [`SignedEvent`] (the publish-action / engine input shape) into
+/// a flat NIP-01 [`crate::store::RawEvent`] (the actor command shape). Pure
+/// field move — `id` and `sig` are carried verbatim, no re-signing. This is
+/// the inverse of the `RawEvent → SignedEvent` conversion in
+/// `actor::commands::publish::publish_signed_event`.
+fn signed_event_to_raw(event: crate::substrate::SignedEvent) -> crate::store::RawEvent {
+    crate::store::RawEvent {
+        id: event.id,
+        pubkey: event.unsigned.pubkey,
+        created_at: event.unsigned.created_at,
+        kind: event.unsigned.kind,
+        tags: event.unsigned.tags,
+        content: event.unsigned.content,
+        sig: event.sig,
+    }
+}
+
+/// Resolve a [`crate::publish::PublishTarget`] into the relay slice
+/// [`crate::actor::ActorCommand::PublishSignedEvent`] expects: `Auto` →
+/// empty (NIP-65 outbox resolver, D3 default), `Explicit` → the named
+/// opt-out relays.
+fn relays_for_target(target: &crate::publish::PublishTarget) -> Vec<crate::publish::RelayUrl> {
+    match target {
+        crate::publish::PublishTarget::Auto => Vec::new(),
+        crate::publish::PublishTarget::Explicit { relays } => relays.clone(),
+    }
 }
 
 #[cfg(test)]
