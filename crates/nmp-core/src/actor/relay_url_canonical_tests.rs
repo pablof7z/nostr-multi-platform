@@ -8,7 +8,7 @@
 use super::relay_mgmt::{close_relays, ensure_relay_worker, shutdown_relay_worker};
 use super::RelayControl;
 use crate::kernel::Kernel;
-use crate::relay::RelayRole;
+use crate::relay::{CanonicalRelayUrl, RelayRole};
 use crate::relay_worker::RelayEvent;
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc;
@@ -24,7 +24,7 @@ use std::sync::mpsc;
 fn t_normalize_case_and_slash_variants_share_one_pool_entry() {
     let mut kernel = Kernel::new(80);
     let (relay_tx, _relay_rx) = mpsc::channel::<RelayEvent>();
-    let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
+    let mut relay_controls: HashMap<CanonicalRelayUrl, RelayControl> = HashMap::new();
     let mut next_gen = 1_u64;
 
     let spawned_a = ensure_relay_worker(
@@ -66,7 +66,7 @@ fn t_normalize_case_and_slash_variants_share_one_pool_entry() {
 fn t_normalize_uppercase_scheme_deduplicates() {
     let mut kernel = Kernel::new(80);
     let (relay_tx, _relay_rx) = mpsc::channel::<RelayEvent>();
-    let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
+    let mut relay_controls: HashMap<CanonicalRelayUrl, RelayControl> = HashMap::new();
     let mut next_gen = 1_u64;
 
     let spawned_a = ensure_relay_worker(
@@ -100,7 +100,7 @@ fn t_normalize_uppercase_scheme_deduplicates() {
 fn t_normalize_nonempty_path_is_distinct() {
     let mut kernel = Kernel::new(80);
     let (relay_tx, _relay_rx) = mpsc::channel::<RelayEvent>();
-    let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
+    let mut relay_controls: HashMap<CanonicalRelayUrl, RelayControl> = HashMap::new();
     let mut next_gen = 1_u64;
 
     let spawned_a = ensure_relay_worker(
@@ -146,7 +146,7 @@ fn t_normalize_nonempty_path_is_distinct() {
 fn t_normalize_add_uppercase_remove_lowercase_no_leak() {
     let mut kernel = Kernel::new(80);
     let (relay_tx, _relay_rx) = mpsc::channel::<RelayEvent>();
-    let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
+    let mut relay_controls: HashMap<CanonicalRelayUrl, RelayControl> = HashMap::new();
     let mut next_gen = 1_u64;
 
     // Add with uppercase + trailing slash.
@@ -179,7 +179,7 @@ fn t_normalize_add_uppercase_remove_lowercase_no_leak() {
 fn t_normalize_add_lowercase_remove_trailing_slash_no_leak() {
     let mut kernel = Kernel::new(80);
     let (relay_tx, _relay_rx) = mpsc::channel::<RelayEvent>();
-    let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
+    let mut relay_controls: HashMap<CanonicalRelayUrl, RelayControl> = HashMap::new();
     let mut next_gen = 1_u64;
 
     let spawned = ensure_relay_worker(

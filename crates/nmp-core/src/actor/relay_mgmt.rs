@@ -9,9 +9,20 @@
 //! kernel resolves NIP-65 mailboxes). `connected_relays` is still per-`RelayRole`
 //! to drive the diagnostic surface (one row per lane) until M11 makes
 //! per-URL health a first-class part of the FFI projection.
+//!
+//! # Compiler-enforced canonical pool keys
+//!
+//! The pool is `HashMap<CanonicalRelayUrl, RelayControl>`. The key type makes
+//! the canonicalization invariant *unrepresentable to violate*: a raw `&str`
+//! cannot index the pool, so every lookup/insert site must first run
+//! [`CanonicalRelayUrl::parse_or_raw`]. This extends the compiler enforcement
+//! introduced for the kernel's `wire_subs` / `persistent_subs` maps (PR #7)
+//! into the actor transport layer — replacing the prior pattern of callers
+//! remembering to call `canonical_relay_url()` before a `HashMap<String, _>`
+//! lookup.
 
 use crate::kernel::Kernel;
-use crate::relay::{canonical_relay_url, OutboundMessage, RelayRole};
+use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole};
 use crate::relay_worker::{spawn_relay_worker, RelayCommand, RelayEvent};
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
@@ -36,7 +47,7 @@ pub(super) fn all_relays_connected(connected_relays: &HashSet<RelayRole>) -> boo
 /// `send_outbound` as the kernel emits OutboundMessages targeting their
 /// resolved relay URLs.
 pub(super) fn spawn_missing_relays(
-    relay_controls: &mut HashMap<String, RelayControl>,
+    relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
     relay_tx: &Sender<RelayEvent>,
     kernel: &mut Kernel,
     next_relay_generation: &mut u64,
@@ -62,14 +73,15 @@ pub(super) fn spawn_missing_relays(
 /// socket here before `send_outbound` enqueues the frame.
 ///
 /// T-relay-url-normalize: `relay_url` is passed through
-/// [`canonical_relay_url`] before the pool-key lookup so that URL-equivalent
-/// forms (differing only in case, trailing-slash-on-empty-path, or leading
-/// whitespace) all resolve to the same pool entry. If the URL cannot be
-/// canonicalized (e.g. a bootstrap seed that is already lowercase+clean), the
-/// original string is used unchanged — existing bootstrap behaviour is
-/// preserved.
+/// [`CanonicalRelayUrl::parse_or_raw`] before the pool-key lookup so that
+/// URL-equivalent forms (differing only in case, trailing-slash-on-empty-path,
+/// or leading whitespace) all resolve to the same pool entry. If the URL
+/// cannot be canonicalized (e.g. a bootstrap seed that is already
+/// lowercase+clean), the raw string is wrapped unchanged — existing bootstrap
+/// behaviour is preserved. The newtype key makes this canonicalization the
+/// only way to obtain a pool key, so a raw `&str` can no longer index the map.
 pub(super) fn ensure_relay_worker(
-    relay_controls: &mut HashMap<String, RelayControl>,
+    relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
     relay_tx: &Sender<RelayEvent>,
     kernel: &mut Kernel,
     next_relay_generation: &mut u64,
@@ -77,22 +89,27 @@ pub(super) fn ensure_relay_worker(
     relay_url: String,
 ) -> bool {
     // Canonicalize the URL so all callers (add, send_outbound, bootstrap)
-    // agree on the pool key. Fall back to the raw string for URLs that don't
-    // parse as ws/wss (e.g. bootstrap seeds that are already canonical).
-    let key = canonical_relay_url(&relay_url).unwrap_or_else(|| relay_url.clone());
+    // agree on the pool key. Fall back to wrapping the raw string for URLs
+    // that don't parse as ws/wss (e.g. bootstrap seeds that are already
+    // canonical).
+    let key = CanonicalRelayUrl::parse_or_raw(&relay_url);
     if relay_controls.contains_key(&key) {
         return false;
     }
     let generation = *next_relay_generation;
     *next_relay_generation = generation.saturating_add(1);
     kernel.relay_connecting(role);
+    // `spawn_relay_worker` and `RelayControl.relay_url` both take `String`
+    // (the transport-worker API stays string-typed); hand them the canonical
+    // inner string while the pool key keeps the `CanonicalRelayUrl` newtype.
+    let key_str = key.clone().into_string();
     relay_controls.insert(
-        key.clone(),
+        key,
         RelayControl {
             generation,
             role,
-            relay_url: key.clone(),
-            tx: spawn_relay_worker(role, key, generation, relay_tx.clone()),
+            relay_url: key_str.clone(),
+            tx: spawn_relay_worker(role, key_str, generation, relay_tx.clone()),
         },
     );
     true
@@ -102,7 +119,7 @@ pub(super) fn maybe_send_startup(
     running: bool,
     startup_sent: &mut bool,
     connected_relays: &HashSet<RelayRole>,
-    relay_controls: &mut HashMap<String, RelayControl>,
+    relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
     relay_tx: &Sender<RelayEvent>,
     kernel: &mut Kernel,
     next_relay_generation: &mut u64,
@@ -132,7 +149,7 @@ pub(super) fn maybe_send_startup(
 }
 
 pub(super) fn send_all_outbound(
-    relay_controls: &mut HashMap<String, RelayControl>,
+    relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
     relay_tx: &Sender<RelayEvent>,
     kernel: &mut Kernel,
     next_relay_generation: &mut u64,
@@ -166,16 +183,17 @@ pub(super) fn send_all_outbound(
 /// `message.relay_url` (trailing slash / uppercase scheme) would miss the
 /// entry and silently defer the frame forever.
 pub(super) fn send_outbound(
-    relay_controls: &mut HashMap<String, RelayControl>,
+    relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
     relay_tx: &Sender<RelayEvent>,
     kernel: &mut Kernel,
     next_relay_generation: &mut u64,
     message: OutboundMessage,
 ) {
     // Resolve to the canonical pool key first so both the spawn and the
-    // subsequent lookup agree on the same HashMap entry.
-    let canonical_key = canonical_relay_url(&message.relay_url)
-        .unwrap_or_else(|| message.relay_url.clone());
+    // subsequent lookup agree on the same HashMap entry. `ensure_relay_worker`
+    // takes a `String` (the transport-worker API stays string-typed); the
+    // `CanonicalRelayUrl` key is what indexes the pool here.
+    let canonical_key = CanonicalRelayUrl::parse_or_raw(&message.relay_url);
 
     // Spawn on demand for any URL the pool has not seen before. The
     // diagnostic lane is `message.role`; the actual socket dials `canonical_key`.
@@ -185,7 +203,7 @@ pub(super) fn send_outbound(
         kernel,
         next_relay_generation,
         message.role,
-        canonical_key.clone(),
+        canonical_key.clone().into_string(),
     );
 
     let Some(control) = relay_controls.get(&canonical_key) else {
@@ -199,7 +217,11 @@ pub(super) fn send_outbound(
     if control.tx.send(RelayCommand::Send(message.text)).is_err() {
         // T105: the dead channel is this specific socket — scope the
         // `retrying` mark to its URL, not the whole role lane.
-        kernel.relay_failed(message.role, &canonical_key, "relay worker stopped".to_string());
+        kernel.relay_failed(
+            message.role,
+            canonical_key.as_str(),
+            "relay worker stopped".to_string(),
+        );
     }
 }
 
@@ -220,10 +242,10 @@ pub(super) fn send_outbound(
 /// Returns `true` if a worker was found and shut down, `false` if the URL was
 /// not in the pool (idempotent, no panic).
 pub(super) fn shutdown_relay_worker(
-    relay_controls: &mut HashMap<String, RelayControl>,
+    relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
     url: &str,
 ) -> bool {
-    let key = canonical_relay_url(url).unwrap_or_else(|| url.to_string());
+    let key = CanonicalRelayUrl::parse_or_raw(url);
     let Some(control) = relay_controls.remove(&key) else {
         return false;
     };
@@ -234,7 +256,7 @@ pub(super) fn shutdown_relay_worker(
 }
 
 pub(super) fn close_relays(
-    relay_controls: &mut HashMap<String, RelayControl>,
+    relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
     connected_relays: &mut HashSet<RelayRole>,
     kernel: &mut Kernel,
 ) {
@@ -247,7 +269,7 @@ pub(super) fn close_relays(
         // T-relay-url-normalize: wire-sub URLs may carry non-canonical forms
         // (trailing slash, uppercase scheme) — canonicalize before pool lookup
         // so the CLOSE frame reaches the correct worker.
-        let key = canonical_relay_url(&relay_url).unwrap_or_else(|| relay_url.clone());
+        let key = CanonicalRelayUrl::parse_or_raw(&relay_url);
         if let Some(control) = relay_controls.get(&key) {
             let close = json!(["CLOSE", sub_id]).to_string();
             let _ = control.tx.send(RelayCommand::Send(close));
@@ -300,7 +322,7 @@ mod tests {
     fn same_url_two_roles_yields_one_control() {
         let mut kernel = Kernel::new(80);
         let (relay_tx, _relay_rx) = std::sync::mpsc::channel::<RelayEvent>();
-        let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
+        let mut relay_controls: HashMap<CanonicalRelayUrl, RelayControl> = HashMap::new();
         let mut next_relay_generation = 1_u64;
         // Supply with trailing slash — canonical form strips it.
         let raw_url = "wss://127.0.0.1:1/".to_string();
@@ -332,7 +354,9 @@ mod tests {
             relay_controls.len()
         );
         // Pool key is the canonical form (no trailing slash), not the raw input.
-        let control = relay_controls.get(canonical_key).expect("entry must exist under canonical key");
+        let control = relay_controls
+            .get(&CanonicalRelayUrl::parse_or_raw(canonical_key))
+            .expect("entry must exist under canonical key");
         assert_eq!(
             control.role,
             RelayRole::Content,
@@ -355,7 +379,7 @@ mod tests {
     fn same_url_three_roles_including_wallet_yields_one_control() {
         let mut kernel = Kernel::new(80);
         let (relay_tx, _relay_rx) = std::sync::mpsc::channel::<RelayEvent>();
-        let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
+        let mut relay_controls: HashMap<CanonicalRelayUrl, RelayControl> = HashMap::new();
         let mut next_relay_generation = 1_u64;
         let url = "wss://127.0.0.1:1/".to_string();
 
@@ -434,7 +458,7 @@ mod tests {
 
         let mut kernel = Kernel::new(80);
         let (relay_tx, relay_rx) = mpsc::channel::<RelayEvent>();
-        let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
+        let mut relay_controls: HashMap<CanonicalRelayUrl, RelayControl> = HashMap::new();
         let mut next_gen = 1_u64;
 
         // Step 1: add relay, wait for Connected.
@@ -474,7 +498,7 @@ mod tests {
         let removed = shutdown_relay_worker(&mut relay_controls, &relay_url);
         assert!(removed, "T162: shutdown_relay_worker must return true for a known URL");
         assert!(
-            !relay_controls.contains_key(&relay_url),
+            !relay_controls.contains_key(&CanonicalRelayUrl::parse_or_raw(&relay_url)),
             "T162: relay_controls must NOT contain the URL after RemoveRelay shutdown"
         );
     }
@@ -488,7 +512,7 @@ mod tests {
     fn t_remove_relay_unknown_url_is_noop() {
         use super::shutdown_relay_worker;
 
-        let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
+        let mut relay_controls: HashMap<CanonicalRelayUrl, RelayControl> = HashMap::new();
         let url = "wss://nonexistent.example.com/".to_string();
 
         let removed = shutdown_relay_worker(&mut relay_controls, &url);
@@ -556,7 +580,7 @@ mod tests {
 
         let mut kernel = Kernel::new(80);
         let (relay_tx, relay_rx) = mpsc::channel::<RelayEvent>();
-        let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
+        let mut relay_controls: HashMap<CanonicalRelayUrl, RelayControl> = HashMap::new();
         let mut next_gen = 1_u64;
 
         let spawned = ensure_relay_worker(
@@ -649,7 +673,7 @@ mod tests {
 
         let mut kernel = Kernel::new(80);
         let (relay_tx, relay_rx) = mpsc::channel::<RelayEvent>();
-        let mut relay_controls: HashMap<String, RelayControl> = HashMap::new();
+        let mut relay_controls: HashMap<CanonicalRelayUrl, RelayControl> = HashMap::new();
         let mut next_gen = 1_u64;
 
         // Pre-add via canonical URL so the worker is in the pool.
