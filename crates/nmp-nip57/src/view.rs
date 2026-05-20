@@ -236,4 +236,108 @@ mod tests {
         assert_eq!(deps.kinds, vec![KIND_ZAP_RECEIPT]);
         assert_eq!(deps.tag_refs, vec![("e".into(), "TID".into())]);
     }
+
+    #[test]
+    fn multiple_distinct_senders_each_appear_in_zappers() {
+        // Three receipts to the same note from three distinct senders: the
+        // total sums and every sender is represented in `zappers`.
+        let spec = ZapsSpec { target: "NOTE".into() };
+        let (mut state, _) = ZapsView::open(&ctx(), spec);
+        ZapsView::on_event_inserted(&ctx(), &mut state, &receipt("Z1", "NOTE", 10_000, Some("alice")));
+        ZapsView::on_event_inserted(&ctx(), &mut state, &receipt("Z2", "NOTE", 20_000, Some("bob")));
+        ZapsView::on_event_inserted(&ctx(), &mut state, &receipt("Z3", "NOTE", 30_000, Some("carol")));
+        let snap = ZapsView::snapshot(&ctx(), &state);
+        assert_eq!(snap.zap_count, 3);
+        assert_eq!(snap.total_msats, 10_000 + 20_000 + 30_000);
+        let mut senders: Vec<&str> = snap
+            .zappers
+            .iter()
+            .filter_map(|z| z.pubkey.as_deref())
+            .collect();
+        senders.sort_unstable();
+        assert_eq!(senders, vec!["alice", "bob", "carol"]);
+    }
+
+    #[test]
+    fn receipt_with_no_amount_contributes_zero_to_total() {
+        // A receipt whose bolt11 has no parseable amount and no embedded
+        // request defaults `msats` to 0 (see `unwrap_or(0)`); it still counts
+        // as a zap but does not move the total.
+        let spec = ZapsSpec { target: "NOTE".into() };
+        let (mut state, _) = ZapsView::open(&ctx(), spec);
+        let no_amount = KernelEvent {
+            id: "ZN".into(),
+            author: "ln_node".into(),
+            kind: 9735,
+            created_at: 1,
+            tags: vec![
+                vec!["p".into(), "recipient".into()],
+                vec!["e".into(), "NOTE".into()],
+            ],
+            content: String::new(),
+        };
+        ZapsView::on_event_inserted(&ctx(), &mut state, &no_amount);
+        let snap = ZapsView::snapshot(&ctx(), &state);
+        assert_eq!(snap.zap_count, 1);
+        assert_eq!(snap.total_msats, 0);
+        assert_eq!(snap.zappers[0].msats, 0);
+    }
+
+    #[test]
+    fn removing_a_receipt_drops_it_from_the_aggregate() {
+        let spec = ZapsSpec { target: "NOTE".into() };
+        let (mut state, _) = ZapsView::open(&ctx(), spec);
+        ZapsView::on_event_inserted(&ctx(), &mut state, &receipt("Z1", "NOTE", 10_000, Some("alice")));
+        ZapsView::on_event_inserted(&ctx(), &mut state, &receipt("Z2", "NOTE", 20_000, Some("bob")));
+
+        let delta = ZapsView::on_event_removed(&ctx(), &mut state, &"Z1".to_string());
+        assert_eq!(delta, Some(ZapsDelta::Removed { receipt_id: "Z1".into() }));
+
+        let snap = ZapsView::snapshot(&ctx(), &state);
+        assert_eq!(snap.zap_count, 1);
+        assert_eq!(snap.total_msats, 20_000);
+        assert_eq!(snap.zappers[0].receipt_id, "Z2");
+    }
+
+    #[test]
+    fn removing_an_unknown_receipt_is_a_noop() {
+        let spec = ZapsSpec { target: "NOTE".into() };
+        let (mut state, _) = ZapsView::open(&ctx(), spec);
+        ZapsView::on_event_inserted(&ctx(), &mut state, &receipt("Z1", "NOTE", 10_000, Some("alice")));
+        let delta = ZapsView::on_event_removed(&ctx(), &mut state, &"NOT_PRESENT".to_string());
+        assert!(delta.is_none());
+        assert_eq!(ZapsView::snapshot(&ctx(), &state).zap_count, 1);
+    }
+
+    #[test]
+    fn replacing_a_receipt_swaps_it_for_the_new_one() {
+        // `on_event_replaced` is remove(old) + insert(new). A relay replay that
+        // re-delivers a corrected receipt must end with exactly the new entry.
+        let spec = ZapsSpec { target: "NOTE".into() };
+        let (mut state, _) = ZapsView::open(&ctx(), spec);
+        ZapsView::on_event_inserted(&ctx(), &mut state, &receipt("OLD", "NOTE", 10_000, Some("alice")));
+
+        let new = receipt("NEW", "NOTE", 50_000, Some("alice"));
+        let delta = ZapsView::on_event_replaced(&ctx(), &mut state, &"OLD".to_string(), &new);
+        assert!(matches!(delta, Some(ZapsDelta::Added(_))));
+
+        let snap = ZapsView::snapshot(&ctx(), &state);
+        assert_eq!(snap.zap_count, 1);
+        assert_eq!(snap.total_msats, 50_000);
+        assert_eq!(snap.zappers[0].receipt_id, "NEW");
+    }
+
+    #[test]
+    fn replace_with_receipt_for_other_target_just_removes_old() {
+        // If the replacement points at a different note, the remove(old) still
+        // lands but the insert is rejected — net effect is a pure removal.
+        let spec = ZapsSpec { target: "NOTE".into() };
+        let (mut state, _) = ZapsView::open(&ctx(), spec);
+        ZapsView::on_event_inserted(&ctx(), &mut state, &receipt("OLD", "NOTE", 10_000, Some("alice")));
+
+        let elsewhere = receipt("NEW", "OTHER_NOTE", 50_000, Some("alice"));
+        let delta = ZapsView::on_event_replaced(&ctx(), &mut state, &"OLD".to_string(), &elsewhere);
+        assert!(delta.is_none());
+        assert_eq!(ZapsView::snapshot(&ctx(), &state).zap_count, 0);
+    }
 }

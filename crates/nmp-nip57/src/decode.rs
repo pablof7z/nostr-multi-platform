@@ -233,4 +233,153 @@ mod tests {
         assert!(r.sender_pubkey.is_none());
         assert!(r.amount_msats.is_none());
     }
+
+    #[test]
+    fn no_amount_source_yields_none_amount_not_panic() {
+        // A receipt with neither a `bolt11` tag nor a `description` carries no
+        // amount at all — the field must be `None`, never a panic or a guess.
+        let tags = vec![vec!["p".into(), "recipient".into()]];
+        let r = try_from_event(&make_stored(9735, tags)).unwrap();
+        assert!(r.amount_msats.is_none());
+        assert!(r.bolt11.is_none());
+        assert!(r.sender_pubkey.is_none());
+    }
+
+    #[test]
+    fn malformed_bolt11_without_embedded_amount_yields_none_amount() {
+        // bolt11 is present but unparseable (no `ln*` prefix) and there is no
+        // embedded request to fall back on → amount is `None`, bolt11 still
+        // carried through verbatim for diagnostics.
+        let tags = vec![
+            vec!["p".into(), "recipient".into()],
+            vec!["bolt11".into(), "not-a-real-invoice".into()],
+        ];
+        let r = try_from_event(&make_stored(9735, tags)).unwrap();
+        assert!(r.amount_msats.is_none());
+        assert_eq!(r.bolt11.as_deref(), Some("not-a-real-invoice"));
+    }
+
+    #[test]
+    fn empty_bolt11_string_yields_none_amount() {
+        let tags = vec![
+            vec!["p".into(), "recipient".into()],
+            vec!["bolt11".into(), String::new()],
+        ];
+        let r = try_from_event(&make_stored(9735, tags)).unwrap();
+        assert!(r.amount_msats.is_none());
+    }
+
+    #[test]
+    fn embedded_amount_non_numeric_falls_through_to_none() {
+        // The embedded zap-request's `amount` tag holds a non-numeric string;
+        // the `.parse::<u64>()` fails and the decoder yields `None` rather than
+        // surfacing a bogus amount.
+        let bad = r#"{"pubkey":"s","tags":[["amount","not-a-number"]]}"#;
+        let tags = vec![
+            vec!["p".into(), "recipient".into()],
+            vec!["description".into(), bad.into()],
+        ];
+        let r = try_from_event(&make_stored(9735, tags)).unwrap();
+        assert!(r.amount_msats.is_none());
+        // The sender pubkey is still recovered from the embedded request.
+        assert_eq!(r.sender_pubkey.as_deref(), Some("s"));
+    }
+
+    #[test]
+    fn embedded_amount_negative_string_falls_through_to_none() {
+        // A negative amount cannot parse as `u64` — must not panic, yields None.
+        let bad = r#"{"pubkey":"s","tags":[["amount","-500"]]}"#;
+        let tags = vec![
+            vec!["p".into(), "recipient".into()],
+            vec!["description".into(), bad.into()],
+        ];
+        let r = try_from_event(&make_stored(9735, tags)).unwrap();
+        assert!(r.amount_msats.is_none());
+    }
+
+    #[test]
+    fn addressable_target_a_tag_is_extracted() {
+        // A zap aimed at a long-form / addressable event carries an `a`
+        // coordinate instead of (or alongside) an `e` id.
+        let tags = vec![
+            vec!["p".into(), "recipient".into()],
+            vec!["a".into(), "30023:authorpk:my-article".into()],
+        ];
+        let r = try_from_event(&make_stored(9735, tags)).unwrap();
+        assert_eq!(r.zapped_address.as_deref(), Some("30023:authorpk:my-article"));
+        assert!(r.zapped_event_id.is_none());
+    }
+
+    #[test]
+    fn zap_to_profile_has_no_event_or_address_target() {
+        // A direct profile zap names only the recipient `p` — no `e`, no `a`.
+        // This is a valid receipt and must decode cleanly.
+        let tags = vec![
+            vec!["p".into(), "recipient".into()],
+            vec!["bolt11".into(), "lnbc21n1pvj...".into()],
+        ];
+        let r = try_from_event(&make_stored(9735, tags)).unwrap();
+        assert_eq!(r.recipient_pubkey, "recipient");
+        assert!(r.zapped_event_id.is_none());
+        assert!(r.zapped_address.is_none());
+        assert_eq!(r.amount_msats, Some(2_100));
+    }
+
+    #[test]
+    fn private_zap_with_opaque_encrypted_description_exposes_no_sender() {
+        // NIP-57 private zaps replace the JSON request in `description` with an
+        // opaque encrypted blob. It is not valid JSON, so neither a sender nor
+        // an amount can be recovered — and there is no uppercase `P` tag.
+        let tags = vec![
+            vec!["p".into(), "recipient".into()],
+            vec![
+                "description".into(),
+                "A1B2C3D4E5F6==encrypted-private-zap-payload==".into(),
+            ],
+            vec!["bolt11".into(), "lnbc10n1pvj...".into()],
+        ];
+        let r = try_from_event(&make_stored(9735, tags)).unwrap();
+        // Sender stays hidden — the private-zap invariant.
+        assert!(r.sender_pubkey.is_none());
+        // The settled amount still comes from the authoritative bolt11 HRP.
+        assert_eq!(r.amount_msats, Some(1_000));
+    }
+
+    #[test]
+    fn first_e_tag_wins_when_receipt_lists_multiple() {
+        // A malformed/relay-mangled receipt with two `e` tags: the decoder is
+        // deterministic — it pins the first.
+        let tags = vec![
+            vec!["p".into(), "recipient".into()],
+            vec!["e".into(), "FIRST_NOTE".into()],
+            vec!["e".into(), "SECOND_NOTE".into()],
+        ];
+        let r = try_from_event(&make_stored(9735, tags)).unwrap();
+        assert_eq!(r.zapped_event_id.as_deref(), Some("FIRST_NOTE"));
+    }
+
+    #[test]
+    fn try_from_kernel_event_decodes_equivalently() {
+        use nmp_core::substrate::KernelEvent;
+        let kernel = KernelEvent {
+            id: "k".repeat(64),
+            author: "ln_node".into(),
+            kind: 9735,
+            created_at: 1_700_000_001,
+            tags: vec![
+                vec!["p".into(), "recipient".into()],
+                vec!["e".into(), "NOTE".into()],
+                vec!["bolt11".into(), "lnbc500u1pvj...".into()],
+            ],
+            content: String::new(),
+        };
+        let r = try_from_kernel_event(&kernel).unwrap();
+        assert_eq!(r.event_id, "k".repeat(64));
+        assert_eq!(r.recipient_pubkey, "recipient");
+        assert_eq!(r.zapped_event_id.as_deref(), Some("NOTE"));
+        assert_eq!(r.amount_msats, Some(50_000_000));
+        // A non-receipt kernel event is rejected.
+        let not_receipt = KernelEvent { kind: 1, ..kernel };
+        assert!(try_from_kernel_event(&not_receipt).is_none());
+    }
 }

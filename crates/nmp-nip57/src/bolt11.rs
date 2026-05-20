@@ -148,4 +148,46 @@ mod tests {
         // 'x' is not a valid BOLT-11 multiplier.
         assert_eq!(amount_msats("lnbc500x1pvjluez000"), None);
     }
+
+    #[test]
+    fn bare_amount_without_multiplier_is_whole_btc() {
+        // `lnbc2<data>` — no multiplier suffix means whole BTC.
+        // 2 BTC = 200_000_000_000 msat.
+        assert_eq!(amount_msats("lnbc21pvjluez000"), Some(200_000_000_000));
+    }
+
+    #[test]
+    fn overflow_amount_returns_none_not_panic() {
+        // A digit string large enough that `amount * MSATS_PER_BTC` overflows
+        // u128 must yield `None` via `checked_mul`, never panic.
+        let huge = "9".repeat(40);
+        let invoice = format!("lnbc{huge}1pvjluez000");
+        assert_eq!(amount_msats(&invoice), None);
+    }
+
+    #[test]
+    fn amount_exceeding_u64_but_within_u128_returns_none() {
+        // 1_000_000_000 BTC in msats overflows u64 (the return type) but not
+        // the u128 intermediate — the `u64::try_from` guard must catch it.
+        assert_eq!(amount_msats("lnbc10000000001pvjluez000"), None);
+    }
+
+    #[test]
+    fn separator_at_position_zero_returns_none() {
+        // `lnbc1...` — the only `1` is immediately after the network prefix,
+        // leaving an empty HRP amount slice.
+        assert_eq!(amount_msats("lnbc1abcdef"), None);
+    }
+
+    #[test]
+    fn no_separator_at_all_returns_none() {
+        // No `1` anywhere after the network prefix → no HRP/data boundary.
+        assert_eq!(amount_msats("lnbc500u"), None);
+    }
+
+    #[test]
+    fn multiplier_with_no_digits_returns_none() {
+        // `lnbcm1...` — a lone multiplier with no preceding digits.
+        assert_eq!(amount_msats("lnbcm1pvjluez000"), None);
+    }
 }
