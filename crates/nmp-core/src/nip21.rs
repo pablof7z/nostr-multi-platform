@@ -163,3 +163,93 @@ pub fn format_nostr_uri(target: &NostrUri) -> Result<String, Nip19Error> {
     };
     Ok(format!("{SCHEME}{}", nip19::format(&entity)?))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::nip19::{encode_note, encode_npub, encode_nprofile, encode_nsec};
+
+    /// Deterministic 32-byte hex fixture (matches the module doctests).
+    const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+    /// A second distinct deterministic 32-byte hex fixture (event id).
+    const ID: &str = "0000000000000000000000000000000000000000000000000000000000000001";
+
+    // ─── happy paths — routing targets ─────────────────────────────────────
+
+    #[test]
+    fn npub_uri_routes_to_profile_target() {
+        let uri = format!("nostr:{}", encode_npub(PK).unwrap());
+        let target = parse_nostr_uri(&uri).unwrap();
+        assert_eq!(
+            target,
+            NostrUri::Profile {
+                pubkey: PK.into(),
+                relays: vec![],
+            }
+        );
+    }
+
+    #[test]
+    fn note_uri_routes_to_event_target() {
+        let uri = format!("nostr:{}", encode_note(ID).unwrap());
+        let target = parse_nostr_uri(&uri).unwrap();
+        assert_eq!(
+            target,
+            NostrUri::Event {
+                event_id: ID.into(),
+                relays: vec![],
+                author: None,
+                kind: None,
+            }
+        );
+    }
+
+    #[test]
+    fn nprofile_uri_routes_to_profile_with_relay_hints() {
+        // nprofile carries TLV relay hints — the variant the task calls out.
+        let bech = encode_nprofile(&NprofileData {
+            pubkey: PK.into(),
+            relays: vec!["wss://relay.example".into()],
+        })
+        .unwrap();
+        let target = parse_nostr_uri(&format!("nostr:{bech}")).unwrap();
+        assert_eq!(
+            target,
+            NostrUri::Profile {
+                pubkey: PK.into(),
+                relays: vec!["wss://relay.example".into()],
+            }
+        );
+    }
+
+    // ─── error paths — graceful, no panic ──────────────────────────────────
+
+    #[test]
+    fn missing_scheme_errors_not_panic() {
+        // A bare NIP-19 entity (no `nostr:` prefix) is not a NIP-21 URI.
+        let bare = encode_npub(PK).unwrap();
+        assert_eq!(parse_nostr_uri(&bare), Err(Nip21Error::MissingScheme));
+    }
+
+    #[test]
+    fn nsec_uri_is_forbidden() {
+        // `nostr:` URIs must reject nsec per the NIP-21 spec ("except nsec").
+        let uri = format!("nostr:{}", encode_nsec(PK).unwrap());
+        assert_eq!(parse_nostr_uri(&uri), Err(Nip21Error::NsecForbidden));
+    }
+
+    #[test]
+    fn unknown_scheme_entity_falls_back_gracefully() {
+        // A `nostr:`-prefixed but unrecognised entity must surface a typed
+        // Nip19 error, never panic or silently route somewhere.
+        let target = parse_nostr_uri("nostr:xyz123notreal");
+        assert!(matches!(target, Err(Nip21Error::Nip19(_))));
+    }
+
+    #[test]
+    fn garbage_after_scheme_errors_not_panic() {
+        // Non-bech32 garbage behind a valid scheme is a graceful error.
+        let target = parse_nostr_uri("nostr:!!!not-bech32!!!");
+        assert!(matches!(target, Err(Nip21Error::Nip19(_))));
+    }
+}
