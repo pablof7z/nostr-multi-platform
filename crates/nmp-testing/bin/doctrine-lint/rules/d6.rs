@@ -11,12 +11,14 @@
 //!
 //! 1. **Comment lines** (line, block, `///`, `//!`).
 //! 2. **`#[cfg(test)]` modules** detected inline via the walker's tracker.
-//! 3. **Test-only files by filename**: `tests.rs`, `test_support.rs`, any
-//!    file whose name ends in `_tests.rs` (e.g. `auth_tests.rs`,
-//!    `discovery_tests.rs`), and anything under a `/tests/` directory. Such
-//!    files are declared as `#[cfg(test)] mod foo;` in their parent and the
-//!    `cfg(test)` gate lives there, not inside the file — so the walker
-//!    cannot see it. Filename exemption is the brief-mandated workaround.
+//! 3. **Test-only files by filename**: `tests.rs`, any file whose name ends
+//!    in `_tests.rs` (e.g. `auth_tests.rs`, `discovery_tests.rs`) or
+//!    `_support.rs` (e.g. `test_support.rs`, `conformance_support.rs`), any
+//!    file beginning `tests_` (e.g. `tests_kind5.rs`), and anything under a
+//!    `/tests/` directory. Such files are declared as `#[cfg(test)] mod
+//!    foo;` in their parent and the `cfg(test)` gate lives there, not inside
+//!    the file — so the walker cannot see it. Filename exemption is the
+//!    brief-mandated workaround.
 //! 4. **`Mutex::lock().unwrap()` / `RwLock::*().unwrap()`** — lock poisoning
 //!    is fatal-by-design; unwinding here is correct behaviour. This rule
 //!    detects the immediate `.lock().unwrap()` / `.read().unwrap()` /
@@ -34,7 +36,7 @@ use std::path::Path;
 
 pub const ID: &str = "D6";
 
-const TEST_FILE_NAMES: &[&str] = &["tests.rs", "test_support.rs", "test_fixtures.rs"];
+const TEST_FILE_NAMES: &[&str] = &["tests.rs", "test_fixtures.rs"];
 
 pub fn file_is_test_only(path: &Path) -> bool {
     if let Some(name) = path.file_name().and_then(|s| s.to_str()) {
@@ -48,6 +50,17 @@ pub fn file_is_test_only(path: &Path) -> bool {
         // literally named `tests.rs` is still caught by the exact list
         // above and an unrelated name like `tests.rs`'s prefix can't slip.
         if name.ends_with("_tests.rs") {
+            return true;
+        }
+        // `*_support.rs` is the codebase convention for a test-support
+        // facade — `test_support.rs`, `conformance_support.rs`, etc. — whose
+        // `#[cfg(any(test, feature = "test-support"))] mod <name>;`
+        // declaration lives in the parent module, invisible to the line
+        // walker. The `_support` suffix (with its `_` separator) is the
+        // discriminating marker; a production file named `transport.rs`
+        // would NOT match. `test_support.rs` was previously an exact-name
+        // entry; the suffix subsumes it.
+        if name.ends_with("_support.rs") {
             return true;
         }
         // `tests_*.rs` is the mirror convention: files like `tests_kind5.rs`
@@ -250,12 +263,19 @@ mod tests {
         use std::path::Path;
         // Exact-name list.
         assert!(file_is_test_only(Path::new("crates/nmp-core/src/kernel/tests.rs")));
-        assert!(file_is_test_only(Path::new(
-            "crates/nmp-core/src/kernel/test_support.rs"
-        )));
         // `test_fixtures.rs` — exact-name exemption added by T154.
         assert!(file_is_test_only(Path::new(
             "crates/nmp-core/src/store/lmdb/test_fixtures.rs"
+        )));
+        // `*_support.rs` suffix — test-support facades whose
+        // `#[cfg(any(test, feature = "test-support"))] mod ...;` declaration
+        // lives in the parent. `test_support.rs` (formerly an exact-name
+        // entry) and `conformance_support.rs` both match.
+        assert!(file_is_test_only(Path::new(
+            "crates/nmp-core/src/kernel/test_support.rs"
+        )));
+        assert!(file_is_test_only(Path::new(
+            "crates/nmp-core/src/actor/commands/conformance_support.rs"
         )));
         // `*_tests.rs` suffix — the bug T106 fixed: these were NOT exempt
         // although they are `#[cfg(test)] mod ...;` in the parent.
@@ -283,6 +303,12 @@ mod tests {
         assert!(!file_is_test_only(Path::new("crates/x/src/contests.rs")));
         // A file that merely ends in `tests` without `_tests.rs` is not exempt.
         assert!(!file_is_test_only(Path::new("crates/x/src/run_tests.txt")));
+        // `transport.rs` ends in `support`'s letters but lacks the `_support`
+        // suffix — a production file must NOT be exempted by the new rule.
+        assert!(!file_is_test_only(Path::new("crates/x/src/transport.rs")));
+        // `support.rs` with no `_` separator is not the `*_support.rs`
+        // convention — left un-exempt (production code is the safe default).
+        assert!(!file_is_test_only(Path::new("crates/x/src/support.rs")));
     }
 
     #[test]
