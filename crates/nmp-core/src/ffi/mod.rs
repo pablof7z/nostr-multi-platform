@@ -125,6 +125,7 @@ use crate::actor::{
     KernelEventObserverId, KernelEventObserverSlot, KindFilter, LifecycleObserverSlot,
     RawEventObserver, RawEventObserverId, RawEventObserverSlot,
 };
+use crate::capability_socket::{new_capability_callback_slot, CapabilityCallbackSlot};
 use crate::relay::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 use std::ffi::{c_char, c_uint, c_void, CStr, CString};
 use std::sync::mpsc::{self, Sender};
@@ -144,7 +145,7 @@ struct UpdateCallbackRegistration {
 pub struct NmpApp {
     tx: Sender<ActorCommand>,
     update_callback: Arc<Mutex<Option<UpdateCallbackRegistration>>>,
-    capability_callback: Arc<Mutex<Option<capability::CapabilityCallbackRegistration>>>,
+    capability_callback: CapabilityCallbackSlot,
     /// T118 / G3 — lifecycle observer slot. Shared `Arc` with the actor
     /// thread: registrations through [`lifecycle::nmp_app_set_lifecycle_callback`]
     /// are visible to the actor without crossing the FFI on each event.
@@ -252,6 +253,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // identity mutation; per-app crates read via NmpApp::active_local_nsec.
     let active_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>> = Arc::new(Mutex::new(None));
     let actor_active_local_nsec = Arc::clone(&active_local_nsec);
+    // Shared capability callback slot. FFI registration writes through the
+    // app clone; the actor reads through its clone when issuing keyring
+    // requests during start/sign-in/create/switch/remove.
+    let capability_callback = new_capability_callback_slot();
+    let actor_capability_callback = Arc::clone(&capability_callback);
     // FFI-supplied LMDB storage path slot. `nmp_app_set_storage_path`
     // writes through the `NmpApp`'s clone before `nmp_app_start`; the actor
     // reads through this clone when it builds the kernel. Default `None`
@@ -280,6 +286,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 actor_raw_event_observers,
                 actor_relay_edit_rows,
                 actor_active_local_nsec,
+                actor_capability_callback,
                 actor_storage_path,
             );
         }));
@@ -318,7 +325,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     Box::into_raw(Box::new(NmpApp {
         tx: command_tx,
         update_callback,
-        capability_callback: Arc::new(Mutex::new(None)),
+        capability_callback,
         lifecycle_observer,
         event_observers,
         raw_event_observers,

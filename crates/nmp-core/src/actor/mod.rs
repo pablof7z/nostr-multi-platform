@@ -18,6 +18,7 @@ mod dispatch;
 pub(crate) mod kernel_action;
 mod outbound;
 mod pending_sign;
+mod session_persistence;
 #[cfg(test)]
 mod publish_relay_dispatch_tests;
 mod relay_mgmt;

@@ -27,8 +27,10 @@ use super::relay_mgmt::{
     close_relays, ensure_relay_worker, maybe_send_startup, send_all_outbound,
     shutdown_relay_worker, spawn_missing_relays,
 };
+use super::session_persistence;
 use super::tick::{emit_kernel_update, emit_now, maybe_emit_after_dispatch};
 use super::{ActorCommand, RelayControl};
+use crate::capability_socket::CapabilityCallbackSlot;
 
 /// Write the active account's bech32 secret key (or `None`) to `slot`.
 /// Called synchronously BEFORE `maybe_emit_after_dispatch` so the value is
@@ -61,6 +63,7 @@ pub(super) fn dispatch_command(
     relays_ready: bool,
     lifecycle_observer: &LifecycleObserverSlot,
     active_local_nsec: &Arc<Mutex<Option<Zeroizing<String>>>>,
+    capability_callback: &CapabilityCallbackSlot,
     pending_signs: &mut Vec<PendingSign>,
 ) -> Option<Vec<OutboundMessage>> {
     match command {
@@ -73,6 +76,13 @@ pub(super) fn dispatch_command(
             *startup_sent = false;
             kernel.set_visible_limit(visible_limit);
             kernel.start();
+            let mut outbound = session_persistence::restore_active_local(
+                identity,
+                kernel,
+                capability_callback,
+                relays_ready,
+            );
+            update_nsec_slot(identity, active_local_nsec);
             spawn_missing_relays(relay_controls, relay_tx, kernel, next_relay_generation);
             emit_now(kernel, *running, update_tx, last_emit);
             // T127: boot-resume for the publish engine. Closes Residual 3
@@ -86,7 +96,8 @@ pub(super) fn dispatch_command(
             // URL the resumed frames target (idempotent via
             // `ensure_relay_worker`). Frames flow through the regular
             // `send_all_outbound` call in `run_actor`.
-            Some(kernel.resume_publish_engine())
+            outbound.extend(kernel.resume_publish_engine());
+            Some(outbound)
         }
         ActorCommand::Configure {
             visible_limit,
@@ -143,6 +154,7 @@ pub(super) fn dispatch_command(
             // the wrapper wipe the plaintext when it drops at end of scope.
             let outbound = commands::sign_in_nsec(identity, kernel, secret.as_str(), relays_ready);
             update_nsec_slot(identity, active_local_nsec);
+            session_persistence::persist_current_active_local(identity, capability_callback);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
@@ -155,30 +167,36 @@ pub(super) fn dispatch_command(
             let outbound =
                 commands::create_account(identity, kernel, relays_ready, &profile, &relays);
             update_nsec_slot(identity, active_local_nsec);
+            session_persistence::persist_current_active_local(identity, capability_callback);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::SwitchActive { identity_id } => {
             let outbound = commands::switch_active(identity, kernel, &identity_id, relays_ready);
             update_nsec_slot(identity, active_local_nsec);
+            session_persistence::persist_current_active_local(identity, capability_callback);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::RemoveAccount { identity_id } => {
             let outbound = commands::remove_account(identity, kernel, &identity_id);
             update_nsec_slot(identity, active_local_nsec);
+            session_persistence::forget_local_account(&identity_id, capability_callback);
+            session_persistence::persist_current_active_local(identity, capability_callback);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::AddRemoteSigner { handle } => {
             let outbound = commands::add_remote_signer(identity, kernel, handle, relays_ready);
             update_nsec_slot(identity, active_local_nsec);
+            session_persistence::persist_current_active_local(identity, capability_callback);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::RemoveRemoteSigner { identity_id } => {
             let outbound = commands::remove_remote_signer(identity, kernel, &identity_id);
             update_nsec_slot(identity, active_local_nsec);
+            session_persistence::persist_current_active_local(identity, capability_callback);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }

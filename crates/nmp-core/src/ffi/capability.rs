@@ -15,21 +15,11 @@
 //!   are the issuing module's concern (see `substrate::KeyringIdentityWiring`).
 
 use super::{app_ref, NmpApp};
+use crate::capability_socket::{
+    capability_error_envelope, dispatch_capability, CapabilityCallback,
+    CapabilityCallbackRegistration,
+};
 use std::ffi::{c_char, c_void, CString};
-use std::sync::{Arc, Mutex};
-
-/// Native capability handler. Receives the kernel's `CapabilityRequest` JSON
-/// (`*const c_char`, NUL-terminated, UTF-8) and returns a freshly heap-
-/// allocated `CapabilityEnvelope` JSON string (`*mut c_char`) the kernel must
-/// release via [`nmp_app_free_string`]. A NULL return is the sole exceptional
-/// signal and is itself converted to an error envelope on the Rust side.
-type CapabilityCallback = extern "C" fn(*mut c_void, *const c_char) -> *mut c_char;
-
-#[derive(Clone, Copy)]
-pub(crate) struct CapabilityCallbackRegistration {
-    context: usize,
-    callback: CapabilityCallback,
-}
 
 /// Register the native capability handler. The kernel routes every
 /// `CapabilityRequest` JSON through this seam (e.g. Swift's
@@ -74,9 +64,7 @@ pub extern "C" fn nmp_app_dispatch_capability(
     };
     // JSON never contains an interior NUL; the `c"{}"` literal fallback is
     // NUL-checked at compile time, so there is no runtime panic path (D6).
-    CString::new(envelope)
-        .unwrap_or_else(|_| c"{}".to_owned())
-        .into_raw()
+    CString::new(envelope).unwrap_or_else(|_| c"{}".to_owned()).into_raw()
 }
 
 /// Release a string previously returned by [`nmp_app_dispatch_capability`].
@@ -90,67 +78,6 @@ pub extern "C" fn nmp_app_free_string(ptr: *mut c_char) {
             drop(CString::from_raw(ptr));
         }
     }
-}
-
-/// Invoke the registered native capability handler with `request_json` and
-/// return the `CapabilityEnvelope` JSON. Pure data in, data out (D6): a
-/// missing handler or NULL native return is reported as an error envelope.
-/// Shared by the FFI entry point and the test harness's mock handler.
-pub(crate) fn dispatch_capability(
-    slot: &Arc<Mutex<Option<CapabilityCallbackRegistration>>>,
-    request_json: &str,
-) -> String {
-    let registration = slot.lock().ok().and_then(|guard| *guard);
-    let Some(registration) = registration else {
-        return capability_error_envelope(request_json, "no-capability-handler");
-    };
-    let Ok(request) = CString::new(request_json) else {
-        return capability_error_envelope(request_json, "malformed-request");
-    };
-    // UB guard: the foreign handler may panic / raise an ObjC exception;
-    // an unwind across the C ABI boundary is undefined behaviour. A panic
-    // is treated as data (D6) — same shape as a NULL native return below.
-    let raw = match crate::ffi_guard::guard_ffi_callback("capability handler", || {
-        (registration.callback)(registration.context as *mut c_void, request.as_ptr())
-    }) {
-        Some(raw) => raw,
-        None => return capability_error_envelope(request_json, "handler-panicked"),
-    };
-    if raw.is_null() {
-        return capability_error_envelope(request_json, "handler-returned-null");
-    }
-    // SAFETY: a non-NULL return is contractually a CString allocated by the
-    // native handler; we take ownership and free it on drop.
-    let owned = unsafe { CString::from_raw(raw) };
-    owned.to_string_lossy().into_owned()
-}
-
-/// Best-effort error `CapabilityEnvelope` (D6: failures are data). The
-/// `namespace`/`correlation_id` are echoed from the request when parseable so
-/// the issuing module can still correlate the failure.
-fn capability_error_envelope(request_json: &str, reason: &str) -> String {
-    let (namespace, correlation_id) = serde_json::from_str::<serde_json::Value>(request_json)
-        .ok()
-        .map(|v| {
-            (
-                v.get("namespace")
-                    .and_then(|n| n.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-                v.get("correlation_id")
-                    .and_then(|c| c.as_str())
-                    .unwrap_or("")
-                    .to_string(),
-            )
-        })
-        .unwrap_or_default();
-    let result_json = format!(r#"{{"status":"error","os_status":-50,"reason":"{reason}"}}"#);
-    serde_json::to_string(&crate::substrate::CapabilityEnvelope {
-        namespace,
-        correlation_id,
-        result_json,
-    })
-    .unwrap_or_else(|_| "{}".to_string())
 }
 
 #[cfg(test)]
@@ -167,6 +94,7 @@ mod tests {
     };
     use std::collections::HashMap;
     use std::ffi::CStr;
+    use std::sync::{Arc, Mutex};
 
     // In-memory secret store standing in for the iOS Keychain. The mock
     // handler is a plain `extern "C"` fn (FFI shape) and cannot capture

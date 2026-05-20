@@ -1,6 +1,7 @@
 mod actor;
 mod app;
 pub mod bunker_hook;
+mod capability_socket;
 mod ffi;
 mod ffi_guard;
 mod keepalive;
