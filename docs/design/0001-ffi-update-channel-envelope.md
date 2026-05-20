@@ -1,6 +1,6 @@
 # 0001 — FFI update-channel envelope (T103)
 
-Status: **Accepted** · Scope: `nmp-core` actor emit boundary + `nmp-codegen` projection
+Status: **Accepted** · Updated: 2026-05-20 · Scope: `nmp-core` actor emit boundary + `nmp-codegen` projection
 
 ## Problem
 
@@ -13,7 +13,7 @@ shapes**:
    `{"ViewOpened":{"namespace":"profile","key":"pk"}}` /
    `{"UriRejected":{"uri":"…","reason":"…"}}`. Emitted from the
    `ActorCommand::Kernel` arm of `dispatch_command`.
-2. **Periodic snapshot** — `Kernel::make_update()`, the large
+2. **Periodic full state** — `Kernel::make_update()`, the large
    `{"rev":…,"items":[…],"metrics":{…},"open_views":…}` object every host
    renders. Emitted via `emit_now` (and every command/relay handler).
 
@@ -28,16 +28,24 @@ Wrap **every** frame on the channel in one **tagged outer envelope**:
 
 ```json
 {"t":"update","v":<KernelUpdate>}
-{"t":"snapshot","v":<snapshot>}
+{"t":"full_state","v":<full-state snapshot>}
+{"t":"view_batch","v":{"rev":1,"views":[]}}
+{"t":"side_effect","v":{"rev":1,"effect":{...}}}
 ```
 
 Serde contract: `#[serde(tag = "t", content = "v", rename_all = "snake_case")]`
-over a two-variant enum `UpdateEnvelope { Update, Snapshot }`. The `t` values
-are **exactly** `"update"` and `"snapshot"` (lowercase snake_case — pinned by
-test, never the Rust `Update`/`Snapshot` variant casing).
+over `UpdateEnvelope`. The full-state `t` value is **exactly**
+`"full_state"` (lowercase snake_case — pinned by test, never the Rust
+`FullState` variant casing). Consumers may accept legacy `"snapshot"` as a
+decode alias during rollout; producers must emit `"full_state"`.
 
 Every consumer now decodes **one** discriminated type. The tag *is* the
 discriminant (D6) — no key sniffing, no exceptions.
+
+`view_batch` and `side_effect` are first-class reserved shapes matching the
+target `AppUpdate` contract. The current actor does **not** emit them yet:
+today's live render-state path is `full_state` only. `ViewBatch` emission is
+blocked until the reducer has a proven lossless delta stream.
 
 ### Why a tagged outer envelope (vs. alternatives)
 
@@ -56,16 +64,18 @@ discriminant (D6) — no key sniffing, no exceptions.
 
 - `crates/nmp-core/src/update_envelope.rs` (new):
   - `WireEnvelope<'a>` — borrowing **emit-side** type
-    (`Update(&KernelUpdate)` / `Snapshot(&RawValue)`); serialize-only.
+    (`Update(&KernelUpdate)` / `FullState(&RawValue)` / reserved
+    `ViewBatch` / reserved `SideEffect`); serialize-only.
   - `UpdateEnvelope` — owning **consumer-side** type
-    (`Update(KernelUpdate)` / `Snapshot(serde_json::Value)`); the single type
-    every host decodes into. The snapshot interior stays **opaque**
+    (`Update(KernelUpdate)` / `FullState(serde_json::Value)` / reserved
+    `ViewBatch` / reserved `SideEffect`); the single type every host decodes
+    into. The full-state interior stays **opaque**
     (`serde_json::Value`) — this contract models the *discriminator*, not the
     snapshot's ~30 internal fields (which remain a crate-internal struct).
   - `wrap_update(&KernelUpdate) -> Option<String>` and
-    `wrap_snapshot(String) -> Option<String>` helpers.
-- `crates/nmp-core/src/actor/tick.rs`: `emit_now` wraps the snapshot via
-  `wrap_snapshot`; new `emit_kernel_update` wraps the discrete update via
+    `wrap_full_state(String) -> Option<String>` helpers.
+- `crates/nmp-core/src/actor/tick.rs`: `emit_now` wraps the full state via
+  `wrap_full_state`; new `emit_kernel_update` wraps the discrete update via
   `wrap_update`. Both wrap sites live in this one file.
 - `crates/nmp-core/src/actor/mod.rs`: the `ActorCommand::Kernel` arm body now
   calls `emit_kernel_update(&update, update_tx)` (2-line body-of-arm change;
@@ -130,10 +140,10 @@ here**. M10.5 must fold the following into it:
 
    > Payload is always one tagged envelope object:
    > `{"t":"update","v":<KernelUpdate>}` or
-   > `{"t":"snapshot","v":<snapshot>}`. The `t` values are exactly `"update"`
-   > / `"snapshot"` (lowercase snake_case). Consumers decode the single
-   > `UpdateEnvelope` discriminated type — never sniff payload keys. The
-   > snapshot interior (the `v` of `"snapshot"`) is opaque/forward-compatible.
+> `{"t":"full_state","v":<snapshot>}`. The `t` values are exactly `"update"`
+> / `"full_state"` (lowercase snake_case). Consumers decode the single
+> `UpdateEnvelope` discriminated type — never sniff payload keys. The
+> full-state interior (the `v` of `"full_state"`) is opaque/forward-compatible.
 
 2. **Add a one-line source-of-truth pointer** near the channel/threading
    section (around `nmp_app_set_update_callback` / the `UpdateCallback` type

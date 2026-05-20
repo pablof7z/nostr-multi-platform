@@ -71,8 +71,16 @@ fn generated_envelope_models_the_tagged_union() {
         "generated envelope must carry the discrete kernel update:\n{envelope}"
     );
     assert!(
-        envelope.contains("Snapshot(serde_json::Value)"),
-        "generated envelope must carry the opaque snapshot:\n{envelope}"
+        envelope.contains("FullState(serde_json::Value)"),
+        "generated envelope must carry the opaque full-state payload:\n{envelope}"
+    );
+    assert!(
+        envelope.contains("ViewBatch(nmp_core::ViewBatchFrame)"),
+        "generated envelope must carry the reserved view batch shape:\n{envelope}"
+    );
+    assert!(
+        envelope.contains("SideEffect(nmp_core::SideEffectFrame)"),
+        "generated envelope must carry the reserved side-effect shape:\n{envelope}"
     );
     assert!(
         envelope.contains("Panic(nmp_core::PanicFrame)"),

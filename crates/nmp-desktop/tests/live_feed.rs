@@ -32,7 +32,9 @@ fn in_process_kernel_renders_live_feed() {
         let Ok(env) = serde_json::from_str::<UpdateEnvelope>(&line) else {
             continue;
         };
-        let UpdateEnvelope::Snapshot(v) = env else { continue };
+        let UpdateEnvelope::FullState(v) = env else {
+            continue;
+        };
         let items = v["items"].as_array().map(Vec::len).unwrap_or(0);
         let events = v["metrics"]["events_rx"].as_u64().unwrap_or(0);
         best_items = best_items.max(items);

@@ -101,7 +101,8 @@ fn update_rs(manifest: &AppManifest) -> String {
 /// The canonical update-channel envelope, projected for the host crate.
 ///
 /// Every frame on the single update channel is one tagged outer object —
-/// `{"t":"update","v":<KernelUpdate>}`, `{"t":"snapshot","v":<snapshot>}`, or
+/// `{"t":"update","v":<KernelUpdate>}`,
+/// `{"t":"full_state","v":<full-state snapshot>}`, or
 /// `{"t":"panic","v":{"msg":<message>}}` — so the host decodes exactly **one**
 /// discriminated type. This MUST stay byte-identical to
 /// `nmp_core::UpdateEnvelope`'s serde contract (tag `t`, content `v`,
@@ -113,9 +114,9 @@ fn update_rs(manifest: &AppManifest) -> String {
 /// streaming channel — module-projected `AppUpdate` variants return through
 /// `FfiApp::dispatch`, not `update_tx`. Carrying module updates here later is
 /// purely **additive** (a new snake_case variant on the same `t`
-/// discriminator). The snapshot interior is intentionally opaque
+/// discriminator). The full-state interior is intentionally opaque
 /// (`serde_json::Value`) — this type models the discriminator, not the
-/// snapshot's ~30 internal fields.
+/// full-state snapshot's internal fields.
 ///
 /// The `Panic` arm (D7) is the actor-death signal: the kernel loop panicked
 /// or exited and the host must surface a fatal error rather than keep sending
@@ -130,8 +131,13 @@ fn envelope_rs() -> String {
         "pub enum UpdateEnvelope {",
         "    /// A discrete update — apply as a delta.",
         "    Update(nmp_core::KernelUpdate),",
-        "    /// A full snapshot — replace rendered state.",
-        "    Snapshot(serde_json::Value),",
+        "    /// A full-state snapshot — replace rendered state.",
+        "    #[serde(alias = \"snapshot\")]",
+        "    FullState(serde_json::Value),",
+        "    /// Reserved lossless view delta batch.",
+        "    ViewBatch(nmp_core::ViewBatchFrame),",
+        "    /// Reserved one-shot, non-state side effect.",
+        "    SideEffect(nmp_core::SideEffectFrame),",
         "    /// Actor-thread death (D7) — terminal; surface a fatal error.",
         "    Panic(nmp_core::PanicFrame),",
         "}",
@@ -323,8 +329,20 @@ mod tests {
         // Same manifest in → byte-identical source out. No map iteration, no
         // clock, no env — the generator's core invariant.
         let m = manifest(&["nmp-nip01", "nmp-nip23"], &["fixture-todo-core"]);
-        let a = enum_file("AppAction", "nmp_core::KernelAction", &m, "Action", "pub fn namespace(&self) -> &'static str");
-        let b = enum_file("AppAction", "nmp_core::KernelAction", &m, "Action", "pub fn namespace(&self) -> &'static str");
+        let a = enum_file(
+            "AppAction",
+            "nmp_core::KernelAction",
+            &m,
+            "Action",
+            "pub fn namespace(&self) -> &'static str",
+        );
+        let b = enum_file(
+            "AppAction",
+            "nmp_core::KernelAction",
+            &m,
+            "Action",
+            "pub fn namespace(&self) -> &'static str",
+        );
         assert_eq!(a, b);
     }
 
@@ -372,9 +390,18 @@ mod tests {
         // stable.
         let out = lib_rs();
         for module in [
-            "action", "capability", "domain", "envelope", "ffi", "update", "view_spec",
+            "action",
+            "capability",
+            "domain",
+            "envelope",
+            "ffi",
+            "update",
+            "view_spec",
         ] {
-            assert!(out.contains(&format!("pub mod {module};")), "missing mod {module}");
+            assert!(
+                out.contains(&format!("pub mod {module};")),
+                "missing mod {module}"
+            );
         }
         assert!(out.contains("pub use action::AppAction;"));
         assert!(out.contains("pub use envelope::UpdateEnvelope;"));
@@ -385,12 +412,14 @@ mod tests {
     #[test]
     fn envelope_rs_pins_the_tagged_union_wire_contract() {
         // The host update-channel envelope must use the canonical t/v
-        // snake_case tagging and carry both the discrete-update and snapshot
+        // snake_case tagging and carry the discrete-update and full-state
         // arms. This mirrors `tests/determinism.rs` but at the pure-formatter
         // level, so a refactor of `envelope_rs` is caught without disk I/O.
         let out = envelope_rs();
         assert!(out.contains(r#"#[serde(tag = "t", content = "v", rename_all = "snake_case")]"#));
         assert!(out.contains("Update(nmp_core::KernelUpdate),"));
-        assert!(out.contains("Snapshot(serde_json::Value),"));
+        assert!(out.contains("FullState(serde_json::Value),"));
+        assert!(out.contains("ViewBatch(nmp_core::ViewBatchFrame),"));
+        assert!(out.contains("SideEffect(nmp_core::SideEffectFrame),"));
     }
 }

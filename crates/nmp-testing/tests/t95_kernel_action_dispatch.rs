@@ -5,7 +5,7 @@
 //! loop the T95 task names ("Integration test: dispatch KernelAction::OpenUri").
 //!
 //! Every frame on the channel is wrapped per ADR-0001 (T103) as
-//! `{"t":"update"|"snapshot","v":…}`; the test decodes through the canonical
+//! `{"t":"update"|"full_state","v":…}`; the test decodes through the canonical
 //! `UpdateEnvelope` discriminated type — never by key-sniffing — so that the
 //! discrete-vs-snapshot split is exercised end-to-end alongside the OpenUri
 //! routing this test was created for.

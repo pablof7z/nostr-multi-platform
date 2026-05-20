@@ -362,7 +362,6 @@ pub(super) struct KernelUpdate {
     /// a kernel-vs-shell schema mismatch and degrade gracefully (D1) instead
     /// of mis-decoding a renamed/removed/retyped field.
     pub(super) schema_version: u32,
-    pub(super) update_kind: &'static str,
     pub(super) running: bool,
     pub(super) relay_url: &'static str,
     pub(super) test_npub: &'static str,

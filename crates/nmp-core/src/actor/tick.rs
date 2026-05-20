@@ -4,7 +4,7 @@
 
 use crate::app::KernelUpdate;
 use crate::kernel::Kernel;
-use crate::update_envelope::{wrap_snapshot, wrap_update};
+use crate::update_envelope::{wrap_full_state, wrap_update};
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
@@ -45,10 +45,10 @@ pub(super) fn emit_now(
     update_tx: &Sender<String>,
     last_emit: &mut Instant,
 ) {
-    // Snapshot frame: wrap the already-serialized snapshot as
-    // `{"t":"snapshot","v":…}` (D8 — borrowed RawValue, one outer alloc, no
-    // re-parse). D6 — a wrap failure drops the frame, never unwinds.
-    if let Some(frame) = wrap_snapshot(kernel.make_update(running)) {
+    // Full-state frame: wrap the already-serialized snapshot as
+    // `{"t":"full_state","v":…}` (D8 — borrowed RawValue, one outer alloc,
+    // no re-parse). D6 — a wrap failure drops the frame, never unwinds.
+    if let Some(frame) = wrap_full_state(kernel.make_update(running)) {
         let _ = update_tx.send(frame);
     }
     *last_emit = Instant::now();
@@ -142,7 +142,7 @@ mod tests {
         );
     }
 
-    /// End-to-end: a live actor emits BOTH wire shapes on the single channel,
+    /// End-to-end: a live actor emits BOTH active wire shapes on the channel,
     /// and every frame decodes as exactly one `UpdateEnvelope` (the canonical
     /// T103 contract). `Start` yields a snapshot frame; `Kernel(OpenView)`
     /// yields a discrete update frame followed by a snapshot frame.
@@ -178,7 +178,7 @@ mod tests {
                 .unwrap_or_else(|e| panic!("undecodable frame on channel: {e}: {frame}"))
             {
                 UpdateEnvelope::Update(_) => updates += 1,
-                UpdateEnvelope::Snapshot(v) => {
+                UpdateEnvelope::FullState(v) => {
                     // Every snapshot MUST carry a schema version so a shell can
                     // detect a kernel-vs-shell mismatch and degrade (D1). This
                     // pins the contract as a CI gate — removing the field can
@@ -192,6 +192,9 @@ mod tests {
                 }
                 // D7 — no panic is induced in this happy-path test; a panic
                 // frame here would be an actor-death regression.
+                UpdateEnvelope::ViewBatch(_) | UpdateEnvelope::SideEffect(_) => {
+                    panic!("reserved frame emitted before reducer semantics landed")
+                }
                 UpdateEnvelope::Panic(p) => {
                     panic!("unexpected actor-death frame on the channel: {}", p.msg)
                 }
@@ -238,8 +241,12 @@ mod tests {
                     consumer_id: "test-consumer".into(),
                 })
                 .unwrap();
-            cmd_tx.send(ActorCommand::OpenAuthor { pubkey: pk.clone() }).unwrap();
-            cmd_tx.send(ActorCommand::CloseAuthor { pubkey: pk.clone() }).unwrap();
+            cmd_tx
+                .send(ActorCommand::OpenAuthor { pubkey: pk.clone() })
+                .unwrap();
+            cmd_tx
+                .send(ActorCommand::CloseAuthor { pubkey: pk.clone() })
+                .unwrap();
         }
         // The actor may be inside the 250 ms idle relay wait before it
         // checks the command channel, so wait past one full idle cycle.
@@ -250,8 +257,9 @@ mod tests {
         let mut updates = 0usize;
         while let Ok(frame) = upd_rx.try_recv() {
             match serde_json::from_str::<UpdateEnvelope>(&frame) {
-                Ok(UpdateEnvelope::Snapshot(_)) => snapshots += 1,
+                Ok(UpdateEnvelope::FullState(_)) => snapshots += 1,
                 Ok(UpdateEnvelope::Update(_)) => updates += 1,
+                Ok(UpdateEnvelope::ViewBatch(_) | UpdateEnvelope::SideEffect(_)) => {}
                 Ok(UpdateEnvelope::Panic(p)) => {
                     panic!("unexpected actor-death frame on the channel: {}", p.msg)
                 }
@@ -293,7 +301,7 @@ mod tests {
         assert!(
             matches!(
                 serde_json::from_str::<UpdateEnvelope>(&frame),
-                Ok(UpdateEnvelope::Snapshot(_))
+                Ok(UpdateEnvelope::FullState(_))
             ),
             "regression: running=true + view dispatch emitted a non-snapshot frame: {frame}"
         );
@@ -332,7 +340,9 @@ mod tests {
         // Drain all snapshots and find the one with activeAccount.
         let mut found_active = false;
         while let Ok(frame) = upd_rx.try_recv() {
-            if let Ok(UpdateEnvelope::Snapshot(snap)) = serde_json::from_str::<UpdateEnvelope>(&frame) {
+            if let Ok(UpdateEnvelope::FullState(snap)) =
+                serde_json::from_str::<UpdateEnvelope>(&frame)
+            {
                 if let Some(active) = snap.get("active_account") {
                     if !active.is_null() {
                         found_active = true;
@@ -340,6 +350,9 @@ mod tests {
                 }
             }
         }
-        assert!(found_active, "expected snapshot with activeAccount after CreateAccount");
+        assert!(
+            found_active,
+            "expected snapshot with activeAccount after CreateAccount"
+        );
     }
 }

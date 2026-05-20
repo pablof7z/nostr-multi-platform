@@ -118,17 +118,16 @@ M16), not bugs. Don't change the spec to match incomplete code; file it.
    (rate limit, bad filter, auth-required). Match the `wire_id` back to the
    `logical_interests[].key` that owns it.
 
-## JSON snapshot — top-level field reference
+## JSON full-state payload — top-level field reference
 
 The canonical shape is the `KernelUpdate` struct
 ([`crates/nmp-core/src/kernel/types.rs:306-326`](../../crates/nmp-core/src/kernel/types.rs));
 the Swift decoder mirror is `KernelBridge.swift:119-138` (decoded with
-`.convertFromSnakeCase`). 18 top-level fields:
+`.convertFromSnakeCase`). Selected top-level fields:
 
 | Field | Type | Use |
 |---|---|---|
 | `rev` | u64 | monotonic emit counter; the staleness guard |
-| `update_kind` | string | why this emit fired (snapshot vs delta) |
 | `running` | bool | actor loop alive |
 | `relay_url` | string | primary content relay (legacy single field) |
 | `test_npub` | string | seed identity for the demo shell |

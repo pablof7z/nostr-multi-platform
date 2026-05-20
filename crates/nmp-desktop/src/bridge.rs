@@ -33,14 +33,16 @@ impl KernelBridge {
 
         let reader_latest = Arc::clone(&latest);
         thread::spawn(move || {
-            // Actor emits tagged envelopes: {"t":"snapshot","v":{...}} or
-            // {"t":"update","v":{...}}. We only care about snapshot frames.
+            // Actor emits tagged envelopes. The desktop renderer only cares
+            // about full-state frames.
             for line in rx {
                 let env: UpdateEnvelope = match serde_json::from_str(&line) {
                     Ok(e) => e,
                     Err(_) => continue,
                 };
-                let UpdateEnvelope::Snapshot(v) = env else { continue };
+                let UpdateEnvelope::FullState(v) = env else {
+                    continue;
+                };
                 let snap: Snapshot = match serde_json::from_value(v) {
                     Ok(s) => s,
                     Err(_) => continue,
@@ -79,7 +81,9 @@ impl KernelBridge {
 
     /// Generate a fresh keypair and sign in with it (so compose can publish).
     pub fn create_account(&self, profile: HashMap<String, String>, relays: Vec<(String, String)>) {
-        let _ = self.tx.send(ActorCommand::CreateAccount { profile, relays });
+        let _ = self
+            .tx
+            .send(ActorCommand::CreateAccount { profile, relays });
     }
 
     /// Sign in with an existing `nsec…` / hex secret.

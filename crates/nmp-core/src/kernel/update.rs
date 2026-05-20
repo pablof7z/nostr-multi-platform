@@ -43,7 +43,6 @@ impl Kernel {
         let update = KernelUpdate {
             rev: self.rev,
             schema_version: KERNEL_SCHEMA_VERSION,
-            update_kind: "ViewBatch",
             running,
             relay_url: "",
             test_npub: "",

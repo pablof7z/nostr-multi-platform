@@ -24,13 +24,14 @@ pub use app::{
     resolve_open_uri, KernelAction, KernelUpdate, KernelViewSpec, OpenUriError, OpenUriRouting,
     VIEW_ADDRESSABLE, VIEW_PROFILE, VIEW_THREAD,
 };
-pub use kernel_reducer::KernelReducer;
 pub use bunker_hook::{register_bunker_hook, BunkerHookFn};
 pub use ffi::NmpApp;
+pub use kernel_reducer::KernelReducer;
 pub use remote_signer::RemoteSignerHandle;
 pub use update_envelope::{
-    panic_message, wrap_panic, wrap_snapshot, wrap_update, PanicFrame, UpdateEnvelope,
-    WireEnvelope, SNAPSHOT_SCHEMA_VERSION,
+    panic_message, wrap_full_state, wrap_panic, wrap_side_effect, wrap_snapshot, wrap_update,
+    wrap_view_batch, PanicFrame, SideEffectFrame, UpdateEnvelope, ViewBatchFrame, WireEnvelope,
+    SNAPSHOT_SCHEMA_VERSION,
 };
 
 // Stage 4 of NIP-46 wiring: `nmp-signer-broker` (the crate that bridges
@@ -48,12 +49,11 @@ pub use actor::ActorCommand;
 pub use ffi::{
     nmp_app_claim_profile, nmp_app_close_author, nmp_app_close_thread, nmp_app_configure,
     nmp_app_dispatch_capability, nmp_app_free, nmp_app_free_string,
-    nmp_app_inject_pre_verified_events, nmp_app_inject_signed_events,
-    nmp_app_lifecycle_background, nmp_app_lifecycle_foreground, nmp_app_new, nmp_app_open_author,
-    nmp_app_open_firehose_tag, nmp_app_open_thread, nmp_app_open_uri,
-    nmp_app_publish_signed_event, nmp_app_publish_signed_event_to,
-    nmp_app_publish_unsigned_event, nmp_app_register_event_observer,
-    nmp_app_register_raw_event_observer, nmp_app_release_profile,
+    nmp_app_inject_pre_verified_events, nmp_app_inject_signed_events, nmp_app_lifecycle_background,
+    nmp_app_lifecycle_foreground, nmp_app_new, nmp_app_open_author, nmp_app_open_firehose_tag,
+    nmp_app_open_thread, nmp_app_open_uri, nmp_app_publish_signed_event,
+    nmp_app_publish_signed_event_to, nmp_app_publish_unsigned_event,
+    nmp_app_register_event_observer, nmp_app_register_raw_event_observer, nmp_app_release_profile,
     nmp_app_set_capability_callback, nmp_app_set_lifecycle_callback, nmp_app_set_storage_path,
     nmp_app_set_update_callback, nmp_app_signin_nsec, nmp_app_start,
     nmp_app_unregister_event_observer, nmp_app_unregister_raw_event_observer,

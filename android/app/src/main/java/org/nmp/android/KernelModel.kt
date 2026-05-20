@@ -25,12 +25,10 @@ private const val TAG = "NmpCore"
  * (identical to the Swift `guard update.rev > rev` in `apply`). No Kotlin-side
  * business logic or derived state (D5/D8); decode fails closed (D1).
  *
- * T103 / T107 — wire format: every frame is a tagged envelope
- *   `{"t":"snapshot","v":{…}}` or `{"t":"update","v":{…}}`.
- * This model only processes `t=snapshot` frames; `t=update` (discrete kernel
- * events) are intentionally ignored — the snapshot already carries the full
- * projected state. Non-snapshot frames are logged at DEBUG so a relay of
- * discrete-update frames is observable without flooding logcat.
+ * T103 / T107 — wire format: every frame is a tagged envelope. This model
+ * processes `t=full_state` frames (`t=snapshot` is accepted as a legacy alias);
+ * non-state frames are intentionally ignored because the full-state payload
+ * already carries the projected UI state.
  */
 class KernelModel : ViewModel() {
 
@@ -75,13 +73,13 @@ class KernelModel : ViewModel() {
     /**
      * Decode one frame from the `update_tx` channel.
      *
-     * The kernel emits `{"t":"snapshot","v":{…}}` (T103 envelope). Attempt to
+     * The kernel emits `{"t":"full_state","v":{…}}` (T103 envelope). Attempt to
      * unwrap the envelope and decode the inner object as [KernelUpdate]. Return
      * null (drop the frame) on any parse error; log enough context to diagnose
      * the failure without flooding logcat (PD-025 finding 4 — no silent swallow).
      *
-     * Non-snapshot frames (`t=update`) are logged at DEBUG and dropped — the
-     * snapshot projection already carries the full UI state.
+     * Non-state frames are logged at DEBUG and dropped — the full-state
+     * projection already carries the full UI state.
      */
     private fun decodeSnapshot(payload: String): KernelUpdate? {
         // Step 1: parse the outer envelope.
@@ -92,22 +90,22 @@ class KernelModel : ViewModel() {
 
         // Step 2: check the discriminator tag.
         val tag = outer["t"]?.jsonPrimitive?.content
-        if (tag != "snapshot") {
-            if (tag == "update") {
-                Log.d(TAG, "discrete update frame received (ignored by snapshot model)")
+        if (tag != "full_state" && tag != "snapshot") {
+            if (tag == "update" || tag == "side_effect") {
+                Log.d(TAG, "non-state frame received (ignored by full-state model)")
             } else {
                 Log.e(TAG, "unknown envelope tag=$tag; payload prefix: ${payload.take(200)}")
             }
             return null
         }
 
-        // Step 3: extract the inner snapshot object.
+        // Step 3: extract the inner full-state object.
         val inner = outer["v"]?.jsonObject ?: run {
-            Log.e(TAG, "snapshot envelope missing 'v' field; payload prefix: ${payload.take(200)}")
+            Log.e(TAG, "full_state envelope missing 'v' field; payload prefix: ${payload.take(200)}")
             return null
         }
 
-        // Step 4: decode the inner snapshot as KernelUpdate.
+        // Step 4: decode the inner full-state payload as KernelUpdate.
         return runCatching {
             json.decodeFromJsonElement<KernelUpdate>(inner)
         }.getOrElse { e ->

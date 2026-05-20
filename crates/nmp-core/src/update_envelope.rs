@@ -1,11 +1,11 @@
 //! The canonical wire envelope for the single `update_tx` channel.
 //!
-//! The actor pushes **two structurally distinct** JSON shapes onto the one
+//! The actor pushes structurally distinct JSON shapes onto the one
 //! `Sender<String>` update channel:
 //!
 //! 1. a **discrete** [`KernelUpdate`] enum — e.g. `{"ViewOpened":{…}}` /
 //!    `{"UriRejected":{…}}` — emitted from the `ActorCommand::Kernel` arm; and
-//! 2. the **periodic snapshot** produced by `Kernel::make_update` — the large
+//! 2. the **periodic full state** produced by `Kernel::make_update` — the large
 //!    `{"rev":…,"items":[…],"metrics":{…},…}` object every host renders.
 //!
 //! Without a discriminator every consumer (Pulse, future Android/desktop
@@ -17,14 +17,19 @@
 //!
 //! ```json
 //! {"t":"update","v":<KernelUpdate>}
-//! {"t":"snapshot","v":<snapshot>}
+//! {"t":"full_state","v":<full-state snapshot>}
+//! {"t":"view_batch","v":{"rev":1,"views":[]}}
+//! {"t":"side_effect","v":{"rev":1,"effect":{...}}}
 //! {"t":"panic","v":{"msg":<thread panic message>}}
 //! ```
 //!
 //! so every consumer decodes exactly **one** discriminated type ([`UpdateEnvelope`]).
+//! The current actor emits `full_state` for render state. `view_batch` and
+//! `side_effect` are defined as first-class wire variants, but are not emitted
+//! until the reducer has real lossless delta/effect semantics.
 //!
 //! D6 (FFI clean): the tag *is* the discriminant — no exceptions, no key
-//! sniffing. D8 (no extra per-event alloc): the snapshot is already a
+//! sniffing. D8 (no extra per-event alloc): the full state is already a
 //! serialized `String`; it is re-attached by **borrowed** [`RawValue`] (no
 //! re-parse, no clone of the payload), so wrapping costs a single outer
 //! allocation.
@@ -44,11 +49,13 @@ use serde_json::value::RawValue;
 
 use crate::app::KernelUpdate;
 
-/// Schema version of the periodic snapshot payload (the `{"rev":…,"items":…}`
-/// object inside an [`UpdateEnvelope::Snapshot`] frame). Bump on **any**
-/// breaking change to a snapshot field — a rename, a removal, or a type change.
+/// Schema version of the periodic full-state payload (the
+/// `{"rev":…,"items":…}` object inside an [`UpdateEnvelope::FullState`]
+/// frame). Bump on **any** breaking change to a full-state field — a rename, a
+/// removal, or a type change.
 ///
-/// Every emitted snapshot carries this value in its `schema_version` field.
+/// Every emitted full-state payload carries this value in its
+/// `schema_version` field.
 ///
 /// If `schema_version` doesn't match the version the host was compiled
 /// against, the host should show an error and refuse to decode further —
@@ -67,32 +74,63 @@ pub struct PanicFrame {
     pub msg: String,
 }
 
+/// Reserved `ViewBatch` payload shape from the target app-update contract.
+///
+/// The actor does not emit this yet: the existing `inserted` / `updated` /
+/// `removed` fields are diagnostics attached to `FullState`, not a proven
+/// lossless platform-shadow delta stream.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct ViewBatchFrame {
+    pub rev: u64,
+    pub views: Vec<serde_json::Value>,
+}
+
+/// Reserved `SideEffect` payload shape for ephemeral non-state events.
+///
+/// Full-state remains the only render-state path today. Keeping this shape
+/// explicit prevents future one-shot payloads from being smuggled into the
+/// full-state object.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct SideEffectFrame {
+    pub rev: u64,
+    pub effect: serde_json::Value,
+}
+
 /// Borrowing **emit-side** envelope. Used only to *serialize* a frame onto the
-/// channel; the snapshot half borrows its already-serialized JSON so wrapping
+/// channel; the full-state half borrows its already-serialized JSON so wrapping
 /// never re-parses or clones the (large) payload (D8).
 #[derive(Debug, Serialize)]
 #[serde(tag = "t", content = "v", rename_all = "snake_case")]
 pub enum WireEnvelope<'a> {
     /// A discrete [`KernelUpdate`] (the `ActorCommand::Kernel` reducer result).
     Update(&'a KernelUpdate),
-    /// The periodic `Kernel::make_update` snapshot, already serialized.
-    Snapshot(&'a RawValue),
+    /// The periodic `Kernel::make_update` full-state snapshot, already serialized.
+    FullState(&'a RawValue),
+    /// Reserved lossless view delta batch. Defined, but not emitted yet.
+    ViewBatch(&'a ViewBatchFrame),
+    /// Reserved one-shot side effect. Defined, but not emitted yet.
+    SideEffect(&'a SideEffectFrame),
     /// Actor-thread death (D7) — the kernel loop panicked or exited.
     Panic(&'a PanicFrame),
 }
 
 /// Owning **consumer-side** envelope. This is the single discriminated type
 /// every host (and every `nmp-codegen`-projected shell) decodes the channel
-/// into. The snapshot interior stays opaque ([`serde_json::Value`]) on
+/// into. The full-state interior stays opaque ([`serde_json::Value`]) on
 /// purpose: the contract this type models is the *discriminator*, not the
-/// ~30-field snapshot's internals (which remain a crate-internal struct).
+/// ~30-field full-state internals (which remain a crate-internal struct).
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "t", content = "v", rename_all = "snake_case")]
 pub enum UpdateEnvelope {
     /// A discrete kernel update — the host applies it as a delta.
     Update(KernelUpdate),
-    /// A full snapshot — the host replaces its rendered state.
-    Snapshot(serde_json::Value),
+    /// A full-state snapshot — the host replaces its rendered state.
+    #[serde(alias = "snapshot")]
+    FullState(serde_json::Value),
+    /// A lossless view-delta batch. Reserved until real delta semantics land.
+    ViewBatch(ViewBatchFrame),
+    /// A one-shot, non-state side effect.
+    SideEffect(SideEffectFrame),
     /// The actor thread died (panicked or exited). Terminal: the kernel is
     /// gone for this process. Hosts MUST surface a fatal error and stop
     /// sending commands — see the actor-death contract above.
@@ -108,14 +146,33 @@ pub fn wrap_update(update: &KernelUpdate) -> Option<String> {
     serde_json::to_string(&WireEnvelope::Update(update)).ok()
 }
 
-/// Wrap an **already-serialized** snapshot JSON string as
-/// `{"t":"snapshot","v":…}` without re-parsing it (D8 — one outer alloc).
+/// Wrap an **already-serialized** full-state JSON string as
+/// `{"t":"full_state","v":…}` without re-parsing it (D8 — one outer alloc).
 ///
-/// D6: if the snapshot string is somehow not valid JSON the frame is dropped
+/// D6: if the full-state string is somehow not valid JSON the frame is dropped
 /// (`None`) rather than panicking.
+pub fn wrap_full_state(full_state_json: String) -> Option<String> {
+    let raw = RawValue::from_string(full_state_json).ok()?;
+    serde_json::to_string(&WireEnvelope::FullState(&raw)).ok()
+}
+
+/// Backwards-compatible helper name for callers that still say "snapshot".
+/// The emitted wire tag is the explicit `full_state`, not legacy `snapshot`.
 pub fn wrap_snapshot(snapshot_json: String) -> Option<String> {
-    let raw = RawValue::from_string(snapshot_json).ok()?;
-    serde_json::to_string(&WireEnvelope::Snapshot(&raw)).ok()
+    wrap_full_state(snapshot_json)
+}
+
+/// Serialize a reserved `ViewBatch` shape.
+///
+/// Production emission is intentionally absent until the actor has a proven
+/// lossless delta path. Tests use this helper to pin the wire contract.
+pub fn wrap_view_batch(batch: &ViewBatchFrame) -> Option<String> {
+    serde_json::to_string(&WireEnvelope::ViewBatch(batch)).ok()
+}
+
+/// Serialize a reserved one-shot side-effect shape.
+pub fn wrap_side_effect(effect: &SideEffectFrame) -> Option<String> {
+    serde_json::to_string(&WireEnvelope::SideEffect(effect)).ok()
 }
 
 /// Build the actor-death frame `{"t":"panic","v":{"msg":…}}` (D7).
@@ -157,7 +214,8 @@ mod tests {
     use super::*;
     use crate::app::KernelUpdate;
 
-    /// The on-wire tag values MUST be exactly `"update"` / `"snapshot"`
+    /// The on-wire state tag MUST be exactly `"full_state"`: the previous
+    /// generic `"snapshot"` tag is only accepted as a decode alias.
     /// (snake_case), never the Rust variant casing — hosts pin these strings.
     #[test]
     fn tag_strings_are_snake_case_lowercase() {
@@ -171,11 +229,10 @@ mod tests {
             "discrete frame must be tagged t=update: {wire}"
         );
 
-        let snap = wrap_snapshot(r#"{"rev":7,"open_views":2}"#.to_string())
-            .expect("snapshot serializes");
+        let snap = wrap_full_state(r#"{"rev":7,"open_views":2}"#.to_string()).expect("serializes");
         assert!(
-            snap.starts_with(r#"{"t":"snapshot","v":"#),
-            "snapshot frame must be tagged t=snapshot: {snap}"
+            snap.starts_with(r#"{"t":"full_state","v":"#),
+            "full-state frame must be tagged t=full_state: {snap}"
         );
     }
 
@@ -194,20 +251,20 @@ mod tests {
         }
     }
 
-    /// Round-trip the **snapshot** shape through the consumer envelope; the
+    /// Round-trip the **full-state** shape through the consumer envelope; the
     /// inner JSON survives byte-for-byte (no lossy re-typing).
     #[test]
-    fn round_trip_snapshot_shape() {
+    fn round_trip_full_state_shape() {
         let inner = r#"{"rev":42,"open_views":3,"items":[]}"#;
-        let wire = wrap_snapshot(inner.to_string()).expect("serialize");
+        let wire = wrap_full_state(inner.to_string()).expect("serialize");
         let decoded: UpdateEnvelope = serde_json::from_str(&wire).expect("decode");
         match decoded {
-            UpdateEnvelope::Snapshot(v) => {
+            UpdateEnvelope::FullState(v) => {
                 assert_eq!(v["rev"], serde_json::json!(42));
                 assert_eq!(v["open_views"], serde_json::json!(3));
                 assert_eq!(v["items"], serde_json::json!([]));
             }
-            other => panic!("misclassified snapshot frame: {other:?}"),
+            other => panic!("misclassified full-state frame: {other:?}"),
         }
     }
 
@@ -222,7 +279,7 @@ mod tests {
                 key: "evid".into(),
             })
             .unwrap(),
-            wrap_snapshot(r#"{"rev":1,"open_views":1}"#.to_string()).unwrap(),
+            wrap_full_state(r#"{"rev":1,"open_views":1}"#.to_string()).unwrap(),
             wrap_update(&KernelUpdate::Started { rev: 0 }).unwrap(),
         ];
 
@@ -231,27 +288,71 @@ mod tests {
         for frame in &channel {
             match serde_json::from_str::<UpdateEnvelope>(frame).expect("decodes") {
                 UpdateEnvelope::Update(_) => updates += 1,
-                UpdateEnvelope::Snapshot(_) => snapshots += 1,
+                UpdateEnvelope::FullState(_) => snapshots += 1,
+                UpdateEnvelope::ViewBatch(_) => panic!("unexpected view batch frame"),
+                UpdateEnvelope::SideEffect(_) => panic!("unexpected side effect frame"),
                 UpdateEnvelope::Panic(p) => panic!("unexpected panic frame: {}", p.msg),
             }
         }
         assert_eq!(updates, 2, "two discrete updates on the channel");
-        assert_eq!(snapshots, 1, "one snapshot on the channel");
+        assert_eq!(snapshots, 1, "one full-state frame on the channel");
     }
 
     /// Hand-written wire bytes must parse — pins the format so an accidental
     /// `rename`/variant rename can never silently change the contract.
     #[test]
     fn hand_written_wire_bytes_decode() {
-        let wire = r#"{"t":"update","v":{"ViewOpened":{"namespace":"profile","key":"pk"}}}"#;
+        let wire = r#"{"t":"full_state","v":{"rev":9,"schema_version":1,"items":[]}}"#;
         let decoded: UpdateEnvelope = serde_json::from_str(wire).expect("decode");
-        assert_eq!(
-            decoded,
-            UpdateEnvelope::Update(KernelUpdate::ViewOpened {
-                namespace: "profile".into(),
-                key: "pk".into(),
-            })
+        match decoded {
+            UpdateEnvelope::FullState(v) => assert_eq!(v["rev"], serde_json::json!(9)),
+            other => panic!("expected FullState, got {other:?}"),
+        }
+    }
+
+    /// The legacy `snapshot` tag decodes as `FullState` so old producers do
+    /// not strand hosts during rollout. New producers must never emit it.
+    #[test]
+    fn legacy_snapshot_tag_decodes_as_full_state() {
+        let wire = r#"{"t":"snapshot","v":{"rev":3,"items":[]}}"#;
+        let decoded: UpdateEnvelope = serde_json::from_str(wire).expect("decode");
+        match decoded {
+            UpdateEnvelope::FullState(v) => assert_eq!(v["rev"], serde_json::json!(3)),
+            other => panic!("expected FullState alias, got {other:?}"),
+        }
+    }
+
+    /// `ViewBatch` is a first-class shape, but production emission waits for a
+    /// real lossless delta path.
+    #[test]
+    fn view_batch_shape_round_trips_but_is_not_the_full_state_path() {
+        let batch = ViewBatchFrame {
+            rev: 11,
+            views: vec![serde_json::json!({"id":"timeline","op":"replace"})],
+        };
+        let wire = wrap_view_batch(&batch).expect("serialize");
+        assert!(
+            wire.starts_with(r#"{"t":"view_batch","v":"#),
+            "view batch frame must be tagged t=view_batch: {wire}"
         );
+        let decoded: UpdateEnvelope = serde_json::from_str(&wire).expect("decode");
+        assert_eq!(decoded, UpdateEnvelope::ViewBatch(batch));
+    }
+
+    /// `SideEffect` is explicit and separate from render state.
+    #[test]
+    fn side_effect_shape_round_trips() {
+        let effect = SideEffectFrame {
+            rev: 12,
+            effect: serde_json::json!({"ToastShown":{"body":"hello"}}),
+        };
+        let wire = wrap_side_effect(&effect).expect("serialize");
+        assert!(
+            wire.starts_with(r#"{"t":"side_effect","v":"#),
+            "side effect frame must be tagged t=side_effect: {wire}"
+        );
+        let decoded: UpdateEnvelope = serde_json::from_str(&wire).expect("decode");
+        assert_eq!(decoded, UpdateEnvelope::SideEffect(effect));
     }
 
     /// D7 — the actor-death frame must be tagged `t=panic` and decode into the
@@ -360,8 +461,7 @@ mod tests {
         match serde_json::from_str::<UpdateEnvelope>(&frame).expect("frame decodes") {
             UpdateEnvelope::Panic(p) => {
                 assert!(
-                    p.msg.contains("actor thread died")
-                        && p.msg.contains("kernel loop exploded"),
+                    p.msg.contains("actor thread died") && p.msg.contains("kernel loop exploded"),
                     "panic frame must carry diagnostic context: {}",
                     p.msg
                 );
@@ -369,6 +469,9 @@ mod tests {
             other => panic!("expected Panic frame, got {other:?}"),
         }
         // Channel closes after the single frame — no further frames.
-        assert!(rx.recv().is_err(), "channel must close after the panic frame");
+        assert!(
+            rx.recv().is_err(),
+            "channel must close after the panic frame"
+        );
     }
 }

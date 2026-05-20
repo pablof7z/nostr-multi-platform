@@ -283,7 +283,7 @@ class PodcastKernelModel : ViewModel() {
 
     /**
      * Decode one frame from the kernel `update_tx` channel.
-     * Pre-T-podcast-gap-1: the snapshot has no `library` field, so this
+     * Pre-T-podcast-gap-1: the full-state payload has no `library` field, so this
      * returns null often. Library is populated via [refreshFromPodcastSnapshot].
      */
     private fun decodeLibrary(payload: String): PodcastLibraryView? {
@@ -294,16 +294,16 @@ class PodcastKernelModel : ViewModel() {
             return null
         }
         val tag = outer["t"]?.jsonPrimitive?.content
-        if (tag != "snapshot") {
-            if (tag == "update") {
-                Log.d(TAG, "discrete update frame received (ignored by snapshot model)")
+        if (tag != "full_state" && tag != "snapshot") {
+            if (tag == "update" || tag == "side_effect") {
+                Log.d(TAG, "non-state frame received (ignored by full-state model)")
             } else {
                 Log.e(TAG, "unknown envelope tag=$tag; prefix: ${payload.take(200)}")
             }
             return null
         }
         val inner = outer["v"]?.jsonObject ?: run {
-            Log.e(TAG, "snapshot envelope missing 'v' field")
+            Log.e(TAG, "full_state envelope missing 'v' field")
             return null
         }
         val libElem = inner["library"]?.jsonObject ?: return null  // T-podcast-gap-1
