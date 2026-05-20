@@ -2,8 +2,8 @@
 //! See `docs/decisions/0018-content-tree-ffi-projection.md` (T93).
 
 use nmp_content::{
-    ContentTree, ContentTreeWire, MarkdownInline, MarkdownNode, PlaceholderReason,
-    RenderMode, Segment, WireNode, WireNostrUriKind, WIRE_MAX_DEPTH,
+    ContentTree, ContentTreeWire, InvoiceKind, MarkdownInline, MarkdownNode, MediaKind,
+    PlaceholderReason, RenderMode, Segment, WireNode, WireNostrUriKind, WIRE_MAX_DEPTH,
 };
 use nmp_core::nip21::NostrUri;
 use url::Url;
@@ -176,5 +176,162 @@ fn all_inline_and_block_kinds_round_trip() {
         mode: RenderMode::Markdown,
     };
     let wire = tree.to_wire();
+    assert_eq!(wire, json_round_trip(&wire));
+}
+
+// --- T93 gap coverage: segment variants not exercised above ---
+
+/// `Segment::Media` projects every URL plus the `MediaKind` discriminator,
+/// and survives the JSON round trip.
+#[test]
+fn media_segment_projects_urls_and_kind_and_round_trips() {
+    let tree = ContentTree {
+        segments: vec![Segment::Media {
+            urls: vec![
+                Url::parse("https://x.test/a.png").unwrap(),
+                Url::parse("https://x.test/b.png").unwrap(),
+            ],
+            kind: MediaKind::Image,
+        }],
+        mode: RenderMode::Plain,
+    };
+    let wire = tree.to_wire();
+    match &wire.nodes[0] {
+        WireNode::Media { urls, media_kind } => {
+            assert_eq!(
+                urls,
+                &["https://x.test/a.png", "https://x.test/b.png"]
+            );
+            assert_eq!(*media_kind, MediaKind::Image);
+        }
+        other => panic!("expected media, got {other:?}"),
+    }
+    assert_eq!(wire, json_round_trip(&wire));
+}
+
+/// `Segment::Emoji` carries its shortcode through projection — both with a
+/// resolved URL and with `None` (unresolved shortcode).
+#[test]
+fn emoji_segment_projects_resolved_and_unresolved_url() {
+    let tree = ContentTree {
+        segments: vec![
+            Segment::Emoji {
+                shortcode: "ostrich".into(),
+                url: Some(Url::parse("https://x.test/ostrich.png").unwrap()),
+            },
+            Segment::Emoji {
+                shortcode: "missing".into(),
+                url: None,
+            },
+        ],
+        mode: RenderMode::Plain,
+    };
+    let wire = tree.to_wire();
+    match &wire.nodes[0] {
+        WireNode::Emoji { shortcode, url } => {
+            assert_eq!(shortcode, "ostrich");
+            assert_eq!(url.as_deref(), Some("https://x.test/ostrich.png"));
+        }
+        other => panic!("expected emoji, got {other:?}"),
+    }
+    match &wire.nodes[1] {
+        WireNode::Emoji { shortcode, url } => {
+            assert_eq!(shortcode, "missing");
+            assert!(url.is_none());
+        }
+        other => panic!("expected emoji, got {other:?}"),
+    }
+    assert_eq!(wire, json_round_trip(&wire));
+}
+
+/// `Segment::Invoice` projects its payload verbatim and round-trips.
+#[test]
+fn invoice_segment_projects_payload_and_round_trips() {
+    let tree = ContentTree {
+        segments: vec![Segment::Invoice(InvoiceKind::Bolt11("lnbc1abc".into()))],
+        mode: RenderMode::Plain,
+    };
+    let wire = tree.to_wire();
+    match &wire.nodes[0] {
+        WireNode::Invoice { invoice } => {
+            assert_eq!(*invoice, InvoiceKind::Bolt11("lnbc1abc".into()));
+        }
+        other => panic!("expected invoice, got {other:?}"),
+    }
+    assert_eq!(wire, json_round_trip(&wire));
+}
+
+/// `NostrUri::Address` projects to the `Address` discriminator carrying the
+/// author pubkey as `primary_id` and the kind as `event_kind` — the third
+/// `project_uri` branch (Profile + Event are covered above).
+#[test]
+fn address_uri_projects_with_address_discriminator_and_round_trips() {
+    let tree = ContentTree {
+        segments: vec![Segment::EventRef(NostrUri::Address {
+            identifier: "my-article".into(),
+            pubkey: "d".repeat(64),
+            kind: 30023,
+            relays: vec!["wss://r.test".into()],
+        })],
+        mode: RenderMode::Plain,
+    };
+    let wire = tree.to_wire();
+    match &wire.nodes[0] {
+        WireNode::EventRef { uri } => {
+            assert_eq!(uri.kind, WireNostrUriKind::Address);
+            assert_eq!(uri.primary_id, "d".repeat(64));
+            assert_eq!(uri.event_kind, Some(30023));
+            assert_eq!(uri.relays, vec!["wss://r.test".to_string()]);
+            assert!(uri.uri.starts_with("nostr:"));
+        }
+        other => panic!("expected event ref, got {other:?}"),
+    }
+    assert_eq!(wire, json_round_trip(&wire));
+}
+
+/// The inline markdown variants not covered by `all_inline_and_block_kinds`
+/// — `Image`, `Code` (→ `InlineCode`), and the soft/hard breaks.
+#[test]
+fn inline_image_code_and_breaks_round_trip() {
+    let tree = ContentTree {
+        segments: vec![Segment::MarkdownBlock(MarkdownNode::Paragraph(vec![
+            MarkdownInline::Image {
+                alt: "a cat".into(),
+                title: Some("tooltip".into()),
+                src: Url::parse("https://x.test/cat.png").ok(),
+            },
+            MarkdownInline::Code("let x = 1;".into()),
+            MarkdownInline::SoftBreak,
+            MarkdownInline::HardBreak,
+        ]))],
+        mode: RenderMode::Markdown,
+    };
+    let wire = tree.to_wire();
+    let kinds: Vec<&WireNode> = wire
+        .nodes
+        .iter()
+        .filter(|n| {
+            matches!(
+                n,
+                WireNode::Image { .. }
+                    | WireNode::InlineCode { .. }
+                    | WireNode::SoftBreak
+                    | WireNode::HardBreak
+            )
+        })
+        .collect();
+    assert_eq!(kinds.len(), 4, "expected image, code, soft + hard break");
+    match kinds[0] {
+        WireNode::Image { alt, title, src } => {
+            assert_eq!(alt, "a cat");
+            assert_eq!(title.as_deref(), Some("tooltip"));
+            assert_eq!(src.as_deref(), Some("https://x.test/cat.png"));
+        }
+        other => panic!("expected image, got {other:?}"),
+    }
+    match kinds[1] {
+        WireNode::InlineCode { code } => assert_eq!(code, "let x = 1;"),
+        other => panic!("expected inline code, got {other:?}"),
+    }
     assert_eq!(wire, json_round_trip(&wire));
 }

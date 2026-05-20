@@ -149,3 +149,50 @@ fn release_one_handle_leaves_others_resolvable() {
     // After releasing one handle, the resolved payload is still there.
     assert!(EmbedClaimRegistry::resolved(&state, &target).is_some());
 }
+
+/// All read-only queries return their "absent" sentinel for a target that
+/// was never claimed — `refcount` 0, `is_claimed` false, `resolved` None.
+#[test]
+fn queries_on_unknown_target_return_absent_sentinels() {
+    let state = EmbedClaimRegistry::state();
+    let unknown = EmbedTarget::Event("never-claimed".into());
+    assert_eq!(EmbedClaimRegistry::refcount(&state, &unknown), 0);
+    assert!(!EmbedClaimRegistry::is_claimed(&state, &unknown));
+    assert!(EmbedClaimRegistry::resolved(&state, &unknown).is_none());
+    assert_eq!(EmbedClaimRegistry::claim_count(&state), 0);
+}
+
+/// A released target is again "unknown": its entry is GC'd at refcount 0,
+/// so the query sentinels apply just as for a never-seen target.
+#[test]
+fn queries_after_full_release_report_unknown_target() {
+    let mut state = EmbedClaimRegistry::state();
+    let target = EmbedTarget::Event("transient".into());
+    let (h, _) = EmbedClaimRegistry::claim(&mut state, target.clone());
+    assert!(EmbedClaimRegistry::release(&mut state, &h));
+    assert_eq!(EmbedClaimRegistry::refcount(&state, &target), 0);
+    assert!(!EmbedClaimRegistry::is_claimed(&state, &target));
+    assert!(EmbedClaimRegistry::resolved(&state, &target).is_none());
+}
+
+/// Interleaved claims/releases on distinct targets keep independent
+/// refcounts — releasing one target's handle never touches another's.
+#[test]
+fn distinct_targets_keep_independent_refcounts() {
+    let mut state = EmbedClaimRegistry::state();
+    let a = EmbedTarget::Event("aaa".into());
+    let b = EmbedTarget::Event("bbb".into());
+
+    let (a1, _) = EmbedClaimRegistry::claim(&mut state, a.clone());
+    let (_a2, _) = EmbedClaimRegistry::claim(&mut state, a.clone());
+    let (_b1, _) = EmbedClaimRegistry::claim(&mut state, b.clone());
+
+    assert_eq!(EmbedClaimRegistry::refcount(&state, &a), 2);
+    assert_eq!(EmbedClaimRegistry::refcount(&state, &b), 1);
+
+    // Releasing one of A's handles must leave B untouched.
+    assert!(!EmbedClaimRegistry::release(&mut state, &a1));
+    assert_eq!(EmbedClaimRegistry::refcount(&state, &a), 1);
+    assert_eq!(EmbedClaimRegistry::refcount(&state, &b), 1);
+    assert_eq!(EmbedClaimRegistry::claim_count(&state), 2);
+}
