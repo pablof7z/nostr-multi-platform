@@ -121,6 +121,7 @@ impl Kernel {
         // when every reference is already cached (D8). The actor turns the
         // deduped set into OneshotApi fetches via `drain_unknown_oneshots`.
         self.collect_unknown_refs(&event.tags);
+        self.request_profile_for_rendered_note(&event.pubkey);
 
         let cached = StoredEvent {
             id: event.id.clone(),
