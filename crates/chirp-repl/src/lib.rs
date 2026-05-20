@@ -2,6 +2,7 @@
 
 pub mod actions;
 pub mod command;
+pub mod profiles;
 pub mod render;
 pub mod session;
 pub mod wire;
