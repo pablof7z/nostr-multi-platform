@@ -7,9 +7,11 @@
 
 use super::*;
 use crate::kernel::Kernel;
-use crate::planner::InterestLifecycle;
+use crate::planner::{
+    InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
+};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
-use crate::subs::WireFrame;
+use crate::subs::{CompileTrigger, InvalidateReason, WireFrame};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -83,6 +85,7 @@ fn create_account_installs_exact_default_followfeed_and_self() {
         false,
         &profile,
         &onboarding_relays(),
+        false,
     );
     let active = identity.active_pubkey().expect("new account pubkey");
 
@@ -117,6 +120,7 @@ fn create_account_followfeed_discovers_relays_and_keeps_reqs_tailing() {
         false,
         &profile,
         &onboarding_relays(),
+        false,
     );
     let active = identity.active_pubkey().expect("new account pubkey");
 
@@ -153,4 +157,54 @@ fn create_account_followfeed_discovers_relays_and_keeps_reqs_tailing() {
         assert!(kinds.contains(&Value::from(6)));
         assert_eq!(json.get("limit"), Some(&Value::from(200)));
     }
+}
+
+#[test]
+fn create_account_prepopulates_self_relay_list_for_inbox_interests() {
+    let (mut identity, mut kernel) = fresh();
+    let profile = HashMap::new();
+    create_account(
+        &mut identity,
+        &mut kernel,
+        false,
+        &profile,
+        &onboarding_relays(),
+        false,
+    );
+    let active = identity.active_pubkey().expect("new account pubkey");
+
+    let mut tags = BTreeMap::new();
+    tags.insert("p".to_string(), [active.clone()].into_iter().collect());
+    kernel.lifecycle_mut().registry_mut().push(LogicalInterest {
+        id: InterestId(9_001),
+        scope: InterestScope::Account(active),
+        shape: InterestShape {
+            kinds: [1059].into_iter().collect(),
+            tags,
+            ..Default::default()
+        },
+        hints: Vec::new(),
+        lifecycle: InterestLifecycle::Tailing,
+    });
+    kernel
+        .lifecycle_mut()
+        .set_selection_budget(usize::MAX, usize::MAX);
+    kernel
+        .lifecycle_mut()
+        .enqueue_trigger(CompileTrigger::InvalidateCompile {
+            reason: InvalidateReason::TestForceRecompile,
+        });
+
+    let frames = kernel.drain_lifecycle_tick();
+    let reqs = reqs_by_relay(&frames);
+    let read_reqs = reqs
+        .get("wss://onboard-read.relay")
+        .unwrap_or_else(|| panic!("missing self inbox REQ on read relay; frames={frames:?}"));
+    assert!(
+        read_reqs
+            .iter()
+            .any(|(filter, lifecycle)| filter.contains("\"#p\"")
+                && matches!(lifecycle, InterestLifecycle::Tailing)),
+        "self inbox interest should route immediately from locally signed kind:10002",
+    );
 }

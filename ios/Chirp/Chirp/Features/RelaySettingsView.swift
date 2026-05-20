@@ -10,6 +10,8 @@ struct RelaySettingsView: View {
     @State private var sheetRole = "both"
     @State private var isEditing = false
 
+    private let relayRoles = ["both,indexer", "both", "read", "write", "indexer"]
+
     var body: some View {
         List {
             if model.relayEditRows.isEmpty {
@@ -64,12 +66,11 @@ struct RelaySettingsView: View {
                 url: $sheetURL,
                 role: $sheetRole,
                 isEditing: isEditing,
+                relayRoles: relayRoles,
                 onSave: saveSheet
             )
         }
     }
-
-    // ── Sheet helpers ─────────────────────────────────────────────────────
 
     private func openAdd() {
         sheetURL = ""
@@ -92,8 +93,6 @@ struct RelaySettingsView: View {
     }
 }
 
-// ── Relay config row ──────────────────────────────────────────────────────
-
 private struct RelayConfigRow: View {
     let relay: RelayEditRow
 
@@ -113,7 +112,7 @@ private struct RelayConfigRow: View {
 
             Spacer()
 
-            Text(relay.role.capitalized)
+            Text(roleTitle(relay.role))
                 .font(.system(.caption2, design: .rounded).weight(.semibold))
                 .foregroundStyle(roleColor)
                 .padding(.horizontal, ChirpSpace.s)
@@ -130,20 +129,22 @@ private struct RelayConfigRow: View {
         default: return ChirpColor.accent
         }
     }
-}
 
-// ── Add / Edit relay sheet ────────────────────────────────────────────────
+    private func roleTitle(_ role: String) -> String {
+        role.split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces).capitalized }
+            .joined(separator: " + ")
+    }
+}
 
 private struct RelayEditSheet: View {
     @Binding var url: String
     @Binding var role: String
     let isEditing: Bool
+    let relayRoles: [String]
     let onSave: () -> Void
 
-    @EnvironmentObject private var model: KernelModel
     @Environment(\.dismiss) private var dismiss
-
-    private let roles = ["both", "read", "write"]
 
     var body: some View {
         NavigationStack {
@@ -164,8 +165,8 @@ private struct RelayEditSheet: View {
 
                 Section("Role") {
                     Picker("Role", selection: $role) {
-                        ForEach(roles, id: \.self) { r in
-                            Text(r.capitalized).tag(r)
+                        ForEach(relayRoles, id: \.self) { relayRole in
+                            Text(roleTitle(relayRole)).tag(relayRole)
                         }
                     }
                     .pickerStyle(.segmented)
@@ -199,5 +200,11 @@ private struct RelayEditSheet: View {
 
     private var trimmedURL: String {
         url.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func roleTitle(_ role: String) -> String {
+        role.split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces).capitalized }
+            .joined(separator: " + ")
     }
 }

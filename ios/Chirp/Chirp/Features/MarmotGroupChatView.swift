@@ -102,6 +102,7 @@ struct MarmotGroupChatView: View {
                 .font(.body)
                 .foregroundStyle(.primary)
                 .frame(minHeight: 38, maxHeight: 120)
+                .accessibilityIdentifier("marmot-message-editor")
                 .overlay(alignment: .topLeading) {
                     if draft.isEmpty {
                         Text("Encrypted message…")
@@ -126,6 +127,7 @@ struct MarmotGroupChatView: View {
             .buttonStyle(.plain)
             .disabled(trimmedDraft.isEmpty || sending)
             .accessibilityLabel("Send")
+            .accessibilityIdentifier("marmot-send-button")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -222,6 +224,7 @@ private struct MarmotMessageRow: View {
             Divider()
                 .padding(.leading, 44)
         }
+        .accessibilityIdentifier("marmot-message-\(message.id)")
     }
 
     private var colorHex: String {

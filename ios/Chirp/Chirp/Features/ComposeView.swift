@@ -54,6 +54,7 @@ struct ComposeView: View {
                     Button(isReply ? "Reply" : "Post", action: submit)
                         .fontWeight(.semibold)
                         .disabled(isEmpty || isOverLimit)
+                        .accessibilityIdentifier("compose-post-button")
                 }
             }
         }
@@ -97,6 +98,7 @@ struct ComposeView: View {
                 .foregroundStyle(.primary)
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 190)
+                .accessibilityIdentifier("compose-text-editor")
 
             if text.isEmpty {
                 Text(isReply ? "Write your reply…" : "What's happening?")

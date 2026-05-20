@@ -79,7 +79,11 @@ impl KernelBridge {
 
     /// Generate a fresh keypair and sign in with it (so compose can publish).
     pub fn create_account(&self, profile: HashMap<String, String>, relays: Vec<(String, String)>) {
-        let _ = self.tx.send(ActorCommand::CreateAccount { profile, relays });
+        let _ = self.tx.send(ActorCommand::CreateAccount {
+            profile,
+            relays,
+            mls: false,
+        });
     }
 
     /// Sign in with an existing `nsec…` / hex secret.

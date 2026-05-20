@@ -208,6 +208,11 @@ pub struct NmpApp {
     /// in-memory store. The path is only honoured when the crate is built
     /// with `--features lmdb-backend`; otherwise it is inert.
     storage_path: Arc<Mutex<Option<String>>>,
+    /// One-shot account-creation intent: when true, the app-level MLS
+    /// composition layer should publish a key package after it registers the new
+    /// local identity. Kept beside the app handle because `nmp-core` owns the
+    /// single account-creation FFI verb while app crates own MLS details.
+    pending_mls_autopublish: Arc<Mutex<bool>>,
     actor: Mutex<Option<JoinHandle<()>>>,
     update_listener: Mutex<Option<JoinHandle<()>>>,
     /// M6 — namespace-keyed action-dispatch registry backing
@@ -286,6 +291,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // → in-memory store.
     let storage_path: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let actor_storage_path = Arc::clone(&storage_path);
+    let pending_mls_autopublish = Arc::new(Mutex::new(false));
     // Clone so we can report actor death through the same listener pipe.
     // The actor `move`s its own `update_tx` into `run_actor_with_observers`;
     // this clone is the supervisor's last live handle once that one is
@@ -354,6 +360,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         relay_edit_rows,
         active_local_nsec,
         storage_path,
+        pending_mls_autopublish,
         actor: Mutex::new(Some(actor)),
         update_listener: Mutex::new(Some(update_listener)),
         // M6 — the action registry the kernel ships with: `PublishModule`
@@ -380,6 +387,21 @@ impl NmpApp {
     /// to surface a fatal error rather than keep sending.
     pub(crate) fn send_cmd(&self, cmd: ActorCommand) {
         let _ = self.tx.send(cmd);
+    }
+
+    pub(crate) fn set_pending_mls_autopublish(&self, enabled: bool) {
+        if let Ok(mut pending) = self.pending_mls_autopublish.lock() {
+            *pending = enabled;
+        }
+    }
+
+    pub fn take_pending_mls_autopublish(&self) -> bool {
+        let Ok(mut pending) = self.pending_mls_autopublish.lock() else {
+            return false;
+        };
+        let value = *pending;
+        *pending = false;
+        value
     }
 
     /// Clone of the actor command sender. Used by `nmp-signer-broker` to push
@@ -554,8 +576,7 @@ impl NmpApp {
         self.active_local_nsec.lock().ok()?.clone()
     }
 
-    /// Return the user's current write-relay URLs (rows whose role is
-    /// `"write"` or `"both"`), read from the shared kernel relay-edit
+    /// Return the user's current write-relay URLs, read from the shared kernel relay-edit
     /// projection. Empty when the user has not configured any write relays.
     /// Used by per-app crates (e.g. `nmp-app-chirp` Marmot dispatch) so
     /// relay resolution stays Rust-owned (D0).
@@ -565,7 +586,7 @@ impl NmpApp {
         };
         guard
             .iter()
-            .filter(|r| r.role == "write" || r.role == "both")
+            .filter(|r| crate::actor::has_role(&r.role, "write"))
             .map(|r| r.url.clone())
             .collect()
     }

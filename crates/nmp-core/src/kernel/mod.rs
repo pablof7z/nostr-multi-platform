@@ -128,7 +128,7 @@ pub(crate) fn hex_to_pubkey_bytes(hex: &str) -> Option<[u8; 32]> {
 }
 
 use crate::store::{EventStore, MemEventStore};
-use crate::subs::{OneshotApi, SubscriptionLifecycle, UnknownIds};
+use crate::subs::{CompileTrigger, OneshotApi, SubscriptionLifecycle, UnknownIds};
 use auth::{AuthSignerFn, Nip42DriverState};
 use clock::{Clock, SystemClock};
 // M6 — action-dispatch runtime, reachable from the `ffi` module for the
@@ -760,8 +760,11 @@ impl Kernel {
     /// configured any relays for that role.
     pub(crate) fn bootstrap_urls_for_role(&self, role: RelayRole) -> Vec<String> {
         let matches = |row_role: &str| match role {
-            RelayRole::Content => matches!(row_role, "both" | "write" | "read"),
-            RelayRole::Indexer => matches!(row_role, "indexer" | "both"),
+            RelayRole::Content => {
+                crate::actor::has_role(row_role, "read")
+                    || crate::actor::has_role(row_role, "write")
+            }
+            RelayRole::Indexer => crate::actor::has_role(row_role, "indexer"),
             RelayRole::Wallet => false,
             RelayRole::Bunker => false,
         };
@@ -1012,5 +1015,28 @@ impl Kernel {
     /// without waiting for the kind:3 event to round-trip from relays.
     pub(crate) fn prepopulate_seed_contacts(&mut self, pubkey: String, follows: Vec<String>) {
         self.seed_contacts.insert(pubkey, follows);
+    }
+
+    /// Pre-populate the local NIP-65 mailbox cache from an event this kernel just
+    /// signed, so account-scoped interests can route before the relay echo
+    /// arrives.
+    pub(crate) fn prepopulate_author_relay_list(
+        &mut self,
+        pubkey: String,
+        event_id: String,
+        created_at: u64,
+        tags: Vec<Vec<String>>,
+    ) {
+        let relay_list = parse_relay_list(&event_id, created_at, &tags);
+        let empty = relay_list.read_relays.is_empty()
+            && relay_list.write_relays.is_empty()
+            && relay_list.both_relays.is_empty();
+        if empty {
+            self.author_relay_lists.remove(&pubkey);
+        } else {
+            self.author_relay_lists.insert(pubkey.clone(), relay_list);
+        }
+        self.lifecycle
+            .enqueue_trigger(CompileTrigger::Nip65Arrived { pubkey, created_at });
     }
 }

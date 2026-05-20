@@ -57,15 +57,13 @@
 //!
 //! ### Wildcard-author sub-shapes
 //!
-//! Sub-shapes with an empty `authors` set (e.g. global kind:0 hydration, hashtag
-//! firehose) contribute nothing to coverage and have no authors to filter. They
-//! are **preserved unchanged** on surviving relays: they ride along with the
-//! relay's other reasons for existing. If a relay's only sub-shape was a
-//! wildcard, the relay never appears in the coverage problem at all — it is
-//! dropped unless something else keeps it alive. This is the right call for
-//! the current call sites (the hashtag firehose runs on the active-account read
-//! relays, which are typically a tiny user-configured set and not the target of
-//! this optimizer).
+//! Sub-shapes with an empty `authors` set (e.g. gift-wrap inbox `#p` filters,
+//! global kind:0 hydration, hashtag firehose) contribute nothing to coverage and
+//! have no authors to filter. They are **preserved unchanged** on selected
+//! relays: they ride along with the relay's other reasons for existing. If a
+//! relay's only sub-shape is a wildcard, it is also preserved while connection
+//! budget remains; protocol inboxes must not be optimized away merely because
+//! they are tag-scoped rather than author-scoped.
 //!
 //! ## Plan-id discipline
 //!
@@ -136,7 +134,17 @@ pub fn apply_selection(plan: &mut CompiledPlan, max_connections: usize, max_per_
 
     // Stage 2: greedy max-coverage. Returns the (relay → authors-this-relay-serves)
     // oracle.
-    let selections = greedy_select(&per_relay_authors, max_connections, max_per_user);
+    let mut selections = greedy_select(&per_relay_authors, max_connections, max_per_user);
+    if max_connections > selections.len() && max_per_user > 0 {
+        for (relay, authors) in &per_relay_authors {
+            if authors.is_empty() && !selections.contains_key(relay) {
+                selections.insert(relay.clone(), BTreeSet::new());
+                if selections.len() >= max_connections {
+                    break;
+                }
+            }
+        }
+    }
 
     // Stage 3: project back. Drop unselected relays; filter author sets on
     // selected ones; recompute hashes where author sets changed.
@@ -560,10 +568,10 @@ mod tests {
     }
 
     #[test]
-    fn relay_with_only_wildcard_sub_shape_is_dropped() {
+    fn relay_with_only_wildcard_sub_shape_is_preserved_with_budget() {
         // A relay whose only sub-shape is a wildcard (empty authors) contributes
-        // nothing to coverage. It gets dropped — there is no other reason to
-        // keep it.
+        // nothing to coverage, but tag-scoped protocol inboxes are still real
+        // subscriptions. Preserve it while there is connection budget.
         let mut wildcard_shape = InterestShape::default();
         wildcard_shape.kinds.insert(0);
         let wildcard_hash = canonical_filter_hash(&wildcard_shape);
@@ -588,8 +596,8 @@ mod tests {
         apply_selection(&mut plan, 30, 2);
 
         assert!(
-            !plan.per_relay.contains_key("wss://wildcard-only"),
-            "relay with only wildcard sub-shape must be dropped from reduced plan",
+            plan.per_relay.contains_key("wss://wildcard-only"),
+            "relay with only wildcard sub-shape must survive while budget remains",
         );
         assert!(plan.per_relay.contains_key("wss://hub"));
     }
