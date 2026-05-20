@@ -6,7 +6,9 @@
 
 pub type EventId = [u8; 32];
 pub type PubKey = [u8; 32];
-pub type RelayUrl = String;
+// `RelayUrl`'s single crate-wide definition lives in `crate::relay`;
+// re-exported here so `store` import paths are unchanged.
+pub use crate::relay::RelayUrl;
 
 // ─── Hex utilities ───────────────────────────────────────────────────────────
 

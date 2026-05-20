@@ -44,8 +44,7 @@ impl Kernel {
     /// retrying. The per-lane `RelayStatus` fields stay role-scoped (they are
     /// a lane-level diagnostic surface, not per-URL until M11).
     pub(crate) fn relay_failed(&mut self, role: RelayRole, relay_url: &str, error: String) {
-        let canonical = crate::relay::canonical_relay_url(relay_url)
-            .unwrap_or_else(|| relay_url.to_string());
+        let canonical = CanonicalRelayUrl::parse_or_raw(relay_url);
         let relay = self.relay_mut(role);
         relay.connection = "backing_off".to_string();
         relay.last_error = Some(truncate(&error, 160));
@@ -75,8 +74,7 @@ impl Kernel {
     /// sockets — a correctness bug, not just a leak. For the global pool
     /// drain (Stop / Reset / Shutdown) use [`Self::relay_closed_all`].
     pub(crate) fn relay_closed(&mut self, role: RelayRole, relay_url: &str) {
-        let canonical = crate::relay::canonical_relay_url(relay_url)
-            .unwrap_or_else(|| relay_url.to_string());
+        let canonical = CanonicalRelayUrl::parse_or_raw(relay_url);
         let relay = self.relay_mut(role);
         relay.connection = "closed".to_string();
         relay.auth = "not_required".to_string();

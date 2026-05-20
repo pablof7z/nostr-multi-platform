@@ -211,7 +211,8 @@ pub(super) struct WireSub {
     /// Resolved relay URL this subscription was opened on (T105). The CLOSE
     /// frame for `id` must target this URL — the transport pool is URL-keyed
     /// and would otherwise leak the open subscription on the original relay.
-    pub(super) relay_url: String,
+    /// Canonical by construction: this field mirrors the `wire_subs` key half.
+    pub(super) relay_url: CanonicalRelayUrl,
     pub(super) filter_summary: String,
     pub(super) state: String,
     pub(super) events_rx: u64,
