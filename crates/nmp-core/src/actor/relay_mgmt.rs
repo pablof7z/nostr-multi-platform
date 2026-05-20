@@ -154,6 +154,80 @@ pub(super) fn send_all_outbound(
     }
 }
 
+/// Route command-produced outbound frames through the relay pool.
+/// Non-publish frames remain running-gated; publish `EVENT` frames are retained
+/// in actor memory until the next running cycle, while `PublishEngine` remains
+/// the durable source of truth for process restart resume.
+pub(super) fn route_dispatch_outbound(
+    running: bool,
+    queued_publish_outbound: &mut Vec<OutboundMessage>,
+    relay_controls: &mut HashMap<String, RelayControl>,
+    relay_tx: &Sender<RelayEvent>,
+    kernel: &mut Kernel,
+    next_relay_generation: &mut u64,
+    outbound: Vec<OutboundMessage>,
+) {
+    if running {
+        let queued = take_non_duplicate_queued(queued_publish_outbound, &outbound);
+        send_all_outbound(relay_controls, relay_tx, kernel, next_relay_generation, queued);
+        send_all_outbound(
+            relay_controls,
+            relay_tx,
+            kernel,
+            next_relay_generation,
+            outbound,
+        );
+    } else {
+        queue_publish_outbound(queued_publish_outbound, outbound);
+    }
+}
+
+fn queue_publish_outbound(
+    queued_publish_outbound: &mut Vec<OutboundMessage>,
+    outbound: Vec<OutboundMessage>,
+) {
+    for message in outbound {
+        if publish_message_key(&message).is_some() {
+            queued_publish_outbound.push(message);
+        }
+    }
+}
+
+fn take_non_duplicate_queued(
+    queued_publish_outbound: &mut Vec<OutboundMessage>,
+    outbound: &[OutboundMessage],
+) -> Vec<OutboundMessage> {
+    if queued_publish_outbound.is_empty() {
+        return Vec::new();
+    }
+    let current_keys = outbound
+        .iter()
+        .filter_map(publish_message_key)
+        .collect::<HashSet<_>>();
+    let queued = std::mem::take(queued_publish_outbound);
+    queued
+        .into_iter()
+        .filter(|message| {
+            publish_message_key(message)
+                .map(|key| !current_keys.contains(&key))
+                .unwrap_or(true)
+        })
+        .collect()
+}
+
+fn publish_message_key(message: &OutboundMessage) -> Option<(String, String)> {
+    if message.relay_url.trim().is_empty() {
+        return None;
+    }
+    let parsed = serde_json::from_str::<serde_json::Value>(&message.text).ok()?;
+    let array = parsed.as_array()?;
+    if array.first()?.as_str()? != "EVENT" {
+        return None;
+    }
+    let event_id = array.get(1)?.get("id")?.as_str()?;
+    Some((message.relay_url.clone(), event_id.to_string()))
+}
+
 /// Route one `OutboundMessage` to the worker for its `relay_url`. Spawns a
 /// new worker on first sight (per-URL on-demand). The previous role-based
 /// fallback (defer when role's socket is missing) is gone — every message
