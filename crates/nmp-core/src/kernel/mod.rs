@@ -140,9 +140,9 @@ use types::*;
 /// pubkey) hits the cap by design — that is the audit's load-bearing test.
 ///
 /// Drop-newest semantics: a claim attempt past the cap silently no-ops and
-/// increments `claim_drops_total`. This mirrors the bounded actor channel's
-/// drop-newest policy (`BOUNDED_ACTOR_CMD_CAPACITY` in `actor/mod.rs`) — see
-/// the audit table in `retention_tests.rs` for the per-structure rationale.
+/// increments `claim_drops_total`; the per-pubkey claim set is capped via
+/// `MAX_CLAIMS_PER_PUBKEY` — see the audit table in `retention_tests.rs`
+/// for the per-structure rationale.
 pub(crate) const MAX_CLAIMS_PER_PUBKEY: usize = 256;
 
 /// Per-relay-role NIP-42 credentials. The closure signs the kind:22242 with
@@ -349,10 +349,12 @@ pub(crate) struct Kernel {
     /// snapshot via [`Metrics::claim_drops_total`] for D8 visibility into
     /// per-dispatch retention pressure.
     claim_drops_total: u64,
-    /// T114b — bounded-actor-channel drop counter (the same `Arc<AtomicU64>`
-    /// owned by the FFI forwarder in `actor/mod.rs`). `None` when the kernel
-    /// is constructed outside the actor (tests, codegen); the snapshot then
-    /// reports `dispatch_drops_total = 0`. Surfaced on the snapshot via
+    /// T114b — diagnostic dispatch-drop counter (the same `Arc<AtomicU64>`
+    /// owned by the FFI forwarder in `actor/mod.rs`). Under the current
+    /// unbounded dual-channel design this is always zero (commands cannot be
+    /// dropped); retained for API/diagnostic compatibility. `None` when the
+    /// kernel is constructed outside the actor (tests, codegen); the snapshot
+    /// then reports `dispatch_drops_total = 0`. Surfaced on the snapshot via
     /// [`Metrics::dispatch_drops_total`].
     dispatch_drops: Option<Arc<AtomicU64>>,
     /// T118 / G3 — current iOS scenePhase reported through the lifecycle
@@ -679,9 +681,10 @@ impl Kernel {
         self.dispatch_drops.take()
     }
 
-    /// T114b — number of FFI dispatches dropped by the bounded actor channel
-    /// (`BOUNDED_ACTOR_CMD_CAPACITY` overflow). Returns 0 when the kernel was
-    /// constructed outside the actor (tests, codegen) and no handle is bound.
+    /// T114b — diagnostic counter; always 0 under the current unbounded
+    /// dual-channel design. Retained for API compatibility. Also returns 0
+    /// when the kernel was constructed outside the actor (tests, codegen)
+    /// and no handle is bound.
     pub(crate) fn dispatch_drops_total(&self) -> u64 {
         self.dispatch_drops
             .as_ref()

@@ -344,9 +344,9 @@ pub(super) struct Metrics {
     pub(super) last_event_to_emit_ms: Option<u128>,
     pub(super) max_event_to_emit_ms: u128,
     pub(super) max_events_per_update: u64,
-    /// T114b — FFI-channel drops on `BOUNDED_ACTOR_CMD_CAPACITY` overflow.
-    /// Process-lifetime counter; survives `ActorCommand::Reset`. Surfaces the
-    /// `dispatch_drops` Arc owned by the FFI forwarder thread.
+    /// T114b — diagnostic drop counter; under the current dual-channel design
+    /// this is always zero (unbounded command channel cannot drop). Retained
+    /// for API compatibility; survives `ActorCommand::Reset` via shared Arc.
     pub(super) dispatch_drops_total: u64,
     /// T114b — `claim_profile` drops on per-pubkey `MAX_CLAIMS_PER_PUBKEY`
     /// overflow. Kernel-lifetime counter; resets on `ActorCommand::Reset`
