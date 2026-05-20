@@ -44,47 +44,70 @@ fn update_nsec_slot(identity: &IdentityRuntime, slot: &Arc<Mutex<Option<Zeroizin
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+/// Borrowed bundle of the actor loop's mutable runtime state.
+///
+/// Replaces the 15+ explicit parameters that `dispatch_command` used to take.
+/// Constructed fresh per command in `run_actor_with_observers` and dropped
+/// immediately after dispatch, so every other call site in the actor loop
+/// keeps using the original locals untouched. The lifetime `'a` ties the
+/// struct to those stack-resident locals — no heap allocation, no ownership
+/// transfer, the actor loop still owns every field.
+///
+/// Field access in `dispatch.rs` is always direct (`ctx.kernel`,
+/// `&mut ctx.relay_controls`) so the borrow checker sees disjoint borrows;
+/// no `impl` method should hold multiple `&mut` field borrows at once.
+pub(super) struct ActorContext<'a> {
+    pub(super) kernel: &'a mut Kernel,
+    pub(super) identity: &'a mut IdentityRuntime,
+    // D0: NIP-47 NWC is an app noun — only present with the `wallet` feature.
+    #[cfg(feature = "wallet")]
+    pub(super) wallet: &'a mut WalletRuntime,
+    pub(super) relay_controls: &'a mut HashMap<CanonicalRelayUrl, RelayControl>,
+    pub(super) relay_tx: &'a Sender<RelayEvent>,
+    pub(super) connected_relays: &'a mut HashSet<RelayRole>,
+    pub(super) connected_urls: &'a mut HashSet<CanonicalRelayUrl>,
+    pub(super) update_tx: &'a Sender<String>,
+    pub(super) last_emit: &'a mut Instant,
+    pub(super) next_relay_generation: &'a mut u64,
+    pub(super) running: &'a mut bool,
+    pub(super) emit_hz: &'a mut u32,
+    pub(super) startup_sent: &'a mut bool,
+    /// Derived per-call value (`all_relays_connected(...)`), not a borrow.
+    pub(super) relays_ready: bool,
+    pub(super) lifecycle_observer: &'a LifecycleObserverSlot,
+    pub(super) active_local_nsec: &'a Arc<Mutex<Option<Zeroizing<String>>>>,
+    pub(super) capability_callback: &'a CapabilityCallbackSlot,
+    pub(super) pending_signs: &'a mut Vec<PendingSign>,
+}
+
 pub(super) fn dispatch_command(
     command: ActorCommand,
-    kernel: &mut Kernel,
-    identity: &mut IdentityRuntime,
-    #[cfg(feature = "wallet")] wallet: &mut WalletRuntime,
-    relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
-    relay_tx: &Sender<RelayEvent>,
-    connected_relays: &mut HashSet<RelayRole>,
-    connected_urls: &mut HashSet<CanonicalRelayUrl>,
-    update_tx: &Sender<String>,
-    last_emit: &mut Instant,
-    next_relay_generation: &mut u64,
-    running: &mut bool,
-    emit_hz: &mut u32,
-    startup_sent: &mut bool,
-    relays_ready: bool,
-    lifecycle_observer: &LifecycleObserverSlot,
-    active_local_nsec: &Arc<Mutex<Option<Zeroizing<String>>>>,
-    capability_callback: &CapabilityCallbackSlot,
-    pending_signs: &mut Vec<PendingSign>,
+    ctx: &mut ActorContext<'_>,
 ) -> Option<Vec<OutboundMessage>> {
     match command {
         ActorCommand::Start {
             visible_limit,
             emit_hz: hz,
         } => {
-            *running = true;
-            *emit_hz = hz;
-            *startup_sent = false;
-            kernel.set_visible_limit(visible_limit);
-            kernel.start();
+            *ctx.running = true;
+            *ctx.emit_hz = hz;
+            *ctx.startup_sent = false;
+            ctx.kernel.set_visible_limit(visible_limit);
+            ctx.kernel.start();
             let mut outbound = session_persistence::restore_active_session(
-                identity,
-                kernel,
-                capability_callback,
-                relays_ready,
+                ctx.identity,
+                ctx.kernel,
+                ctx.capability_callback,
+                ctx.relays_ready,
             );
-            update_nsec_slot(identity, active_local_nsec);
-            spawn_missing_relays(relay_controls, relay_tx, kernel, next_relay_generation);
-            emit_now(kernel, *running, update_tx, last_emit);
+            update_nsec_slot(ctx.identity, ctx.active_local_nsec);
+            spawn_missing_relays(
+                ctx.relay_controls,
+                ctx.relay_tx,
+                ctx.kernel,
+                ctx.next_relay_generation,
+            );
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             // T127: boot-resume for the publish engine. Closes Residual 3
             // from T117 — `accepted_locally` rows persisted by a previous
             // process come back as `InFlight` and any due retries dispatch
@@ -96,71 +119,81 @@ pub(super) fn dispatch_command(
             // URL the resumed frames target (idempotent via
             // `ensure_relay_worker`). Frames flow through the regular
             // `send_all_outbound` call in `run_actor`.
-            outbound.extend(kernel.resume_publish_engine());
+            outbound.extend(ctx.kernel.resume_publish_engine());
             Some(outbound)
         }
         ActorCommand::Configure {
             visible_limit,
             emit_hz: hz,
         } => {
-            *emit_hz = hz;
-            kernel.set_visible_limit(visible_limit);
-            emit_now(kernel, *running, update_tx, last_emit);
+            *ctx.emit_hz = hz;
+            ctx.kernel.set_visible_limit(visible_limit);
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
         ActorCommand::OpenAuthor { pubkey } => {
-            let outbound = kernel.open_author(pubkey, relays_ready);
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            let outbound = ctx.kernel.open_author(pubkey, ctx.relays_ready);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::OpenThread { event_id } => {
-            let outbound = kernel.open_thread(event_id, relays_ready);
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            let outbound = ctx.kernel.open_thread(event_id, ctx.relays_ready);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::OpenFirehoseTag { tag } => {
-            let outbound = kernel.open_firehose_tag(tag, relays_ready);
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            let outbound = ctx.kernel.open_firehose_tag(tag, ctx.relays_ready);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::ClaimProfile {
             pubkey,
             consumer_id,
         } => {
-            let outbound = kernel.claim_profile(pubkey, consumer_id, relays_ready);
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            let outbound = ctx
+                .kernel
+                .claim_profile(pubkey, consumer_id, ctx.relays_ready);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::ReleaseProfile {
             pubkey,
             consumer_id,
         } => {
-            let outbound = kernel.release_profile(&pubkey, &consumer_id);
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            let outbound = ctx.kernel.release_profile(&pubkey, &consumer_id);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::CloseAuthor { pubkey } => {
-            let outbound = kernel.close_author(&pubkey);
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            let outbound = ctx.kernel.close_author(&pubkey);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::CloseThread { event_id } => {
-            let outbound = kernel.close_thread(&event_id);
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            let outbound = ctx.kernel.close_thread(&event_id);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::SignInNsec { secret } => {
             // `secret` is `Zeroizing<String>`; pass the borrowed `&str` and let
             // the wrapper wipe the plaintext when it drops at end of scope.
-            let outbound = commands::sign_in_nsec(identity, kernel, secret.as_str(), relays_ready);
-            update_nsec_slot(identity, active_local_nsec);
-            session_persistence::persist_current_active_session(identity, capability_callback);
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            let outbound = commands::sign_in_nsec(
+                ctx.identity,
+                ctx.kernel,
+                secret.as_str(),
+                ctx.relays_ready,
+            );
+            update_nsec_slot(ctx.identity, ctx.active_local_nsec);
+            session_persistence::persist_current_active_session(
+                ctx.identity,
+                ctx.capability_callback,
+            );
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::SignInBunker { uri } => {
-            commands::sign_in_bunker(kernel, &uri);
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            commands::sign_in_bunker(ctx.kernel, &uri);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
         ActorCommand::CreateAccount {
@@ -168,55 +201,78 @@ pub(super) fn dispatch_command(
             relays,
             mls,
         } => {
-            let outbound =
-                commands::create_account(identity, kernel, relays_ready, &profile, &relays, mls);
-            update_nsec_slot(identity, active_local_nsec);
-            session_persistence::persist_current_active_session(identity, capability_callback);
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            let outbound = commands::create_account(
+                ctx.identity,
+                ctx.kernel,
+                ctx.relays_ready,
+                &profile,
+                &relays,
+                mls,
+            );
+            update_nsec_slot(ctx.identity, ctx.active_local_nsec);
+            session_persistence::persist_current_active_session(
+                ctx.identity,
+                ctx.capability_callback,
+            );
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::SwitchActive { identity_id } => {
-            let outbound = commands::switch_active(identity, kernel, &identity_id, relays_ready);
-            update_nsec_slot(identity, active_local_nsec);
-            session_persistence::persist_current_active_session(identity, capability_callback);
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            let outbound =
+                commands::switch_active(ctx.identity, ctx.kernel, &identity_id, ctx.relays_ready);
+            update_nsec_slot(ctx.identity, ctx.active_local_nsec);
+            session_persistence::persist_current_active_session(
+                ctx.identity,
+                ctx.capability_callback,
+            );
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::RemoveAccount { identity_id } => {
-            let outbound = commands::remove_account(identity, kernel, &identity_id);
-            update_nsec_slot(identity, active_local_nsec);
-            session_persistence::forget_account(&identity_id, capability_callback);
-            session_persistence::persist_current_active_session(identity, capability_callback);
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            let outbound = commands::remove_account(ctx.identity, ctx.kernel, &identity_id);
+            update_nsec_slot(ctx.identity, ctx.active_local_nsec);
+            session_persistence::forget_account(&identity_id, ctx.capability_callback);
+            session_persistence::persist_current_active_session(
+                ctx.identity,
+                ctx.capability_callback,
+            );
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::AddRemoteSigner { handle } => {
             let remote_identity_id = handle.pubkey_hex();
             let remote_payload_json = handle.persistence_payload_json();
-            let outbound = commands::add_remote_signer(identity, kernel, handle, relays_ready);
+            let outbound =
+                commands::add_remote_signer(ctx.identity, ctx.kernel, handle, ctx.relays_ready);
             if let Some(payload_json) = remote_payload_json {
                 session_persistence::persist_remote_signer_payload(
                     &remote_identity_id,
                     &payload_json,
-                    capability_callback,
+                    ctx.capability_callback,
                 );
             }
-            update_nsec_slot(identity, active_local_nsec);
-            session_persistence::persist_current_active_session(identity, capability_callback);
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            update_nsec_slot(ctx.identity, ctx.active_local_nsec);
+            session_persistence::persist_current_active_session(
+                ctx.identity,
+                ctx.capability_callback,
+            );
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::RemoveRemoteSigner { identity_id } => {
-            let outbound = commands::remove_remote_signer(identity, kernel, &identity_id);
-            update_nsec_slot(identity, active_local_nsec);
-            session_persistence::forget_account(&identity_id, capability_callback);
-            session_persistence::persist_current_active_session(identity, capability_callback);
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            let outbound = commands::remove_remote_signer(ctx.identity, ctx.kernel, &identity_id);
+            update_nsec_slot(ctx.identity, ctx.active_local_nsec);
+            session_persistence::forget_account(&identity_id, ctx.capability_callback);
+            session_persistence::persist_current_active_session(
+                ctx.identity,
+                ctx.capability_callback,
+            );
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::BunkerHandshakeProgress { stage, message } => {
-            commands::bunker_handshake_progress(kernel, stage, message);
-            emit_now(kernel, *running, update_tx, last_emit);
+            commands::bunker_handshake_progress(ctx.kernel, stage, message);
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
         ActorCommand::PublishNote {
@@ -224,53 +280,64 @@ pub(super) fn dispatch_command(
             reply_to_id,
         } => {
             let outbound = commands::publish_note(
-                identity,
-                kernel,
+                ctx.identity,
+                ctx.kernel,
                 &content,
                 reply_to_id.as_deref(),
-                pending_signs,
+                ctx.pending_signs,
             );
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::PublishUnsignedEvent(unsigned) => {
-            let outbound =
-                commands::publish_unsigned_event(identity, kernel, unsigned, pending_signs);
-            emit_now(kernel, *running, update_tx, last_emit);
+            let outbound = commands::publish_unsigned_event(
+                ctx.identity,
+                ctx.kernel,
+                unsigned,
+                ctx.pending_signs,
+            );
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::PublishSignedEvent { raw, relays } => {
-            let outbound = commands::publish_signed_event(kernel, raw, &relays);
-            emit_now(kernel, *running, update_tx, last_emit);
+            let outbound = commands::publish_signed_event(ctx.kernel, raw, &relays);
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::RetryPublish { handle } => {
-            let outbound = kernel.retry_publish_now(&handle);
-            emit_now(kernel, *running, update_tx, last_emit);
+            let outbound = ctx.kernel.retry_publish_now(&handle);
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::CancelPublish { handle } => {
-            kernel.cancel_publish(&handle);
-            emit_now(kernel, *running, update_tx, last_emit);
+            ctx.kernel.cancel_publish(&handle);
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
         ActorCommand::React {
             target_event_id,
             reaction,
         } => {
-            let outbound =
-                commands::react(identity, kernel, &target_event_id, &reaction, pending_signs);
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            let outbound = commands::react(
+                ctx.identity,
+                ctx.kernel,
+                &target_event_id,
+                &reaction,
+                ctx.pending_signs,
+            );
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::Follow { pubkey } => {
-            let outbound = commands::follow(identity, kernel, &pubkey, true, pending_signs);
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            let outbound =
+                commands::follow(ctx.identity, ctx.kernel, &pubkey, true, ctx.pending_signs);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::Unfollow { pubkey } => {
-            let outbound = commands::follow(identity, kernel, &pubkey, false, pending_signs);
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            let outbound =
+                commands::follow(ctx.identity, ctx.kernel, &pubkey, false, ctx.pending_signs);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::AddRelay { url, role } => {
@@ -280,17 +347,17 @@ pub(super) fn dispatch_command(
             // the NIP-65 read/write distinction lives in RelayEditRow, not in
             // the transport pool key (T105). ensure_relay_worker is idempotent —
             // a role-edit for an already-connected URL is a harmless no-op.
-            if let Some(canonical_url) = commands::add_relay(kernel, &url, &role) {
+            if let Some(canonical_url) = commands::add_relay(ctx.kernel, &url, &role) {
                 ensure_relay_worker(
-                    relay_controls,
-                    relay_tx,
-                    kernel,
-                    next_relay_generation,
+                    ctx.relay_controls,
+                    ctx.relay_tx,
+                    ctx.kernel,
+                    ctx.next_relay_generation,
                     crate::relay::RelayRole::Content,
                     canonical_url,
                 );
             }
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
         ActorCommand::RemoveRelay { url } => {
@@ -302,26 +369,26 @@ pub(super) fn dispatch_command(
             // before the projection row is removed. Idempotent: if no worker exists
             // for the URL, shutdown_relay_worker returns false and the projection
             // mutation still proceeds normally (D6: no silent drops).
-            shutdown_relay_worker(relay_controls, &url);
-            commands::remove_relay(kernel, &url);
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            shutdown_relay_worker(ctx.relay_controls, &url);
+            commands::remove_relay(ctx.kernel, &url);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
         ActorCommand::OpenTimeline => {
-            let outbound = commands::open_timeline(identity, kernel, relays_ready);
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            let outbound = commands::open_timeline(ctx.identity, ctx.kernel, ctx.relays_ready);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         #[cfg(feature = "wallet")]
         ActorCommand::WalletConnect { uri } => {
-            let outbound = commands::wallet_connect(wallet, kernel, &uri);
-            emit_now(kernel, *running, update_tx, last_emit);
+            let outbound = commands::wallet_connect(ctx.wallet, ctx.kernel, &uri);
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         #[cfg(feature = "wallet")]
         ActorCommand::WalletDisconnect => {
-            let outbound = commands::wallet_disconnect(wallet, kernel);
-            emit_now(kernel, *running, update_tx, last_emit);
+            let outbound = commands::wallet_disconnect(ctx.wallet, ctx.kernel);
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         #[cfg(feature = "wallet")]
@@ -329,8 +396,9 @@ pub(super) fn dispatch_command(
             bolt11,
             amount_msats,
         } => {
-            let outbound = commands::wallet_pay_invoice(wallet, kernel, &bolt11, amount_msats);
-            emit_now(kernel, *running, update_tx, last_emit);
+            let outbound =
+                commands::wallet_pay_invoice(ctx.wallet, ctx.kernel, &bolt11, amount_msats);
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::LifecycleEvent(phase) => {
@@ -340,60 +408,61 @@ pub(super) fn dispatch_command(
             // to a single observer call) and never emits outbound frames;
             // the consumer's TriggerEngine drives any reconcile work
             // through its own path on the next tick.
-            commands::handle_lifecycle_event(kernel, lifecycle_observer, phase);
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            commands::handle_lifecycle_event(ctx.kernel, ctx.lifecycle_observer, phase);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
         ActorCommand::Kernel(action) => {
-            let update = dispatch_kernel_action(kernel, action);
+            let update = dispatch_kernel_action(ctx.kernel, action);
             // Discrete FFI update: emit as the tagged `{"t":"update","v":…}`
             // envelope so consumers decode the single `UpdateEnvelope` type
             // (D6 — the tag is the discriminant, no key sniffing).
-            emit_kernel_update(&update, update_tx);
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            emit_kernel_update(&update, ctx.update_tx);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
         ActorCommand::ShowToast { message } => {
             // D6 — FFI-boundary validation errors reach the kernel as state
             // via this command. The FFI layer only has a channel sender; this
             // arm is the single path from the FFI to `set_last_error_toast`.
-            kernel.set_last_error_toast(Some(message));
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            ctx.kernel.set_last_error_toast(Some(message));
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
         ActorCommand::Stop => {
-            *running = false;
-            *startup_sent = false;
-            close_relays(relay_controls, connected_relays, kernel);
+            *ctx.running = false;
+            *ctx.startup_sent = false;
+            close_relays(ctx.relay_controls, ctx.connected_relays, ctx.kernel);
             // T116/G1 — clear reconnect-replay discriminator so a subsequent
             // Start replays cleanly (every URL appears as a first-connect).
-            connected_urls.clear();
-            emit_now(kernel, *running, update_tx, last_emit);
+            ctx.connected_urls.clear();
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
         ActorCommand::Reset => {
-            close_relays(relay_controls, connected_relays, kernel);
-            connected_urls.clear();
+            close_relays(ctx.relay_controls, ctx.connected_relays, ctx.kernel);
+            ctx.connected_urls.clear();
             // T114b — preserve the FFI-channel drop-counter handle across
             // Reset (the underlying Arc<AtomicU64> is shared with the FFI
             // forwarder thread and must NOT be replaced; the counter is
             // process-lifetime).
-            let drops_handle = kernel.take_dispatch_drops_handle_for_reset();
+            let drops_handle = ctx.kernel.take_dispatch_drops_handle_for_reset();
             // T146 — preserve the event observer slot across Reset for the
             // same reason: the `Arc<Mutex<…>>` is shared with the FFI
             // surface and per-app crates; replacing it would silently
             // disconnect every registered observer.
-            let event_observers_handle = kernel.take_event_observers_handle_for_reset();
+            let event_observers_handle = ctx.kernel.take_event_observers_handle_for_reset();
             // Preserve the raw signed-event tap slot across Reset for the
             // same reason: the `Arc<Mutex<…>>` is shared with the FFI
             // surface and per-app crates; replacing it would silently
             // disconnect every registered raw observer.
-            let raw_event_observers_handle = kernel.take_raw_event_observers_handle_for_reset();
+            let raw_event_observers_handle =
+                ctx.kernel.take_raw_event_observers_handle_for_reset();
             // Preserve the relay-edit rows handle across Reset for the same
             // reason: the `Arc<Mutex<…>>` is shared with the FFI surface
             // and per-app crates; replacing it would silently return stale
             // rows to Marmot dispatch.
-            let relay_edit_rows_handle = kernel.take_relay_edit_rows_handle_for_reset();
+            let relay_edit_rows_handle = ctx.kernel.take_relay_edit_rows_handle_for_reset();
             // NOTE: the FFI-supplied LMDB `storage_path` (from
             // `nmp_app_set_storage_path`) is NOT re-threaded here — `Reset`
             // rebuilds the kernel with the in-memory store unless the
@@ -401,30 +470,35 @@ pub(super) fn dispatch_command(
             // set. `Reset` is a "wipe all state" command and is rare in
             // production; persisting across it is a deliberate non-goal of
             // the FFI-path wiring.
-            *kernel = Kernel::new(kernel.visible_limit());
+            *ctx.kernel = Kernel::new(ctx.kernel.visible_limit());
             if let Some(handle) = drops_handle {
-                kernel.set_dispatch_drops_handle(handle);
+                ctx.kernel.set_dispatch_drops_handle(handle);
             }
             if let Some(handle) = event_observers_handle {
-                kernel.set_event_observers_handle(handle);
+                ctx.kernel.set_event_observers_handle(handle);
             }
             if let Some(handle) = raw_event_observers_handle {
-                kernel.set_raw_event_observers_handle(handle);
+                ctx.kernel.set_raw_event_observers_handle(handle);
             }
             if let Some(handle) = relay_edit_rows_handle {
-                kernel.set_relay_edit_rows_handle(handle);
+                ctx.kernel.set_relay_edit_rows_handle(handle);
             }
-            *startup_sent = false;
-            if *running {
-                kernel.start();
-                spawn_missing_relays(relay_controls, relay_tx, kernel, next_relay_generation);
+            *ctx.startup_sent = false;
+            if *ctx.running {
+                ctx.kernel.start();
+                spawn_missing_relays(
+                    ctx.relay_controls,
+                    ctx.relay_tx,
+                    ctx.kernel,
+                    ctx.next_relay_generation,
+                );
             }
-            emit_now(kernel, *running, update_tx, last_emit);
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
         ActorCommand::PushInterest(interest) => {
-            kernel.lifecycle_mut().registry_mut().push(interest);
-            kernel.lifecycle_mut().enqueue_trigger(
+            ctx.kernel.lifecycle_mut().registry_mut().push(interest);
+            ctx.kernel.lifecycle_mut().enqueue_trigger(
                 crate::subs::CompileTrigger::InvalidateCompile {
                     reason: crate::subs::InvalidateReason::External("push-interest".to_string()),
                 },
@@ -432,8 +506,8 @@ pub(super) fn dispatch_command(
             Some(Vec::new())
         }
         ActorCommand::Shutdown => {
-            close_relays(relay_controls, connected_relays, kernel);
-            connected_urls.clear();
+            close_relays(ctx.relay_controls, ctx.connected_relays, ctx.kernel);
+            ctx.connected_urls.clear();
             None
         }
         #[cfg(any(test, feature = "test-support"))]
@@ -446,15 +520,15 @@ pub(super) fn dispatch_command(
             // sort_timeline() is deferred to after the loop to avoid O(n²·log n)
             // cost for large batches (e.g. S3: 100k events).
             for verified in events {
-                kernel.ingest_pre_verified_event(
+                ctx.kernel.ingest_pre_verified_event(
                     crate::relay::RelayRole::Content,
                     "diag-firehose-stress",
                     verified,
                 );
             }
             // One sort after all events are ingested: O(n log n) not O(n²·log n).
-            kernel.sort_timeline_deferred();
-            maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
+            ctx.kernel.sort_timeline_deferred();
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
     }

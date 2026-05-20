@@ -82,7 +82,7 @@ pub use commands::{
 // `test-support` so it never appears in a production build.
 #[cfg(any(test, feature = "test-support"))]
 pub use commands::ConformanceHarness;
-use dispatch::{dispatch_command, handle_relay_event};
+use dispatch::{dispatch_command, handle_relay_event, ActorContext};
 use pending_sign::PendingSign;
 
 use crate::kernel::LifecyclePhase;
@@ -528,29 +528,34 @@ pub fn run_actor_with_observers(
             };
             match command_result {
                 Ok(command) => {
+                    // Bundle the actor's mutable runtime state into a borrowed
+                    // `ActorContext` for the duration of this one dispatch.
+                    // Built fresh per command and dropped immediately after, so
+                    // every other call site in this loop keeps using the
+                    // original locals untouched (no loop-lifetime borrow).
                     let relays_ready = all_relays_connected(&connected_relays);
-                    let outbound = dispatch_command(
-                        command,
-                        &mut kernel,
-                        &mut identity,
+                    let mut ctx = ActorContext {
+                        kernel: &mut kernel,
+                        identity: &mut identity,
                         #[cfg(feature = "wallet")]
-                        &mut wallet,
-                        &mut relay_controls,
-                        &relay_tx,
-                        &mut connected_relays,
-                        &mut connected_urls,
-                        &update_tx,
-                        &mut last_emit,
-                        &mut next_relay_generation,
-                        &mut running,
-                        &mut emit_hz,
-                        &mut startup_sent,
+                        wallet: &mut wallet,
+                        relay_controls: &mut relay_controls,
+                        relay_tx: &relay_tx,
+                        connected_relays: &mut connected_relays,
+                        connected_urls: &mut connected_urls,
+                        update_tx: &update_tx,
+                        last_emit: &mut last_emit,
+                        next_relay_generation: &mut next_relay_generation,
+                        running: &mut running,
+                        emit_hz: &mut emit_hz,
+                        startup_sent: &mut startup_sent,
                         relays_ready,
-                        &lifecycle_observer,
-                        &active_local_nsec,
-                        &capability_callback,
-                        &mut pending_signs,
-                    );
+                        lifecycle_observer: &lifecycle_observer,
+                        active_local_nsec: &active_local_nsec,
+                        capability_callback: &capability_callback,
+                        pending_signs: &mut pending_signs,
+                    };
+                    let outbound = dispatch_command(command, &mut ctx);
                     let Some(outbound) = outbound else {
                         return; // Shutdown
                     };
