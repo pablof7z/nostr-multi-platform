@@ -44,9 +44,9 @@ impl DatabaseFilter {
             return false;
         }
 
-        // TODO: review this code
-
-        // Match
+        // NIP-01: for each tag-filter key (e.g. "e", "p"), at least one of the
+        // event's tags with that key must appear in the allowed set. All tag-filter
+        // keys must match (AND across keys, OR within each key's value set).
         self.generic_tags.iter().all(|(tag_name, set)| {
             event.tags.iter().any(|tag| {
                 if let Some((first, content)) = tag.extract() {

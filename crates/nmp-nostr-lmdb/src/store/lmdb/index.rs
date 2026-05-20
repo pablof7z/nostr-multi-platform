@@ -13,14 +13,16 @@ const CREATED_AT_BE: usize = 8;
 const KIND_BE: usize = 2;
 const TAG_VALUE_PAD_LEN: usize = 182;
 
-// TODO: use fixed-size arrays instead of vectors
+// Uses Vec<u8> for simplicity; could switch to fixed-size arrays for
+// fewer heap allocations on hot index paths. Deferred — profile first.
 pub(super) struct TagIndexKeySet {
     pub(super) atc_index: Vec<u8>,
     pub(super) ktc_index: Vec<u8>,
     pub(super) tc_index: Vec<u8>,
 }
 
-// TODO: use fixed-size arrays instead of vectors
+// Uses Vec<u8> for simplicity; could switch to fixed-size arrays for
+// fewer heap allocations on hot index paths. Deferred — profile first.
 pub(super) struct EventIndexKeys {
     pub(super) id: [u8; EventId::LEN],
     pub(super) ci_index: Vec<u8>,
