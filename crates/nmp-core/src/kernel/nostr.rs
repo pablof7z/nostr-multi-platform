@@ -50,7 +50,12 @@ pub(super) fn parse_profile_intent(event: &SignedEvent) -> Option<Profile> {
     if event.unsigned.kind != 0 {
         return None;
     }
-    let event = NostrEvent {
+    let event = signed_event_to_nostr(event);
+    Some(parse_profile(&event))
+}
+
+pub(super) fn signed_event_to_nostr(event: &SignedEvent) -> NostrEvent {
+    NostrEvent {
         id: event.id.clone(),
         pubkey: event.unsigned.pubkey.clone(),
         created_at: event.unsigned.created_at,
@@ -58,8 +63,7 @@ pub(super) fn parse_profile_intent(event: &SignedEvent) -> Option<Profile> {
         tags: event.unsigned.tags.clone(),
         content: event.unsigned.content.clone(),
         sig: event.sig.clone(),
-    };
-    Some(parse_profile(&event))
+    }
 }
 
 pub(super) fn diff_items(

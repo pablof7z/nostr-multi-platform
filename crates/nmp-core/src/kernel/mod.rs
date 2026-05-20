@@ -38,6 +38,9 @@ mod ingest;
 #[cfg(test)]
 mod ingest_tests;
 mod lifecycle;
+mod local_publish_intent;
+#[cfg(test)]
+mod local_publish_intent_tests;
 mod nostr;
 mod outbox;
 #[cfg(test)]
