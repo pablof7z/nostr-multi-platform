@@ -92,3 +92,180 @@ impl Kernel {
         self.maybe_open_thread_hydration()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::kernel::Kernel;
+    use crate::relay::DEFAULT_VISIBLE_LIMIT;
+    use crate::tags::{e_tag, p_tag};
+
+    /// Deterministic 64-char hex fixtures — no `SystemTime`, no randomness, so
+    /// every assertion is exact and reproducible (memory: "no polling / no
+    /// non-determinism" + task brief: deterministic fixtures only).
+    fn root_id() -> String {
+        "aa".repeat(32)
+    }
+    fn parent_id() -> String {
+        "bb".repeat(32)
+    }
+    fn root_author() -> String {
+        "cc".repeat(32)
+    }
+    fn parent_author() -> String {
+        "dd".repeat(32)
+    }
+    fn third_party() -> String {
+        "ee".repeat(32)
+    }
+
+    /// Pull the row for the first tag whose marker (column 3) equals `marker`.
+    fn marked_e_tag<'a>(tags: &'a [Vec<String>], marker: &str) -> &'a Vec<String> {
+        tags.iter()
+            .find(|t| t.first().map(String::as_str) == Some("e") && t.get(3).map(String::as_str) == Some(marker))
+            .unwrap_or_else(|| panic!("no e-tag with marker {marker:?}"))
+    }
+
+    /// All `p`-tag pubkeys (column 2), in document order.
+    fn p_values(tags: &[Vec<String>]) -> Vec<&str> {
+        tags.iter()
+            .filter(|t| t.first().map(String::as_str) == Some("p"))
+            .filter_map(|t| t.get(1))
+            .map(String::as_str)
+            .collect()
+    }
+
+    /// Replying to a flat root-level post (the parent carries no `e` tags of
+    /// its own): the parent becomes BOTH the `root` and the `reply` marker.
+    #[test]
+    fn reply_to_root_promotes_parent_to_root_and_reply() {
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        // A genuine thread root: kind:1, no `e` tags.
+        kernel.seed_kind1_for_reply_test(&parent_id(), &parent_author(), 1_000, vec![], "root post");
+
+        let tags = kernel
+            .reply_tags_for_parent(&parent_id())
+            .expect("cached kind:1 parent must yield reply tags");
+
+        // root marker → the parent itself (it had no root of its own).
+        let root = marked_e_tag(&tags, "root");
+        assert_eq!(root, &e_tag(&parent_id(), None, Some("root")));
+        // reply marker → also the parent.
+        let reply = marked_e_tag(&tags, "reply");
+        assert_eq!(reply, &e_tag(&parent_id(), None, Some("reply")));
+        // Parent author is re-notified.
+        assert_eq!(p_values(&tags), vec![parent_author().as_str()]);
+    }
+
+    /// Replying to a reply that already carries a `root` marker: that root is
+    /// forwarded unchanged, and the parent we are replying to becomes the new
+    /// `reply` marker.
+    #[test]
+    fn reply_to_reply_forwards_existing_root() {
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        // The parent is itself a reply: it has a marked `root` + `reply` tag set.
+        let parent_tags = vec![
+            e_tag(&root_id(), None, Some("root")),
+            e_tag(&"ff".repeat(32), None, Some("reply")),
+            p_tag(&root_author(), None),
+        ];
+        kernel.seed_kind1_for_reply_test(&parent_id(), &parent_author(), 2_000, parent_tags, "a reply");
+
+        let tags = kernel
+            .reply_tags_for_parent(&parent_id())
+            .expect("cached kind:1 parent must yield reply tags");
+
+        // root marker → forwarded from the parent's own root, NOT the parent id.
+        let root = marked_e_tag(&tags, "root");
+        assert_eq!(root, &e_tag(&root_id(), None, Some("root")));
+        // reply marker → the parent we are replying to.
+        let reply = marked_e_tag(&tags, "reply");
+        assert_eq!(reply, &e_tag(&parent_id(), None, Some("reply")));
+        // p-tags: parent author first, then the forwarded thread participant.
+        assert_eq!(
+            p_values(&tags),
+            vec![parent_author().as_str(), root_author().as_str()],
+        );
+    }
+
+    /// Edge case: a parent whose `e` tags exist but carry NO `root` marker is
+    /// treated as a thread root — the parent itself is promoted to `root`.
+    #[test]
+    fn reply_to_parent_without_root_marker_treats_parent_as_root() {
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        // Parent has only a `mention`-marked e-tag: no `root`, no `reply`.
+        let parent_tags = vec![e_tag(&"99".repeat(32), None, Some("mention"))];
+        kernel.seed_kind1_for_reply_test(&parent_id(), &parent_author(), 3_000, parent_tags, "quote post");
+
+        let tags = kernel
+            .reply_tags_for_parent(&parent_id())
+            .expect("cached kind:1 parent must yield reply tags");
+
+        // No usable root on the parent → the parent becomes the root.
+        let root = marked_e_tag(&tags, "root");
+        assert_eq!(root, &e_tag(&parent_id(), None, Some("root")));
+        let reply = marked_e_tag(&tags, "reply");
+        assert_eq!(reply, &e_tag(&parent_id(), None, Some("reply")));
+    }
+
+    /// A relay hint stored on the parent's own `root` marker is forwarded onto
+    /// the generated `root` e-tag; the `reply` e-tag's relay slot stays empty
+    /// (a deliberate parity choice documented on `reply_tags_for_parent`).
+    #[test]
+    fn relay_hint_on_parent_root_is_forwarded() {
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let parent_tags = vec![
+            e_tag(&root_id(), Some("wss://relay.example"), Some("root")),
+            e_tag(&"ff".repeat(32), None, Some("reply")),
+        ];
+        kernel.seed_kind1_for_reply_test(&parent_id(), &parent_author(), 4_000, parent_tags, "deep reply");
+
+        let tags = kernel
+            .reply_tags_for_parent(&parent_id())
+            .expect("cached kind:1 parent must yield reply tags");
+
+        // root e-tag carries the forwarded relay hint in its relay slot.
+        let root = marked_e_tag(&tags, "root");
+        assert_eq!(
+            root,
+            &e_tag(&root_id(), Some("wss://relay.example"), Some("root")),
+        );
+        assert_eq!(root.get(2).map(String::as_str), Some("wss://relay.example"));
+        // reply e-tag's relay slot is empty by design.
+        let reply = marked_e_tag(&tags, "reply");
+        assert_eq!(reply.get(2).map(String::as_str), Some(""));
+    }
+
+    /// A parent that isn't in the local `events` cache yields `None` so the
+    /// caller can fall back to a minimal reply marker and kick hydration.
+    #[test]
+    fn uncached_parent_yields_none() {
+        let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        assert!(kernel.reply_tags_for_parent(&parent_id()).is_none());
+    }
+
+    /// Parent `p`-tags are forwarded after the parent author, de-duplicated,
+    /// in stable document order — re-notifying every thread participant once.
+    #[test]
+    fn parent_pubkeys_are_forwarded_and_deduped() {
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        // Parent notifies: third_party, parent_author (dup of self), third_party (dup).
+        let parent_tags = vec![
+            e_tag(&root_id(), None, Some("root")),
+            e_tag(&"ff".repeat(32), None, Some("reply")),
+            p_tag(&third_party(), None),
+            p_tag(&parent_author(), None),
+            p_tag(&third_party(), None),
+        ];
+        kernel.seed_kind1_for_reply_test(&parent_id(), &parent_author(), 5_000, parent_tags, "busy thread");
+
+        let tags = kernel
+            .reply_tags_for_parent(&parent_id())
+            .expect("cached kind:1 parent must yield reply tags");
+
+        // parent author first, then each distinct mentioned pubkey exactly once.
+        assert_eq!(
+            p_values(&tags),
+            vec![parent_author().as_str(), third_party().as_str()],
+        );
+    }
+}
