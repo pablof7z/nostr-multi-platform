@@ -17,6 +17,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use nostr::nips::nip19::ToBech32;
 use nostr::{EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
 use serde_json::json;
+use zeroize::Zeroizing;
 
 use crate::kernel::{Kernel, WalletStatus};
 use crate::relay::{OutboundMessage, RelayRole};
@@ -33,7 +34,7 @@ struct WalletConnection {
     wallet_pubkey_hex: String,
     wallet_npub: String,
     relay_url: String,
-    client_secret_hex: String,
+    client_secret_hex: Zeroizing<String>,
     #[allow(dead_code)] // Retained for future per-event author filtering.
     client_pubkey_hex: String,
     status: String,
@@ -120,7 +121,7 @@ pub(crate) fn wallet_connect(
         wallet_pubkey_hex: nwc_uri.wallet_pubkey_hex.clone(),
         wallet_npub: wallet_npub.clone(),
         relay_url: relay.clone(),
-        client_secret_hex: nwc_uri.client_secret_hex.as_str().to_string(),
+        client_secret_hex: Zeroizing::new(nwc_uri.client_secret_hex.as_str().to_string()),
         client_pubkey_hex: client_pubkey_hex.clone(),
         status: "connecting".to_string(),
         balance_msats: None,
@@ -268,7 +269,7 @@ pub(crate) fn handle_nwc_text(
     let Some((_event_id, response)) = try_decode_relay_message_with_id(
         relay_text,
         &conn.wallet_pubkey_hex,
-        &conn.client_secret_hex,
+        conn.client_secret_hex.as_str(),
     ) else {
         return Vec::new();
     };
@@ -314,7 +315,7 @@ fn build_request(
     let conn = wallet.connection.as_mut()?;
 
     let content = match nmp_nwc::build::request_content(
-        &conn.client_secret_hex,
+        conn.client_secret_hex.as_str(),
         &conn.wallet_pubkey_hex,
         &method,
         params,
@@ -327,7 +328,7 @@ fn build_request(
     };
 
     let signed = match sign_nwc_request(
-        &conn.client_secret_hex,
+        conn.client_secret_hex.as_str(),
         &conn.wallet_pubkey_hex,
         &content,
     ) {
