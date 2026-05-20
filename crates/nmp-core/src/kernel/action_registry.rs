@@ -2,9 +2,9 @@
 //!
 //! # What this is (and is NOT)
 //!
-//! `substrate::ActionModule` has 16+ implementations (`PublishModule`, 15
-//! NIP-29 actions, `WelcomeWrapModule`). This module is the dispatch table
-//! that drives into them.
+//! `substrate::ActionModule` has 15+ implementations (`PublishModule`, the
+//! NIP-29 actions, the Marmot group actions). This module is the dispatch
+//! table that drives into them.
 //!
 //! This is deliberately NOT the deleted `ModuleRegistry` that
 //! `substrate/mod.rs` warns about. That registry "only collected
