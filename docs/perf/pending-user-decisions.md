@@ -8,6 +8,23 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
+### PD-031 RESOLVED AUTONOMOUSLY (2026-05-20) — PR #11 FFI drift was a CI-script scoping bug, not missing Rust symbols
+
+Task brief said the 4 chirp identity/marmot symbols (`nmp_app_chirp_identity_remove_account`, `_identity_restore`, `_identity_sign_in_nsec`, `nmp_app_chirp_marmot_fetch_key_packages`) "don't exist yet in the Rust FFI source files" and asked me to implement them in `apps/chirp/nmp-app-chirp/src/ffi.rs` + `marmot/ffi.rs`.
+
+That premise is stale against the branch. All 4 symbols are **already fully implemented** — with D6 null-checks and graceful degradation — in sibling files the PR author deliberately created:
+- `apps/chirp/nmp-app-chirp/src/marmot/identity.rs` (the 3 identity fns)
+- `apps/chirp/nmp-app-chirp/src/marmot/fetch.rs` (`_marmot_fetch_key_packages`)
+Both are declared in `marmot/mod.rs` (`pub mod identity; pub mod fetch;`) and re-exported from `lib.rs`. `cargo check -p nmp-app-chirp` compiles clean — they genuinely exist and link into `libnmp_app_chirp.a`.
+
+The real bug: `ci/check-ffi-header-drift.sh` only greps `ffi.rs` + `marmot/ffi.rs`, not the two sibling files — so it reported header-only drift for symbols that DO exist in Rust.
+
+Decision: fixed the CI script (added the two files to `FFI_FILE_ROOTS`) instead of relocating working, D6-correct code into `ffi.rs` just to satisfy a brittle scanner — moving it would undo the author's intentional fetch/identity/ffi module split. Used an explicit file list (not a recursive dir scan) because `marmot/ffi/tests.rs` lacks a file-level `#![cfg(...test...)]` marker and a dir scan would mis-include it. Script now exits 0 (61 symbols in sync). The script's own header authorizes modifying `ci/` for drift fixes.
+
+If the user actually wanted the symbols moved into `ffi.rs`, revert the `ci/check-ffi-header-drift.sh` change and re-spec.
+
+---
+
 ### PD-030 RESOLVED AUTONOMOUSLY (2026-05-20) — `publish/state.rs` test task brief was stale; filled real gaps instead of duplicating
 
 Task brief said `publish/state.rs` has "ZERO tests" and asked for `AckClass::Success/Duplicate/Blocked` variants classified by `message` substring matching. All three premises are wrong against current code:
