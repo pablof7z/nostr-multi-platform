@@ -6,6 +6,11 @@ license = { workspace = true }
 description = "NIP-47 Nostr Wallet Connect client — URI parsing, NIP-44 encrypted request/response, kind:23194 builder, kind:23195 decoder."
 
 [dependencies]
+# `nip04`/`nip44`: NWC request/response encryption (see `crypto.rs`).
+# `nip47` is deliberately NOT enabled — `nostr`'s `NostrWalletConnectURI` is a
+# strict `url::Url`-based spec parser that rejects the real-world URI shapes this
+# client must accept (case-insensitive scheme, hand-copy whitespace) and exposes
+# wallet-spending key material un-zeroized. See `parse.rs` for the full rationale.
 nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

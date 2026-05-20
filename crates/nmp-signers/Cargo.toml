@@ -18,6 +18,10 @@ wasm = []
 [dependencies]
 nmp-core = { path = "../nmp-core" }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
+# `nip04`/`nip44`: NIP-46 RPC payload crypto. `nip49`: encrypted nsec storage.
+# `nip46` is deliberately NOT enabled — `nostr`'s `NostrConnectURI::Bunker` lacks
+# this crate's `bunker://` hardening (length cap, `perms`, `extra` round-trip,
+# zeroized secret). See `bunker/mod.rs` for the full rationale.
 nostr = { workspace = true, features = ["std", "nip04", "nip44", "nip49"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

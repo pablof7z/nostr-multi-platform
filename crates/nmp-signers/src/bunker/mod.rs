@@ -18,6 +18,25 @@
 //! Unknown query params are preserved in `BunkerUri::extra` so we don't break
 //! round-trip for forward-compatible extensions.
 //!
+//! ## Why not `nostr::nips::nip46::NostrConnectURI::Bunker`?
+//!
+//! The `nostr` crate ships a `bunker://` parser behind its `nip46` feature, but
+//! its `Bunker` variant models only `{remote_signer_public_key, relays, secret}`.
+//! `BunkerUri` is a hardened superset that additionally provides — each pinned
+//! by a test in `tests.rs`:
+//!
+//! - **`MAX_BUNKER_URI_LEN` length cap** — reject adversarial 4 KiB+ input fast
+//!   (a fuzz-asserted invariant); upstream has no bound.
+//! - **`perms` / `permissions`** — a NIP-46 spec field upstream's `Bunker`
+//!   variant does not carry.
+//! - **`extra` round-trip** — unknown params preserved for forward-compat
+//!   `Display`; upstream silently drops them.
+//! - **Case-insensitive scheme + `Zeroizing` connection secret** — upstream
+//!   rejects `Bunker://` and exposes the secret as a bare `String`.
+//!
+//! Switching to the upstream type would regress every one of these. `nip46` is
+//! intentionally not enabled on the `nostr` dependency.
+//!
 //! ## Hardening invariants (fuzz-tested)
 //!
 //! - URIs longer than [`MAX_BUNKER_URI_LEN`] (4 KiB) are rejected fast.

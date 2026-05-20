@@ -1,4 +1,16 @@
 //! NIP-47 NWC request/response types.
+//!
+//! ## Why not `nostr::nips::nip47::{Method, Response, ResponseResult}`?
+//!
+//! The `nostr` crate's `nip47` module models the full NWC surface as a tight
+//! `ResponseResult` enum keyed on a known method set. `NwcResponse` here is
+//! deliberately *loose*: `result_type: String` + `result: serde_json::Value`.
+//! That shape decodes **any** wallet's response — including methods/fields this
+//! client does not yet model — without a wire-compat break. Tightening to the
+//! upstream enum would risk rejecting responses from deployed wallets (Alby,
+//! Mutiny, Zeus) that return extra or differently-shaped fields. The typed
+//! accessors (`balance_msats`, `pay_preimage`) provide the narrow, validated
+//! reads the actor runtime actually needs. Keep loose; do not enable `nip47`.
 
 use serde::{Deserialize, Serialize};
 

@@ -1,4 +1,25 @@
 //! NIP-47 `nostr+walletconnect://` URI parser.
+//!
+//! ## Why not `nostr::nips::nip47::NostrWalletConnectURI`?
+//!
+//! The `nostr` crate ships a NWC URI type behind its `nip47` feature, but it is
+//! a strict spec parser built on `url::Url::parse` and is **not** a drop-in
+//! replacement for the real-world input this client must accept. `NwcUri`
+//! retains, each pinned by a test below:
+//!
+//! - **Case-insensitive scheme** (`Nostr+walletconnect://`) — iOS deeplink
+//!   handlers auto-capitalize the leading char; upstream rejects it.
+//! - **Whitespace tolerance** — surrounding *and* inner (pre-`&`) whitespace
+//!   from hand-copied wallet-UI strings is trimmed; upstream `url::Url` rejects.
+//! - **`Zeroizing` on the client secret** — this is wallet-spending key
+//!   material; upstream exposes a bare `SecretKey`.
+//! - **Graceful non-ws relay handling** — a bad relay alongside a valid one is
+//!   dropped, not fatal; upstream `RelayUrl::parse` silently skips but offers no
+//!   typed `ParseError` surface for the all-bad case.
+//!
+//! Switching to the upstream type would regress every one of these. The crate
+//! still enables `nostr`'s `nip04`/`nip44` features for the crypto path; it
+//! intentionally does **not** enable `nip47`.
 
 use zeroize::Zeroizing;
 
