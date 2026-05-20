@@ -11,7 +11,7 @@ mod common;
 
 use common::reaction;
 use nmp_core::store::{EventStore, MemEventStore};
-use nmp_reactions::{decode_and_route, reaction_summary, ReactionTarget, NAMESPACE};
+use nmp_relations::{decode_and_route, reaction_summary, ReactionTarget, NAMESPACE};
 
 const TARGET: &str = "target-event-id-000000000000000000000000000000000000000000000000000";
 const TARGET_AUTHOR: &str = "target-author-00000000000000000000000000000000000000000000000000";

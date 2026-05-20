@@ -1,5 +1,6 @@
-//! `nmp-reactions` — NIP-25 reactions (kind:7) + NIP-18 reposts (kind:6 /
-//! generic kind:16) as an NMP protocol crate.
+//! `nmp-relations` — NIP-25 reactions (kind:7) + NIP-18 reposts (kind:6 /
+//! generic kind:16) as an NMP protocol crate, and the cross-NIP `relations`
+//! composition facade tying nip01/nip22/nip57 reactions together.
 //!
 //! Implements the design recommendation in `docs/design/kind-wrappers.md` §3:
 //! the read side is a pure `try_from_event` decoder producing an immutable
@@ -62,7 +63,7 @@ pub use view::{
     ReactionViewDelta, RepostsPayload, RepostsSpec, RepostsView,
 };
 
-// NOTE: `nmp-reactions` exposes its `DomainModule` / `ViewModule` impls
+// NOTE: `nmp-relations` exposes its `DomainModule` / `ViewModule` impls
 // (`ReactionsDomain`, `ReactionSummaryView`, `RepostsView`) as public types.
 // The former `register(&mut ModuleRegistry)` entry point was deleted:
 // `ModuleRegistry` only collected name strings and the kernel never read

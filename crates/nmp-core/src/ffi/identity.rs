@@ -116,7 +116,7 @@ pub extern "C" fn nmp_app_publish_note(
 
 /// Generic publish entrypoint — sign + publish an `UnsignedEvent` already
 /// constructed by any protocol-crate builder
-/// (`nmp_nip23::Article`, `nmp_nip01::Note`, `nmp_reactions::Reaction`, …).
+/// (`nmp_nip23::Article`, `nmp_nip01::Note`, `nmp_relations::Reaction`, …).
 ///
 /// `unsigned_json` is the JSON serialization of [`crate::substrate::UnsignedEvent`]
 /// (fields: `pubkey`, `kind`, `tags`, `content`, `created_at`). The caller's

@@ -170,7 +170,7 @@ pub enum ActorCommand {
     },
     /// Generic, kind-agnostic publish — take an `UnsignedEvent` already built
     /// by any protocol-crate builder (`nmp_nip23::Article`, `nmp_nip01::Note`,
-    /// `nmp_reactions::Reaction`, …), sign with the active account's keys,
+    /// `nmp_relations::Reaction`, …), sign with the active account's keys,
     /// and route through the NIP-65 outbox resolver (D3). The kernel does
     /// not inspect the kind — that's the protocol crate's concern (D0).
     ///

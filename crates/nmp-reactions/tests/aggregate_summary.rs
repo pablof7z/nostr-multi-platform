@@ -5,7 +5,7 @@ mod common;
 
 use common::{reaction, repost};
 use nmp_core::store::{EventStore, MemEventStore};
-use nmp_reactions::{decode_and_route, reaction_summary, ReactionTarget, NAMESPACE};
+use nmp_relations::{decode_and_route, reaction_summary, ReactionTarget, NAMESPACE};
 
 const X: &str = "event-X-0000000000000000000000000000000000000000000000000000000000";
 const Y: &str = "event-Y-0000000000000000000000000000000000000000000000000000000000";

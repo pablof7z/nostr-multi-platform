@@ -1,6 +1,6 @@
 //! End-to-end integration test for the relation surface this milestone
 //! delivered — the four protocol crates (`nmp-nip01`, `nmp-nip22`,
-//! `nmp-nip57`, `nmp-reactions`) plus the cross-NIP `Relations` facade.
+//! `nmp-nip57`, `nmp-relations`) plus the cross-NIP `Relations` facade.
 //!
 //! Asserts the applesauce-shape ergonomic the user asked for: with a single
 //! root event and one child event of each relevant kind, every per-kind
@@ -17,7 +17,7 @@ use nmp_nip01::{
 };
 use nmp_nip22::{CommentsPayload, CommentsSpec, CommentsView};
 use nmp_nip57::{ZapsPayload, ZapsSpec, ZapsView};
-use nmp_reactions::{
+use nmp_relations::{
     decode::ReactionTarget,
     relations::{RelationSpecs, Relations},
     ReactionSummaryPayload, ReactionSummarySpec, ReactionSummaryView, RepostsPayload, RepostsSpec,

@@ -10,7 +10,7 @@
 //! module collapses that boilerplate into:
 //!
 //! - [`Relations::for_event`] returning a [`RelationSpecs`] bundle of
-//!   pre-wired `ViewModule` `Spec` values from `nmp-reactions` (reactions
+//!   pre-wired `ViewModule` `Spec` values from `nmp-relations` (reactions
 //!   summary + reposts), `nmp-nip01` (replies + thread), `nmp-nip22`
 //!   (comments), and `nmp-nip57` (zaps).
 //! - [`Relations::reply_to`], [`Relations::react_to`], [`Relations::repost`],
@@ -28,9 +28,9 @@
 //! - It holds **no state** — no store ref, no signer, no clock; every fn is
 //!   a pure transform.
 //! - It is **opt-in** at the cargo dep level — apps that don't want it don't
-//!   depend on `nmp-reactions` (the facade lives here only because the user
-//!   chose to consolidate it adjacent to the largest existing relation
-//!   crate; the alternative was a `nmp-relations` crate).
+//!   depend on `nmp-relations`. This crate is the cross-NIP composition
+//!   layer: the facade lives here alongside the relation kinds it composes,
+//!   which is why the package is named `nmp-relations`.
 //!
 //! ## Mechanism, not magic
 //!
@@ -38,7 +38,7 @@
 //! The facade does the small boring task of picking the right `Spec` shape
 //! per kind and forwarding builder constructors, so app code reads as
 //! `Relations::react_to(&note)` instead of
-//! `nmp_reactions::Reaction::to_event(note.event_id.clone(), note.author.clone())`.
+//! `nmp_relations::Reaction::to_event(note.event_id.clone(), note.author.clone())`.
 
 use nmp_core::substrate::UnsignedEvent;
 use nmp_nip01::{Note, NoteBuilder, NoteRecord, RepliesSpec, ThreadSpec};

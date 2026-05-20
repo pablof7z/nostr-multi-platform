@@ -6,7 +6,7 @@ mod common;
 
 use common::{reaction, stored};
 use nmp_core::store::{EventStore, MemEventStore};
-use nmp_reactions::{
+use nmp_relations::{
     decode_and_route, list_by_reactor, list_for_target, ReactionTarget, NAMESPACE,
 };
 

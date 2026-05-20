@@ -5,7 +5,7 @@
 //!
 //! Decoder name is the uniform `try_from_event` per PD-010 — every NMP
 //! protocol crate exposes this verb so consumers can write
-//! `nmp_reactions::try_from_event(&event)` without learning per-crate
+//! `nmp_relations::try_from_event(&event)` without learning per-crate
 //! vocabulary.
 //!
 //! ## One decoder, classified output

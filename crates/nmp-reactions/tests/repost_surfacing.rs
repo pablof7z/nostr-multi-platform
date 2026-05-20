@@ -2,7 +2,7 @@
 //! a generic repost preserves its original `k`.
 
 use nmp_core::substrate::{KernelEvent, ViewContext, ViewModule};
-use nmp_reactions::{
+use nmp_relations::{
     ReactionTarget, RepostsSpec, RepostsView, SocialKind, KIND_GENERIC_REPOST, KIND_REPOST,
 };
 

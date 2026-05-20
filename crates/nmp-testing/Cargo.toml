@@ -23,7 +23,7 @@ nmp-nip23 = { path = "../nmp-nip23" }
 nmp-nip29 = { path = "../nmp-nip29" }
 nmp-nip42 = { path = "../nmp-nip42" }
 nmp-nip57 = { path = "../nmp-nip57" }
-nmp-reactions = { path = "../nmp-reactions" }
+nmp-relations = { path = "../nmp-reactions" }
 nmp-signers = { path = "../nmp-signers" }
 nmp-signer-broker = { path = "../nmp-signer-broker" }
 nmp-signer-iface = { path = "../nmp-signer-iface" }

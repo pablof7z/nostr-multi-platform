@@ -41,7 +41,7 @@ apple-native-keyring-store = { version = "1.0", features = ["protected"] }
 # `nmp_app_register_event_observer` FFI symbol via Rust path) so the FFI
 # smoke tests in `src/ffi.rs` can spin up a real `NmpApp` rather than mocking
 # the slot. Matches the pattern in the other protocol crates (`nmp-nip01`,
-# `nmp-nip22`, `nmp-reactions`).
+# `nmp-nip22`, `nmp-relations`).
 nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
 # `test-utils` gates `MdkSqliteStorage::new_in_memory` so the Marmot FFI
 # smoke tests can spin up a real `MarmotService` without a keyring /

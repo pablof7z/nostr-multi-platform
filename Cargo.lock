@@ -3445,7 +3445,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nmp-reactions"
+name = "nmp-relations"
 version = "0.1.0"
 dependencies = [
  "nmp-core",
@@ -3524,7 +3524,7 @@ dependencies = [
  "nmp-nip42",
  "nmp-nip57",
  "nmp-nip77",
- "nmp-reactions",
+ "nmp-relations",
  "nmp-signer-broker",
  "nmp-signer-iface",
  "nmp-signers",

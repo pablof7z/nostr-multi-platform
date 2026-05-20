@@ -1,5 +1,5 @@
 [package]
-name = "nmp-reactions"
+name = "nmp-relations"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -8,9 +8,9 @@ description = "NIP-25 reactions (kind:7) + NIP-18 reposts (kind:6 / generic kind
 [dependencies]
 nmp-core = { path = "../nmp-core" }
 # Cross-NIP facade composition (`relations` module) — the applesauce-shape
-# ergonomic surface for apps. Adding these here, rather than spinning up a
-# separate `nmp-relations` crate, keeps the cross-NIP entrypoints adjacent to
-# the largest already-landed relation crate.
+# ergonomic surface for apps. This crate is the cross-NIP composition layer:
+# it owns the relation kinds (reactions/reposts) and the `relations` facade
+# that ties together nip01/nip22/nip57, hence the `nmp-relations` name.
 nmp-nip01 = { path = "../nmp-nip01" }
 nmp-nip22 = { path = "../nmp-nip22" }
 nmp-nip57 = { path = "../nmp-nip57" }

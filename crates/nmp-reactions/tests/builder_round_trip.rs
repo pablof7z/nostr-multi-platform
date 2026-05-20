@@ -5,7 +5,7 @@
 mod common;
 
 use common::stored;
-use nmp_reactions::{try_from_event, GenericRepost, Reaction, ReactionTarget, Repost, SocialKind};
+use nmp_relations::{try_from_event, GenericRepost, Reaction, ReactionTarget, Repost, SocialKind};
 
 const AUTHOR: &str = "author-0000000000000000000000000000000000000000000000000000000000";
 const TARGET: &str = "target-0000000000000000000000000000000000000000000000000000000000";
