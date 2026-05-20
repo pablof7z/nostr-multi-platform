@@ -55,6 +55,11 @@ struct HomeFeedView: View {
         model.modularTimeline.blocks.isEmpty && model.items.isEmpty
     }
 
+    private var currentAccount: AccountSummary? {
+        guard let activeID = model.activeAccount else { return nil }
+        return model.accounts.first { $0.id == activeID }
+    }
+
     // ── Timeline list ──────────────────────────────────────────────────────
 
     private var timeline: some View {
@@ -114,6 +119,24 @@ struct HomeFeedView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarLeading) {
+            if let account = currentAccount {
+                Button {
+                    router.push(.profile(pubkey: account.id))
+                } label: {
+                    ChirpAvatar(
+                        url: nil,
+                        initials: account.avatarInitials,
+                        colorHex: account.avatarColorHex,
+                        size: 32
+                    )
+                    .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open your profile")
+            }
+        }
+
         ToolbarItem(placement: .navigationBarTrailing) {
             Button {
                 showActivity = true

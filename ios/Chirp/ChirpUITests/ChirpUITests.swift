@@ -19,6 +19,19 @@ final class ChirpUITests: XCTestCase {
         continueAfterFailure = false
     }
 
+    func testCurrentUserAvatarOpensProfile() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["NMP_TEST_NSEC"] =
+            "nsec12c7ujxnnut2dnahjjsecq79507fg2p2h7ul4a3rqepg5vyk8c9lqyc30gw"
+        app.launch()
+
+        let profileButton = app.buttons["Open your profile"]
+        XCTAssertTrue(profileButton.waitForExistence(timeout: 10))
+        profileButton.tap()
+
+        XCTAssertTrue(app.scrollViews["profile-detail-list"].waitForExistence(timeout: 8))
+    }
+
     func testTimelineDiagnosticsAndNavigation() throws {
         let app = XCUIApplication()
         app.launchEnvironment["NMP_VISIBLE_LIMIT"] = "80"
