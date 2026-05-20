@@ -6,7 +6,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use nmp_core::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
+use nmp_core::planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
+use nmp_core::substrate::ViewDependencies;
 
 use crate::group_id::GroupId;
 use crate::kinds::{
@@ -26,52 +27,40 @@ pub fn host_pinned_interest(
     extra_tags: BTreeMap<String, BTreeSet<String>>,
     lifecycle: InterestLifecycle,
 ) -> LogicalInterest {
-    let mut tags = extra_tags;
-    tags.entry("h".to_string())
-        .or_default()
-        .insert(group.local_id.clone());
+    let mut tag_refs: Vec<(String, String)> = extra_tags
+        .into_iter()
+        .flat_map(|(key, vals)| vals.into_iter().map(move |v| (key.clone(), v)))
+        .collect();
+    tag_refs.push(("h".to_string(), group.local_id.clone()));
 
-    LogicalInterest {
-        id: InterestId(id),
-        scope: InterestScope::ActiveAccount,
-        shape: InterestShape {
-            kinds: kinds.into_iter().collect(),
-            tags,
-            relay_pin: Some(group.host_relay_url.clone()),
-            ..Default::default()
-        },
-        hints: Vec::new(),
-        lifecycle,
+    ViewDependencies {
+        kinds: kinds.into_iter().collect(),
+        tag_refs,
+        relay_pin: Some(group.host_relay_url.clone()),
+        ..Default::default()
     }
+    .into_logical_interest(InterestId(id), InterestScope::ActiveAccount, lifecycle)
 }
 
 /// Build a one-shot interest for the relay-signed metadata snapshot of a single
 /// group (39000-39003, filtered by `d` tag).
 pub fn metadata_interest(id: u64, group: &GroupId) -> LogicalInterest {
-    let mut tags = BTreeMap::new();
-    tags.insert(
-        "d".to_string(),
-        [group.local_id.clone()].into_iter().collect(),
-    );
-    LogicalInterest {
-        id: InterestId(id),
-        scope: InterestScope::Global,
-        shape: InterestShape {
-            kinds: [
-                KIND_GROUP_METADATA,
-                KIND_GROUP_ADMINS,
-                KIND_GROUP_MEMBERS,
-                KIND_GROUP_ROLES,
-            ]
-            .into_iter()
-            .collect(),
-            tags,
-            relay_pin: Some(group.host_relay_url.clone()),
-            ..Default::default()
-        },
-        hints: Vec::new(),
-        lifecycle: InterestLifecycle::OneShot,
+    ViewDependencies {
+        kinds: vec![
+            KIND_GROUP_METADATA,
+            KIND_GROUP_ADMINS,
+            KIND_GROUP_MEMBERS,
+            KIND_GROUP_ROLES,
+        ],
+        tag_refs: vec![("d".to_string(), group.local_id.clone())],
+        relay_pin: Some(group.host_relay_url.clone()),
+        ..Default::default()
     }
+    .into_logical_interest(
+        InterestId(id),
+        InterestScope::Global,
+        InterestLifecycle::OneShot,
+    )
 }
 
 /// Build a tailing interest for the `JoinedGroups` view: one per host relay in
@@ -87,25 +76,17 @@ pub fn joined_groups_for_host(
     user_pubkey: &str,
     host_relay_url: &str,
 ) -> LogicalInterest {
-    let mut tags = BTreeMap::new();
-    tags.insert(
-        "p".to_string(),
-        [user_pubkey.to_string()].into_iter().collect(),
-    );
-    LogicalInterest {
-        id: InterestId(id),
-        scope: InterestScope::ActiveAccount,
-        shape: InterestShape {
-            kinds: [KIND_GROUP_ADMINS, KIND_GROUP_MEMBERS]
-                .into_iter()
-                .collect(),
-            tags,
-            relay_pin: Some(host_relay_url.to_string()),
-            ..Default::default()
-        },
-        hints: Vec::new(),
-        lifecycle: InterestLifecycle::Tailing,
+    ViewDependencies {
+        kinds: vec![KIND_GROUP_ADMINS, KIND_GROUP_MEMBERS],
+        tag_refs: vec![("p".to_string(), user_pubkey.to_string())],
+        relay_pin: Some(host_relay_url.to_string()),
+        ..Default::default()
     }
+    .into_logical_interest(
+        InterestId(id),
+        InterestScope::ActiveAccount,
+        InterestLifecycle::Tailing,
+    )
 }
 
 #[cfg(test)]
