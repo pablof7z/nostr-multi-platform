@@ -7,6 +7,13 @@
 - Split files by cohesive ownership when they approach the soft limit. Prefer feature modules, sibling views, or linked docs over large catch-all files.
 - Generated, vendored, lockfile, binary, and benchmark-output artifacts are exempt from the LOC ceiling, but keep their producers small and documented.
 
+## TEA organization: co-locate by owner, not by role
+
+- Do not create top-level `model/`, `update/`, `view/`, `state/`, or `actions/` buckets whose only purpose is technical role separation.
+- Prefer one cohesive module per feature, page, view module, protocol module, or central domain type. Keep the state shape, input messages/actions, reducer/update path, projection/view payload, and tests near that owner.
+- The LOC rule still wins. When a cohesive owner approaches the limit, split under the same owner namespace by concrete sub-type or sub-protocol, not by recreating global Model/Update/View layers.
+- Keep the top-level actor/router flat until a screen or module has genuinely self-contained state. Compose nested messages deliberately; do not introduce native/local component state to avoid plumbing.
+
 ## Architecture: Rust owns all logic; native is rendering + capabilities only
 
 Per the RMP bible (§2, commandment #4 — `docs/aim.md`):
@@ -18,6 +25,13 @@ Native code (Swift, Kotlin, TypeScript, etc.) is allowed to do exactly two thing
 2. **Execute capabilities** — call OS APIs (Keychain, AVPlayer, push, location) and report raw results back to Rust. Never decide policy; never retry; never cache.
 
 Everything else — state, business rules, derived data, routing decisions, error recovery, protocol logic — lives in Rust.
+
+## Effects, replay, and snapshot discipline
+
+- Every external effect is represented as typed data crossing the Rust/native boundary: Rust requests a capability, native reports a raw result, Rust decides the next state.
+- New nondeterministic inputs (time, randomness, network, OS callbacks, capability completions) must enter the actor as explicit actions/events or injected seams. Reducers must remain replayable from message history.
+- Debug/history surfaces must use log-safe action tags and correlation ids; never record secrets, raw nsecs, plaintext DMs, or bearer tokens.
+- Keep `FullState`/full snapshot as the correctness path. Add granular `ViewBatch` or other delta variants only when profiling proves the snapshot path is the bottleneck and the delta is lossless.
 
 ## What belongs in NMP crates vs. app-specific Rust crates
 

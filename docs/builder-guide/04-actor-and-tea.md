@@ -90,6 +90,29 @@ There is **one** writer (the actor). Everything else is a courier.
    default (`emit_now`, `tick.rs:53-62`); granular deltas are an optimization
    layered on top (see [06]), not the default.
 
+## Organizing TEA code
+
+External TEA sources converge on one rule that matters here: organize around
+the owner of state, not around technical roles. In NMP vocabulary, a cohesive
+feature / view module / protocol module should keep its state shape, action or
+message vocabulary, reducer/update logic, projection payload, and tests near
+the same owner.
+
+Do **not** introduce top-level `model`, `update`, `view`, `state`, or `actions`
+trees that separate every feature by role. That recreates MVC-style boundary
+debates and makes it harder to see the full state transition. If a module grows,
+split under the same owner namespace by concrete sub-type, sub-protocol, or
+helper responsibility while keeping the owner obvious. The repository LOC
+ceiling still wins; Elm's tolerance for very long files is not a license to
+break `AGENTS.md`.
+
+For multi-screen composition, use the Iced pattern as the mental model: nested
+screen/module messages may be mapped back to the parent, and child reducers may
+return explicit parent-visible actions. The parent decides routing or
+cross-screen effects; children do not mutate global state directly. On native
+platforms this composition is generated or bridged through the Rust actor, not
+implemented as local Swift/Kotlin component state.
+
 ### Emit only when state changed (D8)
 
 The actor never emits on a bare idle tick. `next_actor_msg`/`flush_due`/
