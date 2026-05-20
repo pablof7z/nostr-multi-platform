@@ -36,12 +36,12 @@ Status: `[ ]` pending · `[~]` in-progress · `[x]` done
 ## MEDIUM — architectural hygiene
 
 - [x] **`[workspace.dependencies]`** — `nostr = "0.44"`, `serde`, `rustls`, etc. are copy-pasted across ~12 manifests. One drift = duplicate-version build. Hoist all shared third-party deps into `[workspace.dependencies]`; use `dep.workspace = true` per crate. (fixed `0d8a1b44`)
-- [ ] **`ChirpCapabilities.swift` JSON substring matching** — `:50,61` use `envelope.resultJSON.contains("\"status\":\"ok\"")`. Brittle; will false-positive if any payload contains that literal. Use `JSONDecoder` like the rest of the file. Also: `retrieveSecret` collapses 3-state `KeyringResult` (Ok/NotFound/Error) to `String?` — caller can't distinguish missing from failed.
+- [x] ~~**`ChirpCapabilities.swift` JSON substring matching**~~ ✅ Fixed — replaced all `contains("\"status\":\"ok\"")` calls with a shared `decodeResult()` helper using `JSONDecoder` + `KeyringResult` `Codable` struct; `retrieveSecret` now returns a `SecretLookup` enum (`found`/`notFound`/`error(OSStatus)`) so callers can distinguish the three states. Both `KernelModel.swift` callers updated (commit `cc273e54`).
 - [x] ~~**`nmp-substrate-types` dead directory**~~ ✅ Fixed — deleted via `git rm -r crates/nmp-substrate-types/` (commit `51f00899`).
 - [x] ~~**`make_update` double-serializes**~~ ✅ Fixed — the snapshot is serialized once; `wrap_snapshot` (`update_envelope.rs:76`) re-attaches the already-serialized `String` via `RawValue::from_string()` (one outer allocation, no re-parse and no re-serialize) so each tick serializes the payload exactly once.
 - [ ] **`nmp-android-ffi` outside workspace** — has its own `[workspace]` table; invisible to root-workspace CI and `cargo build --workspace`. Add to CI explicitly.
 - [ ] **No `cargo build`/`cargo test` CI** — only doctrine-lint, file-size, supply-chain gates. `lmdb-backend` feature may not compile; no automated proof. Add a matrix CI workflow.
-- [ ] **`nmp-nip51` zero reverse-deps** — built and tested but consumed by no crate or app. Wire into something or remove from workspace.
+- [x] ~~**`nmp-nip51` zero reverse-deps**~~ ✅ Fixed — deleted entire crate (`git rm -r crates/nmp-nip51/`, removed from workspace members); recoverable from git history if a NIP-51 consumer is wired later (commit `78ad034b`).
 - [ ] **`nmp-reactions` misnamed** — doubles as the cross-NIP composition layer (`nmp-relations` responsibility). Misleads future readers.
 - [x] ~~**`NmpCore.h` drift**~~ ✅ Fixed in this session — `ci/check-ffi-header-drift.sh` added as CI gate against exported symbols.
 - [x] ~~**`NoopRelay::send` silently drops frames**~~ ✅ Fixed — `NoopRelay::send` returns `RelayError::Disconnected` (`crates/nmp-signer-broker/src/broker.rs:537-546`) so premature sends surface as errors instead of silent `Ok(())`.
