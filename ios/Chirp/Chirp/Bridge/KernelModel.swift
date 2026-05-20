@@ -84,13 +84,35 @@ final class KernelModel: ObservableObject {
     /// defaults with an explicit app-side default injected before start.
     private func addDefaultRelaysIfNeeded() {
         guard relayEditRows.isEmpty else { return }
-        let defaults = [
+        for (url, role) in onboardingRelays {
+            kernel.addRelay(url: url, role: role)
+        }
+    }
+
+    var onboardingRelays: [(String, String)] {
+        if let relay = Self.launchArgument("CHIRP_MAESTRO_RELAY_URL"), !relay.isEmpty {
+            return [(relay, "both")]
+        }
+        return [
             ("wss://relay.primal.net", "both"),
             ("wss://purplepag.es", "indexer"),
         ]
-        for (url, role) in defaults {
-            kernel.addRelay(url: url, role: role)
+    }
+
+    private static func launchArgument(_ key: String) -> String? {
+        let args = ProcessInfo.processInfo.arguments
+        for index in args.indices {
+            let arg = args[index]
+            if arg == key || arg == "-\(key)" {
+                let next = args.index(after: index)
+                return next < args.endIndex ? args[next] : nil
+            }
+            let prefixes = ["\(key)=", "-\(key)="]
+            if let prefix = prefixes.first(where: { arg.hasPrefix($0) }) {
+                return String(arg.dropFirst(prefix.count))
+            }
         }
+        return UserDefaults.standard.string(forKey: key)
     }
 
     func start() {
@@ -194,9 +216,9 @@ final class KernelModel: ObservableObject {
             ?? "wss://r.f7z.io"
         return kernel.nostrConnectURI(relay: relay)
     }
-    func createAccount(profile: [String: String] = ["name": "New User"], relays: [(String, String)] = [("wss://relay.primal.net", "both"), ("wss://purplepag.es", "indexer")]) {
+    func createAccount(profile: [String: String] = ["name": "New User"], relays: [(String, String)]? = nil) {
         kmLog.info("createAccount dispatched")
-        kernel.createAccount(profile: profile, relays: relays)
+        kernel.createAccount(profile: profile, relays: relays ?? onboardingRelays)
     }
     func publishProfile(name: String, about: String, picture: String) {
         var profile: [String: String] = ["name": name]

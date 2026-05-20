@@ -32,6 +32,7 @@ struct HomeFeedView: View {
                 timeline
             }
         }
+        .accessibilityIdentifier("home-feed")
         .chirpScreenBackground()
         .navigationTitle("Chirp")
         .navigationBarTitleDisplayMode(.large)
