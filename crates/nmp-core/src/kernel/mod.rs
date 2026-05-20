@@ -474,11 +474,13 @@ impl Kernel {
     /// outbox resolver + a `QueueDispatcher` shared with the kernel for
     /// frame drainage.
     ///
-    /// `#[cfg(test)]`: the production `Kernel::new` path now routes through
-    /// [`Kernel::with_storage_path`] (added for the FFI LMDB-path wiring),
-    /// so the only remaining callers of this externally-supplied-store
-    /// constructor are the `publish_engine_tests` cases.
-    #[cfg(test)]
+    /// Gated on `cfg(any(test, feature = "test-support"))`: the production
+    /// `Kernel::new` path routes through [`Kernel::with_storage_path`] (added
+    /// for the FFI LMDB-path wiring), so the callers of this
+    /// externally-supplied-store constructor are the `publish_engine_tests`
+    /// cases and the NIP golden-tag `ConformanceHarness` (which keeps a clone
+    /// of the store `Arc` to read back published events).
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn with_publish_store(
         visible_limit: usize,
         publish_store: Arc<dyn crate::publish::PublishStore>,

@@ -158,6 +158,12 @@ pub mod testing {
     pub use crate::actor::{run_actor, ActorCommand};
     pub use crate::store::{RawEvent, VerifiedEvent};
 
+    /// NIP golden-tag conformance harness — drives the (crate-private) command
+    /// handlers against a real `Kernel` + `IdentityRuntime` and returns the
+    /// emitted `EVENT` JSON so an integration test can assert per-kind tag
+    /// structure. See `tests/nip_tag_conformance.rs`.
+    pub use crate::actor::ConformanceHarness;
+
     use std::sync::mpsc;
     use std::thread;
 

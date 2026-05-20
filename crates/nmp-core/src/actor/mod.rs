@@ -69,6 +69,12 @@ pub use commands::{
     KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId,
     RawEventObserverRegistration,
 };
+// NIP golden-tag conformance harness — re-exported up the (crate-private)
+// `actor` chain so the gated `pub use actor::ConformanceHarness` in `lib.rs`
+// reaches the `tests/nip_tag_conformance.rs` integration test. Gated on
+// `test-support` so it never appears in a production build.
+#[cfg(any(test, feature = "test-support"))]
+pub use commands::ConformanceHarness;
 use dispatch::{dispatch_command, handle_relay_event};
 use pending_sign::PendingSign;
 

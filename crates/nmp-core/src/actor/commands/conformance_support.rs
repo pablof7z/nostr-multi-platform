@@ -1,0 +1,248 @@
+//! Test-support facade for the NIP golden-tag conformance suite.
+//!
+//! The command handlers that build per-kind tag structures (`publish_note`,
+//! `react`, `follow`, `publish_unsigned_event`, `create_account`,
+//! `wallet_connect`) are all `pub(crate)` — unreachable from an integration
+//! test in `tests/`. The kernel test-support seed helpers
+//! (`seed_kind10002_for_test`, `seed_kind1_for_reply_test`,
+//! `inject_replaceable_event`) are likewise `pub(crate)`.
+//!
+//! Rather than widen the visibility of those internals (which would leak the
+//! `Kernel` / `IdentityRuntime` / `OutboundMessage` types into the public
+//! surface), this module provides a single high-level [`ConformanceHarness`].
+//! It owns the actor-local runtime trio `(IdentityRuntime, Kernel,
+//! WalletRuntime)` and exposes only what the conformance table needs: drive a
+//! command, get back the emitted `["EVENT", {...}]` JSON object.
+//!
+//! Gated on `cfg(any(test, feature = "test-support"))` — never compiled into a
+//! production build, never part of the FFI surface (D0).
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use serde_json::Value;
+
+use super::identity::{create_account, sign_in_nsec, IdentityRuntime};
+use super::publish::{follow, publish_note, publish_unsigned_event, react};
+use crate::kernel::Kernel;
+use crate::publish::{InMemoryPublishStore, PublishStore};
+use crate::relay::{OutboundMessage, DEFAULT_VISIBLE_LIMIT};
+use crate::substrate::UnsignedEvent;
+
+#[cfg(feature = "wallet")]
+use super::wallet::{wallet_connect, WalletRuntime};
+
+/// A real `Kernel` + `IdentityRuntime` (+ `WalletRuntime`) driven by the
+/// actual command handlers — no mocks. Each `emit_*` method runs a command and
+/// returns the outbound `EVENT` JSON object the kernel placed on the wire, so a
+/// conformance test can assert on its `tags` array.
+pub struct ConformanceHarness {
+    identity: IdentityRuntime,
+    kernel: Kernel,
+    /// The same `InMemoryPublishStore` the kernel was constructed with. Kept
+    /// here so [`Self::published_event_of_kind`] can read back the full signed
+    /// event (tags included) for kinds the kernel routes through
+    /// `publish_signed` without surfacing the outbound frame to the caller
+    /// (kind:0 / kind:10002 emitted by `create_account`).
+    publish_store: Arc<InMemoryPublishStore>,
+    #[cfg(feature = "wallet")]
+    wallet: WalletRuntime,
+}
+
+impl Default for ConformanceHarness {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ConformanceHarness {
+    /// A fresh, signed-out harness.
+    pub fn new() -> Self {
+        let publish_store = Arc::new(InMemoryPublishStore::new());
+        Self {
+            identity: IdentityRuntime::new(),
+            kernel: Kernel::with_publish_store(
+                DEFAULT_VISIBLE_LIMIT,
+                Arc::clone(&publish_store) as Arc<dyn PublishStore>,
+            ),
+            publish_store,
+            #[cfg(feature = "wallet")]
+            wallet: WalletRuntime::new(),
+        }
+    }
+
+    /// Sign in with `nsec` and seed a kind:10002 NIP-65 write-relay list for
+    /// the active account so the (fail-closed) outbox resolver has targets and
+    /// publish commands produce non-empty outbound frames.
+    pub fn sign_in_and_seed_nip65(&mut self, nsec: &str, write_relays: &[&str]) {
+        sign_in_nsec(&mut self.identity, &mut self.kernel, nsec, false);
+        let pubkey = self
+            .identity
+            .active_pubkey()
+            .expect("active account after sign-in");
+        self.kernel.seed_kind10002_for_test(&pubkey, write_relays);
+    }
+
+    /// The active account's pubkey hex, if signed in.
+    pub fn active_pubkey(&self) -> Option<String> {
+        self.identity.active_pubkey()
+    }
+
+    /// The last user-visible error toast, if any.
+    pub fn last_error_toast(&self) -> Option<String> {
+        self.kernel.last_error_toast_snapshot().cloned()
+    }
+
+    /// Seed a kind:1 note into the kernel read-cache so a subsequent
+    /// `emit_note`/`emit_reaction` against `id` exercises the warm path
+    /// (`reply_tags_for_parent` / `event_author`) rather than the cold
+    /// fallback. `tags` carries whatever NIP-10 structure the test needs.
+    pub fn seed_note(&mut self, id: &str, author: &str, tags: Vec<Vec<String>>) {
+        self.kernel
+            .seed_kind1_for_reply_test(id, author, 100, tags, "seeded note");
+    }
+
+    /// Seed an existing kind:3 contact list for `author` so a subsequent
+    /// `emit_follow` mutates that list rather than starting from empty.
+    pub fn seed_contact_list(&mut self, author: &str, follows: &[&str]) {
+        let p_tags: Vec<Vec<String>> = follows
+            .iter()
+            .map(|p| vec!["p".to_string(), (*p).to_string()])
+            .collect();
+        self.kernel.inject_replaceable_event(
+            &"3".repeat(64),
+            author,
+            1_700_000_000,
+            3,
+            p_tags,
+            "wss://conformance-seed.test",
+            1,
+        );
+    }
+
+    /// Drive `publish_note` (kind:1). `reply_to` selects top-level vs reply.
+    /// Returns the emitted `EVENT` JSON object.
+    pub fn emit_note(&mut self, content: &str, reply_to: Option<&str>) -> Value {
+        let outbound = publish_note(
+            &self.identity,
+            &mut self.kernel,
+            content,
+            reply_to,
+            &mut Vec::new(),
+        );
+        last_event_json(&outbound)
+    }
+
+    /// Drive `react` (kind:7). Returns the emitted `EVENT` JSON object.
+    pub fn emit_reaction(&mut self, target_event_id: &str, reaction: &str) -> Value {
+        let outbound = react(
+            &self.identity,
+            &mut self.kernel,
+            target_event_id,
+            reaction,
+            &mut Vec::new(),
+        );
+        last_event_json(&outbound)
+    }
+
+    /// Drive `follow` (kind:3 add/remove). Returns the emitted `EVENT` JSON.
+    pub fn emit_follow(&mut self, pubkey: &str, add: bool) -> Value {
+        let outbound = follow(
+            &self.identity,
+            &mut self.kernel,
+            pubkey,
+            add,
+            &mut Vec::new(),
+        );
+        last_event_json(&outbound)
+    }
+
+    /// Drive `publish_unsigned_event` for an arbitrary kind (used for kind:0
+    /// metadata, which has no dedicated command handler). Returns the emitted
+    /// `EVENT` JSON object.
+    pub fn emit_unsigned(&mut self, kind: u32, tags: Vec<Vec<String>>, content: &str) -> Value {
+        let unsigned = UnsignedEvent {
+            pubkey: "ignored-by-signer".to_string(),
+            kind,
+            tags,
+            content: content.to_string(),
+            created_at: 1_700_000_000,
+        };
+        let outbound =
+            publish_unsigned_event(&self.identity, &mut self.kernel, unsigned, &mut Vec::new());
+        last_event_json(&outbound)
+    }
+
+    /// Drive `create_account`, which emits kind:0 (metadata), kind:10002
+    /// (relay list) and kind:3 (initial follows). The kernel routes those
+    /// through `publish_signed` directly, so the emitted EVENT frames land in
+    /// the publish queue rather than the returned outbound vec — callers read
+    /// them back via [`Self::published_event_of_kind`].
+    pub fn create_account(&mut self, profile: HashMap<String, String>, relays: &[(String, String)]) {
+        create_account(&mut self.identity, &mut self.kernel, false, &profile, relays);
+    }
+
+    /// Drive NIP-47 `wallet_connect` with `uri`. The handler emits a kind:23194
+    /// `get_info` / `get_balance` request pair as outbound EVENT frames (plus a
+    /// REQ subscription). Returns every kind:23194 `EVENT` JSON object emitted.
+    #[cfg(feature = "wallet")]
+    pub fn emit_wallet_connect(&mut self, uri: &str) -> Vec<Value> {
+        let outbound = wallet_connect(&mut self.wallet, &mut self.kernel, uri);
+        event_jsons_of_kind(&outbound, 23194)
+    }
+
+    /// The published event of `kind` reconstructed as an `EVENT`-style JSON
+    /// object (`id`/`pubkey`/`kind`/`tags`/`content`), read back from the
+    /// kernel's publish store. Used for the kinds `create_account` routes
+    /// through `publish_signed` without returning the outbound frame
+    /// (kind:0 metadata, kind:10002 relay list). `None` if no such kind was
+    /// published.
+    pub fn published_event_of_kind(&self, kind: u32) -> Option<Value> {
+        let records = self.publish_store.load_pending().ok()?;
+        records
+            .into_iter()
+            .map(|r| r.event)
+            .find(|ev| ev.unsigned.kind == kind)
+            .map(|ev| {
+                serde_json::json!({
+                    "id": ev.id,
+                    "pubkey": ev.unsigned.pubkey,
+                    "kind": ev.unsigned.kind,
+                    "tags": ev.unsigned.tags,
+                    "content": ev.unsigned.content,
+                })
+            })
+    }
+}
+
+/// Extract the most recent `["EVENT", {...}]` frame from a set of outbound
+/// messages and return the inner event object. Panics with a clear message if
+/// no EVENT frame is present (the test wants one — a missing frame is a bug).
+fn last_event_json(outbound: &[OutboundMessage]) -> Value {
+    let frame = outbound
+        .iter()
+        .rev()
+        .find(|m| m.text.starts_with("[\"EVENT\""))
+        .expect("expected at least one outbound EVENT frame");
+    parse_event_frame(&frame.text)
+}
+
+/// Every `["EVENT", {...}]` frame of `kind` among the outbound messages.
+#[cfg(feature = "wallet")]
+fn event_jsons_of_kind(outbound: &[OutboundMessage], kind: u64) -> Vec<Value> {
+    outbound
+        .iter()
+        .filter(|m| m.text.starts_with("[\"EVENT\""))
+        .map(|m| parse_event_frame(&m.text))
+        .filter(|ev| ev.get("kind").and_then(Value::as_u64) == Some(kind))
+        .collect()
+}
+
+/// Parse a `["EVENT", <event>]` wire frame into the inner event object.
+fn parse_event_frame(text: &str) -> Value {
+    let parsed: Value = serde_json::from_str(text).expect("EVENT frame is valid JSON");
+    parsed
+        .as_array()
+        .and_then(|arr| arr.get(1).cloned())
+        .expect("EVENT frame shape is [\"EVENT\", <event>]")
+}

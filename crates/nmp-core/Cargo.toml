@@ -56,3 +56,12 @@ nostr-database = { version = "0.44", default-features = false, features = ["flat
 [dev-dependencies]
 proptest = "1"
 tempfile = "3"
+
+# NIP golden-tag conformance suite. Drives the (crate-private) command handlers
+# through the `test-support` facade (`nmp_core::testing::ConformanceHarness`),
+# so the test target only builds when that feature is enabled. Verify with:
+#   cargo test -p nmp-core --features test-support --test nip_tag_conformance
+[[test]]
+name = "nip_tag_conformance"
+path = "tests/nip_tag_conformance.rs"
+required-features = ["test-support"]

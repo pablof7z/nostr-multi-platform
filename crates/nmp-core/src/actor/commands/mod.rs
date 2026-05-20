@@ -45,6 +45,12 @@
 //! through the remote signer is a documented follow-up
 //! (TODO(nip46-nip42) in `identity.rs:sync_kernel`).
 
+// Test-support facade for the NIP golden-tag conformance suite. Gated so it is
+// never compiled into a production build. Exposed up the actor module chain to
+// `lib.rs::testing` so the `tests/nip_tag_conformance.rs` integration test can
+// drive the (otherwise `pub(crate)`) command handlers.
+#[cfg(any(test, feature = "test-support"))]
+mod conformance_support;
 mod event_observer;
 mod identity;
 mod lifecycle;
@@ -103,6 +109,12 @@ pub use raw_event_observer::{
 pub(super) use publish::{
     follow, open_timeline, publish_note, publish_signed_event, publish_unsigned_event, react,
 };
+// NIP golden-tag conformance harness — `pub` (not `pub(crate)`) so the gated
+// test-support re-export in `lib.rs` reaches the integration test outside the
+// crate. `commands` is itself crate-private, so non-test Rust code only sees
+// this through `lib.rs::testing` when `feature = "test-support"` is on.
+#[cfg(any(test, feature = "test-support"))]
+pub use conformance_support::ConformanceHarness;
 pub(super) use relays::{add_relay, remove_relay};
 #[cfg(feature = "wallet")]
 pub(super) use wallet::{
