@@ -195,12 +195,12 @@ impl Kernel {
             cache_coverage: "local".to_string(),
             warming_until_ms: None,
         });
-        if let Some(interest) = self.selected_author.as_ref() {
+        if let Some(interest) = self.author_view.selected_author.as_ref() {
             let pubkey = &interest.key;
             let note_count = self.author_items(pubkey).len();
             interests.push(LogicalInterestStatus {
                 key: format!("AuthorProfile({})", short_hex(pubkey)),
-                state: if self.author_request_pending {
+                state: if self.author_view.request_pending {
                     "queued".to_string()
                 } else if note_count > 0 {
                     "tailing".to_string()
@@ -217,7 +217,7 @@ impl Kernel {
                 warming_until_ms: None,
             });
         }
-        if let Some(interest) = self.selected_thread.as_ref() {
+        if let Some(interest) = self.thread_view.selected_thread.as_ref() {
             let event_id = &interest.key;
             let root_id = self
                 .thread_root_id(event_id)
@@ -225,7 +225,7 @@ impl Kernel {
             let item_count = self.thread_items(event_id, &root_id).len();
             interests.push(LogicalInterestStatus {
                 key: format!("Thread({})", short_hex(event_id)),
-                state: if self.thread_request_pending {
+                state: if self.thread_view.request_pending {
                     "queued".to_string()
                 } else if item_count > 0 {
                     "tailing".to_string()
@@ -242,7 +242,7 @@ impl Kernel {
                 warming_until_ms: None,
             });
         }
-        if let Some(interest) = self.diagnostic_firehose.as_ref() {
+        if let Some(interest) = self.diagnostic_firehose.interest.as_ref() {
             interests.push(LogicalInterestStatus {
                 key: format!("DiagnosticFirehose(#{})", interest.key),
                 state: if self
@@ -256,7 +256,7 @@ impl Kernel {
                 },
                 refcount: interest.refcount,
                 relay_urls: self.bootstrap_urls_for_role(RelayRole::Content),
-                cache_coverage: format!("{} events", self.diagnostic_firehose_events),
+                cache_coverage: format!("{} events", self.diagnostic_firehose.events),
                 warming_until_ms: None,
             });
         }

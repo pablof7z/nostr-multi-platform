@@ -49,8 +49,8 @@ impl Kernel {
         relay.connection = "backing_off".to_string();
         relay.last_error = Some(truncate(&error, 160));
         relay.reconnect_count = relay.reconnect_count.saturating_add(1);
-        self.thread_ids_inflight = false;
-        self.thread_replies_inflight = false;
+        self.thread_view.ids_inflight = false;
+        self.thread_view.replies_inflight = false;
         self.changed_since_emit = true;
         self.log(format!(
             "{} relay error ({}): {}",

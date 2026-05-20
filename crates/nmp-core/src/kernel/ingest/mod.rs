@@ -148,10 +148,10 @@ impl Kernel {
                     }
                 }
                 if sub_id.starts_with("thread-ids-") {
-                    self.thread_ids_inflight = false;
+                    self.thread_view.ids_inflight = false;
                 }
                 if sub_id.starts_with("thread-replies-") {
-                    self.thread_replies_inflight = false;
+                    self.thread_view.replies_inflight = false;
                 }
                 // T82/T104: a discovery oneshot's first stored set has landed
                 // (OneShot lifecycle == "EOSE closes"). Complete + release the
@@ -237,10 +237,10 @@ impl Kernel {
                 self.wire_subs
                     .remove(&(wire_key_url.clone(), sub_id.clone()));
                 if sub_id.starts_with("thread-ids-") {
-                    self.thread_ids_inflight = false;
+                    self.thread_view.ids_inflight = false;
                 }
                 if sub_id.starts_with("thread-replies-") {
-                    self.thread_replies_inflight = false;
+                    self.thread_view.replies_inflight = false;
                 }
                 self.changed_since_emit = true;
                 // T120 (G8 / G11): apply the NIP-01 reason-prefix policy

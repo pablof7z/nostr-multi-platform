@@ -302,6 +302,42 @@ pub(super) struct ViewInterest {
     pub(super) refcount: u32,
 }
 
+// ── View-tracking sub-structs (D0 app-domain state) ───────────────────────────
+//
+// These group the kernel's view-tracking fields — app-domain state living in a
+// protocol-neutral kernel — into named locatable units, making the D0 boundary
+// explicit. Pure mechanical grouping: no behaviour of their own.
+
+/// Author-view tracking: selected author, request-pending flag, sequence count.
+#[derive(Default)]
+pub(super) struct AuthorViewState {
+    pub(super) selected_author: Option<ViewInterest>,
+    pub(super) request_pending: bool,
+    pub(super) seq: u64,
+}
+
+/// Thread-view tracking: selected thread, hydration queues, and inflight flags.
+#[derive(Default)]
+pub(super) struct ThreadViewState {
+    pub(super) selected_thread: Option<ViewInterest>,
+    pub(super) request_pending: bool,
+    pub(super) seq: u64,
+    pub(super) pending_ids: BTreeSet<String>,
+    pub(super) requested_ids: HashSet<String>,
+    pub(super) ids_inflight: bool,
+    pub(super) pending_reply_targets: BTreeSet<String>,
+    pub(super) requested_reply_targets: HashSet<String>,
+    pub(super) replies_inflight: bool,
+}
+
+/// Diagnostic hashtag-firehose tracking: interest, sequence, and event counter.
+#[derive(Default)]
+pub(super) struct DiagnosticFirehoseState {
+    pub(super) interest: Option<ViewInterest>,
+    pub(super) seq: u64,
+    pub(super) events: u64,
+}
+
 // ── Metrics snapshot ──────────────────────────────────────────────────────────
 #[derive(Clone, Debug, Serialize)]
 pub(super) struct Metrics {

@@ -155,7 +155,7 @@ impl Kernel {
         self.events.insert(event.id.clone(), cached);
         self.notify_event_observers(&kernel_event);
         if sub_id.starts_with("diag-firehose-") {
-            self.diagnostic_firehose_events = self.diagnostic_firehose_events.saturating_add(1);
+            self.diagnostic_firehose.events = self.diagnostic_firehose.events.saturating_add(1);
         }
         self.enqueue_thread_hydration_from_event(&event.id);
         if self.timeline_authors.contains(&event.pubkey) || sub_id.starts_with("diag-firehose-") {
@@ -169,6 +169,7 @@ impl Kernel {
     pub(in crate::kernel) fn should_store_event(&self, sub_id: &str, event: &NostrEvent) -> bool {
         self.timeline_authors.contains(&event.pubkey)
             || self
+                .author_view
                 .selected_author
                 .as_ref()
                 .map(|interest| interest.key == event.pubkey)
@@ -186,6 +187,7 @@ impl Kernel {
 
     pub(in crate::kernel) fn enqueue_thread_hydration_from_event(&mut self, event_id: &str) {
         let Some(selected) = self
+            .thread_view
             .selected_thread
             .as_ref()
             .map(|interest| interest.key.clone())

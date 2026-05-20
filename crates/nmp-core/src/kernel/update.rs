@@ -75,7 +75,7 @@ impl Kernel {
                 visible_placeholder_avatar_items,
                 open_views: self.logical_interests().len() as u32,
                 events_since_last_update: self.events_since_last_update,
-                diagnostic_firehose_events: self.diagnostic_firehose_events,
+                diagnostic_firehose_events: self.diagnostic_firehose.events,
                 inserted_count: inserted.len(),
                 updated_count: updated.len(),
                 removed_count: removed.len(),
@@ -265,9 +265,9 @@ impl Kernel {
     }
 
     pub(super) fn author_view(&self) -> Option<AuthorViewPayload> {
-        let pubkey = &self.selected_author.as_ref()?.key;
+        let pubkey = &self.author_view.selected_author.as_ref()?.key;
         let items = self.author_items(pubkey);
-        let state = if self.author_request_pending {
+        let state = if self.author_view.request_pending {
             "queued"
         } else if items.is_empty() {
             "opening"
@@ -304,7 +304,7 @@ impl Kernel {
     }
 
     pub(super) fn thread_view(&self) -> Option<ThreadViewPayload> {
-        let focused_id = &self.selected_thread.as_ref()?.key;
+        let focused_id = &self.thread_view.selected_thread.as_ref()?.key;
         let root_id = self
             .thread_root_id(focused_id)
             .unwrap_or_else(|| focused_id.clone());
@@ -314,7 +314,7 @@ impl Kernel {
         let next_count = focused_index
             .map(|index| items.len().saturating_sub(index + 1))
             .unwrap_or(0);
-        let state = if self.thread_request_pending {
+        let state = if self.thread_view.request_pending {
             "queued"
         } else if items.is_empty() {
             "opening"

@@ -167,7 +167,7 @@ impl Kernel {
         // events must call kernel.sort_timeline_deferred() once after the loop
         // to avoid O(n²·log n) sort overhead for large batches.
         if sub_id.starts_with("diag-firehose-") {
-            self.diagnostic_firehose_events = self.diagnostic_firehose_events.saturating_add(1);
+            self.diagnostic_firehose.events = self.diagnostic_firehose.events.saturating_add(1);
             self.timeline.push_back(id);
         }
         self.events_since_last_update = self.events_since_last_update.saturating_add(1);
@@ -214,7 +214,7 @@ impl Kernel {
     /// test to assert the hydration REQ was kicked.
     #[allow(dead_code)]
     pub(crate) fn is_thread_hydration_requested(&self, id: &str) -> bool {
-        self.requested_thread_ids.contains(id) || self.pending_thread_ids.contains(id)
+        self.thread_view.requested_ids.contains(id) || self.thread_view.pending_ids.contains(id)
     }
 
     /// Seed a kind:10002 (NIP-65 relay list) into the kernel's event store and

@@ -36,22 +36,22 @@ fn relay_short(relay_url: &str) -> String {
 
 impl Kernel {
     pub(crate) fn open_thread(&mut self, event_id: String, can_send: bool) -> Vec<OutboundMessage> {
-        match self.selected_thread.as_mut() {
+        match self.thread_view.selected_thread.as_mut() {
             Some(interest) if interest.key == event_id => {
                 interest.refcount = interest.refcount.saturating_add(1);
             }
             _ => {
-                self.selected_thread = Some(ViewInterest {
+                self.thread_view.selected_thread = Some(ViewInterest {
                     key: event_id.clone(),
                     refcount: 1,
                 });
-                self.pending_thread_ids.clear();
-                self.requested_thread_ids.clear();
-                self.pending_thread_reply_targets.clear();
-                self.requested_thread_reply_targets.clear();
+                self.thread_view.pending_ids.clear();
+                self.thread_view.requested_ids.clear();
+                self.thread_view.pending_reply_targets.clear();
+                self.thread_view.requested_reply_targets.clear();
             }
         }
-        self.thread_request_pending = true;
+        self.thread_view.request_pending = true;
         self.changed_since_emit = true;
         self.log(format!("open thread view {}", short_hex(&event_id)));
 
@@ -64,7 +64,7 @@ impl Kernel {
     }
 
     pub(crate) fn close_thread(&mut self, event_id: &str) -> Vec<OutboundMessage> {
-        let Some(interest) = self.selected_thread.as_mut() else {
+        let Some(interest) = self.thread_view.selected_thread.as_mut() else {
             return Vec::new();
         };
         if interest.key != event_id {
@@ -76,12 +76,12 @@ impl Kernel {
             return Vec::new();
         }
 
-        self.selected_thread = None;
-        self.thread_request_pending = false;
-        self.pending_thread_ids.clear();
-        self.pending_thread_reply_targets.clear();
-        self.thread_ids_inflight = false;
-        self.thread_replies_inflight = false;
+        self.thread_view.selected_thread = None;
+        self.thread_view.request_pending = false;
+        self.thread_view.pending_ids.clear();
+        self.thread_view.pending_reply_targets.clear();
+        self.thread_view.ids_inflight = false;
+        self.thread_view.replies_inflight = false;
         self.changed_since_emit = true;
         self.log(format!("close thread view {}", short_hex(event_id)));
         self.close_subscriptions_with_prefixes(&["thread-ids-", "thread-replies-", "thread-more-"])
@@ -89,15 +89,16 @@ impl Kernel {
 
     pub(crate) fn prepare_thread_requests(&mut self) -> Vec<OutboundMessage> {
         let Some(focused_id) = self
+            .thread_view
             .selected_thread
             .as_ref()
             .map(|interest| interest.key.clone())
         else {
-            self.thread_request_pending = false;
+            self.thread_view.request_pending = false;
             return Vec::new();
         };
 
-        self.thread_request_pending = false;
+        self.thread_view.request_pending = false;
         let root_id = self
             .thread_root_id(&focused_id)
             .unwrap_or_else(|| focused_id.clone());
@@ -115,35 +116,36 @@ impl Kernel {
     }
 
     pub(crate) fn enqueue_thread_id(&mut self, id: String) {
-        if is_hex_id(&id) && !self.requested_thread_ids.contains(&id) {
-            self.pending_thread_ids.insert(id);
+        if is_hex_id(&id) && !self.thread_view.requested_ids.contains(&id) {
+            self.thread_view.pending_ids.insert(id);
         }
     }
 
     pub(crate) fn enqueue_thread_reply_target(&mut self, id: String) {
         if is_hex_id(&id)
-            && self.requested_thread_reply_targets.len() < 96
-            && !self.requested_thread_reply_targets.contains(&id)
+            && self.thread_view.requested_reply_targets.len() < 96
+            && !self.thread_view.requested_reply_targets.contains(&id)
         {
-            self.pending_thread_reply_targets.insert(id);
+            self.thread_view.pending_reply_targets.insert(id);
         }
     }
 
     pub(crate) fn maybe_open_thread_hydration(&mut self) -> Vec<OutboundMessage> {
         let mut requests = Vec::new();
-        if !self.pending_thread_ids.is_empty() && !self.thread_ids_inflight {
+        if !self.thread_view.pending_ids.is_empty() && !self.thread_view.ids_inflight {
             let ids = self
-                .pending_thread_ids
+                .thread_view
+                .pending_ids
                 .iter()
                 .take(20)
                 .cloned()
                 .collect::<Vec<_>>();
             for id in &ids {
-                self.pending_thread_ids.remove(id);
-                self.requested_thread_ids.insert(id.clone());
+                self.thread_view.pending_ids.remove(id);
+                self.thread_view.requested_ids.insert(id.clone());
             }
-            self.thread_view_seq = self.thread_view_seq.saturating_add(1);
-            self.thread_ids_inflight = true;
+            self.thread_view.seq = self.thread_view.seq.saturating_add(1);
+            self.thread_view.ids_inflight = true;
             // T121 / codex R1: partition the id set by each id's
             // original-event author's NIP-65 write relays. Ids whose authors
             // aren't yet in the local store fall through to the cold-start
@@ -151,7 +153,7 @@ impl Kernel {
             // pattern (see `partition_authors_by_write_relays` for the
             // author-set analogue).
             let partition = self.partition_ids_by_author_write_relays(&ids);
-            let seq = self.thread_view_seq;
+            let seq = self.thread_view.seq;
             for (relay_url, served_ids) in partition {
                 let sub_id = format!("thread-ids-{}-{}", seq, relay_short(&relay_url));
                 requests.push(self.req_for_relay(
@@ -164,19 +166,22 @@ impl Kernel {
             }
         }
 
-        if !self.pending_thread_reply_targets.is_empty() && !self.thread_replies_inflight {
+        if !self.thread_view.pending_reply_targets.is_empty()
+            && !self.thread_view.replies_inflight
+        {
             let ids = self
-                .pending_thread_reply_targets
+                .thread_view
+                .pending_reply_targets
                 .iter()
                 .take(20)
                 .cloned()
                 .collect::<Vec<_>>();
             for id in &ids {
-                self.pending_thread_reply_targets.remove(id);
-                self.requested_thread_reply_targets.insert(id.clone());
+                self.thread_view.pending_reply_targets.remove(id);
+                self.thread_view.requested_reply_targets.insert(id.clone());
             }
-            self.thread_view_seq = self.thread_view_seq.saturating_add(1);
-            self.thread_replies_inflight = true;
+            self.thread_view.seq = self.thread_view.seq.saturating_add(1);
+            self.thread_view.replies_inflight = true;
             // T121 / codex R1: route the `#e` recursive-replies REQ to the
             // root event author's resolved write relays (per-id partition).
             // Reply authors write to their own relays of course; routing to
@@ -185,7 +190,7 @@ impl Kernel {
             // fanning to every participant. Unknown-author ids fall back to
             // bootstrap (cold-start discovery).
             let partition = self.partition_ids_by_author_write_relays(&ids);
-            let seq = self.thread_view_seq;
+            let seq = self.thread_view.seq;
             for (relay_url, served_ids) in partition {
                 let sub_id = format!("thread-replies-{}-{}", seq, relay_short(&relay_url));
                 requests.push(self.req_for_relay(
