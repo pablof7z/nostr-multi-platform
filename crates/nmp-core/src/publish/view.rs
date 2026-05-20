@@ -137,11 +137,8 @@ impl ViewModule for PublishStatusView {
         // by kernel-event subscription. The dependency surface is therefore
         // a single projection key.
         ViewDependencies {
-            kinds: Vec::new(),
-            authors: Vec::new(),
-            ids: Vec::new(),
-            tag_refs: Vec::new(),
             projection_keys: vec!["nmp.publish.status:global".to_string()],
+            ..Default::default()
         }
     }
 

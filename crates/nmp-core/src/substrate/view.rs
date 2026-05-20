@@ -20,6 +20,12 @@ pub struct ViewDependencies {
     pub ids: Vec<EventId>,
     pub tag_refs: Vec<(String, String)>,
     pub projection_keys: Vec<String>,
+    /// Host-relay this view's interest must be pinned to (NIP-29 single-group
+    /// views, Marmot group-relay views). `None` means the standard outbox/inbox
+    /// routing applies. The kernel does not yet act on this field — it is
+    /// declared here so host-pinned views express their relay affinity in the
+    /// data model rather than via discarded side-channel helpers.
+    pub relay_pin: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]

@@ -1,16 +1,12 @@
 //! `GroupChatView`, `GroupDiscussionsView`, `GroupArtifactsView` — single-group
 //! event-list projections, all host-pinned via the same `relay_pin` mechanism.
 
-use std::collections::BTreeMap;
-
-use nmp_core::planner::InterestLifecycle;
 use nmp_core::substrate::{
     EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies, ViewModule,
 };
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
-use crate::interest::host_pinned_interest;
 use crate::kinds::{
     KIND_CHAT_MESSAGE, KIND_DISCUSSION_OR_ARTIFACT, KIND_HIGHLIGHT, KIND_REPOST,
 };
@@ -40,17 +36,11 @@ impl ViewModule for GroupChatView {
         ViewDependencies {
             kinds: vec![KIND_CHAT_MESSAGE],
             tag_refs: vec![("h".into(), spec.group.local_id.clone())],
+            relay_pin: Some(spec.group.host_relay_url.clone()),
             ..Default::default()
         }
     }
-    fn open(_ctx: &ViewContext, spec: Self::Spec) -> (Self::State, Self::Payload) {
-        let _ = host_pinned_interest(
-            0,
-            &spec.group,
-            [KIND_CHAT_MESSAGE],
-            BTreeMap::new(),
-            InterestLifecycle::Tailing,
-        );
+    fn open(_ctx: &ViewContext, _spec: Self::Spec) -> (Self::State, Self::Payload) {
         (EventAccumulator::default(), ChatPayload { events: Vec::new() })
     }
     fn on_event_inserted(_c: &ViewContext, s: &mut Self::State, e: &KernelEvent) -> Option<Self::Delta> { s.insert(e) }
@@ -86,6 +76,7 @@ impl ViewModule for GroupDiscussionsView {
                 ("h".into(), spec.group.local_id.clone()),
                 ("t".into(), "discussion".into()),
             ],
+            relay_pin: Some(spec.group.host_relay_url.clone()),
             ..Default::default()
         }
     }
@@ -131,6 +122,7 @@ impl ViewModule for GroupArtifactsView {
         ViewDependencies {
             kinds: vec![KIND_DISCUSSION_OR_ARTIFACT, KIND_REPOST, KIND_HIGHLIGHT],
             tag_refs: vec![("h".into(), spec.group.local_id.clone())],
+            relay_pin: Some(spec.group.host_relay_url.clone()),
             ..Default::default()
         }
     }
