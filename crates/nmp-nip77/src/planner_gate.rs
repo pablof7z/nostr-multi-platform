@@ -67,6 +67,19 @@ impl CoverageReport {
 /// expose `canonical_filter_hash(&Filter)` (see `docs/design/lmdb/watermarks.md`
 /// §3); until it does, callers pass their own hash function — keeping
 /// `nmp-nip77` decoupled from the (still-design-stage) canonical encoder.
+///
+/// INVARIANT (D2 — negentropy-first): this function IS the D2 coverage gate.
+/// Every `CompiledPlan` MUST pass through it before any wire REQ is emitted
+/// from that plan, so that authoritative `(filter, relay)` pairs are skipped
+/// and `since` is bumped before the REQ flies. The constraint is NOT enforced
+/// by the type system: `apply_coverage_filter` mutates `&mut CompiledPlan` in
+/// place rather than producing a distinct gated type, and `CompiledPlan` lives
+/// in `nmp-core` where the wire-emitter (`subs::wire::plan_diff`) can consume
+/// it directly without proof the gate ran. D2 is therefore convention-only,
+/// enforced by code review. The production kernel does NOT currently install
+/// this gate at all — see the `TODO(D2)` on `PlanCoverageHook` in
+/// `nmp-core::subs` (`crates/nmp-core/src/subs/mod.rs`) and its open tracking
+/// sentinel `d2_production_kernel_installs_coverage_hook`.
 pub fn apply_coverage_filter<F>(
     plan: &mut CompiledPlan,
     store: &dyn EventStore,
