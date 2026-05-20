@@ -67,8 +67,8 @@ fn generated_envelope_models_the_tagged_union() {
         "generated envelope must use the canonical t/v snake_case tagging:\n{envelope}"
     );
     assert!(
-        envelope.contains("Update(nmp_core::KernelUpdate)"),
-        "generated envelope must carry the discrete kernel update:\n{envelope}"
+        envelope.contains("Update(nmp_core::DeltaEnvelope)"),
+        "generated envelope must carry the versioned discrete kernel delta:\n{envelope}"
     );
     assert!(
         envelope.contains("Snapshot(serde_json::Value)"),
