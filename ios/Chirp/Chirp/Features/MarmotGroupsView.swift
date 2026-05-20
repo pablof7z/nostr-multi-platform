@@ -75,6 +75,8 @@ struct MarmotGroupsView: View {
                         } label: {
                             GroupRow(group: group)
                         }
+                        .accessibilityIdentifier("marmot-group-row-\(group.idHex)")
+                        .accessibilityValue(group.name)
                     }
                 }
             } header: {
@@ -198,6 +200,7 @@ private struct PendingInviteRow: View {
                         .padding(.vertical, 8)
                 }
                 .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("marmot-accept-invite-\(welcome.idHex)")
 
                 Button {
                     busy = true

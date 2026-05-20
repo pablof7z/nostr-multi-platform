@@ -46,6 +46,7 @@ struct ComposeView: View {
                                 .foregroundStyle(.primary)
                                 .scrollContentBackground(.hidden)
                                 .frame(minHeight: 140)
+                                .accessibilityIdentifier("compose-text-editor")
                                 .overlay(alignment: .topLeading) {
                                     if text.isEmpty {
                                         Text(isReply ? "Write your reply…" : "What's happening?")
@@ -162,6 +163,7 @@ struct ComposeView: View {
             .disabled(isEmpty || isOverLimit)
             .opacity(isEmpty || isOverLimit ? 0.45 : 1.0)
             .animation(.smooth(duration: 0.2), value: isEmpty)
+            .accessibilityIdentifier("compose-post-button")
         }
         .padding(.horizontal, ChirpSpace.l)
         .padding(.top, ChirpSpace.m)

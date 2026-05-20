@@ -25,14 +25,8 @@
 use crate::kernel::{Kernel, RelayEditRow};
 use crate::relay::canonical_relay_url;
 
-fn normalize_role(role: &str) -> Option<&'static str> {
-    match role.trim().to_ascii_lowercase().as_str() {
-        "read" => Some("read"),
-        "write" => Some("write"),
-        "both" | "" => Some("both"),
-        "indexer" => Some("indexer"),
-        _ => None,
-    }
+fn normalize_role(role: &str) -> Option<String> {
+    crate::actor::canonical_relay_role(role)
 }
 
 /// Validate `url` and `role`, update the relay-edit projection, and return
@@ -57,17 +51,17 @@ pub(crate) fn add_relay(kernel: &mut Kernel, url: &str, role: &str) -> Option<St
     };
     let Some(role) = normalize_role(role) else {
         kernel.set_last_error_toast(Some(
-            "invalid relay role — expected read | write | both".to_string(),
+            "invalid relay role — expected read | write | both | indexer".to_string(),
         ));
         return None;
     };
     let mut rows = kernel.relay_edit_rows_snapshot().to_vec();
     if let Some(existing) = rows.iter_mut().find(|r| r.url == canonical) {
-        existing.role = role.to_string();
+        existing.role = role;
     } else {
         rows.push(RelayEditRow {
             url: canonical.clone(),
-            role: role.to_string(),
+            role,
         });
     }
     kernel.set_relay_edit_rows(rows);
@@ -103,23 +97,35 @@ mod tests {
 
     #[test]
     fn t_normalize_role_read() {
-        assert_eq!(normalize_role("read"), Some("read"));
+        assert_eq!(normalize_role("read").as_deref(), Some("read"));
     }
 
     #[test]
     fn t_normalize_role_write() {
-        assert_eq!(normalize_role("write"), Some("write"));
+        assert_eq!(normalize_role("write").as_deref(), Some("write"));
     }
 
     #[test]
     fn t_normalize_role_both() {
-        assert_eq!(normalize_role("both"), Some("both"));
+        assert_eq!(normalize_role("both").as_deref(), Some("both"));
     }
 
     #[test]
     fn t_normalize_role_indexer() {
         // `indexer` is a real canonical variant (used by the discovery lane).
-        assert_eq!(normalize_role("indexer"), Some("indexer"));
+        assert_eq!(normalize_role("indexer").as_deref(), Some("indexer"));
+    }
+
+    #[test]
+    fn t_normalize_role_content_and_indexer() {
+        assert_eq!(
+            normalize_role("write read indexer").as_deref(),
+            Some("both,indexer")
+        );
+        assert_eq!(
+            normalize_role("both,indexer").as_deref(),
+            Some("both,indexer")
+        );
     }
 
     #[test]
@@ -134,21 +140,21 @@ mod tests {
     fn t_normalize_role_empty_defaults_to_both() {
         // The `"both" | "" => Some("both")` arm is intentional: an empty role
         // string defaults to "both" rather than being rejected.
-        assert_eq!(normalize_role(""), Some("both"));
+        assert_eq!(normalize_role("").as_deref(), Some("both"));
     }
 
     #[test]
     fn t_normalize_role_is_case_insensitive() {
         // `normalize_role` lowercases via `to_ascii_lowercase()` before matching.
-        assert_eq!(normalize_role("READ"), Some("read"));
-        assert_eq!(normalize_role("Write"), Some("write"));
-        assert_eq!(normalize_role("BOTH"), Some("both"));
+        assert_eq!(normalize_role("READ").as_deref(), Some("read"));
+        assert_eq!(normalize_role("Write").as_deref(), Some("write"));
+        assert_eq!(normalize_role("BOTH").as_deref(), Some("both"));
     }
 
     #[test]
     fn t_normalize_role_trims_whitespace() {
         // Leading/trailing whitespace is stripped before matching.
-        assert_eq!(normalize_role("  read  "), Some("read"));
+        assert_eq!(normalize_role("  read  ").as_deref(), Some("read"));
     }
 
     // --- add_relay / remove_relay: need a Kernel --------------------------

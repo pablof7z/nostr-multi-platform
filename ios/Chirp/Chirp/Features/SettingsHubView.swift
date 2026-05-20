@@ -178,6 +178,7 @@ private struct MarmotKeyPackageRow: View {
             Text(statusSubtitle)
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .accessibilityIdentifier("marmot-key-package-status")
 
             Button {
                 busy = true
@@ -187,6 +188,7 @@ private struct MarmotKeyPackageRow: View {
                 Text(kp.published ? "Rotate key package" : "Publish key package")
             }
             .disabled(!model.marmot.isRegistered || busy)
+            .accessibilityIdentifier("marmot-publish-key-package-button")
         }
     }
 

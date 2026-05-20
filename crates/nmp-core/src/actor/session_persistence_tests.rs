@@ -113,7 +113,7 @@ fn persists_generated_account_for_next_launch() {
     let slot = registered_slot();
 
     let (mut identity, mut kernel) = fresh();
-    commands::create_account(&mut identity, &mut kernel, false, &HashMap::new(), &[]);
+    commands::create_account(&mut identity, &mut kernel, false, &HashMap::new(), &[], false);
     let expected = identity.active_pubkey().unwrap();
     persist_current_active_session(&identity, &slot);
 
