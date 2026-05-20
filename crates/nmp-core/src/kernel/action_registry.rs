@@ -247,6 +247,15 @@ pub fn default_registry() -> ActionRegistry {
                 });
                 Ok(())
             }
+            // D8 — non-blocking channel send only; the actor loop signs
+            // the kind:1 with the active account (D4). This is the
+            // `ActionModule`-native replacement for the deleted per-verb
+            // `nmp_app_publish_note` FFI symbol — same `ActorCommand`,
+            // same runtime path.
+            PublishAction::PublishNote { content, reply_to_id, .. } => {
+                send(ActorCommand::PublishNote { content, reply_to_id });
+                Ok(())
+            }
             // No publish-engine cancel command yet; the registry
             // already marked the action `Cancelled`.
             PublishAction::Cancel { .. } => Ok(()),
@@ -380,12 +389,46 @@ mod tests {
 
     #[test]
     fn json_not_matching_action_shape_is_rejected() {
-        // Valid JSON, wrong shape for `PublishAction` (no Publish/Cancel key).
+        // Valid JSON, wrong shape for `PublishAction` — serde's externally
+        // tagged enum expects `{"<Variant>": {...}}`, so a flat
+        // `{"t":"PublishNote"}` matches no variant and is rejected.
         let registry = default_registry();
         let err = registry
             .start(&mut ctx(), "nmp.publish", r#"{"t":"PublishNote"}"#)
             .expect_err("wrong-shape JSON must be rejected");
         assert!(matches!(err, ActionRejection::Invalid(_)));
+    }
+
+    #[test]
+    fn start_publish_note_action_with_content_is_accepted() {
+        // `PublishAction::PublishNote` with non-empty content passes
+        // `PublishModule::start`'s validation gate — the `ActionModule`-native
+        // path replacing the deleted per-verb `nmp_app_publish_note` symbol.
+        let registry = default_registry();
+        let action_json =
+            r#"{"PublishNote":{"content":"hello","reply_to_id":null,"target":"Auto"}}"#;
+        let (id, plan) = registry
+            .start(&mut ctx(), "nmp.publish", action_json)
+            .expect("publish-note action with content should be accepted");
+        assert_eq!(id.len(), 32);
+        assert_eq!(plan.initial_status, ActionStatus::Pending);
+    }
+
+    #[test]
+    fn start_publish_note_action_with_empty_content_is_rejected() {
+        // Empty content fails the `PublishModule::start` gate.
+        let registry = default_registry();
+        let action_json =
+            r#"{"PublishNote":{"content":"","reply_to_id":null,"target":"Auto"}}"#;
+        let err = registry
+            .start(&mut ctx(), "nmp.publish", action_json)
+            .expect_err("empty-content publish note must be rejected");
+        match err {
+            ActionRejection::Invalid(msg) => {
+                assert!(msg.contains("non-empty content"), "got: {msg}");
+            }
+            other => panic!("expected Invalid, got {other:?}"),
+        }
     }
 
     #[test]

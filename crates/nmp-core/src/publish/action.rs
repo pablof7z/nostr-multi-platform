@@ -48,6 +48,17 @@ pub enum PublishAction {
         event: SignedEvent,
         target: PublishTarget,
     },
+    /// Sign-and-publish a kind:1 note (optionally a reply) with the active
+    /// account. Unlike `Publish`, the event is *not* pre-signed — the actor
+    /// signs it via the active `IdentityModule`. This is the
+    /// `ActionModule`-native replacement for the deleted per-verb
+    /// `nmp_app_publish_note` FFI symbol; the executor routes it to the
+    /// existing `ActorCommand::PublishNote` handler.
+    PublishNote {
+        content: String,
+        reply_to_id: Option<String>,
+        target: PublishTarget,
+    },
     Cancel {
         handle: PublishHandle,
     },
@@ -104,6 +115,18 @@ impl ActionModule for PublishModule {
                 if event.id.is_empty() || event.sig.is_empty() {
                     return Err(ActionRejection::Invalid(
                         "publish action requires a signed event with id+sig".to_string(),
+                    ));
+                }
+                Ok(ActionPlan {
+                    initial_step: PublishStep::Planning,
+                    initial_status: ActionStatus::Pending,
+                    deadline_ms: None,
+                })
+            }
+            PublishAction::PublishNote { content, .. } => {
+                if content.is_empty() {
+                    return Err(ActionRejection::Invalid(
+                        "publish note requires non-empty content".to_string(),
                     ));
                 }
                 Ok(ActionPlan {

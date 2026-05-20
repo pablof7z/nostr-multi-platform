@@ -45,6 +45,14 @@ pub enum PublishEngineError {
     DuplicateHandle(PublishHandle),
     NoTargets,
     Store(PublishStoreError),
+    /// The engine was handed a `PublishAction` variant it does not service —
+    /// currently only `PublishAction::PublishNote`, which is signed and
+    /// published by the actor's `ActorCommand::PublishNote` handler, not by
+    /// this engine. The `ActionRegistry` executor routes `PublishNote` to the
+    /// actor directly, so reaching `start_publish` with one is a wiring bug.
+    /// Surfaced as an `Err` (never an `unreachable!`) so D6 holds — the
+    /// invariant violation becomes snapshot-visible state, never a panic.
+    UnsupportedAction(&'static str),
 }
 
 impl From<PublishStoreError> for PublishEngineError {
@@ -169,6 +177,16 @@ impl PublishEngine {
                 target,
             } => self.start_publish_inner(handle, event, target, now_ms),
             PublishAction::Cancel { handle } => self.cancel_publish(handle, now_ms),
+            // `PublishNote` is signed-and-published by the actor's
+            // `ActorCommand::PublishNote` handler; the engine only services
+            // pre-signed `Publish` (and `Cancel`). The `ActionRegistry`
+            // executor routes `PublishNote` to `ActorCommand::PublishNote`,
+            // never to this engine. Reaching here is a wiring bug — D6
+            // forbids surfacing it as a panic / `unreachable!`, so it is
+            // returned as an `Err` the caller maps to snapshot-visible state.
+            PublishAction::PublishNote { .. } => Err(PublishEngineError::UnsupportedAction(
+                "PublishNote is published via ActorCommand::PublishNote, not the publish engine",
+            )),
         }
     }
 

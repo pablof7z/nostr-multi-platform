@@ -105,25 +105,6 @@ pub extern "C" fn nmp_app_remove_account(app: *mut NmpApp, identity_id: *const c
     app.send_cmd(ActorCommand::RemoveAccount { identity_id });
 }
 
-#[no_mangle]
-pub extern "C" fn nmp_app_publish_note(
-    app: *mut NmpApp,
-    content: *const c_char,
-    reply_to_id_or_null: *const c_char,
-) {
-    let Some(app) = app_ref(app) else {
-        return;
-    };
-    let Some(content) = c_string_argument(content) else {
-        return;
-    };
-    let reply_to_id = c_optional_string_argument(reply_to_id_or_null);
-    app.send_cmd(ActorCommand::PublishNote {
-        content,
-        reply_to_id,
-    });
-}
-
 /// Generic publish entrypoint — sign + publish an `UnsignedEvent` already
 /// constructed by any protocol-crate builder
 /// (`nmp_nip23::Article`, `nmp_nip01::Note`, `nmp_relations::Reaction`, …).

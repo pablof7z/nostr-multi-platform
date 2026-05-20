@@ -203,14 +203,27 @@ final class KernelHandle {
         identityID.withCString { nmp_app_remove_account(raw, $0) }
     }
 
+    /// Publish a kind:1 note (optionally a reply) through the kernel's
+    /// `ActionModule` family. Routes via the single namespace-keyed
+    /// `nmp_app_dispatch_action` entry point (`"nmp.publish"` namespace,
+    /// `PublishAction::PublishNote` JSON) — the per-verb `nmp_app_publish_note`
+    /// C symbol has been deleted. Fire-and-forget: the returned correlation
+    /// JSON is freed and ignored.
     func publishNote(content: String, replyToID: String?) {
-        content.withCString { cPtr in
-            if let replyToID {
-                replyToID.withCString { rPtr in
-                    nmp_app_publish_note(raw, cPtr, rPtr)
+        let inner: [String: Any] = [
+            "content": content,
+            "reply_to_id": replyToID ?? NSNull(),
+            "target": "Auto"
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: ["PublishNote": inner]),
+              let jsonStr = String(data: data, encoding: .utf8) else {
+            return
+        }
+        jsonStr.withCString { jsonPtr in
+            "nmp.publish".withCString { nsPtr in
+                if let ptr = nmp_app_dispatch_action(raw, nsPtr, jsonPtr) {
+                    nmp_app_free_string(ptr)
                 }
-            } else {
-                nmp_app_publish_note(raw, cPtr, nil)
             }
         }
     }
