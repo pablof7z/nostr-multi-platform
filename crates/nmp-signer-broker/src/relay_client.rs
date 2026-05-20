@@ -272,4 +272,30 @@ mod tests {
         assert!(parse_event_frame(r#"not json"#).is_none());
         assert!(parse_event_frame(r#"["EVENT"]"#).is_none());
     }
+
+    #[test]
+    fn parse_event_frame_rejects_non_array_json() {
+        // A bare object or scalar must not panic — D6.
+        assert!(parse_event_frame(r#"{"id":"abc"}"#).is_none());
+        assert!(parse_event_frame(r#"42"#).is_none());
+        assert!(parse_event_frame(r#""just-a-string""#).is_none());
+    }
+
+    #[test]
+    fn relay_error_display_strings_are_descriptive() {
+        // Display strings flow into `BunkerHandshakeProgress` failure text;
+        // they must carry the cause without panicking.
+        assert_eq!(
+            RelayError::Connect("tls handshake".to_string()).to_string(),
+            "connect failed: tls handshake"
+        );
+        assert_eq!(
+            RelayError::Write("broken pipe".to_string()).to_string(),
+            "write failed: broken pipe"
+        );
+        assert_eq!(
+            RelayError::Disconnected.to_string(),
+            "relay client disconnected"
+        );
+    }
 }

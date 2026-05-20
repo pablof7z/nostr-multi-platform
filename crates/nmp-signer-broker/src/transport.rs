@@ -176,4 +176,75 @@ mod tests {
             == Some("p")
             && a.get(1).and_then(|v| v.as_str()) == Some(&remote.to_hex()))));
     }
+
+    #[test]
+    fn send_rpc_surfaces_relay_error_as_backend_error() {
+        // A relay that always fails must not let `send_rpc` report success —
+        // a dropped sign request must never look like a published one (D6).
+        struct FailingRelay;
+        impl RelayClient for FailingRelay {
+            fn send(&self, _frame: String) -> Result<(), RelayError> {
+                Err(RelayError::Disconnected)
+            }
+            fn shutdown(&self) {}
+        }
+        let local = Keys::generate();
+        let remote = Keys::generate().public_key();
+        let transport =
+            BrokerTransport::new(Arc::new(FailingRelay) as Arc<dyn RelayClient>, local, remote);
+        let rpc = Nip46Rpc {
+            id: "abc".to_string(),
+            body_json: r#"{"id":"abc"}"#.to_string(),
+            encrypted_payload: r#"{"id":"abc","method":"sign_event","params":[]}"#.to_string(),
+            relays: vec!["wss://example.com".to_string()],
+            remote_pubkey_hex: remote.to_hex(),
+        };
+        let err = transport.send_rpc(rpc).expect_err("failing relay must error");
+        assert!(matches!(err, SignerError::Backend(_)));
+    }
+
+    #[test]
+    fn dispatch_inbound_without_bound_signer_is_a_silent_noop() {
+        // With no signer bound, `dispatch_inbound` must return quietly — not
+        // panic — even for a well-formed encrypted event (D6).
+        let local = Keys::generate();
+        let bunker = Keys::generate();
+        let relay = Arc::new(CapturingRelay {
+            sent: StdMutex::new(Vec::new()),
+        });
+        let transport = BrokerTransport::new(
+            relay as Arc<dyn RelayClient>,
+            local.clone(),
+            bunker.public_key(),
+        );
+        // A genuinely decryptable response event addressed to `local`.
+        let rpc = serde_json::json!({"id": "x", "result": "ack"});
+        let ct = nostr::nips::nip44::encrypt(
+            bunker.secret_key(),
+            &local.public_key(),
+            rpc.to_string().as_bytes(),
+            nostr::nips::nip44::Version::V2,
+        )
+        .unwrap();
+        let event = serde_json::json!({
+            "pubkey": bunker.public_key().to_hex(),
+            "kind": 24133,
+            "content": ct,
+        });
+        // No `bind_signer` call — must not panic.
+        transport.dispatch_inbound(&event);
+    }
+
+    #[test]
+    fn dispatch_inbound_ignores_malformed_event() {
+        // Garbage events must be dropped without panic (D6).
+        let local = Keys::generate();
+        let remote = Keys::generate().public_key();
+        let relay = Arc::new(CapturingRelay {
+            sent: StdMutex::new(Vec::new()),
+        });
+        let transport = BrokerTransport::new(relay as Arc<dyn RelayClient>, local, remote);
+        transport.dispatch_inbound(&serde_json::json!({"not": "an event"}));
+        transport.dispatch_inbound(&serde_json::Value::Null);
+    }
 }

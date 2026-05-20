@@ -598,4 +598,77 @@ mod tests {
         );
         broker.cancel();
     }
+
+    /// Safety property: the placeholder `NoopRelay` must never silently
+    /// swallow a frame. If a sign request reached it (the handshake raced
+    /// ahead of the real socket), `send` must return an error so the request
+    /// is never reported as successfully published.
+    #[test]
+    fn noop_relay_send_returns_disconnected_error() {
+        let result = NoopRelay.send("[\"EVENT\",{}]".to_string());
+        assert!(
+            matches!(result, Err(crate::relay_client::RelayError::Disconnected)),
+            "NoopRelay must reject sends, not drop them silently"
+        );
+    }
+
+    /// `NoopRelay::shutdown` is a no-op and must not panic.
+    #[test]
+    fn noop_relay_shutdown_is_a_noop() {
+        NoopRelay.shutdown();
+    }
+
+    /// `start_nostrconnect_handshake` must return a well-formed
+    /// `nostrconnect://` URI synchronously. The Chirp QR-code UI depends on
+    /// the exact shape: scheme, 64-hex client pubkey, percent-encoded relay,
+    /// a session secret, and the `name`/`perms` query params.
+    ///
+    /// Uses a syntactically-invalid relay URL so the worker thread fails the
+    /// connect immediately (no DNS lookup, no network) and `cancel()` joins a
+    /// thread that has already exited.
+    #[test]
+    fn start_nostrconnect_handshake_returns_well_formed_uri() {
+        let (tx, _rx) = mpsc::channel::<ActorCommand>();
+        let broker = BunkerBroker::new(tx);
+        // Not a valid ws/wss URL — `tungstenite::connect` rejects it fast.
+        let uri = broker.start_nostrconnect_handshake("not-a-url".to_string());
+        broker.cancel(); // tear down the (already-failed) worker thread.
+
+        assert!(
+            uri.starts_with("nostrconnect://"),
+            "uri must use the nostrconnect scheme: {uri:?}"
+        );
+        // Extract the authority (client pubkey) between scheme and `?`.
+        let after_scheme = uri.strip_prefix("nostrconnect://").unwrap();
+        let (pubkey_hex, query) = after_scheme
+            .split_once('?')
+            .expect("uri must carry a query string");
+        assert_eq!(pubkey_hex.len(), 64, "client pubkey must be 64 hex chars");
+        assert!(
+            pubkey_hex.chars().all(|c| c.is_ascii_hexdigit()),
+            "client pubkey must be hex: {pubkey_hex:?}"
+        );
+        // Relay must be percent-encoded (no raw `:` or `/`).
+        let relay_param = query
+            .split('&')
+            .find_map(|kv| kv.strip_prefix("relay="))
+            .expect("uri must carry a relay param");
+        assert!(
+            !relay_param.contains(':') && !relay_param.contains('/'),
+            "relay param must be percent-encoded: {relay_param:?}"
+        );
+        // Secret must be present and non-empty.
+        let secret = query
+            .split('&')
+            .find_map(|kv| kv.strip_prefix("secret="))
+            .expect("uri must carry a secret param");
+        assert_eq!(secret.len(), 16, "session secret is 16 chars");
+        assert!(
+            secret.chars().all(|c| c.is_ascii_alphanumeric()),
+            "session secret must be alphanumeric: {secret:?}"
+        );
+        // Chirp identity + permissions must be embedded.
+        assert!(query.contains("name=Chirp"), "uri must name the app: {query:?}");
+        assert!(query.contains("perms="), "uri must request perms: {query:?}");
+    }
 }
