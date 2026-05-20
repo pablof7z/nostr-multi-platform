@@ -568,18 +568,16 @@ pub fn run_actor_with_observers(
                         &mut next_relay_generation,
                         outbound,
                     );
-                    if running {
-                        if maybe_send_startup(
-                            running,
-                            &mut startup_sent,
-                            &connected_relays,
-                            &mut relay_controls,
-                            &relay_tx,
-                            &mut kernel,
-                            &mut next_relay_generation,
-                        ) {
-                            emit_now(&mut kernel, running, &update_tx, &mut last_emit);
-                        }
+                    if running && maybe_send_startup(
+                        running,
+                        &mut startup_sent,
+                        &connected_relays,
+                        &mut relay_controls,
+                        &relay_tx,
+                        &mut kernel,
+                        &mut next_relay_generation,
+                    ) {
+                        emit_now(&mut kernel, running, &update_tx, &mut last_emit);
                     }
                 }
                 Err(TryRecvError::Empty) => break,

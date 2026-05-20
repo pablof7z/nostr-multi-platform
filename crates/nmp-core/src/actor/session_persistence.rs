@@ -81,7 +81,7 @@ fn restore_local(
         capability_callback,
         KeyringIdentityWiring::recall_secret(
             "identity.restore.local_nsec",
-            local_secret_account_id(&identity_id),
+            local_secret_account_id(identity_id),
         ),
     );
     let KeyringResult {
@@ -157,7 +157,7 @@ fn persist_active_local(
         capability_callback,
         KeyringIdentityWiring::persist_secret(
             "identity.persist.local_nsec",
-            local_secret_account_id(&identity_id),
+            local_secret_account_id(identity_id),
             secret,
         ),
     );

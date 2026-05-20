@@ -12,7 +12,6 @@ use std::time::Duration;
 use nmp_signer_iface::SignerOp;
 use nostr::nips::nip19::{FromBech32, ToBech32};
 use nostr::{EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
-use serde_json;
 
 use crate::actor::{canonical_relay_role, has_role};
 use crate::kernel::{AccountSummary, BunkerHandshakeDto, Kernel, RelayEditRow};
