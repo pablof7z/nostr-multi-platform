@@ -175,8 +175,6 @@ pub enum InterestLifecycle {
     Tailing,
     /// Send CLOSE on EOSE.
     OneShot,
-    /// Send CLOSE on EOSE or when the deadline (Unix ms) passes.
-    BoundedTime { until_ms: u64 },
 }
 
 // ─── InterestScope ───────────────────────────────────────────────────────────
