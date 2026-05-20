@@ -236,20 +236,39 @@ final class KernelHandle {
         handle.withCString { nmp_app_cancel_publish(raw, $0) }
     }
 
-    func react(targetEventID: String, reaction: String) {
-        targetEventID.withCString { tPtr in
-            reaction.withCString { rPtr in
-                nmp_app_react(raw, tPtr, rPtr)
+    /// Dispatch a Chirp social-verb action through the generic
+    /// `nmp_app_dispatch_action` path. `namespace` is one of `chirp.react` /
+    /// `chirp.follow` / `chirp.unfollow` — registered by `nmp-app-chirp` at
+    /// `nmp_app_chirp_register` time. `body` is the action JSON object.
+    /// Fire-and-forget: the returned correlation JSON is freed and ignored;
+    /// the outcome surfaces through the next kernel snapshot (matches the
+    /// `publishNote` pattern — the per-verb C symbols have been deleted).
+    private func dispatchAction(namespace: String, body: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: body),
+              let jsonStr = String(data: data, encoding: .utf8) else {
+            return
+        }
+        jsonStr.withCString { jsonPtr in
+            namespace.withCString { nsPtr in
+                if let ptr = nmp_app_dispatch_action(raw, nsPtr, jsonPtr) {
+                    nmp_app_free_string(ptr)
+                }
             }
         }
     }
 
+    func react(targetEventID: String, reaction: String) {
+        dispatchAction(
+            namespace: "chirp.react",
+            body: ["target_event_id": targetEventID, "reaction": reaction])
+    }
+
     func follow(pubkey: String) {
-        pubkey.withCString { nmp_app_follow(raw, $0) }
+        dispatchAction(namespace: "chirp.follow", body: ["pubkey": pubkey])
     }
 
     func unfollow(pubkey: String) {
-        pubkey.withCString { nmp_app_unfollow(raw, $0) }
+        dispatchAction(namespace: "chirp.unfollow", body: ["pubkey": pubkey])
     }
 
     func addRelay(url: String, role: String) {

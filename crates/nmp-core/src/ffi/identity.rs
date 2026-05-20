@@ -324,56 +324,16 @@ pub extern "C" fn nmp_app_cancel_publish(app: *mut NmpApp, handle: *const c_char
     app.send_cmd(ActorCommand::CancelPublish { handle });
 }
 
-#[no_mangle]
-pub extern "C" fn nmp_app_react(
-    app: *mut NmpApp,
-    target_event_id: *const c_char,
-    reaction: *const c_char,
-) {
-    let Some(app) = app_ref(app) else {
-        return;
-    };
-    let Some(target_event_id) = c_string_argument(target_event_id) else {
-        return;
-    };
-    // Hex-shape validation lives in the `react` command handler, not here:
-    // it owns the toast ("react: malformed target event id") so a malformed
-    // id surfaces user-visible feedback. Re-checking in this FFI glue layer
-    // would silently drop the error and make that toast unreachable (D6).
-    let reaction = c_optional_string_argument(reaction).unwrap_or_else(|| "+".to_string());
-    app.send_cmd(ActorCommand::React {
-        target_event_id,
-        reaction,
-    });
-}
-
-#[no_mangle]
-pub extern "C" fn nmp_app_follow(app: *mut NmpApp, pubkey: *const c_char) {
-    let Some(app) = app_ref(app) else {
-        return;
-    };
-    let Some(pubkey) = c_string_argument(pubkey) else {
-        return;
-    };
-    // Hex-shape validation lives in the `follow` command handler, which owns
-    // the toast ("follow: expected 64-hex pubkey"). Re-checking here would
-    // silently drop the error and make that toast unreachable (D6).
-    app.send_cmd(ActorCommand::Follow { pubkey });
-}
-
-#[no_mangle]
-pub extern "C" fn nmp_app_unfollow(app: *mut NmpApp, pubkey: *const c_char) {
-    let Some(app) = app_ref(app) else {
-        return;
-    };
-    let Some(pubkey) = c_string_argument(pubkey) else {
-        return;
-    };
-    // Hex-shape validation lives in the `follow` command handler, which owns
-    // the toast ("follow: expected 64-hex pubkey"). Re-checking here would
-    // silently drop the error and make that toast unreachable (D6).
-    app.send_cmd(ActorCommand::Unfollow { pubkey });
-}
+// `nmp_app_react`, `nmp_app_follow`, `nmp_app_unfollow` were per-verb C
+// symbols that sent `ActorCommand::{React,Follow,Unfollow}` directly,
+// bypassing the action registry — a D0 violation (social verbs in
+// `nmp-core`). They have been deleted: the three social verbs now live in
+// `nmp-app-chirp` and reach the kernel through the generic
+// `nmp_app_dispatch_action` path under the host-registered `chirp.react` /
+// `chirp.follow` / `chirp.unfollow` namespaces (see
+// `apps/chirp/nmp-app-chirp/src/ffi.rs::register_chirp_actions`). The
+// `ActorCommand` variants themselves stay in `actor/mod.rs` — they are the
+// generic command shape the host executors enqueue.
 
 #[no_mangle]
 pub extern "C" fn nmp_app_add_relay(

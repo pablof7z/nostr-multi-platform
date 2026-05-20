@@ -95,11 +95,11 @@ pub use identity::{
 // makes rustc include the symbol bodies in CGU files for the cdylib.
 #[cfg(feature = "android-ffi")]
 pub use identity::{
-    nmp_app_add_relay, nmp_app_cancel_publish, nmp_app_create_new_account, nmp_app_follow,
+    nmp_app_add_relay, nmp_app_cancel_publish, nmp_app_create_new_account,
     nmp_app_open_timeline, nmp_app_publish_signed_event,
-    nmp_app_publish_signed_event_to, nmp_app_publish_unsigned_event, nmp_app_react,
+    nmp_app_publish_signed_event_to, nmp_app_publish_unsigned_event,
     nmp_app_remove_account, nmp_app_remove_relay, nmp_app_retry_publish, nmp_app_signin_bunker,
-    nmp_app_signin_nsec, nmp_app_switch_active, nmp_app_unfollow,
+    nmp_app_signin_nsec, nmp_app_switch_active,
 };
 // T118 / G3 — android-ffi must also reach the lifecycle symbols; without this
 // re-export rustc doesn't pull the symbol bodies into the cdylib CGU and the

@@ -810,3 +810,18 @@ Therefore the only reading consistent with ALL user constraints: **verbatim View
 **What was done:** added `FsPublishStore` (JSON files under `{storage_path}/publish_intents/`, no new deps, no feature flag) and made `Kernel::resolve_publish_store` prefer it whenever a storage path is set. `DomainPublishStore` is kept as the no-storage-path fallback; `InMemoryPublishStore` remains the CI/test default.
 
 **Why flagged:** (1) the brief's premise was stale, so the implementation diverges from a literal reading of it; (2) intents previously written into LMDB via `DomainPublishStore` are not migrated — `FsPublishStore` reads only its own `publish_intents/*.json` directory. For pre-v1 with transient intents this is acceptable, but the user may want a one-time migration or may prefer consolidating on `DomainPublishStore` + always-on `lmdb-backend` instead. Confirm or redirect on return.
+
+---
+
+## 2026-05-21 — react/follow/unfollow migration (PR #66): duplicate seam built then removed in rebase
+
+**Decision made autonomously (user unavailable).** This PR (#66) was branched from a master that predated PR #64, which landed the module-registration seam (`ActionRegistry::register_with_validator`, `NmpApp::register_action_module`, the `nmp_app_register_action_module` C-ABI symbol). Unaware of #64, this PR independently built an equivalent seam (`ActionRegistry::register_module_fn` + its own `ClosureModule` + a duplicate `NmpApp::register_action_module`). When #66 was rebased onto current master both seams collided.
+
+**What was done:** rebased PR #66 onto master and removed the duplicate seam. The migration now uses PR #64's surface:
+- Dropped `ActionRegistry::register_module_fn` and #66's `ClosureModule`; kept #64's `register_with_validator` / `ClosureModule`.
+- Kept #64's `NmpApp::register_action_module`; dropped #66's duplicate. Note the surviving signature is `Fn(&str) -> …` (no `ActionContext`); #66's chirp closures ignored `_ctx`, so they were adapted by dropping the parameter.
+- Dropped #66's two duplicate `ffi/action.rs` tests and the orphan `action_registry.rs` test; #64's three proof tests already cover the contract.
+
+The valuable, non-duplicate work of PR #66 is preserved: deletion of the D0-violating per-verb C symbols (`nmp_app_react`/`follow`/`unfollow`), the `nmp-app-chirp` `chirp.react`/`chirp.follow`/`chirp.unfollow` registration, and the `KernelBridge.swift` migration to `dispatch_action`.
+
+**Why flagged:** two agents independently built the same seam from divergent base commits — a coordination gap worth noting. Nothing here needs a user decision; recorded for the merge-history record.

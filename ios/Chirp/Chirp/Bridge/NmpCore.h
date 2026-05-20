@@ -34,14 +34,17 @@ void nmp_app_close_thread(void *app, const char *event_id);
 // T66a — identity / publish / multi-account / relay-edit. None return a
 // value; outcomes (incl. validation failures) arrive via the snapshot's
 // last_error_toast / accounts / publish_queue fields (D6).
+//
+// The per-verb `nmp_app_react` / `nmp_app_follow` / `nmp_app_unfollow`
+// symbols were deleted: the three social verbs are D0 app nouns and now
+// route through the generic `nmp_app_dispatch_action` path under the
+// `chirp.react` / `chirp.follow` / `chirp.unfollow` namespaces, which
+// `nmp-app-chirp` registers at `nmp_app_chirp_register` time.
 void nmp_app_signin_nsec(void *app, const char *secret);
 void nmp_app_signin_bunker(void *app, const char *uri);
 void nmp_app_create_new_account(void *app, const char *profile_json, const char *relays_json, bool mls);
 void nmp_app_switch_active(void *app, const char *identity_id);
 void nmp_app_remove_account(void *app, const char *identity_id);
-void nmp_app_react(void *app, const char *target_event_id, const char *reaction);
-void nmp_app_follow(void *app, const char *pubkey);
-void nmp_app_unfollow(void *app, const char *pubkey);
 void nmp_app_add_relay(void *app, const char *url, const char *role);
 void nmp_app_remove_relay(void *app, const char *url);
 void nmp_app_open_timeline(void *app);
@@ -185,6 +188,11 @@ void nmp_app_set_lifecycle_callback(void *app, void *context, NmpLifecycleCallba
 // `nmp_app_start` and before any `nmp_app_dispatch_action` — because they
 // mutate the app's registry.  A null `app`/`namespace` is a silent no-op (D6);
 // a null `executor` is a no-op, but a null `validator` selects accept-all.
+//
+// A Rust host such as nmp-app-chirp registers both halves through the Rust
+// API (`NmpApp::register_action_module` / `register_action_executor`) — see
+// `nmp_app_chirp_register`, which wires `chirp.react`/`chirp.follow`/
+// `chirp.unfollow`.
 
 typedef char *(*NmpCapabilityCallback)(void *context, const char *request_json);
 void nmp_app_set_capability_callback(void *app, void *context, NmpCapabilityCallback callback);
