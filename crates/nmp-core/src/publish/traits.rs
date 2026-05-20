@@ -49,8 +49,9 @@ impl Signer for NoopSigner {
 ///
 /// The real implementation lives in `nmp-nip65` (folded into M2 per the
 /// 2026-05-18 scope adjustments): author kind:10002 write relays union'd
-/// with each `#p`-tagged recipient's read relays, falling back to a
-/// configurable indexer set when the author has no published list.
+/// with small `#p` recipient sets' read relays. Discovery kinds additionally
+/// fan out to configured indexers; non-discovery kinds fail closed when the
+/// author has no published or local write relay list.
 pub trait OutboxResolver: Send + Sync {
     fn resolve(
         &self,
@@ -86,9 +87,11 @@ impl OutboxResolver for StaticOutbox {
             Some(writes) if !writes.is_empty() => out.extend(writes.iter().cloned()),
             _ => out.extend(self.indexer_fallback.iter().cloned()),
         }
-        for p in p_tags {
-            if let Some(reads) = self.p_tag_reads.get(p) {
-                out.extend(reads.iter().cloned());
+        if p_tags.len() < super::nip65::RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD {
+            for p in p_tags {
+                if let Some(reads) = self.p_tag_reads.get(p) {
+                    out.extend(reads.iter().cloned());
+                }
             }
         }
         out

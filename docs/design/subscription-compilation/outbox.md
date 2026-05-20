@@ -82,7 +82,8 @@ pub enum PublishPrivacy {
     PrivateToRecipients { recipients: Vec<Pubkey> },
     /// Notifications (kind:1 with `#p` tags, reactions, zaps, replies that
     /// the author wants to surface to the tagged pubkey). Combines author
-    /// write + each `#p` inbox.
+    /// write + each `#p` inbox while the distinct p-tagged pubkey count is
+    /// below `RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD`.
     PublicWithNotifications { notify: Vec<Pubkey> },
 }
 
@@ -189,9 +190,15 @@ correct cold-start substitution, not the indexer.
         }).collect()
         required_success_count = per_recipient_required.len()  // all recipients must receive
    c. PublicWithNotifications { notify }:
-        assignments = write_set ∪ union(each notify pubkey's inbox)
+        if notify.len() < RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD:  // current value: 15
+            assignments = write_set ∪ union(each notify pubkey's inbox)
+        else:
+            assignments = write_set
         // write_set already includes app_relays; #p-tagged recipients add
-        // their NIP-65 inbox relays on top.
+        // their NIP-65 inbox relays on top only below the threshold.
+        // Thresholded events keep only the author's write/app relay set; if
+        // the event kind is kind:3 or kind:10000-19999, write_set still
+        // includes configured indexer relays from Step 2.
         required_success_count = max(1, ceil(write_set.len() / 3))
 4. plan_id = blake3(event.id, sorted assignments)
 5. deadline_ms = now + AppConfig.publish_deadline_ms (default 30_000)
@@ -223,6 +230,10 @@ Notes on the algorithm:
   `u8` type in the original draft was wrong (max 255 recipients before silent truncation). For
   `PrivateToRecipients`, the per-recipient `RecipientDelivery` set is what the ledger actually
   consults; `required_success_count` is the aggregate guard.
+- **Public notification fan-out cap.** Public events with 15 or more distinct `#p` pubkeys do
+  not publish to each tagged pubkey's read relay. They publish only to the author's write/app
+  relays, plus the configured indexer relays for discovery kinds. This prevents high-mention
+  events from turning one public publish into unbounded recipient-inbox fan-out.
 
 ## 7.4 The `PublishOverride` escape hatch
 
