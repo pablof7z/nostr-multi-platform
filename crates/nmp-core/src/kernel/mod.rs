@@ -44,6 +44,8 @@ mod t142_drain_lifecycle_tick_tests;
 mod provenance;
 #[cfg(test)]
 mod provenance_wire_tests;
+#[cfg(test)]
+mod clock_injection_tests;
 mod publish_cmd;
 mod publish_engine;
 #[cfg(test)]
@@ -636,12 +638,9 @@ impl Kernel {
     /// calls this (the default `SystemClock` installed in
     /// [`Kernel::with_publish_store_and_path`] stays in place), but
     /// deterministic-replay tests inject a `FixedClock` so the reducer's
-    /// `created_at` / `received_at_ms` output is reproducible.
-    ///
-    /// `dead_code` allow: dormant until the first replay test wires it — the
-    /// seam exists so that test needs no further kernel change.
+    /// `created_at` / `received_at_ms` output is reproducible. Exercised by
+    /// `kernel/clock_injection_tests.rs`.
     #[cfg(any(test, feature = "test-support"))]
-    #[allow(dead_code)]
     pub(crate) fn set_clock(&mut self, clock: Arc<dyn Clock>) {
         self.clock = clock;
     }

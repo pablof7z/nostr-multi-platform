@@ -35,13 +35,9 @@ impl Clock for SystemClock {
 
 /// Fixed-time clock for tests and deterministic replay. Returns the same
 /// `SystemTime` on every call so the reducer's timestamp output is
-/// reproducible.
-// `dead_code` allow: the seam is intentionally dormant — no replay test
-// consumes `FixedClock` yet. The trait + setter + ingest call-site swap are
-// enough to make the reducer's clock injectable; the first deterministic
-// replay test will exercise this.
+/// reproducible. Exercised by `kernel/clock_injection_tests.rs`, which
+/// proves `received_at_ms` routes through the injected `Clock`.
 #[cfg(any(test, feature = "test-support"))]
-#[allow(dead_code)]
 pub(crate) struct FixedClock(pub SystemTime);
 
 #[cfg(any(test, feature = "test-support"))]
