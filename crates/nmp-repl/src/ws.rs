@@ -251,3 +251,222 @@ pub fn truncate(s: &str, n: usize) -> String {
         format!("{cut}…")
     }
 }
+
+// ── tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // ── normalize_url ────────────────────────────────────────────────────
+
+    #[test]
+    fn normalize_url_keeps_clean_wss() {
+        assert_eq!(normalize_url("wss://relay.example"), "wss://relay.example");
+        assert_eq!(normalize_url("ws://relay.example"), "ws://relay.example");
+    }
+
+    #[test]
+    fn normalize_url_trims_surrounding_whitespace() {
+        assert_eq!(
+            normalize_url("  wss://relay.example  "),
+            "wss://relay.example"
+        );
+    }
+
+    #[test]
+    fn normalize_url_strips_trailing_slashes() {
+        // A single trailing slash on a host is stripped.
+        assert_eq!(normalize_url("wss://relay.example/"), "wss://relay.example");
+        // Multiple trailing slashes collapse away.
+        assert_eq!(
+            normalize_url("wss://relay.example///"),
+            "wss://relay.example"
+        );
+        // A path segment's trailing slash is stripped but the path is kept.
+        assert_eq!(
+            normalize_url("wss://relay.example/inbox/"),
+            "wss://relay.example/inbox"
+        );
+    }
+
+    #[test]
+    fn normalize_url_rejects_non_ws_schemes() {
+        assert_eq!(normalize_url("https://relay.example"), "");
+        assert_eq!(normalize_url("http://relay.example"), "");
+        assert_eq!(normalize_url("relay.example"), "");
+        assert_eq!(normalize_url(""), "");
+        assert_eq!(normalize_url("   "), "");
+    }
+
+    #[test]
+    fn normalize_url_does_not_eat_the_scheme_slashes() {
+        // The "://" slashes must survive even for a bare-host URL.
+        assert_eq!(normalize_url("wss://r/"), "wss://r");
+        assert_eq!(normalize_url("ws://r//"), "ws://r");
+    }
+
+    // ── summarize_filter ─────────────────────────────────────────────────
+
+    #[test]
+    fn summarize_filter_single_kind_no_authors() {
+        let f = json!({ "kinds": [1] }).to_string();
+        assert_eq!(summarize_filter(&f), "kind:1");
+    }
+
+    #[test]
+    fn summarize_filter_single_kind_single_author() {
+        let f = json!({ "kinds": [3], "authors": ["abc"] }).to_string();
+        assert_eq!(summarize_filter(&f), "kind:3 (1 author)");
+    }
+
+    #[test]
+    fn summarize_filter_single_kind_many_authors() {
+        let f = json!({ "kinds": [1], "authors": ["a", "b", "c"] }).to_string();
+        assert_eq!(summarize_filter(&f), "kind:1 (3 authors)");
+    }
+
+    #[test]
+    fn summarize_filter_multiple_kinds() {
+        let f = json!({ "kinds": [1, 6, 7] }).to_string();
+        assert_eq!(summarize_filter(&f), "kinds:[1,6,7]");
+    }
+
+    #[test]
+    fn summarize_filter_no_kinds_is_any() {
+        let f = json!({ "authors": ["a"] }).to_string();
+        assert_eq!(summarize_filter(&f), "kind:any (1 author)");
+    }
+
+    #[test]
+    fn summarize_filter_malformed_json() {
+        assert_eq!(summarize_filter("{not json"), "filter:?");
+        assert_eq!(summarize_filter(""), "filter:?");
+    }
+
+    // ── truncate ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn truncate_shorter_than_limit_unchanged() {
+        assert_eq!(truncate("hello", 10), "hello");
+        assert_eq!(truncate("hello", 5), "hello");
+    }
+
+    #[test]
+    fn truncate_longer_than_limit_gets_ellipsis() {
+        // n chars total: (n-1) content chars plus the ellipsis.
+        assert_eq!(truncate("hello world", 5), "hell…");
+    }
+
+    #[test]
+    fn truncate_counts_chars_not_bytes() {
+        // Multi-byte chars: "héllo" is 5 chars, must not be truncated.
+        assert_eq!(truncate("héllo", 5), "héllo");
+        // And truncation slices on a char boundary, never mid-codepoint.
+        let s = "ααααα"; // 5 two-byte chars
+        assert_eq!(truncate(s, 3), "αα…");
+    }
+
+    #[test]
+    fn truncate_zero_limit_does_not_panic() {
+        // n=0 → saturating_sub keeps the slice empty; just the ellipsis.
+        assert_eq!(truncate("abc", 0), "…");
+    }
+
+    // ── parse_envelope ───────────────────────────────────────────────────
+
+    #[test]
+    fn parse_envelope_event_frame() {
+        let raw = json!(["EVENT", "sub-1", { "id": "deadbeef" }]).to_string();
+        match parse_envelope(&raw) {
+            Frame::Event { sub_id, event } => {
+                assert_eq!(sub_id, "sub-1");
+                assert_eq!(event["id"], "deadbeef");
+            }
+            other => panic!("expected Event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_envelope_eose_frame() {
+        let raw = json!(["EOSE", "sub-1"]).to_string();
+        match parse_envelope(&raw) {
+            Frame::Eose { sub_id } => assert_eq!(sub_id, "sub-1"),
+            other => panic!("expected Eose, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_envelope_closed_frame_surfaces_message() {
+        let raw =
+            json!(["CLOSED", "sub-1", "auth-required: rate limit exceeded"]).to_string();
+        match parse_envelope(&raw) {
+            Frame::Closed { sub_id, message } => {
+                assert_eq!(sub_id, "sub-1");
+                assert_eq!(message, "auth-required: rate limit exceeded");
+            }
+            other => panic!("expected Closed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_envelope_closed_frame_defaults_missing_message() {
+        let raw = json!(["CLOSED", "sub-1"]).to_string();
+        match parse_envelope(&raw) {
+            Frame::Closed { message, .. } => assert_eq!(message, "closed"),
+            other => panic!("expected Closed, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_envelope_auth_frame() {
+        let raw = json!(["AUTH", "challenge-string"]).to_string();
+        match parse_envelope(&raw) {
+            Frame::Auth { challenge } => assert_eq!(challenge, "challenge-string"),
+            other => panic!("expected Auth, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_envelope_notice_frame() {
+        let raw = json!(["NOTICE", "slow down"]).to_string();
+        match parse_envelope(&raw) {
+            Frame::Notice { message } => assert_eq!(message, "slow down"),
+            other => panic!("expected Notice, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_envelope_ok_envelope_is_other() {
+        // OK is a well-formed envelope the REPL does not act on.
+        let raw = json!(["OK", "evid", true, ""]).to_string();
+        assert!(matches!(parse_envelope(&raw), Frame::Other));
+    }
+
+    #[test]
+    fn parse_envelope_malformed_json_is_other() {
+        // Malformed JSON must NOT be a terminal frame — keep reading.
+        assert!(matches!(parse_envelope("{not json"), Frame::Other));
+        assert!(matches!(parse_envelope(""), Frame::Other));
+    }
+
+    #[test]
+    fn parse_envelope_event_missing_payload_is_other() {
+        // EVENT without a sub_id / event payload degrades to Other.
+        let raw = json!(["EVENT", "sub-1"]).to_string();
+        assert!(matches!(parse_envelope(&raw), Frame::Other));
+    }
+
+    #[test]
+    fn parse_envelope_eose_missing_subid_is_other() {
+        let raw = json!(["EOSE"]).to_string();
+        assert!(matches!(parse_envelope(&raw), Frame::Other));
+    }
+
+    #[test]
+    fn parse_envelope_unknown_verb_is_other() {
+        let raw = json!(["FROBNICATE", "x"]).to_string();
+        assert!(matches!(parse_envelope(&raw), Frame::Other));
+    }
+}

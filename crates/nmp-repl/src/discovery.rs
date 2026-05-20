@@ -242,3 +242,166 @@ pub fn parse_kind10002(event: &Value) -> Option<(String, MailboxSnapshot)> {
     }
     Some((pk, snap))
 }
+
+// ── tests ────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    // ── collect_p_tags ───────────────────────────────────────────────────
+
+    const HEX64_A: &str =
+        "fa984bd7dbb282f07e16e7ae87b26a2a7b9b9077b8a5d6c10d3c84d54f76d2a1";
+    const HEX64_B: &str =
+        "0000000000000000000000000000000000000000000000000000000000000001";
+
+    #[test]
+    fn collect_p_tags_pulls_valid_hex_pubkeys() {
+        let event = json!({
+            "tags": [["p", HEX64_A], ["p", HEX64_B]]
+        });
+        let mut out = BTreeSet::new();
+        collect_p_tags(&event, &mut out);
+        assert_eq!(out.len(), 2);
+        assert!(out.contains(HEX64_A));
+        assert!(out.contains(HEX64_B));
+    }
+
+    #[test]
+    fn collect_p_tags_ignores_non_p_tags() {
+        let event = json!({
+            "tags": [["e", HEX64_A], ["t", "nostr"], ["p", HEX64_B]]
+        });
+        let mut out = BTreeSet::new();
+        collect_p_tags(&event, &mut out);
+        assert_eq!(out.len(), 1);
+        assert!(out.contains(HEX64_B));
+    }
+
+    #[test]
+    fn collect_p_tags_rejects_malformed_pubkeys() {
+        let event = json!({
+            "tags": [
+                ["p", "tooshort"],
+                ["p", "zzzz84bd7dbb282f07e16e7ae87b26a2a7b9b9077b8a5d6c10d3c84d54f76d2"],
+                ["p"],
+                ["p", HEX64_A],
+            ]
+        });
+        let mut out = BTreeSet::new();
+        collect_p_tags(&event, &mut out);
+        assert_eq!(out.len(), 1, "only the well-formed 64-hex p-tag survives");
+        assert!(out.contains(HEX64_A));
+    }
+
+    #[test]
+    fn collect_p_tags_missing_tags_array_is_noop() {
+        let event = json!({});
+        let mut out = BTreeSet::new();
+        collect_p_tags(&event, &mut out);
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn collect_p_tags_deduplicates() {
+        let event = json!({
+            "tags": [["p", HEX64_A], ["p", HEX64_A]]
+        });
+        let mut out = BTreeSet::new();
+        collect_p_tags(&event, &mut out);
+        assert_eq!(out.len(), 1);
+    }
+
+    // ── parse_kind10002 ──────────────────────────────────────────────────
+
+    #[test]
+    fn parse_kind10002_rejects_wrong_kind() {
+        let event = json!({ "kind": 1, "pubkey": HEX64_A, "tags": [] });
+        assert!(parse_kind10002(&event).is_none());
+    }
+
+    #[test]
+    fn parse_kind10002_requires_pubkey() {
+        let event = json!({ "kind": 10002, "tags": [] });
+        assert!(parse_kind10002(&event).is_none());
+    }
+
+    #[test]
+    fn parse_kind10002_classifies_read_write_both_markers() {
+        let event = json!({
+            "kind": 10002,
+            "pubkey": HEX64_A,
+            "tags": [
+                ["r", "wss://read.example", "read"],
+                ["r", "wss://write.example", "write"],
+                ["r", "wss://both.example"],
+            ]
+        });
+        let (pk, snap) = parse_kind10002(&event).expect("parses");
+        assert_eq!(pk, HEX64_A);
+        assert_eq!(snap.read_relays, vec!["wss://read.example"]);
+        assert_eq!(snap.write_relays, vec!["wss://write.example"]);
+        assert_eq!(snap.both_relays, vec!["wss://both.example"]);
+    }
+
+    #[test]
+    fn parse_kind10002_unknown_marker_falls_back_to_both() {
+        // A non-read/write marker is treated as an unmarked (both) relay.
+        let event = json!({
+            "kind": 10002,
+            "pubkey": HEX64_A,
+            "tags": [["r", "wss://relay.example", "bogus-marker"]]
+        });
+        let (_, snap) = parse_kind10002(&event).expect("parses");
+        assert_eq!(snap.both_relays, vec!["wss://relay.example"]);
+        assert!(snap.read_relays.is_empty());
+        assert!(snap.write_relays.is_empty());
+    }
+
+    #[test]
+    fn parse_kind10002_normalizes_relay_urls() {
+        // Trailing slashes stripped; non-ws schemes dropped entirely.
+        let event = json!({
+            "kind": 10002,
+            "pubkey": HEX64_A,
+            "tags": [
+                ["r", "wss://relay.example/", "write"],
+                ["r", "https://not-a-relay.example", "read"],
+            ]
+        });
+        let (_, snap) = parse_kind10002(&event).expect("parses");
+        assert_eq!(snap.write_relays, vec!["wss://relay.example"]);
+        assert!(
+            snap.read_relays.is_empty(),
+            "non-ws scheme normalizes to empty and is skipped"
+        );
+    }
+
+    #[test]
+    fn parse_kind10002_ignores_non_r_tags() {
+        let event = json!({
+            "kind": 10002,
+            "pubkey": HEX64_A,
+            "tags": [
+                ["alt", "relay list"],
+                ["r", "wss://relay.example", "write"],
+            ]
+        });
+        let (_, snap) = parse_kind10002(&event).expect("parses");
+        assert_eq!(snap.write_relays, vec!["wss://relay.example"]);
+        assert!(snap.read_relays.is_empty());
+        assert!(snap.both_relays.is_empty());
+    }
+
+    #[test]
+    fn parse_kind10002_empty_tags_yields_empty_snapshot() {
+        let event = json!({ "kind": 10002, "pubkey": HEX64_A, "tags": [] });
+        let (pk, snap) = parse_kind10002(&event).expect("parses");
+        assert_eq!(pk, HEX64_A);
+        assert!(snap.read_relays.is_empty());
+        assert!(snap.write_relays.is_empty());
+        assert!(snap.both_relays.is_empty());
+    }
+}
