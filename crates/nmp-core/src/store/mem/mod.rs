@@ -6,6 +6,39 @@
 //!
 //! See `docs/design/lmdb/trait.md` §5 ("Two backends in v1").
 //!
+//! ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//! # ⚠️  PERFORMANCE WARNING — TESTS ONLY, NOT FOR PRODUCTION  ⚠️
+//! ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//!
+//! **This backend has NO indexes. Every query is an O(N) full-table scan.**
+//!
+//! - All six `scan_by_*` functions in [`query`] iterate the *entire* event map,
+//!   then perform an O(N log N) sort — regardless of the requested `limit`.
+//! - Replaceable-event supersession ([`insert::insert`] →
+//!   `handle_supersession`) is **O(N) per insert**: each write linearly scans
+//!   every stored event to find the row it would replace.
+//! - The [`crate::store::EventStore`] trait advertises named indexes; this
+//!   backend implements *none* of them. It only fakes the contract by scanning.
+//!
+//! This is **fine for tests and small WASM builds** (small N, the intended use
+//! cases). It is **catastrophic in production**: with thousands of events,
+//! reads and writes degrade quadratically and you hit a hard performance cliff
+//! with no warning.
+//!
+//! ## For production, use the LMDB backend instead
+//!
+//! Enable the `lmdb-backend` feature and use the `nmp-nostr-lmdb` backend,
+//! which has real B-tree indexes for every query path. Do **not** wire
+//! `MemEventStore` into a production relay connection or any long-lived store.
+//!
+//! ## Tracking
+//!
+//! This limitation is a known, accepted trade-off recorded in
+//! `docs/arch-review-queue.md` under "MEDIUM — architectural hygiene"
+//! ("Mem backend has zero indexes — all O(N) scans"). Documented loudly here
+//! by design so future developers do not hit the cliff by accident.
+//! ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+//!
 //! Module layout:
 //!   mod.rs        — factory, `MemState`, `MemEventStore`, provenance helpers
 //!   store_impl.rs — `EventStore` trait impl (delegation to sub-modules)

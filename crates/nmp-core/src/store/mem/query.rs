@@ -2,6 +2,9 @@
 //!
 //! These are pure reads; all state mutation lives in `insert.rs` and `gc.rs`.
 //!
+//! ⚠️ See the module-level performance warning in `mem/mod.rs`: every scan
+//! below is an O(N) full-table scan — this backend is for tests only.
+//!
 //! # Performance characteristics
 //!
 //! **All scans are O(N) full table scans followed by O(N log N) sort.** The
