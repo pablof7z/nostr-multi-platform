@@ -284,4 +284,120 @@ mod tests {
         // (setters-mutate-tag-arrays) guarantee made executable.
         let _: UnsignedEvent = Note::new("x").build(AUTHOR, 0).unwrap();
     }
+
+    #[test]
+    fn note_build_error_display_is_the_d6_ffi_contract() {
+        // The Display string crosses the FFI boundary (D6 — errors never cross
+        // as panics). Pin the exact message so a downstream consumer's UI copy
+        // doesn't silently drift.
+        assert_eq!(
+            NoteBuildError::EmptyContent.to_string(),
+            "NIP-01 short text note requires non-empty content"
+        );
+        // `std::error::Error` is implemented — `source()` is None for a leaf.
+        let err: &dyn std::error::Error = &NoteBuildError::EmptyContent;
+        assert!(err.source().is_none());
+    }
+
+    #[test]
+    fn empty_string_content_errors_like_whitespace() {
+        // The truly-empty case, distinct from the whitespace-only case already
+        // covered by `empty_content_errors`.
+        let err = Note::new("").build(AUTHOR, 0).unwrap_err();
+        assert_eq!(err, NoteBuildError::EmptyContent);
+        // Tabs / newlines are whitespace too.
+        assert_eq!(
+            Note::new("\t\n  ").build(AUTHOR, 0).unwrap_err(),
+            NoteBuildError::EmptyContent
+        );
+    }
+
+    #[test]
+    fn content_is_not_trimmed_on_a_successful_build() {
+        // Validation trims to *test* emptiness, but the stored content keeps
+        // the author's surrounding whitespace verbatim.
+        let unsigned = Note::new("  spaced  ").build(AUTHOR, 0).unwrap();
+        assert_eq!(unsigned.content, "  spaced  ");
+    }
+
+    #[test]
+    fn created_at_is_carried_through_verbatim() {
+        // The builder is clock-free — whatever timestamp the caller supplies
+        // lands on the UnsignedEvent unchanged.
+        let unsigned = Note::new("x").build(AUTHOR, 1_700_000_123).unwrap();
+        assert_eq!(unsigned.created_at, 1_700_000_123);
+        assert_eq!(unsigned.pubkey, AUTHOR);
+    }
+
+    #[test]
+    fn relay_hint_set_without_reply_emits_no_tags() {
+        // A relay hint is only meaningful for reply tags; on a root note it
+        // must not synthesize any tags.
+        let unsigned = Note::new("hello")
+            .relay_hint("wss://r.x")
+            .build(AUTHOR, 0)
+            .unwrap();
+        assert!(unsigned.tags.is_empty());
+    }
+
+    #[test]
+    fn reply_to_root_with_no_relay_hint_leaves_relay_slot_empty() {
+        // No relay hint → marked-form `e` tags still emit, with an empty relay
+        // column (NIP-10 keeps the slot positional even when blank).
+        let parent = parent_root("ROOT_ID", "alice");
+        let unsigned = Note::new("reply").reply_to(&parent).build(AUTHOR, 0).unwrap();
+        assert_eq!(unsigned.tags[0][2], "", "root e-tag relay slot empty");
+        assert_eq!(unsigned.tags[1][2], "", "reply e-tag relay slot empty");
+    }
+
+    #[test]
+    fn reply_inherits_parents_root_relay_hint() {
+        // When the parent already carries a `root` EventRef with a relay, the
+        // new note's root `e` tag must reuse that relay, not the builder's hint.
+        let parent = NoteRecord {
+            event_id: "PARENT".into(),
+            author: "bob".into(),
+            created_at: 0,
+            content: "mid".into(),
+            refs: Nip10Refs {
+                root: Some(EventRef {
+                    id: "ROOT".into(),
+                    relay: Some("wss://from-parent".into()),
+                    marker: Some("root".into()),
+                }),
+                reply: None,
+                mentions: vec![],
+                mentioned_pubkeys: vec![],
+            },
+        };
+        let unsigned = Note::new("nested").reply_to(&parent).build(AUTHOR, 0).unwrap();
+        assert_eq!(unsigned.tags[0][1], "ROOT");
+        assert_eq!(
+            unsigned.tags[0][2], "wss://from-parent",
+            "root relay hint inherited from the parent's root ref"
+        );
+    }
+
+    #[test]
+    fn reply_to_overrides_a_previously_chained_reply() {
+        // `reply_to` consumes self and overwrites — chaining it twice keeps
+        // only the last parent (no tag accumulation from the discarded one).
+        let first = parent_root("FIRST", "alice");
+        let second = parent_root("SECOND", "bob");
+        let unsigned = Note::new("x")
+            .reply_to(&first)
+            .reply_to(&second)
+            .build(AUTHOR, 0)
+            .unwrap();
+        assert_eq!(unsigned.tags[0][1], "SECOND");
+        assert_eq!(unsigned.tags[1][1], "SECOND");
+        // Exactly one p-tag — bob — not alice from the discarded reply_to.
+        let p_ids: Vec<&str> = unsigned
+            .tags
+            .iter()
+            .filter(|t| t.first().map(String::as_str) == Some("p"))
+            .filter_map(|t| t.get(1).map(String::as_str))
+            .collect();
+        assert_eq!(p_ids, vec!["bob"]);
+    }
 }

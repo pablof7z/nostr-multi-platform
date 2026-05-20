@@ -114,6 +114,77 @@ mod tests {
     }
 
     #[test]
+    fn rejects_nip01_sibling_kinds_0_and_3() {
+        // Regression guard: kind 0 (profile metadata) and kind 3 (contact /
+        // follow list) are NIP-01 kinds too, but `kinds.rs` deliberately scopes
+        // this crate to kind 1 only — their ingest still lives in `nmp-core`.
+        // If a future refactor lets them leak into the kind-1 decoder this
+        // test fails loudly. kind 3 is the NIP-02 contact list specifically.
+        assert!(
+            try_from_event(&make_stored(0, vec![], "{\"name\":\"alice\"}")).is_none(),
+            "kind 0 profile metadata must not decode as a short text note"
+        );
+        assert!(
+            try_from_event(&make_stored(3, vec![vec!["p".into(), "alice".into()]], "")).is_none(),
+            "kind 3 contact list (NIP-02) must not decode as a short text note"
+        );
+    }
+
+    #[test]
+    fn try_from_kernel_event_rejects_non_kind_1() {
+        // The hot-path decoder must reject foreign kinds identically to the
+        // StoredEvent path — pin both kind 3 (NIP-02) and a kind boundary.
+        for kind in [0u32, 3, 7, 2, 30023] {
+            let ke = KernelEvent {
+                id: "id".into(),
+                author: "pk".into(),
+                kind,
+                created_at: 0,
+                tags: vec![],
+                content: "".into(),
+            };
+            assert!(
+                try_from_kernel_event(&ke).is_none(),
+                "kind {kind} must not decode via try_from_kernel_event"
+            );
+        }
+    }
+
+    #[test]
+    fn unmarked_single_e_tag_is_a_positional_reply() {
+        // NIP-10 deprecated positional form: a single `e` tag with no marker
+        // makes that event both root and direct parent. Decoder must surface
+        // it as a reply, not a root.
+        let tags = vec![vec!["e".into(), "ONLY".into()]];
+        let r = try_from_event(&make_stored(1, tags, "positional reply")).unwrap();
+        assert!(r.is_reply());
+        assert!(!r.is_root());
+        assert_eq!(r.refs.reply.as_ref().unwrap().id, "ONLY");
+        assert_eq!(r.refs.root.as_ref().unwrap().id, "ONLY");
+    }
+
+    #[test]
+    fn empty_e_tag_id_does_not_make_a_phantom_reply() {
+        // An `e` tag whose id column is empty must be ignored — otherwise a
+        // malformed event would masquerade as a reply to "".
+        let tags = vec![vec!["e".into(), "".into()]];
+        let r = try_from_event(&make_stored(1, tags, "hi")).unwrap();
+        assert!(r.is_root(), "empty e-tag id yields no reply pointer");
+        assert!(!r.is_reply());
+    }
+
+    #[test]
+    fn preserves_unicode_and_empty_content_verbatim() {
+        // NIP-01 does not constrain content; the decoder must not normalize,
+        // trim, or reject it (only the *builder* enforces non-empty).
+        let unicode = try_from_event(&make_stored(1, vec![], "héllo 🦀 \n\ttab")).unwrap();
+        assert_eq!(unicode.content, "héllo 🦀 \n\ttab");
+        let empty = try_from_event(&make_stored(1, vec![], "")).unwrap();
+        assert_eq!(empty.content, "");
+        assert!(empty.is_root());
+    }
+
+    #[test]
     fn root_note_has_no_refs() {
         let r = try_from_event(&make_stored(1, vec![], "hello")).unwrap();
         assert!(r.is_root());
