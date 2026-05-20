@@ -24,6 +24,7 @@ impl Kernel {
         let batch_events = self.events_since_last_update;
         self.max_events_per_update = self.max_events_per_update.max(batch_events);
         let last_event_to_emit_ms = self
+            .timing
             .last_event_at
             .map(|last_event_at| emit_started.duration_since(last_event_at).as_millis());
         if let Some(value) = last_event_to_emit_ms {
@@ -102,10 +103,10 @@ impl Kernel {
                 bytes_tx: counters.bytes_tx,
                 contacts_authors: self.seed_contacts.values().map(Vec::len).sum(),
                 timeline_authors: self.timeline_authors.len(),
-                first_event_ms: self.elapsed_ms(self.first_event_at),
-                target_profile_loaded_ms: self.elapsed_ms(self.target_profile_loaded_at),
-                timeline_opened_ms: self.elapsed_ms(self.timeline_opened_at),
-                timeline_first_item_ms: self.elapsed_ms(self.timeline_first_item_at),
+                first_event_ms: self.elapsed_ms(self.timing.first_event_at),
+                target_profile_loaded_ms: self.elapsed_ms(self.timing.target_profile_loaded_at),
+                timeline_opened_ms: self.elapsed_ms(self.timing.timeline_opened_at),
+                timeline_first_item_ms: self.elapsed_ms(self.timing.timeline_first_item_at),
                 update_emitted_ms: self.elapsed_ms(Some(emit_started)),
                 last_event_to_emit_ms,
                 max_event_to_emit_ms: self.max_event_to_emit_ms,

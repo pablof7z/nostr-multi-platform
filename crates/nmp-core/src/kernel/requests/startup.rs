@@ -37,7 +37,7 @@ impl Kernel {
             "self kind:3 contacts via indexer",
             json!({"kinds":[3],"authors":[self_pk],"limit":1}),
         ));
-        self.requested_profiles.insert(self_pk);
+        self.profile_requests.requested.insert(self_pk);
         requests
     }
 }

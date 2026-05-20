@@ -136,7 +136,7 @@ impl Kernel {
                     || sub_id.starts_with("diag-firehose-")
                     || self.is_persistent_sub(&wire_key_url, sub_id);
                 let wire_key = (wire_key_url.clone(), sub_id.to_string());
-                if let Some(sub) = self.wire_subs.get_mut(&wire_key) {
+                if let Some(sub) = self.wire.subs.get_mut(&wire_key) {
                     sub.eose_at = Some(Instant::now());
                     if keep_live {
                         sub.state = "live".to_string();
@@ -173,7 +173,8 @@ impl Kernel {
                     // relay-scoped so the row, if any, is this relay's row,
                     // not a sibling's. Fall back to the delivering URL.
                     let close_url = self
-                        .wire_subs
+                        .wire
+                        .subs
                         .get(&wire_key)
                         .map(|sub| sub.relay_url.to_string())
                         .unwrap_or_else(|| relay_url.to_string());
@@ -189,7 +190,7 @@ impl Kernel {
                     // table unboundedly across long sessions (every
                     // profile-claim, thread-ids, thread-replies, and discovery
                     // oneshot completes via this EOSE→CLOSE path).
-                    self.wire_subs.remove(&wire_key);
+                    self.wire.subs.remove(&wire_key);
                 }
                 self.changed_since_emit = true;
                 self.log(format!("EOSE {sub_id}"));
@@ -234,7 +235,8 @@ impl Kernel {
                 // T-relay-url-normalize: evict by the canonical key — the row
                 // was registered under the canonical URL (req_for_relay /
                 // planner boundary both canonicalize).
-                self.wire_subs
+                self.wire
+                    .subs
                     .remove(&(wire_key_url.clone(), sub_id.clone()));
                 if sub_id.starts_with("thread-ids-") {
                     self.thread_view.ids_inflight = false;
@@ -316,8 +318,8 @@ impl Kernel {
             relay.last_event_at = Some(now);
         }
         self.events_since_last_update = self.events_since_last_update.saturating_add(1);
-        self.last_event_at = Some(now);
-        self.first_event_at.get_or_insert(now);
+        self.timing.last_event_at = Some(now);
+        self.timing.first_event_at.get_or_insert(now);
         // T-relay-url-normalize: the `wire_subs` row is keyed by the canonical
         // relay URL (req_for_relay / planner boundary). Canonicalize the
         // delivering URL for the lookup so the per-sub `events_rx` /
@@ -325,7 +327,7 @@ impl Kernel {
         // delivering URL's spelling. The raw `relay_url` is preserved for
         // store provenance below.
         let wire_key_url = CanonicalRelayUrl::parse_or_raw(relay_url);
-        if let Some(sub) = self.wire_subs.get_mut(&(wire_key_url, sub_id.to_string())) {
+        if let Some(sub) = self.wire.subs.get_mut(&(wire_key_url, sub_id.to_string())) {
             if sub.state == "opening" {
                 sub.state = "live".to_string();
             }
