@@ -96,14 +96,14 @@ impl CapabilityCache for InMemoryCapabilityCache {
     fn get(&self, relay_url: &str) -> Option<RelayCapabilities> {
         self.inner
             .lock()
-            .expect("capability cache lock poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .caps
             .get(relay_url)
             .copied()
     }
 
     fn set(&self, relay_url: &str, caps: RelayCapabilities) {
-        let mut guard = self.inner.lock().expect("capability cache lock poisoned");
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         guard.caps.insert(relay_url.to_string(), caps);
         guard.state.insert(
             relay_url.to_string(),
@@ -118,7 +118,7 @@ impl CapabilityCache for InMemoryCapabilityCache {
     fn state(&self, relay_url: &str) -> ProbeState {
         self.inner
             .lock()
-            .expect("capability cache lock poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .state
             .get(relay_url)
             .copied()
@@ -128,7 +128,7 @@ impl CapabilityCache for InMemoryCapabilityCache {
     fn set_state(&self, relay_url: &str, state: ProbeState) {
         self.inner
             .lock()
-            .expect("capability cache lock poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .state
             .insert(relay_url.to_string(), state);
     }

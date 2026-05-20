@@ -22,7 +22,7 @@ use std::ffi::{c_char, c_void, CStr};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
-use jni::objects::{JClass, JString};
+use jni::objects::JClass;
 use jni::sys::{jint, jlong, jstring};
 use jni::JNIEnv;
 
@@ -184,8 +184,3 @@ pub(crate) fn session_ref<'a>(handle: jlong) -> Option<&'a Session> {
         Some(unsafe { &*(handle as *const Session) })
     }
 }
-
-// JString param kept in the contract surface for future signed-in screens;
-// silence unused-import on the read-only L1 build.
-#[allow(dead_code)]
-fn _contract_marker(_: JString) {}

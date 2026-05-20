@@ -21,7 +21,6 @@
 //! For this milestone the caller invokes [`crate::gift_wrap`] directly when
 //! it holds keys (see the round-trip integration test in `tests/round_trip.rs`).
 
-use nostr::UnsignedEvent;
 use nmp_core::substrate::{
     ActionContext, ActionId, ActionInput, ActionModule, ActionPlan, ActionRejection, ActionStatus,
     ActionTransition,
@@ -139,23 +138,4 @@ impl ActionModule for WelcomeWrapModule {
             },
         }
     }
-}
-
-/// Helper: build a `WrapPlan` from a recipient pubkey + rumor when the
-/// caller holds keys and can call `gift_wrap` directly.
-#[allow(dead_code)]
-///
-/// This is the path used by the headless integration tests and by any
-/// actor that already has `Keys` available (e.g., the Marmot bridge during
-/// the current milestone).
-pub fn make_wrap_plan(
-    recipient_pubkey_hex: impl Into<String>,
-    rumor: &UnsignedEvent,
-) -> Result<WrapPlan, String> {
-    let rumor_json = nostr::JsonUtil::as_json(rumor);
-    Ok(WrapPlan {
-        recipient_pubkey_hex: recipient_pubkey_hex.into(),
-        rumor_json,
-        inbox_relay_hints: Vec::new(),
-    })
 }

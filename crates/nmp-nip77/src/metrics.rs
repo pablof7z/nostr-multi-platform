@@ -66,7 +66,7 @@ impl SyncMetrics {
 
     /// Add `n` bytes to the negentropy-on-wire counter for this pair.
     pub fn record_neg_bytes(&self, key: &RelayFilterKey, n: u64) {
-        let mut guard = self.inner.lock().expect("metrics lock poisoned");
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let entry = guard.entry(key.clone()).or_default();
         entry.bytes_on_wire_via_neg = entry.bytes_on_wire_via_neg.saturating_add(n);
     }
@@ -75,13 +75,13 @@ impl SyncMetrics {
     /// the regression — clamped to 0) to this pair.
     pub fn record_savings(&self, key: &RelayFilterKey, req_baseline: u64, neg_actual: u64) {
         let saving = req_baseline.saturating_sub(neg_actual);
-        let mut guard = self.inner.lock().expect("metrics lock poisoned");
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let entry = guard.entry(key.clone()).or_default();
         entry.bytes_saved_vs_req = entry.bytes_saved_vs_req.saturating_add(saving);
     }
 
     pub fn snapshot(&self) -> MetricsSnapshot {
-        let guard = self.inner.lock().expect("metrics lock poisoned");
+        let guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let per_pair = guard.clone();
         let mut totals = TotalCounters::default();
         for c in per_pair.values() {
