@@ -419,22 +419,25 @@ fn kind10002_relay_list_carries_r_tags() {
     );
 }
 
-/// Conformance FINDING — documented gap, not a passing-by-fiction row.
+/// NIP-65 cold-start: `create_account` (`identity.rs`) is the only production
+/// code that builds a kind:10002 from user-supplied relays. A freshly-created
+/// account has no kind:10002 of its own yet, so routing the relay list through
+/// the fail-closed `Nip65OutboxResolver` (`PublishTarget::Auto`) would resolve
+/// `NoTargets` and the publish engine would silently drop it — the chicken-and-
+/// egg an account could never escape (it cannot announce its relays because it
+/// has no relays on record).
 ///
-/// `create_account` (`identity.rs`) is the only production code that builds a
-/// kind:10002 from user-supplied relays. It hands the event to
-/// `publish_signed`, but a freshly-created account has no NIP-65 outbox of its
-/// own yet, so the fail-closed `Nip65OutboxResolver` returns `NoTargets` and
-/// the publish engine drops the event without persisting it. The kind:10002 is
-/// therefore **built but never emitted to the wire** on account creation.
+/// `create_account` closes that gap by publishing the initial relay list with
+/// an explicit cold-start target: the relays the user just declared (the
+/// canonical NIP-65 home of a relay list) unioned with the well-known discovery
+/// seed. This test pins that the kind:10002 IS now observable and carries its
+/// `r`-tag structure intact.
 ///
-/// This test pins that finding with a real assertion: `create_account`
-/// produces no observable kind:10002. If a future change makes it observable
-/// (self-ingest of the just-published relay list, or seeding the bootstrap
-/// relays into the outbox), this assertion fails loudly — the signal to
-/// promote the kind:10002 row to a full `assert_nip65_relay_list` check.
+/// This applies only to cold-start. A user updating an *existing* kind:10002
+/// publishes through the `Auto` outbox path, which routes to their already-
+/// declared write relays — that path is deliberately unaffected.
 #[test]
-fn finding_create_account_kind10002_built_but_not_emitted() {
+fn create_account_publishes_kind10002_to_coldstart_relays() {
     let mut h = ConformanceHarness::new();
     let relays: Vec<(String, String)> = vec![
         ("wss://nip65-write.test".to_string(), "write".to_string()),
@@ -444,12 +447,10 @@ fn finding_create_account_kind10002_built_but_not_emitted() {
     profile.insert("display_name".to_string(), "Marcus Webb".to_string());
     h.create_account(profile, &relays);
 
-    assert!(
-        h.published_event_of_kind(10002).is_none(),
-        "FINDING REGRESSED (good news): create_account now emits an observable \
-         kind:10002 — promote this to assert_nip65_relay_list and delete this \
-         documented-gap test"
-    );
+    let event = h
+        .published_event_of_kind(10002)
+        .expect("create_account must emit an observable kind:10002 on cold-start");
+    assert_nip65_relay_list(&event, &["wss://nip65-write.test", "wss://nip65-read.test"]);
 }
 
 // ── Cross-cutting: no command leaks an `e`/`p` tag where the NIP forbids it ──

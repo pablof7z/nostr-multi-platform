@@ -446,7 +446,32 @@ pub(crate) fn create_account(
             created_at: now_secs(),
         };
         if let Ok(signed) = sign_active(identity, &unsigned_relay) {
-            kernel.publish_signed(&signed, &[]);
+            // Cold-start routing. A brand-new account has no kind:10002 on
+            // file yet, so the NIP-65 outbox resolver (`PublishTarget::Auto`)
+            // would resolve `NoTargets` and the publish engine would silently
+            // drop this very event — the chicken-and-egg the account can never
+            // escape (it can't announce its relays because it has no relays on
+            // record). Route the initial relay list explicitly instead: to the
+            // relays the user just declared (the canonical NIP-65 home of a
+            // relay list — publish it to the relays it names) unioned with the
+            // well-known discovery seed so others can find the new account.
+            let target_relays = cold_start_relay_list_targets(kernel, relays);
+            if target_relays.is_empty() {
+                // D6: no usable cold-start relay — surface a toast, never
+                // panic. The account still exists locally; the user can add
+                // relays and re-publish from Settings.
+                kernel.set_last_error_toast(Some(
+                    "could not publish relay list — no cold-start relays available".to_string(),
+                ));
+            } else {
+                kernel.publish_signed_to(
+                    &signed,
+                    &[],
+                    crate::publish::PublishTarget::Explicit {
+                        relays: target_relays,
+                    },
+                );
+            }
         }
     }
 
@@ -454,6 +479,41 @@ pub(crate) fn create_account(
     outbound.extend(retarget_timeline(identity, kernel, relays_ready));
     outbound.extend(publish_initial_follows(identity, kernel));
     outbound
+}
+
+/// Resolve the explicit relay set the *initial* kind:10002 relay list is
+/// published to on account creation (cold-start).
+///
+/// A freshly-created account has no kind:10002 in the store, so the NIP-65
+/// outbox resolver cannot route its first relay list — it would resolve
+/// `NoTargets` and the publish engine would drop the event. This helper builds
+/// the explicit cold-start target instead:
+///
+/// 1. The relays the user just declared in the relay list itself — a kind:10002
+///    belongs on the relays it names (canonical NIP-65); and
+/// 2. The kernel's well-known discovery seed (`bootstrap_discovery_relays`) so
+///    other clients performing relay-list discovery can find the new account.
+///
+/// The result is sorted + deduped. It is empty only when the user supplied no
+/// relays AND no discovery relays are configured — the caller treats an empty
+/// result as a D6 graceful failure (toast, never panic).
+///
+/// This applies ONLY to cold-start: `create_account` is the sole caller, and a
+/// brand-new account by construction has no prior kind:10002. A user updating
+/// an existing relay list publishes through `publish_signed` (`Auto`), which
+/// routes to their already-declared write relays — that path is unaffected.
+fn cold_start_relay_list_targets(
+    kernel: &Kernel,
+    relays: &[(String, String)],
+) -> Vec<String> {
+    let mut targets: Vec<String> = relays
+        .iter()
+        .map(|(url, _role)| url.clone())
+        .chain(kernel.bootstrap_discovery_relays())
+        .collect();
+    targets.sort();
+    targets.dedup();
+    targets
 }
 
 fn publish_initial_follows(
