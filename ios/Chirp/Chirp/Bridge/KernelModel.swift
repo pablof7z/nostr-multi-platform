@@ -31,6 +31,7 @@ final class KernelModel: ObservableObject {
     @Published private(set) var accounts: [AccountSummary] = []
     @Published private(set) var activeAccount: String?
     @Published private(set) var publishQueue: [PublishQueueEntry] = []
+    @Published private(set) var publishOutbox: [PublishOutboxItem] = []
     @Published private(set) var lastErrorToast: String?
     @Published private(set) var relayEditRows: [RelayEditRow] = []
     @Published private(set) var threadView: ThreadView?
@@ -149,6 +150,7 @@ final class KernelModel: ObservableObject {
         modularTimeline = .empty
         authorView = nil
         threadView = nil
+        publishOutbox = []
         metrics = nil
         rev = 0
         relayStatuses = []
@@ -238,6 +240,8 @@ final class KernelModel: ObservableObject {
     func publishNote(_ content: String, replyToID: String? = nil) {
         kernel.publishNote(content: content, replyToID: replyToID)
     }
+    func retryPublish(handle: String) { kernel.retryPublish(handle: handle) }
+    func cancelPublish(handle: String) { kernel.cancelPublish(handle: handle) }
     func react(targetEventID: String, reaction: String = "❤") {
         kernel.react(targetEventID: targetEventID, reaction: reaction)
     }
@@ -309,6 +313,7 @@ final class KernelModel: ObservableObject {
         if let a = update.accounts { accounts = a }
         activeAccount = update.activeAccount
         if let q = update.publishQueue { publishQueue = q }
+        if let outbox = update.publishOutbox { publishOutbox = outbox }
         lastErrorToast = update.lastErrorToast
         if let r = update.relayEditRows { relayEditRows = r }
         threadView = update.threadView

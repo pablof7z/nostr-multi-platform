@@ -32,6 +32,9 @@ pub struct PublishStatusSpec {
 pub struct EventPublishStatus {
     pub handle: PublishHandle,
     pub event_id: String,
+    pub kind: u32,
+    pub created_at: u64,
+    pub content: String,
     pub per_relay: Vec<(RelayUrl, PerRelayState)>,
 }
 

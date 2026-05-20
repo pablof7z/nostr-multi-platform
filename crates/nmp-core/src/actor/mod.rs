@@ -232,6 +232,14 @@ pub enum ActorCommand {
         raw: crate::store::RawEvent,
         relays: Vec<crate::publish::RelayUrl>,
     },
+    /// User intent from the outbox UI: retry a still-pending publish now.
+    RetryPublish {
+        handle: String,
+    },
+    /// User intent from the outbox UI: cancel a still-pending publish.
+    CancelPublish {
+        handle: String,
+    },
     /// T66a publish — kind:7 reaction to `target_event_id`.
     React {
         target_event_id: String,

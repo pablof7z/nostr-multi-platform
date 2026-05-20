@@ -306,6 +306,50 @@ fn profile_card_projects_pending_kind0_publish_intent_after_restart() {
 }
 
 #[test]
+fn publish_outbox_projects_pending_event_details_and_relays() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let signed = SignedEvent {
+        id: "f".repeat(64),
+        sig: "a".repeat(128),
+        unsigned: UnsignedEvent {
+            pubkey: ACCOUNT.to_string(),
+            kind: 1,
+            tags: Vec::new(),
+            content: "This note is still waiting for relays".to_string(),
+            created_at: 1_700_000_000,
+        },
+    };
+
+    let outbound = kernel.run_publish_engine_at(
+        &signed,
+        &[],
+        crate::publish::PublishTarget::Explicit {
+            relays: vec!["wss://outbox.test".to_string()],
+        },
+        0,
+    );
+    assert_eq!(outbound.len(), 1);
+
+    let snap = snapshot(&mut kernel);
+    let outbox = snap["publish_outbox"]
+        .as_array()
+        .expect("publish_outbox must be an array");
+    assert_eq!(outbox.len(), 1);
+    assert_eq!(outbox[0]["handle"].as_str(), Some(signed.id.as_str()));
+    assert_eq!(outbox[0]["kind"].as_u64(), Some(1));
+    assert_eq!(outbox[0]["title"].as_str(), Some("Note"));
+    assert_eq!(
+        outbox[0]["preview"].as_str(),
+        Some("This note is still waiting for relays")
+    );
+    assert_eq!(outbox[0]["status"].as_str(), Some("sending"));
+    assert_eq!(
+        outbox[0]["relays"][0]["relay_url"].as_str(),
+        Some("wss://outbox.test")
+    );
+}
+
+#[test]
 fn author_view_projects_edit_action_for_active_profile() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(ACCOUNT.to_string());

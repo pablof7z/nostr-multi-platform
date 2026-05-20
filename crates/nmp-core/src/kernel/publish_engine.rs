@@ -417,7 +417,7 @@ impl Kernel {
     /// - `accepted.is_empty() && !failed.is_empty()` → `"failed"`
     /// - any accepted (with or without failures) → `"ok"`
     /// - both empty → `"failed"` defensively (no relays settled at all)
-    fn apply_engine_completions(&mut self) {
+    pub(super) fn apply_engine_completions(&mut self) {
         let completions = self.publish_engine.take_completed();
         if completions.is_empty() {
             return;

@@ -316,6 +316,28 @@ pub extern "C" fn nmp_app_publish_signed_event_to(
 }
 
 #[no_mangle]
+pub extern "C" fn nmp_app_retry_publish(app: *mut NmpApp, handle: *const c_char) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let Some(handle) = c_string_argument(handle) else {
+        return;
+    };
+    app.send_cmd(ActorCommand::RetryPublish { handle });
+}
+
+#[no_mangle]
+pub extern "C" fn nmp_app_cancel_publish(app: *mut NmpApp, handle: *const c_char) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let Some(handle) = c_string_argument(handle) else {
+        return;
+    };
+    app.send_cmd(ActorCommand::CancelPublish { handle });
+}
+
+#[no_mangle]
 pub extern "C" fn nmp_app_react(
     app: *mut NmpApp,
     target_event_id: *const c_char,
@@ -400,4 +422,3 @@ pub extern "C" fn nmp_app_open_timeline(app: *mut NmpApp) {
     };
     app.send_cmd(ActorCommand::OpenTimeline);
 }
-
