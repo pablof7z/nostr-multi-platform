@@ -47,9 +47,8 @@ Composed via `ModuleRegistry` (`substrate/mod.rs:38`).
 These are the v1 catalog defined in the spec; the shipped substrate trait is
 `CapabilityModule` (`substrate/capability.rs:3`). Every capability is
 idempotent (`start` after `start` = no-op) and reports only — it never
-decides retry, recovery, or routing (D7). Protocol-specific capabilities
-(e.g. `AudioPlaybackCapability` in `apps/podcast/podcast-audio`) compose the
-same way.
+decides retry, recovery, or routing (D7). Protocol-specific or app-specific
+capabilities compose the same way.
 
 ## Card 4 — Doctrine D0–D8 (`docs/product-spec/doctrine.md:1-98`)
 

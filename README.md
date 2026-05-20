@@ -21,8 +21,7 @@
 - **M8 (subscription lifecycle / RelayManager):** ✅ LANDED (`9ca90c9` — registry + trigger inbox + wire emitter + connection pool + auth gate).
 - **M10 (Blossom + long-running capabilities):** pending.
 - **M10.5 (FFI hardening + iOS empirical proof):** ✅ **§G-S2 gate CLOSED** (`83430ca` T114b — all 7 numeric gates green; retained heap 0.15–0.52 MiB ≤ 1 MiB ceiling; 250× reduction from 38 MiB pre-fix). S2 6/6 + S3 6/6 + S4 6/6 + S5 5/5 PASS with VerifiedEvent injection. **Five computed-but-not-on-wire gaps all CLOSED** (T105 outbox keystone, T117 publish engine FSM, T118 iOS scenePhase, T119 NIP-46 bunker — empirically proven `1f6ae64`, T116 reconnect-replay). Workspace **1234 passed / 0 failed / 17 ignored** on master (post-T136b LMDB + PD-025 fixes).
-- **M11 (rebuild of `/Users/pablofernandez/Work/podcast` Podcastr on NMP):** 🟡 Step 1 LANDED both platforms — iOS (`1b00f7a` xcodeproj + KernelHandle + Library wired + iPhone deploy, team `456SHKPP26`) + Android (`9254633` Compose + JNI + single-version `podcast-debug.apk`). `apps/podcast/nmp-app-podcast` exposes 6 FFI symbols. **Verbatim NOT yet achieved (honest status):** T156 built a custom shell; `T-podcast-ios-RESTART` reverted it (`baf83d9`) but its claimed byte-for-byte restore was inaccurate — ios-3's LOC audit found every Feature view is a 20–35 LOC stub vs the 200–440 LOC Podcastr originals (`ShowDetailView` 23 vs 367). Tracked as **`T-podcast-gap-verbatim` (#164, HIGH)** — the user's #1 M11 acceptance criterion. **Per-screen verbatim restore actively progressing:** Onboarding 11/11 + Identity 13/13 byte-for-byte (diff=0); Player 16+ files (`c8df650d`); DataExport/OPMLExport promoted to verbatim Services (`d01a2c45`). verbatim-1..6 waves landed; verbatim-6 in flight (Player tail + device-build-green). Remaining surface ≈ Player tail, EpisodeDetail 0/18, Home 1/24, Settings 15/86, Agent 5/19, etc. **PD-030 policy (autonomous, flagged for user):** a screen is "done" only at verbatim diff=0 **AND** kernel-backed Bridge — hollow shims (`ec5310cf` Agent stubs) are tracked debt, not acceptable; "builds" ≠ "works". Android `podcast-debug.apk` regen pending a quiet point (Gradle sandbox-blocked, code on master). Forcing-function held: ≥1 iOS + ≥1 Android podcast agent (`docs/orchestration-policy-podcast-forcing-function.md`).
-- **M11.5 (rebuild of `/Users/pablofernandez/Work/hl/app` Highlighter + `nmp-nip29` crate):** ✅ Step 0 LANDED (`5178cfc` — full nmp-nip29 + nmp-highlighter-core + ios/NmpHighlighter Swift Sources verbatim + planner case_e_relay_pin + Rule 9 group-id merge).
+- **Deferred app proofs:** Podcast and Highlighter app surfaces are removed from active scope until Chirp is a polished, complete showcase. Reusable protocol infrastructure that came from those explorations, such as `nmp-nip29`, remains because it is generic Nostr substrate.
 - **M13 (WoT), M14 (UniFFI), M15 (cross-platform), M16 (CLI), M17 (v1 release):** scoped, pending.
 - **Framework-magic contract** (kind:3 auto-tracking, `bunker://` onboarding, new-nsec creation, outbox-by-default-on-publish): designed at [`docs/design/framework-magic.md`](docs/design/framework-magic.md). 14 tests in `crates/nmp-testing/tests/framework_magic_contract.rs` — **7 of 14 passing on master; 7 ignored pending M2 (C5/C8/C13), M4 (C10), M6 (C7/C11), M8 (C12)**.
 - **E2E pipeline tests** (`d0b7df6`): 6-scenario `crates/nmp-testing/tests/e2e_full_pipeline.rs` + audit companion forcing test-de-ignoring as milestones land.
@@ -44,11 +43,11 @@
   - **D8** Reactivity contract: composite reverse index · ≤60 Hz/view · working-set bounded · zero per-event allocations after warmup. Validated by `reactivity-bench`. (ADR-0001..0004.)
 - **Architecture (RMP bible, non-negotiable).** Elm-style (`AppState` + `KernelAction` + `handle_message`) on a single actor thread. `dispatch()` is fire-and-forget. Monotonic `rev: u64`. Snapshot semantics by default; granular updates as optimization. See `docs/aim.md` for the full distillation.
 - **App-extension kernel boundary** (ADR-0009). NMP is a kernel + five extension trait families (`DomainModule`, `ViewModule`, `ActionModule`, `CapabilityModule`, `IdentityModule`). Per-app concrete enums generated at the FFI boundary via `nmp gen modules` (ADR-0010). Apps assemble themselves from `nmp-core` + protocol modules + their own `<app>-core` crate.
-- **DMs (was M9) and Wallet (was M12) deferred to post-v1.** Documented in `docs/plan/scope-adjustments-2026-05-18.md`. M11.5 Highlighter takes their slot.
+- **DMs (was M9), Wallet (was M12), and non-Chirp app proofs deferred to post-v1.** Documented in `docs/plan/scope-adjustments-2026-05-18.md` and the current plan. Chirp is the only active product proof.
 - **Outbox routing is automatic by default** — `nmp-core::planner` resolves author write relays + recipient inbox relays on every publish; explicit override is an audited opt-out. (Stronger than NDK's caller-responsibility model and Applesauce's caller-responsibility model.)
 - **Kind:3 auto-tracking is framework-magic** — when the active account's follow list changes, every open subscription that depends on "current user's follows" auto-recompiles on the wire. Apps dispatch zero code. The Applesauce/NDK research (`docs/research/`) confirmed core NDK does NOT provide this automatically — NMP must build it as framework code.
 - **Post-merge codex review.** After every push to master, `codex exec` reviews the diff against the doctrine + file-size rules + spec coherence. Codex output saved to `docs/perf/codex-reviews/<sha>.md`. Any real concerns become fix-it TaskList entries.
-- **Empirical iOS proof before podcast rebuild (M10.5 gate).** No "we'll wire it up later" — the FFI surface ships rock-solid (stress harness + simulator-driven Sonnet-agent UI fleet + Instruments leaks audit + iPhone-12 baseline) before any line of M11 code is written.
+- **Empirical proof before additional app rebuilds.** No "we'll wire it up later" — the FFI surface ships rock-solid in Chirp before any additional app proof is reopened.
 
 ## How it works — high-level
 
@@ -77,7 +76,7 @@
    │NIP│      │NIP  │    │NIP-29  │    │  app     │   protocol + app crates
    │ 01│      │ 65  │    │groups  │    │  cores   │   = "extension modules"
    │ 02│      │ 77  │    │…       │    │ (twitter,│   compiled into the per-app
-   │ 10│      │ 42  │    │…       │    │  podcast,│   FFI crate, never into
+   │ 10│      │ 42  │    │…       │    │  chirp,  │   FFI crate, never into
    │ 25│      │     │    │        │    │  hl, …)  │   nmp-core
    └───┘      └─────┘    └────────┘    └──────────┘
 ```
@@ -98,14 +97,14 @@
 | `docs/aim.md` | Project north star + RMP-bible distillation. **Read first.** |
 | `docs/plan.md` + `docs/plan/` | Milestone ladder (M0–M17) with exit gates per milestone. |
 | `docs/plan/chirp-showcase.md` | Chirp's standing goal as the full-featured NMP reference client. |
-| `docs/plan/scope-adjustments-2026-05-18.md` | Live scope shifts (DMs + Wallet deferred; Highlighter added; framework-magic contract). |
+| `docs/plan/scope-adjustments-2026-05-18.md` | Historical scope shifts and deferrals. |
 | `docs/product-spec.md` + `docs/product-spec/` | What we ship at v1. The cardinal doctrine D0–D8 lives in §1.5. |
 | `docs/decisions/` | ADR-0001..0010 (and counting). |
-| `docs/design/` | Per-subsystem design docs — subscription compilation, LMDB schema, FFI hardening, podcast rebuild, framework-magic, NIP-29 crate. |
+| `docs/design/` | Per-subsystem design docs — subscription compilation, LMDB schema, FFI hardening, framework-magic, NIP-29 crate. |
 | `docs/research/` | Reverse-engineering notes on NDK + Applesauce — outbox, kind:3 auto-tracking, signers, gotchas, missing-features deltas. |
 | `docs/perf/` | Empirical measurements + heartbeats + codex reviews + debt inventories. |
 | `crates/` | `nmp-core` (substrate), `nmp-codegen` (per-app FFI crate generator), `nmp-testing` (mock relay, harnesses, scenarios), `fixture-todo-core` (non-Nostr extension-module proof). |
-| `apps/` | Generated per-app crates (`apps/fixture/nmp-app-fixture`, `apps/chirp/nmp-app-chirp`, `apps/podcast/nmp-app-podcast`, `apps/hl/nmp-app-hl`). |
+| `apps/` | Generated per-app crates for active proofs (`apps/fixture/nmp-app-fixture`, `apps/chirp/nmp-app-chirp`). |
 | `ios/Chirp` | Production Nostr client and full NMP showcase. Former NmpStress diagnostics and NmpPulse smoke coverage now live here. |
 | `AGENTS.md` | Rules: file-size limit 300 LOC soft / 500 hard. |
 

@@ -8,7 +8,7 @@ The ladder above is the **dependency order** — what must precede what — not 
 - **[M5](m5-nip42.md) (NIP-42)** is independent of M3/M4 and can be done alongside.
 - **[M6](m6-signers-write.md) (signer + write path) is a serialization point** — most downstream milestones ([M7](m7-interaction-loop.md), [M8](m8-multi-account.md), [M9](m9-messaging.md), [M10](m10-blossom.md), [M12](m12-wallet.md)) depend on it. Land this fast.
 - **[M10.5](m10.5-ffi-hardening.md) (FFI hardening)** is itself parallelizable: the stress harness, the iPhone-12 perf rerun, the UI-script Sonnet-agent fleet, and the FFI surface audit are four independent workstreams.
-- **[M11](m11-podcast.md) (podcast app)** starts only after M10.5 passes. Its own internal parallelism is wide: the copy step + each `*-core` Rust extension crate + each view-wiring batch can be split across agents (one per view group: Library, Feed, Player, Insights, Ask, Settings, Components, plus one agent per LLM/RAG/feeds module).
+- **Future non-Chirp app proofs** start only after Chirp is complete. Their internal parallelism can split the app-owned Rust crates, generated FFI, and platform view-wiring batches across agents.
 - **[M15](m15-cross-platform.md) (Android + Desktop + Web)** is three parallel tracks once [M14](m14-uniffi.md) (UniFFI) lands.
 
 A team of two could run M5 alongside the M2–M4 sequence with no integration risk. With parallel-agent execution (this session's mode), the practical limit is conflict surface: independent crates, independent docs, and independent platform shells fan out cleanly; shared mutable files (e.g. `nmp.toml`, the codegen output, `Cargo.toml`) serialize.

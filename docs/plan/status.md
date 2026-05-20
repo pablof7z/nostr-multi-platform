@@ -28,7 +28,7 @@ Rough per-crate LOC (from `wc -l`, includes tests):
 | | | `nmp-cli` | 400 |
 
 Plus smaller crates: `nmp-nip42-types`, `fixture-todo-core`, `nmp-signer-iface`,
-`nmp-android-ffi`, `nmp-highlighter-core`.
+and `nmp-android-ffi`.
 
 `nmp-core` alone (52k LOC) is the kernel substrate — far past the "~3,800 LOC"
 this file previously claimed.
@@ -76,8 +76,9 @@ The framework has grown well beyond the in-memory kernel slice. Built and on mas
 - **Desktop shell.** `crates/nmp-desktop` (~580 LOC) links the kernel rlib directly.
 - **CLI** `crates/nmp-cli`: `gen` + `init` scaffolding commands.
 - **Android FFI** `crates/nmp-android-ffi` (CI-checked via `cargo check`).
-- **iOS apps** in `ios/`: `Chirp` (full NMP showcase client — C-ABI only),
-  `NmpHighlighter`, `NmpPodcast`. Android shells under `android/`.
+- **Active app shells.** `ios/Chirp` and the Android Chirp/gallery shells are the
+  active product proofs. Podcast and Highlighter app shells have been removed
+  from active scope until Chirp is complete.
 - **Test + bench harness** `crates/nmp-testing` (~20,800 LOC): mock relays,
   reactivity-bench, firehose-bench. `nmp-repl` (~6,000 LOC) interactive harness.
 - **CI.** `cargo test --workspace` runs on every push/PR, plus a
@@ -97,8 +98,8 @@ The framework has grown well beyond the in-memory kernel slice. Built and on mas
   `uniffi`. UniFFI migration (M14) is unstarted.
 - **Web (wasm) shell** — desktop and Android shells exist; no wasm shell.
 - **Non-Nostr-shaped product app** demonstrating the kernel boundary in
-  production beyond `fixture-todo-core` (the podcast/highlighter app rebuilds
-  are in progress under `ios/`).
+  production beyond `fixture-todo-core`. Podcast and Highlighter are deferred
+  until Chirp is complete.
 
 ## Milestone ladder — implemented vs. ladder claim
 
@@ -118,8 +119,8 @@ The M0–M17 ladder predates the current codebase. Reality, milestone by milesto
 | ~~M9~~ DMs | deferred post-v1 | 🟡 gift-wrap built; conversation layer not |
 | M10 Blossom + media | pending | ❌ Not built |
 | M10.5 FFI hardening | design done | 🟡 In progress (see arch-review-queue.md) |
-| M11 Podcast rebuild | design done | 🟡 `ios/NmpPodcast` in progress |
-| M11.5 Highlighter + `nmp-nip29` | NEW | 🟡 `nmp-nip29` built; `ios/NmpHighlighter` in progress |
+| ~~M11~~ Podcast rebuild | deferred | Deferred until Chirp is complete |
+| ~~M11.5~~ Highlighter app proof | deferred | `nmp-nip29` built as generic infrastructure; app shell removed |
 | ~~M12~~ Wallet | deferred post-v1 | 🟡 NWC + NIP-57 built; Cashu/nutzaps not |
 | M13 Web-of-Trust | pending | ❌ Not built |
 | M14 UniFFI migration | pending | ❌ Not started (still raw C FFI) |

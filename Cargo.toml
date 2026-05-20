@@ -9,7 +9,6 @@ members = [
     "crates/nmp-content",
     "crates/nmp-content-fixtures",
     "crates/nmp-core",
-    "crates/nmp-highlighter-core",
     "crates/nmp-marmot",
     "crates/nmp-nip01",
     "crates/nmp-nip22",

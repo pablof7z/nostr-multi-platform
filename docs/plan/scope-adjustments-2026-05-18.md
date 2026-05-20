@@ -60,7 +60,7 @@ Four parallel exploration agents (dispatched at the timestamp on this file's com
 3. **Framework-magic designer** — define the "things that just work" contract + the kernel-substrate test scaffolding for it.
 4. **Highlighter explorer** — survey `/Users/pablofernandez/Work/hl/app` (existing Rust+Kotlin+Swift), map to NMP extension-module shape, identify what `nmp-nip29` needs.
 
-When all four land, a plan-revisor agent folds the findings into `docs/plan/m2-subscription-compilation.md`, `docs/plan/m6-signers-write.md`, the new `docs/plan/m11.5-highlighter.md`, the new `docs/design/framework-magic.md`, and removes M9 + M12 from the active ladder (moving them to a `docs/plan/post-v1.md` companion).
+When all four land, a plan-revisor agent folds the findings into `docs/plan/m2-subscription-compilation.md`, `docs/plan/m6-signers-write.md`, `docs/design/framework-magic.md`, and removes M9 + M12 from the active ladder (moving them to a `docs/plan/post-v1.md` companion). Later cleanup deferred non-Chirp app proofs until Chirp is complete.
 
 ## Why these specific deferrals are safe
 

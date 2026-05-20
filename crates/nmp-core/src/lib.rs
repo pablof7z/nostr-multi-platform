@@ -129,7 +129,7 @@ pub use ffi::{nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wallet_
 pub use actor::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
 
 // T146 — kernel event observer surface exposed to per-app Rust crates
-// (`nmp-app-chirp`, future `nmp-app-podcast`, …). Apps register typed
+// (`nmp-app-chirp`, future app-specific crates, ...). Apps register typed
 // `Arc<dyn KernelEventObserver>`s via [`NmpApp::register_event_observer`].
 // The FFI shape (`KernelEventObserverFn` etc.) is the C-ABI channel
 // Swift / Kotlin bridges use directly through

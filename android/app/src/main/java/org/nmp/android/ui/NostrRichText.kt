@@ -23,7 +23,7 @@ import androidx.compose.ui.unit.dp
 
 /**
  * Compose port of the Swift `NostrRichText` live renderer
- * (`ios/NmpHighlighter/Sources/NmpHighlighter/Core/RichText/NostrRichText.swift`).
+ * while keeping rendering policy in Rust-produced payloads.
  *
  * Renders plain text that may contain `nostr:` URI mentions and event
  * references. Used by surfaces that don't run full markdown — profile

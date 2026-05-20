@@ -181,8 +181,8 @@ I want to ...
 
 A real app implements several: `fixture-todo-core` implements all five (the
 non-Nostr proof); `nmp-nip29` implements Domain + View + Action across 13/7/15
-modules; `apps/podcast/podcast-core` is app-shaped. Walkthroughs of both, plus
-how they compose via `ModuleRegistry`, are in
+modules. Walkthroughs of app-shaped modules and how they compose via
+`ModuleRegistry` are in
 [05b](05b-substrate-traits.md).
 
 ## Deliverables (this half)

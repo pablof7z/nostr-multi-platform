@@ -134,24 +134,15 @@ looking at this now / not anymore".
 ## Per-iOS-app status box
 
 ```
-┌─ ios/NmpStress ──────────────── LIVE / kernel-wired ────────────────┐
-│ 1,375 LOC app Swift. Imports nmp_app_* C FFI via KernelHandle.      │
-│ Real actor, real relays, real snapshot loop. THE reference shell.   │
-├─ ios/NmpPodcast ─────────────── STEP-0 scaffold ────────────────────┤
-│ Copied/scaffolded SwiftUI surface (e.g. Bridge/ErrorPresentation    │
-│ .swift). ZERO `nmp_app_*` references — not kernel-wired. UI shell    │
-│ awaiting the M11 podcast kernel-boundary port.                      │
-├─ ios/NmpHighlighter ─────────── STEP-0 scaffold ────────────────────┤
-│ SPM app + ShareExtension (App.swift, ShareViewController.swift).    │
-│ Uses HighlighterStore/Kingfisher/App-Group queue. ZERO `nmp_app_*`  │
-│ — share extension explicitly "never talks to the Rust core" today.  │
+┌─ ios/Chirp ──────────────────── ACTIVE / kernel-wired ──────────────┐
+│ Production Nostr client and current NMP showcase.                   │
+│ Real actor, real relays, real snapshot loop.                        │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-Only **NmpStress** proves the kernel↔SwiftUI contract end-to-end today.
-`NmpPodcast`/`NmpHighlighter` are Step-0 Swift surfaces, **not** kernel-complete
-app ports — treating them as proof of the iOS path is drift; see
-[27 — Doc/code discrepancies](27-discrepancies.md).
+Only **Chirp** is an active iOS product proof today. Additional app shells are
+deferred until Chirp is complete; treating deleted historical scaffolds as proof
+of the iOS path is drift; see [27 — Doc/code discrepancies](27-discrepancies.md).
 
 ## Anti-patterns
 

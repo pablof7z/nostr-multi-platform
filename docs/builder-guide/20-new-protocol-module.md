@@ -73,7 +73,7 @@ the ownership." Pick *one* such rule and document it in your `lib.rs`.
 **Must NOT add**
 
 - Any `use nmp_nip01::*` / dep on another `nmp-nip*` (compose at the app
-  layer, e.g. `nmp-highlighter-core`).
+  layer).
 - Any new variant/noun in `nmp-core` (no `Group`, no `enum GroupKind`).
 - App-specific deps (no UI crates, no app config).
 - Session-state mutation from the protocol crate.

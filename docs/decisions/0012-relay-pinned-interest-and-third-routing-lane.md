@@ -4,8 +4,7 @@
 > from `pin_to` to `relay_pin` and abstraction generalised away from NIP-29
 > nouns under T55 / D0 cleanup).
 > **Date:** 2026-05-18.
-> **Companion:** `docs/design/nip29/routing.md` §3 (the first consumer's
-> design doc); `docs/plan/m11.5-highlighter.md` §Exit Gate.
+> **Companion:** `docs/design/nip29/routing.md` §3.
 
 ## Context
 

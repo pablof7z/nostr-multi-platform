@@ -110,7 +110,7 @@ the snapshot, not as a thrown error (D6).
 | Outbox auto-routing in the planner | ✅ M2 (DONE) | wiring the planner into the *actor's REQ path* is the gap tracked in [27](27-discrepancies.md); the kernel demo still uses constant relays |
 | Raw C FFI (JSON-over-string snapshot) | ✅ today | UniFFI typed bridge = **M14, PLANNED** |
 | `nmp init` starter CLI | ❌ not built | **M16, PLANNED** — example is hand-scaffolded |
-| iOS shell (NmpStress, live) | ✅ M1/M10.5 (DONE) | NmpPodcast/NmpHighlighter are Step-0 scaffolds, not kernel-complete ports |
+| iOS shell (Chirp, active) | ✅ M1/M10.5 (DONE) | Additional app shells are deferred until Chirp is complete |
 
 The publish substrate, the local signer, and multi-account all ship today.
 What is *not* shipped: the typed UniFFI bridge (M14) and a one-command app

@@ -9,7 +9,7 @@
 **Subsystem deliverables.**
 
 - `nmp-codegen` extended to produce UniFFI scaffolding in the generated per-app crate.
-- `apps/twitter/nmp-app-twitter` and `apps/podcast/nmp-app-podcast` as the first two real per-app crates.
+- `apps/chirp/nmp-app-chirp` and `apps/fixture/nmp-app-fixture` as the first real per-app crates.
 - `xcframework` build pipeline for each per-app crate.
 - Generated Swift wrappers: `useProfile`, `@Profile`, `useTimeline`, `@Wallet`, etc.
 - CI gate: `nmp gen modules --check` fails the build if bindings drift.

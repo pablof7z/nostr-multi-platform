@@ -18,8 +18,7 @@ four layers with strict ownership. Built from the bottom up:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│ PLATFORM SHELL          ios/NmpStress (SwiftUI, 1,375 LOC, live)       │
-│                         ios/NmpPodcast · ios/NmpHighlighter (Step 0)   │
+│ PLATFORM SHELL          ios/Chirp + Android Chirp/gallery shells       │
 │  owns: rendering, OS handle execution, generated wrappers              │
 │  D5 ► consumes ONE bounded JSON snapshot; no policy nouns              │
 └────────────────────────────────▲───────────────────────────────────────┘
@@ -33,9 +32,9 @@ four layers with strict ownership. Built from the bottom up:
         ┌─────────────────────────┼──────────────────────────┐
 ┌───────┴──────────┐  ┌───────────┴───────────┐  ┌────────────┴─────────┐
 │ APP CORE CRATES   │  │ NMP PROTOCOL MODULES   │  │  (more app cores)    │
-│ apps/podcast/      │  │ nmp-nip29 (groups)     │  │ fixture-todo-core    │
-│  podcast-core      │  │ nmp-nip42 (auth)       │  │  (non-Nostr proof)   │
-│  podcast-audio …   │  │ nmp-nip77 (sync)       │  │                      │
+│ apps/chirp/        │  │ nmp-nip29 (groups)     │  │ fixture-todo-core    │
+│  nmp-app-chirp     │  │ nmp-nip42 (auth)       │  │  (non-Nostr proof)   │
+│                    │  │ nmp-nip77 (sync)       │  │                      │
 │ D0 ► MAY hold app  │  │ nmp-signers (identity) │  │ D0 ► app nouns OK    │
 │      nouns         │  │ D0 ► protocol nouns ONLY│  │                     │
 └───────┬──────────┘  └───────────┬───────────┘  └────────────┬─────────┘
@@ -48,11 +47,11 @@ four layers with strict ownership. Built from the bottom up:
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-The six real shipped crates are labelled in their layer above:
+Representative shipped crates are labelled in their layer above:
 `nmp-core` (kernel), `nmp-nip29` / `nmp-nip42` / `nmp-nip77` / `nmp-signers`
-(protocol modules), `apps/podcast/podcast-core` + `fixture-todo-core` (app
-cores). `nmp-codegen` produces the generated FFI crate; `ios/NmpStress` is the
-live shell.
+(protocol modules), `apps/chirp/nmp-app-chirp` + `fixture-todo-core` (app
+cores). `nmp-codegen` produces the generated FFI crate; Chirp is the active
+product shell.
 
 ### Doctrine callouts on the diagram
 
@@ -132,12 +131,12 @@ JSON-over-string (`crates/nmp-core/src/ffi.rs`); the UniFFI migration is M14
 | `Signer`, `IdentityScopeKind` | `nmp-signers` | identity is a protocol module (D0) |
 | NIP-29 `GroupId`, group views | `nmp-nip29` | protocol noun (`crates/nmp-nip29/src/lib.rs:11-19`) |
 | NIP-77 sync reconciler | `nmp-nip77` | protocol noun |
-| Podcast `Episode`, feed records | `apps/podcast/podcast-core` | app noun (`apps/podcast/podcast-core/src/lib.rs:1-2`) |
+| Media `Episode`, feed records | future media app crate | app noun; keep it outside `nmp-core` |
 | `TodoRecord` | `fixture-todo-core` | app noun (non-Nostr proof) |
 | SwiftUI list cell, OS audio handle | `ios/NmpStress` / shell | rendering / OS execution |
 
-The single test of correctness: a hypothetical Highlighter module can be added
-with **zero changes to `nmp-core`** (ADR-0009 acceptance criterion 3).
+The single test of correctness: a future app module can be added with **zero
+changes to `nmp-core`** (ADR-0009 acceptance criterion 3).
 
 ## Anti-patterns
 

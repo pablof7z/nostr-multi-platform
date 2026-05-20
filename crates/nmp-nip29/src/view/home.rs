@@ -2,7 +2,7 @@
 //!
 //! Surfaces metadata + admin/member counts + recent chat preview + recent
 //! discussions preview. Cross-protocol joins (profile hydration) live at the
-//! app layer (`nmp-highlighter-core`).
+//! app layer.
 
 use nmp_core::substrate::{
     EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies, ViewModule,
@@ -72,4 +72,3 @@ impl ViewModule for GroupHomeView {
         p
     }
 }
-

@@ -151,4 +151,4 @@ These tests live in `nmp-testing/tests/` and run as part of the M11.5 exit gate 
 6. `nip29_share_into_group_dual_routes_correctly` — the composed action `PublishHighlight` + `ShareEventIntoGroup` produces two wire-frame writes, one to author write-relays (highlight), one to host relay (share), in that order.
 7. `nip29_unauth_host_relay_pauses_module_activity` — a host relay in `ChallengeReceived` causes all module activity for that host to pause, surfacing in the diagnostics lane as `LogicalInterestStatus::AuthPaused`.
 
-Passing these seven tests is the M11.5 exit-gate proof that the routing contract holds. The full M11.5 milestone exit gate is in `docs/plan/m11.5-highlighter.md`.
+Passing these seven tests is the NIP-29 routing-contract proof.

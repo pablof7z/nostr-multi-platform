@@ -4,7 +4,7 @@
 
 **Demo product:** Chirp user can attach a photo to a compose, see upload progress, and the published note has a valid Blossom URL. Profile-picture upload also works.
 
-**Scope.** Per spec §7.11. Establishes the **long-running capability lifecycle pattern** that the podcast app ([M11](m11-podcast.md)) builds on:
+**Scope.** Per spec §7.11. Establishes the **long-running capability lifecycle pattern** that future media-heavy app proofs can build on:
 
 **Subsystem deliverables.**
 
