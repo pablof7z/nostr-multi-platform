@@ -37,11 +37,10 @@ struct NoteRowView: View {
                     showReply: $showReply
                 )
                 .padding(.top, 8)
-                Divider()
-                    .padding(.top, 8)
             }
-            .padding(.vertical, 8)
+            .padding(.vertical, 12)
             .padding(.horizontal, 16)
+            .chirpGlass(cornerRadius: 18, interactive: true)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -223,9 +222,7 @@ struct NoteActionsRow: View {
             HStack(spacing: 5) {
                 Image(systemName: likeTapped ? "heart.fill" : "heart")
                     .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(likeTapped ? .red : .secondary)
-                    .scaleEffect(likeTapped ? 1.25 : 1.0)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.5), value: likeTapped)
+                    .foregroundStyle(likeTapped ? ChirpColor.like : .secondary)
             }
             .frame(minWidth: 44, minHeight: 32, alignment: .center)
         }

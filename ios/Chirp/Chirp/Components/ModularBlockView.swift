@@ -92,12 +92,10 @@ struct ModularBlockView: View {
                     .padding(.leading, ModuleLayout.avatarSize + 8)
                     .padding(.top, 4)
             }
-
-            Divider()
-                .padding(.top, 8)
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 12)
         .padding(.horizontal, 16)
+        .chirpGlass(cornerRadius: 18, interactive: true)
     }
 
     /// One event row inside a module. Layout: avatar column (fixed 44pt,
@@ -152,7 +150,7 @@ struct ModularBlockView: View {
                 // row's avatar top. Spans the inter-row gap (interRowSpacing)
                 // and the next avatar's height to reach its centre.
                 RoundedRectangle(cornerRadius: ModuleLayout.lineWidth / 2)
-                    .fill(Color(.tertiaryLabel))
+                    .fill(.tertiary)
                     .frame(
                         width: ModuleLayout.lineWidth,
                         height: ModuleLayout.interRowSpacing + ModuleLayout.avatarSize / 2

@@ -17,7 +17,6 @@ struct ChirpApp: App {
             RootShell()
                 .environmentObject(model)
                 .tint(ChirpColor.accent)
-                .preferredColorScheme(.dark)
                 .task { model.start() }
                 .onOpenURL { url in
                     guard url.scheme?.lowercased() == "chirp" else { return }

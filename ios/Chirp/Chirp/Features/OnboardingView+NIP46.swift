@@ -16,7 +16,7 @@ extension OnboardingView {
             } label: {
                 HStack {
                     Image(systemName: "qrcode")
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(.tint)
                     Text(showQR ? "Hide QR code" : "Show nostrconnect:// QR")
                         .font(ChirpFont.callout)
                     Spacer()
@@ -36,17 +36,12 @@ extension OnboardingView {
                             .scaledToFit()
                             .frame(maxWidth: 200)
                             .padding(16)
-                            .background(Color(.systemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color(.separator), lineWidth: 1)
-                            )
+                            .background(.background, in: RoundedRectangle(cornerRadius: 12))
                     } else {
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(.secondarySystemBackground))
+                            .fill(.quaternary)
                             .frame(width: 200, height: 200)
-                            .overlay { ProgressView().tint(Color.accentColor) }
+                            .overlay { ProgressView().tint(.accentColor) }
                     }
                     Text("Scan with any NIP-46 signer app")
                         .font(ChirpFont.caption)
@@ -85,7 +80,7 @@ extension OnboardingView {
             if let handshake = model.bunkerHandshake, handshake.stage != "idle" {
                 HStack(spacing: ChirpSpace.s) {
                     if handshake.stage == "connecting" || handshake.stage == "awaiting_pubkey" {
-                        ProgressView().tint(Color.accentColor).scaleEffect(0.8)
+                        ProgressView().tint(.accentColor).scaleEffect(0.8)
                     } else if handshake.stage == "ready" {
                         Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
                     } else if handshake.stage == "failed" {
@@ -116,6 +111,9 @@ extension OnboardingView {
                 }
             }
         }
+        .padding(.horizontal, ChirpSpace.l)
+        .padding(.vertical, ChirpSpace.l)
+        .chirpGlass(cornerRadius: ChirpSpace.radius)
         .padding(.horizontal, ChirpSpace.l)
     }
 

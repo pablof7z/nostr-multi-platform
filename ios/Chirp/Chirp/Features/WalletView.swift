@@ -16,6 +16,8 @@ struct WalletView: View {
             }
             technologySection
         }
+        .scrollContentBackground(.hidden)
+        .chirpScreenBackground()
         .navigationTitle("Wallet")
         .navigationBarTitleDisplayMode(.large)
         .sheet(isPresented: $showingConnectSheet) {
@@ -31,7 +33,7 @@ struct WalletView: View {
             VStack(spacing: 16) {
                 Image(systemName: "bolt.circle")
                     .font(.system(size: 52, weight: .light))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(ChirpColor.zap)
                     .symbolRenderingMode(.hierarchical)
 
                 VStack(spacing: 8) {
@@ -49,7 +51,7 @@ struct WalletView: View {
                     Label("Connect Wallet", systemImage: "bolt.fill")
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(.orange)
+                .tint(ChirpColor.zap)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 24)
@@ -81,7 +83,7 @@ struct WalletView: View {
 
                 Image(systemName: "bolt.circle.fill")
                     .font(.system(size: 48, weight: .light))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(ChirpColor.zap)
                     .symbolRenderingMode(.hierarchical)
 
                 if let sats = status.balanceSats {
@@ -106,8 +108,8 @@ struct WalletView: View {
     private func statusColor(_ status: String) -> Color {
         switch status {
         case "ready": return .green
-        case "connecting": return .orange
-        case "error": return .red
+        case "connecting": return ChirpColor.zap
+        case "error": return ChirpColor.like
         default: return .secondary
         }
     }
@@ -118,7 +120,7 @@ struct WalletView: View {
         Section("Actions") {
             HStack(spacing: 12) {
                 Image(systemName: "arrow.up.circle.fill")
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(ChirpColor.zap)
                 Text("Send")
                     .font(.callout.weight(.semibold))
                 Spacer()
@@ -134,9 +136,9 @@ struct WalletView: View {
     private var technologySection: some View {
         Section("Powered By") {
             HStack(spacing: 12) {
-                TechTile(label: "NWC", sublabel: "Nostr Wallet Connect", color: .orange)
+                TechTile(label: "NWC", sublabel: "Nostr Wallet Connect", color: ChirpColor.zap)
                 TechTile(label: "NIP-57", sublabel: "Zap protocol", color: .accentColor)
-                TechTile(label: "Cashu", sublabel: "Ecash tokens", color: .brown)
+                TechTile(label: "Cashu", sublabel: "Ecash tokens", color: .secondary)
             }
         }
     }
@@ -190,9 +192,11 @@ private struct ConnectWalletSheet: View {
                     }
                     .disabled(!schemeLooksValid(uri))
                     .buttonStyle(.borderedProminent)
-                    .tint(.orange)
+                    .tint(ChirpColor.zap)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .chirpScreenBackground()
             .navigationTitle("Connect Wallet")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -229,6 +233,6 @@ private struct TechTile: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
+        .chirpGlass(cornerRadius: 12)
     }
 }

@@ -16,7 +16,7 @@ struct WireSubscriptionDetailView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 24)
         }
-        .background(Color(.systemBackground))
+        .chirpScreenBackground()
         .navigationTitle("Subscription")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -90,7 +90,7 @@ struct WireSubscriptionDetailView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+            .chirpGlass(cornerRadius: 12)
         }
     }
 
@@ -125,7 +125,7 @@ struct WireSubscriptionDetailView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+            .chirpGlass(cornerRadius: 12)
         }
     }
 
@@ -143,7 +143,7 @@ struct WireSubscriptionDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 8)
                 .padding(.horizontal, 12)
-                .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+                .chirpGlass(cornerRadius: 12)
                 .textSelection(.enabled)
         }
     }
@@ -191,7 +191,7 @@ private struct WireMetricTile: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+        .chirpGlass(cornerRadius: 12)
     }
 }
 

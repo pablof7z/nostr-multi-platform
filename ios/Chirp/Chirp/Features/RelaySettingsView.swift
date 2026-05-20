@@ -48,7 +48,8 @@ struct RelaySettingsView: View {
             }
         }
         .listStyle(.plain)
-        .background(Color(.systemBackground))
+        .scrollContentBackground(.hidden)
+        .chirpScreenBackground()
         .navigationTitle("Relays")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -57,7 +58,6 @@ struct RelaySettingsView: View {
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(ChirpColor.accent)
                 }
             }
         }
@@ -124,10 +124,7 @@ private struct RelayConfigRow: View {
         }
         .padding(.vertical, ChirpSpace.s)
         .padding(.horizontal, ChirpSpace.m)
-        .background(
-            Color(.secondarySystemBackground).opacity(0.6),
-            in: RoundedRectangle(cornerRadius: ChirpSpace.radiusSmall, style: .continuous)
-        )
+        .chirpGlass(cornerRadius: ChirpSpace.radiusSmall, interactive: true)
         .overlay(
             RoundedRectangle(cornerRadius: ChirpSpace.radiusSmall, style: .continuous)
                 .strokeBorder(ChirpColor.hairline, lineWidth: 1)
@@ -136,7 +133,7 @@ private struct RelayConfigRow: View {
 
     private var roleColor: Color {
         switch relay.role {
-        case "read": return Color.blue
+        case "read": return .cyan
         case "write": return ChirpColor.positive
         default: return ChirpColor.accent
         }
@@ -206,7 +203,7 @@ private struct RelayEditSheet: View {
                 }
                 .padding(.top, ChirpSpace.l)
             }
-            .background(Color(.systemBackground))
+            .chirpScreenBackground()
             .navigationTitle(isEditing ? "Edit Relay" : "Add Relay")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

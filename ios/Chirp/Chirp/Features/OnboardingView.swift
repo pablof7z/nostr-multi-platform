@@ -45,7 +45,7 @@ struct OnboardingView: View {
 
     var body: some View {
         ZStack {
-            Color(.systemBackground).ignoresSafeArea()
+            ChirpBackdrop()
 
             switch mode {
             case .welcome:  welcomeScreen
@@ -54,9 +54,7 @@ struct OnboardingView: View {
             }
         }
         .onAppear {
-            withAnimation(.easeOut(duration: 0.35).delay(0.05)) {
-                appeared = true
-            }
+            appeared = true
             detectSignerApps()
             Task {
                 if let uri = model.nostrConnectURI() {

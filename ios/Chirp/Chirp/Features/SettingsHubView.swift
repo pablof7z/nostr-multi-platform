@@ -71,6 +71,8 @@ struct SettingsHubView: View {
                 }
             }
         }
+        .scrollContentBackground(.hidden)
+        .chirpScreenBackground()
         .navigationTitle("Settings")
     }
 
@@ -104,7 +106,7 @@ struct SettingsHubView: View {
                     .frame(width: 32, height: 32)
                 Image(systemName: icon)
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(iconColor)
+                    .foregroundStyle(.tint)
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -125,7 +127,7 @@ struct SettingsHubView: View {
         HStack(alignment: .top, spacing: ChirpSpace.m) {
             Text(cx)
                 .font(.system(.caption2, design: .rounded).weight(.bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
                 .background(ChirpColor.accent, in: Capsule())
@@ -167,11 +169,11 @@ private struct MarmotKeyPackageRow: View {
             HStack {
                 Text("Key package")
                 Spacer()
-                if kp.stale {
-                    Text("Stale")
-                        .foregroundStyle(.orange)
-                        .font(.caption)
-                }
+            if kp.stale {
+                Text("Stale")
+                    .foregroundStyle(ChirpColor.zap)
+                    .font(.caption)
+            }
             }
             Text(statusSubtitle)
                 .font(.caption)

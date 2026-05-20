@@ -15,7 +15,7 @@ struct ThreadNoteRow: View {
             // Accent hairline for focused note
             if isFocused {
                 Rectangle()
-                    .fill(Color.accentColor)
+                    .fill(.tint)
                     .frame(width: 2)
                     .cornerRadius(1)
                     .padding(.vertical, 4)
@@ -87,7 +87,9 @@ struct ThreadNoteRow: View {
             .padding(.vertical, isFocused ? 8 : 4)
             .padding(.horizontal, 16)
         }
-        .background(isFocused ? Color.accentColor.opacity(0.08) : Color.clear)
+        .chirpGlass(cornerRadius: 18, interactive: false)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
         .animation(.smooth(duration: 0.25), value: isFocused)
     }
 }

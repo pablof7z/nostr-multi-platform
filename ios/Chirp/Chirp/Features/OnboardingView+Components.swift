@@ -9,8 +9,6 @@ extension OnboardingView {
             Spacer()
 
             logoBrand
-                .opacity(appeared ? 1 : 0)
-                .offset(y: appeared ? 0 : 20)
 
             Spacer()
 
@@ -23,7 +21,7 @@ extension OnboardingView {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(ChirpGlassButtonStyle(prominent: true))
 
                 Button {
                     withAnimation(.smooth(duration: 0.35)) { mode = .signIn }
@@ -33,11 +31,9 @@ extension OnboardingView {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(ChirpGlassButtonStyle())
             }
             .padding(.horizontal, ChirpSpace.l)
-            .opacity(appeared ? 1 : 0)
-            .offset(y: appeared ? 0 : 16)
 
             Spacer().frame(height: 48)
         }
@@ -47,7 +43,6 @@ extension OnboardingView {
 
     var createScreen: some View {
         VStack(spacing: 0) {
-            // Nav bar
             HStack {
                 Button("Back") {
                     withAnimation(.smooth(duration: 0.25)) { mode = .welcome }
@@ -63,7 +58,7 @@ extension OnboardingView {
             VStack(spacing: ChirpSpace.xl) {
                 Image(systemName: "person.badge.plus")
                     .font(.system(size: 40, weight: .medium))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(.tint)
 
                 VStack(spacing: ChirpSpace.s) {
                     Text("Choose your display name")
@@ -96,9 +91,12 @@ extension OnboardingView {
                         .frame(maxWidth: 280)
                         .padding(.vertical, 16)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(ChirpGlassButtonStyle(prominent: true))
                 .disabled(false) // always enabled, empty name → "Anonymous"
             }
+            .padding(.horizontal, ChirpSpace.l)
+            .padding(.vertical, ChirpSpace.xl)
+            .chirpGlass(cornerRadius: ChirpSpace.radius)
             .padding(.horizontal, ChirpSpace.l)
 
             Spacer()
@@ -109,7 +107,6 @@ extension OnboardingView {
 
     var signInScreen: some View {
         VStack(spacing: 0) {
-            // Nav bar
             HStack {
                 Button("Back") {
                     withAnimation(.smooth(duration: 0.25)) { mode = .welcome }
@@ -122,7 +119,6 @@ extension OnboardingView {
 
             ScrollView {
                 VStack(spacing: ChirpSpace.xl) {
-                    // Import with nsec
                     VStack(alignment: .leading, spacing: ChirpSpace.m) {
                         Text("Paste your private key")
                             .font(.headline)
@@ -141,15 +137,13 @@ extension OnboardingView {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(ChirpGlassButtonStyle(prominent: true))
                         .disabled(nsec.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
+                    .padding(ChirpSpace.l)
+                    .chirpGlass(cornerRadius: ChirpSpace.radius)
                     .padding(.horizontal, ChirpSpace.l)
 
-                    Divider()
-                        .padding(.horizontal, ChirpSpace.l)
-
-                    // Remote signer
                     Text("Or use a remote signer")
                         .font(.headline)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -168,7 +162,7 @@ extension OnboardingView {
         VStack(spacing: ChirpSpace.m) {
             Image(systemName: "bird.fill")
                 .font(.system(size: 48, weight: .medium))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(.tint)
 
             VStack(spacing: ChirpSpace.xs) {
                 Text("Chirp")

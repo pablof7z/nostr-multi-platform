@@ -5,7 +5,7 @@ struct NotificationsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 36) {
+            VStack(spacing: 24) {
                 Spacer(minLength: 60)
                 illustrationBlock
                 typeGrid
@@ -13,7 +13,7 @@ struct NotificationsView: View {
             }
             .padding(.horizontal, 16)
         }
-        .background(Color(.systemBackground))
+        .chirpScreenBackground()
         .navigationTitle("Activity")
         .navigationBarTitleDisplayMode(.large)
     }
@@ -41,6 +41,8 @@ struct NotificationsView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
+        .padding(ChirpSpace.xl)
+        .chirpGlass(cornerRadius: ChirpSpace.radius)
     }
 
     private var typeGrid: some View {
@@ -75,6 +77,8 @@ struct NotificationsView: View {
                 )
             }
         }
+        .padding(ChirpSpace.l)
+        .chirpGlass(cornerRadius: ChirpSpace.radius)
     }
 }
 
@@ -87,7 +91,7 @@ private struct ActivityTypeCard: View {
         VStack(alignment: .leading, spacing: 8) {
             Image(systemName: icon)
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(.tint)
             Text(label)
                 .font(.callout.weight(.semibold))
             Text(description)
