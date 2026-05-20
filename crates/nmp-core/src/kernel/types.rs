@@ -498,8 +498,11 @@ pub(super) struct Metrics {
 }
 
 // ── Update envelope ───────────────────────────────────────────────────────────
+/// Full JSON snapshot of kernel state emitted to the host on each tick.
+/// Named `KernelSnapshot` (not `KernelUpdate`) to avoid ambiguity with the
+/// public `crate::app::KernelUpdate` lifecycle-event enum.
 #[derive(Clone, Debug, Serialize)]
-pub(super) struct KernelUpdate {
+pub(super) struct KernelSnapshot {
     pub(super) rev: u64,
     /// Snapshot schema version (`KERNEL_SCHEMA_VERSION`). Lets a shell detect
     /// a kernel-vs-shell schema mismatch and degrade gracefully (D1) instead

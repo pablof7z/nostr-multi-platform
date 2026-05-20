@@ -50,7 +50,7 @@ impl Kernel {
             .count();
         let visible_placeholder_avatar_items = items.len().saturating_sub(visible_profiled_items);
         let counters = self.total_counters();
-        let update = KernelUpdate {
+        let update = KernelSnapshot {
             rev: self.rev,
             schema_version: KERNEL_SCHEMA_VERSION,
             last_tick_ms,
