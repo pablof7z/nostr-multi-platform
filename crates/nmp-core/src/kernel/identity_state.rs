@@ -184,11 +184,7 @@ impl super::Kernel {
     /// closed key set (`kernel::closed_reason::ERR_*`). iOS branches on the
     /// category without parsing the English `toast` prose. Pass the category
     /// constant, never an inline literal.
-    pub(crate) fn set_error_toast_with_category(
-        &mut self,
-        toast: String,
-        category: &'static str,
-    ) {
+    pub(crate) fn set_error_toast_with_category(&mut self, toast: String, category: &'static str) {
         let toast = Some(toast);
         let category = Some(category.to_string());
         if self.last_error_toast != toast || self.last_error_category != category {
@@ -200,9 +196,10 @@ impl super::Kernel {
 
     /// Replace the editable relay projection (D4: actor is sole writer).
     /// Also syncs the shared handles so FFI-side reads (e.g. Marmot dispatch)
-    /// and the publish engine's discovery fan-out see the latest rows.
+    /// and planner/publish routing see the latest rows.
     pub(crate) fn set_relay_edit_rows(&mut self, rows: Vec<RelayEditRow>) {
-        if self.relay_edit_rows != rows {
+        let changed = self.relay_edit_rows != rows;
+        if changed {
             self.relay_edit_rows = rows.clone();
             self.changed_since_emit = true;
         }
@@ -211,21 +208,37 @@ impl super::Kernel {
                 *guard = rows.clone();
             }
         }
-        let indexer_urls: Vec<String> = rows
+        let indexer_urls = rows
             .iter()
             .filter(|r| crate::actor::has_role(&r.role, "indexer"))
             .map(|r| r.url.clone())
-            .collect();
+            .collect::<Vec<_>>();
+        self.lifecycle.set_indexer_relays(indexer_urls.clone());
         if let Ok(mut guard) = self.indexer_relays_handle.lock() {
             *guard = indexer_urls;
         }
-        let write_urls: Vec<String> = rows
+        let read_urls = rows
+            .iter()
+            .filter(|r| crate::actor::has_role(&r.role, "read"))
+            .map(|r| r.url.clone())
+            .collect::<Vec<_>>();
+        self.lifecycle.set_app_relays(read_urls.clone());
+        self.lifecycle.set_active_account_read_relays(read_urls);
+        let write_urls = rows
             .iter()
             .filter(|r| crate::actor::has_role(&r.role, "write"))
             .map(|r| r.url.clone())
-            .collect();
+            .collect::<Vec<_>>();
         if let Ok(mut guard) = self.local_write_relays_handle.lock() {
             *guard = write_urls;
+        }
+        if changed {
+            self.lifecycle.clear_probed_mailboxes();
+            self.lifecycle.enqueue_trigger(
+                crate::subs::CompileTrigger::UserConfiguredRelaysChanged { generation: 0 },
+            );
+            self.lifecycle
+                .enqueue_trigger(crate::subs::CompileTrigger::IndexerSetChanged { generation: 0 });
         }
     }
 

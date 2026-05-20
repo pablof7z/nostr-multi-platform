@@ -11,6 +11,8 @@ DERIVED_DATA="${CHIRP_MAESTRO_DERIVED_DATA:-${ROOT}/ios/Chirp/DerivedData-maestr
 APP_PATH="${DERIVED_DATA}/Build/Products/Debug-iphonesimulator/Chirp.app"
 RELAY_LOG="${TMPDIR:-/tmp}/chirp-maestro-nak-${RELAY_PORT}.log"
 RELAY_PID=""
+PABLO_HEX="fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52"
+FIATJAF_HEX="3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
 
 require() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -86,6 +88,39 @@ wait_for_event() {
   done
 }
 
+wait_until() {
+  local description="$1"
+  shift
+  local deadline=$((SECONDS + 30))
+  until "$@"; do
+    if (( SECONDS >= deadline )); then
+      echo "timed out waiting for ${description}" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+follow_feed_author_request_seen() {
+  local author="$1"
+  local match
+  match="$(
+    awk '/got request / { sub(/^.*got request /, ""); print }' "$RELAY_LOG" |
+      jq -c --arg author "$author" '
+        select((.kinds // []) | index(1))
+        | select((.kinds // []) | index(6))
+        | select((.authors // []) | index($author))
+      ' 2>/dev/null |
+      head -n 1
+  )"
+  [[ -n "$match" ]]
+}
+
+follow_feed_request_seen() {
+  follow_feed_author_request_seen "$PABLO_HEX" &&
+    follow_feed_author_request_seen "$FIATJAF_HEX"
+}
+
 main() {
   local udid
   udid="$(device_udid)"
@@ -133,6 +168,15 @@ main() {
   jq -e --arg relay "$RELAY_URL" '
     any(.tags[]?; .[0] == "r" and .[1] == $relay)
   ' <<<"$relay_list_event" >/dev/null
+
+  local contacts_event
+  contacts_event="$(wait_for_event "kind:3 contacts for ${pubkey}" event_by_author_and_kind "$pubkey" 3)"
+  jq -e --arg pablo "$PABLO_HEX" --arg fiatjaf "$FIATJAF_HEX" '
+    any(.tags[]?; .[0] == "p" and .[1] == $pablo)
+    and any(.tags[]?; .[0] == "p" and .[1] == $fiatjaf)
+  ' <<<"$contacts_event" >/dev/null
+
+  wait_until "follow-feed REQ for default follows" follow_feed_request_seen
 
   echo "CHIRP_MAESTRO_ONBOARDING_OK pubkey=${pubkey} relay=${RELAY_URL} display_name=${DISPLAY_NAME}"
 }
