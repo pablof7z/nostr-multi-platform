@@ -639,7 +639,11 @@ impl Kernel {
     /// [`Kernel::with_publish_store_and_path`] stays in place), but
     /// deterministic-replay tests inject a `FixedClock` so the reducer's
     /// `created_at` / `received_at_ms` output is reproducible. Exercised by
-    /// `kernel/clock_injection_tests.rs`.
+    /// `kernel/clock_injection_tests.rs`. The `test-support` exposure lets
+    /// external crate integration tests call this seam without `cfg(test)`.
+    // `allow(dead_code)`: called from `#[cfg(test)]` code only in nmp-core;
+    // external crate integration tests reach it via the `test-support` feature.
+    #[cfg_attr(not(test), allow(dead_code))]
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_clock(&mut self, clock: Arc<dyn Clock>) {
         self.clock = clock;

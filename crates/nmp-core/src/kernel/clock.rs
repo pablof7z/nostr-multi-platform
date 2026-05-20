@@ -37,6 +37,10 @@ impl Clock for SystemClock {
 /// `SystemTime` on every call so the reducer's timestamp output is
 /// reproducible. Exercised by `kernel/clock_injection_tests.rs`, which
 /// proves `received_at_ms` routes through the injected `Clock`.
+// `allow(dead_code)`: the struct is consumed only in `#[cfg(test)]` code
+// (`clock_injection_tests.rs`); the `test-support` exposure is for external
+// crate integration tests that inject a fixed clock via `kernel.set_clock`.
+#[cfg_attr(not(test), allow(dead_code))]
 #[cfg(any(test, feature = "test-support"))]
 pub(crate) struct FixedClock(pub SystemTime);
 
