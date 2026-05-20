@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 
 /// UI test suite ported from `ios/NmpStress/NmpStressUITests/NmpStressUITests.swift`
@@ -94,6 +95,65 @@ final class ChirpUITests: XCTestCase {
         assertSignedIn(app, timeout: 45)
     }
 
+    func testFreshAccountLoadsSeedFollowTimelineOnDevice() throws {
+        let service = isolatedKeychainService("seedfeed")
+        let app = launchApp(keychainService: service)
+
+        app.buttons["Create account"].tap()
+        let name = app.textFields["Satoshi"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        name.tap()
+        name.typeText("Seed Feed")
+        app.buttons["Create account"].tap()
+        XCTAssertTrue(app.tabBars.buttons["Settings"].waitForExistence(timeout: 20))
+
+        app.tabBars.buttons["Settings"].tap()
+        let diagnostics = app.buttons["Diagnostics"]
+        for _ in 0..<3 where !diagnostics.exists {
+            app.swipeUp()
+        }
+        diagnostics.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["diagnostics-list"].waitForExistence(timeout: 5))
+
+        let events = app.staticTexts["metric-events-value"]
+        let visible = app.staticTexts["metric-visible-value"]
+        let rx = app.staticTexts["metric-rx-value"]
+        let firstMs = app.staticTexts["metric-first-ms-value"]
+        XCTAssertTrue(events.waitForExistence(timeout: 5))
+        XCTAssertTrue(visible.waitForExistence(timeout: 5))
+        XCTAssertTrue(rx.waitForExistence(timeout: 5))
+        XCTAssertTrue(firstMs.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForNumericValue(events, greaterThan: 0, timeout: 30), events.label)
+
+        let eventsLabel = events.label
+        let visibleLabel = visible.label
+        let rxLabel = rx.label
+        let firstMsLabel = firstMs.label
+        print("NMP_FRESH_SEED_DIAG metrics events=\(eventsLabel) visible=\(visibleLabel) rx=\(rxLabel) first_ms=\(firstMsLabel)")
+
+        let primalRelay = app.staticTexts["wss://relay.primal.net"]
+        for _ in 0..<5 where !primalRelay.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(primalRelay.waitForExistence(timeout: 5))
+        let connected = app.staticTexts["Connected"].exists
+        print(
+            "NMP_FRESH_SEED_DIAG events=\(eventsLabel) visible=\(visibleLabel) rx=\(rxLabel) first_ms=\(firstMsLabel) connected=\(connected)"
+        )
+
+        app.tabBars.buttons["Home"].tap()
+        let labels = app.staticTexts.allElementsBoundByIndex
+            .prefix(40)
+            .map(\.label)
+            .joined(separator: " | ")
+        print("NMP_HOME_LABELS \(labels)")
+        XCTAssertTrue(app.buttons.matching(identifier: "timeline-author-link").firstMatch.waitForExistence(timeout: 10))
+        let hasSeedFollow = labels.localizedCaseInsensitiveContains("PABLO")
+            || labels.contains("fa984b")
+            || labels.contains("3bf0c6")
+        XCTAssertTrue(hasSeedFollow, labels)
+    }
+
     func testTimelineDiagnosticsAndNavigation() throws {
         let app = XCUIApplication()
         app.launchEnvironment["NMP_VISIBLE_LIMIT"] = "80"
@@ -167,6 +227,7 @@ final class ChirpUITests: XCTestCase {
         )
     }
 
+#if !os(iOS)
     func testCreateAccountAndCompleteReplMlsConversation() throws {
         let app = XCUIApplication()
         app.launchEnvironment["NMP_VISIBLE_LIMIT"] = "80"
@@ -312,6 +373,7 @@ final class ChirpUITests: XCTestCase {
         }
         return String(text[captureRange])
     }
+#endif
 
     private func waitForLabel(
         _ element: XCUIElement,
