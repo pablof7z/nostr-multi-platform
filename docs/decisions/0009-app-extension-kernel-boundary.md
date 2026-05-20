@@ -36,7 +36,7 @@ This ADR formally accepts that reframing.
 `nmp-core` does **not** contain:
 
 - Profile, Timeline, Thread, Reactions, Conversation, or any other view-kind business logic.
-- Wallet, messaging, blossom, or any other domain feature.
+- Wallet, messaging, blossom, or any other domain feature as a *kernel primitive*. (One bounded exception — the feature-gated `wallet` NWC actor integration — is documented in [Wallet feature exception](#wallet-feature-exception-feature-gated-nwc-actor-integration) below.)
 - A closed `AppAction` enum or `AppUpdate` enum.
 - A closed `ViewSpec` enum.
 - App-specific identity concepts (agent, feedback identity, coach, etc.).
@@ -59,6 +59,20 @@ This ADR formally accepts that reframing.
 - `IdentityModule` — signer scopes beyond "active Nostr account."
 
 **The rule.** If implementing Highlighter, TENEX, Win the Day, Cut Tracker, or a podcast app requires adding domain nouns to `nmp-core`, the extension boundary is wrong and the kernel must change, not the app.
+
+### Wallet feature exception (feature-gated NWC actor integration)
+
+`nmp-core`'s `wallet` cargo feature introduces a **conditional, feature-gated dependency on `nmp-nwc`** (the NIP-47 protocol module — the "NMP protocol modules" row of the layer table above). This is a deliberate, bounded exception to the "does not contain a domain feature" bullet, and it is **not** a violation of this ADR.
+
+**Why the NWC runtime must live in the kernel — D4 single-writer.** NIP-47 Nostr Wallet Connect requires signing kind:23194 request events and decoding kind:23195 response events. Those operations mutate wallet state (connection status, balance, in-flight payment results). Per doctrine D4 (single writer per fact), the actor is the *sole* writer of wallet state — it projects `WalletStatus` into the snapshot via `Kernel::set_wallet_status`. The request-signing and response-decoding steps therefore cannot be extracted into `nmp-nwc` or any other crate without either (a) handing a second writer access to wallet state, or (b) routing every NWC event back through the actor anyway. The NWC runtime (`WalletRuntime`, `actor/commands/wallet.rs`) is intrinsically actor-local code; only the *protocol vocabulary* it consumes (URI parsing, method enums, payload types, relay-message decode) lives in `nmp-nwc`.
+
+**Why this respects the boundary:**
+
+- **`nmp-core` does not *own* the wallet domain noun.** `nmp-nwc` owns the NWC protocol types. `nmp-core` only *consumes* them inside the actor loop. The kernel gains no `Wallet` domain record, no closed wallet enum, no app-specific wallet identity concept.
+- **The dependency direction is kernel → protocol module.** `nmp-core` depends on `nmp-nwc`; the inverse never holds. `nmp-nwc` stays a protocol-neutral, kernel-agnostic crate testable in isolation. This matches the layer table: a higher layer (kernel) may consume a protocol-module layer; the protocol module may not reach back into the kernel.
+- **It is feature-gated and the kernel still compiles without it.** `nmp-nwc` is an `optional` dependency behind `wallet = ["dep:nmp-nwc"]`. `cargo build --no-default-features` produces a `nmp-core` with no NWC code, no `WalletStatus` projection, and no `nmp_app_wallet_*` FFI symbols. NWC is opt-in protocol glue, not a kernel primitive — exactly the property the "does not contain" bullet protects.
+
+**Classification.** This is a *kernel-internal protocol integration*: actor-local runtime code that consumes a protocol module's vocabulary because a kernel doctrine (D4) requires the integration point to be the actor. It is the narrow, doctrine-forced case — not a precedent for pulling app domain nouns into `nmp-core`. Any future protocol module facing the same D4 constraint (e.g. a NIP-17 messaging runtime) would follow this same feature-gated, kernel→protocol, opt-in pattern; anything that does *not* face a single-writer constraint stays an extension module per "The rule" above.
 
 ## What changes from prior ADRs
 
