@@ -16,8 +16,8 @@ import SwiftUI
 
 struct NoteRowView: View {
     let item: TimelineItem
+    let onLike: (String) -> Void
 
-    @EnvironmentObject private var model: KernelModel
     @EnvironmentObject private var router: ChirpRouter
 
     /// Controls the inline reply sheet for this row.
@@ -33,6 +33,7 @@ struct NoteRowView: View {
                 rowContent
                 NoteActionsRow(
                     item: item,
+                    onLike: onLike,
                     likeTapped: $likeTapped,
                     showReply: $showReply
                 )
@@ -175,10 +176,9 @@ struct NoteRowView: View {
 
 struct NoteActionsRow: View {
     let item: TimelineItem
+    let onLike: (String) -> Void
     @Binding var likeTapped: Bool
     @Binding var showReply: Bool
-
-    @EnvironmentObject private var model: KernelModel
 
     var body: some View {
         HStack(spacing: 0) {
@@ -220,7 +220,7 @@ struct NoteActionsRow: View {
         Button {
             guard !likeTapped else { return }
             likeTapped = true
-            model.react(targetEventID: item.id, reaction: "❤")
+            onLike(item.id)
             UIImpactFeedbackGenerator(style: .soft).impactOccurred()
         } label: {
             HStack(spacing: 5) {

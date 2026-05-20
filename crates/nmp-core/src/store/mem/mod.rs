@@ -222,5 +222,11 @@ pub(super) fn upsert_provenance(
 // ─── Hex utilities ───────────────────────────────────────────────────────────
 
 pub(super) fn bytes_to_hex(b: &[u8]) -> String {
-    b.iter().map(|byte| format!("{byte:02x}")).collect()
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = String::with_capacity(b.len() * 2);
+    for byte in b {
+        out.push(HEX[(byte >> 4) as usize] as char);
+        out.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    out
 }
