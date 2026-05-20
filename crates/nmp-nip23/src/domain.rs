@@ -257,4 +257,94 @@ mod tests {
         let collide_b = keys::primary("ali", "cece");
         assert_ne!(collide_a, collide_b);
     }
+
+    #[test]
+    fn keys_by_author_prefix_does_not_bleed_into_a_longer_author() {
+        // `scan_prefix("a\x00alice\x00")` must not also match articles by an
+        // author whose name starts with "alice" (e.g. "alice2"). The trailing
+        // NUL after the author name is what makes the prefix exact.
+        let alice_prefix = keys::by_author_prefix("alice");
+        let alice2_key = keys::by_author("alice2", "intro");
+        assert!(
+            !alice2_key.starts_with(&alice_prefix),
+            "the NUL terminator must stop `alice` from prefix-matching `alice2`"
+        );
+    }
+
+    #[test]
+    fn keys_embedded_nul_collides_distinct_pairs_a_known_limitation() {
+        // The composite key uses a single 0x00 byte as the field separator and
+        // does NOT length-prefix the author/d_tag fields. Therefore a NUL byte
+        // *inside* an input is indistinguishable from the separator: the two
+        // genuinely-distinct pairs below — different author, different d_tag —
+        // serialize to byte-identical keys.
+        //
+        //   primary("a",   "b\0c") = b"p\0" + "a"   + \0 + "b\0c"  = p\0a\0b\0c
+        //   primary("a\0b", "c")   = b"p\0" + "a\0b" + \0 + "c"     = p\0a\0b\0c
+        //
+        // This test pins that collision as an *accepted limitation*: Nostr `d`
+        // tags and hex pubkeys are human/codec-authored ASCII identifiers and
+        // never contain NUL in practice. If a future change ever makes
+        // NUL-bearing identifiers reachable, this assertion flips and forces a
+        // deliberate move to length-prefixed key encoding.
+        let pair_one = keys::primary("a", "b\u{0}c");
+        let pair_two = keys::primary("a\u{0}b", "c");
+        assert_eq!(
+            pair_one, pair_two,
+            "documented limitation: NUL-bearing inputs collide — callers MUST keep author/d_tag NUL-free"
+        );
+
+        // Sanity floor: with NUL-free inputs (the only inputs the protocol ever
+        // produces) the scheme is unambiguous — distinct pairs stay distinct.
+        assert_ne!(
+            keys::primary("a", "bc"),
+            keys::primary("ab", "c"),
+            "NUL-free inputs never collide — the separator does its job"
+        );
+    }
+
+    #[test]
+    fn keys_primary_round_trips_through_decode_and_route_and_get() {
+        use crate::decode::try_from_event;
+        use nmp_core::store::{EventStore, MemEventStore, RawEvent, StoredEvent};
+        use std::sync::Arc;
+
+        // End-to-end `d`-tag identity: an article published with d_tag "intro"
+        // must be retrievable by exactly ("alice", "intro") and the decoded
+        // record's d_tag must match what went in. This is the publish→route→get
+        // round trip the domain store exists for.
+        let store = MemEventStore::new();
+        let handle = store.domain_open(NAMESPACE).expect("namespace opens");
+
+        let event = StoredEvent {
+            raw: Arc::new(RawEvent {
+                id: "e".repeat(64),
+                pubkey: "alice".into(),
+                created_at: 1_700_000_000,
+                kind: KIND_LONG_FORM_ARTICLE,
+                tags: vec![
+                    vec!["d".into(), "intro".into()],
+                    vec!["title".into(), "Hello".into()],
+                ],
+                content: "body".into(),
+                sig: "0".repeat(128),
+            }),
+            received_at_ms: 0,
+        };
+
+        decode_and_route(&event, &handle).expect("route succeeds");
+
+        let fetched = get(&handle, "alice", "intro")
+            .expect("get succeeds")
+            .expect("the routed article is retrievable by its d_tag");
+        assert_eq!(fetched.d_tag, "intro");
+        assert_eq!(fetched.title.as_deref(), Some("Hello"));
+
+        // The decoded record's d_tag is byte-identical to the source `d` tag.
+        let decoded = try_from_event(&event).unwrap();
+        assert_eq!(decoded.d_tag, fetched.d_tag);
+
+        // A wrong d_tag does not resolve — the key is exact.
+        assert!(get(&handle, "alice", "intr").unwrap().is_none());
+    }
 }

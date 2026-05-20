@@ -59,4 +59,58 @@ mod tests {
         assert_eq!(variant_name("nmp-nip01"), "NmpNip01");
         assert_eq!(app_crate_name("demo_app"), "nmp-app-demo-app");
     }
+
+    #[test]
+    fn rust_crate_name_replaces_every_dash() {
+        // The crate-path identifier form: all dashes become underscores, every
+        // occurrence, so `a-b-c` is a valid Rust path segment.
+        assert_eq!(rust_crate_name("a-b-c"), "a_b_c");
+        // No dashes → unchanged.
+        assert_eq!(rust_crate_name("nmpcore"), "nmpcore");
+        // Already-underscored input is left alone (only dashes are touched).
+        assert_eq!(rust_crate_name("fixture_todo"), "fixture_todo");
+    }
+
+    #[test]
+    fn variant_name_upper_camel_cases_across_both_separators() {
+        // `variant_name` splits on BOTH `-` and `_`, so a mixed-separator
+        // package name still produces a single UpperCamelCase identifier.
+        assert_eq!(variant_name("nmp-nip01"), "NmpNip01");
+        assert_eq!(variant_name("fixture_todo_core"), "FixtureTodoCore");
+        assert_eq!(variant_name("nmp-todo_core"), "NmpTodoCore");
+    }
+
+    #[test]
+    fn variant_name_handles_degenerate_separator_inputs() {
+        // Empty input → empty identifier (the caller never feeds this, but the
+        // function must not panic on it).
+        assert_eq!(variant_name(""), "");
+        // All separators / leading + trailing separators: the empty parts are
+        // filtered, so no stray empty segment leaks into the output.
+        assert_eq!(variant_name("---"), "");
+        assert_eq!(variant_name("-nmp-nip01-"), "NmpNip01");
+        assert_eq!(variant_name("__a__"), "A");
+    }
+
+    #[test]
+    fn variant_name_only_touches_the_leading_letter_of_each_segment() {
+        // Capitalisation rule: uppercase the first ASCII char of each segment,
+        // leave the rest of the segment verbatim. An already-capitalised or
+        // numeric tail is preserved exactly — no lowercasing pass.
+        assert_eq!(variant_name("nip-01"), "Nip01");
+        assert_eq!(variant_name("ABC-def"), "ABCDef");
+        // A segment whose first char is a digit cannot be uppercased and is
+        // emitted unchanged — `to_ascii_uppercase` on a digit is a no-op.
+        assert_eq!(variant_name("01-nip"), "01Nip");
+    }
+
+    #[test]
+    fn app_crate_name_normalizes_underscores_to_dashes() {
+        // `nmp-app-` prefix, and the app name's underscores become dashes so
+        // the result is a conventional kebab-case crate name.
+        assert_eq!(app_crate_name("demo_app"), "nmp-app-demo-app");
+        assert_eq!(app_crate_name("chirp"), "nmp-app-chirp");
+        // Dashes in the input are already kebab and pass through untouched.
+        assert_eq!(app_crate_name("multi-word-app"), "nmp-app-multi-word-app");
+    }
 }
