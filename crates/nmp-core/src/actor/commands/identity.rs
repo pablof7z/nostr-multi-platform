@@ -133,7 +133,6 @@ impl IdentityRuntime {
     /// the broker (Stage 4) and diagnostic-snapshot consumers; today
     /// `sync_kernel` resolves the per-row kind inline so this helper has no
     /// in-tree caller yet.
-    #[allow(dead_code)]
     pub(crate) fn active_signer_kind(&self) -> Option<&'static str> {
         if let Some(handle) = self.active_remote() {
             return Some(handle.signer_kind());
