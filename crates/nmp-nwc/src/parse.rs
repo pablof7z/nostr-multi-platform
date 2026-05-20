@@ -1,5 +1,7 @@
 //! NIP-47 `nostr+walletconnect://` URI parser.
 
+use zeroize::Zeroizing;
+
 /// A parsed NWC connection URI.
 ///
 /// Format: `nostr+walletconnect://<wallet_pubkey_hex>?relay=<url>(&relay=<url>)*&secret=<client_secret_hex>[&lud16=<email>]`
@@ -13,7 +15,10 @@
 #[derive(Debug, Clone)]
 pub struct NwcUri {
     pub wallet_pubkey_hex: String,
-    pub client_secret_hex: String,
+    /// Client secret key (64-char hex). Wrapped in `Zeroizing` so the heap
+    /// allocation is wiped on drop — this is wallet-spending key material.
+    /// Accessors deref transparently to `String`: use `.as_str()` for `&str`.
+    pub client_secret_hex: Zeroizing<String>,
     pub relay_urls: Vec<String>,
     pub lud16: Option<String>,
 }
@@ -123,7 +128,7 @@ impl NwcUri {
 
         Ok(Self {
             wallet_pubkey_hex,
-            client_secret_hex,
+            client_secret_hex: Zeroizing::new(client_secret_hex),
             relay_urls,
             lud16,
         })
@@ -179,7 +184,7 @@ mod tests {
         );
         let parsed = NwcUri::parse(&uri).unwrap();
         assert_eq!(parsed.wallet_pubkey_hex, wallet_pk);
-        assert_eq!(parsed.client_secret_hex, secret);
+        assert_eq!(parsed.client_secret_hex.as_str(), secret);
         assert_eq!(parsed.relay_urls, vec!["wss://relay.example.com"]);
         assert_eq!(parsed.primary_relay_url(), "wss://relay.example.com");
         assert!(parsed.lud16.is_none());
@@ -208,7 +213,7 @@ mod tests {
             ]
         );
         assert_eq!(parsed.primary_relay_url(), "wss://relay.damus.io");
-        assert_eq!(parsed.client_secret_hex, secret);
+        assert_eq!(parsed.client_secret_hex.as_str(), secret);
     }
 
     #[test]

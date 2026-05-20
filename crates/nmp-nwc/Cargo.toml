@@ -9,6 +9,7 @@ description = "NIP-47 Nostr Wallet Connect client — URI parsing, NIP-44 encryp
 nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+zeroize = { version = "1", features = ["alloc"] }
 
 [dev-dependencies]
 tungstenite = { version = "0.24", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }

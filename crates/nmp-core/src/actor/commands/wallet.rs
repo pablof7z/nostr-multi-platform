@@ -120,7 +120,7 @@ pub(crate) fn wallet_connect(
         wallet_pubkey_hex: nwc_uri.wallet_pubkey_hex.clone(),
         wallet_npub: wallet_npub.clone(),
         relay_url: relay.clone(),
-        client_secret_hex: nwc_uri.client_secret_hex.clone(),
+        client_secret_hex: nwc_uri.client_secret_hex.as_str().to_string(),
         client_pubkey_hex: client_pubkey_hex.clone(),
         status: "connecting".to_string(),
         balance_msats: None,

@@ -52,10 +52,10 @@ fn main() {
 
     println!("== parsed ==");
     println!("  wallet_pubkey = {}", parsed.wallet_pubkey_hex);
-    println!("  client_secret = {}…", &parsed.client_secret_hex[..8]);
+    println!("  client_secret = {}…", &parsed.client_secret_hex.as_str()[..8]);
     println!("  relays        = {:?}", parsed.relay_urls);
 
-    let client_pubkey_hex = nmp_nwc::crypto::client_pubkey_hex(&parsed.client_secret_hex)
+    let client_pubkey_hex = nmp_nwc::crypto::client_pubkey_hex(parsed.client_secret_hex.as_str())
         .expect("derive client pubkey");
     println!("  client_pubkey = {}", client_pubkey_hex);
 
@@ -93,7 +93,7 @@ fn probe_one(
         _ => Ok(()),
     };
 
-    let client_sk = SecretKey::from_hex(&parsed.client_secret_hex)
+    let client_sk = SecretKey::from_hex(parsed.client_secret_hex.as_str())
         .map_err(|e| format!("client secret: {e}"))?;
     let client_keys = Keys::new(client_sk);
     let wallet_pk = PublicKey::from_hex(&parsed.wallet_pubkey_hex)
@@ -113,7 +113,7 @@ fn probe_one(
     // 2. get_info + get_balance EVENTs.
     for method in [NwcMethod::GetInfo, NwcMethod::GetBalance] {
         let content = build::request_content(
-            &parsed.client_secret_hex,
+            parsed.client_secret_hex.as_str(),
             &parsed.wallet_pubkey_hex,
             &method,
             json!({}),
@@ -219,7 +219,11 @@ fn handle_text(
     }
 
     if let Some((event_id, response)) =
-        try_decode_relay_message_with_id(text, &parsed.wallet_pubkey_hex, &parsed.client_secret_hex)
+        try_decode_relay_message_with_id(
+            text,
+            &parsed.wallet_pubkey_hex,
+            parsed.client_secret_hex.as_str(),
+        )
     {
         println!(
             "  decoded NWC event_id={} result_type={} error={:?}",
