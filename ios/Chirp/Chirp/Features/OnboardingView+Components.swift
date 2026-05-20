@@ -14,25 +14,25 @@ extension OnboardingView {
 
             VStack(spacing: ChirpSpace.l) {
                 Button {
-                    withAnimation(.smooth(duration: 0.35)) { mode = .create }
+                    mode = .create
                 } label: {
                     Label("Create account", systemImage: "person.badge.plus")
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
                 }
-                .buttonStyle(ChirpGlassButtonStyle(prominent: true))
+                .buttonStyle(.borderedProminent)
                 .accessibilityIdentifier("onboarding-create-account-button")
 
                 Button {
-                    withAnimation(.smooth(duration: 0.35)) { mode = .signIn }
+                    mode = .signIn
                 } label: {
                     Label("I have an account", systemImage: "key.fill")
                         .font(.subheadline.weight(.medium))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
                 }
-                .buttonStyle(ChirpGlassButtonStyle())
+                .buttonStyle(.bordered)
             }
             .padding(.horizontal, ChirpSpace.l)
 
@@ -46,7 +46,7 @@ extension OnboardingView {
         VStack(spacing: 0) {
             HStack {
                 Button("Back") {
-                    withAnimation(.smooth(duration: 0.25)) { mode = .welcome }
+                    mode = .welcome
                 }
                 .font(.subheadline)
                 Spacer()
@@ -90,14 +90,12 @@ extension OnboardingView {
                         .frame(maxWidth: 280)
                         .padding(.vertical, 16)
                 }
-                .buttonStyle(ChirpGlassButtonStyle(prominent: true))
+                .buttonStyle(.borderedProminent)
                 .disabled(false) // always enabled, empty name → "Anonymous"
                 .accessibilityIdentifier("onboarding-submit-create-account-button")
             }
             .padding(.horizontal, ChirpSpace.l)
             .padding(.vertical, ChirpSpace.xl)
-            .chirpGlass(cornerRadius: ChirpSpace.radius)
-            .padding(.horizontal, ChirpSpace.l)
 
             Spacer()
         }
@@ -109,7 +107,7 @@ extension OnboardingView {
         VStack(spacing: 0) {
             HStack {
                 Button("Back") {
-                    withAnimation(.smooth(duration: 0.25)) { mode = .welcome }
+                    mode = .welcome
                 }
                 .font(.subheadline)
                 Spacer()
@@ -137,11 +135,10 @@ extension OnboardingView {
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 14)
                         }
-                        .buttonStyle(ChirpGlassButtonStyle(prominent: true))
+                        .buttonStyle(.borderedProminent)
                         .disabled(nsec.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                     .padding(ChirpSpace.l)
-                    .chirpGlass(cornerRadius: ChirpSpace.radius)
                     .padding(.horizontal, ChirpSpace.l)
 
                     Text("Or use a remote signer")
@@ -149,7 +146,7 @@ extension OnboardingView {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, ChirpSpace.l)
 
-                    nip46SignerCard
+                    nip46SignerSection
                 }
                 .padding(.vertical, ChirpSpace.l)
             }

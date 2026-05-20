@@ -10,8 +10,6 @@ struct RelaySettingsView: View {
     @State private var sheetRole = "both"
     @State private var isEditing = false
 
-    private let relayRoles = ["both", "read", "write"]
-
     var body: some View {
         List {
             if model.relayEditRows.isEmpty {
@@ -123,12 +121,6 @@ private struct RelayConfigRow: View {
                 .background(roleColor.opacity(0.12), in: Capsule())
         }
         .padding(.vertical, ChirpSpace.s)
-        .padding(.horizontal, ChirpSpace.m)
-        .chirpGlass(cornerRadius: ChirpSpace.radiusSmall, interactive: true)
-        .overlay(
-            RoundedRectangle(cornerRadius: ChirpSpace.radiusSmall, style: .continuous)
-                .strokeBorder(ChirpColor.hairline, lineWidth: 1)
-        )
     }
 
     private var roleColor: Color {
@@ -155,54 +147,44 @@ private struct RelayEditSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: ChirpSpace.xl) {
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: ChirpSpace.m) {
-                            ChirpSectionHeader(title: "Relay URL")
+            Form {
+                Section("Relay URL") {
+                    HStack(spacing: ChirpSpace.s) {
+                        Image(systemName: "antenna.radiowaves.left.and.right")
+                            .foregroundStyle(ChirpColor.accent)
+                            .font(.system(size: 15))
+                        TextField("wss://relay.example.com", text: $url)
+                            .font(ChirpFont.mono)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .keyboardType(.URL)
+                            .disabled(isEditing)
+                    }
+                }
 
-                            HStack(spacing: ChirpSpace.s) {
-                                Image(systemName: "antenna.radiowaves.left.and.right")
-                                    .foregroundStyle(ChirpColor.accent)
-                                    .font(.system(size: 15))
-                                TextField("wss://relay.example.com", text: $url)
-                                    .font(ChirpFont.mono)
-                                    .textInputAutocapitalization(.never)
-                                    .autocorrectionDisabled()
-                                    .keyboardType(.URL)
-                                    .disabled(isEditing)
-                            }
+                Section("Role") {
+                    Picker("Role", selection: $role) {
+                        ForEach(roles, id: \.self) { r in
+                            Text(r.capitalized).tag(r)
                         }
                     }
-                    .padding(.horizontal, ChirpSpace.l)
+                    .pickerStyle(.segmented)
+                }
 
-                    GlassCard {
-                        VStack(alignment: .leading, spacing: ChirpSpace.m) {
-                            ChirpSectionHeader(title: "Role")
-
-                            Picker("Role", selection: $role) {
-                                ForEach(roles, id: \.self) { r in
-                                    Text(r.capitalized).tag(r)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                        }
-                    }
-                    .padding(.horizontal, ChirpSpace.l)
-
-                    ChirpPrimaryButton(
-                        title: isEditing ? "Update relay" : "Add relay",
-                        systemImage: isEditing ? "checkmark.circle" : "plus.circle"
-                    ) {
+                Section {
+                    Button {
                         onSave()
                         dismiss()
+                    } label: {
+                        Label(
+                            isEditing ? "Update relay" : "Add relay",
+                            systemImage: isEditing ? "checkmark.circle" : "plus.circle"
+                        )
                     }
                     .disabled(trimmedURL.isEmpty)
-                    .opacity(trimmedURL.isEmpty ? 0.45 : 1.0)
-                    .padding(.horizontal, ChirpSpace.l)
                 }
-                .padding(.top, ChirpSpace.l)
             }
+            .scrollContentBackground(.hidden)
             .chirpScreenBackground()
             .navigationTitle(isEditing ? "Edit Relay" : "Add Relay")
             .navigationBarTitleDisplayMode(.inline)

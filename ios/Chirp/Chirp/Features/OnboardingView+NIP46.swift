@@ -3,16 +3,16 @@ import CoreImage
 
 extension OnboardingView {
 
-    // MARK: — Remote signer (NIP-46) card
+    // MARK: — Remote signer (NIP-46)
 
-    var nip46SignerCard: some View {
+    var nip46SignerSection: some View {
         VStack(alignment: .leading, spacing: ChirpSpace.m) {
             Text("Remote signer (NIP-46)")
                 .font(.caption)
 
             // QR code toggle
             Button {
-                withAnimation(.smooth) { showQR.toggle() }
+                showQR.toggle()
             } label: {
                 HStack {
                     Image(systemName: "qrcode")
@@ -48,7 +48,6 @@ extension OnboardingView {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity)
-                .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
             // Open in signer app — only when a compatible app is installed
@@ -113,7 +112,6 @@ extension OnboardingView {
         }
         .padding(.horizontal, ChirpSpace.l)
         .padding(.vertical, ChirpSpace.l)
-        .chirpGlass(cornerRadius: ChirpSpace.radius)
         .padding(.horizontal, ChirpSpace.l)
     }
 

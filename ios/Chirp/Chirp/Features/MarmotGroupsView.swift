@@ -81,8 +81,6 @@ struct MarmotGroupsView: View {
                 Text("Groups")
             }
         }
-        .animation(.smooth, value: store.groups.count)
-        .animation(.smooth, value: store.pendingWelcomes.count)
         .scrollContentBackground(.hidden)
     }
 
@@ -156,7 +154,7 @@ private struct GroupRow: View {
                     .foregroundStyle(.primary)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
-                    .chirpGlass(cornerRadius: 12)
+                    .background(.quaternary, in: Capsule())
                     .accessibilityLabel("\(group.unread) unread")
             }
         }
@@ -248,68 +246,50 @@ struct MarmotCreateGroupSheet: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                ChirpBackdrop()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        VStack(alignment: .leading, spacing: 12) {
-                            field("Group name", text: $name, placeholder: "Trusted circle")
-                            Divider()
-                            field("Description", text: $groupDescription,
-                                  placeholder: "Optional")
-                            Divider()
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Invitee npubs")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                TextEditor(text: $inviteeText)
-                                    .font(.body.monospaced())
-                                    .frame(minHeight: 90)
-                                    .textInputAutocapitalization(.never)
-                                    .autocorrectionDisabled()
-                                    .overlay(alignment: .topLeading) {
-                                        if inviteeText.isEmpty {
-                                            Text("npub1…, npub1… (comma or newline separated)")
-                                                .font(.body.monospaced())
-                                                .foregroundStyle(.secondary)
-                                                .allowsHitTesting(false)
-                                                .padding(.top, 8)
-                                        }
-                                    }
+            Form {
+                Section {
+                    field("Group name", text: $name, placeholder: "Trusted circle")
+                    field("Description", text: $groupDescription, placeholder: "Optional")
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Invitee npubs")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        TextEditor(text: $inviteeText)
+                            .font(.body.monospaced())
+                            .frame(minHeight: 90)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .overlay(alignment: .topLeading) {
+                                if inviteeText.isEmpty {
+                                    Text("npub1…, npub1… (comma or newline separated)")
+                                        .font(.body.monospaced())
+                                        .foregroundStyle(.secondary)
+                                        .allowsHitTesting(false)
+                                        .padding(.top, 8)
+                                }
                             }
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .chirpGlass(cornerRadius: ChirpSpace.radius)
-                        .padding(.horizontal, 16)
-
-                        if let errorMessage {
-                            Text(errorMessage)
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                                .padding(.horizontal, 16)
-                        }
-
-                        Button {
-                            create()
-                        } label: {
-                            HStack {
-                                Image(systemName: "lock.shield.fill")
-                                Text("Create group")
-                            }
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(trimmedName.isEmpty || busy)
-                        .opacity(trimmedName.isEmpty || busy ? 0.45 : 1.0)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 32)
                     }
-                    .padding(.top, 16)
+                }
+
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+
+                Section {
+                    Button {
+                        create()
+                    } label: {
+                        Label("Create group", systemImage: "lock.shield.fill")
+                    }
+                    .disabled(trimmedName.isEmpty || busy)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .chirpScreenBackground()
             .navigationTitle("New Group")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

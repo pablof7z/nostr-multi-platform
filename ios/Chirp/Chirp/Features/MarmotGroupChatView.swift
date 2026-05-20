@@ -86,7 +86,7 @@ struct MarmotGroupChatView: View {
                 }
                 .onChange(of: messages.count) { _, _ in
                     if let last = messages.last {
-                        withAnimation(.smooth) { proxy.scrollTo(last.id, anchor: .bottom) }
+                        proxy.scrollTo(last.id, anchor: .bottom)
                     }
                 }
             }
@@ -129,9 +129,10 @@ struct MarmotGroupChatView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .chirpGlass(cornerRadius: 18)
-        .padding(.horizontal, 12)
-        .padding(.bottom, 8)
+        .background(ChirpColor.bg)
+        .overlay(alignment: .top) {
+            Divider()
+        }
     }
 
     private func sendDraft() {
@@ -217,7 +218,10 @@ private struct MarmotMessageRow: View {
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 14)
-        .chirpGlass(cornerRadius: 18)
+        .overlay(alignment: .bottom) {
+            Divider()
+                .padding(.leading, 44)
+        }
     }
 
     private var colorHex: String {

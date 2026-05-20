@@ -129,7 +129,6 @@ struct RelayDetailView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .chirpGlass(cornerRadius: 12)
         }
     }
 
@@ -193,7 +192,6 @@ struct RelayDetailView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .chirpGlass(cornerRadius: 12)
         }
     }
 
@@ -213,7 +211,6 @@ struct RelayDetailView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .chirpGlass(cornerRadius: 12)
         }
     }
 
@@ -285,7 +282,6 @@ private struct RelayMetricTile: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
-        .chirpGlass(cornerRadius: 12)
     }
 }
 

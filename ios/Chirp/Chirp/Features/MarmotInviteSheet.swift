@@ -28,66 +28,52 @@ struct MarmotInviteSheet: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                ChirpBackdrop()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Inviting to \(group.name.isEmpty ? "this group" : group.name)")
-                            .font(.callout)
+            Form {
+                Section {
+                    Text("Inviting to \(group.name.isEmpty ? "this group" : group.name)")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Invitee npubs")
+                            .font(.caption)
                             .foregroundStyle(.secondary)
-                            .padding(.horizontal, 16)
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Invitee npubs")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            TextEditor(text: $inviteeText)
-                                .font(.body.monospaced())
-                                .frame(minHeight: 120)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .overlay(alignment: .topLeading) {
-                                    if inviteeText.isEmpty {
-                                        Text("npub1…, npub1… (comma or newline separated)")
-                                            .font(.body.monospaced())
-                                            .foregroundStyle(.secondary)
-                                            .allowsHitTesting(false)
-                                            .padding(.top, 8)
-                                    }
+                        TextEditor(text: $inviteeText)
+                            .font(.body.monospaced())
+                            .frame(minHeight: 120)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .overlay(alignment: .topLeading) {
+                                if inviteeText.isEmpty {
+                                    Text("npub1…, npub1… (comma or newline separated)")
+                                        .font(.body.monospaced())
+                                        .foregroundStyle(.secondary)
+                                        .allowsHitTesting(false)
+                                        .padding(.top, 8)
                                 }
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .chirpGlass(cornerRadius: ChirpSpace.radius)
-                        .padding(.horizontal, 16)
-
-                        if let errorMessage {
-                            Text(errorMessage)
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                                .padding(.horizontal, 16)
-                        }
-
-                        Button {
-                            sendInvites()
-                        } label: {
-                            HStack {
-                                Image(systemName: "person.badge.plus")
-                                Text("Send invites")
                             }
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(invitees.isEmpty || busy)
-                        .opacity(invitees.isEmpty || busy ? 0.45 : 1.0)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 32)
                     }
-                    .padding(.top, 16)
+                }
+
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+
+                Section {
+                    Button {
+                        sendInvites()
+                    } label: {
+                        Label("Send invites", systemImage: "person.badge.plus")
+                    }
+                    .disabled(invitees.isEmpty || busy)
                 }
             }
+            .scrollContentBackground(.hidden)
+            .chirpScreenBackground()
             .navigationTitle("Invite")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

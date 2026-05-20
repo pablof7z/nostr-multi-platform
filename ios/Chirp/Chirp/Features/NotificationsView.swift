@@ -4,99 +4,87 @@ struct NotificationsView: View {
     @EnvironmentObject private var model: KernelModel
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: ChirpSpace.l) {
+        List {
+            Section {
                 illustrationBlock
-                typeGrid
             }
-            .padding(.horizontal, ChirpSpace.l)
-            .padding(.top, ChirpSpace.m)
-            .padding(.bottom, ChirpSpace.xl)
-        }
-        .chirpScreenBackground()
-        .navigationTitle("Activity")
-        .navigationBarTitleDisplayMode(.large)
-    }
 
-    private var illustrationBlock: some View {
-        VStack(spacing: ChirpSpace.m) {
-            Image(systemName: "bell.badge")
-                .font(.system(size: 28, weight: .semibold))
-                .symbolRenderingMode(.hierarchical)
-
-            VStack(spacing: ChirpSpace.s) {
-                Text("No activity yet")
-                    .font(.title3.weight(.semibold))
-                    .multilineTextAlignment(.center)
-
-                Text("Mentions, replies, reactions, and boosts will appear here when the kernel projects them.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(ChirpSpace.xl)
-        .chirpGlass(cornerRadius: ChirpSpace.radius)
-    }
-
-    private var typeGrid: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Activity types")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-
-            LazyVGrid(
-                columns: [GridItem(.flexible()), GridItem(.flexible())],
-                spacing: 12
-            ) {
-                ActivityTypeCard(
+            Section("What to expect") {
+                ActivityTypeRow(
                     icon: "at",
                     label: "Mentions",
                     description: "When others tag you in a note"
                 )
-                ActivityTypeCard(
+                ActivityTypeRow(
                     icon: "heart.fill",
                     label: "Reactions",
-                    description: "Likes and custom reactions"
+                    description: "Likes and custom emoji reactions"
                 )
-                ActivityTypeCard(
+                ActivityTypeRow(
                     icon: "arrow.2.squarepath",
                     label: "Reposts",
                     description: "Your notes boosted by followers"
                 )
-                ActivityTypeCard(
+                ActivityTypeRow(
                     icon: "bolt.fill",
                     label: "Zaps",
                     description: "Lightning payments sent to you"
                 )
             }
         }
-        .padding(ChirpSpace.l)
-        .chirpGlass(cornerRadius: ChirpSpace.radius)
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .chirpScreenBackground()
+        .navigationTitle("Activity")
+        .navigationBarTitleDisplayMode(.large)
+    }
+
+    private var illustrationBlock: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "bell.badge")
+                .font(.system(size: 30))
+                .symbolRenderingMode(.hierarchical)
+
+            VStack(spacing: 8) {
+                Text("Your Activity Feed")
+                    .font(.title2)
+                    .multilineTextAlignment(.center)
+
+                Text("Mentions, reactions, reposts and zaps will all live here in one stream.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Text("Coming in Chirp v1 M7")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
     }
 }
 
-private struct ActivityTypeCard: View {
+private struct ActivityTypeRow: View {
     let icon: String
     let label: String
     let description: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.tint)
-            Text(label)
-                .font(.callout.weight(.semibold))
-            Text(description)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .lineLimit(3)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(label)
+                    .font(.callout.weight(.semibold))
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

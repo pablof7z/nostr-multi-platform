@@ -34,7 +34,6 @@ struct ThreadScreen: View {
             // longer visible.  Symmetric with openThread in .task above.
             model.closeThread(eventID: eventID)
         }
-        .animation(.smooth(duration: 0.3), value: thread == nil)
         .sheet(item: $replyTargetID) { target in
             ComposeView(replyToID: target.eventID)
         }
@@ -113,9 +112,7 @@ struct ThreadScreen: View {
         .onAppear {
             // Scroll to focused event once view appears
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                withAnimation(.smooth(duration: 0.4)) {
-                    proxy.scrollTo(thread.focusedEventId, anchor: .center)
-                }
+                proxy.scrollTo(thread.focusedEventId, anchor: .center)
             }
         }
         } // ScrollViewReader
@@ -135,7 +132,10 @@ struct ThreadScreen: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 16)
-        .chirpGlass(cornerRadius: 16, interactive: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
         .contentShape(Rectangle())
         .onTapGesture {
             // No kernel command exists to expand context yet — haptic feedback only.
