@@ -3303,6 +3303,7 @@ dependencies = [
  "nmp-core",
  "serde",
  "serde_json",
+ "zeroize",
 ]
 
 [[package]]

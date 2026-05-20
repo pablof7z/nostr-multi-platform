@@ -83,8 +83,13 @@ impl KernelBridge {
     }
 
     /// Sign in with an existing `nsec…` / hex secret.
+    ///
+    /// The secret is wrapped in [`zeroize::Zeroizing`] before it enters the
+    /// actor command so the plaintext nsec is wiped on drop.
     pub fn sign_in_nsec(&self, secret: String) {
-        let _ = self.tx.send(ActorCommand::SignInNsec { secret });
+        let _ = self.tx.send(ActorCommand::SignInNsec {
+            secret: zeroize::Zeroizing::new(secret),
+        });
     }
 
     /// (Re)open the following-timeline for the active account.

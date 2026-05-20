@@ -142,7 +142,9 @@ pub(super) fn dispatch_command(
             Some(outbound)
         }
         ActorCommand::SignInNsec { secret } => {
-            let outbound = commands::sign_in_nsec(identity, kernel, &secret, relays_ready);
+            // `secret` is `Zeroizing<String>`; pass the borrowed `&str` and let
+            // the wrapper wipe the plaintext when it drops at end of scope.
+            let outbound = commands::sign_in_nsec(identity, kernel, secret.as_str(), relays_ready);
             update_nsec_slot(identity, active_local_nsec);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)

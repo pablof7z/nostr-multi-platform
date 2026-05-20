@@ -112,7 +112,13 @@ pub enum ActorCommand {
     OpenFirehoseTag { tag: String },
     /// T66a identity — import an nsec/hex secret, add to the actor-local
     /// identity store, bind it as the active signer, retarget the timeline.
-    SignInNsec { secret: String },
+    ///
+    /// The `secret` is carried as [`zeroize::Zeroizing<String>`] so the
+    /// plaintext nsec is wiped from memory the instant the command is dropped
+    /// — the in-flight window between FFI ingest and key parsing is minimized.
+    SignInNsec {
+        secret: zeroize::Zeroizing<String>,
+    },
     /// T66a identity — parse a `bunker://` NIP-46 URI. Transport is NOT yet
     /// wired (D0 forbids `nmp-core -> nmp-signers`); this validates the URI
     /// shape and surfaces a `last_error_toast` directing the user to nsec.

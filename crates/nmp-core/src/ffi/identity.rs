@@ -16,7 +16,12 @@ pub extern "C" fn nmp_app_signin_nsec(app: *mut NmpApp, secret: *const c_char) {
     let Some(app) = app_ref(app) else {
         return;
     };
-    let Some(secret) = c_string_argument(secret) else {
+    // Wrap the plaintext nsec in `Zeroizing` the instant it is copied out of
+    // the C string. The nsec inevitably crosses the FFI boundary as bytes
+    // (it MUST be imported somehow); `Zeroizing` does not eliminate that
+    // transit, but it guarantees this Rust-side copy is wiped on drop —
+    // including the path where `send_cmd` fails and `secret` is dropped here.
+    let Some(secret) = c_string_argument(secret).map(zeroize::Zeroizing::new) else {
         return;
     };
     app.send_cmd(ActorCommand::SignInNsec { secret });
