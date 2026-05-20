@@ -8,8 +8,9 @@ use super::*;
 
 // ── Seed accounts (test fixtures only) ──────────────────────────────────────
 
-#[derive(Clone)]
+#[cfg(test)]
 #[allow(dead_code)]
+#[derive(Clone)]
 pub(super) struct SeedAccount {
     pub(super) name: &'static str,
     pub(super) pubkey: &'static str,

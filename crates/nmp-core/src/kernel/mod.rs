@@ -769,7 +769,6 @@ impl Kernel {
             }
             RelayRole::Indexer => crate::actor::has_role(row_role, "indexer"),
             RelayRole::Wallet => false,
-            RelayRole::Bunker => false,
         };
         // `mut` is required only under `#[cfg(test)]` where the fallback
         // block may reassign `urls`; non-test builds never mutate it.
@@ -786,7 +785,6 @@ impl Kernel {
                 RelayRole::Content => vec!["wss://relay.damus.io".to_string()],
                 RelayRole::Indexer => vec!["wss://purplepag.es".to_string()],
                 RelayRole::Wallet => Vec::new(),
-                RelayRole::Bunker => Vec::new(),
             };
         }
         urls

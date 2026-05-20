@@ -49,11 +49,9 @@ pub(crate) const INDEXER_RELAY_URL: &str = BOOTSTRAP_DISCOVERY_RELAYS[1];
 pub(crate) const TEST_PUBKEY: &str =
     "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52";
 #[cfg(test)]
-#[allow(dead_code)]
 pub(crate) const FIATJAF_PUBKEY: &str =
     "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 #[cfg(test)]
-#[allow(dead_code)]
 pub(crate) const JB55_PUBKEY: &str =
     "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245";
 
@@ -77,12 +75,6 @@ pub(crate) enum RelayRole {
     // active when the wallet feature is enabled.
     #[cfg_attr(not(feature = "wallet"), allow(dead_code))]
     Wallet,
-    /// NIP-46 bunker relay. Spawned on demand when a bunker is configured;
-    /// NOT included in `all()` so it does not block the startup bootstrap gate.
-    // Pre-wiring: not yet constructed — bunker relays are managed by
-    // nmp-signer-broker directly; relay_mgmt integration is future work.
-    #[allow(dead_code)]
-    Bunker,
 }
 
 impl RelayRole {
@@ -97,7 +89,6 @@ impl RelayRole {
             Self::Content => "content",
             Self::Indexer => "indexer",
             Self::Wallet => "wallet",
-            Self::Bunker => "bunker",
         }
     }
 
@@ -107,7 +98,6 @@ impl RelayRole {
             Self::Content => BOOTSTRAP_DISCOVERY_RELAYS[0],
             Self::Indexer => BOOTSTRAP_DISCOVERY_RELAYS[1],
             Self::Wallet => "",
-            Self::Bunker => "",
         }
     }
 
