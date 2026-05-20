@@ -16,7 +16,6 @@ members = [
     "crates/nmp-nip29",
     "crates/nmp-nip42",
     "crates/nmp-nip42-types",
-    "crates/nmp-nip51",
     "crates/nmp-nip57",
     "crates/nmp-nip59",
     "crates/nmp-nip77",
@@ -64,7 +63,7 @@ version = "0.1.0"
 #   nmp-core, nmp-nip01, nmp-marmot, nmp-signers, nmp-nip77.
 #   Still copy-pasting versions: nmp-nip59, nmp-nwc, nmp-nostr-lmdb,
 #   nmp-signer-broker, nmp-testing, nmp-repl, nmp-content, nmp-reactions,
-#   nmp-threading, nmp-nip22/23/29/42/51/57, nmp-cli, nmp-codegen, etc.
+#   nmp-threading, nmp-nip22/23/29/42/57, nmp-cli, nmp-codegen, etc.
 [workspace.dependencies]
 nostr = "0.44"
 serde = "1.0"
