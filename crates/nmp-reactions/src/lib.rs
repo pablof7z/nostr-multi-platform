@@ -4,7 +4,7 @@
 //!
 //! Implements the design recommendation in `docs/design/kind-wrappers.md` §3:
 //! the read side is a pure `try_from_event` decoder producing an immutable
-//! [`SocialRecord`]; the write side is a set of builders that produce an
+//! [`ReactionRecord`]; the write side is a set of builders that produce an
 //! `UnsignedEvent`. Read + write share no mutable state — there is no
 //! NDK-style setter (the D4 violation `kind-wrappers.md` §9 #2 forbids).
 //!
@@ -19,7 +19,7 @@
 //!
 //! - [`kinds`] — `KIND_REACTION = 7`, `KIND_REPOST = 6`,
 //!   `KIND_GENERIC_REPOST = 16`.
-//! - [`decode`] — [`SocialRecord`] (single struct, [`SocialKind`]-tagged) +
+//! - [`decode`] — [`ReactionRecord`] (single struct, [`ReactionKind`]-tagged) +
 //!   `try_from_event` / `try_from_kernel_event` through a shared decode core.
 //! - [`build`] — `Reaction::to_event(...)` / `Reaction::to_address(...)` /
 //!   `Repost::of(...)` / `GenericRepost::of(...)` → `UnsignedEvent`, with a
@@ -50,13 +50,13 @@ pub use build::{
     RepostBuilder,
 };
 pub use decode::{
-    try_from_event, try_from_kernel_event, EmojiRef, ReactionTarget, SocialKind, SocialRecord,
+    try_from_event, try_from_kernel_event, EmojiRef, ReactionTarget, ReactionKind, ReactionRecord,
 };
 pub use domain::{
     decode_and_route, get, list_by_reactor, list_for_target, reaction_summary, ReactionSummary,
     ReactionsDomain, NAMESPACE,
 };
-pub use kinds::{KIND_GENERIC_REPOST, KIND_REACTION, KIND_REPOST, SOCIAL_KINDS};
+pub use kinds::{KIND_GENERIC_REPOST, KIND_REACTION, KIND_REPOST, REACTION_KINDS};
 pub use relations::{RelationSpecs, Relations};
 pub use view::{
     ReactionAccumulator, ReactionSummaryPayload, ReactionSummarySpec, ReactionSummaryView,

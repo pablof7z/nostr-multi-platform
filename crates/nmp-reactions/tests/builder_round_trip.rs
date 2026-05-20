@@ -5,7 +5,7 @@
 mod common;
 
 use common::stored;
-use nmp_relations::{try_from_event, GenericRepost, Reaction, ReactionTarget, Repost, SocialKind};
+use nmp_relations::{try_from_event, GenericRepost, Reaction, ReactionTarget, Repost, ReactionKind};
 
 const AUTHOR: &str = "author-0000000000000000000000000000000000000000000000000000000000";
 const TARGET: &str = "target-0000000000000000000000000000000000000000000000000000000000";
@@ -32,7 +32,7 @@ fn reaction_round_trip_preserves_content_target_emoji() {
     assert_eq!(r.target, ReactionTarget::Event(TARGET.to_string()));
     assert_eq!(r.target_author.as_deref(), Some(TARGET_AUTHOR));
     match r.kind {
-        SocialKind::Reaction { content, emoji } => {
+        ReactionKind::Reaction { content, emoji } => {
             assert_eq!(content, ":soapbox:");
             let e = emoji.expect("emoji preserved");
             assert_eq!(e.shortcode, "soapbox");
@@ -59,7 +59,7 @@ fn repost_round_trip_preserves_embedded_json() {
     );
     let r = try_from_event(&event).unwrap();
     match r.kind {
-        SocialKind::Repost { embedded } => assert_eq!(embedded, json),
+        ReactionKind::Repost { embedded } => assert_eq!(embedded, json),
         _ => panic!("expected Repost"),
     }
 }
@@ -79,7 +79,7 @@ fn generic_repost_round_trip_preserves_original_kind() {
     );
     let r = try_from_event(&event).unwrap();
     match r.kind {
-        SocialKind::GenericRepost { original_kind, .. } => {
+        ReactionKind::GenericRepost { original_kind, .. } => {
             assert_eq!(original_kind, Some(30023));
         }
         _ => panic!("expected GenericRepost"),

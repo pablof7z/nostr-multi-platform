@@ -27,4 +27,4 @@ pub const KIND_GENERIC_REPOST: u32 = 16;
 /// The complete set of kinds this crate decodes / ingests. Order is the
 /// canonical `[7, 6, 16]` the task brief and the `DomainModule::ingest_kinds`
 /// contract use.
-pub const SOCIAL_KINDS: &[u32] = &[KIND_REACTION, KIND_REPOST, KIND_GENERIC_REPOST];
+pub const REACTION_KINDS: &[u32] = &[KIND_REACTION, KIND_REPOST, KIND_GENERIC_REPOST];

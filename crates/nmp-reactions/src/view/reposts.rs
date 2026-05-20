@@ -10,7 +10,7 @@ use nmp_core::substrate::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::decode::{ReactionTarget, SocialRecord};
+use crate::decode::{ReactionTarget, ReactionRecord};
 use crate::kinds::{KIND_GENERIC_REPOST, KIND_REPOST};
 
 use super::accumulator::{ReactionAccumulator, ReactionViewDelta};
@@ -28,7 +28,7 @@ pub enum RepostsSpec {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct RepostsPayload {
     /// kind:6 / kind:16 records only, newest-first.
-    pub reposts: Vec<SocialRecord>,
+    pub reposts: Vec<ReactionRecord>,
 }
 
 /// Spec-scoped state. The shared accumulator keys on `event_id`; the scope

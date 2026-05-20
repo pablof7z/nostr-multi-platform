@@ -1,6 +1,6 @@
 //! Decoder half (read side) per `docs/design/kind-wrappers.md` §3.1.
 //!
-//! Pure, allocation-bounded, no I/O. Returns the typed [`SocialRecord`] an app
+//! Pure, allocation-bounded, no I/O. Returns the typed [`ReactionRecord`] an app
 //! views read instead of re-parsing tag arrays in hot paths (D8).
 //!
 //! Decoder name is the uniform `try_from_event` per PD-010 — every NMP
@@ -19,7 +19,7 @@
 //!
 //! Per `kind-wrappers.md` §9 anti-pattern #3 ("one-class-many-kinds with a
 //! `static kinds[]` and `kind`-discriminated branching inside getters"), the
-//! per-kind tail is modelled as a closed [`SocialKind`] enum **on an immutable
+//! per-kind tail is modelled as a closed [`ReactionKind`] enum **on an immutable
 //! record**, not as branching getters over a mutable tag bag. There is exactly
 //! one decoder function (`decode_borrowed`); the enum is data, not dispatch.
 //! Two records behind an enum was the considered alternative — rejected because
@@ -49,10 +49,10 @@ pub enum ReactionTarget {
     Address(NaddrCoord),
 }
 
-/// The per-kind payload tail. Shared fields live on [`SocialRecord`]; this enum
+/// The per-kind payload tail. Shared fields live on [`ReactionRecord`]; this enum
 /// is the only thing that differs by kind.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub enum SocialKind {
+pub enum ReactionKind {
     /// kind:7 — `content` is `"+"`, `"-"`, an emoji, or a `:shortcode:`.
     Reaction {
         /// The reaction string verbatim (NIP-25 requires it non-empty; we
@@ -95,7 +95,7 @@ pub struct EmojiRef {
 /// because views sort/filter by `created_at` and occasionally need unknown-tag
 /// access without re-fetching the raw event.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct SocialRecord {
+pub struct ReactionRecord {
     /// Hex event id of *this* reaction/repost (its own immutable identity —
     /// the primary key, since kinds 7/6/16 are regular, not replaceable).
     pub event_id: String,
@@ -108,16 +108,16 @@ pub struct SocialRecord {
     /// `created_at` from the event header (unix seconds). Always set.
     pub created_at: u64,
     /// Per-kind payload tail.
-    pub kind: SocialKind,
+    pub kind: ReactionKind,
     /// Raw tags preserved verbatim for callers needing unknown-tag access.
     pub tags: Vec<Vec<String>>,
 }
 
-impl SocialRecord {
+impl ReactionRecord {
     /// `true` for kind:7 reactions.
     #[must_use]
     pub fn is_reaction(&self) -> bool {
-        matches!(self.kind, SocialKind::Reaction { .. })
+        matches!(self.kind, ReactionKind::Reaction { .. })
     }
 
     /// `true` for kind:6 / kind:16 reposts.
@@ -125,7 +125,7 @@ impl SocialRecord {
     pub fn is_repost(&self) -> bool {
         matches!(
             self.kind,
-            SocialKind::Repost { .. } | SocialKind::GenericRepost { .. }
+            ReactionKind::Repost { .. } | ReactionKind::GenericRepost { .. }
         )
     }
 
@@ -133,18 +133,18 @@ impl SocialRecord {
     #[must_use]
     pub fn reaction_content(&self) -> Option<&str> {
         match &self.kind {
-            SocialKind::Reaction { content, .. } => Some(content.as_str()),
+            ReactionKind::Reaction { content, .. } => Some(content.as_str()),
             _ => None,
         }
     }
 }
 
-/// Decode a stored event into a [`SocialRecord`].
+/// Decode a stored event into a [`ReactionRecord`].
 ///
 /// Returns `None` when `event.kind` is not in `{7, 6, 16}`. All target/`p`/
 /// `emoji`/`k` tags are optional at decode time (the wire can be sloppy); the
 /// builders in [`crate::build`] enforce the NIP invariants on the write side.
-pub fn try_from_event(event: &StoredEvent) -> Option<SocialRecord> {
+pub fn try_from_event(event: &StoredEvent) -> Option<ReactionRecord> {
     let raw = event.raw.as_ref();
     decode_borrowed(
         &raw.id,
@@ -163,7 +163,7 @@ pub fn try_from_event(event: &StoredEvent) -> Option<SocialRecord> {
 /// event; per D8 (zero per-event alloc after warmup) it must not allocate an
 /// intermediate `RawEvent` + `Arc`. The only allocations are the owned
 /// `String`s the immutable record output unavoidably owns.
-pub fn try_from_kernel_event(event: &KernelEvent) -> Option<SocialRecord> {
+pub fn try_from_kernel_event(event: &KernelEvent) -> Option<ReactionRecord> {
     decode_borrowed(
         &event.id,
         &event.author,
@@ -183,29 +183,29 @@ fn decode_borrowed(
     created_at: u64,
     tags: &[Vec<String>],
     content: &str,
-) -> Option<SocialRecord> {
-    let social_kind = match kind {
-        KIND_REACTION => SocialKind::Reaction {
+) -> Option<ReactionRecord> {
+    let reaction_kind = match kind {
+        KIND_REACTION => ReactionKind::Reaction {
             content: content.to_string(),
             emoji: extract_emoji(tags),
         },
-        KIND_REPOST => SocialKind::Repost {
+        KIND_REPOST => ReactionKind::Repost {
             embedded: content.to_string(),
         },
-        KIND_GENERIC_REPOST => SocialKind::GenericRepost {
+        KIND_GENERIC_REPOST => ReactionKind::GenericRepost {
             embedded: content.to_string(),
             original_kind: first_tag_value(tags, "k").and_then(|s| s.parse::<u32>().ok()),
         },
         _ => return None,
     };
 
-    Some(SocialRecord {
+    Some(ReactionRecord {
         event_id: id.to_string(),
         author: pubkey.to_string(),
         target: extract_target(tags),
         target_author: last_tag_value(tags, "p").map(str::to_string),
         created_at,
-        kind: social_kind,
+        kind: reaction_kind,
         tags: tags.to_vec(),
     })
 }
@@ -313,7 +313,7 @@ mod tests {
         let r = try_from_event(&event).expect("kind:6 decodes");
         assert!(r.is_repost());
         match r.kind {
-            SocialKind::Repost { embedded } => assert_eq!(embedded, original_json),
+            ReactionKind::Repost { embedded } => assert_eq!(embedded, original_json),
             _ => panic!("expected Repost"),
         }
     }
@@ -330,7 +330,7 @@ mod tests {
         );
         let r = try_from_event(&event).expect("kind:16 decodes");
         match r.kind {
-            SocialKind::GenericRepost { original_kind, .. } => {
+            ReactionKind::GenericRepost { original_kind, .. } => {
                 assert_eq!(original_kind, Some(30023));
             }
             _ => panic!("expected GenericRepost"),
@@ -342,7 +342,7 @@ mod tests {
         let event = make_stored(16, vec![vec!["k".into(), "not-a-kind".into()]], "");
         let r = try_from_event(&event).unwrap();
         match r.kind {
-            SocialKind::GenericRepost { original_kind, .. } => assert_eq!(original_kind, None),
+            ReactionKind::GenericRepost { original_kind, .. } => assert_eq!(original_kind, None),
             _ => panic!("expected GenericRepost"),
         }
     }
@@ -404,7 +404,7 @@ mod tests {
         );
         let r = try_from_event(&event).unwrap();
         match r.kind {
-            SocialKind::Reaction { content, emoji } => {
+            ReactionKind::Reaction { content, emoji } => {
                 assert_eq!(content, ":soapbox:");
                 let e = emoji.expect("emoji extracted");
                 assert_eq!(e.shortcode, "soapbox");
