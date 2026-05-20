@@ -282,8 +282,13 @@ impl Kernel {
         relay_url: &str,
         sub_id: &str,
     ) -> Option<String> {
+        // T-relay-url-normalize: `wire_subs` is keyed by the canonical relay
+        // URL (the planner boundary and the EOSE handler both canonicalize).
+        // Canonicalize the query so a test may pass any URL spelling.
+        let key = crate::relay::canonical_relay_url(relay_url)
+            .unwrap_or_else(|| relay_url.to_string());
         self.wire_subs
-            .get(&(relay_url.to_string(), sub_id.to_string()))
+            .get(&(key, sub_id.to_string()))
             .map(|s| s.state.clone())
     }
 

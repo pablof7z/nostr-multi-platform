@@ -85,6 +85,21 @@ impl Kernel {
         relay_url: &str,
         text: &str,
     ) -> Vec<OutboundMessage> {
+        // T-relay-url-normalize: the canonical form of the delivering URL,
+        // used ONLY as the `wire_subs` / `persistent_subs` map key (the EOSE
+        // and CLOSED arms below). Both registration paths — `req_for_relay`
+        // and the planner boundary `register_planner_wire_frames` — write
+        // those maps under the canonical key, so the lookup here must
+        // canonicalize to match. Without it a follow-feed sub registered with
+        // a non-canonical kind:10002 URL would never satisfy
+        // `is_persistent_sub` and would be wrongly auto-CLOSEd on EOSE.
+        // The raw `relay_url` is deliberately left unchanged for the AUTH
+        // gate / publish-engine / CLOSED classifier paths: NIP-42
+        // replay-protection ties the AUTH response to the exact URL the relay
+        // used, and those paths key their own per-URL state on the delivering
+        // form. Falls back to the raw string for non-ws/wss inputs.
+        let wire_key_url = crate::relay::canonical_relay_url(relay_url)
+            .unwrap_or_else(|| relay_url.to_string());
         let Ok(value) = serde_json::from_str::<Value>(text) else {
             self.log(format!("unparseable relay frame: {}", truncate(text, 120)));
             return Vec::new();
@@ -120,8 +135,8 @@ impl Kernel {
                 let keep_live = sub_id == "seed-timeline"
                     || sub_id.starts_with("seed-timeline-")
                     || sub_id.starts_with("diag-firehose-")
-                    || self.is_persistent_sub(relay_url, sub_id);
-                let wire_key = (relay_url.to_string(), sub_id.to_string());
+                    || self.is_persistent_sub(&wire_key_url, sub_id);
+                let wire_key = (wire_key_url.clone(), sub_id.to_string());
                 if let Some(sub) = self.wire_subs.get_mut(&wire_key) {
                     sub.eose_at = Some(Instant::now());
                     if keep_live {
@@ -217,8 +232,11 @@ impl Kernel {
                 // #170: relay-scoped — a relay-initiated CLOSED only kills the
                 // sub on the relay that sent it; a sibling relay carrying the
                 // same sub_id keeps its row.
+                // T-relay-url-normalize: evict by the canonical key — the row
+                // was registered under the canonical URL (req_for_relay /
+                // planner boundary both canonicalize).
                 self.wire_subs
-                    .remove(&(relay_url.to_string(), sub_id.clone()));
+                    .remove(&(wire_key_url.clone(), sub_id.clone()));
                 if sub_id.starts_with("thread-ids-") {
                     self.thread_ids_inflight = false;
                 }
@@ -301,9 +319,17 @@ impl Kernel {
         self.events_since_last_update = self.events_since_last_update.saturating_add(1);
         self.last_event_at = Some(now);
         self.first_event_at.get_or_insert(now);
+        // T-relay-url-normalize: the `wire_subs` row is keyed by the canonical
+        // relay URL (req_for_relay / planner boundary). Canonicalize the
+        // delivering URL for the lookup so the per-sub `events_rx` /
+        // `last_event_at` diagnostics land on the right row regardless of the
+        // delivering URL's spelling. The raw `relay_url` is preserved for
+        // store provenance below.
+        let wire_key_url = crate::relay::canonical_relay_url(relay_url)
+            .unwrap_or_else(|| relay_url.to_string());
         if let Some(sub) = self
             .wire_subs
-            .get_mut(&(relay_url.to_string(), sub_id.to_string()))
+            .get_mut(&(wire_key_url, sub_id.to_string()))
         {
             if sub.state == "opening" {
                 sub.state = "live".to_string();

@@ -86,10 +86,14 @@ fn replay_on_reconnect_is_noop_without_current_plan() {
 
 /// G1 — after a sub-shape is in `current_plan`, a reconnect produces a
 /// fresh REQ targeting the reconnected URL.
+///
+/// Uses the canonical URL form (no empty-path trailing slash): `req_for_relay`
+/// records `WireSub.relay_url` under the canonical key (T-relay-url-normalize),
+/// so the repopulated-wire-sub assertion below compares against that form.
 #[test]
 fn replay_on_reconnect_reissues_req_for_url() {
     let (mut kernel, relay_url) =
-        kernel_with_one_sub(RelayRole::Content, "a", "wss://r1.example/", 1);
+        kernel_with_one_sub(RelayRole::Content, "a", "wss://r1.example", 1);
 
     // Simulate disconnect → reconnect at the actor seam: the actor saw
     // `Closed`, the kernel evicted all wire_subs for the role at T133

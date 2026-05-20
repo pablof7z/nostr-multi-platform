@@ -38,7 +38,11 @@ use tungstenite::Message;
 
 use crate::planner::{InterestId, InterestLifecycle};
 
-const RELAY: &str = "wss://relay.eon-test/";
+// Canonical URL form (no empty-path trailing slash). The kernel keys
+// `wire_subs` / `persistent_subs` — and the EOSE-close `OutboundMessage` —
+// by the canonical relay URL (T-relay-url-normalize: `req_for_relay`, the
+// planner boundary, and the EOSE/CLOSED handler all canonicalize).
+const RELAY: &str = "wss://relay.eon-test";
 const WRITE_R1: &str = "wss://write-r1.eon-test";
 
 // ─── EOSE ────────────────────────────────────────────────────────────────────

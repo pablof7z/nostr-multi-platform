@@ -274,8 +274,12 @@ fn closed_for_unknown_sub_is_graceful_noop() {
 #[test]
 fn closed_eviction_is_relay_scoped_sibling_survives() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    let url_a = "wss://a.closed.example/";
-    let url_b = "wss://b.closed.example/";
+    // Canonical URL form (no empty-path trailing slash). `req_for_relay` and
+    // the CLOSED handler both canonicalize the relay URL before keying
+    // `wire_subs` (T-relay-url-normalize), so the relay-scoped-keying
+    // assertions below operate on the canonical form.
+    let url_a = "wss://a.closed.example";
+    let url_b = "wss://b.closed.example";
     let shared = "sub-shared";
 
     seed_wire_sub(&mut kernel, RelayRole::Content, url_a, shared);

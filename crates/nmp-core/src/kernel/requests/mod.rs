@@ -138,6 +138,20 @@ impl Kernel {
     /// the wire — the `RelayRole` only labels the diagnostic lane the frame
     /// belongs to. The recorded `WireSub` remembers `relay_url` so the EOSE
     /// CLOSE re-routes to the same socket the REQ went out on.
+    ///
+    /// T-relay-url-normalize: the relay URL is canonicalized before it is used
+    /// as the `wire_subs` key and the stored `WireSub.relay_url` field. This is
+    /// the other wire-sub registration path beside
+    /// `register_planner_wire_frames`; both must write the same canonical key
+    /// so the EOSE / CLOSED handler's canonicalized lookup hits the row.
+    ///
+    /// The emitted `OutboundMessage.relay_url` keeps the **raw** input form:
+    /// it is purely a routing target, and the transport pool (`relay_mgmt.rs`)
+    /// canonicalizes its own pool key, so a raw vs canonical `relay_url` dials
+    /// the identical socket. Leaving it raw also keeps the routing assertions
+    /// in the outbox/replay/profile-claim tests stable — they assert on the
+    /// URL form the NIP-65 resolver produced, which is an orthogonal concern
+    /// to the wire-sub map key.
     pub(crate) fn req_for_relay(
         &mut self,
         role: RelayRole,
@@ -146,6 +160,11 @@ impl Kernel {
         summary: &str,
         filter: Value,
     ) -> OutboundMessage {
+        // Canonical key for the `wire_subs` map; the raw `relay_url` is the
+        // routing target on the emitted frame. Falls back to the raw string
+        // for non-ws/wss inputs.
+        let wire_key_url = crate::relay::canonical_relay_url(&relay_url)
+            .unwrap_or_else(|| relay_url.clone());
         self.log(format!(
             "REQ {sub_id}@{} ({}): {summary}",
             role.key(),
@@ -153,11 +172,11 @@ impl Kernel {
         ));
         let paused = self.relay_auth_paused(role);
         self.wire_subs.insert(
-            (relay_url.clone(), sub_id.to_string()),
+            (wire_key_url.clone(), sub_id.to_string()),
             WireSub {
                 id: sub_id.to_string(),
                 role,
-                relay_url: relay_url.clone(),
+                relay_url: wire_key_url,
                 filter_summary: summary.to_string(),
                 state: if paused { "auth_paused" } else { "opening" }.to_string(),
                 events_rx: 0,
@@ -221,11 +240,26 @@ impl Kernel {
     ///
     /// Called from the actor `wire_frames_to_outbound` bridge (the single
     /// point where planner frames cross into the transport layer).
+    ///
+    /// T-relay-url-normalize: planner-emitted `relay_url`s originate from
+    /// kind:10002 NIP-65 relay lists — arbitrary, user-typed strings that may
+    /// carry a non-canonical form (mixed-case scheme/host, empty-path trailing
+    /// slash). The transport pool (`relay_mgmt.rs`) keys every socket — and
+    /// every `RelayEvent` a worker emits — on the *canonical* URL. The EOSE
+    /// handler in `ingest/mod.rs` therefore looks up `wire_subs` and
+    /// `persistent_subs` under the canonical delivering URL. This boundary is
+    /// the single point where planner URLs cross into the kernel's wire-sub
+    /// bookkeeping, so every key written here is canonicalized to match.
+    /// Without this, a `Tailing` follow-feed sub registered under a raw URL
+    /// would never satisfy `is_persistent_sub(<canonical>, sub_id)` — the EOSE
+    /// handler would wrongly auto-CLOSE the follow feed and leak its stale
+    /// `wire_subs` row forever.
     pub(crate) fn register_planner_wire_frames(
         &mut self,
         frames: &[crate::subs::WireFrame],
     ) {
         use crate::planner::InterestLifecycle;
+        use crate::relay::canonical_relay_url;
         use crate::subs::WireFrame;
         for frame in frames {
             match frame {
@@ -235,18 +269,24 @@ impl Kernel {
                     lifecycle,
                     ..
                 } => {
+                    // Canonical key so the EOSE handler's lookup (which uses
+                    // the transport-stamped canonical delivering URL) hits the
+                    // same `wire_subs` / `persistent_subs` entry. Fall back to
+                    // the raw string only for URLs that do not parse as ws/wss.
+                    let key = canonical_relay_url(relay_url)
+                        .unwrap_or_else(|| relay_url.clone());
                     let role = self
-                        .role_for_relay_url(relay_url)
+                        .role_for_relay_url(&key)
                         .unwrap_or(RelayRole::Content);
                     if matches!(lifecycle, InterestLifecycle::Tailing) {
-                        self.register_persistent_sub(relay_url.clone(), sub_id.clone());
+                        self.register_persistent_sub(key.clone(), sub_id.clone());
                     }
                     self.wire_subs.insert(
-                        (relay_url.clone(), sub_id.clone()),
+                        (key.clone(), sub_id.clone()),
                         WireSub {
                             id: sub_id.clone(),
                             role,
-                            relay_url: relay_url.clone(),
+                            relay_url: key,
                             filter_summary: "M2 planner sub".to_string(),
                             state: "opening".to_string(),
                             events_rx: 0,
@@ -258,9 +298,13 @@ impl Kernel {
                     );
                 }
                 WireFrame::Close { relay_url, sub_id } => {
-                    self.unregister_persistent_sub(relay_url, sub_id);
-                    self.wire_subs
-                        .remove(&(relay_url.clone(), sub_id.clone()));
+                    // Same canonicalization as the Req arm: a Close emitted
+                    // with a non-canonical URL must still un-pin the sub and
+                    // evict the row registered under the canonical key.
+                    let key = canonical_relay_url(relay_url)
+                        .unwrap_or_else(|| relay_url.clone());
+                    self.unregister_persistent_sub(&key, sub_id);
+                    self.wire_subs.remove(&(key, sub_id.clone()));
                 }
             }
         }
