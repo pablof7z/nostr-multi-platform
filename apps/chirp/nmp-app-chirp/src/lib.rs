@@ -29,6 +29,7 @@
 //!   poisoning, or serialization failure.
 
 pub mod ffi;
+#[cfg(feature = "marmot")]
 pub mod marmot;
 pub mod payload;
 pub mod state;
@@ -48,12 +49,19 @@ pub use state::ChirpModularTimeline;
 // shell ([`marmot::ffi`]); all business logic lives in
 // `nmp_marmot::projection` (the reusable-from-any-host proof). The Rust
 // type re-exports below resolve to that canonical home.
+//
+// Gated behind the `marmot` feature: MLS-over-Nostr was formally deferred to
+// post-v1. Chirp opts in via its default feature set; a no-default-features
+// build excludes the whole projection (dependency, module, and FFI symbols).
+#[cfg(feature = "marmot")]
 pub use marmot::ffi::{
     nmp_app_chirp_marmot_dispatch, nmp_app_chirp_marmot_group_messages,
     nmp_app_chirp_marmot_register, nmp_app_chirp_marmot_snapshot,
     nmp_app_chirp_marmot_string_free, nmp_app_chirp_marmot_unregister, MarmotHandle,
 };
+#[cfg(feature = "marmot")]
 pub use nmp_marmot::projection::payload::{
     KeyPackageStatus, MarmotGroupRow, MarmotMessageRow, MarmotSnapshot, PendingWelcomeRow,
 };
+#[cfg(feature = "marmot")]
 pub use nmp_marmot::projection::state::MarmotProjection;

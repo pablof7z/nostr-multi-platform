@@ -9,12 +9,14 @@ name = "nmp_core"
 crate-type = ["staticlib", "rlib"]
 
 [features]
-# Default feature set. `wallet` is on by default so the iOS Chirp shell (which
-# links `nmp-app-chirp -> nmp-core` with default features) keeps its NIP-47
-# screen. The D0 proof is that the kernel still compiles with
-# `--no-default-features`: NIP-47 NWC is an app noun, not a kernel primitive,
-# so `nmp-core` must not *require* `nmp-nwc` — it merely *permits* it.
-default = ["wallet"]
+# Default feature set is EMPTY. NIP-47 NWC (`wallet`) was formally deferred to
+# post-v1, so the default kernel build excludes it — the v1 minimal-surface-area
+# doctrine. Consumers that ship the wallet UI (the iOS Chirp shell via
+# `nmp-app-chirp`) opt in explicitly: `nmp-app-chirp` forwards its own `wallet`
+# feature to `nmp-core/wallet`. The D0 proof is that the kernel still compiles
+# with default features: NIP-47 NWC is an app noun, not a kernel primitive, so
+# `nmp-core` must not *require* `nmp-nwc` — it merely *permits* it.
+default = []
 # NIP-47 Nostr Wallet Connect support. Gates the `nmp-nwc` protocol dependency,
 # the `WalletStatus` snapshot projection, the `WalletRuntime` actor command arm,
 # and the `nmp_app_wallet_*` FFI symbols. D0: nmp-core never *owns* an app noun;

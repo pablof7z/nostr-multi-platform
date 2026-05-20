@@ -16,14 +16,31 @@ name = "nmp_app_chirp"
 # way `android-ffi` does (T146 / ADR-0009).
 crate-type = ["staticlib", "rlib"]
 
+[features]
+# Default feature set keeps the current iOS Chirp shell build unchanged: the
+# `justfile` builds `cargo build -p nmp-app-chirp` with NO `--features` flag, so
+# defaults are load-bearing. `marmot` and `wallet` were formally deferred to
+# post-v1; they remain compiled-in for Chirp (which opts in here) while the
+# default kernel build (`nmp-core` defaults) excludes them.
+default = ["marmot", "wallet"]
+# Marmot (MLS-over-Nostr) projection. Gates the `nmp-marmot` dependency, the
+# `src/marmot/` C-ABI shell module, and the `nmp_app_chirp_marmot_*` FFI
+# symbols. Deferred post-v1; off in a no-default-features build.
+marmot = ["dep:nmp-marmot"]
+# NIP-47 Nostr Wallet Connect. Forwards to `nmp-core/wallet` so the kernel
+# compiles the `nmp_app_wallet_*` FFI symbols the iOS shell links. Deferred
+# post-v1; off in a no-default-features build.
+wallet = ["nmp-core/wallet"]
+
 [dependencies]
 nmp-core = { path = "../../../crates/nmp-core" }
 nmp-nip01 = { path = "../../../crates/nmp-nip01" }
 nmp-threading = { path = "../../../crates/nmp-threading" }
 # Marmot (MLS-over-Nostr). This crate's `src/marmot/` module consumes the
 # typed `MarmotService` translation layer; no MLS type crosses its C-ABI
-# (`group_id` is hex, errors are strings).
-nmp-marmot = { path = "../../../crates/nmp-marmot" }
+# (`group_id` is hex, errors are strings). Optional + feature-gated (`marmot`):
+# deferred post-v1, so the default-off build excludes it.
+nmp-marmot = { path = "../../../crates/nmp-marmot", optional = true }
 # `nostr` reconstructs typed `Event` / `Keys` / `PublicKey` / `RelayUrl`
 # values from the C-ABI JSON and builds the kind:444 message rumor.
 # Pinned to the workspace `0.44` graph (nmp-core + mdk-core re-export the
