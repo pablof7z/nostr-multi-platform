@@ -1,5 +1,15 @@
 # Repository Guidance
 
+## Agent workflow
+
+- All implementation work must happen in a git worktree owned by the agent doing the work.
+- Each agent is responsible for its own branch/worktree lifecycle. Do not edit from the shared root checkout for feature, fix, or refactor work.
+- When the work is complete, open a pull request before reporting completion. The PR description must include:
+  - a short TLDR summary of what changed;
+  - a detailed overview of the work performed;
+  - any subjective decisions made, including tradeoffs or assumptions.
+- After opening the PR, clean up the agent-owned worktree before completing the task.
+
 ## File Size
 
 - Keep hand-authored source and documentation files under 300 lines of code where practical.
