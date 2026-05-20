@@ -3,10 +3,8 @@
 //! # What this is (and is NOT)
 //!
 //! `substrate::ActionModule` has 16+ implementations (`PublishModule`, 15
-//! NIP-29 actions, `WelcomeWrapModule`). Until now nothing dispatched into
-//! them — `publish/action.rs` carried the note "Wiring of start/reduce into
-//! the actor mailbox lands with the kernel action ledger (M6)." This module
-//! is the first half of that wiring.
+//! NIP-29 actions, `WelcomeWrapModule`). This module is the dispatch table
+//! that drives into them.
 //!
 //! This is deliberately NOT the deleted `ModuleRegistry` that
 //! `substrate/mod.rs` warns about. That registry "only collected
@@ -16,22 +14,24 @@
 //! read-back path is real: [`crate::ffi`]'s `nmp_app_dispatch_action` calls
 //! [`ActionRegistry::start`] and returns the resulting correlation id.
 //!
-//! # Scope (M6 boundary)
+//! # Scope (this module = validation; execution is one layer up)
 //!
 //! This module performs **action validation + correlation-id assignment**
-//! and nothing else. It does NOT execute the action:
+//! and nothing else. It does NOT itself execute the action:
 //!
 //! * `PublishModule::start` (see `publish/action.rs`) only checks that the
 //!   signed event carries a non-empty `id`/`sig` and returns an
-//!   `ActionPlan` — the actual relay dispatch is driven by `PublishEngine`
-//!   via `ActorCommand::PublishSignedEvent`, entirely separate from this
-//!   path.
+//!   `ActionPlan`. It does not touch the relay layer.
 //! * Durable persistence + replay of in-flight actions (the action ledger)
-//!   is M6 and out of scope here.
+//!   is a follow-up and out of scope here.
 //!
-//! So `start()` returning a correlation id means "the action was accepted
-//! and assigned an id", not "the action ran". Execution wiring is a
-//! follow-up.
+//! So `ActionRegistry::start()` returning a correlation id means "the
+//! action was accepted and assigned an id". **Execution** of an accepted
+//! action is the caller's job: `ffi::action::execute_action` (the M6
+//! execution wiring) takes the same action JSON, converts a
+//! `PublishAction::Publish` into `ActorCommand::PublishSignedEvent`, and
+//! hands it to the actor for the actual relay dispatch. The remaining
+//! follow-up is the durable action ledger, not the execution path.
 //!
 //! # Type erasure
 //!
@@ -166,8 +166,9 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
 /// Stateless apart from the module table: every registered module is a ZST
 /// adapter, so the registry is cheap to construct and `Send + Sync` (the
 /// adapters are too). [`Self::start`] is the live dispatch path — it
-/// validates an action and assigns a correlation id; see the module-level
-/// docs for the M6 scope boundary.
+/// validates an action and assigns a correlation id;
+/// `ffi::action::execute_action` performs the actual execution. See the
+/// module-level docs for the validation-vs-execution split.
 pub struct ActionRegistry {
     modules: HashMap<&'static str, Box<dyn ErasedActionModule>>,
 }
@@ -205,8 +206,9 @@ impl ActionRegistry {
     /// correlation id is generated *after* validation succeeds so a rejected
     /// action never consumes one.
     ///
-    /// NOTE: per the M6 scope boundary (module docs), a returned id means
-    /// the action was accepted, not executed.
+    /// NOTE: this method only validates. A returned id means the action was
+    /// accepted; `ffi::action::execute_action` is what then drives it to the
+    /// actor for execution (see the module docs).
     pub fn start(
         &self,
         ctx: &mut ActionContext,

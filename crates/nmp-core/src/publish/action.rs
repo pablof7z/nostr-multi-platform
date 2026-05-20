@@ -1,8 +1,11 @@
 //! `PublishAction` + `PublishModule` (the `ActionModule` impl).
 //!
-//! Wiring of `start` / `reduce` into the actor mailbox lands with the kernel
-//! action ledger (M6). Until then the action shape is fixed here and exercised
-//! through the engine directly so the contract is stable.
+//! `start` is wired to the actor mailbox (M6): `ffi::action::execute_action`
+//! validates a `PublishAction` through `ActionRegistry`, then converts a
+//! `Publish` variant into `ActorCommand::PublishSignedEvent` for the actor
+//! to publish. `reduce` is not yet driven — the publish engine drives
+//! transitions in-process; feeding `RelayOk` / `Timeout` into `reduce`
+//! lands with the durable action ledger.
 
 use serde::{Deserialize, Serialize};
 
