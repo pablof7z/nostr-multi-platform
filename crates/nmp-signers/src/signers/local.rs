@@ -189,7 +189,7 @@ impl LocalKeySigner {
         let tags = unsigned
             .tags
             .iter()
-            .map(|t| Tag::parse(t))
+            .map(Tag::parse)
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| SignerError::Backend(format!("malformed tag: {e}")))?;
         let builder = EventBuilder::new(kind, &unsigned.content)

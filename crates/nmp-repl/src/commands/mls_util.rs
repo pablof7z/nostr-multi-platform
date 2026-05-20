@@ -59,7 +59,7 @@ pub fn parse_pubkey(s: &str) -> Result<PublicKey> {
 
 /// Decode a group-id hex string into the raw bytes MDK's `GroupId` wraps.
 pub fn group_id_bytes(hex: &str) -> Result<Vec<u8>> {
-    if hex.len() % 2 != 0 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+    if !hex.len().is_multiple_of(2) || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(ReplError::Other(format!(
             "bad group id '{hex}' — expected even-length hex"
         )));
