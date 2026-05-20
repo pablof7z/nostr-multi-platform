@@ -99,8 +99,8 @@ final class KernelModel: ObservableObject {
             return [(relay, "both")]
         }
         return [
-            ("wss://relay.primal.net", "both"),
-            ("wss://purplepag.es", "indexer"),
+            ("wss://relay.primal.net", "both,indexer"),
+            ("wss://purplepag.es", "both,indexer"),
         ]
     }
 
