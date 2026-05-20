@@ -238,8 +238,12 @@ mod tests {
                     consumer_id: "test-consumer".into(),
                 })
                 .unwrap();
-            cmd_tx.send(ActorCommand::OpenAuthor { pubkey: pk.clone() }).unwrap();
-            cmd_tx.send(ActorCommand::CloseAuthor { pubkey: pk.clone() }).unwrap();
+            cmd_tx
+                .send(ActorCommand::OpenAuthor { pubkey: pk.clone() })
+                .unwrap();
+            cmd_tx
+                .send(ActorCommand::CloseAuthor { pubkey: pk.clone() })
+                .unwrap();
         }
         // The actor may be inside the 250 ms idle relay wait before it
         // checks the command channel, so wait past one full idle cycle.
@@ -332,7 +336,9 @@ mod tests {
         // Drain all snapshots and find the one with activeAccount.
         let mut found_active = false;
         while let Ok(frame) = upd_rx.try_recv() {
-            if let Ok(UpdateEnvelope::Snapshot(snap)) = serde_json::from_str::<UpdateEnvelope>(&frame) {
+            if let Ok(UpdateEnvelope::Snapshot(snap)) =
+                serde_json::from_str::<UpdateEnvelope>(&frame)
+            {
                 if let Some(active) = snap.get("active_account") {
                     if !active.is_null() {
                         found_active = true;
@@ -340,6 +346,9 @@ mod tests {
                 }
             }
         }
-        assert!(found_active, "expected snapshot with activeAccount after CreateAccount");
+        assert!(
+            found_active,
+            "expected snapshot with activeAccount after CreateAccount"
+        );
     }
 }

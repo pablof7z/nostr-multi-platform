@@ -27,7 +27,7 @@ mod tests;
 pub use error_mapping::{engine_error_to_failure, ENGINE_FAILURE_RELAY_URL};
 pub use helpers::outcome_of;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -80,6 +80,7 @@ pub struct TerminalOutcome {
 
 pub struct PublishEngine {
     in_flight: HashMap<PublishHandle, InFlight>,
+    unavailable_relays: BTreeSet<RelayUrl>,
     pub view: PublishStatusState,
     policy: RetryPolicy,
     outbox: Arc<dyn OutboxResolver>,
@@ -110,6 +111,7 @@ impl PublishEngine {
     ) -> Self {
         Self {
             in_flight: HashMap::new(),
+            unavailable_relays: BTreeSet::new(),
             view: PublishStatusState::new(&Default::default()),
             policy,
             outbox,
@@ -240,6 +242,52 @@ impl PublishEngine {
         self.flush_view();
     }
 
+    /// Mark a relay as unavailable for publish delivery. Any event that was
+    /// already `InFlight` to that relay moves back to durable `Pending` so a
+    /// connection loss never consumes the publish intent.
+    pub fn mark_relay_unavailable(
+        &mut self,
+        relay_url: &str,
+        _now_ms: u64,
+    ) -> Result<(), PublishEngineError> {
+        let relay_url = relay_url.to_string();
+        self.unavailable_relays.insert(relay_url.clone());
+        let mut changed = Vec::new();
+        for (handle, row) in &mut self.in_flight {
+            let Some(state) = row.per_relay.get_mut(&relay_url) else {
+                continue;
+            };
+            if matches!(state, PerRelayState::InFlight { .. }) {
+                *state = PerRelayState::Pending;
+                row.pending_retries.remove(&relay_url);
+                row.dirty = true;
+                changed.push(handle.clone());
+            }
+        }
+        for handle in changed {
+            self.persist(&handle)?;
+        }
+        self.flush_view();
+        Ok(())
+    }
+
+    /// Mark a relay as available and immediately dispatch any pending intent
+    /// targeted at that relay. This is the connection/reconnection sync path;
+    /// regular retry ticks also use the same availability gate.
+    pub fn mark_relay_available(
+        &mut self,
+        relay_url: &str,
+        now_ms: u64,
+    ) -> Result<(), PublishEngineError> {
+        self.unavailable_relays.remove(relay_url);
+        let handles: Vec<PublishHandle> = self.in_flight.keys().cloned().collect();
+        for handle in handles {
+            self.dispatch_pending_for_relay(&handle, relay_url, now_ms);
+        }
+        self.flush_view();
+        Ok(())
+    }
+
     /// Fold a relay ack into the state machine for the given handle.
     pub fn on_ack(&mut self, handle: &PublishHandle, ack: RelayAck, now_ms: u64) {
         let Some(in_flight) = self.in_flight.get_mut(handle) else {
@@ -259,8 +307,7 @@ impl PublishEngine {
             // hook to recover the Ok/Failed map (recent_ok / recent_errors
             // are capped at 32 and not indexed by handle).
             let outcome = helpers::terminal_outcome_of(in_flight);
-            self.recently_completed
-                .insert(handle.clone(), outcome);
+            self.recently_completed.insert(handle.clone(), outcome);
             if let Err(err) = self.store.delete(handle) {
                 self.view.push_failure(RecentFailure {
                     handle: handle.clone(),
@@ -352,11 +399,31 @@ impl PublishEngine {
     }
 
     fn dispatch_pending(&mut self, handle: &PublishHandle, now_ms: u64) {
+        self.dispatch_pending_matching(handle, None, now_ms);
+    }
+
+    fn dispatch_pending_for_relay(&mut self, handle: &PublishHandle, relay_url: &str, now_ms: u64) {
+        self.dispatch_pending_matching(handle, Some(relay_url), now_ms);
+    }
+
+    fn dispatch_pending_matching(
+        &mut self,
+        handle: &PublishHandle,
+        relay_filter: Option<&str>,
+        now_ms: u64,
+    ) {
         let Some(in_flight) = self.in_flight.get_mut(handle) else {
             return;
         };
         let frame = helpers::build_event_frame(&in_flight.event);
-        let acks = helpers::dispatch_due(in_flight, now_ms, &*self.dispatcher, &frame);
+        let acks = helpers::dispatch_due(
+            in_flight,
+            now_ms,
+            &*self.dispatcher,
+            &frame,
+            relay_filter,
+            &self.unavailable_relays,
+        );
         for ack in acks {
             self.on_ack(handle, ack, now_ms);
         }

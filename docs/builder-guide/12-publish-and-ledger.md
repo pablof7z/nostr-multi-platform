@@ -142,6 +142,11 @@ kernel boot. This is the offline action queue from
 `docs/product-spec/subsystems.md:377-390` (`scheduled_at` order, 7-day
 TTL, `created_at` fixed at original dispatch).
 
+The broader offline-first contract is
+[`docs/design/offline-first-publish-intents.md`](../design/offline-first-publish-intents.md):
+the user intent is persisted before signing/relay resolution, then this
+engine owns the delivery-attempt record and per-relay retry state.
+
 ## D6: errors never cross FFI
 
 Two failure planes, both observable-state-only
@@ -198,3 +203,4 @@ Observe it by opening the view; never poll the engine.
 - [11 — Sessions + signers + identity scopes](11-sessions-signers.md)
 - [14 — Subscription lifecycle + relay manager + NIP-42](14-relay-manager.md)
 - [16 — Capabilities (D7)](16-capabilities.md)
+- [Offline-first publish intents](../design/offline-first-publish-intents.md)

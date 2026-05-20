@@ -30,10 +30,7 @@ use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 ///
 /// Total and panic-free (D6): the only fallible action (`OpenUri`) funnels its
 /// typed error into [`KernelUpdate::UriRejected`].
-pub(crate) fn dispatch_kernel_action(
-    kernel: &mut Kernel,
-    action: KernelAction,
-) -> KernelUpdate {
+pub(crate) fn dispatch_kernel_action(kernel: &mut Kernel, action: KernelAction) -> KernelUpdate {
     match action {
         KernelAction::OpenUri { uri } => open_uri(kernel, uri),
 
@@ -42,12 +39,8 @@ pub(crate) fn dispatch_kernel_action(
         // their handlers are wired (one `match` arm each, no future-proofing).
         KernelAction::Start => KernelUpdate::Started { rev: 0 },
         KernelAction::Stop => KernelUpdate::Stopped { rev: 0 },
-        KernelAction::OpenView { namespace, key } => {
-            KernelUpdate::ViewOpened { namespace, key }
-        }
-        KernelAction::CloseView { namespace, key } => {
-            KernelUpdate::ViewClosed { namespace, key }
-        }
+        KernelAction::OpenView { namespace, key } => KernelUpdate::ViewOpened { namespace, key },
+        KernelAction::CloseView { namespace, key } => KernelUpdate::ViewClosed { namespace, key },
         KernelAction::RunDiagnostics => KernelUpdate::Diagnostics {
             summary: String::new(),
         },
@@ -149,7 +142,11 @@ mod tests {
         let interest = &active[0];
         assert!(interest.shape.kinds.contains(&0), "kind:0 metadata filter");
         assert!(interest.shape.authors.contains(PK), "author pinned to npub");
-        assert_eq!(interest.shape.limit, Some(3), "one event per kind (profile, contacts, relay list)");
+        assert_eq!(
+            interest.shape.limit,
+            Some(3),
+            "one event per kind (profile, contacts, relay list)"
+        );
     }
 
     #[test]

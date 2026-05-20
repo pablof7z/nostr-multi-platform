@@ -375,7 +375,7 @@ pub(crate) fn sign_in_nsec(
 }
 
 /// Pubkeys every fresh account follows out-of-the-box (hex, kind:3).
-const DEFAULT_FOLLOWS: &[&str] = &[
+pub(super) const DEFAULT_FOLLOWS: &[&str] = &[
     // npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft
     "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52",
     // fiatjaf
@@ -392,14 +392,19 @@ pub(crate) fn create_account(
     let id = identity.add(Keys::generate());
     identity.active = Some(id.clone());
     sync_kernel(identity, kernel);
-    kernel.set_relay_edit_rows(relay_rows_from_create_account(relays));
+    let relay_rows = relay_rows_from_create_account(relays);
+    kernel.set_relay_edit_rows(relay_rows.clone());
 
     // Pre-populate seed_contacts so the follow-feed can be set up immediately
     // without waiting for the published kind:3 to round-trip from relays.
-    let follows = DEFAULT_FOLLOWS.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let follows = DEFAULT_FOLLOWS
+        .iter()
+        .map(|s| s.to_string())
+        .collect::<Vec<_>>();
     kernel.prepopulate_seed_contacts(id.clone(), follows);
 
     kernel.reconcile_follow_feed_after_identity_change();
+    let mut publish_outbound = Vec::new();
 
     // ── Publish kind:0 metadata ──────────────────────────────────
     let kind0_content = match serde_json::to_string(profile) {
@@ -425,7 +430,7 @@ pub(crate) fn create_account(
             // profile metadata — nobody would ever see the new account's
             // display name. Route the initial kind:0 to the explicit
             // cold-start target instead.
-            let target_relays = cold_start_publish_targets(kernel, relays);
+            let target_relays = cold_start_publish_targets(kernel, &relay_rows);
             if target_relays.is_empty() {
                 // D6: no usable cold-start relay — surface a toast, never
                 // panic. The account still exists locally; the user can add
@@ -434,27 +439,19 @@ pub(crate) fn create_account(
                     "could not publish profile — no cold-start relays available".to_string(),
                 ));
             } else {
-                kernel.publish_signed_to(
+                publish_outbound.extend(kernel.publish_signed_to(
                     &signed,
                     &[],
                     crate::publish::PublishTarget::Explicit {
-                        relays: target_relays.clone(),
+                        relays: target_relays,
                     },
-                );
-                remember_bootstrap_event(kernel, &signed, &target_relays);
+                ));
             }
         }
     }
 
     // ── Publish kind:10002 relay list ─────────────────────────────
-    let relay_tags: Vec<Vec<String>> = relays
-        .iter()
-        .map(|(url, role)| match role.as_str() {
-            "read" => vec!["r".to_string(), url.clone(), "read".to_string()],
-            "write" => vec!["r".to_string(), url.clone(), "write".to_string()],
-            _ => vec!["r".to_string(), url.clone()],
-        })
-        .collect();
+    let relay_tags = nip65_tags_from_relay_rows(&relay_rows);
     if let (false, Some(author)) = (relay_tags.is_empty(), identity.active_pubkey()) {
         let unsigned_relay = UnsignedEvent {
             pubkey: author,
@@ -473,7 +470,7 @@ pub(crate) fn create_account(
             // relays the user just declared (the canonical NIP-65 home of a
             // relay list — publish it to the relays it names) unioned with the
             // well-known discovery seed so others can find the new account.
-            let target_relays = cold_start_publish_targets(kernel, relays);
+            let target_relays = cold_start_publish_targets(kernel, &relay_rows);
             if target_relays.is_empty() {
                 // D6: no usable cold-start relay — surface a toast, never
                 // panic. The account still exists locally; the user can add
@@ -482,21 +479,21 @@ pub(crate) fn create_account(
                     "could not publish relay list — no cold-start relays available".to_string(),
                 ));
             } else {
-                kernel.publish_signed_to(
+                publish_outbound.extend(kernel.publish_signed_to(
                     &signed,
                     &[],
                     crate::publish::PublishTarget::Explicit {
-                        relays: target_relays.clone(),
+                        relays: target_relays,
                     },
-                );
-                remember_bootstrap_event(kernel, &signed, &target_relays);
+                ));
             }
         }
     }
 
     let mut outbound = kernel.active_account_bootstrap_requests();
     outbound.extend(retarget_timeline(identity, kernel, relays_ready));
-    outbound.extend(publish_initial_follows(identity, kernel, relays));
+    outbound.extend(publish_outbound);
+    outbound.extend(publish_initial_follows(identity, kernel, &relay_rows));
     outbound
 }
 
@@ -509,8 +506,7 @@ pub(crate) fn create_account(
 /// `NoTargets` and the publish engine would drop them. This helper builds the
 /// explicit cold-start target instead:
 ///
-/// 1. The relays the user just declared during onboarding — the only relays
-///    NMP knows the new account intends to write to; and
+/// 1. The canonical relay rows the user just declared during onboarding; and
 /// 2. The kernel's well-known discovery seed (`bootstrap_discovery_relays`) so
 ///    other clients performing relay-list / profile discovery can find the new
 ///    account.
@@ -524,13 +520,10 @@ pub(crate) fn create_account(
 /// their profile / contacts / relay list later publishes through
 /// `publish_signed` (`Auto`), which routes to their already-declared write
 /// relays — that path is unaffected.
-fn cold_start_publish_targets(
-    kernel: &Kernel,
-    relays: &[(String, String)],
-) -> Vec<String> {
-    let mut targets: Vec<String> = relays
+fn cold_start_publish_targets(kernel: &Kernel, relay_rows: &[RelayEditRow]) -> Vec<String> {
+    let mut targets: Vec<String> = relay_rows
         .iter()
-        .map(|(url, _role)| url.clone())
+        .map(|row| row.url.clone())
         .chain(kernel.bootstrap_discovery_relays())
         .collect();
     targets.sort();
@@ -557,10 +550,16 @@ fn relay_rows_from_create_account(relays: &[(String, String)]) -> Vec<RelayEditR
         .collect()
 }
 
-fn remember_bootstrap_event(kernel: &mut Kernel, signed: &SignedEvent, target_relays: &[String]) {
-    if let Some(first_relay) = target_relays.first() {
-        kernel.remember_local_replaceable_publish(signed, first_relay);
-    }
+fn nip65_tags_from_relay_rows(rows: &[RelayEditRow]) -> Vec<Vec<String>> {
+    rows.iter()
+        .filter_map(|row| match row.role.as_str() {
+            "read" => Some(vec!["r".to_string(), row.url.clone(), "read".to_string()]),
+            "write" => Some(vec!["r".to_string(), row.url.clone(), "write".to_string()]),
+            "both" => Some(vec!["r".to_string(), row.url.clone()]),
+            "indexer" => None,
+            _ => None,
+        })
+        .collect()
 }
 
 /// Publish the cold-start kind:3 contacts list (`DEFAULT_FOLLOWS`) for a
@@ -574,12 +573,13 @@ fn remember_bootstrap_event(kernel: &mut Kernel, signed: &SignedEvent, target_re
 /// (`cold_start_publish_targets`), the same union of declared + discovery
 /// relays the initial kind:0 / kind:10002 use.
 ///
-/// `relays` is the relay set the user declared during onboarding, threaded
-/// through from `create_account` so the cold-start target can be resolved.
+/// `relay_rows` are the canonical relay rows declared during onboarding,
+/// threaded through from `create_account` so the cold-start target can be
+/// resolved without rebuilding or re-normalizing them.
 fn publish_initial_follows(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
-    relays: &[(String, String)],
+    relay_rows: &[RelayEditRow],
 ) -> Vec<OutboundMessage> {
     let Some(author) = identity.active_pubkey() else {
         return Vec::new();
@@ -597,7 +597,7 @@ fn publish_initial_follows(
     };
     match sign_active(identity, &unsigned) {
         Ok(signed) => {
-            let target_relays = cold_start_publish_targets(kernel, relays);
+            let target_relays = cold_start_publish_targets(kernel, relay_rows);
             if target_relays.is_empty() {
                 // D6: no usable cold-start relay — surface a toast, never
                 // panic. The follow set is already pre-populated locally
@@ -612,10 +612,9 @@ fn publish_initial_follows(
                     &signed,
                     &[],
                     crate::publish::PublishTarget::Explicit {
-                        relays: target_relays.clone(),
+                        relays: target_relays,
                     },
                 );
-                remember_bootstrap_event(kernel, &signed, &target_relays);
                 outbound
             }
         }

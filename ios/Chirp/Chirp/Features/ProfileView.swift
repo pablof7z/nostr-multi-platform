@@ -2,11 +2,6 @@ import SwiftUI
 
 // OWNER: Phase-2 Agent B (Profile screen).
 // Init signature FIXED by nav contract: ProfileView(pubkey:).
-//
-// NOTE: claimProfile/releaseProfile are available on KernelHandle (Bridge)
-// but not on KernelModel's public surface. We call openAuthor only.
-// Follow-state is not in the model snapshot; the Follow pill is always shown
-// (no synthesised local state per D8).
 
 struct ProfileView: View {
     let pubkey: String
@@ -18,9 +13,12 @@ struct ProfileView: View {
     @State private var replyToID: String? = nil
     @State private var isEditingProfile = false
 
-    private var profile: ProfileCard? { model.profile }
-    private var isPlaceholder: Bool { model.profile?.metadataSource != "kind0" }
-    private var isOwnProfile: Bool { model.activeAccount == pubkey }
+    private var authorView: AuthorProfileSnapshot? {
+        model.authorView?.pubkey == pubkey ? model.authorView : nil
+    }
+    private var profile: ProfileCard? { authorView?.profile }
+    private var items: [TimelineItem] { authorView?.items ?? [] }
+    private var primaryAction: ProfileAction? { authorView?.primaryAction }
 
     var body: some View {
         ScrollView {
@@ -48,8 +46,8 @@ struct ProfileView: View {
             // on top).  Keeps wire_subs at baseline after navigation.
             model.closeAuthor(pubkey: pubkey)
         }
-        .animation(.smooth(duration: 0.3), value: model.profile)
-        .animation(.smooth(duration: 0.25), value: model.items.count)
+        .animation(.smooth(duration: 0.3), value: profile)
+        .animation(.smooth(duration: 0.25), value: items.count)
         .sheet(isPresented: $isEditingProfile) {
             ProfileEditSheet(profile: profile) { name, about, picture in
                 model.publishProfile(name: name, about: about, picture: picture)
@@ -57,23 +55,11 @@ struct ProfileView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .navigationBarTrailing) {
-                if isOwnProfile {
+                if let primaryAction {
                     Button {
-                        isEditingProfile = true
+                        performProfileAction(primaryAction)
                     } label: {
-                        Text("Edit")
-                    }
-                } else {
-                    Button {
-                        model.follow(pubkey)
-                    } label: {
-                        Text("Follow")
-                    }
-
-                    Button {
-                        model.unfollow(pubkey)
-                    } label: {
-                        Image(systemName: "person.badge.minus")
+                        Label(primaryAction.label, systemImage: iconName(for: primaryAction))
                     }
                 }
             }
@@ -104,7 +90,6 @@ struct ProfileView: View {
                 Text(profile?.display ?? "Loading…")
                     .font(.title)
                     .foregroundStyle(.primary)
-                    .redacted(reason: isPlaceholder ? .placeholder : [])
 
                 // NIP-05 verified badge
                 if let nip05 = profile?.nip05, !nip05.isEmpty {
@@ -140,7 +125,6 @@ struct ProfileView: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 4)
-                        .redacted(reason: isPlaceholder ? .placeholder : [])
                 }
             }
             .padding(.horizontal, 16)
@@ -152,7 +136,7 @@ struct ProfileView: View {
 
     @ViewBuilder
     private var notesSection: some View {
-        if model.items.isEmpty {
+        if items.isEmpty {
             ChirpPlaceholder(
                 systemImage: "note.text",
                 title: "No posts yet",
@@ -166,7 +150,7 @@ struct ProfileView: View {
                         .font(.headline)
                         .foregroundStyle(.primary)
                     Spacer()
-                    Text("\(model.items.count)")
+                    Text("\(items.count)")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .accessibilityIdentifier("profile-notes-count-value")
@@ -174,7 +158,7 @@ struct ProfileView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
 
-                ForEach(model.items) { item in
+                ForEach(items) { item in
                     ProfileNoteRow(
                         item: item,
                         onAvatarTap: {
@@ -188,7 +172,7 @@ struct ProfileView: View {
                         }
                     )
 
-                    if item.id != model.items.last?.id {
+                    if item.id != items.last?.id {
                         Divider()
                             .padding(.leading, 68)
                             .opacity(0.35)
@@ -199,6 +183,30 @@ struct ProfileView: View {
     }
 
     // MARK: – Helpers
+
+    private func performProfileAction(_ action: ProfileAction) {
+        switch action.kind {
+        case "edit_profile":
+            isEditingProfile = true
+        case "follow":
+            model.follow(action.targetPubkey)
+        case "unfollow":
+            model.unfollow(action.targetPubkey)
+        default:
+            break
+        }
+    }
+
+    private func iconName(for action: ProfileAction) -> String {
+        switch action.kind {
+        case "edit_profile":
+            return "square.and.pencil"
+        case "unfollow":
+            return "person.badge.minus"
+        default:
+            return "person.badge.plus"
+        }
+    }
 
     private func truncatedNpub(_ npub: String) -> String {
         guard npub.count > 20 else { return npub }

@@ -183,9 +183,7 @@ pub(crate) fn publish_note(
         // feedback. Mirrors the explicit id/pubkey validation in `react` and
         // `follow`: refuse the publish and surface a toast.
         if !crate::kernel::is_hex_id(reply) {
-            kernel.set_last_error_toast(Some(
-                "reply: malformed target event id".to_string(),
-            ));
+            kernel.set_last_error_toast(Some("reply: malformed target event id".to_string()));
             return Vec::new();
         }
         match kernel.reply_tags_for_parent(reply) {

@@ -22,7 +22,7 @@ crate-type = ["staticlib", "rlib"]
 # defaults are load-bearing. `marmot` and `wallet` were formally deferred to
 # post-v1; they remain compiled-in for Chirp (which opts in here) while the
 # default kernel build (`nmp-core` defaults) excludes them.
-default = ["marmot", "wallet"]
+default = ["marmot", "wallet", "lmdb-backend"]
 # Marmot (MLS-over-Nostr) projection. Gates the `nmp-marmot` dependency, the
 # `src/marmot/` C-ABI shell module, and the `nmp_app_chirp_marmot_*` FFI
 # symbols. Deferred post-v1; off in a no-default-features build.
@@ -31,6 +31,8 @@ marmot = ["dep:nmp-marmot", "dep:keyring-core", "dep:apple-native-keyring-store"
 # compiles the `nmp_app_wallet_*` FFI symbols the iOS shell links. Deferred
 # post-v1; off in a no-default-features build.
 wallet = ["nmp-core/wallet"]
+# Persistent local cache / publish-intent ledger for offline-first Chirp.
+lmdb-backend = ["nmp-core/lmdb-backend"]
 
 [dependencies]
 nmp-core = { path = "../../../crates/nmp-core" }

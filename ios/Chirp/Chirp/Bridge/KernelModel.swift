@@ -14,6 +14,7 @@ final class KernelModel: ObservableObject {
     @Published private(set) var relayUrl: String = ""
     @Published private(set) var testNpub: String = ""
     @Published private(set) var profile: ProfileCard?
+    @Published private(set) var authorView: AuthorProfileSnapshot?
     @Published private(set) var items: [TimelineItem] = []
     /// T146 — modular timeline blocks produced by `nmp-app-chirp`'s
     /// `Nip10ModularTimelineView` projection. Refreshed on every kernel
@@ -141,6 +142,7 @@ final class KernelModel: ObservableObject {
         // batch of events repopulates it.
         kernel.reregisterChirpProjection()
         modularTimeline = .empty
+        authorView = nil
         threadView = nil
         metrics = nil
         rev = 0
@@ -296,6 +298,7 @@ final class KernelModel: ObservableObject {
         relayUrl = update.relayUrl
         testNpub = update.testNpub
         profile = update.profile
+        authorView = update.authorView
         items = update.items
         // T146 — refresh the modular timeline snapshot in the same apply
         // pass. The grouper's state is fed by the kernel event observer

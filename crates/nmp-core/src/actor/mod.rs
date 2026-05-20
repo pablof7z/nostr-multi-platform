@@ -18,14 +18,14 @@ mod dispatch;
 pub(crate) mod kernel_action;
 mod outbound;
 mod pending_sign;
-mod relay_mgmt;
-mod tick;
-#[cfg(test)]
-mod tests;
 #[cfg(test)]
 mod publish_relay_dispatch_tests;
+mod relay_mgmt;
 #[cfg(test)]
 mod relay_url_canonical_tests;
+#[cfg(test)]
+mod tests;
+mod tick;
 
 use commands::IdentityRuntime;
 // D0: NIP-47 NWC is an app noun — `WalletRuntime` only exists with `wallet`.
@@ -114,11 +114,23 @@ pub(crate) fn has_role(role: &str, needle: &str) -> bool {
 /// nothing re-exports these items, so they remain effectively crate-private.
 #[derive(Debug)]
 pub enum ActorCommand {
-    Start { visible_limit: usize, emit_hz: u32 },
-    Configure { visible_limit: usize, emit_hz: u32 },
-    OpenAuthor { pubkey: String },
-    OpenThread { event_id: String },
-    OpenFirehoseTag { tag: String },
+    Start {
+        visible_limit: usize,
+        emit_hz: u32,
+    },
+    Configure {
+        visible_limit: usize,
+        emit_hz: u32,
+    },
+    OpenAuthor {
+        pubkey: String,
+    },
+    OpenThread {
+        event_id: String,
+    },
+    OpenFirehoseTag {
+        tag: String,
+    },
     /// T66a identity — import an nsec/hex secret, add to the actor-local
     /// identity store, bind it as the active signer, retarget the timeline.
     ///
@@ -131,7 +143,9 @@ pub enum ActorCommand {
     /// T66a identity — parse a `bunker://` NIP-46 URI. Transport is NOT yet
     /// wired (D0 forbids `nmp-core -> nmp-signers`); this validates the URI
     /// shape and surfaces a `last_error_toast` directing the user to nsec.
-    SignInBunker { uri: String },
+    SignInBunker {
+        uri: String,
+    },
     /// Create a new keypair, publish a kind:0 metadata event and a kind:10002
     /// relay-list event, then register the identity and make it active.
     ///
@@ -144,10 +158,14 @@ pub enum ActorCommand {
     },
     /// T66a identity — switch the active account (synchronous re-bind +
     /// timeline retarget, mirrors AccountManager::switch_active semantics).
-    SwitchActive { identity_id: String },
+    SwitchActive {
+        identity_id: String,
+    },
     /// T66a identity — remove an account; clears the active slot if it was
     /// the active one.
-    RemoveAccount { identity_id: String },
+    RemoveAccount {
+        identity_id: String,
+    },
     /// Broker → actor: register a fully-handshaken remote signer (e.g.
     /// completed NIP-46 bunker handshake). Actor inserts into
     /// `IdentityRuntime.remote_signers` and emits a snapshot update.
@@ -165,7 +183,9 @@ pub enum ActorCommand {
     /// Broker → actor: drop a remote signer by user pubkey hex. See
     /// [`Self::AddRemoteSigner`] for the cross-crate construction story.
     #[allow(dead_code)]
-    RemoveRemoteSigner { identity_id: String },
+    RemoveRemoteSigner {
+        identity_id: String,
+    },
     /// Broker → actor: progress event for the bunker handshake UI. Actor
     /// stores the latest into a kernel snapshot field; the broker is the
     /// sole writer. Stage `"idle"` clears the projection. Constructed by
@@ -215,24 +235,45 @@ pub enum ActorCommand {
     },
     /// T66a publish — append `pubkey` to the active account's kind:3 follow
     /// set and re-publish it.
-    Follow { pubkey: String },
+    Follow {
+        pubkey: String,
+    },
     /// T66a publish — remove `pubkey` from the kind:3 follow set.
-    Unfollow { pubkey: String },
+    Unfollow {
+        pubkey: String,
+    },
     /// T66a relay edit — add a relay row (role: `read` | `write` | `both`).
-    AddRelay { url: String, role: String },
+    AddRelay {
+        url: String,
+        role: String,
+    },
     /// T66a relay edit — remove a relay row.
-    RemoveRelay { url: String },
+    RemoveRelay {
+        url: String,
+    },
     /// T66a — (re)open the following-timeline for the active account.
     OpenTimeline,
-    ClaimProfile { pubkey: String, consumer_id: String },
-    ReleaseProfile { pubkey: String, consumer_id: String },
-    CloseAuthor { pubkey: String },
-    CloseThread { event_id: String },
+    ClaimProfile {
+        pubkey: String,
+        consumer_id: String,
+    },
+    ReleaseProfile {
+        pubkey: String,
+        consumer_id: String,
+    },
+    CloseAuthor {
+        pubkey: String,
+    },
+    CloseThread {
+        event_id: String,
+    },
     /// NIP-47 wallet connect — parse the `nostr+walletconnect://` URI, subscribe
     /// for kind:23195 responses, and send get_info + get_balance requests.
     /// D0: gated behind the `wallet` feature — NIP-47 NWC is an app noun.
     #[cfg(feature = "wallet")]
-    WalletConnect { uri: String },
+    WalletConnect {
+        uri: String,
+    },
     /// NIP-47 wallet disconnect — close the subscription and clear state.
     /// D0: gated behind the `wallet` feature — NIP-47 NWC is an app noun.
     #[cfg(feature = "wallet")]
@@ -240,7 +281,10 @@ pub enum ActorCommand {
     /// NIP-47 pay invoice — sign and send a `pay_invoice` kind:23194 request.
     /// D0: gated behind the `wallet` feature — NIP-47 NWC is an app noun.
     #[cfg(feature = "wallet")]
-    WalletPayInvoice { bolt11: String, amount_msats: Option<u64> },
+    WalletPayInvoice {
+        bolt11: String,
+        amount_msats: Option<u64>,
+    },
     /// T118 / G3 — iOS scenePhase transition reported by the Pulse shell
     /// (or any conforming consumer). The actor folds the phase into the
     /// kernel's [`crate::kernel::LifecyclePhase`] state and, on a
@@ -276,7 +320,9 @@ pub enum ActorCommand {
     /// sender, not a kernel reference). The actor thread receives this command
     /// and routes it to `kernel.set_last_error_toast` so the error becomes
     /// observable state, never a silent no-op.
-    ShowToast { message: String },
+    ShowToast {
+        message: String,
+    },
     /// Register a `LogicalInterest` into the subscription registry and trigger
     /// a recompile. Idempotent: same `InterestId` replaces the previous entry.
     ///
@@ -388,14 +434,22 @@ pub fn run_actor_with_observers(
     // the FFI surface and diagnostic snapshot don't change.
     let dispatch_drops = Arc::new(AtomicU64::new(0));
 
-    // Resolve the FFI-supplied storage path once, here, before the kernel
-    // is built. The host calls `nmp_app_set_storage_path` before
-    // `nmp_app_start`; in practice this read wins the (theoretical) race
-    // with `nmp_app_new` spawning this thread. If the slot is still empty
-    // — or the lock is poisoned — the kernel falls back to the in-memory
-    // store, which is the safe default (no corruption, matches today's
-    // behaviour). The `lmdb-backend` feature gate lives inside
-    // `build_event_store`; this path is plumbed unconditionally.
+    // Wait for the first command before constructing the kernel. `nmp_app_new`
+    // starts this actor thread immediately, while the host sets the LMDB path
+    // through `nmp_app_set_storage_path` right after creating the handle and
+    // before `Start`. Blocking here removes that init-order race without
+    // polling; the first command is replayed through the normal dispatch path
+    // below after the kernel has been built with the latest path.
+    let first_command = match command_rx.recv() {
+        Ok(ActorCommand::Shutdown) | Err(_) => return,
+        Ok(command) => command,
+    };
+
+    // Resolve the FFI-supplied storage path once, after at least one host
+    // command has reached the actor. If the slot is still empty — or the lock
+    // is poisoned — the kernel falls back to the in-memory store. The
+    // `lmdb-backend` feature gate lives inside `build_event_store`; this path
+    // is plumbed unconditionally.
     let initial_storage_path: Option<String> =
         storage_path.lock().ok().and_then(|guard| guard.clone());
     let mut kernel =
@@ -445,6 +499,7 @@ pub fn run_actor_with_observers(
     // completion. Lives outside the loop so parked ops survive across ticks.
     let mut pending_signs: Vec<PendingSign> = Vec::new();
     let mut queued_publish_outbound = Vec::new();
+    let mut first_command = Some(first_command);
 
     loop {
         // ── Priority lane: commands ──────────────────────────────────────
@@ -453,7 +508,12 @@ pub fn run_actor_with_observers(
         // be starved by relay event floods because they bypass the relay_rx
         // entirely and are never queued behind relay events.
         loop {
-            match command_rx.try_recv() {
+            let command_result = if let Some(command) = first_command.take() {
+                Ok(command)
+            } else {
+                command_rx.try_recv()
+            };
+            match command_result {
                 Ok(command) => {
                     let relays_ready = all_relays_connected(&connected_relays);
                     let outbound = dispatch_command(
@@ -568,13 +628,9 @@ pub fn run_actor_with_observers(
                         let msg = panic_payload
                             .downcast_ref::<&str>()
                             .map(|s| s.to_string())
-                            .or_else(|| {
-                                panic_payload.downcast_ref::<String>().cloned()
-                            })
+                            .or_else(|| panic_payload.downcast_ref::<String>().cloned())
                             .unwrap_or_else(|| "unknown panic".to_string());
-                        kernel.log(format!(
-                            "actor: relay event handler panicked: {msg}"
-                        ));
+                        kernel.log(format!("actor: relay event handler panicked: {msg}"));
                         kernel.set_last_error_toast(Some(
                             "relay processing error — continuing".to_string(),
                         ));
@@ -677,9 +733,7 @@ pub fn run_actor_with_observers(
                 match ps.op.poll() {
                     None => {
                         if ps.timed_out() {
-                            kernel.set_last_error_toast(Some(
-                                "remote sign timed out".to_string(),
-                            ));
+                            kernel.set_last_error_toast(Some("remote sign timed out".to_string()));
                             // Surface the toast immediately rather than
                             // waiting up to one periodic flush tick —
                             // matches the success-path `emit_now` below.
@@ -708,9 +762,7 @@ pub fn run_actor_with_observers(
                         false // Done — remove.
                     }
                     Some(Err(e)) => {
-                        kernel.set_last_error_toast(Some(format!(
-                            "remote sign failed: {e}"
-                        )));
+                        kernel.set_last_error_toast(Some(format!("remote sign failed: {e}")));
                         // Surface the toast immediately rather than waiting
                         // up to one periodic flush tick — matches the
                         // success-path `emit_now` above.

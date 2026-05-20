@@ -113,11 +113,16 @@ pub(super) struct ProfileCard {
     pub(super) about: String,
     pub(super) avatar_initials: String,
     pub(super) avatar_color: String,
-    /// `"kind0"` when profile metadata is loaded, regardless of whether that
-    /// metadata includes a picture. `source` below only describes avatar image
-    /// provenance for ADR-0017.
-    pub(super) metadata_source: String,
+    /// Avatar image provenance for ADR-0017.
     pub(super) source: String,
+}
+
+/// Primary action the shell may render for an open profile view.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub(super) struct ProfileAction {
+    pub(super) kind: &'static str,
+    pub(super) label: &'static str,
+    pub(super) target_pubkey: String,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -127,6 +132,7 @@ pub(super) struct AuthorViewPayload {
     pub(super) profile: ProfileCard,
     pub(super) items: Vec<TimelineItem>,
     pub(super) note_count: usize,
+    pub(super) primary_action: Option<ProfileAction>,
 }
 
 #[derive(Clone, Debug, Serialize)]
