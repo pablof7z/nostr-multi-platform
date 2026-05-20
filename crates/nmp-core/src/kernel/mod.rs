@@ -50,6 +50,8 @@ mod provenance;
 mod provenance_wire_tests;
 #[cfg(test)]
 mod clock_injection_tests;
+#[cfg(test)]
+mod clock_discipline_tests;
 mod publish_cmd;
 mod publish_engine;
 #[cfg(test)]
