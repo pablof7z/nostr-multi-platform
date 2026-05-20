@@ -221,6 +221,17 @@ impl SubscriptionLifecycle {
         &self.indexer_relays
     }
 
+    /// Count of triggers queued in the coalescing inbox but not yet drained.
+    ///
+    /// Test seam for kernel ingest tests that assert a recompile was *requested*
+    /// (a `CompileTrigger` enqueued) without driving a full `drain_tick`. The
+    /// inbox field is private to `subs::inbox`; this exposes only its length so
+    /// callers can assert "≥1 trigger pending" after an ingest path runs.
+    #[cfg(test)]
+    pub(crate) fn pending_trigger_count(&self) -> usize {
+        self.inbox.len()
+    }
+
     /// #171 test seam — force a `last_planner_error` so the
     /// `KernelUpdate`/FFI projection can be exercised without a constructible
     /// `PlannerError` path. `PlannerError` variants are presently defensive

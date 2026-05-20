@@ -26,6 +26,8 @@ mod discovery;
 mod discovery_tests;
 mod identity_state;
 mod ingest;
+#[cfg(test)]
+mod ingest_tests;
 mod lifecycle;
 mod nostr;
 mod outbox;
