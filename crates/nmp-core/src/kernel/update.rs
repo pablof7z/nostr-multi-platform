@@ -171,7 +171,7 @@ impl Kernel {
     }
 
     pub(super) fn timeline_item(&self, event: &StoredEvent) -> TimelineItem {
-        let profile = self.profiles.get(&event.author);
+        let profile = self.profile_for_pubkey(&event.author);
         // D1: author_picture_url is always non-empty.  Use the kind:0 URL when
         // available; fall back to a deterministic identicon URI otherwise.
         // ADR-0017: the source discriminator MUST track the same selection the
@@ -226,7 +226,7 @@ impl Kernel {
         npub: Option<&str>,
         placeholder_about: &str,
     ) -> ProfileCard {
-        let profile = self.profiles.get(pubkey);
+        let profile = self.profile_for_pubkey(pubkey);
         // D1: picture_url is always non-empty.  Use the kind:0 URL when
         // available; fall back to a deterministic identicon URI otherwise.
         // ADR-0017: `source` MUST track the same selection the URL did.
@@ -256,17 +256,54 @@ impl Kernel {
             avatar_color: profile
                 .map(|profile| profile.avatar_color.clone())
                 .unwrap_or_else(|| avatar_color(pubkey)),
-            metadata_source: if profile.is_some() {
-                "kind0".to_string()
-            } else {
-                "placeholder".to_string()
-            },
             source: if real_picture.is_some() {
                 "kind0".to_string()
             } else {
                 "placeholder".to_string()
             },
         }
+    }
+
+    fn profile_for_pubkey(&self, pubkey: &str) -> Option<&Profile> {
+        match (
+            self.profiles.get(pubkey),
+            self.local_profile_intents.get(pubkey),
+        ) {
+            (Some(stored), Some(intent)) if intent.created_at > stored.created_at => Some(intent),
+            (Some(stored), _) => Some(stored),
+            (None, Some(intent)) => Some(intent),
+            (None, None) => None,
+        }
+    }
+
+    pub(super) fn profile_action_for(&self, pubkey: &str) -> Option<ProfileAction> {
+        if pubkey.is_empty() {
+            return None;
+        }
+        let active = self.active_account.as_deref()?;
+        if active == pubkey {
+            return Some(ProfileAction {
+                kind: "edit_profile",
+                label: "Edit",
+                target_pubkey: pubkey.to_string(),
+            });
+        }
+
+        let is_following = self
+            .seed_contacts
+            .get(active)
+            .map(|follows| follows.iter().any(|follow| follow == pubkey))
+            .unwrap_or(false);
+        let (kind, label) = if is_following {
+            ("unfollow", "Unfollow")
+        } else {
+            ("follow", "Follow")
+        };
+        Some(ProfileAction {
+            kind,
+            label,
+            target_pubkey: pubkey.to_string(),
+        })
     }
 
     pub(super) fn author_view(&self) -> Option<AuthorViewPayload> {
@@ -285,6 +322,7 @@ impl Kernel {
             state: state.to_string(),
             profile: self.profile_card_for(pubkey, None, "Waiting for selected author kind:0"),
             note_count: items.len(),
+            primary_action: self.profile_action_for(pubkey),
             items,
         })
     }

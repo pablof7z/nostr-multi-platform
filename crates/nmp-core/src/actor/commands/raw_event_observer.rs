@@ -402,7 +402,10 @@ mod tests {
                 && pos("\"content\"") < pos("\"sig\""),
             "field order must be id,pubkey,created_at,kind,tags,content,sig — got {json}"
         );
-        assert!(json.contains("\"sig\":\"cdcd"), "sig must be present verbatim");
+        assert!(
+            json.contains("\"sig\":\"cdcd"),
+            "sig must be present verbatim"
+        );
     }
 
     #[test]
@@ -440,7 +443,10 @@ mod tests {
         assert!(raw_observers_idle_for_kind(&slot, 1));
         let obs = Arc::new(CapturingObserver(Mutex::new(Vec::new())));
         let id = register_rust_raw_observer(&slot, KindFilter::from_kinds([7u32]), obs);
-        assert!(raw_observers_idle_for_kind(&slot, 1), "kind 1 not registered");
+        assert!(
+            raw_observers_idle_for_kind(&slot, 1),
+            "kind 1 not registered"
+        );
         assert!(!raw_observers_idle_for_kind(&slot, 7), "kind 7 registered");
         unregister_raw_observer(&slot, id);
         assert!(raw_observers_idle_for_kind(&slot, 7), "unregistered → idle");
@@ -462,9 +468,9 @@ mod tests {
         );
         notify_raw_observers(&slot, &raw("nope", 1)); // filtered
         notify_raw_observers(&slot, &raw("yes", 1059)); // delivered
-        // C-ABI observers fire on the per-slot drain thread — poll on the
-        // LAST side effect (`LAST_KIND`, written after `C_CALLS`) so the
-        // wait does not race ahead of the callback body completing.
+                                                        // C-ABI observers fire on the per-slot drain thread — poll on the
+                                                        // LAST side effect (`LAST_KIND`, written after `C_CALLS`) so the
+                                                        // wait does not race ahead of the callback body completing.
         assert!(
             wait_until(Duration::from_secs(5), || {
                 LAST_KIND.load(Ordering::SeqCst) == 1059
@@ -507,7 +513,8 @@ mod tests {
              200ms callback — took {elapsed:?}"
         );
         assert!(
-            wait_until(Duration::from_secs(5), || SLOW_CALLS.load(Ordering::SeqCst) == 1),
+            wait_until(Duration::from_secs(5), || SLOW_CALLS.load(Ordering::SeqCst)
+                == 1),
             "slow callback must still fire on the drain thread"
         );
     }

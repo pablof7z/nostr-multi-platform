@@ -83,7 +83,10 @@ fn engine_take_completed_drains_terminal_outcome_then_empties() {
         vec!["wss://ok-a".to_string(), "wss://ok-b".to_string()],
         "both relays land in the accepted list"
     );
-    assert!(outcome.failed.is_empty(), "no failures on an all-OK publish");
+    assert!(
+        outcome.failed.is_empty(),
+        "no failures on an all-OK publish"
+    );
 
     // Pure drain: a second call yields nothing — the engine keeps no
     // per-publish history after the kernel has consumed it.
@@ -133,7 +136,11 @@ fn engine_take_completed_reports_mixed_accepted_and_failed_split() {
         vec!["wss://good".to_string()],
         "the accepting relay is in `accepted`"
     );
-    assert_eq!(outcome.failed.len(), 1, "the rejecting relay is in `failed`");
+    assert_eq!(
+        outcome.failed.len(),
+        1,
+        "the rejecting relay is in `failed`"
+    );
     assert_eq!(outcome.failed[0].0, "wss://bad");
     assert!(
         outcome.failed[0].1.contains("blocked"),

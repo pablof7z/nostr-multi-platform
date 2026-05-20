@@ -10,7 +10,7 @@ gen-modules-check:
     cargo run -p nmp-codegen -- gen modules --manifest apps/fixture/nmp.toml --out apps/fixture/nmp-app-fixture --check
 
 rust-ios-sim:
-    cargo build -p nmp-core --target aarch64-apple-ios-sim
+    cargo build -p nmp-core --features lmdb-backend --target aarch64-apple-ios-sim
     # Stage 4 of NIP-46 wiring: `nmp-signer-broker` is a separate static lib
     # (doctrine D0 forbids `nmp-core -> nmp-signer-broker`). Chirp's link
     # step picks up `libnmp_signer_broker.a` from the same target dir via

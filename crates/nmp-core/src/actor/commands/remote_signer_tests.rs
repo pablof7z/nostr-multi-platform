@@ -11,9 +11,9 @@ use std::sync::{
     Arc,
 };
 
+use nmp_signer_iface::SignerOp;
 use nostr::nips::nip19::FromBech32;
 use nostr::{EventBuilder, Keys, SecretKey, Timestamp};
-use nmp_signer_iface::SignerOp;
 
 use super::*;
 use crate::actor::commands::identity::{sign_active, IdentityRuntime};
@@ -218,7 +218,11 @@ fn publish_unsigned_event_with_active_remote_uses_stub_signer() {
         created_at: 1_700_000_000,
     };
     let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
-    assert_eq!(count.load(Ordering::Relaxed), 1, "remote signer was invoked");
+    assert_eq!(
+        count.load(Ordering::Relaxed),
+        1,
+        "remote signer was invoked"
+    );
     assert!(!outbound.is_empty(), "publish produced outbound frames");
     assert!(outbound[0].text.contains("\"kind\":30023"));
     assert!(outbound[0]

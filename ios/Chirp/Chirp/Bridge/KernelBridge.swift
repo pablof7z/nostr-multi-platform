@@ -24,6 +24,7 @@ final class KernelHandle {
 
     init() {
         raw = nmp_app_new()
+        Self.configureStoragePath(for: raw)
         // Stage 4 of NIP-46 wiring: initialise the bunker broker before any
         // `signInBunker(...)` dispatch can reach the actor. The broker
         // registers a hook with `nmp-core` that drives the NIP-46 connect /
@@ -34,6 +35,19 @@ final class KernelHandle {
         // T146 — register the modular timeline projection on the kernel
         // event observer slot. See `Bridge/ModularTimelineBridge.swift`.
         registerChirpProjection()
+    }
+
+    private static func configureStoragePath(for raw: UnsafeMutableRawPointer) {
+        guard let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            return
+        }
+        let directory = base.appendingPathComponent("NMP", isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            directory.path.withCString { nmp_app_set_storage_path(raw, $0) }
+        } catch {
+            kbLog.error("failed to create NMP storage directory: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     deinit {
@@ -386,6 +400,7 @@ struct KernelUpdate: Decodable {
     let relayUrl: String
     let testNpub: String
     let profile: ProfileCard
+    let authorView: AuthorProfileSnapshot?
     let items: [TimelineItem]
     // Delta tracking — optional so older snapshots without these still decode.
     let inserted: [TimelineItem]?
@@ -507,8 +522,22 @@ struct ProfileCard: Decodable, Equatable {
     let about: String
     let avatarInitials: String
     let avatarColor: String
-    let metadataSource: String?
     let source: String
+}
+
+struct ProfileAction: Decodable, Equatable {
+    let kind: String
+    let label: String
+    let targetPubkey: String
+}
+
+struct AuthorProfileSnapshot: Decodable, Equatable {
+    let pubkey: String
+    let state: String
+    let profile: ProfileCard
+    let items: [TimelineItem]
+    let noteCount: Int
+    let primaryAction: ProfileAction?
 }
 
 struct TimelineItem: Decodable, Identifiable, Equatable, Hashable {

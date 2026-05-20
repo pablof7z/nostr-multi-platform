@@ -178,8 +178,18 @@ impl ConformanceHarness {
     /// through `publish_signed` directly, so the emitted EVENT frames land in
     /// the publish queue rather than the returned outbound vec — callers read
     /// them back via [`Self::published_event_of_kind`].
-    pub fn create_account(&mut self, profile: HashMap<String, String>, relays: &[(String, String)]) {
-        create_account(&mut self.identity, &mut self.kernel, false, &profile, relays);
+    pub fn create_account(
+        &mut self,
+        profile: HashMap<String, String>,
+        relays: &[(String, String)],
+    ) {
+        create_account(
+            &mut self.identity,
+            &mut self.kernel,
+            false,
+            &profile,
+            relays,
+        );
     }
 
     /// Drive NIP-47 `wallet_connect` with `uri`. The handler emits a kind:23194

@@ -34,6 +34,7 @@ mod action;
 mod engine;
 mod nip65;
 mod state;
+mod store;
 #[cfg(test)]
 mod tests;
 mod traits;
@@ -49,6 +50,7 @@ pub use engine::{
 };
 pub use nip65::Nip65OutboxResolver;
 pub use state::{PerRelayState, PublishAttempt, RelayAck, RelayPlan, RetryPolicy, RetryVerdict};
+pub use store::DomainPublishStore;
 pub use traits::{
     InMemoryPublishStore, NoopOutboxResolver, NoopSigner, OutboxResolver, PublishRecord,
     PublishStore, PublishStoreError, QueueDispatcher, RelayDispatcher, ReplayDispatcher, Signer,

@@ -277,7 +277,11 @@ pub fn notify_observers(slot: &KernelEventObserverSlot, event: &KernelEvent) {
             return;
         }
         (
-            guard.rust.iter().map(|(_, o)| Arc::clone(o)).collect::<Vec<_>>(),
+            guard
+                .rust
+                .iter()
+                .map(|(_, o)| Arc::clone(o))
+                .collect::<Vec<_>>(),
             guard.c_abi.iter().map(|(_, r)| *r).collect::<Vec<_>>(),
             guard.c_fanout_tx.clone(),
         )
@@ -381,7 +385,8 @@ mod tests {
         notify_observers(&slot, &event());
         // C-ABI observers fire on the per-slot drain thread — poll.
         assert!(
-            wait_until(Duration::from_secs(5), || C_CALLS.load(Ordering::SeqCst) == 3),
+            wait_until(Duration::from_secs(5), || C_CALLS.load(Ordering::SeqCst)
+                == 3),
             "all three C-ABI callbacks must eventually fire (got {})",
             C_CALLS.load(Ordering::SeqCst)
         );
@@ -418,7 +423,8 @@ mod tests {
         );
         // The callback still runs, just off the actor thread.
         assert!(
-            wait_until(Duration::from_secs(5), || SLOW_CALLS.load(Ordering::SeqCst) == 1),
+            wait_until(Duration::from_secs(5), || SLOW_CALLS.load(Ordering::SeqCst)
+                == 1),
             "slow callback must still fire on the drain thread"
         );
     }
@@ -463,7 +469,8 @@ mod tests {
         assert_eq!(obs.0.load(Ordering::SeqCst), 1);
         // C-ABI observer fires on the drain thread — poll.
         assert!(
-            wait_until(Duration::from_secs(5), || C_CALLS.load(Ordering::SeqCst) == 1),
+            wait_until(Duration::from_secs(5), || C_CALLS.load(Ordering::SeqCst)
+                == 1),
             "C-ABI observer must fire (got {})",
             C_CALLS.load(Ordering::SeqCst)
         );

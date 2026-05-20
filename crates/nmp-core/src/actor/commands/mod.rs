@@ -59,16 +59,16 @@ mod raw_event_observer;
 mod relays;
 // D0: NIP-47 NWC is an app noun — the wallet command runtime (and its
 // `nmp-nwc` dependency) is gated behind the `wallet` Cargo feature.
-#[cfg(feature = "wallet")]
-mod wallet;
-#[cfg(test)]
-mod remote_signer_tests;
 #[cfg(test)]
 mod registration_seed_follow_tests;
+#[cfg(test)]
+mod remote_signer_tests;
 #[cfg(test)]
 mod t168_identity_followfeed_reconcile_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(feature = "wallet")]
+mod wallet;
 
 pub(super) use identity::{
     add_remote_signer, bunker_handshake_progress, create_account, remove_account,
@@ -99,6 +99,9 @@ pub use event_observer::{
 // kind-filtered. Generic capability (D0) — no protocol nouns. Re-exported
 // up the actor chain so `ffi/raw_event_tap.rs` and the per-app crate
 // registration path reach the same `Arc<Mutex<…>>` the kernel taps.
+pub(super) use publish::{
+    follow, open_timeline, publish_note, publish_signed_event, publish_unsigned_event, react,
+};
 pub(crate) use raw_event_observer::{
     new_raw_event_observer_slot, notify_raw_observers, raw_observers_idle_for_kind,
     register_c_raw_observer, register_rust_raw_observer, unregister_raw_observer,
@@ -107,9 +110,6 @@ pub(crate) use raw_event_observer::{
 pub use raw_event_observer::{
     KindFilter, RawEventObserver, RawEventObserverFn, RawEventObserverId,
     RawEventObserverRegistration,
-};
-pub(super) use publish::{
-    follow, open_timeline, publish_note, publish_signed_event, publish_unsigned_event, react,
 };
 // NIP golden-tag conformance harness — `pub` (not `pub(crate)`) so the gated
 // test-support re-export in `lib.rs` reaches the integration test outside the

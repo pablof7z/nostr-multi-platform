@@ -36,10 +36,7 @@ use super::{ActorCommand, RelayControl};
 ///
 /// The bech32 secret is wrapped in [`Zeroizing`] so the previous value is
 /// wiped from the heap when this overwrite drops it.
-fn update_nsec_slot(
-    identity: &IdentityRuntime,
-    slot: &Arc<Mutex<Option<Zeroizing<String>>>>,
-) {
+fn update_nsec_slot(identity: &IdentityRuntime, slot: &Arc<Mutex<Option<Zeroizing<String>>>>) {
     if let Ok(mut guard) = slot.lock() {
         *guard = identity.active_nsec_bech32().map(Zeroizing::new);
     }
@@ -155,14 +152,14 @@ pub(super) fn dispatch_command(
             Some(Vec::new())
         }
         ActorCommand::CreateAccount { profile, relays } => {
-            let outbound = commands::create_account(identity, kernel, relays_ready, &profile, &relays);
+            let outbound =
+                commands::create_account(identity, kernel, relays_ready, &profile, &relays);
             update_nsec_slot(identity, active_local_nsec);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
         ActorCommand::SwitchActive { identity_id } => {
-            let outbound =
-                commands::switch_active(identity, kernel, &identity_id, relays_ready);
+            let outbound = commands::switch_active(identity, kernel, &identity_id, relays_ready);
             update_nsec_slot(identity, active_local_nsec);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
@@ -174,8 +171,7 @@ pub(super) fn dispatch_command(
             Some(outbound)
         }
         ActorCommand::AddRemoteSigner { handle } => {
-            let outbound =
-                commands::add_remote_signer(identity, kernel, handle, relays_ready);
+            let outbound = commands::add_remote_signer(identity, kernel, handle, relays_ready);
             update_nsec_slot(identity, active_local_nsec);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
@@ -220,13 +216,8 @@ pub(super) fn dispatch_command(
             target_event_id,
             reaction,
         } => {
-            let outbound = commands::react(
-                identity,
-                kernel,
-                &target_event_id,
-                &reaction,
-                pending_signs,
-            );
+            let outbound =
+                commands::react(identity, kernel, &target_event_id, &reaction, pending_signs);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
@@ -292,7 +283,10 @@ pub(super) fn dispatch_command(
             Some(outbound)
         }
         #[cfg(feature = "wallet")]
-        ActorCommand::WalletPayInvoice { bolt11, amount_msats } => {
+        ActorCommand::WalletPayInvoice {
+            bolt11,
+            amount_msats,
+        } => {
             let outbound = commands::wallet_pay_invoice(wallet, kernel, &bolt11, amount_msats);
             emit_now(kernel, *running, update_tx, last_emit);
             Some(outbound)
@@ -352,8 +346,7 @@ pub(super) fn dispatch_command(
             // same reason: the `Arc<Mutex<…>>` is shared with the FFI
             // surface and per-app crates; replacing it would silently
             // disconnect every registered raw observer.
-            let raw_event_observers_handle =
-                kernel.take_raw_event_observers_handle_for_reset();
+            let raw_event_observers_handle = kernel.take_raw_event_observers_handle_for_reset();
             // Preserve the relay-edit rows handle across Reset for the same
             // reason: the `Arc<Mutex<…>>` is shared with the FFI surface
             // and per-app crates; replacing it would silently return stale
@@ -391,9 +384,7 @@ pub(super) fn dispatch_command(
             kernel.lifecycle_mut().registry_mut().push(interest);
             kernel.lifecycle_mut().enqueue_trigger(
                 crate::subs::CompileTrigger::InvalidateCompile {
-                    reason: crate::subs::InvalidateReason::External(
-                        "push-interest".to_string(),
-                    ),
+                    reason: crate::subs::InvalidateReason::External("push-interest".to_string()),
                 },
             );
             Some(Vec::new())
@@ -475,6 +466,18 @@ pub(super) fn handle_relay_event(
                     );
                 }
             }
+            if running {
+                let publish_replay = kernel.mark_publish_relay_available(&relay_url);
+                if !publish_replay.is_empty() {
+                    send_all_outbound(
+                        relay_controls,
+                        relay_tx,
+                        kernel,
+                        next_relay_generation,
+                        publish_replay,
+                    );
+                }
+            }
             maybe_send_startup(
                 running,
                 startup_sent,
@@ -497,6 +500,7 @@ pub(super) fn handle_relay_event(
             // T105: scope the `retrying` mark to the specific socket that
             // failed — sibling sockets sharing this role lane are still live.
             kernel.relay_failed(role, &relay_url, error);
+            kernel.mark_publish_relay_unavailable(&relay_url);
             emit_now(kernel, running, update_tx, last_emit);
         }
         RelayEvent::Closed {
@@ -507,6 +511,7 @@ pub(super) fn handle_relay_event(
             // T105: scope T133 wire-sub eviction to the closed socket's URL,
             // not the whole role lane (sibling sockets keep their subs).
             kernel.relay_closed(role, &relay_url);
+            kernel.mark_publish_relay_unavailable(&relay_url);
             emit_now(kernel, running, update_tx, last_emit);
         }
         RelayEvent::Message {

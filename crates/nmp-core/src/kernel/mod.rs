@@ -12,20 +12,19 @@
 
 mod auth;
 mod clock;
-mod closed_reason;
+#[cfg(test)]
+mod clock_injection_tests;
 #[cfg(test)]
 mod closed_classifier_tests;
-mod event_observer;
-#[cfg(test)]
-mod event_observer_tests;
-mod raw_event_observer;
-#[cfg(test)]
-mod raw_event_observer_tests;
+mod closed_reason;
 mod discovery;
 #[cfg(test)]
 mod discovery_tests;
 #[cfg(test)]
 mod eose_ok_notice_ingest_tests;
+mod event_observer;
+#[cfg(test)]
+mod event_observer_tests;
 mod identity_state;
 mod ingest;
 #[cfg(test)]
@@ -36,39 +35,40 @@ mod outbox;
 #[cfg(test)]
 mod outbox_tests;
 #[cfg(test)]
-mod t140_m2_follow_feed_tests;
-#[cfg(test)]
-mod t140_m1_retirement_tests;
-#[cfg(test)]
-mod t170_relay_scoped_keying_tests;
-#[cfg(test)]
-mod t171_planner_error_projection_tests;
-#[cfg(test)]
-mod t142_drain_lifecycle_tick_tests;
+mod profile_claim_tests;
 mod provenance;
 #[cfg(test)]
 mod provenance_wire_tests;
-#[cfg(test)]
-mod clock_injection_tests;
 mod publish_cmd;
 mod publish_engine;
 #[cfg(test)]
 mod publish_engine_tests;
+mod publish_engine_wire;
 #[cfg(test)]
 mod publish_terminal_status_tests;
-mod publish_engine_wire;
+mod raw_event_observer;
+#[cfg(test)]
+mod raw_event_observer_tests;
 mod replay;
 #[cfg(test)]
 mod replay_tests;
-#[cfg(test)]
-mod profile_claim_tests;
 mod reply;
 mod requests;
 #[cfg(test)]
 mod retention_tests;
-mod status;
 #[cfg(test)]
 mod state_projection_tests;
+mod status;
+#[cfg(test)]
+mod t140_m1_retirement_tests;
+#[cfg(test)]
+mod t140_m2_follow_feed_tests;
+#[cfg(test)]
+mod t142_drain_lifecycle_tick_tests;
+#[cfg(test)]
+mod t170_relay_scoped_keying_tests;
+#[cfg(test)]
+mod t171_planner_error_projection_tests;
 #[cfg(any(test, feature = "test-support"))]
 mod test_support;
 #[cfg(test)]
@@ -122,10 +122,10 @@ use crate::store::{EventStore, MemEventStore};
 use crate::subs::{OneshotApi, SubscriptionLifecycle, UnknownIds};
 use auth::{AuthSignerFn, Nip42DriverState};
 use clock::{Clock, SystemClock};
-pub(crate) use lifecycle::{LifecyclePhase, LifecycleTransition};
 pub(crate) use identity_state::{
     AccountSummary, BunkerHandshakeDto, PublishQueueEntry, RelayAckOutcome, RelayEditRow,
 };
+pub(crate) use lifecycle::{LifecyclePhase, LifecycleTransition};
 // D0: NIP-47 NWC is an app noun — `WalletStatus` is gated behind the `wallet`
 // feature so the protocol-neutral kernel compiles without `nmp-nwc`.
 #[cfg(feature = "wallet")]
@@ -199,6 +199,10 @@ pub(crate) struct Kernel {
     timeline_first_item_at: Option<Instant>,
     relays: HashMap<RelayRole, RelayHealth>,
     profiles: HashMap<String, Profile>,
+    /// Locally-authored kind:0 publish intents that have not necessarily
+    /// round-tripped from a relay yet. Kept separate from `profiles` so
+    /// `metrics.profile_events` still counts only real relay/store ingest.
+    local_profile_intents: HashMap<String, Profile>,
     events: HashMap<String, StoredEvent>,
     /// Incrementally-maintained diagnostic counters for the `Metrics` snapshot
     /// fields `note_events` / `duplicate_events` / `stored_events`. Maintained
@@ -395,6 +399,13 @@ pub(crate) struct Kernel {
     /// by `set_relay_edit_rows`. The `Nip65OutboxResolver` holds a clone of
     /// this Arc and reads it on every discovery-kind publish.
     indexer_relays_handle: Arc<Mutex<Vec<String>>>,
+    /// Shared list of local write relays for the active account. This bridges
+    /// onboarding relay rows into publish routing before the user's freshly
+    /// published kind:10002 has round-tripped from a relay.
+    local_write_relays_handle: Arc<Mutex<Vec<String>>>,
+    /// Shared active-account pubkey used by the publish resolver to scope the
+    /// local relay-row fallback to the viewer's own events only.
+    active_account_handle: Arc<Mutex<Option<String>>>,
     /// Kernel must not cross thread boundaries — D4 single-writer enforced at type level.
     _not_send: PhantomData<*const ()>,
 }
@@ -438,6 +449,29 @@ fn build_event_store(storage_path: Option<&str>) -> Arc<dyn EventStore> {
     Arc::new(MemEventStore::new())
 }
 
+fn load_profile_intents(
+    publish_store: &Arc<dyn crate::publish::PublishStore>,
+) -> HashMap<String, Profile> {
+    let mut intents = HashMap::new();
+    let Ok(records) = publish_store.load_pending() else {
+        return intents;
+    };
+    for record in records {
+        let Some(profile) = nostr::parse_profile_intent(&record.event) else {
+            continue;
+        };
+        let pubkey = record.event.unsigned.pubkey;
+        let should_replace = intents
+            .get(&pubkey)
+            .map(|existing: &Profile| existing.created_at <= profile.created_at)
+            .unwrap_or(true);
+        if should_replace {
+            intents.insert(pubkey, profile);
+        }
+    }
+    intents
+}
+
 impl Kernel {
     pub(crate) fn new(visible_limit: usize) -> Self {
         Self::with_storage_path(visible_limit, None)
@@ -454,11 +488,7 @@ impl Kernel {
     /// site goes through [`Kernel::new`], which passes `None` and so keeps
     /// the in-memory backend.
     pub(crate) fn with_storage_path(visible_limit: usize, storage_path: Option<&str>) -> Self {
-        Self::with_publish_store_and_path(
-            visible_limit,
-            Arc::new(crate::publish::InMemoryPublishStore::new()),
-            storage_path,
-        )
+        Self::with_optional_publish_store_and_path(visible_limit, None, storage_path)
     }
 
     /// Construct a Kernel with an externally-supplied publish store. Used by
@@ -479,26 +509,45 @@ impl Kernel {
         visible_limit: usize,
         publish_store: Arc<dyn crate::publish::PublishStore>,
     ) -> Self {
-        Self::with_publish_store_and_path(visible_limit, publish_store, None)
+        Self::with_optional_publish_store_and_path(visible_limit, Some(publish_store), None)
     }
 
     /// Inner constructor: externally-supplied publish store + optional
     /// persistent LMDB `storage_path`. [`Kernel::with_publish_store`] (path
     /// `None`) and [`Kernel::with_storage_path`] (in-memory publish store)
     /// both funnel here so the body lives in exactly one place.
+    #[allow(dead_code)]
     pub(crate) fn with_publish_store_and_path(
         visible_limit: usize,
         publish_store: Arc<dyn crate::publish::PublishStore>,
         storage_path: Option<&str>,
     ) -> Self {
+        Self::with_optional_publish_store_and_path(visible_limit, Some(publish_store), storage_path)
+    }
+
+    fn with_optional_publish_store_and_path(
+        visible_limit: usize,
+        publish_store: Option<Arc<dyn crate::publish::PublishStore>>,
+        storage_path: Option<&str>,
+    ) -> Self {
         let store: Arc<dyn EventStore> = build_event_store(storage_path);
+        let publish_store = publish_store.unwrap_or_else(|| {
+            crate::publish::DomainPublishStore::open(Arc::clone(&store))
+                .map(|store| Arc::new(store) as Arc<dyn crate::publish::PublishStore>)
+                .unwrap_or_else(|_| Arc::new(crate::publish::InMemoryPublishStore::new()))
+        });
+        let local_profile_intents = load_profile_intents(&publish_store);
         let publish_dispatcher = Arc::new(crate::publish::QueueDispatcher::new());
         let indexer_relays_handle: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let local_write_relays_handle: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let active_account_handle: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let publish_engine = publish_engine::build_engine(
             Arc::clone(&store),
             Arc::clone(&publish_dispatcher),
             Arc::clone(&publish_store),
             Arc::clone(&indexer_relays_handle),
+            Arc::clone(&local_write_relays_handle),
+            Arc::clone(&active_account_handle),
         );
 
         // T129 — install the store-backed watermark resolver on the
@@ -565,6 +614,7 @@ impl Kernel {
                 .map(|role| (role, RelayHealth::default()))
                 .collect(),
             profiles: HashMap::new(),
+            local_profile_intents,
             events: HashMap::new(),
             metric_note_events: 0,
             metric_duplicate_events: 0,
@@ -622,6 +672,8 @@ impl Kernel {
             raw_event_observers: None,
             relay_edit_rows_handle: None,
             indexer_relays_handle,
+            local_write_relays_handle,
+            active_account_handle,
             _not_send: PhantomData,
         }
     }
@@ -814,10 +866,7 @@ impl Kernel {
 
     /// Bind the shared `Arc<Mutex<Vec<RelayEditRow>>>` handle so the FFI
     /// layer can read relay-edit rows without reaching into kernel internals.
-    pub(crate) fn set_relay_edit_rows_handle(
-        &mut self,
-        handle: Arc<Mutex<Vec<RelayEditRow>>>,
-    ) {
+    pub(crate) fn set_relay_edit_rows_handle(&mut self, handle: Arc<Mutex<Vec<RelayEditRow>>>) {
         self.relay_edit_rows_handle = Some(handle);
     }
 

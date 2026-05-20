@@ -8,7 +8,7 @@
 mod tests {
     use crate::kernel::Kernel;
     use crate::planner::{InterestId, InterestLifecycle};
-    use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT, BOOTSTRAP_DISCOVERY_RELAYS};
+    use crate::relay::{RelayRole, BOOTSTRAP_DISCOVERY_RELAYS, DEFAULT_VISIBLE_LIMIT};
     use crate::subs::WireFrame;
 
     use super::super::outbound::wire_frames_to_outbound;

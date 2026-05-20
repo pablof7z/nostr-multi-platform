@@ -45,8 +45,15 @@ pub(super) fn build_engine(
     dispatcher: Arc<QueueDispatcher>,
     publish_store: Arc<dyn PublishStore>,
     indexer_relays: Arc<Mutex<Vec<String>>>,
+    local_write_relays: Arc<Mutex<Vec<String>>>,
+    active_account: Arc<Mutex<Option<String>>>,
 ) -> PublishEngine {
-    let resolver = Nip65OutboxResolver::new(event_store, indexer_relays);
+    let resolver = Nip65OutboxResolver::with_local_relays(
+        event_store,
+        indexer_relays,
+        local_write_relays,
+        active_account,
+    );
     PublishEngine::new(
         Arc::new(resolver),
         dispatcher as Arc<dyn RelayDispatcher>,
@@ -115,6 +122,7 @@ impl Kernel {
         let kind = signed.unsigned.kind;
         match self.publish_engine.start_publish(action, now_ms) {
             Ok(()) => {
+                self.record_local_profile_intent(signed);
                 let frames = self.drain_publish_engine_frames(&event_id, kind);
                 // Synchronous dispatchers (e.g. some test fixtures) can settle
                 // a publish inside `start_publish` itself by returning OK acks
@@ -148,11 +156,7 @@ impl Kernel {
     /// Drain every frame the engine pushed into the queue dispatcher since the
     /// last drain, wrap each as a `Content`-lane outbound message, and update
     /// the per-publish queue projection.
-    fn drain_publish_engine_frames(
-        &mut self,
-        event_id: &str,
-        kind: u32,
-    ) -> Vec<OutboundMessage> {
+    fn drain_publish_engine_frames(&mut self, event_id: &str, kind: u32) -> Vec<OutboundMessage> {
         let frames = self.publish_dispatcher.drain();
         let target_relays = frames.len();
         if frames.is_empty() {
@@ -312,6 +316,50 @@ impl Kernel {
             .collect()
     }
 
+    /// Notify the publish engine that a relay socket is unavailable. Any
+    /// in-flight publish for that relay is moved back to durable Pending by
+    /// the engine; the actor will retry when a fresh Connected event arrives.
+    pub(crate) fn mark_publish_relay_unavailable(&mut self, relay_url: &str) {
+        let now_ms = now_epoch_ms();
+        if let Err(err) = self
+            .publish_engine
+            .mark_relay_unavailable(relay_url, now_ms)
+        {
+            self.publish_engine
+                .record_engine_error(&err, &String::new(), "", now_ms);
+            let (toast, _) = describe_engine_error(&err);
+            self.set_last_error_toast(Some(toast));
+        }
+    }
+
+    /// Notify the publish engine that a relay socket is available. Pending
+    /// publishes targeting this relay are dispatched through the normal actor
+    /// outbound path, which also keeps relay-worker connection ownership in
+    /// one place.
+    pub(crate) fn mark_publish_relay_available(&mut self, relay_url: &str) -> Vec<OutboundMessage> {
+        let now_ms = now_epoch_ms();
+        if let Err(err) = self.publish_engine.mark_relay_available(relay_url, now_ms) {
+            self.publish_engine
+                .record_engine_error(&err, &String::new(), "", now_ms);
+            let (toast, _) = describe_engine_error(&err);
+            self.set_last_error_toast(Some(toast));
+            return Vec::new();
+        }
+        self.apply_engine_completions();
+        let drained = self.publish_dispatcher.drain();
+        if !drained.is_empty() {
+            self.changed_since_emit = true;
+        }
+        drained
+            .into_iter()
+            .map(|(url, text)| OutboundMessage {
+                role: RelayRole::Content,
+                relay_url: url,
+                text,
+            })
+            .collect()
+    }
+
     /// Resume any pending publishes that survived a kernel restart. Called by
     /// the actor (T127, `actor/dispatch.rs::Start`) once per `Start` command,
     /// and by integration tests directly. Returns any outbound frames the
@@ -353,9 +401,7 @@ impl Kernel {
     /// `handle_publish_ok`. The FFI-side projection bridge will read this
     /// through `make_update` in a follow-up wiring task.
     #[allow(dead_code)]
-    pub(crate) fn publish_status_snapshot(
-        &self,
-    ) -> &crate::publish::PublishStatusSnapshot {
+    pub(crate) fn publish_status_snapshot(&self) -> &crate::publish::PublishStatusSnapshot {
         self.publish_engine.snapshot()
     }
 
@@ -384,6 +430,22 @@ impl Kernel {
         // any field change; setting again here is redundant but documents the
         // intent (terminal transitions are always snapshot-worthy).
         self.changed_since_emit = true;
+    }
+
+    fn record_local_profile_intent(&mut self, signed: &SignedEvent) {
+        let Some(profile) = super::nostr::parse_profile_intent(signed) else {
+            return;
+        };
+        let should_replace = self
+            .local_profile_intents
+            .get(&signed.unsigned.pubkey)
+            .map(|existing| existing.created_at <= profile.created_at)
+            .unwrap_or(true);
+        if should_replace {
+            self.local_profile_intents
+                .insert(signed.unsigned.pubkey.clone(), profile);
+            self.changed_since_emit = true;
+        }
     }
 }
 

@@ -21,9 +21,19 @@ pub(super) fn dispatch_due(
     now_ms: u64,
     dispatcher: &dyn RelayDispatcher,
     frame: &str,
+    relay_filter: Option<&str>,
+    unavailable_relays: &BTreeSet<RelayUrl>,
 ) -> Vec<RelayAck> {
     let mut acks = Vec::new();
     for (relay_url, state) in in_flight.per_relay.iter_mut() {
+        if let Some(filter) = relay_filter {
+            if relay_url != filter {
+                continue;
+            }
+        }
+        if unavailable_relays.contains(relay_url) {
+            continue;
+        }
         let ready = match state {
             PerRelayState::Pending => true,
             PerRelayState::RelayError { .. } | PerRelayState::TimedOut { .. } => {
