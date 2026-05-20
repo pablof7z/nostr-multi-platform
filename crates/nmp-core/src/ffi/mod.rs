@@ -87,10 +87,9 @@ pub use timeline::{
 // `pub use` is only consumed under the test/test-support gate.
 #[cfg(any(test, feature = "test-support"))]
 pub use identity::{
-    nmp_app_add_relay, nmp_app_cancel_publish, nmp_app_create_new_account, nmp_app_follow,
-    nmp_app_open_timeline, nmp_app_publish_signed_event, nmp_app_publish_signed_event_to,
-    nmp_app_publish_unsigned_event, nmp_app_react, nmp_app_remove_relay, nmp_app_retry_publish,
-    nmp_app_signin_nsec, nmp_app_unfollow,
+    nmp_app_add_relay, nmp_app_cancel_publish, nmp_app_create_new_account, nmp_app_open_timeline,
+    nmp_app_publish_signed_event, nmp_app_publish_signed_event_to, nmp_app_publish_unsigned_event,
+    nmp_app_remove_relay, nmp_app_retry_publish, nmp_app_signin_nsec,
 };
 
 // android-ffi: expose all FFI entry-points via Rust paths so nmp-android-ffi

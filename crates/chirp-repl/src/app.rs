@@ -6,10 +6,9 @@ use nmp_app_chirp::{
     nmp_app_chirp_unregister, ChirpHandle,
 };
 use nmp_core::{
-    nmp_app_add_relay, nmp_app_create_new_account, nmp_app_dispatch_action, nmp_app_follow,
-    nmp_app_free, nmp_app_free_string, nmp_app_open_author, nmp_app_open_firehose_tag,
-    nmp_app_open_thread, nmp_app_open_timeline, nmp_app_react, nmp_app_remove_relay,
-    nmp_app_signin_nsec, nmp_app_start, nmp_app_unfollow, NmpApp,
+    nmp_app_add_relay, nmp_app_create_new_account, nmp_app_dispatch_action, nmp_app_free,
+    nmp_app_free_string, nmp_app_open_author, nmp_app_open_firehose_tag, nmp_app_open_thread,
+    nmp_app_open_timeline, nmp_app_remove_relay, nmp_app_signin_nsec, nmp_app_start, NmpApp,
 };
 use serde_json::{json, Value};
 
@@ -95,21 +94,14 @@ impl AppRuntime {
     }
 
     pub fn react(&self, event_id: &str, reaction: &str) -> Result<()> {
-        self.with_cstr(event_id, |id| {
-            self.with_cstr(reaction, |reaction| {
-                nmp_app_react(self.app, id.as_ptr(), reaction.as_ptr())
-            })
-        })?
+        let action = json!({ "target_event_id": event_id, "reaction": reaction }).to_string();
+        self.dispatch_action("chirp.react", &action)
     }
 
     pub fn follow(&self, pubkey: &str, add: bool) -> Result<()> {
-        self.with_cstr(pubkey, |c| {
-            if add {
-                nmp_app_follow(self.app, c.as_ptr());
-            } else {
-                nmp_app_unfollow(self.app, c.as_ptr());
-            }
-        })
+        let action = json!({ "pubkey": pubkey }).to_string();
+        let namespace = if add { "chirp.follow" } else { "chirp.unfollow" };
+        self.dispatch_action(namespace, &action)
     }
 
     pub fn chirp_snapshot(&self) -> Option<Value> {
