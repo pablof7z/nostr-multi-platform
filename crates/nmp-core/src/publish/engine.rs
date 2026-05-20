@@ -256,7 +256,6 @@ impl PublishEngine {
             if !helpers::is_complete(in_flight) {
                 continue;
             }
-            let in_flight = self.in_flight.get(&handle).unwrap();
             helpers::for_each_terminal(in_flight, &handle, &mut self.view, now_ms);
             let outcome = helpers::terminal_outcome_of(in_flight);
             self.recently_completed.insert(handle.clone(), outcome);
