@@ -139,8 +139,8 @@ impl Kernel {
                 // publish even when no frames went out.
                 self.publish_engine
                     .record_engine_error(&err, &handle, &signed.id, now_ms);
-                let (toast, status) = describe_engine_error(&err);
-                self.set_last_error_toast(Some(toast));
+                let (toast, status, category) = describe_engine_error(&err);
+                self.set_error_toast_with_category(toast, category);
                 self.push_publish_entry(super::PublishQueueEntry {
                     event_id: signed.id.clone(),
                     kind: signed.unsigned.kind,
@@ -327,8 +327,8 @@ impl Kernel {
         {
             self.publish_engine
                 .record_engine_error(&err, &String::new(), "", now_ms);
-            let (toast, _) = describe_engine_error(&err);
-            self.set_last_error_toast(Some(toast));
+            let (toast, _, category) = describe_engine_error(&err);
+            self.set_error_toast_with_category(toast, category);
         }
     }
 
@@ -341,8 +341,8 @@ impl Kernel {
         if let Err(err) = self.publish_engine.mark_relay_available(relay_url, now_ms) {
             self.publish_engine
                 .record_engine_error(&err, &String::new(), "", now_ms);
-            let (toast, _) = describe_engine_error(&err);
-            self.set_last_error_toast(Some(toast));
+            let (toast, _, category) = describe_engine_error(&err);
+            self.set_error_toast_with_category(toast, category);
             return Vec::new();
         }
         self.apply_engine_completions();
@@ -372,8 +372,8 @@ impl Kernel {
             // plus a toast; never a panic, never a `Result` across FFI.
             self.publish_engine
                 .record_engine_error(&err, &String::new(), "", now_ms);
-            let (toast, _) = describe_engine_error(&err);
-            self.set_last_error_toast(Some(toast));
+            let (toast, _, category) = describe_engine_error(&err);
+            self.set_error_toast_with_category(toast, category);
             return Vec::new();
         }
         // T128: resume can complete a publish synchronously when the

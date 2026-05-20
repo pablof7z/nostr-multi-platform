@@ -23,6 +23,27 @@
 //! D7 compliance: capability layer (the wire) delivers the CLOSED frame
 //! verbatim; this classifier is a policy lookup the kernel applies.
 
+// ── Typed FFI error contract — closed key set ───────────────────────────────
+//
+// `error_category` (on `RelayStatus` and the snapshot's `last_error_category`)
+// carries one of these five stable keys so iOS can branch on error *class*
+// programmatically instead of substring-matching English `last_error` prose.
+// The set is CLOSED: adding a key is a deliberate FFI-contract change. These
+// constants are the single source of truth — every callsite that stamps a
+// category MUST use one of them, never an inline literal.
+
+/// Relay demands NIP-42 AUTH (or rejected our AUTH event) — the user/host
+/// can recover by authenticating.
+pub(crate) const ERR_AUTH_REQUIRED: &str = "auth_required";
+/// Temporary condition — back off and retry (rate-limited, connection drop).
+pub(crate) const ERR_TRANSIENT: &str = "transient";
+/// Non-recoverable relay-side error — retrying will not help.
+pub(crate) const ERR_PERMANENT: &str = "permanent";
+/// The event/REQ this client sent was structurally malformed.
+pub(crate) const ERR_MALFORMED_EVENT: &str = "malformed_event";
+/// Relay policy denied this client (restricted / blocked / shadowbanned).
+pub(crate) const ERR_POLICY_DENIED: &str = "policy_denied";
+
 /// Action category derived from a NIP-01 CLOSED reason prefix.
 ///
 /// Unknown prefixes (or an empty/absent reason) fold to [`Self::Unknown`],
@@ -72,6 +93,30 @@ impl CloseReason {
             Self::Pow => "pow",
             Self::Duplicate => "duplicate",
             Self::Unknown => "unknown",
+        }
+    }
+
+    /// Map this CLOSED reason onto the typed FFI `error_category` key (the
+    /// closed set above). `None` for `Duplicate` — a duplicate REQ is not an
+    /// error and stamps no `last_error`, so it carries no category either.
+    ///
+    /// Mapping rationale:
+    /// - `AuthRequired` → `auth_required` — recoverable by NIP-42 AUTH.
+    /// - `Restricted | Blocked | Shadowbanned` → `policy_denied` — the relay
+    ///   refuses this client by policy; recovery is a fresh socket / re-pay.
+    /// - `RateLimited` → `transient` — back off and retry.
+    /// - `Invalid` → `malformed_event` — the REQ shape this client sent was
+    ///   malformed (NIP-01 §A).
+    /// - `Error | Unsupported | Pow | Unknown` → `permanent` — retrying the
+    ///   same REQ against the same relay will not help.
+    pub(crate) fn error_category(&self) -> Option<&'static str> {
+        match self {
+            Self::AuthRequired => Some(ERR_AUTH_REQUIRED),
+            Self::Restricted | Self::Blocked | Self::Shadowbanned => Some(ERR_POLICY_DENIED),
+            Self::RateLimited => Some(ERR_TRANSIENT),
+            Self::Invalid => Some(ERR_MALFORMED_EVENT),
+            Self::Error | Self::Unsupported | Self::Pow | Self::Unknown => Some(ERR_PERMANENT),
+            Self::Duplicate => None,
         }
     }
 }

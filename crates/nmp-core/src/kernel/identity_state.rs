@@ -166,9 +166,34 @@ impl super::Kernel {
 
     /// Surface a coarse error string to the UI (D6: errors are state, never
     /// exceptions across FFI). `None` clears the toast.
+    ///
+    /// This legacy uncategorized path also clears `last_error_category`: a
+    /// newer toast set here must not leave a stale category from an earlier
+    /// `set_error_toast_with_category` call shadowing it (iOS would branch on
+    /// a category that no longer matches the visible toast). Callers that
+    /// *know* the error class should use `set_error_toast_with_category`.
     pub(crate) fn set_last_error_toast(&mut self, toast: Option<String>) {
-        if self.last_error_toast != toast {
+        if self.last_error_toast != toast || self.last_error_category.is_some() {
             self.last_error_toast = toast;
+            self.last_error_category = None;
+            self.changed_since_emit = true;
+        }
+    }
+
+    /// Surface an error toast *with* a machine-readable category from the
+    /// closed key set (`kernel::closed_reason::ERR_*`). iOS branches on the
+    /// category without parsing the English `toast` prose. Pass the category
+    /// constant, never an inline literal.
+    pub(crate) fn set_error_toast_with_category(
+        &mut self,
+        toast: String,
+        category: &'static str,
+    ) {
+        let toast = Some(toast);
+        let category = Some(category.to_string());
+        if self.last_error_toast != toast || self.last_error_category != category {
+            self.last_error_toast = toast;
+            self.last_error_category = category;
             self.changed_since_emit = true;
         }
     }
@@ -235,6 +260,13 @@ impl super::Kernel {
 
     pub(crate) fn last_error_toast_snapshot(&self) -> Option<&String> {
         self.last_error_toast.as_ref()
+    }
+
+    /// Machine-readable category for `last_error_toast` (typed FFI error
+    /// contract). `None` when the toast is empty or was set via the legacy
+    /// uncategorized `set_last_error_toast` path.
+    pub(crate) fn last_error_category_snapshot(&self) -> Option<&String> {
+        self.last_error_category.as_ref()
     }
 
     pub(crate) fn relay_edit_rows_snapshot(&self) -> &[RelayEditRow] {

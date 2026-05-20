@@ -129,10 +129,12 @@ impl Kernel {
         raw: &str,
     ) {
         let key = class.as_key();
+        let category = class.error_category();
         let relay = self.relay_mut(role);
         relay.denied = true;
         relay.last_close_reason = Some(key.to_string());
         relay.last_error = Some(format!("denied ({key}): {}", truncate(raw, 140)));
+        relay.error_category = category.map(str::to_string);
         self.changed_since_emit = true;
         self.log(format!(
             "CLOSED {key} from {} sub={sub_id} — marking relay denied: {}",
@@ -149,6 +151,7 @@ impl Kernel {
         let relay = self.relay_mut(role);
         relay.last_close_reason = Some(CloseReason::RateLimited.as_key().to_string());
         relay.last_error = Some(format!("rate-limited: {}", truncate(raw, 140)));
+        relay.error_category = CloseReason::RateLimited.error_category().map(str::to_string);
         self.changed_since_emit = true;
         self.log(format!(
             "CLOSED rate-limited from {} sub={sub_id}: {}",
@@ -168,9 +171,11 @@ impl Kernel {
         raw: &str,
     ) {
         let key = class.as_key();
+        let category = class.error_category();
         let relay = self.relay_mut(role);
         relay.last_close_reason = Some(key.to_string());
         relay.last_error = Some(format!("{key}: {}", truncate(raw, 140)));
+        relay.error_category = category.map(str::to_string);
         self.changed_since_emit = true;
         self.log(format!(
             "CLOSED {key} from {} sub={sub_id}: {}",

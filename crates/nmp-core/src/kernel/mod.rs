@@ -16,7 +16,10 @@ mod clock;
 mod clock_injection_tests;
 #[cfg(test)]
 mod closed_classifier_tests;
-mod closed_reason;
+// `pub(crate)` so the typed FFI error-category constants (`ERR_*`) are
+// reachable from the `actor` module's command handlers, not just kernel-
+// internal callsites.
+pub(crate) mod closed_reason;
 mod discovery;
 #[cfg(test)]
 mod discovery_tests;
@@ -322,6 +325,12 @@ pub(crate) struct Kernel {
     active_account: Option<String>,
     publish_queue: Vec<PublishQueueEntry>,
     last_error_toast: Option<String>,
+    /// Machine-readable category for `last_error_toast` (typed FFI error
+    /// contract). Closed key set lives in `kernel::closed_reason`. Set by
+    /// `set_error_toast_with_category`; cleared by the legacy
+    /// `set_last_error_toast` so a newer uncategorized toast never leaves a
+    /// stale category shadowing it.
+    last_error_category: Option<String>,
     relay_edit_rows: Vec<RelayEditRow>,
     /// NIP-47 NWC wallet projection. D0: wallet is an app noun, not a kernel
     /// primitive — the field (and its `WalletStatus` type) only exist when the
@@ -687,6 +696,7 @@ impl Kernel {
             active_account: None,
             publish_queue: Vec::new(),
             last_error_toast: None,
+            last_error_category: None,
             relay_edit_rows: Vec::new(),
             #[cfg(feature = "wallet")]
             wallet_status: None,

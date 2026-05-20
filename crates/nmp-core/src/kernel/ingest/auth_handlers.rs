@@ -285,11 +285,28 @@ impl Kernel {
         state: RelayAuthState,
         reason: Option<String>,
     ) {
+        use super::super::closed_reason::ERR_AUTH_REQUIRED;
         let key = auth_state_key(&state);
+        let is_failed = matches!(state, RelayAuthState::Failed);
         let relay = self.relay_mut(role);
         relay.auth = key.to_string();
-        if let Some(r) = reason {
-            relay.last_error = Some(r);
+        // Typed FFI error contract — keep `error_category` in lockstep with
+        // `last_error`:
+        // - A Failed transition stamps both `last_error` (reason text) and
+        //   `error_category = auth_required` so iOS can prompt the user.
+        // - A *recovery* transition (anything non-Failed) clears ONLY a
+        //   stale `auth_required` category — it must not clobber a category
+        //   set by a different surface (e.g. a `transient` from a CLOSED
+        //   rate-limited frame that interleaved before this AUTH frame).
+        //   `last_error` itself is owned by `relay_connected` / `relay_failed`
+        //   for the non-Failed case, so leaving it untouched here is correct.
+        if is_failed {
+            if let Some(r) = reason {
+                relay.last_error = Some(r);
+            }
+            relay.error_category = Some(ERR_AUTH_REQUIRED.to_string());
+        } else if relay.error_category.as_deref() == Some(ERR_AUTH_REQUIRED) {
+            relay.error_category = None;
         }
         // D8: bump the dirty flag so the diagnostic surface re-emits on the
         // next actor tick. The actor's emit-interval throttle (≤60 Hz/view)
