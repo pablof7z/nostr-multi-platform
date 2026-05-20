@@ -28,7 +28,10 @@ pub use kernel_reducer::KernelReducer;
 pub use bunker_hook::{register_bunker_hook, BunkerHookFn};
 pub use ffi::NmpApp;
 pub use remote_signer::RemoteSignerHandle;
-pub use update_envelope::{wrap_snapshot, wrap_update, UpdateEnvelope, WireEnvelope};
+pub use update_envelope::{
+    panic_message, wrap_panic, wrap_snapshot, wrap_update, PanicFrame, UpdateEnvelope,
+    WireEnvelope, SNAPSHOT_SCHEMA_VERSION,
+};
 
 // Stage 4 of NIP-46 wiring: `nmp-signer-broker` (the crate that bridges
 // `nmp-core` and `nmp-signers`) needs to construct `ActorCommand` values to

@@ -190,6 +190,11 @@ mod tests {
                     );
                     snapshots += 1;
                 }
+                // D7 — no panic is induced in this happy-path test; a panic
+                // frame here would be an actor-death regression.
+                UpdateEnvelope::Panic(p) => {
+                    panic!("unexpected actor-death frame on the channel: {}", p.msg)
+                }
             }
         }
 
@@ -247,6 +252,9 @@ mod tests {
             match serde_json::from_str::<UpdateEnvelope>(&frame) {
                 Ok(UpdateEnvelope::Snapshot(_)) => snapshots += 1,
                 Ok(UpdateEnvelope::Update(_)) => updates += 1,
+                Ok(UpdateEnvelope::Panic(p)) => {
+                    panic!("unexpected actor-death frame on the channel: {}", p.msg)
+                }
                 Err(_) => {} // ignore: legacy untagged frames
             }
         }

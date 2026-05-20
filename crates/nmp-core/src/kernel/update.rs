@@ -1,10 +1,19 @@
 use super::*;
 use crate::substrate::placeholder::picture_placeholder;
 
-/// Snapshot schema version. Bump on any breaking field rename, removal,
-/// or type change. Shells on an older version log and degrade (D1) rather
-/// than mis-decode.
-pub const KERNEL_SCHEMA_VERSION: u32 = 1;
+/// Snapshot schema version stamped into every emitted `KernelUpdate`.
+///
+/// This is a re-export of the canonical [`crate::update_envelope::SNAPSHOT_SCHEMA_VERSION`]
+/// so the snapshot emitter and the wire-envelope contract can never drift to
+/// two different numbers. Bump it at the canonical site on any breaking field
+/// rename, removal, or type change.
+///
+/// If `schema_version` doesn't match the version the host was compiled
+/// against, the host should show an error and refuse to decode further —
+/// **do not silently ignore unknown fields**. A renamed or retyped field
+/// otherwise decodes to wrong/null data with no diagnostic signal; shells on
+/// a mismatched version log and degrade (D1) rather than mis-decode.
+pub const KERNEL_SCHEMA_VERSION: u32 = crate::update_envelope::SNAPSHOT_SCHEMA_VERSION;
 
 impl Kernel {
     pub(crate) fn make_update(&mut self, running: bool) -> String {

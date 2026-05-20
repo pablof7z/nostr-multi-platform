@@ -35,8 +35,9 @@ fn generation_is_byte_deterministic() {
 
 /// Pins the generated update-channel envelope wire contract from the codegen
 /// side: the host `UpdateEnvelope` MUST be the tagged union T103 specifies
-/// (`t`/`v`, snake_case, Update + Snapshot arms). A refactor of `envelope_rs`
-/// that drifts from `nmp_core::UpdateEnvelope` would silently break every host.
+/// (`t`/`v`, snake_case, Update + Snapshot + Panic arms). A refactor of
+/// `envelope_rs` that drifts from `nmp_core::UpdateEnvelope` would silently
+/// break every host.
 #[test]
 fn generated_envelope_models_the_tagged_union() {
     let root = test_root("nmp-codegen-envelope");
@@ -72,6 +73,10 @@ fn generated_envelope_models_the_tagged_union() {
     assert!(
         envelope.contains("Snapshot(serde_json::Value)"),
         "generated envelope must carry the opaque snapshot:\n{envelope}"
+    );
+    assert!(
+        envelope.contains("Panic(nmp_core::PanicFrame)"),
+        "generated envelope must carry the D7 actor-death panic frame:\n{envelope}"
     );
 
     let lib = fs::read_to_string(out.join("src/lib.rs")).unwrap();

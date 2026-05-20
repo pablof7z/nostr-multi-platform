@@ -260,9 +260,19 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // → in-memory store.
     let storage_path: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let actor_storage_path = Arc::clone(&storage_path);
-    // Clone so we can report actor panics through the same listener pipe.
+    // Clone so we can report actor death through the same listener pipe.
+    // The actor `move`s its own `update_tx` into `run_actor_with_observers`;
+    // this clone is the supervisor's last live handle once that one is
+    // dropped — it MUST outlive the inner closure so the panic frame can
+    // still be delivered after the actor's own sender is gone.
     let update_tx_panic = update_tx.clone();
     let actor = thread::spawn(move || {
+        // D7 (actor-death visibility): the actor thread owns the kernel loop.
+        // If it panics, `send_cmd` would otherwise silently drop every
+        // subsequent command (the channel closes with no signal). Catch the
+        // unwind here and emit one envelope-conforming `Panic` frame on the
+        // update channel *before* this thread (and `update_tx`) is dropped,
+        // so the host receives a terminal, decodable signal.
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             run_actor_with_observers(
                 command_rx,
@@ -276,17 +286,18 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             );
         }));
         if let Err(e) = result {
-            let msg = if let Some(s) = e.downcast_ref::<String>() {
-                s.clone()
-            } else if let Some(s) = e.downcast_ref::<&str>() {
-                s.to_string()
-            } else {
-                "unknown panic in actor thread".to_string()
-            };
-            let frame = format!(
-                "{{\"t\":\"panic\",\"m\":\"actor panicked: {}\"}}",
-                msg.replace('"', "\\\"").replace('\\', "\\\\")
-            );
+            // Best-effort downcast of the panic payload — see
+            // `update_envelope::panic_message`. D6: `panic_message` and
+            // `wrap_panic` are both infallible (placeholder / constant-frame
+            // fallbacks), so building the death signal cannot itself panic.
+            // The resulting `{"t":"panic","v":{"msg":…}}` decodes cleanly
+            // into `UpdateEnvelope::Panic` — unlike the previous ad-hoc
+            // `{"t":"panic","m":…}` string, which did not match the
+            // envelope's tag/content schema and failed host decode.
+            let msg = crate::update_envelope::panic_message(&*e);
+            let frame = crate::update_envelope::wrap_panic(format!(
+                "actor thread died: {msg}"
+            ));
             let _ = update_tx_panic.send(frame);
         }
     });
@@ -334,9 +345,13 @@ impl NmpApp {
     /// code. The send is best-effort; the dropped command is the failure
     /// signal.
     ///
-    /// TODO(D7): actor-thread death is currently invisible to the FFI caller.
-    /// Surface it through the lifecycle observer so the shell can react,
-    /// rather than silently dropping the command here.
+    /// D7 (actor-death visibility): if the actor thread panics, the
+    /// supervisor closure in `nmp_app_new` emits one
+    /// `UpdateEnvelope::Panic` frame on the update channel before the channel
+    /// closes — see [`crate::update_envelope`]'s actor-death contract. So a
+    /// dropped command here is no longer *silent*: the host has already
+    /// received (or will receive) the terminal panic frame and is expected
+    /// to surface a fatal error rather than keep sending.
     pub(crate) fn send_cmd(&self, cmd: ActorCommand) {
         let _ = self.tx.send(cmd);
     }

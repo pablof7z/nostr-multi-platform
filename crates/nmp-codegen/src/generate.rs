@@ -101,10 +101,11 @@ fn update_rs(manifest: &AppManifest) -> String {
 /// The canonical update-channel envelope, projected for the host crate.
 ///
 /// Every frame on the single update channel is one tagged outer object —
-/// `{"t":"update","v":<KernelUpdate>}` or `{"t":"snapshot","v":<snapshot>}` —
-/// so the host decodes exactly **one** discriminated type. This MUST stay
-/// byte-identical to `nmp_core::UpdateEnvelope`'s serde contract (tag `t`,
-/// content `v`, snake_case variants); see
+/// `{"t":"update","v":<KernelUpdate>}`, `{"t":"snapshot","v":<snapshot>}`, or
+/// `{"t":"panic","v":{"msg":<message>}}` — so the host decodes exactly **one**
+/// discriminated type. This MUST stay byte-identical to
+/// `nmp_core::UpdateEnvelope`'s serde contract (tag `t`, content `v`,
+/// snake_case variants); see
 /// `docs/design/0001-ffi-update-channel-envelope.md`.
 ///
 /// The discrete arm wraps `nmp_core::KernelUpdate` **directly** (not the
@@ -115,6 +116,11 @@ fn update_rs(manifest: &AppManifest) -> String {
 /// discriminator). The snapshot interior is intentionally opaque
 /// (`serde_json::Value`) — this type models the discriminator, not the
 /// snapshot's ~30 internal fields.
+///
+/// The `Panic` arm (D7) is the actor-death signal: the kernel loop panicked
+/// or exited and the host must surface a fatal error rather than keep sending
+/// commands. It reuses `nmp_core::PanicFrame` so the host carrier matches the
+/// kernel's exactly.
 fn envelope_rs() -> String {
     [
         "use serde::{Deserialize, Serialize};",
@@ -126,6 +132,8 @@ fn envelope_rs() -> String {
         "    Update(nmp_core::KernelUpdate),",
         "    /// A full snapshot — replace rendered state.",
         "    Snapshot(serde_json::Value),",
+        "    /// Actor-thread death (D7) — terminal; surface a fatal error.",
+        "    Panic(nmp_core::PanicFrame),",
         "}",
         "",
     ]

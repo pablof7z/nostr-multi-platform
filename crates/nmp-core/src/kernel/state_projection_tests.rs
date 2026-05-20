@@ -57,6 +57,24 @@ fn ingest_note(kernel: &mut Kernel, id: &str, author: &str, created_at: u64, con
     kernel.sort_timeline_deferred();
 }
 
+// ─── schema_version projection ───────────────────────────────────────────────
+
+/// Every emitted snapshot MUST carry a `schema_version` field equal to the
+/// canonical `SNAPSHOT_SCHEMA_VERSION`. Without it a version mismatch between a
+/// shipped `.a` and the host fails silently — the host decodes renamed/removed
+/// fields, gets wrong/null data, and shows a broken UI with no diagnostic
+/// signal. This pins the field's presence on the actual on-wire bytes.
+#[test]
+fn snapshot_carries_schema_version() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let snap = snapshot(&mut kernel);
+    assert_eq!(
+        snap["schema_version"].as_u64(),
+        Some(u64::from(crate::update_envelope::SNAPSHOT_SCHEMA_VERSION)),
+        "every snapshot must stamp the canonical schema_version",
+    );
+}
+
 // ─── timeline events → items[] projection ────────────────────────────────────
 
 /// A kind:1 ingest must surface in the snapshot's `items[]` array — the list the
