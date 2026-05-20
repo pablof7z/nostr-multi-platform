@@ -256,10 +256,7 @@ impl Kernel {
     /// would never satisfy `is_persistent_sub(<canonical>, sub_id)` — the EOSE
     /// handler would wrongly auto-CLOSE the follow feed and leak its stale
     /// `wire_subs` row forever.
-    pub(crate) fn register_planner_wire_frames(
-        &mut self,
-        frames: &[crate::subs::WireFrame],
-    ) {
+    pub(crate) fn register_planner_wire_frames(&mut self, frames: &[crate::subs::WireFrame]) {
         use crate::planner::InterestLifecycle;
         use crate::subs::WireFrame;
         for frame in frames {
@@ -267,6 +264,7 @@ impl Kernel {
                 WireFrame::Req {
                     relay_url,
                     sub_id,
+                    filter_json,
                     lifecycle,
                     ..
                 } => {
@@ -289,7 +287,7 @@ impl Kernel {
                             id: sub_id.clone(),
                             role,
                             relay_url: key,
-                            filter_summary: "M2 planner sub".to_string(),
+                            filter_summary: filter_json.clone(),
                             state: "opening".to_string(),
                             events_rx: 0,
                             opened_at: Instant::now(),

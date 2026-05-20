@@ -135,4 +135,33 @@ mod tests {
         assert_eq!(outbound.len(), 1, "frame must not be dropped");
         assert_eq!(outbound[0].relay_url, "http://not-a-relay");
     }
+
+    #[test]
+    fn planner_wire_sub_diagnostics_show_exact_filter_json() {
+        let mut kernel = Kernel::new(50);
+        let filter_json = r##"{"authors":["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],"kinds":[1,6],"#t":["nostr"],"limit":20}"##;
+        let frames = vec![WireFrame::Req {
+            relay_url: "wss://relay.example/".to_string(),
+            sub_id: "sub-filter-json".to_string(),
+            filter_json: filter_json.to_string(),
+            interest_id: InterestId(1),
+            lifecycle: InterestLifecycle::Tailing,
+        }];
+
+        let _ = wire_frames_to_outbound(frames, &mut kernel);
+        let update = kernel.make_update(true);
+        let payload: serde_json::Value = serde_json::from_str(&update).expect("kernel update JSON");
+        let sub = payload["wire_subscriptions"]
+            .as_array()
+            .expect("wireSubscriptions array")
+            .iter()
+            .find(|row| row["wire_id"] == "sub-filter-json")
+            .expect("registered wire subscription");
+
+        assert_eq!(
+            sub["filter_summary"].as_str(),
+            Some(filter_json),
+            "subscription diagnostics must expose the exact REQ filter JSON"
+        );
+    }
 }
