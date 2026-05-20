@@ -3,9 +3,10 @@ import SwiftUI
 enum ChirpColor {
     static let accent = Color.accentColor
     static let accentSoft = Color.accentColor.opacity(0.12)
-    static let bg = Color(.systemBackground)
-    static let surface = Color(.secondarySystemBackground)
-    static let hairline = Color(.separator)
+    static let bg = Color(.systemGroupedBackground)
+    static let surface = Color(.systemBackground)
+    static let surfaceMuted = Color(.secondarySystemGroupedBackground)
+    static let hairline = Color(.separator).opacity(0.45)
     static let textPrimary = Color.primary
     static let textSecondary = Color.secondary
     static let textTertiary = Color(.tertiaryLabel)
@@ -40,26 +41,15 @@ enum ChirpSpace {
     static let l: CGFloat = 16
     static let xl: CGFloat = 24
     static let xxl: CGFloat = 36
-    static let radius: CGFloat = 20
-    static let radiusSmall: CGFloat = 12
+    static let radius: CGFloat = 16
+    static let radiusSmall: CGFloat = 10
 }
 
 struct ChirpBackdrop: View {
     var body: some View {
         ZStack {
-            Rectangle().fill(.background)
-            GeometryReader { proxy in
-                Circle()
-                    .fill(.tint.opacity(0.08))
-                    .frame(width: proxy.size.width * 0.7)
-                    .blur(radius: 42)
-                    .offset(x: proxy.size.width * 0.46, y: -proxy.size.height * 0.18)
-                Circle()
-                    .fill(Color(.systemTeal).opacity(0.06))
-                    .frame(width: proxy.size.width * 0.9)
-                    .blur(radius: 56)
-                    .offset(x: -proxy.size.width * 0.34, y: proxy.size.height * 0.58)
-            }
+            Rectangle().fill(ChirpColor.bg)
+            Rectangle().fill(.ultraThinMaterial).opacity(0.22)
         }
         .ignoresSafeArea()
     }
@@ -91,9 +81,30 @@ struct ChirpGlassBackground: ViewModifier {
     }
 }
 
+struct ChirpSurfaceBackground: ViewModifier {
+    var cornerRadius: CGFloat = ChirpSpace.radius
+    var muted = false
+
+    func body(content: Content) -> some View {
+        content
+            .background {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(muted ? ChirpColor.surfaceMuted : ChirpColor.surface)
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(ChirpColor.hairline, lineWidth: 0.5)
+            }
+    }
+}
+
 extension View {
     func chirpGlass(cornerRadius: CGFloat = ChirpSpace.radius, interactive: Bool = false) -> some View {
         modifier(ChirpGlassBackground(cornerRadius: cornerRadius, interactive: interactive))
+    }
+
+    func chirpSurface(cornerRadius: CGFloat = ChirpSpace.radius, muted: Bool = false) -> some View {
+        modifier(ChirpSurfaceBackground(cornerRadius: cornerRadius, muted: muted))
     }
 
     func chirpScreenBackground() -> some View {
@@ -142,7 +153,7 @@ struct ChirpPrimaryButton: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(ChirpGlassButtonStyle(prominent: true))
     }
 }
 
@@ -165,10 +176,10 @@ struct ChirpPlaceholder: View {
     var body: some View {
         VStack(spacing: ChirpSpace.m) {
             Image(systemName: systemImage)
-                .font(.system(size: 44, weight: .light))
+                .font(.system(size: 36, weight: .regular))
                 .symbolRenderingMode(.hierarchical)
             Text(title)
-                .font(.headline)
+                .font(.title3.weight(.semibold))
             if let subtitle {
                 Text(subtitle)
                     .foregroundStyle(.secondary)
@@ -192,10 +203,11 @@ struct ChirpGlassButtonStyle: ButtonStyle {
             .frame(minHeight: 44)
             .background {
                 if prominent {
-                    Capsule().fill(.tint)
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(.tint)
                 }
             }
-            .chirpGlass(cornerRadius: 22, interactive: true)
+            .chirpGlass(cornerRadius: 14, interactive: true)
             .opacity(configuration.isPressed ? 0.72 : 1)
     }
 }

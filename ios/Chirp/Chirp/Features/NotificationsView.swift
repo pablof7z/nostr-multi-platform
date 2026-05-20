@@ -5,13 +5,13 @@ struct NotificationsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
-                Spacer(minLength: 60)
+            VStack(spacing: ChirpSpace.l) {
                 illustrationBlock
                 typeGrid
-                Spacer(minLength: 24)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, ChirpSpace.l)
+            .padding(.top, ChirpSpace.m)
+            .padding(.bottom, ChirpSpace.xl)
         }
         .chirpScreenBackground()
         .navigationTitle("Activity")
@@ -19,26 +19,22 @@ struct NotificationsView: View {
     }
 
     private var illustrationBlock: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: ChirpSpace.m) {
             Image(systemName: "bell.badge")
-                .font(.system(size: 30))
+                .font(.system(size: 28, weight: .semibold))
                 .symbolRenderingMode(.hierarchical)
 
-            VStack(spacing: 8) {
-                Text("Your Activity Feed")
-                    .font(.title2)
+            VStack(spacing: ChirpSpace.s) {
+                Text("No activity yet")
+                    .font(.title3.weight(.semibold))
                     .multilineTextAlignment(.center)
 
-                Text("Mentions, reactions, reposts and zaps will all live here in one stream.")
+                Text("Mentions, replies, reactions, and boosts will appear here when the kernel projects them.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
-
-            Text("Coming in Chirp v1 M7")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(ChirpSpace.xl)
@@ -47,9 +43,10 @@ struct NotificationsView: View {
 
     private var typeGrid: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("What to expect")
-                .font(.caption)
+            Text("Activity types")
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
+                .textCase(.uppercase)
 
             LazyVGrid(
                 columns: [GridItem(.flexible()), GridItem(.flexible())],
@@ -63,7 +60,7 @@ struct NotificationsView: View {
                 ActivityTypeCard(
                     icon: "heart.fill",
                     label: "Reactions",
-                    description: "Likes and custom emoji reactions"
+                    description: "Likes and custom reactions"
                 )
                 ActivityTypeCard(
                     icon: "arrow.2.squarepath",
