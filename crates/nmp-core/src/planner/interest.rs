@@ -256,3 +256,197 @@ impl Default for LogicalInterest {
         }
     }
 }
+
+// ─── Tests ───────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Deterministic 64-char hex pubkey/event-id fixture from a single byte.
+    fn hex(byte: &str) -> String {
+        byte.repeat(32)
+    }
+
+    #[test]
+    fn timeline_for_sets_authors_and_kinds_only() {
+        let authors: BTreeSet<Pubkey> = [hex("aa"), hex("bb")].into_iter().collect();
+        let shape = InterestShape::timeline_for(authors.clone());
+
+        // Authors carried through verbatim.
+        assert_eq!(shape.authors, authors);
+        // Timeline = text notes (kind 1) + reposts (kind 6).
+        assert_eq!(
+            shape.kinds,
+            [1u32, 6u32].into_iter().collect::<BTreeSet<u32>>()
+        );
+        // Every other dimension stays at its wildcard / default.
+        assert!(shape.tags.is_empty());
+        assert!(shape.event_ids.is_empty());
+        assert!(shape.addresses.is_empty());
+        assert_eq!(shape.since, None);
+        assert_eq!(shape.until, None);
+        assert_eq!(shape.limit, None);
+        assert_eq!(shape.relay_pin, None);
+    }
+
+    #[test]
+    fn profile_for_has_exactly_one_author_and_indexer_kinds() {
+        let pubkey = hex("cc");
+        let shape = InterestShape::profile_for(pubkey.clone());
+
+        // Exactly one author — the requested pubkey.
+        assert_eq!(shape.authors.len(), 1);
+        assert!(shape.authors.contains(&pubkey));
+        // kind:0 profile + kind:3 contacts + kind:10002 NIP-65 relay list.
+        assert_eq!(
+            shape.kinds,
+            [0u32, 3u32, 10002u32].into_iter().collect::<BTreeSet<u32>>()
+        );
+        // One-shot profile fetch caps at 3 replaceable events.
+        assert_eq!(shape.limit, Some(3));
+        // No tags / pointers / time bounds / routing pin.
+        assert!(shape.tags.is_empty());
+        assert!(shape.event_ids.is_empty());
+        assert!(shape.addresses.is_empty());
+        assert_eq!(shape.since, None);
+        assert_eq!(shape.until, None);
+        assert_eq!(shape.relay_pin, None);
+    }
+
+    #[test]
+    fn naddr_coord_equality_depends_on_all_three_fields() {
+        let base = NaddrCoord {
+            pubkey: hex("aa"),
+            kind: 30023,
+            d_tag: "my-article".to_string(),
+        };
+        // Identical triple → equal.
+        let same = NaddrCoord {
+            pubkey: hex("aa"),
+            kind: 30023,
+            d_tag: "my-article".to_string(),
+        };
+        assert_eq!(base, same);
+
+        // Differing pubkey → not equal.
+        let other_pubkey = NaddrCoord {
+            pubkey: hex("bb"),
+            ..base.clone()
+        };
+        assert_ne!(base, other_pubkey);
+
+        // Differing kind → not equal.
+        let other_kind = NaddrCoord {
+            kind: 30024,
+            ..base.clone()
+        };
+        assert_ne!(base, other_kind);
+
+        // Differing d_tag → not equal.
+        let other_d_tag = NaddrCoord {
+            d_tag: "another-article".to_string(),
+            ..base.clone()
+        };
+        assert_ne!(base, other_d_tag);
+    }
+
+    #[test]
+    fn naddr_coord_dedup_in_btreeset_keys_on_full_triple() {
+        // Two coords that share kind+d_tag but differ on pubkey must NOT
+        // collapse — the D8 composite index relies on the full triple as key.
+        let mut set: BTreeSet<NaddrCoord> = BTreeSet::new();
+        set.insert(NaddrCoord {
+            pubkey: hex("aa"),
+            kind: 30023,
+            d_tag: "post".to_string(),
+        });
+        set.insert(NaddrCoord {
+            pubkey: hex("bb"),
+            kind: 30023,
+            d_tag: "post".to_string(),
+        });
+        // Re-inserting an exact duplicate is a no-op.
+        set.insert(NaddrCoord {
+            pubkey: hex("aa"),
+            kind: 30023,
+            d_tag: "post".to_string(),
+        });
+        assert_eq!(set.len(), 2);
+    }
+
+    #[test]
+    fn logical_interest_default_is_one_shot_global_empty() {
+        let interest = LogicalInterest::default();
+
+        // Default lifecycle is OneShot (CLOSE on EOSE), not a tailing sub.
+        assert_eq!(interest.lifecycle, InterestLifecycle::OneShot);
+        // Default scope is Global — no account context.
+        assert_eq!(interest.scope, InterestScope::Global);
+        // Registry-assigned id starts at the sentinel 0.
+        assert_eq!(interest.id, InterestId(0));
+        // No hints, and the shape is the empty wildcard default.
+        assert!(interest.hints.is_empty());
+        assert_eq!(interest.shape, InterestShape::default());
+    }
+
+    #[test]
+    fn interest_shape_multi_field_round_trips_field_contents() {
+        // Build a richly-populated shape and verify each dimension lands.
+        let mut tags: BTreeMap<TagKey, BTreeSet<String>> = BTreeMap::new();
+        tags.insert(
+            "t".to_string(),
+            ["nostr".to_string(), "rust".to_string()].into_iter().collect(),
+        );
+
+        let addr = NaddrCoord {
+            pubkey: hex("dd"),
+            kind: 30023,
+            d_tag: "long-form".to_string(),
+        };
+
+        let shape = InterestShape {
+            authors: [hex("aa")].into_iter().collect(),
+            kinds: [1u32, 7u32].into_iter().collect(),
+            tags: tags.clone(),
+            since: Some(1_700_000_000),
+            until: Some(1_700_086_400),
+            limit: Some(50),
+            event_ids: [hex("ee")].into_iter().collect(),
+            addresses: [addr.clone()].into_iter().collect(),
+            relay_pin: Some("wss://relay.example.com".to_string()),
+        };
+
+        assert_eq!(shape.authors.len(), 1);
+        assert!(shape.authors.contains(&hex("aa")));
+        assert_eq!(
+            shape.kinds,
+            [1u32, 7u32].into_iter().collect::<BTreeSet<u32>>()
+        );
+        assert_eq!(
+            shape.tags.get("t").map(|v| v.len()),
+            Some(2),
+        );
+        assert!(shape.tags["t"].contains("nostr"));
+        assert!(shape.tags["t"].contains("rust"));
+        assert_eq!(shape.since, Some(1_700_000_000));
+        assert_eq!(shape.until, Some(1_700_086_400));
+        assert_eq!(shape.limit, Some(50));
+        assert!(shape.event_ids.contains(&hex("ee")));
+        assert!(shape.addresses.contains(&addr));
+        assert_eq!(shape.relay_pin.as_deref(), Some("wss://relay.example.com"));
+    }
+
+    #[test]
+    fn interest_shape_equality_is_field_wise_and_deterministic() {
+        // Two shapes built independently with the same field values must be
+        // equal — the §3.4 plan-id stability contract depends on this.
+        let a = InterestShape::timeline_for([hex("aa")].into_iter().collect());
+        let b = InterestShape::timeline_for([hex("aa")].into_iter().collect());
+        assert_eq!(a, b);
+
+        // A different author set breaks equality.
+        let c = InterestShape::timeline_for([hex("bb")].into_iter().collect());
+        assert_ne!(a, c);
+    }
+}
