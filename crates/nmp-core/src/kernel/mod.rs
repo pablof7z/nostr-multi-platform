@@ -10,6 +10,11 @@
 //! - `test_support` — signature-free injection helpers (test / test-support feature)
 //! - `tests`        — unit tests (cfg(test) only)
 
+// M6 (first half) — the runtime that drives the `substrate::ActionModule`
+// trait. `pub(crate)` so the crate-private `ffi` module can reach
+// `ActionRegistry` / `default_registry` for the `nmp_app_dispatch_action`
+// entry point.
+pub(crate) mod action_registry;
 mod auth;
 mod clock;
 #[cfg(test)]
@@ -125,6 +130,9 @@ use crate::store::{EventStore, MemEventStore};
 use crate::subs::{OneshotApi, SubscriptionLifecycle, UnknownIds};
 use auth::{AuthSignerFn, Nip42DriverState};
 use clock::{Clock, SystemClock};
+// M6 — action-dispatch runtime, reachable from the `ffi` module for the
+// `nmp_app_dispatch_action` entry point.
+pub(crate) use action_registry::{default_registry, ActionRegistry};
 pub(crate) use identity_state::{
     AccountSummary, BunkerHandshakeDto, PublishQueueEntry, RelayAckOutcome, RelayEditRow,
 };

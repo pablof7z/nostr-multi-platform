@@ -4,6 +4,7 @@
 //! profile claim/release wrappers; `testing` carries the cfg-gated injectors
 //! (split to keep each file under the 300-LOC soft cap).
 
+mod action;
 mod capability;
 mod event_observer;
 mod identity;
@@ -27,6 +28,14 @@ mod testing;
 pub use capability::{
     nmp_app_dispatch_capability, nmp_app_free_string, nmp_app_set_capability_callback,
 };
+
+// M6 — the single namespace-keyed action-dispatch entry point. Re-exported
+// through the test-support facade so integration tests can call it through
+// the rlib without an `extern "C"` block. The symbol stays `#[no_mangle]
+// extern "C"` in `action`; the `pub use` is only consumed under the
+// test-support gate.
+#[cfg(any(test, feature = "test-support"))]
+pub use action::nmp_app_dispatch_action;
 
 // T118 / G3 — lifecycle FFI exposed through the test-support facade so
 // integration tests (`nmp-testing/tests/lifecycle_ffi_*`) can drive
@@ -98,6 +107,10 @@ pub use identity::{
 pub use capability::{
     nmp_app_dispatch_capability, nmp_app_free_string, nmp_app_set_capability_callback,
 };
+// M6 — action-dispatch entry point reachable via the Rust path so the
+// Android JNI shim pulls the symbol body into the cdylib CGU.
+#[cfg(feature = "android-ffi")]
+pub use action::nmp_app_dispatch_action;
 #[cfg(feature = "android-ffi")]
 pub use lifecycle::{
     nmp_app_lifecycle_background, nmp_app_lifecycle_foreground, nmp_app_set_lifecycle_callback,
@@ -195,6 +208,14 @@ pub struct NmpApp {
     storage_path: Arc<Mutex<Option<String>>>,
     actor: Mutex<Option<JoinHandle<()>>>,
     update_listener: Mutex<Option<JoinHandle<()>>>,
+    /// M6 — namespace-keyed action-dispatch registry backing
+    /// [`action::nmp_app_dispatch_action`]. Holds only stateless ZST module
+    /// adapters, so it is `Send + Sync` and is queried directly on the FFI
+    /// thread (no actor round-trip): registered modules' `start` methods are
+    /// pure validators. The `Kernel`-side wiring (execution + the durable
+    /// action ledger) is the M6 follow-up; see
+    /// [`crate::kernel::action_registry`].
+    action_registry: crate::kernel::ActionRegistry,
 }
 
 impl Drop for NmpApp {
@@ -327,6 +348,10 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         storage_path,
         actor: Mutex::new(Some(actor)),
         update_listener: Mutex::new(Some(update_listener)),
+        // M6 — the action registry the kernel ships with: `PublishModule`
+        // only. NIP-29 / NIP-59 modules are app nouns (D0) and are
+        // registered by the app host against its own registry instance.
+        action_registry: crate::kernel::default_registry(),
     }))
 }
 
