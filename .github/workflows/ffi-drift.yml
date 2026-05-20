@@ -1,0 +1,26 @@
+name: ffi-drift
+
+# Catches C-header / Rust-FFI drift: `ios/Chirp/Chirp/Bridge/NmpCore.h` must
+# stay in sync with every `nmp_app_*` symbol exported from the three Rust FFI
+# archives the Chirp shell links. The gate is a pure grep + awk + diff over the
+# checked-out tree — no Rust toolchain, no compilation, runs in <5s.
+#
+# See ci/check-ffi-header-drift.sh for the full scope (which files it scans,
+# how test-only injectors are excluded). This workflow only wires that script
+# into CI so drift fails the PR automatically instead of relying on a manual run.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  ffi-header-drift:
+    name: FFI header drift (NmpCore.h vs Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check FFI header drift
+        run: bash ci/check-ffi-header-drift.sh
