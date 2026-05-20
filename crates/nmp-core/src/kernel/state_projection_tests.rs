@@ -361,7 +361,9 @@ fn relay_status_appears_in_snapshot_after_connection_events() {
 
     // A subsequent close must project back to a non-connected state — a
     // projection stuck on the stale `connected` value is the bug under test.
-    kernel.relay_closed(RelayRole::Content);
+    // (`relay_closed_all` — the global-teardown path — projects the lane
+    // `closed` regardless of per-URL socket bookkeeping.)
+    kernel.relay_closed_all(RelayRole::Content);
     let closed = snapshot(&mut kernel);
     assert_eq!(
         closed["relay_status"]["connection"].as_str(),

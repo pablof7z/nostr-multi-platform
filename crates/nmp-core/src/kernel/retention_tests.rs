@@ -76,7 +76,8 @@
 //! | `close_subscriptions_with_prefixes` (view-close) | `HashMap::remove` after CLOSE outbound |
 //! | EOSE for non-keep sub (oneshot)  | `HashMap::remove` after CLOSE outbound |
 //! | CLOSED (relay-initiated)         | `HashMap::remove` (no outbound)        |
-//! | `relay_closed` (socket teardown) | `wire_subs.retain(role != …)`          |
+//! | `relay_closed` (per-URL socket teardown) | `wire_subs.retain(relay_url != …)` |
+//! | `relay_closed_all` (global pool drain)   | `wire_subs.retain(role != …)`      |
 //! | `relay_failed` (transient)       | no eviction — `state="retrying"` may resume |
 //!
 //! Pinned by `view_close_evicts_wire_subs_to_zero` and
@@ -405,12 +406,12 @@ fn closed_frame_evicts_wire_sub_row() {
     );
 }
 
-/// T133 — `relay_closed` (full socket teardown) evicts every row for that
-/// role; rows on a different role lane are preserved. `relay_failed`
+/// T133 — `relay_closed` (per-URL socket teardown) evicts every row for the
+/// closed socket's URL; rows on a different URL are preserved. `relay_failed`
 /// (transient → state="retrying") does NOT evict — the sub may resume after
 /// the backoff window.
 #[test]
-fn relay_closed_evicts_per_role_relay_failed_preserves() {
+fn relay_closed_evicts_per_url_relay_failed_preserves() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
     // Two subs on the Indexer lane, one on Content.
@@ -438,26 +439,91 @@ fn relay_closed_evicts_per_role_relay_failed_preserves() {
     assert_eq!(kernel.wire_subs_len_for_test(), 3);
 
     // relay_failed must NOT evict — it only marks "retrying".
-    kernel.relay_failed(RelayRole::Indexer, "transient error".to_string());
+    kernel.relay_failed(
+        RelayRole::Indexer,
+        "wss://idx.test",
+        "transient error".to_string(),
+    );
     assert_eq!(
         kernel.wire_subs_len_for_test(),
         3,
         "relay_failed is transient — rows preserved"
     );
 
-    // relay_closed evicts every row on that role.
-    kernel.relay_closed(RelayRole::Indexer);
+    // relay_closed evicts every row on that URL.
+    kernel.relay_closed(RelayRole::Indexer, "wss://idx.test");
     assert_eq!(
         kernel.wire_subs_len_for_test(),
         1,
-        "relay_closed evicts the two Indexer rows; Content row preserved"
+        "relay_closed evicts the two idx.test rows; Content row preserved"
     );
 
-    // Content lane still healthy.
-    kernel.relay_closed(RelayRole::Content);
+    // Content socket still healthy.
+    kernel.relay_closed(RelayRole::Content, "wss://content.test");
     assert_eq!(
         kernel.wire_subs_len_for_test(),
         0,
-        "relay_closed on Content evicts the last row"
+        "relay_closed on the content URL evicts the last row"
+    );
+}
+
+/// T105 regression — under URL-keyed routing several sockets share one
+/// `RelayRole` lane. Closing ONE socket must evict only that socket's
+/// wire-subs; a sibling socket on the *same role* must keep its subscriptions
+/// live. A role-wide `retain` (the pre-fix behaviour) would silently drop the
+/// healthy sibling's REQs.
+#[test]
+fn relay_closed_does_not_evict_sibling_url_on_same_role() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    // Two Content-lane sockets — different URLs, same RelayRole.
+    kernel.req_for_relay(
+        RelayRole::Content,
+        "wss://content-a.test".to_string(),
+        "author-notes-1-aaaa",
+        "content A",
+        serde_json::json!({"kinds":[1]}),
+    );
+    kernel.req_for_relay(
+        RelayRole::Content,
+        "wss://content-b.test".to_string(),
+        "author-notes-2-bbbb",
+        "content B",
+        serde_json::json!({"kinds":[1]}),
+    );
+    assert_eq!(kernel.wire_subs_len_for_test(), 2);
+
+    // Close ONLY content-a — content-b shares the role but is a live socket.
+    kernel.relay_closed(RelayRole::Content, "wss://content-a.test");
+    assert_eq!(
+        kernel.wire_subs_len_for_test(),
+        1,
+        "closing content-a must NOT evict content-b's sub (same role, live socket)"
+    );
+    let surviving = kernel.snapshot_active_wire_subs();
+    assert!(
+        surviving.iter().any(|(_id, url)| url.contains("content-b")),
+        "the sibling socket's wire-sub must survive; got {surviving:?}"
+    );
+
+    // relay_failed is likewise URL-scoped: failing content-b marks only
+    // content-b and never evicts (the sub may resume after backoff).
+    kernel.relay_failed(
+        RelayRole::Content,
+        "wss://content-b.test",
+        "transient".to_string(),
+    );
+    assert_eq!(
+        kernel.wire_subs_len_for_test(),
+        1,
+        "relay_failed must not evict — content-b's row stays (now retrying)"
+    );
+
+    // The full teardown path still clears the whole lane.
+    kernel.relay_closed_all(RelayRole::Content);
+    assert_eq!(
+        kernel.wire_subs_len_for_test(),
+        0,
+        "relay_closed_all evicts every row on the role lane"
     );
 }

@@ -102,7 +102,7 @@ fn replay_on_reconnect_reissues_req_for_url() {
     // `current_plan`, not the per-sub registry; what we are exercising is
     // the "replay populates an empty wire_subs map" path). Then the
     // worker reconnected and the actor calls `replay_on_reconnect`.
-    kernel.relay_closed(RelayRole::Content);
+    kernel.relay_closed(RelayRole::Content, &relay_url);
 
     let out = kernel.replay_on_reconnect(RelayRole::Content, &relay_url);
 
@@ -191,7 +191,7 @@ fn replay_applies_t129_watermark_to_since() {
         .expect("compile");
 
     kernel.relay_connected(role);
-    kernel.relay_closed(role); // T133 eviction
+    kernel.relay_closed(role, relay); // T133 eviction
 
     let out = kernel.replay_on_reconnect(role, relay);
     let req_text = out
@@ -211,9 +211,9 @@ fn replay_applies_t129_watermark_to_since() {
 /// write relay reconnecting must NOT produce REQs for our author).
 #[test]
 fn replay_for_unknown_url_is_noop() {
-    let (mut kernel, _relay_url) =
+    let (mut kernel, relay_url) =
         kernel_with_one_sub(RelayRole::Content, "a", "wss://r1.example/", 1);
-    kernel.relay_closed(RelayRole::Content);
+    kernel.relay_closed(RelayRole::Content, &relay_url);
 
     let out = kernel.replay_on_reconnect(RelayRole::Content, "wss://stranger.example/");
     assert!(

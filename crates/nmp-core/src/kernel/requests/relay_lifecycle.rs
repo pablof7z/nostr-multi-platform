@@ -35,7 +35,17 @@ impl Kernel {
         }
     }
 
-    pub(crate) fn relay_failed(&mut self, role: RelayRole, error: String) {
+    /// A transport socket for `role` failed (transient — backoff + retry).
+    ///
+    /// `relay_url` identifies the *specific* socket that failed. Under T105
+    /// URL-keyed routing many sockets share one `RelayRole` lane, so the
+    /// `retrying` mark must be scoped to wire-subs opened on **this URL** —
+    /// a role-wide mark would wrongly flag healthy sibling sockets' subs as
+    /// retrying. The per-lane `RelayStatus` fields stay role-scoped (they are
+    /// a lane-level diagnostic surface, not per-URL until M11).
+    pub(crate) fn relay_failed(&mut self, role: RelayRole, relay_url: &str, error: String) {
+        let canonical = crate::relay::canonical_relay_url(relay_url)
+            .unwrap_or_else(|| relay_url.to_string());
         let relay = self.relay_mut(role);
         relay.connection = "backing_off".to_string();
         relay.last_error = Some(truncate(&error, 160));
@@ -44,27 +54,55 @@ impl Kernel {
         self.thread_replies_inflight = false;
         self.changed_since_emit = true;
         self.log(format!(
-            "{} relay error: {}",
+            "{} relay error ({}): {}",
             role.key(),
+            relay_url,
             truncate(&error, 140)
         ));
         for sub in self.wire_subs.values_mut() {
-            if sub.role == role && sub.state != "closed" {
+            if sub.relay_url == canonical && sub.state != "closed" {
                 sub.state = "retrying".to_string();
             }
         }
     }
 
-    pub(crate) fn relay_closed(&mut self, role: RelayRole) {
+    /// A transport socket for `role` was fully torn down (no retry).
+    ///
+    /// `relay_url` identifies the specific socket. T133 eviction must be
+    /// scoped to wire-subs opened on **this URL**, not the whole role lane:
+    /// post-T105 several sockets share a lane, so a role-wide `retain` would
+    /// silently evict live subscriptions belonging to healthy sibling
+    /// sockets — a correctness bug, not just a leak. For the global pool
+    /// drain (Stop / Reset / Shutdown) use [`Self::relay_closed_all`].
+    pub(crate) fn relay_closed(&mut self, role: RelayRole, relay_url: &str) {
+        let canonical = crate::relay::canonical_relay_url(relay_url)
+            .unwrap_or_else(|| relay_url.to_string());
         let relay = self.relay_mut(role);
         relay.connection = "closed".to_string();
         relay.auth = "not_required".to_string();
-        // T133: the socket for `role` is gone — every wire-sub on that lane is
-        // dead. Evict rather than mark `state="closed"`; the diagnostic value
-        // of a row that can never resume is zero, and accumulating closed rows
-        // across reconnect churn is exactly the long-session leak T133 fixes.
-        // `retrying` (set by `relay_failed`) is preserved — that's a transient
-        // state where the sub may resume after backoff.
+        // T133: the socket for `relay_url` is gone — every wire-sub on that
+        // URL is dead. Evict rather than mark `state="closed"`; the
+        // diagnostic value of a row that can never resume is zero, and
+        // accumulating closed rows across reconnect churn is exactly the
+        // long-session leak T133 fixes. Sibling sockets on the same role
+        // lane are untouched — their subs are still live.
+        self.wire_subs.retain(|_key, sub| sub.relay_url != canonical);
+        self.changed_since_emit = true;
+        if let Some(driver) = self.nip42_drivers.get_mut(&role) {
+            driver.reset_on_disconnect();
+        }
+    }
+
+    /// Global socket teardown for `role` (Stop / Reset / Shutdown): unlike the
+    /// per-URL [`Self::relay_closed`], this evicts EVERY wire-sub on the role
+    /// lane regardless of URL. Correct only when the whole pool is being
+    /// drained — `close_relays` shuts down every socket of every role, so
+    /// per-URL scoping would buy nothing and would force the caller to
+    /// enumerate sockets it is about to discard anyway.
+    pub(crate) fn relay_closed_all(&mut self, role: RelayRole) {
+        let relay = self.relay_mut(role);
+        relay.connection = "closed".to_string();
+        relay.auth = "not_required".to_string();
         self.wire_subs.retain(|_key, sub| sub.role != role);
         self.changed_since_emit = true;
         if let Some(driver) = self.nip42_drivers.get_mut(&role) {

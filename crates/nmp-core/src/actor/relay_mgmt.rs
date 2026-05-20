@@ -197,7 +197,9 @@ pub(super) fn send_outbound(
 
     kernel.record_tx(message.role, message.text.len());
     if control.tx.send(RelayCommand::Send(message.text)).is_err() {
-        kernel.relay_failed(message.role, "relay worker stopped".to_string());
+        // T105: the dead channel is this specific socket — scope the
+        // `retrying` mark to its URL, not the whole role lane.
+        kernel.relay_failed(message.role, &canonical_key, "relay worker stopped".to_string());
     }
 }
 
@@ -265,7 +267,10 @@ fn bootstrap_lane_close(
 ) -> [(); 0] {
     for role in RelayRole::all() {
         connected_relays.remove(&role);
-        kernel.relay_closed(role);
+        // Global teardown: every socket of every role is being drained, so
+        // evict the whole lane (the per-URL `relay_closed` would force the
+        // caller to enumerate sockets it is discarding anyway — T105).
+        kernel.relay_closed_all(role);
     }
     // Cold-start bootstrap seeds will be respawned from relay_edit_rows on the next Start cycle.
     []

@@ -486,16 +486,27 @@ pub(super) fn handle_relay_event(
             );
             emit_now(kernel, running, update_tx, last_emit);
         }
-        RelayEvent::Failed { role, error, .. } => {
+        RelayEvent::Failed {
+            role,
+            relay_url,
+            error,
+            ..
+        } => {
             connected_relays.remove(&role);
             *startup_sent = false;
-            kernel.relay_failed(role, error);
+            // T105: scope the `retrying` mark to the specific socket that
+            // failed — sibling sockets sharing this role lane are still live.
+            kernel.relay_failed(role, &relay_url, error);
             emit_now(kernel, running, update_tx, last_emit);
         }
-        RelayEvent::Closed { role, .. } => {
+        RelayEvent::Closed {
+            role, relay_url, ..
+        } => {
             connected_relays.remove(&role);
             *startup_sent = false;
-            kernel.relay_closed(role);
+            // T105: scope T133 wire-sub eviction to the closed socket's URL,
+            // not the whole role lane (sibling sockets keep their subs).
+            kernel.relay_closed(role, &relay_url);
             emit_now(kernel, running, update_tx, last_emit);
         }
         RelayEvent::Message {
