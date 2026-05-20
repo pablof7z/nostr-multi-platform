@@ -13,6 +13,21 @@
 //! first, causing EOSE / deadline CLOSEs to miss the overwritten relay's sub
 //! (relay leaks). (#166, follows #161 `wire.rs` fix.)
 //!
+//! ## Canonical relay-URL keying
+//!
+//! The `RelayUrl` half of the key is canonicalized at every entry point
+//! ([`canonical_gate_url`]). `plan_diff` deliberately emits `WireFrame`s with
+//! raw planner URLs — the codebase's "single normalization boundary" is
+//! `Kernel::register_planner_wire_frames` (see its T-relay-url-normalize
+//! doc), which canonicalizes when writing `wire_subs`/`persistent_subs`.
+//! Transport workers then stamp every `RelayEvent` (and thus every EOSE the
+//! lifecycle controller forwards to [`LifecycleGate::on_eose`]) with the
+//! canonical delivering URL. The gate therefore canonicalizes on *both* sides
+//! — insertion (`observe_diff`) and lookup (`on_eose` / `tick_deadlines`) —
+//! so a OneShot sub registered from a raw kind:10002 URL is still found when
+//! its EOSE arrives under the canonical form. Without this the gate's key
+//! and the EOSE's key disagree and the OneShot sub never auto-CLOSEs.
+//!
 //! Pure data structure; the lifecycle controller in `mod.rs` decides when to
 //! call the methods here based on incoming relay frames.
 
@@ -20,6 +35,16 @@ use std::collections::HashMap;
 
 use super::wire::WireFrame;
 use crate::planner::{InterestId, InterestLifecycle, RelayUrl};
+use crate::relay::canonical_relay_url;
+
+/// Canonicalize a relay URL for use as a `known_subs` key component.
+///
+/// Falls back to the raw string for non-ws/wss inputs (which never reach a
+/// transport worker anyway), mirroring the `unwrap_or_else` fallback in
+/// `Kernel::register_planner_wire_frames`.
+fn canonical_gate_url(raw: &str) -> String {
+    canonical_relay_url(raw).unwrap_or_else(|| raw.to_string())
+}
 
 /// Per-wire-sub bookkeeping for lifecycle decisions.
 #[derive(Clone, Debug)]
@@ -35,8 +60,9 @@ pub(super) struct KnownSub {
 /// Tracks which wire subs are currently open and how each should close.
 ///
 /// Keyed by `(relay_url, sub_id)` — relay-scoped so that two relays carrying
-/// the same filter hash (same sub_id string) are tracked independently.
-/// See module doc for the NIP-01 rationale.
+/// the same filter hash (same sub_id string) are tracked independently, and
+/// canonical so the key matches the URL form the kernel / transport deliver.
+/// See module doc for the NIP-01 + canonicalization rationale.
 #[derive(Default)]
 pub(super) struct LifecycleGate {
     known_subs: HashMap<(RelayUrl, String), KnownSub>,
@@ -50,8 +76,8 @@ impl LifecycleGate {
     /// Reconcile the bookkeeping with a freshly-computed diff. REQs are added
     /// to the known set; CLOSEs remove them.
     ///
-    /// Both insert and remove use `(relay_url, sub_id)` as the key — the
-    /// relay-scoped gate key (not the wire sub-id alone). See module doc.
+    /// Both insert and remove use a *canonical* `(relay_url, sub_id)` key —
+    /// the relay-scoped, canonicalized gate key. See module doc.
     pub(super) fn observe_diff(&mut self, frames: &[WireFrame]) {
         for frame in frames {
             match frame {
@@ -63,7 +89,7 @@ impl LifecycleGate {
                     ..
                 } => {
                     self.known_subs.insert(
-                        (relay_url.clone(), sub_id.clone()),
+                        (canonical_gate_url(relay_url), sub_id.clone()),
                         KnownSub {
                             lifecycle: lifecycle.clone(),
                             interest_id: interest_id.clone(),
@@ -71,7 +97,8 @@ impl LifecycleGate {
                     );
                 }
                 WireFrame::Close { relay_url, sub_id } => {
-                    self.known_subs.remove(&(relay_url.clone(), sub_id.clone()));
+                    self.known_subs
+                        .remove(&(canonical_gate_url(relay_url), sub_id.clone()));
                 }
             }
         }
@@ -79,12 +106,14 @@ impl LifecycleGate {
 
     /// EOSE → CLOSE for OneShot subs; no-op otherwise.
     ///
-    /// Lookup uses `(relay_url, sub_id)` — the relay-scoped key — so EOSE on
-    /// relay A only affects relay A's entry, even when relay B shares the
-    /// same sub_id string. The relay-mismatch guard from the old single-key
-    /// scheme is not needed here: if the key is absent, the sub is unknown.
+    /// Lookup uses a canonical `(relay_url, sub_id)` key — the relay-scoped key
+    /// — so EOSE on relay A only affects relay A's entry, even when relay B
+    /// shares the same sub_id string. `relay_url` is canonicalized so a raw
+    /// delivering URL still hits the entry `observe_diff` registered. If the
+    /// key is absent, the sub is unknown.
     pub(super) fn on_eose(&mut self, relay_url: &str, sub_id: &str) -> Vec<WireFrame> {
-        let key = (relay_url.to_string(), sub_id.to_string());
+        let canonical = canonical_gate_url(relay_url);
+        let key = (canonical.clone(), sub_id.to_string());
         let Some(sub) = self.known_subs.get(&key).cloned() else {
             return Vec::new();
         };
@@ -92,7 +121,7 @@ impl LifecycleGate {
             InterestLifecycle::OneShot => {
                 self.known_subs.remove(&key);
                 vec![WireFrame::Close {
-                    relay_url: relay_url.to_string(),
+                    relay_url: canonical,
                     sub_id: sub_id.to_string(),
                 }]
             }
@@ -103,7 +132,8 @@ impl LifecycleGate {
     /// Tick deadlines: CLOSE every BoundedTime sub whose `until_ms` has passed.
     ///
     /// Iterates `(relay_url, sub_id)` pairs so two relays sharing a filter
-    /// hash (same sub_id) each produce an independent CLOSE.
+    /// hash (same sub_id) each produce an independent CLOSE. Keys are already
+    /// canonical (written canonically by `observe_diff`).
     pub(super) fn tick_deadlines(&mut self, now_ms: u64) -> Vec<WireFrame> {
         let expired: Vec<(RelayUrl, String)> = self
             .known_subs
@@ -172,6 +202,85 @@ mod tests {
     fn eose_on_unknown_sub_is_noop() {
         let mut g = LifecycleGate::new();
         assert!(g.on_eose("wss://r", "ghost").is_empty());
+    }
+
+    // ─── canonical relay-URL keying ──────────────────────────────────────────
+
+    /// A OneShot sub registered from a raw, non-canonical kind:10002 URL must
+    /// still auto-CLOSE when its EOSE arrives under the canonical delivering
+    /// URL (the form the transport pool stamps on `RelayEvent`s). Without
+    /// canonical keying the gate's insert key and the EOSE lookup key disagree
+    /// and the sub leaks open forever.
+    #[test]
+    fn oneshot_registered_raw_url_closes_on_canonical_eose() {
+        let mut g = LifecycleGate::new();
+        // observe_diff sees the raw planner URL (mixed-case host + trailing
+        // slash); on_eose is driven by the transport's canonical URL.
+        g.observe_diff(&[req(
+            "s1",
+            "WSS://Relay.Example/",
+            InterestLifecycle::OneShot,
+        )]);
+        let closes = g.on_eose("wss://relay.example", "s1");
+        assert_eq!(
+            closes.len(),
+            1,
+            "EOSE under canonical URL must close the raw-registered OneShot sub"
+        );
+        if let WireFrame::Close { relay_url, .. } = &closes[0] {
+            assert_eq!(
+                relay_url, "wss://relay.example",
+                "CLOSE must carry the canonical URL"
+            );
+        } else {
+            panic!("expected Close frame, got {:?}", closes[0]);
+        }
+    }
+
+    /// The symmetric case: REQ registered canonically, EOSE arrives raw.
+    /// Both sides canonicalize, so the lookup still hits.
+    #[test]
+    fn oneshot_registered_canonical_closes_on_raw_eose() {
+        let mut g = LifecycleGate::new();
+        g.observe_diff(&[req("s1", "wss://relay.example", InterestLifecycle::OneShot)]);
+        let closes = g.on_eose("WSS://Relay.Example/", "s1");
+        assert_eq!(closes.len(), 1, "raw EOSE must close canonically-registered sub");
+    }
+
+    /// A CLOSE emitted with a non-canonical URL must still evict the entry
+    /// registered under the canonical key (both sides canonicalize).
+    #[test]
+    fn close_with_non_canonical_url_evicts_canonical_entry() {
+        let mut g = LifecycleGate::new();
+        g.observe_diff(&[req("s1", "wss://relay.example", InterestLifecycle::OneShot)]);
+        g.observe_diff(&[WireFrame::Close {
+            relay_url: "WSS://Relay.Example/".to_string(),
+            sub_id: "s1".to_string(),
+        }]);
+        // Entry gone → a subsequent EOSE is a no-op.
+        assert!(
+            g.on_eose("wss://relay.example", "s1").is_empty(),
+            "CLOSE under raw URL must have evicted the canonical entry"
+        );
+    }
+
+    /// BoundedTime registered from a raw URL deadline-closes correctly, and
+    /// the emitted CLOSE carries the canonical URL.
+    #[test]
+    fn bounded_time_registered_raw_url_deadline_closes_canonical() {
+        let mut g = LifecycleGate::new();
+        g.observe_diff(&[req(
+            "s1",
+            "WSS://Relay.Example/",
+            InterestLifecycle::BoundedTime { until_ms: 100 },
+        )]);
+        let closes = g.tick_deadlines(101);
+        assert_eq!(closes.len(), 1, "deadline must close the raw-registered sub");
+        if let WireFrame::Close { relay_url, .. } = &closes[0] {
+            assert_eq!(relay_url, "wss://relay.example");
+        } else {
+            panic!("expected Close, got {:?}", closes[0]);
+        }
     }
 
     // ─── RED: cross-relay shared-filter collision (#166) ─────────────────────
