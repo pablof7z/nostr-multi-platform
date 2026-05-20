@@ -63,13 +63,13 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeNew(
     _env: JNIEnv,
     _class: JClass,
 ) -> jlong {
-    let app = unsafe { nmp_app_new() };
+    let app = nmp_app_new();
     if app.is_null() {
         return 0;
     }
     let (tx, rx) = std::sync::mpsc::channel::<String>();
     let tx = Box::into_raw(Box::new(tx));
-    unsafe { nmp_app_set_update_callback(app, tx as *mut c_void, Some(on_update)) };
+    nmp_app_set_update_callback(app, tx as *mut c_void, Some(on_update));
     let session = Box::new(Session { app, rx, tx });
     Box::into_raw(session) as jlong
 }
@@ -83,7 +83,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeStart(
     emit_hz: jint,
 ) {
     if let Some(s) = session_ref(handle) {
-        unsafe { nmp_app_start(s.app, 0, visible_limit as u32, emit_hz as u32) };
+        nmp_app_start(s.app, 0, visible_limit as u32, emit_hz as u32);
     }
 }
 
@@ -94,7 +94,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeStop(
     handle: jlong,
 ) {
     if let Some(s) = session_ref(handle) {
-        unsafe { nmp_app_stop(s.app) };
+        nmp_app_stop(s.app);
     }
 }
 
