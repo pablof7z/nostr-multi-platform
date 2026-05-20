@@ -215,6 +215,14 @@ final class KernelHandle {
         }
     }
 
+    func retryPublish(handle: String) {
+        handle.withCString { nmp_app_retry_publish(raw, $0) }
+    }
+
+    func cancelPublish(handle: String) {
+        handle.withCString { nmp_app_cancel_publish(raw, $0) }
+    }
+
     func react(targetEventID: String, reaction: String) {
         targetEventID.withCString { tPtr in
             reaction.withCString { rPtr in
@@ -420,6 +428,7 @@ struct KernelUpdate: Decodable {
     let accounts: [AccountSummary]?
     let activeAccount: String?
     let publishQueue: [PublishQueueEntry]?
+    let publishOutbox: [PublishOutboxItem]?
     let lastErrorToast: String?
     let relayEditRows: [RelayEditRow]?
     // NIP-47 wallet projection. Optional so older kernels still decode (D1).
@@ -489,6 +498,29 @@ struct PublishQueueEntry: Decodable, Identifiable, Equatable {
     let targetRelays: Int
     let status: String
     var id: String { eventId }
+}
+
+struct PublishOutboxItem: Decodable, Identifiable, Equatable {
+    let handle: String
+    let eventId: String
+    let kind: UInt32
+    let title: String
+    let preview: String
+    let createdAtDisplay: String
+    let status: String
+    let targetRelays: Int
+    let relays: [PublishOutboxRelay]
+
+    var id: String { handle }
+}
+
+struct PublishOutboxRelay: Decodable, Identifiable, Equatable {
+    let relayUrl: String
+    let status: String
+    let attempt: UInt32
+    let message: String
+
+    var id: String { relayUrl }
 }
 
 struct RelayEditRow: Decodable, Identifiable, Equatable {

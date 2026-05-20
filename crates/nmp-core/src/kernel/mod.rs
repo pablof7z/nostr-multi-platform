@@ -52,6 +52,7 @@ mod publish_engine;
 #[cfg(test)]
 mod publish_engine_tests;
 mod publish_engine_wire;
+mod publish_outbox;
 #[cfg(test)]
 mod publish_terminal_status_tests;
 mod raw_event_observer;

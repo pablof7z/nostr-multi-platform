@@ -288,6 +288,30 @@ impl PublishEngine {
         Ok(())
     }
 
+    /// User-requested immediate retry for a pending publish. This does not
+    /// override relay availability: unavailable relays stay durable Pending
+    /// until their socket reconnects, but pending/backoff states for available
+    /// relays are eligible to dispatch now.
+    pub fn retry_now(
+        &mut self,
+        handle: &PublishHandle,
+        now_ms: u64,
+    ) -> Result<(), PublishEngineError> {
+        let Some(row) = self.in_flight.get_mut(handle) else {
+            return Err(PublishEngineError::Store(PublishStoreError::NotFound));
+        };
+        for (relay_url, state) in &row.per_relay {
+            if !state.is_terminal() {
+                row.pending_retries.remove(relay_url);
+            }
+        }
+        row.dirty = true;
+        self.persist(handle)?;
+        self.dispatch_pending(handle, now_ms);
+        self.flush_view();
+        Ok(())
+    }
+
     /// Fold a relay ack into the state machine for the given handle.
     pub fn on_ack(&mut self, handle: &PublishHandle, ack: RelayAck, now_ms: u64) {
         let Some(in_flight) = self.in_flight.get_mut(handle) else {
@@ -462,6 +486,9 @@ impl PublishEngine {
             in_flight_rows.push(EventPublishStatus {
                 handle: handle.clone(),
                 event_id: row.event.id.clone(),
+                kind: row.event.unsigned.kind,
+                created_at: row.event.unsigned.created_at,
+                content: row.event.unsigned.content.clone(),
                 per_relay: row
                     .per_relay
                     .iter()

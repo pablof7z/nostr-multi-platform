@@ -240,6 +240,16 @@ pub(super) fn dispatch_command(
             emit_now(kernel, *running, update_tx, last_emit);
             Some(outbound)
         }
+        ActorCommand::RetryPublish { handle } => {
+            let outbound = kernel.retry_publish_now(&handle);
+            emit_now(kernel, *running, update_tx, last_emit);
+            Some(outbound)
+        }
+        ActorCommand::CancelPublish { handle } => {
+            kernel.cancel_publish(&handle);
+            emit_now(kernel, *running, update_tx, last_emit);
+            Some(Vec::new())
+        }
         ActorCommand::React {
             target_event_id,
             reaction,

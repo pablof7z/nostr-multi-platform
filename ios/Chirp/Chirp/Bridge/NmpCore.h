@@ -64,6 +64,8 @@ void nmp_app_publish_signed_event(void *app, const char *event_json);
 // identical to `nmp_app_publish_signed_event`. Same verify / no-re-sign /
 // fire-and-forget (D6) semantics; malformed input surfaces as a toast.
 void nmp_app_publish_signed_event_to(void *app, const char *event_json, const char *relays_json);
+void nmp_app_retry_publish(void *app, const char *handle);
+void nmp_app_cancel_publish(void *app, const char *handle);
 
 // ── T146 — kernel event observer ─────────────────────────────────────────
 //

@@ -202,6 +202,31 @@ pub(super) struct LogicalInterestStatus {
     pub(super) warming_until_ms: Option<u128>,
 }
 
+/// User-facing projection of publish intents that have not finished.
+///
+/// This is derived from the publish engine's in-flight snapshot; the UI never
+/// reconstructs retry policy or relay state from logs.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub(super) struct PublishOutboxItem {
+    pub(super) handle: String,
+    pub(super) event_id: String,
+    pub(super) kind: u32,
+    pub(super) title: String,
+    pub(super) preview: String,
+    pub(super) created_at_display: String,
+    pub(super) status: String,
+    pub(super) target_relays: usize,
+    pub(super) relays: Vec<PublishOutboxRelay>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub(super) struct PublishOutboxRelay {
+    pub(super) relay_url: String,
+    pub(super) status: String,
+    pub(super) attempt: u32,
+    pub(super) message: String,
+}
+
 /// Per-relay rolling counters for diagnostics.
 #[derive(Clone, Debug, Default)]
 pub(super) struct Counters {
@@ -511,6 +536,7 @@ pub(super) struct KernelUpdate {
     pub(super) accounts: Vec<super::AccountSummary>,
     pub(super) active_account: Option<String>,
     pub(super) publish_queue: Vec<super::PublishQueueEntry>,
+    pub(super) publish_outbox: Vec<PublishOutboxItem>,
     pub(super) last_error_toast: Option<String>,
     /// Machine-readable category for `last_error_toast`. Closed key set:
     /// `auth_required | transient | permanent | malformed_event | policy_denied`

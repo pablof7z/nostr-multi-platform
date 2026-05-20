@@ -21,8 +21,8 @@ struct HomeFeedView: View {
 
     /// Controls the top-level "new note" compose sheet (toolbar button).
     @State private var showCompose = false
-    /// Controls the Activity sheet from the toolbar bell button.
-    @State private var showActivity = false
+    /// Controls the publish outbox sheet.
+    @State private var showOutbox = false
 
     var body: some View {
         ZStack {
@@ -44,7 +44,7 @@ struct HomeFeedView: View {
         .sheet(isPresented: $showCompose) {
             ComposeView()
         }
-        .sheet(isPresented: $showActivity) {
+        .sheet(isPresented: $showOutbox) {
             NavigationStack {
                 NotificationsView()
             }
@@ -144,12 +144,23 @@ struct HomeFeedView: View {
 
         ToolbarItem(placement: .navigationBarTrailing) {
             Button {
-                showActivity = true
+                showOutbox = true
             } label: {
-                Image(systemName: "bell")
-                    .font(.system(size: 17, weight: .semibold))
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "paperplane")
+                        .font(.system(size: 17, weight: .semibold))
+                    if !model.publishOutbox.isEmpty {
+                        Text("\(min(model.publishOutbox.count, 9))")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(Color(.systemBackground))
+                            .frame(minWidth: 14, minHeight: 14)
+                            .background(.tint, in: Circle())
+                            .offset(x: 8, y: -8)
+                    }
+                }
             }
-            .accessibilityLabel("Activity")
+            .accessibilityLabel("Publish outbox")
+            .accessibilityIdentifier("publish-outbox-button")
         }
     }
 

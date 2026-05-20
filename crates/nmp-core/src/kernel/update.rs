@@ -133,6 +133,7 @@ impl Kernel {
             accounts: self.account_snapshot().0.to_vec(),
             active_account: self.account_snapshot().1.cloned(),
             publish_queue: self.publish_queue_snapshot().to_vec(),
+            publish_outbox: self.publish_outbox_items(),
             last_error_toast: self.last_error_toast_snapshot().cloned(),
             last_error_category: self.last_error_category_snapshot().cloned(),
             // #171 (D6): project the recorded planner error so the host can
