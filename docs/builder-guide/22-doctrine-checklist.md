@@ -82,8 +82,7 @@ reference waiving it.
 **D9 — kernel owns time**
 
 - [ ] Every new "now" read goes through the injected `Clock`, never a raw `SystemTime::now()` on a reducer / replay path.
-- [ ] Any new `created_at` consumer (replaceable resolution, NIP-40 expiration, ordering) is bounded against the kernel clock, never relay-trusted.
-- [ ] Future-dated inbound events are still rejected at the all-kinds chokepoint (`MAX_FUTURE_SECONDS` gate intact).
+- [ ] Any new `created_at` consumer (replaceable resolution, NIP-40 expiration, ordering) is computed against the kernel clock.
 
 **D10 — provenance**
 

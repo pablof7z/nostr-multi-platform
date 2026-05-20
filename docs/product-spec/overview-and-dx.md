@@ -41,7 +41,7 @@ Summary: D0–D5 and D10 are *policy* doctrines (user-facing semantics); D6–D9
 | D6 | Errors never cross FFI as exceptions | Substrate |
 | D7 | Capabilities report; never decide policy | Substrate |
 | D8 | Reactivity contract: composite reverse index · ≤60 Hz/view · working-set bounded; idle-tick emit gated on `changed_since_emit()` | Substrate |
-| D9 | The kernel owns time; relay-supplied `created_at` is untrusted — replaceable resolution, NIP-40 expiration, future-timestamp rejection are kernel decisions read through the injected `Clock` | Substrate |
+| D9 | The kernel owns time — signing, replaceable resolution, and NIP-40 expiration are kernel decisions read through the injected `Clock` | Substrate |
 | D10 | Provenance — private events (kind:1059 gift-wrap, NIP-17 DM rumors) never escape to public relays; received events are not laundered between relays | Policy |
 
 ---

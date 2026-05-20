@@ -22,39 +22,6 @@ fn event_short_id(id: &str) -> &str {
     &id[..id.len().min(16)]
 }
 
-/// Clock-discipline tolerance (doctrine **D9** — the kernel owns time;
-/// relay-supplied `created_at` is untrusted): the maximum number of seconds an
-/// inbound event's `created_at` may exceed the kernel's "now" before the event
-/// is rejected outright.
-///
-/// ## Why this exists
-///
-/// A NIP-01 event's Schnorr signature covers `created_at`, but a signer can
-/// sign *any* timestamp — the signature does NOT bound it to a plausible
-/// value. A relay operator (or a malicious relay) can therefore deliver an
-/// event with an arbitrary future `created_at`.
-///
-/// For replaceable kinds (0, 3, 10002) the `EventStore` and the kernel's
-/// local caches (`ingest/profile.rs`, `ingest/contacts.rs`,
-/// `ingest/relay_list.rs`) pick the canonical "winner" by strict `>` on
-/// `created_at`. A future-dated event would therefore (a) permanently
-/// displace a legitimate newer event and (b) resist replacement by any
-/// honestly-timestamped update. Bounding the future direction closes that.
-///
-/// ## Why 15 minutes
-///
-/// 900 seconds matches the clock-skew tolerance many relay implementations
-/// apply to their own ingest, so an event accepted by a well-behaved relay
-/// is also accepted here. It is generous enough that ordinary client/relay
-/// clock drift never trips it.
-///
-/// ## Scope
-///
-/// This bounds the *future* direction only. Past-dating is a separate
-/// concern — backfill of genuinely old events is legitimate, so there is no
-/// symmetric lower bound.
-const MAX_FUTURE_SECONDS: u64 = 900;
-
 impl Kernel {
     pub(crate) fn handle_message(
         &mut self,
@@ -307,36 +274,6 @@ impl Kernel {
             self.log(format!("bad EVENT payload on {sub_id}"));
             return;
         };
-
-        // Clock discipline (doctrine D9 — the kernel owns time): reject
-        // relay-supplied events whose `created_at` is unreasonably far in the
-        // future. This is the single all-kinds chokepoint — it runs BEFORE
-        // counter bumps, the raw-event tap, the store insert, and per-kind
-        // dispatch, so a future-dated event for ANY kind (1, 6, and the
-        // replaceable 0/3/10002 paths) is dropped uniformly. The signature
-        // alone cannot bound `created_at` (a signer signs any timestamp), so
-        // this protocol-level policy must live in the kernel. "Now" reads the
-        // injected `Clock` so the check is deterministic under `FixedClock`
-        // in tests and replay. Per D6 a rejection silently drops the event
-        // with a debug log — never a panic, never a user-facing toast (this
-        // is protocol policy, not a user-actionable error).
-        let now_secs = self
-            .clock
-            .now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        if event.created_at > now_secs.saturating_add(MAX_FUTURE_SECONDS) {
-            self.log(format!(
-                "drop future-dated event {} on {sub_id} (created_at={} now={} skew={}s > {}s)",
-                event_short_id(&event.id),
-                event.created_at,
-                now_secs,
-                event.created_at.saturating_sub(now_secs),
-                MAX_FUTURE_SECONDS,
-            ));
-            return;
-        }
 
         let now = Instant::now();
         {

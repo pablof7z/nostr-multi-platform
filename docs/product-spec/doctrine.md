@@ -99,19 +99,21 @@ Per ADRs 0001 (composite dependency keys), 0002 (per-view delta budget), 0003 (w
 
 ## D9. The kernel owns time; relay-supplied `created_at` is untrusted
 
-Time is a kernel decision, never a relay assertion. The kernel reads "now" exclusively through its injected `Clock` trait (`SystemClock` in production, `FixedClock` under `test-support`), so every time-dependent reduction is deterministic under test and reproducible during replay. An event's `created_at` field is signed by the author but the Schnorr signature does **not** bound it to a plausible value — a signer can sign any timestamp, and a malicious or misconfigured relay can deliver it. Therefore every decision that consumes `created_at` is the kernel's, made against the kernel's clock:
+Time is a kernel decision, never a relay assertion. The kernel reads "now" exclusively through its injected `Clock` trait (`SystemClock` in production, `FixedClock` under `test-support`), so every time-dependent reduction is deterministic under test and reproducible during replay. The kernel — not the relay that delivered an event — owns every decision that consumes time:
 
-- **Replaceable-event resolution** (kinds 0, 3, 10002, and parameterized-replaceable). The canonical "winner" is picked by strict `>` on `created_at` in the `EventStore` and the kernel's local caches — a value the kernel must be able to trust the *bounds* of.
+- **Signing.** When the kernel stamps `created_at` on an event it is about to sign, the value comes from the injected `Clock`.
+- **Replaceable-event resolution** (kinds 0, 3, 10002, and parameterized-replaceable). The canonical "winner" is picked by strict `>` on `created_at` in the `EventStore` and the kernel's local caches.
 - **NIP-40 expiration.** Whether an event has expired is computed against the kernel clock, not asserted by the relay that delivered it.
-- **Future-timestamp rejection.** Inbound events whose `created_at` exceeds the kernel's "now" by more than a bounded skew tolerance are dropped at a single all-kinds chokepoint, *before* the store insert and per-kind dispatch, so no future-dated event can permanently displace a legitimate replaceable event and then resist honest replacement.
+- **`received_at_ms` provenance.** The wall-clock stamp the store records for an inbound event reads the injected `Clock`, so replay is deterministic.
 
 This rules out, by construction:
 
 - Trusting a relay's word on whether an event is "newer" or "expired".
-- A future-dated kind:0/3/10002 poisoning a replaceable slot against all honest updates.
 - Non-deterministic reducers that read wall-clock directly and break replay.
 
-Implementation: the future-timestamp gate is `MAX_FUTURE_SECONDS = 900` and the all-kinds check in `crates/nmp-core/src/kernel/ingest/mod.rs` (constant doc-block at lines 25–56); the clock seam is `crates/nmp-core/src/kernel/clock.rs` (`Clock` trait, `SystemClock`, `FixedClock`).
+A relay **cannot** tamper with an inbound event's `created_at`: the Schnorr signature covers `[0, pubkey, created_at, kind, tags, content]`, so any change to the timestamp invalidates the signature and the event is rejected by signature verification. A future-dated event can therefore only have been produced by the author's own signing client — there is no inbound future-timestamp threat to gate against, and NMP performs no such ingest-time rejection.
+
+Implementation: the clock seam is `crates/nmp-core/src/kernel/clock.rs` (`Clock` trait, `SystemClock`, `FixedClock`).
 
 ## D10. Provenance — private events never escape to public relays
 
