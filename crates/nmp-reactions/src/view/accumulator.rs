@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 use nmp_core::substrate::{EventId, KernelEvent};
 use serde::{Deserialize, Serialize};
 
-use crate::decode::{try_from_kernel_event, SocialKind, SocialRecord};
+use crate::decode::{try_from_kernel_event, ReactionKind, ReactionRecord};
 
 /// In-memory state for the reaction/repost `ViewModule` impls. The inner map is
 /// private so external mutation goes through `insert` / `remove`, which enforce
@@ -23,7 +23,7 @@ use crate::decode::{try_from_kernel_event, SocialKind, SocialRecord};
 #[derive(Default)]
 pub struct ReactionAccumulator {
     /// `event_id` → decoded record. The map key gives free idempotency.
-    records: BTreeMap<String, SocialRecord>,
+    records: BTreeMap<String, ReactionRecord>,
 }
 
 impl ReactionAccumulator {
@@ -58,8 +58,8 @@ impl ReactionAccumulator {
 
     /// All records newest-first (by `created_at` desc, then `event_id` for
     /// determinism). Deterministic so SwiftUI diffing is stable (D8).
-    pub fn snapshot_records(&self) -> Vec<SocialRecord> {
-        let mut out: Vec<SocialRecord> = self.records.values().cloned().collect();
+    pub fn snapshot_records(&self) -> Vec<ReactionRecord> {
+        let mut out: Vec<ReactionRecord> = self.records.values().cloned().collect();
         out.sort_by(|a, b| {
             b.created_at
                 .cmp(&a.created_at)
@@ -76,15 +76,15 @@ impl ReactionAccumulator {
     pub fn reaction_summary(&self) -> (Vec<(String, u64)>, u64) {
         // newest-first ensures the first record seen per reactor is its newest.
         let ordered = self.snapshot_records();
-        let mut newest_per_reactor: BTreeMap<String, &SocialRecord> = BTreeMap::new();
+        let mut newest_per_reactor: BTreeMap<String, &ReactionRecord> = BTreeMap::new();
         for r in &ordered {
-            if matches!(r.kind, SocialKind::Reaction { .. }) {
+            if matches!(r.kind, ReactionKind::Reaction { .. }) {
                 newest_per_reactor.entry(r.author.clone()).or_insert(r);
             }
         }
         let mut counts: BTreeMap<String, u64> = BTreeMap::new();
         for r in newest_per_reactor.values() {
-            if let SocialKind::Reaction { content, .. } = &r.kind {
+            if let ReactionKind::Reaction { content, .. } = &r.kind {
                 *counts.entry(content.clone()).or_insert(0) += 1;
             }
         }

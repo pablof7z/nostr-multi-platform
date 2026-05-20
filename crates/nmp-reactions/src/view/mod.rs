@@ -219,7 +219,7 @@ mod tests {
         // newest-first: rp2 (ts=200) before rp1 (ts=100).
         assert_eq!(snap.reposts[0].event_id, "rp2");
         match &snap.reposts[0].kind {
-            crate::decode::SocialKind::GenericRepost { original_kind, .. } => {
+            crate::decode::ReactionKind::GenericRepost { original_kind, .. } => {
                 assert_eq!(*original_kind, Some(30023));
             }
             _ => panic!("expected GenericRepost preserving original k"),

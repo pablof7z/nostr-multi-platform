@@ -3,7 +3,7 @@
 //! Per `docs/design/kind-wrappers.md` §3.3 + §6: the kernel does not know
 //! `kind 7 == reaction` (D0). On ingest, the kernel's dispatch table (Phase 1
 //! §8) reads `ReactionsDomain::ingest_kinds()` and calls `decode_and_route` to
-//! write the decoded [`SocialRecord`] to the domain store. Until the kernel
+//! write the decoded [`ReactionRecord`] to the domain store. Until the kernel
 //! dispatch table lands, `decode_and_route` is callable directly — exercised by
 //! the integration tests to prove the contract end-to-end.
 //!
@@ -24,13 +24,13 @@ use nmp_core::planner::NaddrCoord;
 use nmp_core::store::{DomainHandle, StoreError, StoredEvent};
 use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 
-use crate::decode::{try_from_event, ReactionTarget, SocialKind, SocialRecord};
-use crate::kinds::SOCIAL_KINDS;
+use crate::decode::{try_from_event, ReactionTarget, ReactionKind, ReactionRecord};
+use crate::kinds::REACTION_KINDS;
 
 /// Domain-store namespace.
 pub const NAMESPACE: &str = "nmp.reactions";
 
-const INGEST_KINDS: &[u32] = SOCIAL_KINDS;
+const INGEST_KINDS: &[u32] = REACTION_KINDS;
 
 /// `DomainModule` impl for NIP-25 reactions + NIP-18 reposts.
 pub struct ReactionsDomain;
@@ -65,7 +65,7 @@ impl DomainModule for ReactionsDomain {
 pub mod keys {
     use super::{NaddrCoord, ReactionTarget};
 
-    /// Primary row: `r\x00<event_id>` → `serde_json(SocialRecord)`. The key is
+    /// Primary row: `r\x00<event_id>` → `serde_json(ReactionRecord)`. The key is
     /// the reaction's own immutable id (regular event → id is the identity);
     /// re-ingesting the same id overwrites the identical row (idempotency).
     pub const PRIMARY_PREFIX: &[u8] = b"r\x00";
@@ -173,11 +173,11 @@ pub mod keys {
 /// the reaction `content` (`"+"`, `"-"`, an emoji, …). For reposts it is a
 /// stable synthetic token so reposts aggregate together and never collide with
 /// a literal reaction whose content happened to be the same text.
-fn aggregate_content(record: &SocialRecord) -> String {
+fn aggregate_content(record: &ReactionRecord) -> String {
     match &record.kind {
-        SocialKind::Reaction { content, .. } => content.clone(),
-        SocialKind::Repost { .. } => "\x01repost".to_string(),
-        SocialKind::GenericRepost { .. } => "\x01repost".to_string(),
+        ReactionKind::Reaction { content, .. } => content.clone(),
+        ReactionKind::Repost { .. } => "\x01repost".to_string(),
+        ReactionKind::GenericRepost { .. } => "\x01repost".to_string(),
     }
 }
 
@@ -197,7 +197,7 @@ pub fn decode_and_route(event: &StoredEvent, handle: &DomainHandle) -> Result<()
     };
 
     let serialized = serde_json::to_vec(&record)
-        .map_err(|e| StoreError::Io(format!("serialize SocialRecord: {e}")))?;
+        .map_err(|e| StoreError::Io(format!("serialize ReactionRecord: {e}")))?;
 
     // Primary row keyed on the immutable event id (regular event identity).
     handle.put(&keys::primary(&record.event_id), &serialized)?;
@@ -216,23 +216,23 @@ pub fn decode_and_route(event: &StoredEvent, handle: &DomainHandle) -> Result<()
     Ok(())
 }
 
-/// Read a previously-decoded [`SocialRecord`] by its own event id.
-pub fn get(handle: &DomainHandle, event_id: &str) -> Result<Option<SocialRecord>, StoreError> {
+/// Read a previously-decoded [`ReactionRecord`] by its own event id.
+pub fn get(handle: &DomainHandle, event_id: &str) -> Result<Option<ReactionRecord>, StoreError> {
     let Some(bytes) = handle.get(&keys::primary(event_id))? else {
         return Ok(None);
     };
-    let record: SocialRecord = serde_json::from_slice(&bytes)
-        .map_err(|e| StoreError::Io(format!("deserialize SocialRecord: {e}")))?;
+    let record: ReactionRecord = serde_json::from_slice(&bytes)
+        .map_err(|e| StoreError::Io(format!("deserialize ReactionRecord: {e}")))?;
     Ok(Some(record))
 }
 
 /// Every reaction/repost on `target`, newest first (by `created_at` desc, then
 /// `event_id` for determinism). Reposts are included; callers wanting only
-/// reposts filter on [`SocialRecord::is_repost`].
+/// reposts filter on [`ReactionRecord::is_repost`].
 pub fn list_for_target(
     handle: &DomainHandle,
     target: &ReactionTarget,
-) -> Result<Vec<SocialRecord>, StoreError> {
+) -> Result<Vec<ReactionRecord>, StoreError> {
     let prefix = keys::by_target_prefix(target);
     let mut records = resolve_index(handle, &prefix)?;
     sort_newest_first(&mut records);
@@ -243,7 +243,7 @@ pub fn list_for_target(
 pub fn list_by_reactor(
     handle: &DomainHandle,
     reactor: &str,
-) -> Result<Vec<SocialRecord>, StoreError> {
+) -> Result<Vec<ReactionRecord>, StoreError> {
     let prefix = keys::by_reactor_prefix(reactor);
     let mut records = resolve_index(handle, &prefix)?;
     sort_newest_first(&mut records);
@@ -267,14 +267,14 @@ pub fn reaction_summary(
     // into the reaction aggregate. This keeps the domain-side summary identical
     // to the view-side `ReactionAccumulator::reaction_summary`, which applies
     // the same filter.
-    let records: Vec<SocialRecord> = list_for_target(handle, target)?
+    let records: Vec<ReactionRecord> = list_for_target(handle, target)?
         .into_iter()
-        .filter(SocialRecord::is_reaction)
+        .filter(ReactionRecord::is_reaction)
         .collect();
 
     // Keep the newest record per reactor. `records` is already newest-first, so
     // the first time we see a reactor is its newest reaction.
-    let mut newest_per_reactor: BTreeMap<String, SocialRecord> = BTreeMap::new();
+    let mut newest_per_reactor: BTreeMap<String, ReactionRecord> = BTreeMap::new();
     for r in records {
         newest_per_reactor.entry(r.author.clone()).or_insert(r);
     }
@@ -302,7 +302,7 @@ pub struct ReactionSummary {
     pub total: u64,
 }
 
-fn resolve_index(handle: &DomainHandle, prefix: &[u8]) -> Result<Vec<SocialRecord>, StoreError> {
+fn resolve_index(handle: &DomainHandle, prefix: &[u8]) -> Result<Vec<ReactionRecord>, StoreError> {
     let scan = handle.scan_prefix(prefix)?;
     let mut out = Vec::new();
     for entry in scan {
@@ -316,7 +316,7 @@ fn resolve_index(handle: &DomainHandle, prefix: &[u8]) -> Result<Vec<SocialRecor
     Ok(out)
 }
 
-fn sort_newest_first(records: &mut [SocialRecord]) {
+fn sort_newest_first(records: &mut [ReactionRecord]) {
     records.sort_by(|a, b| {
         b.created_at
             .cmp(&a.created_at)

@@ -3,7 +3,7 @@
 
 use nmp_core::substrate::{KernelEvent, ViewContext, ViewModule};
 use nmp_relations::{
-    ReactionTarget, RepostsSpec, RepostsView, SocialKind, KIND_GENERIC_REPOST, KIND_REPOST,
+    ReactionTarget, RepostsSpec, RepostsView, ReactionKind, KIND_GENERIC_REPOST, KIND_REPOST,
 };
 
 const X: &str = "event-X-0000000000000000000000000000000000000000000000000000000000";
@@ -52,12 +52,12 @@ fn reposts_view_surfaces_kind_6_and_16_of_target() {
 
     // Generic repost preserves the original kind.
     match &snap.reposts[0].kind {
-        SocialKind::GenericRepost { original_kind, .. } => {
+        ReactionKind::GenericRepost { original_kind, .. } => {
             assert_eq!(*original_kind, Some(30023));
         }
         other => panic!("expected GenericRepost, got {other:?}"),
     }
-    assert!(matches!(snap.reposts[1].kind, SocialKind::Repost { .. }));
+    assert!(matches!(snap.reposts[1].kind, ReactionKind::Repost { .. }));
 }
 
 #[test]
