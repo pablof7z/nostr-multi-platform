@@ -738,6 +738,109 @@ fn react_to_uncached_event_omits_p_tag_gracefully() {
     );
 }
 
+#[test]
+fn react_routes_to_reacted_to_author_inbox_relay() {
+    // NIP-25 §1 + NIP-65 inbox routing: a kind:7 reaction must not only *label*
+    // the reacted-to author with a `p` tag — it must *reach* that author. The
+    // publish engine derives `#p` recipients from the event's own tags
+    // (`engine::helpers::collect_p_tags`) and the `Nip65OutboxResolver` unions
+    // every recipient's kind:10002 READ relays (their inbox) into the publish
+    // target set. So a reaction whose author has a known kind:10002 must emit an
+    // outbound frame addressed to that author's inbox relay.
+    //
+    // The reactor's WRITE relays and the reacted-to author's READ (inbox)
+    // relay are deliberately disjoint URLs: an inbox-routed frame can only
+    // appear if the resolver actually consulted the recipient's kind:10002, so
+    // the assertion proves inbox routing rather than incidental outbox overlap.
+    let (mut id, mut kernel) = fresh();
+    sign_in_with_nip65(&mut id, &mut kernel); // reactor → TEST_WRITE_RELAYS (write-marked)
+
+    let target = "a".repeat(64);
+    let target_author = "cccc000000000000000000000000000000000000000000000000000000000000";
+    kernel.seed_kind1_for_reply_test(&target, target_author, 100, vec![], "reacted-to note");
+
+    // Seed the reacted-to author's NIP-65 list with a READ-marked inbox relay.
+    // `seed_kind10002_for_test` only emits write-marked tags, so the kind:10002
+    // is injected directly with an explicit `"read"` marker — that is the relay
+    // the resolver routes the inbox copy to.
+    const AUTHOR_INBOX_RELAY: &str = "wss://reacted-author-inbox.test";
+    let k10002_id = format!("{:0<64}", "cccck10002inbox");
+    kernel.inject_replaceable_event(
+        &k10002_id,
+        target_author,
+        1_700_000_000,
+        10002,
+        vec![vec![
+            "r".to_string(),
+            AUTHOR_INBOX_RELAY.to_string(),
+            "read".to_string(),
+        ]],
+        "wss://seed",
+        1_700_000_000_000,
+    );
+
+    let outbound = react(&id, &mut kernel, &target, "❤", &mut Vec::new());
+
+    // The reaction must carry the `p` tag (NIP-25 §1) so the engine has a
+    // recipient to resolve at all.
+    let event = last_published_event_json(&outbound);
+    assert_eq!(
+        tags_of(&event),
+        vec![
+            vec!["e".to_string(), target.clone()],
+            vec!["p".to_string(), target_author.to_string()],
+        ],
+        "reaction must carry a `p` tag naming the reacted-to author for inbox routing"
+    );
+
+    // The decisive assertion: an EVENT frame went to the author's READ/inbox
+    // relay. This only happens if the NIP-65 resolver consulted the recipient's
+    // kind:10002 — the reactor's own write relays do not include this URL.
+    let routed_to_inbox = outbound
+        .iter()
+        .any(|m| m.relay_url == AUTHOR_INBOX_RELAY && m.text.starts_with("[\"EVENT\""));
+    assert!(
+        routed_to_inbox,
+        "reaction must be routed to the reacted-to author's NIP-65 inbox relay \
+         ({AUTHOR_INBOX_RELAY}); outbound relays: {:?}",
+        outbound.iter().map(|m| &m.relay_url).collect::<Vec<_>>()
+    );
+
+    // Sanity: the reactor's own outbox relays are still in the target set —
+    // inbox routing augments, never replaces, the author's NIP-65 write fanout.
+    for write_url in TEST_WRITE_RELAYS {
+        assert!(
+            outbound.iter().any(|m| &m.relay_url == write_url),
+            "reaction must still fan out to the reactor's NIP-65 write relay {write_url}"
+        );
+    }
+}
+
+#[test]
+fn react_to_uncached_author_skips_inbox_routing_gracefully() {
+    // D6: when the reacted-to event is uncached, `react` cannot build the `p`
+    // tag, so there is no recipient for the resolver to route an inbox copy
+    // to. The reaction must still publish to the reactor's own outbox relays —
+    // degraded but valid — and must not panic. This is the negative companion
+    // to `react_routes_to_reacted_to_author_inbox_relay`.
+    let (mut id, mut kernel) = fresh();
+    sign_in_with_nip65(&mut id, &mut kernel);
+    let target = "d".repeat(64); // well-formed id, never seeded → author uncached
+
+    let outbound = react(&id, &mut kernel, &target, "❤", &mut Vec::new());
+
+    assert!(
+        !outbound.is_empty(),
+        "react to an uncached event must still publish to the reactor's outbox"
+    );
+    for write_url in TEST_WRITE_RELAYS {
+        assert!(
+            outbound.iter().any(|m| &m.relay_url == write_url),
+            "uncached target → reaction still fans out to the reactor's write relay {write_url}"
+        );
+    }
+}
+
 // ── follow: unfollow / idempotency / account / pubkey-validation gaps ───────
 //
 // `follow_publishes_kind3_with_p_tag` above covers only the first add against
