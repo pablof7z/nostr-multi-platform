@@ -235,6 +235,17 @@ void *nmp_app_chirp_marmot_register(void *app, const char *secret_key_hex, const
 /// the active local key from the slot the actor writes after identity
 /// mutations. Returns NULL if no local account is active (D6).
 void *nmp_app_chirp_marmot_register_active(void *app, const char *db_dir);
+/// Rust-owned Chirp identity bootstrap: restore a persisted local secret
+/// through the native keyring capability, sign in through the kernel actor,
+/// and register Marmot. `test_nsec` may be NULL; when non-NULL it overrides
+/// keyring recall for UI tests. Returns the Marmot handle or NULL.
+void *nmp_app_chirp_identity_restore(void *app, const char *db_dir, const char *test_nsec);
+/// Rust-owned nsec sign-in: persist through keyring capability, sign in, and
+/// register Marmot. Returns the Marmot handle or NULL.
+void *nmp_app_chirp_identity_sign_in_nsec(void *app, const char *secret, const char *db_dir);
+/// Rust-owned removal policy: forget Chirp's persisted local secret and
+/// remove the identity through the kernel actor.
+void nmp_app_chirp_identity_remove_account(void *app, const char *identity_id);
 char *nmp_app_chirp_marmot_snapshot(void *handle);
 char *nmp_app_chirp_marmot_group_messages(void *handle, const char *group_id_hex);
 char *nmp_app_chirp_marmot_dispatch(void *handle, const char *action_json);

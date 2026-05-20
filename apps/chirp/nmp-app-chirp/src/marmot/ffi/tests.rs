@@ -20,11 +20,17 @@ use nmp_marmot::projection::{ops, state::MarmotProjection};
 
 use mdk_core::prelude::NostrGroupConfigData;
 use mdk_sqlite_storage::MdkSqliteStorage;
+use nmp_core::substrate::{
+    CapabilityEnvelope, CapabilityModule, CapabilityRequest, KeyringCapability, KeyringRequest,
+    KeyringResult,
+};
 use nmp_core::RawEventObserver;
 use nmp_marmot::service::MarmotService;
 use nostr::{JsonUtil, Keys};
 use serde_json::json;
+use std::ffi::{c_char, CStr, CString};
 use std::sync::Arc;
+use std::sync::{Mutex, OnceLock};
 
 fn in_memory(keys: Keys) -> MarmotService {
     let storage = MdkSqliteStorage::new_in_memory().expect("in-memory mls storage");
@@ -42,10 +48,7 @@ fn null_pointer_paths_are_silent() {
     )
     .is_null());
     assert!(nmp_app_chirp_marmot_snapshot(std::ptr::null_mut()).is_null());
-    assert!(
-        nmp_app_chirp_marmot_group_messages(std::ptr::null_mut(), std::ptr::null())
-            .is_null()
-    );
+    assert!(nmp_app_chirp_marmot_group_messages(std::ptr::null_mut(), std::ptr::null()).is_null());
     assert!(nmp_app_chirp_marmot_dispatch(std::ptr::null_mut(), std::ptr::null()).is_null());
     nmp_app_chirp_marmot_string_free(std::ptr::null_mut());
     nmp_app_chirp_marmot_unregister(std::ptr::null_mut());
@@ -53,12 +56,87 @@ fn null_pointer_paths_are_silent() {
 
 #[test]
 fn register_with_null_app_returns_null() {
-    let h = nmp_app_chirp_marmot_register(
-        std::ptr::null_mut(),
-        std::ptr::null(),
-        std::ptr::null(),
-    );
+    let h = nmp_app_chirp_marmot_register(std::ptr::null_mut(), std::ptr::null(), std::ptr::null());
     assert!(h.is_null());
+}
+
+static KEYRING_SLOT: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+
+extern "C" fn mock_keyring_callback(
+    _context: *mut std::ffi::c_void,
+    request_json: *const c_char,
+) -> *mut c_char {
+    let request = unsafe { CStr::from_ptr(request_json) }
+        .to_str()
+        .ok()
+        .and_then(|s| serde_json::from_str::<CapabilityRequest>(s).ok());
+    let result = match request {
+        Some(req) if req.namespace == KeyringCapability::NAMESPACE => {
+            match serde_json::from_str::<KeyringRequest>(&req.payload_json) {
+                Ok(KeyringRequest::Store { secret, .. }) => {
+                    *KEYRING_SLOT
+                        .get_or_init(|| Mutex::new(None))
+                        .lock()
+                        .unwrap() = Some(secret);
+                    KeyringResult::ok(None)
+                }
+                Ok(KeyringRequest::Retrieve { .. }) => {
+                    match KEYRING_SLOT
+                        .get_or_init(|| Mutex::new(None))
+                        .lock()
+                        .unwrap()
+                        .clone()
+                    {
+                        Some(secret) => KeyringResult::ok(Some(secret)),
+                        None => KeyringResult::not_found(),
+                    }
+                }
+                Ok(KeyringRequest::Delete { .. }) => {
+                    *KEYRING_SLOT
+                        .get_or_init(|| Mutex::new(None))
+                        .lock()
+                        .unwrap() = None;
+                    KeyringResult::ok(None)
+                }
+                Err(_) => KeyringResult::error(-50),
+            }
+        }
+        _ => KeyringResult::error(-50),
+    };
+    let envelope = CapabilityEnvelope {
+        namespace: KeyringCapability::NAMESPACE.to_string(),
+        correlation_id: "test".to_string(),
+        result_json: serde_json::to_string(&result).unwrap(),
+    };
+    CString::new(serde_json::to_string(&envelope).unwrap())
+        .unwrap()
+        .into_raw()
+}
+
+#[test]
+fn nmp_core_identity_policy_owns_keyring_store_recall_forget() {
+    let app = nmp_core::nmp_app_new();
+    nmp_core::nmp_app_set_capability_callback(
+        app,
+        std::ptr::null_mut(),
+        Some(mock_keyring_callback),
+    );
+    let app_ref = unsafe { &*app };
+
+    app_ref.sign_in_local_nsec_with_keyring("test.identity", "nsec1stored".to_string());
+    assert_eq!(
+        app_ref
+            .restore_local_nsec_from_keyring("test.identity", None)
+            .as_deref(),
+        Some("nsec1stored")
+    );
+    app_ref.remove_account_forgetting_keyring("test.identity", "missing".to_string());
+    assert_eq!(
+        app_ref.restore_local_nsec_from_keyring("test.identity", None),
+        None
+    );
+
+    nmp_core::nmp_app_free(app);
 }
 
 // ── Round-trip over the real projection / ops code paths ─────────────────
@@ -206,7 +284,7 @@ fn unknown_op_and_bad_json_degrade() {
 /// gift-wrap welcome: it must reach `MarmotService` via the SAME shared
 /// `ingest_signed_event_core` the dispatch op uses, and Bob's snapshot
 /// must then show a pending welcome — with NO Swift / dispatch call (the
-/// next snapshot refresh surfaces the new state). Builds a real gift-wrap
+/// existing snapshot read surfaces the new state). Builds a real gift-wrap
 /// via the two-party in-memory pattern (the `nmp_nip59` path), exactly as
 /// `crates/nmp-marmot/src/tests.rs` does.
 #[test]
@@ -254,7 +332,7 @@ fn raw_tap_kind_1059_welcome_reaches_service_and_snapshot() {
     // Kernel delivers the verbatim signed kind:1059 to the tap.
     tap.on_raw_event(1059, &gift_json);
 
-    // The next snapshot refresh (unchanged, no Swift call) now surfaces it.
+    // The snapshot read (unchanged, no Swift call) now surfaces it.
     let snap = bob_proj.snapshot(1);
     assert_eq!(
         snap.pending_welcomes.len(),
@@ -285,7 +363,11 @@ fn raw_tap_kind_1059_welcome_reaches_service_and_snapshot() {
             )
         })
         .unwrap();
-    assert_eq!(r["ok"], json!(true), "dispatch back-compat shares core: {r}");
+    assert_eq!(
+        r["ok"],
+        json!(true),
+        "dispatch back-compat shares core: {r}"
+    );
     assert_eq!(r["kind"], json!(1059));
     assert_eq!(bob_proj.snapshot(3).pending_welcomes.len(), 1);
 }

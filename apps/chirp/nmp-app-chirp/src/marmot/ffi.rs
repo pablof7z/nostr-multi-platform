@@ -64,7 +64,7 @@
 //! through the SAME `ops::ingest_signed_event_core` the back-compat
 //! `{"op":"ingest_signed_event"}` dispatch op uses — so welcomes /
 //! messages received from relays surface in the next snapshot with no
-//! Swift involvement.
+//! Swift involvement (the existing snapshot read is unchanged).
 //! `nmp_app_chirp_marmot_unregister` tears down BOTH kernel
 //! registrations (the lossy `KernelEvent` metadata observer AND the raw
 //! tap; distinct slots / ids). This was the last open seam.
@@ -106,7 +106,7 @@ pub struct MarmotHandle {
     /// kind:1059/445 into `MarmotService` via the shared core; see
     /// [`nmp_marmot::projection::tap`]). Separate kernel slot from `observer_id`.
     raw_observer_id: RawEventObserverId,
-    app: *mut NmpApp,
+    pub(super) app: *mut NmpApp,
 }
 
 // SAFETY: identical rationale to `ChirpHandle` (see `crate::ffi`). The
@@ -150,7 +150,7 @@ fn now_secs() -> u64 {
 
 /// Inner registration logic shared by `nmp_app_chirp_marmot_register` and
 /// `nmp_app_chirp_marmot_register_active`. `app` must be non-null and valid.
-fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) -> *mut MarmotHandle {
+pub(super) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) -> *mut MarmotHandle {
     // Initialize a credential store for `MdkSqliteStorage`. Try the Apple
     // protected store first (required on device); fall back to the in-memory
     // mock store on the simulator where entitlements are missing (-34018).
@@ -182,53 +182,57 @@ fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) -> *mut Marmo
         }
     }
 
-    let service = match MarmotService::new(
-        db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone(),
-    ) {
-        Ok(s) => s,
-        Err(_) => {
-            // Stale DB: if the keyring was uninitialized on first creation,
-            // the SQLite file exists but has no encryption key entry. Delete
-            // the DB (+ WAL/SHM) and retry exactly once.
-            let _ = std::fs::remove_file(db_path);
-            let _ = std::fs::remove_file(format!("{}-wal", db_path));
-            let _ = std::fs::remove_file(format!("{}-shm", db_path));
-            match MarmotService::new(
-                db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone(),
-            ) {
-                Ok(s) => s,
-                Err(_) => {
-                    // If the Apple store failed because of missing entitlements
-                    // on the simulator, the retry above also fails. Switch to
-                    // the mock store and try one final time.
-                    if !use_mock {
-                        // D6: mock store construction can fail — never
-                        // `unwrap()` across the FFI; degrade to a null handle.
-                        match keyring_core::mock::Store::new() {
-                            Ok(store) => set_default_store(store),
-                            Err(_) => return std::ptr::null_mut(),
+    let service =
+        match MarmotService::new(db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone()) {
+            Ok(s) => s,
+            Err(_) => {
+                // Stale DB: if the keyring was uninitialized on first creation,
+                // the SQLite file exists but has no encryption key entry. Delete
+                // the DB (+ WAL/SHM) and retry exactly once.
+                let _ = std::fs::remove_file(db_path);
+                let _ = std::fs::remove_file(format!("{}-wal", db_path));
+                let _ = std::fs::remove_file(format!("{}-shm", db_path));
+                match MarmotService::new(
+                    db_path,
+                    KEYRING_SERVICE_ID,
+                    KEYRING_DB_KEY_ID,
+                    keys.clone(),
+                ) {
+                    Ok(s) => s,
+                    Err(_) => {
+                        // If the Apple store failed because of missing entitlements
+                        // on the simulator, the retry above also fails. Switch to
+                        // the mock store and try one final time.
+                        if !use_mock {
+                            // D6: mock store construction can fail — never
+                            // `unwrap()` across the FFI; degrade to a null handle.
+                            match keyring_core::mock::Store::new() {
+                                Ok(store) => set_default_store(store),
+                                Err(_) => return std::ptr::null_mut(),
+                            }
+                            match MarmotService::new(
+                                db_path,
+                                KEYRING_SERVICE_ID,
+                                KEYRING_DB_KEY_ID,
+                                keys.clone(),
+                            ) {
+                                Ok(s) => s,
+                                Err(_) => return std::ptr::null_mut(),
+                            }
+                        } else {
+                            return std::ptr::null_mut();
                         }
-                        match MarmotService::new(
-                            db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone(),
-                        ) {
-                            Ok(s) => s,
-                            Err(_) => return std::ptr::null_mut(),
-                        }
-                    } else {
-                        return std::ptr::null_mut();
                     }
                 }
             }
-        }
-    };
+        };
 
     // SAFETY: caller guarantees `app` is non-null and valid.
     let app_ref = unsafe { &*app };
     let projection = Arc::new(MarmotProjection::new(service));
     projection.set_app(app);
-    let observer_id = app_ref.register_event_observer(
-        Arc::clone(&projection) as Arc<dyn nmp_core::KernelEventObserver>,
-    );
+    let observer_id = app_ref
+        .register_event_observer(Arc::clone(&projection) as Arc<dyn nmp_core::KernelEventObserver>);
     if observer_id.0 == 0 {
         return std::ptr::null_mut(); // poisoned slot — soft fail.
     }
@@ -348,7 +352,9 @@ pub extern "C" fn nmp_app_chirp_marmot_group_messages(
     };
     let rows = handle
         .projection
-        .with_inner(|h| nmp_marmot::projection::ops::group_messages(h, &gid_hex, DEFAULT_MESSAGE_PAGE))
+        .with_inner(|h| {
+            nmp_marmot::projection::ops::group_messages(h, &gid_hex, DEFAULT_MESSAGE_PAGE)
+        })
         .unwrap_or_default();
     match serde_json::to_string(&rows) {
         Ok(s) => to_c_string(&s),
@@ -379,47 +385,6 @@ pub extern "C" fn nmp_app_chirp_marmot_dispatch(
         .with_inner(|h| nmp_marmot::projection::ops::dispatch(h, &v, now_secs()))
         .unwrap_or_else(|| err("projection mutex poisoned"));
     to_c_json(&result)
-}
-
-/// Trigger the kernel to fetch KeyPackage events (kind:30443/443) for the
-/// named pubkeys from relays. `pubkeys_json` is a JSON array of pubkey
-/// strings (hex or npub bech32). Fire-and-forget — returns immediately.
-///
-/// For each parseable pubkey, pushes a KeyPackage `LogicalInterest` into the
-/// kernel. The kernel planner resolves the author's NIP-65 write relays and
-/// fetches their kind:30443/443 events. When events arrive, the Marmot inbound
-/// tap caches them via `MarmotService::cache_key_package`; a later
-/// `nmp_app_chirp_marmot_snapshot` will include the pubkeys in
-/// `cached_kp_pubkeys`. Null handle / invalid JSON are silent no-ops (D6).
-#[no_mangle]
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_app_chirp_marmot_fetch_key_packages(
-    handle: *mut MarmotHandle,
-    pubkeys_json: *const c_char,
-) {
-    let Some(handle) = (unsafe { handle.as_ref() }) else {
-        return;
-    };
-    if handle.app.is_null() {
-        return;
-    }
-    let Some(json_str) = c_str_opt(pubkeys_json) else {
-        return;
-    };
-    let Ok(pubkeys) = serde_json::from_str::<Vec<String>>(&json_str) else {
-        return;
-    };
-    // SAFETY: app pointer is valid for the handle's lifetime (same contract
-    // as unregister). `push_interest` is best-effort and does not mutate
-    // through this pointer directly.
-    let app_ref = unsafe { &*handle.app };
-    for pk_str in pubkeys {
-        // Accept hex or bech32; normalise to hex for the view key.
-        let Ok(pk) = nostr::PublicKey::parse(&pk_str) else {
-            continue; // Unparseable — skip silently (D6).
-        };
-        app_ref.push_interest(nmp_marmot::interest::key_package_lookup_interest(&pk.to_hex()));
-    }
 }
 
 /// Free a string previously returned by snapshot / group_messages /
@@ -465,7 +430,7 @@ pub extern "C" fn nmp_app_chirp_marmot_unregister(handle: *mut MarmotHandle) {
 
 // ── helpers ──────────────────────────────────────────────────────────────
 
-fn c_str_opt(ptr: *const c_char) -> Option<String> {
+pub(super) fn c_str_opt(ptr: *const c_char) -> Option<String> {
     if ptr.is_null() {
         return None;
     }

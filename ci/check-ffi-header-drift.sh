@@ -14,7 +14,19 @@
 #   1. crates/nmp-core/src/ffi/            -> libnmp_core.a        (the kernel)
 #   2. crates/nmp-signer-broker/src/ffi.rs -> libnmp_signer_broker.a (NIP-46)
 #   3. apps/chirp/nmp-app-chirp/src/ffi.rs +
-#      apps/chirp/nmp-app-chirp/src/marmot/ffi.rs -> libnmp_app_chirp.a
+#      apps/chirp/nmp-app-chirp/src/marmot/ffi.rs +
+#      apps/chirp/nmp-app-chirp/src/marmot/identity.rs +
+#      apps/chirp/nmp-app-chirp/src/marmot/fetch.rs -> libnmp_app_chirp.a
+#
+# The whole `apps/chirp/nmp-app-chirp/src/` tree compiles into the single
+# `libnmp_app_chirp.a` archive, so EVERY `#[no_mangle] extern "C"` symbol in
+# any of its files is in the Chirp link. The chirp glue is enumerated as an
+# explicit file list (not a recursive directory scan) ON PURPOSE: the
+# `marmot/ffi/tests.rs` integration suite is reachable only via a
+# `#[cfg(test)] mod tests;` declaration and carries NO file-level
+# `#![cfg(...test...)]` inner attribute, so a directory scan would mis-include
+# it. New non-test FFI files added under this tree MUST be appended to
+# `FFI_FILE_ROOTS` below.
 #
 # Doctrine D0 forbids `nmp-core` depending on app/protocol crates, so the
 # broker and chirp glue live in their own archives — but every `nmp_app_*`
@@ -83,6 +95,8 @@ FFI_FILE_ROOTS=(
     "${REPO_ROOT}/crates/nmp-signer-broker/src/ffi.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi.rs"
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/marmot/ffi.rs"
+    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/marmot/identity.rs"
+    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/marmot/fetch.rs"
 )
 
 if [[ ! -f "${HEADER}" ]]; then

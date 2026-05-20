@@ -77,8 +77,8 @@ pub use timeline::{
 // is only consumed under the test/test-support gate.
 #[cfg(any(test, feature = "test-support"))]
 pub use identity::{
-    nmp_app_publish_signed_event, nmp_app_publish_signed_event_to,
-    nmp_app_publish_unsigned_event, nmp_app_signin_nsec,
+    nmp_app_publish_signed_event, nmp_app_publish_signed_event_to, nmp_app_publish_unsigned_event,
+    nmp_app_signin_nsec,
 };
 
 // android-ffi: expose all FFI entry-points via Rust paths so nmp-android-ffi
@@ -88,10 +88,8 @@ pub use identity::{
 pub use identity::{
     nmp_app_add_relay, nmp_app_create_new_account, nmp_app_follow, nmp_app_open_timeline,
     nmp_app_publish_note, nmp_app_publish_signed_event, nmp_app_publish_signed_event_to,
-    nmp_app_publish_unsigned_event,
-    nmp_app_react, nmp_app_remove_account,
-    nmp_app_remove_relay, nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_switch_active,
-    nmp_app_unfollow,
+    nmp_app_publish_unsigned_event, nmp_app_react, nmp_app_remove_account, nmp_app_remove_relay,
+    nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_switch_active, nmp_app_unfollow,
 };
 // T118 / G3 — android-ffi must also reach the lifecycle symbols; without this
 // re-export rustc doesn't pull the symbol bodies into the cdylib CGU and the
@@ -295,9 +293,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             // `{"t":"panic","m":…}` string, which did not match the
             // envelope's tag/content schema and failed host decode.
             let msg = crate::update_envelope::panic_message(&*e);
-            let frame = crate::update_envelope::wrap_panic(format!(
-                "actor thread died: {msg}"
-            ));
+            let frame = crate::update_envelope::wrap_panic(format!("actor thread died: {msg}"));
             let _ = update_tx_panic.send(frame);
         }
     });
@@ -313,10 +309,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // the actor thread above), so an unguarded unwind here is
                 // undefined behaviour across the C ABI boundary.
                 crate::ffi_guard::guard_ffi_callback("update listener", || {
-                    (registration.callback)(
-                        registration.context as *mut c_void,
-                        payload.as_ptr(),
-                    );
+                    (registration.callback)(registration.context as *mut c_void, payload.as_ptr());
                 });
             }
         }
@@ -363,6 +356,70 @@ impl NmpApp {
     /// has no idea the broker exists).
     pub fn actor_sender(&self) -> Sender<ActorCommand> {
         self.tx.clone()
+    }
+
+    /// Import a local secret through the actor-owned identity reducer.
+    pub fn sign_in_nsec(&self, secret: Zeroizing<String>) {
+        self.send_cmd(ActorCommand::SignInNsec { secret });
+    }
+
+    /// Restore an app-scoped local secret from the keyring capability or use
+    /// an injected test secret, then sign it in through the identity reducer.
+    pub fn restore_local_nsec_from_keyring(
+        &self,
+        account_id: &str,
+        test_nsec: Option<String>,
+    ) -> Option<String> {
+        let secret = match test_nsec {
+            Some(secret) => Some(secret),
+            None => self.recall_local_nsec(account_id),
+        }?;
+        self.sign_in_nsec(Zeroizing::new(secret.clone()));
+        Some(secret)
+    }
+
+    /// Persist a newly-imported local secret through the keyring capability,
+    /// then sign it in through the identity reducer.
+    pub fn sign_in_local_nsec_with_keyring(&self, account_id: &str, secret: String) -> String {
+        let req = crate::substrate::KeyringIdentityWiring::persist_secret(
+            "nmp.identity.persist",
+            account_id,
+            &secret,
+        );
+        let _ = self.dispatch_capability(&req);
+        self.sign_in_nsec(Zeroizing::new(secret.clone()));
+        secret
+    }
+
+    /// Remove an identity through the actor-owned identity reducer.
+    pub fn remove_account(&self, identity_id: String) {
+        self.send_cmd(ActorCommand::RemoveAccount { identity_id });
+    }
+
+    /// Forget the app-scoped local secret and remove the identity through the
+    /// actor-owned reducer.
+    pub fn remove_account_forgetting_keyring(&self, account_id: &str, identity_id: String) {
+        let req = crate::substrate::KeyringIdentityWiring::forget_secret(
+            "nmp.identity.forget",
+            account_id,
+        );
+        let _ = self.dispatch_capability(&req);
+        self.remove_account(identity_id);
+    }
+
+    fn recall_local_nsec(&self, account_id: &str) -> Option<String> {
+        let req = crate::substrate::KeyringIdentityWiring::recall_secret(
+            "nmp.identity.recall",
+            account_id,
+        );
+        let envelope = self.dispatch_capability(&req);
+        let result = crate::substrate::KeyringIdentityWiring::decode_result(&envelope);
+        match result.status {
+            crate::substrate::KeyringStatus::Ok => result.secret,
+            crate::substrate::KeyringStatus::NotFound | crate::substrate::KeyringStatus::Error => {
+                None
+            }
+        }
     }
 
     /// T146 — register a typed Rust observer. Returns an opaque id the
@@ -434,6 +491,22 @@ impl NmpApp {
     /// raw-event tap automatically, with no Swift polling needed.
     pub fn push_interest(&self, interest: crate::planner::LogicalInterest) {
         self.send_cmd(crate::actor::ActorCommand::PushInterest(interest));
+    }
+
+    /// Route a typed capability request through the registered native
+    /// callback. Protocol/app composition crates use this when Rust owns the
+    /// policy and native only executes the platform capability.
+    pub fn dispatch_capability(
+        &self,
+        request: &crate::substrate::CapabilityRequest,
+    ) -> crate::substrate::CapabilityEnvelope {
+        let json = serde_json::to_string(request).unwrap_or_else(|_| "{}".to_string());
+        let payload = capability::dispatch_capability(&self.capability_callback, &json);
+        serde_json::from_str(&payload).unwrap_or_else(|_| crate::substrate::CapabilityEnvelope {
+            namespace: request.namespace.clone(),
+            correlation_id: request.correlation_id.clone(),
+            result_json: r#"{"status":"error","os_status":-50}"#.to_string(),
+        })
     }
 
     /// Return the active local (nsec-backed) secret key in `nsec1…` bech32
