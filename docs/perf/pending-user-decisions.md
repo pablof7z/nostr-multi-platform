@@ -800,3 +800,13 @@ Therefore the only reading consistent with ALL user constraints: **verbatim View
 **Orchestration change:** verbatim agents continue restoring Views (correct, unchanged). A paired obligation is added: each verbatim wave must also land the REAL FFI/kernel backing for the screens it restores (or file a precise NMP substrate task if the kernel capability is missing). Hollow-shim count is now tracked debt, not acceptable steady state. README/M11 status must report "verbatim + wired" honestly, never conflate "builds" with "works."
 
 **Why flagged for user:** this is an architectural commitment (rejecting the copy-whole-repo pivot the user mused about) made autonomously because the user is unavailable; it is the only synthesis consistent with the user's own written constraints, but the user may have intended the copy-whole-repo idea as a genuine redirection. Confirm or redirect on return.
+
+---
+
+## 2026-05-20 — FsPublishStore chosen over existing DomainPublishStore (PR #24)
+
+**Decision made autonomously (user unavailable).** Task brief said the only `PublishStore` impl was `InMemoryPublishStore` and asked for a JSON-file-backed store. Reality: `DomainPublishStore` (LMDB-backed via the shared `EventStore`) already exists. The genuine gap is that `DomainPublishStore` is durable *only* under `--features lmdb-backend`; without that feature it loses every offline publish intent on app restart.
+
+**What was done:** added `FsPublishStore` (JSON files under `{storage_path}/publish_intents/`, no new deps, no feature flag) and made `Kernel::resolve_publish_store` prefer it whenever a storage path is set. `DomainPublishStore` is kept as the no-storage-path fallback; `InMemoryPublishStore` remains the CI/test default.
+
+**Why flagged:** (1) the brief's premise was stale, so the implementation diverges from a literal reading of it; (2) intents previously written into LMDB via `DomainPublishStore` are not migrated — `FsPublishStore` reads only its own `publish_intents/*.json` directory. For pre-v1 with transient intents this is acceptable, but the user may want a one-time migration or may prefer consolidating on `DomainPublishStore` + always-on `lmdb-backend` instead. Confirm or redirect on return.
