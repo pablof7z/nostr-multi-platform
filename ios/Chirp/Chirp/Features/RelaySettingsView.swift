@@ -10,7 +10,7 @@ struct RelaySettingsView: View {
     @State private var sheetRole = "both"
     @State private var isEditing = false
 
-    private let relayRoles = ["both", "read", "write"]
+    private let relayRoles = ["both,indexer", "both", "read", "write", "indexer"]
 
     var body: some View {
         List {
@@ -115,7 +115,7 @@ private struct RelayConfigRow: View {
 
             Spacer()
 
-            Text(relay.role.capitalized)
+            Text(roleTitle(relay.role))
                 .font(.system(.caption2, design: .rounded).weight(.semibold))
                 .foregroundStyle(roleColor)
                 .padding(.horizontal, ChirpSpace.s)
@@ -138,6 +138,12 @@ private struct RelayConfigRow: View {
         default: return ChirpColor.accent
         }
     }
+
+    private func roleTitle(_ role: String) -> String {
+        role.split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces).capitalized }
+            .joined(separator: " + ")
+    }
 }
 
 // ── Add / Edit relay sheet ────────────────────────────────────────────────
@@ -151,7 +157,7 @@ private struct RelayEditSheet: View {
     @EnvironmentObject private var model: KernelModel
     @Environment(\.dismiss) private var dismiss
 
-    private let roles = ["both", "read", "write"]
+    private let roles = ["both,indexer", "both", "read", "write", "indexer"]
 
     var body: some View {
         NavigationStack {
@@ -182,7 +188,7 @@ private struct RelayEditSheet: View {
 
                             Picker("Role", selection: $role) {
                                 ForEach(roles, id: \.self) { r in
-                                    Text(r.capitalized).tag(r)
+                                    Text(roleTitle(r)).tag(r)
                                 }
                             }
                             .pickerStyle(.segmented)
@@ -217,5 +223,11 @@ private struct RelayEditSheet: View {
 
     private var trimmedURL: String {
         url.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func roleTitle(_ role: String) -> String {
+        role.split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces).capitalized }
+            .joined(separator: " + ")
     }
 }

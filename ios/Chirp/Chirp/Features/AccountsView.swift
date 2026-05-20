@@ -87,6 +87,8 @@ private struct AccountRowView: View {
                 }
             }
         }
+        .accessibilityIdentifier(isActive ? "account-row-active" : "account-row-\(account.id)")
+        .accessibilityValue(account.npub)
     }
 
     private func shortNpub(_ npub: String) -> String {
@@ -245,11 +247,15 @@ private struct AddAccountSheet: View {
                 .foregroundStyle(.secondary)
 
             Button {
-                model.createAccount(profile: ["name": "New User"], relays: [("wss://relay.primal.net", "both"), ("wss://purplepag.es", "indexer")])
+                model.createAccount(profile: ["name": "New User"], relays: [
+                    ("wss://relay.primal.net", "both,indexer"),
+                    ("wss://purplepag.es", "both,indexer"),
+                ])
                 dismiss()
             } label: {
                 Label("Create new identity", systemImage: "sparkles")
             }
+            .accessibilityIdentifier("create-new-identity-button")
         } header: {
             Text("Fresh start")
         }

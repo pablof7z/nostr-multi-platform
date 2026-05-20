@@ -148,6 +148,16 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
+fn publish_key_package_on_register(handle: *mut MarmotHandle) {
+    let Some(handle) = (unsafe { handle.as_ref() }) else {
+        return;
+    };
+    let action = json!({ "op": "publish_key_package" });
+    let _ = handle
+        .projection
+        .with_inner(|h| nmp_marmot::projection::ops::dispatch(h, &action, now_secs()));
+}
+
 /// Inner registration logic shared by `nmp_app_chirp_marmot_register` and
 /// `nmp_app_chirp_marmot_register_active`. `app` must be non-null and valid.
 pub(super) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) -> *mut MarmotHandle {
@@ -320,7 +330,11 @@ pub extern "C" fn nmp_app_chirp_marmot_register_active(
         return std::ptr::null_mut();
     };
     let db_path = format!("{}/marmot-mls-state.sqlite", dir.trim_end_matches('/'));
-    register_with_keys(app, keys, &db_path)
+    let handle = register_with_keys(app, keys, &db_path);
+    if !handle.is_null() && app_ref.take_pending_mls_autopublish() {
+        publish_key_package_on_register(handle);
+    }
+    handle
 }
 
 /// JSON snapshot. Null handle / serialize failure → null (D6). Caller owns

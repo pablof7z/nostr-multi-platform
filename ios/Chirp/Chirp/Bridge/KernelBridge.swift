@@ -168,14 +168,14 @@ final class KernelHandle {
         }
     }
 
-    func createAccount(profile: [String: String], relays: [(String, String)]) {
+    func createAccount(profile: [String: String], relays: [(String, String)], mls: Bool = true) {
         let profileJson = try! JSONSerialization.data(withJSONObject: profile, options: [])
         let profileStr = String(data: profileJson, encoding: .utf8)!
         let relaysJson = try! JSONSerialization.data(withJSONObject: relays.map { [$0.0, $0.1] }, options: [])
         let relaysStr = String(data: relaysJson, encoding: .utf8)!
         profileStr.withCString { profilePtr in
             relaysStr.withCString { relaysPtr in
-                nmp_app_create_new_account(raw, profilePtr, relaysPtr)
+                nmp_app_create_new_account(raw, profilePtr, relaysPtr, mls)
             }
         }
     }

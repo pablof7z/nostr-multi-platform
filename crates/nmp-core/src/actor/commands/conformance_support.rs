@@ -189,6 +189,7 @@ impl ConformanceHarness {
             false,
             &profile,
             relays,
+            false,
         );
     }
 
