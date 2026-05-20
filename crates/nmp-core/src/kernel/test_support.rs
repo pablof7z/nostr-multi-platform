@@ -236,10 +236,16 @@ impl Kernel {
             .iter()
             .map(|url| vec!["r".to_string(), url.to_string(), "write".to_string()])
             .collect();
+        // Use a far-future `created_at` so the seeded relay list always wins the
+        // replaceable-event dedup in `store::insert` (strict `>` on `created_at`).
+        // `create_account` now caches an onboarding kind:10002 stamped with
+        // `Timestamp::now()` (~2026); a fixed past timestamp would lose that race
+        // and the seeded list would be silently discarded. `u64::MAX` guarantees
+        // the test seed overrides whatever production state was cached.
         self.inject_replaceable_event(
             &id,
             author_pubkey,
-            1_700_000_000,
+            u64::MAX,
             10002,
             tags,
             "wss://seed",
