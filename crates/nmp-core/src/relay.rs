@@ -55,6 +55,11 @@ pub(crate) enum RelayRole {
     /// NIP-47 Nostr Wallet Connect relay. Spawned on demand when a wallet is
     /// connected; NOT included in `all()` so it does not block the startup
     /// bootstrap gate or appear in the standard relay-statuses projection.
+    //
+    // Constructed only under `#[cfg(feature = "wallet")]` (actor/commands/wallet.rs);
+    // suppress the dead_code lint in default (non-wallet) builds while keeping it
+    // active when the wallet feature is enabled.
+    #[cfg_attr(not(feature = "wallet"), allow(dead_code))]
     Wallet,
     /// NIP-46 bunker relay. Spawned on demand when a bunker is configured;
     /// NOT included in `all()` so it does not block the startup bootstrap gate.
