@@ -655,6 +655,9 @@ impl Kernel {
             RelayRole::Wallet => false,
             RelayRole::Bunker => false,
         };
+        // `mut` is required only under `#[cfg(test)]` where the fallback
+        // block may reassign `urls`; non-test builds never mutate it.
+        #[cfg_attr(not(test), allow(unused_mut))]
         let mut urls: Vec<String> = self
             .relay_edit_rows
             .iter()

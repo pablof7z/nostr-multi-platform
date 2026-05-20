@@ -61,6 +61,9 @@ pub(crate) enum RelayRole {
     Wallet,
     /// NIP-46 bunker relay. Spawned on demand when a bunker is configured;
     /// NOT included in `all()` so it does not block the startup bootstrap gate.
+    // Pre-wiring: not yet constructed — bunker relays are managed by
+    // nmp-signer-broker directly; relay_mgmt integration is future work.
+    #[allow(dead_code)]
     Bunker,
 }
 
