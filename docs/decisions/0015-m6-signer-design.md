@@ -251,9 +251,8 @@ current-commit change required.
 - **`IdentityError` extension** in `nmp-core` to add per-synthesis-§1.1
   variants — one-file diff, deferred to keep this commit focused.
 - **NIP-46 `switch_relays` extension** — synthesis §1.7 wants it day-one.
-  Current `Nip46Transport::reconnect_hint()` is the placeholder; the kernel
-  side will own the actual relay-pool re-bind in the same commit that wires
-  the live RPC subscription.
+  The kernel side will own the actual relay-pool re-bind in the same commit
+  that wires the live RPC subscription.
 - **Keyring persistence** — `LocalPayload::Raw(hex)` and
   `LocalPayload::Ncryptsec(s)` are storage-form-ready; the real iOS
   Keychain backend lands with `KeychainCapability` (M6 plan §1).
