@@ -371,7 +371,7 @@ impl Kernel {
         Some(instant?.duration_since(started).as_millis())
     }
 
-    pub(super) fn log(&mut self, message: impl Into<String>) {
+    pub(crate) fn log(&mut self, message: impl Into<String>) {
         let stamp = now_hms();
         let line = format!("{stamp} {}", message.into());
         // D6: library code performs no I/O side effects. The line is kept in

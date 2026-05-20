@@ -85,6 +85,7 @@ use crate::kernel::Kernel;
 use crate::relay::{RelayRole, DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 use crate::relay_worker::{RelayCommand, RelayEvent};
 use std::collections::{HashMap, HashSet};
+use std::panic::{self, AssertUnwindSafe};
 use std::sync::atomic::AtomicU64;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
@@ -504,21 +505,61 @@ pub fn run_actor_with_observers(
                 {
                     // Stale event from a disposed worker — ignore.
                 } else {
-                    handle_relay_event(
-                        event,
-                        &mut kernel,
-                        #[cfg(feature = "wallet")]
-                        &mut wallet,
-                        &mut relay_controls,
-                        &relay_tx,
-                        &mut next_relay_generation,
-                        &mut connected_relays,
-                        &mut connected_urls,
-                        &update_tx,
-                        &mut last_emit,
-                        &mut startup_sent,
-                        running,
-                    );
+                    // Reliability north star: `handle_relay_event` processes
+                    // arbitrary bytes from the network — it is the highest-risk
+                    // panic site in the actor. Wrap it in `catch_unwind` so a
+                    // panic in relay frame processing cannot kill the kernel:
+                    // the actor loop survives, logs the payload, surfaces an
+                    // error toast, and processes the next event fresh.
+                    //
+                    // `AssertUnwindSafe` is required because the closure
+                    // captures `&mut` kernel state (`HashMap`/`Mutex` interiors
+                    // are not `UnwindSafe`). This is sound here: the actor is
+                    // single-threaded, so there is no other thread that could
+                    // observe partially-mutated / poisoned state. Per D1
+                    // (best-effort rendering) the kernel tolerates partial
+                    // state — the invariant we protect is loop survival, not
+                    // per-event atomicity.
+                    //
+                    // The command drain above is deliberately NOT wrapped:
+                    // commands are internally generated, so a panic there is a
+                    // genuine bug that must stay visible.
+                    let result = panic::catch_unwind(AssertUnwindSafe(|| {
+                        handle_relay_event(
+                            event,
+                            &mut kernel,
+                            #[cfg(feature = "wallet")]
+                            &mut wallet,
+                            &mut relay_controls,
+                            &relay_tx,
+                            &mut next_relay_generation,
+                            &mut connected_relays,
+                            &mut connected_urls,
+                            &update_tx,
+                            &mut last_emit,
+                            &mut startup_sent,
+                            running,
+                        );
+                    }));
+                    if let Err(panic_payload) = result {
+                        let msg = panic_payload
+                            .downcast_ref::<&str>()
+                            .map(|s| s.to_string())
+                            .or_else(|| {
+                                panic_payload.downcast_ref::<String>().cloned()
+                            })
+                            .unwrap_or_else(|| "unknown panic".to_string());
+                        kernel.log(format!(
+                            "actor: relay event handler panicked: {msg}"
+                        ));
+                        kernel.set_last_error_toast(Some(
+                            "relay processing error — continuing".to_string(),
+                        ));
+                        // Surface the toast on this tick rather than waiting
+                        // for the next `flush_due` — mirrors the pending-sign
+                        // error path below.
+                        emit_now(&mut kernel, running, &update_tx, &mut last_emit);
+                    }
                 }
             }
             Err(_timeout_or_disconnected) => {
