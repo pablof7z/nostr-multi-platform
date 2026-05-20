@@ -5,6 +5,7 @@ use nostr::{EventBuilder, Keys, Kind, SecretKey, Tag};
 use serde_json::{json, Value};
 
 use crate::command::Command;
+use crate::profiles;
 use crate::render;
 use crate::session::{LastRun, Session};
 use crate::{wire, Result};
@@ -88,6 +89,7 @@ fn set_identity(session: &mut Session, keys: Keys) -> Result<()> {
     session.pubkey_hex = Some(keys.public_key().to_hex());
     session.keys = Some(keys);
     session.follows.clear();
+    session.profiles.clear();
     Ok(())
 }
 
@@ -129,58 +131,52 @@ fn home(session: &mut Session) -> Result<()> {
     } else {
         session.follows.iter().cloned().collect()
     };
-    print_events(run_fetch(
+    fetch_and_print(
         session,
         "home",
         json!({"kinds":[1], "authors":authors, "limit":100}),
-    ));
-    Ok(())
+    )
 }
 
 fn notifications(session: &mut Session) -> Result<()> {
     let me = session.active_pubkey()?.to_string();
-    print_events(run_fetch(
+    fetch_and_print(
         session,
         "notifications",
         json!({"kinds":[1,7], "#p":[me], "limit":100}),
-    ));
-    Ok(())
+    )
 }
 
 fn profile(session: &mut Session, input: &str) -> Result<()> {
     let author = normalize_pubkey(input)?;
-    print_events(run_fetch(
+    fetch_and_print(
         session,
         "profile",
         json!({"kinds":[0], "authors":[author], "limit":1}),
-    ));
-    Ok(())
+    )
 }
 
 fn thread(session: &mut Session, input: &str) -> Result<()> {
     let id = normalize_event_id(input)?;
-    print_events(run_fetch(
+    fetch_and_print(
         session,
         "thread",
         json!({"kinds":[1], "ids":[id.clone()], "#e":[id], "limit":100}),
-    ));
-    Ok(())
+    )
 }
 
 fn search(session: &mut Session, input: &str) -> Result<()> {
     let tag = input.trim_start_matches('#');
-    print_events(run_fetch(
+    fetch_and_print(
         session,
         "search",
         json!({"kinds":[1], "#t":[tag], "limit":100}),
-    ));
-    Ok(())
+    )
 }
 
 fn raw_req(session: &mut Session, filter: &str) -> Result<()> {
     let value: Value = serde_json::from_str(filter).map_err(|e| format!("bad JSON filter: {e}"))?;
-    print_events(run_fetch(session, "raw-req", value));
-    Ok(())
+    fetch_and_print(session, "raw-req", value)
 }
 
 fn publish_note(session: &mut Session, text: &str, reply_to: Option<String>) -> Result<()> {
@@ -224,15 +220,12 @@ fn follow(session: &mut Session, input: &str, add: bool) -> Result<()> {
         .tags(tags)
         .sign_with_keys(keys)
         .map_err(|e| format!("sign contact list: {e}"))?;
-    publish(
-        session,
-        &event,
-        if add {
-            "kind:3 follow"
-        } else {
-            "kind:3 unfollow"
-        },
-    )
+    let label = if add {
+        "kind:3 follow"
+    } else {
+        "kind:3 unfollow"
+    };
+    publish(session, &event, label)
 }
 
 fn publish(session: &mut Session, event: &nostr::Event, label: &str) -> Result<()> {
@@ -260,9 +253,17 @@ fn run_fetch(session: &mut Session, label: &str, filter: Value) -> Vec<Value> {
     events
 }
 
-fn print_events(events: Vec<Value>) {
+fn fetch_and_print(session: &mut Session, label: &str, filter: Value) -> Result<()> {
+    let events = run_fetch(session, label, filter);
+    print_events(session, events);
+    Ok(())
+}
+
+fn print_events(session: &mut Session, events: Vec<Value>) {
+    profiles::remember_profiles(session, &events);
+    profiles::cache_note_authors(session, &events);
     for event in &events {
-        render::event(event);
+        render::event_with_profiles(session, event);
     }
     render::status_ok(&format!("{} events", events.len()));
 }

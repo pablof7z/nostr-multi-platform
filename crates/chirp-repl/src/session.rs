@@ -1,7 +1,9 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 
 use nostr::Keys;
+
+use crate::profiles::Profile;
 
 #[derive(Debug, Clone)]
 pub struct LastRun {
@@ -18,6 +20,7 @@ pub struct Session {
     pub relays: Vec<String>,
     pub indexers: Vec<String>,
     pub follows: BTreeSet<String>,
+    pub profiles: BTreeMap<String, Profile>,
     pub seen_ids: BTreeSet<String>,
     pub last_run: Option<LastRun>,
     pub wall: Duration,
@@ -31,6 +34,7 @@ impl Default for Session {
             relays: vec!["wss://relay.primal.net".into(), "wss://purplepag.es".into()],
             indexers: vec!["wss://purplepag.es".into()],
             follows: BTreeSet::new(),
+            profiles: BTreeMap::new(),
             seen_ids: BTreeSet::new(),
             last_run: None,
             wall: Duration::from_secs(8),
