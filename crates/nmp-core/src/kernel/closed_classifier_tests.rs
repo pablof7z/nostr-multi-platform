@@ -210,3 +210,125 @@ fn closed_reconnect_clears_denied_flag() {
         "relay_connected resets last_close_reason"
     );
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// `wire_subs` eviction — the `"CLOSED"` arm in `ingest/mod.rs` removes the
+// `(relay_url, sub_id)` row before `classify_and_route_closed` runs.
+//
+// The classifier tests above pin the `RelayHealth` side effects; the basic
+// known-sub eviction is pinned by `retention_tests::closed_frame_evicts_
+// wire_sub_row`. These tests fill the remaining gaps: the unknown-sub no-op
+// (no panic, no phantom row) and the relay-scoped `#170` keying invariant
+// (a CLOSED on one relay must not evict a sibling's row for the same
+// sub-id) — both currently uncovered for the CLOSED ingest path.
+// ───────────────────────────────────────────────────────────────────────────
+
+/// Seed a `wire_subs` row for `(relay_url, sub_id)` via the production REQ
+/// path so the row carries a realistic shape (state, relay_url, …).
+fn seed_wire_sub(kernel: &mut Kernel, role: RelayRole, relay_url: &str, sub_id: &str) {
+    let _ = kernel.req_for_relay(
+        role,
+        relay_url.to_string(),
+        sub_id,
+        "test-summary",
+        serde_json::json!({"kinds": [1], "limit": 1}),
+    );
+}
+
+/// A CLOSED frame for a sub-id with no `wire_subs` row is a graceful no-op:
+/// no panic, and the classifier still records the diagnostic reason on the
+/// relay surface. The relay-scoped key means an unknown key is just a
+/// `HashMap::remove` miss.
+#[test]
+fn closed_for_unknown_sub_is_graceful_noop() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let role = RelayRole::Content;
+    let url = role.url();
+
+    assert_eq!(
+        kernel.wire_subs_len_for_test(),
+        0,
+        "precondition: no wire_subs rows exist",
+    );
+
+    // Must not panic on a CLOSED for a sub-id the kernel never opened.
+    let _ = kernel.handle_text(role, url, &closed_frame("sub-never-opened", "error: gone"));
+
+    assert_eq!(
+        kernel.wire_subs_len_for_test(),
+        0,
+        "a CLOSED for an unknown sub_id must not create a wire_subs row",
+    );
+    // The classifier still runs — the diagnostic reason lands on RelayHealth.
+    assert_eq!(
+        kernel.relay(role).last_close_reason.as_deref(),
+        Some("error"),
+        "an unknown-sub CLOSED still records its classified reason",
+    );
+}
+
+/// `#170` relay-scoped keying: the same `sub_id` lives on two relays; a
+/// CLOSED on relay A evicts only relay A's row and leaves relay B's row
+/// alive. Pins the `(relay_url, sub_id)` key against a silent regression to
+/// sub-id-only keying (which would evict the sibling).
+#[test]
+fn closed_eviction_is_relay_scoped_sibling_survives() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let url_a = "wss://a.closed.example/";
+    let url_b = "wss://b.closed.example/";
+    let shared = "sub-shared";
+
+    seed_wire_sub(&mut kernel, RelayRole::Content, url_a, shared);
+    seed_wire_sub(&mut kernel, RelayRole::Content, url_b, shared);
+    assert_eq!(
+        kernel.wire_subs_len_for_test(),
+        2,
+        "precondition: both relays carry the shared sub_id under distinct keys",
+    );
+
+    // CLOSED arrives on relay A only.
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        url_a,
+        &closed_frame(shared, "error: relay A gone"),
+    );
+
+    let active = kernel.snapshot_active_wire_subs();
+    assert!(
+        !active.iter().any(|(sid, u)| sid == shared && u == url_a),
+        "relay A's row must be evicted by its own CLOSED: {active:?}",
+    );
+    assert!(
+        active.iter().any(|(sid, u)| sid == shared && u == url_b),
+        "#170: relay B's row for the same sub_id must survive a CLOSED on \
+         relay A — eviction is relay-scoped, not sub-id-only: {active:?}",
+    );
+}
+
+/// The per-frame CLOSED reason text is surfaced to the diagnostic snapshot:
+/// `classify_and_route_closed` stamps `RelayHealth.last_error` with the raw
+/// reason so the UI can show *why* the relay closed the subscription.
+#[test]
+fn closed_message_is_surfaced_to_relay_diagnostics() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let role = RelayRole::Indexer;
+    let url = role.url();
+
+    let _ = kernel.handle_text(
+        role,
+        url,
+        &closed_frame("sub-msg", "error: backend connection lost"),
+    );
+
+    let status = kernel.relay_status_for(role);
+    assert!(
+        status
+            .last_error
+            .as_deref()
+            .map(|s| s.contains("backend connection lost"))
+            .unwrap_or(false),
+        "the CLOSED reason message must be surfaced on the relay status \
+         snapshot, got: {:?}",
+        status.last_error,
+    );
+}
