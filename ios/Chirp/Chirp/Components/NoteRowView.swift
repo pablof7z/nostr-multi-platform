@@ -16,6 +16,8 @@ import SwiftUI
 
 struct NoteRowView: View {
     let item: TimelineItem
+    var contentTree: ContentTreeWire?
+    var mentionProfiles: [String: MentionProfile] = [:]
     let onLike: (String) -> Void
 
     @EnvironmentObject private var router: ChirpRouter
@@ -120,7 +122,12 @@ struct NoteRowView: View {
                 .foregroundStyle(.secondary)
             }
             if !text.isEmpty {
-                NoteContentView(content: text, font: .body)
+                NoteContentView(
+                    content: text,
+                    contentTree: isRepost ? nil : contentTree,
+                    mentionProfiles: mentionProfiles,
+                    font: .body
+                )
                     .foregroundStyle(.primary)
             }
         }
