@@ -751,6 +751,38 @@ All 7 Marmot tasks landed on origin/master: `9dbc8261` scaffold → `cdd48d1b` M
 - Signature-less `KernelEvent` → `ingest_signed_event` dispatch op exists but has NO caller (Chirp kernel exposes no raw signed-event stream to Swift); no signed-event relay-publish hook → Chirp group ops land in local MDK SQLite, don't reach relays.
 - `nmp-nip59` `WelcomeUnwrap` substrate completion needs a kernel `process_event` ingest hook; `WelcomeWrap` uses a `WrapPlan` carrier (gift-wrap needs live keys, diverges from nip29 `PublishPlan`).
 
+---
+
+## PD-033 — Opus direction review: framework thesis validation + D0 wallet violation (2026-05-20)
+
+**Filed:** 2026-05-20. **Status:** OPEN — needs user direction.
+
+> Note: this entry was authored as "PD-031" but PD-031/PD-032 were already taken on master by an unrelated PR #11 FFI-drift decision. Renumbered to PD-033 (next free) to avoid the collision.
+
+Second Opus direction review (`docs/perf/codex-reviews/opus-direction-20260520-0903.md`) identified four high-confidence findings that require user input before autonomous action:
+
+### Finding A: The per-app projection pattern may be broken
+Each app currently requires: protocol crate + projection crate + 4-6 bespoke C FFI symbols + payload type + Swift decoder. Chirp and Marmot already duplicate this stack. Opus recommendation: build a second non-social app (nmp-highlighter or nmp-podcast) using ONLY generic kernel projections + a single `nmp_app_dispatch_action(name, json)` entry point — no new projection crate, no new FFI symbols. This would validate or invalidate the framework thesis in one week.
+
+**Enabling step:** collapse `react`/`follow`/`publish_note` into a single `nmp_app_dispatch_action(name, json)` backed by an action registry. This also builds the missing aim.md §4.3 actions layer (currently absent despite being the stated design).
+
+**Needs user decision:** Is this the right next week of work? The alternative is to continue adding features (NIP-17 DM conversation layer, Blossom, NIP-51) within the existing pattern.
+
+### Finding B: `wallet_status` in Kernel struct is a D0 violation
+`Kernel` has `#[cfg(feature = "wallet")] wallet_status: Option<WalletStatus>` — an app noun directly in the substrate, even if feature-gated. D0 says no app nouns in nmp-core. The correct fix: extract to an `nmp-nwc` projection crate registered through the observer seam (same pattern as marmot). This is a multi-day refactor.
+
+**Autonomous decision (pending user confirmation):** Leaving `wallet_status` in place until the action-registry work (Finding A) is underway, since that refactor changes the same FFI surface. Removing it now and then restructuring it again would be churn.
+
+### Finding C: Two subscription systems coexist
+The `InterestRegistry`/`LogicalInterest` infrastructure coexists with the M1 hand-rolled `req()` path (kernel/mod.rs line ~291-298 explicitly calls the LogicalInterest path "dormant"). PR #21's `into_logical_interest()` bridge exists but the migration consuming it is incomplete.
+
+**Needs user decision:** Should the M1 `req()` path be removed in favor of the `InterestRegistry` path? Or should the dormant path be deleted and the bridge kept only for ViewDependencies→LogicalInterest conversion at the boundary?
+
+### Finding D: Kernel god-struct still 76 fields
+PR #19 split sub-modules but the `Kernel` struct itself still has ~76 fields. The structural decomposition is cosmetic, not architectural. Further sub-struct grouping needed.
+
+**Autonomous action:** Continuing sub-struct decomposition in subsequent polish iterations. No user input needed for this one.
+
 
 
 ## PD-030 — Verbatim-View shims must become REAL FFI bridges, not hollow stubs (2026-05-18)
