@@ -430,7 +430,7 @@ pub fn run_actor_with_observers(
     // compiler-enforced — a raw `&str` cannot index the pool.
     let mut relay_controls: HashMap<CanonicalRelayUrl, RelayControl> = HashMap::new();
     let mut connected_relays = HashSet::new();
-    let mut connected_urls: HashSet<String> = HashSet::new(); // T116/G1 reconnect-replay discriminator.
+    let mut connected_urls: HashSet<CanonicalRelayUrl> = HashSet::new(); // T116/G1 reconnect-replay discriminator.
     let mut next_relay_generation = 1;
     let mut running = false;
     let mut emit_hz = DEFAULT_EMIT_HZ;
