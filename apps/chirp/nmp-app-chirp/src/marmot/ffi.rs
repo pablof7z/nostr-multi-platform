@@ -112,9 +112,35 @@ pub struct MarmotHandle {
     app: *mut NmpApp,
 }
 
-// SAFETY: identical rationale to `ChirpHandle` — Swift drives every call
-// from one serialized bridge dispatch queue; only the `app` raw pointer is
-// `!Send`/`!Sync` material and it is never mutated cross-thread.
+// SAFETY: identical rationale to `ChirpHandle` (see `crate::ffi`). The
+// auto-derived `!Send`/`!Sync` comes only from `app: *mut NmpApp`; the
+// `Arc<MarmotProjection>` is already `Send + Sync`. The earlier comment's
+// claim that "Swift drives every call from one serialized bridge dispatch
+// queue" is NOT accurate — `KernelHandle` is a plain `final class` with no
+// queue. The honest invariant has three layers:
+//
+//   1. Swift owns this handle and only reaches the FFI entry points below
+//      from `@MainActor` types (`KernelModel` / `MarmotStore`), so the
+//      handle struct itself is never raced (a documented Swift caller
+//      convention, not a type guarantee).
+//   2. The `Arc<MarmotProjection>` IS shared across threads — the kernel
+//      actor thread runs `MarmotProjection::on_kernel_event` and the raw
+//      tap's `on_raw_event` while the Swift main actor calls `snapshot()` /
+//      dispatch. Soundness of that sharing comes from `MarmotProjection`'s
+//      interior `Mutex<Inner>`, not from this `unsafe impl`.
+//   3. The `app` raw pointer is only read (to forward fire-and-forget
+//      kernel commands). No use-after-free is possible: `nmp_app_free`'s
+//      `NmpApp::Drop` sends `Shutdown` and `join()`s the actor thread
+//      before freeing the allocation, and every kernel callback that can
+//      reach `app` (`on_kernel_event`, `on_raw_event`) runs INLINE on that
+//      actor thread — the join fences them.
+//
+// CALLER CONTRACT: `nmp_app_free` must not run while a kernel callback that
+// reaches this projection is still executing. The in-process Rust-trait
+// registration path used here (`register_event_observer` /
+// `register_raw_event_observer`) gets that fence from the actor join.
+// Calling `nmp_app_chirp_marmot_unregister` before `nmp_app_free` is the
+// documented hygiene step; the actor join is the actual fence.
 unsafe impl Send for MarmotHandle {}
 unsafe impl Sync for MarmotHandle {}
 

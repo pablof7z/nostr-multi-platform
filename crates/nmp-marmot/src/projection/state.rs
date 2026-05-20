@@ -62,10 +62,17 @@
 //! therefore sync and this projection does NOT invent threading — exactly
 //! as `nmp-marmot`'s own rustdoc states ("callers in an async context
 //! offload via the runtime's blocking bridge — not this crate's concern").
-//! The Swift bridge already serializes every FFI call onto a single
-//! dispatch queue (the same invariant `nmp_app_chirp_snapshot` relies on),
-//! so the kernel-observer fan-out (actor thread) and the dispatch/snapshot
-//! entry points (Swift bridge thread) never tear the inner `Mutex`.
+//!
+//! This projection IS accessed from two threads concurrently: the kernel
+//! actor thread (the `KernelEventObserver` fan-out + the raw signed-event
+//! tap) and the host's FFI entry points (`snapshot` / dispatch). It does
+//! not assume a single-threaded caller — the inner `Mutex` is what makes
+//! that concurrent access sound. (An earlier revision of this comment
+//! claimed "the Swift bridge serializes every FFI call onto a single
+//! dispatch queue"; that is NOT true — Chirp's `KernelHandle` is a plain
+//! `final class` with no queue. The FFI calls happen to originate from one
+//! Swift isolation context (`@MainActor`), but the kernel callbacks do not,
+//! so the `Mutex` is load-bearing, not a belt-and-braces extra.)
 //!
 //! ## Seams (documented, NOT blocking — see crate task)
 //!
@@ -151,12 +158,33 @@ pub struct MarmotProjection {
     inner: Mutex<Inner>,
 }
 
-// SAFETY: identical rationale to the host's Marmot handle — Swift drives
-// every FFI call from one serialized bridge dispatch queue; the only
-// `!Send`/`!Sync` material is the `app` raw pointer, which is never mutated
-// cross-thread and is only ever read to forward a fire-and-forget publish
-// to the kernel actor channel (same validity rule as the observer
-// register/unregister).
+// SAFETY: this `unsafe impl` is REQUIRED — `register_event_observer` casts
+// `Arc<MarmotProjection>` to `Arc<dyn KernelEventObserver>`, and that trait
+// is bounded `Send + Sync`. The auto-derived `!Send`/`!Sync` comes only from
+// `Inner::app: *mut NmpApp`; every other field is already `Send + Sync`.
+//
+// The honest soundness argument (the prior comment's "Swift serializes
+// every FFI call on one dispatch queue" is FALSE — `KernelHandle` is a
+// plain `final class`, no queue):
+//
+//   * `MarmotProjection` is genuinely accessed from two threads — the
+//     kernel actor thread (`on_kernel_event`, and the raw tap's
+//     `on_raw_event` via `with_inner`) and the Swift main actor
+//     (`snapshot` / `with_inner` from the FFI ops). All such access goes
+//     through the inner `Mutex<Inner>`, which is what actually makes the
+//     cross-thread sharing sound. The `unsafe impl` only asserts that the
+//     `*mut NmpApp` field does not invalidate that.
+//   * The `app` pointer is only ever READ (to forward fire-and-forget
+//     commands to the kernel actor channel), never mutated. It cannot be
+//     dangling at the point of use: `nmp_app_free` (`NmpApp::Drop`) sends
+//     `Shutdown` and `join()`s the actor thread before freeing the
+//     allocation, and every reader of `app` here runs INLINE on that actor
+//     thread — the join fences any in-flight access.
+//
+// CALLER CONTRACT (upheld by the host FFI shell, `nmp-app-chirp`):
+// `nmp_app_free` must not run while a kernel callback that reaches this
+// projection is still executing. The in-process Rust-trait registration
+// path provides that fence via the actor join.
 unsafe impl Send for MarmotProjection {}
 unsafe impl Sync for MarmotProjection {}
 

@@ -44,12 +44,39 @@ pub struct ChirpHandle {
     app: *mut NmpApp,
 }
 
-// SAFETY: `ChirpHandle` is owned by Swift; only the `app` pointer is `!Send`/
-// `!Sync` material. Swift drives every call from a single bridge dispatch
-// queue (`KernelBridge.swift` already serializes its FFI calls on the actor
-// thread for `NmpApp` itself), so cross-thread mutation does not happen.
-// Marking these allows the handle to be boxed without extra unsafe gymnastics
-// in the Rust callsites below.
+// SAFETY: the auto-derived `!Send`/`!Sync` comes solely from the `app: *mut
+// NmpApp` field (the `Arc<ChirpModularTimeline>` is already `Send + Sync`).
+// The handle is sound to mark `Send + Sync` because of three layered facts —
+// stated honestly, since the previously-claimed "Swift serializes every FFI
+// call on one thread" is NOT true (`KernelHandle` is a plain `final class`
+// with no dispatch queue):
+//
+//   1. Swift owns this handle and only ever touches it from one isolation
+//      context. In Chirp the FFI entry points below are reached exclusively
+//      from `@MainActor` types (`KernelModel`, `MarmotStore`), so the handle
+//      itself is never raced. (This is a Swift-side caller convention, not a
+//      type-system guarantee — hence it is documented, not enforced here.)
+//   2. The `Arc<ChirpModularTimeline>` *is* genuinely shared across threads:
+//      the kernel actor thread invokes `ChirpModularTimeline`'s observer
+//      callbacks while the Swift main actor calls `snapshot()`. Soundness of
+//      that sharing comes from the projection's own interior `Mutex`, NOT
+//      from this `unsafe impl`.
+//   3. The `app` raw pointer is only ever *read* — never mutated, and never
+//      dereferenced from a kernel callback. The use-after-free question is
+//      "can a callback touch `app` after `nmp_app_free`?" — and it cannot:
+//      `nmp_app_free` drops `NmpApp`, whose `Drop` sends `Shutdown` and then
+//      `join()`s the actor thread before the allocation is freed. The Rust
+//      observer fan-out (`notify_observers`) invokes `on_kernel_event`
+//      INLINE on that actor thread, so the join fences any in-flight
+//      callback. Calling `nmp_app_chirp_unregister` before `nmp_app_free`
+//      (the documented contract) is additional hygiene; the actor join is
+//      the actual fence.
+//
+// CALLER CONTRACT: `nmp_app_free` must not be invoked while any kernel
+// callback that reaches this handle's projection is still in flight. The
+// in-process Rust-trait registration path used here gets that fence for free
+// (the actor join). A hypothetical C-ABI observer would NOT — its drain
+// thread is separate and is not joined by `nmp_app_free`.
 unsafe impl Send for ChirpHandle {}
 unsafe impl Sync for ChirpHandle {}
 
