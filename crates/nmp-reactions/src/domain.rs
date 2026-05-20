@@ -36,7 +36,7 @@ const INGEST_KINDS: &[u32] = SOCIAL_KINDS;
 pub struct ReactionsDomain;
 
 impl DomainModule for ReactionsDomain {
-    const NAMESPACE: &'static str = "nmp.reactions";
+    const NAMESPACE: &'static str = NAMESPACE;
     const SCHEMA_VERSION: u32 = 1;
 
     fn ingest_kinds() -> &'static [u32] {
@@ -328,11 +328,6 @@ fn sort_newest_first(records: &mut [SocialRecord]) {
 mod tests {
     use super::*;
     use crate::decode::ReactionTarget;
-
-    #[test]
-    fn module_namespace_matches_constant() {
-        assert_eq!(<ReactionsDomain as DomainModule>::NAMESPACE, NAMESPACE);
-    }
 
     #[test]
     fn module_ingest_kinds_returns_7_6_16() {

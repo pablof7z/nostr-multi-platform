@@ -14,7 +14,7 @@ const INGEST_KINDS: &[u32] = &[KIND_ZAP_RECEIPT];
 pub struct ZapsDomain;
 
 impl DomainModule for ZapsDomain {
-    const NAMESPACE: &'static str = "nmp.nip57.zaps";
+    const NAMESPACE: &'static str = NAMESPACE;
     const SCHEMA_VERSION: u32 = 1;
 
     fn ingest_kinds() -> &'static [u32] {
@@ -86,11 +86,6 @@ pub fn list_by_target(handle: &DomainHandle, target_id: &str) -> Result<Vec<Stri
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn module_namespace_matches_constant() {
-        assert_eq!(<ZapsDomain as DomainModule>::NAMESPACE, NAMESPACE);
-    }
 
     #[test]
     fn module_ingest_kinds_returns_9735_only() {

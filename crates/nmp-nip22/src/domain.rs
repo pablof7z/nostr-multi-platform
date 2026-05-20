@@ -18,7 +18,7 @@ const INGEST_KINDS: &[u32] = &[KIND_COMMENT];
 pub struct CommentsDomain;
 
 impl DomainModule for CommentsDomain {
-    const NAMESPACE: &'static str = "nmp.nip22.comments";
+    const NAMESPACE: &'static str = NAMESPACE;
     const SCHEMA_VERSION: u32 = 1;
 
     fn ingest_kinds() -> &'static [u32] {
@@ -91,11 +91,6 @@ pub fn list_by_parent(handle: &DomainHandle, parent_id: &str) -> Result<Vec<Stri
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn module_namespace_matches_constant() {
-        assert_eq!(<CommentsDomain as DomainModule>::NAMESPACE, NAMESPACE);
-    }
 
     #[test]
     fn module_ingest_kinds_returns_1111_only() {
