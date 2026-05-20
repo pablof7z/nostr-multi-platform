@@ -616,6 +616,12 @@ pub fn run_actor_with_observers(
                             kernel.set_last_error_toast(Some(
                                 "remote sign timed out".to_string(),
                             ));
+                            // Surface the toast immediately rather than
+                            // waiting up to one periodic flush tick —
+                            // matches the success-path `emit_now` below.
+                            if running {
+                                emit_now(&mut kernel, running, &update_tx, &mut last_emit);
+                            }
                             false // Abandon — broker did not respond in time.
                         } else {
                             true // Still pending — keep for the next tick.
@@ -639,6 +645,12 @@ pub fn run_actor_with_observers(
                         kernel.set_last_error_toast(Some(format!(
                             "remote sign failed: {e}"
                         )));
+                        // Surface the toast immediately rather than waiting
+                        // up to one periodic flush tick — matches the
+                        // success-path `emit_now` above.
+                        if running {
+                            emit_now(&mut kernel, running, &update_tx, &mut last_emit);
+                        }
                         false // Done — remove.
                     }
                 }

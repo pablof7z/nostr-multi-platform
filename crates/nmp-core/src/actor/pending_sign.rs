@@ -55,3 +55,130 @@ impl PendingSign {
         Instant::now() >= self.deadline
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! Unit tests for the parked remote-sign path. These pin the *async*
+    //! `SignerOp::Pending` behaviour the actor loop relies on — distinct
+    //! from `remote_signer_tests.rs`, whose `StubSigner` always returns a
+    //! ready-now op so the `PendingSign` queue never accumulates.
+    use super::*;
+    use crate::substrate::{SignedEvent, UnsignedEvent};
+    use nmp_signer_iface::{SignerError, SignerOp};
+    use std::sync::mpsc;
+
+    /// Minimal valid `SignedEvent` for exercising the success poll path.
+    fn make_signed_event() -> SignedEvent {
+        SignedEvent {
+            id: "00".repeat(32),
+            sig: "00".repeat(64),
+            unsigned: UnsignedEvent {
+                pubkey: "11".repeat(32),
+                kind: 1,
+                tags: vec![],
+                content: "pending-sign test".to_string(),
+                created_at: 0,
+            },
+        }
+    }
+
+    /// A `Pending` op returns `None` from `poll()` until the broker responds.
+    /// This is the non-blocking property the actor loop depends on: the
+    /// idle-tick `retain_mut` keeps the `PendingSign` alive without stalling.
+    #[test]
+    fn poll_returns_none_while_pending() {
+        let (tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
+        let mut ps = PendingSign::new(SignerOp::Pending(rx), vec![]);
+        assert!(
+            ps.op.poll().is_none(),
+            "Pending op must poll to None before the sender produces a value"
+        );
+        assert!(
+            !ps.timed_out(),
+            "a freshly-created PendingSign is well within its deadline"
+        );
+        drop(tx); // disconnect — no value was ever sent.
+    }
+
+    /// Once the broker sends a successful result, a later `poll()` resolves
+    /// it. Mirrors the actor loop seeing `Some(Ok(signed))` on a later tick.
+    #[test]
+    fn poll_resolves_with_signed_event_after_send() {
+        let (tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
+        let mut ps = PendingSign::new(SignerOp::Pending(rx), vec!["p-tag".to_string()]);
+
+        // First tick: still pending.
+        assert!(ps.op.poll().is_none(), "no value sent yet");
+
+        // Broker turns the request around.
+        tx.send(Ok(make_signed_event())).unwrap();
+
+        // Next tick: the signed event is delivered.
+        let signed = ps
+            .op
+            .poll()
+            .expect("poll must yield Some after the sender produces a value")
+            .expect("the result carries the signed event, not an error");
+        assert_eq!(signed.unsigned.content, "pending-sign test");
+        // p_tags ride alongside the op for the publish callsite.
+        assert_eq!(ps.p_tags, vec!["p-tag".to_string()]);
+    }
+
+    /// A broker-side rejection surfaces through `poll()` as `Some(Err(..))`.
+    /// Mirrors the actor loop's `Some(Err(e))` branch.
+    #[test]
+    fn poll_resolves_with_error_after_send() {
+        let (tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
+        let mut ps = PendingSign::new(SignerOp::Pending(rx), vec![]);
+
+        tx.send(Err(SignerError::Rejected("user said no".to_string())))
+            .unwrap();
+
+        let result = ps.op.poll();
+        assert!(
+            matches!(result, Some(Err(SignerError::Rejected(_)))),
+            "a rejected sign must poll to Some(Err(Rejected)), got {result:?}"
+        );
+    }
+
+    /// A dropped sender (broker channel torn down without a value) surfaces
+    /// as `Some(Err(Backend(..)))` — the op never strands the actor loop.
+    #[test]
+    fn poll_resolves_with_backend_error_on_disconnect() {
+        let (tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
+        let mut ps = PendingSign::new(SignerOp::Pending(rx), vec![]);
+
+        drop(tx); // broker died before responding.
+
+        let result = ps.op.poll();
+        assert!(
+            matches!(result, Some(Err(SignerError::Backend(_)))),
+            "a disconnected channel must poll to Some(Err(Backend)), got {result:?}"
+        );
+    }
+
+    /// `timed_out()` is false before the deadline and true after it. A
+    /// deadline set in the past reports timed-out immediately — this is the
+    /// signal the actor loop uses to abandon a non-responsive broker.
+    #[test]
+    fn timed_out_tracks_the_deadline() {
+        let (tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
+
+        // Fresh op: deadline is PENDING_SIGN_TIMEOUT in the future.
+        let fresh = PendingSign::new(SignerOp::Pending(rx), vec![]);
+        assert!(!fresh.timed_out(), "a fresh PendingSign has not timed out");
+
+        // Op whose deadline already elapsed.
+        let (_tx2, rx2) = mpsc::channel::<Result<SignedEvent, SignerError>>();
+        let overdue = PendingSign {
+            op: SignerOp::Pending(rx2),
+            p_tags: vec![],
+            deadline: Instant::now() - Duration::from_millis(1),
+        };
+        assert!(
+            overdue.timed_out(),
+            "a PendingSign past its deadline reports timed_out"
+        );
+        drop(tx);
+    }
+}
