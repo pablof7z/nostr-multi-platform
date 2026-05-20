@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::json;
 
 use super::super::action::{PublishOutcome, RelayUrl};
-use super::super::state::{PerRelayState, RelayAck, RetryVerdict};
+use super::super::state::{PerRelayState, RelayAck, RetryPolicy, RetryVerdict};
 use super::super::traits::RelayDispatcher;
 use super::super::view::{PublishStatusState, RecentFailure, RecentSuccess};
 use super::{InFlight, TerminalOutcome};
@@ -201,6 +201,47 @@ pub(super) fn collect_p_tags(event: &SignedEvent) -> Vec<String> {
         }
     }
     out.into_iter().collect()
+}
+
+/// Transition any `InFlight` relay whose send predates `now_ms - deadline_ms`.
+/// If the attempt count has exhausted the transient retry budget, transitions
+/// directly to `FailedAfterRetries`; otherwise to `TimedOut` so the existing
+/// retry ladder can pick it up. Returns `true` if any row changed.
+///
+/// A relay that accepts the TCP connection but never sends `OK` (and never
+/// closes the socket) would otherwise pin a publish in `InFlight` forever.
+/// This sweeper runs in `PublishEngine::tick` so a stuck publish is detected
+/// within one actor tick (≤ 250 ms) of its deadline, with no new thread or
+/// polling loop.
+pub(super) fn sweep_inflight_timeouts(
+    in_flight: &mut InFlight,
+    now_ms: u64,
+    deadline_ms: u64,
+    policy: RetryPolicy,
+) -> bool {
+    let mut changed = false;
+    for state in in_flight.per_relay.values_mut() {
+        if let PerRelayState::InFlight { sent_at_ms, attempt } = *state {
+            if now_ms.saturating_sub(sent_at_ms) >= deadline_ms {
+                *state = if attempt >= policy.transient_max_retries {
+                    PerRelayState::FailedAfterRetries {
+                        reason: format!("timeout after {} retries", attempt),
+                        last_at_ms: now_ms,
+                    }
+                } else {
+                    PerRelayState::TimedOut {
+                        attempt,
+                        last_at_ms: now_ms,
+                    }
+                };
+                changed = true;
+            }
+        }
+    }
+    if changed {
+        in_flight.dirty = true;
+    }
+    changed
 }
 
 /// Coarse outcome computed from the current per-relay states. Used by the

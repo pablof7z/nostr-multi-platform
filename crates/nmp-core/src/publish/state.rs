@@ -216,6 +216,15 @@ pub struct RetryPolicy {
     pub auth_required_max_retries: u32,
     pub backoff_base_ms: u64,
     pub backoff_factor: u32,
+    /// How long to wait for a relay `OK` before treating the relay as
+    /// unresponsive and transitioning `InFlight → TimedOut`. A relay that
+    /// accepts the TCP connection but silently drops the `EVENT` (never sends
+    /// `OK` or closes the socket) would otherwise pin the publish forever.
+    /// The `TimedOut` state feeds the existing retry ladder; after
+    /// `transient_max_retries` the publish settles to `FailedAfterRetries`.
+    /// Default: 30 000 ms (30 s).
+    #[serde(default = "RetryPolicy::default_inflight_deadline_ms")]
+    pub inflight_deadline_ms: u64,
 }
 
 impl Default for RetryPolicy {
@@ -225,11 +234,16 @@ impl Default for RetryPolicy {
             auth_required_max_retries: 1,
             backoff_base_ms: 1_000,
             backoff_factor: 4,
+            inflight_deadline_ms: Self::default_inflight_deadline_ms(),
         }
     }
 }
 
 impl RetryPolicy {
+    fn default_inflight_deadline_ms() -> u64 {
+        30_000
+    }
+
     pub fn backoff_for(&self, attempt_just_failed: u32) -> u64 {
         // attempt_just_failed is 1-indexed (the first send is attempt 1).
         // We want 1s after attempt 1, 4s after attempt 2, 16s after attempt 3.

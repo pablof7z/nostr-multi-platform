@@ -14,7 +14,8 @@ use super::PublishEngine;
 use crate::publish::action::{PublishAction, PublishTarget};
 use crate::publish::state::{RelayAck, RetryPolicy};
 use crate::publish::traits::{
-    InMemoryPublishStore, NoopSigner, RelayDispatcher, ReplayDispatcher, StaticOutbox,
+    InMemoryPublishStore, NoopSigner, QueueDispatcher, RelayDispatcher, ReplayDispatcher,
+    StaticOutbox,
 };
 use crate::substrate::{SignedEvent, UnsignedEvent};
 
@@ -146,5 +147,82 @@ fn engine_take_completed_reports_mixed_accepted_and_failed_split() {
         outcome.failed[0].1.contains("blocked"),
         "failure reason is carried for the kernel: {:?}",
         outcome.failed[0].1
+    );
+}
+
+#[test]
+fn inflight_timeout_sweep_transitions_stuck_relay_through_retry_to_failure() {
+    // Regression guard for the critical bug: a relay that accepts the socket
+    // but never sends `OK` (and never closes) pinned the publish in `InFlight`
+    // forever because `tick` never examined `sent_at_ms`.
+    //
+    // Scenario: QueueDispatcher returns no acks (simulates silent drop). After
+    // `inflight_deadline_ms` elapses the sweeper must transition the relay to
+    // `TimedOut`; the retry ladder eventually settles it to `FailedAfterRetries`,
+    // producing a `RecentFailure` row and a `TerminalOutcome` for the kernel.
+    let mut outbox = StaticOutbox::default();
+    outbox
+        .author_writes
+        .insert("alice".to_string(), vec!["wss://silent".to_string()]);
+    // QueueDispatcher → dispatch() returns Vec::new() (no synchronous ack),
+    // simulating a relay that accepts the socket but never sends OK or closes.
+    let dispatcher = Arc::new(QueueDispatcher::new());
+    let policy = RetryPolicy {
+        transient_max_retries: 2,  // attempt 1 → timeout → attempt 2 → timeout → fail
+        inflight_deadline_ms: 5_000,
+        backoff_base_ms: 0,        // no backoff so ticks are predictable
+        ..RetryPolicy::default()
+    };
+    let mut engine = PublishEngine::new(
+        Arc::new(outbox),
+        dispatcher.clone() as Arc<dyn RelayDispatcher>,
+        Arc::new(InMemoryPublishStore::new()),
+        Arc::new(NoopSigner),
+        policy,
+    );
+
+    let t0: u64 = 1_000_000;
+    engine
+        .start_publish(
+            PublishAction::Publish {
+                handle: "h1".to_string(),
+                event: signed_event("ev-timeout", "alice", 1),
+                target: PublishTarget::Auto,
+            },
+            t0,
+        )
+        .unwrap();
+
+    // Before the deadline: relay stays InFlight, no completed outcomes.
+    engine.tick(t0 + 4_000);
+    assert!(
+        engine.take_completed().is_empty(),
+        "relay should still be InFlight before the deadline"
+    );
+
+    // First deadline: sweeper fires. Attempt 1 < transient_max_retries (2) →
+    // transitions to TimedOut and is immediately re-dispatched as attempt 2.
+    engine.tick(t0 + 5_000);
+    assert!(
+        engine.take_completed().is_empty(),
+        "relay should be retried (attempt 2), not yet failed"
+    );
+
+    // Second deadline: attempt 2 >= transient_max_retries (2) →
+    // sweep transitions directly to FailedAfterRetries → publish settles.
+    engine.tick(t0 + 10_001);
+    let completed = engine.take_completed();
+    assert_eq!(
+        completed.len(),
+        1,
+        "publish must settle to FailedAfterRetries after retries exhausted"
+    );
+    assert!(
+        completed[0].failed.iter().any(|(url, _)| url == "wss://silent"),
+        "the silent relay must appear in the failed list"
+    );
+    assert!(
+        completed[0].accepted.is_empty(),
+        "no relay accepted the event"
     );
 }

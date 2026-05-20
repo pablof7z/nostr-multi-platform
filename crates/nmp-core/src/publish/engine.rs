@@ -235,9 +235,34 @@ impl PublishEngine {
     /// Drive any per-relay states that are due (Pending → InFlight, or retry
     /// after backoff has elapsed). Called by the actor on its tick.
     pub fn tick(&mut self, now_ms: u64) {
+        let deadline_ms = self.policy.inflight_deadline_ms;
+        let policy = self.policy;
         let handles: Vec<PublishHandle> = self.in_flight.keys().cloned().collect();
+        for handle in &handles {
+            if let Some(row) = self.in_flight.get_mut(handle) {
+                helpers::sweep_inflight_timeouts(row, now_ms, deadline_ms, policy);
+            }
+        }
+        for handle in &handles {
+            self.dispatch_pending(handle, now_ms);
+        }
+        // Evict handles that became fully terminal during the sweep but were
+        // not dispatched (dispatch_due skips terminal states, so on_ack never
+        // fires for them). This mirrors the on_ack completion path.
         for handle in handles {
-            self.dispatch_pending(&handle, now_ms);
+            let Some(in_flight) = self.in_flight.get(&handle) else {
+                continue; // already evicted by on_ack during dispatch_pending
+            };
+            if !helpers::is_complete(in_flight) {
+                continue;
+            }
+            let in_flight = self.in_flight.get(&handle).unwrap();
+            helpers::for_each_terminal(in_flight, &handle, &mut self.view, now_ms);
+            let outcome = helpers::terminal_outcome_of(in_flight);
+            self.recently_completed.insert(handle.clone(), outcome);
+            let _ = self.store.delete(&handle);
+            self.in_flight.remove(&handle);
+            self.needs_in_flight_rebuild = true;
         }
         self.flush_view();
     }
