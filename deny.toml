@@ -10,7 +10,14 @@ version = 2
 db-urls = ["https://github.com/rustsec/advisory-db"]
 # Unmaintained crate warnings are captured in docs/perf/supply-chain-baseline.md.
 # To silence a known-acceptable advisory add its ID to the ignore list below.
-ignore = []
+ignore = [
+    # nostr transitively brings `instant`; upstream replacement pending.
+    "RUSTSEC-2024-0384",
+    # `paste` is archived upstream; existing usage is non-networked macro glue.
+    "RUSTSEC-2024-0436",
+    # hpke-rs-libcrux@0.6.1 pins libcrux-aead ^0.0.7; upstream update pending.
+    "RUSTSEC-2026-0124",
+]
 
 [licenses]
 version = 2
@@ -38,6 +45,11 @@ allow = [
     # LGPL-2.1 weak copyleft — acceptable when dynamically linked in binary output.
     # r-efi (Windows EFI types) is the only current user.
     "LGPL-2.1-or-later",
+    # Boost license in clipboard-win / error-code via desktop + repl stacks.
+    "BSL-1.0",
+    # Font licenses used by egui default embedded fonts.
+    "OFL-1.1",
+    "LicenseRef-UFL-1.0",
 ]
 confidence-threshold = 0.8
 

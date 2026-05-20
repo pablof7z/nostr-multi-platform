@@ -53,10 +53,6 @@ impl DomainModule for EntryDomainModule {
             },
         }]
     }
-
-    fn register(registry: &mut DomainRegistry) {
-        registry.register_record::<EntryRecord>();
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -211,14 +207,13 @@ impl ActionModule for EntryActionModule {
 // Assembly
 // ---------------------------------------------------------------------------
 
-/// Register every module this app contributes. The headless shell stub
-/// (`examples/shell.rs`) and the generated FFI crate both build on this.
-pub fn module_descriptors() -> ModuleRegistry {
-    let mut registry = ModuleRegistry::default();
-    registry.register_domain::<EntryDomainModule>();
-    registry.register_view::<EntryViewModule>();
-    registry.register_action::<EntryActionModule>();
-    registry
+/// Module namespaces this app contributes.
+pub fn module_namespaces() -> [&'static str; 3] {
+    [
+        EntryDomainModule::NAMESPACE,
+        EntryViewModule::NAMESPACE,
+        EntryActionModule::NAMESPACE,
+    ]
 }
 
 #[cfg(test)]
@@ -226,18 +221,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registers_one_module_per_family() {
-        let registry = module_descriptors();
-        let families = registry
-            .descriptors()
-            .iter()
-            .map(|descriptor| descriptor.family)
-            .collect::<Vec<_>>();
+    fn declares_three_distinct_module_namespaces() {
+        let mut namespaces = module_namespaces().to_vec();
+        namespaces.sort_unstable();
+        namespaces.dedup();
 
-        assert_eq!(families.len(), 3);
-        assert!(families.contains(&ModuleFamily::Domain));
-        assert!(families.contains(&ModuleFamily::View));
-        assert!(families.contains(&ModuleFamily::Action));
+        assert_eq!(namespaces.len(), 3);
+        assert!(namespaces.iter().any(|ns| ns.ends_with(".domain")));
+        assert!(namespaces.iter().any(|ns| ns.ends_with(".view")));
+        assert!(namespaces.iter().any(|ns| ns.ends_with(".action")));
     }
 
     #[test]

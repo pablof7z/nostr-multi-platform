@@ -1,7 +1,8 @@
 name: file-size-gate
 
 # Enforces AGENTS.md 300 LOC warn / 500 LOC hard cap on hand-authored source.
-# Checks the full tracked tree (not just staged files — that's the pre-commit hook's job).
+# In CI we check files changed by the current push/PR so legacy debt does not
+# fail unrelated work; the full-tree scan remains available locally.
 #
 # NOTE: brainstorm item #6 (requests.rs 574 LOC split) is resolved — the file
 # was already decomposed into kernel/requests/{mod,profile,thread}.rs before
@@ -20,8 +21,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check file sizes (full tree)
-        run: bash .githooks/check-file-size.sh
+      - name: Check file sizes (changed files in this run)
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            FROM_REF="${{ github.event.pull_request.base.sha }}"
+            TO_REF="${{ github.event.pull_request.head.sha }}"
+          else
+            FROM_REF="${{ github.event.before }}"
+            TO_REF="${{ github.sha }}"
+          fi
+
+          # Initial push events use an all-zero "before" SHA.
+          if [[ "$FROM_REF" == "0000000000000000000000000000000000000000" ]]; then
+            FROM_REF="$(git rev-list --max-parents=0 "$TO_REF")"
+          fi
+
+          bash .githooks/check-file-size.sh --from-ref "$FROM_REF" --to-ref "$TO_REF"
 
       - name: Smoke test — fixture must trigger hard-cap report
         run: |

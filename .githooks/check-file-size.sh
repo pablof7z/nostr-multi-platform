@@ -10,6 +10,8 @@
 # Options:
 #   --changed-only     Check only staged files (for pre-commit hook).
 #                      Without this flag the full tracked tree is checked (CI mode).
+#   --from-ref REF     Check only files changed from REF..TO_REF.
+#   --to-ref REF       Required with --from-ref.
 #   --dry-run          Report violations but exit 0 (used by smoke tests).
 #   --force-include F  Always include path F even if it matches .file-size-ignore.
 #                      May be repeated. Used by smoke tests to exercise the fixture.
@@ -24,6 +26,8 @@ WARN_LOC=300
 HARD_LOC=500
 DRY_RUN=0
 CHANGED_ONLY=0
+FROM_REF=""
+TO_REF=""
 FORCE_INCLUDES=()
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
@@ -31,12 +35,25 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run)       DRY_RUN=1; shift ;;
         --changed-only)  CHANGED_ONLY=1; shift ;;
+        --from-ref)      FROM_REF="$2"; shift 2 ;;
+        --to-ref)        TO_REF="$2"; shift 2 ;;
         --force-include) FORCE_INCLUDES+=("$2"); shift 2 ;;
         --) shift; break ;;
         -*) echo "check-file-size: unknown option: $1" >&2; exit 1 ;;
         *)  break ;;
     esac
 done
+
+if [[ -n "$FROM_REF" || -n "$TO_REF" ]]; then
+    if [[ -z "$FROM_REF" || -z "$TO_REF" ]]; then
+        echo "check-file-size: --from-ref and --to-ref must be provided together" >&2
+        exit 1
+    fi
+    if [[ $CHANGED_ONLY -eq 1 ]]; then
+        echo "check-file-size: --changed-only cannot be combined with --from-ref/--to-ref" >&2
+        exit 1
+    fi
+fi
 
 # ── Locate repo root (works from any worktree) ────────────────────────────────
 REPO_ROOT="$(git rev-parse --show-toplevel)"
@@ -47,6 +64,9 @@ collect_files() {
     if [[ $CHANGED_ONLY -eq 1 ]]; then
         # Only staged additions/modifications
         git -C "$REPO_ROOT" diff --cached --name-only --diff-filter=ACMR
+    elif [[ -n "$FROM_REF" && -n "$TO_REF" ]]; then
+        # CI mode for changed files without mutating the index.
+        git -C "$REPO_ROOT" diff --name-only --diff-filter=ACMR "$FROM_REF" "$TO_REF"
     else
         # Full tracked tree (CI mode)
         git -C "$REPO_ROOT" ls-files

@@ -9,15 +9,15 @@
 //! cargo run --example shell -p {{pkg}}
 //! ```
 
-use {{crate_ident}}::module_descriptors;
+use {{crate_ident}}::module_namespaces;
 
 fn main() {
-    let registry = module_descriptors();
+    let namespaces = module_namespaces();
     println!(
         "{{display}} assembled {} module(s):",
-        registry.descriptors().len()
+        namespaces.len()
     );
-    for descriptor in registry.descriptors() {
-        println!("  {:?}\t{}", descriptor.family, descriptor.namespace);
+    for namespace in namespaces {
+        println!("  {}", namespace);
     }
 }
