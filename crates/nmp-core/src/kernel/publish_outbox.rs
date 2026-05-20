@@ -48,7 +48,7 @@ impl Kernel {
         if let Err(err) = self.publish_engine.retry_now(&handle, now_ms) {
             self.publish_engine
                 .record_engine_error(&err, &handle, "", now_ms);
-            let (toast, _) = describe_engine_error(&err);
+            let (toast, _, _) = describe_engine_error(&err);
             self.set_last_error_toast(Some(toast));
             return Vec::new();
         }
@@ -76,7 +76,7 @@ impl Kernel {
         if let Err(err) = self.publish_engine.start_publish(action, now_ms) {
             self.publish_engine
                 .record_engine_error(&err, &handle, "", now_ms);
-            let (toast, _) = describe_engine_error(&err);
+            let (toast, _, _) = describe_engine_error(&err);
             self.set_last_error_toast(Some(toast));
             return;
         }
