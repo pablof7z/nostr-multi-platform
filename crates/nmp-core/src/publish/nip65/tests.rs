@@ -13,7 +13,7 @@
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
-use super::{Nip65OutboxResolver, PublishTarget};
+use super::{Nip65OutboxResolver, PublishTarget, RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD};
 use crate::publish::traits::OutboxResolver;
 use crate::store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 
@@ -42,6 +42,16 @@ fn store_kind10002(store: &dyn EventStore, author_hex: &str, tags: Vec<Vec<Strin
 
 fn mk_resolver(store: Arc<dyn EventStore>) -> Nip65OutboxResolver {
     Nip65OutboxResolver::new(store, Arc::new(Mutex::new(Vec::new())))
+}
+
+fn pk(n: u8) -> String {
+    format!("{n:02x}").repeat(32)
+}
+
+fn threshold_recipients() -> Vec<String> {
+    let mut recipients = vec![RECIPIENT_HEX.to_string()];
+    recipients.extend((0..RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD - 1).map(|i| pk((i + 3) as u8)));
+    recipients
 }
 
 #[test]
@@ -134,6 +144,73 @@ fn nip65_resolver_unions_recipient_reads_for_p_tags() {
     );
     assert!(out.contains("wss://author-write.example"));
     assert!(out.contains("wss://recipient-read.example"));
+}
+
+#[test]
+fn nip65_resolver_skips_recipient_reads_at_p_tag_threshold() {
+    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
+    store_kind10002(
+        store.as_ref(),
+        AUTHOR_HEX,
+        vec![vec![
+            "r".into(),
+            "wss://author-write.example".into(),
+            "write".into(),
+        ]],
+    );
+    store_kind10002(
+        store.as_ref(),
+        RECIPIENT_HEX,
+        vec![vec![
+            "r".into(),
+            "wss://recipient-read.example".into(),
+            "read".into(),
+        ]],
+    );
+    let recipients = threshold_recipients();
+
+    let resolver = mk_resolver(store);
+    let out = resolver.resolve(AUTHOR_HEX, &recipients, &PublishTarget::Auto, 1);
+
+    assert!(out.contains("wss://author-write.example"));
+    assert!(
+        !out.contains("wss://recipient-read.example"),
+        "15+ distinct p-tagged pubkeys must not fan out to recipient inbox relays"
+    );
+}
+
+#[test]
+fn nip65_resolver_keeps_discovery_indexers_when_p_tag_threshold_skips_inboxes() {
+    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
+    store_kind10002(
+        store.as_ref(),
+        AUTHOR_HEX,
+        vec![vec![
+            "r".into(),
+            "wss://author-write.example".into(),
+            "write".into(),
+        ]],
+    );
+    store_kind10002(
+        store.as_ref(),
+        RECIPIENT_HEX,
+        vec![vec![
+            "r".into(),
+            "wss://recipient-read.example".into(),
+            "read".into(),
+        ]],
+    );
+    let recipients = threshold_recipients();
+    let resolver = Nip65OutboxResolver::new(
+        store,
+        Arc::new(Mutex::new(vec!["wss://indexer.example".to_string()])),
+    );
+
+    let out = resolver.resolve(AUTHOR_HEX, &recipients, &PublishTarget::Auto, 3);
+
+    assert!(out.contains("wss://author-write.example"));
+    assert!(out.contains("wss://indexer.example"));
+    assert!(!out.contains("wss://recipient-read.example"));
 }
 
 #[test]

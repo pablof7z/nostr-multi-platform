@@ -6,7 +6,7 @@
 //!   is one of `"read"` / `"write"` (absent ⇒ both).
 //! - For a publish authored by `A` with `#p` recipients `R1..Rn`:
 //!   - resolve write-relays of `A`
-//!   - union read-relays of each `Ri`
+//!   - union read-relays of each `Ri` only while `n < 15`
 //!   - if `A` has no kind:10002 **and** the event is not a discovery kind,
 //!     return an **empty relay set** (fail-closed).
 //!
@@ -37,6 +37,13 @@ use crate::store::{EventStore, PubKey, StoredEvent};
 
 use super::action::{PublishTarget, RelayUrl};
 use super::traits::OutboxResolver;
+
+/// Maximum distinct `#p` pubkeys that still get recipient inbox fan-out.
+///
+/// Events with this many or more tagged pubkeys are treated as broadcast-ish:
+/// publish to the author's own write relays, and for discovery kinds to
+/// indexers, but do not fan out to every tagged pubkey's read relays.
+pub const RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD: usize = 15;
 
 /// Resolve `PublishTarget::Auto` to a concrete relay set per NIP-65, using an
 /// `EventStore` as the source of truth for kind:10002 lookups.
@@ -169,10 +176,14 @@ impl OutboxResolver for Nip65OutboxResolver {
             }
         }
 
-        // 4. Recipient read-relays — union for every `#p` tag.
-        for p in p_tags {
-            if let Some((_writes, reads)) = self.lookup_kind10002(p) {
-                out.extend(reads);
+        // 4. Recipient read-relays — union for every `#p` tag, but only for
+        // small recipient sets. At 15+ distinct p-tagged pubkeys the event is
+        // broadcast-ish enough that recipient inbox fan-out becomes noisy.
+        if p_tags.len() < RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD {
+            for p in p_tags {
+                if let Some((_writes, reads)) = self.lookup_kind10002(p) {
+                    out.extend(reads);
+                }
             }
         }
 
