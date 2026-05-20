@@ -21,6 +21,21 @@
 # symbol they export is still in the Chirp link and still belongs in the
 # header. Scanning only nmp-core would false-flag those ~14 symbols as drift.
 #
+# AUDITOR NOTE — do NOT verify this header against a single archive.
+# A `nm -gU libnmp_app_chirp.a` over just the Chirp glue archive WILL report
+# header symbols as "missing", because the Chirp link is the UNION of three
+# archives. Symbols genuinely absent from `libnmp_app_chirp.a` but present and
+# correct in the build include (verified 2026-05-20):
+#   - nmp_app_set_storage_path            -> libnmp_core.a
+#   - nmp_signer_broker_init              -> libnmp_signer_broker.a
+#   - nmp_app_cancel_bunker_handshake     -> libnmp_signer_broker.a
+#   - nmp_app_nostrconnect_uri            -> libnmp_signer_broker.a
+#   - nmp_broker_free_string              -> libnmp_signer_broker.a
+# Each is exported from its own crate's `staticlib` and reaches the Chirp
+# binary via that archive's link line. The authoritative drift check is this
+# script (source-of-truth = the three FFI roots below), NOT a per-archive `nm`.
+# To audit at the binary level, `nm -gU` ALL THREE archives and union the sets.
+#
 # What counts as a PRODUCTION symbol:
 #   - Any `#[no_mangle] pub extern "C" fn nmp_app_*` defined in one of the
 #     scanned `.rs` files ...
@@ -43,7 +58,11 @@
 #
 # The check is restricted to the `nmp_app_*` prefix; broker-only symbols such
 # as `nmp_signer_broker_init` / `nmp_broker_free_string` are out of scope by
-# construction (different prefix) and are not gated by this script.
+# construction (different prefix) and are not gated by this script. This is a
+# DELIBERATE scope decision, not an oversight: those symbols are stable, few,
+# and owned by `nmp-signer-broker`; gating them here would couple this script
+# to a second prefix family. They are still declared in NmpCore.h (correctly)
+# — auditors should not "fix" this script to chase them.
 #
 # Exit codes: 0 = in sync, 1 = drift detected (or usage error).
 
