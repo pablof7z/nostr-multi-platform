@@ -264,6 +264,17 @@ pub(super) fn query_visit(
         return Ok(());
     }
     let st = store.lock()?;
+    if limit == 1 {
+        let newest = st.events.values().filter(|ev| matches(ev, query)).max_by(|a, b| {
+            a.raw.created_at
+                .cmp(&b.raw.created_at)
+                .then(b.raw.id.cmp(&a.raw.id))
+        });
+        if let Some(ev) = newest {
+            let _ = visitor(ev);
+        }
+        return Ok(());
+    }
     // Prep alloc (one Vec of borrows), not a per-event clone.
     let mut matched: Vec<&StoredEvent> =
         st.events.values().filter(|ev| matches(ev, query)).collect();

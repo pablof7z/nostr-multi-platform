@@ -194,6 +194,7 @@ pub mod testing {
     /// Schnorr sign cost: ~30–50 µs/event.  For S4 (500 events) and S5 (200
     /// events) this is 10–25 ms total — acceptable.  For S3 (100k events) use
     /// `nmp_app_inject_pre_verified_events` which uses `from_raw_unchecked`.
+    #[allow(clippy::result_large_err)] // ActorCommand is large by design; boxing here would cascade through test callers
     pub fn inject_signed_events(
         tx: &mpsc::Sender<ActorCommand>,
         base_ts: u64,

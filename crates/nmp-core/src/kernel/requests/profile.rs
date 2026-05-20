@@ -12,7 +12,7 @@
 //! - `close_author`        → drop interests by InterestId; recompile(Trigger::ViewClose)
 //! - `author_requests`     → disappears (replaced by open_author interest registration)
 //! - `profile_claim_request` → disappears (compiler routes via Stage 1+2)
-//! - `pending_profile_claim_requests` → disappears (compiler handles deferred relay reconnect)
+//! - `pending_profile_requests` → disappears (compiler handles deferred relay reconnect)
 //! - `open_firehose_tag`   → register LogicalInterest { kinds:[1], tags:{#t:[tag]} }
 //! - `firehose_requests`   → disappears (replaced by open_firehose_tag registration)
 //!
@@ -166,6 +166,19 @@ impl Kernel {
         Vec::new()
     }
 
+    pub(in crate::kernel) fn request_profile_for_rendered_note(&mut self, pubkey: &str) {
+        if self.profiles.contains_key(pubkey)
+            || self.profile_requests.requested.contains(pubkey)
+            || self.profile_requests.pending.contains(pubkey)
+        {
+            return;
+        }
+
+        self.profile_requests.pending.insert(pubkey.to_string());
+        self.changed_since_emit = true;
+        self.log(format!("queue note author profile {}", short_hex(pubkey)));
+    }
+
     pub(crate) fn close_author(&mut self, pubkey: &str) -> Vec<OutboundMessage> {
         let Some(interest) = self.author_view.selected_author.as_mut() else {
             return Vec::new();
@@ -229,24 +242,22 @@ impl Kernel {
     }
 
     pub(crate) fn pending_profile_claim_requests(&mut self) -> Vec<OutboundMessage> {
-        // Collect valid pending authors: have an active claim, not already fetched/inflight.
+        // Collect valid pending authors: not already fetched/inflight.
         let authors: Vec<String> = self
             .profile_requests
             .pending
             .iter()
             .filter(|pk| {
-                self.profile_claims.contains_key(*pk)
-                    && !self.profiles.contains_key(*pk)
-                    && !self.profile_requests.requested.contains(*pk)
+                !self.profiles.contains_key(*pk) && !self.profile_requests.requested.contains(*pk)
             })
             .cloned()
             .collect();
 
         if authors.is_empty() {
-            // Evict any pending that have no active claim (consumer released before relay connected).
-            self.profile_requests
-                .pending
-                .retain(|pk| self.profile_claims.contains_key(pk));
+            // Evict any pending authors already satisfied or requested.
+            self.profile_requests.pending.retain(|pk| {
+                !self.profiles.contains_key(pk) && !self.profile_requests.requested.contains(pk)
+            });
             return Vec::new();
         }
 

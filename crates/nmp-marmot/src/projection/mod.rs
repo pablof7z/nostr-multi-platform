@@ -5,10 +5,9 @@
 //!
 //! * [`payload`] — flat, decoder-free DTOs (a host shell mirrors the serde
 //!   shape verbatim).
-//! * [`state`] — [`state::MarmotProjection`]: owns the [`crate::service::MarmotService`]
-//!   + the FFI-local bookkeeping it does not surface (pending-welcome
-//!   cache, key-package publish timestamp). Implements
-//!   `KernelEventObserver` (metadata-only; see the lossy-observer seam).
+//! * [`state`] — [`state::MarmotProjection`]: owns the service + FFI-local
+//!   bookkeeping (pending-welcome cache, key-package publish timestamp);
+//!   implements `KernelEventObserver` (metadata-only).
 //! * [`ops`] — dispatch + read-projection handlers; the ONLY place
 //!   `mdk-core` input types are named for this layer.
 //! * [`publish`] — the internal relay-publish bridge that CLOSES the

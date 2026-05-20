@@ -30,6 +30,15 @@ enum TimelineBlock: Decodable, Equatable {
     case standalone(eventID: String)
     case module(events: [String], hasGap: Bool, root: ThreadPointer?)
 
+    var stableID: String {
+        switch self {
+        case .standalone(let id):
+            return "standalone:\(id)"
+        case .module(let events, _, let root):
+            return "module:\(root?.eventID ?? events.first ?? "unknown"):\(events.joined(separator: ","))"
+        }
+    }
+
     /// Display-order ids in this block. Standalone returns one id; module
     /// returns its `events` array (root-first newest-last).
     var eventIDs: [String] {

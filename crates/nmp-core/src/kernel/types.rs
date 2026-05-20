@@ -393,17 +393,18 @@ pub(super) struct DiagnosticFirehoseState {
 
 /// Profile-fetch request tracking: the in-flight / queued sets plus the
 /// monotonic REQ-id sequence. Grouped because the three fields are always
-/// mutated together by the `requests/profile.rs` claim/request paths
+/// mutated together by the `requests/profile.rs` claim/note-author request paths
 /// (`claim_profile`, `pending_profile_claim_requests`, `profile_claim_request`,
-/// `author_requests`) and read together by the `status.rs` profile diagnostics.
+/// `request_profile_for_rendered_note`, `author_requests`) and read together
+/// by the `status.rs` profile diagnostics.
 #[derive(Default)]
 pub(super) struct ProfileRequestState {
     /// Pubkeys whose kind:0 has been REQ'd (inflight or completed). A pubkey in
     /// this set is never re-requested.
     pub(super) requested: HashSet<String>,
-    /// Pubkeys with an active claim but no kind:0 fetched yet because no
-    /// indexer relay was connected when the claim arrived. Drained by
-    /// `pending_profile_claim_requests` once a relay connects.
+    /// Pubkeys queued for kind:0 fetch because a profile claim or rendered note
+    /// arrived before an outbound profile request was emitted. Drained by
+    /// `pending_profile_claim_requests`.
     pub(super) pending: BTreeSet<String>,
     /// Monotonic counter feeding unique `profile-*` REQ sub-ids.
     pub(super) req_seq: u64,

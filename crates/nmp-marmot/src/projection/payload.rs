@@ -47,7 +47,7 @@ pub struct PendingWelcomeRow {
 }
 
 /// KeyPackage publication health for the local identity.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct KeyPackageStatus {
     /// `true` once `publish_key_package` has been dispatched this session
     /// (the signing seam is in-crate, so this is authoritative for the
@@ -62,16 +62,6 @@ pub struct KeyPackageStatus {
     pub stale: bool,
 }
 
-impl Default for KeyPackageStatus {
-    fn default() -> Self {
-        Self {
-            published: false,
-            d_tag: None,
-            age_secs: None,
-            stale: false,
-        }
-    }
-}
 
 /// Complete snapshot Swift consumes via `nmp_app_chirp_marmot_snapshot`.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
