@@ -30,9 +30,6 @@ pub(crate) const CONTENT_RELAY_URL: &str = BOOTSTRAP_DISCOVERY_RELAYS[0];
 pub(crate) const INDEXER_RELAY_URL: &str = BOOTSTRAP_DISCOVERY_RELAYS[1];
 
 #[cfg(test)]
-pub(crate) const TEST_NPUB: &str =
-    "npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft";
-#[cfg(test)]
 pub(crate) const TEST_PUBKEY: &str =
     "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52";
 #[cfg(test)]
