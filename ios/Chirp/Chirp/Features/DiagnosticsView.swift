@@ -3,7 +3,6 @@ import SwiftUI
 struct DiagnosticsView: View {
     @EnvironmentObject private var model: KernelModel
     @State private var copiedNpub = false
-
     var body: some View {
         List {
             kernelSection
@@ -19,9 +18,6 @@ struct DiagnosticsView: View {
         .navigationTitle("Diagnostics")
         .navigationBarTitleDisplayMode(.large)
     }
-
-    // ── Kernel heartbeat ──────────────────────────────────────────────────
-
     private var kernelSection: some View {
         Section("Kernel") {
             HStack {
@@ -35,29 +31,21 @@ struct DiagnosticsView: View {
                         .font(.callout.weight(.medium))
                         .foregroundStyle(model.isRunning ? .green : .red)
                 }
-                .animation(.easeInOut(duration: 0.3), value: model.isRunning)
             }
-
             HStack {
                 Text("Rev")
                 Spacer()
                 Text("\(model.rev)")
                     .font(.body.monospaced())
                     .monospacedDigit()
-                    .contentTransition(.numericText())
-                    .animation(.smooth(duration: 0.25), value: model.rev)
             }
-
             HStack {
                 Text("Snapshots")
                 Spacer()
                 Text("\(model.snapshotCount)")
                     .font(.body.monospaced())
                     .monospacedDigit()
-                    .contentTransition(.numericText())
-                    .animation(.smooth(duration: 0.25), value: model.snapshotCount)
             }
-
             HStack {
                 Text("Last Snapshot")
                 Spacer()
@@ -70,7 +58,6 @@ struct DiagnosticsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-
             HStack {
                 Text("Update Seq")
                 Spacer()
@@ -78,8 +65,6 @@ struct DiagnosticsView: View {
                     Text("\(seq)")
                         .font(.body.monospaced())
                         .monospacedDigit()
-                        .contentTransition(.numericText())
-                        .animation(.smooth(duration: 0.25), value: seq)
                 } else {
                     Text("—")
                         .foregroundStyle(.secondary)
@@ -87,9 +72,6 @@ struct DiagnosticsView: View {
             }
         }
     }
-
-    // ── Swift-side timing ─────────────────────────────────────────────────
-
     private var perfSection: some View {
         Section("Performance") {
             HStack {
@@ -98,20 +80,16 @@ struct DiagnosticsView: View {
                 Text(model.metrics.map { "\($0.eventsRx)" } ?? "—")
                     .font(.body.monospaced())
                     .monospacedDigit()
-                    .contentTransition(.numericText())
                     .accessibilityIdentifier("metric-events-value")
             }
-
             HStack {
                 Text("Visible")
                 Spacer()
                 Text(model.metrics.map { "\($0.visibleItems)" } ?? "—")
                     .font(.body.monospaced())
                     .monospacedDigit()
-                    .contentTransition(.numericText())
                     .accessibilityIdentifier("metric-visible-value")
             }
-
             HStack {
                 Text("Bytes Rx")
                 Spacer()
@@ -121,7 +99,6 @@ struct DiagnosticsView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("metric-rx-value")
             }
-
             HStack {
                 Text("First Event")
                 Spacer()
@@ -131,7 +108,6 @@ struct DiagnosticsView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("metric-first-ms-value")
             }
-
             HStack {
                 Text("Max Apply")
                 Spacer()
@@ -140,7 +116,6 @@ struct DiagnosticsView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityIdentifier("metric-apply-us-value")
             }
-
             HStack {
                 Text("Decode")
                 Spacer()
@@ -148,7 +123,6 @@ struct DiagnosticsView: View {
                     .font(.body.monospaced())
                     .foregroundStyle(.secondary)
             }
-
             HStack {
                 Text("cb→screen")
                 Spacer()
@@ -156,7 +130,6 @@ struct DiagnosticsView: View {
                     .font(.body.monospaced())
                     .foregroundStyle(.secondary)
             }
-
             HStack {
                 Text("Queue Depth")
                 Spacer()
@@ -166,9 +139,6 @@ struct DiagnosticsView: View {
             }
         }
     }
-
-    // ── Metrics ───────────────────────────────────────────────────────────
-
     private var metricsSection: some View {
         Section("Metrics") {
             if let m = model.metrics {
@@ -206,7 +176,6 @@ struct DiagnosticsView: View {
                         icon: "doc.zipper"
                     )
                 }
-                .animation(.smooth(duration: 0.25), value: m.storedEvents)
             } else {
                 HStack {
                     ProgressView()
@@ -218,9 +187,6 @@ struct DiagnosticsView: View {
             }
         }
     }
-
-    // ── All relays (bootstrap + outbox) ───────────────────────────────────
-
     private var allRelayURLs: [String] {
         var urls = model.relayStatuses.map(\.relayUrl)
         for sub in model.wireSubscriptions {
@@ -230,7 +196,6 @@ struct DiagnosticsView: View {
         }
         return urls
     }
-
     private func syntheticRelayStatus(url: String, subs: [WireSubscriptionStatus]) -> RelayStatus {
         let activeSubs = subs.filter { ["open", "live", "active", "opening"].contains($0.state) }.count
         return RelayStatus(
@@ -249,7 +214,6 @@ struct DiagnosticsView: View {
             bytesTx: nil
         )
     }
-
     private var relaySection: some View {
         let urls = allRelayURLs
         return Section("Relays (\(urls.count))") {
@@ -272,9 +236,6 @@ struct DiagnosticsView: View {
             }
         }
     }
-
-    // ── Logical interests ───────────────────────────────────────────────────
-
     @ViewBuilder
     private var logicalInterestsSection: some View {
         if !model.logicalInterests.isEmpty {
@@ -301,7 +262,6 @@ struct DiagnosticsView: View {
             }
         }
     }
-
     private func interestStateColor(_ state: String) -> Color {
         switch state {
         case "active", "warming": return .green
@@ -309,9 +269,6 @@ struct DiagnosticsView: View {
         default: return .orange
         }
     }
-
-    // ── Publish queue ─────────────────────────────────────────────────────
-
     @ViewBuilder
     private var publishQueueSection: some View {
         if !model.publishQueue.isEmpty {
@@ -320,13 +277,8 @@ struct DiagnosticsView: View {
                     DiagPublishRow(entry: entry)
                 }
             }
-            .transition(.move(edge: .top).combined(with: .opacity))
-            .animation(.smooth, value: model.publishQueue.count)
         }
     }
-
-    // ── Active account ────────────────────────────────────────────────────
-
     private var accountSection: some View {
         Section("Active Account") {
             if let activeID = model.activeAccount,
@@ -351,7 +303,6 @@ struct DiagnosticsView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(account.isActive ? .green : .secondary)
                 }
-
                 VStack(alignment: .leading, spacing: 4) {
                     Text("npub")
                         .font(.caption.weight(.semibold))
@@ -360,10 +311,10 @@ struct DiagnosticsView: View {
                         UIPasteboard.general.string = account.npub
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.impactOccurred()
-                        withAnimation(.smooth(duration: 0.2)) { copiedNpub = true }
+                        copiedNpub = true
                         Task {
                             try? await Task.sleep(for: .seconds(2))
-                            withAnimation(.smooth(duration: 0.3)) { copiedNpub = false }
+                            copiedNpub = false
                         }
                     } label: {
                         HStack(spacing: 8) {
@@ -375,7 +326,6 @@ struct DiagnosticsView: View {
                             Spacer(minLength: 0)
                             Image(systemName: copiedNpub ? "checkmark.circle.fill" : "doc.on.doc")
                                 .foregroundStyle(copiedNpub ? .green : Color.accentColor)
-                                .animation(.smooth(duration: 0.2), value: copiedNpub)
                         }
                     }
                     .buttonStyle(.plain)
@@ -390,9 +340,6 @@ struct DiagnosticsView: View {
             }
         }
     }
-
-    // ── Runtime log ───────────────────────────────────────────────────────
-
     @ViewBuilder
     private var runtimeLogSection: some View {
         if !model.logs.isEmpty {
@@ -407,21 +354,14 @@ struct DiagnosticsView: View {
             }
         }
     }
-
-    // ── Byte formatter ────────────────────────────────────────────────────
-
     private func formatBytes(_ bytes: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .binary)
     }
 }
-
-// ── Subcomponents ─────────────────────────────────────────────────────────
-
 private struct MetricTile: View {
     let label: String
     let value: String
     let icon: String
-
     var body: some View {
         VStack(spacing: 4) {
             Image(systemName: icon)
@@ -431,39 +371,31 @@ private struct MetricTile: View {
                 .font(.headline)
                 .foregroundStyle(.primary)
                 .monospacedDigit()
-                .contentTransition(.numericText())
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
     }
 }
-
 private struct DiagRelayRow: View {
     let relay: RelayStatus
-
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .center, spacing: 8) {
                 Circle()
                     .fill(connectionColor)
                     .frame(width: 8, height: 8)
-
                 Text(relay.relayUrl)
                     .font(.body.monospaced())
                     .lineLimit(1)
                     .truncationMode(.middle)
-
                 Spacer(minLength: 0)
-
                 Text(relay.role.capitalized)
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(roleColor)
             }
-
             HStack(spacing: 12) {
                 Text(relay.connection.capitalized)
                     .font(.caption)
@@ -480,7 +412,6 @@ private struct DiagRelayRow: View {
                         .foregroundStyle(.orange)
                 }
             }
-
             if let notice = relay.lastNotice {
                 Text(notice)
                     .font(.caption)
@@ -496,21 +427,18 @@ private struct DiagRelayRow: View {
         }
         .padding(.vertical, 4)
     }
-
     private var connectionColor: Color {
         let s = relay.connection.lowercased()
         if s == "connected" { return .green }
         if s.contains("connect") { return .orange }
         return .red
     }
-
     private var authColor: Color {
         let s = relay.auth.lowercased()
         if s == "ok" || s == "authenticated" { return .green }
         if s == "pending" { return .orange }
         return .secondary
     }
-
     private var roleColor: Color {
         switch relay.role {
         case "read": return .accentColor
@@ -519,10 +447,8 @@ private struct DiagRelayRow: View {
         }
     }
 }
-
 private struct DiagPublishRow: View {
     let entry: PublishQueueEntry
-
     var body: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
@@ -544,12 +470,10 @@ private struct DiagPublishRow: View {
         }
         .padding(.vertical, 4)
     }
-
     private func shortID(_ id: String) -> String {
         guard id.count >= 12 else { return id }
         return "\(id.prefix(8))…"
     }
-
     private func statusColor(_ s: String) -> Color {
         switch s.lowercased() {
         case "published", "ok", "sent": return .green

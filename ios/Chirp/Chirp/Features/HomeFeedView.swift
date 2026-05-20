@@ -33,9 +33,6 @@ struct HomeFeedView: View {
             }
         }
         .accessibilityIdentifier("home-feed")
-        .overlay(alignment: .bottomTrailing) {
-            composeFloatingButton
-        }
         .chirpScreenBackground()
         .navigationTitle("Chirp")
         .navigationBarTitleDisplayMode(.large)
@@ -75,15 +72,13 @@ struct HomeFeedView: View {
             ForEach(Array(blocks.enumerated()), id: \.offset) { (_, block) in
                 ModularBlockView(block: block, cards: cardLookup, items: itemLookup)
                     .listRowInsets(EdgeInsets())
-                    .listRowSeparator(.visible)
-                    .listRowSeparatorTint(ChirpColor.hairline)
-                    .listRowBackground(ChirpColor.surface)
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(ChirpColor.bg)
             }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .contentMargins(.bottom, 20, for: .scrollContent)
-        .animation(.smooth, value: blocks.count)
         .accessibilityIdentifier("timeline-list")
         .refreshable {
             model.openTimeline()
@@ -108,8 +103,8 @@ struct HomeFeedView: View {
         ScrollView {
             ChirpPlaceholder(
                 systemImage: "bird",
-                title: "Your timeline is getting ready",
-                subtitle: "Pull to refresh, check your relays, or write the first note from this account."
+                title: "Your timeline",
+                subtitle: "Loading your timeline…"
             )
             .frame(minHeight: 500)
             .padding(.horizontal, ChirpSpace.l)
@@ -151,25 +146,14 @@ struct HomeFeedView: View {
             }
             .accessibilityLabel("Activity")
         }
-    }
 
-    private var composeFloatingButton: some View {
-        Button {
-            showCompose = true
-        } label: {
-            Image(systemName: "square.and.pencil")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(Color(.systemBackground))
-                .frame(width: 58, height: 58)
-                .background {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(.tint)
-                }
-                .chirpGlass(cornerRadius: 18, interactive: true)
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Button {
+                showCompose = true
+            } label: {
+                Image(systemName: "square.and.pencil")
+            }
+            .accessibilityLabel("New note")
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("New note")
-        .padding(.trailing, ChirpSpace.l)
-        .padding(.bottom, ChirpSpace.xl)
     }
 }

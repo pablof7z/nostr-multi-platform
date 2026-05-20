@@ -31,7 +31,6 @@ struct ThreadNoteRow: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .animation(.smooth(duration: 0.2), value: isFocused)
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 4) {
@@ -84,12 +83,9 @@ struct ThreadNoteRow: View {
                     .padding(.top, 4)
                 }
             }
-            .padding(.vertical, isFocused ? 8 : 4)
+            .padding(.vertical, isFocused ? 12 : 8)
             .padding(.horizontal, 16)
         }
-        .chirpGlass(cornerRadius: 18, interactive: false)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 4)
-        .animation(.smooth(duration: 0.25), value: isFocused)
+        .background(isFocused ? Color.accentColor.opacity(0.06) : Color.clear)
     }
 }

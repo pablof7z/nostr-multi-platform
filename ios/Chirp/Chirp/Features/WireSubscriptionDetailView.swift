@@ -90,7 +90,6 @@ struct WireSubscriptionDetailView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .chirpGlass(cornerRadius: 12)
         }
     }
 
@@ -125,7 +124,6 @@ struct WireSubscriptionDetailView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .chirpGlass(cornerRadius: 12)
         }
     }
 
@@ -143,7 +141,6 @@ struct WireSubscriptionDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 8)
                 .padding(.horizontal, 12)
-                .chirpGlass(cornerRadius: 12)
                 .textSelection(.enabled)
         }
     }
@@ -191,7 +188,6 @@ private struct WireMetricTile: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
-        .chirpGlass(cornerRadius: 12)
     }
 }
 

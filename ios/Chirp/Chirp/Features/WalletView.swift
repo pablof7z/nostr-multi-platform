@@ -233,6 +233,5 @@ private struct TechTile: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
-        .chirpGlass(cornerRadius: 12)
     }
 }

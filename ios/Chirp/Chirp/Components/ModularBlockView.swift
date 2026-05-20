@@ -90,12 +90,15 @@ struct ModularBlockView: View {
             if shouldShowGapPill(hasGap: hasGap, root: root, events: events) {
                 showThisThreadPill(rootID: rootEventID(root: root) ?? events.first ?? "")
                     .padding(.leading, ModuleLayout.avatarSize + 8)
-                    .padding(.top, 6)
+                    .padding(.top, 4)
             }
+
+            Divider()
+                .padding(.leading, ModuleLayout.avatarSize + 8)
+                .padding(.top, 4)
         }
-        .padding(.vertical, 12)
+        .padding(.top, 12)
         .padding(.horizontal, 16)
-        .background(ChirpColor.surface)
     }
 
     /// One event row inside a module. Layout: avatar column (fixed 44pt,
@@ -192,13 +195,11 @@ struct ModularBlockView: View {
         Button {
             router.push(.thread(eventID: rootID))
         } label: {
-            Label("Show this thread", systemImage: "arrow.down.message")
-                .font(.caption.weight(.semibold))
-                .labelStyle(.titleAndIcon)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
+            Text("Show this thread")
+                .font(.caption)
+                .foregroundStyle(Color.accentColor)
         }
-        .buttonStyle(ChirpGlassButtonStyle())
+        .buttonStyle(.borderless)
         .accessibilityIdentifier("show-this-thread-\(rootID.prefix(8))")
     }
 

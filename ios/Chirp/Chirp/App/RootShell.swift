@@ -38,10 +38,8 @@ struct RootShell: View {
                 mainTabs
             } else {
                 OnboardingView()
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
-        .animation(.smooth(duration: 0.4), value: model.hasActiveAccount)
         .chirpScreenBackground()
         .overlay(alignment: .top) { toast }
     }
@@ -86,9 +84,8 @@ struct RootShell: View {
                 .font(ChirpFont.callout)
                 .foregroundStyle(.primary)
                 .padding(.horizontal, ChirpSpace.l).padding(.vertical, ChirpSpace.m)
-                .chirpGlass(cornerRadius: 22, interactive: true)
+                .background(.regularMaterial, in: Capsule())
                 .padding(.top, 8)
-                .transition(.move(edge: .top).combined(with: .opacity))
                 .onTapGesture { model.clearErrorToast() }
                 .task {
                     try? await Task.sleep(for: .seconds(4))

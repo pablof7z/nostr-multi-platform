@@ -24,14 +24,10 @@ struct ProfileView: View {
         ScrollView {
             VStack(spacing: 0) {
                 profileHeader
-                    .padding(ChirpSpace.l)
-                    .chirpGlass(cornerRadius: ChirpSpace.radius)
-                    .padding(.horizontal, ChirpSpace.l)
-                    .padding(.bottom, 8)
+                Divider()
 
                 notesSection
             }
-            .padding(.top, ChirpSpace.m)
         }
         .accessibilityIdentifier("profile-detail-list")
         .chirpScreenBackground()
@@ -59,77 +55,96 @@ struct ProfileView: View {
 
     @ViewBuilder
     private var profileHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .bottom, spacing: 0) {
-                ChirpAvatar(
-                    url: profile?.pictureUrl,
-                    initials: profile?.avatarInitials ?? "?",
-                    colorHex: profile?.avatarColor ?? "7B66FF",
-                    size: 82
-                )
-                .padding(.leading, 16)
+        VStack(alignment: .leading, spacing: 0) {
+            Rectangle()
+                .fill(Color(.secondarySystemBackground))
+                .frame(height: 118)
+                .overlay(alignment: .bottom) {
+                    Divider()
+                }
 
-                Spacer()
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .bottom) {
+                    ChirpAvatar(
+                        url: profile?.pictureUrl,
+                        initials: profile?.avatarInitials ?? "?",
+                        colorHex: profile?.avatarColor ?? "7B66FF",
+                        size: 82
+                    )
+                    .padding(.top, -41)
 
-                if let primaryAction {
-                    Button {
-                        performProfileAction(primaryAction)
-                    } label: {
-                        Label(primaryAction.label, systemImage: iconName(for: primaryAction))
-                            .labelStyle(.titleAndIcon)
-                    }
-                    .buttonStyle(ChirpGlassButtonStyle(prominent: primaryAction.kind == "follow"))
-                    .padding(.trailing, 16)
+                    Spacer()
+
+                    profileActions
+                        .padding(.top, 8)
+                }
+
+                profileMetadata
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    @ViewBuilder
+    private var profileActions: some View {
+        if let primaryAction {
+            HStack(spacing: 8) {
+                Button {
+                    performProfileAction(primaryAction)
+                } label: {
+                    Label(primaryAction.label, systemImage: iconName(for: primaryAction))
+                        .font(.callout.weight(.semibold))
+                        .labelStyle(.titleAndIcon)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .accessibilityLabel(primaryAction.label)
+            }
+        }
+    }
+
+    private var profileMetadata: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(profile?.display ?? "Loading…")
+                .font(.title)
+                .foregroundStyle(.primary)
+
+            if let nip05 = profile?.nip05, !nip05.isEmpty {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.seal.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                    Text(nip05)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .padding(.top, 16)
 
-            // Meta block below avatar
-            VStack(alignment: .leading, spacing: 4) {
-                // Display name
-                Text(profile?.display ?? "Loading…")
-                    .font(.title)
-                    .foregroundStyle(.primary)
-
-                // NIP-05 verified badge
-                if let nip05 = profile?.nip05, !nip05.isEmpty {
+            if let npub = profile?.npub, !npub.isEmpty {
+                Button(action: copyNpub) {
                     HStack(spacing: 4) {
-                        Image(systemName: "checkmark.seal.fill")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color.accentColor)
-                        Text(nip05)
-                            .font(.callout)
+                        Text(truncatedNpub(npub))
+                            .font(.body.monospaced())
+                            .foregroundStyle(.secondary)
+                        Image(systemName: copiedNpub ? "checkmark" : "doc.on.doc")
+                            .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
                 }
-
-                // npub — monospaced, truncated, tappable to copy
-                if let npub = profile?.npub, !npub.isEmpty {
-                    Button(action: copyNpub) {
-                        HStack(spacing: 4) {
-                            Text(truncatedNpub(npub))
-                                .font(.body.monospaced())
-                                .foregroundStyle(.secondary)
-                            Image(systemName: copiedNpub ? "checkmark" : "doc.on.doc")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                // About / bio
-                if let about = profile?.about, !about.isEmpty {
-                    Text(about)
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.top, 4)
-                }
+                .buttonStyle(.plain)
             }
-            .padding(.horizontal, 16)
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let about = profile?.about, !about.isEmpty {
+                Text(about)
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 4)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: – Notes list
@@ -145,18 +160,25 @@ struct ProfileView: View {
             .frame(minHeight: 260)
         } else {
             LazyVStack(spacing: 0) {
-                HStack {
-                    Text("Posts")
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    Text("\(items.count)")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("profile-notes-count-value")
+                VStack(spacing: 8) {
+                    HStack(spacing: 6) {
+                        Text("Posts")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Text("\(items.count)")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("profile-notes-count-value")
+                    }
+
+                    Capsule()
+                        .fill(.tint)
+                        .frame(width: 36, height: 3)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 12)
+
+                Divider()
 
                 ForEach(items) { item in
                     ProfileNoteRow(
@@ -216,10 +238,10 @@ struct ProfileView: View {
     private func copyNpub() {
         guard let npub = profile?.npub else { return }
         UIPasteboard.general.string = npub
-        withAnimation(.smooth(duration: 0.2)) { copiedNpub = true }
+        copiedNpub = true
         Task {
             try? await Task.sleep(for: .seconds(2))
-            withAnimation(.smooth(duration: 0.3)) { copiedNpub = false }
+            copiedNpub = false
         }
     }
 }

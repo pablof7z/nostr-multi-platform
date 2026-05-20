@@ -49,7 +49,9 @@ struct NoteContentView: View {
                         }
                         .padding(12)
                         .frame(maxWidth: .infinity)
-                        .chirpGlass(cornerRadius: 10)
+                        .overlay(alignment: .bottom) {
+                            Divider()
+                        }
                     }
                 }
             }

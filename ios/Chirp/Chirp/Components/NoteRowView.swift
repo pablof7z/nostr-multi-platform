@@ -6,7 +6,7 @@ import SwiftUI
 // Tap targets:
 //   • avatar  → router.push(.profile)
 //   • whole row → router.push(.thread)
-//   • action buttons (reply, like) → kernel commands / sheets
+//   • action buttons (reply, repost, like, zap) → kernel commands / sheets
 //
 // Button nesting strategy: every inner interactive element uses
 // .buttonStyle(.borderless) so its tap doesn't propagate to the row-level
@@ -37,10 +37,14 @@ struct NoteRowView: View {
                     showReply: $showReply
                 )
                 .padding(.top, 8)
+                .padding(.leading, 52)
+
+                Divider()
+                    .padding(.top, 6)
+                    .padding(.leading, 52)
             }
-            .padding(.vertical, 12)
+            .padding(.top, 12)
             .padding(.horizontal, 16)
-            .background(ChirpColor.surface)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -50,12 +54,13 @@ struct NoteRowView: View {
     }
 
     private var rowContent: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: 8) {
             avatarButton
 
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 4) {
                 authorHeader
                 noteContent
+                relayChip
             }
         }
     }
@@ -80,24 +85,22 @@ struct NoteRowView: View {
     // ── Author name + truncated pubkey + timestamp ────────────────────────
 
     private var authorHeader: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(item.authorDisplay)
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+        HStack(alignment: .firstTextBaseline, spacing: 4) {
+            Text(item.authorDisplay)
+                .font(.headline)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
 
-                Spacer(minLength: 8)
-
-                Text(item.createdAtDisplay)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Text("@\(shortPubkey(item.authorPubkey))")
+            Text(shortPubkey(item.authorPubkey))
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+
+            Spacer(minLength: 0)
+
+            Text(item.createdAtDisplay)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -140,6 +143,22 @@ struct NoteRowView: View {
         return (content, true)
     }
 
+    // ── Relay-count chip ──────────────────────────────────────────────────
+
+    @ViewBuilder
+    private var relayChip: some View {
+        if item.relayCount > 0 {
+            HStack(spacing: 3) {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .font(.system(size: 10, weight: .medium))
+                Text("\(item.relayCount)")
+                    .font(.caption)
+            }
+            .foregroundStyle(.secondary)
+            .padding(.top, 4)
+        }
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────
 
     /// "npub1abc…ef12" style truncation from hex pubkey.
@@ -162,7 +181,7 @@ struct NoteActionsRow: View {
     @EnvironmentObject private var model: KernelModel
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 0) {
             actionButton(
                 icon: "bubble.left",
                 label: "Reply"
@@ -170,14 +189,32 @@ struct NoteActionsRow: View {
                 showReply = true
             }
 
+            Spacer()
+
+            actionButton(
+                icon: "arrow.2.squarepath",
+                label: "Repost"
+            ) {
+                // Repost command not yet on kernel surface — no-op.
+            }
+
+            Spacer()
+
             likeButton
 
             Spacer()
+
+            actionButton(
+                icon: "bolt",
+                label: "Zap"
+            ) {
+                // Zap command not yet on kernel surface — no-op.
+            }
         }
-        .padding(.leading, 54)
+        .padding(.horizontal, 4)
     }
 
-    // ── Like with spring animation + haptic ──────────────────────────────
+    // ── Like with haptic feedback ────────────────────────────────────────
 
     private var likeButton: some View {
         Button {
@@ -190,15 +227,10 @@ struct NoteActionsRow: View {
                 Image(systemName: likeTapped ? "heart.fill" : "heart")
                     .font(.system(size: 15, weight: .regular))
                     .foregroundStyle(likeTapped ? ChirpColor.like : .secondary)
-                Text("Like")
-                    .font(.caption)
-                    .foregroundStyle(likeTapped ? ChirpColor.like : .secondary)
             }
-            .frame(minHeight: 32, alignment: .center)
-            .padding(.horizontal, 8)
+            .frame(minWidth: 44, minHeight: 32, alignment: .center)
         }
         .buttonStyle(.borderless)
-        .accessibilityLabel(likeTapped ? "Liked" : "Like")
     }
 
     // ── Generic action button factory ────────────────────────────────────
@@ -210,15 +242,10 @@ struct NoteActionsRow: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: 5) {
-                Image(systemName: icon)
-                    .font(.system(size: 15, weight: .regular))
-                Text(label)
-                    .font(.caption)
-            }
-            .foregroundStyle(.secondary)
-            .frame(minHeight: 32, alignment: .center)
-            .padding(.horizontal, 8)
+            Image(systemName: icon)
+                .font(.system(size: 15, weight: .regular))
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 44, minHeight: 32, alignment: .center)
         }
         .buttonStyle(.borderless)
         .accessibilityLabel(label)
