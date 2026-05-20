@@ -32,7 +32,7 @@ fn open_author_emits_profile_and_note_reqs() {
     assert!(joined.contains("\"kinds\":[0]"));
     assert!(joined.contains("\"kinds\":[1,6]"));
     assert!(joined.contains(FIATJAF_PUBKEY));
-    assert!(!kernel.author_request_pending);
+    assert!(!kernel.author_view.request_pending);
     // T105: every frame carries a resolved relay_url, NOT a constant.
     for r in &requests {
         assert!(
@@ -150,7 +150,7 @@ fn open_thread_emits_context_and_reply_reqs() {
     assert!(joined.contains(root_id));
     assert!(joined.contains(previous_id));
     assert!(joined.contains("\"#e\""));
-    assert!(!kernel.thread_request_pending);
+    assert!(!kernel.thread_view.request_pending);
 
     // Every REQ targets a bootstrap discovery seed (uncached author path).
     for r in &requests {
@@ -179,7 +179,11 @@ fn close_author_refcounts_and_closes_view_subscriptions() {
     let first_close = kernel.close_author(FIATJAF_PUBKEY);
     assert!(first_close.is_empty());
     assert_eq!(
-        kernel.selected_author.as_ref().map(|view| view.refcount),
+        kernel
+            .author_view
+            .selected_author
+            .as_ref()
+            .map(|view| view.refcount),
         Some(1)
     );
     // Refcount still > 0 → subscriptions stay live; nothing evicted yet.
@@ -198,7 +202,7 @@ fn close_author_refcounts_and_closes_view_subscriptions() {
     assert!(joined.contains("\"CLOSE\""));
     assert!(joined.contains("author-profile-1"));
     assert!(joined.contains("author-notes-1"));
-    assert!(kernel.selected_author.is_none());
+    assert!(kernel.author_view.selected_author.is_none());
     // The anti-leak invariant: the final close evicts every author wire-sub
     // row, so a profile open/close cycle leaves zero residue.
     assert_eq!(
@@ -233,7 +237,11 @@ fn close_thread_refcounts_and_closes_view_subscriptions() {
         "a non-final close must not emit CLOSE frames"
     );
     assert_eq!(
-        kernel.selected_thread.as_ref().map(|view| view.refcount),
+        kernel
+            .thread_view
+            .selected_thread
+            .as_ref()
+            .map(|view| view.refcount),
         Some(1),
         "refcount must drop to 1 after one of two closes"
     );
@@ -259,7 +267,7 @@ fn close_thread_refcounts_and_closes_view_subscriptions() {
         "final close must CLOSE the thread-replies subscription"
     );
     assert!(
-        kernel.selected_thread.is_none(),
+        kernel.thread_view.selected_thread.is_none(),
         "final close must clear the selected thread interest"
     );
     // The anti-leak invariant: the final close evicts every thread wire-sub

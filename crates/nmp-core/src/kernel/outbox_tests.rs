@@ -392,9 +392,9 @@ fn t121_thread_hydration_routes_ids_by_resolved_author_write_relays() {
     // wire-level emitter. This is the same code path `prepare_thread_requests`
     // invokes after walking parent/root refs, but isolated to the exact id
     // set under test (no confounding focused/root traversal).
-    kernel.pending_thread_ids.insert(id_a.clone());
-    kernel.pending_thread_ids.insert(id_b.clone());
-    kernel.pending_thread_ids.insert(id_c.clone());
+    kernel.thread_view.pending_ids.insert(id_a.clone());
+    kernel.thread_view.pending_ids.insert(id_b.clone());
+    kernel.thread_view.pending_ids.insert(id_c.clone());
 
     let requests = kernel.maybe_open_thread_hydration();
 

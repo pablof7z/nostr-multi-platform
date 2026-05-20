@@ -502,7 +502,10 @@ fn ingest_timeline_event_from_subscribed_author_stores_event() {
 fn ingest_timeline_event_from_non_subscribed_author_is_dropped() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     // No active account, no selected_author → no implicit gate openings.
-    assert!(kernel.selected_author.is_none(), "precondition: no selected author");
+    assert!(
+        kernel.author_view.selected_author.is_none(),
+        "precondition: no selected author"
+    );
 
     let keys = ::nostr::Keys::generate();
     let event = signed_note(&keys, "note from a stranger", 1_700_000_100);

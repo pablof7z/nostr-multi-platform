@@ -33,18 +33,18 @@ fn relay_tag(relay_url: &str) -> String {
 
 impl Kernel {
     pub(crate) fn open_author(&mut self, pubkey: String, can_send: bool) -> Vec<OutboundMessage> {
-        match self.selected_author.as_mut() {
+        match self.author_view.selected_author.as_mut() {
             Some(interest) if interest.key == pubkey => {
                 interest.refcount = interest.refcount.saturating_add(1);
             }
             _ => {
-                self.selected_author = Some(ViewInterest {
+                self.author_view.selected_author = Some(ViewInterest {
                     key: pubkey.clone(),
                     refcount: 1,
                 });
             }
         }
-        self.author_request_pending = true;
+        self.author_view.request_pending = true;
         self.changed_since_emit = true;
         self.log(format!("open author view {}", short_hex(&pubkey)));
 
@@ -65,13 +65,13 @@ impl Kernel {
         if tag.is_empty() {
             return Vec::new();
         }
-        match self.diagnostic_firehose.as_mut() {
+        match self.diagnostic_firehose.interest.as_mut() {
             Some(interest) if interest.key == tag => {
                 interest.refcount = interest.refcount.saturating_add(1);
                 return Vec::new();
             }
             _ => {
-                self.diagnostic_firehose = Some(ViewInterest {
+                self.diagnostic_firehose.interest = Some(ViewInterest {
                     key: tag.clone(),
                     refcount: 1,
                 });
@@ -167,7 +167,7 @@ impl Kernel {
     }
 
     pub(crate) fn close_author(&mut self, pubkey: &str) -> Vec<OutboundMessage> {
-        let Some(interest) = self.selected_author.as_mut() else {
+        let Some(interest) = self.author_view.selected_author.as_mut() else {
             return Vec::new();
         };
         if interest.key != pubkey {
@@ -179,8 +179,8 @@ impl Kernel {
             return Vec::new();
         }
 
-        self.selected_author = None;
-        self.author_request_pending = false;
+        self.author_view.selected_author = None;
+        self.author_view.request_pending = false;
         self.changed_since_emit = true;
         self.log(format!("close author view {}", short_hex(pubkey)));
         self.close_subscriptions_with_prefixes(&[
@@ -193,13 +193,14 @@ impl Kernel {
     pub(crate) fn firehose_requests(&mut self) -> Vec<OutboundMessage> {
         let Some(tag) = self
             .diagnostic_firehose
+            .interest
             .as_ref()
             .map(|interest| interest.key.clone())
         else {
             return Vec::new();
         };
-        self.diagnostic_firehose_seq = self.diagnostic_firehose_seq.saturating_add(1);
-        let seq = self.diagnostic_firehose_seq;
+        self.diagnostic_firehose.seq = self.diagnostic_firehose.seq.saturating_add(1);
+        let seq = self.diagnostic_firehose.seq;
 
         // T122 / codex R2: hashtag firehose REQs are inbox-direction (D3) —
         // the user IS the recipient of their own hashtag interest, so the
@@ -306,18 +307,19 @@ impl Kernel {
 
     pub(crate) fn author_requests(&mut self) -> Vec<OutboundMessage> {
         let Some(pubkey) = self
+            .author_view
             .selected_author
             .as_ref()
             .map(|interest| interest.key.clone())
         else {
-            self.author_request_pending = false;
+            self.author_view.request_pending = false;
             return Vec::new();
         };
 
-        self.author_request_pending = false;
-        self.author_view_seq = self.author_view_seq.saturating_add(1);
+        self.author_view.request_pending = false;
+        self.author_view.seq = self.author_view.seq.saturating_add(1);
         self.requested_profiles.insert(pubkey.clone());
-        let seq = self.author_view_seq;
+        let seq = self.author_view.seq;
 
         // T105: kind:10002 + kind:0 are discovery fetches — the author's own
         // relay list is what we're trying to learn, so they leave on the

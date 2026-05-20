@@ -48,13 +48,13 @@ impl Kernel {
         }
         // Check time-gated timeline open (contacts_deadline may have elapsed).
         requests.extend(self.maybe_open_timeline());
-        if self.author_request_pending {
+        if self.author_view.request_pending {
             requests.extend(self.author_requests());
         }
-        if self.thread_request_pending {
+        if self.thread_view.request_pending {
             requests.extend(self.prepare_thread_requests());
         }
-        if self.diagnostic_firehose.is_some()
+        if self.diagnostic_firehose.interest.is_some()
             && !self
                 .wire_subs
                 .keys()
