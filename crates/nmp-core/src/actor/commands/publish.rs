@@ -6,7 +6,7 @@
 //! an exception across FFI), then routes through `Kernel::publish_signed`
 //! which resolves the NIP-65 outbox (D3) and emits the wire `EVENT` frame.
 
-use crate::actor::commands::identity::{now_secs, sign_active_nonblocking, IdentityRuntime};
+use crate::actor::commands::identity::{sign_active_nonblocking, IdentityRuntime};
 use crate::actor::pending_sign::PendingSign;
 use crate::kernel::Kernel;
 use crate::relay::OutboundMessage;
@@ -207,7 +207,7 @@ pub(crate) fn publish_note(
         kind: 1,
         tags,
         content: content.to_string(),
-        created_at: now_secs(),
+        created_at: kernel.now_secs(),
     };
     // Non-blocking sign: remote (NIP-46) signers return a `Pending` op that is
     // parked for the actor's idle-tick poll loop instead of blocking here.
@@ -277,7 +277,7 @@ pub(crate) fn react(
         kind: 7,
         tags,
         content,
-        created_at: now_secs(),
+        created_at: kernel.now_secs(),
     };
     // Non-blocking sign: a remote signer's `Pending` op is parked for the
     // actor's idle-tick poll loop rather than blocking the actor thread.
@@ -334,7 +334,7 @@ pub(crate) fn follow(
         kind: 3,
         tags,
         content: String::new(),
-        created_at: now_secs(),
+        created_at: kernel.now_secs(),
     };
     // Non-blocking sign: a remote signer's `Pending` op is parked for the
     // actor's idle-tick poll loop rather than blocking the actor thread.

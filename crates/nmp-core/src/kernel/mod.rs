@@ -657,6 +657,19 @@ impl Kernel {
         self.clock = clock;
     }
 
+    /// Current wall-clock time as whole seconds since the Unix epoch, read
+    /// through the injected [`Clock`]. D9: time decisions inside the kernel
+    /// boundary route through the kernel-owned clock, never a bare
+    /// `SystemTime::now()`. Actor command handlers stamp event `created_at`
+    /// via this accessor so `FixedClock` makes those timestamps testable.
+    pub(crate) fn now_secs(&self) -> u64 {
+        self.clock
+            .now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0)
+    }
+
     /// Resolve the configured bootstrap URLs for a given `RelayRole` from the
     /// app-provided `relay_edit_rows`.  Empty when the operator has not yet
     /// configured any relays for that role.

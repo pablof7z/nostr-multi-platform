@@ -26,7 +26,7 @@ use nmp_nwc::parse::NwcUri;
 use nmp_nwc::types::PayInvoiceParams;
 use nmp_nwc::NwcMethod;
 
-use super::identity::{now_secs, sign_with};
+use super::identity::sign_with;
 
 /// Actor-local NWC connection state. Cleared on `WalletDisconnect`.
 struct WalletConnection {
@@ -326,10 +326,12 @@ fn build_request(
         }
     };
 
+    let created_at = kernel.now_secs();
     let signed = match sign_nwc_request(
         conn.client_secret_hex.as_str(),
         &conn.wallet_pubkey_hex,
         &content,
+        created_at,
     ) {
         Ok(s) => s,
         Err(e) => {
@@ -352,10 +354,16 @@ fn build_request(
 }
 
 /// Sign a kind:23194 event with the NWC client secret key.
+///
+/// `created_at_secs` is supplied by the caller (`build_request`), which reads
+/// it from the kernel's injected [`Clock`] (D9: the kernel owns time). Keeping
+/// this crypto helper free of a `Kernel` dependency means the timestamp source
+/// is the caller's concern and stays `FixedClock`-testable.
 fn sign_nwc_request(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
     encrypted_content: &str,
+    created_at_secs: u64,
 ) -> Result<SignedEvent, String> {
     let sk = SecretKey::from_hex(client_secret_hex)
         .map_err(|e| format!("client secret: {e}"))?;
@@ -363,7 +371,7 @@ fn sign_nwc_request(
         .map_err(|e| format!("wallet pubkey: {e}"))?;
     let keys = Keys::new(sk);
     let p_tag = Tag::public_key(wallet_pk);
-    let created_at = Timestamp::from(now_secs());
+    let created_at = Timestamp::from(created_at_secs);
     let event = EventBuilder::new(Kind::from_u16(23194), encrypted_content)
         .tags([p_tag])
         .custom_created_at(created_at)

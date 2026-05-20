@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use nmp_signer_iface::SignerOp;
 use nostr::nips::nip19::{FromBech32, ToBech32};
@@ -202,13 +202,6 @@ pub(super) fn sign_with(keys: &Keys, unsigned: &UnsignedEvent) -> Result<SignedE
             created_at: event.created_at.as_secs(),
         },
     })
-}
-
-pub(crate) fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
 
 /// Sign `unsigned` with the active account. Returns `Err` (as state, surfaced
@@ -421,7 +414,7 @@ pub(crate) fn create_account(
             kind: 0,
             tags: Vec::new(),
             content: kind0_content,
-            created_at: now_secs(),
+            created_at: kernel.now_secs(),
         };
         if let Ok(signed) = sign_active(identity, &unsigned_meta) {
             // Cold-start routing (same chicken-and-egg as kind:10002 below).
@@ -466,7 +459,7 @@ pub(crate) fn create_account(
             kind: 10002,
             tags: relay_tags,
             content: String::new(),
-            created_at: now_secs(),
+            created_at: kernel.now_secs(),
         };
         if let Ok(signed) = sign_active(identity, &unsigned_relay) {
             // Cold-start routing. A brand-new account has no kind:10002 on
@@ -572,7 +565,7 @@ fn publish_initial_follows(
         kind: 3,
         tags,
         content: String::new(),
-        created_at: now_secs(),
+        created_at: kernel.now_secs(),
     };
     match sign_active(identity, &unsigned) {
         Ok(signed) => {
