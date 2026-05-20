@@ -159,6 +159,11 @@ pub(super) struct RelayStatus {
     pub(super) last_event_at_ms: Option<u128>,
     pub(super) last_notice: Option<String>,
     pub(super) last_error: Option<String>,
+    /// Machine-readable category for `last_error`. Closed key set:
+    /// `auth_required | transient | permanent | malformed_event | policy_denied`.
+    /// `None` when `last_error` is empty. Lets iOS branch on error *class*
+    /// without substring-matching the English `last_error` prose.
+    pub(super) error_category: Option<String>,
     pub(super) bytes_rx: u64,
     pub(super) bytes_tx: u64,
     /// T120 (G8 / G11): relay has denied this client by policy
@@ -240,6 +245,12 @@ pub(super) struct RelayHealth {
     pub(super) last_event_at: Option<Instant>,
     pub(super) last_notice: Option<String>,
     pub(super) last_error: Option<String>,
+    /// Machine-readable category for `last_error`. Closed key set:
+    /// `auth_required | transient | permanent | malformed_event | policy_denied`
+    /// (see [`crate::kernel::closed_reason`] for the constants). Stamped
+    /// alongside `last_error` and cleared with it. Projected into
+    /// `RelayStatus::error_category` by `status.rs`.
+    pub(super) error_category: Option<String>,
     pub(super) reconnect_count: u32,
     pub(super) counters: Counters,
     /// NIP-42 per-relay auth state — diagnostic key matching ADR-0007 wire
@@ -273,6 +284,7 @@ impl Default for RelayHealth {
             last_event_at: None,
             last_notice: None,
             last_error: None,
+            error_category: None,
             reconnect_count: 0,
             counters: Counters::default(),
             auth: "not_required".to_string(),
@@ -489,6 +501,12 @@ pub(super) struct KernelUpdate {
     pub(super) active_account: Option<String>,
     pub(super) publish_queue: Vec<super::PublishQueueEntry>,
     pub(super) last_error_toast: Option<String>,
+    /// Machine-readable category for `last_error_toast`. Closed key set:
+    /// `auth_required | transient | permanent | malformed_event | policy_denied`
+    /// (see [`crate::kernel::closed_reason`]). `None` when `last_error_toast`
+    /// is empty or was set via the legacy uncategorized path. Lets iOS branch
+    /// on error class without parsing the English toast string.
+    pub(super) last_error_category: Option<String>,
     /// #171 (D6) — last genuine structural planner error recorded by
     /// `SubscriptionLifecycle::last_planner_error()`, surfaced so the host
     /// observes it instead of silent empty frames. `null` in steady state.

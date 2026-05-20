@@ -20,6 +20,10 @@ impl Kernel {
         relay.connection = "connected".to_string();
         relay.connected_at = Some(Instant::now());
         relay.last_error = None;
+        // A fresh socket clears any prior typed error category — leaving a
+        // stale `error_category` would mislead iOS into branching on an
+        // error class that no longer applies (advisor blind-spot fix).
+        relay.error_category = None;
         relay.auth = "not_required".to_string();
         // T120 (G8 / G11): a fresh socket clears any prior denial — the
         // remote may have changed policy or the user re-paid. The classifier
@@ -48,6 +52,10 @@ impl Kernel {
         let relay = self.relay_mut(role);
         relay.connection = "backing_off".to_string();
         relay.last_error = Some(truncate(&error, 160));
+        // A failed transport socket is a transient condition — the reconnect
+        // worker will retry. iOS branches on `transient` to show a "retrying"
+        // affordance rather than a hard-failure prompt.
+        relay.error_category = Some(super::super::closed_reason::ERR_TRANSIENT.to_string());
         relay.reconnect_count = relay.reconnect_count.saturating_add(1);
         self.thread_view.ids_inflight = false;
         self.thread_view.replies_inflight = false;

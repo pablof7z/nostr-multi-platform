@@ -120,6 +120,69 @@ fn nip42_kernel_auth_failed_surfaces_relay_status() {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// Typed FFI error contract — a NIP-42 auth failure must stamp the machine-
+// readable `error_category: Some("auth_required")` on the relay snapshot so
+// iOS can branch on the error *class* without substring-matching English
+// prose. Mirrors `nip42_kernel_auth_failed_surfaces_relay_status` above.
+// ───────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn nip42_auth_failure_stamps_error_category_on_snapshot() {
+    use crate::kernel::closed_reason::ERR_AUTH_REQUIRED;
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let (signer, _) = make_signer(AUTH_EVENT_ID);
+    kernel.bind_auth_signer(SIGNER_PUBKEY.to_string(), signer);
+
+    // Drive the NIP-42 handshake into Authenticating.
+    let _ = kernel.handle_text(RelayRole::Content, RelayRole::Content.url(), &auth_frame("ch1"));
+
+    // Before any failure the lane carries no category.
+    assert_eq!(
+        kernel.relay_status_for(RelayRole::Content).error_category,
+        None,
+        "no error_category before the AUTH event is rejected"
+    );
+
+    // Relay rejects the AUTH event — driver transitions to Failed.
+    let _ = kernel.handle_text(
+        RelayRole::Content,
+        RelayRole::Content.url(),
+        &ok_frame(AUTH_EVENT_ID, false, "restricted: subscribers only"),
+    );
+
+    // The snapshot carries the typed category, not just the English prose.
+    let status = kernel.relay_status_for(RelayRole::Content);
+    assert_eq!(
+        status.error_category.as_deref(),
+        Some(ERR_AUTH_REQUIRED),
+        "a NIP-42 auth failure must classify as auth_required; got {:?}",
+        status.error_category
+    );
+
+    // It also survives into the full kernel snapshot's relay_statuses.
+    let snapshot_status = kernel
+        .relay_statuses()
+        .into_iter()
+        .find(|s| s.role == "content")
+        .expect("content relay row present in snapshot");
+    assert_eq!(
+        snapshot_status.error_category.as_deref(),
+        Some(ERR_AUTH_REQUIRED),
+        "error_category must project into the snapshot relay_statuses row"
+    );
+
+    // A subsequent successful reconnect clears the stale category — iOS must
+    // not keep showing the auth prompt after the lane recovers.
+    kernel.relay_connected(RelayRole::Content);
+    assert_eq!(
+        kernel.relay_status_for(RelayRole::Content).error_category,
+        None,
+        "a fresh socket clears the prior auth_required category"
+    );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Test 3 — nip42_kernel_replays_pending_reqs_on_auth
 // ───────────────────────────────────────────────────────────────────────────
 //

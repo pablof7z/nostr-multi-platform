@@ -13,6 +13,7 @@
 //!   pair `(toast_string, queue_entry_status)`. D6: errors are state
 //!   (toast + queue row), never exceptions across FFI.
 
+use crate::kernel::closed_reason::{ERR_PERMANENT, ERR_TRANSIENT};
 use crate::publish::PublishEngineError;
 
 /// Split a NIP-20 `OK-false` reason into a `(code, message)` pair.
@@ -37,24 +38,40 @@ pub(super) fn split_ok_message(msg: &str) -> (String, String) {
     }
 }
 
-/// Map a `PublishEngineError` into the kernel's projection pair:
-/// `(toast_string, queue_entry_status)`. D6: every engine error has a
-/// snapshot-visible counterpart; no `Result<T, E>` ever crosses FFI.
-pub(super) fn describe_engine_error(err: &PublishEngineError) -> (String, String) {
+/// Map a `PublishEngineError` into the kernel's projection triple:
+/// `(toast_string, queue_entry_status, error_category)`. D6: every engine
+/// error has a snapshot-visible counterpart; no `Result<T, E>` ever crosses
+/// FFI. The `error_category` is one of the typed FFI contract keys
+/// (`kernel::closed_reason::ERR_*`) so iOS branches on error class without
+/// parsing the English toast.
+///
+/// Category rationale:
+/// - `NoTargets` → `permanent` — retrying the same publish will not help
+///   until the user declares a write-relay (a config change, not a retry).
+/// - `DuplicateHandle` → `transient` — the same publish is already in
+///   flight; the in-flight attempt will settle on its own.
+/// - `Store` → `permanent` — a durable-store backend failure will not
+///   resolve by re-issuing the publish.
+pub(super) fn describe_engine_error(
+    err: &PublishEngineError,
+) -> (String, String, &'static str) {
     match err {
         PublishEngineError::NoTargets => (
             "active account has no write-relays declared — add a relay in \
              Accounts → Relays and publish a fresh kind:10002"
                 .to_string(),
             "pending_relays_unknown".to_string(),
+            ERR_PERMANENT,
         ),
         PublishEngineError::DuplicateHandle(handle) => (
             format!("publish already in flight: {handle}"),
             "duplicate".to_string(),
+            ERR_TRANSIENT,
         ),
         PublishEngineError::Store(store_err) => (
             format!("publish store error: {store_err:?}"),
             "store_error".to_string(),
+            ERR_PERMANENT,
         ),
     }
 }
@@ -97,20 +114,24 @@ mod tests {
 
     #[test]
     fn describe_engine_error_covers_every_variant() {
-        let (toast_nt, status_nt) = describe_engine_error(&PublishEngineError::NoTargets);
+        let (toast_nt, status_nt, cat_nt) =
+            describe_engine_error(&PublishEngineError::NoTargets);
         assert!(toast_nt.contains("write-relays"));
         assert_eq!(status_nt, "pending_relays_unknown");
+        assert_eq!(cat_nt, ERR_PERMANENT);
 
-        let (toast_dup, status_dup) =
+        let (toast_dup, status_dup, cat_dup) =
             describe_engine_error(&PublishEngineError::DuplicateHandle("h".to_string()));
         assert!(toast_dup.contains("already in flight"));
         assert_eq!(status_dup, "duplicate");
+        assert_eq!(cat_dup, ERR_TRANSIENT);
 
-        let (toast_store, status_store) =
+        let (toast_store, status_store, cat_store) =
             describe_engine_error(&PublishEngineError::Store(PublishStoreError::Backend(
                 "oom".into(),
             )));
         assert!(toast_store.contains("store error"));
         assert_eq!(status_store, "store_error");
+        assert_eq!(cat_store, ERR_PERMANENT);
     }
 }

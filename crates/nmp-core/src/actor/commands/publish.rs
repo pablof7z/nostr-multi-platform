@@ -121,7 +121,14 @@ pub(crate) fn publish_signed_event(
     let verified = match crate::store::VerifiedEvent::try_from_raw(raw) {
         Ok(v) => v,
         Err(reason) => {
-            kernel.set_last_error_toast(Some(format!("signed event rejected: {reason}")));
+            // Typed FFI error contract: a verification failure (bad id hash
+            // or Schnorr sig) means the caller handed us a structurally
+            // malformed event — iOS branches on `malformed_event` rather
+            // than substring-matching the English reason.
+            kernel.set_error_toast_with_category(
+                format!("signed event rejected: {reason}"),
+                crate::kernel::closed_reason::ERR_MALFORMED_EVENT,
+            );
             return Vec::new();
         }
     };
