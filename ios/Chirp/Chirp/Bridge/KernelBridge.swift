@@ -166,6 +166,21 @@ final class KernelHandle {
         }
     }
 
+    func publishProfile(profile: [String: String]) {
+        let profileJson = try! JSONSerialization.data(withJSONObject: profile, options: [])
+        let content = String(data: profileJson, encoding: .utf8)!
+        let unsigned: [String: Any] = [
+            "pubkey": "",
+            "kind": 0,
+            "tags": [],
+            "content": content,
+            "created_at": UInt64(Date().timeIntervalSince1970)
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: unsigned, options: [])
+        let json = String(data: data, encoding: .utf8)!
+        json.withCString { nmp_app_publish_unsigned_event(raw, $0) }
+    }
+
     func switchActive(identityID: String) {
         identityID.withCString { nmp_app_switch_active(raw, $0) }
     }
@@ -492,6 +507,7 @@ struct ProfileCard: Decodable, Equatable {
     let about: String
     let avatarInitials: String
     let avatarColor: String
+    let metadataSource: String?
     let source: String
 }
 

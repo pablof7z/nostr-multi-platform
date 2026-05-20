@@ -16,9 +16,11 @@ struct ProfileView: View {
 
     @State private var copiedNpub = false
     @State private var replyToID: String? = nil
+    @State private var isEditingProfile = false
 
     private var profile: ProfileCard? { model.profile }
-    private var isPlaceholder: Bool { model.profile?.source == "placeholder" }
+    private var isPlaceholder: Bool { model.profile?.metadataSource != "kind0" }
+    private var isOwnProfile: Bool { model.activeAccount == pubkey }
 
     var body: some View {
         ScrollView {
@@ -48,18 +50,31 @@ struct ProfileView: View {
         }
         .animation(.smooth(duration: 0.3), value: model.profile)
         .animation(.smooth(duration: 0.25), value: model.items.count)
+        .sheet(isPresented: $isEditingProfile) {
+            ProfileEditSheet(profile: profile) { name, about, picture in
+                model.publishProfile(name: name, about: about, picture: picture)
+            }
+        }
         .toolbar {
             ToolbarItemGroup(placement: .navigationBarTrailing) {
-                Button {
-                    model.follow(pubkey)
-                } label: {
-                    Text("Follow")
-                }
+                if isOwnProfile {
+                    Button {
+                        isEditingProfile = true
+                    } label: {
+                        Text("Edit")
+                    }
+                } else {
+                    Button {
+                        model.follow(pubkey)
+                    } label: {
+                        Text("Follow")
+                    }
 
-                Button {
-                    model.unfollow(pubkey)
-                } label: {
-                    Image(systemName: "person.badge.minus")
+                    Button {
+                        model.unfollow(pubkey)
+                    } label: {
+                        Image(systemName: "person.badge.minus")
+                    }
                 }
             }
         }
@@ -197,6 +212,56 @@ struct ProfileView: View {
         Task {
             try? await Task.sleep(for: .seconds(2))
             withAnimation(.smooth(duration: 0.3)) { copiedNpub = false }
+        }
+    }
+}
+
+private struct ProfileEditSheet: View {
+    let profile: ProfileCard?
+    let onSave: (String, String, String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var name: String
+    @State private var about: String
+    @State private var picture: String
+
+    init(profile: ProfileCard?, onSave: @escaping (String, String, String) -> Void) {
+        self.profile = profile
+        self.onSave = onSave
+        _name = State(initialValue: profile?.display ?? "")
+        _about = State(initialValue: profile?.about ?? "")
+        let pictureUrl = profile?.pictureUrl ?? ""
+        _picture = State(initialValue: pictureUrl.hasPrefix("http") ? pictureUrl : "")
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Name", text: $name)
+                TextField("About", text: $about, axis: .vertical)
+                    .lineLimit(3...6)
+                TextField("Picture URL", text: $picture)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+            }
+            .navigationTitle("Edit Profile")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        onSave(
+                            name.trimmingCharacters(in: .whitespacesAndNewlines),
+                            about.trimmingCharacters(in: .whitespacesAndNewlines),
+                            picture.trimmingCharacters(in: .whitespacesAndNewlines)
+                        )
+                        dismiss()
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
         }
     }
 }
