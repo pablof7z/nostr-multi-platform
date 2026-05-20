@@ -2,10 +2,11 @@
 //!
 //! Four `extern "C"` symbols Swift links against:
 //!
-//! - [`nmp_app_chirp_register`] — instantiate `ChirpModularTimeline` with the
-//!   active viewer pubkey and register it as a kernel event observer on the
-//!   supplied `NmpApp`. Returns an opaque handle (boxed projection +
-//!   observer id) for later snapshots / unregister.
+//! - [`nmp_app_chirp_register`] — instantiate the
+//!   `ChirpHomeTimelineRuntime` compatibility adapter with the active
+//!   viewer pubkey and register it as a kernel event observer on the supplied
+//!   `NmpApp`. Returns an opaque handle (boxed runtime + observer id) for
+//!   later snapshots / unregister.
 //! - [`nmp_app_chirp_snapshot`] — serialize the current `ChirpTimelineSnapshot`
 //!   into a freshly-allocated nul-terminated JSON C string. Swift owns the
 //!   pointer until it calls `nmp_app_chirp_snapshot_free`.
@@ -22,30 +23,30 @@
 //!   strings, serialization failures, and poisoned mutexes all degrade
 //!   silently rather than raising across the FFI.
 //! * **No business logic in Swift** — Swift takes the JSON string, decodes
-//!   to `[TimelineBlock] + [ChirpEventCard]`, and renders. All grouping
-//!   happens here / in `nmp-threading`.
+//!   to `[TimelineBlock] + [ChirpEventCard]`, and renders. Projection
+//!   behavior is owned by `ChirpHomeTimelineView`; this FFI file only keeps
+//!   the current runtime bridge alive until generated ViewBatch routing can
+//!   open app view modules directly.
 
 use std::ffi::{c_char, CStr, CString};
 use std::sync::Arc;
 
 use nmp_core::{KernelEventObserverId, NmpApp};
 use nmp_nip01::meta_timeline::Pubkey;
-use nmp_nip01::ModularTimelineSpec;
-use nmp_threading::ModulePolicy;
 
-use crate::state::ChirpModularTimeline;
+use crate::home_timeline::{ChirpHomeTimelineRuntime, ChirpHomeTimelineSpec};
 
 /// Opaque handle returned by [`nmp_app_chirp_register`]. Boxed on the heap
 /// so the address is stable; the Swift consumer holds the raw pointer until
 /// it calls [`nmp_app_chirp_unregister`].
 pub struct ChirpHandle {
-    projection: Arc<ChirpModularTimeline>,
+    projection: Arc<ChirpHomeTimelineRuntime>,
     observer_id: KernelEventObserverId,
     app: *mut NmpApp,
 }
 
 // SAFETY: the auto-derived `!Send`/`!Sync` comes solely from the `app: *mut
-// NmpApp` field (the `Arc<ChirpModularTimeline>` is already `Send + Sync`).
+// NmpApp` field (the `Arc<ChirpHomeTimelineRuntime>` is already `Send + Sync`).
 // The handle is sound to mark `Send + Sync` because of three layered facts —
 // stated honestly, since the previously-claimed "Swift serializes every FFI
 // call on one thread" is NOT true (`KernelHandle` is a plain `final class`
@@ -56,8 +57,8 @@ pub struct ChirpHandle {
 //      from `@MainActor` types (`KernelModel`, `MarmotStore`), so the handle
 //      itself is never raced. (This is a Swift-side caller convention, not a
 //      type-system guarantee — hence it is documented, not enforced here.)
-//   2. The `Arc<ChirpModularTimeline>` *is* genuinely shared across threads:
-//      the kernel actor thread invokes `ChirpModularTimeline`'s observer
+//   2. The `Arc<ChirpHomeTimelineRuntime>` *is* genuinely shared across threads:
+//      the kernel actor thread invokes `ChirpHomeTimelineRuntime`'s observer
 //      callbacks while the Swift main actor calls `snapshot()`. Soundness of
 //      that sharing comes from the projection's own interior `Mutex`, NOT
 //      from this `unsafe impl`.
@@ -80,7 +81,7 @@ pub struct ChirpHandle {
 unsafe impl Send for ChirpHandle {}
 unsafe impl Sync for ChirpHandle {}
 
-/// Register a Chirp modular timeline projection against `app`. Returns a
+/// Register a Chirp home timeline view runtime against `app`. Returns a
 /// non-null `*mut ChirpHandle` on success; `null` on any failure (null
 /// pointer arguments, invalid UTF-8 viewer pubkey, slot lock poisoning).
 ///
@@ -105,16 +106,11 @@ pub extern "C" fn nmp_app_chirp_register(
     let app_ref = unsafe { &*app };
 
     let viewer: Pubkey = c_string_opt(viewer_pubkey).unwrap_or_default();
-    let spec = ModularTimelineSpec {
-        viewer,
-        kinds: Vec::new(),
-        authors: None,
-        policy: ModulePolicy::default(),
-    };
+    let spec = ChirpHomeTimelineSpec::for_viewer(viewer);
 
-    let projection = Arc::new(ChirpModularTimeline::new(spec));
-    let observer_id = app_ref.register_event_observer(Arc::clone(&projection)
-        as Arc<dyn nmp_core::KernelEventObserver>);
+    let projection = Arc::new(ChirpHomeTimelineRuntime::new(spec));
+    let observer_id = app_ref
+        .register_event_observer(Arc::clone(&projection) as Arc<dyn nmp_core::KernelEventObserver>);
     if observer_id.0 == 0 {
         // Registration failed (poisoned mutex). Don't leak the projection;
         // caller gets a null handle and treats it as a soft-fail.

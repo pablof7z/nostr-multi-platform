@@ -3,7 +3,7 @@ name = "nmp-app-chirp"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Per-app Chirp glue. Owns the Nip10ModularTimelineView instance, drives it from KernelEventObserver fan-out, and surfaces the projected blocks over a static-lib FFI for the iOS shell."
+description = "Per-app Chirp glue. Owns the Chirp home timeline ViewModule, temporarily drives it from KernelEventObserver fan-out, and surfaces projected blocks over a static-lib FFI for the iOS shell."
 
 [lib]
 name = "nmp_app_chirp"

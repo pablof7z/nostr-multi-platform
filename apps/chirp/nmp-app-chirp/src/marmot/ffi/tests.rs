@@ -42,10 +42,7 @@ fn null_pointer_paths_are_silent() {
     )
     .is_null());
     assert!(nmp_app_chirp_marmot_snapshot(std::ptr::null_mut()).is_null());
-    assert!(
-        nmp_app_chirp_marmot_group_messages(std::ptr::null_mut(), std::ptr::null())
-            .is_null()
-    );
+    assert!(nmp_app_chirp_marmot_group_messages(std::ptr::null_mut(), std::ptr::null()).is_null());
     assert!(nmp_app_chirp_marmot_dispatch(std::ptr::null_mut(), std::ptr::null()).is_null());
     nmp_app_chirp_marmot_string_free(std::ptr::null_mut());
     nmp_app_chirp_marmot_unregister(std::ptr::null_mut());
@@ -53,11 +50,7 @@ fn null_pointer_paths_are_silent() {
 
 #[test]
 fn register_with_null_app_returns_null() {
-    let h = nmp_app_chirp_marmot_register(
-        std::ptr::null_mut(),
-        std::ptr::null(),
-        std::ptr::null(),
-    );
+    let h = nmp_app_chirp_marmot_register(std::ptr::null_mut(), std::ptr::null(), std::ptr::null());
     assert!(h.is_null());
 }
 
@@ -285,7 +278,11 @@ fn raw_tap_kind_1059_welcome_reaches_service_and_snapshot() {
             )
         })
         .unwrap();
-    assert_eq!(r["ok"], json!(true), "dispatch back-compat shares core: {r}");
+    assert_eq!(
+        r["ok"],
+        json!(true),
+        "dispatch back-compat shares core: {r}"
+    );
     assert_eq!(r["kind"], json!(1059));
     assert_eq!(bob_proj.snapshot(3).pending_welcomes.len(), 1);
 }

@@ -135,7 +135,7 @@ final class KernelModel: ObservableObject {
         // T146 — `ActorCommand::Reset` preserves the kernel's observer
         // slot so existing registrations stay alive, BUT the projection's
         // internal state (the grouper + per-event card map) lives behind
-        // the same `Arc<ChirpModularTimeline>` as before the reset and
+        // the same `ChirpHomeTimelineView` runtime as before the reset and
         // would otherwise retain the prior session's blocks. Drop and
         // re-register so the new handle's grouper starts empty; the next
         // batch of events repopulates it.
@@ -291,14 +291,10 @@ final class KernelModel: ObservableObject {
         testNpub = update.testNpub
         profile = update.profile
         items = update.items
-        // T146 — refresh the modular timeline snapshot in the same apply
-        // pass. The grouper's state is fed by the kernel event observer
-        // (which fires synchronously inside `EventStore::insert`), so by
-        // the time the actor pushes its snapshot here the projection's
-        // blocks have already accepted every event in `items`. One JSON
-        // round-trip per snapshot is the cost; reads are O(blocks + cards)
-        // and avoid duplicating profile state (Swift looks the author up
-        // in `items` for display name / avatar).
+        // T146 — compatibility pull for `ChirpHomeTimelineView`. The app view
+        // module owns projection state; the observer/FFI path just drives it
+        // until generated ViewBatch routing can carry this payload alongside
+        // the kernel snapshot. One JSON round-trip per snapshot is the cost.
         modularTimeline = kernel.chirpSnapshot()
         // Refresh the Marmot snapshot in the same pass (no-op until the
         // projection is registered). One JSON round-trip per tick; reads

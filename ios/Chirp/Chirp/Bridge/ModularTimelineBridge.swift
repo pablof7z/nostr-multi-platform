@@ -3,6 +3,10 @@ import Foundation
 // ─────────────────────────────────────────────────────────────────────────
 // T146 — Modular-timeline FFI bridge.
 //
+// Rust owns the `ChirpHomeTimelineView` ViewModule. These calls are only the
+// compatibility runtime path until generated ViewBatch routing can open that
+// app view module and deliver its payload on the main snapshot channel.
+//
 // Extracted from `KernelBridge.swift` to keep that file under the
 // AGENTS.md 500-LOC hard cap. Public surface:
 //
@@ -21,9 +25,9 @@ import Foundation
 // ─────────────────────────────────────────────────────────────────────────
 
 extension KernelHandle {
-    /// Register the Chirp modular timeline projection on the kernel event
-    /// observer slot. Viewer pubkey is `nil` on cold boot — `signInNsec`
-    /// etc. retarget the projection once an account becomes active
+    /// Register the Chirp home timeline ViewModule runtime on the kernel
+    /// event observer slot. Viewer pubkey is `nil` on cold boot —
+    /// `signInNsec` etc. retarget the projection once an account becomes active
     /// (`Spec.viewer` is currently only used for future personalization
     /// keys; the grouper accepts every kind:1 the kernel ingests
     /// regardless). Idempotent.

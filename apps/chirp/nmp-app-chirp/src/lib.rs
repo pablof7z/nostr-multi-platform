@@ -1,18 +1,20 @@
 //! `nmp-app-chirp` — Chirp per-app glue.
 //!
 //! Composes `nmp-core` (the kernel substrate + event observer slot, T146)
-//! with `nmp-nip01` (the NIP-10 modular timeline view) and `nmp-threading`
-//! (the agnostic grouping algorithm) to surface Twitter-style stacked-reply
-//! modules over the kernel's home timeline. Lives outside `nmp-core` because
-//! ADR-0009 forbids `nmp-core -> nmp-nip01` (cycle).
+//! with a Chirp-owned home timeline `ViewModule`, which in turn composes
+//! `nmp-nip01` (the NIP-10 modular timeline view) and `nmp-threading` (the
+//! agnostic grouping algorithm). Lives outside `nmp-core` because ADR-0009
+//! forbids `nmp-core -> nmp-nip01` and because `nmp-core` must not learn
+//! Chirp app nouns.
 //!
 //! ## Wiring
 //!
 //! The iOS shell calls [`ffi::nmp_app_chirp_register`] once at startup
 //! (after `nmp_app_new` succeeds). That call:
 //!
-//! 1. Builds a [`state::ChirpModularTimeline`] with the viewer's pubkey and
-//!    the default `ModulePolicy` (3-event modules, 72h gap threshold).
+//! 1. Builds a [`home_timeline::ChirpHomeTimelineRuntime`] with the viewer's
+//!    pubkey and the default `ModulePolicy` (3-event modules, 72h gap
+//!    threshold).
 //! 2. Registers it as a kernel event observer via
 //!    [`nmp_core::NmpApp::register_event_observer`]. From that moment on,
 //!    every kind:1 the kernel ingests fans out to the projection.
@@ -20,6 +22,9 @@
 //!
 //! On each render tick the shell calls [`ffi::nmp_app_chirp_snapshot`],
 //! decodes the JSON, and renders `[TimelineBlock]` over the home timeline.
+//! That pull is a compatibility wrapper: the projection state shape is now
+//! the app view module, but the generic generated ViewBatch runtime that
+//! would open and drive it directly is not present yet.
 //!
 //! ## Doctrine
 //!
@@ -29,17 +34,21 @@
 //!   poisoning, or serialization failure.
 
 pub mod ffi;
+pub mod home_timeline;
 #[cfg(feature = "marmot")]
 pub mod marmot;
 pub mod payload;
-pub mod state;
 
 pub use ffi::{
     nmp_app_chirp_register, nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free,
     nmp_app_chirp_unregister, ChirpHandle,
 };
+pub use home_timeline::{
+    ChirpHomeTimelineDelta, ChirpHomeTimelineRuntime, ChirpHomeTimelineSpec,
+    ChirpHomeTimelineState, ChirpHomeTimelineView,
+};
 pub use payload::{ChirpEventCard, ChirpTimelineSnapshot};
-pub use state::ChirpModularTimeline;
+pub type ChirpModularTimeline = ChirpHomeTimelineRuntime;
 
 // ── Marmot (MLS encrypted groups) projection ─────────────────────────────
 //
@@ -56,8 +65,8 @@ pub use state::ChirpModularTimeline;
 #[cfg(feature = "marmot")]
 pub use marmot::ffi::{
     nmp_app_chirp_marmot_dispatch, nmp_app_chirp_marmot_group_messages,
-    nmp_app_chirp_marmot_register, nmp_app_chirp_marmot_snapshot,
-    nmp_app_chirp_marmot_string_free, nmp_app_chirp_marmot_unregister, MarmotHandle,
+    nmp_app_chirp_marmot_register, nmp_app_chirp_marmot_snapshot, nmp_app_chirp_marmot_string_free,
+    nmp_app_chirp_marmot_unregister, MarmotHandle,
 };
 #[cfg(feature = "marmot")]
 pub use nmp_marmot::projection::payload::{

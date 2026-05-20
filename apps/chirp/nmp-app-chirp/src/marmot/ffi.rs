@@ -185,53 +185,57 @@ fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) -> *mut Marmo
         }
     }
 
-    let service = match MarmotService::new(
-        db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone(),
-    ) {
-        Ok(s) => s,
-        Err(_) => {
-            // Stale DB: if the keyring was uninitialized on first creation,
-            // the SQLite file exists but has no encryption key entry. Delete
-            // the DB (+ WAL/SHM) and retry exactly once.
-            let _ = std::fs::remove_file(db_path);
-            let _ = std::fs::remove_file(format!("{}-wal", db_path));
-            let _ = std::fs::remove_file(format!("{}-shm", db_path));
-            match MarmotService::new(
-                db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone(),
-            ) {
-                Ok(s) => s,
-                Err(_) => {
-                    // If the Apple store failed because of missing entitlements
-                    // on the simulator, the retry above also fails. Switch to
-                    // the mock store and try one final time.
-                    if !use_mock {
-                        // D6: mock store construction can fail — never
-                        // `unwrap()` across the FFI; degrade to a null handle.
-                        match keyring_core::mock::Store::new() {
-                            Ok(store) => set_default_store(store),
-                            Err(_) => return std::ptr::null_mut(),
+    let service =
+        match MarmotService::new(db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone()) {
+            Ok(s) => s,
+            Err(_) => {
+                // Stale DB: if the keyring was uninitialized on first creation,
+                // the SQLite file exists but has no encryption key entry. Delete
+                // the DB (+ WAL/SHM) and retry exactly once.
+                let _ = std::fs::remove_file(db_path);
+                let _ = std::fs::remove_file(format!("{}-wal", db_path));
+                let _ = std::fs::remove_file(format!("{}-shm", db_path));
+                match MarmotService::new(
+                    db_path,
+                    KEYRING_SERVICE_ID,
+                    KEYRING_DB_KEY_ID,
+                    keys.clone(),
+                ) {
+                    Ok(s) => s,
+                    Err(_) => {
+                        // If the Apple store failed because of missing entitlements
+                        // on the simulator, the retry above also fails. Switch to
+                        // the mock store and try one final time.
+                        if !use_mock {
+                            // D6: mock store construction can fail — never
+                            // `unwrap()` across the FFI; degrade to a null handle.
+                            match keyring_core::mock::Store::new() {
+                                Ok(store) => set_default_store(store),
+                                Err(_) => return std::ptr::null_mut(),
+                            }
+                            match MarmotService::new(
+                                db_path,
+                                KEYRING_SERVICE_ID,
+                                KEYRING_DB_KEY_ID,
+                                keys.clone(),
+                            ) {
+                                Ok(s) => s,
+                                Err(_) => return std::ptr::null_mut(),
+                            }
+                        } else {
+                            return std::ptr::null_mut();
                         }
-                        match MarmotService::new(
-                            db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone(),
-                        ) {
-                            Ok(s) => s,
-                            Err(_) => return std::ptr::null_mut(),
-                        }
-                    } else {
-                        return std::ptr::null_mut();
                     }
                 }
             }
-        }
-    };
+        };
 
     // SAFETY: caller guarantees `app` is non-null and valid.
     let app_ref = unsafe { &*app };
     let projection = Arc::new(MarmotProjection::new(service));
     projection.set_app(app);
-    let observer_id = app_ref.register_event_observer(
-        Arc::clone(&projection) as Arc<dyn nmp_core::KernelEventObserver>,
-    );
+    let observer_id = app_ref
+        .register_event_observer(Arc::clone(&projection) as Arc<dyn nmp_core::KernelEventObserver>);
     if observer_id.0 == 0 {
         return std::ptr::null_mut(); // poisoned slot — soft fail.
     }
@@ -351,7 +355,9 @@ pub extern "C" fn nmp_app_chirp_marmot_group_messages(
     };
     let rows = handle
         .projection
-        .with_inner(|h| nmp_marmot::projection::ops::group_messages(h, &gid_hex, DEFAULT_MESSAGE_PAGE))
+        .with_inner(|h| {
+            nmp_marmot::projection::ops::group_messages(h, &gid_hex, DEFAULT_MESSAGE_PAGE)
+        })
         .unwrap_or_default();
     match serde_json::to_string(&rows) {
         Ok(s) => to_c_string(&s),
