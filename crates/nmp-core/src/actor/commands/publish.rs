@@ -176,7 +176,18 @@ pub(crate) fn publish_note(
     // See PD-024 (`docs/perf/pending-user-decisions.md`) for the rationale.
     let mut tags: Vec<Vec<String>> = Vec::new();
     let mut hydration_kick: Option<String> = None;
-    if let Some(reply) = reply_to_id.filter(|r| crate::kernel::is_hex_id(r)) {
+    if let Some(reply) = reply_to_id {
+        // D6: a malformed reply id is a user-visible error, not a silent
+        // degrade. Without this guard the note would still publish — but as a
+        // top-level note instead of a reply — losing the user's intent with no
+        // feedback. Mirrors the explicit id/pubkey validation in `react` and
+        // `follow`: refuse the publish and surface a toast.
+        if !crate::kernel::is_hex_id(reply) {
+            kernel.set_last_error_toast(Some(
+                "reply: malformed target event id".to_string(),
+            ));
+            return Vec::new();
+        }
         match kernel.reply_tags_for_parent(reply) {
             Some(reply_tags) => tags = reply_tags,
             None => {

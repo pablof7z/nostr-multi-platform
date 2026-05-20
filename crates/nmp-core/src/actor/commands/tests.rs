@@ -886,6 +886,35 @@ fn publish_note_reply_to_unknown_parent_falls_back_and_kicks_hydration() {
     );
 }
 
+#[test]
+fn publish_note_reply_to_malformed_id_toasts_and_refuses() {
+    // D6: a malformed reply id must NOT silently degrade a reply into a
+    // top-level note. `publish_note` rejects it loudly — no outbound frames,
+    // a user-visible toast — mirroring the explicit validation in `react`
+    // and `follow`.
+    let (mut id, mut kernel) = fresh();
+    sign_in_with_nip65(&mut id, &mut kernel);
+
+    let outbound = publish_note(
+        &id,
+        &mut kernel,
+        "reply with bad parent id",
+        Some("not-a-hex-event-id"),
+        &mut Vec::new(),
+    );
+
+    assert!(
+        outbound.is_empty(),
+        "malformed reply id must produce no outbound frames"
+    );
+    assert!(
+        kernel
+            .last_error_toast_snapshot()
+            .is_some_and(|t| t.contains("malformed target event id")),
+        "malformed reply id must surface a toast"
+    );
+}
+
 // ── T-relay-url-normalize — add_relay canonicalization ───────────────────────
 
 /// T-normalize-cmd-1: `add_relay` with uppercase + trailing slash must return
