@@ -48,7 +48,12 @@ impl Kernel {
         // T105: provenance is the resolved per-author write relay the EVENT
         // actually arrived on, not the lane's bootstrap URL.
         let provenance = relay_url.to_string();
-        let received_at_ms = std::time::SystemTime::now()
+        // Clock seam (kernel/clock.rs): `received_at_ms` is written into the
+        // EventStore, so it is reducer output — read the injected `Clock`
+        // instead of `SystemTime::now()` for deterministic replay.
+        let received_at_ms = self
+            .clock
+            .now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);

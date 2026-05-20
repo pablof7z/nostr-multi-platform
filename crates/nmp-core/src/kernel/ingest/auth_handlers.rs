@@ -7,7 +7,7 @@
 use super::super::*;
 use crate::subs::RelayAuthState;
 use serde_json::{json, Value};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::UNIX_EPOCH;
 
 /// Wire key for the `RelayStatus.auth` field — ADR-0007 §1 / matches the
 /// `nmp_nip42::state::RelayAuthState::as_status_key` keys verbatim so the
@@ -125,7 +125,12 @@ impl Kernel {
             return Vec::new();
         };
 
-        let created_at = SystemTime::now()
+        // Clock seam (kernel/clock.rs): the AUTH event's `created_at` is
+        // reducer output, so it reads the injected `Clock` rather than
+        // `SystemTime::now()` directly — deterministic-replay requirement.
+        let created_at = self
+            .clock
+            .now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);

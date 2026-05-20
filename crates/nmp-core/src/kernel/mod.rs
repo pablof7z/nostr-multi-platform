@@ -11,6 +11,7 @@
 //! - `tests`        — unit tests (cfg(test) only)
 
 mod auth;
+mod clock;
 mod closed_reason;
 #[cfg(test)]
 mod closed_classifier_tests;
@@ -112,6 +113,7 @@ pub(crate) fn hex_to_pubkey_bytes(hex: &str) -> Option<[u8; 32]> {
 use crate::store::{EventStore, MemEventStore};
 use crate::subs::{OneshotApi, SubscriptionLifecycle, UnknownIds};
 use auth::{AuthSignerFn, Nip42DriverState};
+use clock::{Clock, SystemClock};
 pub(crate) use lifecycle::{LifecyclePhase, LifecycleTransition};
 pub(crate) use identity_state::{
     AccountSummary, BunkerHandshakeDto, PublishQueueEntry, RelayAckOutcome, RelayEditRow,
@@ -173,6 +175,12 @@ pub(crate) struct Kernel {
     /// (`insert`/`scan` take `&self`), so the actor stays the only logical
     /// writer (D4) even though the handle is shared.
     store: Arc<dyn EventStore>,
+    /// Injectable wall-clock for the ingest path. Production uses
+    /// `SystemClock` (delegates to `SystemTime::now()`); tests and
+    /// deterministic replay swap in a `FixedClock` via [`Kernel::set_clock`]
+    /// so the reducer's timestamp output (`created_at`, `received_at_ms`)
+    /// is reproducible. See `kernel/clock.rs` and `kernel/replay.rs`.
+    clock: Arc<dyn Clock>,
     rev: u64,
     visible_limit: usize,
     started_at: Option<Instant>,
@@ -537,6 +545,7 @@ impl Kernel {
 
         Self {
             store,
+            clock: Arc::new(SystemClock),
             rev: 0,
             visible_limit,
             started_at: None,
@@ -621,6 +630,20 @@ impl Kernel {
             indexer_relays_handle,
             _not_send: PhantomData,
         }
+    }
+
+    /// Swap the kernel's wall-clock. Test / replay seam: production never
+    /// calls this (the default `SystemClock` installed in
+    /// [`Kernel::with_publish_store_and_path`] stays in place), but
+    /// deterministic-replay tests inject a `FixedClock` so the reducer's
+    /// `created_at` / `received_at_ms` output is reproducible.
+    ///
+    /// `dead_code` allow: dormant until the first replay test wires it — the
+    /// seam exists so that test needs no further kernel change.
+    #[cfg(any(test, feature = "test-support"))]
+    #[allow(dead_code)]
+    pub(crate) fn set_clock(&mut self, clock: Arc<dyn Clock>) {
+        self.clock = clock;
     }
 
     /// Resolve the configured bootstrap URLs for a given `RelayRole` from the

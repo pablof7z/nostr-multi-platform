@@ -418,7 +418,12 @@ impl Kernel {
         // not the lane's bootstrap URL. The relay_count derived from store
         // sources is now correct across the URL-keyed transport pool.
         let provenance = relay_url.to_string();
-        let received_at_ms = std::time::SystemTime::now()
+        // Clock seam (kernel/clock.rs): `received_at_ms` is reducer output
+        // (written into the EventStore), so it reads the injected `Clock`
+        // rather than `SystemTime::now()` for deterministic replay.
+        let received_at_ms = self
+            .clock
+            .now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0);
