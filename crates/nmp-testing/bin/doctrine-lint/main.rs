@@ -25,8 +25,9 @@
 //!
 //! The hot-path-allocation and substrate-purity rules (D0/D6/D7 + the
 //! hot-path half of D8) are deliberately `nmp-core`-scoped. The *no-polling*
-//! half of D8 — `thread::sleep` is a busy-wait — is a universally applicable
-//! correctness rule, so `--workspace-d8` runs **only** that check across
+//! half of D8 — `thread::sleep`, `tokio::time::sleep`, and
+//! `tokio::time::sleep_until` are all busy-waits — is a universally
+//! applicable correctness rule, so `--workspace-d8` runs **only** that check across
 //! every `crates/*/src/` tree in the workspace. It skips `nmp-android-ffi`
 //! (its own separate workspace) and `nmp-testing` (test-infrastructure
 //! crate). `#[cfg(test)]` blocks and test-only files stay exempt, exactly as
@@ -233,7 +234,8 @@ fn scan_one_file(
                 });
             }
         }
-        // D8 — no polling (`thread::sleep`). NOT path-scoped: the no-poll
+        // D8 — no polling (`thread::sleep`, `tokio::time::sleep`,
+        // `tokio::time::sleep_until`). NOT path-scoped: the no-poll
         // doctrine applies to all non-test code under `nmp-core`. Reuses
         // the D6 two-layer test exemption — `d6_test_file` covers files
         // whose `#[cfg(test)]` gate lives in the parent module, and

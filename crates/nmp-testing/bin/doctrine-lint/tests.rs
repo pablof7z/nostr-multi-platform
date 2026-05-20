@@ -236,7 +236,7 @@ fn d8_negative_fixture_clean() {
     );
 }
 
-// ─── D8 — no polling (thread::sleep) ─────────────────────────────────────────
+// ─── D8 — no polling (thread::sleep / tokio::time::sleep) ────────────────────
 
 #[test]
 fn d8_sleep_positive_fixture_fires() {
@@ -258,6 +258,20 @@ fn d8_sleep_positive_fixture_fires() {
         "d8 no-polling finding must point at pos.rs and mention polling; stdout:\n{}",
         stdout
     );
+    // The fixture exercises all four banned forms — assert each is named so
+    // a regression that silently drops one token cannot pass this test.
+    for token in [
+        "thread::sleep",
+        "tokio::time::sleep",
+        "tokio::time::sleep_until",
+    ] {
+        assert!(
+            stdout.contains(token),
+            "d8 no-polling positive must flag `{}`; stdout:\n{}",
+            token,
+            stdout
+        );
+    }
 }
 
 #[test]
@@ -331,6 +345,98 @@ fn workspace_d8_flags_production_sleep_in_any_crate() {
         stdout.contains("poller.rs"),
         "finding must point at poller.rs; stdout:\n{}",
         stdout
+    );
+}
+
+#[test]
+fn workspace_d8_flags_production_tokio_sleep_in_any_crate() {
+    // The async `tokio::time::sleep` is a poll just like `thread::sleep` —
+    // a production (non-test) call anywhere in the workspace is a D8
+    // violation, even in a crate that is NOT nmp-core.
+    let root = build_fake_workspace(
+        "doctrine_lint_ws_d8_tokio_pos",
+        &[(
+            "nmp-fake-crate",
+            "async_poller.rs",
+            "use std::time::Duration;\n\
+             pub async fn busy_wait() {\n    \
+             tokio::time::sleep(Duration::from_millis(10)).await;\n}\n",
+        )],
+    );
+    let root_str = root.to_string_lossy().into_owned();
+    let (code, stdout, stderr) =
+        run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
+    assert_eq!(
+        code, 1,
+        "workspace-d8 must exit 1 on a production tokio::time::sleep; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[D8]") && stdout.contains("polling"),
+        "must emit a D8 no-polling finding; stdout:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("async_poller.rs"),
+        "finding must point at async_poller.rs; stdout:\n{}",
+        stdout
+    );
+}
+
+#[test]
+fn workspace_d8_flags_production_tokio_sleep_until_in_any_crate() {
+    // `tokio::time::sleep_until` is the deadline-based async sleep — also a
+    // poll, also a D8 violation in production code.
+    let root = build_fake_workspace(
+        "doctrine_lint_ws_d8_tokio_until_pos",
+        &[(
+            "nmp-fake-crate",
+            "deadline_poller.rs",
+            "pub async fn busy_wait(deadline: tokio::time::Instant) {\n    \
+             tokio::time::sleep_until(deadline).await;\n}\n",
+        )],
+    );
+    let root_str = root.to_string_lossy().into_owned();
+    let (code, stdout, stderr) =
+        run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
+    assert_eq!(
+        code, 1,
+        "workspace-d8 must exit 1 on a production tokio::time::sleep_until; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[D8]") && stdout.contains("polling"),
+        "must emit a D8 no-polling finding; stdout:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("deadline_poller.rs"),
+        "finding must point at deadline_poller.rs; stdout:\n{}",
+        stdout
+    );
+}
+
+#[test]
+fn workspace_d8_exempts_cfg_test_tokio_sleep() {
+    // A `tokio::time::sleep` inside a `#[cfg(test)]` module is a legitimate
+    // test timing helper — workspace-d8 must exempt the async form too.
+    let root = build_fake_workspace(
+        "doctrine_lint_ws_d8_tokio_test_exempt",
+        &[(
+            "nmp-fake-crate",
+            "async_lib.rs",
+            "pub fn prod() {}\n\n#[cfg(test)]\nmod tests {\n    use std::time::Duration;\n\
+             \n    #[tokio::test]\n    async fn t() {\n        \
+             tokio::time::sleep(Duration::from_millis(1)).await;\n    }\n}\n",
+        )],
+    );
+    let root_str = root.to_string_lossy().into_owned();
+    let (code, stdout, stderr) =
+        run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
+    assert_eq!(
+        code, 0,
+        "workspace-d8 must exempt cfg(test) tokio sleeps; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
     );
 }
 
