@@ -17,7 +17,7 @@ impl Kernel {
         let outbox_urls: std::collections::BTreeSet<String> = self
             .wire_subs
             .values()
-            .map(|sub| sub.relay_url.clone())
+            .map(|sub| sub.relay_url.to_string())
             .filter(|url| !known_urls.contains(url.as_str()))
             .collect();
         for url in outbox_urls {
@@ -25,14 +25,14 @@ impl Kernel {
                 .wire_subs
                 .values()
                 .filter(|sub| {
-                    sub.relay_url == url
+                    sub.relay_url == *url.as_str()
                         && !matches!(sub.state.as_str(), "closed" | "closed_by_relay")
                 })
                 .count();
             let last_event_at_ms = self
                 .wire_subs
                 .values()
-                .filter(|sub| sub.relay_url == url)
+                .filter(|sub| sub.relay_url == *url.as_str())
                 .filter_map(|sub| self.elapsed_ms(sub.last_event_at))
                 .max();
             statuses.push(RelayStatus {
@@ -269,7 +269,7 @@ impl Kernel {
             .values()
             .map(|sub| WireSubscriptionStatus {
                 wire_id: sub.id.clone(),
-                relay_url: sub.relay_url.clone(),
+                relay_url: sub.relay_url.to_string(),
                 filter_summary: sub.filter_summary.clone(),
                 state: sub.state.clone(),
                 logical_consumer_count: 1,

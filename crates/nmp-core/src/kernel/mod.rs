@@ -88,7 +88,7 @@ mod auth_url_threading_tests;
 mod contacts_fanout_tests;
 
 use crate::relay::{
-    OutboundMessage, RelayRole, DEFAULT_EMIT_HZ, TIMELINE_AUTHOR_LIMIT,
+    CanonicalRelayUrl, OutboundMessage, RelayRole, DEFAULT_EMIT_HZ, TIMELINE_AUTHOR_LIMIT,
 };
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
@@ -254,14 +254,18 @@ pub(crate) struct Kernel {
     /// one filter (NIP-01 §1 sub ids are per-connection; `subs/wire.rs`). A
     /// `sub_id`-only key let the second relay's REQ clobber the first's row
     /// and a CLOSE for one relay evict a still-live sibling. Same precedent
-    /// as `plan_diff` (#161).
-    wire_subs: HashMap<(String, String), WireSub>,
+    /// as `plan_diff` (#161). The relay-URL half is a [`CanonicalRelayUrl`] —
+    /// the only constructor canonicalizes, so a non-canonical key cannot be
+    /// inserted and the EOSE/CLOSED lookup is guaranteed to agree.
+    wire_subs: HashMap<(CanonicalRelayUrl, String), WireSub>,
     /// `(relay_url, sub_id)` pairs that must survive EOSE (the kernel's
     /// default policy is to auto-CLOSE any non-seed/non-firehose sub on
     /// EOSE). Protocol lanes like NWC (kind:23195 listener) register here so
     /// the wire-side subscription is kept open for the connection lifetime.
     /// #170: relay-scoped so a CLOSE for one relay never un-pins a sibling.
-    persistent_subs: HashSet<(String, String)>,
+    /// The relay-URL half is a [`CanonicalRelayUrl`] — compiler-enforced
+    /// canonicalization (see `wire_subs`).
+    persistent_subs: HashSet<(CanonicalRelayUrl, String)>,
     last_emitted_items: Vec<TimelineItem>,
     update_sequence: u64,
     /// Serialized length (bytes) of the snapshot emitted on the PREVIOUS
@@ -865,7 +869,7 @@ impl Kernel {
         sub_id: impl Into<String>,
     ) {
         let relay_url = relay_url.into();
-        let key = crate::relay::canonical_relay_url(&relay_url).unwrap_or(relay_url);
+        let key = CanonicalRelayUrl::parse_or_raw(&relay_url);
         self.persistent_subs.insert((key, sub_id.into()));
     }
 
@@ -878,8 +882,7 @@ impl Kernel {
     /// the canonical key written by [`register_persistent_sub`] regardless of
     /// the URL spelling the caller supplies.
     pub(crate) fn unregister_persistent_sub(&mut self, relay_url: &str, sub_id: &str) {
-        let key = crate::relay::canonical_relay_url(relay_url)
-            .unwrap_or_else(|| relay_url.to_string());
+        let key = CanonicalRelayUrl::parse_or_raw(relay_url);
         self.persistent_subs.remove(&(key, sub_id.to_string()));
     }
 
@@ -889,8 +892,7 @@ impl Kernel {
     /// T-relay-url-normalize: canonicalizes `relay_url` so the lookup matches
     /// the canonical key written by [`register_persistent_sub`].
     pub(crate) fn is_persistent_sub(&self, relay_url: &str, sub_id: &str) -> bool {
-        let key = crate::relay::canonical_relay_url(relay_url)
-            .unwrap_or_else(|| relay_url.to_string());
+        let key = CanonicalRelayUrl::parse_or_raw(relay_url);
         self.persistent_subs.contains(&(key, sub_id.to_string()))
     }
 

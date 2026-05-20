@@ -97,9 +97,8 @@ impl Kernel {
         // gate / publish-engine / CLOSED classifier paths: NIP-42
         // replay-protection ties the AUTH response to the exact URL the relay
         // used, and those paths key their own per-URL state on the delivering
-        // form. Falls back to the raw string for non-ws/wss inputs.
-        let wire_key_url = crate::relay::canonical_relay_url(relay_url)
-            .unwrap_or_else(|| relay_url.to_string());
+        // form. Falls back to wrapping the raw string for non-ws/wss inputs.
+        let wire_key_url = CanonicalRelayUrl::parse_or_raw(relay_url);
         let Ok(value) = serde_json::from_str::<Value>(text) else {
             self.log(format!("unparseable relay frame: {}", truncate(text, 120)));
             return Vec::new();
@@ -176,7 +175,7 @@ impl Kernel {
                     let close_url = self
                         .wire_subs
                         .get(&wire_key)
-                        .map(|sub| sub.relay_url.clone())
+                        .map(|sub| sub.relay_url.to_string())
                         .unwrap_or_else(|| relay_url.to_string());
                     outbound.push(OutboundMessage {
                         role,
@@ -325,8 +324,7 @@ impl Kernel {
         // `last_event_at` diagnostics land on the right row regardless of the
         // delivering URL's spelling. The raw `relay_url` is preserved for
         // store provenance below.
-        let wire_key_url = crate::relay::canonical_relay_url(relay_url)
-            .unwrap_or_else(|| relay_url.to_string());
+        let wire_key_url = CanonicalRelayUrl::parse_or_raw(relay_url);
         if let Some(sub) = self
             .wire_subs
             .get_mut(&(wire_key_url, sub_id.to_string()))
