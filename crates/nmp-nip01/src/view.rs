@@ -287,14 +287,10 @@ impl ThreadState {
             self.promote_orphans(&event.id);
             Some(ThreadDelta::NodeAdded(event.id.clone()))
         } else {
-            // Buffer until parent arrives. Reaching this branch means
-            // `could_join_later` was true, which guarantees `parent_id.is_some()`.
-            // If that invariant is ever violated we degrade gracefully — skip
-            // the insert rather than panic across the FFI / ViewModule boundary.
-            let parent = match parent_id {
-                Some(p) => p,
-                None => return None,
-            };
+            // Buffer until parent arrives. `could_join_later` guarantees
+            // `parent_id.is_some()`; if that invariant is ever violated we
+            // degrade gracefully — skip the insert rather than panic.
+            let parent = parent_id?;
             self.orphans.entry(parent).or_default().insert(event.id.clone());
             // Still added in `by_id` so a later parent insert can stitch it
             // in via promote_orphans without us needing the original event
