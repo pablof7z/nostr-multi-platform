@@ -108,10 +108,18 @@ pub use identity::{
 pub use capability::{
     nmp_app_dispatch_capability, nmp_app_free_string, nmp_app_set_capability_callback,
 };
-// M6 — action-dispatch entry point reachable via the Rust path so the
-// Android JNI shim pulls the symbol body into the cdylib CGU.
+// M6 — action-dispatch entry point + the host-extensible action-executor
+// registration seam, reachable via the Rust path so the Android JNI shim
+// pulls the symbol bodies into the cdylib CGU. `nmp_app_register_action_executor`
+// is `#[no_mangle] extern "C"` in `action` like its `dispatch` sibling; without
+// this re-export rustc omits its body from the cdylib CGU and an Android link
+// step against it fails (the `cargo check (android-ffi)` CI job never links, so
+// it does not catch this). `allow(unused_imports)`: the re-export exists only
+// to force the symbol body into the cdylib CGU — no Rust caller names it by
+// this path.
 #[cfg(feature = "android-ffi")]
-pub use action::nmp_app_dispatch_action;
+#[allow(unused_imports)]
+pub use action::{nmp_app_dispatch_action, nmp_app_register_action_executor};
 #[cfg(feature = "android-ffi")]
 pub use lifecycle::{
     nmp_app_lifecycle_background, nmp_app_lifecycle_foreground, nmp_app_set_lifecycle_callback,
