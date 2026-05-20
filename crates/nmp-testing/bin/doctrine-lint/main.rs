@@ -16,7 +16,21 @@
 //!
 //! # Scan a fixture dir (smoke tests use this)
 //! cargo run -p nmp-testing --bin doctrine-lint -- --path crates/nmp-testing/bin/doctrine-lint/fixtures/d0
+//!
+//! # Workspace-wide D8 no-polling scan (every production crate)
+//! cargo run -p nmp-testing --bin doctrine-lint -- --workspace-d8
 //! ```
+//!
+//! ## `--workspace-d8` mode
+//!
+//! The hot-path-allocation and substrate-purity rules (D0/D6/D7 + the
+//! hot-path half of D8) are deliberately `nmp-core`-scoped. The *no-polling*
+//! half of D8 — `thread::sleep` is a busy-wait — is a universally applicable
+//! correctness rule, so `--workspace-d8` runs **only** that check across
+//! every `crates/*/src/` tree in the workspace. It skips `nmp-android-ffi`
+//! (its own separate workspace) and `nmp-testing` (test-infrastructure
+//! crate). `#[cfg(test)]` blocks and test-only files stay exempt, exactly as
+//! in the `nmp-core` scan.
 //!
 //! ## Exit codes
 //!
@@ -52,12 +66,21 @@ fn main() -> ExitCode {
         Err(e) => {
             eprintln!("doctrine-lint: {}", e);
             eprintln!();
-            eprintln!("usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings]");
+            eprintln!(
+                "usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings] \
+                 [--workspace-d8 [--workspace-d8-root <dir>]]"
+            );
             return ExitCode::from(2);
         }
     };
 
-    let roots = resolve_roots(&cfg);
+    let roots = match resolve_roots(&cfg) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("doctrine-lint: {}", e);
+            return ExitCode::from(2);
+        }
+    };
     let mut all_findings: Vec<report::Finding> = Vec::new();
 
     for root in &roots {
@@ -69,7 +92,9 @@ fn main() -> ExitCode {
             }
         };
         for path in &files {
-            if let Err(e) = scan_one_file(path, &cfg.d8_extra_scopes, &mut all_findings) {
+            if let Err(e) =
+                scan_one_file(path, &cfg.d8_extra_scopes, cfg.workspace_d8, &mut all_findings)
+            {
                 eprintln!("doctrine-lint: failed to read {}: {}", path.display(), e);
                 return ExitCode::from(2);
             }
@@ -89,9 +114,15 @@ fn main() -> ExitCode {
     }
 
     if all_findings.is_empty() {
+        let rules = if cfg.workspace_d8 {
+            "D8 no-polling"
+        } else {
+            "D0/D6/D7/D8"
+        };
         eprintln!(
-            "doctrine-lint: 0 findings across {} root(s) (D0/D6/D7/D8 clean).",
-            roots.len()
+            "doctrine-lint: 0 findings across {} root(s) ({} clean).",
+            roots.len(),
+            rules
         );
         ExitCode::from(0)
     } else if cfg.allow_findings {
@@ -106,9 +137,16 @@ fn main() -> ExitCode {
     }
 }
 
+/// Scan one file, appending findings.
+///
+/// When `workspace_d8` is true the file belongs to a `--workspace-d8` scan:
+/// only the D8 *no-polling* check runs. D0/D6/D7 and the hot-path half of D8
+/// are `nmp-core`-scoped rules and would flood false positives across the
+/// rest of the workspace, so they are skipped entirely in that mode.
 fn scan_one_file(
     path: &Path,
     d8_extra_scopes: &[String],
+    workspace_d8: bool,
     findings: &mut Vec<report::Finding>,
 ) -> std::io::Result<()> {
     let d0_exempt = d0::file_is_exempt(path);
@@ -126,7 +164,7 @@ fn scan_one_file(
         d8_tracker.observe_line(sl.text, false);
 
         // D0
-        if !d0_exempt {
+        if !workspace_d8 && !d0_exempt {
             for (col, msg, suggested) in d0::check(sl.text, sl.is_comment) {
                 if allow::line_allows(sl.text, d0::ID) {
                     continue;
@@ -147,7 +185,7 @@ fn scan_one_file(
         // state advances even for test-only files so prev_trail stays in
         // sync with the file (cheap, keeps the check uniform).
         let d6_hits = d6::check(&mut d6_state, sl.text, sl.is_comment, sl.in_test_cfg);
-        if !d6_test_file {
+        if !workspace_d8 && !d6_test_file {
             for (col, msg, suggested) in d6_hits {
                 if allow::line_allows(sl.text, d6::ID) {
                     continue;
@@ -163,7 +201,7 @@ fn scan_one_file(
             }
         }
         // D7
-        if d7_in_scope {
+        if !workspace_d8 && d7_in_scope {
             for (col, msg, suggested) in d7::check(sl.text, sl.is_comment) {
                 if allow::line_allows(sl.text, d7::ID) {
                     continue;
@@ -179,7 +217,8 @@ fn scan_one_file(
             }
         }
         // D8 — hot-path allocation (path-scoped to kernel/ingest/ + bench).
-        if d8_in_scope {
+        // This half of D8 is nmp-core-scoped — skipped in --workspace-d8.
+        if !workspace_d8 && d8_in_scope {
             for (col, msg, suggested) in d8::check_in_scope(sl.text, sl.is_comment, in_marked_fn) {
                 if allow::line_allows(sl.text, d8::ID) {
                     continue;
@@ -233,6 +272,15 @@ struct Config {
     /// Extra path fragments treated as D8-in-scope. Used by the fixture
     /// smoke test to point the rule at `bin/doctrine-lint/fixtures/d8/`.
     d8_extra_scopes: Vec<String>,
+    /// `--workspace-d8`: scan every production crate for D8 no-polling
+    /// violations only. D0/D6/D7 (substrate-purity rules) stay nmp-core
+    /// scoped — only the universally-applicable `thread::sleep` check runs.
+    workspace_d8: bool,
+    /// `--workspace-d8-root <dir>`: override the workspace root used by
+    /// `--workspace-d8`. Defaults to the workspace root resolved from
+    /// `CARGO_MANIFEST_DIR`. The smoke test points this at a temp tree so
+    /// a positive fixture can be scanned without a real violation.
+    workspace_d8_root: Option<PathBuf>,
 }
 
 fn parse_args(args: &[String]) -> Result<Config, String> {
@@ -265,22 +313,54 @@ fn parse_args(args: &[String]) -> Result<Config, String> {
                         .clone(),
                 );
             }
+            "--workspace-d8" => {
+                cfg.workspace_d8 = true;
+            }
+            "--workspace-d8-root" => {
+                i += 1;
+                cfg.workspace_d8_root = Some(PathBuf::from(
+                    args.get(i)
+                        .ok_or_else(|| "--workspace-d8-root requires a path".to_string())?,
+                ));
+            }
             "-h" | "--help" => {
-                println!("usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings] [--d8-extra-scope <fragment>]");
+                println!("usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings] [--d8-extra-scope <fragment>] [--workspace-d8 [--workspace-d8-root <dir>]]");
                 std::process::exit(0);
             }
             other => return Err(format!("unknown argument: {}", other)),
         }
         i += 1;
     }
-    if cfg.crate_name.is_none() && cfg.explicit_paths.is_empty() {
-        // Default: scan nmp-core.
-        cfg.crate_name = Some("nmp-core".to_string());
+    if cfg.workspace_d8 {
+        // Workspace-d8 mode owns root resolution end-to-end — it must NOT
+        // fall through to the `--crate nmp-core` default below, and mixing
+        // it with `--crate` / `--path` would be ambiguous.
+        if cfg.crate_name.is_some() || !cfg.explicit_paths.is_empty() {
+            return Err(
+                "--workspace-d8 cannot be combined with --crate or --path".to_string(),
+            );
+        }
+    } else {
+        if cfg.workspace_d8_root.is_some() {
+            return Err("--workspace-d8-root requires --workspace-d8".to_string());
+        }
+        if cfg.crate_name.is_none() && cfg.explicit_paths.is_empty() {
+            // Default: scan nmp-core.
+            cfg.crate_name = Some("nmp-core".to_string());
+        }
     }
     Ok(cfg)
 }
 
-fn resolve_roots(cfg: &Config) -> Vec<PathBuf> {
+fn resolve_roots(cfg: &Config) -> Result<Vec<PathBuf>, String> {
+    if cfg.workspace_d8 {
+        let workspace_root = cfg
+            .workspace_d8_root
+            .clone()
+            .unwrap_or_else(default_workspace_root);
+        return workspace_crate_src_roots(&workspace_root);
+    }
+
     let mut roots = Vec::new();
     if let Some(name) = &cfg.crate_name {
         // Best-effort: assume invocation from workspace root. CI invokes
@@ -290,5 +370,52 @@ fn resolve_roots(cfg: &Config) -> Vec<PathBuf> {
     for p in &cfg.explicit_paths {
         roots.push(p.clone());
     }
-    roots
+    Ok(roots)
+}
+
+/// Crates excluded from `--workspace-d8`:
+/// - `nmp-android-ffi` — its own separate Cargo workspace, scanned by its
+///   own gate; including it here double-counts and may break on its layout.
+/// - `nmp-testing` — test-infrastructure crate; sleep in test harnesses and
+///   benches is legitimate, mirroring the `#[cfg(test)]` exemption.
+const WORKSPACE_D8_SKIP_CRATES: &[&str] = &["nmp-android-ffi", "nmp-testing"];
+
+/// The workspace root, resolved from `CARGO_MANIFEST_DIR` (the `nmp-testing`
+/// crate dir) by walking up two levels: `crates/nmp-testing` → `crates` →
+/// workspace root. This makes `--workspace-d8` independent of the CWD.
+fn default_workspace_root() -> PathBuf {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    manifest
+        .parent()
+        .and_then(|p| p.parent())
+        .map(|p| p.to_path_buf())
+        .unwrap_or(manifest)
+}
+
+/// Enumerate every `<workspace_root>/crates/<name>/src/` directory, skipping
+/// the crates in [`WORKSPACE_D8_SKIP_CRATES`]. Returns a sorted, deterministic
+/// list. A crate with no `src/` directory is silently skipped.
+fn workspace_crate_src_roots(workspace_root: &Path) -> Result<Vec<PathBuf>, String> {
+    let crates_dir = workspace_root.join("crates");
+    let entries = std::fs::read_dir(&crates_dir)
+        .map_err(|e| format!("failed to read {}: {}", crates_dir.display(), e))?;
+
+    let mut roots = Vec::new();
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("failed to read crates/ entry: {}", e))?;
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if WORKSPACE_D8_SKIP_CRATES.contains(&name.as_ref()) {
+            continue;
+        }
+        let src = entry.path().join("src");
+        if src.is_dir() {
+            roots.push(src);
+        }
+    }
+    roots.sort();
+    Ok(roots)
 }

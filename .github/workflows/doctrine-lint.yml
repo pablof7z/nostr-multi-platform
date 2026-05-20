@@ -7,6 +7,10 @@ name: doctrine-lint
 #   - D8: hot-path-marked fns never allocate per-event (format!, Vec::new, ...)
 #         + no polling — `thread::sleep` is banned in non-test kernel code
 #
+# D0/D6/D7 + the hot-path half of D8 are nmp-core-scoped. The no-polling half
+# of D8 is universally applicable, so `--workspace-d8` re-runs *only* that
+# check across every production crate.
+#
 # Brainstorm item #8 — see docs/perf/parallel-work-brainstorm-2026-05-18.md
 # Per-rule docstrings live in crates/nmp-testing/bin/doctrine-lint/rules/.
 #
@@ -47,6 +51,9 @@ jobs:
 
       - name: Run doctrine-lint against nmp-core
         run: cargo run --quiet -p nmp-testing --bin doctrine-lint -- --crate nmp-core
+
+      - name: Run D8 no-polling gate across all production crates
+        run: cargo run --quiet -p nmp-testing --bin doctrine-lint -- --workspace-d8
 
       - name: Run smoke tests (fixtures pass/fail per rule)
         run: cargo test -p nmp-testing --test doctrine_lint_smoke -- --nocapture

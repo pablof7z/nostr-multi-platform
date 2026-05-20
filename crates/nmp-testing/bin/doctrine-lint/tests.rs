@@ -286,6 +286,142 @@ fn d8_sleep_negative_fixture_clean() {
     );
 }
 
+// ─── --workspace-d8 (workspace-wide no-polling scan) ─────────────────────────
+
+/// Builds a throwaway `crates/<name>/src/<file>.rs` tree under `target/` and
+/// returns the workspace-root path to hand to `--workspace-d8-root`.
+fn build_fake_workspace(label: &str, files: &[(&str, &str, &str)]) -> PathBuf {
+    let root = workspace_root().join("target").join(label);
+    let _ = std::fs::remove_dir_all(&root);
+    for (crate_name, file_name, body) in files {
+        let src = root.join("crates").join(crate_name).join("src");
+        std::fs::create_dir_all(&src).expect("create fake crate src dir");
+        std::fs::write(src.join(file_name), body).expect("write fake source file");
+    }
+    root
+}
+
+#[test]
+fn workspace_d8_flags_production_sleep_in_any_crate() {
+    // A bare `thread::sleep` in production (non-test) code anywhere in the
+    // workspace is a D8 violation — even in a crate that is NOT nmp-core.
+    let root = build_fake_workspace(
+        "doctrine_lint_ws_d8_pos",
+        &[(
+            "nmp-fake-crate",
+            "poller.rs",
+            "use std::thread;\nuse std::time::Duration;\n\
+             pub fn busy_wait() {\n    thread::sleep(Duration::from_millis(10));\n}\n",
+        )],
+    );
+    let root_str = root.to_string_lossy().into_owned();
+    let (code, stdout, stderr) =
+        run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
+    assert_eq!(
+        code, 1,
+        "workspace-d8 must exit 1 on a production sleep; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[D8]") && stdout.contains("polling"),
+        "must emit a D8 no-polling finding; stdout:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("poller.rs"),
+        "finding must point at poller.rs; stdout:\n{}",
+        stdout
+    );
+}
+
+#[test]
+fn workspace_d8_runs_only_d8_not_d0_d6_d7() {
+    // The workspace scan must NOT flood D0/D6/D7 findings for legitimate
+    // app-crate code. This fixture has an `.unwrap()` (a D6 violation in
+    // nmp-core, but D6 is intentionally nmp-core-scoped) and no sleep —
+    // workspace-d8 must report it clean.
+    let root = build_fake_workspace(
+        "doctrine_lint_ws_d8_only",
+        &[(
+            "nmp-app-crate",
+            "logic.rs",
+            "pub fn parse(s: &str) -> i32 {\n    s.parse().unwrap()\n}\n",
+        )],
+    );
+    let root_str = root.to_string_lossy().into_owned();
+    let (code, stdout, stderr) =
+        run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
+    assert_eq!(
+        code, 0,
+        "workspace-d8 must not flag a D6 .unwrap(); stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.contains("error[D6]"),
+        "workspace-d8 must not emit D6 findings; stdout:\n{}",
+        stdout
+    );
+}
+
+#[test]
+fn workspace_d8_exempts_cfg_test_sleeps() {
+    // A `thread::sleep` inside a `#[cfg(test)]` module is a legitimate test
+    // timing helper — workspace-d8 must exempt it, same as the nmp-core scan.
+    let root = build_fake_workspace(
+        "doctrine_lint_ws_d8_test_exempt",
+        &[(
+            "nmp-tested-crate",
+            "svc.rs",
+            "pub fn run() {}\n\
+             #[cfg(test)]\nmod tests {\n    use std::thread;\n    use std::time::Duration;\n\
+             \n    #[test]\n    fn t() {\n        thread::sleep(Duration::from_millis(1));\n    }\n}\n",
+        )],
+    );
+    let root_str = root.to_string_lossy().into_owned();
+    let (code, stdout, stderr) =
+        run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
+    assert_eq!(
+        code, 0,
+        "workspace-d8 must exempt cfg(test) sleeps; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+}
+
+#[test]
+fn workspace_d8_skips_nmp_testing_crate() {
+    // nmp-testing is test infrastructure — its harnesses/benches legitimately
+    // sleep. A production-shaped sleep there must NOT be flagged.
+    let root = build_fake_workspace(
+        "doctrine_lint_ws_d8_skip_testing",
+        &[(
+            "nmp-testing",
+            "harness.rs",
+            "use std::thread;\nuse std::time::Duration;\n\
+             pub fn settle() {\n    thread::sleep(Duration::from_millis(5));\n}\n",
+        )],
+    );
+    let root_str = root.to_string_lossy().into_owned();
+    let (code, stdout, stderr) =
+        run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
+    assert_eq!(
+        code, 0,
+        "workspace-d8 must skip the nmp-testing crate; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+}
+
+#[test]
+fn workspace_d8_rejects_combination_with_crate_flag() {
+    // --workspace-d8 owns root resolution; combining it with --crate is a
+    // usage error (exit 2).
+    let (code, _stdout, stderr) = run_lint(&["--workspace-d8", "--crate", "nmp-core"]);
+    assert_eq!(
+        code, 2,
+        "combining --workspace-d8 with --crate must be a usage error; stderr:\n{}",
+        stderr
+    );
+}
+
 // ─── Authoritative end-to-end ───────────────────────────────────────────────
 
 /// The current `nmp-core` tree MUST be lint-clean. If a real D0/D6/D7/D8
@@ -296,6 +432,19 @@ fn nmp_core_is_doctrine_clean() {
     assert_eq!(
         code, 0,
         "nmp-core must be doctrine-lint clean; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+}
+
+/// Every production crate in the real workspace MUST be free of
+/// `thread::sleep` busy-waits. If a polling regression lands in any crate,
+/// this test fails — the whole point of the `--workspace-d8` mode.
+#[test]
+fn workspace_is_d8_no_polling_clean() {
+    let (code, stdout, stderr) = run_lint(&["--workspace-d8"]);
+    assert_eq!(
+        code, 0,
+        "workspace must be D8 no-polling clean; stdout:\n{}\nstderr:\n{}",
         stdout, stderr
     );
 }
