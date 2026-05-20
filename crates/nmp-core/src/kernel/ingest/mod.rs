@@ -85,18 +85,6 @@ impl Kernel {
         relay_url: &str,
         text: &str,
     ) -> Vec<OutboundMessage> {
-        // T-relay-url-normalize: canonicalize the delivering URL once so every
-        // downstream `wire_subs` / `persistent_subs` key matches the canonical
-        // form the planner boundary (`register_planner_wire_frames`) and the
-        // transport pool (`relay_mgmt.rs`) both write. In production the
-        // transport worker already stamps the canonical key on every
-        // `RelayEvent`, so this is a no-op there; it normalizes non-canonical
-        // inputs (tests, or a future caller) so the EOSE keep-live lookup and
-        // the wire-sub eviction never miss on a trailing-slash / case
-        // mismatch. Falls back to the raw string for non-ws/wss inputs.
-        let canonical_relay = crate::relay::canonical_relay_url(relay_url)
-            .unwrap_or_else(|| relay_url.to_string());
-        let relay_url = canonical_relay.as_str();
         let Ok(value) = serde_json::from_str::<Value>(text) else {
             self.log(format!("unparseable relay frame: {}", truncate(text, 120)));
             return Vec::new();
