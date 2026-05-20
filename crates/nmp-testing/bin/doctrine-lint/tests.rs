@@ -236,6 +236,56 @@ fn d8_negative_fixture_clean() {
     );
 }
 
+// ─── D8 — no polling (thread::sleep) ─────────────────────────────────────────
+
+#[test]
+fn d8_sleep_positive_fixture_fires() {
+    // The no-polling check is NOT path-scoped, so no --d8-extra-scope is
+    // needed — pointing --path at the fixture dir is enough.
+    let (code, stdout, stderr) = run_lint(&["--path", &fixture_path("d8_sleep")]);
+    assert_eq!(
+        code, 1,
+        "d8 no-polling positive must exit 1; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[D8]"),
+        "d8 no-polling positive must emit a D8 finding; stdout:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("pos.rs") && stdout.contains("polling"),
+        "d8 no-polling finding must point at pos.rs and mention polling; stdout:\n{}",
+        stdout
+    );
+}
+
+#[test]
+fn d8_sleep_negative_fixture_clean() {
+    // Isolate neg.rs in a temp dir so the sibling pos.rs cannot pollute the
+    // result. The neg fixture exercises the cfg(test) and doctrine-allow
+    // exemptions — both must keep it finding-free.
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d8_sleep_neg");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let neg_src = workspace.join(fixture_path("d8_sleep/neg.rs"));
+    std::fs::copy(&neg_src, tmp.join("neg.rs")).expect("copy neg fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&["--path", &tmp_str]);
+    assert_eq!(
+        code, 0,
+        "d8 no-polling negative must exit 0; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.contains("error[D8]"),
+        "d8 no-polling negative must produce zero D8 findings; stdout:\n{}",
+        stdout
+    );
+}
+
 // ─── Authoritative end-to-end ───────────────────────────────────────────────
 
 /// The current `nmp-core` tree MUST be lint-clean. If a real D0/D6/D7/D8

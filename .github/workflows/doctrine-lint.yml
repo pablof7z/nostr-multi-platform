@@ -5,6 +5,7 @@ name: doctrine-lint
 #   - D6: no panic / unwrap / expect / unreachable / todo outside test cfg
 #   - D7: capability traits never name policy-decision verbs (retry, select, ...)
 #   - D8: hot-path-marked fns never allocate per-event (format!, Vec::new, ...)
+#         + no polling — `thread::sleep` is banned in non-test kernel code
 #
 # Brainstorm item #8 — see docs/perf/parallel-work-brainstorm-2026-05-18.md
 # Per-rule docstrings live in crates/nmp-testing/bin/doctrine-lint/rules/.

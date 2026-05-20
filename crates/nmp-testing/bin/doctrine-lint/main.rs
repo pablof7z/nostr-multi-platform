@@ -178,9 +178,31 @@ fn scan_one_file(
                 });
             }
         }
-        // D8
+        // D8 — hot-path allocation (path-scoped to kernel/ingest/ + bench).
         if d8_in_scope {
             for (col, msg, suggested) in d8::check_in_scope(sl.text, sl.is_comment, in_marked_fn) {
+                if allow::line_allows(sl.text, d8::ID) {
+                    continue;
+                }
+                findings.push(report::Finding {
+                    rule: d8::ID,
+                    path: path.to_path_buf(),
+                    line: sl.line_no,
+                    col,
+                    message: msg,
+                    suggested,
+                });
+            }
+        }
+        // D8 — no polling (`thread::sleep`). NOT path-scoped: the no-poll
+        // doctrine applies to all non-test code under `nmp-core`. Reuses
+        // the D6 two-layer test exemption — `d6_test_file` covers files
+        // whose `#[cfg(test)]` gate lives in the parent module, and
+        // `sl.in_test_cfg` covers inline `#[cfg(test)] mod tests` blocks.
+        if !d6_test_file {
+            for (col, msg, suggested) in
+                d8::check_no_polling(sl.text, sl.is_comment, sl.in_test_cfg)
+            {
                 if allow::line_allows(sl.text, d8::ID) {
                     continue;
                 }
