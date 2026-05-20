@@ -1,4 +1,5 @@
 import Foundation
+import Security  // OSStatus + errSec* codes used in SecretLookup decoding.
 
 /// Capability injection point for Chirp.
 ///
@@ -47,22 +48,45 @@ final class ChirpCapabilities {
             correlationID: UUID().uuidString,
             payloadJSON: Self.storePayload(accountID: accountID, secret: secret))
         let envelope = keyring.handle(request)
-        return envelope.resultJSON.contains("\"status\":\"ok\"")
+        return Self.decodeResult(envelope)?.status == "ok"
     }
 
     /// Retrieve a previously-persisted secret from the keychain.
-    /// Returns `nil` if the item is absent or the Keychain reports an error.
-    func retrieveSecret(accountID: String) -> String? {
+    ///
+    /// Returns a 3-state `SecretLookup` so callers can distinguish
+    /// "key not found" (legitimate first-launch / signed-out state) from a
+    /// genuine Keychain error — a distinction the prior `String?` return
+    /// silently collapsed. Never throws (D6).
+    func retrieveSecret(accountID: String) -> SecretLookup {
         let request = CapabilityRequest(
             namespace: KeychainCapability.namespace,
             correlationID: UUID().uuidString,
             payloadJSON: Self.retrievePayload(accountID: accountID))
         let envelope = keyring.handle(request)
-        guard envelope.resultJSON.contains("\"status\":\"ok\"") else { return nil }
-        guard let data = envelope.resultJSON.data(using: .utf8),
-              let result = try? JSONDecoder().decode(KeyringResult.self, from: data)
-        else { return nil }
-        return result.secret
+        guard let result = Self.decodeResult(envelope) else {
+            // Undecodable envelope: surface as an error, not a (false)
+            // "not found" — preserving the distinction is the whole point.
+            return .error(errSecParam)
+        }
+        switch result.status {
+        case "ok":
+            // A successful retrieve always carries the secret; a missing
+            // payload here is a contract violation, treated as an error.
+            if let secret = result.secret { return .found(secret) }
+            return .error(errSecDecode)
+        case "not_found":
+            return .notFound
+        default:
+            return .error(OSStatus(result.osStatus ?? Int32(errSecParam)))
+        }
+    }
+
+    /// Decode a capability envelope's `result_json` into the shared
+    /// `KeyringResult` wire-shape. Returns `nil` if the JSON is malformed —
+    /// callers treat that as failure, matching the prior `contains()` behavior.
+    private static func decodeResult(_ envelope: CapabilityEnvelope) -> KeyringResult? {
+        guard let data = envelope.resultJSON.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode(KeyringResult.self, from: data)
     }
 
     private static func storePayload(accountID: String, secret: String) -> String {
@@ -90,7 +114,7 @@ final class ChirpCapabilities {
             correlationID: UUID().uuidString,
             payloadJSON: Self.deletePayload(accountID: accountID))
         let envelope = keyring.handle(request)
-        return envelope.resultJSON.contains("\"status\":\"ok\"")
+        return Self.decodeResult(envelope)?.status == "ok"
     }
 
     private static func retrievePayload(accountID: String) -> String {

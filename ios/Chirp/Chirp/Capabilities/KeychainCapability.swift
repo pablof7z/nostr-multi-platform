@@ -113,6 +113,23 @@ struct KeyringResult: Codable, Equatable {
     }
 }
 
+/// Swift-side, typed outcome of a secret retrieval.
+///
+/// The keychain retrieve operation has three genuinely distinct outcomes —
+/// the key was found, the key was never stored, or the Keychain itself
+/// failed. Collapsing these into `String?` (the prior `retrieveSecret`
+/// return type) makes "not stored" and "Keychain error" indistinguishable
+/// to callers, which matters: the former is a normal signed-out state, the
+/// latter is a fault worth surfacing. This enum keeps them apart.
+enum SecretLookup: Equatable {
+    /// The secret was found; carries its plaintext value.
+    case found(String)
+    /// No secret is stored for the requested account (a legitimate state).
+    case notFound
+    /// The Keychain reported a failure; carries the raw `OSStatus`.
+    case error(OSStatus)
+}
+
 // MARK: - Keychain-backed capability
 
 /// iOS Keychain Services implementation of the keyring capability.

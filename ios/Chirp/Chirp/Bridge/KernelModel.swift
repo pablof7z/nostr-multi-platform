@@ -115,7 +115,8 @@ final class KernelModel: ObservableObject {
             cachedSecretKey = nsec
             kernel.signInNsec(nsec)
             marmot.registerIfNeeded(secretKey: nsec)
-        } else if let stored = capabilities.retrieveSecret(accountID: Self.marmotKeychainAccountID) {
+        } else if case let .found(stored) = capabilities.retrieveSecret(
+            accountID: Self.marmotKeychainAccountID) {
             cachedSecretKey = stored
             kernel.signInNsec(stored)
             marmot.registerIfNeeded(secretKey: stored)
@@ -320,7 +321,7 @@ final class KernelModel: ObservableObject {
            account.signerKind == "local" {
             if let secret = cachedSecretKey {
                 marmot.registerIfNeeded(secretKey: secret)
-            } else if let secret = capabilities.retrieveSecret(
+            } else if case let .found(secret) = capabilities.retrieveSecret(
                 accountID: Self.marmotKeychainAccountID
             ) {
                 cachedSecretKey = secret
