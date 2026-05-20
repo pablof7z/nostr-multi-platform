@@ -174,6 +174,21 @@ void nmp_app_set_lifecycle_callback(void *app, void *context, NmpLifecycleCallba
 // path also needs a registered *module* (shape validation), so a namespace
 // wired through this symbol alone is not yet reachable via dispatch_action —
 // module registration is the planned follow-up.
+//
+// `nmp_app_register_snapshot_projection` is the OUTPUT-side counterpart to
+// `nmp_app_register_action_executor`.  `KernelSnapshot` is a sealed social
+// wire schema; a non-social app (marketplace, todo list, …) cannot extend
+// it.  This seam lets a host register a `projector` callback invoked on every
+// snapshot tick whose returned JSON string is appended to the snapshot under
+// a host-chosen `key` (e.g. `"market.listings"`, `"todo.items"`) inside a
+// `projections` object — WITHOUT editing nmp-core's typed social fields.
+// The `projector` returns a NUL-terminated JSON string, or NULL to contribute
+// an empty object; an un-parseable return becomes JSON `null` (D6).  A null
+// `app`/`key`/`projector` is a silent no-op (D6).  D8 — the projector runs on
+// the actor thread inside the snapshot tick; it MUST be cheap and
+// non-blocking (no I/O, no waits), or every subsequent snapshot stalls.
+// A shell that predates this field never sees the `projections` key (it is
+// omitted from the JSON when empty — backwards compatible).
 
 typedef char *(*NmpCapabilityCallback)(void *context, const char *request_json);
 void nmp_app_set_capability_callback(void *app, void *context, NmpCapabilityCallback callback);
@@ -181,6 +196,8 @@ char *nmp_app_dispatch_capability(void *app, const char *request_json);
 char *nmp_app_dispatch_action(void *app, const char *namespace, const char *action_json);
 typedef const char *(*NmpActionExecutor)(const char *action_json);
 void nmp_app_register_action_executor(void *app, const char *namespace, NmpActionExecutor executor);
+typedef const char *(*NmpSnapshotProjector)(void);
+void nmp_app_register_snapshot_projection(void *app, const char *key, NmpSnapshotProjector projector);
 void nmp_app_free_string(char *ptr);
 void nmp_app_publish_unsigned_event(void *app, const char *unsigned_json);
 void nmp_app_open_uri(void *app, const char *uri);
