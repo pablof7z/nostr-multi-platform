@@ -210,7 +210,7 @@ fn outbox_resolves_to_kind10002_writes() {
         .expect("insert kind:10002");
 
     let resolver = Nip65OutboxResolver::with_default_fallback(store);
-    let resolved = resolver.resolve(&author_hex, &[], &PublishTarget::Auto);
+    let resolved = resolver.resolve(&author_hex, &[], &PublishTarget::Auto, 1);
 
     // Resolver must pick exactly nos.lol from the kind:10002 — NOT the
     // damus.io / nos.lol indexer fallback (which would be a 2-relay set).

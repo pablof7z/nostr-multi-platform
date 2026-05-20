@@ -175,7 +175,7 @@ fn c11_bunker_url_and_nsec_creation_complete_via_actions() {
         "relay must normalize to wss://nostr.example.com or wss://nostr.example.com/, got: {}",
         parsed.relays[0]
     );
-    assert_eq!(parsed.secret.as_deref(), Some("abc123"));
+    assert_eq!(parsed.secret.as_deref().map(String::as_str), Some("abc123"));
 
     // Error paths: wrong scheme, no relay, oversized.
     assert!(parse_bunker_uri("https://foo").is_err(), "wrong scheme must fail");
