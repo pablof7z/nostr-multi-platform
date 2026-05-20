@@ -84,8 +84,8 @@ impl DesktopApp {
                         self.bridge.create_account(
                             [("name".to_string(), "New User".to_string())].into(),
                             vec![
-                                ("wss://relay.primal.net".to_string(), "both".to_string()),
-                                ("wss://purplepag.es".to_string(), "indexer".to_string()),
+                                ("wss://relay.primal.net".to_string(), "both,indexer".to_string()),
+                                ("wss://purplepag.es".to_string(), "both,indexer".to_string()),
                             ],
                         );
                         self.bridge.open_timeline();

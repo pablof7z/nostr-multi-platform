@@ -167,19 +167,143 @@ final class ChirpUITests: XCTestCase {
         )
     }
 
-    // ── Polling helpers ───────────────────────────────────────────────────────
+    func testCreateAccountAndCompleteReplMlsConversation() throws {
+        let app = XCUIApplication()
+        app.launchEnvironment["NMP_VISIBLE_LIMIT"] = "80"
+        app.launchEnvironment["NMP_EMIT_HZ"] = "4"
+        app.launch()
+
+        let nonce = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(8))
+        let deviceNpub = try createFreshAccount(app: app, nonce: nonce)
+
+        let groupName = "DeviceMLS\(nonce)"
+        let hostMessage = "repl hello from host \(nonce)"
+        let phoneMessage = "phone hello from device \(nonce)"
+
+        let createOutput = try runRepl([
+            "set-app-relays wss://relay.primal.net",
+            "create-account Repl\(nonce)",
+            "mls-init",
+            "mls-create \(groupName)",
+            "quit",
+        ])
+        let hostNsec = try capture(pattern: #"nsec:\s+(nsec1[0-9a-z]+)"#, in: createOutput)
+        let groupID = try capture(pattern: #"group_id:\s+([0-9a-f]+)"#, in: createOutput)
+
+        let inviteOutput = try runRepl([
+            "set-app-relays wss://relay.primal.net",
+            "load-key \(hostNsec)",
+            "mls-init",
+            "mls-invite \(groupID) \(deviceNpub)",
+            "mls-send \(groupID) \(hostMessage)",
+            "quit",
+        ], timeout: 120)
+        XCTAssertTrue(inviteOutput.contains("invited \(deviceNpub)"))
+        XCTAssertTrue(inviteOutput.contains("sent message"))
+
+        app.tabBars.buttons["Groups"].tap()
+        let accept = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "marmot-accept-invite-")
+        ).firstMatch
+        XCTAssertTrue(accept.waitForExistence(timeout: 60), "MLS invite did not arrive")
+        accept.tap()
+
+        let group = app.buttons["marmot-group-row-\(groupID)"]
+        XCTAssertTrue(group.waitForExistence(timeout: 30), "accepted MLS group did not appear")
+        group.tap()
+
+        XCTAssertTrue(app.staticTexts[hostMessage].waitForExistence(timeout: 60))
+        let editor = app.textViews["marmot-message-editor"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 10))
+        editor.tap()
+        editor.typeText(phoneMessage)
+        app.buttons["marmot-send-button"].tap()
+        XCTAssertTrue(app.staticTexts[phoneMessage].waitForExistence(timeout: 30))
+
+        print("NMP_DEVICE_MLS_CHAT npub=\(deviceNpub) group=\(groupID) received='\(hostMessage)' sent='\(phoneMessage)'")
+    }
+
+    // ── Wait helpers ──────────────────────────────────────────────────────────
+
+    private func createFreshAccount(app: XCUIApplication, nonce: String) throws -> String {
+        if app.textFields["onboarding-display-name"].waitForExistence(timeout: 5) {
+            let field = app.textFields["onboarding-display-name"]
+            field.tap()
+            field.typeText("Device MLS \(nonce)")
+            app.buttons["onboarding-create-account"].tap()
+        } else {
+            XCTAssertTrue(app.tabBars.buttons["Settings"].waitForExistence(timeout: 20))
+            app.tabBars.buttons["Settings"].tap()
+            app.buttons["Accounts"].tap()
+            app.buttons["Add account"].tap()
+            app.buttons["New identity"].tap()
+            app.buttons["create-new-identity-button"].tap()
+        }
+
+        app.tabBars.buttons["Settings"].tap()
+        if !app.navigationBars["Accounts"].exists {
+            app.buttons["Accounts"].tap()
+        }
+        let row = app.buttons["account-row-active"]
+        XCTAssertTrue(row.waitForExistence(timeout: 20))
+        guard let npub = row.value as? String, npub.hasPrefix("npub1") else {
+            throw XCTSkip("active account row did not expose full npub")
+        }
+        print("NMP_DEVICE_LIVE_ACCOUNT npub=\(npub)")
+        return npub
+    }
+
+    private func runRepl(_ commands: [String], timeout: TimeInterval = 90) throws -> String {
+        let repo = ProcessInfo.processInfo.environment["NMP_REPO_ROOT"]
+            ?? "/Users/pablofernandez/Work/nostr-multi-platform"
+        let repl = URL(fileURLWithPath: repo).appendingPathComponent("target/debug/nmp-repl")
+        let process = Process()
+        process.executableURL = repl
+        process.currentDirectoryURL = URL(fileURLWithPath: repo)
+
+        let input = Pipe()
+        let output = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = output
+
+        let done = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in done.signal() }
+
+        try process.run()
+        input.fileHandleForWriting.write((commands.joined(separator: "\n") + "\n").data(using: .utf8)!)
+        input.fileHandleForWriting.closeFile()
+
+        if done.wait(timeout: .now() + timeout) == .timedOut {
+            process.terminate()
+            _ = done.wait(timeout: .now() + 5)
+            XCTFail("nmp-repl timed out")
+        }
+        let data = output.fileHandleForReading.readDataToEndOfFile()
+        let text = String(data: data, encoding: .utf8) ?? ""
+        XCTAssertEqual(process.terminationStatus, 0, text)
+        return text
+    }
+
+    private func capture(pattern: String, in text: String) throws -> String {
+        let regex = try NSRegularExpression(pattern: pattern)
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, range: range),
+              let captureRange = Range(match.range(at: 1), in: text) else {
+            XCTFail("missing pattern \(pattern) in output:\n\(text)")
+            return ""
+        }
+        return String(text[captureRange])
+    }
 
     private func waitForLabel(
         _ element: XCUIElement,
         equals expected: String,
         timeout: TimeInterval
     ) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if element.label == expected { return true }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
-        }
-        return false
+        let predicate = NSPredicate { _, _ in element.label == expected }
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: nil)
+        return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
     }
 
     private func waitForNumericValue(
@@ -187,12 +311,9 @@ final class ChirpUITests: XCTestCase {
         greaterThan threshold: Int,
         timeout: TimeInterval
     ) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if element.label.numericValue > threshold { return true }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
-        }
-        return false
+        let predicate = NSPredicate { _, _ in element.label.numericValue > threshold }
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: nil)
+        return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
     }
 
     private func isolatedKeychainService(_ suffix: String) -> String {

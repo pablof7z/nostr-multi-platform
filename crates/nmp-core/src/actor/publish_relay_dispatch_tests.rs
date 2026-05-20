@@ -82,7 +82,7 @@ fn create_account_publish_targets_spawn_workers_for_unseen_relays() {
     let (mut kernel, relay_tx, mut relay_controls, mut next_generation) = route_state();
     let mut identity = IdentityRuntime::new();
     let relays = vec![(UNSEEN_RELAY.to_string(), "write".to_string())];
-    let outbound = create_account(&mut identity, &mut kernel, true, &HashMap::new(), &relays);
+    let outbound = create_account(&mut identity, &mut kernel, true, &HashMap::new(), &relays, false);
     let mut queued_publish_outbound = Vec::new();
 
     route_dispatch_outbound(

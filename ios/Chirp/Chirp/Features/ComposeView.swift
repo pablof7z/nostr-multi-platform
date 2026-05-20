@@ -41,6 +41,7 @@ struct ComposeView: View {
                                 .font(.body)
                                 .foregroundStyle(.primary)
                                 .frame(minHeight: 140)
+                                .accessibilityIdentifier("compose-text-editor")
                                 .overlay(alignment: .topLeading) {
                                     if text.isEmpty {
                                         Text(isReply ? "Write your reply…" : "What's happening?")
@@ -90,6 +91,7 @@ struct ComposeView: View {
                         .animation(.smooth(duration: 0.2), value: isEmpty)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 32)
+                        .accessibilityIdentifier("compose-post-button")
                     }
                     .padding(.top, 16)
                 }

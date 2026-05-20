@@ -21,6 +21,7 @@ mod pending_sign;
 mod session_persistence;
 #[cfg(test)]
 mod publish_relay_dispatch_tests;
+mod relay_roles;
 mod relay_mgmt;
 #[cfg(test)]
 mod relay_url_canonical_tests;
@@ -104,13 +105,7 @@ use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-/// True when `role` (a `RelayEditRow.role` value) semantically includes
-/// `needle` (e.g. `"both"` matches `"read"` and `"write"`).
-pub(crate) fn has_role(role: &str, needle: &str) -> bool {
-    let r = role.to_ascii_lowercase();
-    let n = needle.to_ascii_lowercase();
-    r == n || r == "both"
-}
+pub(crate) use relay_roles::{canonical_relay_role, has_role};
 
 /// Actor command variants.  The `actor` module is private (`mod actor`, not
 /// `pub mod actor`), so this `pub` is only reachable from outside the crate
@@ -155,10 +150,13 @@ pub enum ActorCommand {
     ///
     /// `profile` is a map of key/value pairs that is JSON-serialised into the
     /// kind:0 `content` field.  `relays` is a list of `(url, role)` tuples
-    /// where `role` is `"read"`, `"write"` or `"both"`.
+    /// where `role` is `"read"`, `"write"`, `"both"`, `"indexer"`, or a
+    /// comma-separated composite such as `"both,indexer"`. `mls` requests
+    /// account-scoped MLS setup in app composition crates.
     CreateAccount {
         profile: HashMap<String, String>,
         relays: Vec<(String, String)>,
+        mls: bool,
     },
     /// T66a identity — switch the active account (synchronous re-bind +
     /// timeline retarget, mirrors AccountManager::switch_active semantics).

@@ -1,6 +1,7 @@
 #ifndef NMP_CORE_H
 #define NMP_CORE_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 // Pulse uses the same Path-A FFI shape as NmpStress — raw C bridge over the
@@ -35,7 +36,7 @@ void nmp_app_close_thread(void *app, const char *event_id);
 // last_error_toast / accounts / publish_queue fields (D6).
 void nmp_app_signin_nsec(void *app, const char *secret);
 void nmp_app_signin_bunker(void *app, const char *uri);
-void nmp_app_create_new_account(void *app, const char *profile_json, const char *relays_json);
+void nmp_app_create_new_account(void *app, const char *profile_json, const char *relays_json, bool mls);
 void nmp_app_switch_active(void *app, const char *identity_id);
 void nmp_app_remove_account(void *app, const char *identity_id);
 void nmp_app_publish_note(void *app, const char *content, const char *reply_to_id_or_null);

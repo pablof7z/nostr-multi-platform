@@ -326,6 +326,7 @@ mod tests {
                     .into_iter()
                     .collect(),
                 relays: vec![("wss://relay.primal.net".to_string(), "both".to_string())],
+                mls: false,
             })
             .unwrap();
 

@@ -42,6 +42,7 @@ pub extern "C" fn nmp_app_create_new_account(
     app: *mut NmpApp,
     profile_json: *const c_char,
     relays_json: *const c_char,
+    mls: bool,
 ) {
     let Some(app) = app_ref(app) else {
         return;
@@ -74,7 +75,12 @@ pub extern "C" fn nmp_app_create_new_account(
         }
     };
 
-    app.send_cmd(ActorCommand::CreateAccount { profile, relays });
+    app.set_pending_mls_autopublish(mls);
+    app.send_cmd(ActorCommand::CreateAccount {
+        profile,
+        relays,
+        mls,
+    });
 }
 
 #[no_mangle]
@@ -400,4 +406,3 @@ pub extern "C" fn nmp_app_open_timeline(app: *mut NmpApp) {
     };
     app.send_cmd(ActorCommand::OpenTimeline);
 }
-

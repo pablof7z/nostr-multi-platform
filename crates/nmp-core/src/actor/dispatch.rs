@@ -163,9 +163,13 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);
             Some(Vec::new())
         }
-        ActorCommand::CreateAccount { profile, relays } => {
+        ActorCommand::CreateAccount {
+            profile,
+            relays,
+            mls,
+        } => {
             let outbound =
-                commands::create_account(identity, kernel, relays_ready, &profile, &relays);
+                commands::create_account(identity, kernel, relays_ready, &profile, &relays, mls);
             update_nsec_slot(identity, active_local_nsec);
             session_persistence::persist_current_active_session(identity, capability_callback);
             maybe_emit_after_dispatch(kernel, *running, update_tx, last_emit);

@@ -14,6 +14,7 @@ use nostr::nips::nip19::{FromBech32, ToBech32};
 use nostr::{EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
 use serde_json;
 
+use crate::actor::{canonical_relay_role, has_role};
 use crate::kernel::{AccountSummary, BunkerHandshakeDto, Kernel, RelayEditRow};
 use crate::relay::{canonical_relay_url, OutboundMessage};
 use crate::remote_signer::RemoteSignerHandle;
@@ -388,6 +389,7 @@ pub(crate) fn create_account(
     relays_ready: bool,
     profile: &HashMap<String, String>,
     relays: &[(String, String)],
+    _mls: bool,
 ) -> Vec<OutboundMessage> {
     let id = identity.add(Keys::generate());
     identity.active = Some(id.clone());
@@ -403,7 +405,6 @@ pub(crate) fn create_account(
         .collect::<Vec<_>>();
     kernel.prepopulate_seed_contacts(id.clone(), follows);
 
-    kernel.reconcile_follow_feed_after_identity_change();
     let mut publish_outbound = Vec::new();
 
     // ── Publish kind:0 metadata ──────────────────────────────────
@@ -461,6 +462,12 @@ pub(crate) fn create_account(
             created_at: kernel.now_secs(),
         };
         if let Ok(signed) = sign_active(identity, &unsigned_relay) {
+            kernel.prepopulate_author_relay_list(
+                signed.unsigned.pubkey.clone(),
+                signed.id.clone(),
+                signed.unsigned.created_at,
+                signed.unsigned.tags.clone(),
+            );
             // Cold-start routing. A brand-new account has no kind:10002 on
             // file yet, so the NIP-65 outbox resolver (`PublishTarget::Auto`)
             // would resolve `NoTargets` and the publish engine would silently
@@ -490,6 +497,7 @@ pub(crate) fn create_account(
         }
     }
 
+    kernel.reconcile_follow_feed_after_identity_change();
     let mut outbound = kernel.active_account_bootstrap_requests();
     outbound.extend(retarget_timeline(identity, kernel, relays_ready));
     outbound.extend(publish_outbound);
@@ -536,28 +544,23 @@ fn relay_rows_from_create_account(relays: &[(String, String)]) -> Vec<RelayEditR
         .iter()
         .filter_map(|(url, role)| {
             let url = canonical_relay_url(url)?;
-            let role = match role.trim().to_ascii_lowercase().as_str() {
-                "read" => "read",
-                "write" => "write",
-                "indexer" => "indexer",
-                _ => "both",
-            };
-            Some(RelayEditRow {
-                url,
-                role: role.to_string(),
-            })
+            let role = canonical_relay_role(role).unwrap_or_else(|| "both".to_string());
+            Some(RelayEditRow { url, role })
         })
         .collect()
 }
 
 fn nip65_tags_from_relay_rows(rows: &[RelayEditRow]) -> Vec<Vec<String>> {
     rows.iter()
-        .filter_map(|row| match row.role.as_str() {
-            "read" => Some(vec!["r".to_string(), row.url.clone(), "read".to_string()]),
-            "write" => Some(vec!["r".to_string(), row.url.clone(), "write".to_string()]),
-            "both" => Some(vec!["r".to_string(), row.url.clone()]),
-            "indexer" => None,
-            _ => None,
+        .filter_map(|row| {
+            let read = has_role(&row.role, "read");
+            let write = has_role(&row.role, "write");
+            match (read, write) {
+                (true, true) => Some(vec!["r".to_string(), row.url.clone()]),
+                (true, false) => Some(vec!["r".to_string(), row.url.clone(), "read".to_string()]),
+                (false, true) => Some(vec!["r".to_string(), row.url.clone(), "write".to_string()]),
+                (false, false) => None,
+            }
         })
         .collect()
 }
