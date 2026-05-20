@@ -11,7 +11,7 @@
 //!
 //! The raw-event tap then drives accepted signed events into `MarmotService`.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 use nmp_core::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
@@ -70,19 +70,16 @@ fn group_message_interest_id(group_id_hex: &str, relay_url: &str) -> InterestId 
 /// raw-event tap then drives every accepted event into
 /// `MarmotService::ingest_signed_event_core` automatically.
 pub fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
-    let mut tags = BTreeMap::new();
-    tags.insert("p".to_string(), [pubkey.to_string()].into_iter().collect());
-    LogicalInterest {
-        id: giftwrap_interest_id(pubkey),
-        scope: InterestScope::Account(pubkey.to_string()),
-        shape: InterestShape {
-            kinds: [KIND_GIFT_WRAP].into_iter().collect(),
-            tags,
-            ..Default::default()
-        },
-        hints: Vec::new(),
-        lifecycle: InterestLifecycle::Tailing,
-    }
+    let deps = nmp_core::substrate::ViewDependencies {
+        kinds: vec![KIND_GIFT_WRAP],
+        tag_refs: vec![("p".to_string(), pubkey.to_string())],
+        ..Default::default()
+    };
+    deps.into_logical_interest(
+        giftwrap_interest_id(pubkey),
+        nmp_core::planner::InterestScope::Account(pubkey.to_string()),
+        InterestLifecycle::Tailing,
+    )
 }
 
 /// Tailing author-scoped KeyPackage lookup for invite flows.
