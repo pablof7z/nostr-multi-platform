@@ -256,7 +256,10 @@ impl PublishEngine {
             if !helpers::is_complete(in_flight) {
                 continue;
             }
-            let in_flight = self.in_flight.get(&handle).unwrap();
+            // `in_flight` (bound above by the `let Some(...) else` guard) is
+            // still live and points at the same entry — re-fetching with
+            // `.get(...).unwrap()` would be a redundant lookup and a D6
+            // violation (`unwrap` in a `pub fn`). Reuse the existing borrow.
             helpers::for_each_terminal(in_flight, &handle, &mut self.view, now_ms);
             let outcome = helpers::terminal_outcome_of(in_flight);
             self.recently_completed.insert(handle.clone(), outcome);
