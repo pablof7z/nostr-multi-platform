@@ -96,10 +96,9 @@ impl ViewModule for GroupListView {
     ) -> Option<Self::Delta> {
         None
     }
-    fn snapshot(_c: &ViewContext, state: &Self::State) -> Self::Payload {
-        // Authoritative list is MDK-side; service fills this. Count surfaces
-        // the structural accumulator size as a liveness signal.
-        let _ = state.events.len();
+    fn snapshot(_c: &ViewContext, _state: &Self::State) -> Self::Payload {
+        // Authoritative list is MDK-side; the service/actor layer fills this
+        // snapshot. The structural accumulator only drives re-projection ticks.
         GroupListPayload { groups: Vec::new() }
     }
 }
@@ -144,13 +143,12 @@ impl ViewModule for GroupMessagesView {
         spec.group_id_hex.clone()
     }
     fn dependencies(spec: &Self::Spec) -> ViewDependencies {
-        // kind:445 group-event stream. The kernel wraps this in a
-        // relay_pin: Some(group_relay) interest at dispatch time per the
-        // interest helper (ADR-0012 third lane). The structural surface here
-        // declares the kind; the pin is carried via interest::group_messages.
-        let _ = &spec.group_relay_url;
+        // kind:445 group-event stream, pinned to the group relay (ADR-0012
+        // third lane). The structural surface declares the kind; `relay_pin`
+        // declares the host affinity in the data model.
         ViewDependencies {
             kinds: vec![KIND_GROUP_MESSAGE],
+            relay_pin: Some(spec.group_relay_url.clone()),
             ..Default::default()
         }
     }
@@ -191,8 +189,9 @@ impl ViewModule for GroupMessagesView {
     ) -> Option<Self::Delta> {
         None
     }
-    fn snapshot(_c: &ViewContext, state: &Self::State) -> Self::Payload {
-        let _ = state.events.len();
+    fn snapshot(_c: &ViewContext, _state: &Self::State) -> Self::Payload {
+        // Decrypted messages are filled by the service after MDK processing;
+        // the structural accumulator only drives re-projection ticks.
         GroupMessagesPayload {
             messages: Vec::new(),
         }
@@ -234,11 +233,11 @@ impl ViewModule for MemberListView {
         spec.group_id_hex.clone()
     }
     fn dependencies(spec: &Self::Spec) -> ViewDependencies {
-        // Member changes arrive as kind:445 commits; the kernel relay-pins
-        // this to the group relay (interest::group_messages).
-        let _ = &spec.group_relay_url;
+        // Member changes arrive as kind:445 commits pinned to the group relay
+        // (ADR-0012). `relay_pin` declares that host affinity in the data model.
         ViewDependencies {
             kinds: vec![KIND_GROUP_MESSAGE],
+            relay_pin: Some(spec.group_relay_url.clone()),
             ..Default::default()
         }
     }
@@ -279,8 +278,9 @@ impl ViewModule for MemberListView {
     ) -> Option<Self::Delta> {
         None
     }
-    fn snapshot(_c: &ViewContext, state: &Self::State) -> Self::Payload {
-        let _ = state.events.len();
+    fn snapshot(_c: &ViewContext, _state: &Self::State) -> Self::Payload {
+        // Authoritative member set is MDK-side; the service/actor layer fills
+        // this snapshot. The structural accumulator only drives ticks.
         MemberListPayload {
             members: Vec::new(),
         }
