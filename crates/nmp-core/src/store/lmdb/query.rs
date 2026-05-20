@@ -15,7 +15,7 @@ use nostr::prelude::*;
 use super::{conv, provenance, tombstones, Inner};
 use crate::store::events::EventIter;
 use crate::store::types::{
-    Coverage, EventId, ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, SyncMethod,
+    Coverage, EventId, ProvenanceEntry, PubKey, StoreQuery, StoredEvent, SyncMethod,
     TombstoneRow, WatermarkKey, WatermarkRow, COVERAGE_STALENESS_WINDOW_SECS,
 };
 use crate::store::StoreError;
@@ -466,7 +466,3 @@ pub(super) fn list_watermarks_for_relay(
     }
     Ok(out)
 }
-
-// Suppress unused warnings for items not yet consumed (RelayUrl from imports).
-#[allow(dead_code)]
-fn _used(_: RelayUrl) {}

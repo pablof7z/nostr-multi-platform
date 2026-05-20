@@ -14,7 +14,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use heed::types::Bytes;
-use heed::{Database, RoTxn, RwTxn};
+use heed::{Database, RwTxn};
 
 use super::Inner;
 use crate::store::types::{ClaimerId, EventId};
@@ -38,23 +38,6 @@ fn put_budget(
     let v = (n as u64).to_be_bytes();
     db.put(txn, &k, &v)
         .map_err(|e| StoreError::Io(format!("budget put: {e}")))
-}
-
-#[allow(dead_code)]
-fn get_budget(
-    db: Database<Bytes, Bytes>,
-    txn: &RoTxn,
-    c: ClaimerId,
-) -> Result<Option<usize>, StoreError> {
-    let k = claimer_key(c);
-    match db.get(txn, &k).map_err(|e| StoreError::Io(format!("budget get: {e}")))? {
-        Some(v) if v.len() == 8 => {
-            let mut arr = [0u8; 8];
-            arr.copy_from_slice(v);
-            Ok(Some(u64::from_be_bytes(arr) as usize))
-        }
-        _ => Ok(None),
-    }
 }
 
 fn get_budget_rw(
