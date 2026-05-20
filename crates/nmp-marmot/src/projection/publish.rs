@@ -10,12 +10,13 @@
 //! never reached relays.
 //!
 //! This module closes that seam by publishing INTERNALLY through the
-//! kernel: it calls the two landed `nmp-core` capability symbols
-//! ([`nmp_app_publish_signed_event`] / [`nmp_app_publish_signed_event_to`])
-//! against the `*mut NmpApp` the host shell's Marmot handle already
-//! retains. Both are generic kernel capabilities (no MLS/Marmot
-//! nouns kernel-side — D0 holds); they verify Schnorr + id and route
-//! fire-and-forget via the actor channel.
+//! kernel: it calls the landed `nmp-core` capability symbol
+//! [`nmp_app_publish_signed_event_to`] against the `*mut NmpApp` the host
+//! shell's Marmot handle already retains. An empty relay set falls through
+//! to the author NIP-65 outbox (`PublishTarget::Auto`), so the single
+//! Explicit-target symbol covers both routing modes. It is a generic
+//! kernel capability (no MLS/Marmot nouns kernel-side — D0 holds); it
+//! verifies Schnorr + id and routes fire-and-forget via the actor channel.
 //!
 //! The inbound ingest seam (`{"op":"ingest_signed_event"}`) is a SEPARATE,
 //! still-open seam (the `KernelEventObserver` fan-out is lossy — no
@@ -24,13 +25,13 @@
 //!
 //! ## Linkage
 //!
-//! The two symbols are `#[no_mangle] extern "C"` bodies inside
-//! `nmp-core`. `nmp-core`'s Rust-path `pub use` of them is gated behind
-//! `test-support` / `android-ffi`, so this crate cannot import them by
-//! path in a default build. Instead we declare them in an `extern "C"`
-//! block: the linker resolves the symbols from `libnmp_core` (the rlib in
+//! The symbol is a `#[no_mangle] extern "C"` body inside `nmp-core`.
+//! `nmp-core`'s Rust-path `pub use` of it is gated behind `test-support` /
+//! `android-ffi`, so this crate cannot import it by path in a default
+//! build. Instead we declare it in an `extern "C"` block: the linker
+//! resolves the symbol from `libnmp_core` (the rlib in
 //! `cargo test -p nmp-app-chirp`, the staticlib the iOS shell links). This
-//! is exactly how a C consumer would reach them and needs no `nmp-core`
+//! is exactly how a C consumer would reach it and needs no `nmp-core`
 //! change.
 
 use std::ffi::{c_char, c_void, CString};
@@ -45,41 +46,15 @@ use nostr::{Event, JsonUtil, RelayUrl};
 // matches the byte-for-byte ABI of the `nmp-core`-side `#[no_mangle]`
 // definitions (pointer identity is all that crosses).
 extern "C" {
-    /// `nmp-core` — verbatim publish to the author NIP-65 outbox
-    /// (`PublishTarget::Auto`). Fire-and-forget; verifies Schnorr + id.
-    fn nmp_app_publish_signed_event(app: *mut c_void, event_json: *const c_char);
-
     /// `nmp-core` — verbatim publish to an explicit relay set
     /// (`PublishTarget::Explicit`). `relays_json` is a JSON array of
-    /// relay-URL strings; empty / null → identical to the Auto sibling.
+    /// relay-URL strings; empty / null → falls back to the author NIP-65
+    /// outbox (`PublishTarget::Auto`).
     fn nmp_app_publish_signed_event_to(
         app: *mut c_void,
         event_json: *const c_char,
         relays_json: *const c_char,
     );
-}
-
-/// Publish a signed event to the author NIP-65 outbox (Auto routing).
-///
-/// Correct for kind:30443 / kind:443 key-packages (author-write outbox).
-/// No-op when `app` is null (the in-memory test projection has no kernel —
-/// publish degrades silently, exactly the D6 fire-and-forget contract).
-/// A `CString` interior-nul failure also degrades to a no-op (the event
-/// JSON is serializer output, so this is unreachable in practice).
-pub(crate) fn publish_auto(app: *mut NmpApp, event: &Event) {
-    if app.is_null() {
-        return;
-    }
-    let Ok(cjson) = CString::new(event.as_json()) else {
-        return;
-    };
-    // SAFETY: `app` is the live `*mut NmpApp` retained by the host's
-    // Marmot handle for the handle's lifetime (same validity rule as the
-    // observer register/unregister calls); the kernel symbol reconstructs
-    // `&NmpApp` from the same pointer value (cast to/from `c_void` is
-    // pointer-identity-preserving). `cjson` is a valid nul-terminated C
-    // string for the duration of the call. The callee is fire-and-forget.
-    unsafe { nmp_app_publish_signed_event(app.cast(), cjson.as_ptr()) }
 }
 
 /// Publish a signed event to an explicit relay set (Explicit routing).
@@ -103,8 +78,12 @@ pub(crate) fn publish_to(app: *mut NmpApp, event: &Event, relays: &[RelayUrl]) {
     let Ok(crelays) = CString::new(relays_json) else {
         return;
     };
-    // SAFETY: same `app` validity rule as `publish_auto`; both C strings
-    // outlive the call. Empty `relays` → `[]` → kernel Auto-fallback.
+    // SAFETY: `app` is the live `*mut NmpApp` retained by the host's Marmot
+    // handle for the handle's lifetime (same validity rule as the observer
+    // register/unregister calls); the kernel symbol reconstructs `&NmpApp`
+    // from the same pointer value (cast to/from `c_void` is
+    // pointer-identity-preserving). Both C strings outlive the call. Empty
+    // `relays` → `[]` → kernel Auto-fallback.
     unsafe {
         nmp_app_publish_signed_event_to(app.cast(), cjson.as_ptr(), crelays.as_ptr())
     }

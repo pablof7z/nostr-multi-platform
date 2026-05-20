@@ -370,19 +370,13 @@ impl<'a> InnerHandle<'a> {
         crate::projection::publish::publish_to(self.inner.app, event, relays);
     }
 
-    /// Publish a signed event to the author NIP-65 outbox (`Auto`).
-    /// Correct for kind:30443 / kind:443 key-packages.
-    pub(crate) fn publish_author_outbox(&self, event: &nostr::Event) {
-        crate::projection::publish::publish_auto(self.inner.app, event);
-    }
-
     /// Read the user's current write-relay URLs from the shared kernel
     /// relay-edit projection. Empty when no write relays are configured.
     pub(crate) fn write_relay_urls(&self) -> Vec<String> {
         if self.inner.app.is_null() {
             return Vec::new();
         }
-        // SAFETY: identical rationale to `publish_auto` — `app` is the live
+        // SAFETY: identical rationale to `publish_to` — `app` is the live
         // `*mut NmpApp` retained by the host Marmot handle for the handle's
         // lifetime.
         let app_ref = unsafe { &*self.inner.app };
