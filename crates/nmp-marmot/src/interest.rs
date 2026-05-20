@@ -87,6 +87,11 @@ pub fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
 /// KeyPackage events are addressable replaceable events published to the
 /// author's outbox relays. The kernel planner owns that NIP-65 routing; the
 /// app only declares the peer pubkey and the event kinds it needs.
+///
+// TODO(bridge): add `limit` to `ViewDependencies` so this can route through
+// `ViewDependencies::into_logical_interest` like `giftwrap_inbox_interest`.
+// `ViewDependencies` has no `limit` field today, so this interest is
+// hand-built to set `shape.limit`.
 pub fn key_package_lookup_interest(pubkey: &str) -> LogicalInterest {
     let mut authors = BTreeSet::new();
     authors.insert(pubkey.to_string());
@@ -111,6 +116,11 @@ pub fn key_package_lookup_interest(pubkey: &str) -> LogicalInterest {
 /// Marmot group traffic is bound to the group relays, not author outboxes. Each
 /// relay gets its own hard-pinned interest so the kernel keeps the corresponding
 /// REQ open and the raw-event tap receives messages without an inbox sweep.
+///
+// TODO(bridge): add `limit` to `ViewDependencies` so this can route through
+// `ViewDependencies::into_logical_interest`. `ViewDependencies` carries
+// `relay_pin` but no `limit`, so these interests are hand-built to set
+// `shape.limit`.
 pub fn group_message_interests(
     group_id_hex: &str,
     relays: impl IntoIterator<Item = String>,
