@@ -23,7 +23,7 @@ struct ThreadScreen: View {
                 loadingState
             }
         }
-        .background(Color(.systemBackground).ignoresSafeArea())
+        .chirpScreenBackground()
         .navigationTitle("Thread")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -135,7 +135,7 @@ struct ThreadScreen: View {
         }
         .padding(.vertical, 8)
         .padding(.horizontal, 16)
-        .background(Color.accentColor.opacity(0.08))
+        .chirpGlass(cornerRadius: 16, interactive: true)
         .contentShape(Rectangle())
         .onTapGesture {
             // No kernel command exists to expand context yet — haptic feedback only.
@@ -151,7 +151,7 @@ struct ThreadScreen: View {
             Spacer()
                 .frame(width: 16 + (isFocused ? 46 : 38) / 2 - 1)
             Rectangle()
-                .fill(isFocused ? Color.accentColor.opacity(0.4) : Color(.separator))
+                .fill(isFocused ? Color.accentColor.opacity(0.28) : Color(.separator))
                 .frame(width: 2, height: 8)
                 .cornerRadius(1)
             Spacer()

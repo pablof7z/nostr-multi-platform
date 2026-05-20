@@ -31,6 +31,7 @@ struct MarmotGroupsView: View {
                 groupList
             }
         }
+        .chirpScreenBackground()
         .navigationTitle("Groups")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
@@ -103,6 +104,7 @@ struct MarmotGroupsView: View {
         }
         .animation(.smooth, value: store.groups.count)
         .animation(.smooth, value: store.pendingWelcomes.count)
+        .scrollContentBackground(.hidden)
     }
 
     // ── Empty / not-registered state ──────────────────────────────────────
@@ -139,6 +141,7 @@ struct MarmotGroupsView: View {
                 }
             }
             .frame(minHeight: 500)
+            .padding(.horizontal, ChirpSpace.l)
         }
     }
 
@@ -169,11 +172,11 @@ private struct GroupRow: View {
         HStack(spacing: 8) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color(.secondarySystemBackground))
+                    .fill(.quaternary)
                     .frame(width: 40, height: 40)
                 Image(systemName: "lock.shield.fill")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(.tint)
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -191,10 +194,10 @@ private struct GroupRow: View {
             if group.unread > 0 {
                 Text("\(group.unread)")
                     .font(.caption2.weight(.bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
-                    .background(Color.accentColor, in: Capsule())
+                    .chirpGlass(cornerRadius: 12)
                     .accessibilityLabel("\(group.unread) unread")
             }
         }
@@ -215,7 +218,7 @@ private struct PendingInviteRow: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: "envelope.badge.fill")
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(.tint)
                 Text(welcome.groupName.isEmpty ? "Group invite" : welcome.groupName)
                     .font(.headline)
                     .foregroundStyle(.primary)
@@ -232,7 +235,6 @@ private struct PendingInviteRow: View {
                 } label: {
                     Text("Accept")
                         .font(.callout.weight(.semibold))
-                        .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                 }
@@ -288,7 +290,7 @@ struct MarmotCreateGroupSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(.systemBackground).ignoresSafeArea()
+                ChirpBackdrop()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         VStack(alignment: .leading, spacing: 12) {
@@ -317,6 +319,9 @@ struct MarmotCreateGroupSheet: View {
                                     }
                             }
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .chirpGlass(cornerRadius: ChirpSpace.radius)
                         .padding(.horizontal, 16)
 
                         if let errorMessage {

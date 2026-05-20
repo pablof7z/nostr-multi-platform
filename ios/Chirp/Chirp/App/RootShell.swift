@@ -42,6 +42,7 @@ struct RootShell: View {
             }
         }
         .animation(.smooth(duration: 0.4), value: model.hasActiveAccount)
+        .chirpScreenBackground()
         .overlay(alignment: .top) { toast }
     }
 
@@ -67,6 +68,8 @@ struct RootShell: View {
                 .tabItem { Label("Settings", systemImage: "gearshape.fill") }
                 .tag(ChirpTab.settings)
         }
+        .toolbarBackground(.visible, for: .tabBar)
+        .toolbarBackground(.regularMaterial, for: .tabBar)
     }
 
     /// Wraps a tab root in its own NavigationStack + the shared route
@@ -80,9 +83,10 @@ struct RootShell: View {
     private var toast: some View {
         if let msg = model.lastErrorToast {
             Text(msg)
-                .font(ChirpFont.callout).foregroundStyle(.white)
+                .font(ChirpFont.callout)
+                .foregroundStyle(.primary)
                 .padding(.horizontal, ChirpSpace.l).padding(.vertical, ChirpSpace.m)
-                .background(.red.opacity(0.92), in: Capsule())
+                .chirpGlass(cornerRadius: 22, interactive: true)
                 .padding(.top, 8)
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .onTapGesture { model.clearErrorToast() }

@@ -20,7 +20,7 @@ struct RelayDetailView: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 24)
         }
-        .background(Color(.systemBackground))
+        .chirpScreenBackground()
         .navigationTitle(shortURL(relay.relayUrl))
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -129,7 +129,7 @@ struct RelayDetailView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+            .chirpGlass(cornerRadius: 12)
         }
     }
 
@@ -193,7 +193,7 @@ struct RelayDetailView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+            .chirpGlass(cornerRadius: 12)
         }
     }
 
@@ -213,7 +213,7 @@ struct RelayDetailView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+            .chirpGlass(cornerRadius: 12)
         }
     }
 
@@ -285,7 +285,7 @@ private struct RelayMetricTile: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 12))
+        .chirpGlass(cornerRadius: 12)
     }
 }
 

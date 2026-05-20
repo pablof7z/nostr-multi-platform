@@ -29,7 +29,7 @@ struct MarmotInviteSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(.systemBackground).ignoresSafeArea()
+                ChirpBackdrop()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Inviting to \(group.name.isEmpty ? "this group" : group.name)")
@@ -56,6 +56,9 @@ struct MarmotInviteSheet: View {
                                     }
                                 }
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .chirpGlass(cornerRadius: ChirpSpace.radius)
                         .padding(.horizontal, 16)
 
                         if let errorMessage {

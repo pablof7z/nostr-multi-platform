@@ -24,15 +24,17 @@ struct ProfileView: View {
         ScrollView {
             VStack(spacing: 0) {
                 profileHeader
+                    .padding(ChirpSpace.l)
+                    .chirpGlass(cornerRadius: ChirpSpace.radius)
+                    .padding(.horizontal, ChirpSpace.l)
                     .padding(.bottom, 8)
-
-                Divider()
 
                 notesSection
             }
+            .padding(.top, ChirpSpace.m)
         }
         .accessibilityIdentifier("profile-detail-list")
-        .background(Color(.systemBackground).ignoresSafeArea())
+        .chirpScreenBackground()
         .navigationTitle(profile?.display ?? "Profile")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -111,7 +113,6 @@ struct ProfileView: View {
                             Image(systemName: copiedNpub ? "checkmark" : "doc.on.doc")
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
-                                .animation(.bouncy, value: copiedNpub)
                         }
                     }
                     .buttonStyle(.plain)
@@ -175,6 +176,7 @@ struct ProfileView: View {
                     if item.id != model.items.last?.id {
                         Divider()
                             .padding(.leading, 68)
+                            .opacity(0.35)
                     }
                 }
             }

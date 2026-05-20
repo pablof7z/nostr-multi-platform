@@ -1,13 +1,8 @@
 import SwiftUI
 
-// ─────────────────────────────────────────────────────────────────────────
-// Native iOS design system — semantic colors, standard fonts, plain spacing.
-// All custom styling removed; uses SwiftUI defaults and system materials.
-// ─────────────────────────────────────────────────────────────────────────
-
 enum ChirpColor {
     static let accent = Color.accentColor
-    static let accentSoft = Color.accentColor.opacity(0.15)
+    static let accentSoft = Color.accentColor.opacity(0.12)
     static let bg = Color(.systemBackground)
     static let surface = Color(.secondarySystemBackground)
     static let hairline = Color(.separator)
@@ -15,7 +10,7 @@ enum ChirpColor {
     static let textSecondary = Color.secondary
     static let textTertiary = Color(.tertiaryLabel)
     static let positive = Color.green
-    static let zap = Color.orange
+    static let zap = Color.yellow
     static let like = Color.red
 
     /// Deterministic avatar gradient from a hex color string the kernel
@@ -49,14 +44,60 @@ enum ChirpSpace {
     static let radiusSmall: CGFloat = 12
 }
 
-// ── Shared components ─────────────────────────────────────────────────────
+struct ChirpBackdrop: View {
+    var body: some View {
+        ZStack {
+            Rectangle().fill(.background)
+            GeometryReader { proxy in
+                Circle()
+                    .fill(.tint.opacity(0.08))
+                    .frame(width: proxy.size.width * 0.7)
+                    .blur(radius: 42)
+                    .offset(x: proxy.size.width * 0.46, y: -proxy.size.height * 0.18)
+                Circle()
+                    .fill(Color(.systemTeal).opacity(0.06))
+                    .frame(width: proxy.size.width * 0.9)
+                    .blur(radius: 56)
+                    .offset(x: -proxy.size.width * 0.34, y: proxy.size.height * 0.58)
+            }
+        }
+        .ignoresSafeArea()
+    }
+}
 
-/// Plain content wrapper — no material, no rounded background.
 struct GlassCard<Content: View>: View {
     @ViewBuilder var content: Content
     var body: some View {
         content
             .padding(ChirpSpace.l)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .chirpGlass(cornerRadius: ChirpSpace.radius)
+    }
+}
+
+struct ChirpGlassBackground: ViewModifier {
+    var cornerRadius: CGFloat = ChirpSpace.radius
+    var interactive = false
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.glassEffect(
+                interactive ? .regular.interactive() : .regular,
+                in: .rect(cornerRadius: cornerRadius)
+            )
+        } else {
+            content.background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius))
+        }
+    }
+}
+
+extension View {
+    func chirpGlass(cornerRadius: CGFloat = ChirpSpace.radius, interactive: Bool = false) -> some View {
+        modifier(ChirpGlassBackground(cornerRadius: cornerRadius, interactive: interactive))
+    }
+
+    func chirpScreenBackground() -> some View {
+        background(ChirpBackdrop())
     }
 }
 
@@ -69,7 +110,7 @@ struct ChirpAvatar: View {
     var size: CGFloat = 44
     var body: some View {
         ZStack {
-            Circle().fill(Color.secondary.opacity(0.2))
+            Circle().fill(.quaternary)
             if let url, let u = URL(string: url) {
                 AsyncImage(url: u) { img in
                     img.resizable().scaledToFill()
@@ -83,6 +124,7 @@ struct ChirpAvatar: View {
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
+        .overlay(Circle().stroke(.separator.opacity(0.35), lineWidth: 0.5))
     }
 }
 
@@ -100,6 +142,7 @@ struct ChirpPrimaryButton: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
         }
+        .buttonStyle(.borderedProminent)
     }
 }
 
@@ -108,7 +151,9 @@ struct ChirpSectionHeader: View {
     let title: String
     var body: some View {
         Text(title)
-            .font(.caption)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .textCase(.uppercase)
     }
 }
 
@@ -121,7 +166,9 @@ struct ChirpPlaceholder: View {
         VStack(spacing: ChirpSpace.m) {
             Image(systemName: systemImage)
                 .font(.system(size: 44, weight: .light))
+                .symbolRenderingMode(.hierarchical)
             Text(title)
+                .font(.headline)
             if let subtitle {
                 Text(subtitle)
                     .foregroundStyle(.secondary)
@@ -130,6 +177,26 @@ struct ChirpPlaceholder: View {
         }
         .padding(ChirpSpace.xl)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+struct ChirpGlassButtonStyle: ButtonStyle {
+    var prominent = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.callout.weight(.semibold))
+            .foregroundStyle(prominent ? Color(.systemBackground) : .primary)
+            .padding(.horizontal, ChirpSpace.l)
+            .padding(.vertical, ChirpSpace.m)
+            .frame(minHeight: 44)
+            .background {
+                if prominent {
+                    Capsule().fill(.tint)
+                }
+            }
+            .chirpGlass(cornerRadius: 22, interactive: true)
+            .opacity(configuration.isPressed ? 0.72 : 1)
     }
 }
 

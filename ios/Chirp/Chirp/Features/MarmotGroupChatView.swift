@@ -41,10 +41,9 @@ struct MarmotGroupChatView: View {
     var body: some View {
         VStack(spacing: 0) {
             messageStream
-            Divider()
             composer
         }
-        .background(Color(.systemBackground))
+        .chirpScreenBackground()
         .navigationTitle(liveGroup.name.isEmpty ? "Group" : liveGroup.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarContent }
@@ -83,6 +82,7 @@ struct MarmotGroupChatView: View {
                         }
                     }
                     .padding(.vertical, 4)
+                    .padding(.horizontal, 12)
                 }
                 .onChange(of: messages.count) { _, _ in
                     if let last = messages.last {
@@ -128,7 +128,10 @@ struct MarmotGroupChatView: View {
             .accessibilityLabel("Send")
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 4)
+        .padding(.vertical, 8)
+        .chirpGlass(cornerRadius: 18)
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
     }
 
     private func sendDraft() {
@@ -187,7 +190,7 @@ private struct MarmotMessageRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             ZStack {
-                Circle().fill(Color(.secondarySystemBackground))
+                Circle().fill(.quaternary)
                 Text(initials)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.primary)
@@ -212,8 +215,9 @@ private struct MarmotMessageRow: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(.vertical, 4)
-        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
+        .chirpGlass(cornerRadius: 18)
     }
 
     private var colorHex: String {

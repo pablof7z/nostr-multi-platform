@@ -25,9 +25,7 @@ struct ComposeView: View {
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
-                // Background
-                Color(.systemBackground)
-                    .ignoresSafeArea()
+                ChirpBackdrop()
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
@@ -71,8 +69,10 @@ struct ComposeView: View {
                             }
                         }
                         .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .chirpGlass(cornerRadius: ChirpSpace.radius)
+                        .padding(.horizontal, 16)
 
-                        // Post button — inside scroll so it's above keyboard
                         Button {
                             model.publishNote(trimmed, replyToID: replyToID)
                             dismiss()
@@ -115,7 +115,7 @@ struct ComposeView: View {
         HStack(spacing: 8) {
             Image(systemName: "arrowshape.turn.up.left.fill")
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(.tint)
 
             Text("Replying to a note")
                 .font(.callout)
@@ -129,7 +129,7 @@ struct ComposeView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
-        .background(Color(.secondarySystemBackground))
+        .chirpGlass(cornerRadius: 14)
         .padding(.horizontal, 16)
     }
 

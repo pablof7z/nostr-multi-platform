@@ -49,8 +49,7 @@ struct NoteContentView: View {
                         }
                         .padding(12)
                         .frame(maxWidth: .infinity)
-                        .background(Color(.secondarySystemBackground))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .chirpGlass(cornerRadius: 10)
                     }
                 }
             }

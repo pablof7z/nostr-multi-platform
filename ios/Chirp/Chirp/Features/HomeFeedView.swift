@@ -32,6 +32,7 @@ struct HomeFeedView: View {
                 timeline
             }
         }
+        .chirpScreenBackground()
         .navigationTitle("Chirp")
         .navigationBarTitleDisplayMode(.large)
         .toolbar { toolbarContent }
@@ -64,8 +65,14 @@ struct HomeFeedView: View {
         return List {
             ForEach(Array(blocks.enumerated()), id: \.offset) { (_, block) in
                 ModularBlockView(block: block, cards: cardLookup, items: itemLookup)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
             }
         }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .contentMargins(.bottom, 20, for: .scrollContent)
         .animation(.smooth, value: blocks.count)
         .accessibilityIdentifier("timeline-list")
         .refreshable {
@@ -95,7 +102,9 @@ struct HomeFeedView: View {
                 subtitle: "Loading your timeline…"
             )
             .frame(minHeight: 500)
+            .padding(.horizontal, ChirpSpace.l)
         }
+        .scrollContentBackground(.hidden)
         .refreshable {
             model.openTimeline()
         }
@@ -111,9 +120,7 @@ struct HomeFeedView: View {
             } label: {
                 Image(systemName: "bell")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(ChirpColor.accent)
             }
-            .buttonStyle(.borderless)
             .accessibilityLabel("Activity")
         }
 
@@ -123,7 +130,6 @@ struct HomeFeedView: View {
             } label: {
                 Image(systemName: "square.and.pencil")
             }
-            .buttonStyle(.borderless)
             .accessibilityLabel("New note")
         }
     }

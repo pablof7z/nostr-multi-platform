@@ -16,7 +16,7 @@ struct SearchView: View {
             .padding(.horizontal, 16)
             .padding(.top, 12)
         }
-        .background(Color(.systemBackground))
+        .chirpScreenBackground()
         .navigationTitle("Search")
         .navigationBarTitleDisplayMode(.large)
         .onTapGesture { fieldFocused = false }
@@ -81,6 +81,8 @@ struct SearchView: View {
                 .disabled(!hexValid)
             }
         }
+        .padding(ChirpSpace.l)
+        .chirpGlass(cornerRadius: ChirpSpace.radius)
     }
 
     private var searchComingCard: some View {
@@ -110,6 +112,8 @@ struct SearchView: View {
                 featureLine(icon: "person.2.wave.2", label: "People search by name or NIP-05")
             }
         }
+        .padding(ChirpSpace.l)
+        .chirpGlass(cornerRadius: ChirpSpace.radius)
     }
 
     private var hexValid: Bool {
