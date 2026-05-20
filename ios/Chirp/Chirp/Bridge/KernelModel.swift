@@ -226,6 +226,12 @@ final class KernelModel: ObservableObject {
         kmLog.info("createAccount dispatched")
         kernel.createAccount(profile: profile, relays: relays)
     }
+    func publishProfile(name: String, about: String, picture: String) {
+        var profile: [String: String] = ["name": name]
+        if !about.isEmpty { profile["about"] = about }
+        if !picture.isEmpty { profile["picture"] = picture }
+        kernel.publishProfile(profile: profile)
+    }
     func switchActive(_ identityID: String) { kernel.switchActive(identityID: identityID) }
     func removeAccount(_ identityID: String) {
         // Clear the stored credentials when removing the active account so the

@@ -66,6 +66,45 @@ fn create_account_generates_fresh_active_key() {
 }
 
 #[test]
+fn create_account_seeds_profile_and_nip65_for_immediate_use() {
+    let (mut id, mut kernel) = fresh();
+    let mut profile = std::collections::HashMap::new();
+    profile.insert("name".to_string(), "Signup User".to_string());
+    let relays = vec![("wss://signup-write.test".to_string(), "write".to_string())];
+    create_account(&mut id, &mut kernel, false, &profile, &relays);
+
+    let snap: serde_json::Value =
+        serde_json::from_str(&kernel.make_update(true)).expect("snapshot json");
+    assert_eq!(snap["profile"]["display"], "Signup User");
+    assert_eq!(snap["profile"]["metadata_source"], "kind0");
+    assert_eq!(
+        kernel.relay_edit_rows_snapshot()[0].url,
+        "wss://signup-write.test"
+    );
+
+    let outbound = publish_note(
+        &id,
+        &mut kernel,
+        "first note after signup",
+        None,
+        &mut Vec::new(),
+    );
+    assert!(
+        outbound
+            .iter()
+            .any(|msg| msg.relay_url == "wss://signup-write.test"),
+        "first note after signup must route via the freshly published kind:10002"
+    );
+    assert!(
+        kernel
+            .last_error_toast_snapshot()
+            .map(|toast| !toast.contains("no write-relays"))
+            .unwrap_or(true),
+        "fresh signup must not show the no write-relays toast"
+    );
+}
+
+#[test]
 fn switch_active_flips_status_synchronously() {
     let (mut id, mut kernel) = fresh();
     sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);

@@ -256,6 +256,11 @@ impl Kernel {
             avatar_color: profile
                 .map(|profile| profile.avatar_color.clone())
                 .unwrap_or_else(|| avatar_color(pubkey)),
+            metadata_source: if profile.is_some() {
+                "kind0".to_string()
+            } else {
+                "placeholder".to_string()
+            },
             source: if real_picture.is_some() {
                 "kind0".to_string()
             } else {

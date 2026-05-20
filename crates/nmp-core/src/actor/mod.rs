@@ -23,6 +23,8 @@ mod tick;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
+mod publish_relay_dispatch_tests;
+#[cfg(test)]
 mod relay_url_canonical_tests;
 
 use commands::IdentityRuntime;
@@ -83,7 +85,8 @@ use crate::kernel::LifecyclePhase;
 use crate::app::KernelAction;
 
 use relay_mgmt::{
-    all_relays_connected, close_relays, maybe_send_startup, send_all_outbound,
+    all_relays_connected, close_relays, maybe_send_startup, route_dispatch_outbound,
+    send_all_outbound,
 };
 use tick::{compute_wait, emit_now, flush_due};
 
@@ -441,6 +444,7 @@ pub fn run_actor_with_observers(
     // idle section below `poll()`s each one per tick and publishes on
     // completion. Lives outside the loop so parked ops survive across ticks.
     let mut pending_signs: Vec<PendingSign> = Vec::new();
+    let mut queued_publish_outbound = Vec::new();
 
     loop {
         // ── Priority lane: commands ──────────────────────────────────────
@@ -476,14 +480,16 @@ pub fn run_actor_with_observers(
                     let Some(outbound) = outbound else {
                         return; // Shutdown
                     };
+                    route_dispatch_outbound(
+                        running,
+                        &mut queued_publish_outbound,
+                        &mut relay_controls,
+                        &relay_tx,
+                        &mut kernel,
+                        &mut next_relay_generation,
+                        outbound,
+                    );
                     if running {
-                        send_all_outbound(
-                            &mut relay_controls,
-                            &relay_tx,
-                            &mut kernel,
-                            &mut next_relay_generation,
-                            outbound,
-                        );
                         if maybe_send_startup(
                             running,
                             &mut startup_sent,
@@ -687,14 +693,16 @@ pub fn run_actor_with_observers(
                     }
                     Some(Ok(signed)) => {
                         let outbound = kernel.publish_signed(&signed, &ps.p_tags);
+                        route_dispatch_outbound(
+                            running,
+                            &mut queued_publish_outbound,
+                            &mut relay_controls,
+                            &relay_tx,
+                            &mut kernel,
+                            &mut next_relay_generation,
+                            outbound,
+                        );
                         if running {
-                            send_all_outbound(
-                                &mut relay_controls,
-                                &relay_tx,
-                                &mut kernel,
-                                &mut next_relay_generation,
-                                outbound,
-                            );
                             emit_now(&mut kernel, running, &update_tx, &mut last_emit);
                         }
                         false // Done — remove.
