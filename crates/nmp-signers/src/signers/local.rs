@@ -29,6 +29,26 @@ pub struct LocalKeySigner {
     /// NIP-49 `log_n` parameter — default 16, lowered for tests via
     /// [`LocalKeySigner::with_ncryptsec_log_n`].
     ncryptsec_log_n: u8,
+    /// Redundant `Zeroizing` copy of the raw secret-key bytes, held purely so
+    /// that *a* copy of the secret is reliably wiped from the heap on drop.
+    ///
+    /// PARTIAL MITIGATION — read carefully before changing this.  `nostr::Keys`
+    /// keeps the secret in two places we cannot reach: its private
+    /// `secret_key: secp256k1::SecretKey` field (exposed only as `&SecretKey`,
+    /// no `&mut` accessor) and a cached `key_pair: OnceCell<Keypair>` (a
+    /// `Keypair` also embeds the secret).  `secp256k1` 0.29 has no `zeroize`
+    /// feature and `nostr` 0.44 implements neither `Zeroize` nor `Drop` on
+    /// `Keys`, so those two copies are NOT wiped on drop.  This field gives us
+    /// a third copy that *is* wiped (via the `Zeroizing` wrapper's `Drop`),
+    /// reducing — but not eliminating — recoverable secret material in freed
+    /// memory.  Full mitigation requires upstream `Zeroize` support in `nostr`
+    /// (or a `nostr`/`secp256k1` upgrade that adds it).  Tracked in
+    /// `docs/arch-review-queue.md`.
+    ///
+    /// Stored as an inline `[u8; 32]` (which `zeroize` natively implements
+    /// `Zeroize` for); the bytes are wiped wherever the enclosing
+    /// `LocalKeySigner` is allocated.
+    _secret_bytes: Zeroizing<[u8; 32]>,
 }
 
 impl std::fmt::Debug for LocalKeySigner {
@@ -42,13 +62,18 @@ impl std::fmt::Debug for LocalKeySigner {
 }
 
 impl Drop for LocalKeySigner {
-    /// Zero any Rust-owned secret copies on drop so freed heap memory does not
+    /// Zero the Rust-owned secret copies on drop so freed heap memory does not
     /// retain key material (recoverable via memory dumps / crash reports).
     ///
     /// `#[derive(ZeroizeOnDrop)]` is not applicable here: `nostr::Keys` does
     /// not implement `Zeroize`. `Keys` is an external type that manages its
-    /// own secret memory; we only own the plaintext `password` copy, so we
-    /// zero that explicitly.
+    /// own secret memory.  We explicitly zero the plaintext `password` copy
+    /// here; the `_secret_bytes` field is wiped automatically when its
+    /// `Zeroizing` wrapper drops (field drops run after this `Drop` body).
+    ///
+    /// The secret copies *inside* `nostr::Keys` (its `secp256k1::SecretKey`
+    /// and cached `Keypair`) are NOT reachable for zeroing — see the
+    /// `_secret_bytes` field doc for the full honest scope of this mitigation.
     fn drop(&mut self) {
         if let Some(ref mut pw) = self.password {
             pw.zeroize();
@@ -59,14 +84,7 @@ impl Drop for LocalKeySigner {
 impl LocalKeySigner {
     /// Generate a fresh keypair via OS RNG.
     pub fn generate() -> Self {
-        let keys = Keys::generate();
-        let pubkey = keys.public_key();
-        Self {
-            keys,
-            pubkey,
-            password: None,
-            ncryptsec_log_n: 16,
-        }
+        Self::from_secret_key(SecretKey::generate())
     }
 
     /// Construct from a 64-char hex secret.
@@ -145,6 +163,12 @@ impl LocalKeySigner {
     }
 
     fn from_secret_key(sk: SecretKey) -> Self {
+        // Capture the raw bytes into a `Zeroizing` buffer before the
+        // `SecretKey` is moved into `Keys`.  `to_secret_bytes()` returns an
+        // owned `[u8; 32]`; the `Zeroizing` wrapper wipes it on drop.  See the
+        // `_secret_bytes` field doc for why this is a partial — not complete —
+        // mitigation.
+        let secret_bytes: Zeroizing<[u8; 32]> = Zeroizing::new(sk.to_secret_bytes());
         let keys = Keys::new(sk);
         let pubkey = keys.public_key();
         Self {
@@ -152,6 +176,7 @@ impl LocalKeySigner {
             pubkey,
             password: None,
             ncryptsec_log_n: 16,
+            _secret_bytes: secret_bytes,
         }
     }
 
