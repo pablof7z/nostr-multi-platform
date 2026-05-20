@@ -235,3 +235,46 @@ fn t_normalize_planner_close_with_non_canonical_url_evicts_row() {
          non-canonical Close; got active subs: {active:?}"
     );
 }
+
+/// T-relay-url-normalize — the `*_persistent_sub` primitives canonicalize their
+/// `relay_url` argument internally, so a caller that registers with a
+/// non-canonical URL (e.g. the NWC wallet path, whose `NwcUri` relay is NOT
+/// canonicalized) is still matched by the EOSE handler's canonical lookup.
+///
+/// Pre-fix: `register_persistent_sub` keyed the set by the raw argument; a NWC
+/// kind:23195 listener registered under `wss://Wallet.RELAY/` was never found
+/// by `is_persistent_sub("wss://wallet.relay", …)` — the listener would be
+/// wrongly auto-CLOSE'd on its first EOSE. Post-fix the primitive canonicalizes.
+#[test]
+fn t_normalize_persistent_sub_primitive_canonicalizes_relay_url() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    const RAW_URL: &str = "wss://Wallet.RELAY/";
+    const CANONICAL_URL: &str = "wss://wallet.relay";
+    const SUB: &str = "nwc-deadbeef";
+
+    // Register with the raw (non-canonical) URL form, exactly as the NWC
+    // wallet path does via `NwcUri::primary_relay_url()`.
+    kernel.register_persistent_sub(RAW_URL, SUB);
+
+    // The EOSE handler looks up by the canonical delivering URL — it must hit.
+    assert!(
+        kernel.is_persistent_sub(CANONICAL_URL, SUB),
+        "T-relay-url-normalize: a persistent sub registered with a \
+         non-canonical URL must be found by a canonical-URL lookup"
+    );
+    // A different non-canonical spelling resolves to the same key too.
+    assert!(
+        kernel.is_persistent_sub("WSS://wallet.relay", SUB),
+        "T-relay-url-normalize: any URL spelling must resolve to the same \
+         persistent-sub key"
+    );
+
+    // Unregister with yet another spelling — the canonical key must be removed.
+    kernel.unregister_persistent_sub("wss://wallet.relay/", SUB);
+    assert!(
+        !kernel.is_persistent_sub(CANONICAL_URL, SUB),
+        "T-relay-url-normalize: unregister with a non-canonical URL must \
+         remove the canonical-keyed persistent-sub entry"
+    );
+}

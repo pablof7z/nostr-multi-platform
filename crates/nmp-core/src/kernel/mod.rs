@@ -850,28 +850,48 @@ impl Kernel {
     /// Used by long-lived protocol lanes (NWC kind:23195 listener) where the
     /// subscription must remain open for the connection lifetime. Inverse of
     /// [`unregister_persistent_sub`]. Idempotent.
+    ///
+    /// T-relay-url-normalize: the `relay_url` is canonicalized before it is
+    /// used as the set key. The persistent-sub registry must agree with the
+    /// EOSE handler's lookup, which keys on the canonical delivering URL. NWC
+    /// wallet callers register with the raw `NwcUri` relay (which does NOT
+    /// canonicalize); without this, a non-canonical NWC relay URL would never
+    /// satisfy `is_persistent_sub` and the kind:23195 listener would be
+    /// wrongly auto-CLOSE'd on its first EOSE. Canonicalizing inside the
+    /// primitive makes every caller correct without each having to remember.
     pub(crate) fn register_persistent_sub(
         &mut self,
         relay_url: impl Into<String>,
         sub_id: impl Into<String>,
     ) {
-        self.persistent_subs.insert((relay_url.into(), sub_id.into()));
+        let relay_url = relay_url.into();
+        let key = crate::relay::canonical_relay_url(&relay_url).unwrap_or(relay_url);
+        self.persistent_subs.insert((key, sub_id.into()));
     }
 
     /// Remove `(relay_url, sub_id)` from the persistent set. Called when the
     /// protocol lane (e.g. wallet disconnect) or the planner withdraws its
     /// subscription on that relay. Idempotent. #170: relay-scoped so closing
     /// the sub on one relay never un-pins a sibling relay still carrying it.
+    ///
+    /// T-relay-url-normalize: canonicalizes `relay_url` so the removal matches
+    /// the canonical key written by [`register_persistent_sub`] regardless of
+    /// the URL spelling the caller supplies.
     pub(crate) fn unregister_persistent_sub(&mut self, relay_url: &str, sub_id: &str) {
-        self.persistent_subs
-            .remove(&(relay_url.to_string(), sub_id.to_string()));
+        let key = crate::relay::canonical_relay_url(relay_url)
+            .unwrap_or_else(|| relay_url.to_string());
+        self.persistent_subs.remove(&(key, sub_id.to_string()));
     }
 
     /// True when `(relay_url, sub_id)` is registered as persistent — EOSE
     /// handlers consult this to skip the default auto-CLOSE policy.
+    ///
+    /// T-relay-url-normalize: canonicalizes `relay_url` so the lookup matches
+    /// the canonical key written by [`register_persistent_sub`].
     pub(crate) fn is_persistent_sub(&self, relay_url: &str, sub_id: &str) -> bool {
-        self.persistent_subs
-            .contains(&(relay_url.to_string(), sub_id.to_string()))
+        let key = crate::relay::canonical_relay_url(relay_url)
+            .unwrap_or_else(|| relay_url.to_string());
+        self.persistent_subs.contains(&(key, sub_id.to_string()))
     }
 
     pub(crate) fn start(&mut self) {
