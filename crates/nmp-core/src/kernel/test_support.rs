@@ -292,7 +292,8 @@ impl Kernel {
         // URL (the planner boundary and the EOSE handler both canonicalize).
         // Canonicalize the query so a test may pass any URL spelling.
         let key = crate::relay::CanonicalRelayUrl::parse_or_raw(relay_url);
-        self.wire_subs
+        self.wire
+            .subs
             .get(&(key, sub_id.to_string()))
             .map(|s| s.state.clone())
     }

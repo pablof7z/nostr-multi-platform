@@ -15,14 +15,16 @@ impl Kernel {
         let known_urls: std::collections::HashSet<&str> =
             statuses.iter().map(|s| s.relay_url.as_str()).collect();
         let outbox_urls: std::collections::BTreeSet<String> = self
-            .wire_subs
+            .wire
+            .subs
             .values()
             .map(|sub| sub.relay_url.to_string())
             .filter(|url| !known_urls.contains(url.as_str()))
             .collect();
         for url in outbox_urls {
             let active_subs = self
-                .wire_subs
+                .wire
+                .subs
                 .values()
                 .filter(|sub| {
                     sub.relay_url == *url.as_str()
@@ -30,7 +32,8 @@ impl Kernel {
                 })
                 .count();
             let last_event_at_ms = self
-                .wire_subs
+                .wire
+                .subs
                 .values()
                 .filter(|sub| sub.relay_url == *url.as_str())
                 .filter_map(|sub| self.elapsed_ms(sub.last_event_at))
@@ -82,7 +85,8 @@ impl Kernel {
             auth: relay.auth.clone(),
             nip77_negentropy: relay.nip77_probe_state.clone(),
             active_wire_subscriptions: self
-                .wire_subs
+                .wire
+                .subs
                 .values()
                 .filter(|sub| {
                     sub.role == role && !matches!(sub.state.as_str(), "closed" | "closed_by_relay")
@@ -148,14 +152,15 @@ impl Kernel {
                 .count();
             let pending = claimed_authors
                 .iter()
-                .filter(|pubkey| self.pending_profiles.contains(*pubkey))
+                .filter(|pubkey| self.profile_requests.pending.contains(*pubkey))
                 .count();
             let requested = claimed_authors
                 .iter()
-                .filter(|pubkey| self.requested_profiles.contains(*pubkey))
+                .filter(|pubkey| self.profile_requests.requested.contains(*pubkey))
                 .count();
             let active_reqs = self
-                .wire_subs
+                .wire
+                .subs
                 .values()
                 .filter(|sub| {
                     sub.id.starts_with("profile-claim-")
@@ -246,7 +251,8 @@ impl Kernel {
             interests.push(LogicalInterestStatus {
                 key: format!("DiagnosticFirehose(#{})", interest.key),
                 state: if self
-                    .wire_subs
+                    .wire
+                    .subs
                     .values()
                     .any(|sub| sub.id.starts_with("diag-firehose-") && sub.state == "live")
                 {
@@ -265,7 +271,8 @@ impl Kernel {
 
     pub(super) fn wire_subscriptions(&self) -> Vec<WireSubscriptionStatus> {
         let mut subs = self
-            .wire_subs
+            .wire
+            .subs
             .values()
             .map(|sub| WireSubscriptionStatus {
                 wire_id: sub.id.clone(),
@@ -367,7 +374,7 @@ impl Kernel {
     }
 
     pub(super) fn elapsed_ms(&self, instant: Option<Instant>) -> Option<u128> {
-        let started = self.started_at?;
+        let started = self.timing.started_at?;
         Some(instant?.duration_since(started).as_millis())
     }
 

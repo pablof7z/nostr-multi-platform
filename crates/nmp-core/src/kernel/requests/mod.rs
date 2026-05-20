@@ -19,7 +19,8 @@ use super::*;
 impl Kernel {
     #[allow(dead_code)] // Per-lane snapshot retained for diagnostic surface (M11).
     pub(crate) fn active_subscriptions(&self, role: RelayRole) -> Vec<String> {
-        self.wire_subs
+        self.wire
+            .subs
             .values()
             .filter(|sub| {
                 sub.role == role && !matches!(sub.state.as_str(), "closed" | "closed_by_relay")
@@ -34,7 +35,8 @@ impl Kernel {
     /// transport pool (the role alone is not enough — many sockets share
     /// one lane).
     pub(crate) fn snapshot_active_wire_subs(&self) -> Vec<(String, String)> {
-        self.wire_subs
+        self.wire
+            .subs
             .values()
             .filter(|sub| !matches!(sub.state.as_str(), "closed" | "closed_by_relay"))
             .map(|sub| (sub.id.clone(), sub.relay_url.to_string()))
@@ -56,7 +58,8 @@ impl Kernel {
         }
         if self.diagnostic_firehose.interest.is_some()
             && !self
-                .wire_subs
+                .wire
+                .subs
                 .keys()
                 .any(|(_relay_url, sub_id)| sub_id.starts_with("diag-firehose-"))
         {
@@ -90,7 +93,7 @@ impl Kernel {
         // may be live on multiple relays; a sub_id-only evict would drop a
         // sibling relay's row that no prefix targeted.
         let mut to_evict: Vec<(CanonicalRelayUrl, String)> = Vec::new();
-        for sub in self.wire_subs.values() {
+        for sub in self.wire.subs.values() {
             if prefixes.iter().any(|prefix| sub.id.starts_with(prefix))
                 && !matches!(sub.state.as_str(), "closed" | "closed_by_relay")
             {
@@ -103,7 +106,7 @@ impl Kernel {
             }
         }
         for key in to_evict {
-            self.wire_subs.remove(&key);
+            self.wire.subs.remove(&key);
         }
         if !closes.is_empty() {
             self.changed_since_emit = true;
@@ -170,7 +173,7 @@ impl Kernel {
             relay_url
         ));
         let paused = self.relay_auth_paused(role);
-        self.wire_subs.insert(
+        self.wire.subs.insert(
             (wire_key_url.clone(), sub_id.to_string()),
             WireSub {
                 id: sub_id.to_string(),
@@ -280,7 +283,7 @@ impl Kernel {
                     if matches!(lifecycle, InterestLifecycle::Tailing) {
                         self.register_persistent_sub(key.as_str(), sub_id.clone());
                     }
-                    self.wire_subs.insert(
+                    self.wire.subs.insert(
                         (key.clone(), sub_id.clone()),
                         WireSub {
                             id: sub_id.clone(),
@@ -302,7 +305,7 @@ impl Kernel {
                     // evict the row registered under the canonical key.
                     let key = CanonicalRelayUrl::parse_or_raw(relay_url);
                     self.unregister_persistent_sub(key.as_str(), sub_id);
-                    self.wire_subs.remove(&(key, sub_id.clone()));
+                    self.wire.subs.remove(&(key, sub_id.clone()));
                 }
             }
         }

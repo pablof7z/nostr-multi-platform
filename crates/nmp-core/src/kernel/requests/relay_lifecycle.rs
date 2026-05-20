@@ -58,7 +58,7 @@ impl Kernel {
             relay_url,
             truncate(&error, 140)
         ));
-        for sub in self.wire_subs.values_mut() {
+        for sub in self.wire.subs.values_mut() {
             if sub.relay_url == canonical && sub.state != "closed" {
                 sub.state = "retrying".to_string();
             }
@@ -84,7 +84,7 @@ impl Kernel {
         // accumulating closed rows across reconnect churn is exactly the
         // long-session leak T133 fixes. Sibling sockets on the same role
         // lane are untouched — their subs are still live.
-        self.wire_subs.retain(|_key, sub| sub.relay_url != canonical);
+        self.wire.subs.retain(|_key, sub| sub.relay_url != canonical);
         self.changed_since_emit = true;
         if let Some(driver) = self.nip42_drivers.get_mut(&role) {
             driver.reset_on_disconnect();
@@ -101,7 +101,7 @@ impl Kernel {
         let relay = self.relay_mut(role);
         relay.connection = "closed".to_string();
         relay.auth = "not_required".to_string();
-        self.wire_subs.retain(|_key, sub| sub.role != role);
+        self.wire.subs.retain(|_key, sub| sub.role != role);
         self.changed_since_emit = true;
         if let Some(driver) = self.nip42_drivers.get_mut(&role) {
             driver.reset_on_disconnect();

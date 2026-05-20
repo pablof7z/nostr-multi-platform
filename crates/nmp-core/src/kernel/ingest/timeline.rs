@@ -161,7 +161,9 @@ impl Kernel {
         if self.timeline_authors.contains(&event.pubkey) || sub_id.starts_with("diag-firehose-") {
             self.timeline.push_back(event.id);
             self.sort_timeline();
-            self.timeline_first_item_at.get_or_insert_with(Instant::now);
+            self.timing
+                .timeline_first_item_at
+                .get_or_insert_with(Instant::now);
         }
         self.changed_since_emit = true;
     }
@@ -262,7 +264,7 @@ impl Kernel {
     pub(in crate::kernel) fn maybe_open_timeline(&mut self) -> Vec<OutboundMessage> {
         if !self.timeline_requested && self.should_open_timeline() {
             self.timeline_requested = true;
-            self.timeline_opened_at = Some(Instant::now());
+            self.timing.timeline_opened_at = Some(Instant::now());
             self.log(
                 "follow-feed open milestone reached — carried by M2 planner \
                  (drain_lifecycle_tick); M1 seed-timeline-* REQ retired (T140)"

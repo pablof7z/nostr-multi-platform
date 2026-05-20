@@ -191,12 +191,9 @@ pub(crate) struct Kernel {
     clock: Arc<dyn Clock>,
     rev: u64,
     visible_limit: usize,
-    started_at: Option<Instant>,
-    last_event_at: Option<Instant>,
-    first_event_at: Option<Instant>,
-    target_profile_loaded_at: Option<Instant>,
-    timeline_opened_at: Option<Instant>,
-    timeline_first_item_at: Option<Instant>,
+    /// FFI diagnostic timing milestones (D0 app-domain state). See
+    /// [`TimingMilestones`].
+    timing: TimingMilestones,
     relays: HashMap<RelayRole, RelayHealth>,
     profiles: HashMap<String, Profile>,
     /// Locally-authored kind:0 publish intents that have not necessarily
@@ -240,28 +237,30 @@ pub(crate) struct Kernel {
     /// active account's kind:3 follow set; empty until first kind:3 arrives.
     follow_feed_interest_ids: BTreeSet<crate::planner::InterestId>,
     profile_claims: HashMap<String, BTreeSet<String>>,
-    requested_profiles: HashSet<String>,
-    pending_profiles: BTreeSet<String>,
-    profile_req_seq: u64,
+    /// Profile-fetch request tracking (D0 app-domain state). See
+    /// [`ProfileRequestState`].
+    profile_requests: ProfileRequestState,
     timeline_requested: bool,
     contacts_deadline: Option<Instant>,
-    /// Wire-sub bookkeeping keyed by `(relay_url, sub_id)`. #170: the M2
-    /// planner deliberately reuses the same `sub-*` id across relay URLs for
-    /// one filter (NIP-01 §1 sub ids are per-connection; `subs/wire.rs`). A
-    /// `sub_id`-only key let the second relay's REQ clobber the first's row
-    /// and a CLOSE for one relay evict a still-live sibling. Same precedent
-    /// as `plan_diff` (#161). The relay-URL half is a [`CanonicalRelayUrl`] —
-    /// the only constructor canonicalizes, so a non-canonical key cannot be
-    /// inserted and the EOSE/CLOSED lookup is guaranteed to agree.
-    wire_subs: HashMap<(CanonicalRelayUrl, String), WireSub>,
-    /// `(relay_url, sub_id)` pairs that must survive EOSE (the kernel's
-    /// default policy is to auto-CLOSE any non-seed/non-firehose sub on
-    /// EOSE). Protocol lanes like NWC (kind:23195 listener) register here so
-    /// the wire-side subscription is kept open for the connection lifetime.
-    /// #170: relay-scoped so a CLOSE for one relay never un-pins a sibling.
-    /// The relay-URL half is a [`CanonicalRelayUrl`] — compiler-enforced
-    /// canonicalization (see `wire_subs`).
-    persistent_subs: HashSet<(CanonicalRelayUrl, String)>,
+    /// Wire (WebSocket) subscription bookkeeping (D0 app-domain state). See
+    /// [`WireSubscriptionState`].
+    ///
+    /// `.subs` is keyed by `(relay_url, sub_id)`. #170: the M2 planner
+    /// deliberately reuses the same `sub-*` id across relay URLs for one filter
+    /// (NIP-01 §1 sub ids are per-connection; `subs/wire.rs`). A `sub_id`-only
+    /// key let the second relay's REQ clobber the first's row and a CLOSE for
+    /// one relay evict a still-live sibling. Same precedent as `plan_diff`
+    /// (#161). The relay-URL half is a [`CanonicalRelayUrl`] — the only
+    /// constructor canonicalizes, so a non-canonical key cannot be inserted and
+    /// the EOSE/CLOSED lookup is guaranteed to agree.
+    ///
+    /// `.persistent` holds `(relay_url, sub_id)` pairs that must survive EOSE
+    /// (the kernel's default policy is to auto-CLOSE any non-seed/non-firehose
+    /// sub on EOSE). Protocol lanes like NWC (kind:23195 listener) register
+    /// here so the wire-side subscription is kept open for the connection
+    /// lifetime. #170: relay-scoped so a CLOSE for one relay never un-pins a
+    /// sibling.
+    wire: WireSubscriptionState,
     last_emitted_items: Vec<TimelineItem>,
     update_sequence: u64,
     /// Serialized length (bytes) of the snapshot emitted on the PREVIOUS
@@ -603,12 +602,7 @@ impl Kernel {
             clock: Arc::new(SystemClock),
             rev: 0,
             visible_limit,
-            started_at: None,
-            last_event_at: None,
-            first_event_at: None,
-            target_profile_loaded_at: None,
-            timeline_opened_at: None,
-            timeline_first_item_at: None,
+            timing: TimingMilestones::default(),
             relays: RelayRole::all()
                 .into_iter()
                 .map(|role| (role, RelayHealth::default()))
@@ -629,13 +623,10 @@ impl Kernel {
             timeline_authors: BTreeSet::new(),
             follow_feed_interest_ids: BTreeSet::new(),
             profile_claims: HashMap::new(),
-            requested_profiles: HashSet::new(),
-            pending_profiles: BTreeSet::new(),
-            profile_req_seq: 0,
+            profile_requests: ProfileRequestState::default(),
             timeline_requested: false,
             contacts_deadline: None,
-            wire_subs: HashMap::new(),
-            persistent_subs: HashSet::new(),
+            wire: WireSubscriptionState::default(),
             last_emitted_items: Vec::new(),
             update_sequence: 0,
             last_payload_bytes: 0,
@@ -803,7 +794,7 @@ impl Kernel {
     /// growing with close-cycle count.
     #[cfg(test)]
     pub(crate) fn wire_subs_len_for_test(&self) -> usize {
-        self.wire_subs.len()
+        self.wire.subs.len()
     }
 
     /// Bind a per-role signer callback used by the NIP-42 handshake on `role`,
@@ -899,7 +890,7 @@ impl Kernel {
     ) {
         let relay_url = relay_url.into();
         let key = CanonicalRelayUrl::parse_or_raw(&relay_url);
-        self.persistent_subs.insert((key, sub_id.into()));
+        self.wire.persistent.insert((key, sub_id.into()));
     }
 
     /// Remove `(relay_url, sub_id)` from the persistent set. Called when the
@@ -912,7 +903,7 @@ impl Kernel {
     /// the URL spelling the caller supplies.
     pub(crate) fn unregister_persistent_sub(&mut self, relay_url: &str, sub_id: &str) {
         let key = CanonicalRelayUrl::parse_or_raw(relay_url);
-        self.persistent_subs.remove(&(key, sub_id.to_string()));
+        self.wire.persistent.remove(&(key, sub_id.to_string()));
     }
 
     /// True when `(relay_url, sub_id)` is registered as persistent — EOSE
@@ -922,12 +913,12 @@ impl Kernel {
     /// the canonical key written by [`register_persistent_sub`].
     pub(crate) fn is_persistent_sub(&self, relay_url: &str, sub_id: &str) -> bool {
         let key = CanonicalRelayUrl::parse_or_raw(relay_url);
-        self.persistent_subs.contains(&(key, sub_id.to_string()))
+        self.wire.persistent.contains(&(key, sub_id.to_string()))
     }
 
     pub(crate) fn start(&mut self) {
-        if self.started_at.is_none() {
-            self.started_at = Some(Instant::now());
+        if self.timing.started_at.is_none() {
+            self.timing.started_at = Some(Instant::now());
         }
         self.changed_since_emit = true;
         self.log("starting role-aware nmp demo slice");

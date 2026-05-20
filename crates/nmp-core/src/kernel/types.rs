@@ -348,6 +348,64 @@ pub(super) struct DiagnosticFirehoseState {
     pub(super) events: u64,
 }
 
+// ── Kernel sub-state groupings (phase 2 god-struct decomposition) ─────────────
+//
+// These continue the mechanical grouping started by `AuthorViewState` /
+// `ThreadViewState` / `DiagnosticFirehoseState`: cohesive Kernel field clusters
+// collapsed into named locatable units. Pure data — no behaviour of their own.
+
+/// Profile-fetch request tracking: the in-flight / queued sets plus the
+/// monotonic REQ-id sequence. Grouped because the three fields are always
+/// mutated together by the `requests/profile.rs` claim/request paths
+/// (`claim_profile`, `pending_profile_claim_requests`, `profile_claim_request`,
+/// `author_requests`) and read together by the `status.rs` profile diagnostics.
+#[derive(Default)]
+pub(super) struct ProfileRequestState {
+    /// Pubkeys whose kind:0 has been REQ'd (inflight or completed). A pubkey in
+    /// this set is never re-requested.
+    pub(super) requested: HashSet<String>,
+    /// Pubkeys with an active claim but no kind:0 fetched yet because no
+    /// indexer relay was connected when the claim arrived. Drained by
+    /// `pending_profile_claim_requests` once a relay connects.
+    pub(super) pending: BTreeSet<String>,
+    /// Monotonic counter feeding unique `profile-*` REQ sub-ids.
+    pub(super) req_seq: u64,
+}
+
+/// FFI diagnostic timing milestones — `Option<Instant>` markers stamped once at
+/// the first occurrence of each lifecycle event. Read as a unit by the
+/// `update.rs` metrics assembly (via `elapsed_ms`) and `status.rs`. `None` until
+/// the corresponding event happens.
+#[derive(Default)]
+pub(super) struct TimingMilestones {
+    /// When `Kernel::start` first ran.
+    pub(super) started_at: Option<Instant>,
+    /// Most recent ingested event (drives `last_event_to_emit_ms`).
+    pub(super) last_event_at: Option<Instant>,
+    /// First ingested event ever.
+    pub(super) first_event_at: Option<Instant>,
+    /// When the target profile's kind:0 first loaded.
+    pub(super) target_profile_loaded_at: Option<Instant>,
+    /// When the timeline view was first opened.
+    pub(super) timeline_opened_at: Option<Instant>,
+    /// When the first timeline item was rendered.
+    pub(super) timeline_first_item_at: Option<Instant>,
+}
+
+/// Wire (WebSocket) subscription bookkeeping. `subs` is the per-`(relay_url,
+/// sub_id)` registry; `persistent` is the set of `(relay_url, sub_id)` pairs
+/// that must survive EOSE (NWC-style long-lived listeners). Grouped because the
+/// EOSE/CLOSED handlers in `ingest/mod.rs` and the REQ paths in `requests/`
+/// touch both in lockstep — see the `wire_subs` field doc on `Kernel` for the
+/// #170 relay-scoped-keying rationale.
+#[derive(Default)]
+pub(super) struct WireSubscriptionState {
+    /// Wire-sub bookkeeping keyed by `(relay_url, sub_id)`.
+    pub(super) subs: HashMap<(CanonicalRelayUrl, String), WireSub>,
+    /// `(relay_url, sub_id)` pairs pinned open across EOSE.
+    pub(super) persistent: HashSet<(CanonicalRelayUrl, String)>,
+}
+
 // ── Metrics snapshot ──────────────────────────────────────────────────────────
 #[derive(Clone, Debug, Serialize)]
 pub(super) struct Metrics {

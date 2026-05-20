@@ -125,8 +125,8 @@ impl Kernel {
         self.changed_since_emit = true;
 
         if self.profiles.contains_key(&pubkey)
-            || self.requested_profiles.contains(&pubkey)
-            || self.pending_profiles.contains(&pubkey)
+            || self.profile_requests.requested.contains(&pubkey)
+            || self.profile_requests.pending.contains(&pubkey)
         {
             return Vec::new();
         }
@@ -134,7 +134,7 @@ impl Kernel {
         if can_send {
             self.profile_claim_request(pubkey)
         } else {
-            self.pending_profiles.insert(pubkey);
+            self.profile_requests.pending.insert(pubkey);
             self.log("profile claim queued until indexer connects");
             Vec::new()
         }
@@ -154,7 +154,7 @@ impl Kernel {
         }
         if remove_claim {
             self.profile_claims.remove(pubkey);
-            self.pending_profiles.remove(pubkey);
+            self.profile_requests.pending.remove(pubkey);
         }
         self.changed_since_emit = true;
         self.log(format!(
@@ -231,19 +231,21 @@ impl Kernel {
     pub(crate) fn pending_profile_claim_requests(&mut self) -> Vec<OutboundMessage> {
         // Collect valid pending authors: have an active claim, not already fetched/inflight.
         let authors: Vec<String> = self
-            .pending_profiles
+            .profile_requests
+            .pending
             .iter()
             .filter(|pk| {
                 self.profile_claims.contains_key(*pk)
                     && !self.profiles.contains_key(*pk)
-                    && !self.requested_profiles.contains(*pk)
+                    && !self.profile_requests.requested.contains(*pk)
             })
             .cloned()
             .collect();
 
         if authors.is_empty() {
             // Evict any pending that have no active claim (consumer released before relay connected).
-            self.pending_profiles
+            self.profile_requests
+                .pending
                 .retain(|pk| self.profile_claims.contains_key(pk));
             return Vec::new();
         }
@@ -259,13 +261,13 @@ impl Kernel {
 
         // Mark all as requested and remove from pending.
         for author in &authors {
-            self.pending_profiles.remove(author);
-            self.requested_profiles.insert(author.clone());
+            self.profile_requests.pending.remove(author);
+            self.profile_requests.requested.insert(author.clone());
         }
 
         // One batched REQ per relay with all authors in a single `authors` array.
-        self.profile_req_seq = self.profile_req_seq.saturating_add(1);
-        let seq = self.profile_req_seq;
+        self.profile_requests.req_seq = self.profile_requests.req_seq.saturating_add(1);
+        let seq = self.profile_requests.req_seq;
         let mut requests = Vec::new();
         for (relay_url, relay_authors) in by_relay {
             let tag = relay_tag(&relay_url);
@@ -282,12 +284,14 @@ impl Kernel {
     }
 
     pub(crate) fn profile_claim_request(&mut self, pubkey: String) -> Vec<OutboundMessage> {
-        self.pending_profiles.remove(&pubkey);
-        if self.profiles.contains_key(&pubkey) || !self.requested_profiles.insert(pubkey.clone()) {
+        self.profile_requests.pending.remove(&pubkey);
+        if self.profiles.contains_key(&pubkey)
+            || !self.profile_requests.requested.insert(pubkey.clone())
+        {
             return Vec::new();
         }
-        self.profile_req_seq = self.profile_req_seq.saturating_add(1);
-        let seq = self.profile_req_seq;
+        self.profile_requests.req_seq = self.profile_requests.req_seq.saturating_add(1);
+        let seq = self.profile_requests.req_seq;
         // T105: kind:0 is a discovery fetch. Cold-start → INDEXER relay only
         // (purplepag.es). NIP-65 known → declared write relays (the author
         // published kind:0 there). Never send to the content relay (damus.io).
@@ -318,7 +322,7 @@ impl Kernel {
 
         self.author_view.request_pending = false;
         self.author_view.seq = self.author_view.seq.saturating_add(1);
-        self.requested_profiles.insert(pubkey.clone());
+        self.profile_requests.requested.insert(pubkey.clone());
         let seq = self.author_view.seq;
 
         // T105: kind:10002 + kind:0 are discovery fetches — the author's own
