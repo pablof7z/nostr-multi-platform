@@ -42,8 +42,11 @@ pub fn run(session: &mut Session, name: Option<String>, relays: Vec<String>) -> 
     let relay_tags: Vec<Tag> = session
         .app_relays
         .iter()
-        .map(|u| Tag::parse(["r", u, "write"]).unwrap())
-        .collect();
+        .map(|u| {
+            Tag::parse(["r", u, "write"])
+                .map_err(|e| ReplError::Other(format!("invalid relay url '{u}': {e}")))
+        })
+        .collect::<Result<Vec<_>>>()?;
     let kind10002 = EventBuilder::new(Kind::RelayList, "")
         .tags(relay_tags)
         .sign_with_keys(&keys)
