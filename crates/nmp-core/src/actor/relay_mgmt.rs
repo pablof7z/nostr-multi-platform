@@ -178,7 +178,7 @@ pub(super) fn send_all_outbound(
 pub(super) fn route_dispatch_outbound(
     running: bool,
     queued_publish_outbound: &mut Vec<OutboundMessage>,
-    relay_controls: &mut HashMap<String, RelayControl>,
+    relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
     relay_tx: &Sender<RelayEvent>,
     kernel: &mut Kernel,
     next_relay_generation: &mut u64,

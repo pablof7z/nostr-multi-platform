@@ -9,7 +9,7 @@ use super::commands::{create_account, publish_signed_event, IdentityRuntime};
 use super::relay_mgmt::{close_relays, route_dispatch_outbound};
 use super::RelayControl;
 use crate::kernel::Kernel;
-use crate::relay::{OutboundMessage, RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole, DEFAULT_VISIBLE_LIMIT};
 use crate::relay_worker::RelayEvent;
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
@@ -40,7 +40,7 @@ fn publish_message(relay_url: &str, event_id: &str) -> OutboundMessage {
 fn route_state() -> (
     Kernel,
     mpsc::Sender<RelayEvent>,
-    HashMap<String, RelayControl>,
+    HashMap<CanonicalRelayUrl, RelayControl>,
     u64,
 ) {
     let (relay_tx, _relay_rx) = mpsc::channel::<RelayEvent>();
@@ -70,7 +70,7 @@ fn explicit_publish_target_spawns_worker_for_unseen_relay() {
     );
 
     assert!(
-        relay_controls.contains_key(CANONICAL_UNSEEN_RELAY),
+        relay_controls.contains_key(&CanonicalRelayUrl::parse_or_raw(CANONICAL_UNSEEN_RELAY)),
         "explicit publish target must spawn a worker for its relay URL"
     );
     assert!(queued_publish_outbound.is_empty());
@@ -96,7 +96,7 @@ fn create_account_publish_targets_spawn_workers_for_unseen_relays() {
     );
 
     assert!(
-        relay_controls.contains_key(CANONICAL_UNSEEN_RELAY),
+        relay_controls.contains_key(&CanonicalRelayUrl::parse_or_raw(CANONICAL_UNSEEN_RELAY)),
         "CreateAccount cold-start publish output must spawn a worker for declared relays"
     );
     assert!(queued_publish_outbound.is_empty());
@@ -143,7 +143,7 @@ fn stopped_actor_queues_publish_frames_until_running() {
         "queued publish frame must flush once the actor is running"
     );
     assert!(
-        relay_controls.contains_key(CANONICAL_UNSEEN_RELAY),
+        relay_controls.contains_key(&CanonicalRelayUrl::parse_or_raw(CANONICAL_UNSEEN_RELAY)),
         "flushed publish frame must spawn a worker for its relay URL"
     );
     close_relays(&mut relay_controls, &mut HashSet::new(), &mut kernel);
