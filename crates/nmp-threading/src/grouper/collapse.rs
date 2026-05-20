@@ -40,7 +40,7 @@ impl<R: ParentResolver> Grouper<R> {
                     root,
                 } = self.blocks.remove(i)
                 else {
-                    unreachable!()
+                    unreachable!() // doctrine-allow: D6 — let-else: merge is only set when blocks[i] is Module
                 };
                 let TimelineBlock::Module {
                     events: mut older_events,
@@ -48,7 +48,7 @@ impl<R: ParentResolver> Grouper<R> {
                     ..
                 } = self.blocks.remove(i)
                 else {
-                    unreachable!()
+                    unreachable!() // doctrine-allow: D6 — let-else: merge is only set when blocks[i+1] is Module
                 };
                 older_events.extend(newer_events);
                 self.blocks.insert(
