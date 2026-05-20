@@ -13,8 +13,7 @@
 //!
 //! That is a degraded re-emergence of the exact bug T140-FF fixed (the
 //! follow-feed dies after first EOSE). The fix keys both maps by
-//! `(relay_url, sub_id)`, matching the `plan_diff` precedent (#161) and the
-//! `LifecycleGate.known_subs` precedent (#166).
+//! `(relay_url, sub_id)`, matching the `plan_diff` precedent (#161).
 //!
 //! These tests MUST FAIL before the keying fix and MUST PASS after.
 

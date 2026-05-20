@@ -6,10 +6,8 @@
 //! 2. `plan_diff_closes_removed_subs_and_opens_added_subs`
 //! 3. `reconnect_replays_current_plan_without_recompile`
 //! 4. `trigger_inbox_coalesces_within_one_tick`
-//! 5. `oneshot_lifecycle_closes_on_eose`
-//! 6. `bounded_time_lifecycle_closes_at_deadline`
-//! 7. `send_path_defers_outbound_when_pool_disconnected`
-//! 8. `auth_paused_relay_holds_reqs_until_authenticated`
+//! 5. `send_path_defers_outbound_when_pool_disconnected`
+//! 6. `auth_paused_relay_holds_reqs_until_authenticated`
 //!
 //! Design: `docs/design/subscription-compilation/recompilation.md` §4.
 //! Doctrine: D3 (routing automatic), D4 (single-writer registry), D6 (errors
@@ -257,65 +255,7 @@ fn trigger_inbox_coalesces_within_one_tick() {
     );
 }
 
-// ─── Test 5 — OneShot lifecycle ──────────────────────────────────────────────
-
-#[test]
-fn oneshot_lifecycle_closes_on_eose() {
-    let mut lifecycle = SubscriptionLifecycle::new();
-    lifecycle.registry_mut().push(interest(1, &["alice"], InterestLifecycle::OneShot));
-    let mailboxes = cache_with("alice", &["wss://relay.damus.io"]);
-
-    let initial = lifecycle.recompile_and_diff(&mailboxes).expect("compile");
-    let opened_sub_id = initial
-        .iter()
-        .find_map(|f| match f {
-            WireFrame::Req { sub_id, .. } => Some(sub_id.clone()),
-            _ => None,
-        })
-        .expect("at least one REQ opened");
-
-    // EOSE arrives for the OneShot sub.
-    let on_eose = lifecycle.handle_eose("wss://relay.damus.io", &opened_sub_id);
-
-    let close_count = on_eose.iter().filter(|f| matches!(f, WireFrame::Close { .. })).count();
-    assert_eq!(close_count, 1, "OneShot EOSE produces one CLOSE");
-    // Tailing would produce zero CLOSEs — verify the lifecycle gate is real.
-}
-
-// ─── Test 6 — BoundedTime lifecycle ──────────────────────────────────────────
-
-#[test]
-fn bounded_time_lifecycle_closes_at_deadline() {
-    let mut lifecycle = SubscriptionLifecycle::new();
-    // until_ms in the past — already expired.
-    lifecycle.registry_mut().push(interest(
-        1,
-        &["alice"],
-        InterestLifecycle::BoundedTime { until_ms: 0 },
-    ));
-    let mailboxes = cache_with("alice", &["wss://relay.damus.io"]);
-
-    let initial = lifecycle.recompile_and_diff(&mailboxes).expect("compile");
-    let opened: Vec<_> = initial
-        .iter()
-        .filter_map(|f| match f {
-            WireFrame::Req { sub_id, .. } => Some(sub_id.clone()),
-            _ => None,
-        })
-        .collect();
-    assert!(!opened.is_empty(), "initial REQ opens despite past deadline");
-
-    // Tick with current wall-clock now (any positive ms > 0 expires the deadline).
-    let on_tick = lifecycle.tick_deadlines(1_000_000_000_000);
-
-    let close_count = on_tick.iter().filter(|f| matches!(f, WireFrame::Close { .. })).count();
-    assert_eq!(
-        close_count, opened.len(),
-        "all expired BoundedTime subs CLOSE on deadline tick",
-    );
-}
-
-// ─── Test 7 — send-path defer-on-disconnect ──────────────────────────────────
+// ─── Test 5 — send-path defer-on-disconnect ──────────────────────────────────
 
 #[test]
 fn send_path_defers_outbound_when_pool_disconnected() {
@@ -342,7 +282,7 @@ fn send_path_defers_outbound_when_pool_disconnected() {
     );
 }
 
-// ─── Test 8 — auth-paused gate (A9) ──────────────────────────────────────────
+// ─── Test 6 — auth-paused gate (A9) ──────────────────────────────────────────
 
 #[test]
 fn auth_paused_relay_holds_reqs_until_authenticated() {

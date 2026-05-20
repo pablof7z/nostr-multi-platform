@@ -47,20 +47,6 @@ fn tailing_interest(id: u64, authors: &[&str]) -> LogicalInterest {
     }
 }
 
-fn oneshot_interest(id: u64, authors: &[&str]) -> LogicalInterest {
-    LogicalInterest {
-        id: InterestId(id),
-        scope: InterestScope::Global,
-        shape: InterestShape {
-            authors: authors.iter().map(|a| pubkey(a)).collect(),
-            kinds: [1u32].into_iter().collect(),
-            ..Default::default()
-        },
-        hints: vec![],
-        lifecycle: InterestLifecycle::OneShot,
-    }
-}
-
 // ── C5 ────────────────────────────────────────────────────────────────────────
 
 /// C5: Kind:3 auto-tracking: when the active account's follow list changes
@@ -139,18 +125,17 @@ fn c5_kind3_change_recompiles_follow_dependent_subs() {
 
 // ── C8 ────────────────────────────────────────────────────────────────────────
 
-/// C8: Subscriptions auto-dedup, auto-coalesce, auto-close, and auto-buffer.
+/// C8: Subscriptions auto-dedup, auto-coalesce, and auto-buffer.
 ///
-/// Four sub-properties verified against `SubscriptionLifecycle`:
+/// Three sub-properties verified against `SubscriptionLifecycle`:
 ///
 /// 1. **Coalesce** — N triggers between ticks produce exactly 1 compile.
-/// 2. **Auto-close (OneShot)** — a OneShot sub closes after its first EOSE.
-/// 3. **Empty-tick no-op** — an empty trigger inbox does not compile.
-/// 4. **Auth-buffer** — REQs targeting auth-paused relays are held pending auth.
+/// 2. **Empty-tick no-op** — an empty trigger inbox does not compile.
+/// 3. **Auth-buffer** — REQs targeting auth-paused relays are held pending auth.
 ///
 /// Design: `docs/design/framework-magic/subs.md`
 #[test]
-fn c8_subscriptions_coalesce_autoclose_and_buffer() {
+fn c8_subscriptions_coalesce_and_buffer() {
     // --- 1. Coalesce: 3 triggers → 1 compile --------------------------------
     let mut lc = SubscriptionLifecycle::new();
     let mut mailboxes = InMemoryMailboxCache::new();
@@ -170,34 +155,7 @@ fn c8_subscriptions_coalesce_autoclose_and_buffer() {
     assert!(frames_empty.is_empty(), "empty tick must emit no frames");
     assert_eq!(lc.compile_count(), 1, "empty tick must not compile");
 
-    // --- 3. Auto-close (OneShot) on EOSE ------------------------------------
-    let mut lc2 = SubscriptionLifecycle::new();
-    let mut mailboxes2 = InMemoryMailboxCache::new();
-    put_mailbox(&mut mailboxes2, "carol", &["wss://rc/"]);
-    lc2.registry_mut().push(oneshot_interest(10, &["carol"]));
-
-    let open_frames = lc2.recompile_and_diff(&mailboxes2).expect("oneshot open");
-    // Exactly one REQ must be emitted.
-    let req: Vec<_> = open_frames
-        .iter()
-        .filter_map(|f| if let WireFrame::Req { relay_url, sub_id, .. } = f {
-            Some((relay_url.clone(), sub_id.clone()))
-        } else {
-            None
-        })
-        .collect();
-    assert_eq!(req.len(), 1, "oneshot interest must emit exactly 1 REQ");
-    let (req_relay, req_sub) = &req[0];
-
-    // EOSE arrives — lifecycle_gate must emit a CLOSE.
-    let close_frames = lc2.handle_eose(req_relay, req_sub);
-    let closes: Vec<_> = close_frames
-        .iter()
-        .filter(|f| matches!(f, WireFrame::Close { .. }))
-        .collect();
-    assert!(!closes.is_empty(), "EOSE on a OneShot sub must emit a CLOSE frame");
-
-    // --- 4. Auth-buffer: REQs held while relay is auth-paused --------------
+    // --- 3. Auth-buffer: REQs held while relay is auth-paused --------------
     let mut lc3 = SubscriptionLifecycle::new();
     let mut mailboxes3 = InMemoryMailboxCache::new();
     put_mailbox(&mut mailboxes3, "dave", &["wss://rd/"]);

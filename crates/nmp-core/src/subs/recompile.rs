@@ -97,10 +97,6 @@ impl SubscriptionLifecycle {
         let prior = self.current_plan.as_ref();
         let raw_frames = plan_diff(prior, Some(&plan), &interests);
 
-        // Update lifecycle bookkeeping BEFORE auth partition, so REQs held
-        // back for auth are still considered "known" once they fire after
-        // Authenticated drains the buffer.
-        self.lifecycle_gate.observe_diff(&raw_frames);
         self.current_plan = Some(plan);
 
         let mut frames = self.auth_gate.partition(raw_frames);

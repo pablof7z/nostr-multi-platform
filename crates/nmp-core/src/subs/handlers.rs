@@ -133,17 +133,6 @@ impl SubscriptionLifecycle {
         frames
     }
 
-    /// EOSE handler — closes OneShot subs, no-op for Tailing / BoundedTime.
-    pub fn handle_eose(&mut self, relay_url: &str, sub_id: &str) -> Vec<WireFrame> {
-        self.lifecycle_gate.on_eose(relay_url, sub_id)
-    }
-
-    /// Per-tick deadline check — closes BoundedTime subs whose `until_ms` has
-    /// passed `now_ms`.
-    pub fn tick_deadlines(&mut self, now_ms: u64) -> Vec<WireFrame> {
-        self.lifecycle_gate.tick_deadlines(now_ms)
-    }
-
     /// A9 — auth state transitioned. On `Authenticated`, flush any pending
     /// REQs held for that relay; on `ChallengeReceived`/`Authenticating`,
     /// future REQs for the relay will be diverted to the pending buffer.

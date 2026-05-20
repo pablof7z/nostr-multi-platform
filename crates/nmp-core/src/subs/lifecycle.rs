@@ -11,7 +11,6 @@ use crate::planner::RelayUrl;
 
 use super::auth_gate::AuthGate;
 use super::inbox::TriggerInbox;
-use super::lifecycle_gate::LifecycleGate;
 use super::trigger::CompileTrigger;
 use super::{
     InterestRegistry, PlanCoverageHook, SubscriptionLifecycle, WatermarkFn,
@@ -46,7 +45,6 @@ impl SubscriptionLifecycle {
             app_relays: Vec::new(),
             active_account_read_relays: Vec::new(),
             current_plan: None,
-            lifecycle_gate: LifecycleGate::new(),
             auth_gate: AuthGate::new(),
             compile_count: 0,
             coverage_hook: None,

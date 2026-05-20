@@ -38,7 +38,6 @@
 
 pub(crate) mod auth_gate;
 pub(crate) mod inbox;
-pub(crate) mod lifecycle_gate;
 pub(crate) mod oneshot;
 pub(crate) mod pool;
 pub(crate) mod registry;
@@ -64,7 +63,6 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use auth_gate::AuthGate;
-use lifecycle_gate::LifecycleGate;
 
 use crate::planner::{CompiledPlan, InterestShape, RelayUrl};
 
@@ -164,11 +162,10 @@ const MAILBOX_PROBE_BATCH: usize = 500;
 
 /// The top-level subscription lifecycle controller.
 ///
-/// Owns the registry, trigger inbox, last-compiled plan, the lifecycle gate
-/// (OneShot / BoundedTime CLOSE bookkeeping), and the auth gate (REQs to
-/// auth-paused relays held in a pending buffer). Drives recompiles when
-/// ticked; emits `WireFrame`s for the actor to push through the connection
-/// pool.
+/// Owns the registry, trigger inbox, last-compiled plan, and the auth gate
+/// (REQs to auth-paused relays held in a pending buffer). Drives recompiles
+/// when ticked; emits `WireFrame`s for the actor to push through the
+/// connection pool.
 ///
 /// **Per-tick discipline (D8):** N triggers in the inbox between two
 /// `drain_tick()` calls produce at most one compile. An empty inbox tick
@@ -195,8 +192,6 @@ pub struct SubscriptionLifecycle {
     active_account_read_relays: Vec<RelayUrl>,
     /// The plan currently believed-to-be-live on the wire.
     current_plan: Option<CompiledPlan>,
-    /// Per-sub lifecycle bookkeeping (OneShot, BoundedTime).
-    lifecycle_gate: LifecycleGate,
     /// Per-relay auth state + pending REQ buffer.
     auth_gate: AuthGate,
     /// Monotonic compile counter for test assertions.

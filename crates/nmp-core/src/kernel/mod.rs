@@ -254,7 +254,7 @@ pub(crate) struct Kernel {
     /// one filter (NIP-01 §1 sub ids are per-connection; `subs/wire.rs`). A
     /// `sub_id`-only key let the second relay's REQ clobber the first's row
     /// and a CLOSE for one relay evict a still-live sibling. Same precedent
-    /// as `plan_diff` (#161) and `LifecycleGate.known_subs` (#166).
+    /// as `plan_diff` (#161).
     wire_subs: HashMap<(String, String), WireSub>,
     /// `(relay_url, sub_id)` pairs that must survive EOSE (the kernel's
     /// default policy is to auto-CLOSE any non-seed/non-firehose sub on
