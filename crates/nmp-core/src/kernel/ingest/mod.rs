@@ -22,6 +22,23 @@ fn event_short_id(id: &str) -> &str {
     &id[..id.len().min(16)]
 }
 
+/// Project a wire-parsed [`NostrEvent`] into the store's [`crate::store::RawEvent`].
+///
+/// The signed-event tap, `verify_and_persist`, and `ingest_timeline_event`
+/// each need an identical `RawEvent` to feed `VerifiedEvent::try_from_raw` —
+/// this is the single construction site so the field list never drifts.
+fn raw_event_from_nostr(event: &NostrEvent) -> crate::store::RawEvent {
+    crate::store::RawEvent {
+        id: event.id.clone(),
+        pubkey: event.pubkey.clone(),
+        created_at: event.created_at,
+        kind: event.kind,
+        tags: event.tags.clone(),
+        content: event.content.clone(),
+        sig: event.sig.clone(),
+    }
+}
+
 impl Kernel {
     pub(crate) fn handle_message(
         &mut self,
@@ -68,6 +85,18 @@ impl Kernel {
         relay_url: &str,
         text: &str,
     ) -> Vec<OutboundMessage> {
+        // T-relay-url-normalize: canonicalize the delivering URL once so every
+        // downstream `wire_subs` / `persistent_subs` key matches the canonical
+        // form the planner boundary (`register_planner_wire_frames`) and the
+        // transport pool (`relay_mgmt.rs`) both write. In production the
+        // transport worker already stamps the canonical key on every
+        // `RelayEvent`, so this is a no-op there; it normalizes non-canonical
+        // inputs (tests, or a future caller) so the EOSE keep-live lookup and
+        // the wire-sub eviction never miss on a trailing-slash / case
+        // mismatch. Falls back to the raw string for non-ws/wss inputs.
+        let canonical_relay = crate::relay::canonical_relay_url(relay_url)
+            .unwrap_or_else(|| relay_url.to_string());
+        let relay_url = canonical_relay.as_str();
         let Ok(value) = serde_json::from_str::<Value>(text) else {
             self.log(format!("unparseable relay frame: {}", truncate(text, 120)));
             return Vec::new();
@@ -317,15 +346,7 @@ impl Kernel {
         // this a fully additive tap that does not touch projection / subs
         // / per-kind handlers (a single-verify refactor is future work).
         if !self.raw_event_observers_idle_for_kind(event.kind) {
-            let raw = crate::store::RawEvent {
-                id: event.id.clone(),
-                pubkey: event.pubkey.clone(),
-                created_at: event.created_at,
-                kind: event.kind,
-                tags: event.tags.clone(),
-                content: event.content.clone(),
-                sig: event.sig.clone(),
-            };
+            let raw = raw_event_from_nostr(&event);
             match crate::store::VerifiedEvent::try_from_raw(raw) {
                 Ok(verified) => self.notify_raw_event_observers(verified.raw()),
                 Err(e) => self.log(format!(
@@ -395,16 +416,7 @@ impl Kernel {
         relay_url: &str,
         event: &NostrEvent,
     ) -> Option<crate::store::InsertOutcome> {
-        let raw = crate::store::RawEvent {
-            id: event.id.clone(),
-            pubkey: event.pubkey.clone(),
-            created_at: event.created_at,
-            kind: event.kind,
-            tags: event.tags.clone(),
-            content: event.content.clone(),
-            sig: event.sig.clone(),
-        };
-        let verified = match crate::store::VerifiedEvent::try_from_raw(raw) {
+        let verified = match crate::store::VerifiedEvent::try_from_raw(raw_event_from_nostr(event)) {
             Ok(v) => v,
             Err(e) => {
                 self.log(format!(
@@ -418,16 +430,10 @@ impl Kernel {
         // not the lane's bootstrap URL. The relay_count derived from store
         // sources is now correct across the URL-keyed transport pool.
         let provenance = relay_url.to_string();
-        // Clock seam (kernel/clock.rs): `received_at_ms` is reducer output
-        // (written into the EventStore), so it reads the injected `Clock`
-        // rather than `SystemTime::now()` for deterministic replay.
-        let received_at_ms = self
-            .clock
-            .now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
-        match self.store.insert(verified, &provenance, received_at_ms) {
+        match self
+            .store
+            .insert(verified, &provenance, self.ingest_received_at_ms())
+        {
             Ok(outcome) => Some(outcome),
             Err(e) => {
                 self.log(format!(
@@ -437,5 +443,19 @@ impl Kernel {
                 None
             }
         }
+    }
+
+    /// Wall-clock arrival timestamp (unix millis) for a store insert.
+    ///
+    /// Clock seam (kernel/clock.rs): `received_at_ms` is reducer output —
+    /// it is written into the `EventStore` — so it MUST read the injected
+    /// `Clock` rather than `SystemTime::now()` directly, otherwise
+    /// deterministic replay diverges (D9: the kernel owns time).
+    pub(in crate::kernel) fn ingest_received_at_ms(&self) -> u64 {
+        self.clock
+            .now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0)
     }
 }

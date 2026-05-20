@@ -4,7 +4,7 @@
 //! queue management, and the seed-timeline open gate.
 
 use super::super::*;
-use super::event_short_id;
+use super::{event_short_id, raw_event_from_nostr};
 
 impl Kernel {
     /// Ingest a kind:1 or kind:6 event into the local read-cache and timeline.
@@ -26,16 +26,7 @@ impl Kernel {
         }
 
         // D4: route through EventStore for ALL deliveries, including duplicates.
-        let raw = crate::store::RawEvent {
-            id: event.id.clone(),
-            pubkey: event.pubkey.clone(),
-            created_at: event.created_at,
-            kind: event.kind,
-            tags: event.tags.clone(),
-            content: event.content.clone(),
-            sig: event.sig.clone(),
-        };
-        let verified = match crate::store::VerifiedEvent::try_from_raw(raw) {
+        let verified = match crate::store::VerifiedEvent::try_from_raw(raw_event_from_nostr(&event)) {
             Ok(v) => v,
             Err(e) => {
                 self.log(format!(
@@ -48,15 +39,9 @@ impl Kernel {
         // T105: provenance is the resolved per-author write relay the EVENT
         // actually arrived on, not the lane's bootstrap URL.
         let provenance = relay_url.to_string();
-        // Clock seam (kernel/clock.rs): `received_at_ms` is written into the
-        // EventStore, so it is reducer output — read the injected `Clock`
-        // instead of `SystemTime::now()` for deterministic replay.
-        let received_at_ms = self
-            .clock
-            .now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
+        // Clock seam: `received_at_ms` reads the injected `Clock` via the
+        // shared `ingest_received_at_ms` helper (D9 — kernel owns time).
+        let received_at_ms = self.ingest_received_at_ms();
 
         let proceed = match self.store.insert(verified, &provenance, received_at_ms) {
             Ok(outcome) => {

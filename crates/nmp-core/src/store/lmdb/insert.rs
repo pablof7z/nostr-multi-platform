@@ -141,7 +141,6 @@ pub(super) fn insert(
                 provenance::delete(inner.provenance, &mut txn, &replaced_id)?;
                 InsertOutcome::Replaced { new_id: id_bytes, replaced_id }
             } else {
-                let _ = count; // (semi-)unused for Inserted variant; kept for symmetry.
                 InsertOutcome::Inserted { id: id_bytes, sources_after: count }
             }
         }
