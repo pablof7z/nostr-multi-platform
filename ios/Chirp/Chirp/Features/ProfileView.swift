@@ -53,17 +53,6 @@ struct ProfileView: View {
                 model.publishProfile(name: name, about: about, picture: picture)
             }
         }
-        .toolbar {
-            ToolbarItemGroup(placement: .navigationBarTrailing) {
-                if let primaryAction {
-                    Button {
-                        performProfileAction(primaryAction)
-                    } label: {
-                        Label(primaryAction.label, systemImage: iconName(for: primaryAction))
-                    }
-                }
-            }
-        }
     }
 
     // MARK: – Header
@@ -81,6 +70,17 @@ struct ProfileView: View {
                 .padding(.leading, 16)
 
                 Spacer()
+
+                if let primaryAction {
+                    Button {
+                        performProfileAction(primaryAction)
+                    } label: {
+                        Label(primaryAction.label, systemImage: iconName(for: primaryAction))
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .buttonStyle(ChirpGlassButtonStyle(prominent: primaryAction.kind == "follow"))
+                    .padding(.trailing, 16)
+                }
             }
             .padding(.top, 16)
 

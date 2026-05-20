@@ -9,12 +9,12 @@ struct SearchView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: ChirpSpace.l) {
                 openEntityCard
-                searchComingCard
+                searchStatusCard
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
+            .padding(.horizontal, ChirpSpace.l)
+            .padding(.top, ChirpSpace.m)
         }
         .chirpScreenBackground()
         .navigationTitle("Search")
@@ -24,16 +24,17 @@ struct SearchView: View {
 
     private var openEntityCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Open by ID")
-                .font(.caption)
+            Text("Open exact Nostr ID")
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
+                .textCase(.uppercase)
 
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
                     Image(systemName: "number")
                         .foregroundStyle(hexValid ? Color.accentColor : .secondary)
 
-                    TextField("64-character hex pubkey or event ID", text: $query)
+                    TextField("64-character pubkey or note ID", text: $query)
                         .font(.footnote.monospaced())
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
@@ -48,8 +49,11 @@ struct SearchView: View {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundStyle(.secondary)
                         }
+                        .accessibilityLabel("Clear ID")
                     }
                 }
+                .padding(ChirpSpace.m)
+                .chirpSurface(cornerRadius: ChirpSpace.radiusSmall)
 
                 if !query.isEmpty && !hexValid {
                     HStack(spacing: 4) {
@@ -60,36 +64,29 @@ struct SearchView: View {
                     .foregroundStyle(.red)
                 }
 
-                Button {
-                    guard hexValid else { return }
-                    model.openAuthor(pubkey: query)
-                    router.push(.profile(pubkey: query))
-                    fieldFocused = false
-                } label: {
-                    Label("Open Profile", systemImage: "person.circle")
-                }
-                .disabled(!hexValid)
+                ViewThatFits {
+                    HStack(spacing: ChirpSpace.m) {
+                        openProfileButton
+                        openThreadButton
+                    }
 
-                Button {
-                    guard hexValid else { return }
-                    model.openThread(eventID: query)
-                    router.push(.thread(eventID: query))
-                    fieldFocused = false
-                } label: {
-                    Label("Open Thread", systemImage: "bubble.left.and.bubble.right")
+                    VStack(spacing: ChirpSpace.s) {
+                        openProfileButton
+                        openThreadButton
+                    }
                 }
-                .disabled(!hexValid)
             }
         }
         .padding(ChirpSpace.l)
         .chirpGlass(cornerRadius: ChirpSpace.radius)
     }
 
-    private var searchComingCard: some View {
+    private var searchStatusCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Full-text Search")
-                .font(.caption)
+            Text("Discovery")
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
+                .textCase(.uppercase)
 
             HStack(spacing: 12) {
                 Image(systemName: "magnifyingglass.circle")
@@ -97,27 +94,56 @@ struct SearchView: View {
                     .foregroundStyle(Color.accentColor)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Full Search")
+                    Text("Search is being wired to Rust")
                         .font(.headline)
-                    Text("Keyword and hashtag search across Nostr")
+                    Text("Exact IDs work today. Keyword, hashtag, and profile discovery will appear here once the kernel projects search results.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 8) {
-                featureLine(icon: "doc.text.magnifyingglass", label: "NIP-50 relay-backed full-text search")
-                featureLine(icon: "number", label: "Hashtag discovery and trending topics")
-                featureLine(icon: "person.2.wave.2", label: "People search by name or NIP-05")
+                featureLine(icon: "person.crop.circle.badge.questionmark", label: "Names and NIP-05 profiles")
+                featureLine(icon: "number", label: "Hashtags and topics")
+                featureLine(icon: "doc.text.magnifyingglass", label: "Relay-backed note search")
             }
         }
         .padding(ChirpSpace.l)
-        .chirpGlass(cornerRadius: ChirpSpace.radius)
+        .chirpSurface(cornerRadius: ChirpSpace.radius)
     }
 
     private var hexValid: Bool {
         query.count == 64 && query.allSatisfy(\.isHexDigit)
+    }
+
+    private var openProfileButton: some View {
+        Button {
+            guard hexValid else { return }
+            model.openAuthor(pubkey: query)
+            router.push(.profile(pubkey: query))
+            fieldFocused = false
+        } label: {
+            Label("Open Profile", systemImage: "person.circle")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(ChirpGlassButtonStyle())
+        .disabled(!hexValid)
+    }
+
+    private var openThreadButton: some View {
+        Button {
+            guard hexValid else { return }
+            model.openThread(eventID: query)
+            router.push(.thread(eventID: query))
+            fieldFocused = false
+        } label: {
+            Label("Open Thread", systemImage: "bubble.left.and.bubble.right")
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(ChirpGlassButtonStyle())
+        .disabled(!hexValid)
     }
 
     private func featureLine(icon: String, label: String) -> some View {
