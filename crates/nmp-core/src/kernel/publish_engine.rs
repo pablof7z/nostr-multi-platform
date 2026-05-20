@@ -122,7 +122,7 @@ impl Kernel {
         let kind = signed.unsigned.kind;
         match self.publish_engine.start_publish(action, now_ms) {
             Ok(()) => {
-                self.record_local_profile_intent(signed);
+                self.record_local_publish_intent(signed);
                 let frames = self.drain_publish_engine_frames(&event_id, kind);
                 // Synchronous dispatchers (e.g. some test fixtures) can settle
                 // a publish inside `start_publish` itself by returning OK acks
@@ -430,22 +430,6 @@ impl Kernel {
         // any field change; setting again here is redundant but documents the
         // intent (terminal transitions are always snapshot-worthy).
         self.changed_since_emit = true;
-    }
-
-    fn record_local_profile_intent(&mut self, signed: &SignedEvent) {
-        let Some(profile) = super::nostr::parse_profile_intent(signed) else {
-            return;
-        };
-        let should_replace = self
-            .local_profile_intents
-            .get(&signed.unsigned.pubkey)
-            .map(|existing| existing.created_at <= profile.created_at)
-            .unwrap_or(true);
-        if should_replace {
-            self.local_profile_intents
-                .insert(signed.unsigned.pubkey.clone(), profile);
-            self.changed_since_emit = true;
-        }
     }
 }
 
