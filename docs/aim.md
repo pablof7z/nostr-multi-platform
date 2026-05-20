@@ -76,7 +76,7 @@ These are not best practices. They are constraints the framework's public API mu
 The framework does not reimplement the Nostr protocol. The Rust ecosystem already has a mature, modular set of protocol crates that we wrap and orchestrate:
 
 - A **protocol crate** providing `Event`, `EventBuilder`, `Filter`, `Keys`, `Tag`, all NIP-defined types, bech32 encoding, NIP-19 entities, no_std support, and around 60 implemented NIPs.
-- A **client/SDK crate** providing `Client`, relay pool management, subscription routing, async streaming over tokio.
+- A **client/SDK crate** (`nostr-sdk`) providing `Client`, relay pool management, subscription routing, async streaming over tokio. **NMP does not use this crate.** Its relay pool is tokio-async and reference-counted; NMP's kernel is a single synchronous actor (§2). NMP instead depends on the `nostr` protocol crate for types/crypto and maintains its own relay transport (`crates/nmp-core/src/relay_worker/`, raw `tungstenite`) shaped to the actor model — generational relay handles, idle-tick-gated `recv_timeout`, interest-lattice subscription coalescing. See **ADR-0022** (`docs/decisions/0022-relay-transport-reimplementation.md`) for the full rationale.
 - A **database trait** with multiple swappable backends: in-memory, LMDB, nostrdb, SQLite (native and WASM via OPFS/IndexedDB VFS).
 - A **gossip/outbox trait** with in-memory and SQLite backends, implementing the NIP-65 relay-list metadata model and per-pubkey relay discovery.
 - A **NIP-46 (Nostr Connect / bunker) signer crate** for remote signing.
@@ -250,7 +250,7 @@ These rules are the framework's identity. They derive from the RMP bible and fro
 ## 8. References
 
 - **`rust-multiplatform/rmp`** on GitHub — the architectural anchor. `rmp-architecture-bible.md` is required reading. Quoted commandments in this document are paraphrases of that file's content.
-- **`rust-nostr`** workspace on GitHub — the protocol foundation. We depend on its `nostr`, `nostr-sdk`, `nostr-database`, `nostr-lmdb`, `nostr-ndb`, `nostr-sqlite`, `nostr-gossip`, `nostr-connect`, `nostr-keyring`, `nostr-blossom`, `nostr-relay-builder`, and `nwc` crates.
+- **`rust-nostr`** workspace on GitHub — the protocol foundation. We depend on its `nostr`, `nostr-database`, `nostr-lmdb`, `nostr-ndb`, `nostr-sqlite`, `nostr-gossip`, `nostr-connect`, `nostr-keyring`, `nostr-blossom`, `nostr-relay-builder`, and `nwc` crates. We **do not** depend on `nostr-sdk`: NMP maintains its own relay transport instead of consuming the SDK's tokio-async relay pool — see **ADR-0022** (`docs/decisions/0022-relay-transport-reimplementation.md`).
 - Two pre-existing TypeScript Nostr libraries — intentionally unnamed here — supply the high-level application architecture (event store, models, actions, sessions, outbox routing, NIP-77 sync, wallet, messaging, web-of-trust, developer guardrails) being translated into Rust idiom under the RMP architectural skeleton.
 
 ---
