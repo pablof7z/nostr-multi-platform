@@ -230,7 +230,7 @@ fn outbox_routes_real_author_kind10002_writes() {
 
     let resolver = Nip65OutboxResolver::with_default_fallback(store);
     let resolved: BTreeSet<String> =
-        resolver.resolve(&listing.author_hex, &[], &PublishTarget::Auto);
+        resolver.resolve(&listing.author_hex, &[], &PublishTarget::Auto, 1);
 
     // Core assertion: the resolver routed to EXACTLY the author's declared
     // write-relay set. Set-equality is the discriminator that proves the
