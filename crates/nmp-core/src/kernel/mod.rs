@@ -67,6 +67,8 @@ mod requests;
 #[cfg(test)]
 mod retention_tests;
 mod status;
+#[cfg(test)]
+mod state_projection_tests;
 #[cfg(any(test, feature = "test-support"))]
 mod test_support;
 #[cfg(test)]
