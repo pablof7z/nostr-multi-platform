@@ -8,6 +8,22 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
+### PD-032 NEEDS USER ACTION (2026-05-20) — PR #11 has merge conflicts with master; CI cannot schedule the FFI drift check
+
+After fixing the FFI drift CI script (PD-031, commit `8f22ac94` on `chirp-nmp-thin-shell-policy`), I could not get CI to confirm the green check. Root cause: **PR #11 is `CONFLICTING`/`DIRTY` against master.**
+
+- The `ffi-drift` workflow triggers only on `pull_request` (+ `push` to master). A `pull_request` workflow needs GitHub to compute the PR's merge commit; when the PR conflicts, GitHub cannot, so `ffi-drift` is never scheduled. `file-size-gate`/`doctrine-lint` still run because they trigger on `push` to any branch.
+- Conflicting files (3): `apps/chirp/nmp-app-chirp/src/marmot/ffi.rs`, `apps/chirp/nmp-app-chirp/src/marmot/ffi/tests.rs`, `ios/Chirp/Chirp/Bridge/MarmotBridge.swift`.
+- Timeline: master advanced ~12 commits after PR #11's base (`7aa3d40d`), including marmot work (`28cf348d` auto-register after createAccount, `2ffe9675` event-driven Welcome delivery). The conflict is NEW — the original `ffi-drift` failure on `5ccdd45d` ran fine via `pull_request` back when the PR was still mergeable.
+
+Decision: I did **not** resolve the conflicts unilaterally. They are semantic — both master and the PR branch actively reworked the same Marmot FFI surface — and resolution is the PR author's call. Resolving could also add/remove `#[no_mangle]` symbols, requiring a separate `NmpCore.h` reconciliation. That is a distinct semantic-merge task outside this brief's scope ("fix the FFI drift check").
+
+**My fix is correct and durable**: `bash ci/check-ffi-header-drift.sh` exits 0 (61 symbols in sync) and `cargo check -p nmp-app-chirp` compiles clean against the PR branch at `8f22ac94`. CI will confirm the green `ffi-drift` check automatically once PR #11's merge conflicts are resolved.
+
+USER ACTION: resolve PR #11's 3-file conflict with master (merge or rebase), or explicitly authorize me to perform the semantic Marmot FFI merge.
+
+---
+
 ### PD-031 RESOLVED AUTONOMOUSLY (2026-05-20) — PR #11 FFI drift was a CI-script scoping bug, not missing Rust symbols
 
 Task brief said the 4 chirp identity/marmot symbols (`nmp_app_chirp_identity_remove_account`, `_identity_restore`, `_identity_sign_in_nsec`, `nmp_app_chirp_marmot_fetch_key_packages`) "don't exist yet in the Rust FFI source files" and asked me to implement them in `apps/chirp/nmp-app-chirp/src/ffi.rs` + `marmot/ffi.rs`.
