@@ -221,9 +221,9 @@ final class KernelModel: ObservableObject {
             ?? "wss://r.f7z.io"
         return kernel.nostrConnectURI(relay: relay)
     }
-    func createAccount(profile: [String: String] = ["name": "New User"], relays: [(String, String)]? = nil) {
+    func createAccount(profile: [String: String] = ["name": "New User"], relays: [(String, String)]? = nil, mls: Bool = true) {
         kmLog.info("createAccount dispatched")
-        kernel.createAccount(profile: profile, relays: relays ?? onboardingRelays)
+        kernel.createAccount(profile: profile, relays: relays ?? onboardingRelays, mls: mls)
     }
     func publishProfile(name: String, about: String, picture: String) {
         var profile: [String: String] = ["name": name]
