@@ -24,6 +24,13 @@ pub trait RemoteSignerHandle: Send + Sync + std::fmt::Debug {
     /// Stable label for the snapshot (`"nip46"`, `"nip07"`, …).
     fn signer_kind(&self) -> &'static str;
 
+    /// Opaque JSON payload the actor can place in secure storage and later
+    /// hand back to the broker. `None` means the signer cannot be restored
+    /// without user interaction.
+    fn persistence_payload_json(&self) -> Option<String> {
+        None
+    }
+
     /// Sign an unsigned event template. Returns a `SignerOp` so remote
     /// signers can resolve asynchronously without blocking the actor thread.
     fn sign(&self, unsigned: &UnsignedEvent) -> SignerOp<SignedEvent>;

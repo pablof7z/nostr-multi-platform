@@ -32,6 +32,68 @@ final class ChirpUITests: XCTestCase {
         XCTAssertTrue(app.scrollViews["profile-detail-list"].waitForExistence(timeout: 8))
     }
 
+    func testCreatedAccountRestoresAfterRelaunch() throws {
+        let service = isolatedKeychainService("created")
+        let app = launchApp(keychainService: service)
+
+        app.buttons["Create account"].tap()
+        let name = app.textFields["Satoshi"]
+        XCTAssertTrue(name.waitForExistence(timeout: 5))
+        name.tap()
+        name.typeText("Xcode Created")
+        app.buttons["Create account"].tap()
+        assertSignedIn(app, timeout: 12)
+
+        app.terminate()
+        app.launchEnvironment["NMP_TEST_KEYCHAIN_SERVICE"] = service
+        app.launch()
+        XCTAssertEqual(app.wait(for: .runningForeground, timeout: 10), true)
+        assertSignedIn(app, timeout: 30)
+    }
+
+    func testNsecSignInRestoresAfterRelaunch() throws {
+        let service = isolatedKeychainService("nsec")
+        let app = launchApp(keychainService: service)
+
+        app.buttons["I have an account"].tap()
+        let field = app.secureTextFields["nsec1…"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("nsec12c7ujxnnut2dnahjjsecq79507fg2p2h7ul4a3rqepg5vyk8c9lqyc30gw")
+        app.buttons["Sign in"].tap()
+        assertSignedIn(app, timeout: 12)
+
+        app.terminate()
+        app.launchEnvironment["NMP_TEST_KEYCHAIN_SERVICE"] = service
+        app.launch()
+        XCTAssertEqual(app.wait(for: .runningForeground, timeout: 10), true)
+        assertSignedIn(app, timeout: 30)
+    }
+
+    func testNip46SignInRestoresAfterRelaunch() throws {
+        let env = ProcessInfo.processInfo.environment
+        let bunkerURI = env["NMP_TEST_BUNKER_URI"] ?? env["TEST_RUNNER_NMP_TEST_BUNKER_URI"]
+        guard let bunkerURI, !bunkerURI.isEmpty else {
+            throw XCTSkip("Set NMP_TEST_BUNKER_URI to a live bunker:// URI")
+        }
+        let service = isolatedKeychainService("nip46")
+        let app = launchApp(keychainService: service)
+
+        app.buttons["I have an account"].tap()
+        let field = app.textFields["bunker://…"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText(bunkerURI)
+        app.buttons["Connect"].tap()
+        assertSignedIn(app, timeout: 45)
+
+        app.terminate()
+        app.launchEnvironment["NMP_TEST_KEYCHAIN_SERVICE"] = service
+        app.launch()
+        XCTAssertEqual(app.wait(for: .runningForeground, timeout: 10), true)
+        assertSignedIn(app, timeout: 45)
+    }
+
     func testTimelineDiagnosticsAndNavigation() throws {
         let app = XCUIApplication()
         app.launchEnvironment["NMP_VISIBLE_LIMIT"] = "80"
@@ -131,6 +193,28 @@ final class ChirpUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         }
         return false
+    }
+
+    private func isolatedKeychainService(_ suffix: String) -> String {
+        "com.example.Chirp.uitests.\(suffix).\(UUID().uuidString)"
+    }
+
+    private func launchApp(keychainService: String) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchEnvironment["NMP_TEST_KEYCHAIN_SERVICE"] = keychainService
+        app.launch()
+        XCTAssertEqual(app.wait(for: .runningForeground, timeout: 10), true)
+        return app
+    }
+
+    private func assertSignedIn(_ app: XCUIApplication, timeout: TimeInterval) {
+        if app.staticTexts["Your timeline"].waitForExistence(timeout: timeout) {
+            return
+        }
+        if app.tabBars.buttons["Settings"].waitForExistence(timeout: 2) {
+            return
+        }
+        XCTFail("App did not reach the signed-in shell")
     }
 }
 

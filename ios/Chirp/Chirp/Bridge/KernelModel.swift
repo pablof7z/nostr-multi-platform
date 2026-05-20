@@ -20,7 +20,7 @@ final class KernelModel: ObservableObject {
     /// `Nip10ModularTimelineView` projection. Refreshed on every kernel
     /// snapshot via `kernel.chirpSnapshot()`. Coexists with `items` for the
     /// PR: `HomeFeedView` switches to blocks; `ProfileView` /
-    /// `ThreadScreen` still consume the legacy flat list (M2 follow-up
+    /// `ThreadScreen` still consume the original flat list (M2 follow-up
     /// migrates them).
     @Published private(set) var modularTimeline: ChirpTimelineSnapshot = .empty
     @Published private(set) var metrics: KernelMetrics?
@@ -58,9 +58,14 @@ final class KernelModel: ObservableObject {
     private(set) lazy var marmot = MarmotStore(kernel: kernel)
 
     /// Platform capability implementations injected for the kernel to use.
-    let capabilities = ChirpCapabilities()
+    let capabilities: ChirpCapabilities
 
     init() {
+        if let service = ProcessInfo.processInfo.environment["NMP_TEST_KEYCHAIN_SERVICE"] {
+            capabilities = ChirpCapabilities(keyring: KeychainCapability(service: service))
+        } else {
+            capabilities = ChirpCapabilities()
+        }
         if let v = ProcessInfo.processInfo.environment["NMP_VISIBLE_LIMIT"].flatMap(UInt32.init) {
             visibleLimit = v
         }

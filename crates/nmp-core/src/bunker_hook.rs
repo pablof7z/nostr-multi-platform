@@ -27,9 +27,20 @@
 
 use std::sync::{Arc, OnceLock, RwLock};
 
-/// Hook signature: receives the validated `bunker://` URI as a `String`.
+/// Opaque broker request. The actor owns session policy; the broker owns the
+/// NIP-46 transport details.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum BunkerHookRequest {
+    /// Start a fresh `bunker://` connect handshake from user input.
+    Connect { uri: String },
+    /// Restore a previously handshaken remote signer from an opaque signer
+    /// payload stored by the actor.
+    Restore { payload_json: String },
+}
+
+/// Hook signature: receives an opaque broker request.
 /// Wrapped in `Arc` so the registration site can keep its own handle.
-pub type BunkerHookFn = Arc<dyn Fn(String) + Send + Sync>;
+pub type BunkerHookFn = Arc<dyn Fn(BunkerHookRequest) + Send + Sync>;
 
 static HOOK: OnceLock<RwLock<Option<BunkerHookFn>>> = OnceLock::new();
 
@@ -45,7 +56,7 @@ pub fn register_bunker_hook(hook: BunkerHookFn) {
 /// Crate-internal: invoke the registered hook if any. Returns `true` if a
 /// hook was registered (and was called); `false` otherwise so the caller can
 /// surface a fallback toast.
-pub(crate) fn invoke_bunker_hook(uri: &str) -> bool {
+fn invoke_bunker_hook(request: BunkerHookRequest) -> bool {
     let Some(slot) = HOOK.get() else {
         return false;
     };
@@ -59,8 +70,22 @@ pub(crate) fn invoke_bunker_hook(uri: &str) -> bool {
     // Drop the read lock before calling the hook — the broker may, in theory,
     // re-register from inside its handler, and we don't want to deadlock.
     drop(guard);
-    hook(uri.to_string());
+    hook(request);
     true
+}
+
+/// Crate-internal: start a fresh `bunker://` connect handshake.
+pub(crate) fn invoke_bunker_connect_hook(uri: &str) -> bool {
+    invoke_bunker_hook(BunkerHookRequest::Connect {
+        uri: uri.to_string(),
+    })
+}
+
+/// Crate-internal: restore a handshaken remote signer from opaque payload.
+pub(crate) fn invoke_bunker_restore_hook(payload_json: &str) -> bool {
+    invoke_bunker_hook(BunkerHookRequest::Restore {
+        payload_json: payload_json.to_string(),
+    })
 }
 
 #[cfg(test)]
@@ -74,27 +99,31 @@ mod tests {
     // in a single test that exercises the full surface.
     #[test]
     fn register_invoke_replace() {
-        let calls_a: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let calls_a: Arc<Mutex<Vec<BunkerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
         let calls_a_clone = Arc::clone(&calls_a);
-        register_bunker_hook(Arc::new(move |uri| {
-            calls_a_clone.lock().unwrap().push(uri);
+        register_bunker_hook(Arc::new(move |request| {
+            calls_a_clone.lock().unwrap().push(request);
         }));
-        assert!(invoke_bunker_hook("bunker://aaa"));
+        assert!(invoke_bunker_connect_hook("bunker://aaa"));
         assert_eq!(
             calls_a.lock().unwrap().as_slice(),
-            &["bunker://aaa".to_string()]
+            &[BunkerHookRequest::Connect {
+                uri: "bunker://aaa".to_string()
+            }]
         );
 
         // Replace.
-        let calls_b: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let calls_b: Arc<Mutex<Vec<BunkerHookRequest>>> = Arc::new(Mutex::new(Vec::new()));
         let calls_b_clone = Arc::clone(&calls_b);
-        register_bunker_hook(Arc::new(move |uri| {
-            calls_b_clone.lock().unwrap().push(uri);
+        register_bunker_hook(Arc::new(move |request| {
+            calls_b_clone.lock().unwrap().push(request);
         }));
-        assert!(invoke_bunker_hook("bunker://bbb"));
+        assert!(invoke_bunker_restore_hook("payload"));
         assert_eq!(
             calls_b.lock().unwrap().as_slice(),
-            &["bunker://bbb".to_string()]
+            &[BunkerHookRequest::Restore {
+                payload_json: "payload".to_string()
+            }]
         );
         // Old hook is not called after replacement.
         assert_eq!(calls_a.lock().unwrap().len(), 1);

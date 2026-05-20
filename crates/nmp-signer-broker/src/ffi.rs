@@ -10,7 +10,7 @@
 
 use std::sync::{Arc, OnceLock};
 
-use nmp_core::{register_bunker_hook, NmpApp};
+use nmp_core::{register_bunker_hook, BunkerHookRequest, NmpApp};
 
 use crate::broker::BunkerBroker;
 
@@ -64,8 +64,11 @@ pub extern "C" fn nmp_signer_broker_init(app: *mut NmpApp) {
     let tx = app.actor_sender();
     let broker = BunkerBroker::new(tx);
     let broker_for_hook = Arc::clone(&broker);
-    register_bunker_hook(Arc::new(move |uri| {
-        broker_for_hook.start_handshake(uri);
+    register_bunker_hook(Arc::new(move |request| match request {
+        BunkerHookRequest::Connect { uri } => broker_for_hook.start_handshake(uri),
+        BunkerHookRequest::Restore { payload_json } => {
+            broker_for_hook.restore_session(payload_json);
+        }
     }));
     let _ = GLOBAL_BROKER.set(broker);
 }

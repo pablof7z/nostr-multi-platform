@@ -751,11 +751,24 @@ pub(crate) fn sign_in_bunker(kernel: &mut Kernel, uri: &str) {
         stage: "connecting".to_string(),
         message: Some("Waiting for broker...".to_string()),
     }));
-    if !crate::bunker_hook::invoke_bunker_hook(uri) {
+    if !crate::bunker_hook::invoke_bunker_connect_hook(uri) {
         // Defence against init-order bugs: the broker should be registered
         // before any URI can reach the actor. If it isn't, surface a clear
         // toast and clear the progress projection (D6 — error becomes state,
         // never panic across FFI).
+        kernel.set_bunker_handshake(None);
+        kernel.set_last_error_toast(Some(
+            "NIP-46 broker not initialised — call nmp_signer_broker_init".to_string(),
+        ));
+    }
+}
+
+pub(crate) fn restore_bunker_session(kernel: &mut Kernel, payload_json: &str) {
+    kernel.set_bunker_handshake(Some(BunkerHandshakeDto {
+        stage: "connecting".to_string(),
+        message: Some("Restoring broker session...".to_string()),
+    }));
+    if !crate::bunker_hook::invoke_bunker_restore_hook(payload_json) {
         kernel.set_bunker_handshake(None);
         kernel.set_last_error_toast(Some(
             "NIP-46 broker not initialised — call nmp_signer_broker_init".to_string(),
