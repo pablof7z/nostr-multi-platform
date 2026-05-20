@@ -4,6 +4,9 @@
 
 - All implementation work must happen in a git worktree owned by the agent doing the work.
 - Each agent is responsible for its own branch/worktree lifecycle. Do not edit from the shared root checkout for feature, fix, or refactor work.
+- Before starting work, every agent must read `WIP.md` from the project base directory to understand what other agents are currently doing.
+- When an agent starts work, it must add an entry to `WIP.md` in the project base directory with a timestamp, a one-line description of the work, and the git worktree path it is using.
+- When an agent finishes work, it must remove its own entry from `WIP.md`.
 - When the work is complete, open a pull request before reporting completion. The PR description must include:
   - a short TLDR summary of what changed;
   - a detailed overview of the work performed;
