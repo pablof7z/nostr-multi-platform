@@ -30,16 +30,14 @@ use std::sync::Arc;
 
 use nmp_core::{KernelEventObserverId, NmpApp};
 use nmp_nip01::meta_timeline::Pubkey;
-use nmp_nip01::ModularTimelineSpec;
+use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
 use nmp_threading::ModulePolicy;
-
-use crate::state::ChirpModularTimeline;
 
 /// Opaque handle returned by [`nmp_app_chirp_register`]. Boxed on the heap
 /// so the address is stable; the Swift consumer holds the raw pointer until
 /// it calls [`nmp_app_chirp_unregister`].
 pub struct ChirpHandle {
-    projection: Arc<ChirpModularTimeline>,
+    projection: Arc<ModularTimelineProjection>,
     observer_id: KernelEventObserverId,
     app: *mut NmpApp,
 }
@@ -56,8 +54,8 @@ pub struct ChirpHandle {
 //      from `@MainActor` types (`KernelModel`, `MarmotStore`), so the handle
 //      itself is never raced. (This is a Swift-side caller convention, not a
 //      type-system guarantee — hence it is documented, not enforced here.)
-//   2. The `Arc<ChirpModularTimeline>` *is* genuinely shared across threads:
-//      the kernel actor thread invokes `ChirpModularTimeline`'s observer
+//   2. The `Arc<ModularTimelineProjection>` *is* genuinely shared across threads:
+//      the kernel actor thread invokes `ModularTimelineProjection`'s observer
 //      callbacks while the Swift main actor calls `snapshot()`. Soundness of
 //      that sharing comes from the projection's own interior `Mutex`, NOT
 //      from this `unsafe impl`.
@@ -112,9 +110,9 @@ pub extern "C" fn nmp_app_chirp_register(
         policy: ModulePolicy::default(),
     };
 
-    let projection = Arc::new(ChirpModularTimeline::new(spec));
-    let observer_id = app_ref.register_event_observer(Arc::clone(&projection)
-        as Arc<dyn nmp_core::KernelEventObserver>);
+    let projection = Arc::new(ModularTimelineProjection::new(spec));
+    let observer_id = app_ref
+        .register_event_observer(Arc::clone(&projection) as Arc<dyn nmp_core::KernelEventObserver>);
     if observer_id.0 == 0 {
         // Registration failed (poisoned mutex). Don't leak the projection;
         // caller gets a null handle and treats it as a soft-fail.

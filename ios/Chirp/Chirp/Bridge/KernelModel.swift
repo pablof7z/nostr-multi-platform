@@ -51,21 +51,10 @@ final class KernelModel: ObservableObject {
     private let kernel = KernelHandle()
     private var lastLogicalInterestSummary = ""
 
-    /// Marmot (MLS encrypted groups) projection mirror. Registered lazily
-    /// once a secret key crosses Swift via `signInNsec` / `NMP_TEST_NSEC`
-    /// (the only nsec seam Chirp exposes — bunker/NIP-46 sign-in never
-    /// surfaces a secret key, so Marmot stays empty then; documented in
-    /// `Bridge/MarmotBridge.swift`). Refreshed on every kernel tick.
-    private(set) lazy var marmot = MarmotStore(kernel: kernel, relayURLsProvider: { [weak self] in
-        self?.relayEditRows.map { $0.url } ?? []
-    })
-
-    /// Best-effort in-memory cache of the local secret used to register the
-    /// Marmot MLS DB. Lost on cold relaunch (Marmot reappears empty until
-    /// the next nsec sign-in or a future kernel-side key accessor). Held
-    /// only to drive `nmp_app_chirp_marmot_register`; never persisted here
-    /// (the kernel's keyring capability owns durable secret storage).
-    private var cachedSecretKey: String?
+    /// Marmot (MLS encrypted groups) projection mirror. Rust owns identity
+    /// restore/persist/register policy; this store only mirrors pushed
+    /// snapshots and dispatches user intents.
+    private(set) lazy var marmot = MarmotStore(kernel: kernel)
 
     /// Platform capability implementations injected for the kernel to use.
     let capabilities = ChirpCapabilities()
@@ -109,18 +98,7 @@ final class KernelModel: ObservableObject {
         addDefaultRelaysIfNeeded()
         kernel.start(visibleLimit: visibleLimit, emitHz: emitHz)
         isRunning = true
-        // Restore the saved nsec from the keychain so the user stays signed in
-        // across cold launches. NMP_TEST_NSEC overrides the keychain for UITests.
-        if let nsec = ProcessInfo.processInfo.environment["NMP_TEST_NSEC"] {
-            cachedSecretKey = nsec
-            kernel.signInNsec(nsec)
-            marmot.registerIfNeeded(secretKey: nsec)
-        } else if case let .found(stored) = capabilities.retrieveSecret(
-            accountID: Self.marmotKeychainAccountID) {
-            cachedSecretKey = stored
-            kernel.signInNsec(stored)
-            marmot.registerIfNeeded(secretKey: stored)
-        }
+        kernel.restoreChirpIdentity(testNsec: ProcessInfo.processInfo.environment["NMP_TEST_NSEC"])
     }
 
     func stop() {
@@ -193,17 +171,9 @@ final class KernelModel: ObservableObject {
     // business logic, no cached state (D5/D8) — the @Published properties
     // above are a pure mirror of the kernel snapshot.
 
-    private static let marmotKeychainAccountID = "chirp.marmot.cached_secret"
-
     func signInNsec(_ secret: String) {
         kmLog.info("signInNsec dispatched (len=\(secret.count))")
-        // Cache the secret so the Marmot MLS DB can be registered. This is
-        // the only nsec seam Chirp exposes to Swift; bunker/NIP-46 sign-in
-        // never reaches here (see `Bridge/MarmotBridge.swift` limitation).
-        cachedSecretKey = secret
-        capabilities.persistImportedSecret(accountID: Self.marmotKeychainAccountID, secret: secret)
-        kernel.signInNsec(secret)
-        marmot.registerIfNeeded(secretKey: secret)
+        kernel.signInNsecAndRegisterMarmot(secret)
     }
 
     func signInBunker(_ uri: String) { kernel.signInBunker(uri) }
@@ -228,14 +198,7 @@ final class KernelModel: ObservableObject {
     }
     func switchActive(_ identityID: String) { kernel.switchActive(identityID: identityID) }
     func removeAccount(_ identityID: String) {
-        // Clear the stored credentials when removing the active account so the
-        // user starts at onboarding on next launch (D7: policy lives here,
-        // not in the capability).
-        if identityID == activeAccount {
-            cachedSecretKey = nil
-            capabilities.deleteSecret(accountID: Self.marmotKeychainAccountID)
-        }
-        kernel.removeAccount(identityID: identityID)
+        kernel.removeAccountAndForgetSecret(identityID: identityID)
     }
     func publishNote(_ content: String, replyToID: String? = nil) {
         kernel.publishNote(content: content, replyToID: replyToID)
@@ -300,36 +263,15 @@ final class KernelModel: ObservableObject {
         // and avoid duplicating profile state (Swift looks the author up
         // in `items` for display name / avatar).
         modularTimeline = kernel.chirpSnapshot()
-        // Refresh the Marmot snapshot in the same pass (no-op until the
-        // projection is registered). One JSON round-trip per tick; reads
-        // are O(groups + welcomes).
-        marmot.refresh()
+        if !kernel.isMarmotRegistered {
+            kernel.registerActiveMarmotIfAvailable()
+        }
+        marmot.apply(snapshot: kernel.marmotSnapshot(), isRegistered: kernel.isMarmotRegistered)
         metrics = update.metrics
         relayStatuses = update.relayStatuses
         // T66a projections — mirror only; never derive (D8).
         if let a = update.accounts { accounts = a }
         activeAccount = update.activeAccount
-        // Auto-register Marmot when a local account becomes active. Three
-        // sources of the secret key, tried in order:
-        //   1. `cachedSecretKey` — Swift already has it (post `signInNsec`).
-        //   2. Keychain — `signInNsec` persisted it; recall on cold relaunch.
-        //   3. `registerActive()` — `createAccount` never surfaced the nsec to
-        //      Swift, so read it from the Rust-side slot the actor writes
-        //      before emitting this snapshot (race-free by construction).
-        if !marmot.isRegistered, let active = activeAccount,
-           let account = accounts.first(where: { $0.id == active }),
-           account.signerKind == "local" {
-            if let secret = cachedSecretKey {
-                marmot.registerIfNeeded(secretKey: secret)
-            } else if case let .found(secret) = capabilities.retrieveSecret(
-                accountID: Self.marmotKeychainAccountID
-            ) {
-                cachedSecretKey = secret
-                marmot.registerIfNeeded(secretKey: secret)
-            } else {
-                marmot.registerActive()
-            }
-        }
         if let q = update.publishQueue { publishQueue = q }
         lastErrorToast = update.lastErrorToast
         if let r = update.relayEditRows { relayEditRows = r }

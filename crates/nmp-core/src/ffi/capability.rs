@@ -74,7 +74,9 @@ pub extern "C" fn nmp_app_dispatch_capability(
     };
     // JSON never contains an interior NUL; the `c"{}"` literal fallback is
     // NUL-checked at compile time, so there is no runtime panic path (D6).
-    CString::new(envelope).unwrap_or_else(|_| c"{}".to_owned()).into_raw()
+    CString::new(envelope)
+        .unwrap_or_else(|_| c"{}".to_owned())
+        .into_raw()
 }
 
 /// Release a string previously returned by [`nmp_app_dispatch_capability`].
@@ -94,7 +96,7 @@ pub extern "C" fn nmp_app_free_string(ptr: *mut c_char) {
 /// return the `CapabilityEnvelope` JSON. Pure data in, data out (D6): a
 /// missing handler or NULL native return is reported as an error envelope.
 /// Shared by the FFI entry point and the test harness's mock handler.
-fn dispatch_capability(
+pub(crate) fn dispatch_capability(
     slot: &Arc<Mutex<Option<CapabilityCallbackRegistration>>>,
     request_json: &str,
 ) -> String {

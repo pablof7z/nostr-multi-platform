@@ -19,7 +19,6 @@ struct MarmotGroupsView: View {
     @EnvironmentObject private var model: KernelModel
 
     @State private var showCreate = false
-    @State private var polling = false
 
     private var store: MarmotStore { model.marmot }
 
@@ -35,26 +34,6 @@ struct MarmotGroupsView: View {
         .navigationTitle("Groups")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button {
-                    guard !polling else { return }
-                    polling = true
-                    Task.detached(priority: .userInitiated) {
-                        _ = await MainActor.run {
-                            model.marmot.pollInbox(extraRelays: ["wss://nos.lol", "wss://relay.primal.net"])
-                        }
-                        await MainActor.run { polling = false }
-                    }
-                } label: {
-                    if polling {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                }
-                .disabled(!store.isRegistered || polling)
-                .accessibilityLabel("Poll MLS inbox")
-            }
             createButton
         }
         .sheet(isPresented: $showCreate) {
@@ -119,26 +98,6 @@ struct MarmotGroupsView: View {
                         ? "No groups yet. Tap + to create an MLS-encrypted group."
                         : "Sign in with an nsec to enable Marmot encrypted groups."
                 )
-                if store.isRegistered {
-                    Button {
-                        guard !polling else { return }
-                        polling = true
-                        Task.detached(priority: .userInitiated) {
-                            _ = await MainActor.run {
-                                model.marmot.pollInbox(extraRelays: ["wss://nos.lol", "wss://relay.primal.net"])
-                            }
-                            await MainActor.run { polling = false }
-                        }
-                    } label: {
-                        Label(polling ? "Polling…" : "Poll Inbox", systemImage: "arrow.clockwise")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(polling)
-                    .padding(.horizontal, 32)
-                }
             }
             .frame(minHeight: 500)
             .padding(.horizontal, ChirpSpace.l)

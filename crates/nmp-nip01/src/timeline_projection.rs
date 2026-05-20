@@ -1,47 +1,67 @@
-//! `ChirpModularTimeline` — the per-app projection.
+//! Reusable NIP-10 modular timeline projection with render-card payloads.
 //!
-//! Owns one `Nip10ModularTimelineView` state plus the lookup metadata Swift
-//! needs to render the blocks (per-event author / content / timestamp). The
-//! grouper itself works on `EventId`s only; the lookup table lives here so
-//! the FFI snapshot is self-describing.
+//! `Nip10ModularTimelineView` groups event ids into blocks. Most native
+//! shells also need the per-event render metadata in the same pushed snapshot,
+//! so this projection owns the generic card cache beside the view state.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
 
 use nmp_core::substrate::{KernelEvent, ViewContext, ViewModule};
 use nmp_core::KernelEventObserver;
-use nmp_nip01::{
+use nmp_threading::TimelineBlock;
+use serde::{Deserialize, Serialize};
+
+use crate::meta_timeline::{
     ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState, Nip10ModularTimelineView,
 };
 
-use crate::payload::{ChirpEventCard, ChirpTimelineSnapshot};
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct TimelineEventCard {
+    pub id: String,
+    pub author_pubkey: String,
+    pub kind: u32,
+    pub created_at: u64,
+    pub content: String,
+}
 
-/// Owned state for the Chirp modular timeline projection.
-///
-/// `Mutex` because the `KernelEventObserver::on_kernel_event` method takes
-/// `&self` (it's called from the actor thread; the FFI snapshot side may run
-/// on a Swift caller thread). Contention is low — the actor fires one event
-/// at a time, the FFI snapshot is rare relative to ingest.
-pub struct ChirpModularTimeline {
+impl From<&KernelEvent> for TimelineEventCard {
+    fn from(event: &KernelEvent) -> Self {
+        Self {
+            id: event.id.clone(),
+            author_pubkey: event.author.clone(),
+            kind: event.kind,
+            created_at: event.created_at,
+            content: event.content.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ModularTimelineSnapshot {
+    pub blocks: Vec<TimelineBlock>,
+    pub cards: Vec<TimelineEventCard>,
+}
+
+impl ModularTimelineSnapshot {
+    pub fn empty() -> Self {
+        Self {
+            blocks: Vec::new(),
+            cards: Vec::new(),
+        }
+    }
+}
+
+pub struct ModularTimelineProjection {
     inner: Mutex<Inner>,
 }
 
 struct Inner {
     state: ModularTimelineState,
-    /// Per-event cards for FFI snapshots. `TimelineBlock` only carries
-    /// `EventId`s; the renderer needs author/content/timestamp too. Cards
-    /// land here on every admitted event. Bounded by the projection's own
-    /// retention — the grouper currently holds every accepted event for
-    /// chain stitching (no eviction yet). M2 follow-up: prune cards for ids
-    /// no longer reachable from any block.
-    cards: HashMap<String, ChirpEventCard>,
+    cards: HashMap<String, TimelineEventCard>,
 }
 
-impl ChirpModularTimeline {
-    /// Open the view for the given spec. The spec carries the viewer pubkey
-    /// (for future personalization keys), the kinds to admit (defaults to
-    /// `[1]`), the optional author filter, and the grouping policy
-    /// (default: 3-event modules, 72h gap threshold, 2 ancestor hops).
+impl ModularTimelineProjection {
     pub fn new(spec: ModularTimelineSpec) -> Self {
         let ctx = ViewContext::default();
         let (state, _payload) = Nip10ModularTimelineView::open(&ctx, spec);
@@ -53,40 +73,29 @@ impl ChirpModularTimeline {
         }
     }
 
-    /// Snapshot of the current blocks + the per-event cards Swift renders.
-    /// Empty if the grouper has accepted no events yet. The snapshot owns
-    /// its data — the lock is released before serialization.
-    pub fn snapshot(&self) -> ChirpTimelineSnapshot {
+    pub fn snapshot(&self) -> ModularTimelineSnapshot {
         let Ok(inner) = self.inner.lock() else {
-            // D6 — poisoned mutex on the projection side returns an empty
-            // snapshot rather than panicking. The next successful event
-            // ingest will heal the projection's payload.
-            return ChirpTimelineSnapshot::empty();
+            return ModularTimelineSnapshot::empty();
         };
         let ctx = ViewContext::default();
         let payload: ModularTimelinePayload =
             Nip10ModularTimelineView::snapshot(&ctx, &inner.state);
-        ChirpTimelineSnapshot {
+        ModularTimelineSnapshot {
             blocks: payload.blocks,
             cards: inner.cards.values().cloned().collect(),
         }
     }
 }
 
-impl KernelEventObserver for ChirpModularTimeline {
+impl KernelEventObserver for ModularTimelineProjection {
     fn on_kernel_event(&self, event: &KernelEvent) {
         let Ok(mut inner) = self.inner.lock() else {
-            // D6 — poisoned mutex silently no-ops; the next successful call
-            // (after Rust unpoisons) resumes ingest.
             return;
         };
         let ctx = ViewContext::default();
-        // The view's own `admits()` check filters by kind/author (the spec
-        // carries the gating). We always cache the card before calling the
-        // view so even a rejected event has its display metadata ready if a
-        // later admit references it — kind:1 reposts (kind:6) skip the
-        // module but should still be addressable.
-        inner.cards.insert(event.id.clone(), ChirpEventCard::from(event));
+        inner
+            .cards
+            .insert(event.id.clone(), TimelineEventCard::from(event));
         Nip10ModularTimelineView::on_event_inserted(&ctx, &mut inner.state, event);
     }
 }
@@ -130,7 +139,7 @@ mod tests {
 
     #[test]
     fn empty_open_yields_empty_snapshot() {
-        let proj = ChirpModularTimeline::new(spec());
+        let proj = ModularTimelineProjection::new(spec());
         let snap = proj.snapshot();
         assert!(snap.blocks.is_empty());
         assert!(snap.cards.is_empty());
@@ -138,7 +147,7 @@ mod tests {
 
     #[test]
     fn root_plus_reply_collapses_into_one_module() {
-        let proj = ChirpModularTimeline::new(spec());
+        let proj = ModularTimelineProjection::new(spec());
         proj.on_kernel_event(&note("R", 1, vec![]));
         proj.on_kernel_event(&reply_to("C", 2, "R", "R"));
         let snap = proj.snapshot();
@@ -154,7 +163,7 @@ mod tests {
 
     #[test]
     fn standalone_event_becomes_standalone_block() {
-        let proj = ChirpModularTimeline::new(spec());
+        let proj = ModularTimelineProjection::new(spec());
         proj.on_kernel_event(&note("S", 1, vec![]));
         let snap = proj.snapshot();
         assert_eq!(snap.blocks.len(), 1);
@@ -163,11 +172,7 @@ mod tests {
 
     #[test]
     fn observer_trait_object_drives_grouper() {
-        // Exercise the typed Rust observer registration path through an
-        // `Arc<dyn KernelEventObserver>`. `nmp-app-chirp::ChirpModularTimeline`
-        // is intended to be plugged into `NmpApp::register_event_observer`
-        // exactly this way.
-        let proj: Arc<dyn KernelEventObserver> = Arc::new(ChirpModularTimeline::new(spec()));
+        let proj: Arc<dyn KernelEventObserver> = Arc::new(ModularTimelineProjection::new(spec()));
         proj.on_kernel_event(&note("X", 1, vec![]));
     }
 }
