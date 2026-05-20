@@ -57,6 +57,29 @@ use crate::app::KernelUpdate;
 /// mismatch is the only safe failure mode.
 pub const SNAPSHOT_SCHEMA_VERSION: u32 = 1;
 
+/// Schema version of the **discrete** [`KernelUpdate`] delta payload (the
+/// `{"t":"update","v":…}` arm). The snapshot has carried
+/// [`SNAPSHOT_SCHEMA_VERSION`] since PR #25, but the discrete delta variants
+/// had **no** version: adding, renaming, or retyping a `KernelUpdate` variant
+/// was a silently breaking change on the host with no diagnostic signal.
+///
+/// Every emitted delta frame now carries this value in a `schema_version`
+/// field adjacent to the flattened `KernelUpdate` payload. Bump it on **any**
+/// breaking change to a discrete-update variant — a rename, a removal, or a
+/// payload-field type change.
+///
+/// The consumer-side field is `#[serde(default)]`: a frame produced by an
+/// older kernel that predates this constant still decodes cleanly, with
+/// `schema_version` defaulting to `1`. A host that does not yet inspect the
+/// field is therefore unaffected.
+pub const DELTA_SCHEMA_VERSION: u8 = 1;
+
+/// `serde` default for the consumer-side delta `schema_version` — keeps a
+/// pre-versioning frame (no `schema_version` key) decodable (defaults to `1`).
+fn default_delta_schema_version() -> u8 {
+    DELTA_SCHEMA_VERSION
+}
+
 /// Carrier for the [`UpdateEnvelope::Panic`] payload — the actor-thread death
 /// signal (D7). `msg` is the captured panic message when the runtime could
 /// downcast it (`&str` / `String` payloads); a non-string panic payload
@@ -67,18 +90,56 @@ pub struct PanicFrame {
     pub msg: String,
 }
 
+/// Borrowing **emit-side** carrier for a discrete delta. Stamps
+/// [`DELTA_SCHEMA_VERSION`] adjacent to the **flattened** [`KernelUpdate`], so
+/// the on-wire `v` object is `{"schema_version":1,"<Variant>":{…}}` — the
+/// version key sits beside the externally-tagged variant key, never nesting
+/// it. This mirrors how the snapshot stamps `schema_version` alongside `rev`
+/// and `last_tick_ms`, so both arms of the channel carry a version.
+#[derive(Debug, Serialize)]
+pub struct WireDelta<'a> {
+    /// Discrete-update schema version — always [`DELTA_SCHEMA_VERSION`] on emit.
+    pub schema_version: u8,
+    /// The discrete update, flattened so its externally-tagged variant key
+    /// sits beside `schema_version` rather than nested under it.
+    #[serde(flatten)]
+    pub update: &'a KernelUpdate,
+}
+
 /// Borrowing **emit-side** envelope. Used only to *serialize* a frame onto the
 /// channel; the snapshot half borrows its already-serialized JSON so wrapping
 /// never re-parses or clones the (large) payload (D8).
 #[derive(Debug, Serialize)]
 #[serde(tag = "t", content = "v", rename_all = "snake_case")]
 pub enum WireEnvelope<'a> {
-    /// A discrete [`KernelUpdate`] (the `ActorCommand::Kernel` reducer result).
-    Update(&'a KernelUpdate),
+    /// A discrete delta — a [`KernelUpdate`] stamped with [`DELTA_SCHEMA_VERSION`]
+    /// (the `ActorCommand::Kernel` reducer result).
+    Update(WireDelta<'a>),
     /// The periodic `Kernel::make_update` snapshot, already serialized.
     Snapshot(&'a RawValue),
     /// Actor-thread death (D7) — the kernel loop panicked or exited.
     Panic(&'a PanicFrame),
+}
+
+/// Owning **consumer-side** carrier for a discrete delta. The mirror of
+/// [`WireDelta`]: the flattened [`KernelUpdate`] plus the discrete-update
+/// schema version.
+///
+/// `schema_version` is `#[serde(default)]` — a pre-versioning frame (one
+/// emitted before [`DELTA_SCHEMA_VERSION`] existed, i.e. with no
+/// `schema_version` key) still decodes, defaulting to `1`. A host that does
+/// not yet inspect the field is unaffected; a host that does can detect a
+/// kernel-vs-shell delta-schema mismatch and degrade gracefully (D1) rather
+/// than mis-applying a renamed/retyped variant.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct DeltaEnvelope {
+    /// Discrete-update schema version. Defaults to [`DELTA_SCHEMA_VERSION`]
+    /// when absent so pre-versioning frames stay decodable.
+    #[serde(default = "default_delta_schema_version")]
+    pub schema_version: u8,
+    /// The discrete update itself.
+    #[serde(flatten)]
+    pub update: KernelUpdate,
 }
 
 /// Owning **consumer-side** envelope. This is the single discriminated type
@@ -89,8 +150,10 @@ pub enum WireEnvelope<'a> {
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "t", content = "v", rename_all = "snake_case")]
 pub enum UpdateEnvelope {
-    /// A discrete kernel update — the host applies it as a delta.
-    Update(KernelUpdate),
+    /// A discrete kernel update — the host applies it as a delta. Wraps the
+    /// [`KernelUpdate`] in a [`DeltaEnvelope`] so the delta arm carries a
+    /// `schema_version` just as the snapshot arm does.
+    Update(DeltaEnvelope),
     /// A full snapshot — the host replaces its rendered state.
     Snapshot(serde_json::Value),
     /// The actor thread died (panicked or exited). Terminal: the kernel is
@@ -99,13 +162,20 @@ pub enum UpdateEnvelope {
     Panic(PanicFrame),
 }
 
-/// Serialize a discrete [`KernelUpdate`] as `{"t":"update","v":…}`.
+/// Serialize a discrete [`KernelUpdate`] as
+/// `{"t":"update","v":{"schema_version":1,…}}`, stamping [`DELTA_SCHEMA_VERSION`]
+/// alongside the flattened update — the delta-arm counterpart to how
+/// `Kernel::make_update` stamps `schema_version` into every snapshot.
 ///
 /// D6: serde never panics on these plain enums; a serialization failure
 /// degrades to `None` (the caller drops the send) rather than unwinding
 /// across the FFI seam.
 pub fn wrap_update(update: &KernelUpdate) -> Option<String> {
-    serde_json::to_string(&WireEnvelope::Update(update)).ok()
+    let delta = WireDelta {
+        schema_version: DELTA_SCHEMA_VERSION,
+        update,
+    };
+    serde_json::to_string(&WireEnvelope::Update(delta)).ok()
 }
 
 /// Wrap an **already-serialized** snapshot JSON string as
@@ -179,7 +249,9 @@ mod tests {
         );
     }
 
-    /// Round-trip the **discrete** shape through the consumer envelope.
+    /// Round-trip the **discrete** shape through the consumer envelope. The
+    /// emitted frame carries `DELTA_SCHEMA_VERSION` and the inner update
+    /// survives unchanged.
     #[test]
     fn round_trip_update_shape() {
         let original = KernelUpdate::UriRejected {
@@ -189,7 +261,10 @@ mod tests {
         let wire = wrap_update(&original).expect("serialize");
         let decoded: UpdateEnvelope = serde_json::from_str(&wire).expect("decode");
         match decoded {
-            UpdateEnvelope::Update(u) => assert_eq!(u, original),
+            UpdateEnvelope::Update(d) => {
+                assert_eq!(d.update, original);
+                assert_eq!(d.schema_version, DELTA_SCHEMA_VERSION);
+            }
             other => panic!("misclassified update frame: {other:?}"),
         }
     }
@@ -239,19 +314,64 @@ mod tests {
         assert_eq!(snapshots, 1, "one snapshot on the channel");
     }
 
-    /// Hand-written wire bytes must parse — pins the format so an accidental
-    /// `rename`/variant rename can never silently change the contract.
+    /// **Backward compatibility:** a *pre-versioning* delta frame — emitted by
+    /// a kernel that predates `DELTA_SCHEMA_VERSION`, so the `v` object has no
+    /// `schema_version` key — must still decode, with `schema_version`
+    /// defaulting to `DELTA_SCHEMA_VERSION`. This is the guarantee that makes
+    /// the versioning change non-breaking for existing hosts.
     #[test]
-    fn hand_written_wire_bytes_decode() {
+    fn pre_versioning_delta_frame_decodes_with_default_version() {
         let wire = r#"{"t":"update","v":{"ViewOpened":{"namespace":"profile","key":"pk"}}}"#;
         let decoded: UpdateEnvelope = serde_json::from_str(wire).expect("decode");
         assert_eq!(
             decoded,
-            UpdateEnvelope::Update(KernelUpdate::ViewOpened {
-                namespace: "profile".into(),
-                key: "pk".into(),
+            UpdateEnvelope::Update(DeltaEnvelope {
+                schema_version: DELTA_SCHEMA_VERSION,
+                update: KernelUpdate::ViewOpened {
+                    namespace: "profile".into(),
+                    key: "pk".into(),
+                },
             })
         );
+    }
+
+    /// Pins the **current** delta wire shape: `schema_version` sits flattened
+    /// beside the externally-tagged `KernelUpdate` variant inside `v`, never
+    /// nesting it. An accidental refactor that nests or drops the version key
+    /// fails here.
+    #[test]
+    fn versioned_delta_wire_shape_is_pinned() {
+        let wire = wrap_update(&KernelUpdate::ViewOpened {
+            namespace: "profile".into(),
+            key: "pk".into(),
+        })
+        .expect("serialize");
+        assert_eq!(
+            wire,
+            r#"{"t":"update","v":{"schema_version":1,"ViewOpened":{"namespace":"profile","key":"pk"}}}"#,
+            "delta wire shape changed: {wire}"
+        );
+
+        // Hand-written versioned bytes decode into the same value.
+        let decoded: UpdateEnvelope = serde_json::from_str(&wire).expect("decode");
+        assert_eq!(
+            decoded,
+            UpdateEnvelope::Update(DeltaEnvelope {
+                schema_version: 1,
+                update: KernelUpdate::ViewOpened {
+                    namespace: "profile".into(),
+                    key: "pk".into(),
+                },
+            })
+        );
+    }
+
+    /// The delta schema version starts at `1`. A bump is a deliberate,
+    /// breaking-change act; this guards against an accidental edit — the
+    /// delta-arm counterpart to `snapshot_schema_version_is_one`.
+    #[test]
+    fn delta_schema_version_is_one() {
+        assert_eq!(DELTA_SCHEMA_VERSION, 1);
     }
 
     /// D7 — the actor-death frame must be tagged `t=panic` and decode into the

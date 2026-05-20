@@ -108,8 +108,9 @@ fn update_rs(manifest: &AppManifest) -> String {
 /// snake_case variants); see
 /// `docs/design/0001-ffi-update-channel-envelope.md`.
 ///
-/// The discrete arm wraps `nmp_core::KernelUpdate` **directly** (not the
-/// projected `AppUpdate`): only `Kernel(_)` discrete updates ever flow on the
+/// The discrete arm wraps `nmp_core::DeltaEnvelope` — the `KernelUpdate`
+/// stamped with `schema_version` (the delta-arm counterpart to the snapshot's
+/// `schema_version`). Only `Kernel(_)` discrete updates ever flow on the
 /// streaming channel — module-projected `AppUpdate` variants return through
 /// `FfiApp::dispatch`, not `update_tx`. Carrying module updates here later is
 /// purely **additive** (a new snake_case variant on the same `t`
@@ -128,8 +129,8 @@ fn envelope_rs() -> String {
         "#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]",
         "#[serde(tag = \"t\", content = \"v\", rename_all = \"snake_case\")]",
         "pub enum UpdateEnvelope {",
-        "    /// A discrete update — apply as a delta.",
-        "    Update(nmp_core::KernelUpdate),",
+        "    /// A discrete update — apply as a delta. Carries `schema_version`.",
+        "    Update(nmp_core::DeltaEnvelope),",
         "    /// A full snapshot — replace rendered state.",
         "    Snapshot(serde_json::Value),",
         "    /// Actor-thread death (D7) — terminal; surface a fatal error.",
@@ -390,7 +391,7 @@ mod tests {
         // level, so a refactor of `envelope_rs` is caught without disk I/O.
         let out = envelope_rs();
         assert!(out.contains(r#"#[serde(tag = "t", content = "v", rename_all = "snake_case")]"#));
-        assert!(out.contains("Update(nmp_core::KernelUpdate),"));
+        assert!(out.contains("Update(nmp_core::DeltaEnvelope),"));
         assert!(out.contains("Snapshot(serde_json::Value),"));
     }
 }

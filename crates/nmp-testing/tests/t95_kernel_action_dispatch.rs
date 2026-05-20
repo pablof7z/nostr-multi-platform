@@ -33,9 +33,12 @@ fn recv_update_until(
                         "every channel frame must decode as UpdateEnvelope (ADR-0001 / T103) — got error {e} on frame: {frame}"
                     )
                 });
-                if let UpdateEnvelope::Update(update) = envelope {
-                    if pred(&update) {
-                        return Some(update);
+                // The discrete arm now carries a `DeltaEnvelope` (the
+                // `KernelUpdate` stamped with `schema_version`); the consumer
+                // contract here is the inner `KernelUpdate`.
+                if let UpdateEnvelope::Update(delta) = envelope {
+                    if pred(&delta.update) {
+                        return Some(delta.update);
                     }
                 }
             }
