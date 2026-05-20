@@ -467,6 +467,17 @@ pub(super) struct KernelUpdate {
     /// a kernel-vs-shell schema mismatch and degrade gracefully (D1) instead
     /// of mis-decoding a renamed/removed/retyped field.
     pub(super) schema_version: u32,
+    /// Unix-epoch milliseconds at the moment this snapshot was emitted.
+    /// A consuming shell can detect actor-thread death by observing this
+    /// field stop advancing.
+    ///
+    /// `dispatch_command` panics are deliberately *not* wrapped in
+    /// `catch_unwind` (a command panic is a genuine bug that must stay
+    /// visible). From the shell's side that manifests as the update channel
+    /// going permanently silent — no error, no toast, no crash report. A
+    /// shell that watches this field can convert that silent freeze into an
+    /// observable staleness signal.
+    pub(super) last_tick_ms: u64,
     pub(super) update_kind: &'static str,
     pub(super) running: bool,
     pub(super) relay_url: &'static str,

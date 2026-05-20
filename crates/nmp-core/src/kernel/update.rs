@@ -18,6 +18,15 @@ pub const KERNEL_SCHEMA_VERSION: u32 = crate::update_envelope::SNAPSHOT_SCHEMA_V
 impl Kernel {
     pub(crate) fn make_update(&mut self, running: bool) -> String {
         let emit_started = Instant::now();
+        // Wall-clock stamp for the actor-thread liveness heartbeat. `Instant`
+        // above is monotonic and cannot be compared to a shell-side clock, so
+        // a separate `SystemTime` reading is required. `unwrap_or_default()`
+        // (not `unwrap()`) keeps this off the panic path (D6: no panic at the
+        // public boundary) — a pre-1970 clock simply yields `0`.
+        let last_tick_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
         self.rev = self.rev.saturating_add(1);
         self.update_sequence = self.update_sequence.saturating_add(1);
 
@@ -44,6 +53,7 @@ impl Kernel {
         let update = KernelUpdate {
             rev: self.rev,
             schema_version: KERNEL_SCHEMA_VERSION,
+            last_tick_ms,
             update_kind: "ViewBatch",
             running,
             relay_url: "",

@@ -78,6 +78,39 @@ fn snapshot_carries_schema_version() {
     );
 }
 
+// ─── last_tick_ms liveness heartbeat projection ──────────────────────────────
+
+/// Every emitted snapshot MUST carry a non-zero `last_tick_ms` (Unix-epoch
+/// milliseconds), and the value MUST advance across successive emissions. A
+/// shell watches this field to detect actor-thread death: a `dispatch_command`
+/// panic is deliberately not caught, so it manifests as the update channel
+/// going permanently silent. A frozen `last_tick_ms` is the only observable
+/// signal of that otherwise-invisible freeze. This pins both the field's
+/// presence on the on-wire bytes and its monotonic advance.
+#[test]
+fn snapshot_carries_advancing_last_tick_ms() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    let first = snapshot(&mut kernel);
+    let first_tick = first["last_tick_ms"]
+        .as_u64()
+        .expect("every snapshot must stamp a numeric last_tick_ms");
+    assert!(
+        first_tick > 0,
+        "last_tick_ms must be a real Unix-epoch millisecond stamp, not zero",
+    );
+
+    let second = snapshot(&mut kernel);
+    let second_tick = second["last_tick_ms"]
+        .as_u64()
+        .expect("every snapshot must stamp a numeric last_tick_ms");
+    assert!(
+        second_tick >= first_tick,
+        "last_tick_ms must advance (or hold) across emissions, never regress; \
+         a frozen value is the actor-thread-death signal",
+    );
+}
+
 // ─── timeline events → items[] projection ────────────────────────────────────
 
 /// A kind:1 ingest must surface in the snapshot's `items[]` array — the list the
