@@ -21,6 +21,23 @@
 //!
 //! Upstream-compatible entry points kept intact for re-sync ergonomics:
 //! [`NostrLMDB::open`], [`NostrLMDB::builder`]. NMP does not use these.
+//!
+//! ## D10 provenance contract (caller responsibility)
+//!
+//! This crate is the upstream-shape Nostr **event store**. By design it
+//! knows nothing about relay URLs: [`Lmdb::save_event_with_txn`] and
+//! [`Lmdb::store`] persist only the wire event and its indexes. Doctrine
+//! D10 ("every stored event carries its source relay URL") is therefore
+//! **not enforced at this layer** — it cannot be, without diverging the
+//! fork from upstream.
+//!
+//! Instead, D10 is enforced by the env-injection caller (NMP's
+//! `LmdbEventStore`): it must write the provenance row to its own
+//! sub-db *inside the same `RwTxn`* that calls `save_event_with_txn`,
+//! so the event and its provenance commit atomically (ADR-0011/0012).
+//! Any NMP-side caller that drives the `save_event_with_txn` / `store`
+//! seam without also writing provenance in that txn violates D10. Keep
+//! that pairing in the calling crate, never here.
 
 // NMP fork: `missing_docs` downgraded from `warn` to `allow` because the
 // fork promotes a number of previously-`pub(crate)` methods to `pub`
