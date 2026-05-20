@@ -14,7 +14,7 @@ use std::time::Instant;
 use zeroize::Zeroizing;
 
 use crate::kernel::Kernel;
-use crate::relay::{OutboundMessage, RelayRole};
+use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole};
 use crate::relay_worker::RelayEvent;
 
 use super::commands::{self, IdentityRuntime, LifecycleObserverSlot};
@@ -51,7 +51,7 @@ pub(super) fn dispatch_command(
     kernel: &mut Kernel,
     identity: &mut IdentityRuntime,
     #[cfg(feature = "wallet")] wallet: &mut WalletRuntime,
-    relay_controls: &mut HashMap<String, RelayControl>,
+    relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
     relay_tx: &Sender<RelayEvent>,
     connected_relays: &mut HashSet<RelayRole>,
     connected_urls: &mut HashSet<String>,
@@ -432,7 +432,7 @@ pub(super) fn handle_relay_event(
     event: RelayEvent,
     kernel: &mut Kernel,
     #[cfg(feature = "wallet")] wallet: &mut WalletRuntime,
-    relay_controls: &mut HashMap<String, RelayControl>,
+    relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
     relay_tx: &Sender<RelayEvent>,
     next_relay_generation: &mut u64,
     connected_relays: &mut HashSet<RelayRole>,
