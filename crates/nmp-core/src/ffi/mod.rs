@@ -389,6 +389,41 @@ impl NmpApp {
         let _ = self.tx.send(cmd);
     }
 
+    /// Register a host-supplied executor against the app's action registry.
+    ///
+    /// This is the post-construction registration seam: a host can wire an
+    /// action namespace into the registry *without editing `nmp-core`*. The
+    /// closure receives the validated action JSON and a `send` callback that
+    /// routes an [`ActorCommand`] to the actor; it returns `Ok(())` on
+    /// success or `Err(msg)` on a decode/dispatch failure.
+    ///
+    /// Registration MUST happen during host init — before `nmp_app_start`
+    /// and before any [`action::nmp_app_dispatch_action`] call — because it
+    /// requires `&mut self`. See [`app_ref_mut`] for the aliasing contract.
+    pub fn register_action_executor(
+        &mut self,
+        namespace: &'static str,
+        f: impl Fn(&str, &dyn Fn(ActorCommand)) -> Result<(), String> + Send + Sync + 'static,
+    ) {
+        self.action_registry.register_executor(namespace, f);
+    }
+
+    /// Test-only direct execution path into the action registry.
+    ///
+    /// Bypasses [`crate::kernel::ActionRegistry::start`] (which needs a
+    /// registered *module* to validate the JSON shape) so a unit test can
+    /// exercise a host-registered *executor* on its own — the v1 seam only
+    /// exposes executor registration, not module registration.
+    #[cfg(test)]
+    pub(crate) fn test_execute_action(
+        &self,
+        namespace: &str,
+        action_json: &str,
+    ) -> Result<(), String> {
+        self.action_registry
+            .execute(namespace, action_json, &|cmd| self.send_cmd(cmd))
+    }
+
     pub(crate) fn set_pending_mls_autopublish(&self, enabled: bool) {
         if let Ok(mut pending) = self.pending_mls_autopublish.lock() {
             *pending = enabled;
@@ -719,6 +754,24 @@ pub(crate) fn app_ref<'a>(app: *mut NmpApp) -> Option<&'a NmpApp> {
     } else {
         // SAFETY: caller guarantees non-null app is a valid NmpApp pointer.
         Some(unsafe { &*app })
+    }
+}
+
+/// Mutable counterpart to [`app_ref`]. Yields a `&mut NmpApp` for FFI entry
+/// points that mutate app-owned state (e.g. action-registry registration).
+///
+/// SAFETY CONTRACT for callers: the resulting `&mut NmpApp` aliases the same
+/// allocation any concurrent `app_ref` would hand out. A C-ABI symbol using
+/// this MUST be a registration-time-only call — invoked during host init,
+/// before `nmp_app_start` and before any `nmp_app_dispatch_action`, so no
+/// shared `&NmpApp` is live on another thread.
+pub(crate) fn app_ref_mut<'a>(app: *mut NmpApp) -> Option<&'a mut NmpApp> {
+    if app.is_null() {
+        None
+    } else {
+        // SAFETY: caller guarantees non-null app is a valid NmpApp pointer
+        // and (per the doc contract above) no aliasing `&NmpApp` is live.
+        Some(unsafe { &mut *app })
     }
 }
 
