@@ -285,6 +285,15 @@ impl BunkerBroker {
             None
         };
         if let Some(session) = session {
+            // Drain any in-flight sign requests so callers fail fast instead
+            // of waiting out REMOTE_SIGN_TIMEOUT (5s). The signer's pending
+            // map still holds the response senders for requests already
+            // submitted to the broker; without this they would be orphaned.
+            if let Ok(slot) = session.signer.lock() {
+                if let Some(signer) = slot.as_ref() {
+                    signer.drain_pending_with_error("bunker session cancelled");
+                }
+            }
             session
                 .cancel
                 .store(true, std::sync::atomic::Ordering::Relaxed);
