@@ -119,7 +119,9 @@ pub use capability::{
 // this path.
 #[cfg(feature = "android-ffi")]
 #[allow(unused_imports)]
-pub use action::{nmp_app_dispatch_action, nmp_app_register_action_executor};
+pub use action::{
+    nmp_app_dispatch_action, nmp_app_register_action_executor, nmp_app_register_action_module,
+};
 #[cfg(feature = "android-ffi")]
 pub use lifecycle::{
     nmp_app_lifecycle_background, nmp_app_lifecycle_foreground, nmp_app_set_lifecycle_callback,
