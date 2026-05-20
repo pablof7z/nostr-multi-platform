@@ -1,10 +1,10 @@
-# Cardinal Doctrines D0–D8
+# Cardinal Doctrines D0–D10
 
 [Back to Product Spec: Overview And Developer Experience](./overview-and-dx.md)
 
-Nine named principles that subsume the rest of the spec. Every API decision answers to at least one of these; conflicts between them resolve in the order listed.
+Eleven named principles that subsume the rest of the spec. Every API decision answers to at least one of these; conflicts between them resolve in the order listed.
 
-**Two kinds of doctrine.** D0–D5 are *policy* doctrines — they govern user-facing semantics (what the framework promises, what it forbids). D6–D8 are *substrate invariants* — they govern how the runtime is allowed to be implemented (what crosses FFI, how state changes propagate, what the hot path can do). Both kinds are equally binding; their distinction is the kind of review they enforce. Policy review flags "this API choice violates a user-facing principle"; substrate review flags "this implementation choice will leak across FFI / hide policy on the native side / degrade reactivity."
+**Two kinds of doctrine.** D0–D5 and D10 are *policy* doctrines — they govern user-facing semantics (what the framework promises, what it forbids). D6–D9 are *substrate invariants* — they govern how the runtime is allowed to be implemented (what crosses FFI, how state changes propagate, what the hot path can do, how time is decided). Both kinds are equally binding; their distinction is the kind of review they enforce. Policy review flags "this API choice violates a user-facing principle"; substrate review flags "this implementation choice will leak across FFI / hide policy on the native side / degrade reactivity / trust a value the kernel must own."
 
 ## D0. Kernel + extension modules — no app nouns in `nmp-core`
 
@@ -96,3 +96,34 @@ This rules out, by construction:
 - A view re-rendering at greater than 60 Hz regardless of upstream burst.
 
 Per ADRs 0001 (composite dependency keys), 0002 (per-view delta budget), 0003 (working-set memory), and 0004 (allocation measurement), all in `docs/decisions/`. Validated continuously by `reactivity-bench` (`crates/nmp-testing/bin/reactivity-bench/`).
+
+## D9. The kernel owns time; relay-supplied `created_at` is untrusted
+
+Time is a kernel decision, never a relay assertion. The kernel reads "now" exclusively through its injected `Clock` trait (`SystemClock` in production, `FixedClock` under `test-support`), so every time-dependent reduction is deterministic under test and reproducible during replay. An event's `created_at` field is signed by the author but the Schnorr signature does **not** bound it to a plausible value — a signer can sign any timestamp, and a malicious or misconfigured relay can deliver it. Therefore every decision that consumes `created_at` is the kernel's, made against the kernel's clock:
+
+- **Replaceable-event resolution** (kinds 0, 3, 10002, and parameterized-replaceable). The canonical "winner" is picked by strict `>` on `created_at` in the `EventStore` and the kernel's local caches — a value the kernel must be able to trust the *bounds* of.
+- **NIP-40 expiration.** Whether an event has expired is computed against the kernel clock, not asserted by the relay that delivered it.
+- **Future-timestamp rejection.** Inbound events whose `created_at` exceeds the kernel's "now" by more than a bounded skew tolerance are dropped at a single all-kinds chokepoint, *before* the store insert and per-kind dispatch, so no future-dated event can permanently displace a legitimate replaceable event and then resist honest replacement.
+
+This rules out, by construction:
+
+- Trusting a relay's word on whether an event is "newer" or "expired".
+- A future-dated kind:0/3/10002 poisoning a replaceable slot against all honest updates.
+- Non-deterministic reducers that read wall-clock directly and break replay.
+
+Implementation: the future-timestamp gate is `MAX_FUTURE_SECONDS = 900` and the all-kinds check in `crates/nmp-core/src/kernel/ingest/mod.rs` (constant doc-block at lines 25–56); the clock seam is `crates/nmp-core/src/kernel/clock.rs` (`Clock` trait, `SystemClock`, `FixedClock`).
+
+## D10. Provenance — private events never escape to public relays
+
+The kernel tracks where every event came from and respects that origin for routing. Two invariants:
+
+1. **Source is recorded.** Every stored event carries per-event provenance — which relay(s) delivered it, with first/last-seen timestamps and a primary entry. An event received from one relay is never silently forwarded to a *different* relay without explicit user intent; the kernel does not treat "I have this event" as license to republish it anywhere.
+2. **Private events stay private.** "Private" in the Nostr sense means the NIP-59 gift-wrap (kind:1059) and the NIP-17 direct-message rumor payloads it carries. A kind:1059 gift-wrap is addressed to a specific recipient and must be published **only** to that recipient's direct-message / inbox relays — never to general-purpose public relays, never to a recipient-unknown fallback set. When the recipient inbox is unknown, the publish **fails closed** (no public-relay fallback).
+
+This is the provenance half of D3 (D3 owns *which* relays a write routes to; D10 owns *that private content never widens its audience* and *that received events are not laundered between relays*). It rules out, by construction:
+
+- Republishing a privately-delivered event to a public relay because it happened to land in the store.
+- A kind:1059 gift-wrap leaking onto a non-DM relay (or onto an indexer fallback set when the recipient's inbox relays are unknown).
+- Cross-relay forwarding of received events as an implicit side effect of having cached them.
+
+Implementation: per-event provenance is `ProvenanceEntry` (`relay_url`, `first_seen_ms`, `last_seen_ms`, `primary`) with a 32-entry LRU in both store backends (`crates/nmp-core/src/store/lmdb/provenance.rs`, `crates/nmp-core/src/store/mem/mod.rs`); gift-wrap routing is `crates/nmp-marmot/src/interest.rs` + `crates/nmp-marmot/src/projection/publish.rs` (explicit DM-relay targets). Per `docs/aim.md` §6 rule #10 ("Provenance preserved").

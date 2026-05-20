@@ -22,9 +22,10 @@ fn event_short_id(id: &str) -> &str {
     &id[..id.len().min(16)]
 }
 
-/// Clock-discipline tolerance: the maximum number of seconds an inbound
-/// event's `created_at` may exceed the kernel's "now" before the event is
-/// rejected outright.
+/// Clock-discipline tolerance (doctrine **D9** — the kernel owns time;
+/// relay-supplied `created_at` is untrusted): the maximum number of seconds an
+/// inbound event's `created_at` may exceed the kernel's "now" before the event
+/// is rejected outright.
 ///
 /// ## Why this exists
 ///
@@ -307,18 +308,18 @@ impl Kernel {
             return;
         };
 
-        // Clock discipline (D6): reject relay-supplied events whose
-        // `created_at` is unreasonably far in the future. This is the single
-        // all-kinds chokepoint — it runs BEFORE counter bumps, the raw-event
-        // tap, the store insert, and per-kind dispatch, so a future-dated
-        // event for ANY kind (1, 6, and the replaceable 0/3/10002 paths) is
-        // dropped uniformly. The signature alone cannot bound `created_at`
-        // (a signer signs any timestamp), so this protocol-level policy must
-        // live in the kernel. "Now" reads the injected `Clock` so the check
-        // is deterministic under `FixedClock` in tests and replay. Per D6 a
-        // rejection silently drops the event with a debug log — never a
-        // panic, never a user-facing toast (this is protocol policy, not a
-        // user-actionable error).
+        // Clock discipline (doctrine D9 — the kernel owns time): reject
+        // relay-supplied events whose `created_at` is unreasonably far in the
+        // future. This is the single all-kinds chokepoint — it runs BEFORE
+        // counter bumps, the raw-event tap, the store insert, and per-kind
+        // dispatch, so a future-dated event for ANY kind (1, 6, and the
+        // replaceable 0/3/10002 paths) is dropped uniformly. The signature
+        // alone cannot bound `created_at` (a signer signs any timestamp), so
+        // this protocol-level policy must live in the kernel. "Now" reads the
+        // injected `Clock` so the check is deterministic under `FixedClock`
+        // in tests and replay. Per D6 a rejection silently drops the event
+        // with a debug log — never a panic, never a user-facing toast (this
+        // is protocol policy, not a user-actionable error).
         let now_secs = self
             .clock
             .now()

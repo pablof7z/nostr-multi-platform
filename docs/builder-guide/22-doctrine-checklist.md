@@ -2,10 +2,10 @@
 
 > **Status: SHIPS.** Audience: agents (and human reviewers). This is the
 > operational checklist; the *why* lives in
-> [03 — Doctrine D0–D8 end-to-end](03-doctrine-d0-d8.md). Canon:
+> [03 — Doctrine D0–D10 end-to-end](03-doctrine-d0-d8.md). Canon:
 > [`docs/product-spec/doctrine.md`](../product-spec/doctrine.md),
 > [`docs/product-spec/overview-and-dx.md`](../product-spec/overview-and-dx.md)
-> §1.5. Resolve conflicts in listed order (D0 > D1 > … > D8).
+> §1.5. Resolve conflicts in listed order (D0 > D1 > … > D10).
 
 ## How this is consumed
 
@@ -79,6 +79,18 @@ reference waiving it.
 - [ ] Idle ticks with no state change do **not** emit (`changed_since_emit()` guard intact).
 - [ ] `reactivity-bench --fail-on-gate` is green; no view exceeds 60 Hz.
 
+**D9 — kernel owns time**
+
+- [ ] Every new "now" read goes through the injected `Clock`, never a raw `SystemTime::now()` on a reducer / replay path.
+- [ ] Any new `created_at` consumer (replaceable resolution, NIP-40 expiration, ordering) is bounded against the kernel clock, never relay-trusted.
+- [ ] Future-dated inbound events are still rejected at the all-kinds chokepoint (`MAX_FUTURE_SECONDS` gate intact).
+
+**D10 — provenance**
+
+- [ ] No new path forwards a received event to a relay other than the one that delivered it without explicit user intent.
+- [ ] Every kind:1059 gift-wrap publish targets the recipient's DM/inbox relays only — never a public or recipient-unknown fallback set.
+- [ ] Private (gift-wrap) publish fails closed on unknown recipient inbox.
+
 **Cross-cutting**
 
 - [ ] Every changed module's `//! Doctrine map:` comment still accurate.
@@ -123,6 +135,17 @@ capability `start()` that breaks when called twice.
 **D8.** Allocation inside `on_event_inserted` / the insert hot path. An emit on
 an idle tick with no change. A reverse-index keyed on a broad single axis
 forcing table scans.
+
+**D9.** A `SystemTime::now()` call inside a reducer or any code on the replay
+path (breaks deterministic replay). A new `created_at` comparison that trusts
+the relay's value as a bound. A replaceable-resolution or expiration decision
+made anywhere but the kernel against its `Clock`.
+
+**D10.** A publish path that targets a relay other than the one that delivered
+the event (without explicit user intent). A kind:1059 gift-wrap whose publish
+target is a public relay, an indexer, or any recipient-unknown fallback. A
+private-event publish that falls back to public relays instead of failing
+closed when the recipient inbox is unknown.
 
 ## Doctrine-map comment — minimum fields
 

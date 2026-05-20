@@ -1,32 +1,33 @@
-# 03 — Doctrine D0–D8 end-to-end
+# 03 — Doctrine D0–D10 end-to-end
 
 > **Status: SHIPS.** Audience: both. The doctrine is the framework's identity:
-> every API decision answers to at least one of these nine principles, and
+> every API decision answers to at least one of these eleven principles, and
 > conflicts resolve **in listed order** (D0 wins over D1, D1 over D2, …).
 
 Canonical text: [`docs/product-spec/doctrine.md`](../product-spec/doctrine.md)
-(D0–D8 full statements); in-page restatement
+(D0–D10 full statements); in-page restatement
 [`docs/product-spec/overview-and-dx.md`](../product-spec/overview-and-dx.md)
 §1.5 (lines 27–43). Origin in the RMP-bible-derived rules at
 [`docs/aim.md`](../aim.md) §6 (lines 219–235).
 
 ## Two kinds of doctrine
 
-There are **exactly 9 doctrines, D0–D8**. They split into two review classes
+There are **exactly 11 doctrines, D0–D10**. They split into two review classes
 (`doctrine.md:7`):
 
-- **D0–D5 — policy.** Govern user-facing semantics: what the framework
+- **D0–D5 + D10 — policy.** Govern user-facing semantics: what the framework
   *promises* and *forbids*. Policy review flags "this API choice violates a
   user-facing principle."
-- **D6–D8 — substrate invariants.** Govern how the runtime may be
+- **D6–D9 — substrate invariants.** Govern how the runtime may be
   *implemented*: what crosses FFI, how state propagates, what the hot path may
-  do. Substrate review flags "this implementation will leak across FFI / hide
-  policy natively / degrade reactivity."
+  do, how time is decided. Substrate review flags "this implementation will
+  leak across FFI / hide policy natively / degrade reactivity / trust a value
+  the kernel must own."
 
 Both kinds are equally binding. The split only changes the *kind of review*,
 not the binding strength of the rule.
 
-## The 9-row doctrine table
+## The 11-row doctrine table
 
 | D | Statement (one line) | What it forbids | Enforced today by | Regression test |
 |---|---|---|---|---|
@@ -39,6 +40,8 @@ not the binding strength of the rule.
 | **D6** | Errors never cross FFI as exceptions. Failures surface as `toast` state + `busy` flags. | `Result<T,E>` / exceptions across FFI; `do { try }` / `try {} catch` around framework calls; per-op error-type proliferation; silent failure. | `doctrine-lint` D6 grep gate; `publish::engine::engine_error_to_failure` maps `PublishEngineError` → `RecentFailure` (`publish/mod.rs:18-24`). | `doctrine-lint` D6 gate in CI; publish-engine unit tests in `crates/nmp-core/src/publish/`. |
 | **D7** | Capabilities report; never decide policy. Bridges run platform APIs and report raw events. | Native deciding retry / recoverability / which relay / which cipher; capability holding state beyond OS handles; non-idempotent start. | `doctrine-lint` D7 grep gate; `RelayDispatcher` returns descriptive `RelayAck`; `classify_ack` (`publish/state.rs`) is the only ack→policy mapper (`publish/mod.rs:25-28`). | `doctrine-lint` D7 gate in CI; `c7_publish_routes_outbox_and_private_fails_closed` (fail-closed policy is Rust's). |
 | **D8** | Reactivity contract: composite reverse index · ≤60 Hz/view · working-set bounded · **no polling at any layer**. | Per-event hot-path allocations after warmup; wakeups ∝ event volume; memory ∝ history depth; emitting when nothing changed; `sleep`+poll loops anywhere in the stack (Rust channels, iOS timers, test helpers). | Composite reverse index in the actor; idle-tick emit gated on `kernel.changed_since_emit()` (`doctrine.md:89`). ADRs 0001–0004. | `crates/nmp-testing/bin/reactivity-bench/` (run 002 passed all gates); idle-tick D8 regression guard. |
+| **D9** | The kernel owns time; relay-supplied `created_at` is untrusted. Replaceable resolution, NIP-40 expiration, future-timestamp rejection are kernel decisions read through the injected `Clock`. | Trusting a relay's word on "newer"/"expired"; a future-dated kind:0/3/10002 poisoning a replaceable slot; reducers reading wall-clock directly (breaks replay). | All-kinds future-timestamp chokepoint `MAX_FUTURE_SECONDS = 900` in `crates/nmp-core/src/kernel/ingest/mod.rs` (runs before store insert + per-kind dispatch); injected `Clock` trait — `SystemClock` / `FixedClock` — in `crates/nmp-core/src/kernel/clock.rs`. | `crates/nmp-testing/tests/store_insert_path.rs` (replaceable supersession by `created_at`); `FixedClock`-driven reducer tests; deterministic `kernel/replay.rs`. |
+| **D10** | Provenance — private events never escape to public relays; received events are not laundered between relays. | Republishing a privately-delivered event to a public relay; a kind:1059 gift-wrap leaking onto a non-DM relay or a recipient-unknown fallback; cross-relay forwarding as a side effect of caching. | Per-event `ProvenanceEntry` (32-entry LRU) in both store backends (`store/lmdb/provenance.rs`, `store/mem/mod.rs`); kind:1059 gift-wrap routed to explicit DM-relay targets (`nmp-marmot/src/interest.rs`, `projection/publish.rs`); private publish fails closed on unknown inbox (D3 planner). | `crates/nmp-testing/tests/store_provenance_merge.rs`; `c7_publish_routes_outbox_and_private_fails_closed` (`framework_magic_contract/c7_c11.rs`); `m2_p_tag_inbox_routing.rs` (`p_tag_unknown_inbox_fails_closed_no_indexer_fallback`). |
 
 D0 vs everything: when a real app needs a domain noun in `nmp-core`, the
 *boundary* is wrong — fix the boundary, do not add the noun (D0 outranks
@@ -86,7 +89,7 @@ Run this against every PR. Any unchecked box is a blocking finding unless an
 ADR explicitly waives it.
 
 ```text
-DOCTRINE PR REVIEW — D0..D8 (resolve conflicts in listed order)
+DOCTRINE PR REVIEW — D0..D10 (resolve conflicts in listed order)
 
 D0  No new app/domain noun in nmp-core? No app logic in Swift/Kotlin/TS?
     No closed FFI enum blocking module-contributed variants?
@@ -117,6 +120,15 @@ D7  No native code deciding retry / recoverability / relay / cipher / state?
 D8  No per-event allocation on the hot path after warmup?
     Idle ticks with no change do NOT emit (changed_since_emit gate intact)?
     reactivity-bench still green?
+
+D9  Every new time read goes through the injected Clock, not SystemTime::now()
+    on a reducer/replay path? Any new created_at consumer (replaceable,
+    expiration, ordering) bounded against the kernel clock, not relay-trusted?
+
+D10 Does any new path forward a received event to a relay other than the one
+    that delivered it without explicit user intent? Any kind:1059 gift-wrap
+    publish target that is NOT the recipient's DM/inbox relay set?
+    Private publish on unknown inbox fails closed (no public fallback)?
 
 GATE: `cargo run -p nmp-testing --bin doctrine-lint` passes (D0/D6/D7 grep
 gates); `cargo test --workspace` green; reactivity-bench --fail-on-gate green.

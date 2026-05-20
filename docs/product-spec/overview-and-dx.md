@@ -24,11 +24,11 @@ The framework treats common Nostr-correctness failures (stale replaceable events
 
 ---
 
-## 1.5 Cardinal doctrines D0–D8
+## 1.5 Cardinal doctrines D0–D10
 
-See [`docs/product-spec/doctrine.md`](./doctrine.md) for the full text of all nine doctrines.
+See [`docs/product-spec/doctrine.md`](./doctrine.md) for the full text of all eleven doctrines.
 
-Summary: D0–D5 are *policy* doctrines (user-facing semantics); D6–D8 are *substrate invariants* (runtime implementation constraints). Both are equally binding. Every API decision answers to at least one; conflicts resolve in the order D0 > D1 > … > D8.
+Summary: D0–D5 and D10 are *policy* doctrines (user-facing semantics); D6–D9 are *substrate invariants* (runtime implementation constraints). Both are equally binding. Every API decision answers to at least one; conflicts resolve in the order D0 > D1 > … > D10.
 
 | # | Name | Kind |
 |---|------|------|
@@ -41,6 +41,8 @@ Summary: D0–D5 are *policy* doctrines (user-facing semantics); D6–D8 are *su
 | D6 | Errors never cross FFI as exceptions | Substrate |
 | D7 | Capabilities report; never decide policy | Substrate |
 | D8 | Reactivity contract: composite reverse index · ≤60 Hz/view · working-set bounded; idle-tick emit gated on `changed_since_emit()` | Substrate |
+| D9 | The kernel owns time; relay-supplied `created_at` is untrusted — replaceable resolution, NIP-40 expiration, future-timestamp rejection are kernel decisions read through the injected `Clock` | Substrate |
+| D10 | Provenance — private events (kind:1059 gift-wrap, NIP-17 DM rumors) never escape to public relays; received events are not laundered between relays | Policy |
 
 ---
 
