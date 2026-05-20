@@ -52,6 +52,8 @@ pub(super) fn split_ok_message(msg: &str) -> (String, String) {
 ///   flight; the in-flight attempt will settle on its own.
 /// - `Store` → `permanent` — a durable-store backend failure will not
 ///   resolve by re-issuing the publish.
+/// - `UnsupportedAction` → `permanent` — a wiring bug (the engine was handed
+///   an action it does not service); retrying cannot fix a code-level miswire.
 pub(super) fn describe_engine_error(
     err: &PublishEngineError,
 ) -> (String, String, &'static str) {
@@ -71,6 +73,11 @@ pub(super) fn describe_engine_error(
         PublishEngineError::Store(store_err) => (
             format!("publish store error: {store_err:?}"),
             "store_error".to_string(),
+            ERR_PERMANENT,
+        ),
+        PublishEngineError::UnsupportedAction(detail) => (
+            format!("publish engine received an unsupported action: {detail}"),
+            "unsupported_action".to_string(),
             ERR_PERMANENT,
         ),
     }
@@ -133,5 +140,11 @@ mod tests {
         assert!(toast_store.contains("store error"));
         assert_eq!(status_store, "store_error");
         assert_eq!(cat_store, ERR_PERMANENT);
+
+        let (toast_unsupported, status_unsupported, cat_unsupported) =
+            describe_engine_error(&PublishEngineError::UnsupportedAction("PublishNote"));
+        assert!(toast_unsupported.contains("unsupported action"));
+        assert_eq!(status_unsupported, "unsupported_action");
+        assert_eq!(cat_unsupported, ERR_PERMANENT);
     }
 }

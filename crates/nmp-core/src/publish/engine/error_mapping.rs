@@ -45,6 +45,9 @@ pub fn engine_error_to_failure(
         PublishEngineError::Store(store_err) => {
             format!("publish store backend failure: {:?}", store_err)
         }
+        PublishEngineError::UnsupportedAction(detail) => {
+            format!("publish engine received an unsupported action: {detail}")
+        }
     };
     RecentFailure {
         handle: handle.clone(),
@@ -116,6 +119,25 @@ mod tests {
         assert!(
             failure.reason.contains("NotFound"),
             "reason must include the store variant: {}",
+            failure.reason
+        );
+    }
+
+    #[test]
+    fn unsupported_action_maps_to_recent_failure() {
+        // A `PublishNote` reaching the engine is a wiring bug; D6 requires
+        // it surface as snapshot-visible state, never a panic.
+        let err = PublishEngineError::UnsupportedAction("PublishNote");
+        let failure = engine_error_to_failure(&err, &"p-bad".to_string(), "ev-bad", 7);
+        assert_eq!(failure.relay_url, ENGINE_FAILURE_RELAY_URL);
+        assert!(
+            failure.reason.contains("unsupported action"),
+            "reason must call out the unsupported action: {}",
+            failure.reason
+        );
+        assert!(
+            failure.reason.contains("PublishNote"),
+            "reason must carry the detail: {}",
             failure.reason
         );
     }
