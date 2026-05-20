@@ -4,10 +4,7 @@ use crate::error::Result;
 
 const SHORT: &str = "\
   verbs: set-seed, req, show, set-app-relays, set-indexer, set-dead,
-         set-budget, refresh, expand, chirp, help, quit
-
-  chirp: home, notifications, profile, thread, compose, reply, react,
-         follow, unfollow, search, diagnostics, parity
+         set-budget, refresh, expand, help, quit
 
   mls:   load-key, mls-init, mls-status, mls-create, mls-fetch-kp,
          mls-invite, mls-send, mls-accept, mls-messages
@@ -81,29 +78,6 @@ const EXPAND: &str = "\
   expand $<var>
     Print the current expansion of a variable. Doesn't fetch anything;
     if the cache is empty for $follows / $relays, run `req` first.
-";
-
-const CHIRP: &str = "\
-  chirp <surface> ...
-    Feature-parity aliases for Chirp's app surfaces. Read surfaces drive
-    the production planner + relay fanout; write surfaces sign with the
-    loaded session key and publish to app relays.
-
-    read / diagnostics:
-      chirp home
-      chirp notifications
-      chirp profile <npub|nprofile|hex>
-      chirp thread <note|nevent|hex>
-      chirp search #nostr
-      chirp diagnostics
-      chirp parity
-
-    write:
-      chirp compose <text...>
-      chirp reply <note|nevent|hex> <text...>
-      chirp react <note|nevent|hex> [reaction]
-      chirp follow <npub|nprofile|hex>
-      chirp unfollow <npub|nprofile|hex>
 ";
 
 const QUIT: &str = "\
@@ -184,7 +158,6 @@ pub fn run(arg: Option<String>) -> Result<()> {
         Some("set-budget") => SET_BUDGET,
         Some("refresh") => REFRESH,
         Some("expand") => EXPAND,
-        Some("chirp") => CHIRP,
         Some("quit") | Some("exit") => QUIT,
         Some("load-key") => LOAD_KEY,
         Some("mls-init") => MLS_INIT,

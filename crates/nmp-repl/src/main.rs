@@ -1,7 +1,8 @@
-//! `nmp-repl` - interactive diagnostic REPL for NMP and Chirp.
+//! `nmp-repl` — interactive diagnostic REPL for the NMP planner + outbox.
 //!
-//! The core path drives the production planner + outbox. Chirp and Marmot
-//! commands add explicit test surfaces for the Swift app workflows.
+//! Read-only. No publishes, no AUTH, no NIP-77. v1 design lives in
+//! `docs/design/nmp-repl.md`. The binary wires rustyline → parser →
+//! command dispatch over a `Session`.
 
 use std::borrow::Cow;
 
@@ -27,7 +28,6 @@ const VERBS: &[&str] = &[
     "set-budget",
     "refresh",
     "expand",
-    "chirp",
     "help",
     // MLS / Marmot
     "create-account",
@@ -180,9 +180,6 @@ fn dispatch(session: &mut Session, cmd: Command) -> Result<bool, String> {
             .map(|_| false)
             .map_err(|e| e.to_string()),
         Command::Expand(var) => commands::expand::run(session, var)
-            .map(|_| false)
-            .map_err(|e| e.to_string()),
-        Command::Chirp(cmd) => commands::chirp::run(session, cmd)
             .map(|_| false)
             .map_err(|e| e.to_string()),
         Command::CreateAccount(name, relays) => commands::create_account::run(session, name, relays)
