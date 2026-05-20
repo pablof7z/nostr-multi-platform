@@ -112,12 +112,15 @@ pub type NmpActionExecutor = unsafe extern "C" fn(*const c_char) -> *const c_cha
 /// NUL-terminated C string, invokes `executor`, and maps its return value
 /// (`NULL` → `Ok(())`, non-NULL → `Err(message)`).
 ///
-/// SCOPE (v1): this exposes *executor* registration only. The full
+/// SCOPE: this C symbol exposes *executor* registration only. The full
 /// [`nmp_app_dispatch_action`] path also requires a registered *module*
 /// (`ActionRegistry::start` validates the JSON shape against it), so a
-/// namespace wired through this symbol alone is reachable by the registry's
-/// internal `execute` path but not yet by `nmp_app_dispatch_action`. Module
-/// registration is the planned follow-up (`nmp_app_register_action_module`).
+/// namespace wired through THIS C symbol alone is reachable by the registry's
+/// internal `execute` path but not by `nmp_app_dispatch_action`. The
+/// module-side seam is [`nmp_app_register_action_module`] (and its Rust
+/// counterpart [`NmpApp::register_action_module`]); a host registers BOTH
+/// halves to make a namespace fully reachable via `nmp_app_dispatch_action`.
+/// A Rust host such as `nmp-app-chirp` uses the Rust methods directly.
 ///
 /// THREADING: this call takes `&mut NmpApp`. It MUST be invoked during host
 /// init — before `nmp_app_start` and before any `nmp_app_dispatch_action` —

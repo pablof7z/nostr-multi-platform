@@ -75,7 +75,6 @@ pub use ffi::{
     nmp_app_create_new_account,
     nmp_app_dispatch_action,
     nmp_app_dispatch_capability,
-    nmp_app_follow,
     nmp_app_free,
     nmp_app_free_string,
     // T118 / G3 — lifecycle symbols must be reachable from the Android JNI
@@ -91,7 +90,6 @@ pub use ffi::{
     nmp_app_publish_signed_event,
     nmp_app_publish_signed_event_to,
     nmp_app_publish_unsigned_event,
-    nmp_app_react,
     // T146 — kernel event observer FFI for Android JNI.
     nmp_app_register_event_observer,
     // Raw signed-event tap FFI for Android JNI.
@@ -109,7 +107,6 @@ pub use ffi::{
     nmp_app_start,
     nmp_app_stop,
     nmp_app_switch_active,
-    nmp_app_unfollow,
     nmp_app_unregister_event_observer,
     nmp_app_unregister_raw_event_observer,
 };
