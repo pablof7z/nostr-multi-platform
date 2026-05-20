@@ -44,3 +44,33 @@ jobs:
         run: cargo test -p nmp-core --features lmdb-backend
         env:
           RUSTFLAGS: ""
+
+  android-ffi:
+    # Checks that the nmp-android-ffi standalone workspace compiles (host
+    # target; JNI ABI validation is separate). The crate has its own
+    # `[workspace]` table, so `cargo build/test --workspace` from the repo
+    # root never touches it — a Rust-level break there is otherwise invisible
+    # to CI until an Android build runs.
+    name: cargo check (android-ffi)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/nmp-android-ffi/target
+          key: ${{ runner.os }}-cargo-android-ffi-${{ hashFiles('crates/nmp-android-ffi/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-android-ffi-
+
+      # Host-target check only. The crate is a `cdylib`, but `cargo check`
+      # still validates Rust semantics and the `android-ffi` feature of
+      # nmp-core. Actual Android ABI cross-compilation is out of scope here.
+      - name: cargo check (nmp-android-ffi standalone workspace)
+        run: cd crates/nmp-android-ffi && cargo check
