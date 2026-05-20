@@ -315,3 +315,256 @@ fn ingest_contacts_for_active_account_syncs_follow_feed_projection() {
          plus one for the active account itself",
     );
 }
+
+// ─── ingest_profile (kind:0) ─────────────────────────────────────────────────
+
+/// A kind:0 metadata event is parsed by `parse_profile` and stored in the
+/// `profiles` read-cache keyed by the event author's pubkey.
+///
+/// `ingest_profile` writes directly to `self.profiles` with no signature
+/// re-verification (it runs post-`verify_and_persist`, D4), so the unsigned
+/// `make_event` fixture is sufficient — `parse_profile` only JSON-decodes the
+/// `content` field as `ProfileContent`. The `display_name` JSON key wins the
+/// `display_name → displayName → name` precedence chain in `parse_profile`.
+#[test]
+fn ingest_profile_stores_metadata_under_pubkey() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    let profile_id = "0000000000000000000000000000000000000000000000000000000000000010";
+    let event = make_event(
+        profile_id,
+        AUTHOR,
+        1_000,
+        0,
+        Vec::new(),
+    );
+    // `parse_profile` reads only `content`; tags are irrelevant for kind:0.
+    let event = NostrEvent {
+        content: r#"{"name":"test","display_name":"Test User","nip05":"test@example.com","about":"hi","picture":"https://example.com/a.png"}"#
+            .to_string(),
+        ..event
+    };
+    kernel.ingest_profile(event);
+
+    let stored = kernel
+        .profiles
+        .get(AUTHOR)
+        .expect("a kind:0 must store a profile entry under the author pubkey");
+    assert_eq!(
+        stored.display, "Test User",
+        "`display_name` wins the parse_profile precedence chain over `name`",
+    );
+    assert_eq!(stored.event_id, profile_id);
+    assert_eq!(stored.created_at, 1_000);
+    assert_eq!(stored.nip05, "test@example.com");
+    assert_eq!(stored.about, "hi");
+    assert_eq!(
+        stored.picture_url.as_deref(),
+        Some("https://example.com/a.png"),
+        "an http(s) picture URL is retained on the cached Profile",
+    );
+}
+
+/// A newer kind:0 (higher `created_at`) supersedes an already-cached profile;
+/// `ingest_profile` uses strict `>` on `created_at` mirroring the store's D4
+/// supersession rule.
+#[test]
+fn ingest_profile_newer_event_supersedes_older() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    let old = NostrEvent {
+        content: r#"{"display_name":"Old Name"}"#.to_string(),
+        ..make_event(
+            "0000000000000000000000000000000000000000000000000000000000000011",
+            AUTHOR,
+            1_000,
+            0,
+            Vec::new(),
+        )
+    };
+    kernel.ingest_profile(old);
+    assert_eq!(
+        kernel.profiles.get(AUTHOR).map(|p| p.display.as_str()),
+        Some("Old Name"),
+        "precondition: the older kind:0 is cached",
+    );
+
+    let new = NostrEvent {
+        content: r#"{"display_name":"New Name"}"#.to_string(),
+        ..make_event(
+            "0000000000000000000000000000000000000000000000000000000000000012",
+            AUTHOR,
+            2_000,
+            0,
+            Vec::new(),
+        )
+    };
+    kernel.ingest_profile(new);
+
+    assert_eq!(
+        kernel.profiles.get(AUTHOR).map(|p| p.display.as_str()),
+        Some("New Name"),
+        "a kind:0 with a newer created_at must replace the cached profile",
+    );
+
+    // A stale (older) re-delivery must NOT clobber the newer cached profile.
+    let stale = NostrEvent {
+        content: r#"{"display_name":"Stale Name"}"#.to_string(),
+        ..make_event(
+            "0000000000000000000000000000000000000000000000000000000000000013",
+            AUTHOR,
+            500,
+            0,
+            Vec::new(),
+        )
+    };
+    kernel.ingest_profile(stale);
+    assert_eq!(
+        kernel.profiles.get(AUTHOR).map(|p| p.display.as_str()),
+        Some("New Name"),
+        "an older kind:0 re-delivery must not supersede the newer cached profile",
+    );
+}
+
+// ─── ingest_timeline_event (kind:1) ──────────────────────────────────────────
+
+/// Build one real Schnorr-signed kind:1 event in the `NostrEvent` shape the
+/// kernel ingest path consumes after JSON decoding.
+///
+/// `ingest_timeline_event` routes through `store.insert` →
+/// `VerifiedEvent::try_from_raw`, which performs real signature verification —
+/// the unsigned `make_event` fixture would be dropped at that gate, so timeline
+/// tests must sign. Mirrors `clock_injection_tests.rs::signed_note`; the
+/// `expect` cannot fail with a freshly-generated keypair.
+fn signed_note(keys: &::nostr::Keys, content: &str, ts: u64) -> NostrEvent {
+    use ::nostr::{EventBuilder, Timestamp};
+    let nostr_event = EventBuilder::text_note(content)
+        .custom_created_at(Timestamp::from(ts))
+        .sign_with_keys(keys)
+        .expect("sign_with_keys cannot fail with a generated keypair");
+    NostrEvent {
+        id: nostr_event.id.to_hex(),
+        pubkey: nostr_event.pubkey.to_hex(),
+        created_at: nostr_event.created_at.as_secs(),
+        kind: nostr_event.kind.as_u16() as u32,
+        tags: nostr_event
+            .tags
+            .iter()
+            .map(|t: &::nostr::Tag| t.as_slice().to_vec())
+            .collect(),
+        content: nostr_event.content.clone(),
+        sig: nostr_event.sig.to_string(),
+    }
+}
+
+/// A signed kind:1 from an author present in `timeline_authors` passes the
+/// timeline gate: it is persisted to the `events` read-cache AND appended to
+/// the `timeline` ordering projection.
+///
+/// The sub_id (`follow-feed-default`) is a plain id with none of the
+/// gate-bypass prefixes (`diag-firehose-`, `author-notes-`, `thread-*`), so
+/// the author membership in `timeline_authors` is the only thing that opens
+/// both the `should_store_event` gate and the `timeline.push_back` gate.
+#[test]
+fn ingest_timeline_event_from_subscribed_author_stores_event() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    let keys = ::nostr::Keys::generate();
+    let event = signed_note(&keys, "hello from a followed author", 1_700_000_000);
+    let event_id = event.id.clone();
+
+    // Subscribe the author: child-module test access to the kernel-private
+    // `timeline_authors` projection (the `*_for_test` accessor is read-only).
+    kernel.timeline_authors.insert(event.pubkey.clone());
+
+    kernel.ingest_timeline_event(
+        RelayRole::Content,
+        "wss://relay.example/",
+        "follow-feed-default",
+        event,
+    );
+
+    assert!(
+        kernel.events.contains_key(&event_id),
+        "a signed kind:1 from a subscribed author must be cached in `events`",
+    );
+    assert!(
+        kernel.timeline.iter().any(|id| id == &event_id),
+        "a subscribed author's event must also be appended to the `timeline` \
+         ordering projection",
+    );
+}
+
+/// A signed kind:1 from an author NOT in `timeline_authors` (and not matched
+/// by any `should_store_event` bypass) is dropped before reaching the store:
+/// neither the `events` cache nor the `timeline` projection is mutated.
+#[test]
+fn ingest_timeline_event_from_non_subscribed_author_is_dropped() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // No active account, no selected_author → no implicit gate openings.
+    assert!(kernel.selected_author.is_none(), "precondition: no selected author");
+
+    let keys = ::nostr::Keys::generate();
+    let event = signed_note(&keys, "note from a stranger", 1_700_000_100);
+
+    // Author is deliberately NOT inserted into `timeline_authors`.
+    kernel.ingest_timeline_event(
+        RelayRole::Content,
+        "wss://relay.example/",
+        "follow-feed-default",
+        event,
+    );
+
+    assert!(
+        kernel.events.is_empty(),
+        "an event from a non-subscribed author must NOT be stored (timeline gate)",
+    );
+    assert!(
+        kernel.timeline.is_empty(),
+        "an event from a non-subscribed author must NOT enter the timeline",
+    );
+}
+
+/// A duplicate ingest of the same signed event (same id, same relay) is not
+/// double-stored: the second delivery hits `InsertOutcome::Duplicate` and
+/// returns before the `events.insert` / `timeline.push_back`, so both
+/// projections still hold exactly one entry.
+#[test]
+fn ingest_timeline_event_duplicate_is_not_double_stored() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    let keys = ::nostr::Keys::generate();
+    let event = signed_note(&keys, "ingested twice", 1_700_000_200);
+    let event_id = event.id.clone();
+    kernel.timeline_authors.insert(event.pubkey.clone());
+
+    // First delivery → Inserted.
+    kernel.ingest_timeline_event(
+        RelayRole::Content,
+        "wss://relay.example/",
+        "follow-feed-default",
+        event.clone(),
+    );
+    // Second delivery, identical event from the same relay → Duplicate.
+    kernel.ingest_timeline_event(
+        RelayRole::Content,
+        "wss://relay.example/",
+        "follow-feed-default",
+        event,
+    );
+
+    assert_eq!(
+        kernel.events.len(),
+        1,
+        "a duplicate ingest must not add a second `events` cache entry",
+    );
+    assert_eq!(
+        kernel.timeline.len(),
+        1,
+        "a duplicate ingest must not append a second `timeline` entry",
+    );
+    assert!(
+        kernel.events.contains_key(&event_id),
+        "the single cached event is the one that was ingested",
+    );
+}
