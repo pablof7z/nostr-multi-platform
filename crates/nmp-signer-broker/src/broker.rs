@@ -125,11 +125,12 @@ impl BunkerBroker {
         // Generate ephemeral keypair + secret now (must return URI synchronously).
         let local_keys = Keys::generate();
         let pubkey_hex = local_keys.public_key().to_hex();
-        // Derive the session secret: first 8 bytes of secret key as hex.
-        let secret_bytes = local_keys.secret_key().as_secret_bytes();
-        let secret: String = secret_bytes[..8]
-            .iter()
-            .map(|b| format!("{b:02x}"))
+        // Independent CSPRNG-derived session secret — not from key material.
+        use rand::Rng;
+        let secret: String = rand::thread_rng()
+            .sample_iter(rand::distributions::Alphanumeric)
+            .take(16)
+            .map(char::from)
             .collect();
 
         // Percent-encode the relay URL for the URI.

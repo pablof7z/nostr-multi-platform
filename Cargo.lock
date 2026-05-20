@@ -3491,6 +3491,7 @@ dependencies = [
  "nmp-signer-iface",
  "nmp-signers",
  "nostr",
+ "rand 0.8.6",
  "rustls",
  "serde",
  "serde_json",
