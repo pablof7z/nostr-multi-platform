@@ -221,7 +221,7 @@ impl Nip46Signer {
             ));
         }
         let rpc = Nip46Rpc {
-            id,
+            id: id.clone(),
             body_json: body_json.clone(),
             // In a full impl, encrypt `body_json` with NIP-44 to remote
             // pubkey.  Kept as plain JSON here so unit tests can inspect what
@@ -232,9 +232,24 @@ impl Nip46Signer {
             remote_pubkey_hex: self.uri.remote_pubkey_hex.clone(),
         };
         if let Err(e) = self.transport.send_rpc(rpc) {
+            // The pending entry was registered before `send_rpc` so a response
+            // racing the send still resolves.  On a *failed* send no response
+            // will ever arrive — drop the entry now, otherwise it leaks for
+            // the lifetime of the signer (a slow unbounded growth under a
+            // flaky transport).
+            if let Ok(mut pending) = self.pending.lock() {
+                pending.remove(&id);
+            }
             return SignerOp::err(e);
         }
         SignerOp::Pending(rx)
+    }
+
+    /// Number of in-flight RPCs awaiting a response.  Test-only — lets unit
+    /// tests assert that failed sends do not leak entries into `pending`.
+    #[cfg(test)]
+    pub(super) fn pending_len(&self) -> usize {
+        self.pending.lock().map(|m| m.len()).unwrap_or(0)
     }
 }
 

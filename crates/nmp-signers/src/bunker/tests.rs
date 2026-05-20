@@ -172,3 +172,44 @@ fn normalises_pubkey_to_lowercase() {
     let parsed = parse_bunker_uri(&uri).unwrap();
     assert_eq!(parsed.remote_pubkey_hex, PK);
 }
+
+#[test]
+fn accepts_permissions_as_alias_for_perms() {
+    // The parser treats `permissions=` as an alias of `perms=`.  Only `perms`
+    // was previously covered; this pins the alias branch.
+    let uri = format!("bunker://{PK}?relay=wss://r.example&permissions=sign_event:1");
+    let parsed = parse_bunker_uri(&uri).unwrap();
+    assert_eq!(parsed.permissions.as_deref(), Some("sign_event:1"));
+}
+
+#[test]
+fn empty_secret_and_perms_values_collapse_to_none() {
+    // `secret=` / `perms=` with no value must not produce `Some("")` — an
+    // empty connection secret is meaningless and would be a footgun if a
+    // caller treated `Some("")` as "a secret is present".
+    let uri = format!("bunker://{PK}?relay=wss://r.example&secret=&perms=");
+    let parsed = parse_bunker_uri(&uri).unwrap();
+    assert!(parsed.secret.is_none(), "empty secret= must be None");
+    assert!(parsed.permissions.is_none(), "empty perms= must be None");
+}
+
+#[test]
+fn repeated_secret_param_is_last_wins() {
+    // If a bunker URI carries `secret=` twice, the parser keeps the last
+    // value.  Pinning this so the behaviour is defined-by-test rather than
+    // accidental.
+    let uri = format!("bunker://{PK}?relay=wss://r.example&secret=first&secret=second");
+    let parsed = parse_bunker_uri(&uri).unwrap();
+    assert_eq!(parsed.secret.as_deref().map(String::as_str), Some("second"));
+}
+
+#[test]
+fn relay_param_with_no_value_is_invalid_relay() {
+    // A bare `relay` key with no `=value` decodes to an empty string and must
+    // be rejected as InvalidRelay (D6: typed error, never a panic).
+    let uri = format!("bunker://{PK}?relay");
+    assert!(matches!(
+        parse_bunker_uri(&uri),
+        Err(BunkerParseError::InvalidRelay(_))
+    ));
+}
