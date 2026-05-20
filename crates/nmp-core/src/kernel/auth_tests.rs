@@ -183,6 +183,50 @@ fn nip42_auth_failure_stamps_error_category_on_snapshot() {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// Typed FFI error contract — the kernel-level `last_error_category` must
+// project into the emitted JSON snapshot as a snake_case key, and the legacy
+// uncategorized `set_last_error_toast` path must clear a stale category so a
+// newer toast never carries a misleading class.
+// ───────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn last_error_category_projects_into_snapshot_and_clears_on_legacy_toast() {
+    use crate::kernel::closed_reason::ERR_PERMANENT;
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    // A categorized toast surfaces both fields in the snapshot JSON.
+    kernel.set_error_toast_with_category("publish store error".to_string(), ERR_PERMANENT);
+    let snap: serde_json::Value =
+        serde_json::from_str(&kernel.make_update(true)).expect("snapshot is valid JSON");
+    assert_eq!(
+        snap["last_error_toast"].as_str(),
+        Some("publish store error"),
+        "categorized toast text surfaces in the snapshot"
+    );
+    assert_eq!(
+        snap["last_error_category"].as_str(),
+        Some(ERR_PERMANENT),
+        "last_error_category projects into the snapshot as a snake_case key"
+    );
+
+    // A subsequent legacy (uncategorized) toast must clear the stale category
+    // so iOS never branches on a class that no longer matches the toast.
+    kernel.set_last_error_toast(Some("something else went wrong".to_string()));
+    let snap: serde_json::Value =
+        serde_json::from_str(&kernel.make_update(true)).expect("snapshot is valid JSON");
+    assert_eq!(
+        snap["last_error_toast"].as_str(),
+        Some("something else went wrong")
+    );
+    assert!(
+        snap["last_error_category"].is_null(),
+        "legacy set_last_error_toast clears the stale category: {:?}",
+        snap["last_error_category"]
+    );
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Test 3 — nip42_kernel_replays_pending_reqs_on_auth
 // ───────────────────────────────────────────────────────────────────────────
 //
