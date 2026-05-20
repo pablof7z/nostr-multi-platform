@@ -185,3 +185,50 @@ fn short(input: &str) -> String {
         format!("{}..", &input[..12])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn parses_event_frame() {
+        let raw = json!(["EVENT", "sub1", {"id":"abc", "kind":1}]).to_string();
+        match parse_frame(&raw) {
+            Frame::Event { sub_id, event } => {
+                assert_eq!(sub_id, "sub1");
+                assert_eq!(event.get("id").and_then(Value::as_str), Some("abc"));
+            }
+            _ => panic!("expected event frame"),
+        }
+    }
+
+    #[test]
+    fn parses_terminal_and_diagnostic_frames() {
+        match parse_frame(&json!(["EOSE", "sub1"]).to_string()) {
+            Frame::Eose { sub_id } => assert_eq!(sub_id, "sub1"),
+            _ => panic!("expected eose"),
+        }
+        match parse_frame(&json!(["CLOSED", "sub1", "rate limit"]).to_string()) {
+            Frame::Closed(message) => assert_eq!(message, "rate limit"),
+            _ => panic!("expected closed"),
+        }
+        match parse_frame(&json!(["AUTH", "challenge"]).to_string()) {
+            Frame::Auth(challenge) => assert_eq!(challenge, "challenge"),
+            _ => panic!("expected auth"),
+        }
+        match parse_frame(&json!(["NOTICE", "heads up"]).to_string()) {
+            Frame::Notice(message) => assert_eq!(message, "heads up"),
+            _ => panic!("expected notice"),
+        }
+    }
+
+    #[test]
+    fn malformed_frames_are_other() {
+        assert!(matches!(parse_frame("not-json"), Frame::Other));
+        assert!(matches!(
+            parse_frame(&json!(["EVENT"]).to_string()),
+            Frame::Other
+        ));
+    }
+}

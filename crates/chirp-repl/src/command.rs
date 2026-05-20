@@ -144,4 +144,34 @@ mod tests {
             Command::React("note1abc".into(), "+".into())
         );
     }
+
+    #[test]
+    fn parses_relay_and_diagnostic_commands() {
+        assert_eq!(
+            parse("set-relays wss://relay.primal.net,wss://purplepag.es").unwrap(),
+            Command::SetRelays(vec![
+                "wss://relay.primal.net".into(),
+                "wss://purplepag.es".into()
+            ])
+        );
+        assert_eq!(
+            parse("set-indexers wss://purplepag.es").unwrap(),
+            Command::SetIndexers(vec!["wss://purplepag.es".into()])
+        );
+        assert_eq!(parse("diag").unwrap(), Command::Diagnostics);
+        assert_eq!(parse("parity").unwrap(), Command::Parity);
+        assert_eq!(
+            parse("raw-req {\"kinds\":[1]}").unwrap(),
+            Command::RawReq("{\"kinds\":[1]}".into())
+        );
+    }
+
+    #[test]
+    fn rejects_bad_shapes() {
+        assert!(parse("profile").is_err());
+        assert!(parse("reply note1abc").is_err());
+        assert!(parse("react").is_err());
+        assert!(parse("set-relays https://bad.example").is_err());
+        assert!(parse("unknown").is_err());
+    }
 }
