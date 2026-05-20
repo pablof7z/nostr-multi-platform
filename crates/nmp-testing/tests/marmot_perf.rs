@@ -85,12 +85,11 @@ fn perf_group_messages_cold_render_10_members_100_msgs() {
     let group_id = group.mls_group_id.clone();
 
     // Gift-wrap and deliver welcomes.
-    for (i, (rumor, (mk, ms))) in pending
+    for (rumor, (mk, ms)) in pending
         .welcome_rumors
         .clone()
         .into_iter()
         .zip(member_keys.iter().zip(members.iter()))
-        .enumerate()
     {
         let gift = admin
             .wrap_welcome(&mk.public_key(), rumor, None)
@@ -101,7 +100,7 @@ fn perf_group_messages_cold_render_10_members_100_msgs() {
     pending.commit().expect("admin merge create");
 
     // Post-join self_updates: each member self-updates; admin processes all.
-    for (i, (mk, ms)) in member_keys.iter().zip(members.iter()).enumerate() {
+    for (i, (_mk, ms)) in member_keys.iter().zip(members.iter()).enumerate() {
         let su = ms.self_update(&group_id).expect("member self_update");
         let su_ev = su.evolution_event.clone();
         su.commit().expect("member merge su");

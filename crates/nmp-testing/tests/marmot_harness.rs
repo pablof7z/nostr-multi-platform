@@ -18,7 +18,7 @@ use mdk_core::MdkConfig;
 use mdk_core::prelude::NostrGroupConfigData;
 use mdk_sqlite_storage::MdkSqliteStorage;
 use nostr::{Keys, RelayUrl};
-use nmp_marmot::service::{CreateGroupPending, KeyPackagePublication, MarmotService};
+use nmp_marmot::service::MarmotService;
 use tempfile::TempDir;
 
 // ─── Storage helpers ──────────────────────────────────────────────────────────
@@ -47,6 +47,11 @@ pub fn unencrypted_storage(path: &Path) -> MdkSqliteStorage {
 
 /// Copy the SQLite file at `src` to `dst` — used by the post-compromise test
 /// to snapshot Bob's MLS state at epoch N before he rotates to epoch N+1.
+///
+/// `#[allow(dead_code)]`: this harness is included via `#[path]` in every
+/// `marmot_*` test binary; only `marmot_post_compromise` calls this helper, so
+/// the other binaries would otherwise warn.
+#[allow(dead_code)]
 pub fn snapshot_storage(src: &Path, dst: &Path) {
     std::fs::copy(src, dst).expect("snapshot sqlite copy");
 }
@@ -86,21 +91,13 @@ pub fn group_config(name: &str, admin_key: &Keys) -> NostrGroupConfigData {
 /// Welcome is gift-wrapped and delivered to Bob; Bob unwraps + accepts + does
 /// the mandatory post-join self_update; Alice processes Bob's commit.
 ///
-/// Returns `(alice_service, bob_service, group_id)` with both services at the
-/// same epoch and the group fully active on both sides.
-pub fn two_member_group(
-    alice_dir: &TestDir,
-    alice_keys: &Keys,
-    bob_dir: &TestDir,
-    bob_keys: &Keys,
-    group_name: &str,
-) -> mdk_core::prelude::GroupId {
-    let alice = service_at(&alice_dir.db_path("alice"), alice_keys.clone());
-    let bob = service_at(&bob_dir.db_path("bob"), bob_keys.clone());
-    setup_two_member_group(&alice, alice_keys, &bob, bob_keys, group_name)
-}
-
-/// Like `two_member_group` but takes pre-built services.
+/// Returns the `group_id` with both pre-built services at the same epoch and
+/// the group fully active on both sides.
+///
+/// `#[allow(dead_code)]`: this harness is included via `#[path]` in every
+/// `marmot_*` test binary; not every binary builds a two-member group, so the
+/// others would otherwise warn.
+#[allow(dead_code)]
 pub fn setup_two_member_group(
     alice: &MarmotService,
     alice_keys: &Keys,

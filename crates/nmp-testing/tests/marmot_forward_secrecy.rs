@@ -31,14 +31,14 @@
 #[path = "marmot_harness.rs"]
 mod harness;
 
-use mdk_core::prelude::{GroupId, MessageProcessingResult, NostrGroupConfigData};
+use mdk_core::prelude::{GroupId, MessageProcessingResult};
 use nostr::{EventBuilder, Keys, Kind};
 
 /// Add Carol to an existing Alice+Bob group. Returns the new group_id
 /// (unchanged) and Carol's service.
 fn add_carol_to_group(
     alice: &nmp_marmot::service::MarmotService,
-    alice_keys: &Keys,
+    _alice_keys: &Keys,
     bob: &nmp_marmot::service::MarmotService,
     carol: &nmp_marmot::service::MarmotService,
     carol_keys: &Keys,

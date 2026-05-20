@@ -13,8 +13,7 @@
 #[path = "marmot_harness.rs"]
 mod harness;
 
-use mdk_core::prelude::MessageProcessingResult;
-use nostr::{EventBuilder, Keys, Kind};
+use nostr::{Keys, Kind};
 
 #[test]
 fn key_package_lifecycle_publish_validate_create_group_join() {

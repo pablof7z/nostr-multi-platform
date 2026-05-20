@@ -38,7 +38,7 @@
 mod harness;
 
 use mdk_core::prelude::MessageProcessingResult;
-use nostr::{EventBuilder, Keys, Kind};
+use nostr::Keys;
 
 /// After consuming an initial key package (via create_group), a subsequent
 /// explicit `publish_key_package()` call produces a fresh, distinct package.
