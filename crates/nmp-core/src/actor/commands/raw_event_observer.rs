@@ -203,7 +203,7 @@ pub fn new_raw_event_observer_slot() -> RawEventObserverSlot {
                 drain_c_raw_envelope(envelope);
             }
         })
-        .expect("spawn raw event observer drain thread");
+        .expect("spawn raw event observer drain thread"); // doctrine-allow: D6 — runs once at process init (`nmp_app_new`); the slot return type is FFI-bound and cannot carry a `Result`. OS-level thread-spawn failure at startup is unrecoverable — the app cannot deliver raw events without this drain
     Arc::new(Mutex::new(RawObserverInner::new(tx)))
 }
 

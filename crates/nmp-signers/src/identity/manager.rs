@@ -168,7 +168,7 @@ impl AccountManager {
         let current_pubkey = self
             .accounts
             .get(id)
-            .expect("checked above")
+            .expect("checked above") // doctrine-allow: D6 — `accounts.contains_key(id)` is guarded at the top of this fn (line 160); a missing key here means a logic bug, not a runtime error
             .pubkey();
         let event = ActiveChangeEvent {
             previous,

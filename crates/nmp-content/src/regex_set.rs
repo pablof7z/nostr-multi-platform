@@ -44,13 +44,13 @@ fn nostr_uri() -> &'static Regex {
         // accept uppercase for tolerance — the decoder normalizes. Anchored
         // on common HRPs only; unknown HRPs fall through as plain text.
         Regex::new(r"(?i)nostr:(npub1|nprofile1|note1|nevent1|naddr1)[ac-hj-np-z02-9]+")
-            .expect("nostr URI regex compiles")
+            .expect("nostr URI regex compiles") // doctrine-allow: D6 — compile-time-constant regex literal; a malformed pattern is a programmer error caught on first call, not an operational FFI failure
     })
 }
 
 fn emoji_shortcode() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
-    R.get_or_init(|| Regex::new(r":([a-zA-Z0-9_+-]+):").expect("emoji shortcode regex compiles"))
+    R.get_or_init(|| Regex::new(r":([a-zA-Z0-9_+-]+):").expect("emoji shortcode regex compiles")) // doctrine-allow: D6 — compile-time-constant regex literal; malformed pattern is a programmer error, not an operational FFI failure
 }
 
 fn hashtag() -> &'static Regex {
@@ -60,7 +60,7 @@ fn hashtag() -> &'static Regex {
         // is emulated by anchoring on `\b` after capturing whitespace.
         // We keep the leading whitespace out of the match span by using
         // (?:^|\s) and trimming in the classifier.
-        Regex::new(r"(?:^|\s)#([\p{L}\p{N}_][\p{L}\p{N}_-]*)").expect("hashtag regex compiles")
+        Regex::new(r"(?:^|\s)#([\p{L}\p{N}_][\p{L}\p{N}_-]*)").expect("hashtag regex compiles") // doctrine-allow: D6 — compile-time-constant regex literal; malformed pattern is a programmer error, not an operational FFI failure
     })
 }
 
@@ -70,23 +70,23 @@ fn url() -> &'static Regex {
         // Conservative URL set — must start with http(s)://, run until
         // whitespace or common terminators. Trailing punctuation is stripped
         // in the classifier.
-        Regex::new(r#"https?://[^\s<>"'`{}|\\^\[\]]+"#).expect("url regex compiles")
+        Regex::new(r#"https?://[^\s<>"'`{}|\\^\[\]]+"#).expect("url regex compiles") // doctrine-allow: D6 — compile-time-constant regex literal; malformed pattern is a programmer error, not an operational FFI failure
     })
 }
 
 fn bolt11() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
-    R.get_or_init(|| Regex::new(r"(?i)\blnbc[0-9a-z]{50,}").expect("bolt11 regex compiles"))
+    R.get_or_init(|| Regex::new(r"(?i)\blnbc[0-9a-z]{50,}").expect("bolt11 regex compiles")) // doctrine-allow: D6 — compile-time-constant regex literal; malformed pattern is a programmer error, not an operational FFI failure
 }
 
 fn bolt12() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
-    R.get_or_init(|| Regex::new(r"(?i)\blno1[0-9a-z]{50,}").expect("bolt12 regex compiles"))
+    R.get_or_init(|| Regex::new(r"(?i)\blno1[0-9a-z]{50,}").expect("bolt12 regex compiles")) // doctrine-allow: D6 — compile-time-constant regex literal; malformed pattern is a programmer error, not an operational FFI failure
 }
 
 fn cashu() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
-    R.get_or_init(|| Regex::new(r"\bcashu[AB][A-Za-z0-9_-]{40,}").expect("cashu regex compiles"))
+    R.get_or_init(|| Regex::new(r"\bcashu[AB][A-Za-z0-9_-]{40,}").expect("cashu regex compiles")) // doctrine-allow: D6 — compile-time-constant regex literal; malformed pattern is a programmer error, not an operational FFI failure
 }
 
 /// The full ordered pattern set. Order is not load-bearing — `collect_matches`

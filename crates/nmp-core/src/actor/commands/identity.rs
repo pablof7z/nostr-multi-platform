@@ -415,8 +415,7 @@ pub(crate) fn create_account(
             String::new()
         }
     };
-    if !kind0_content.is_empty() {
-        let author = identity.active_pubkey().unwrap();
+    if let (false, Some(author)) = (kind0_content.is_empty(), identity.active_pubkey()) {
         let unsigned_meta = UnsignedEvent {
             pubkey: author,
             kind: 0,
@@ -438,8 +437,7 @@ pub(crate) fn create_account(
             _ => vec!["r".to_string(), url.clone()],
         })
         .collect();
-    if !relay_tags.is_empty() {
-        let author = identity.active_pubkey().unwrap();
+    if let (false, Some(author)) = (relay_tags.is_empty(), identity.active_pubkey()) {
         let unsigned_relay = UnsignedEvent {
             pubkey: author,
             kind: 10002,

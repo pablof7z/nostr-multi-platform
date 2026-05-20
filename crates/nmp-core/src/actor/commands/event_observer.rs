@@ -178,7 +178,7 @@ pub fn new_event_observer_slot() -> KernelEventObserverSlot {
                 drain_c_envelope(envelope);
             }
         })
-        .expect("spawn kernel-event observer drain thread");
+        .expect("spawn kernel-event observer drain thread"); // doctrine-allow: D6 — runs once at process init (`nmp_app_new`); the slot return type is FFI-bound and cannot carry a `Result`. OS-level thread-spawn failure at startup is unrecoverable — the app cannot deliver events without this drain
     Arc::new(Mutex::new(ObserverInner::new(tx)))
 }
 

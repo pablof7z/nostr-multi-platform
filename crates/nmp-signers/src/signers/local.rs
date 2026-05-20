@@ -230,10 +230,10 @@ impl Signer for LocalKeySigner {
                     self.ncryptsec_log_n,
                     KeySecurity::Medium,
                 )
-                .expect("NIP-49 encrypt with a valid key + password should not fail");
+                .expect("NIP-49 encrypt with a valid key + password should not fail"); // doctrine-allow: D6 — `to_payload` (Signer trait) returns `SignerPayload`, not `Result`; the key is held + validated at construction. CAVEAT: scrypt at log_n=16 is theoretically OOM-reachable on memory-constrained devices — refactoring the trait to `-> Result<SignerPayload, SignerError>` is tracked as a follow-up
                 let bech = enc
                     .to_bech32()
-                    .expect("EncryptedSecretKey -> bech32 should not fail");
+                    .expect("EncryptedSecretKey -> bech32 should not fail"); // doctrine-allow: D6 — bech32 encoding of an already-constructed `EncryptedSecretKey` is infallible (fixed HRP + valid payload); a failure here is a logic bug, not an operational error
                 LocalKeyMaterial::Ncryptsec(bech)
             }
             None => {

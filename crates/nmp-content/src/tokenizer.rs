@@ -97,7 +97,7 @@ fn collect_matches(content: &str) -> Vec<RawMatch> {
     let mut out = Vec::new();
     for pat in patterns() {
         for caps in pat.re.captures_iter(content) {
-            let whole = caps.get(0).expect("group 0 always exists");
+            let whole = caps.get(0).expect("group 0 always exists"); // doctrine-allow: D6 — `regex` crate API guarantees capture group 0 (the whole match) is always present for any `Captures`; this is a type-level invariant, not an operational failure
             // Hashtag uses group 1 to skip the leading whitespace; everything
             // else uses group 0.
             let cap = caps.get(1).unwrap_or(whole);
