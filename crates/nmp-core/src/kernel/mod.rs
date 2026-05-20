@@ -68,6 +68,12 @@ mod reply;
 mod requests;
 #[cfg(test)]
 mod retention_tests;
+// Host-extensible snapshot output — the `nmp_app_register_snapshot_projection`
+// seam. `pub(crate)` so the crate-private `ffi` module can reach the registry
+// + slot helpers for the C-ABI registration entry point.
+pub(crate) mod snapshot_registry;
+#[cfg(test)]
+mod snapshot_registry_tests;
 #[cfg(test)]
 mod state_projection_tests;
 mod status;
@@ -140,6 +146,9 @@ pub(crate) use action_registry::{default_registry, ActionRegistry};
 pub(crate) use identity_state::{
     AccountSummary, BunkerHandshakeDto, PublishQueueEntry, RelayAckOutcome, RelayEditRow,
 };
+// Host-extensible snapshot output — reachable from the `ffi` module for the
+// `nmp_app_register_snapshot_projection` C-ABI entry point.
+pub(crate) use snapshot_registry::{new_snapshot_projection_slot, SnapshotProjectionSlot};
 pub(crate) use lifecycle::{LifecyclePhase, LifecycleTransition};
 // D0: NIP-47 NWC is an app noun — `WalletStatus` is gated behind the `wallet`
 // feature so the protocol-neutral kernel compiles without `nmp-nwc`.
@@ -410,6 +419,14 @@ pub(crate) struct Kernel {
     /// from the single all-kinds ingest point after the existing
     /// Schnorr + id-hash gate. Generic capability (D0) — no protocol nouns.
     raw_event_observers: Option<crate::actor::RawEventObserverSlot>,
+    /// Host-extensible snapshot output slot. Integration lives in
+    /// `kernel/snapshot_registry.rs`; `None` until the actor binds the
+    /// shared `Arc<Mutex<…>>` via `set_snapshot_projection_handle`. Each
+    /// registered closure runs in `make_update` and contributes a namespaced
+    /// JSON value to `KernelSnapshot::projections`. The output-side
+    /// counterpart to the action registry (D0 — the kernel emits, never
+    /// names a host noun).
+    snapshot_projections: Option<SnapshotProjectionSlot>,
     /// Shared handle to the relay-edit rows so the FFI layer (e.g. Marmot
     /// dispatch) can read the current user-configured write relays without
     /// importing kernel internals. Synced by `set_relay_edit_rows` in
@@ -722,6 +739,7 @@ impl Kernel {
             lifecycle_phase: LifecyclePhase::Inactive,
             event_observers: None,
             raw_event_observers: None,
+            snapshot_projections: None,
             relay_edit_rows_handle: None,
             indexer_relays_handle,
             local_write_relays_handle,

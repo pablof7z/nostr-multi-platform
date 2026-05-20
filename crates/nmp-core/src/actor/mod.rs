@@ -378,6 +378,7 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
         new_lifecycle_observer_slot(),
         new_event_observer_slot(),
         new_raw_event_observer_slot(),
+        crate::kernel::new_snapshot_projection_slot(),
         Arc::new(Mutex::new(Vec::new())),
         Arc::new(Mutex::new(None)),
         new_capability_callback_slot(),
@@ -402,6 +403,7 @@ pub fn run_actor_with_lifecycle_observer(
         lifecycle_observer,
         new_event_observer_slot(),
         new_raw_event_observer_slot(),
+        crate::kernel::new_snapshot_projection_slot(),
         Arc::new(Mutex::new(Vec::new())),
         Arc::new(Mutex::new(None)),
         new_capability_callback_slot(),
@@ -427,6 +429,12 @@ pub fn run_actor_with_observers(
     lifecycle_observer: LifecycleObserverSlot,
     event_observers: KernelEventObserverSlot,
     raw_event_observers: RawEventObserverSlot,
+    // Host-extensible snapshot output slot. Shared `Arc` with the `NmpApp`:
+    // the C-ABI `nmp_app_register_snapshot_projection` mutates registrations
+    // through one clone (host init); this actor thread binds the other onto
+    // the kernel so `make_update` reads the same registry without crossing
+    // FFI on each tick.
+    snapshot_projections: crate::kernel::SnapshotProjectionSlot,
     relay_edit_rows: Arc<Mutex<Vec<crate::kernel::RelayEditRow>>>,
     active_local_nsec: Arc<Mutex<Option<zeroize::Zeroizing<String>>>>,
     capability_callback: CapabilityCallbackSlot,
@@ -486,6 +494,14 @@ pub fn run_actor_with_observers(
     // on. Survives `Reset` the same way the event-observer slot does so
     // external registrations stay live across a kernel rebuild.
     kernel.set_raw_event_observers_handle(Arc::clone(&raw_event_observers));
+    // Bind the shared snapshot-projection slot. The kernel runs every
+    // host-registered projection closure in `make_update` and appends the
+    // result to `KernelSnapshot::projections`. Per-app crates register
+    // through the C-ABI `nmp_app_register_snapshot_projection`, which mutates
+    // the same `Arc<Mutex<…>>`. Survives `Reset` the same way the other
+    // shared handles do so host projections stay live across a kernel
+    // rebuild.
+    kernel.set_snapshot_projection_handle(Arc::clone(&snapshot_projections));
     // Bind the shared relay-edit rows handle so external Rust callers
     // (e.g. `nmp-app-chirp` Marmot dispatch) can read the user's current
     // relay list without crossing FFI. Survives `Reset` the same way as
