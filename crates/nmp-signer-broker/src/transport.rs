@@ -117,12 +117,6 @@ impl Nip46Transport for BrokerTransport {
             .send(frame)
             .map_err(|e| SignerError::Backend(format!("relay send: {e}")))
     }
-
-    fn reconnect_hint(&self) {
-        // TODO(reconnect): when the broker rebuilds the underlying socket
-        // (e.g., on cancel-then-resume or relay failure), call this so the
-        // signer knows to re-send any in-flight RPCs.
-    }
 }
 
 fn now_secs() -> u64 {

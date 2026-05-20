@@ -31,7 +31,8 @@
 //!
 //! ## What this **doesn't** test
 //!
-//! - Reconnect mid-publish (broker's `reconnect_hint` is a stub today).
+//! - Reconnect mid-publish (the broker does not yet replay in-flight RPCs
+//!   after a relay socket rebuild).
 //! - NIP-42 AUTH challenges over the bunker relay (separate follow-up;
 //!   `sync_kernel` clears the auth signer when a NIP-46 is active).
 //! - Concurrent publishes (the broker's `pending` map handles them; we

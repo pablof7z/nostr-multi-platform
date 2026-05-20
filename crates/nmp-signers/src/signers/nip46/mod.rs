@@ -26,9 +26,6 @@
 //!   request id (nanoid-equivalent: 11-byte hex) and registers a one-shot
 //!   `Sender` in `Nip46Signer::pending`.  The transport delivers responses by
 //!   their id; we resolve and drop.
-//! - **Reconnect**: `Nip46Transport::reconnect_hint()` is reserved for the
-//!   kernel-side reconnect path.  This scaffold does not yet replay in-flight
-//!   requests after a subscription rebuild.
 
 mod handle;
 mod mapper;

@@ -38,8 +38,4 @@ pub trait Nip46Transport: Send + Sync + std::fmt::Debug {
     /// response arrives later via the `Sender` that lives in the signer's
     /// pending-RPC map.
     fn send_rpc(&self, rpc: Nip46Rpc) -> Result<(), SignerError>;
-
-    /// Hint that the underlying subscription was rebuilt.  Signer may re-send
-    /// pending RPCs.  Default: no-op.
-    fn reconnect_hint(&self) {}
 }
