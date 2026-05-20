@@ -249,18 +249,26 @@ fn publish_key_package(
     h.publish_explicit(&pubn.event_30443, &relays);
     h.publish_explicit(&pubn.event_443, &relays);
     let mut ok_count = 0u32;
+    let mut send_errors: Vec<String> = Vec::new();
     for url in &urls {
         let j443 = pubn.event_443.as_json();
         let j30443 = pubn.event_30443.as_json();
-        if crate::projection::fetch::send_event(url, &j30443, SEND_WALL).unwrap_or(false) {
-            ok_count += 1;
+        match crate::projection::fetch::send_event(url, &j30443, SEND_WALL) {
+            Ok(true) => ok_count += 1,
+            Ok(false) => {}
+            Err(e) => send_errors.push(format!("30443 {e}")),
         }
-        let _ = crate::projection::fetch::send_event(url, &j443, SEND_WALL);
+        if let Err(e) = crate::projection::fetch::send_event(url, &j443, SEND_WALL) {
+            send_errors.push(format!("443 {e}"));
+        }
     }
     h.record_key_package(pubn.d_tag.clone(), now_secs);
     Ok(json!({
         "d_tag": pubn.d_tag,
         "direct_ok": ok_count,
+        // Connection / send failures (D6 — distinct from a relay that was
+        // reached but did not confirm). Empty on a fully clean publish.
+        "send_errors": send_errors,
         "events": [
             pubn.event_30443.as_json(),
             pubn.event_443.as_json(),
@@ -680,22 +688,28 @@ fn poll_inbox(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
         "kinds": [30443, 443], "since": since, "limit": 50,
     });
 
-    // Collect unique events across relays (de-dup by event id).
+    // Collect unique events across relays (de-dup by event id). A relay
+    // connection / send failure is recorded in `errors` (D6 — not swallowed)
+    // but does not abort the poll: other relays may still deliver.
     let mut all_events: HashMap<String, nostr::Event> = HashMap::new();
+    let mut errors: Vec<String> = Vec::new();
     for relay_url in &relay_urls {
         for filter in [&welcome_filter, &message_filter, &kp_filter] {
-            let raw = crate::projection::fetch::fetch_events(relay_url, filter, WALL);
-            for ev_json in raw {
-                if let Ok(ev) = serde_json::from_value::<nostr::Event>(ev_json) {
-                    all_events.entry(ev.id.to_hex()).or_insert(ev);
+            match crate::projection::fetch::fetch_events(relay_url, filter, WALL) {
+                Ok(raw) => {
+                    for ev_json in raw {
+                        if let Ok(ev) = serde_json::from_value::<nostr::Event>(ev_json) {
+                            all_events.entry(ev.id.to_hex()).or_insert(ev);
+                        }
+                    }
                 }
+                Err(e) => errors.push(e),
             }
         }
     }
     let mut n_welcomes = 0u32;
     let mut n_messages = 0u32;
     let mut n_kps = 0u32;
-    let mut errors: Vec<String> = Vec::new();
     let total_events = all_events.len();
     for (_id, ev) in all_events {
         match ev.kind {

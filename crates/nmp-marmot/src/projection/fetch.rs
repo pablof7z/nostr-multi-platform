@@ -2,9 +2,26 @@
 //! `publish_key_package` (write).
 //!
 //! Issues a single REQ against one relay, collects EVENTs until EOSE (or
-//! wall deadline), closes. `send_event` sends an EVENT and waits for OK.
+//! wall deadline), then sends a WebSocket Close frame and drops the socket.
+//! `send_event` sends an EVENT and waits for OK, then closes the same way.
 //! No retry, no outbox routing. Mirrors the logic in
 //! `nmp-repl/src/publish.rs:fetch_events`.
+//!
+//! ## D8 — no polling
+//!
+//! The receive loops are NOT busy-waits. `connect` arms a 250 ms
+//! `set_read_timeout` and the loop body calls the BLOCKING `sock.read()`:
+//! the thread sleeps in the syscall until a frame arrives or the timeout
+//! elapses, gated by a wall-clock `deadline`. This is the sanctioned
+//! "blocking call with a wall deadline" shape, not a spin loop.
+//!
+//! ## D6 — error propagation
+//!
+//! Both helpers return `Result<_, String>` so a connection failure is
+//! distinguishable from "no events" / "relay rejected the event". The
+//! string is surfaced verbatim into the `poll_inbox` / `publish_key_package`
+//! op envelopes (`{"ok":false,"error":…}` / the `errors` array) — no panic
+//! crosses the FFI boundary.
 
 use std::io::ErrorKind;
 use std::net::TcpStream;
@@ -18,19 +35,24 @@ const READ_POLL: Duration = Duration::from_millis(250);
 
 /// Fetch events matching `filter_json` from `relay_url`, collecting until
 /// EOSE or `wall`. Returns the raw event `Value`s (the event object, not the
-/// full `["EVENT", sub, …]` envelope).
-pub fn fetch_events(relay_url: &str, filter_json: &Value, wall: Duration) -> Vec<Value> {
+/// full `["EVENT", sub, …]` envelope) on success, or an `Err(String)`
+/// describing the connection / send failure (D6 — distinguishable from an
+/// empty result).
+pub fn fetch_events(
+    relay_url: &str,
+    filter_json: &Value,
+    wall: Duration,
+) -> Result<Vec<Value>, String> {
     let sub = format!("marmot-poll-{}", now_secs());
     let mut out = Vec::new();
 
-    let mut sock = match connect(relay_url) {
-        Ok(s) => s,
-        Err(_) => return out,
-    };
+    let mut sock = connect(relay_url)?;
 
     let req = json!(["REQ", sub, filter_json]).to_string();
-    if sock.send(Message::Text(req)).is_err() {
-        return out;
+    if let Err(e) = sock.send(Message::Text(req)) {
+        // Best-effort close before reporting the send failure.
+        let _ = sock.close(None);
+        return Err(format!("REQ send to {relay_url} failed: {e}"));
     }
 
     let deadline = Instant::now() + wall;
@@ -49,25 +71,39 @@ pub fn fetch_events(relay_url: &str, filter_json: &Value, wall: Duration) -> Vec
             Err(_) => break,
         }
     }
-    out
+    // Send a WebSocket Close frame so the relay tears the subscription down
+    // cleanly instead of waiting for the TCP FIN to time out its REQ.
+    close(&mut sock);
+    Ok(out)
 }
 
 /// Publish a signed event to `relay_url`. Waits up to `wall` for an OK/NOTICE.
-/// Returns `Ok(true)` on relay acceptance, `Ok(false)` on rejection/timeout,
-/// `Err` on connection failure.
-pub fn send_event(relay_url: &str, event_json: &str, wall: Duration) -> Result<bool, ()> {
+/// Returns `Ok(true)` on relay acceptance, `Ok(false)` on rejection / NOTICE /
+/// timeout (the relay was reached but did not confirm), `Err(String)` on
+/// connection / send failure (D6 — the caller can tell the two apart).
+pub fn send_event(relay_url: &str, event_json: &str, wall: Duration) -> Result<bool, String> {
     let mut sock = connect(relay_url)?;
     let msg = format!("[\"EVENT\",{}]", event_json);
-    sock.send(Message::Text(msg)).map_err(|_| ())?;
+    if let Err(e) = sock.send(Message::Text(msg)) {
+        let _ = sock.close(None);
+        return Err(format!("EVENT send to {relay_url} failed: {e}"));
+    }
 
+    let mut accepted = false;
     let deadline = Instant::now() + wall;
     while Instant::now() < deadline {
         match sock.read() {
             Ok(Message::Text(s)) => {
-                let v: Value = match serde_json::from_str(&s) { Ok(v) => v, Err(_) => continue };
+                let v: Value = match serde_json::from_str(&s) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
                 match v.get(0).and_then(Value::as_str) {
-                    Some("OK") => return Ok(v.get(2).and_then(Value::as_bool).unwrap_or(true)),
-                    Some("NOTICE") => return Ok(false),
+                    Some("OK") => {
+                        accepted = v.get(2).and_then(Value::as_bool).unwrap_or(true);
+                        break;
+                    }
+                    Some("NOTICE") => break,
                     _ => {}
                 }
             }
@@ -78,17 +114,30 @@ pub fn send_event(relay_url: &str, event_json: &str, wall: Duration) -> Result<b
             Err(_) => break,
         }
     }
-    Ok(false)
+    close(&mut sock);
+    Ok(accepted)
 }
 
-fn connect(url: &str) -> Result<Sock, ()> {
-    let (socket, _) = tungstenite::connect(url).map_err(|_| ())?;
+fn connect(url: &str) -> Result<Sock, String> {
+    let (socket, _) =
+        tungstenite::connect(url).map_err(|e| format!("connect {url} failed: {e}"))?;
     let _ = match socket.get_ref() {
         MaybeTlsStream::Plain(s) => s.set_read_timeout(Some(READ_POLL)),
         MaybeTlsStream::Rustls(s) => s.get_ref().set_read_timeout(Some(READ_POLL)),
         _ => Ok(()),
     };
     Ok(socket)
+}
+
+/// Send a Close frame and flush it. Best-effort: a relay that already closed
+/// the TCP stream makes this a no-op. Keeps the relay from leaking the REQ
+/// subscription until its own idle timeout fires.
+fn close(sock: &mut Sock) {
+    if sock.close(None).is_ok() {
+        // `close` only queues the frame; `flush` (or a final `read`) writes
+        // it. A read also drains the relay's Close acknowledgement.
+        let _ = sock.flush();
+    }
 }
 
 enum Parsed {

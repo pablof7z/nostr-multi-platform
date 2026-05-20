@@ -13,6 +13,29 @@
 //!   plan shapes; MDK types appear only in [`service`], which is consumed
 //!   in-crate (tests) and by a future actor/FFI bridge.
 //!
+//! ## Storage seam — D4 (one writer per fact)
+//!
+//! Marmot deliberately runs a **second** store alongside the kernel's LMDB
+//! event log. The two never write the same fact:
+//!
+//! | Store | Owner | Facts it is the SOLE writer of |
+//! |-------|-------|--------------------------------|
+//! | **MDK SQLite** (`mdk-sqlite-storage`, `<app_support>/marmot-mls-state.sqlite`) | [`service::MarmotService`] (this crate) | MLS ratchet state — group secrets, epoch tree, pending commits, processed-Welcome records, KeyPackage private keys. |
+//! | **Kernel LMDB** (`nmp-core`) | the kernel actor / domain modules | Nostr wire events — the signed kind:30443/443/445/1059 envelopes, with their D10 source-relay provenance. |
+//!
+//! The ratchet state is private cryptographic material that MUST NOT live in
+//! a shared event log; the wire events are public, replayable, and carry
+//! provenance the MLS layer has no concept of. So the split is intrinsic,
+//! not incidental. The invariant: **no fact is written to both stores.** A
+//! kind:445 group message exists once in LMDB as an opaque ciphertext event
+//! (kernel-owned) and its *decrypted* plaintext exists once in MDK SQLite
+//! (service-owned) — different facts, one writer each. The
+//! `domain` records ([`domain::MarmotGroupRecord`] et al.) are pure
+//! read-projections derived from MDK SQLite; they are never the write path
+//! and hold no ratchet state (see [`domain`] rustdoc). This crate is the
+//! only code that opens the SQLite file, so D4's "one writer" holds by
+//! construction — no other crate can write MLS state.
+//!
 //! ## Two-layer architecture
 //!
 //! 1. **Substrate module layer** ([`domain`], [`view`], [`action`]) — mirrors

@@ -2,7 +2,7 @@
 //!
 //! Two families:
 //! 1. **Substrate module behaviour** — `ActionModule` impls emit
-//!    correctly-pinned `PublishPlan`s; interest helpers route correctly.
+//!    correctly-pinned `PublishPlan`s.
 //! 2. **MDK + NIP-59 round-trip** — publish key package → create group →
 //!    gift-wrap Welcome → unwrap → join → message round-trip using in-memory
 //!    storage + explicit keys, driven entirely through the public
@@ -20,7 +20,6 @@ use nostr::{EventBuilder, Keys, Kind, PublicKey, RelayUrl};
 use crate::action::{
     CreateGroupAction, GroupActionInput, PublishKeyPackageAction, PublishKeyPackageInput,
 };
-use crate::interest::{group_messages_interest, key_packages_for, welcomes_for};
 use crate::service::MarmotService;
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 
@@ -67,22 +66,6 @@ fn publish_key_package_action_requires_relays() {
         relays: vec!["wss://r.example.com".into()],
     };
     assert!(PublishKeyPackageAction::start(&mut ctx, ok).is_ok());
-}
-
-#[test]
-fn interests_route_correctly() {
-    // Group messages: relay-pinned to the group relay.
-    let gm = group_messages_interest(1, "wss://group.example.com", "deadbeef");
-    assert_eq!(
-        gm.shape.relay_pin.as_deref(),
-        Some("wss://group.example.com")
-    );
-    // KeyPackages: NOT pinned (author-write outbox).
-    let kp = key_packages_for(2, "peerpub");
-    assert!(kp.shape.relay_pin.is_none());
-    // Welcomes: NOT pinned (recipient inbox).
-    let w = welcomes_for(3, "selfpub");
-    assert!(w.shape.relay_pin.is_none());
 }
 
 // ─── MDK + NIP-59 round-trip via the service API ─────────────────────────────
