@@ -13,7 +13,9 @@ use nmp_core::publish::{
     outcome_of, InMemoryPublishStore, NoopSigner, PublishAction, PublishEngine, PublishOutcome,
     PublishStore, PublishTarget, RelayAck, RetryPolicy, StaticOutbox,
 };
-use nmp_core::publish::{PerRelayState, PublishStoreError, RelayDispatcher, ReplayDispatcher};
+use nmp_core::publish::{
+    OutboxResolver, PerRelayState, PublishStoreError, RelayDispatcher, ReplayDispatcher,
+};
 use nmp_core::substrate::*;
 
 fn signed(id: &str, author: &str, kind: u32, p_tags: &[&str]) -> SignedEvent {
@@ -378,6 +380,56 @@ fn publish_store_error_does_not_panic_engine() {
     ));
 }
 
+#[test]
+fn static_outbox_falls_back_to_indexer_when_author_has_no_writes() {
+    // Coverage gap: `StaticOutbox::indexer_fallback` — the bootstrap/cold-start
+    // branch — was never exercised. An author with no write relays on file
+    // must resolve to the configured indexer set so a cold-start publish still
+    // has somewhere to go. (This is the bootstrap resolver; the production
+    // `Nip65OutboxResolver` is deliberately fail-closed instead — it returns
+    // an empty set, mapped to `NoTargets`.)
+    // Note: NO author_writes entry for "alice".
+    let outbox = StaticOutbox {
+        indexer_fallback: vec![
+            "wss://indexer-1".to_string(),
+            "wss://indexer-2".to_string(),
+        ],
+        ..StaticOutbox::default()
+    };
+    let resolved = outbox.resolve("alice", &[], &PublishTarget::Auto, 1);
+    assert_eq!(
+        resolved,
+        ["wss://indexer-1", "wss://indexer-2"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+        "author with 0 write relays falls back to the indexer set"
+    );
+}
+
+#[test]
+fn static_outbox_uses_author_writes_and_skips_indexer_fallback() {
+    // Symmetric assertion: when the author DOES have write relays, the
+    // resolver routes to exactly those and the indexer fallback is NOT
+    // consulted. A regression that always unions the fallback would leak the
+    // publish to indexer relays the author never opted into.
+    let mut outbox = StaticOutbox::default();
+    outbox.author_writes.insert(
+        "alice".to_string(),
+        vec!["wss://alice-1".to_string(), "wss://alice-2".to_string()],
+    );
+    outbox.indexer_fallback = vec!["wss://indexer-fallback".to_string()];
+    let resolved = outbox.resolve("alice", &[], &PublishTarget::Auto, 1);
+    assert!(resolved.contains("wss://alice-1"));
+    assert!(resolved.contains("wss://alice-2"));
+    assert!(
+        !resolved.contains("wss://indexer-fallback"),
+        "indexer fallback must NOT be used when the author has write relays"
+    );
+    assert_eq!(resolved.len(), 2, "exactly the author's write relays");
+}
+
 // Two follow-up tests for codex 947dcfc findings (D6 FFI mapping +
-// pending_retries durability) live in `publish_engine_followup.rs` so
-// neither file exceeds the AGENTS.md 500-LOC hard cap.
+// pending_retries durability) plus multi-relay fan-out coverage live in
+// `publish_engine_followup.rs` so neither file exceeds the AGENTS.md 500-LOC
+// hard cap.

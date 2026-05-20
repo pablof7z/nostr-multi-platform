@@ -21,6 +21,8 @@
 
 mod error_mapping;
 mod helpers;
+#[cfg(test)]
+mod tests;
 
 pub use error_mapping::{engine_error_to_failure, ENGINE_FAILURE_RELAY_URL};
 pub use helpers::outcome_of;

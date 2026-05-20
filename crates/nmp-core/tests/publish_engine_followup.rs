@@ -9,13 +9,19 @@
 //! - **pending_retries durability** — a publish that's mid-backoff when the
 //!   process dies must resume with its scheduled retry deadline intact,
 //!   honouring the 1s/4s/16s schedule across restart.
+//!
+//! Plus multi-relay fan-out coverage added later: a real mixed publish driven
+//! end-to-end through `start_publish` (one relay rejected, others accepted),
+//! and per-relay independence of the state machine across a fan-out batch.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use nmp_core::publish::{
-    engine_error_to_failure, InMemoryPublishStore, NoopSigner, PublishAction, PublishEngine,
-    PublishEngineError, PublishStore, PublishStoreError, PublishTarget, RelayAck, RelayDispatcher,
-    ReplayDispatcher, RetryPolicy, StaticOutbox, ENGINE_FAILURE_RELAY_URL,
+    engine_error_to_failure, outcome_of, InMemoryPublishStore, NoopSigner, PerRelayState,
+    PublishAction, PublishEngine, PublishEngineError, PublishOutcome, PublishStore,
+    PublishStoreError, PublishTarget, RelayAck, RelayDispatcher, RelayUrl, ReplayDispatcher,
+    RetryPolicy, StaticOutbox, ENGINE_FAILURE_RELAY_URL,
 };
 use nmp_core::substrate::*;
 
@@ -188,5 +194,255 @@ fn publish_pending_retries_durable_across_restart() {
     assert!(
         store.load_pending().unwrap().is_empty(),
         "store cleared after completion"
+    );
+}
+
+#[test]
+fn publish_partial_success_one_relay_rejected_others_accepted() {
+    // Multi-relay fan-out gap: nothing drove a *mixed* publish end-to-end
+    // through the engine — only the pure `outcome_of` classifier was unit
+    // tested. Here three relays fan out, one returns a permanent rejection
+    // ("blocked", a NIP-20 OK-false code → no retries), two accept. The
+    // engine must:
+    //   - record the two accepting relays in a single `recent_ok` entry
+    //   - record the one rejecting relay in `recent_errors`
+    //   - evict the handle (all three per-relay slots are terminal)
+    //   - classify the per-relay map as `PublishOutcome::Mixed`
+    let mut outbox = StaticOutbox::default();
+    outbox.author_writes.insert(
+        "alice".to_string(),
+        vec![
+            "wss://accept-1".to_string(),
+            "wss://accept-2".to_string(),
+            "wss://reject".to_string(),
+        ],
+    );
+    let outbox = Arc::new(outbox);
+    let dispatcher = Arc::new(ReplayDispatcher::new());
+    dispatcher.script("wss://accept-1", vec![RelayAck::ok("wss://accept-1")]);
+    dispatcher.script("wss://accept-2", vec![RelayAck::ok("wss://accept-2")]);
+    dispatcher.script(
+        "wss://reject",
+        vec![RelayAck::failed("wss://reject", "blocked", "blocked: spam")],
+    );
+    let store: Arc<dyn PublishStore> = Arc::new(InMemoryPublishStore::new());
+
+    // Capture the per-relay map at the terminal moment so we can feed it to
+    // `outcome_of` — once the handle is evicted the engine no longer exposes
+    // it via `per_relay`.
+    let captured: BTreeMap<RelayUrl, PerRelayState>;
+    {
+        let mut e = engine(outbox, dispatcher.clone(), store.clone());
+        e.start_publish(
+            PublishAction::Publish {
+                handle: "p-mixed".to_string(),
+                event: signed("ev-mixed", "alice", 1, &[]),
+                target: PublishTarget::Auto,
+            },
+            1_000,
+        )
+        .unwrap();
+
+        // All three relays were scripted with a single ack each, so the
+        // publish settles entirely inside `start_publish`. The handle is
+        // evicted; `per_relay` is empty.
+        assert!(
+            e.per_relay(&"p-mixed".to_string()).is_empty(),
+            "mixed publish is fully terminal → handle evicted from in_flight"
+        );
+
+        let snap = e.snapshot();
+        assert_eq!(
+            snap.recent_ok.len(),
+            1,
+            "two OK acks coalesce into one recent_ok entry"
+        );
+        let mut accepted = snap.recent_ok[0].accepted_by.clone();
+        accepted.sort();
+        assert_eq!(
+            accepted,
+            vec!["wss://accept-1".to_string(), "wss://accept-2".to_string()],
+            "only the two accepting relays appear in the success row"
+        );
+        assert_eq!(
+            snap.recent_errors.len(),
+            1,
+            "exactly one relay rejected → one recent_errors entry"
+        );
+        assert_eq!(snap.recent_errors[0].relay_url, "wss://reject");
+
+        // Reconstruct the terminal per-relay map for the classifier check.
+        captured = [
+            (
+                "wss://accept-1".to_string(),
+                PerRelayState::Ok { acked_at_ms: 1_000 },
+            ),
+            (
+                "wss://accept-2".to_string(),
+                PerRelayState::Ok { acked_at_ms: 1_000 },
+            ),
+            (
+                "wss://reject".to_string(),
+                PerRelayState::FailedAfterRetries {
+                    reason: "blocked: spam".to_string(),
+                    last_at_ms: 1_000,
+                },
+            ),
+        ]
+        .into_iter()
+        .collect();
+    }
+
+    match outcome_of(&captured) {
+        PublishOutcome::Mixed { accepted, failed } => {
+            assert_eq!(accepted.len(), 2, "two relays accepted");
+            assert_eq!(failed.len(), 1, "one relay failed");
+            assert_eq!(failed[0], "wss://reject");
+        }
+        other => panic!("expected PublishOutcome::Mixed, got {:?}", other),
+    }
+
+    // The store row is gone — a settled (even partially-failed) publish is
+    // not pending work.
+    assert!(
+        store.load_pending().unwrap().is_empty(),
+        "store cleared once every relay reached a terminal state"
+    );
+}
+
+#[test]
+fn publish_all_relays_accepted_marks_publish_complete() {
+    // Multi-relay fan-out gap: an all-accepted publish across several relays
+    // must settle as one coalesced success AND fully evict — the engine keeps
+    // no in-flight row for completed work (D5: snapshots bounded by what's
+    // open).
+    let mut outbox = StaticOutbox::default();
+    outbox.author_writes.insert(
+        "alice".to_string(),
+        vec![
+            "wss://a".to_string(),
+            "wss://b".to_string(),
+            "wss://c".to_string(),
+        ],
+    );
+    let outbox = Arc::new(outbox);
+    let dispatcher = Arc::new(ReplayDispatcher::new());
+    for r in ["wss://a", "wss://b", "wss://c"] {
+        dispatcher.script(r, vec![RelayAck::ok(r)]);
+    }
+    let store: Arc<dyn PublishStore> = Arc::new(InMemoryPublishStore::new());
+    let mut e = engine(outbox, dispatcher, store.clone());
+
+    e.start_publish(
+        PublishAction::Publish {
+            handle: "p-all-ok".to_string(),
+            event: signed("ev-all-ok", "alice", 1, &[]),
+            target: PublishTarget::Auto,
+        },
+        1_000,
+    )
+    .unwrap();
+
+    let snap = e.snapshot();
+    assert_eq!(snap.recent_ok.len(), 1, "three OK acks → one success row");
+    assert_eq!(snap.recent_ok[0].accepted_by.len(), 3);
+    assert!(snap.recent_errors.is_empty(), "no failures");
+    assert!(
+        e.per_relay(&"p-all-ok".to_string()).is_empty(),
+        "all-accepted publish is complete → handle evicted"
+    );
+    assert!(
+        store.load_pending().unwrap().is_empty(),
+        "store cleared on completion"
+    );
+}
+
+#[test]
+fn publish_per_relay_states_tracked_independently_across_fanout() {
+    // Multi-relay fan-out gap: each relay must carry its OWN state machine
+    // slot. The `ReplayDispatcher` answers synchronously, so after
+    // `start_publish` returns no relay can still be InFlight — but the three
+    // relays still end up in distinct, simultaneously-observable states:
+    // two independent `RelayError` slots (one reached via a TimedOut ack,
+    // one via an `io` failure) and one `Ok`. The two failing relays carry
+    // their own `pending_retries` deadlines, and the one `Ok` does NOT
+    // collapse the whole publish to complete — proving the engine keeps
+    // per-relay state, not a single shared verdict.
+    let mut outbox = StaticOutbox::default();
+    outbox.author_writes.insert(
+        "alice".to_string(),
+        vec![
+            "wss://timed-out".to_string(),
+            "wss://retrying".to_string(),
+            "wss://done".to_string(),
+        ],
+    );
+    let outbox = Arc::new(outbox);
+    let dispatcher = Arc::new(ReplayDispatcher::new());
+    // wss://timed-out: a TimedOut ack — transient → schedules a retry,
+    // leaving the slot in RelayError.
+    dispatcher.script(
+        "wss://timed-out",
+        vec![RelayAck::timed_out("wss://timed-out")],
+    );
+    // wss://retrying: one `io` transient failure → its own RelayError slot
+    // with a retry pending.
+    dispatcher.script(
+        "wss://retrying",
+        vec![RelayAck::failed("wss://retrying", "io", "io error")],
+    );
+    // wss://done: immediate OK.
+    dispatcher.script("wss://done", vec![RelayAck::ok("wss://done")]);
+    let store: Arc<dyn PublishStore> = Arc::new(InMemoryPublishStore::new());
+    let mut e = engine(outbox, dispatcher, store);
+
+    e.start_publish(
+        PublishAction::Publish {
+            handle: "p-indep".to_string(),
+            event: signed("ev-indep", "alice", 1, &[]),
+            target: PublishTarget::Auto,
+        },
+        1_000,
+    )
+    .unwrap();
+
+    // The publish is NOT complete — two relays are still non-terminal — so
+    // the handle is still in flight and its per-relay map is observable.
+    let per_relay = e.per_relay(&"p-indep".to_string());
+    assert_eq!(per_relay.len(), 3, "three relays, three independent slots");
+
+    // wss://done settled Ok — independent of the other two.
+    assert!(
+        matches!(
+            per_relay.get("wss://done"),
+            Some(PerRelayState::Ok { .. })
+        ),
+        "wss://done settled Ok independently: {:?}",
+        per_relay.get("wss://done")
+    );
+    // wss://timed-out → its own RelayError slot (transient retry scheduled).
+    assert!(
+        matches!(
+            per_relay.get("wss://timed-out"),
+            Some(PerRelayState::RelayError { .. })
+        ),
+        "wss://timed-out is in its own retry state: {:?}",
+        per_relay.get("wss://timed-out")
+    );
+    // wss://retrying failed transiently → its own, separate RelayError slot.
+    assert!(
+        matches!(
+            per_relay.get("wss://retrying"),
+            Some(PerRelayState::RelayError { .. })
+        ),
+        "wss://retrying is mid-retry independently: {:?}",
+        per_relay.get("wss://retrying")
+    );
+
+    // The success on wss://done did NOT settle the whole publish — proving
+    // per-relay independence at the completion gate too.
+    assert!(
+        e.snapshot().recent_ok.is_empty(),
+        "one relay's OK must not mark a multi-relay publish complete"
     );
 }
