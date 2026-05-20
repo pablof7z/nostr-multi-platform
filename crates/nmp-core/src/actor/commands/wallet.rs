@@ -12,7 +12,6 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use nostr::nips::nip19::ToBech32;
 use nostr::{EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
@@ -27,7 +26,7 @@ use nmp_nwc::parse::NwcUri;
 use nmp_nwc::types::PayInvoiceParams;
 use nmp_nwc::NwcMethod;
 
-use super::identity::sign_with;
+use super::identity::{now_secs, sign_with};
 
 /// Actor-local NWC connection state. Cleared on `WalletDisconnect`.
 struct WalletConnection {
@@ -414,9 +413,3 @@ fn pubkey_to_npub(hex: &str) -> Result<String, String> {
         .map_err(|e| format!("{e}"))
 }
 
-fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
-}
