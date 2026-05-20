@@ -96,6 +96,35 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
 type ExecutorFn =
     Box<dyn Fn(&str, &dyn Fn(crate::actor::ActorCommand)) -> Result<(), String> + Send + Sync>;
 
+/// Dyn-safe host-validator closure type — the [`ErasedActionModule::start`]
+/// boundary minus the unused [`ActionContext`] (a host validator works from
+/// the action JSON alone).
+type ValidatorFn =
+    Box<dyn Fn(&str) -> Result<ActionPlan<Value>, ActionRejection> + Send + Sync>;
+
+/// [`ErasedActionModule`] implementor backed by a host-supplied validator
+/// closure rather than a compile-time [`ActionModule`] type — the *module*
+/// counterpart to the host-registered *executor*. It wires the `start()`
+/// validation half of a namespace into the registry *without editing
+/// `nmp-core`*, slotting into the same `modules` map as [`ActionModuleAdapter`].
+struct ClosureModule {
+    validate: ValidatorFn,
+}
+
+impl ErasedActionModule for ClosureModule {
+    /// Delegate validation to the host closure. `ctx` is unused — a host
+    /// validator works from the action JSON alone (the typed
+    /// [`ActionModuleAdapter`] path is the one that threads `ctx` into
+    /// `ActionModule::start`).
+    fn start(
+        &self,
+        _ctx: &mut ActionContext,
+        action_json: &str,
+    ) -> Result<ActionPlan<Value>, ActionRejection> {
+        (self.validate)(action_json)
+    }
+}
+
 /// Namespace-keyed registry of [`ActionModule`]s.
 ///
 /// Stateless apart from the module and executor tables: every registered
@@ -147,6 +176,30 @@ impl ActionRegistry {
             + 'static,
     ) {
         self.executors.insert(namespace, Box::new(f));
+    }
+
+    /// Register a host-provided closure as the *module validator* for
+    /// `namespace`. The closure receives the raw action JSON and returns
+    /// either an [`ActionPlan`] or an [`ActionRejection`].
+    ///
+    /// This is the complement to [`Self::register_executor`]: that wires the
+    /// `execute()` half of a namespace, this wires the `start()` validation
+    /// half. Together they let a host make a custom namespace fully reachable
+    /// through `nmp_app_dispatch_action` — `start()` validates against this
+    /// closure, `execute()` runs the registered executor — without adding an
+    /// [`ActionModule`] type or editing [`default_registry`]. A second
+    /// registration of the same namespace replaces the first.
+    pub fn register_with_validator(
+        &mut self,
+        namespace: &'static str,
+        validate: impl Fn(&str) -> Result<ActionPlan<Value>, ActionRejection> + Send + Sync + 'static,
+    ) {
+        self.modules.insert(
+            namespace,
+            Box::new(ClosureModule {
+                validate: Box::new(validate),
+            }),
+        );
     }
 
     /// Validate `action_json` against the module registered under
