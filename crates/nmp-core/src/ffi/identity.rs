@@ -8,7 +8,6 @@
 
 use super::{app_ref, c_optional_string_argument, c_string_argument, NmpApp};
 use crate::actor::ActorCommand;
-use crate::kernel::{is_hex_id, is_hex_pubkey};
 use std::ffi::c_char;
 
 #[no_mangle]
@@ -328,9 +327,10 @@ pub extern "C" fn nmp_app_react(
     let Some(target_event_id) = c_string_argument(target_event_id) else {
         return;
     };
-    if !is_hex_id(&target_event_id) {
-        return;
-    }
+    // Hex-shape validation lives in the `react` command handler, not here:
+    // it owns the toast ("react: malformed target event id") so a malformed
+    // id surfaces user-visible feedback. Re-checking in this FFI glue layer
+    // would silently drop the error and make that toast unreachable (D6).
     let reaction = c_optional_string_argument(reaction).unwrap_or_else(|| "+".to_string());
     app.send_cmd(ActorCommand::React {
         target_event_id,
@@ -346,9 +346,9 @@ pub extern "C" fn nmp_app_follow(app: *mut NmpApp, pubkey: *const c_char) {
     let Some(pubkey) = c_string_argument(pubkey) else {
         return;
     };
-    if !is_hex_pubkey(&pubkey) {
-        return;
-    }
+    // Hex-shape validation lives in the `follow` command handler, which owns
+    // the toast ("follow: expected 64-hex pubkey"). Re-checking here would
+    // silently drop the error and make that toast unreachable (D6).
     app.send_cmd(ActorCommand::Follow { pubkey });
 }
 
@@ -360,9 +360,9 @@ pub extern "C" fn nmp_app_unfollow(app: *mut NmpApp, pubkey: *const c_char) {
     let Some(pubkey) = c_string_argument(pubkey) else {
         return;
     };
-    if !is_hex_pubkey(&pubkey) {
-        return;
-    }
+    // Hex-shape validation lives in the `follow` command handler, which owns
+    // the toast ("follow: expected 64-hex pubkey"). Re-checking here would
+    // silently drop the error and make that toast unreachable (D6).
     app.send_cmd(ActorCommand::Unfollow { pubkey });
 }
 
