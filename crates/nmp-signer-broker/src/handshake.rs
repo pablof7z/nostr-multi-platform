@@ -562,21 +562,30 @@ mod tests {
     use std::sync::mpsc;
     use std::sync::{Arc, Mutex};
 
+    /// Test double for `RelayClient`. Every published frame is both retained
+    /// in `sent` (for post-hoc assertions on the main thread) and forwarded
+    /// over a notification channel so driver threads can *block* on the next
+    /// frame instead of polling — satisfying the D8 "no polling — ever"
+    /// doctrine in test code as well as production.
     struct StubRelay {
         sent: Mutex<Vec<String>>,
+        frame_tx: mpsc::Sender<String>,
     }
 
     impl StubRelay {
-        fn new() -> (Arc<Self>, mpsc::Receiver<Value>) {
-            // The receiver half is returned only so the test can keep one
-            // alive if it ever wants to inspect the worker's inbound side;
-            // the stub does not actually push events through it.
-            let (_tx, rx) = mpsc::channel();
+        /// Returns the relay plus a `frame_rx` that yields each outgoing
+        /// frame as it is published. Driver threads take ownership of
+        /// `frame_rx` and `recv()` on it; when the test drops its `Arc`
+        /// to the relay, `frame_tx` drops, `recv()` returns `Disconnected`,
+        /// and the driver exits — no cancel flag or poll loop required.
+        fn new() -> (Arc<Self>, mpsc::Receiver<String>) {
+            let (frame_tx, frame_rx) = mpsc::channel();
             (
                 Arc::new(Self {
                     sent: Mutex::new(Vec::new()),
+                    frame_tx,
                 }),
-                rx,
+                frame_rx,
             )
         }
 
@@ -587,7 +596,10 @@ mod tests {
 
     impl RelayClient for StubRelay {
         fn send(&self, frame: String) -> Result<(), RelayError> {
-            self.sent.lock().unwrap().push(frame);
+            self.sent.lock().unwrap().push(frame.clone());
+            // Best-effort: if the driver has already exited (receiver
+            // dropped) the send fails harmlessly — the test is winding down.
+            let _ = self.frame_tx.send(frame);
             Ok(())
         }
         fn shutdown(&self) {}
@@ -646,48 +658,36 @@ mod tests {
         let user_keys = Keys::generate();
         let user_pk_hex = user_keys.public_key().to_hex();
 
-        let (relay, _events_rx_dropped) = StubRelay::new();
+        let (relay, frame_rx) = StubRelay::new();
         let (inbound_tx, inbound_rx) = mpsc::channel::<Value>();
 
         let cancel = Arc::new(AtomicBool::new(false));
-        let cancel_clone = Arc::clone(&cancel);
 
-        // Driver thread: snoop the relay's outgoing buffer, manufacture
-        // responses, push them onto the inbound channel. We poll for new
-        // outgoing frames.
-        let relay_clone = Arc::clone(&relay);
+        // Driver thread: block on each outgoing frame as it is published,
+        // manufacture the matching bunker response, push it onto the inbound
+        // channel. `recv()` blocks (no poll loop); the loop ends naturally
+        // when the relay is dropped at end-of-test and `recv()` disconnects.
         let bunker_keys_for_driver = bunker_keys.clone();
         let client_pk_for_driver = client_keys.public_key();
         let user_pk_for_driver = user_pk_hex.clone();
         let driver = std::thread::spawn(move || {
             let mut seen = 0usize;
-            let deadline = std::time::Instant::now() + Duration::from_secs(5);
-            while std::time::Instant::now() < deadline {
-                if cancel_clone.load(Ordering::Relaxed) {
-                    return;
-                }
-                let frames = relay_clone.sent.lock().unwrap().clone();
-                if frames.len() > seen {
-                    for (idx, frame) in frames[seen..].iter().enumerate() {
-                        // Frame 0 is `connect` (reply "ack"); frame 1 is
-                        // `get_public_key` (reply user pubkey).
-                        let absolute_idx = seen + idx;
-                        let result = if absolute_idx == 0 {
-                            "ack".to_string()
-                        } else {
-                            user_pk_for_driver.clone()
-                        };
-                        let response = bunker_response(
-                            frame,
-                            &bunker_keys_for_driver,
-                            client_pk_for_driver,
-                            &result,
-                        );
-                        let _ = inbound_tx.send(response);
-                    }
-                    seen = frames.len();
-                }
-                std::thread::sleep(Duration::from_millis(10));
+            while let Ok(frame) = frame_rx.recv() {
+                // Frame 0 is `connect` (reply "ack"); frame 1 is
+                // `get_public_key` (reply user pubkey).
+                let result = if seen == 0 {
+                    "ack".to_string()
+                } else {
+                    user_pk_for_driver.clone()
+                };
+                let response = bunker_response(
+                    &frame,
+                    &bunker_keys_for_driver,
+                    client_pk_for_driver,
+                    &result,
+                );
+                let _ = inbound_tx.send(response);
+                seen += 1;
             }
         });
 
@@ -709,8 +709,9 @@ mod tests {
         assert!(progress_events.iter().any(|(s, _)| s == "awaiting_pubkey"));
         assert!(relay.last_event().is_some());
 
-        // Wind the driver down.
-        cancel.store(true, Ordering::Relaxed);
+        // Wind the driver down: dropping the relay closes `frame_tx`, so the
+        // driver's `recv()` disconnects and the loop exits deterministically.
+        drop(relay);
         let _ = driver.join();
     }
 
@@ -719,13 +720,17 @@ mod tests {
         let client_keys = Keys::generate();
         let bunker_pk = Keys::generate().public_key();
 
-        let (relay, _events) = StubRelay::new();
+        let (relay, frame_rx) = StubRelay::new();
         let (_inbound_tx, inbound_rx) = mpsc::channel::<Value>();
 
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_clone = Arc::clone(&cancel);
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(50));
+        // Deterministic trigger: block until the handshake publishes its
+        // first outgoing frame (the `connect` RPC), then request cancel.
+        // `await_response` re-checks the cancel flag at least every 200ms,
+        // so it observes this without any inbound traffic. No sleep needed.
+        let canceller = std::thread::spawn(move || {
+            let _ = frame_rx.recv();
             cancel_clone.store(true, Ordering::Relaxed);
         });
 
@@ -741,6 +746,7 @@ mod tests {
         )
         .expect_err("cancelled");
         assert!(matches!(err, HandshakeError::Cancelled));
+        let _ = canceller.join();
     }
 
     /// Helper: manufacture an encrypted kind:24133 response event with an
@@ -909,50 +915,40 @@ mod tests {
         let bunker_keys = Keys::generate();
         let bunker_pubkey = bunker_keys.public_key();
 
-        let (relay, _drop) = StubRelay::new();
+        let (relay, frame_rx) = StubRelay::new();
         let (inbound_tx, inbound_rx) = mpsc::channel::<Value>();
 
         let cancel = Arc::new(AtomicBool::new(false));
-        let cancel_clone = Arc::clone(&cancel);
 
-        // Driver: reply to the first outgoing frame (the `connect` RPC) with
-        // an explicit error payload.
-        let relay_clone = Arc::clone(&relay);
+        // Driver: block until the first outgoing frame (the `connect` RPC)
+        // arrives, then reply with an explicit error payload. `recv()`
+        // blocks — no poll loop.
         let bunker_for_driver = bunker_keys.clone();
         let client_pk = client_keys.public_key();
         let driver = std::thread::spawn(move || {
-            let deadline = std::time::Instant::now() + Duration::from_secs(5);
-            while std::time::Instant::now() < deadline {
-                if cancel_clone.load(Ordering::Relaxed) {
-                    return;
-                }
-                let frames = relay_clone.sent.lock().unwrap().clone();
-                if let Some(frame) = frames.first() {
-                    // Extract the connect request id by decrypting the frame.
-                    let parsed: Value = serde_json::from_str(frame).unwrap();
-                    let ct = parsed.as_array().unwrap()[1]
-                        .get("content")
-                        .and_then(|v| v.as_str())
-                        .unwrap();
-                    let plain = nip44::decrypt(
-                        bunker_for_driver.secret_key(),
-                        &client_pk,
-                        ct.as_bytes(),
-                    )
+            if let Ok(frame) = frame_rx.recv() {
+                // Extract the connect request id by decrypting the frame.
+                let parsed: Value = serde_json::from_str(&frame).unwrap();
+                let ct = parsed.as_array().unwrap()[1]
+                    .get("content")
+                    .and_then(|v| v.as_str())
                     .unwrap();
-                    let req: Value = serde_json::from_str(&plain).unwrap();
-                    let req_id = req.get("id").and_then(|v| v.as_str()).unwrap();
-                    let err_rpc = json!({
-                        "id": req_id,
-                        "result": Value::Null,
-                        "error": "user rejected the request",
-                    });
-                    let event =
-                        make_response_event(&bunker_for_driver, client_pk, err_rpc);
-                    let _ = inbound_tx.send(event);
-                    return;
-                }
-                std::thread::sleep(Duration::from_millis(10));
+                let plain = nip44::decrypt(
+                    bunker_for_driver.secret_key(),
+                    &client_pk,
+                    ct.as_bytes(),
+                )
+                .unwrap();
+                let req: Value = serde_json::from_str(&plain).unwrap();
+                let req_id = req.get("id").and_then(|v| v.as_str()).unwrap();
+                let err_rpc = json!({
+                    "id": req_id,
+                    "result": Value::Null,
+                    "error": "user rejected the request",
+                });
+                let event =
+                    make_response_event(&bunker_for_driver, client_pk, err_rpc);
+                let _ = inbound_tx.send(event);
             }
         });
 
@@ -977,7 +973,6 @@ mod tests {
             other => panic!("expected BunkerError, got {other:?}"),
         }
 
-        cancel.store(true, Ordering::Relaxed);
         let _ = driver.join();
     }
 
@@ -989,44 +984,35 @@ mod tests {
         let bunker_keys = Keys::generate();
         let bunker_pubkey = bunker_keys.public_key();
 
-        let (relay, _drop) = StubRelay::new();
+        let (relay, frame_rx) = StubRelay::new();
         let (inbound_tx, inbound_rx) = mpsc::channel::<Value>();
 
         let cancel = Arc::new(AtomicBool::new(false));
-        let cancel_clone = Arc::clone(&cancel);
 
-        let relay_clone = Arc::clone(&relay);
+        // Driver: block for the first outgoing frame, then reply with a
+        // malformed (non-string `result`) payload. `recv()` blocks.
         let bunker_for_driver = bunker_keys.clone();
         let client_pk = client_keys.public_key();
         let driver = std::thread::spawn(move || {
-            let deadline = std::time::Instant::now() + Duration::from_secs(5);
-            while std::time::Instant::now() < deadline {
-                if cancel_clone.load(Ordering::Relaxed) {
-                    return;
-                }
-                let frames = relay_clone.sent.lock().unwrap().clone();
-                if let Some(frame) = frames.first() {
-                    let parsed: Value = serde_json::from_str(frame).unwrap();
-                    let ct = parsed.as_array().unwrap()[1]
-                        .get("content")
-                        .and_then(|v| v.as_str())
-                        .unwrap();
-                    let plain = nip44::decrypt(
-                        bunker_for_driver.secret_key(),
-                        &client_pk,
-                        ct.as_bytes(),
-                    )
+            if let Ok(frame) = frame_rx.recv() {
+                let parsed: Value = serde_json::from_str(&frame).unwrap();
+                let ct = parsed.as_array().unwrap()[1]
+                    .get("content")
+                    .and_then(|v| v.as_str())
                     .unwrap();
-                    let req: Value = serde_json::from_str(&plain).unwrap();
-                    let req_id = req.get("id").and_then(|v| v.as_str()).unwrap();
-                    // `result` is an object, not a string.
-                    let bad_rpc = json!({ "id": req_id, "result": {"unexpected": true} });
-                    let event =
-                        make_response_event(&bunker_for_driver, client_pk, bad_rpc);
-                    let _ = inbound_tx.send(event);
-                    return;
-                }
-                std::thread::sleep(Duration::from_millis(10));
+                let plain = nip44::decrypt(
+                    bunker_for_driver.secret_key(),
+                    &client_pk,
+                    ct.as_bytes(),
+                )
+                .unwrap();
+                let req: Value = serde_json::from_str(&plain).unwrap();
+                let req_id = req.get("id").and_then(|v| v.as_str()).unwrap();
+                // `result` is an object, not a string.
+                let bad_rpc = json!({ "id": req_id, "result": {"unexpected": true} });
+                let event =
+                    make_response_event(&bunker_for_driver, client_pk, bad_rpc);
+                let _ = inbound_tx.send(event);
             }
         });
 
@@ -1046,7 +1032,6 @@ mod tests {
             "expected Protocol error, got {err:?}"
         );
 
-        cancel.store(true, Ordering::Relaxed);
         let _ = driver.join();
     }
 
@@ -1062,73 +1047,63 @@ mod tests {
         let user_pk_hex = user_keys.public_key().to_hex();
         let stranger = Keys::generate();
 
-        let (relay, _drop) = StubRelay::new();
+        let (relay, frame_rx) = StubRelay::new();
         let (inbound_tx, inbound_rx) = mpsc::channel::<Value>();
 
         let cancel = Arc::new(AtomicBool::new(false));
-        let cancel_clone = Arc::clone(&cancel);
 
-        let relay_clone = Arc::clone(&relay);
+        // Driver: block on each outgoing frame; for every one, inject noise
+        // (stranger event + garbage ciphertext) ahead of the genuine reply.
+        // `recv()` blocks; the loop exits when the relay is dropped.
         let bunker_for_driver = bunker_keys.clone();
         let client_pk = client_keys.public_key();
         let user_pk_for_driver = user_pk_hex.clone();
         let driver = std::thread::spawn(move || {
             let mut seen = 0usize;
-            let deadline = std::time::Instant::now() + Duration::from_secs(5);
-            while std::time::Instant::now() < deadline {
-                if cancel_clone.load(Ordering::Relaxed) {
-                    return;
-                }
-                let frames = relay_clone.sent.lock().unwrap().clone();
-                if frames.len() > seen {
-                    for (idx, frame) in frames[seen..].iter().enumerate() {
-                        let absolute_idx = seen + idx;
-                        // Inject noise BEFORE the genuine reply: an event from
-                        // a stranger and an event with garbage content.
-                        let stray = make_response_event(
-                            &stranger,
-                            client_pk,
-                            json!({"id": "noise", "result": "ignored"}),
-                        );
-                        let _ = inbound_tx.send(stray);
-                        let mut garbage = make_response_event(
-                            &bunker_for_driver,
-                            client_pk,
-                            json!({"id": "noise2", "result": "x"}),
-                        );
-                        garbage["content"] = json!("not-real-ciphertext");
-                        let _ = inbound_tx.send(garbage);
+            while let Ok(frame) = frame_rx.recv() {
+                // Inject noise BEFORE the genuine reply: an event from a
+                // stranger and an event with garbage content.
+                let stray = make_response_event(
+                    &stranger,
+                    client_pk,
+                    json!({"id": "noise", "result": "ignored"}),
+                );
+                let _ = inbound_tx.send(stray);
+                let mut garbage = make_response_event(
+                    &bunker_for_driver,
+                    client_pk,
+                    json!({"id": "noise2", "result": "x"}),
+                );
+                garbage["content"] = json!("not-real-ciphertext");
+                let _ = inbound_tx.send(garbage);
 
-                        // Now the genuine reply.
-                        let parsed: Value = serde_json::from_str(frame).unwrap();
-                        let ct = parsed.as_array().unwrap()[1]
-                            .get("content")
-                            .and_then(|v| v.as_str())
-                            .unwrap();
-                        let plain = nip44::decrypt(
-                            bunker_for_driver.secret_key(),
-                            &client_pk,
-                            ct.as_bytes(),
-                        )
-                        .unwrap();
-                        let req: Value = serde_json::from_str(&plain).unwrap();
-                        let req_id =
-                            req.get("id").and_then(|v| v.as_str()).unwrap().to_string();
-                        let result = if absolute_idx == 0 {
-                            "ack".to_string()
-                        } else {
-                            user_pk_for_driver.clone()
-                        };
-                        let good = make_response_event(
-                            &bunker_for_driver,
-                            client_pk,
-                            json!({"id": req_id, "result": result}),
-                        );
-                        let _ = inbound_tx.send(good);
-                    }
-                    seen = frames.len();
-                }
-                std::thread::sleep(Duration::from_millis(10));
+                // Now the genuine reply.
+                let parsed: Value = serde_json::from_str(&frame).unwrap();
+                let ct = parsed.as_array().unwrap()[1]
+                    .get("content")
+                    .and_then(|v| v.as_str())
+                    .unwrap();
+                let plain = nip44::decrypt(
+                    bunker_for_driver.secret_key(),
+                    &client_pk,
+                    ct.as_bytes(),
+                )
+                .unwrap();
+                let req: Value = serde_json::from_str(&plain).unwrap();
+                let req_id =
+                    req.get("id").and_then(|v| v.as_str()).unwrap().to_string();
+                let result = if seen == 0 {
+                    "ack".to_string()
+                } else {
+                    user_pk_for_driver.clone()
+                };
+                let good = make_response_event(
+                    &bunker_for_driver,
+                    client_pk,
+                    json!({"id": req_id, "result": result}),
+                );
+                let _ = inbound_tx.send(good);
+                seen += 1;
             }
         });
 
@@ -1145,7 +1120,9 @@ mod tests {
         .expect("handshake completes despite stray events");
         assert_eq!(outcome.user_pubkey_hex, user_pk_hex);
 
-        cancel.store(true, Ordering::Relaxed);
+        // Dropping the relay closes `frame_tx`; the driver's `recv()`
+        // disconnects and the loop exits.
+        drop(relay);
         let _ = driver.join();
     }
 
@@ -1226,7 +1203,7 @@ mod tests {
         let user_pk_hex = user_keys.public_key().to_hex();
         let secret = "session-secret-xyz";
 
-        let (relay, _drop) = StubRelay::new();
+        let (relay, frame_rx) = StubRelay::new();
         let (inbound_tx, inbound_rx) = mpsc::channel::<Value>();
 
         // Deliver the connect frame up front.
@@ -1235,59 +1212,46 @@ mod tests {
         inbound_tx.send(connect).unwrap();
 
         let cancel = Arc::new(AtomicBool::new(false));
-        let cancel_clone = Arc::clone(&cancel);
 
-        // Driver: after the broker publishes `get_public_key`, reply with the
-        // user pubkey. The connect-ack is also published; we only answer the
-        // get_public_key (the second decryptable RPC addressed to us).
-        let relay_clone = Arc::clone(&relay);
+        // Driver: block on each outgoing frame; after the broker publishes
+        // `get_public_key`, reply with the user pubkey. The connect-ack is
+        // also published; we only answer the get_public_key (the
+        // decryptable RPC addressed to us). `recv()` blocks — no poll loop;
+        // the loop exits when the relay is dropped at end-of-test.
         let signer_for_driver = signer_keys.clone();
         let client_pk = client_keys.public_key();
         let user_pk_for_driver = user_pk_hex.clone();
         let driver = std::thread::spawn(move || {
-            let mut seen = 0usize;
-            let deadline = std::time::Instant::now() + Duration::from_secs(5);
-            while std::time::Instant::now() < deadline {
-                if cancel_clone.load(Ordering::Relaxed) {
-                    return;
+            while let Ok(frame) = frame_rx.recv() {
+                let parsed: Value = serde_json::from_str(&frame).unwrap();
+                let ct = parsed.as_array().unwrap()[1]
+                    .get("content")
+                    .and_then(|v| v.as_str())
+                    .unwrap();
+                // Try to decrypt; the broker encrypts to the signer.
+                let Ok(plain) = nip44::decrypt(
+                    signer_for_driver.secret_key(),
+                    &client_pk,
+                    ct.as_bytes(),
+                ) else {
+                    continue;
+                };
+                let req: Value = match serde_json::from_str(&plain) {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                // Only reply to the get_public_key request.
+                if req.get("method").and_then(|v| v.as_str())
+                    == Some("get_public_key")
+                {
+                    let req_id = req.get("id").and_then(|v| v.as_str()).unwrap();
+                    let good = make_response_event(
+                        &signer_for_driver,
+                        client_pk,
+                        json!({"id": req_id, "result": user_pk_for_driver}),
+                    );
+                    let _ = inbound_tx.send(good);
                 }
-                let frames = relay_clone.sent.lock().unwrap().clone();
-                if frames.len() > seen {
-                    for frame in &frames[seen..] {
-                        let parsed: Value = serde_json::from_str(frame).unwrap();
-                        let ct = parsed.as_array().unwrap()[1]
-                            .get("content")
-                            .and_then(|v| v.as_str())
-                            .unwrap();
-                        // Try to decrypt; the broker encrypts to the signer.
-                        let Ok(plain) = nip44::decrypt(
-                            signer_for_driver.secret_key(),
-                            &client_pk,
-                            ct.as_bytes(),
-                        ) else {
-                            continue;
-                        };
-                        let req: Value = match serde_json::from_str(&plain) {
-                            Ok(v) => v,
-                            Err(_) => continue,
-                        };
-                        // Only reply to the get_public_key request.
-                        if req.get("method").and_then(|v| v.as_str())
-                            == Some("get_public_key")
-                        {
-                            let req_id =
-                                req.get("id").and_then(|v| v.as_str()).unwrap();
-                            let good = make_response_event(
-                                &signer_for_driver,
-                                client_pk,
-                                json!({"id": req_id, "result": user_pk_for_driver}),
-                            );
-                            let _ = inbound_tx.send(good);
-                        }
-                    }
-                    seen = frames.len();
-                }
-                std::thread::sleep(Duration::from_millis(10));
             }
         });
 
@@ -1303,7 +1267,9 @@ mod tests {
         assert_eq!(outcome.signer_pubkey_hex, signer_keys.public_key().to_hex());
         assert_eq!(outcome.user_pubkey_hex, user_pk_hex);
 
-        cancel.store(true, Ordering::Relaxed);
+        // Dropping the relay closes `frame_tx`; the driver's `recv()`
+        // disconnects and the loop exits.
+        drop(relay);
         let _ = driver.join();
     }
 }
