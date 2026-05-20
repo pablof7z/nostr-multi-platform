@@ -14,8 +14,8 @@ use nostr::nips::nip19::{FromBech32, ToBech32};
 use nostr::{EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
 use serde_json;
 
-use crate::kernel::{AccountSummary, BunkerHandshakeDto, Kernel};
-use crate::relay::OutboundMessage;
+use crate::kernel::{AccountSummary, BunkerHandshakeDto, Kernel, RelayEditRow};
+use crate::relay::{canonical_relay_url, OutboundMessage};
 use crate::remote_signer::RemoteSignerHandle;
 use crate::substrate::{SignedEvent, UnsignedEvent};
 
@@ -392,6 +392,7 @@ pub(crate) fn create_account(
     let id = identity.add(Keys::generate());
     identity.active = Some(id.clone());
     sync_kernel(identity, kernel);
+    kernel.set_relay_edit_rows(relay_rows_from_create_account(relays));
 
     // Pre-populate seed_contacts so the follow-feed can be set up immediately
     // without waiting for the published kind:3 to round-trip from relays.
@@ -437,9 +438,10 @@ pub(crate) fn create_account(
                     &signed,
                     &[],
                     crate::publish::PublishTarget::Explicit {
-                        relays: target_relays,
+                        relays: target_relays.clone(),
                     },
                 );
+                remember_bootstrap_event(kernel, &signed, &target_relays);
             }
         }
     }
@@ -484,9 +486,10 @@ pub(crate) fn create_account(
                     &signed,
                     &[],
                     crate::publish::PublishTarget::Explicit {
-                        relays: target_relays,
+                        relays: target_relays.clone(),
                     },
                 );
+                remember_bootstrap_event(kernel, &signed, &target_relays);
             }
         }
     }
@@ -535,6 +538,31 @@ fn cold_start_publish_targets(
     targets
 }
 
+fn relay_rows_from_create_account(relays: &[(String, String)]) -> Vec<RelayEditRow> {
+    relays
+        .iter()
+        .filter_map(|(url, role)| {
+            let url = canonical_relay_url(url)?;
+            let role = match role.trim().to_ascii_lowercase().as_str() {
+                "read" => "read",
+                "write" => "write",
+                "indexer" => "indexer",
+                _ => "both",
+            };
+            Some(RelayEditRow {
+                url,
+                role: role.to_string(),
+            })
+        })
+        .collect()
+}
+
+fn remember_bootstrap_event(kernel: &mut Kernel, signed: &SignedEvent, target_relays: &[String]) {
+    if let Some(first_relay) = target_relays.first() {
+        kernel.remember_local_replaceable_publish(signed, first_relay);
+    }
+}
+
 /// Publish the cold-start kind:3 contacts list (`DEFAULT_FOLLOWS`) for a
 /// brand-new account.
 ///
@@ -580,13 +608,15 @@ fn publish_initial_follows(
                 ));
                 Vec::new()
             } else {
-                kernel.publish_signed_to(
+                let outbound = kernel.publish_signed_to(
                     &signed,
                     &[],
                     crate::publish::PublishTarget::Explicit {
-                        relays: target_relays,
+                        relays: target_relays.clone(),
                     },
-                )
+                );
+                remember_bootstrap_event(kernel, &signed, &target_relays);
+                outbound
             }
         }
         Err(reason) => {

@@ -113,6 +113,10 @@ pub(super) struct ProfileCard {
     pub(super) about: String,
     pub(super) avatar_initials: String,
     pub(super) avatar_color: String,
+    /// `"kind0"` when profile metadata is loaded, regardless of whether that
+    /// metadata includes a picture. `source` below only describes avatar image
+    /// provenance for ADR-0017.
+    pub(super) metadata_source: String,
     pub(super) source: String,
 }
 

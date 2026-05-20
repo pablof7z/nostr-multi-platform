@@ -11,6 +11,7 @@
 mod auth_handlers;
 mod closed;
 mod contacts;
+mod local_publish;
 mod profile;
 mod relay_list;
 mod timeline;
