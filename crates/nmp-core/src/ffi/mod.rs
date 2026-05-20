@@ -408,6 +408,42 @@ impl NmpApp {
         self.action_registry.register_executor(namespace, f);
     }
 
+    /// Register a host-supplied *module validator* against the app's action
+    /// registry — the complement to [`Self::register_action_executor`].
+    ///
+    /// `register_action_executor` wires the `execute()` half of a namespace;
+    /// this wires the `start()` validation half. A namespace registered
+    /// through *both* is fully reachable via
+    /// [`action::nmp_app_dispatch_action`]: `start()` validates the action
+    /// JSON against `validate`, then `execute()` runs the registered executor.
+    /// Registering only one half leaves the namespace partially wired — an
+    /// executor-only namespace is rejected by `start()` ("unknown action
+    /// namespace"); a validator-only one is rejected by `execute()` ("no
+    /// executor registered").
+    ///
+    /// `validate` receives the raw action JSON and returns an
+    /// [`crate::substrate::ActionPlan`] on accept or an
+    /// [`crate::substrate::ActionRejection`] on reject.
+    ///
+    /// Registration MUST happen during host init — before `nmp_app_start`
+    /// and before any [`action::nmp_app_dispatch_action`] call — because it
+    /// requires `&mut self`. See [`app_ref_mut`] for the aliasing contract.
+    pub fn register_action_module(
+        &mut self,
+        namespace: &'static str,
+        validate: impl Fn(
+                &str,
+            ) -> Result<
+                crate::substrate::ActionPlan<serde_json::Value>,
+                crate::substrate::ActionRejection,
+            > + Send
+            + Sync
+            + 'static,
+    ) {
+        self.action_registry
+            .register_with_validator(namespace, validate);
+    }
+
     /// Test-only direct execution path into the action registry.
     ///
     /// Bypasses [`crate::kernel::ActionRegistry::start`] (which needs a
