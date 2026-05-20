@@ -404,7 +404,7 @@ impl BunkerBroker {
             &inbound_rx,
             &local_keys,
             remote_pubkey,
-            bunker_uri.secret.as_deref(),
+            bunker_uri.secret.as_deref().map(String::as_str),
             bunker_uri.permissions.as_deref(),
             &cancel,
             &mut progress_emitter,
