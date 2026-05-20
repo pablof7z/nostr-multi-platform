@@ -145,10 +145,15 @@ fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str
 /// * `nmp.publish` / [`PublishAction::Cancel`] — no actor command exists
 ///   yet; the registry already reported `ActionStatus::Cancelled`, so this
 ///   is a no-op (a real publish-engine cancel is a follow-up).
-/// * Any other namespace — no executor is wired yet; treated as a no-op so
-///   the correlation id is still returned (validation succeeded). NIP-29 /
-///   NIP-59 modules are app nouns (D0) registered against the app host's
-///   own registry; their executors land with those crates.
+/// * Any other namespace — no executor is wired, so execution **fails with
+///   an `Err`** (D6: a missing executor is surfaced, never silently
+///   swallowed). `dispatch_action_json` turns that `Err` into `{"error":…}`
+///   and discards the correlation id, so the caller is never told an action
+///   succeeded when nothing ran. This arm is reachable only when a host
+///   registers an `ActionModule` (e.g. a NIP-29 / NIP-59 app noun, D0)
+///   whose namespace passes `registry.start()` validation but has no
+///   matching execution branch here; their executors land with those
+///   crates.
 fn execute_action(app: &NmpApp, namespace: &str, action_json: &str) -> Result<(), String> {
     match namespace {
         "nmp.publish" => {
@@ -170,9 +175,13 @@ fn execute_action(app: &NmpApp, namespace: &str, action_json: &str) -> Result<()
                 PublishAction::Cancel { .. } => Ok(()),
             }
         }
-        // No executor wired for other namespaces yet — validation passed,
-        // so the caller still gets a correlation id.
-        _ => Ok(()),
+        // No executor wired for this namespace. Validation passed but
+        // nothing can run it — surface that as an error (D6) instead of a
+        // silent `Ok`, so the caller is never handed a correlation id for an
+        // action that was dropped on the floor.
+        _ => Err(format!(
+            "no executor registered for namespace '{namespace}'"
+        )),
     }
 }
 
@@ -401,12 +410,18 @@ mod tests {
     }
 
     /// An unrecognized namespace has no executor wired — `execute_action`
-    /// treats it as a no-op success so a validated action still returns its
-    /// correlation id.
+    /// returns `Err` (D6) rather than a silent `Ok`, so a host can never be
+    /// handed a correlation id for an action that was never executed.
     #[test]
-    fn execute_action_unknown_namespace_is_noop_ok() {
+    fn execute_action_unknown_namespace_returns_err() {
         with_app(|app| {
-            assert!(execute_action(app, "nmp.future", "{}").is_ok());
+            let err = execute_action(app, "nmp.future", "{}")
+                .expect_err("unwired namespace must surface an error");
+            assert!(
+                err.contains("no executor registered")
+                    && err.contains("nmp.future"),
+                "error should name the unwired namespace, got: {err}"
+            );
         });
     }
 
