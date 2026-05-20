@@ -3320,16 +3320,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nmp-highlighter-core"
-version = "0.1.0"
-dependencies = [
- "nmp-core",
- "nmp-nip29",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "nmp-marmot"
 version = "0.1.0"
 dependencies = [

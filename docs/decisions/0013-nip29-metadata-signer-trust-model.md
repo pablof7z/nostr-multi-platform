@@ -2,7 +2,7 @@
 
 > **Status:** Accepted (landed alongside T42 / commit `5178cfc`).
 > **Date:** 2026-05-18.
-> **Companion:** `docs/design/nip29/moderation.md` §4; `docs/plan/m11.5-highlighter.md` §Step 1 (last bullet).
+> **Companion:** `docs/design/nip29/moderation.md` §4.
 
 ## Context
 

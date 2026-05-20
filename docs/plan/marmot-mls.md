@@ -2,7 +2,7 @@
 
 > **Status:** Deferred post-v1. M11.5 explicitly excludes encrypted groups; this milestone is the resolution path.
 > **Implementation crate:** wraps [`marmot-protocol/mdk`](https://github.com/marmot-protocol/mdk) (Marmot Development Kit, Rust) — see §Architecture.
-> **Companion docs:** [`post-v1.md`](post-v1.md) (summary entry), [`m11.5-highlighter.md`](m11.5-highlighter.md) §What this milestone does NOT ship (deferred pointer).
+> **Companion docs:** [`post-v1.md`](post-v1.md) (summary entry).
 
 ---
 

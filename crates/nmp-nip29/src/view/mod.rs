@@ -17,7 +17,7 @@
 //! Each view's `State` is a thin `Vec<KernelEvent>` accumulator; `snapshot`
 //! returns the events sorted by `created_at`. Cross-protocol hydration
 //! (`HydratedGroupChat` joining `nmp-nip01::Profile`) lives in the app crate
-//! (`nmp-highlighter-core`), not here, per the M11.5 exit-gate
+//! app layer, not here, per the NIP-29 boundary
 //! protocol-crate-isolation rule.
 
 mod chat;

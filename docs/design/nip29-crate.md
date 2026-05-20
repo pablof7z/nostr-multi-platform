@@ -1,7 +1,7 @@
 # Design: `nmp-nip29` — NIP-29 Relay-Based Groups as a Protocol Crate (M11.5)
 
-> **Status:** Draft (M11.5 design + impl-prep). **Date:** 2026-05-18.
-> **Companion docs:** `docs/plan.md` §M11 (the template this follows); `docs/plan/m11.5-highlighter.md` (the milestone using this crate); `docs/research/highlighter/app-survey.md` + `feature-inventory.md` (the empirical inputs); `docs/design/subscription-compilation.md` §§ 4, 7 (the M2 planner this crate hooks into); `docs/design/kernel-substrate.md` §§ 3–4 (`ViewModule`, `ActionModule`); ADR-0009 (the kernel-boundary doctrine the crate must respect).
+> **Status:** Implemented as generic protocol infrastructure. **Date:** 2026-05-18.
+> **Companion docs:** `docs/design/subscription-compilation.md` §§ 4, 7 (the M2 planner this crate hooks into); `docs/design/kernel-substrate.md` §§ 3–4 (`ViewModule`, `ActionModule`); ADR-0009 (the kernel-boundary doctrine the crate must respect).
 > **Scope:** Define the public surface, internal architecture, and routing contract of `nmp-nip29` — the NMP-idiomatic protocol crate for NIP-29 relay-based groups. **This is a design doc; no implementation lands in this PR.**
 
 This document is split into focused sub-files to stay well under the 300 LOC ceiling per file.

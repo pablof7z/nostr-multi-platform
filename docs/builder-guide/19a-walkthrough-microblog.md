@@ -19,16 +19,16 @@ app-defined record. That separation *is* the D0 demo — see the callout below.
 This example mirrors [`crates/fixture-todo-core/src/lib.rs:1-305`](../../crates/fixture-todo-core/src/lib.rs)
 (the canonical 5-family example) structurally, and the per-app FFI crate
 mirrors [`apps/fixture/nmp-app-fixture/`](../../apps/fixture/nmp-app-fixture)
-exactly. The real "non-fixture" app crate to compare against is
-[`apps/podcast/podcast-core/src/lib.rs:1-2`](../../apps/podcast/podcast-core/src/lib.rs),
-which opens with the D0 boundary comment verbatim:
+exactly. The real "non-fixture" app crate to compare against is the future
+app-owned crate you create for your product, which should open with the D0
+boundary comment verbatim:
 
 ```rust
-// D0: podcast nouns live in app modules like apps/podcast, never in nmp-core.
-// This crate is the central domain crate for the podcast app.
+// D0: app nouns live in app modules, never in nmp-core.
+// This crate is the central domain crate for this app.
 ```
 
-Your microblog crate carries the same comment with `podcast` → `microblog`.
+Your microblog crate carries the same comment with `app` -> `microblog`.
 
 ## Complete file tree of the example
 

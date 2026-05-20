@@ -27,7 +27,7 @@ Three doctrines force this shape and they were not invented for this design — 
 | Option | Verdict | Why |
 |---|---|---|
 | A. In protocol modules (`nmp-nip23::Article`, `nmp-nip54::Wiki`, `nmp-nip84::Highlight`) | **Accepted** for protocol-defined kinds | Matches ADR-0009 layering. Same crate owns the kind's wire format, its decode/encode, its domain record, its `DomainModule` registration. One change radius per NIP. |
-| B. In app-core crates (`podcast-core::EpisodeRecord`, highlighter app records) | **Accepted** for app-specific kinds | When the wire format is a local invention not standardized as a NIP. The app-core boundaries already exist at `apps/podcast/podcast-core/src/domain/records.rs:1-80` and `crates/nmp-highlighter-core/src/lib.rs:1-25`; concrete highlighter records are still scaffolded. |
+| B. In app-core crates | **Accepted** for app-specific kinds | When the wire format is a local invention not standardized as a NIP. Keep these records in the owning app crate, not in `nmp-core`. |
 | C. Shared `nmp-kinds` library | **Rejected** | Recreates the junk-drawer that ADR-0009 partitioned away. Forces every app to compile every wrapper. Inverts the protocol-module dependency graph (the bookmarks crate would have to know about wiki). |
 | D. Blueprints only (no decoders) | **Rejected** | The ingest path needs typed decoding to populate domain records — see §6. Encode-only is half a feature. |
 

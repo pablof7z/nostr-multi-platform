@@ -123,9 +123,9 @@ composition happens at the app layer; the only generic surface added in
 `nmp-core` is the third routing lane (`relay_pin` + lattice Rule 9).* Compare
 the `register` fn at `lib.rs:50-54` with the fixture's `module_descriptors()`
 — same `ModuleRegistry` API, 35 modules vs 5. (Full protocol-module recipe:
-[20](20-new-protocol-module.md).) The app-shaped third case is
-`apps/podcast/podcast-core/src/lib.rs:1-2` — its D0 banner: *"podcast nouns
-live in app modules like apps/podcast, never in nmp-core."*
+[20](20-new-protocol-module.md).) The app-shaped third case is any product
+crate you add later: its D0 banner should say that app nouns live in app
+modules, never in `nmp-core`.
 
 ## ModuleRegistry composition
 

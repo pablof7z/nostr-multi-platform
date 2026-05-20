@@ -2,7 +2,7 @@
 
 > Companion to `docs/product-spec.md` (what we ship) and the design docs in `docs/design/` (how each subsystem works). This document defines **the single ladder of milestones**, each one a runnable product that proves a specific architectural claim with real (not modeled) evidence.
 
-> **Four arcs:** Kernel substrate + Nostr social stack (M0–M10) → FFI hardening + iOS empirical proof (M10.5) → kernel-boundary proof with a non-social-domain app (M11, the **`../podcast` rebuild on NMP**) → WoT + cross-platform + release (M13–M17; M12 Wallet deferred post-v1 per [scope-adjustments-2026-05-18](plan/scope-adjustments-2026-05-18.md)). Chirp remains the reference client across those arcs: every reusable NMP feature that ships should become visible, testable, and debuggable there.
+> **Three arcs:** Kernel substrate + Nostr social stack (M0–M10) → FFI hardening + Chirp empirical proof (M10.5) → WoT + cross-platform + release (M13–M17; M12 Wallet deferred post-v1 per [scope-adjustments-2026-05-18](plan/scope-adjustments-2026-05-18.md)). Chirp is the reference client across those arcs: every reusable NMP feature that ships should become visible, testable, and debuggable there before we reopen other app proofs.
 
 > **Each milestone is gated.** Every milestone ends with: a runnable artifact, automated tests in `nmp-testing`, a measured-numbers report in `docs/perf/m<N>/`, and an explicit ADR if a design decision was revised in flight. **No silent endings.** **No "for later" carve-outs** — if a slice is in the milestone scope, it ships in that milestone, or the milestone is not done.
 
@@ -20,8 +20,8 @@
 - [Test pyramid](plan/test-pyramid.md)
 - [CI / pre-merge hygiene](plan/ci-hygiene.md)
 - [Decision log](plan/decision-log.md)
-- [Scope adjustments 2026-05-18](plan/scope-adjustments-2026-05-18.md) — M9 DMs + M12 Wallet deferred; M11.5 Highlighter added; framework-magic contract
-- [Post-v1 milestones](plan/post-v1.md) — deferred M9 (DMs) and M12 (Wallet)
+- [Scope adjustments 2026-05-18](plan/scope-adjustments-2026-05-18.md) — historical scope changes and framework-magic contract
+- [Post-v1 milestones](plan/post-v1.md) — deferred M9 (DMs), M12 (Wallet), and non-Chirp app proofs
 
 ---
 
@@ -43,8 +43,8 @@ Each milestone has: **demo product**, **scope (what gets built)**, **subsystem d
 | ~~M9~~ | ~~NIP-17 DMs + NSE~~ | ~~Arc 1~~ | [deferred post-v1](plan/post-v1.md) |
 | [M10](plan/m10-blossom.md) | Blossom + media + long-running capabilities | Arc 1 — Social stack | |
 | [M10.5](plan/m10.5-ffi-hardening.md) | FFI hardening + iOS empirical proof | Hard gate | |
-| [M11](plan/m11-podcast.md) | Podcast app — kernel-boundary proof | Arc 2 — Kernel boundary | |
-| [M11.5](plan/m11.5-highlighter.md) | Highlighter rebuild + `nmp-nip29` crate | Arc 2 — Kernel boundary | |
+| ~~M11~~ | ~~Podcast app — kernel-boundary proof~~ | ~~Arc 2~~ | Deferred until Chirp is complete |
+| ~~M11.5~~ | ~~Highlighter rebuild app proof~~ | ~~Arc 2~~ | App proof deferred; generic `nmp-nip29` retained |
 | ~~M12~~ | ~~Wallet (NWC + zaps + Cashu + nutzaps)~~ | ~~Arc 3~~ | [deferred post-v1](plan/post-v1.md) |
 | [M13](plan/m13-wot.md) | Web-of-Trust | Arc 3 — Release | |
 | [M14](plan/m14-uniffi.md) | UniFFI migration | Arc 3 — Release | |
@@ -58,7 +58,7 @@ Each milestone has: **demo product**, **scope (what gets built)**, **subsystem d
 
 - **Not a schedule.** No dates, no person-months. Milestones are sequential; their durations depend on team size and surface complexity. Estimates per milestone are guidance only.
 - **Not a marketing roadmap.** v1 ships when M17 gates are met, not on a calendar.
-- **Not exhaustive about post-v1 work.** NIP-23 long-form, NIP-71 video, and additional protocol modules are post-v1. NIP-29 groups ship in v1 via [M11.5](plan/m11.5-highlighter.md) (Highlighter rebuild). Marmot MLS-over-Nostr encrypted groups ship post-v1 via [`plan/marmot-mls.md`](plan/marmot-mls.md). Additional app demonstrations (TENEX-lite, etc.) are post-v1. These deferrals do not shrink Chirp's standing showcase goal: once a reusable NMP feature ships, Chirp should demonstrate it or document why it cannot.
+- **Not exhaustive about post-v1 work.** NIP-23 long-form, NIP-71 video, and additional protocol modules are post-v1 unless they become necessary for Chirp. NIP-29 remains generic Nostr group infrastructure, not a reason to keep a Highlighter app shell active. Marmot MLS-over-Nostr encrypted groups ship post-v1 via [`plan/marmot-mls.md`](plan/marmot-mls.md). Additional app demonstrations are post-v1. These deferrals do not shrink Chirp's standing showcase goal: once a reusable NMP feature ships, Chirp should demonstrate it or document why it cannot.
 - **Not silent about gaps.** The [status doc](plan/status.md) names exactly what is and isn't built. As the ladder progresses, the status doc gets revised so the plan stays honest about state.
 
 The plan exists so that any single milestone can be picked up cold by someone reading this doc + `product-spec.md` + the relevant ADRs and design docs, and they can execute without bothering the rest of the team.

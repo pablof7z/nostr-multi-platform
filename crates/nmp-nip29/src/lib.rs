@@ -10,7 +10,7 @@
 //! ## Crate boundary (M11.5 exit gate)
 //!
 //! - `nmp-nip29` does NOT import any other `nmp-nip*` crate. Cross-protocol
-//!   composition happens at the app layer (e.g. `nmp-highlighter-core`).
+//!   composition happens at the app layer.
 //! - `nmp-core` gains zero group / community / room nouns; this crate owns
 //!   them. The only generic surface added in `nmp-core` is the third routing
 //!   lane (`InterestShape::relay_pin` + lattice Rule 9 + partition Case E).

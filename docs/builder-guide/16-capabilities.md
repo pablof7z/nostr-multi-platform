@@ -37,14 +37,13 @@ callback; the kernel decides what it means. That absence is D7 and D6 enforced
 by construction, exactly as `framework-magic/capabilities.md` describes the
 rendering-side analog.
 
-A protocol/app module defines its own capability the same way. The podcast
-audio crate (`apps/podcast/podcast-audio/src/capability.rs:1-49`, registered in
-`apps/podcast/podcast-audio/src/lib.rs:1-36`) defines `AudioCapabilityRequest`
-(`Load`/`Play`/`Pause`/`Seek`/`SetRate`/`Stop`) and an `AudioCapabilityEvent`
-bus whose `Tick { current_s, duration_s }` is documented as "≤4 Hz while
-playing (D8: coalesced, not per-frame)" — the bridge emits sparsely; the kernel
-owns the cadence. The full nine-capability M11 catalog and its design rationale
-live in `docs/design/podcast/capabilities.md`.
+A protocol/app module defines its own capability the same way. A future media
+app could define `AudioCapabilityRequest` (`Load`/`Play`/`Pause`/`Seek`/
+`SetRate`/`Stop`) and an `AudioCapabilityEvent` bus whose
+`Tick { current_s, duration_s }` is documented as "≤4 Hz while playing (D8:
+coalesced, not per-frame)" — the bridge emits sparsely; the kernel owns the
+cadence. Keep that crate app-owned until the capability proves reusable across
+more than one app.
 
 NIP-77 transport support is the same pattern at a different layer:
 `crates/nmp-nip77/src/capability.rs:30-66` is a per-relay `CapabilityCache` /
@@ -66,45 +65,38 @@ does. Mix of core + podcast capabilities:
 | 3 | `ExternalSignerCapability` | "user approved, signature = …", "user cancelled", "request timed out" | which event to sign, retry-after-cancel policy, account-mismatch rejection (ADR-0015) |
 | 4 | `NetworkMonitorCapability` | "wifi", "cellular", "offline" — the raw link state | whether to pause sync, drain the publish queue, or hold REQs (D7: native does **not** decide to reconnect) |
 | 5 | `BlobPickerCapability` | "user picked file at handle/URI, mime = …", "user dismissed" | upload target, Blossom server selection, chunking, retry on upload failure |
-| 6 | `AudioPlayback` (podcast) | `StateChanged(Playing/Paused/Error)`, `Tick { current_s }`, `Ended` | which episode to load, whether to skip an ad chapter, resume position, rate (`podcast-core` orchestrator decides; bridge obeys `Seek`) |
-| 7 | `EmbeddingCapability` (podcast) | "vector = `[f32; 384]`", "model unavailable", "inference error" | which model, how to chunk overflow text (256-token bge ceiling), zero retries on `Unavailable` / two on `Error` (`docs/design/podcast/capabilities.md` §E) |
-| 8 | `TranscriptionCapability` (podcast) | "language available", "model downloading 40%", "chunks = …", "cancelled" | when to transcribe, which language, what to do with the transcript, cancel-vs-wait policy |
+| 6 | `AudioPlayback` (future media app) | `StateChanged(Playing/Paused/Error)`, `Tick { current_s }`, `Ended` | which media item to load, resume position, rate, and skip policy; bridge obeys `Seek` |
+| 7 | `EmbeddingCapability` (future app) | "vector = `[f32; 384]`", "model unavailable", "inference error" | which model, how to chunk overflow text, and retry policy |
+| 8 | `TranscriptionCapability` (future app) | "language available", "model downloading 40%", "chunks = …", "cancelled" | when to transcribe, which language, what to do with the transcript, cancel-vs-wait policy |
 
 If you find yourself wanting the bridge to "just retry the keychain read a
 couple of times" or "fall back to a public relay if the picker fails", stop:
 that is kernel policy. The bridge reports the failure as a result variant; the
 kernel's action ledger decides. This is why a capability `Result` is an enum of
-*facts* (`Loaded`, `StateChanged`, `Error { reason }`), never `Result<T,E>` —
-see `apps/podcast/podcast-audio/src/capability.rs:19-30`.
+*facts* (`Loaded`, `StateChanged`, `Error { reason }`), never `Result<T,E>`.
 
 ## Idempotence checklist
 
-Every capability is **idempotent** and **bounded** (`api-surface.md:229`;
-`docs/design/podcast/capabilities.md` §A "Idempotency proof", §K acceptance,
-§L the noun guardrail). Before a capability bridge is accepted, verify:
+Every capability is **idempotent** and **bounded** (`api-surface.md:229`).
+Before a capability bridge is accepted, verify:
 
 - [ ] **`start` after `start` is a no-op.** Re-registering push, re-arming a
       network monitor, re-loading the *same* audio URL is safe N times. The
       bridge does not refuse, does not double-fire; coalescing duplicate work
-      is the *kernel's* job, not the bridge's (`capabilities.md` §A: the
-      `podcast-core` ActionModule checks "already loaded" before dispatching
-      `Load`; the bridge never short-circuits on its own).
+      is the *kernel's* job, not the bridge's.
 - [ ] **`stop`/`cancel` after `stop`/`cancel` is a no-op.** No straggler
-      events arrive after `Cancelled` (the M10.5 stress harness asserts this —
-      `capabilities.md` §K).
+      events arrive after `Cancelled` (the M10.5 stress harness asserts this).
 - [ ] **Restart-safe N times.** 1000-cycle start/stop/restart leaves zero
       retained-by-cycle leaks (the `ffi-stress` instrument, §K).
 - [ ] **Bounded native state.** The bridge holds only OS handles
       (`AVPlayer?`, `timeObserver?`, weak sink). **No queue, no history, no
       preferences, no derived state, no policy.** "Skip the ad" is decided in
-      Rust from `Tick` events (`capabilities.md` §A bounded-state proof). This
-      is the D5 side of the contract.
+      Rust from `Tick` events. This is the D5 side of the contract.
 - [ ] **No app/protocol noun in `Request` or `Result`.** If any field names
       an episode, a highlight, a group — redesign. The request types name
       URLs, paths, tokens, languages, prompts; nothing domain-specific
-      (`capabilities.md` §L). This is what keeps capabilities reusable across a
-      future Highlighter or messaging app and keeps app nouns out of
-      `nmp-core` (D0).
+      This is what keeps capabilities reusable across future apps and keeps app
+      nouns out of `nmp-core` (D0).
 - [ ] **Failures are result variants, not exceptions.** `Error { reason:
       String }` crosses the bridge; a thrown native exception or a
       `Result<T,E>` does not (D6).
