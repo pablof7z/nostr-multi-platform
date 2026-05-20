@@ -157,3 +157,231 @@ pub(super) fn compute_plan_id(
 
     format!("{:016x}", h.finish())
 }
+
+// ─── tests ───────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::planner::compiler::mailbox::{InMemoryMailboxCache, MailboxSnapshot};
+    use crate::planner::interest::{
+        InterestId, InterestScope, InterestShape, LogicalInterest, NaddrCoord,
+    };
+    use std::collections::BTreeSet;
+
+    /// 64-hex-ish pubkey placeholders — content does not matter for hashing,
+    /// only that they are distinct and stable across the test.
+    const PK_AUTHOR: &str = "1111111111111111111111111111111111111111111111111111111111111111";
+    const PK_ADDR: &str = "2222222222222222222222222222222222222222222222222222222222222222";
+    const PK_PTAG: &str = "3333333333333333333333333333333333333333333333333333333333333333";
+    const PK_UNRELATED: &str =
+        "9999999999999999999999999999999999999999999999999999999999999999";
+
+    /// Build a `LogicalInterest` that references one author, one address pubkey,
+    /// and one `#p` tag pubkey — exercising all three `referenced_pubkeys` sources.
+    fn interest_referencing_all_three() -> LogicalInterest {
+        let mut shape = InterestShape::default();
+        shape.authors.insert(PK_AUTHOR.to_string());
+        shape.addresses.insert(NaddrCoord {
+            pubkey: PK_ADDR.to_string(),
+            kind: 30023,
+            d_tag: "post".to_string(),
+        });
+        let mut p_values = BTreeSet::new();
+        p_values.insert(PK_PTAG.to_string());
+        shape.tags.insert("p".to_string(), p_values);
+        LogicalInterest {
+            id: InterestId(7),
+            scope: InterestScope::ActiveAccount,
+            shape,
+            ..LogicalInterest::default()
+        }
+    }
+
+    fn relay_snapshot(write: &[&str]) -> MailboxSnapshot {
+        MailboxSnapshot {
+            write_relays: write.iter().map(|s| s.to_string()).collect(),
+            ..MailboxSnapshot::default()
+        }
+    }
+
+    /// `referenced_pubkeys` must collect from authors ∪ addresses ∪ `#p` tags.
+    #[test]
+    fn referenced_pubkeys_collects_all_three_sources() {
+        let interests = vec![interest_referencing_all_three()];
+        let refs = referenced_pubkeys(&interests);
+        assert!(
+            refs.contains(PK_AUTHOR),
+            "author pubkey must be a referenced pubkey"
+        );
+        assert!(
+            refs.contains(PK_ADDR),
+            "address-coordinate pubkey must be a referenced pubkey"
+        );
+        assert!(
+            refs.contains(PK_PTAG),
+            "#p-tag pubkey must be a referenced pubkey"
+        );
+        assert!(
+            !refs.contains(PK_UNRELATED),
+            "unreferenced pubkey must NOT appear in the referenced set"
+        );
+        assert_eq!(refs.len(), 3, "exactly three pubkeys are referenced");
+    }
+
+    /// Happy path: identical inputs hash to an identical 16-hex-char plan-id.
+    #[test]
+    fn compute_plan_id_is_deterministic() {
+        let interests = vec![interest_referencing_all_three()];
+        let cache = InMemoryMailboxCache::new();
+        let ctx = CompileContext::default();
+
+        let first = compute_plan_id(&interests, &cache, &ctx, 1);
+        let second = compute_plan_id(&interests, &cache, &ctx, 1);
+        assert_eq!(first, second, "same inputs must yield the same plan-id");
+        assert_eq!(first.len(), 16, "plan-id is a 16-hex-char FNV-1a digest");
+        assert!(
+            first.chars().all(|c| c.is_ascii_hexdigit()),
+            "plan-id must be lowercase hex"
+        );
+    }
+
+    /// §3.4 headline invariant: a mailbox entry for a pubkey that is NOT
+    /// referenced by any interest MUST NOT change the plan-id.
+    #[test]
+    fn unreferenced_mailbox_entry_does_not_change_plan_id() {
+        let interests = vec![interest_referencing_all_three()];
+        let ctx = CompileContext::default();
+
+        let empty_cache = InMemoryMailboxCache::new();
+        let baseline = compute_plan_id(&interests, &empty_cache, &ctx, 1);
+
+        let mut cache_with_noise = InMemoryMailboxCache::new();
+        cache_with_noise.put(
+            PK_UNRELATED.to_string(),
+            relay_snapshot(&["wss://noise.example"]),
+        );
+        let with_noise = compute_plan_id(&interests, &cache_with_noise, &ctx, 1);
+
+        assert_eq!(
+            baseline, with_noise,
+            "an unrelated kind:10002 arrival must not perturb the plan-id (§3.4)"
+        );
+    }
+
+    /// Counterpart to the §3.4 test: a mailbox entry for a REFERENCED pubkey
+    /// DOES change the plan-id — proving the referenced-pubkey gate works both ways.
+    #[test]
+    fn referenced_mailbox_entry_changes_plan_id() {
+        let interests = vec![interest_referencing_all_three()];
+        let ctx = CompileContext::default();
+
+        let empty_cache = InMemoryMailboxCache::new();
+        let baseline = compute_plan_id(&interests, &empty_cache, &ctx, 1);
+
+        let mut cache_with_author = InMemoryMailboxCache::new();
+        cache_with_author.put(
+            PK_AUTHOR.to_string(),
+            relay_snapshot(&["wss://relay.example"]),
+        );
+        let with_author = compute_plan_id(&interests, &cache_with_author, &ctx, 1);
+
+        assert_ne!(
+            baseline, with_author,
+            "a mailbox snapshot for a referenced author must change the plan-id"
+        );
+    }
+
+    /// Interest ordering in the input `Vec` must not affect the plan-id —
+    /// the function sorts by `InterestId` before hashing.
+    #[test]
+    fn plan_id_is_independent_of_interest_order() {
+        let mut a = interest_referencing_all_three();
+        a.id = InterestId(1);
+        let mut b = LogicalInterest::default();
+        b.id = InterestId(2);
+        b.shape.kinds.insert(1);
+
+        let cache = InMemoryMailboxCache::new();
+        let ctx = CompileContext::default();
+
+        let forward = compute_plan_id(&[a.clone(), b.clone()], &cache, &ctx, 1);
+        let reversed = compute_plan_id(&[b, a], &cache, &ctx, 1);
+        assert_eq!(
+            forward, reversed,
+            "shuffling the interest Vec must not change the plan-id"
+        );
+    }
+
+    /// Relay ordering inside a mailbox snapshot must not affect the plan-id —
+    /// each relay vector is sorted before hashing.
+    #[test]
+    fn plan_id_is_independent_of_relay_order_in_snapshot() {
+        let interests = vec![interest_referencing_all_three()];
+        let ctx = CompileContext::default();
+
+        let mut cache_ab = InMemoryMailboxCache::new();
+        cache_ab.put(
+            PK_AUTHOR.to_string(),
+            relay_snapshot(&["wss://a.example", "wss://b.example"]),
+        );
+        let mut cache_ba = InMemoryMailboxCache::new();
+        cache_ba.put(
+            PK_AUTHOR.to_string(),
+            relay_snapshot(&["wss://b.example", "wss://a.example"]),
+        );
+
+        assert_eq!(
+            compute_plan_id(&interests, &cache_ab, &ctx, 1),
+            compute_plan_id(&interests, &cache_ba, &ctx, 1),
+            "relay-vector order inside a snapshot must not change the plan-id"
+        );
+    }
+
+    /// Bumping either `CompileContext` version counter must change the plan-id —
+    /// policy changes invalidate plans even when the interest set is unchanged.
+    #[test]
+    fn plan_id_is_sensitive_to_compile_context() {
+        let interests = vec![interest_referencing_all_three()];
+        let cache = InMemoryMailboxCache::new();
+
+        let baseline = compute_plan_id(&interests, &cache, &CompileContext::default(), 1);
+
+        let bumped_indexer = compute_plan_id(
+            &interests,
+            &cache,
+            &CompileContext { indexer_set_version: 1, user_config_version: 0 },
+            1,
+        );
+        assert_ne!(
+            baseline, bumped_indexer,
+            "bumping indexer_set_version must change the plan-id"
+        );
+
+        let bumped_user = compute_plan_id(
+            &interests,
+            &cache,
+            &CompileContext { indexer_set_version: 0, user_config_version: 1 },
+            1,
+        );
+        assert_ne!(
+            baseline, bumped_user,
+            "bumping user_config_version must change the plan-id"
+        );
+    }
+
+    /// A different `lattice_version` byte must change the plan-id —
+    /// a merge-lattice rule change invalidates previously compiled plans.
+    #[test]
+    fn plan_id_is_sensitive_to_lattice_version() {
+        let interests = vec![interest_referencing_all_three()];
+        let cache = InMemoryMailboxCache::new();
+        let ctx = CompileContext::default();
+
+        assert_ne!(
+            compute_plan_id(&interests, &cache, &ctx, 1),
+            compute_plan_id(&interests, &cache, &ctx, 2),
+            "a different lattice_version must change the plan-id"
+        );
+    }
+}
