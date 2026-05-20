@@ -23,7 +23,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::Duration;
 
 use nmp_core::substrate::UnsignedEvent;
 use nmp_core::{ActorCommand, RemoteSignerHandle};
@@ -114,7 +113,8 @@ impl BunkerBroker {
     ///
     /// Progress is reported via `BunkerHandshakeProgress` snapshots using the
     /// same stage strings as the `bunker://` path (`"connecting"`,
-    /// `"awaiting_pubkey"`, `"ready"`, `"idle"`, `"failed"`).
+    /// `"awaiting_pubkey"`, `"ready"`, `"failed"`). `"ready"` is terminal;
+    /// the broker does not emit `"idle"` — the UI clears its own card.
     ///
     /// Cancels any prior in-flight bunker or nostrconnect session (MVP
     /// single-session contract).
@@ -312,8 +312,8 @@ impl BunkerBroker {
     /// 2. Connect to the first relay (cycle through if it fails).
     /// 3. Subscribe to inbound kind:24133 events.
     /// 4. Drive the connect → get_public_key state machine.
-    /// 5. Construct `Nip46Signer`, ship `AddRemoteSigner` to the actor.
-    /// 6. Emit `idle` after a short delay so the UI clears the progress card.
+    /// 5. Construct `Nip46Signer`, ship `AddRemoteSigner` to the actor, and
+    ///    emit the terminal `"ready"` progress snapshot.
     fn run_handshake_thread(self: Arc<Self>, uri_str: String, cancel: Arc<AtomicBool>) {
         let bunker_uri = match parse_bunker_uri(&uri_str) {
             Ok(u) => u,
@@ -493,16 +493,15 @@ impl BunkerBroker {
             handle: actor_handle,
         });
 
+        // `"ready"` is the broker's terminal success signal. The Chirp
+        // `AccountsView` auto-dismisses the sign-in sheet once the new
+        // `signer_kind == "nip46"` account row appears, so the progress card
+        // is torn down with the sheet — no Rust-side `"idle"` emission is
+        // needed. A delayed `"idle"` here would be a D8 violation
+        // (timer-driven control flow); presentation timing belongs to the UI
+        // layer, which can run its own animation if a lingering "Connected"
+        // card is desired.
         self.emit_progress("ready", Some("Bunker connected"));
-
-        // Schedule a delayed `idle` so the Chirp UI clears the progress card
-        // after the new account row is visible. Stage 5 auto-dismisses the
-        // sheet on a new nip46 account; this clears the snapshot field too.
-        let me = Arc::clone(self);
-        std::thread::spawn(move || {
-            std::thread::sleep(Duration::from_millis(250));
-            me.emit_progress("idle", None);
-        });
     }
 
     fn emit_progress(&self, stage: &str, message: Option<&str>) {
@@ -561,6 +560,7 @@ impl RelayClient for NoopRelay {
 mod tests {
     use super::*;
     use std::sync::mpsc;
+    use std::time::Duration;
 
     /// Broker construction is cheap and does not touch the network. Smoke
     /// test that `new` builds without panic and `cancel` on an empty broker

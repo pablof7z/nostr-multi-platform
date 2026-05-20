@@ -19,10 +19,12 @@
 //!    same persistent relay subscription routes inbound responses back to
 //!    `Nip46Signer::resolve_response`.
 //! 4. **Progress reporting**: emits [`nmp_core::ActorCommand::BunkerHandshakeProgress`]
-//!    snapshots (`"connecting"` → `"awaiting_pubkey"` → `"ready"` → `"idle"`,
-//!    or `"failed"` on error) so the SwiftUI sign-in flow can render live
-//!    feedback. The Chirp `AccountsView` auto-dismisses the sheet when a new
-//!    `signer_kind == "nip46"` account appears.
+//!    snapshots (`"connecting"` → `"awaiting_pubkey"` → `"ready"`, or
+//!    `"failed"` on error) so the SwiftUI sign-in flow can render live
+//!    feedback. `"ready"` is the terminal success stage; the Chirp
+//!    `AccountsView` auto-dismisses the sheet when a new
+//!    `signer_kind == "nip46"` account appears, tearing the progress card
+//!    down with it.
 //!
 //! ## Threading
 //!
