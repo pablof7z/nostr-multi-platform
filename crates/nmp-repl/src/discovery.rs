@@ -69,8 +69,12 @@ pub fn fetch_follows(session: &mut Session) -> Result<FollowsResult> {
     }
 
     let sub_id = "follows-1";
-    let filter_json = json!({ "kinds": [3], "authors": [seed], "limit": 1 }).to_string();
-    let summary = summarize_filter(&filter_json);
+    // Build the filter once. `req` is loop-invariant (it does not depend on
+    // `url`), so construct the REQ frame here instead of re-parsing the
+    // filter JSON on every indexer iteration.
+    let filter = json!({ "kinds": [3], "authors": [seed], "limit": 1 });
+    let summary = summarize_filter(&filter.to_string());
+    let req = json!(["REQ", sub_id, filter]).to_string();
 
     println!("$follows: resolving kind:3 via indexer");
 
@@ -89,9 +93,7 @@ pub fn fetch_follows(session: &mut Session) -> Result<FollowsResult> {
                 continue;
             }
         };
-        let req = json!(["REQ", sub_id, serde_json::from_str::<Value>(&filter_json).unwrap()])
-            .to_string();
-        if let Err(e) = socket.send(Message::Text(req)) {
+        if let Err(e) = socket.send(Message::Text(req.clone())) {
             println!("  {url}  ✗ error: send REQ: {e}");
             last_outcome = format!("{url}: send failed");
             continue;

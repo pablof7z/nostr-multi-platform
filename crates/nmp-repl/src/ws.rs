@@ -62,16 +62,6 @@ pub enum Frame {
     Timeout,
 }
 
-/// Connect; panic on failure. The REPL prefers `try_connect`; this is a
-/// convenience for the cold-start indexer dial where a panic is acceptable.
-#[allow(dead_code)]
-pub fn connect(url: &str) -> Sock {
-    try_connect(url).unwrap_or_else(|| {
-        eprintln!("connect failed: {url}");
-        std::process::exit(1);
-    })
-}
-
 /// Try to connect; return `Err(message)` on any failure (DNS, TLS, refused,
 /// etc.) so the caller can surface *why* the dial failed rather than a bare
 /// "connect refused".
@@ -86,12 +76,6 @@ pub fn try_connect_msg(url: &str) -> std::result::Result<Sock, String> {
         _ => Ok(()),
     };
     Ok(socket)
-}
-
-/// Try to connect; return `None` on any failure. Thin wrapper over
-/// [`try_connect_msg`] for call sites that don't surface the reason.
-pub fn try_connect(url: &str) -> Option<Sock> {
-    try_connect_msg(url).ok()
 }
 
 /// Human-readable one-liner for a tungstenite connect error (DNS / TLS /
