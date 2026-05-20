@@ -230,8 +230,13 @@ impl Kernel {
     /// Test-support only — gated on `cfg(any(test, feature = "test-support"))`.
     #[allow(dead_code)]
     pub(crate) fn seed_kind10002_for_test(&mut self, author_pubkey: &str, write_urls: &[&str]) {
-        let id_prefix = &author_pubkey[..2];
-        let id = format!("{:0<64}", format!("{}k10002ts", id_prefix));
+        // Use the author's pubkey as the synthetic event ID — guaranteed
+        // unique per author in a fresh-kernel test. The old two-char prefix
+        // approach caused a Duplicate hit when the randomly-generated active
+        // pubkey started with the same two hex chars as FIATJAF_HEX ("3b")
+        // or SEED_NPUB_HEX ("fa"), making the store return Duplicate and
+        // silently skip ingest_relay_list for that author.
+        let id = author_pubkey.to_string();
         let tags: Vec<Vec<String>> = write_urls
             .iter()
             .map(|url| vec!["r".to_string(), url.to_string(), "write".to_string()])
