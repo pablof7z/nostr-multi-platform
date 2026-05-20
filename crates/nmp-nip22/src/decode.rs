@@ -268,4 +268,77 @@ mod tests {
         let r = try_from_kernel_event(&ke).unwrap();
         assert_eq!(r.event_id, "id");
     }
+
+    #[test]
+    fn missing_uppercase_k_tag_decodes_with_no_kind_hint() {
+        // NIP-22 `K` (root kind) is a hint, not a hard requirement. An `E`
+        // tag with no accompanying `K` must still decode — the pointer just
+        // carries `kind: None`.
+        let tags = vec![vec!["E".into(), "ROOT".into()]];
+        let r = try_from_event(&make_stored(1111, tags, "body")).unwrap();
+        assert_eq!(
+            r.root,
+            CommentPointer::Event { id: "ROOT".into(), relay: None, kind: None }
+        );
+        // Parent falls back to root, also kind-less.
+        assert_eq!(r.parent, r.root);
+    }
+
+    #[test]
+    fn non_numeric_k_tag_is_ignored_not_fatal() {
+        // A `K` whose value does not parse as u32 must not abort the decode;
+        // the kind hint silently becomes `None`.
+        let tags = vec![
+            vec!["E".into(), "ROOT".into()],
+            vec!["K".into(), "not-a-number".into()],
+        ];
+        let r = try_from_event(&make_stored(1111, tags, "body")).unwrap();
+        assert_eq!(
+            r.root,
+            CommentPointer::Event { id: "ROOT".into(), relay: None, kind: None }
+        );
+    }
+
+    #[test]
+    fn empty_root_event_id_rejected() {
+        // Malformed root coordinate: `E` tag present but its id column is "".
+        // Decoder must treat the event as non-decodable, not emit a pointer
+        // with an empty id.
+        let tags = vec![
+            vec!["E".into(), String::new()],
+            vec!["K".into(), "30023".into()],
+        ];
+        assert!(try_from_event(&make_stored(1111, tags, "body")).is_none());
+    }
+
+    #[test]
+    fn empty_root_address_coord_rejected() {
+        let tags = vec![
+            vec!["A".into(), String::new()],
+            vec!["K".into(), "30023".into()],
+        ];
+        assert!(try_from_event(&make_stored(1111, tags, "body")).is_none());
+    }
+
+    #[test]
+    fn empty_root_uri_rejected() {
+        let tags = vec![vec!["I".into(), String::new()]];
+        assert!(try_from_event(&make_stored(1111, tags, "body")).is_none());
+    }
+
+    #[test]
+    fn malformed_parent_falls_back_to_root() {
+        // An `e` tag with an empty id column yields no parent pointer; the
+        // decoder must fall back to the root rather than dropping the event.
+        let tags = vec![
+            vec!["E".into(), "ROOT".into()],
+            vec!["e".into(), String::new()],
+        ];
+        let r = try_from_event(&make_stored(1111, tags, "body")).unwrap();
+        assert_eq!(r.parent, r.root);
+        assert_eq!(
+            r.root,
+            CommentPointer::Event { id: "ROOT".into(), relay: None, kind: None }
+        );
+    }
 }

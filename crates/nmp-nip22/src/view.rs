@@ -232,4 +232,59 @@ mod tests {
         assert_eq!(deps.kinds, vec![KIND_COMMENT]);
         assert_eq!(deps.tag_refs, vec![("e".into(), "TID".into())]);
     }
+
+    #[test]
+    fn comments_view_admits_top_level_comment_when_target_is_root() {
+        // A top-level comment carries only an uppercase `E` root and no
+        // lowercase `e` parent. The decoder falls back parent == root, so the
+        // view must surface it when the spec target equals that root id.
+        let spec = CommentsSpec { target: "ARTICLE".into() };
+        let (mut state, _) = CommentsView::open(&ctx(), spec);
+        let top_level = KernelEvent {
+            id: "TOP".into(),
+            author: "auth".into(),
+            kind: 1111,
+            created_at: 1,
+            tags: vec![
+                vec!["E".into(), "ARTICLE".into()],
+                vec!["K".into(), "30023".into()],
+            ],
+            content: "first!".into(),
+        };
+        assert!(matches!(
+            CommentsView::on_event_inserted(&ctx(), &mut state, &top_level),
+            Some(CommentsDelta::Inserted(_))
+        ));
+        let snap = CommentsView::snapshot(&ctx(), &state);
+        assert_eq!(snap.comments.len(), 1);
+        assert_eq!(snap.comments[0].id, "TOP");
+    }
+
+    #[test]
+    fn comments_view_rejects_non_kind_1111() {
+        // Only kind:1111 events are comments; a kind:1 note tagging the
+        // target must not enter the projection.
+        let spec = CommentsSpec { target: "PARENT".into() };
+        let (mut state, _) = CommentsView::open(&ctx(), spec);
+        let mut note = comment("N1", "PARENT", 1);
+        note.kind = 1;
+        assert!(CommentsView::on_event_inserted(&ctx(), &mut state, &note).is_none());
+        assert!(CommentsView::snapshot(&ctx(), &state).comments.is_empty());
+    }
+
+    #[test]
+    fn comments_view_replace_to_non_matching_event_removes_old() {
+        // Replacing an in-view comment with an event whose parent no longer
+        // points at the target evicts the stale entry.
+        let spec = CommentsSpec { target: "PARENT".into() };
+        let (mut state, _) = CommentsView::open(&ctx(), spec);
+        let original = comment("C1", "PARENT", 1);
+        CommentsView::on_event_inserted(&ctx(), &mut state, &original);
+        let moved = comment("C1", "OTHER", 2);
+        assert!(matches!(
+            CommentsView::on_event_replaced(&ctx(), &mut state, &"C1".to_string(), &moved),
+            Some(CommentsDelta::Removed(_))
+        ));
+        assert!(CommentsView::snapshot(&ctx(), &state).comments.is_empty());
+    }
 }

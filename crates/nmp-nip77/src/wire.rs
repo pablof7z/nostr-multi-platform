@@ -230,4 +230,83 @@ mod tests {
         };
         assert_eq!(frame.to_text(), "[\"NEG-CLOSE\",\"abc\"]");
     }
+
+    #[test]
+    fn msg_client_frame_serializes() {
+        // `ClientFrame::Msg` is the in-flight continuation frame; only Open
+        // and Close serialization were previously covered.
+        let frame = ClientFrame::Msg {
+            sub_id: "s9".into(),
+            msg: vec![0x60, 0xff, 0x00],
+        };
+        assert_eq!(frame.to_text(), "[\"NEG-MSG\",\"s9\",\"60ff00\"]");
+    }
+
+    #[test]
+    fn empty_hex_body_decodes_to_empty_bytes() {
+        // A NEG-MSG with an empty hex string is a valid zero-length payload,
+        // not a malformed frame.
+        let parsed = RelayFrame::parse("[\"NEG-MSG\",\"s\",\"\"]").unwrap();
+        assert_eq!(
+            parsed,
+            RelayFrame::Msg {
+                sub_id: "s".into(),
+                msg: Vec::new()
+            }
+        );
+    }
+
+    #[test]
+    fn uppercase_hex_body_is_accepted() {
+        // The decoder accepts A-F as well as a-f; relays are not required to
+        // emit lowercase even though NMP does.
+        let parsed = RelayFrame::parse("[\"NEG-MSG\",\"s\",\"60AABB\"]").unwrap();
+        assert_eq!(
+            parsed,
+            RelayFrame::Msg {
+                sub_id: "s".into(),
+                msg: vec![0x60, 0xaa, 0xbb]
+            }
+        );
+    }
+
+    #[test]
+    fn neg_msg_missing_body_field_errors() {
+        // NEG-MSG with no third element is structurally incomplete.
+        let err = RelayFrame::parse("[\"NEG-MSG\",\"s\"]").unwrap_err();
+        assert_eq!(err, WireError::MissingField("msg"));
+    }
+
+    #[test]
+    fn odd_length_hex_body_rejected() {
+        // Hex must be byte-aligned; an odd nibble count is invalid.
+        let err = RelayFrame::parse("[\"NEG-MSG\",\"s\",\"abc\"]").unwrap_err();
+        assert_eq!(err, WireError::InvalidHex);
+    }
+
+    #[test]
+    fn non_array_frame_rejected() {
+        let err = RelayFrame::parse("{\"verb\":\"NEG-MSG\"}").unwrap_err();
+        assert_eq!(err, WireError::NotAnArray);
+    }
+
+    #[test]
+    fn open_then_parse_back_msg_roundtrips_payload() {
+        // `ClientFrame` has no public parser, but the NEG-MSG verb is shared:
+        // a client-emitted NEG-MSG must parse back via `RelayFrame::parse`
+        // with byte-identical payload — proving hex encode/decode are inverses.
+        let original: Vec<u8> = (0u8..=255).collect();
+        let text = ClientFrame::Msg {
+            sub_id: "rt".into(),
+            msg: original.clone(),
+        }
+        .to_text();
+        match RelayFrame::parse(&text).unwrap() {
+            RelayFrame::Msg { sub_id, msg } => {
+                assert_eq!(sub_id, "rt");
+                assert_eq!(msg, original);
+            }
+            other => panic!("expected Msg, got {other:?}"),
+        }
+    }
 }
