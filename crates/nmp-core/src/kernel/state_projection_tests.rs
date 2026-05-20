@@ -20,8 +20,11 @@
 //! than round-tripping the typed struct.
 
 use super::*;
+use crate::publish::{InMemoryPublishStore, PerRelayState, PublishRecord, PublishStore};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::store::{RawEvent, VerifiedEvent};
+use crate::substrate::{SignedEvent, UnsignedEvent};
+use std::sync::Arc;
 
 // 64-char hex pubkeys / ids — the kernel's `is_hex_pubkey` / `is_hex_id`
 // gates require exactly 64 ascii hex digits.
@@ -92,7 +95,13 @@ fn timeline_event_appears_in_snapshot_items_after_ingest() {
         "a fresh kernel must project an empty `items[]` timeline",
     );
 
-    ingest_note(&mut kernel, NOTE_ID, ACCOUNT, 1_700_000_000, "hello timeline");
+    ingest_note(
+        &mut kernel,
+        NOTE_ID,
+        ACCOUNT,
+        1_700_000_000,
+        "hello timeline",
+    );
 
     let after = snapshot(&mut kernel);
     let items = after["items"]
@@ -209,6 +218,98 @@ fn profile_metadata_appears_in_snapshot_after_kind0_ingest() {
         Some(1),
         "metrics.profile_events must count the cached kind:0",
     );
+}
+
+#[test]
+fn profile_card_does_not_project_metadata_source() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.active_account = Some(ACCOUNT.to_string());
+
+    let snap = snapshot(&mut kernel);
+    assert!(
+        snap["profile"].get("metadata_source").is_none(),
+        "profile cards must not expose a second metadata-source discriminator"
+    );
+}
+
+#[test]
+fn profile_card_projects_pending_kind0_publish_intent_after_restart() {
+    let publish_store = Arc::new(InMemoryPublishStore::new());
+    publish_store
+        .upsert(&PublishRecord {
+            handle: "pending-profile".to_string(),
+            event: SignedEvent {
+                id: "0000000000000000000000000000000000000000000000000000000000000040".to_string(),
+                sig: "a".repeat(128),
+                unsigned: UnsignedEvent {
+                    pubkey: ACCOUNT.to_string(),
+                    kind: 0,
+                    tags: Vec::new(),
+                    content: r#"{"display_name":"Pending Profile"}"#.to_string(),
+                    created_at: 1_700_000_200,
+                },
+            },
+            per_relay: vec![("wss://relay.test".to_string(), PerRelayState::Pending)],
+            pending_retries: Vec::new(),
+        })
+        .expect("seed pending profile intent");
+    let mut kernel = Kernel::with_publish_store(
+        DEFAULT_VISIBLE_LIMIT,
+        Arc::clone(&publish_store) as Arc<dyn PublishStore>,
+    );
+    kernel.active_account = Some(ACCOUNT.to_string());
+
+    let snap = snapshot(&mut kernel);
+    assert_eq!(
+        snap["profile"]["display"].as_str(),
+        Some("Pending Profile"),
+        "pending kind:0 publish intent must survive kernel reconstruction"
+    );
+    assert_eq!(
+        snap["metrics"]["profile_events"].as_u64(),
+        Some(0),
+        "pending profile intent is not a relay-ingested kind:0"
+    );
+}
+
+#[test]
+fn author_view_projects_edit_action_for_active_profile() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.active_account = Some(ACCOUNT.to_string());
+    kernel.open_author(ACCOUNT.to_string(), false);
+
+    let snap = snapshot(&mut kernel);
+    let action = &snap["author_view"]["primary_action"];
+    assert_eq!(action["kind"].as_str(), Some("edit_profile"));
+    assert_eq!(action["label"].as_str(), Some("Edit"));
+    assert_eq!(action["target_pubkey"].as_str(), Some(ACCOUNT));
+}
+
+#[test]
+fn author_view_projects_follow_action_for_non_active_profile() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.active_account = Some(ACCOUNT.to_string());
+    kernel.open_author(FOLLOW_A.to_string(), false);
+
+    let snap = snapshot(&mut kernel);
+    let action = &snap["author_view"]["primary_action"];
+    assert_eq!(action["kind"].as_str(), Some("follow"));
+    assert_eq!(action["label"].as_str(), Some("Follow"));
+    assert_eq!(action["target_pubkey"].as_str(), Some(FOLLOW_A));
+}
+
+#[test]
+fn author_view_projects_unfollow_when_active_contacts_include_author() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.active_account = Some(ACCOUNT.to_string());
+    kernel.prepopulate_seed_contacts(ACCOUNT.to_string(), vec![FOLLOW_A.to_string()]);
+    kernel.open_author(FOLLOW_A.to_string(), false);
+
+    let snap = snapshot(&mut kernel);
+    let action = &snap["author_view"]["primary_action"];
+    assert_eq!(action["kind"].as_str(), Some("unfollow"));
+    assert_eq!(action["label"].as_str(), Some("Unfollow"));
+    assert_eq!(action["target_pubkey"].as_str(), Some(FOLLOW_A));
 }
 
 /// A kind:0 author's note in the timeline must show the kind:0 display/avatar

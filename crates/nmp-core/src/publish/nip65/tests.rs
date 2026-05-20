@@ -11,7 +11,7 @@
 //! rather than silently widening to arbitrary public relays.
 
 use std::collections::BTreeSet;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use super::{Nip65OutboxResolver, PublishTarget};
 use crate::publish::traits::OutboxResolver;
@@ -41,7 +41,7 @@ fn store_kind10002(store: &dyn EventStore, author_hex: &str, tags: Vec<Vec<Strin
 }
 
 fn mk_resolver(store: Arc<dyn EventStore>) -> Nip65OutboxResolver {
-    Nip65OutboxResolver::new(store, Arc::new(std::sync::Mutex::new(Vec::new())))
+    Nip65OutboxResolver::new(store, Arc::new(Mutex::new(Vec::new())))
 }
 
 #[test]
@@ -82,17 +82,48 @@ fn nip65_resolver_returns_empty_when_no_kind10002() {
 }
 
 #[test]
+fn nip65_resolver_uses_local_writes_for_active_account_only() {
+    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
+    let resolver = Nip65OutboxResolver::with_local_relays(
+        store,
+        Arc::new(Mutex::new(Vec::new())),
+        Arc::new(Mutex::new(vec!["wss://local-write.example".to_string()])),
+        Arc::new(Mutex::new(Some(AUTHOR_HEX.to_string()))),
+    );
+
+    let own = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1);
+    assert_eq!(
+        own,
+        BTreeSet::from(["wss://local-write.example".to_string()])
+    );
+
+    let other = resolver.resolve(RECIPIENT_HEX, &[], &PublishTarget::Auto, 1);
+    assert!(
+        other.is_empty(),
+        "local relay rows must not route already-signed events for other authors"
+    );
+}
+
+#[test]
 fn nip65_resolver_unions_recipient_reads_for_p_tags() {
     let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
     store_kind10002(
         store.as_ref(),
         AUTHOR_HEX,
-        vec![vec!["r".into(), "wss://author-write.example".into(), "write".into()]],
+        vec![vec![
+            "r".into(),
+            "wss://author-write.example".into(),
+            "write".into(),
+        ]],
     );
     store_kind10002(
         store.as_ref(),
         RECIPIENT_HEX,
-        vec![vec!["r".into(), "wss://recipient-read.example".into(), "read".into()]],
+        vec![vec![
+            "r".into(),
+            "wss://recipient-read.example".into(),
+            "read".into(),
+        ]],
     );
     let resolver = mk_resolver(store);
     let out = resolver.resolve(
@@ -109,10 +140,7 @@ fn nip65_resolver_unions_recipient_reads_for_p_tags() {
 fn nip65_resolver_returns_explicit_unchanged() {
     let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
     let resolver = mk_resolver(store);
-    let explicit = vec![
-        "wss://a.example".to_string(),
-        "wss://b.example".to_string(),
-    ];
+    let explicit = vec!["wss://a.example".to_string(), "wss://b.example".to_string()];
     let out = resolver.resolve(
         AUTHOR_HEX,
         &[],

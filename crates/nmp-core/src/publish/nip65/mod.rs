@@ -55,6 +55,14 @@ pub struct Nip65OutboxResolver {
     /// Discovery kinds (kind:0, kind:3, kind:1xxxx) fan out to these in
     /// addition to the author's NIP-65 write relays.
     indexer_relays: Arc<Mutex<Vec<String>>>,
+    /// Locally configured write relays for the active account. This covers
+    /// the period after onboarding edits relay rows but before the just-sent
+    /// kind:10002 comes back from a relay.
+    local_write_relays: Arc<Mutex<Vec<String>>>,
+    /// Active account pubkey. Local relay-row fallback applies only to this
+    /// pubkey so already-signed events from other authors never route through
+    /// the viewer's relays.
+    active_account: Arc<Mutex<Option<String>>>,
 }
 
 /// Returns true for kinds that index relays exist to serve: kind:0 (profile),
@@ -68,9 +76,25 @@ impl Nip65OutboxResolver {
     /// relay list. The kernel holds a clone of the Arc and updates it whenever
     /// relay config changes, so the resolver always sees current URLs.
     pub fn new(store: Arc<dyn EventStore>, indexer_relays: Arc<Mutex<Vec<String>>>) -> Self {
+        Self::with_local_relays(
+            store,
+            indexer_relays,
+            Arc::new(Mutex::new(Vec::new())),
+            Arc::new(Mutex::new(None)),
+        )
+    }
+
+    pub fn with_local_relays(
+        store: Arc<dyn EventStore>,
+        indexer_relays: Arc<Mutex<Vec<String>>>,
+        local_write_relays: Arc<Mutex<Vec<String>>>,
+        active_account: Arc<Mutex<Option<String>>>,
+    ) -> Self {
         Self {
             store,
             indexer_relays,
+            local_write_relays,
+            active_account,
         }
     }
 
@@ -127,6 +151,11 @@ impl OutboxResolver for Nip65OutboxResolver {
         if let Some((writes, _reads)) = self.lookup_kind10002(author_pubkey) {
             out.extend(writes);
         }
+        if out.is_empty() && self.is_active_account(author_pubkey) {
+            if let Ok(guard) = self.local_write_relays.lock() {
+                out.extend(guard.iter().cloned());
+            }
+        }
 
         // 3. Discovery kinds (kind:0 / kind:3 / kind:10000–19999) also fan out
         // to the indexer relays so the author's profile, contacts, and
@@ -148,6 +177,16 @@ impl OutboxResolver for Nip65OutboxResolver {
         }
 
         out
+    }
+}
+
+impl Nip65OutboxResolver {
+    fn is_active_account(&self, author_pubkey: &str) -> bool {
+        self.active_account
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
+            .is_some_and(|active| active == author_pubkey)
     }
 }
 

@@ -128,7 +128,10 @@ mod tests {
         let t = handle_lifecycle_event(&mut kernel, &slot, LifecyclePhase::Foreground);
         assert_eq!(t, Some(LifecycleTransition::EnteredForeground));
         assert_eq!(CALLS.load(Ordering::SeqCst), 1);
-        assert_eq!(LAST_PHASE.load(Ordering::SeqCst), LIFECYCLE_PHASE_FOREGROUND);
+        assert_eq!(
+            LAST_PHASE.load(Ordering::SeqCst),
+            LIFECYCLE_PHASE_FOREGROUND
+        );
     }
 
     #[test]
@@ -156,7 +159,10 @@ mod tests {
         assert_eq!(t_bg, Some(LifecycleTransition::EnteredBackground));
         assert_eq!(t_fg, Some(LifecycleTransition::EnteredForeground));
         assert_eq!(CALLS.load(Ordering::SeqCst), 3);
-        assert_eq!(LAST_PHASE.load(Ordering::SeqCst), LIFECYCLE_PHASE_FOREGROUND);
+        assert_eq!(
+            LAST_PHASE.load(Ordering::SeqCst),
+            LIFECYCLE_PHASE_FOREGROUND
+        );
     }
 
     #[test]

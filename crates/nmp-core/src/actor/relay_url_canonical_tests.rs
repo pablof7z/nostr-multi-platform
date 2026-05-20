@@ -87,8 +87,15 @@ fn t_normalize_uppercase_scheme_deduplicates() {
     );
 
     assert!(spawned_a, "first call must spawn");
-    assert!(!spawned_b, "lowercase form must hit the canonical key of the first call");
-    assert_eq!(relay_controls.len(), 1, "T-normalize-2: one entry for case-variant forms");
+    assert!(
+        !spawned_b,
+        "lowercase form must hit the canonical key of the first call"
+    );
+    assert_eq!(
+        relay_controls.len(),
+        1,
+        "T-normalize-2: one entry for case-variant forms"
+    );
 
     let mut connected = HashSet::new();
     close_relays(&mut relay_controls, &mut connected, &mut kernel);
@@ -121,7 +128,10 @@ fn t_normalize_nonempty_path_is_distinct() {
     );
 
     assert!(spawned_a, "root form must spawn");
-    assert!(spawned_b, "non-empty-path form is distinct and must also spawn");
+    assert!(
+        spawned_b,
+        "non-empty-path form is distinct and must also spawn"
+    );
     assert_eq!(
         relay_controls.len(),
         2,
@@ -159,7 +169,11 @@ fn t_normalize_add_uppercase_remove_lowercase_no_leak() {
         "WSS://127.0.0.1:1/".to_string(),
     );
     assert!(spawned, "add must spawn a worker");
-    assert_eq!(relay_controls.len(), 1, "pool must have one entry after add");
+    assert_eq!(
+        relay_controls.len(),
+        1,
+        "pool must have one entry after add"
+    );
 
     // Remove with lowercase + no trailing slash (the canonical form).
     let removed = shutdown_relay_worker(&mut relay_controls, "wss://127.0.0.1:1");

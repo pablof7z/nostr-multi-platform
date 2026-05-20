@@ -8,6 +8,7 @@
 | Subsystem integration | `cargo test --test '*'` in `nmp-testing` | EventStore + planner + sync against MockRelay | `crates/nmp-testing/tests/` |
 | Cross-FFI | UniFFI binding round-trip tests | Bindings stability, rev ordering, callback delivery | `apps/<name>/nmp-app-<name>/tests/` (post-M14) |
 | Cross-platform consistency | Script harness | Same scenario on iOS sim + Android emu + desktop + headless web; assert `AppState` JSON byte-equal | `nmp-testing/scenarios/` |
+| Offline publish-intent contract | `cargo test` + `nmp-testing` scenarios | Intent persistence before signing, stored relay resolution, restart/foreground/reconnect drains, no polling loops | `docs/design/offline-first-publish-intents.md` |
 | Reactivity bench | `reactivity-bench --standard --fail-on-gate` | Composite reverse index, delta coalescing, working-set memory, allocation gates | `crates/nmp-testing/bin/reactivity-bench/` |
 | Firehose bench (modeled) | `firehose-bench replay --standard --fail-on-gate` | Budget contract for the runtime | `crates/nmp-testing/bin/firehose-bench/` |
 | Firehose bench (live) | `firehose-bench live` against the real iOS app | Runtime evidence end-to-end | reports in `docs/perf/m<N>/` |

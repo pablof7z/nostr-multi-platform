@@ -1,4 +1,5 @@
 use super::*;
+use crate::substrate::SignedEvent;
 
 #[derive(Clone, Debug, Deserialize)]
 pub(super) struct NostrEvent {
@@ -43,6 +44,22 @@ pub(super) fn parse_profile(event: &NostrEvent) -> Profile {
         nip05: parsed.nip05.unwrap_or_default(),
         about: parsed.about.unwrap_or_default(),
     }
+}
+
+pub(super) fn parse_profile_intent(event: &SignedEvent) -> Option<Profile> {
+    if event.unsigned.kind != 0 {
+        return None;
+    }
+    let event = NostrEvent {
+        id: event.id.clone(),
+        pubkey: event.unsigned.pubkey.clone(),
+        created_at: event.unsigned.created_at,
+        kind: event.unsigned.kind,
+        tags: event.unsigned.tags.clone(),
+        content: event.unsigned.content.clone(),
+        sig: event.sig.clone(),
+    };
+    Some(parse_profile(&event))
 }
 
 pub(super) fn diff_items(

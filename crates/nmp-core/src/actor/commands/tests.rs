@@ -6,7 +6,9 @@
 
 use super::*;
 use crate::kernel::Kernel;
+use crate::publish::{InMemoryPublishStore, PublishRecord, PublishStore};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
+use std::sync::Arc;
 
 const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
 const SECOND_HEX: &str = "0000000000000000000000000000000000000000000000000000000000000abc";
@@ -23,13 +25,41 @@ fn fresh() -> (IdentityRuntime, Kernel) {
     (IdentityRuntime::new(), Kernel::new(DEFAULT_VISIBLE_LIMIT))
 }
 
+fn fresh_with_publish_store() -> (IdentityRuntime, Kernel, Arc<InMemoryPublishStore>) {
+    let publish_store = Arc::new(InMemoryPublishStore::new());
+    let kernel = Kernel::with_publish_store(
+        DEFAULT_VISIBLE_LIMIT,
+        Arc::clone(&publish_store) as Arc<dyn PublishStore>,
+    );
+    (IdentityRuntime::new(), kernel, publish_store)
+}
+
 /// Sign in with TEST_NSEC and seed kind:10002 write relays for the active
 /// account so the `Nip65OutboxResolver` has NIP-65 data and publish commands
 /// produce non-empty outbound frames.
 fn sign_in_with_nip65(id: &mut IdentityRuntime, kernel: &mut Kernel) {
     sign_in_nsec(id, kernel, TEST_NSEC, false);
-    let pubkey = id.active_pubkey().expect("active account after sign_in_nsec");
+    let pubkey = id
+        .active_pubkey()
+        .expect("active account after sign_in_nsec");
     kernel.seed_kind10002_for_test(&pubkey, TEST_WRITE_RELAYS);
+}
+
+fn record_of_kind(records: &[PublishRecord], kind: u32) -> &PublishRecord {
+    records
+        .iter()
+        .find(|record| record.event.unsigned.kind == kind)
+        .unwrap_or_else(|| panic!("expected pending publish record for kind:{kind}"))
+}
+
+fn target_relays(record: &PublishRecord) -> Vec<String> {
+    let mut relays: Vec<String> = record
+        .per_relay
+        .iter()
+        .map(|(relay, _state)| relay.clone())
+        .collect();
+    relays.sort();
+    relays
 }
 
 #[test]
@@ -66,21 +96,121 @@ fn create_account_generates_fresh_active_key() {
 }
 
 #[test]
-fn create_account_seeds_profile_and_nip65_for_immediate_use() {
-    let (mut id, mut kernel) = fresh();
+fn create_account_publishes_bootstrap_events_and_persists_relay_rows() {
+    let (mut id, mut kernel, publish_store) = fresh_with_publish_store();
+    let mut profile = std::collections::HashMap::new();
+    profile.insert("name".to_string(), "Signup User".to_string());
+    let relays = vec![
+        ("wss://SIGNUP-WRITE.test/".to_string(), "write".to_string()),
+        ("wss://signup-read.test/".to_string(), "read".to_string()),
+        (
+            "wss://signup-indexer.test/".to_string(),
+            "indexer".to_string(),
+        ),
+    ];
+    let outbound = create_account(&mut id, &mut kernel, false, &profile, &relays);
+    assert!(
+        outbound.iter().any(|msg| msg.text.contains("\"kind\":0")),
+        "create_account must return the kind:0 EVENT frame for actor dispatch"
+    );
+    assert!(
+        outbound
+            .iter()
+            .any(|msg| msg.text.contains("\"kind\":10002")),
+        "create_account must return the kind:10002 EVENT frame for actor dispatch"
+    );
+    assert!(
+        outbound.iter().any(|msg| msg.text.contains("\"kind\":3")),
+        "create_account must return the cold-start kind:3 EVENT frame for actor dispatch"
+    );
+
+    let rows = kernel.relay_edit_rows_snapshot();
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows[0].url, "wss://signup-write.test");
+    assert_eq!(rows[0].role, "write");
+    assert_eq!(rows[1].url, "wss://signup-read.test");
+    assert_eq!(rows[1].role, "read");
+    assert_eq!(rows[2].url, "wss://signup-indexer.test");
+    assert_eq!(rows[2].role, "indexer");
+
+    let records = publish_store
+        .load_pending()
+        .expect("create_account publish records");
+    let mut kinds: Vec<u32> = records
+        .iter()
+        .map(|record| record.event.unsigned.kind)
+        .collect();
+    kinds.sort();
+    assert_eq!(kinds, vec![0, 3, 10002]);
+
+    let expected_targets = vec![
+        "wss://signup-indexer.test".to_string(),
+        "wss://signup-read.test".to_string(),
+        "wss://signup-write.test".to_string(),
+    ];
+    for kind in [0, 3, 10002] {
+        let record = record_of_kind(&records, kind);
+        assert_eq!(
+            target_relays(record),
+            expected_targets,
+            "kind:{kind} must publish to the explicit canonical cold-start relays"
+        );
+    }
+
+    let metadata = record_of_kind(&records, 0);
+    assert!(metadata.event.unsigned.tags.is_empty());
+    assert!(metadata.event.unsigned.content.contains("Signup User"));
+
+    let relay_list = record_of_kind(&records, 10002);
+    assert!(relay_list.event.unsigned.tags.contains(&vec![
+        "r".to_string(),
+        "wss://signup-write.test".to_string(),
+        "write".to_string(),
+    ]));
+    assert!(relay_list.event.unsigned.tags.contains(&vec![
+        "r".to_string(),
+        "wss://signup-read.test".to_string(),
+        "read".to_string(),
+    ]));
+    assert!(
+        !relay_list.event.unsigned.tags.iter().any(|tag| tag
+            .get(1)
+            .is_some_and(|url| url == "wss://signup-indexer.test")),
+        "indexer rows are app relay config, not NIP-65 account relay tags"
+    );
+
+    let contacts = record_of_kind(&records, 3);
+    assert!(
+        contacts
+            .event
+            .unsigned
+            .tags
+            .iter()
+            .any(|tag| tag.first().map(String::as_str) == Some("p")),
+        "cold-start kind:3 must carry seed follow p-tags"
+    );
+
+    let snap: serde_json::Value =
+        serde_json::from_str(&kernel.make_update(true)).expect("snapshot json");
+    assert_eq!(
+        snap["profile"]["display"].as_str(),
+        Some("Signup User"),
+        "own profile must render from the local kind:0 publish intent before relay echo"
+    );
+    assert_eq!(
+        snap["metrics"]["profile_events"].as_u64(),
+        Some(0),
+        "local kind:0 publish intent must not be counted as a relay-ingested profile event"
+    );
+}
+
+#[test]
+fn create_account_next_note_routes_via_local_relay_rows_before_relay_echo() {
+    let (mut id, mut kernel, publish_store) = fresh_with_publish_store();
     let mut profile = std::collections::HashMap::new();
     profile.insert("name".to_string(), "Signup User".to_string());
     let relays = vec![("wss://signup-write.test".to_string(), "write".to_string())];
     create_account(&mut id, &mut kernel, false, &profile, &relays);
-
-    let snap: serde_json::Value =
-        serde_json::from_str(&kernel.make_update(true)).expect("snapshot json");
-    assert_eq!(snap["profile"]["display"], "Signup User");
-    assert_eq!(snap["profile"]["metadata_source"], "kind0");
-    assert_eq!(
-        kernel.relay_edit_rows_snapshot()[0].url,
-        "wss://signup-write.test"
-    );
 
     let outbound = publish_note(
         &id,
@@ -93,14 +223,24 @@ fn create_account_seeds_profile_and_nip65_for_immediate_use() {
         outbound
             .iter()
             .any(|msg| msg.relay_url == "wss://signup-write.test"),
-        "first note after signup must route via the freshly published kind:10002"
+        "next note must route through the active account's local write rows before kind:10002 echo"
     );
     assert!(
         kernel
             .last_error_toast_snapshot()
             .map(|toast| !toast.contains("no write-relays"))
             .unwrap_or(true),
-        "fresh signup must not show the no write-relays toast"
+        "publish before relay-list echo must not show the no write-relays toast"
+    );
+
+    let records = publish_store
+        .load_pending()
+        .expect("pending publish records after next note");
+    let note = record_of_kind(&records, 1);
+    assert_eq!(
+        target_relays(note),
+        vec!["wss://signup-write.test".to_string()],
+        "kind:1 publish intent must persist with the local write relay target"
     );
 }
 
@@ -277,7 +417,10 @@ fn publish_unsigned_event_valid_kind_publishes_normally() {
         created_at: 1_700_000_000,
     };
     let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
-    assert!(!outbound.is_empty(), "valid kind:1 must produce outbound frames");
+    assert!(
+        !outbound.is_empty(),
+        "valid kind:1 must produce outbound frames"
+    );
     assert_eq!(kernel.last_error_toast_snapshot(), None);
     let q = kernel.publish_queue_snapshot();
     assert_eq!(q.len(), 1);
@@ -292,7 +435,7 @@ fn publish_unsigned_event_rejects_malformed_tag_with_toast() {
     let unsigned = crate::substrate::UnsignedEvent {
         pubkey: String::new(),
         kind: 1,
-        tags: vec![vec![]],   // malformed: empty tag row
+        tags: vec![vec![]], // malformed: empty tag row
         content: "tag test".into(),
         created_at: 1_700_000_000,
     };
@@ -507,8 +650,7 @@ fn publish_signed_event_rejects_id_mismatch_with_toast() {
 
 /// Relays distinct from `TEST_WRITE_RELAYS` so the assertion discriminates an
 /// honest Explicit route from a silent Auto/outbox fallback.
-const TEST_GROUP_RELAYS: &[&str] =
-    &["wss://group-relay-a.test", "wss://group-relay-b.test"];
+const TEST_GROUP_RELAYS: &[&str] = &["wss://group-relay-a.test", "wss://group-relay-b.test"];
 
 #[test]
 fn publish_signed_event_to_explicit_relays_routes_verbatim_to_exactly_those() {
@@ -705,7 +847,13 @@ fn react_to_malformed_event_id_toasts_and_refuses() {
     // error (D6 toast), not a silent no-op — and must not panic.
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
-    let outbound = react(&id, &mut kernel, "not-a-real-event-id", "+", &mut Vec::new());
+    let outbound = react(
+        &id,
+        &mut kernel,
+        "not-a-real-event-id",
+        "+",
+        &mut Vec::new(),
+    );
     assert!(
         outbound.is_empty(),
         "react to a malformed event id must produce no outbound frames"
@@ -1035,7 +1183,10 @@ fn profile_update_publishes_kind0_metadata_event() {
         created_at: 1_700_000_000,
     };
     let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
-    assert!(!outbound.is_empty(), "kind:0 update must produce an EVENT frame");
+    assert!(
+        !outbound.is_empty(),
+        "kind:0 update must produce an EVENT frame"
+    );
     let event = last_published_event_json(&outbound);
     assert_eq!(event["kind"], 0, "profile metadata must be kind:0");
     assert_eq!(
@@ -1194,7 +1345,8 @@ fn snapshot_json_carries_new_projections() {
 // only via the kernel's `seed_kind1_for_reply_test` test-support helper).
 
 fn signed_pubkey(id: &IdentityRuntime) -> String {
-    id.active_pubkey().expect("active account must be signed in")
+    id.active_pubkey()
+        .expect("active account must be signed in")
 }
 
 /// Pull out the most recent published event JSON the kernel emitted on the
@@ -1260,13 +1412,23 @@ fn publish_note_reply_to_mid_thread_forwards_root_and_carries_p_tags() {
         "reply to root",
     );
 
-    let outbound = publish_note(&id, &mut kernel, "nested reply", Some(REPLY_B_ID), &mut Vec::new());
+    let outbound = publish_note(
+        &id,
+        &mut kernel,
+        "nested reply",
+        Some(REPLY_B_ID),
+        &mut Vec::new(),
+    );
     let event = last_published_event_json(&outbound);
     assert_eq!(event["kind"], 1);
     assert_eq!(event["pubkey"].as_str().unwrap(), signed_pubkey(&id));
 
     let tags = tags_of(&event);
-    let keys: Vec<&str> = tags.iter().filter_map(|t| t.first()).map(String::as_str).collect();
+    let keys: Vec<&str> = tags
+        .iter()
+        .filter_map(|t| t.first())
+        .map(String::as_str)
+        .collect();
     assert_eq!(keys, vec!["e", "e", "p", "p"], "tag shape: 2 e + 2 p");
 
     // Root tag forwards B's `root` (= ROOT_A_ID), with the "root" marker.
@@ -1298,11 +1460,21 @@ fn publish_note_reply_to_root_promotes_parent_to_root_and_emits_both_markers() {
 
     kernel.seed_kind1_for_reply_test(ROOT_A_ID, AUTHOR_A, 100, vec![], "root note");
 
-    let outbound = publish_note(&id, &mut kernel, "first reply", Some(ROOT_A_ID), &mut Vec::new());
+    let outbound = publish_note(
+        &id,
+        &mut kernel,
+        "first reply",
+        Some(ROOT_A_ID),
+        &mut Vec::new(),
+    );
     let event = last_published_event_json(&outbound);
 
     let tags = tags_of(&event);
-    let keys: Vec<&str> = tags.iter().filter_map(|t| t.first()).map(String::as_str).collect();
+    let keys: Vec<&str> = tags
+        .iter()
+        .filter_map(|t| t.first())
+        .map(String::as_str)
+        .collect();
     assert_eq!(keys, vec!["e", "e", "p"], "tag shape: 2 e + 1 p");
 
     // Both `e` tags point at the parent (which IS the root).
@@ -1328,12 +1500,26 @@ fn publish_note_reply_to_unknown_parent_falls_back_and_kicks_hydration() {
     // Sanity: parent must NOT be in cache for this path to fire.
     assert!(!kernel.is_thread_hydration_requested(COLD_PARENT_ID));
 
-    let outbound = publish_note(&id, &mut kernel, "cold reply", Some(COLD_PARENT_ID), &mut Vec::new());
+    let outbound = publish_note(
+        &id,
+        &mut kernel,
+        "cold reply",
+        Some(COLD_PARENT_ID),
+        &mut Vec::new(),
+    );
     let event = last_published_event_json(&outbound);
 
     let tags = tags_of(&event);
-    let keys: Vec<&str> = tags.iter().filter_map(|t| t.first()).map(String::as_str).collect();
-    assert_eq!(keys, vec!["e"], "cold reply emits exactly one minimal reply marker");
+    let keys: Vec<&str> = tags
+        .iter()
+        .filter_map(|t| t.first())
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        keys,
+        vec!["e"],
+        "cold reply emits exactly one minimal reply marker"
+    );
     assert_eq!(tags[0][1], COLD_PARENT_ID);
     assert_eq!(tags[0][3], "reply");
 
@@ -1421,7 +1607,11 @@ fn add_relay_case_slash_variants_dedup_to_one_row() {
 fn remove_relay_canonical_matches_add_form() {
     let (_id, mut kernel) = fresh();
     add_relay(&mut kernel, "wss://r.ex", "both");
-    assert_eq!(kernel.relay_edit_rows_snapshot().len(), 1, "row must exist after add");
+    assert_eq!(
+        kernel.relay_edit_rows_snapshot().len(),
+        1,
+        "row must exist after add"
+    );
     // Remove with trailing slash (different bytes, same canonical form).
     remove_relay(&mut kernel, "wss://r.ex/");
     assert_eq!(

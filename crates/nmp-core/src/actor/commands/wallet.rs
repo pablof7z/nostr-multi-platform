@@ -110,8 +110,9 @@ pub(crate) fn wallet_connect(
         }
     };
 
-    let wallet_npub = pubkey_to_npub(&nwc_uri.wallet_pubkey_hex)
-        .unwrap_or_else(|_| nwc_uri.wallet_pubkey_hex[..8.min(nwc_uri.wallet_pubkey_hex.len())].to_string());
+    let wallet_npub = pubkey_to_npub(&nwc_uri.wallet_pubkey_hex).unwrap_or_else(|_| {
+        nwc_uri.wallet_pubkey_hex[..8.min(nwc_uri.wallet_pubkey_hex.len())].to_string()
+    });
 
     let sub_id = format!("nwc-{}", &nwc_uri.wallet_pubkey_hex[..8]);
     let relay = nwc_uri.primary_relay_url().to_string();
@@ -151,12 +152,7 @@ pub(crate) fn wallet_connect(
         "authors": [&nwc_uri.wallet_pubkey_hex],
         "#p": [&client_pubkey_hex],
     });
-    let req_msg = serde_json::to_string(&json!([
-        "REQ",
-        &sub_id,
-        &req_filter,
-    ]))
-    .unwrap_or_default();
+    let req_msg = serde_json::to_string(&json!(["REQ", &sub_id, &req_filter,])).unwrap_or_default();
     out.push(OutboundMessage {
         role: RelayRole::Wallet,
         relay_url: relay.clone(),
@@ -164,22 +160,10 @@ pub(crate) fn wallet_connect(
     });
 
     // Send get_info and get_balance immediately.
-    if let Some(msg) = build_request(
-        wallet,
-        kernel,
-        &relay,
-        NwcMethod::GetInfo,
-        json!({}),
-    ) {
+    if let Some(msg) = build_request(wallet, kernel, &relay, NwcMethod::GetInfo, json!({})) {
         out.push(msg);
     }
-    if let Some(msg) = build_request(
-        wallet,
-        kernel,
-        &relay,
-        NwcMethod::GetBalance,
-        json!({}),
-    ) {
+    if let Some(msg) = build_request(wallet, kernel, &relay, NwcMethod::GetBalance, json!({})) {
         out.push(msg);
     }
 
@@ -228,9 +212,7 @@ pub(crate) fn wallet_pay_invoice(
     let conn = match &wallet.connection {
         Some(c) if c.status == "ready" => c,
         Some(_) => {
-            kernel.set_last_error_toast(Some(
-                "wallet not ready — still connecting".to_string(),
-            ));
+            kernel.set_last_error_toast(Some("wallet not ready — still connecting".to_string()));
             return Vec::new();
         }
         None => {
@@ -290,10 +272,7 @@ pub(crate) fn handle_nwc_text(
                 err.code, err.message
             )));
         } else {
-            kernel.set_last_error_toast(Some(format!(
-                "wallet: {} — {}",
-                err.code, err.message
-            )));
+            kernel.set_last_error_toast(Some(format!("wallet: {} — {}", err.code, err.message)));
         }
     }
 
@@ -365,10 +344,9 @@ fn sign_nwc_request(
     encrypted_content: &str,
     created_at_secs: u64,
 ) -> Result<SignedEvent, String> {
-    let sk = SecretKey::from_hex(client_secret_hex)
-        .map_err(|e| format!("client secret: {e}"))?;
-    let wallet_pk = PublicKey::from_hex(wallet_pubkey_hex)
-        .map_err(|e| format!("wallet pubkey: {e}"))?;
+    let sk = SecretKey::from_hex(client_secret_hex).map_err(|e| format!("client secret: {e}"))?;
+    let wallet_pk =
+        PublicKey::from_hex(wallet_pubkey_hex).map_err(|e| format!("wallet pubkey: {e}"))?;
     let keys = Keys::new(sk);
     let p_tag = Tag::public_key(wallet_pk);
     let created_at = Timestamp::from(created_at_secs);
@@ -420,4 +398,3 @@ fn pubkey_to_npub(hex: &str) -> Result<String, String> {
         .to_bech32()
         .map_err(|e| format!("{e}"))
 }
-

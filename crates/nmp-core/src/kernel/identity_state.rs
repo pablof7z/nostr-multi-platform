@@ -120,6 +120,9 @@ impl super::Kernel {
             self.active_account = active;
             self.changed_since_emit = true;
         }
+        if let Ok(mut guard) = self.active_account_handle.lock() {
+            *guard = self.active_account.clone();
+        }
     }
 
     /// Append a publish-queue entry, keeping a bounded recent window (D5).
@@ -190,6 +193,14 @@ impl super::Kernel {
             .collect();
         if let Ok(mut guard) = self.indexer_relays_handle.lock() {
             *guard = indexer_urls;
+        }
+        let write_urls: Vec<String> = rows
+            .iter()
+            .filter(|r| crate::actor::has_role(&r.role, "write"))
+            .map(|r| r.url.clone())
+            .collect();
+        if let Ok(mut guard) = self.local_write_relays_handle.lock() {
+            *guard = write_urls;
         }
     }
 

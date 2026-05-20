@@ -11,7 +11,6 @@
 mod auth_handlers;
 mod closed;
 mod contacts;
-mod local_publish;
 mod profile;
 mod relay_list;
 mod timeline;
@@ -326,10 +325,7 @@ impl Kernel {
         // delivering URL's spelling. The raw `relay_url` is preserved for
         // store provenance below.
         let wire_key_url = CanonicalRelayUrl::parse_or_raw(relay_url);
-        if let Some(sub) = self
-            .wire_subs
-            .get_mut(&(wire_key_url, sub_id.to_string()))
-        {
+        if let Some(sub) = self.wire_subs.get_mut(&(wire_key_url, sub_id.to_string())) {
             if sub.state == "opening" {
                 sub.state = "live".to_string();
             }
@@ -429,7 +425,8 @@ impl Kernel {
         relay_url: &str,
         event: &NostrEvent,
     ) -> Option<crate::store::InsertOutcome> {
-        let verified = match crate::store::VerifiedEvent::try_from_raw(raw_event_from_nostr(event)) {
+        let verified = match crate::store::VerifiedEvent::try_from_raw(raw_event_from_nostr(event))
+        {
             Ok(v) => v,
             Err(e) => {
                 self.log(format!(
