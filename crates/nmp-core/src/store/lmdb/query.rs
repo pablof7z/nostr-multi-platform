@@ -16,7 +16,7 @@ use super::{conv, provenance, tombstones, Inner};
 use crate::store::events::EventIter;
 use crate::store::types::{
     Coverage, EventId, ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, SyncMethod,
-    TombstoneRow, WatermarkKey, WatermarkRow,
+    TombstoneRow, WatermarkKey, WatermarkRow, COVERAGE_STALENESS_WINDOW_SECS,
 };
 use crate::store::StoreError;
 
@@ -428,13 +428,16 @@ pub(super) fn coverage(
     let Some(row) = row else {
         return Ok(Coverage::Unknown);
     };
-    let staleness_window = 300u64;
+    // Staleness window is coverage policy; defined once next to the `Coverage`
+    // type so the mem + lmdb backends cannot drift. D9 caveat (transitional):
+    // the `EventStore` trait does not yet thread the kernel clock into the
+    // store, so wall-clock is read via a bare `SystemTime::now()` here.
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let age = now.saturating_sub(row.updated_at);
-    if age <= staleness_window {
+    if age <= COVERAGE_STALENESS_WINDOW_SECS {
         Ok(Coverage::CompleteAsOf(row.synced_up_to))
     } else {
         Ok(Coverage::PartialUpTo(row.synced_up_to))

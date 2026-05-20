@@ -41,3 +41,23 @@ pub enum Coverage {
     /// No watermark; always fetch.
     Unknown,
 }
+
+/// Staleness policy for `coverage()`: a watermark row is treated as
+/// `CompleteAsOf` only while its `updated_at` is within this window of "now";
+/// once `now - updated_at` exceeds it the row degrades to `PartialUpTo` and
+/// the planner re-fetches.
+///
+/// 300s is a deliberate freshness/chattiness trade-off: short enough that a
+/// view re-opened minutes later re-syncs, long enough that rapid
+/// open/close/open cycling within a single session reuses the cached coverage
+/// instead of re-issuing a REQ each time. This is *coverage policy*, not a
+/// store-engine implementation detail, so it is defined once here next to the
+/// `Coverage` type both store backends (`mem`, `lmdb`) project into — keeping
+/// the two backends from drifting to different windows.
+///
+/// D9 caveat: the `coverage()` callers currently read wall-clock via a bare
+/// `SystemTime::now()` because the `EventStore` trait does not yet thread the
+/// kernel-owned clock into the store layer. The window value is policy and is
+/// owned here; the *time source* is a known transitional site pending the
+/// store-clock plumbing tracked for a later milestone.
+pub const COVERAGE_STALENESS_WINDOW_SECS: u64 = 300;

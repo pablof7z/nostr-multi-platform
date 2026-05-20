@@ -16,7 +16,9 @@ mod errors;
 pub use ids::{EventId, PubKey, RelayUrl};
 pub use events::{RawEvent, VerifiedEvent, StoredEvent};
 pub use outcomes::{InsertOutcome, RejectReason, TombstoneRow, TombstoneOrigin, ProvenanceEntry};
-pub use watermark::{WatermarkKey, WatermarkRow, SyncMethod, Coverage};
+pub use watermark::{
+    Coverage, SyncMethod, WatermarkKey, WatermarkRow, COVERAGE_STALENESS_WINDOW_SECS,
+};
 pub use gc::{ClaimerId, GcBudget, GcReport, DeleteFilter, DumpFormat, DumpStats};
 pub use query::StoreQuery;
 pub use errors::{StoreError, VerifyError};

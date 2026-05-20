@@ -235,12 +235,27 @@ impl Kernel {
     /// content-fetch REQs safely. This is correct because the planner only
     /// generates REQs for the content lane today (M2 scope).
     ///
+    /// T105 / T-relay-url-normalize: the `url` argument is canonicalized before
+    /// it is compared against `RelayEditRow.url`. `add_relay` always stores the
+    /// canonical form (lowercase scheme+host, empty-path trailing slash
+    /// stripped), so a raw, user-typed or non-canonical caller input — e.g. a
+    /// kind:10002 NIP-65 write relay with a mixed-case host — would otherwise
+    /// silently miss the matching edit row and fall through to the Content
+    /// fallback, mislabelling an `indexer` relay's transport lane. The role is
+    /// a diagnostic lane label only (T105), so a miss is not a routing fault,
+    /// but the canonicalized compare keeps the projected lane accurate.
+    ///
     /// M11 will sharpen this to a per-URL lookup once the URL→role index is
     /// maintained by the relay-lifecycle manager.
     pub(crate) fn role_for_relay_url(&self, url: &str) -> Option<crate::relay::RelayRole> {
         use crate::relay::RelayRole;
+        // Canonicalize so a raw/non-canonical input matches the canonical
+        // `RelayEditRow.url` keys. Fall back to the raw string for inputs that
+        // do not parse as ws/wss (no edit row will match those anyway).
+        let lookup = crate::relay::canonical_relay_url(url)
+            .unwrap_or_else(|| url.to_string());
         for row in &self.relay_edit_rows {
-            if row.url == url {
+            if row.url == lookup {
                 if crate::actor::has_role(&row.role, "indexer") {
                     return Some(RelayRole::Indexer);
                 }
@@ -251,6 +266,10 @@ impl Kernel {
                 }
             }
         }
+        // Returns `Some` unconditionally today (Content fallback). The `Option`
+        // return is retained so M11's per-URL index can distinguish "no role
+        // known for this URL" (`None`) from "explicitly Content" without a
+        // signature change at every call site.
         Some(RelayRole::Content)
     }
 }
@@ -541,6 +560,49 @@ mod tests {
         let snap = view.get(&"alice".to_string()).expect("alice cached");
         let planner_path: Vec<String> = snap.outbox_relays().cloned().collect();
         assert_eq!(planner_path, vec!["wss://new.write".to_string()]);
+    }
+
+    // ── role_for_relay_url canonicalization (T105 / T-relay-url-normalize) ──
+    //
+    // `RelayEditRow.url` is always stored canonical (`add_relay` canonicalizes
+    // before insert). `role_for_relay_url` must canonicalize its *input* too,
+    // or a raw / mixed-case caller URL silently misses the matching edit row
+    // and mislabels the transport lane as Content.
+
+    #[test]
+    fn role_for_relay_url_matches_indexer_via_noncanonical_input() {
+        use crate::relay::RelayRole;
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        // Edit row stored canonical (lowercase host, no trailing slash) — the
+        // exact form `add_relay` would persist.
+        kernel.set_relay_edit_rows(vec![RelayEditRow {
+            url: "wss://purplepag.es".to_string(),
+            role: "indexer".to_string(),
+        }]);
+
+        // A non-canonical caller input (mixed-case host + trailing slash) must
+        // still resolve to the Indexer lane, not fall through to Content.
+        assert_eq!(
+            kernel.role_for_relay_url("wss://Purplepag.es/"),
+            Some(RelayRole::Indexer),
+            "non-canonical input must canonicalize before matching edit row"
+        );
+        // Canonical input keeps working.
+        assert_eq!(
+            kernel.role_for_relay_url("wss://purplepag.es"),
+            Some(RelayRole::Indexer),
+        );
+    }
+
+    #[test]
+    fn role_for_relay_url_unknown_url_falls_back_to_content() {
+        use crate::relay::RelayRole;
+        let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        // No edit rows configured — any URL falls through to the Content lane.
+        assert_eq!(
+            kernel.role_for_relay_url("wss://some.unknown.relay"),
+            Some(RelayRole::Content),
+        );
     }
 
     #[test]
