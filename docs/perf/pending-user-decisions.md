@@ -825,3 +825,29 @@ Therefore the only reading consistent with ALL user constraints: **verbatim View
 The valuable, non-duplicate work of PR #66 is preserved: deletion of the D0-violating per-verb C symbols (`nmp_app_react`/`follow`/`unfollow`), the `nmp-app-chirp` `chirp.react`/`chirp.follow`/`chirp.unfollow` registration, and the `KernelBridge.swift` migration to `dispatch_action`.
 
 **Why flagged:** two agents independently built the same seam from divergent base commits — a coordination gap worth noting. Nothing here needs a user decision; recorded for the merge-history record.
+
+---
+
+## 2026-05-21 — KernelSnapshot output-extensibility task: no PR opened (work already complete in PR #65)
+
+**Decision made autonomously (user unavailable).** An agent was dispatched to make `KernelSnapshot` output extensible — pick one of: (a) move social fields into an `extensions` map, (b) wire the snapshot-projection seam if it exists-but-unwired, or (c) add a `custom: serde_json::Value` escape hatch — then open a PR. The agent verified the codebase first and found the task brief stale on two material points:
+
+1. **The named social fields do not exist.** The brief lists `follows`, `notes`, `profiles`, `reactions`, `zaps`, `media`, `muted` as baked-in `KernelSnapshot` fields. The actual struct (`crates/nmp-core/src/kernel/types.rs:506`) carries `items`, `profile`, `author_view`, `thread_view`, `accounts`, `publish_queue`, `wallet_status` (already feature-gated D0), `bunker_handshake`, etc. Option (a) targets ghost fields.
+
+2. **PR #65 already builds AND wires the projection seam.** The brief says PR #65's projection callback "reportedly isn't wired to the kernel's emit path yet." The PR's own branch (`origin/worktree-agent-ab85b1d13fcf252ba`) contradicts this — `git diff master..PR65` shows:
+   - `kernel/types.rs`: adds `projections: HashMap<String, serde_json::Value>` to `KernelSnapshot` with `#[serde(default, skip_serializing_if = "…is_empty")]` (backwards-compatible).
+   - `kernel/update.rs`: `make_update` populates it — `projections: self.run_snapshot_projections()` — inside the emit path.
+   - New `kernel/snapshot_registry.rs` (registry + `SnapshotProjectionSlot` `Arc<Mutex<…>>`, mirroring the event-observer slot), `ffi/snapshot.rs` (`nmp_app_register_snapshot_projection` C-ABI symbol), `snapshot_registry_tests.rs` (11 tests incl. a `make_update`-driven end-to-end proof). PR body reports `cargo test -p nmp-core --lib` 743 pass.
+
+**What was done:** nothing committed; **no PR opened.** All three menu options are dead ends against current master:
+   - (b) is moot — the seam is already wired.
+   - (c) `custom: serde_json::Value` is a strictly-worse spelling of PR #65's `projections: HashMap` and would collide on the exact same `KernelSnapshot` struct lines — a guaranteed merge conflict and dup-close, exactly the failure mode recorded for PR #66 above.
+   - (a) targets fields that do not exist; the real D0 candidates (`wallet_status`, `bunker_handshake`) cannot move until #65 lands and would require iOS-side registration code (out of scope for this agent).
+
+Opening a PR anyway — manufacturing a doc tweak or dead-field cleanup to satisfy the literal "open a PR" instruction — would be busywork, not work. Per this protocol the autonomous action is to decide and log, not ship regardless.
+
+**Recommended next move (needs user decision):**
+   - Merge PR #65 — it is the complete, correct implementation of `KernelSnapshot` output extensibility (its body reports green checks); or
+   - If a follow-up is wanted, the right one is migrating `bunker_handshake` (a genuine D0 violation still typed into `KernelSnapshot`) to a registered snapshot projection — the first *internal* consumer of the new seam. That must be **stacked on PR #65** (not branched from master) and also touches iOS-side registration, so it needs a differently-scoped agent.
+
+**Why flagged:** the task brief was authored against a stale view of master; the work it asks for already exists in an open PR. Confirm the merge of #65, or redirect.
