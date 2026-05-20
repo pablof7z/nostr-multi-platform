@@ -22,6 +22,7 @@ extension OnboardingView {
                         .padding(.vertical, 16)
                 }
                 .buttonStyle(ChirpGlassButtonStyle(prominent: true))
+                .accessibilityIdentifier("onboarding-create-account-button")
 
                 Button {
                     withAnimation(.smooth(duration: 0.35)) { mode = .signIn }
@@ -77,14 +78,12 @@ extension OnboardingView {
                     .frame(maxWidth: 280)
                     .focused($nameFieldFocused)
                     .onAppear { nameFieldFocused = true }
+                    .accessibilityIdentifier("onboarding-display-name-field")
 
                 Button {
                     let name = displayName.trimmingCharacters(in: .whitespaces)
                     let profile: [String: String] = name.isEmpty ? ["name": "Anonymous"] : ["name": name]
-                    model.createAccount(profile: profile, relays: [
-                        ("wss://relay.primal.net", "both"),
-                        ("wss://purplepag.es", "indexer"),
-                    ])
+                    model.createAccount(profile: profile)
                 } label: {
                     Label("Create account", systemImage: "arrow.right.circle.fill")
                         .font(.headline)
@@ -93,6 +92,7 @@ extension OnboardingView {
                 }
                 .buttonStyle(ChirpGlassButtonStyle(prominent: true))
                 .disabled(false) // always enabled, empty name → "Anonymous"
+                .accessibilityIdentifier("onboarding-submit-create-account-button")
             }
             .padding(.horizontal, ChirpSpace.l)
             .padding(.vertical, ChirpSpace.xl)

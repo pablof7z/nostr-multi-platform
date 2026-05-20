@@ -11,6 +11,7 @@ WIP.md
 
 # Chirp Xcode build output
 ios/Chirp/build/
+ios/Chirp/DerivedData-maestro/
 ios/Chirp/Chirp.xcodeproj/xcuserdata/
 ios/Chirp/Chirp.xcodeproj/project.xcworkspace/xcuserdata/
 
