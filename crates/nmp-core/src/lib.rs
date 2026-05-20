@@ -21,8 +21,8 @@ mod update_envelope;
 pub mod util;
 
 pub use app::{
-    resolve_open_uri, AppState, KernelAction, KernelUpdate, KernelViewSpec, OpenUriError,
-    OpenUriRouting, VIEW_ADDRESSABLE, VIEW_PROFILE, VIEW_THREAD,
+    resolve_open_uri, KernelAction, KernelUpdate, KernelViewSpec, OpenUriError, OpenUriRouting,
+    VIEW_ADDRESSABLE, VIEW_PROFILE, VIEW_THREAD,
 };
 pub use kernel_reducer::KernelReducer;
 pub use bunker_hook::{register_bunker_hook, BunkerHookFn};

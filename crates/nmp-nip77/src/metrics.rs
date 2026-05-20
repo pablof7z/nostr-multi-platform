@@ -8,8 +8,8 @@
 //! | `bytes_saved_vs_req` | (REQ-baseline-bytes − negentropy-bytes) for the same `(filter, relay)` pair, clamped to ≥ 0 |
 //!
 //! The diagnostic surface in [`MetricsSnapshot`] is plain `serde` so the
-//! ADR-0007 diagnostics bridge can ship it through `AppState.debug` without
-//! a per-counter FFI wrapper.
+//! ADR-0007 diagnostics bridge can ship it through the kernel's diagnostics
+//! channel without a per-counter FFI wrapper.
 
 use serde::Serialize;
 use std::collections::HashMap;

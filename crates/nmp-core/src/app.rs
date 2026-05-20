@@ -52,12 +52,6 @@ pub enum KernelViewSpec {
     Diagnostics,
 }
 
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub struct AppState {
-    pub rev: u64,
-    pub open_view_count: usize,
-}
-
 // ─── OpenUri routing ─────────────────────────────────────────────────────────
 
 /// View namespace for `npub` / `nprofile` targets.

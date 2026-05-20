@@ -1,5 +1,19 @@
 //! Kernel event observer slot (T146).
 //!
+//! # The v1 extension model
+//!
+//! `KernelEventObserver` is the **shipping v1 extension path** for per-app
+//! event processing — the mechanism the kernel actually drives. Per-app
+//! crates (e.g. `nmp-app-chirp`) register an observer here and compose
+//! typed views from the raw `KernelEvent` fan-out.
+//!
+//! It is *not* the same thing as `substrate::ViewModule`. Those traits are
+//! **v2 pre-wiring**: a future typed, namespace-keyed dispatch design whose
+//! kernel-side dispatch runtime does not exist yet. The kernel never invokes
+//! `ViewModule` impls at runtime. New per-app event processing should
+//! register a `KernelEventObserver` here, not implement `ViewModule` (see
+//! the v1-vs-v2 note in `crates/nmp-core/src/substrate/mod.rs`).
+//!
 //! Mirrors `lifecycle.rs`'s `LifecycleObserverSlot` pattern, but with two
 //! registration channels rather than one:
 //!
