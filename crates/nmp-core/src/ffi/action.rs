@@ -53,10 +53,7 @@
 use std::ffi::{c_char, CStr, CString};
 
 use super::{app_ref, NmpApp};
-use crate::actor::ActorCommand;
-use crate::publish::{PublishAction, PublishTarget};
-use crate::store::RawEvent;
-use crate::substrate::{ActionContext, ActionRejection, SignedEvent};
+use crate::substrate::{ActionContext, ActionRejection};
 
 /// Dispatch a named action through the action registry.
 ///
@@ -131,85 +128,13 @@ fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str
     }
 }
 
-/// Drive the validated action toward execution.
-///
-/// `start()` (the registry) has already validated `action_json` against the
-/// module's `Action` type, so the re-deserialize below is expected to
-/// succeed — but it is still treated as data (D6: a deserialize failure
-/// becomes an error string, never a panic).
-///
-/// Per-namespace execution:
-/// * `nmp.publish` / [`PublishAction::Publish`] — convert the validated
-///   [`SignedEvent`] to a [`RawEvent`] and send [`ActorCommand::PublishSignedEvent`].
-///   The actor re-verifies and routes through the publish engine (D4).
-/// * `nmp.publish` / [`PublishAction::Cancel`] — no actor command exists
-///   yet; the registry already reported `ActionStatus::Cancelled`, so this
-///   is a no-op (a real publish-engine cancel is a follow-up).
-/// * Any other namespace — no executor is wired, so execution **fails with
-///   an `Err`** (D6: a missing executor is surfaced, never silently
-///   swallowed). `dispatch_action_json` turns that `Err` into `{"error":…}`
-///   and discards the correlation id, so the caller is never told an action
-///   succeeded when nothing ran. This arm is reachable only when a host
-///   registers an `ActionModule` (e.g. a NIP-29 / NIP-59 app noun, D0)
-///   whose namespace passes `registry.start()` validation but has no
-///   matching execution branch here; their executors land with those
-///   crates.
+/// Drive the validated action toward execution via the registry's executor
+/// map. Each module registers its own executor in
+/// [`crate::kernel::default_registry`]; this function delegates without
+/// naming any module directly (D0).
 fn execute_action(app: &NmpApp, namespace: &str, action_json: &str) -> Result<(), String> {
-    match namespace {
-        "nmp.publish" => {
-            let action: PublishAction = serde_json::from_str(action_json)
-                .map_err(|e| format!("publish action decode failed: {e}"))?;
-            match action {
-                PublishAction::Publish { event, target, .. } => {
-                    // D8 — non-blocking channel send only; the actor loop
-                    // owns signing/publishing (D4). The event is already
-                    // signed; the actor re-verifies it before publishing.
-                    app.send_cmd(ActorCommand::PublishSignedEvent {
-                        raw: signed_event_to_raw(event),
-                        relays: relays_for_target(&target),
-                    });
-                    Ok(())
-                }
-                // No publish-engine cancel command yet; the registry
-                // already marked the action `Cancelled`.
-                PublishAction::Cancel { .. } => Ok(()),
-            }
-        }
-        // No executor wired for this namespace. Validation passed but
-        // nothing can run it — surface that as an error (D6) instead of a
-        // silent `Ok`, so the caller is never handed a correlation id for an
-        // action that was dropped on the floor.
-        _ => Err(format!(
-            "no executor registered for namespace '{namespace}'"
-        )),
-    }
-}
-
-/// Convert a [`SignedEvent`] (the publish-action / engine input shape) into
-/// a flat NIP-01 [`RawEvent`] (the actor command shape). Pure field move —
-/// `id` and `sig` are carried verbatim, no re-signing. This is the inverse
-/// of the `RawEvent → SignedEvent` conversion in
-/// `actor::commands::publish::publish_signed_event`.
-fn signed_event_to_raw(event: SignedEvent) -> RawEvent {
-    RawEvent {
-        id: event.id,
-        pubkey: event.unsigned.pubkey,
-        created_at: event.unsigned.created_at,
-        kind: event.unsigned.kind,
-        tags: event.unsigned.tags,
-        content: event.unsigned.content,
-        sig: event.sig,
-    }
-}
-
-/// Resolve a [`PublishTarget`] into the relay slice
-/// [`ActorCommand::PublishSignedEvent`] expects: `Auto` → empty (NIP-65
-/// outbox resolver, D3 default), `Explicit` → the named opt-out relays.
-fn relays_for_target(target: &PublishTarget) -> Vec<crate::publish::RelayUrl> {
-    match target {
-        PublishTarget::Auto => Vec::new(),
-        PublishTarget::Explicit { relays } => relays.clone(),
-    }
+    app.action_registry
+        .execute(namespace, action_json, &|cmd| app.send_cmd(cmd))
 }
 
 /// Flatten an [`ActionRejection`] into a human-readable message.
@@ -323,17 +248,9 @@ mod tests {
         );
     }
 
-    // ── M6 execution wiring ─────────────────────────────────────────────
-    // `PublishAction`, `PublishTarget`, `SignedEvent` reach this module via
-    // `use super::*`; only `UnsignedEvent` needs an explicit import.
-    use crate::substrate::UnsignedEvent;
+    use crate::publish::{PublishAction, PublishTarget};
+    use crate::substrate::{SignedEvent, UnsignedEvent};
 
-    /// A `SignedEvent` with non-empty id/sig — enough to pass
-    /// `PublishModule::start`'s "requires a signed event" gate. The id/sig
-    /// are syntactically well-formed hex but NOT cryptographically valid;
-    /// that is fine here because these tests stop at the FFI dispatch seam
-    /// (the actor would re-verify, but no actor assertion is made — see the
-    /// note on `dispatch_publish_action_returns_correlation_id`).
     fn fixture_signed_event() -> SignedEvent {
         SignedEvent {
             id: "a".repeat(64),
@@ -348,17 +265,9 @@ mod tests {
         }
     }
 
-    /// A `Publish` action through `dispatch_action` returns a correlation id
-    /// (validation + execution wiring both succeeded). This exercises the
-    /// full path: `registry.start()` validates, then `execute_action`
-    /// converts the signed event and sends `ActorCommand::PublishSignedEvent`
-    /// down the actor channel.
-    ///
-    /// The actor receiving the command is a non-blocking channel send (D8);
-    /// the actor then re-verifies the signature (D4). This test deliberately
-    /// asserts only on the FFI return value — a cryptographically-valid
-    /// signed-event fixture (and a relay-backed harness) is what an
-    /// end-to-end publish test in `tests/` would need.
+    /// A `Publish` action through `dispatch_action` returns a correlation id.
+    /// The executor is now registered in the registry (not hardcoded here),
+    /// so this verifies the full registry → executor → actor-channel path.
     #[test]
     fn dispatch_publish_action_returns_correlation_id() {
         with_app(|app| {
@@ -378,9 +287,6 @@ mod tests {
         });
     }
 
-    /// `execute_action` for a valid `Publish` action sends one
-    /// `PublishSignedEvent` and reports success. Asserting through the public
-    /// `dispatch_action_json` path keeps the actor channel send real.
     #[test]
     fn execute_action_publish_is_ok() {
         with_app(|app| {
@@ -399,8 +305,6 @@ mod tests {
         });
     }
 
-    /// `Cancel` does not reach the actor (no publish-engine cancel command
-    /// yet) but still succeeds — the registry already marked it cancelled.
     #[test]
     fn execute_action_cancel_is_ok_without_actor() {
         with_app(|app| {
@@ -409,51 +313,18 @@ mod tests {
         });
     }
 
-    /// An unrecognized namespace has no executor wired — `execute_action`
-    /// returns `Err` (D6) rather than a silent `Ok`, so a host can never be
-    /// handed a correlation id for an action that was never executed.
+    /// An unrecognized namespace has no executor — `execute_action` returns
+    /// `Err` (D6), so a host is never handed a correlation id for an action
+    /// that was silently dropped.
     #[test]
     fn execute_action_unknown_namespace_returns_err() {
         with_app(|app| {
             let err = execute_action(app, "nmp.future", "{}")
                 .expect_err("unwired namespace must surface an error");
             assert!(
-                err.contains("no executor registered")
-                    && err.contains("nmp.future"),
+                err.contains("no executor registered") && err.contains("nmp.future"),
                 "error should name the unwired namespace, got: {err}"
             );
         });
-    }
-
-    /// `signed_event_to_raw` is a pure field move: id/sig/pubkey/kind/tags/
-    /// content/created_at carry through verbatim (no re-signing).
-    #[test]
-    fn signed_event_to_raw_carries_all_fields_verbatim() {
-        let signed = fixture_signed_event();
-        let raw = signed_event_to_raw(signed.clone());
-        assert_eq!(raw.id, signed.id);
-        assert_eq!(raw.sig, signed.sig);
-        assert_eq!(raw.pubkey, signed.unsigned.pubkey);
-        assert_eq!(raw.kind, signed.unsigned.kind);
-        assert_eq!(raw.tags, signed.unsigned.tags);
-        assert_eq!(raw.content, signed.unsigned.content);
-        assert_eq!(raw.created_at, signed.unsigned.created_at);
-    }
-
-    /// `relays_for_target` maps `Auto` → empty (D3 outbox resolver) and
-    /// `Explicit` → the named opt-out relays verbatim.
-    #[test]
-    fn relays_for_target_maps_auto_and_explicit() {
-        assert!(relays_for_target(&PublishTarget::Auto).is_empty());
-        let explicit = PublishTarget::Explicit {
-            relays: vec!["wss://a.example".to_string(), "wss://b.example".to_string()],
-        };
-        assert_eq!(
-            relays_for_target(&explicit),
-            vec![
-                "wss://a.example".to_string(),
-                "wss://b.example".to_string()
-            ]
-        );
     }
 }
