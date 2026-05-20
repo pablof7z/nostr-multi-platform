@@ -67,14 +67,20 @@ impl<T: Send + 'static> SignerOp<T> {
     pub fn poll(&mut self) -> Option<Result<T, SignerError>> {
         match self {
             SignerOp::Ready(_) => {
-                let mut taken = SignerOp::Ready(Err(SignerError::Backend(
-                    "already polled to completion".to_string(),
-                )));
-                std::mem::swap(self, &mut taken);
-                if let SignerOp::Ready(r) = taken {
-                    Some(r)
-                } else {
-                    unreachable!("matched on Ready above");
+                let taken = std::mem::replace(
+                    self,
+                    SignerOp::Ready(Err(SignerError::Backend(
+                        "already polled to completion".to_string(),
+                    ))),
+                );
+                match taken {
+                    SignerOp::Ready(r) => Some(r),
+                    // `self` was `Ready` immediately above, and `replace`
+                    // returns that same value — but surface a `Backend` error
+                    // rather than panicking at this public boundary.
+                    SignerOp::Pending(_) => Some(Err(SignerError::Backend(
+                        "signer op poll observed inconsistent state".to_string(),
+                    ))),
                 }
             }
             SignerOp::Pending(rx) => match rx.try_recv() {
