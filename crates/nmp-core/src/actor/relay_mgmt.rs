@@ -257,14 +257,14 @@ pub(super) fn close_relays(
         let _ = control.tx.send(RelayCommand::Shutdown);
     }
     // Mirror the lane-level "closed" status into the kernel diagnostics.
-    let _ = bootstrap_lane_close(connected_relays, kernel);
+    bootstrap_lane_close(connected_relays, kernel);
 }
 
 /// Mark each lane as closed once all its sockets are gone (post-drain).
 fn bootstrap_lane_close(
     connected_relays: &mut HashSet<RelayRole>,
     kernel: &mut Kernel,
-) -> [(); 0] {
+) {
     for role in RelayRole::all() {
         connected_relays.remove(&role);
         // Global teardown: every socket of every role is being drained, so
@@ -273,7 +273,6 @@ fn bootstrap_lane_close(
         kernel.relay_closed_all(role);
     }
     // Cold-start bootstrap seeds will be respawned from relay_edit_rows on the next Start cycle.
-    []
 }
 
 #[cfg(test)]
