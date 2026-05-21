@@ -122,14 +122,19 @@ struct NoteContentView: View {
 
     @ViewBuilder
     private func mediaView(urls: [String], kind: MediaKind) -> some View {
-        if let first = urls.first.flatMap(URL.init(string:)) {
-            switch kind {
-            case .image:
-                imageView(first)
-            case .video, .audio:
-                // Audio routes to the video placeholder for now (preserves
-                // pre-thin-shell behaviour: anything non-image got the play
-                // overlay). Dedicated audio UX is deferred.
+        switch kind {
+        case .image:
+            let imageURLs = urls.compactMap(URL.init(string:))
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(imageURLs.enumerated()), id: \.offset) { _, url in
+                    imageView(url)
+                }
+            }
+        case .video, .audio:
+            // Audio routes to the video placeholder for now (preserves
+            // pre-thin-shell behaviour: anything non-image got the play
+            // overlay). Dedicated audio UX is deferred.
+            if let first = urls.first.flatMap(URL.init(string:)) {
                 videoPlaceholder(first)
             }
         }
