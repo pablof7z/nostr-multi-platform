@@ -317,6 +317,19 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // `Mutex<SnapshotRegistry>` visible to both sides.
     let snapshot_projections = crate::kernel::new_snapshot_projection_slot();
     let actor_snapshot_projections = Arc::clone(&snapshot_projections);
+    // D0: NIP-47 NWC is an app noun. The shared wallet-status slot — one `Arc`
+    // clone goes to the actor's `WalletRuntime` (the sole writer, D4), the
+    // other is captured below by the `"wallet"` snapshot-projection closure so
+    // wallet state reaches the host through `projections["wallet"]` instead of
+    // a baked-in `KernelSnapshot` field. The wallet projection is registered
+    // unconditionally (under the feature gate) right after the actor spawns:
+    // the projection contributes JSON `null` until a wallet connects, which
+    // preserves the "key present, value null when disconnected" semantic the
+    // social shells already decode.
+    #[cfg(feature = "wallet")]
+    let wallet_status = crate::actor::new_wallet_status_slot();
+    #[cfg(feature = "wallet")]
+    let actor_wallet_status = Arc::clone(&wallet_status);
     // Shared relay-edit rows handle. Cloned to the actor thread and bound
     // onto the kernel so external Rust callers can read the user's current
     // relay list without crossing FFI.
@@ -360,6 +373,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 actor_event_observers,
                 actor_raw_event_observers,
                 actor_snapshot_projections,
+                // D0: NIP-47 NWC is an app noun — the wallet-status slot the
+                // actor's `WalletRuntime` writes; the `"wallet"` projection
+                // (registered below) reads the matching clone.
+                #[cfg(feature = "wallet")]
+                actor_wallet_status,
                 actor_relay_edit_rows,
                 actor_active_local_nsec,
                 actor_capability_callback,
@@ -398,7 +416,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         }
     });
 
-    Box::into_raw(Box::new(NmpApp {
+    let app = NmpApp {
         tx: command_tx,
         update_callback,
         capability_callback,
@@ -415,12 +433,38 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // only. NIP-29 / NIP-59 modules are app nouns (D0) and are
         // registered by the app host against its own registry instance.
         action_registry: crate::kernel::default_registry(),
-        // Host-extensible snapshot output: ships empty. A non-social host
-        // registers its projections via `nmp_app_register_snapshot_projection`
-        // during init; the social shells register nothing and the
-        // `projections` snapshot key is `skip_serializing_if`'d off the wire.
+        // Host-extensible snapshot output: ships with the built-in `"wallet"`
+        // projection (registered below when `feature = "wallet"`). A non-social
+        // host registers its own projections via
+        // `nmp_app_register_snapshot_projection` during init.
         snapshot_projections,
-    }))
+    };
+
+    // D0 — first internal consumer of the snapshot-projection seam: register
+    // the built-in `"wallet"` projection. NIP-47 NWC is an app noun, so wallet
+    // state is NOT a typed `KernelSnapshot` field — it is projected under
+    // `projections["wallet"]` exactly like a host-registered namespace. The
+    // closure captures the shared `wallet_status` slot the actor's
+    // `WalletRuntime` writes; it runs on every snapshot tick (D8: cheap,
+    // non-blocking — a single lock-and-clone). When no wallet is connected the
+    // slot holds `None` and the closure contributes JSON `null`, preserving the
+    // "key present, value null when disconnected" semantic.
+    #[cfg(feature = "wallet")]
+    app.register_snapshot_projection("wallet", move || {
+        match wallet_status.lock() {
+            Ok(slot) => slot
+                .as_ref()
+                .map(|status| {
+                    serde_json::to_value(status).unwrap_or(serde_json::Value::Null)
+                })
+                .unwrap_or(serde_json::Value::Null),
+            // D6: a poisoned wallet-status mutex collapses to `null` rather
+            // than panicking inside the snapshot tick.
+            Err(_) => serde_json::Value::Null,
+        }
+    });
+
+    Box::into_raw(Box::new(app))
 }
 
 impl NmpApp {

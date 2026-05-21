@@ -4,21 +4,25 @@
 //! builds kind:23194 request events, and decodes incoming kind:23195 responses.
 //!
 //! D0: `nmp-core` may depend on `nmp-nwc` (the protocol crate). The inverse is
-//! not true. The kernel is kept protocol-neutral; wallet state is projected into
-//! the snapshot via `Kernel::set_wallet_status` (D4: actor is sole writer).
+//! not true. The kernel is kept protocol-neutral. NIP-47 NWC is an app noun, so
+//! wallet state is NOT baked into `KernelSnapshot`: the actor writes it to a
+//! shared [`WalletStatusSlot`] and a host-registered snapshot projection
+//! (`projections["wallet"]`) reads it on every tick (D0 — the kernel emits,
+//! never names a host noun).
 //!
 //! D6: all error paths surface as a `last_error_toast` + `WalletStatus::status = "error"`,
 //! never as panics or FFI exceptions.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use nostr::nips::nip19::ToBech32;
 use nostr::{EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
+use serde::Serialize;
 use serde_json::json;
 use zeroize::Zeroizing;
 
-use crate::kernel::{Kernel, WalletStatus};
+use crate::kernel::Kernel;
 use crate::relay::{OutboundMessage, RelayRole};
 use crate::substrate::{SignedEvent, UnsignedEvent};
 use nmp_nwc::decode::try_decode_relay_message_with_id;
@@ -44,13 +48,63 @@ struct WalletConnection {
     sub_id: String,
 }
 
+/// NIP-47 wallet connection status — the app noun projected onto the snapshot
+/// under `projections["wallet"]`.
+///
+/// D0: NIP-47 NWC is an app noun, not a kernel primitive. This type lives in
+/// the wallet runtime (an app-noun module gated behind the `wallet` feature),
+/// NOT in `KernelSnapshot`. The actor writes it to a [`WalletStatusSlot`]; a
+/// host-registered snapshot projection serializes it into the snapshot's
+/// `projections` map every tick.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub(crate) struct WalletStatus {
+    /// `"connecting"` | `"ready"` | `"error"` | `"disconnected"`
+    pub(crate) status: String,
+    /// The NWC relay URL (from the connection URI).
+    pub(crate) relay_url: String,
+    /// The wallet service pubkey in bech32 npub form.
+    pub(crate) wallet_npub: String,
+    /// Balance in millisatoshis, if the wallet has responded to `get_balance`.
+    pub(crate) balance_msats: Option<u64>,
+}
+
+/// Shared wallet-status slot — the output side of the wallet projection.
+///
+/// One `Arc` clone lives on the actor's [`WalletRuntime`] (the sole writer,
+/// D4); another is captured by the `"wallet"` snapshot-projection closure
+/// registered on `NmpApp`. The projection reads this slot on every snapshot
+/// tick and serializes its contents into `KernelSnapshot::projections`.
+///
+/// `None` (the default) means no wallet has been connected this session — the
+/// projection then contributes JSON `null` under the `"wallet"` key,
+/// preserving the "key present, value null when disconnected" semantic the
+/// social shells already decode.
+pub(crate) type WalletStatusSlot = Arc<Mutex<Option<WalletStatus>>>;
+
+/// Construct a fresh, empty [`WalletStatusSlot`].
+pub(crate) fn new_wallet_status_slot() -> WalletStatusSlot {
+    Arc::new(Mutex::new(None))
+}
+
 pub(crate) struct WalletRuntime {
     connection: Option<WalletConnection>,
+    /// Shared output slot for the wallet projection. The actor (this runtime)
+    /// is the sole writer (D4); the `"wallet"` snapshot projection reads it.
+    status_slot: WalletStatusSlot,
 }
 
 impl WalletRuntime {
-    pub(crate) fn new() -> Self {
-        Self { connection: None }
+    /// Construct a wallet runtime bound to the shared status slot.
+    ///
+    /// `status_slot` is the `Arc<Mutex<…>>` the actor writes wallet state into
+    /// and the `"wallet"` snapshot projection reads from. The two `Arc` clones
+    /// share one inner `Mutex`, so an actor write is visible to the projection
+    /// closure on the next tick without crossing the FFI boundary.
+    pub(crate) fn new(status_slot: WalletStatusSlot) -> Self {
+        Self {
+            connection: None,
+            status_slot,
+        }
     }
 
     /// True if `relay_url` is the currently connected NWC relay.
@@ -189,12 +243,16 @@ fn wallet_disconnect_inner(
     kernel.unregister_persistent_sub(&conn.relay_url, &conn.sub_id);
     kernel.clear_relay_auth_signer(RelayRole::Wallet);
     let close_msg = serde_json::to_string(&json!(["CLOSE", &conn.sub_id])).unwrap_or_default();
-    kernel.set_wallet_status(Some(WalletStatus {
-        status: "disconnected".to_string(),
-        relay_url: conn.relay_url.clone(),
-        wallet_npub: conn.wallet_npub.clone(),
-        balance_msats: conn.balance_msats,
-    }));
+    // D4: actor is sole writer of the wallet status slot. Project a final
+    // `disconnected` status (the snapshot's `"wallet"` projection reads this).
+    if let Ok(mut slot) = wallet.status_slot.lock() {
+        *slot = Some(WalletStatus {
+            status: "disconnected".to_string(),
+            relay_url: conn.relay_url.clone(),
+            wallet_npub: conn.wallet_npub.clone(),
+            balance_msats: conn.balance_msats,
+        });
+    }
     vec![OutboundMessage {
         role: RelayRole::Wallet,
         relay_url: conn.relay_url,
@@ -381,7 +439,16 @@ fn build_event_json(signed: &SignedEvent) -> serde_json::Value {
     })
 }
 
-/// Push current wallet state to the kernel snapshot (D4: actor is sole writer).
+/// Push current wallet state to the shared status slot (D4: actor is sole
+/// writer). The `"wallet"` snapshot projection reads this slot on the next
+/// tick; a poisoned mutex is a silent no-op (D6 — a wallet write never panics
+/// the actor thread).
+///
+/// Also marks the kernel dirty so the next due tick actually emits. The wallet
+/// status is NOT a kernel field (D0 — NWC is an app noun), so writing the slot
+/// alone would not flip `changed_since_emit`; without this a kind:23195
+/// balance response — which the kernel drops as an unknown kind — could sit
+/// unprojected until some unrelated kernel mutation triggers an emit.
 fn sync_wallet_status(wallet: &WalletRuntime, kernel: &mut Kernel) {
     let status = wallet.connection.as_ref().map(|c| WalletStatus {
         status: c.status.clone(),
@@ -389,7 +456,10 @@ fn sync_wallet_status(wallet: &WalletRuntime, kernel: &mut Kernel) {
         wallet_npub: c.wallet_npub.clone(),
         balance_msats: c.balance_msats,
     });
-    kernel.set_wallet_status(status);
+    if let Ok(mut slot) = wallet.status_slot.lock() {
+        *slot = status;
+    }
+    kernel.mark_changed_since_emit();
 }
 
 fn pubkey_to_npub(hex: &str) -> Result<String, String> {
@@ -397,4 +467,40 @@ fn pubkey_to_npub(hex: &str) -> Result<String, String> {
         .map_err(|e| format!("{e}"))?
         .to_bech32()
         .map_err(|e| format!("{e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::relay::DEFAULT_VISIBLE_LIMIT;
+
+    /// Regression guard: `sync_wallet_status` must mark the kernel dirty.
+    ///
+    /// Wallet status is NOT a kernel field (D0 — NWC is an app noun), so the
+    /// slot write alone does not flip `changed_since_emit`. The actor's regular
+    /// tick (`tick::flush_due`) only emits when that flag is set; without the
+    /// explicit `mark_changed_since_emit`, a kind:23195 balance response — which
+    /// the kernel itself drops as an unknown kind — would never drive a
+    /// projection refresh until some unrelated kernel mutation happened to set
+    /// the flag.
+    #[test]
+    fn sync_wallet_status_marks_kernel_dirty_so_the_projection_emits() {
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        // Clear the flag a fresh kernel starts with so the assertion below
+        // genuinely observes `sync_wallet_status`'s effect.
+        let _ = kernel.make_update(true);
+        assert!(
+            !kernel.changed_since_emit(),
+            "precondition: a just-emitted kernel must be clean",
+        );
+
+        let wallet = WalletRuntime::new(new_wallet_status_slot());
+        sync_wallet_status(&wallet, &mut kernel);
+
+        assert!(
+            kernel.changed_since_emit(),
+            "sync_wallet_status must mark the kernel dirty so the next due \
+             tick emits the refreshed wallet projection",
+        );
+    }
 }

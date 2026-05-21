@@ -141,8 +141,9 @@ impl Kernel {
             // empty frames. `None` (→ JSON null) in steady state.
             last_planner_error: self.lifecycle.last_planner_error().map(str::to_owned),
             relay_edit_rows: self.relay_edit_rows_snapshot().to_vec(),
-            #[cfg(feature = "wallet")]
-            wallet_status: self.wallet_status_snapshot().cloned(),
+            // D0: NIP-47 NWC wallet state is no longer a kernel field — it is
+            // surfaced via the `"wallet"` host-registered snapshot projection
+            // collected in `projections` below.
             bunker_handshake: self.bunker_handshake_snapshot().cloned(),
             // Host-extensible snapshot output: run every host-registered
             // projection closure and append its namespaced JSON value. Empty

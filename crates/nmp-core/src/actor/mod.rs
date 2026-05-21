@@ -36,6 +36,16 @@ use crate::capability_socket::{new_capability_callback_slot, CapabilityCallbackS
 // D0: NIP-47 NWC is an app noun — `WalletRuntime` only exists with `wallet`.
 #[cfg(feature = "wallet")]
 use commands::WalletRuntime;
+// D0: NIP-47 NWC is an app noun — the wallet-status slot is re-exported so the
+// `ffi` module can build it, hand one clone to the actor, and capture the
+// other in the `"wallet"` snapshot-projection closure.
+#[cfg(feature = "wallet")]
+pub(crate) use commands::{new_wallet_status_slot, WalletStatusSlot};
+// `WalletStatus` itself only crosses the module boundary for the
+// snapshot-projection test, which constructs a status value to drive the
+// `"wallet"` projection through `make_update`.
+#[cfg(all(test, feature = "wallet"))]
+pub(crate) use commands::WalletStatus;
 pub(crate) use commands::{
     new_event_observer_slot, new_observer_slot as new_lifecycle_observer_slot, notify_observers,
     register_c_observer, register_rust_observer, unregister_observer, KernelEventObserverSlot,
@@ -379,6 +389,11 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
         new_event_observer_slot(),
         new_raw_event_observer_slot(),
         crate::kernel::new_snapshot_projection_slot(),
+        // D0: NIP-47 NWC is an app noun — this backwards-compatible entry
+        // point has no FFI surface to register the `"wallet"` projection, so
+        // the slot is a private throwaway (no host reads it).
+        #[cfg(feature = "wallet")]
+        new_wallet_status_slot(),
         Arc::new(Mutex::new(Vec::new())),
         Arc::new(Mutex::new(None)),
         new_capability_callback_slot(),
@@ -404,6 +419,10 @@ pub fn run_actor_with_lifecycle_observer(
         new_event_observer_slot(),
         new_raw_event_observer_slot(),
         crate::kernel::new_snapshot_projection_slot(),
+        // D0: NIP-47 NWC is an app noun — no FFI surface here to register the
+        // `"wallet"` projection, so the slot is a private throwaway.
+        #[cfg(feature = "wallet")]
+        new_wallet_status_slot(),
         Arc::new(Mutex::new(Vec::new())),
         Arc::new(Mutex::new(None)),
         new_capability_callback_slot(),
@@ -435,6 +454,12 @@ pub fn run_actor_with_observers(
     // the kernel so `make_update` reads the same registry without crossing
     // FFI on each tick.
     snapshot_projections: crate::kernel::SnapshotProjectionSlot,
+    // D0: NIP-47 NWC is an app noun — the shared wallet-status slot. One `Arc`
+    // clone is captured by the `"wallet"` snapshot-projection closure on the
+    // `NmpApp`; this one is handed to the actor's `WalletRuntime`, which is the
+    // sole writer (D4). Gated behind the `wallet` feature so the
+    // protocol-neutral build carries no NWC plumbing.
+    #[cfg(feature = "wallet")] wallet_status: WalletStatusSlot,
     relay_edit_rows: Arc<Mutex<Vec<crate::kernel::RelayEditRow>>>,
     active_local_nsec: Arc<Mutex<Option<zeroize::Zeroizing<String>>>>,
     capability_callback: CapabilityCallbackSlot,
@@ -508,8 +533,11 @@ pub fn run_actor_with_observers(
     // the other shared handles.
     kernel.set_relay_edit_rows_handle(Arc::clone(&relay_edit_rows));
     let mut identity = IdentityRuntime::new();
+    // D4: the wallet runtime is the sole writer of the shared wallet-status
+    // slot. The `"wallet"` snapshot projection (registered on `NmpApp`) reads
+    // the same `Arc<Mutex<…>>` clone on every tick.
     #[cfg(feature = "wallet")]
-    let mut wallet = WalletRuntime::new();
+    let mut wallet = WalletRuntime::new(wallet_status);
     // T105: URL-keyed transport pool. One socket per resolved relay URL;
     // workers spawn on demand as OutboundMessages flow with new relay_urls.
     // Keyed by `CanonicalRelayUrl` so the canonicalization invariant is

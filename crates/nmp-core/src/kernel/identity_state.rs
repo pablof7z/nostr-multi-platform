@@ -92,25 +92,11 @@ pub(crate) struct BunkerHandshakeDto {
     pub(crate) message: Option<String>,
 }
 
-/// NIP-47 wallet connection status projected onto the snapshot.
-/// Present when a wallet is (or was recently) connected; `None` when no
-/// wallet has been connected in this session.
-///
-/// D0: NIP-47 NWC is an app noun, not a kernel primitive — this type and its
-/// kernel projection are gated behind the `wallet` Cargo feature so the
-/// protocol-neutral kernel still compiles with `--no-default-features`.
-#[cfg(feature = "wallet")]
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-pub(crate) struct WalletStatus {
-    /// `"connecting"` | `"ready"` | `"error"` | `"disconnected"`
-    pub(crate) status: String,
-    /// The NWC relay URL (from the connection URI).
-    pub(crate) relay_url: String,
-    /// The wallet service pubkey in bech32 npub form.
-    pub(crate) wallet_npub: String,
-    /// Balance in millisatoshis, if the wallet has responded to `get_balance`.
-    pub(crate) balance_msats: Option<u64>,
-}
+// D0: NIP-47 NWC is an app noun, not a kernel primitive. The `WalletStatus`
+// type and its state moved out of the kernel entirely — they now live in the
+// wallet command runtime (`actor::commands::wallet`) and reach the host via
+// the `projections["wallet"]` snapshot projection, NOT a typed `KernelSnapshot`
+// field. The kernel no longer holds, names, or projects NWC wallet state.
 
 impl super::Kernel {
     /// Replace the account projection (D4: actor is sole writer).
@@ -242,15 +228,10 @@ impl super::Kernel {
         }
     }
 
-    /// Replace the wallet status projection (D4: actor is sole writer).
-    /// D0: gated behind the `wallet` feature — NIP-47 NWC is an app noun.
-    #[cfg(feature = "wallet")]
-    pub(crate) fn set_wallet_status(&mut self, status: Option<WalletStatus>) {
-        if self.wallet_status != status {
-            self.wallet_status = status;
-            self.changed_since_emit = true;
-        }
-    }
+    // D0: NIP-47 NWC is an app noun — `set_wallet_status` / `wallet_status_snapshot`
+    // were removed with the kernel `wallet_status` field. The wallet command
+    // runtime now writes wallet state to its own shared slot and the
+    // `projections["wallet"]` snapshot projection surfaces it.
 
     /// Replace the NIP-46 bunker handshake projection. Stage 3 of NIP-46 wiring:
     /// the broker (Stage 4) is the sole driver; the actor's `sign_in_bunker`
@@ -284,12 +265,6 @@ impl super::Kernel {
 
     pub(crate) fn relay_edit_rows_snapshot(&self) -> &[RelayEditRow] {
         &self.relay_edit_rows
-    }
-
-    /// D0: gated behind the `wallet` feature — NIP-47 NWC is an app noun.
-    #[cfg(feature = "wallet")]
-    pub(crate) fn wallet_status_snapshot(&self) -> Option<&WalletStatus> {
-        self.wallet_status.as_ref()
     }
 
     pub(crate) fn bunker_handshake_snapshot(&self) -> Option<&BunkerHandshakeDto> {

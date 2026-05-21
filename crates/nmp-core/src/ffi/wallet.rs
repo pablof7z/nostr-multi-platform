@@ -1,8 +1,10 @@
 //! NIP-47 Nostr Wallet Connect FFI wrappers.
 //!
 //! All functions are fire-and-forget (D6 — no return values, no exceptions
-//! across the FFI boundary). Outcomes surface via subsequent snapshots as
-//! `wallet_status` and `last_error_toast` fields.
+//! across the FFI boundary). Outcomes surface via subsequent snapshots: the
+//! wallet state under `projections["wallet"]` (D0: NIP-47 NWC is an app noun,
+//! surfaced through the snapshot-projection seam, not a typed `KernelSnapshot`
+//! field) and any error under `last_error_toast`.
 
 use super::{app_ref, c_optional_string_argument, c_string_argument, NmpApp};
 use crate::actor::ActorCommand;
@@ -26,8 +28,9 @@ pub extern "C" fn nmp_app_wallet_connect(app: *mut NmpApp, uri: *const c_char) {
 
 /// Disconnect the current NIP-47 wallet.
 ///
-/// Sends a CLOSE to the NWC relay and clears wallet state. The snapshot
-/// will reflect `wallet_status.status = "disconnected"` on the next emit.
+/// Sends a CLOSE to the NWC relay and clears wallet state. The snapshot's
+/// `projections["wallet"].status` will reflect `"disconnected"` on the next
+/// emit.
 #[no_mangle]
 pub extern "C" fn nmp_app_wallet_disconnect(app: *mut NmpApp) {
     let Some(app) = app_ref(app) else {
