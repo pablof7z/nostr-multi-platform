@@ -150,6 +150,14 @@ pub extern "C" fn nmp_app_register_action_executor(
     let Some(exec) = executor else {
         return;
     };
+    // D6 guard: `nmp.*` namespaces are kernel-owned built-ins. A host
+    // overwriting them via FFI would bypass the validated built-in logic
+    // (e.g. silently replacing PublishModule's signed-event gate). Rust-level
+    // callers are trusted and may call `ActionRegistry::register_executor`
+    // directly; the C-ABI path is where the guard lives.
+    if ns.starts_with("nmp.") {
+        return;
+    }
     app.register_action_executor(ns, move |action_json, _send| {
         // The host executor speaks JSON only. The `_send` actor-command
         // bridge is intentionally unused in v1: a host executor that needs
@@ -228,6 +236,14 @@ pub extern "C" fn nmp_app_register_action_module(
     let Some(ns) = c_string_argument(namespace) else {
         return;
     };
+    // D6 guard: `nmp.*` namespaces are kernel-owned built-ins. A host
+    // overwriting them via FFI would bypass the validated built-in logic
+    // (e.g. silently replacing PublishModule's signed-event gate). Rust-level
+    // callers are trusted and may call `ActionRegistry::register_with_validator`
+    // directly; the C-ABI path is where the guard lives.
+    if ns.starts_with("nmp.") {
+        return;
+    }
     let Some(validate) = validator else {
         // No validator → accept-all: every action is accepted with a default
         // pending plan. Shape validation is then the host executor's job.
