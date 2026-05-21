@@ -386,8 +386,18 @@ fn publish_key_package(
 /// the kind:1059 is published to the GROUP's relays rather than the
 /// recipient's personal inbox relays. Group members fetch welcomes from
 /// the group relays, so delivery still converges; a dedicated inbox
-/// resolver would tighten this. A group-relay cache miss further degrades
-/// to author-outbox `Auto` (kernel empty-relay fallback).
+/// resolver would tighten this.
+///
+/// **D10 provenance guard** — a group-relay cache miss (`group_relays` is
+/// empty) NO LONGER degrades to author-outbox `Auto`. The
+/// [`publish_to`](crate::projection::publish::publish_to) guard refuses to
+/// dispatch a kind:1059 envelope without an explicit relay pin (publishing
+/// it to the author's public NIP-65 outbox would leak the existence of an
+/// MLS Welcome to every public relay the author advertises). The signed
+/// kind:1059 JSON still appears in the INFORMATIONAL return so callers
+/// have ground-truth audit of what was built; only the wire dispatch is
+/// suppressed. To restore delivery in that edge case the group's relays
+/// must be cached (`cache_group_relays`) before the welcomes go out.
 ///
 /// Returns the signed kind:1059 JSONs (INFORMATIONAL only — already
 /// submitted). A `wrap_welcome` failure is surfaced as `Err` (D6 → the

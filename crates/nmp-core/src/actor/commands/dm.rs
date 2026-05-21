@@ -81,6 +81,13 @@ pub(crate) fn send_gift_wrapped_dm(
     mut rumor: UnsignedEvent,
     recipient_pubkey: &str,
 ) -> Vec<OutboundMessage> {
+    // D10: private-kind publish
+    // Every publish call below MUST route via an Explicit pin (the
+    // recipient's kind:10050 DM-inbox relays or, on a cache miss, the
+    // configured Content relays). The doctrine-lint D10 rule enforces this
+    // structurally: any Auto-routing seam (`PublishTarget::Auto`,
+    // `publish_signed(...)`, `publish_unsigned_event(...)`) below this
+    // marker fires a lint finding.
     // 1. Active local keys. A remote (NIP-46) signer has no local secret key;
     //    gift-wrap sealing cannot run through the remote-sign RPC, so this is a
     //    graceful degrade — surface a toast, publish nothing (D6).
