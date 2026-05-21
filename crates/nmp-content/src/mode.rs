@@ -1,7 +1,6 @@
 //! [`RenderMode`] — the single mode flag the tokenizer accepts.
 //!
-//! Replaces NDKSwift's three overlapping APIs (`NDKRichText`, `NDKMarkdown`,
-//! `NDKUIMarkdownRenderer`) with one entry point + this flag. See
+//! One entry point + this flag instead of multiple overlapping APIs. See
 //! `docs/research/content-rendering/ndkswift.md` §10 anti-pattern #1.
 
 use serde::{Deserialize, Serialize};

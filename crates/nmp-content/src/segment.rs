@@ -3,7 +3,7 @@
 //! These types are the internal, ergonomic, **recursive** representation. They
 //! are NOT themselves serde-serializable (see the [`Segment`] doc-comment) and
 //! therefore are NOT directly an FFI payload. The **FFI-stable wire boundary**
-//! every consuming UI (SwiftUI / Compose / iced / wasm) actually decodes is
+//! every host renderer actually decodes is
 //! [`crate::wire::ContentTreeWire`], produced by the pure projection
 //! [`ContentTree::to_wire`]. See
 //! `docs/decisions/0018-content-tree-ffi-projection.md`. Changing a variant's
@@ -18,7 +18,7 @@ use crate::markdown::MarkdownNode;
 use crate::mode::RenderMode;
 
 // MediaKind + InvoiceKind still derive serde because they're useful for
-// diagnostics + iOS bridge JSON; they don't transitively contain NostrUri.
+// diagnostics + FFI bridge JSON; they don't transitively contain NostrUri.
 
 /// One token emitted by the tokenizer. See `content-rendering.md` §5.
 ///

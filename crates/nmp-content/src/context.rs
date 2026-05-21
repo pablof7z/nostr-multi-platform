@@ -1,6 +1,6 @@
 //! Recursion guard for embed rendering — `RenderContext { depth, visited }`.
 //!
-//! Both NDKSwift and ndk-svelte LACK this; NMP gains it as substrate. See
+//! This recursion guard is often absent in other Nostr content renderers. See
 //! `content-rendering.md` §5 (RenderContext) and PD-015 (default `max_depth
 //! = 4`, configurable per app; beyond `max_depth` the embed card collapses
 //! to a "see full thread" link rather than mounting another renderer).

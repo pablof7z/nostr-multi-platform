@@ -14,8 +14,8 @@
 //!   (namespace `nmp.content.embed_registry`)
 //!
 //! # Design constraints (load-bearing)
-//! - **One entry point** (`tokenize`) with a `mode` flag — never the three
-//!   overlapping APIs NDKSwift ships (`ndkswift.md` §10 anti-pattern #1).
+//! - **One entry point** (`tokenize`) with a `mode` flag — never multiple
+//!   overlapping APIs (`ndkswift.md` §10 anti-pattern #1).
 //! - **One parser shape** — Markdown blocks recursively contain the same
 //!   inline `Segment` variants; the plaintext and markdown render paths share
 //!   tokenization (`content-rendering.md` §10 #3).

@@ -1,7 +1,7 @@
 //! Post-tokenization groupers — consecutive media URLs collapse into one
 //! `Segment::Media`. Text segments containing only whitespace/punctuation
-//! bridge runs (matching NDKSwift's `ImageGroupingUtils` behavior — see
-//! `docs/research/content-rendering/ndkswift.md` §2).
+//! bridge runs (see `docs/research/content-rendering/ndkswift.md` §2 for
+//! the grouping algorithm reference).
 //!
 //! Grouping is a separate pass from tokenization because classification
 //! (whether a URL is media or generic) is a **rendering** concern, not a

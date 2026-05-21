@@ -1,6 +1,6 @@
 //! `ModulePolicy` — knobs for the grouping algorithm. Spec carries one per
-//! view instance so the same crate can serve Chirp (tight modules) and
-//! podcast (longer ancestor chains) without an algorithmic fork.
+//! view instance so the same crate can serve different threading styles
+//! (tight modules vs. longer ancestor chains) without an algorithmic fork.
 
 use serde::{Deserialize, Serialize};
 
