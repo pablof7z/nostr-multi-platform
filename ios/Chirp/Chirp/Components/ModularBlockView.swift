@@ -265,6 +265,12 @@ struct ModularBlockView: View {
     }
 
     private func syntheticItem(card: ChirpEventCard, item: TimelineItem?) -> TimelineItem {
+        // `isRepost` / `navTargetId` / `repostInnerContent` are computed by
+        // Rust on real timeline rows; synthetic embedded-card items are not
+        // surfaced through the repost rendering path (they back the inline
+        // `EmbeddedNostrEventCard`, not a row), so we feed neutral defaults
+        // that match the Rust fallback for kind:1 — no inner-event parsing
+        // here either.
         TimelineItem(
             id: card.id,
             authorPubkey: card.authorPubkey,
@@ -276,7 +282,10 @@ struct ModularBlockView: View {
             content: card.content,
             contentPreview: String(card.content.prefix(180)),
             createdAtDisplay: relativeTime(card: card),
-            relayCount: 0
+            relayCount: 0,
+            isRepost: false,
+            navTargetId: card.id,
+            repostInnerContent: ""
         )
     }
 

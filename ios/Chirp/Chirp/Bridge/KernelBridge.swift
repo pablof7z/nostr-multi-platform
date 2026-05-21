@@ -1384,11 +1384,77 @@ struct TimelineItem: Decodable, Identifiable, Equatable, Hashable {
     /// "Repost" badge or alternate navigation target) without re-parsing the
     /// raw event JSON in `content`. Thin-shell rule: the kind is the
     /// authoritative protocol signal — never inferred from content shape.
+    ///
+    /// Prefer `isRepost` for branching the UI. The raw `kind` is retained for
+    /// diagnostics and forward-compatible decoders that need the full integer
+    /// (e.g. `NoteContentView`'s typed `MediaKind` switch is unrelated and
+    /// stays put). The thin-shell rule is enforced by the `isRepost` bool —
+    /// the view layer must NOT `switch` on this integer to derive display
+    /// state. See `aim.md §6.9` (Chirp thin-shell).
     let kind: UInt32
     let content: String
     let contentPreview: String
     let createdAtDisplay: String
     let relayCount: UInt32
+    /// `true` when this row represents a NIP-18 repost (kind:6). Rust
+    /// pre-computes this so the view layer never re-derives protocol
+    /// semantics from `kind`. Decoded with `#[serde(default)]` semantics on
+    /// the kernel side — a pre-existing snapshot without the field decodes
+    /// as `false`.
+    let isRepost: Bool
+    /// Event id to navigate to when the row is tapped. For a kind:1 note
+    /// this is `id`; for a kind:6 repost it is the inner kind:1's id when
+    /// the NIP-18 embedded JSON is well-formed, falling back to `id` when
+    /// the inner event is missing/malformed. The shell binds this verbatim —
+    /// it MUST NOT parse `content` to find the inner event id.
+    let navTargetId: String
+    /// Inner-note text rendered inside a kind:6 repost cell. Empty string
+    /// for kind:1 rows (the cell uses `content` directly). For kind:6 it is
+    /// the inner event's `content` string when the NIP-18 embedded JSON
+    /// parses, or `""` when it is missing/malformed. The shell uses this
+    /// verbatim — no JSON parsing in Swift.
+    let repostInnerContent: String
+}
+
+extension TimelineItem {
+    // Decoder is tolerant of forward/backward schema drift so an older
+    // kernel snapshot (no `is_repost` etc.) still decodes — falls back to
+    // `false` / `""` / `id`, mirroring the Rust fallbacks bit-for-bit. The
+    // outer `KernelSnapshot` decoder runs with `.convertFromSnakeCase`, so
+    // JSON `is_repost` → property `isRepost` (post-transform name) without
+    // an explicit raw value.
+    //
+    // The decoder lives in an `extension` so the auto-synthesized memberwise
+    // initializer is preserved for synthetic construction sites (e.g.
+    // `ModularBlockView.syntheticItem`) — adding `init(from:)` to the body
+    // would suppress it.
+    private enum CodingKeys: String, CodingKey {
+        case id, authorPubkey, authorDisplay, authorPictureUrl
+        case authorAvatarInitials, authorAvatarColor
+        case kind, content, contentPreview, createdAtDisplay, relayCount
+        case isRepost, navTargetId, repostInnerContent
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let id = try c.decode(String.self, forKey: .id)
+        self.init(
+            id: id,
+            authorPubkey: try c.decode(String.self, forKey: .authorPubkey),
+            authorDisplay: try c.decode(String.self, forKey: .authorDisplay),
+            authorPictureUrl: try c.decodeIfPresent(String.self, forKey: .authorPictureUrl),
+            authorAvatarInitials: try c.decode(String.self, forKey: .authorAvatarInitials),
+            authorAvatarColor: try c.decode(String.self, forKey: .authorAvatarColor),
+            kind: try c.decode(UInt32.self, forKey: .kind),
+            content: try c.decode(String.self, forKey: .content),
+            contentPreview: try c.decode(String.self, forKey: .contentPreview),
+            createdAtDisplay: try c.decode(String.self, forKey: .createdAtDisplay),
+            relayCount: try c.decode(UInt32.self, forKey: .relayCount),
+            isRepost: try c.decodeIfPresent(Bool.self, forKey: .isRepost) ?? false,
+            navTargetId: try c.decodeIfPresent(String.self, forKey: .navTargetId) ?? id,
+            repostInnerContent: try c.decodeIfPresent(String.self, forKey: .repostInnerContent) ?? ""
+        )
+    }
 }
 
 /// Full kernel metrics (matches nmp_core snapshot output). Timing fields are

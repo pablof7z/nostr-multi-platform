@@ -102,6 +102,23 @@ pub(super) struct TimelineItem {
     pub(super) content_preview: String,
     pub(super) created_at_display: String,
     pub(super) relay_count: u32,
+    /// `true` when `kind == 6` (NIP-18 repost). Thin-shell: the view layer
+    /// flips the "Repost" badge and re-routes thread navigation on this bool;
+    /// it MUST NOT switch on `kind` itself (re-parsing protocol semantics in
+    /// the UI is exactly the violation aim.md §6.9 forbids).
+    pub(super) is_repost: bool,
+    /// Event id the shell should route to when the row is tapped. For a
+    /// kind:1 note this is `id`; for a kind:6 repost it is the inner kind:1's
+    /// id when the embedded NIP-18 JSON is well-formed, falling back to `id`
+    /// when it is missing or malformed (D1: best-effort). The shell binds
+    /// this verbatim — no `?? id` fallback, no JSON parsing in Swift.
+    pub(super) nav_target_id: String,
+    /// Inner-note text the shell renders inside a kind:6 repost cell. For a
+    /// kind:1 note this is `""` (the cell uses `content` directly); for a
+    /// kind:6 it is the inner event's `content` field when the embedded JSON
+    /// parses, falling back to `""` when it is missing or malformed (D1). The
+    /// shell uses this string verbatim — no JSON parsing, no `?? ""` fallback.
+    pub(super) repost_inner_content: String,
 }
 
 /// Profile summary card.
