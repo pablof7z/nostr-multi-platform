@@ -252,10 +252,15 @@ pub fn launch(
         if !relay_url.starts_with("wss://") && !relay_url.starts_with("ws://") {
             continue;
         }
-        work_tx
-            .send((relay_url.clone(), reqs.clone()))
-            .expect("queue job");
-        total_jobs += 1;
+        // `work_rx` is held alive in the `Arc<Mutex<..>>` above for the whole
+        // function, so this `send` cannot fail here. D2: `launch` is a public
+        // API boundary — a disconnected channel is dropped silently (the job
+        // simply isn't queued) rather than panicking the caller. `total_jobs`
+        // is only incremented on a successful send so the worker count below
+        // stays consistent with what was actually queued.
+        if work_tx.send((relay_url.clone(), reqs.clone())).is_ok() {
+            total_jobs += 1;
+        }
     }
     drop(work_tx);
 
