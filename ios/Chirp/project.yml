@@ -34,6 +34,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.f7z.chirp
+        PRODUCT_MODULE_NAME: Chirp
         PRODUCT_NAME: Chirp7z
         CODE_SIGN_ENTITLEMENTS: Chirp/Chirp.entitlements
         GENERATE_INFOPLIST_FILE: NO

@@ -354,6 +354,22 @@ mod tests {
     }
 
     #[test]
+    fn nostr_npub_uri_emits_mention() {
+        use nmp_core::nip19::encode_npub;
+
+        const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        let npub = encode_npub(PK).expect("fixture npub encodes");
+        let tree = tokenize(&format!("hey nostr:{npub}"), &[], RenderMode::Plain);
+        assert!(tree.segments.iter().any(|seg| {
+            matches!(
+                seg,
+                Segment::Mention(nmp_core::nip21::NostrUri::Profile { pubkey, .. })
+                    if pubkey == PK
+            )
+        }));
+    }
+
+    #[test]
     fn social_shorthand_nevent_emits_event_ref() {
         use nmp_core::nip19::{encode_nevent, NeventData};
 
@@ -366,6 +382,28 @@ mod tests {
         })
         .expect("fixture nevent encodes");
         let tree = tokenize(&format!("here is @{nevent}"), &[], RenderMode::Plain);
+        assert!(tree.segments.iter().any(|seg| {
+            matches!(
+                seg,
+                Segment::EventRef(nmp_core::nip21::NostrUri::Event { event_id, .. })
+                    if event_id == ID
+            )
+        }));
+    }
+
+    #[test]
+    fn nostr_nevent_uri_emits_event_ref() {
+        use nmp_core::nip19::{encode_nevent, NeventData};
+
+        const ID: &str = "0000000000000000000000000000000000000000000000000000000000000001";
+        let nevent = encode_nevent(&NeventData {
+            event_id: ID.to_string(),
+            relays: vec![],
+            author: None,
+            kind: Some(1),
+        })
+        .expect("fixture nevent encodes");
+        let tree = tokenize(&format!("here is nostr:{nevent}"), &[], RenderMode::Plain);
         assert!(tree.segments.iter().any(|seg| {
             matches!(
                 seg,

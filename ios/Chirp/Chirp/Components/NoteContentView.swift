@@ -2,10 +2,7 @@ import SwiftUI
 struct NoteContentView: View {
     let content: String
     let contentTree: ContentTreeWire?
-    let mentionProfiles: [String: MentionProfile]
-    let eventCards: [String: ChirpEventCard]
-    let timelineItems: [String: TimelineItem]
-    let embedDepth: Int
+    let renderContext: NoteRenderContext
     var font: Font = .body
 
     init(
@@ -14,15 +11,17 @@ struct NoteContentView: View {
         mentionProfiles: [String: MentionProfile] = [:],
         eventCards: [String: ChirpEventCard] = [:],
         timelineItems: [String: TimelineItem] = [:],
-        embedDepth: Int = 0,
+        renderContext: NoteRenderContext? = nil,
         font: Font = .body
     ) {
         self.content = content
         self.contentTree = contentTree
-        self.mentionProfiles = mentionProfiles
-        self.eventCards = eventCards
-        self.timelineItems = timelineItems
-        self.embedDepth = embedDepth
+        self.renderContext = renderContext ?? NoteRenderContext(
+            mentionProfiles: mentionProfiles,
+            eventCards: eventCards,
+            timelineItems: timelineItems,
+            embedDepth: 0
+        )
         self.font = font
     }
 
@@ -36,7 +35,7 @@ struct NoteContentView: View {
 
     @ViewBuilder
     private func richBody(_ tree: ContentTreeWire) -> some View {
-        let groups = richGroups(tree)
+        let groups = noteContentGroups(tree)
         if groups.isEmpty {
             EmptyView()
         } else {
@@ -74,43 +73,6 @@ struct NoteContentView: View {
             }
         }
     }
-    private enum RichGroup {
-        case inline([UInt32])
-        case media(urls: [String], kind: String)
-        case eventRef(WireNostrUri)
-    }
-
-    private func richGroups(_ tree: ContentTreeWire) -> [RichGroup] {
-        var groups: [RichGroup] = []
-        var run: [UInt32] = []
-
-        func flush() {
-            if !run.isEmpty {
-                groups.append(.inline(run))
-                run = []
-            }
-        }
-
-        for root in tree.roots {
-            guard let node = node(root, in: tree) else { continue }
-            switch node {
-            case .media(let urls, let kind):
-                flush()
-                groups.append(.media(urls: urls, kind: kind))
-            case .eventRef(let uri):
-                flush()
-                groups.append(.eventRef(uri))
-            case .paragraph(let children), .heading(_, let children):
-                run.append(contentsOf: children)
-                run.append(UInt32.max)
-            default:
-                run.append(root)
-            }
-        }
-        flush()
-        return groups
-    }
-
     private func inlineText(_ index: UInt32, in tree: ContentTreeWire) -> Text {
         if index == UInt32.max { return Text("\n") }
         guard let n = node(index, in: tree) else { return Text("") }
@@ -118,10 +80,10 @@ struct NoteContentView: View {
         case .text(let value):
             return Text(value)
         case .mention(let uri):
-            let label = mentionProfiles[uri.primaryId]?.display ?? shortHex(uri.primaryId)
+            let label = renderContext.mentionLabel(for: uri.primaryId)
             return Text("@\(label)").foregroundStyle(Color.accentColor).bold()
         case .eventRef(let uri):
-            return Text("↩ \(shortHex(uri.primaryId))").foregroundStyle(Color.accentColor).bold()
+            return Text("↩ \(shortEntity(uri.primaryId))").foregroundStyle(Color.accentColor).bold()
         case .hashtag(let tag):
             return Text("#\(tag)").foregroundStyle(Color.accentColor).bold()
         case .url(let value):
@@ -155,88 +117,7 @@ struct NoteContentView: View {
     }
 
     private func eventReferenceView(_ uri: WireNostrUri) -> some View {
-        if embedDepth < 1, let card = eventCards[uri.primaryId] {
-            return AnyView(embeddedEventView(card))
-        }
-        if let item = timelineItems[uri.primaryId] {
-            return AnyView(embeddedItemView(item))
-        }
-        return AnyView(unavailableEventView(uri))
-    }
-
-    private func embeddedEventView(_ card: ChirpEventCard) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            embeddedHeader(
-                display: timelineItems[card.id]?.authorDisplay ?? mentionProfiles[card.authorPubkey]?.display ?? shortHex(card.authorPubkey),
-                pubkey: card.authorPubkey
-            )
-            NoteContentView(
-                content: card.content,
-                contentTree: card.contentTree,
-                mentionProfiles: mentionProfiles,
-                eventCards: eventCards,
-                timelineItems: timelineItems,
-                embedDepth: embedDepth + 1,
-                font: .callout
-            )
-        }
-        .padding(10)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
-        )
-    }
-
-    private func embeddedItemView(_ item: TimelineItem) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            embeddedHeader(display: item.authorDisplay, pubkey: item.authorPubkey)
-            Text(item.contentPreview.isEmpty ? item.content : item.contentPreview)
-                .font(.callout)
-                .foregroundStyle(.primary)
-                .lineLimit(4)
-        }
-        .padding(10)
-        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
-        )
-    }
-
-    private func embeddedHeader(display: String, pubkey: String) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "quote.bubble")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
-            Text("@\(display)")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-            Text(shortHex(pubkey))
-                .font(.caption2.monospaced())
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-        }
-    }
-
-    private func unavailableEventView(_ uri: WireNostrUri) -> some View {
-        HStack(alignment: .center, spacing: 10) {
-            Image(systemName: "quote.bubble")
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Referenced event")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.primary)
-                Text(shortHex(uri.primaryId))
-                    .font(.caption.monospaced())
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(10)
-        .background(Color.secondary.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+        EmbeddedNostrEventCard(uri: uri, context: renderContext)
     }
 
     private func imageView(_ url: URL) -> some View {
@@ -279,10 +160,6 @@ struct NoteContentView: View {
         return tree.nodes[i]
     }
 
-    private func shortHex(_ value: String) -> String {
-        guard value.count > 12 else { return value }
-        return "\(value.prefix(8))…\(value.suffix(4))"
-    }
     private enum TokenGroup {
         case inline([NoteToken])
         case image(URL)
