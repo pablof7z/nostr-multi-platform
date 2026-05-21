@@ -1,11 +1,17 @@
 import SwiftUI
 
 // ─────────────────────────────────────────────────────────────────────────
-// FROZEN NAVIGATION CONTRACT — do not edit in Phase 2.
+// NAVIGATION CONTRACT — updated 2026-05-21 (Groups/Chats UX redesign).
 //
-// Every feature screen is its own file under Features/. Phase-2 agents
-// replace the BODY of their assigned feature file; they do not touch this
-// shell, ChirpRoute, or each other's files.
+// User-authorized override of previous "FROZEN" comment:
+//   • `search` tab removed (Search deferred to toolbar button on HomeFeed)
+//   • `chats` tab added (slot 2) — DM inbox via ChatsView
+//   • `groups` tab updated — unified flat list via GroupsView
+//   • Tab order: home · chats · groups · wallet · settings
+//
+// Every feature screen is its own file under Features/. Agents replace the
+// BODY of their assigned feature file; they do not touch ChirpRoute or
+// each other's files.
 //
 // Navigation: one NavigationStack per tab. Any screen pushes a typed
 // `ChirpRoute`; destinations are resolved centrally here so Profile/Thread
@@ -26,7 +32,7 @@ final class ChirpRouter: ObservableObject {
     func popToRoot() { path = NavigationPath() }
 }
 
-enum ChirpTab: Hashable { case home, search, groups, wallet, settings }
+enum ChirpTab: Hashable { case home, chats, groups, wallet, settings }
 
 struct RootShell: View {
     @EnvironmentObject private var model: KernelModel
@@ -50,12 +56,12 @@ struct RootShell: View {
                 .tabItem { Label("Home", systemImage: "house.fill") }
                 .tag(ChirpTab.home)
 
-            tabStack { SearchView() }
-                .tabItem { Label("Search", systemImage: "magnifyingglass") }
-                .tag(ChirpTab.search)
+            tabStack { ChatsView() }
+                .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right.fill") }
+                .tag(ChirpTab.chats)
 
-            tabStack { MarmotGroupsView() }
-                .tabItem { Label("Groups", systemImage: "lock.shield.fill") }
+            tabStack { GroupsView() }
+                .tabItem { Label("Groups", systemImage: "person.3.fill") }
                 .tag(ChirpTab.groups)
 
             tabStack { WalletView() }

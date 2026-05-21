@@ -1,26 +1,22 @@
 import SwiftUI
 
 // ─────────────────────────────────────────────────────────────────────────
-// MarmotGroupsView — top-level "Groups" tab root.
+// GroupsView — top-level "Groups" tab root.
 //
-// Lists the user's MLS encrypted groups (name · member count · unread
-// badge) → taps push `MarmotGroupChatView`. A "Pending Invites" section
-// surfaces inbound welcomes with Accept / Decline. Toolbar "+" opens a
-// create-group sheet (name / description / invitee npubs).
+// Shows all groups in a single flat list: NIP-29 public groups and
+// MLS-encrypted private groups. Encryption is a visual indicator on each
+// row (lock emoji), never a section divider. No protocol vocabulary.
 //
-// A "NIP-29 Groups" section carries the (unencrypted, relay-managed)
-// NIP-29 demo group — the first real consumer of the NIP-29 seam. Tapping
-// it pushes `GroupChatView`. This section is ALWAYS present so the NIP-29
-// screen is reachable regardless of Marmot (MLS) state.
+// Pending invites appear as a chip at the top when present; tapping
+// navigates to InvitesView. Toolbar "+" opens NewGroupSheet.
 //
-// D6: any nil / decode failure surfaces as the empty state, never a crash —
-// the store already collapses every failure to `.empty`.
+// Thin-shell rule: ZERO protocol logic here. All ordering and state live
+// in Rust; this view only renders snapshots and navigates.
 //
-// Key-package status deliberately lives in Settings (SettingsHubView), not
-// here, per the milestone scope.
+// D6: any nil / decode failure surfaces as the empty state, never a crash.
 // ─────────────────────────────────────────────────────────────────────────
 
-struct MarmotGroupsView: View {
+struct GroupsView: View {
     @EnvironmentObject private var model: KernelModel
 
     @State private var showCreate = false
@@ -28,8 +24,6 @@ struct MarmotGroupsView: View {
     private var store: MarmotStore { model.marmot }
 
     var body: some View {
-        // The list always renders — the NIP-29 demo section must stay
-        // reachable even when the user has no MLS groups / invites.
         groupList
             .chirpScreenBackground()
             .navigationTitle("Groups")
@@ -38,97 +32,78 @@ struct MarmotGroupsView: View {
                 createButton
             }
             .sheet(isPresented: $showCreate) {
-                MarmotCreateGroupSheet()
+                NewGroupSheet()
                     .environmentObject(model)
             }
     }
 
-    // ── Group + pending-invite list ───────────────────────────────────────
+    // ── Unified group list ────────────────────────────────────────────────
 
     private var groupList: some View {
-        List {
-            nip29Section
-
-            dmSection
-
-            if !store.pendingWelcomes.isEmpty {
-                Section {
-                    ForEach(store.pendingWelcomes) { welcome in
-                        PendingInviteRow(welcome: welcome)
-                            .environmentObject(model)
+        let hasAny = !store.groups.isEmpty || !store.pendingWelcomes.isEmpty
+        return Group {
+            if hasAny {
+                List {
+                    // Pending invites chip — shown only when invites exist
+                    if !store.pendingWelcomes.isEmpty {
+                        NavigationLink {
+                            InvitesView()
+                                .environmentObject(model)
+                        } label: {
+                            HStack {
+                                Image(systemName: "envelope.badge.fill")
+                                    .foregroundStyle(.tint)
+                                Text(
+                                    store.pendingWelcomes.count == 1
+                                        ? "1 invite"
+                                        : "\(store.pendingWelcomes.count) invites"
+                                )
+                                .font(.callout.weight(.medium))
+                                Spacer()
+                            }
+                            .padding(.vertical, 8)
+                        }
+                        .accessibilityIdentifier("groups-invites-chip")
                     }
-                } header: {
-                    Text("Pending Invites")
-                }
-            }
 
-            Section {
-                if store.groups.isEmpty {
-                    Text("No encrypted groups yet")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .padding(.vertical, 4)
-                } else {
+                    // NIP-29 public group row
+                    NavigationLink {
+                        GroupChatView(store: model.groupChat)
+                    } label: {
+                        PublicGroupRow(groupId: model.groupChat.groupId)
+                    }
+                    .accessibilityIdentifier("nip29-group-row")
+                    .accessibilityValue(model.groupChat.groupId.localId)
+
+                    // MLS encrypted group rows
                     ForEach(store.groups) { group in
                         NavigationLink {
                             MarmotGroupChatView(group: group)
                                 .environmentObject(model)
                         } label: {
-                            GroupRow(group: group)
+                            EncryptedGroupRow(group: group)
                         }
                         .accessibilityIdentifier("marmot-group-row-\(group.idHex)")
                         .accessibilityValue(group.name)
                     }
                 }
-            } header: {
-                Text("Groups")
+                .scrollContentBackground(.hidden)
+            } else {
+                emptyState
             }
-        }
-        .scrollContentBackground(.hidden)
-    }
-
-    // ── NIP-29 demo group ─────────────────────────────────────────────────
-    //
-    // First real consumer of the NIP-29 seam: a `NavigationLink` to
-    // `GroupChatView`, backed by `model.groupChat` (a `GroupChatStore`
-    // registered via `nmp_app_chirp_register_group_chat`). One fixed demo
-    // room — a multi-group app would thread a chosen `GroupId` here.
-
-    private var nip29Section: some View {
-        Section {
-            NavigationLink {
-                GroupChatView(store: model.groupChat)
-            } label: {
-                NIP29GroupRow(groupId: model.groupChat.groupId)
-            }
-            .accessibilityIdentifier("nip29-group-row")
-            .accessibilityValue(model.groupChat.groupId.localId)
-        } header: {
-            Text("NIP-29 Groups")
-        } footer: {
-            Text("Relay-managed group chat (NIP-29). Unencrypted — distinct from the MLS-encrypted groups below.")
         }
     }
 
-    // ── NIP-17 direct messages ────────────────────────────────────────────
-    //
-    // First consumer of the NIP-17 receive seam: a `NavigationLink` to
-    // `DmListView`, backed by `model.dmInbox` (a `DmInboxStore` registered
-    // via `nmp_app_chirp_register_dm_inbox`). The inbox is global — every
-    // private conversation the local account participates in.
+    // ── Empty state ───────────────────────────────────────────────────────
 
-    private var dmSection: some View {
-        Section {
-            NavigationLink {
-                DmListView(store: model.dmInbox)
-            } label: {
-                DmInboxRow(conversationCount: model.dmInbox.conversations.count)
-            }
-            .accessibilityIdentifier("nip17-dm-inbox-row")
-        } header: {
-            Text("Direct Messages")
-        } footer: {
-            Text("Private, gift-wrapped direct messages (NIP-17). End-to-end encrypted — relays cannot read them.")
+    private var emptyState: some View {
+        ScrollView {
+            ChirpPlaceholder(
+                systemImage: "person.3",
+                title: "No groups yet",
+                subtitle: "Create a group with friends or browse public groups."
+            )
+            .frame(minHeight: 360)
         }
     }
 
@@ -150,10 +125,18 @@ struct MarmotGroupsView: View {
     }
 }
 
-// ── Group row ─────────────────────────────────────────────────────────────
+// ── Public group row (NIP-29) ─────────────────────────────────────────────
+//
+// Subtitle uses # prefix to signal public/unencrypted without protocol terms.
 
-private struct GroupRow: View {
-    let group: MarmotGroup
+private struct PublicGroupRow: View {
+    let groupId: GroupId
+
+    private var initials: String {
+        let id = groupId.localId
+        guard !id.isEmpty else { return "?" }
+        return String(id.prefix(2)).uppercased()
+    }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -161,9 +144,49 @@ private struct GroupRow: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(.quaternary)
                     .frame(width: 40, height: 40)
-                Image(systemName: "lock.shield.fill")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.tint)
+                Text(initials)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(groupId.localId)
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text("# Public group")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
+}
+
+// ── Encrypted group row (MLS / Marmot) ───────────────────────────────────
+//
+// Lock emoji signals encrypted without using protocol vocabulary.
+
+private struct EncryptedGroupRow: View {
+    let group: MarmotGroup
+
+    private var initials: String {
+        let n = group.name.isEmpty ? "?" : group.name
+        return String(n.prefix(2)).uppercased()
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(.quaternary)
+                    .frame(width: 40, height: 40)
+                Text(initials)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -171,7 +194,7 @@ private struct GroupRow: View {
                     .font(.callout.weight(.medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                Text("\(group.members.count) member\(group.members.count == 1 ? "" : "s")")
+                Text("🔒 \(group.members.count) member\(group.members.count == 1 ? "" : "s")")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -193,138 +216,9 @@ private struct GroupRow: View {
     }
 }
 
-// ── NIP-29 group row ──────────────────────────────────────────────────────
-
-private struct NIP29GroupRow: View {
-    let groupId: GroupId
-
-    var body: some View {
-        HStack(spacing: 8) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(.quaternary)
-                    .frame(width: 40, height: 40)
-                Image(systemName: "bubble.left.and.bubble.right.fill")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.tint)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(groupId.localId)
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Text(groupId.hostRelayUrl)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-        }
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
-    }
-}
-
-// ── NIP-17 direct-messages row ────────────────────────────────────────────
-
-private struct DmInboxRow: View {
-    let conversationCount: Int
-
-    var body: some View {
-        HStack(spacing: 8) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(.quaternary)
-                    .frame(width: 40, height: 40)
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.tint)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Messages")
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(.primary)
-                Text(
-                    conversationCount == 0
-                        ? "No conversations yet"
-                        : "\(conversationCount) conversation\(conversationCount == 1 ? "" : "s")"
-                )
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-        }
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
-    }
-}
-
-// ── Pending invite row ────────────────────────────────────────────────────
-
-private struct PendingInviteRow: View {
-    let welcome: MarmotPendingWelcome
-    @EnvironmentObject private var model: KernelModel
-
-    @State private var busy = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "envelope.badge.fill")
-                    .foregroundStyle(.tint)
-                Text(welcome.groupName.isEmpty ? "Group invite" : welcome.groupName)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-            }
-            Text("From \(shortNpub(welcome.inviterNpub))")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            HStack(spacing: 12) {
-                Button {
-                    busy = true
-                    _ = model.marmot.acceptWelcome(welcomeIDHex: welcome.idHex)
-                    busy = false
-                } label: {
-                    Text("Accept")
-                        .font(.callout.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                }
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("marmot-accept-invite-\(welcome.idHex)")
-
-                Button {
-                    busy = true
-                    _ = model.marmot.declineWelcome(welcomeIDHex: welcome.idHex)
-                    busy = false
-                } label: {
-                    Text("Decline")
-                        .font(.callout.weight(.semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                }
-                .buttonStyle(.bordered)
-            }
-            .disabled(busy)
-            .opacity(busy ? 0.5 : 1.0)
-        }
-        .padding(.vertical, 4)
-    }
-
-    private func shortNpub(_ npub: String) -> String {
-        guard npub.count >= 16 else { return npub }
-        return "\(npub.prefix(10))…\(npub.suffix(6))"
-    }
-}
-
 // ── Create-group sheet ────────────────────────────────────────────────────
 
-struct MarmotCreateGroupSheet: View {
+struct NewGroupSheet: View {
     @EnvironmentObject private var model: KernelModel
     @Environment(\.dismiss) private var dismiss
 
@@ -352,24 +246,34 @@ struct MarmotCreateGroupSheet: View {
                     field("Group name", text: $name, placeholder: "Trusted circle")
                     field("Description", text: $groupDescription, placeholder: "Optional")
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Invitee npubs")
+                        Text("Members")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         TextEditor(text: $inviteeText)
-                            .font(.body.monospaced())
                             .frame(minHeight: 90)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .overlay(alignment: .topLeading) {
                                 if inviteeText.isEmpty {
-                                    Text("npub1…, npub1… (comma or newline separated)")
-                                        .font(.body.monospaced())
+                                    Text("npub1... or hex pubkey, one per line")
+                                        .font(.body)
                                         .foregroundStyle(.secondary)
                                         .allowsHitTesting(false)
                                         .padding(.top, 8)
                                 }
                             }
                     }
+                }
+
+                Section {
+                    Picker("Type", selection: .constant(0)) {
+                        Text("Private").tag(0)
+                        Text("Public (coming soon)").tag(1)
+                    }
+                    .pickerStyle(.segmented)
+                    .disabled(true)
+                } footer: {
+                    Text("Private groups are end-to-end encrypted. Public groups are coming soon.")
                 }
 
                 if let errorMessage {
@@ -384,7 +288,7 @@ struct MarmotCreateGroupSheet: View {
                     Button {
                         create()
                     } label: {
-                        Label("Create group", systemImage: "lock.shield.fill")
+                        Text("Create group")
                     }
                     .disabled(trimmedName.isEmpty || busy)
                 }
