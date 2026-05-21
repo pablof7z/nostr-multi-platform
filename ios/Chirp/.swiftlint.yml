@@ -1,0 +1,94 @@
+# Chirp SwiftLint configuration — PR-L (native hygiene).
+#
+# Scope of the enabled rules is deliberately narrow: this config exists to
+# defend the FFI boundary (`Chirp/Bridge/`) against `try!` / `!` /
+# unstructured `print(...)` regressions. The rest of the codebase is not yet
+# audited for SwiftLint compliance and the broader catalog (style / line
+# length / type body length / etc.) is intentionally left in its disabled
+# default state. Future PRs may expand the surface.
+
+included:
+  - Chirp/Bridge
+
+# We do NOT lint the broader app yet — only the FFI shell. Everything below
+# `Chirp/` that isn't `Chirp/Bridge/` is excluded.
+excluded:
+  - Chirp.xcodeproj
+  - ChirpTests
+  - ChirpUITests
+  - Chirp/App
+  - Chirp/Design
+  - Chirp/Features
+  - Chirp/Lifecycle
+  - Chirp/Util
+  - Chirp/Localization
+  - Chirp/Resources
+
+# Disable every default opt-in rule we don't explicitly want — keeps the
+# emitted ruleset small and focused on hygiene.
+disabled_rules:
+  - line_length
+  - identifier_name
+  - type_name
+  - file_length
+  - type_body_length
+  - function_body_length
+  - function_parameter_count
+  - large_tuple
+  - trailing_whitespace
+  - trailing_comma
+  - opening_brace
+  - closure_parameter_position
+  - todo
+  - cyclomatic_complexity
+  - nesting
+  - shorthand_operator
+  - statement_position
+  - comma
+  - colon
+  - vertical_whitespace
+  - vertical_parameter_alignment
+  - function_name_whitespace
+  - return_arrow_whitespace
+  - mark
+  - control_statement
+  - redundant_string_enum_value
+  - implicit_optional_initialization
+  - unused_optional_binding
+  - unused_closure_parameter
+  - empty_enum_arguments
+  - implicit_getter
+  - for_where
+  - switch_case_alignment
+  - syntactic_sugar
+  - leading_whitespace
+  - private_over_fileprivate
+  - inclusive_language
+
+# Hygiene rules — errors (build-breaking) on the FFI surface.
+opt_in_rules:
+  - force_try
+  - force_unwrapping
+
+# Promote the two force rules to errors on Chirp/Bridge/.
+force_try:
+  severity: error
+force_unwrapping:
+  severity: error
+
+# Custom rule: ban `print(...)` inside Chirp/Bridge/. The kernel FFI shell
+# must route diagnostics through `os.Logger` so log output is structured
+# (subsystem / category / privacy classifiers) instead of unstructured
+# stdout strings. The default `no_print` SwiftLint rule does not ship in
+# 0.62 — this custom rule replicates its intent, scoped to `Bridge/`.
+custom_rules:
+  no_print_in_bridge:
+    name: "no_print_in_bridge"
+    # Use SourceKit token kinds to match the `print` IDENTIFIER only —
+    # docstrings and inline comments (which contain `print("…")` in
+    # explanatory text) are excluded.
+    regex: '\bprint\s*\('
+    match_kinds:
+      - identifier
+    message: "Use `os.Logger` (subsystem `org.nmp.chirp.diag`) instead of `print(...)` in Chirp/Bridge/. Bridge code is the FFI shell — diagnostics MUST be structured."
+    severity: error
