@@ -37,7 +37,7 @@ fn post_chat_message_plan(action: &PostChatMessageInput) -> PublishPlan {
     PublishPlan::pinned(&action.group, KIND_CHAT_MESSAGE, action.content.clone(), tags)
 }
 
-/// Map a validated `nip29.post_chat_message` action JSON to the [`ActorCommand`]
+/// Map a validated `nmp.nip29.post_chat_message` action JSON to the [`ActorCommand`]
 /// that publishes the kind:9 group chat message.
 pub fn post_chat_message_command(action_json: &str) -> Result<ActorCommand, String> {
     let input: PostChatMessageInput =
@@ -47,7 +47,10 @@ pub fn post_chat_message_command(action_json: &str) -> Result<ActorCommand, Stri
 
 pub struct PostChatMessageAction;
 impl ActionModule for PostChatMessageAction {
-    const NAMESPACE: &'static str = "nip29.post_chat_message";
+    /// Wire-schema note: was `nip29.post_chat_message` before the namespace-prefix
+    /// rename (PR-B). Every protocol crate now uses the `nmp.<nip>.<verb>`
+    /// shape — enforced by doctrine-lint rule D9.
+    const NAMESPACE: &'static str = "nmp.nip29.post_chat_message";
     type Action = PostChatMessageInput;
     fn start(
         _ctx: &mut ActionContext,

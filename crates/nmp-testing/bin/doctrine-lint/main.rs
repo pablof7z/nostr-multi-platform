@@ -1,7 +1,7 @@
-//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8.
+//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9.
 //!
 //! See `walker.rs` for the `#[cfg(test)]` module tracker, `allow.rs` for the
-//! per-line opt-out comment, and `rules/d{0,6,7,8}.rs` for individual rule
+//! per-line opt-out comment, and `rules/d{0,6,7,8,9}.rs` for individual rule
 //! definitions. Brainstorm item #8 in
 //! `docs/perf/parallel-work-brainstorm-2026-05-18.md`.
 //!
@@ -58,7 +58,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use rules::{d0, d6, d7, d8};
+use rules::{d0, d6, d7, d8, d9};
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
@@ -69,6 +69,7 @@ fn main() -> ExitCode {
             eprintln!();
             eprintln!(
                 "usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings] \
+                 [--d8-extra-scope <fragment>] [--d9-extra-scope <fragment>] \
                  [--workspace-d8 [--workspace-d8-root <dir>]]"
             );
             return ExitCode::from(2);
@@ -93,9 +94,13 @@ fn main() -> ExitCode {
             }
         };
         for path in &files {
-            if let Err(e) =
-                scan_one_file(path, &cfg.d8_extra_scopes, cfg.workspace_d8, &mut all_findings)
-            {
+            if let Err(e) = scan_one_file(
+                path,
+                &cfg.d8_extra_scopes,
+                &cfg.d9_extra_scopes,
+                cfg.workspace_d8,
+                &mut all_findings,
+            ) {
                 eprintln!("doctrine-lint: failed to read {}: {}", path.display(), e);
                 return ExitCode::from(2);
             }
@@ -118,7 +123,7 @@ fn main() -> ExitCode {
         let rules = if cfg.workspace_d8 {
             "D8 no-polling"
         } else {
-            "D0/D6/D7/D8"
+            "D0/D6/D7/D8/D9"
         };
         eprintln!(
             "doctrine-lint: 0 findings across {} root(s) ({} clean).",
@@ -147,6 +152,7 @@ fn main() -> ExitCode {
 fn scan_one_file(
     path: &Path,
     d8_extra_scopes: &[String],
+    d9_extra_scopes: &[String],
     workspace_d8: bool,
     findings: &mut Vec<report::Finding>,
 ) -> std::io::Result<()> {
@@ -154,6 +160,7 @@ fn scan_one_file(
     let d6_test_file = d6::file_is_test_only(path);
     let d7_in_scope = d7::file_in_scope(path);
     let d8_in_scope = d8::file_in_scope(path, d8_extra_scopes);
+    let d9_in_scope = d9_file_in_scope(path, d9_extra_scopes);
     let mut d6_state = d6::State::default();
     let mut d8_tracker = d8::HotPathTracker::default();
 
@@ -234,6 +241,25 @@ fn scan_one_file(
                 });
             }
         }
+        // D9 — protocol-crate action namespaces start with `nmp.`. Scope is
+        // every `crates/nmp-*/src/` tree EXCEPT `nmp-testing` (its own
+        // fixtures host intentional negative examples). Skipped in
+        // --workspace-d8 (no-polling sweep only).
+        if !workspace_d8 && d9_in_scope {
+            for (col, msg, suggested) in d9::check(sl.text, sl.is_comment) {
+                if allow::line_allows(sl.text, d9::ID) {
+                    continue;
+                }
+                findings.push(report::Finding {
+                    rule: d9::ID,
+                    path: path.to_path_buf(),
+                    line: sl.line_no,
+                    col,
+                    message: msg,
+                    suggested,
+                });
+            }
+        }
         // D8 — no polling (`thread::sleep`, `tokio::time::sleep`,
         // `tokio::time::sleep_until`). NOT path-scoped: the no-poll
         // doctrine applies to all non-test code under `nmp-core`. Reuses
@@ -262,6 +288,19 @@ fn scan_one_file(
     Ok(())
 }
 
+/// True iff D9 should scan `path` — either the file is inside a protocol/
+/// substrate crate (`d9::file_in_scope`), or the caller opted-in via
+/// `--d9-extra-scope <fragment>` (the fixture smoke test uses this so a
+/// staged fixture file under `target/<label>/` is reachable without faking a
+/// `crates/nmp-*` layout).
+fn d9_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
+    if d9::file_in_scope(path) {
+        return true;
+    }
+    let s = path.to_string_lossy().replace('\\', "/");
+    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // CLI
 // ────────────────────────────────────────────────────────────────────────────
@@ -274,6 +313,11 @@ struct Config {
     /// Extra path fragments treated as D8-in-scope. Used by the fixture
     /// smoke test to point the rule at `bin/doctrine-lint/fixtures/d8/`.
     d8_extra_scopes: Vec<String>,
+    /// Extra path fragments treated as D9-in-scope. Same role as
+    /// [`Self::d8_extra_scopes`]: lets the fixture smoke test point the
+    /// rule at `bin/doctrine-lint/fixtures/d9/`, which otherwise falls
+    /// outside the protocol-crate scope.
+    d9_extra_scopes: Vec<String>,
     /// `--workspace-d8`: scan every production crate for D8 no-polling
     /// violations only. D0/D6/D7 (substrate-purity rules) stay nmp-core
     /// scoped — only the universally-applicable `thread::sleep` check runs.
@@ -315,6 +359,14 @@ fn parse_args(args: &[String]) -> Result<Config, String> {
                         .clone(),
                 );
             }
+            "--d9-extra-scope" => {
+                i += 1;
+                cfg.d9_extra_scopes.push(
+                    args.get(i)
+                        .ok_or_else(|| "--d9-extra-scope requires a path fragment".to_string())?
+                        .clone(),
+                );
+            }
             "--workspace-d8" => {
                 cfg.workspace_d8 = true;
             }
@@ -326,7 +378,7 @@ fn parse_args(args: &[String]) -> Result<Config, String> {
                 ));
             }
             "-h" | "--help" => {
-                println!("usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings] [--d8-extra-scope <fragment>] [--workspace-d8 [--workspace-d8-root <dir>]]");
+                println!("usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings] [--d8-extra-scope <fragment>] [--d9-extra-scope <fragment>] [--workspace-d8 [--workspace-d8-root <dir>]]");
                 std::process::exit(0);
             }
             other => return Err(format!("unknown argument: {}", other)),

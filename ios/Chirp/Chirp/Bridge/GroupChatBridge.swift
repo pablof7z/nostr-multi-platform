@@ -11,7 +11,7 @@ import os.log
 //
 // Thin-shell rule (Chirp): ZERO protocol logic in Swift. The Rust
 // `GroupChatProjection` owns ingest filtering and newest-first ordering;
-// the `nip29.post_chat_message` action owns the kind:9 event, its tags,
+// the `nmp.nip29.post_chat_message` action owns the kind:9 event, its tags,
 // and signing. Swift only marshals JSON across the FFI and mirrors the
 // snapshot.
 //
@@ -30,7 +30,7 @@ import os.log
 // ── Write side ────────────────────────────────────────────────────────────
 //
 //   • `postChatMessage(groupId:content:)` dispatches the
-//     `nip29.post_chat_message` action through the generic
+//     `nmp.nip29.post_chat_message` action through the generic
 //     `nmp_app_dispatch_action` path. Fire-and-forget — the outcome
 //     surfaces through the next snapshot tick (matches `react` / `follow`).
 // ─────────────────────────────────────────────────────────────────────────
@@ -84,7 +84,7 @@ extension KernelHandle {
         gcLog.info("registered NIP-29 group chat projection for \(groupId.localId, privacy: .public)")
     }
 
-    /// Dispatch a `nip29.post_chat_message` action — publish a kind:9 group
+    /// Dispatch a `nmp.nip29.post_chat_message` action — publish a kind:9 group
     /// chat message. Routes through the generic `nmp_app_dispatch_action`
     /// path; the kind:9 event, its `["h", local_id]` tag, and signing are
     /// all owned by Rust (thin-shell rule). Fire-and-forget: the returned
@@ -96,10 +96,10 @@ extension KernelHandle {
             "group": groupId.jsonObject,
             "content": content,
         ]
-        dispatchNip29("nip29.post_chat_message", payload: payload, label: "postChatMessage")
+        dispatchNip29("nmp.nip29.post_chat_message", payload: payload, label: "postChatMessage")
     }
 
-    /// Dispatch a `nip29.react_in_group` action — publish a kind:7 in-group
+    /// Dispatch a `nmp.nip29.react_in_group` action — publish a kind:7 in-group
     /// reaction to `eventId`. Routes through the generic
     /// `nmp_app_dispatch_action` path; the kind:7 event, its `["h", local_id]`
     /// / `["e", target]` / `["p", author]` tags, and signing are all owned by
@@ -123,10 +123,10 @@ extension KernelHandle {
         if let eventAuthorPubkey {
             payload["target_author_pubkey"] = eventAuthorPubkey
         }
-        dispatchNip29("nip29.react_in_group", payload: payload, label: "reactToMessage")
+        dispatchNip29("nmp.nip29.react_in_group", payload: payload, label: "reactToMessage")
     }
 
-    /// Dispatch a `nip29.comment_in_group` action — publish a kind:1111 in-group
+    /// Dispatch a `nmp.nip29.comment_in_group` action — publish a kind:1111 in-group
     /// comment that replies to `replyToEventId`. Routes through the generic
     /// `nmp_app_dispatch_action` path; the kind:1111 event, its `["h", local_id]`
     /// / `["e", parent]` tags, and signing are all owned by the Rust
@@ -142,7 +142,7 @@ extension KernelHandle {
             "parent_event_id": replyToEventId,
             "content": content,
         ]
-        dispatchNip29("nip29.comment_in_group", payload: payload, label: "replyToMessage")
+        dispatchNip29("nmp.nip29.comment_in_group", payload: payload, label: "replyToMessage")
     }
 
     /// Shared fire-and-forget marshal for a NIP-29 action dispatch. Encodes
@@ -221,7 +221,7 @@ final class GroupChatStore: ObservableObject {
     /// but skipping the FFI round-trip is free).
     ///
     /// When `replyToEventId` is supplied, this routes to the
-    /// `nip29.comment_in_group` action (a kind:1111 reply) instead of a plain
+    /// `nmp.nip29.comment_in_group` action (a kind:1111 reply) instead of a plain
     /// kind:9 chat message — the reply still surfaces in this group's stream.
     /// The verb choice is the only Swift-side branch; the event kind, tags,
     /// and signing remain Rust-owned (thin-shell rule).

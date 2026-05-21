@@ -533,8 +533,8 @@ fn register_chirp_actions(app: &mut NmpApp) {
 ///   never the author's kind:10002 outbox.
 ///
 /// Namespaces come from each `<Action>::NAMESPACE` constant — the single
-/// source of truth: `nip29.post_chat_message`, `nip29.react_in_group`,
-/// `nip29.comment_in_group`. The shared [`wire_action!`] macro ensures
+/// source of truth: `nmp.nip29.post_chat_message`, `nmp.nip29.react_in_group`,
+/// `nmp.nip29.comment_in_group`. The shared [`wire_action!`] macro ensures
 /// validator and executor are always registered against the same constant,
 /// preventing namespace mismatch.
 ///
@@ -718,7 +718,7 @@ mod tests {
         // The typed `PostChatMessageAction::start` builds the `["h", local_id]`
         // tag and enforces the host pin — a missing pin would reject here.
         let body = r#"{"group":{"host_relay_url":"wss://groups.example.com","local_id":"rust-nostr"},"content":"hello"}"#;
-        let parsed = dispatch(app, "nip29.post_chat_message", body);
+        let parsed = dispatch(app, "nmp.nip29.post_chat_message", body);
         let id = parsed
             .get("correlation_id")
             .and_then(|v| v.as_str())
@@ -727,7 +727,7 @@ mod tests {
 
         // Malformed shape (missing the required `group`) is rejected by the
         // typed module validator surfaced through the host seam (D6).
-        let parsed = dispatch(app, "nip29.post_chat_message", r#"{"content":"no group"}"#);
+        let parsed = dispatch(app, "nmp.nip29.post_chat_message", r#"{"content":"no group"}"#);
         assert!(
             parsed.get("error").is_some(),
             "chat message without `group` must be rejected: {parsed}"

@@ -34,7 +34,7 @@ fn react_in_group_plan(action: &ReactInGroupInput) -> PublishPlan {
     PublishPlan::pinned(&action.group, KIND_REACTION, action.content.clone(), tags)
 }
 
-/// Map a validated `nip29.react_in_group` action JSON to the [`ActorCommand`]
+/// Map a validated `nmp.nip29.react_in_group` action JSON to the [`ActorCommand`]
 /// that publishes the kind:7 in-group reaction.
 pub fn react_in_group_command(action_json: &str) -> Result<ActorCommand, String> {
     let input: ReactInGroupInput =
@@ -44,7 +44,10 @@ pub fn react_in_group_command(action_json: &str) -> Result<ActorCommand, String>
 
 pub struct ReactInGroupAction;
 impl ActionModule for ReactInGroupAction {
-    const NAMESPACE: &'static str = "nip29.react_in_group";
+    /// Wire-schema note: was `nip29.react_in_group` before the namespace-prefix
+    /// rename (PR-B). Every protocol crate now uses the `nmp.<nip>.<verb>`
+    /// shape — enforced by doctrine-lint rule D9.
+    const NAMESPACE: &'static str = "nmp.nip29.react_in_group";
     type Action = ReactInGroupInput;
     fn start(
         _ctx: &mut ActionContext,
@@ -77,7 +80,7 @@ fn comment_in_group_plan(action: &CommentInGroupInput) -> PublishPlan {
     PublishPlan::pinned(&action.group, KIND_COMMENT, action.content.clone(), tags)
 }
 
-/// Map a validated `nip29.comment_in_group` action JSON to the [`ActorCommand`]
+/// Map a validated `nmp.nip29.comment_in_group` action JSON to the [`ActorCommand`]
 /// that publishes the kind:1111 in-group comment.
 pub fn comment_in_group_command(action_json: &str) -> Result<ActorCommand, String> {
     let input: CommentInGroupInput =
@@ -87,7 +90,10 @@ pub fn comment_in_group_command(action_json: &str) -> Result<ActorCommand, Strin
 
 pub struct CommentInGroupAction;
 impl ActionModule for CommentInGroupAction {
-    const NAMESPACE: &'static str = "nip29.comment_in_group";
+    /// Wire-schema note: was `nip29.comment_in_group` before the namespace-prefix
+    /// rename (PR-B). Every protocol crate now uses the `nmp.<nip>.<verb>`
+    /// shape — enforced by doctrine-lint rule D9.
+    const NAMESPACE: &'static str = "nmp.nip29.comment_in_group";
     type Action = CommentInGroupInput;
     fn start(
         _ctx: &mut ActionContext,
