@@ -446,6 +446,23 @@ pub fn default_registry() -> ActionRegistry {
                 });
                 Ok(())
             }
+            // D8 — non-blocking channel send only; the actor loop builds the
+            // kind:0 event, stamps `created_at`, and signs with the active
+            // account (D4/D7). The `ActionModule`-native path replacing hosts
+            // that hand-rolled a kind:0 dict and called
+            // `nmp_app_publish_unsigned_event` directly.
+            //
+            // The event id is NOT known at dispatch time (the actor signs it),
+            // so `preferred_action_id()` returns `None` and the registry minted
+            // a random `correlation_id`. Thread that id onto the command so the
+            // publish engine reports it in `last_action_result`.
+            PublishAction::PublishProfile { fields } => {
+                send(ActorCommand::PublishProfile {
+                    fields,
+                    correlation_id: Some(correlation_id.to_string()),
+                });
+                Ok(())
+            }
             // No publish-engine cancel command yet; the registry
             // already marked the action `Cancelled`.
             PublishAction::Cancel { .. } => Ok(()),
@@ -686,6 +703,90 @@ mod tests {
             matches!(cmd, ActorCommand::PublishSignedEvent { .. }),
             "a pre-signed Publish routes to PublishSignedEvent, got {cmd:?}"
         );
+    }
+
+    #[test]
+    fn start_publish_profile_action_with_string_fields_is_accepted() {
+        // `PublishAction::PublishProfile` with a flat string-valued `fields`
+        // map passes `PublishModule::start`'s validation gate — the
+        // `ActionModule`-native path replacing hosts that hand-rolled a kind:0
+        // event dict and called `nmp_app_publish_unsigned_event` directly.
+        let registry = default_registry();
+        let action_json =
+            r#"{"PublishProfile":{"fields":{"name":"Alice","about":"hello"}}}"#;
+        let (id, plan) = registry
+            .start(&mut ctx(), "nmp.publish", action_json)
+            .expect("publish-profile action with string fields should be accepted");
+        assert_eq!(id.len(), 32, "correlation id should be 32 hex chars");
+        assert_eq!(plan.initial_status, ActionStatus::Pending);
+    }
+
+    #[test]
+    fn start_publish_profile_action_with_non_string_field_is_rejected() {
+        // A kind:0 `content` is a flat JSON object of string values — a
+        // numeric (or any non-string) field is rejected at `start`.
+        let registry = default_registry();
+        let action_json = r#"{"PublishProfile":{"fields":{"name":"Alice","age":42}}}"#;
+        let err = registry
+            .start(&mut ctx(), "nmp.publish", action_json)
+            .expect_err("non-string profile field must be rejected");
+        match err {
+            ActionRejection::Invalid(msg) => {
+                assert!(
+                    msg.contains("must be a string value"),
+                    "got: {msg}"
+                );
+            }
+            other => panic!("expected Invalid, got {other:?}"),
+        }
+    }
+
+    /// The `nmp.publish` executor threads the registry-minted `correlation_id`
+    /// onto `ActorCommand::PublishProfile`. The actor signs the event, so its
+    /// id is unknown at dispatch time — without this the publish engine could
+    /// not report the host's correlation_id in `last_action_result`. Exercises
+    /// the real `default_registry()` executor closure via `execute()`.
+    #[test]
+    fn publish_profile_executor_threads_correlation_id_onto_actor_command() {
+        use crate::actor::ActorCommand;
+        use std::sync::{Arc, Mutex};
+
+        let registry = default_registry();
+        let captured: Arc<Mutex<Option<ActorCommand>>> = Arc::new(Mutex::new(None));
+        let captured_in_send = Arc::clone(&captured);
+
+        let minted_correlation_id = "ab".repeat(16);
+        let action_json =
+            r#"{"PublishProfile":{"fields":{"name":"Alice","picture":"https://x/y.png"}}}"#;
+        registry
+            .execute("nmp.publish", action_json, &minted_correlation_id, &|cmd| {
+                *captured_in_send.lock().unwrap() = Some(cmd);
+            })
+            .expect("publish-profile execution should succeed");
+
+        let cmd = captured.lock().unwrap().take().expect("an ActorCommand must be sent");
+        match cmd {
+            ActorCommand::PublishProfile {
+                fields,
+                correlation_id,
+            } => {
+                assert_eq!(
+                    fields.get("name").and_then(|v| v.as_str()),
+                    Some("Alice"),
+                    "the profile fields must be carried through verbatim"
+                );
+                assert_eq!(
+                    fields.get("picture").and_then(|v| v.as_str()),
+                    Some("https://x/y.png")
+                );
+                assert_eq!(
+                    correlation_id,
+                    Some(minted_correlation_id),
+                    "the executor must thread the minted correlation_id onto the command"
+                );
+            }
+            other => panic!("expected ActorCommand::PublishProfile, got {other:?}"),
+        }
     }
 
     #[test]
