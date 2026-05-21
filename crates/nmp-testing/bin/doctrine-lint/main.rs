@@ -395,14 +395,17 @@ fn default_workspace_root() -> PathBuf {
 }
 
 /// Enumerate every `<workspace_root>/crates/<name>/src/` directory, skipping
-/// the crates in [`WORKSPACE_D8_SKIP_CRATES`]. Returns a sorted, deterministic
-/// list. A crate with no `src/` directory is silently skipped.
+/// the crates in [`WORKSPACE_D8_SKIP_CRATES`]. Also enumerates app-layer
+/// Rust crates under `apps/<app>/<crate>/src/` (one level deeper than
+/// `crates/`). Returns a sorted, deterministic list. A crate with no `src/`
+/// directory is silently skipped.
 fn workspace_crate_src_roots(workspace_root: &Path) -> Result<Vec<PathBuf>, String> {
+    let mut roots = Vec::new();
+
+    // ── crates/<name>/src/ ────────────────────────────────────────────────────
     let crates_dir = workspace_root.join("crates");
     let entries = std::fs::read_dir(&crates_dir)
         .map_err(|e| format!("failed to read {}: {}", crates_dir.display(), e))?;
-
-    let mut roots = Vec::new();
     for entry in entries {
         let entry = entry.map_err(|e| format!("failed to read crates/ entry: {}", e))?;
         if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
@@ -418,6 +421,37 @@ fn workspace_crate_src_roots(workspace_root: &Path) -> Result<Vec<PathBuf>, Stri
             roots.push(src);
         }
     }
+
+    // ── apps/<app>/<crate>/src/ ───────────────────────────────────────────────
+    // App-layer Rust crates live one level deeper than `crates/` (the extra
+    // nesting is the app name, e.g. `apps/chirp/nmp-app-chirp/src`). Walk two
+    // levels: app-directory → crate-directory → src.
+    let apps_dir = workspace_root.join("apps");
+    if apps_dir.is_dir() {
+        let app_entries = std::fs::read_dir(&apps_dir)
+            .map_err(|e| format!("failed to read {}: {}", apps_dir.display(), e))?;
+        for app_entry in app_entries {
+            let app_entry =
+                app_entry.map_err(|e| format!("failed to read apps/ entry: {}", e))?;
+            if !app_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                continue;
+            }
+            let crate_entries = std::fs::read_dir(app_entry.path())
+                .map_err(|e| format!("failed to read {}: {}", app_entry.path().display(), e))?;
+            for crate_entry in crate_entries {
+                let crate_entry =
+                    crate_entry.map_err(|e| format!("failed to read app crate entry: {}", e))?;
+                if !crate_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                    continue;
+                }
+                let src = crate_entry.path().join("src");
+                if src.is_dir() {
+                    roots.push(src);
+                }
+            }
+        }
+    }
+
     roots.sort();
     Ok(roots)
 }

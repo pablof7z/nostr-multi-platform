@@ -51,6 +51,14 @@ const BANNED_TOKENS: &[(&str, &str)] = &[
 
 pub fn file_is_exempt(path: &Path) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
+    // D0's mandate is the kernel substrate crate (`nmp-core`). App-layer
+    // crates under `apps/` legitimately use domain nouns — e.g. `nmp-app-chirp`
+    // imports `nmp_nip29` types — so the rule does not apply to them.
+    // Match both `/apps/` (absolute/relative with leading component) and
+    // the case where the path starts directly with `apps/`.
+    if s.contains("/apps/") || s.starts_with("apps/") {
+        return true;
+    }
     EXEMPT_FILE_SUFFIXES.iter().any(|suf| s.ends_with(suf))
 }
 

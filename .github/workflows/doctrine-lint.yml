@@ -1,15 +1,18 @@
 name: doctrine-lint
 
-# Enforces the four cardinal-doctrine grep gates against `nmp-core`:
+# Enforces the four cardinal-doctrine grep gates:
 #   - D0: no app nouns (NIP-29, group_id, pin_to, ...) in the kernel substrate
+#         (nmp-core only; app-layer crates under apps/ are D0-exempt by design)
 #   - D6: no panic / unwrap / expect / unreachable / todo outside test cfg
 #   - D7: capability traits never name policy-decision verbs (retry, select, ...)
 #   - D8: hot-path-marked fns never allocate per-event (format!, Vec::new, ...)
 #         + no polling — `thread::sleep` is banned in non-test kernel code
 #
-# D0/D6/D7 + the hot-path half of D8 are nmp-core-scoped. The no-polling half
-# of D8 is universally applicable, so `--workspace-d8` re-runs *only* that
-# check across every production crate.
+# D0/D6/D7 + the hot-path half of D8 are nmp-core-scoped.
+# D6/D7/D8 are also applied to app-layer Rust crates (nmp-app-chirp) to
+# enforce the thin-shell rule: no panics at app-layer FFI boundaries.
+# The no-polling half of D8 is universally applicable; `--workspace-d8`
+# re-runs *only* that check across every production crate AND app crate.
 #
 # Brainstorm item #8 — see docs/perf/parallel-work-brainstorm-2026-05-18.md
 # Per-rule docstrings live in crates/nmp-testing/bin/doctrine-lint/rules/.
@@ -52,7 +55,10 @@ jobs:
       - name: Run doctrine-lint against nmp-core
         run: cargo run --quiet -p nmp-testing --bin doctrine-lint -- --crate nmp-core
 
-      - name: Run D8 no-polling gate across all production crates
+      - name: Run D6/D7/D8 against nmp-app-chirp (thin-shell rule)
+        run: cargo run --quiet -p nmp-testing --bin doctrine-lint -- --path apps/chirp/nmp-app-chirp/src
+
+      - name: Run D8 no-polling gate across all production crates and apps
         run: cargo run --quiet -p nmp-testing --bin doctrine-lint -- --workspace-d8
 
       - name: Run smoke tests (fixtures pass/fail per rule)
