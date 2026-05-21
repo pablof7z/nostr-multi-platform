@@ -1034,6 +1034,32 @@ impl Kernel {
         self.relay_edit_rows_handle.take()
     }
 
+    /// Test-only seam — clear the kernel's `relay_edit_rows` so the empty
+    /// bootstrap state can be exercised end-to-end.
+    ///
+    /// `bootstrap_urls_for_role` has a `#[cfg(test)]` fallback that seeds a
+    /// default Content/Indexer relay when `relay_edit_rows` is empty (see
+    /// `kernel/mod.rs::bootstrap_urls_for_role`'s `#[cfg(test)] if urls.is_empty()`
+    /// block). That fallback exists so the vast majority of unit tests don't
+    /// need to hand-roll a relay seed for every fresh kernel. The PR-K3 D10
+    /// defensive-guard test wants the OPPOSITE — a kernel whose
+    /// `relay_edit_rows` is empty AND whose `bootstrap_urls_for_role`
+    /// returns empty, so the dispatch path that lands a kind:1059 envelope
+    /// in `publish_signed_event` with `relays: vec![]` cannot accidentally
+    /// pass the guard via the cfg(test) backstop.
+    ///
+    /// `pub(crate)` is sufficient — no FFI / cross-crate caller; the
+    /// `commands` tests reach it through the kernel's internal API.
+    #[cfg(test)]
+    pub(crate) fn clear_relay_edit_rows_for_test(&mut self) {
+        self.relay_edit_rows.clear();
+        if let Some(handle) = self.relay_edit_rows_handle.as_ref() {
+            if let Ok(mut guard) = handle.lock() {
+                guard.clear();
+            }
+        }
+    }
+
     /// Register a subscription id as persistent — EOSE will not auto-CLOSE it.
     /// Used by long-lived protocol lanes (NWC kind:23195 listener) where the
     /// subscription must remain open for the connection lifetime. Inverse of

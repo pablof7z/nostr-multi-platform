@@ -1081,12 +1081,26 @@ impl NmpApp {
     /// symbols used to land on); forged or garbled events are dropped with a
     /// kernel toast.
     ///
-    /// Routing mode mirrors the deleted FFI exactly:
-    /// - empty `relays` → `PublishTarget::Auto` (author's NIP-65 outbox).
+    /// Routing mode:
+    /// - empty `relays` → `PublishTarget::Auto` (author's NIP-65 outbox)
+    ///   for every kind EXCEPT kind:1059 (gift-wrap), which is REFUSED by
+    ///   the kernel-side D10 defensive guard added in PR-K3.
     /// - non-empty → `PublishTarget::Explicit { relays }`, bypassing the
     ///   outbox resolver. Marmot uses this for relay-pinned kind:445 commits
-    ///   / messages and as the documented kind:1059 inbox-routing
-    ///   approximation.
+    ///   / messages and for kind:1059 inbox-routing (recipient kind:10050).
+    ///
+    /// **kind:1059 callers MUST supply an explicit pin.** Earlier revisions
+    /// of this docstring described the empty-relays → Auto fallback as the
+    /// "documented kind:1059 inbox-routing approximation"; that allowance
+    /// is gone. `crates/nmp-core/src/actor/commands/publish.rs::publish_signed_event`
+    /// now refuses any kind:1059 envelope whose `relays` slice is empty,
+    /// sets a D6 toast on the kernel, and drops the envelope — the same
+    /// behaviour the call-site guard in `commands::dm::send_gift_wrapped_dm`
+    /// (PR #229) gives the NIP-17 send path. The Marmot bridge's own runtime
+    /// guard in `nmp-marmot::projection::publish::publish_to` is the
+    /// matching guard for the C-ABI symbol path; together they make a
+    /// kind:1059 Auto-route structurally impossible regardless of which
+    /// entry point a caller reaches the kernel through.
     ///
     /// Theme A discriminator (see `substrate/action.rs`): this is the
     /// system-authored / lifecycle exception to "every event-producing
