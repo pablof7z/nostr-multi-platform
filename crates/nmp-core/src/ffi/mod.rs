@@ -182,6 +182,7 @@ use crate::actor::{
 use crate::capability_socket::{new_capability_callback_slot, CapabilityCallbackSlot};
 use crate::relay::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 use std::ffi::{c_char, c_uint, c_void, CStr, CString};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -252,7 +253,14 @@ pub struct NmpApp {
     /// composition layer should publish a key package after it registers the new
     /// local identity. Kept beside the app handle because `nmp-core` owns the
     /// single account-creation FFI verb while app crates own MLS details.
-    pending_mls_autopublish: Arc<Mutex<bool>>,
+    ///
+    /// A bare `AtomicBool` — this flag is only ever read/written through
+    /// `&self` accessors on this struct and is never shared with the actor
+    /// thread (unlike the `Arc<Mutex<…>>` observer/storage slots, no clone is
+    /// handed to `run_actor_with_observers`). A `Mutex<bool>` would be the
+    /// wrong primitive for a single-shot lock-free flag, and the `Arc` would
+    /// be dead shared ownership nothing consumes.
+    pending_mls_autopublish: AtomicBool,
     actor: Mutex<Option<JoinHandle<()>>>,
     update_listener: Mutex<Option<JoinHandle<()>>>,
     /// M6 — namespace-keyed action-dispatch registry backing
@@ -371,7 +379,9 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // → in-memory store.
     let storage_path: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let actor_storage_path = Arc::clone(&storage_path);
-    let pending_mls_autopublish = Arc::new(Mutex::new(false));
+    // One-shot MLS-autopublish intent flag. Not shared with the actor thread,
+    // so a bare `AtomicBool` — no `Arc`, no `Mutex` — is the right primitive.
+    let pending_mls_autopublish = AtomicBool::new(false);
     // Clone so we can report actor death through the same listener pipe.
     // The actor `move`s its own `update_tx` into `run_actor_with_observers`;
     // this clone is the supervisor's last live handle once that one is
@@ -660,18 +670,16 @@ impl NmpApp {
     }
 
     pub(crate) fn set_pending_mls_autopublish(&self, enabled: bool) {
-        if let Ok(mut pending) = self.pending_mls_autopublish.lock() {
-            *pending = enabled;
-        }
+        self.pending_mls_autopublish
+            .store(enabled, Ordering::Release);
     }
 
+    /// Reads the one-shot MLS-autopublish intent and clears it in the same
+    /// atomic step (`swap`), so a second caller cannot re-observe the flag.
+    /// Atomics cannot poison, so — unlike the previous `Mutex<bool>` — there
+    /// is no lock-failure fallback path that could silently drop the intent.
     pub fn take_pending_mls_autopublish(&self) -> bool {
-        let Ok(mut pending) = self.pending_mls_autopublish.lock() else {
-            return false;
-        };
-        let value = *pending;
-        *pending = false;
-        value
+        self.pending_mls_autopublish.swap(false, Ordering::AcqRel)
     }
 
     /// Clone of the actor command sender. Used by `nmp-signer-broker` to push
