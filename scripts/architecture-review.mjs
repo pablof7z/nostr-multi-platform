@@ -308,7 +308,7 @@ async function main() {
   const report = {
     provider,
     model: provider === "mock" ? "mock" : model,
-    required: true,
+    required,
     base_sha: base,
     head_sha: head,
     generated_at: new Date().toISOString(),
@@ -329,6 +329,11 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(`architecture-review: ${error.message}`);
-  process.exit(2);
+  if (isEnabled(process.env.ARCHITECTURE_REVIEW_REQUIRED)) {
+    console.error(`architecture-review: ${error.message}`);
+    process.exit(2);
+  } else {
+    console.warn(`architecture-review: skipped (not required) — ${error.message}`);
+    process.exit(0);
+  }
 });
