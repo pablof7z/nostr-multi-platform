@@ -139,9 +139,23 @@ impl Kernel {
         let correlation_id_for_failure = correlation_id_override.clone();
         match self
             .publish_engine
-            .start_publish(action, now_ms, correlation_id_override)
+            .start_publish(action, now_ms, correlation_id_override.clone())
         {
             Ok(()) => {
+                // PR-G: a `correlation_id`-bearing publish reached the
+                // engine's accept path — record `Publishing` so the host's
+                // stage mirror reflects the lifecycle transition. The
+                // detail payload carries the event id so a host that
+                // displays a per-publish progress label has the data.
+                // Non-dispatch publishes (the `None` branch) skip this:
+                // there is no host spinner to inform.
+                if let Some(cid) = correlation_id_override.as_ref() {
+                    self.record_action_stage(
+                        cid,
+                        super::action_stages::ActionStage::Publishing,
+                        Some(serde_json::json!({ "event_id": event_id })),
+                    );
+                }
                 self.record_local_publish_intent(signed);
                 let frames = self.drain_publish_engine_frames(&event_id, kind);
                 // Synchronous dispatchers (e.g. some test fixtures) can settle
@@ -441,10 +455,40 @@ impl Kernel {
     /// projection. Each tick surfaces every result that arrived, not just the
     /// most recent. The host uses this to resolve any spinner whose
     /// `correlation_id` appears here.
+    ///
+    /// PR-G — as a sibling effect, every terminal also records an `Accepted`
+    /// / `Failed` stage into the `action_stages` snapshot mirror so a host
+    /// that listens through the stage seam (a richer lifecycle than the
+    /// boolean `action_results` drain) observes the terminal exactly once.
+    /// The two surfaces are additive: `action_results` is the per-tick edge,
+    /// `action_stages` is the persisted mirror. A host may use either.
     pub(super) fn take_action_results_projection(&mut self) -> serde_json::Value {
         let terminals = self.publish_engine.take_pending_terminals();
         if terminals.is_empty() {
             return serde_json::Value::Null;
+        }
+        // PR-G: record the terminal into the stage mirror *before* serializing
+        // the action_results array. The mirror's `at_ms` is sourced from
+        // `now_ms()` so a `FixedClock` keeps the timestamp deterministic.
+        let now_ms = self.now_ms();
+        for terminal in &terminals {
+            let stage = match terminal.status {
+                "ok" => super::action_stages::ActionStage::Accepted,
+                _ => super::action_stages::ActionStage::Failed {
+                    reason: terminal
+                        .error
+                        .clone()
+                        .unwrap_or_else(|| terminal.status.to_string()),
+                },
+            };
+            // `record` is silent on cap hits (D6) — the diagnostic counters
+            // surface the event without interrupting the publish path.
+            self.action_stages.record(
+                &terminal.correlation_id,
+                stage,
+                None,
+                now_ms,
+            );
         }
         let arr: Vec<serde_json::Value> = terminals
             .iter()

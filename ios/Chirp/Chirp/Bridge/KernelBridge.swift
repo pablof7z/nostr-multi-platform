@@ -357,6 +357,16 @@ final class KernelHandle {
         return DispatchResult.parse(envelope: envelope)
     }
 
+    /// PR-G — acknowledge a `correlation_id` in the `action_stages` snapshot
+    /// mirror so the kernel drops its stage history. The host calls this AFTER
+    /// reacting to the terminal stage (`Accepted` / `Failed`) — until acked the
+    /// entry persists on every snapshot, so a dropped tick cannot strand the
+    /// progress indicator. Dispatch is non-blocking (D8). A null / unknown
+    /// correlation_id is a silent no-op (D6).
+    func ackActionStage(_ correlationId: String) {
+        correlationId.withCString { nmp_app_ack_action_stage(raw, $0) }
+    }
+
     func addRelay(url: String, role: String) {
         url.withCString { uPtr in
             role.withCString { rPtr in
@@ -688,6 +698,14 @@ struct KernelUpdate: Decodable {
     /// management — the scalar drops terminals when two actions settle in one tick.
     var actionResults: [LastActionResult]? { projections?.actionResults }
 
+    /// PR-G: per-correlation_id stage history — `projections["action_stages"]`.
+    /// `nil` in steady state; a `{correlation_id → [ActionStage...]}` map
+    /// whenever any action's stages are tracked. Unlike `actionResults` (drained
+    /// on emit) the same correlation_id reappears on every tick until the host
+    /// calls `kernel.ackActionStage(_:)` — the race-protection guarantee that
+    /// a dropped tick cannot strand a progress indicator.
+    var actionStages: [String: [ActionStageEntry]]? { projections?.actionStages }
+
     /// Most recent terminal action result — `projections["last_action_result"]`
     /// (direction review #24). Prefer `actionResults` (array) — this scalar
     /// silently drops terminals when two actions settle in the same kernel tick.
@@ -818,6 +836,11 @@ struct SnapshotProjections: Decodable, Equatable {
     // Direction review #24: sticky scalar — only the most recent terminal.
     // Kept for backward compat; prefer `actionResults` for multi-action ticks.
     let lastActionResult: LastActionResult?
+    // PR-G: per-correlation_id stage mirror. Snake_case JSON key
+    // `action_stages` decodes via `.convertFromSnakeCase` to `actionStages`.
+    // The map is `correlation_id (String) → [ActionStageEntry]` ordered by
+    // recording time. Absent when no correlation_id is currently tracked.
+    let actionStages: [String: [ActionStageEntry]]?
     // D0: views cluster. The active-account `profile` card, the visible
     // `timeline` (the kernel renamed the generic `items` key to the more
     // descriptive `timeline`), the open-view `authorView` / `threadView`
@@ -906,6 +929,7 @@ struct SnapshotProjections: Decodable, Equatable {
         case activeAccount
         case actionResults
         case lastActionResult
+        case actionStages
         case profile
         case timeline
         case authorView
@@ -1382,6 +1406,88 @@ struct LastActionResult: Decodable, Equatable {
     let correlationId: String
     let status: String
     let error: String?
+}
+
+// ─── PR-G: action_stages projection wire type ────────────────────────────
+//
+// One entry in a correlation_id's stage history. The Rust side uses serde
+// `#[serde(tag = "stage", rename_all = "snake_case")]` so the `stage`
+// discriminant ships as a flat snake_case string ("requested",
+// "publishing", "accepted", "failed"). `Failed` carries a sibling
+// `reason` field; other variants do not. `at_ms` is the Unix epoch
+// millisecond stamp at recording time (kernel clock, deterministic under
+// replay). `detail` is opaque per-stage JSON the host renders verbatim
+// — `nil` when the kernel emitted no detail.
+//
+// To preserve the JSON-decoded `detail` as opaque data, we use
+// `AnyCodableValue` (an existing helper in this file) or a `JSONValue`
+// wrapper. Since the host largely doesn't introspect `detail` today, a
+// `Data?`-style passthrough is sufficient: decode as `String?` of the
+// JSON serialization. For PR-G the renderer needs only `stage` and
+// `reason`; carrying `detail` as `[String: AnyDecodable]` is future
+// work.
+
+/// One stage in an async action's lifecycle, decoded from one entry of
+/// `projections["action_stages"][<correlation_id>][i]`.
+///
+/// Construction-time decoding is forgiving: any unrecognized `stage`
+/// discriminant collapses to `.unknown(raw:)` so a future kernel stage
+/// added without a Swift counterpart does not crash the bridge (D1 —
+/// snapshot decoders must degrade gracefully on schema growth).
+enum ActionStage: Equatable {
+    case requested
+    case awaitingCapability
+    case publishing
+    case accepted
+    /// `reason` is the human-readable failure message the host renders
+    /// verbatim. Mirrors the `error` field on `LastActionResult`.
+    case failed(reason: String)
+    /// Catchall for future kernel stages — preserves the raw tag so a
+    /// diagnostic view can still display something meaningful.
+    case unknown(raw: String)
+
+    var isTerminal: Bool {
+        switch self {
+        case .accepted, .failed: return true
+        default: return false
+        }
+    }
+}
+
+/// One row in a correlation_id's stage history. The PR-G snapshot mirror
+/// projection emits a `[String: [ActionStageEntry]]` map; this struct
+/// decodes one element of the inner array.
+struct ActionStageEntry: Decodable, Equatable {
+    let stage: ActionStage
+    /// Unix epoch milliseconds — when the kernel reducer recorded the
+    /// transition. Stable under `FixedClock` for deterministic replay.
+    let atMs: UInt64
+
+    enum CodingKeys: String, CodingKey {
+        case stage
+        case atMs
+        case reason
+        // `detail` is intentionally not decoded — the bridge passes the
+        // stage forward verbatim without introspection. Future work can
+        // add a typed `detail` field per-stage.
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let raw = try container.decode(String.self, forKey: .stage)
+        atMs = try container.decode(UInt64.self, forKey: .atMs)
+        switch raw {
+        case "requested": stage = .requested
+        case "awaiting_capability", "awaitingCapability": stage = .awaitingCapability
+        case "publishing": stage = .publishing
+        case "accepted": stage = .accepted
+        case "failed":
+            let reason = try container.decodeIfPresent(String.self, forKey: .reason) ?? ""
+            stage = .failed(reason: reason)
+        default:
+            stage = .unknown(raw: raw)
+        }
+    }
 }
 
 struct PublishOutboxItem: Decodable, Identifiable, Equatable {

@@ -234,6 +234,14 @@ typedef const char *(*NmpActionValidator)(const char *action_json);
 void nmp_app_register_action_module(void *app, const char *namespace, NmpActionValidator validator);
 typedef void (*NmpActionResultObserver)(const char *result_json);
 void nmp_app_register_action_result_observer(void *app, NmpActionResultObserver observer);
+// PR-G: ack a `correlation_id` in the `action_stages` snapshot mirror so the
+// kernel drops its stage history. The host calls this AFTER it has reacted
+// to the terminal stage (`Accepted` / `Failed`) — the entry persists across
+// every snapshot tick until acked, so a dropped tick cannot strand the
+// progress indicator. A null `app`, a null/empty `correlation_id`, or an
+// unknown id is a silent no-op (D6). Dispatch is non-blocking: this only
+// enqueues an actor command (D8).
+void nmp_app_ack_action_stage(void *app, const char *correlation_id);
 typedef const char *(*NmpSnapshotProjector)(void);
 void nmp_app_register_snapshot_projection(void *app, const char *key, NmpSnapshotProjector projector);
 void nmp_app_free_string(char *ptr);

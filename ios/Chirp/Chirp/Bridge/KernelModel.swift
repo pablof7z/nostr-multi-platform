@@ -423,9 +423,17 @@ final class KernelModel: ObservableObject {
         discoveredGroups.apply(snapshot: update.discoveredGroups)
 
         // PR-A: drain `pendingActions` by every terminal verdict on this tick.
+        // PR-G: the `action_stages` mirror persists each correlation_id's
+        // stage history until the host acks. We ack on the same tick we drain
+        // `pendingActions` so the next snapshot no longer carries the entry —
+        // mirrors the spinner-cleanup edge `action_results` already exposes.
+        // `ackActionStage` is non-blocking (enqueues an ActorCommand), so
+        // calling it for every terminal in this tick costs one channel push
+        // per terminal — bounded by the count already in `results`.
         if let results = update.actionResults, !results.isEmpty {
             for terminal in results {
                 pendingActions.remove(terminal.correlationId)
+                kernel.ackActionStage(terminal.correlationId)
             }
         }
 

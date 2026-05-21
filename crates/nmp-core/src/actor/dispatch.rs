@@ -295,6 +295,20 @@ pub(super) fn dispatch_command(
             reply_to_id,
             correlation_id,
         } => {
+            // PR-G: record the `Requested` stage the moment the actor
+            // dequeues the dispatched action. This is the kernel-side
+            // entry point of an async action — every other stage is
+            // recorded downstream (`Publishing` at engine accept,
+            // `Accepted` / `Failed` on terminal drain). Skipped for
+            // non-dispatch callers (`correlation_id == None`); there is
+            // no host spinner to inform.
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
             let outbound = commands::publish_note(
                 ctx.identity,
                 ctx.kernel,
@@ -310,6 +324,14 @@ pub(super) fn dispatch_command(
             fields,
             correlation_id,
         } => {
+            // PR-G — see PublishNote arm above. Same entry-point seam.
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
             let outbound = commands::publish_profile(
                 ctx.identity,
                 ctx.kernel,
@@ -359,6 +381,15 @@ pub(super) fn dispatch_command(
             relays,
             correlation_id,
         } => {
+            // PR-G — see PublishNote arm above. The pre-signed dispatch
+            // path also gets the `Requested` lifecycle entry.
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
             let outbound =
                 commands::publish_signed_event(ctx.kernel, raw, &relays, correlation_id);
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
@@ -473,6 +504,18 @@ pub(super) fn dispatch_command(
                 commands::wallet_pay_invoice(ctx.wallet, ctx.kernel, &bolt11, amount_msats);
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
+        }
+        ActorCommand::AckActionStage(correlation_id) => {
+            // PR-G — host acknowledged that it has consumed a terminal
+            // stage for this correlation_id. Drop the entry from the
+            // `action_stages` mirror so the next snapshot tick no longer
+            // carries it. The kernel sets `changed_since_emit` so the
+            // emission fires promptly; `maybe_emit_after_dispatch` honours
+            // the configured throttle. Idempotent: a duplicate ack from
+            // a host that races a snapshot is a silent no-op.
+            ctx.kernel.ack_action_stage(&correlation_id);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
         }
         ActorCommand::LifecycleEvent(phase) => {
             // T118 / G3 — fold scenePhase into the kernel state and fire
