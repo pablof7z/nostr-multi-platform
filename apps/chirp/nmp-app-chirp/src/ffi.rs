@@ -37,8 +37,11 @@
 use std::ffi::{c_char, CStr, CString};
 use std::sync::{Arc, Mutex};
 
+#[cfg(test)]
 use nmp_core::substrate::ActionModule;
-use nmp_core::{ActorCommand, KernelEventObserver, KernelEventObserverId, NmpApp};
+#[cfg(test)]
+use nmp_core::ActorCommand;
+use nmp_core::{KernelEventObserver, KernelEventObserverId, NmpApp};
 use nmp_nip29::group_id::GroupId;
 use nmp_nip29::projection::{DiscoveredGroupsProjection, GroupChatProjection};
 use nmp_nip29::action::{

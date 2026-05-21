@@ -80,11 +80,24 @@ impl ActionModule for DiscoverGroupsAction {
 mod tests {
     use super::*;
 
+    /// Capture commands DiscoverGroupsAction::execute sends.
+    fn execute_capture(input: DiscoverGroupsInput) -> Result<Vec<ActorCommand>, String> {
+        use std::cell::RefCell;
+        let cell: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+        DiscoverGroupsAction::execute(input, "test-corr-id", &|cmd| {
+            cell.borrow_mut().push(cmd);
+        })?;
+        Ok(cell.into_inner())
+    }
+
     #[test]
     fn well_formed_input_yields_push_interest_command() {
-        let body =
-            r#"{"relay_url":"wss://groups.example.com"}"#;
-        match discover_groups_command(body).expect("well-formed body parses") {
+        let input = DiscoverGroupsInput {
+            relay_url: "wss://groups.example.com".to_string(),
+        };
+        let cmds = execute_capture(input).expect("well-formed input executes");
+        assert_eq!(cmds.len(), 1);
+        match cmds.into_iter().next().unwrap() {
             ActorCommand::PushInterest(interest) => {
                 assert_eq!(
                     interest.shape.relay_pin.as_deref(),
@@ -101,18 +114,17 @@ mod tests {
 
     #[test]
     fn empty_relay_url_is_rejected() {
-        assert!(discover_groups_command(r#"{"relay_url":""}"#).is_err());
+        let input = DiscoverGroupsInput {
+            relay_url: String::new(),
+        };
+        assert!(execute_capture(input).is_err());
     }
 
     #[test]
     fn non_websocket_scheme_is_rejected() {
-        assert!(
-            discover_groups_command(r#"{"relay_url":"https://groups.example.com"}"#).is_err()
-        );
-    }
-
-    #[test]
-    fn malformed_json_is_rejected() {
-        assert!(discover_groups_command(r#"{"not":"a relay url"}"#).is_err());
+        let input = DiscoverGroupsInput {
+            relay_url: "https://groups.example.com".to_string(),
+        };
+        assert!(execute_capture(input).is_err());
     }
 }

@@ -107,11 +107,14 @@ pub fn register(app: &mut NmpApp) -> TodoStore {
     // ADR-0027 — typed module registration binds both validator and
     // executor halves from one trait impl. The executor needs to mutate the
     // host-owned store; static trait methods cannot capture, so the store
-    // lives in `FIXTURE_TODO_STORE` (a `OnceLock`) and `TodoActionModule::execute`
-    // reads it back. A second `register` call against the same process is a
-    // no-op for the slot (`set` rejects), so the first installed store wins —
-    // acceptable for a fixture with one active store per process.
-    let _ = FIXTURE_TODO_STORE.set(Arc::clone(&store));
+    // lives in `FIXTURE_TODO_STORE` (a `Mutex<Option<…>>`) and
+    // `TodoActionModule::execute` reads it back. A second `register` call
+    // overwrites the slot so re-init (or successive tests) see the fresh
+    // store, not the stale one. A poisoned slot is a silent no-op (D6 — a
+    // bad registration argument never crashes the host).
+    if let Ok(mut slot) = FIXTURE_TODO_STORE.lock() {
+        *slot = Some(Arc::clone(&store));
+    }
     app.register_action_module::<TodoActionModule>();
 
     // Snapshot-output half — projects the store under `TODO_SNAPSHOT_KEY` on
@@ -183,10 +186,12 @@ pub struct TodoActionModule;
 /// before any action dispatch. [`TodoActionModule::execute`] reads it to
 /// reach the store from the static trait body. ADR-0027 — the typed
 /// `execute` is a static method and cannot capture closure state, so a
-/// `OnceLock` mediates between `register`'s setup-time mutation and the
-/// per-dispatch read. The fixture has at most one active store per process;
-/// a multi-store host would model this differently.
-static FIXTURE_TODO_STORE: std::sync::OnceLock<TodoStore> = std::sync::OnceLock::new();
+/// `Mutex<Option<...>>` mediates between `register`'s setup-time mutation
+/// and the per-dispatch read. The fixture supports at most one active store
+/// per process; a multi-store host would model this differently. The slot
+/// is replaceable so a second `register` call (e.g. successive tests) sees
+/// the fresh store, not the stale one.
+static FIXTURE_TODO_STORE: Mutex<Option<TodoStore>> = Mutex::new(None);
 
 impl ActionModule for TodoActionModule {
     const NAMESPACE: &'static str = "fixture.todo.action";
@@ -208,17 +213,21 @@ impl ActionModule for TodoActionModule {
     ///
     /// The todo flow is local-only — no `ActorCommand` is enqueued — so the
     /// `send` callback is unused. A store that was never installed
-    /// (`register` was not called) is a no-op: `OnceLock::get` returns
-    /// `None` and the executor degrades silently rather than panicking
-    /// inside an FFI call (D6).
+    /// (`register` was not called) returns `Err` (D6: a never-reached path
+    /// fails loudly rather than panicking inside an FFI call).
     fn execute(
         action: Self::Action,
         _correlation_id: &str,
         _send: &dyn Fn(nmp_core::ActorCommand),
     ) -> Result<(), String> {
-        let Some(store) = FIXTURE_TODO_STORE.get() else {
+        let slot = FIXTURE_TODO_STORE
+            .lock()
+            .map_err(|_| "fixture todo store slot poisoned".to_string())?;
+        let Some(store) = slot.as_ref() else {
             return Err("fixture todo store not initialized (call register first)".to_string());
         };
+        let store = Arc::clone(store);
+        drop(slot);
         let mut guard = store
             .lock()
             .map_err(|_| "todo store mutex poisoned".to_string())?;

@@ -102,10 +102,26 @@ mod tests {
         }
     }
 
+    /// Capture commands JoinGroupAction::execute sends.
+    fn execute_capture(input: JoinGroupInput) -> Result<Vec<ActorCommand>, String> {
+        use std::cell::RefCell;
+        let cell: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+        JoinGroupAction::execute(input, "test-corr-id", &|cmd| {
+            cell.borrow_mut().push(cmd);
+        })?;
+        Ok(cell.into_inner())
+    }
+
     #[test]
     fn well_formed_input_yields_host_pinned_kind_9021_publish_command() {
-        let body = r#"{"group":{"host_relay_url":"wss://groups.example.com","local_id":"room"}}"#;
-        match join_group_command(body).expect("well-formed body parses") {
+        let input = JoinGroupInput {
+            group: GroupId::new("wss://groups.example.com", "room"),
+            invite_code: None,
+            reason: None,
+        };
+        let cmds = execute_capture(input).expect("well-formed input executes");
+        assert_eq!(cmds.len(), 1);
+        match cmds.into_iter().next().unwrap() {
             ActorCommand::PublishUnsignedEventToRelays { event, relays } => {
                 // Pinned to EXACTLY the host relay — never the NIP-65 outbox.
                 assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
@@ -129,9 +145,13 @@ mod tests {
 
     #[test]
     fn invite_code_lands_as_code_tag() {
-        let body = r#"{"group":{"host_relay_url":"wss://h","local_id":"r"},"invite_code":"secret-1"}"#;
-        let cmd = join_group_command(body).expect("well-formed");
-        let event: UnsignedEvent = match cmd {
+        let input = JoinGroupInput {
+            group: GroupId::new("wss://h", "r"),
+            invite_code: Some("secret-1".to_string()),
+            reason: None,
+        };
+        let cmds = execute_capture(input).expect("well-formed");
+        let event: UnsignedEvent = match cmds.into_iter().next().unwrap() {
             ActorCommand::PublishUnsignedEventToRelays { event, .. } => event,
             other => panic!("expected publish, got {other:?}"),
         };
@@ -144,9 +164,13 @@ mod tests {
 
     #[test]
     fn reason_lands_in_content() {
-        let body = r#"{"group":{"host_relay_url":"wss://h","local_id":"r"},"reason":"please let me in"}"#;
-        let cmd = join_group_command(body).expect("well-formed");
-        let event = match cmd {
+        let input = JoinGroupInput {
+            group: GroupId::new("wss://h", "r"),
+            invite_code: None,
+            reason: Some("please let me in".to_string()),
+        };
+        let cmds = execute_capture(input).expect("well-formed");
+        let event = match cmds.into_iter().next().unwrap() {
             ActorCommand::PublishUnsignedEventToRelays { event, .. } => event,
             other => panic!("expected publish, got {other:?}"),
         };
@@ -154,13 +178,15 @@ mod tests {
     }
 
     #[test]
-    fn missing_host_relay_is_rejected_in_executor() {
-        let body = r#"{"group":{"host_relay_url":"","local_id":"r"}}"#;
-        // The executor builds a `PublishPlan::pinned` regardless and the
-        // empty host gets through — the relay pin lane will reject downstream.
-        // But the typed validator (below) rejects it first.
+    fn missing_host_relay_is_rejected_by_validator() {
+        // The typed validator rejects an empty host_relay_url before
+        // `execute` can run.
         let mut ctx = ActionContext { now_ms: 0 };
-        let action: JoinGroupInput = serde_json::from_str(body).unwrap();
+        let action = JoinGroupInput {
+            group: GroupId::new("", "r"),
+            invite_code: None,
+            reason: None,
+        };
         assert!(matches!(
             JoinGroupAction::start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
@@ -188,7 +214,22 @@ mod tests {
     }
 
     #[test]
-    fn malformed_json_is_rejected_by_executor() {
-        assert!(join_group_command(r#"{"no":"group"}"#).is_err());
+    fn malformed_input_for_executor_routes_through_start_validator() {
+        // ADR-0027 — the executor receives an already-decoded `Self::Action`,
+        // so JSON-shape rejection happens in the adapter's `start` boundary
+        // (covered by the registry tests). A missing host relay URL still
+        // fails the validator below.
+        let mut ctx = ActionContext { now_ms: 0 };
+        assert!(matches!(
+            JoinGroupAction::start(
+                &mut ctx,
+                JoinGroupInput {
+                    group: GroupId::new("", "r"),
+                    invite_code: None,
+                    reason: None,
+                }
+            ),
+            Err(ActionRejection::Invalid(_))
+        ));
     }
 }
