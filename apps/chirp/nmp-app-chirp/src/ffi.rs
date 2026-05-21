@@ -748,10 +748,9 @@ mod tests {
     /// yields a 32-hex `correlation_id` (both the typed module validator and
     /// the executor are wired); a malformed body is rejected with `error`.
     ///
-    /// This proves the host-extensibility seam (`register_action_module` /
-    /// `register_action_executor`) works for NIP-crate modules, not just
-    /// Chirp's app-local social verbs — without `nmp-core` learning any
-    /// NIP-29 group nouns (D0).
+    /// This proves the ADR-0027 typed-registration seam (`register_action::<M>()`)
+    /// works for NIP-crate modules, not just Chirp's app-local social verbs —
+    /// without `nmp-core` learning any NIP-29 group nouns (D0).
     #[test]
     fn nip29_post_chat_message_dispatches_through_action_registry() {
         let app = nmp_app_new();
