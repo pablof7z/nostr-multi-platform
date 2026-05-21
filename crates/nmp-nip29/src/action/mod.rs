@@ -25,18 +25,24 @@ mod membership;
 mod publish_plan;
 
 pub use admin::{
-    ActionFields, CreateGroupAction, CreateGroupInput, CreateInviteAction, CreateInviteInput,
-    DeleteEventAction, DeleteEventInput, DeleteGroupAction, DeleteGroupInput,
-    EditMetadataAction, EditMetadataInput, PutUserAction, PutUserInput, RemoveUserAction,
-    RemoveUserInput,
+    create_group_command, create_invite_command, delete_event_command, delete_group_command,
+    edit_metadata_command, put_user_command, remove_user_command, ActionFields, CreateGroupAction,
+    CreateGroupInput, CreateInviteAction, CreateInviteInput, DeleteEventAction, DeleteEventInput,
+    DeleteGroupAction, DeleteGroupInput, EditMetadataAction, EditMetadataInput, PutUserAction,
+    PutUserInput, RemoveUserAction, RemoveUserInput,
 };
 pub use composed::{
+    comment_in_group_command, react_in_group_command, share_event_into_group_command,
     CommentInGroupAction, CommentInGroupInput, ReactInGroupAction, ReactInGroupInput,
     ShareEventIntoGroupAction, ShareEventIntoGroupInput,
 };
 pub use content::{
-    PostArtifactAction, PostArtifactInput, PostChatMessageAction, PostChatMessageInput,
-    PostDiscussionAction, PostDiscussionInput,
+    post_artifact_command, post_chat_message_command, post_discussion_command, PostArtifactAction,
+    PostArtifactInput, PostChatMessageAction, PostChatMessageInput, PostDiscussionAction,
+    PostDiscussionInput,
 };
-pub use membership::{JoinRequestAction, JoinRequestInput, LeaveRequestAction, LeaveRequestInput};
+pub use membership::{
+    join_request_command, leave_request_command, JoinRequestAction, JoinRequestInput,
+    LeaveRequestAction, LeaveRequestInput,
+};
 pub use publish_plan::{PublishPlan, PublishPlanError, RelayPin};

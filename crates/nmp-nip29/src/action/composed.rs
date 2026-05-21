@@ -7,6 +7,7 @@
 //! `nmp-nip25` / `nmp-nip22` / future `nmp-nip18`.
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
+use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
@@ -22,6 +23,29 @@ pub struct ShareEventIntoGroupInput {
     pub original_kind: Option<u32>,
 }
 
+/// Build the kind:16 share-into-group `PublishPlan` from a typed input.
+fn share_event_into_group_plan(action: &ShareEventIntoGroupInput) -> PublishPlan {
+    let mut tags = vec![
+        vec!["h".into(), action.group.local_id.clone()],
+        vec!["e".into(), action.event_ref.clone()],
+    ];
+    if let Some(p) = &action.original_author_pubkey {
+        tags.push(vec!["p".into(), p.clone()]);
+    }
+    if let Some(k) = action.original_kind {
+        tags.push(vec!["k".into(), k.to_string()]);
+    }
+    PublishPlan::pinned(&action.group, KIND_REPOST, "", tags)
+}
+
+/// Map a validated `nip29.share_event_into_group` action JSON to the
+/// [`ActorCommand`] that publishes the kind:16 group repost.
+pub fn share_event_into_group_command(action_json: &str) -> Result<ActorCommand, String> {
+    let input: ShareEventIntoGroupInput =
+        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
+    share_event_into_group_plan(&input).into_actor_command()
+}
+
 pub struct ShareEventIntoGroupAction;
 impl ActionModule for ShareEventIntoGroupAction {
     const NAMESPACE: &'static str = "nip29.share_event_into_group";
@@ -30,18 +54,8 @@ impl ActionModule for ShareEventIntoGroupAction {
         _ctx: &mut ActionContext,
         action: Self::Action,
     ) -> Result<(), ActionRejection> {
-        let mut tags = vec![
-            vec!["h".into(), action.group.local_id.clone()],
-            vec!["e".into(), action.event_ref.clone()],
-        ];
-        if let Some(p) = &action.original_author_pubkey {
-            tags.push(vec!["p".into(), p.clone()]);
-        }
-        if let Some(k) = action.original_kind {
-            tags.push(vec!["k".into(), k.to_string()]);
-        }
-        let plan = PublishPlan::pinned(&action.group, KIND_REPOST, "", tags);
-        plan.validate_no_unpinned_h()
+        share_event_into_group_plan(&action)
+            .validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for share-into-group".into()))?;
         Ok(())
     }
@@ -55,6 +69,26 @@ pub struct ReactInGroupInput {
     pub content: String,
 }
 
+/// Build the kind:7 in-group reaction `PublishPlan` from a typed input.
+fn react_in_group_plan(action: &ReactInGroupInput) -> PublishPlan {
+    let mut tags = vec![
+        vec!["h".into(), action.group.local_id.clone()],
+        vec!["e".into(), action.target_event_id.clone()],
+    ];
+    if let Some(p) = &action.target_author_pubkey {
+        tags.push(vec!["p".into(), p.clone()]);
+    }
+    PublishPlan::pinned(&action.group, KIND_REACTION, action.content.clone(), tags)
+}
+
+/// Map a validated `nip29.react_in_group` action JSON to the [`ActorCommand`]
+/// that publishes the kind:7 in-group reaction.
+pub fn react_in_group_command(action_json: &str) -> Result<ActorCommand, String> {
+    let input: ReactInGroupInput =
+        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
+    react_in_group_plan(&input).into_actor_command()
+}
+
 pub struct ReactInGroupAction;
 impl ActionModule for ReactInGroupAction {
     const NAMESPACE: &'static str = "nip29.react_in_group";
@@ -63,15 +97,8 @@ impl ActionModule for ReactInGroupAction {
         _ctx: &mut ActionContext,
         action: Self::Action,
     ) -> Result<(), ActionRejection> {
-        let mut tags = vec![
-            vec!["h".into(), action.group.local_id.clone()],
-            vec!["e".into(), action.target_event_id.clone()],
-        ];
-        if let Some(p) = &action.target_author_pubkey {
-            tags.push(vec!["p".into(), p.clone()]);
-        }
-        let plan = PublishPlan::pinned(&action.group, KIND_REACTION, action.content, tags);
-        plan.validate_no_unpinned_h()
+        react_in_group_plan(&action)
+            .validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for in-group reaction".into()))?;
         Ok(())
     }
@@ -85,6 +112,26 @@ pub struct CommentInGroupInput {
     pub content: String,
 }
 
+/// Build the kind:1111 in-group comment `PublishPlan` from a typed input.
+fn comment_in_group_plan(action: &CommentInGroupInput) -> PublishPlan {
+    let mut tags = vec![vec!["h".into(), action.group.local_id.clone()]];
+    if let Some(root) = &action.root_event_id {
+        tags.push(vec!["E".into(), root.clone()]);
+    }
+    if let Some(parent) = &action.parent_event_id {
+        tags.push(vec!["e".into(), parent.clone()]);
+    }
+    PublishPlan::pinned(&action.group, KIND_COMMENT, action.content.clone(), tags)
+}
+
+/// Map a validated `nip29.comment_in_group` action JSON to the [`ActorCommand`]
+/// that publishes the kind:1111 in-group comment.
+pub fn comment_in_group_command(action_json: &str) -> Result<ActorCommand, String> {
+    let input: CommentInGroupInput =
+        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
+    comment_in_group_plan(&input).into_actor_command()
+}
+
 pub struct CommentInGroupAction;
 impl ActionModule for CommentInGroupAction {
     const NAMESPACE: &'static str = "nip29.comment_in_group";
@@ -93,15 +140,8 @@ impl ActionModule for CommentInGroupAction {
         _ctx: &mut ActionContext,
         action: Self::Action,
     ) -> Result<(), ActionRejection> {
-        let mut tags = vec![vec!["h".into(), action.group.local_id.clone()]];
-        if let Some(root) = &action.root_event_id {
-            tags.push(vec!["E".into(), root.clone()]);
-        }
-        if let Some(parent) = &action.parent_event_id {
-            tags.push(vec!["e".into(), parent.clone()]);
-        }
-        let plan = PublishPlan::pinned(&action.group, KIND_COMMENT, action.content, tags);
-        plan.validate_no_unpinned_h()
+        comment_in_group_plan(&action)
+            .validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for in-group comment".into()))?;
         Ok(())
     }
