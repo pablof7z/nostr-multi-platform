@@ -70,6 +70,8 @@ zeroize.workspace = true
 # Keyring for encrypted Marmot MLS DB. `mdk-sqlite-storage` requires a
 # platform-specific keyring store to be initialized before use.
 keyring-core = { version = "1", optional = true }
+
+[target.'cfg(any(target_os = "ios", target_os = "tvos", target_os = "watchos", target_os = "visionos"))'.dependencies]
 apple-native-keyring-store = { version = "1.0", features = ["protected"], optional = true }
 
 [dev-dependencies]
