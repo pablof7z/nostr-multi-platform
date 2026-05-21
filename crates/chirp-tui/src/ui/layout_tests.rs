@@ -59,6 +59,32 @@ fn help_overlay_renders_keybindings() {
     assert!(rendered.contains("open selected thread"));
 }
 
+#[test]
+fn min_terminal_renders_long_names_and_count_text_without_overflow() {
+    let mut state = AppState::default();
+    state.status =
+        "loaded author display names and relation counts for a deliberately narrow terminal"
+            .to_string();
+    state.rows.push(TimelineRow {
+        id: "event-with-display-counts".to_string(),
+        author: "alexandria-cassandra-with-a-very-long-kind0-display-name".to_string(),
+        author_pubkey: "a".repeat(64),
+        content: "reply 0 repost 0 like 0 -- this content should wrap inside the feed pane"
+            .to_string(),
+        created_at: 1,
+        depth: 3,
+        has_gap: true,
+        relation_counts: Default::default(),
+    });
+
+    let rendered = render_state(80, 24, state);
+
+    assert!(rendered.contains("chirp"));
+    assert!(rendered.contains("Feed"));
+    assert!(rendered.contains("Compose"));
+    assert!(rendered.contains("reply"));
+}
+
 fn render_state(width: u16, height: u16, state: AppState) -> String {
     let backend = TestBackend::new(width, height);
     let mut terminal = Terminal::new(backend).unwrap();
@@ -77,6 +103,7 @@ fn state_with_row() -> AppState {
         created_at: 1,
         depth: 0,
         has_gap: false,
+        relation_counts: Default::default(),
     });
     state
 }
