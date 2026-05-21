@@ -796,3 +796,143 @@ fn last_action_result_reports_dispatch_correlation_id_on_publish_note_failure() 
         "the failure path must also report the dispatch correlation_id"
     );
 }
+
+// ───────────────────────────────────────────────────────────────────────────
+// Direction review #29 — `projections.action_results` (the spinner-hang fix).
+//
+// `last_action_result` is a sticky scalar: when two actions settle in the same
+// snapshot tick the second OVERWRITES the first, so the host's spinner for the
+// first action hangs forever. `projections.action_results` is the per-tick
+// DRAIN — every terminal that settled since the last emit appears, as a JSON
+// array `[{correlation_id, status, error}, ...]`. The key is absent in steady
+// state. The host resolves each spinner by matching `correlation_id`.
+// ───────────────────────────────────────────────────────────────────────────
+
+/// Read `projections.action_results` from a fresh wire snapshot. The key is
+/// conditionally inserted (only when a terminal settled this tick), so absence
+/// is normal — it is reported as `Null` here.
+fn action_results(kernel: &mut Kernel) -> serde_json::Value {
+    let snapshot_json = kernel.make_update(true);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&snapshot_json).expect("snapshot must be valid JSON");
+    parsed
+        .get("projections")
+        .and_then(|v| v.get("action_results"))
+        .cloned()
+        .unwrap_or(serde_json::Value::Null)
+}
+
+#[test]
+fn action_results_is_absent_before_any_publish_settles() {
+    // Steady state: a kernel that has never settled a publish carries no
+    // `action_results` key — the drain returns null and the projection is not
+    // inserted. The host sees nothing to act on.
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    assert!(
+        action_results(&mut kernel).is_null(),
+        "action_results must be absent until an action settles"
+    );
+}
+
+#[test]
+fn two_terminals_in_one_tick_both_appear_in_action_results() {
+    // THE USER-BUG REGRESSION GUARD. Two publishes settle back-to-back, before
+    // any snapshot is emitted. The sticky `last_action_result` scalar can only
+    // show ONE of them — but `action_results` must surface BOTH so the host
+    // resolves every spinner, not just the most recent one.
+    let author = "f1".repeat(32);
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
+
+    let first = fake_signed("e1".repeat(32).as_str(), &author, 1, "drain first");
+    let second = fake_signed("e2".repeat(32).as_str(), &author, 1, "drain second");
+    let _ = kernel.run_publish_engine_at(&first, &[], crate::publish::PublishTarget::Auto, None, 0);
+    let _ = kernel.run_publish_engine_at(&second, &[], crate::publish::PublishTarget::Auto, None, 0);
+
+    // Settle BOTH publishes before any snapshot emit — the same-tick condition.
+    let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&first.id, true, ""), 10);
+    let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&first.id, true, ""), 20);
+    let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&second.id, true, ""), 30);
+    let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&second.id, true, ""), 40);
+
+    // First (and only) snapshot read: action_results must carry BOTH verdicts.
+    let results = action_results(&mut kernel);
+    let arr = results
+        .as_array()
+        .expect("action_results must be a JSON array when actions settled");
+    assert_eq!(
+        arr.len(),
+        2,
+        "both terminals that settled in one tick must appear — neither is lost"
+    );
+    let mut ids: Vec<&str> = arr
+        .iter()
+        .filter_map(|item| item.get("correlation_id").and_then(|v| v.as_str()))
+        .collect();
+    ids.sort_unstable();
+    assert_eq!(
+        ids,
+        vec![first.id.as_str(), second.id.as_str()],
+        "both correlation_ids appear in action_results"
+    );
+    for item in arr {
+        assert_eq!(
+            item.get("status").and_then(|v| v.as_str()),
+            Some("published"),
+            "each all-OK settle reports the wire-level `published` status"
+        );
+        assert!(
+            item.get("error").map(|v| v.is_null()).unwrap_or(false),
+            "a successful publish carries a null error"
+        );
+    }
+
+    // Drain semantics: the next snapshot tick (nothing new settled) carries no
+    // `action_results` key — the spinner-resolution signal is consumed once.
+    assert!(
+        action_results(&mut kernel).is_null(),
+        "action_results is drained per tick — a second read is absent"
+    );
+}
+
+#[test]
+fn action_results_does_not_disturb_the_sticky_last_action_result() {
+    // The two signals are complementary, not exclusive. `action_results`
+    // drains; `last_action_result` stays sticky. After two settlements in one
+    // tick, a single snapshot read must show BOTH in `action_results` AND the
+    // most-recent verdict still in `last_action_result`.
+    let author = "f2".repeat(32);
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
+
+    let first = fake_signed("e3".repeat(32).as_str(), &author, 1, "sticky first");
+    let second = fake_signed("e4".repeat(32).as_str(), &author, 1, "sticky second");
+    let _ = kernel.run_publish_engine_at(&first, &[], crate::publish::PublishTarget::Auto, None, 0);
+    let _ = kernel.run_publish_engine_at(&second, &[], crate::publish::PublishTarget::Auto, None, 0);
+    let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&first.id, true, ""), 10);
+    let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&first.id, true, ""), 20);
+    let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&second.id, true, ""), 30);
+    let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&second.id, true, ""), 40);
+
+    // Single snapshot: read both projections off the SAME wire payload so the
+    // drain happens exactly once.
+    let snapshot_json = kernel.make_update(true);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&snapshot_json).expect("snapshot must be valid JSON");
+    let projections = parsed.get("projections").expect("projections present");
+
+    let arr = projections
+        .get("action_results")
+        .and_then(|v| v.as_array())
+        .expect("action_results array present when two actions settled");
+    assert_eq!(arr.len(), 2, "action_results drains BOTH terminals");
+
+    let sticky = projections
+        .get("last_action_result")
+        .expect("last_action_result key is always present");
+    assert_eq!(
+        sticky.get("correlation_id").and_then(|v| v.as_str()),
+        Some(second.id.as_str()),
+        "last_action_result stays the sticky most-recent scalar (backward compat)"
+    );
+}

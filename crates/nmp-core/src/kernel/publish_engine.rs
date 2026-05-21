@@ -451,6 +451,34 @@ impl Kernel {
         }
     }
 
+    /// Direction review #29: drain ALL terminals that settled since the last
+    /// emit, returning them as a JSON array for the `action_results` snapshot
+    /// projection. Unlike `last_action_result_projection` (sticky scalar), this
+    /// drains — so each tick surfaces every result that arrived, not just the
+    /// most recent. The host uses this to resolve any spinner whose
+    /// `correlation_id` appears here.
+    pub(super) fn take_action_results_projection(&mut self) -> serde_json::Value {
+        let terminals = self.publish_engine.take_pending_terminals();
+        if terminals.is_empty() {
+            return serde_json::Value::Null;
+        }
+        let arr: Vec<serde_json::Value> = terminals
+            .iter()
+            .map(|terminal| {
+                let status = match terminal.status {
+                    "ok" => "published",
+                    other => other,
+                };
+                serde_json::json!({
+                    "correlation_id": terminal.correlation_id,
+                    "status": status,
+                    "error": terminal.error,
+                })
+            })
+            .collect();
+        serde_json::Value::Array(arr)
+    }
+
     /// T128: drain every terminal verdict the engine recorded since the last
     /// drain and flip the matching `PublishQueueEntry` from `accepted_locally`
     /// to its terminal `"ok"` / `"failed"` status, carrying the per-relay

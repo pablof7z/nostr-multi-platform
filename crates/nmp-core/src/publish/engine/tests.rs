@@ -233,6 +233,90 @@ fn no_correlation_id_override_falls_back_to_handle_in_last_terminal() {
 }
 
 #[test]
+fn two_terminals_in_one_tick_both_appear_in_pending() {
+    // Direction review #29 — THE SPINNER-HANG FIX at the engine layer.
+    //
+    // Before the fix, `last_terminal` was a sticky scalar: when two actions
+    // settled between two snapshot emits, the second OVERWROTE the first and
+    // the host's spinner for the first action hung forever. `pending_terminals`
+    // ACCUMULATES — both settlements survive until the kernel drains them.
+    //
+    // Both publishes settle synchronously inside `start_publish` (the
+    // `ReplayDispatcher` returns scripted OK acks), and crucially we do NOT
+    // drain between them — that is exactly the "two terminals in one tick"
+    // condition the projection layer must survive.
+    let mut outbox = StaticOutbox::default();
+    outbox
+        .author_writes
+        .insert("alice".to_string(), vec!["wss://ok-a".to_string()]);
+    let dispatcher = Arc::new(ReplayDispatcher::new());
+    // Two OK acks scripted on the same relay — one consumed per publish.
+    dispatcher.script(
+        "wss://ok-a",
+        vec![RelayAck::ok("wss://ok-a"), RelayAck::ok("wss://ok-a")],
+    );
+    let mut engine = engine_with(Arc::new(outbox), dispatcher);
+
+    engine
+        .start_publish(
+            PublishAction::Publish {
+                handle: "tick-ev-1".to_string(),
+                event: signed_event("tick-ev-1", "alice", 1),
+                target: PublishTarget::Auto,
+            },
+            100,
+            None,
+        )
+        .unwrap();
+    engine
+        .start_publish(
+            PublishAction::Publish {
+                handle: "tick-ev-2".to_string(),
+                event: signed_event("tick-ev-2", "alice", 1),
+                target: PublishTarget::Auto,
+            },
+            100,
+            None,
+        )
+        .unwrap();
+
+    // Both terminals are retained — the second did NOT clobber the first.
+    let drained = engine.take_pending_terminals();
+    assert_eq!(
+        drained.len(),
+        2,
+        "both terminals that settled before the drain must survive"
+    );
+    let mut ids: Vec<&str> = drained
+        .iter()
+        .map(|terminal| terminal.correlation_id.as_str())
+        .collect();
+    ids.sort_unstable();
+    assert_eq!(
+        ids,
+        vec!["tick-ev-1", "tick-ev-2"],
+        "both correlation_ids appear in the drained pending terminals"
+    );
+
+    // The sticky `last_terminal` scalar is preserved (backward compat) — it
+    // still reports the MOST RECENT settlement.
+    assert_eq!(
+        engine
+            .last_terminal()
+            .expect("last_terminal stays populated after a drain")
+            .correlation_id,
+        "tick-ev-2",
+        "last_terminal is the sticky scalar — most recent verdict, never drained"
+    );
+
+    // Pure drain: a second call yields nothing.
+    assert!(
+        engine.take_pending_terminals().is_empty(),
+        "take_pending_terminals is a pure drain — second call is empty"
+    );
+}
+
+#[test]
 fn inflight_timeout_sweep_transitions_stuck_relay_through_retry_to_failure() {
     // Regression guard for the critical bug: a relay that accepts the socket
     // but never sends `OK` (and never closes) pinned the publish in `InFlight`
