@@ -46,8 +46,8 @@ pub use action::{
     RelayUrl,
 };
 pub use engine::{
-    engine_error_to_failure, outcome_of, PublishEngine, PublishEngineError, TerminalOutcome,
-    ENGINE_FAILURE_RELAY_URL,
+    engine_error_to_failure, outcome_of, LastTerminal, PublishEngine, PublishEngineError,
+    TerminalOutcome, ENGINE_FAILURE_RELAY_URL,
 };
 pub use fs_store::FsPublishStore;
 pub use nip65::Nip65OutboxResolver;
