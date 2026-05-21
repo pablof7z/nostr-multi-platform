@@ -84,8 +84,8 @@ pub extern "C" fn nmp_app_dispatch_action(
 ) -> *mut c_char {
     let result = dispatch_action_json(
         app_ref(app),
-        &c_str_lossy(namespace),
-        &c_str_lossy(action_json),
+        c_string_argument(namespace).as_deref().unwrap_or(""),
+        c_string_argument(action_json).as_deref().unwrap_or(""),
     );
     // JSON never contains an interior NUL; the `c"{}"` literal fallback is
     // NUL-checked at compile time, so there is no runtime panic path (D6).
@@ -450,18 +450,6 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// Decode a C string argument to an owned `String`. Null or invalid UTF-8
-/// collapses to an empty string — the registry then rejects it as data.
-fn c_str_lossy(ptr: *const c_char) -> String {
-    if ptr.is_null() {
-        return String::new();
-    }
-    // SAFETY: caller guarantees a non-null `ptr` is a valid NUL-terminated
-    // C string for the duration of this call.
-    unsafe { CStr::from_ptr(ptr) }
-        .to_string_lossy()
-        .into_owned()
-}
 
 #[cfg(test)]
 mod tests {

@@ -292,14 +292,23 @@ fn c_string_opt(ptr: *const c_char) -> Option<String> {
 /// Hex-shape validation deliberately stays in the actor's command handlers
 /// (which own the user-facing toasts) — the module validators here only check
 /// JSON shape, mirroring the comment the deleted FFI symbols carried (D6).
+/// Namespace constants for Chirp-specific action verbs. Written once here so
+/// the `register_action_module` and `register_action_executor` calls in
+/// `register_chirp_actions` stay in sync — a mismatch would register a
+/// validator under one name and an executor under another, silently breaking
+/// dispatch. Mirrors the `$Action::NAMESPACE` convention from `wire_action!`.
+const NS_REACT: &str = "chirp.react";
+const NS_FOLLOW: &str = "chirp.follow";
+const NS_UNFOLLOW: &str = "chirp.unfollow";
+
 fn register_chirp_actions(app: &mut NmpApp) {
     // chirp.react — kind:7 reaction.
-    app.register_action_module("chirp.react", |action_json| {
+    app.register_action_module(NS_REACT, |action_json| {
         serde_json::from_str::<ReactAction>(action_json)
             .map(|_| ())
             .map_err(|e| ActionRejection::Invalid(e.to_string()))
     });
-    app.register_action_executor("chirp.react", |action_json, _correlation_id, send| {
+    app.register_action_executor(NS_REACT, |action_json, _correlation_id, send| {
         let a: ReactAction =
             serde_json::from_str(action_json).map_err(|e| e.to_string())?;
         send(ActorCommand::React {
@@ -310,12 +319,12 @@ fn register_chirp_actions(app: &mut NmpApp) {
     });
 
     // chirp.follow — append `pubkey` to the active account's kind:3 set.
-    app.register_action_module("chirp.follow", |action_json| {
+    app.register_action_module(NS_FOLLOW, |action_json| {
         serde_json::from_str::<PubkeyAction>(action_json)
             .map(|_| ())
             .map_err(|e| ActionRejection::Invalid(e.to_string()))
     });
-    app.register_action_executor("chirp.follow", |action_json, _correlation_id, send| {
+    app.register_action_executor(NS_FOLLOW, |action_json, _correlation_id, send| {
         let a: PubkeyAction =
             serde_json::from_str(action_json).map_err(|e| e.to_string())?;
         send(ActorCommand::Follow { pubkey: a.pubkey });
@@ -323,12 +332,12 @@ fn register_chirp_actions(app: &mut NmpApp) {
     });
 
     // chirp.unfollow — remove `pubkey` from the kind:3 set.
-    app.register_action_module("chirp.unfollow", |action_json| {
+    app.register_action_module(NS_UNFOLLOW, |action_json| {
         serde_json::from_str::<PubkeyAction>(action_json)
             .map(|_| ())
             .map_err(|e| ActionRejection::Invalid(e.to_string()))
     });
-    app.register_action_executor("chirp.unfollow", |action_json, _correlation_id, send| {
+    app.register_action_executor(NS_UNFOLLOW, |action_json, _correlation_id, send| {
         let a: PubkeyAction =
             serde_json::from_str(action_json).map_err(|e| e.to_string())?;
         send(ActorCommand::Unfollow { pubkey: a.pubkey });
