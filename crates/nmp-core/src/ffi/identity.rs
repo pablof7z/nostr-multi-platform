@@ -150,12 +150,12 @@ pub extern "C" fn nmp_app_publish_unsigned_event(
 ///
 /// Sibling to [`nmp_app_publish_unsigned_event`]. The decisive difference:
 /// the kernel's signer is **never** consulted. The caller provides a complete
-/// Nostr event that was signed elsewhere (an MDK/Marmot group-message signer,
+/// Nostr event that was signed elsewhere (an external group-message signer,
 /// a hardware signer, a relayed NIP-46 broker — anything). The kernel
 /// verifies the Schnorr signature + event-id hash and, if valid, routes the
 /// event verbatim through the same publish planner / NIP-65 outbox resolver /
 /// relay-pin path the unsigned sibling uses. Generic capability (D0 — no
-/// MLS/Marmot nouns in the kernel); Marmot is merely the first consumer.
+/// app-layer nouns in the kernel).
 ///
 /// `event_json` is the standard flat NIP-01 event object:
 /// ```json
@@ -224,10 +224,7 @@ pub extern "C" fn nmp_app_publish_signed_event(app: *mut NmpApp, event_json: *co
 /// gate, and `id`/`sig`/`pubkey`/`tags`/`content` are carried through
 /// unchanged. The only difference is relay resolution: the verbatim event is
 /// dispatched to exactly the relays in `relays_json`, bypassing the outbox
-/// resolver. Marmot is the first consumer (kind:445 group messages → the
-/// pinned GROUP relay; kind:1059 gift-wraps → recipient inbox relays);
-/// kind:30443/443 key-packages keep using the Auto sibling. Generic
-/// capability — no MLS/Marmot nouns in the kernel (D0).
+/// resolver. Generic capability — no app-layer nouns in the kernel (D0).
 ///
 /// `event_json` is the standard flat NIP-01 event object (identical schema to
 /// the Auto sibling):

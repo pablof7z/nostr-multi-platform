@@ -8,8 +8,8 @@
 //! 2. the **periodic snapshot** produced by `Kernel::make_update` — the large
 //!    `{"rev":…,"items":[…],"metrics":{…},…}` object every host renders.
 //!
-//! Without a discriminator every consumer (Pulse, future Android/desktop
-//! shells, `nmp-codegen`-projected host enums) would have to *guess* which
+//! Without a discriminator every consumer (future platform shells,
+//! `nmp-codegen`-projected host enums) would have to *guess* which
 //! shape arrived by sniffing keys. That is undocumented and unsafe.
 //!
 //! This module makes the contract explicit and singular: **every** frame on
