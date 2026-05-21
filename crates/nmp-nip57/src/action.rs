@@ -1,7 +1,7 @@
 //! `ZapAction` + `ZapModule` — the NIP-57 zap-request `ActionModule`.
 //!
-//! This is the second protocol-crate `ActionModule` after `nmp-nip29`'s
-//! `JoinRequestAction`. It wires the `start()` validation half of the
+//! This is a protocol-crate `ActionModule` alongside `nmp-nip29`'s group-chat
+//! actions. It wires the `start()` validation half of the
 //! `nmp.zap` namespace into the kernel's `ActionRegistry`; the executor half
 //! ([`zap_request_command`]) builds the kind:9734 zap-request `UnsignedEvent`
 //! and maps it to an [`nmp_core::ActorCommand`].
@@ -146,7 +146,7 @@ fn is_hex64(s: &str) -> bool {
 /// publishes the kind:9734 zap-request event.
 ///
 /// Split out of the executor closure (mirroring `nmp-nip29`'s
-/// `nip29_join_request_command`) so the action→command mapping is unit
+/// `post_chat_message_command`) so the action→command mapping is unit
 /// testable without the FFI / actor channel. Re-decodes its own input — the
 /// executor never trusts an upstream shape it did not verify.
 ///

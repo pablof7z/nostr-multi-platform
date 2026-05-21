@@ -19,43 +19,33 @@
 //!
 //! - [`group_id`] — `GroupId { host_relay_url, local_id }` + URI codec.
 //! - [`kinds`] — NIP-29 kind constants and the `["h", ...]` dispatch helper.
-//! - [`domain`] — 13 `DomainModule` impls.
-//! - [`view`] — 7 reactive views.
-//! - [`action`] — 15 `ActionModule` impls.
+//! - [`action`] — the 3 group-chat `ActionModule` impls (post chat message,
+//!   react, comment).
 //! - [`cache`] — `RecentGroupEvents` (previous-tag), `JoinedHostsCache`,
 //!   `TofuSignerCache` (metadata-signer trust).
 //! - [`interest`] — helpers for constructing pinned `LogicalInterest`s.
-//! - [`moderation`] — audit-record materialisation; canonical-state separation.
 //! - [`projection`] — `GroupChatProjection`: the read-side of a group-chat
 //!   screen (a `KernelEventObserver` projecting kind 9/11/1111 events).
 //!
 //! All inputs to actions carry a typed `GroupId` so the publish planner gets a
 //! typed `PublishPlan::pin_to: Some(host)` carrier and never derives routing
 //! from raw tag strings.
+//!
+//! The former `domain` (13 `DomainModule` impls) and `view` (7 reactive views)
+//! modules were deleted: they had zero non-test consumers. The live read-side
+//! extension path is `projection::GroupChatProjection` via `KernelEventObserver`
+//! — see `nmp_core::substrate` module docs.
 
+pub mod action;
 pub mod cache;
-pub mod domain;
 pub mod group_id;
 pub mod interest;
 pub mod kinds;
-pub mod moderation;
 pub mod projection;
-pub mod view;
-
-pub mod action;
 
 pub use group_id::GroupId;
 pub use kinds::{event_is_group_event, group_id_from_tags, GroupEventClass, KindClass};
 pub use projection::{GroupChatMessage, GroupChatProjection, GroupChatSnapshot};
-
-// NOTE: `nmp-nip29` exposes its 13 `DomainModule` / 15 `ActionModule` impls
-// and its 7 view types as public types under `domain`, `action`, and `view`.
-// The view types are plain types whose `open` / `on_event_*` / `snapshot`
-// inherent methods are reached via static dispatch — the `ViewModule` trait
-// and the former `register(&mut ModuleRegistry)` entry point were both
-// deleted because no kernel-side registry ever drove them. The live
-// extension path is `KernelEventObserver` — see `nmp_core::substrate` module
-// docs.
 
 #[cfg(test)]
 mod tests;

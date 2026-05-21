@@ -1,5 +1,4 @@
-//! User-sent content actions: chat (9), discussion (11 + t=discussion),
-//! artifact (11 + catalog tags).
+//! User-sent content action: chat (kind:9).
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use nmp_core::ActorCommand;
@@ -7,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::cache::previous_tag_prefix;
 use crate::group_id::GroupId;
-use crate::kinds::{KIND_CHAT_MESSAGE, KIND_DISCUSSION_OR_ARTIFACT};
+use crate::kinds::KIND_CHAT_MESSAGE;
 
 use super::publish_plan::PublishPlan;
 
@@ -60,118 +59,6 @@ impl ActionModule for PostChatMessageAction {
         post_chat_message_plan(&action)
             .validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for chat message".into()))?;
-        Ok(())
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct PostDiscussionInput {
-    pub group: GroupId,
-    pub title: Option<String>,
-    pub body: String,
-    #[serde(default)]
-    pub image_urls: Vec<String>,
-}
-
-/// Build the kind:11 discussion `PublishPlan` from a typed input.
-fn post_discussion_plan(action: &PostDiscussionInput) -> PublishPlan {
-    let mut tags = vec![
-        vec!["h".into(), action.group.local_id.clone()],
-        vec!["t".into(), "discussion".into()],
-    ];
-    if let Some(title) = &action.title {
-        tags.push(vec!["title".into(), title.clone()]);
-    }
-    for img in &action.image_urls {
-        tags.push(vec!["image".into(), img.clone()]);
-    }
-    PublishPlan::pinned(
-        &action.group,
-        KIND_DISCUSSION_OR_ARTIFACT,
-        action.body.clone(),
-        tags,
-    )
-}
-
-/// Map a validated `nip29.post_discussion` action JSON to the [`ActorCommand`]
-/// that publishes the kind:11 group discussion.
-pub fn post_discussion_command(action_json: &str) -> Result<ActorCommand, String> {
-    let input: PostDiscussionInput =
-        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-    post_discussion_plan(&input).into_actor_command()
-}
-
-pub struct PostDiscussionAction;
-impl ActionModule for PostDiscussionAction {
-    const NAMESPACE: &'static str = "nip29.post_discussion";
-    type Action = PostDiscussionInput;
-    fn start(
-        _ctx: &mut ActionContext,
-        action: Self::Action,
-    ) -> Result<(), ActionRejection> {
-        post_discussion_plan(&action)
-            .validate_no_unpinned_h()
-            .map_err(|_| ActionRejection::Invalid("missing host pin for discussion".into()))?;
-        Ok(())
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct PostArtifactInput {
-    pub group: GroupId,
-    pub artifact_id: String,
-    pub url_reference: Option<String>,
-    pub isbn_reference: Option<String>,
-    pub naddr_reference: Option<String>,
-    pub title: Option<String>,
-    pub note: String,
-}
-
-/// Build the kind:11 artifact-share `PublishPlan` from a typed input.
-fn post_artifact_plan(action: &PostArtifactInput) -> PublishPlan {
-    let mut tags = vec![
-        vec!["h".into(), action.group.local_id.clone()],
-        vec!["d".into(), action.artifact_id.clone()],
-    ];
-    if let Some(u) = &action.url_reference {
-        tags.push(vec!["r".into(), u.clone()]);
-    }
-    if let Some(i) = &action.isbn_reference {
-        tags.push(vec!["i".into(), i.clone()]);
-    }
-    if let Some(a) = &action.naddr_reference {
-        tags.push(vec!["a".into(), a.clone()]);
-    }
-    if let Some(t) = &action.title {
-        tags.push(vec!["title".into(), t.clone()]);
-    }
-    PublishPlan::pinned(
-        &action.group,
-        KIND_DISCUSSION_OR_ARTIFACT,
-        action.note.clone(),
-        tags,
-    )
-}
-
-/// Map a validated `nip29.post_artifact` action JSON to the [`ActorCommand`]
-/// that publishes the kind:11 group artifact share.
-pub fn post_artifact_command(action_json: &str) -> Result<ActorCommand, String> {
-    let input: PostArtifactInput =
-        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-    post_artifact_plan(&input).into_actor_command()
-}
-
-pub struct PostArtifactAction;
-impl ActionModule for PostArtifactAction {
-    const NAMESPACE: &'static str = "nip29.post_artifact";
-    type Action = PostArtifactInput;
-    fn start(
-        _ctx: &mut ActionContext,
-        action: Self::Action,
-    ) -> Result<(), ActionRejection> {
-        post_artifact_plan(&action)
-            .validate_no_unpinned_h()
-            .map_err(|_| ActionRejection::Invalid("missing host pin for artifact share".into()))?;
         Ok(())
     }
 }

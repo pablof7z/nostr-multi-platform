@@ -20,7 +20,6 @@ nmp-core = { path = "../nmp-core" }
 nmp-nip01 = { path = "../nmp-nip01" }
 nmp-nip22 = { path = "../nmp-nip22" }
 nmp-nip23 = { path = "../nmp-nip23" }
-nmp-nip29 = { path = "../nmp-nip29" }
 nmp-nip42 = { path = "../nmp-nip42" }
 nmp-nip57 = { path = "../nmp-nip57" }
 nmp-relations = { path = "../nmp-reactions" }
@@ -93,13 +92,6 @@ path = "tests/m8_subscription_lifecycle.rs"
 [[test]]
 name = "framework_magic_contract"
 path = "tests/framework_magic_contract.rs"
-
-# M11.5 T56 — NIP-29 lifecycle integration + relay-pin routing.
-# Consumer-facing: imports nmp-nip29 + nmp-core as external crates.
-# `cargo test -p nmp-testing --test nip29_lifecycle`
-[[test]]
-name = "nip29_lifecycle"
-path = "tests/nip29_lifecycle.rs"
 
 # T66 pulse-builder — real-relay smoke for Nip65OutboxResolver + kind:1 round-trip.
 # All tests `#[ignore]` by default; run explicitly:
