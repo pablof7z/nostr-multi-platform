@@ -174,7 +174,7 @@ pub extern "C" fn nmp_app_chirp_register(
     // no other reference aliases `app` at this point.
     register_nip29_actions(unsafe { &mut *app });
 
-    // Register the NIP-17 direct-message `ActionModule` (`nmp.dm.send`).
+    // Register the NIP-17 direct-message `ActionModule` (`nmp.nip17.send`).
     // Same `&mut NmpApp` / pre-`nmp_app_start` ordering rule as the NIP-29
     // registration above — a third NIP-crate `ActionModule` reached through
     // the generic `dispatch_action` seam (D0 — no DM nouns in `nmp-core`).
@@ -547,7 +547,7 @@ fn register_nip29_actions(app: &mut NmpApp) {
     wire_action!(app, CommentInGroupAction, CommentInGroupInput, comment_in_group_command);
 }
 
-/// Register the NIP-17 direct-message `ActionModule` (`nmp.dm.send`) against
+/// Register the NIP-17 direct-message `ActionModule` (`nmp.nip17.send`) against
 /// `app`'s action registry.
 ///
 /// Wires the typed [`SendDmAction`] from the `nmp-nip17` protocol crate
@@ -557,10 +557,10 @@ fn register_nip29_actions(app: &mut NmpApp) {
 /// actor's local-keys-MVP handler does the NIP-59 seal + gift-wrap + publish.
 ///
 /// JSON schema (the third arg the host passes to `nmp_app_dispatch_action`):
-/// * `nmp.dm.send` — `{"recipient_pubkey":"<hex>","content":"…","reply_to":"<hex>"?}`
-/// * `nmp.dm.publish_relay_list` — `{"relays":["wss://relay.example", ...]}`
+/// * `nmp.nip17.send` — `{"recipient_pubkey":"<hex>","content":"…","reply_to":"<hex>"?}`
+/// * `nmp.nip17.publish_relay_list` — `{"relays":["wss://relay.example", ...]}`
 ///
-/// `nmp.dm.publish_relay_list` closes the symmetric publish gap: the kernel
+/// `nmp.nip17.publish_relay_list` closes the symmetric publish gap: the kernel
 /// ingests kind:10050 (NIP-17 DM-relay list) into `dm_relay_lists`, but
 /// without a publish path every NMP user is invisible to other clients
 /// trying to send them gift-wrapped DMs. The executor builds the kind:10050
@@ -879,7 +879,7 @@ mod tests {
     }
 
     /// THE NIP-17 SEND-VERB PROOF: after `nmp_app_chirp_register`, the
-    /// `nmp.dm.send` action — `SendDmAction`, an `ActionModule` living in the
+    /// `nmp.nip17.send` action — `SendDmAction`, an `ActionModule` living in the
     /// `nmp-nip17` protocol crate — is reachable through the generic
     /// `dispatch_action` path. A well-formed `SendDmInput` yields a 32-hex
     /// `correlation_id` (both the typed module validator AND the executor are
@@ -895,7 +895,7 @@ mod tests {
         let body = format!(
             r#"{{"recipient_pubkey":"{recipient}","content":"hello over NIP-17"}}"#
         );
-        let parsed = dispatch(app, "nmp.dm.send", &body);
+        let parsed = dispatch(app, "nmp.nip17.send", &body);
         let id = parsed
             .get("correlation_id")
             .and_then(|v| v.as_str())
@@ -906,7 +906,7 @@ mod tests {
         // validator surfaced through the host seam (D6).
         let parsed = dispatch(
             app,
-            "nmp.dm.send",
+            "nmp.nip17.send",
             &format!(r#"{{"recipient_pubkey":"{recipient}","content":"  "}}"#),
         );
         assert!(

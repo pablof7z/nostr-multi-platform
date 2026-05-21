@@ -5,7 +5,7 @@ import SwiftUI
 //
 //   • Read:  the `DmConversation` for `peerPubkey` out of `DmInboxStore`'s
 //            mirrored `nip17.dm_inbox` projection.
-//   • Write: `nmp.dm.send` via `DmInboxStore.sendDm` — the kind:14 rumor,
+//   • Write: `nmp.nip17.send` via `DmInboxStore.sendDm` — the kind:14 rumor,
 //            the NIP-59 gift-wrap, and signing are all Rust-owned.
 //
 // Thin-shell rule: ZERO protocol logic here. The view re-derives nothing —

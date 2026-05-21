@@ -6,7 +6,7 @@ import SwiftUI
 // First consumer of the NIP-17 receive seam:
 //   • Read:  `projections["nip17.dm_inbox"]`, mirrored by `DmInboxStore`
 //            (registered via `nmp_app_chirp_register_dm_inbox`).
-//   • Write: `nmp.dm.send` via `KernelHandle.sendDm` — reached from
+//   • Write: `nmp.nip17.send` via `KernelHandle.sendDm` — reached from
 //            `DmConversationView`.
 //
 // Thin-shell rule: ZERO protocol logic here. Conversations arrive

@@ -11,7 +11,7 @@ import os.log
 //
 // Thin-shell rule (Chirp): ZERO protocol logic in Swift. The Rust
 // `DmInboxProjection` owns NIP-44 decryption, kind:14 filtering, per-peer
-// grouping, and newest-first ordering; the `nmp.dm.send` action owns the
+// grouping, and newest-first ordering; the `nmp.nip17.send` action owns the
 // kind:14 rumor, the NIP-59 gift-wrap, and signing. Swift only marshals JSON
 // across the FFI and mirrors the snapshot.
 //
@@ -29,7 +29,7 @@ import os.log
 //
 // ── Write side ────────────────────────────────────────────────────────────
 //
-//   • `sendDm(recipientPubkey:content:replyTo:)` dispatches the `nmp.dm.send`
+//   • `sendDm(recipientPubkey:content:replyTo:)` dispatches the `nmp.nip17.send`
 //     action through the generic `nmp_app_dispatch_action` path.
 //     Fire-and-forget — the sent message reappears through the next snapshot
 //     tick (the actor gift-wraps a self-copy to the sender).
@@ -64,7 +64,7 @@ extension KernelHandle {
         )
     }
 
-    /// Dispatch a `nmp.dm.send` action — send a NIP-17 private direct message
+    /// Dispatch a `nmp.nip17.send` action — send a NIP-17 private direct message
     /// to `recipientPubkey`. Routes through the generic
     /// `nmp_app_dispatch_action` path; the kind:14 rumor, the NIP-59
     /// gift-wrap, and signing are all owned by Rust (thin-shell rule).
@@ -90,7 +90,7 @@ extension KernelHandle {
             return
         }
         json.withCString { jsonPtr in
-            "nmp.dm.send".withCString { nsPtr in
+            "nmp.nip17.send".withCString { nsPtr in
                 if let ptr = nmp_app_dispatch_action(raw, nsPtr, jsonPtr) {
                     nmp_app_free_string(ptr)
                 }
@@ -98,7 +98,7 @@ extension KernelHandle {
         }
     }
 
-    /// Dispatch a `nmp.dm.publish_relay_list` action — publish the active
+    /// Dispatch a `nmp.nip17.publish_relay_list` action — publish the active
     /// account's kind:10050 NIP-17 DM-relay list so other clients can
     /// discover where to send the user gift-wrapped DMs.
     ///
@@ -124,7 +124,7 @@ extension KernelHandle {
             return
         }
         json.withCString { jsonPtr in
-            "nmp.dm.publish_relay_list".withCString { nsPtr in
+            "nmp.nip17.publish_relay_list".withCString { nsPtr in
                 if let ptr = nmp_app_dispatch_action(raw, nsPtr, jsonPtr) {
                     nmp_app_free_string(ptr)
                 }
