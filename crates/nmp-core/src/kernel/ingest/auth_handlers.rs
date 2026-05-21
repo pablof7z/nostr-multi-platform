@@ -293,7 +293,8 @@ impl Kernel {
         // Typed FFI error contract — keep `error_category` in lockstep with
         // `last_error`:
         // - A Failed transition stamps both `last_error` (reason text) and
-        //   `error_category = auth_required` so iOS can prompt the user.
+        //   `error_category = auth_required` so the host can prompt for
+        //   credentials.
         // - A *recovery* transition (anything non-Failed) clears ONLY a
         //   stale `auth_required` category — it must not clobber a category
         //   set by a different surface (e.g. a `transient` from a CLOSED
