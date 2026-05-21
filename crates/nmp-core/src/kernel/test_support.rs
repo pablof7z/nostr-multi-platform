@@ -69,6 +69,7 @@ impl Kernel {
                 0 => self.ingest_profile(event),
                 3 => self.ingest_contacts(event),
                 10002 => self.ingest_relay_list(event),
+                10050 => self.ingest_dm_relay_list(event),
                 _ => {}
             }
         }
@@ -252,6 +253,36 @@ impl Kernel {
             author_pubkey,
             u64::MAX,
             10002,
+            tags,
+            "wss://seed",
+            1_700_000_000_000,
+        );
+    }
+
+    /// Seed a kind:10050 (NIP-17 DM-relay list) into the kernel's event store
+    /// and DM-relay-list cache for `author_pubkey` with `dm_relay_urls` as its
+    /// `relay`-tag DM-inbox relays.
+    ///
+    /// The structural analogue of `seed_kind10002_for_test`: tests that exercise
+    /// the NIP-17 DM send path's `recipient_dm_relays` resolution call this to
+    /// prime a recipient's kind:10050 list before dispatching a DM command.
+    /// The synthetic event id is the author pubkey (unique per author in a
+    /// fresh-kernel test); `created_at: u64::MAX` guarantees the seed wins the
+    /// replaceable-event supersession check in `store::insert`.
+    ///
+    /// Test-support only — gated on `cfg(any(test, feature = "test-support"))`.
+    #[allow(dead_code)]
+    pub(crate) fn seed_kind10050_for_test(&mut self, author_pubkey: &str, dm_relay_urls: &[&str]) {
+        let id = author_pubkey.to_string();
+        let tags: Vec<Vec<String>> = dm_relay_urls
+            .iter()
+            .map(|url| vec!["relay".to_string(), url.to_string()])
+            .collect();
+        self.inject_replaceable_event(
+            &id,
+            author_pubkey,
+            u64::MAX,
+            10050,
             tags,
             "wss://seed",
             1_700_000_000_000,

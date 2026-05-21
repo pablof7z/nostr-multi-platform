@@ -156,23 +156,33 @@ impl Kernel {
     /// not in their public read set. Collapsing the two would silently leak DM
     /// routing onto public relays.
     ///
-    /// This is the lookup **seam**: kind:10050 ingestion is not yet built (no
-    /// ingest dispatch arm, no subscription interest), so there is no cache to
-    /// consult and this returns `None` today. The DM send path
-    /// (`commands::send_gift_wrapped_dm`) treats `None` as "fall back to the
-    /// configured Content relays and emit a diagnostic `warn!`" — the failure
-    /// is visible, never silent. When kind:10050 ingest lands, this method
-    /// becomes the single edit point: look the pubkey up in the new cache and
-    /// return `Some(relays)`.
+    /// This reads the **live** kind:10050 cache (`self.dm_relay_lists`),
+    /// populated by `ingest_dm_relay_list` exactly as `author_write_relays`
+    /// reads `author_relay_lists` for kind:10002. The DM send path
+    /// (`commands::send_gift_wrapped_dm`) consults this method to pin each
+    /// kind:1059 envelope to its receiver's DM-inbox relays.
     ///
-    /// Returns `None` when no kind:10050 list is known for `pubkey` (always,
-    /// for now). An empty `Some(Vec)` is reserved for "the pubkey published a
-    /// kind:10050 but it carried no relays" once ingestion exists — callers
-    /// must distinguish that from "not yet known".
-    pub(crate) fn recipient_dm_relays(&self, _pubkey: &str) -> Option<Vec<String>> {
-        // No kind:10050 ingest path exists yet — there is no cache to read.
-        // See the doc comment: this is the named follow-up seam.
-        None
+    /// Returns `None` when no kind:10050 list is known for `pubkey` — either the
+    /// pubkey has never published a kind:10050, or it published one carrying no
+    /// `relay` tags (an empty list, which `ingest_dm_relay_list` treats as the
+    /// author clearing their DM relays and so removes the cache entry). In both
+    /// cases the send path's `None` branch is the *correct* fallback: route to
+    /// the configured Content relays and emit a diagnostic `tracing::warn!` so
+    /// the routing gap is visible in logs. That warn is no longer a sign of a
+    /// missing feature — it is the documented fallback for a recipient who
+    /// genuinely has not published a kind:10050 DM-relay list.
+    pub(crate) fn recipient_dm_relays(&self, pubkey: &str) -> Option<Vec<String>> {
+        let relays = self.dm_relay_lists.get(pubkey)?;
+        // A cached entry is never stored empty — `ingest_dm_relay_list` removes
+        // the entry on an empty kind:10050 rather than caching a `Vec::new()`.
+        // The guard here is belt-and-suspenders so a future caller that seeds
+        // the map directly cannot return an empty `Some(Vec)` that callers
+        // would treat as "route to no relays".
+        if relays.is_empty() {
+            None
+        } else {
+            Some(relays.clone())
+        }
     }
 
     /// True iff every author in `authors` has a cached kind:10002 relay list

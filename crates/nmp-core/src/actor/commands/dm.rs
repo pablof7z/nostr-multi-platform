@@ -49,13 +49,15 @@
 //! the recipient reads a different relay set: the send "succeeds" with no toast
 //! but nothing is delivered.
 //!
-//! kind:10050 ingestion is not yet built, so `Kernel::recipient_dm_relays`
-//! (the lookup seam) returns `None` for now. When that happens this handler
-//! falls back to the actor's configured Content relays AND emits a
-//! `tracing::warn!` — the routing gap is visible in logs, never a silent
-//! delivery failure. When kind:10050 ingest lands, `recipient_dm_relays`
-//! starts returning `Some(..)` and this handler routes correctly with no
-//! further change here.
+//! `Kernel::recipient_dm_relays` reads a **live** kind:10050 cache
+//! (`dm_relay_lists`, populated by `ingest_dm_relay_list`). It returns
+//! `Some(relays)` for any receiver whose kind:10050 DM-relay list has been
+//! ingested, and `None` for a receiver who has never published one. The `None`
+//! branch here is the correct fallback for that genuinely-missing case: route
+//! to the actor's configured Content relays AND emit a `tracing::warn!` so the
+//! routing gap is visible in logs. The warn is no longer a stub-marker for an
+//! unbuilt feature — it is the documented diagnostic for a recipient without a
+//! kind:10050 list.
 
 use nostr::{EventBuilder, Kind, PublicKey, Tag, Timestamp};
 
@@ -147,10 +149,12 @@ pub(crate) fn send_gift_wrapped_dm(
         // the unlinkability gift-wrap exists to provide.
         let raw = nostr_event_to_raw(&envelope);
         // NIP-17 § 2: pin the envelope to the receiver's kind:10050 DM-inbox
-        // relays. The lookup seam returns `None` until kind:10050 ingestion is
-        // built — when it does, fall back to the configured Content relays AND
-        // warn, so the routing gap is visible in logs rather than a silent
-        // delivery failure (the recipient simply never receiving the message).
+        // relays. `recipient_dm_relays` reads the live kind:10050 cache; it
+        // returns `None` only when the receiver has never published a
+        // kind:10050 list. In that genuinely-missing case fall back to the
+        // configured Content relays AND warn, so the routing gap is visible in
+        // logs rather than a silent delivery failure (the recipient simply
+        // never receiving the message).
         let relays = kernel.recipient_dm_relays(receiver_hex).unwrap_or_else(|| {
             tracing::warn!(
                 envelope = label,
@@ -343,6 +347,44 @@ mod tests {
         assert!(
             !outbound.is_empty(),
             "the send still succeeds via the Content-relay fallback"
+        );
+    }
+
+    #[test]
+    fn send_gift_wrapped_dm_routes_recipient_envelope_to_kind10050_relays() {
+        // NIP-17 § 2 routing: when the recipient HAS published a kind:10050
+        // DM-relay list, the recipient envelope must be pinned to that list —
+        // not the sender's Content relays. This is the close of the
+        // inert-seam-with-warn bug: `recipient_dm_relays` now reads a live
+        // kind:10050 cache, so the recipient envelope routes correctly.
+        let (mut identity, mut kernel) = fresh();
+        sign_in_nsec(&mut identity, &mut kernel, TEST_NSEC, false);
+        let sender = identity.active_pubkey().expect("signed in");
+
+        // The recipient publishes a kind:10050 DM-relay list. The URL is given
+        // in canonical form (no empty-path trailing slash) so the seeded value
+        // and the resolved `recipient_dm_relays` value compare exactly.
+        let recipient_keys = nostr::Keys::generate();
+        let recipient_pk = recipient_keys.public_key().to_hex();
+        kernel.seed_kind10050_for_test(&recipient_pk, &["wss://recipient-dm.relay"]);
+
+        let rumor = sample_rumor(&sender);
+        let outbound = send_gift_wrapped_dm(&identity, &mut kernel, rumor, &recipient_pk);
+
+        assert!(
+            kernel.last_error_toast_snapshot().is_none(),
+            "a kind:10050-routed send must not toast: {:?}",
+            kernel.last_error_toast_snapshot()
+        );
+        // The recipient envelope must have been published to the recipient's
+        // kind:10050 DM-relay list.
+        assert!(
+            outbound
+                .iter()
+                .any(|m| m.relay_url == "wss://recipient-dm.relay"),
+            "the recipient envelope must route to the recipient's kind:10050 \
+             DM-relay list; got: {:?}",
+            outbound.iter().map(|m| &m.relay_url).collect::<Vec<_>>()
         );
     }
 

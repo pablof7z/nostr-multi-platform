@@ -59,6 +59,11 @@ fn p_tag(pubkey: &str) -> Vec<String> {
     vec!["p".to_string(), pubkey.to_string()]
 }
 
+/// A single NIP-17 kind:10050 `relay` tag: `["relay", url]`.
+fn relay_tag(url: &str) -> Vec<String> {
+    vec!["relay".to_string(), url.to_string()]
+}
+
 // ─── ingest_relay_list (kind:10002) ──────────────────────────────────────────
 
 /// A non-empty NIP-65 relay list is parsed into `author_relay_lists` under the
@@ -173,6 +178,214 @@ fn ingest_relay_list_empty_for_known_author_clears_entry_and_triggers_recompile(
         1,
         "clearing a cached NIP-65 list must enqueue a recompile trigger so the \
          M2 plan is re-routed off the now-stale relays",
+    );
+}
+
+// ─── ingest_dm_relay_list (kind:10050, NIP-17) ───────────────────────────────
+
+/// A non-empty kind:10050 DM-relay list is parsed into `dm_relay_lists` under
+/// the event author's pubkey. kind:10050 has no read/write/both markers —
+/// every `relay` tag is a DM-inbox relay.
+#[test]
+fn ingest_dm_relay_list_stores_non_empty_list() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    let event = make_event(
+        "0000000000000000000000000000000000000000000000000000000000000010",
+        AUTHOR,
+        1_000,
+        10050,
+        vec![
+            relay_tag("wss://dm-a.example/"),
+            relay_tag("wss://dm-b.example/"),
+        ],
+    );
+    kernel.ingest_dm_relay_list(event);
+
+    let resolved = kernel
+        .recipient_dm_relays(AUTHOR)
+        .expect("a non-empty kind:10050 must resolve to a DM-relay list");
+    // URLs are returned in canonical form — `CanonicalRelayUrl` strips the
+    // empty-path trailing slash (`wss://host/` → `wss://host`).
+    assert_eq!(
+        resolved,
+        vec!["wss://dm-a.example", "wss://dm-b.example"],
+        "every `relay` tag is a DM-inbox relay, in tag order",
+    );
+
+    // Unlike kind:10002, kind:10050 drives only `recipient_dm_relays` — it
+    // must NOT enqueue an M2 follow-feed recompile trigger.
+    assert_eq!(
+        kernel.lifecycle.pending_trigger_count(),
+        0,
+        "a kind:10050 ingest must not enqueue a recompile trigger",
+    );
+}
+
+/// kind:10050 URLs are canonicalized (lowercase scheme+host) and duplicate
+/// `relay` tags are deduped, preserving first-seen order.
+#[test]
+fn ingest_dm_relay_list_canonicalizes_and_dedupes() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    let event = make_event(
+        "0000000000000000000000000000000000000000000000000000000000000011",
+        AUTHOR,
+        1_000,
+        10050,
+        vec![
+            relay_tag("wss://DM-Relay.Example/"),
+            // A mixed-case duplicate of the first tag — canonicalizes to the
+            // same URL and must be deduped.
+            relay_tag("wss://dm-relay.example/"),
+            relay_tag("wss://other.example/"),
+        ],
+    );
+    kernel.ingest_dm_relay_list(event);
+
+    let resolved = kernel
+        .recipient_dm_relays(AUTHOR)
+        .expect("kind:10050 must resolve");
+    assert_eq!(
+        resolved,
+        vec!["wss://dm-relay.example", "wss://other.example"],
+        "canonicalization lowercases host and strips the empty-path slash; \
+         the duplicate is dropped",
+    );
+}
+
+/// Non-`relay` tags and non-`wss://` URLs are skipped — mirroring the
+/// defensive scheme gate `parse_relay_list` applies to kind:10002.
+#[test]
+fn ingest_dm_relay_list_ignores_non_relay_and_non_wss_tags() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    let event = make_event(
+        "0000000000000000000000000000000000000000000000000000000000000012",
+        AUTHOR,
+        1_000,
+        10050,
+        vec![
+            // The NIP-65 `r` marker must NOT be read as a DM relay.
+            r_tag("wss://nip65.example/", Some("write")),
+            // A non-wss scheme is rejected.
+            relay_tag("ws://insecure.example/"),
+            relay_tag("https://not-a-relay.example/"),
+            // A `relay` tag with no URL value.
+            vec!["relay".to_string()],
+            // The one well-formed DM relay.
+            relay_tag("wss://valid.example/"),
+        ],
+    );
+    kernel.ingest_dm_relay_list(event);
+
+    let resolved = kernel
+        .recipient_dm_relays(AUTHOR)
+        .expect("the one well-formed `relay` tag must resolve");
+    assert_eq!(
+        resolved,
+        vec!["wss://valid.example"],
+        "only well-formed wss `relay` tags are kept",
+    );
+}
+
+/// An empty kind:10050 for an author with NO cached DM-relay list is a true
+/// no-op: no entry is created.
+#[test]
+fn ingest_dm_relay_list_empty_for_unknown_author_is_noop() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    let event = make_event(
+        "0000000000000000000000000000000000000000000000000000000000000013",
+        AUTHOR,
+        1_000,
+        10050,
+        Vec::new(),
+    );
+    kernel.ingest_dm_relay_list(event);
+
+    assert!(
+        kernel.recipient_dm_relays(AUTHOR).is_none(),
+        "an empty kind:10050 for an unknown author must NOT create a cache entry",
+    );
+}
+
+/// An empty kind:10050 for an author who DOES have a cached DM-relay list
+/// clears the stale entry — the author explicitly emptied their kind:10050,
+/// and the send path must fall back to Content relays rather than route to a
+/// stale DM-relay list.
+#[test]
+fn ingest_dm_relay_list_empty_for_known_author_clears_entry() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    let seed = make_event(
+        "0000000000000000000000000000000000000000000000000000000000000010",
+        AUTHOR,
+        1_000,
+        10050,
+        vec![relay_tag("wss://dm.example/")],
+    );
+    kernel.ingest_dm_relay_list(seed);
+    assert!(
+        kernel.recipient_dm_relays(AUTHOR).is_some(),
+        "precondition: the seed DM-relay list must be cached",
+    );
+
+    let clear = make_event(
+        "0000000000000000000000000000000000000000000000000000000000000014",
+        AUTHOR,
+        2_000,
+        10050,
+        Vec::new(),
+    );
+    kernel.ingest_dm_relay_list(clear);
+
+    assert!(
+        kernel.recipient_dm_relays(AUTHOR).is_none(),
+        "an empty kind:10050 for a known author must REMOVE the stale entry",
+    );
+}
+
+/// A later kind:10050 replaces the cached list — the cache always reflects the
+/// most-recently-ingested DM-relay list (the store gates supersession by
+/// `created_at`; this handler only runs on the winning event).
+#[test]
+fn ingest_dm_relay_list_replaces_cached_list() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    let first = make_event(
+        "0000000000000000000000000000000000000000000000000000000000000010",
+        AUTHOR,
+        1_000,
+        10050,
+        vec![relay_tag("wss://old-dm.example/")],
+    );
+    kernel.ingest_dm_relay_list(first);
+
+    let second = make_event(
+        "0000000000000000000000000000000000000000000000000000000000000015",
+        AUTHOR,
+        2_000,
+        10050,
+        vec![relay_tag("wss://new-dm.example/")],
+    );
+    kernel.ingest_dm_relay_list(second);
+
+    assert_eq!(
+        kernel.recipient_dm_relays(AUTHOR),
+        Some(vec!["wss://new-dm.example".to_string()]),
+        "the newer kind:10050 must replace the cached DM-relay list",
+    );
+}
+
+/// `recipient_dm_relays` returns `None` for a pubkey with no kind:10050 — the
+/// genuinely-missing case the DM send path falls back to Content relays for.
+#[test]
+fn recipient_dm_relays_none_for_uncached_pubkey() {
+    let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    assert!(
+        kernel.recipient_dm_relays(AUTHOR).is_none(),
+        "a pubkey with no ingested kind:10050 must resolve to None",
     );
 }
 

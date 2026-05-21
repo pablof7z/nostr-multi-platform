@@ -260,6 +260,14 @@ pub(crate) struct Kernel {
     deferred_outbound: VecDeque<OutboundMessage>,
     seed_contacts: HashMap<String, Vec<String>>,
     author_relay_lists: HashMap<String, AuthorRelayList>,
+    /// NIP-17 kind:10050 DM-relay lists, keyed by author pubkey (hex). Each
+    /// value is the deduped, canonicalized set of DM-inbox relay URLs the
+    /// author declared. Populated by `ingest_dm_relay_list`; read by
+    /// `recipient_dm_relays` to pin kind:1059 gift-wrap envelopes to their
+    /// receiver's DM-inbox relays (NIP-17 § 2). Deliberately distinct from
+    /// `author_relay_lists` (kind:10002) — DM routing must not leak onto the
+    /// public NIP-65 mailbox.
+    dm_relay_lists: HashMap<String, Vec<String>>,
     timeline_authors: BTreeSet<String>,
     /// T140 — M2 follow-feed interest tracking. Maps each currently-registered
     /// follow-feed `InterestId` so `sync_follow_feed_interests` can withdraw
@@ -710,6 +718,7 @@ impl Kernel {
             deferred_outbound: VecDeque::new(),
             seed_contacts: HashMap::new(),
             author_relay_lists: HashMap::new(),
+            dm_relay_lists: HashMap::new(),
             timeline_authors: BTreeSet::new(),
             follow_feed_interest_ids: BTreeSet::new(),
             profile_claims: HashMap::new(),

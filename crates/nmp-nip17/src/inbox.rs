@@ -163,6 +163,17 @@ impl DmInboxProjection {
     ///
     /// D6: a poisoned mutex degrades to [`DmInboxSnapshot::empty`] rather than
     /// panicking — this runs on the actor thread inside a snapshot tick.
+    ///
+    /// TODO(bunker-inbox): when the `local_keys` slot is `None` the snapshot is
+    /// always empty, but a host cannot distinguish "no signer yet" from "a
+    /// remote-signer (bunker) account that cannot unseal gift-wraps"
+    /// (ADR-0026 Phase 2 — `unwrap_gift_wrap` needs raw `Keys`). A future change
+    /// should surface this via a snapshot-level flag (e.g. a
+    /// `remote_signer_unsupported: bool` on [`DmInboxSnapshot`]) so the host can
+    /// show "DM inbox unavailable for bunker accounts" instead of an empty
+    /// list. Deliberately not added here: [`DmInboxSnapshot`] is a serde-stable
+    /// wire type already consumed by hosts, and widening it is a breaking
+    /// schema change out of scope for the kind:10050 ingest work.
     pub fn snapshot(&self) -> DmInboxSnapshot {
         let Ok(messages) = self.messages.lock() else {
             return DmInboxSnapshot::empty();
