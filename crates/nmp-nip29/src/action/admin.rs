@@ -15,6 +15,13 @@ use super::publish_plan::PublishPlan;
 
 /// Generate an admin `ActionModule` impl plus its executor command function.
 ///
+/// `$namespace` is the snake_case wire suffix; the generated `NAMESPACE`
+/// constant is `concat!("nip29.", $namespace)`. It is passed explicitly (not
+/// derived from the CamelCase `$Module` ident) so admin verbs match the
+/// snake_case convention every other NIP-29 namespace already uses
+/// (`nip29.join_request`, `nip29.post_chat_message`, …) — the wire format is
+/// a public API and must stay consistent across all 15 namespaces.
+///
 /// `$build_plan` is the single source of truth for the action's wire shape:
 /// [`$Module::start`] consults it for validation, and the generated
 /// `$command_fn` consults the same closure so the executor can never drift
@@ -23,7 +30,7 @@ use super::publish_plan::PublishPlan;
 /// [`PublishPlan::into_actor_command`] — the bridge that finally lets these
 /// dormant validators drive a real publish.
 macro_rules! admin_action {
-    ($Module:ident, $Input:ident, $command_fn:ident, $kind_const:expr, $build_plan:expr) => {
+    ($Module:ident, $Input:ident, $command_fn:ident, $namespace:literal, $kind_const:expr, $build_plan:expr) => {
         #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
         pub struct $Input {
             pub group: GroupId,
@@ -33,7 +40,7 @@ macro_rules! admin_action {
 
         pub struct $Module;
         impl ActionModule for $Module {
-            const NAMESPACE: &'static str = concat!("nip29.", stringify!($Module));
+            const NAMESPACE: &'static str = concat!("nip29.", $namespace);
             type Action = $Input;
             fn start(
                 _ctx: &mut ActionContext,
@@ -85,11 +92,11 @@ fn group_h_tag(group: &GroupId) -> Vec<String> {
     vec!["h".into(), group.local_id.clone()]
 }
 
-admin_action!(CreateGroupAction, CreateGroupInput, create_group_command, KIND_CREATE_GROUP, |a: &CreateGroupInput| {
+admin_action!(CreateGroupAction, CreateGroupInput, create_group_command, "create_group", KIND_CREATE_GROUP, |a: &CreateGroupInput| {
     PublishPlan::pinned(&a.group, KIND_CREATE_GROUP, "", vec![group_h_tag(&a.group)])
 });
 
-admin_action!(EditMetadataAction, EditMetadataInput, edit_metadata_command, KIND_EDIT_METADATA, |a: &EditMetadataInput| {
+admin_action!(EditMetadataAction, EditMetadataInput, edit_metadata_command, "edit_metadata", KIND_EDIT_METADATA, |a: &EditMetadataInput| {
     let mut tags = vec![group_h_tag(&a.group)];
     if let Some(name) = &a.fields.name { tags.push(vec!["name".into(), name.clone()]); }
     if let Some(about) = &a.fields.about { tags.push(vec!["about".into(), about.clone()]); }
@@ -100,7 +107,7 @@ admin_action!(EditMetadataAction, EditMetadataInput, edit_metadata_command, KIND
     PublishPlan::pinned(&a.group, KIND_EDIT_METADATA, "", tags)
 });
 
-admin_action!(PutUserAction, PutUserInput, put_user_command, KIND_PUT_USER, |a: &PutUserInput| {
+admin_action!(PutUserAction, PutUserInput, put_user_command, "put_user", KIND_PUT_USER, |a: &PutUserInput| {
     let pubkey = a.fields.target_pubkey.clone().unwrap_or_default();
     let mut p_tag = vec!["p".into(), pubkey];
     if let Some(role) = &a.fields.role { p_tag.push(role.clone()); }
@@ -109,14 +116,14 @@ admin_action!(PutUserAction, PutUserInput, put_user_command, KIND_PUT_USER, |a: 
     PublishPlan::pinned(&a.group, KIND_PUT_USER, "", tags)
 });
 
-admin_action!(RemoveUserAction, RemoveUserInput, remove_user_command, KIND_REMOVE_USER, |a: &RemoveUserInput| {
+admin_action!(RemoveUserAction, RemoveUserInput, remove_user_command, "remove_user", KIND_REMOVE_USER, |a: &RemoveUserInput| {
     let pubkey = a.fields.target_pubkey.clone().unwrap_or_default();
     let mut tags = vec![group_h_tag(&a.group), vec!["p".into(), pubkey]];
     if let Some(reason) = &a.fields.reason { tags.push(vec!["reason".into(), reason.clone()]); }
     PublishPlan::pinned(&a.group, KIND_REMOVE_USER, "", tags)
 });
 
-admin_action!(CreateInviteAction, CreateInviteInput, create_invite_command, KIND_CREATE_INVITE, |a: &CreateInviteInput| {
+admin_action!(CreateInviteAction, CreateInviteInput, create_invite_command, "create_invite", KIND_CREATE_INVITE, |a: &CreateInviteInput| {
     let mut tags = vec![group_h_tag(&a.group)];
     for code in &a.fields.invite_codes {
         tags.push(vec!["code".into(), code.clone()]);
@@ -124,7 +131,7 @@ admin_action!(CreateInviteAction, CreateInviteInput, create_invite_command, KIND
     PublishPlan::pinned(&a.group, KIND_CREATE_INVITE, "", tags)
 });
 
-admin_action!(DeleteEventAction, DeleteEventInput, delete_event_command, KIND_DELETE_EVENT, |a: &DeleteEventInput| {
+admin_action!(DeleteEventAction, DeleteEventInput, delete_event_command, "delete_event", KIND_DELETE_EVENT, |a: &DeleteEventInput| {
     let evt = a.fields.target_event_id.clone().unwrap_or_default();
     PublishPlan::pinned(
         &a.group,
@@ -134,7 +141,7 @@ admin_action!(DeleteEventAction, DeleteEventInput, delete_event_command, KIND_DE
     )
 });
 
-admin_action!(DeleteGroupAction, DeleteGroupInput, delete_group_command, KIND_DELETE_GROUP, |a: &DeleteGroupInput| {
+admin_action!(DeleteGroupAction, DeleteGroupInput, delete_group_command, "delete_group", KIND_DELETE_GROUP, |a: &DeleteGroupInput| {
     PublishPlan::pinned(&a.group, KIND_DELETE_GROUP, "", vec![group_h_tag(&a.group)])
 });
 
