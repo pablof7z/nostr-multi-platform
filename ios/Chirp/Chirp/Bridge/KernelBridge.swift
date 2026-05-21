@@ -503,6 +503,13 @@ struct KernelUpdate: Decodable {
     /// D0: identity output is no longer a typed snapshot field. Computed so
     /// call sites keep reading `update.activeAccount` unchanged.
     var activeAccount: String? { projections?.activeAccount }
+
+    /// Most recent terminal action result — `projections["last_action_result"]`
+    /// (direction review #24). `nil` when no dispatched action has settled yet;
+    /// otherwise the latest `published` / `failed` / `cancelled` verdict the
+    /// host uses to clear a per-action spinner. Computed so call sites read
+    /// `update.lastActionResult` directly.
+    var lastActionResult: LastActionResult? { projections?.lastActionResult }
 }
 
 /// The kernel's host-extensible `projections` map. Each built-in app-noun
@@ -524,6 +531,10 @@ struct SnapshotProjections: Decodable, Equatable {
     // emits snake_case and the decoder uses `.convertFromSnakeCase`).
     let accounts: [AccountSummary]?
     let activeAccount: String?
+    // Direction review #24: the most recent terminal action result. Decodes
+    // from `projections["last_action_result"]` — JSON `null` (no action has
+    // settled yet) decodes to `nil`.
+    let lastActionResult: LastActionResult?
 }
 
 /// NIP-46 (`bunker://`) handshake progress, projected from the kernel snapshot
@@ -587,6 +598,27 @@ struct PublishQueueEntry: Decodable, Identifiable, Equatable {
     let targetRelays: Int
     let status: String
     var id: String { eventId }
+}
+
+/// Direction review #24: the most recent terminal result of a dispatched
+/// action, projected from `projections["last_action_result"]`. A `nil`
+/// `SnapshotProjections.lastActionResult` means no action has settled yet
+/// (keep the spinner); a populated value means the host can clear the spinner
+/// for `correlationId`.
+///
+/// `status` is one of `"published"`, `"failed"`, `"cancelled"`. `error` is
+/// `nil` for `published` / `cancelled` and carries a human-readable reason for
+/// `failed` (the publish engine joins per-relay reasons with `; `).
+///
+/// This is a most-recent convenience signal, not an authoritative per-action
+/// store: if two actions settle in the same kernel tick this reports only the
+/// latest. The authoritative per-`correlationId` terminal status is in
+/// `SnapshotProjections.publishQueue` (`PublishQueueEntry.status`) — a host
+/// that needs exhaustive coverage correlates by `eventId` there.
+struct LastActionResult: Decodable, Equatable {
+    let correlationId: String
+    let status: String
+    let error: String?
 }
 
 struct PublishOutboxItem: Decodable, Identifiable, Equatable {

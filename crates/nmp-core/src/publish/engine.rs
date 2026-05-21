@@ -86,6 +86,58 @@ pub struct TerminalOutcome {
     pub failed: Vec<(RelayUrl, String)>,
 }
 
+/// Direction review #24: the sticky "most recent terminal action result" the
+/// engine retains so the kernel can surface a `last_action_result` snapshot
+/// projection. Unlike `recently_completed` (which the kernel *drains* via
+/// `take_completed`), this field is *overwritten* — never cleared — so a
+/// snapshot taken at any point after a publish settles still reports the last
+/// terminal verdict. The host reads it to clear a per-action spinner.
+///
+/// `correlation_id` is the `PublishHandle` (== `event_id` for publish actions).
+/// `status` uses the engine's internal vocabulary `"ok" | "failed" |
+/// "cancelled"`; the kernel translates `"ok" → "published"` at the projection
+/// serialization site. `error` is `None` for success, otherwise a single
+/// human-readable string (the per-relay failure reasons joined with `; `).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LastTerminal {
+    pub correlation_id: PublishHandle,
+    pub status: &'static str,
+    pub error: Option<String>,
+}
+
+impl LastTerminal {
+    /// Build a `LastTerminal` from a settled `TerminalOutcome`. Mirrors the
+    /// kernel's `classify_terminal_outcome` status rule: any accepted relay →
+    /// `"ok"`, otherwise `"failed"`.
+    fn from_outcome(handle: &PublishHandle, outcome: &TerminalOutcome) -> Self {
+        if outcome.accepted.is_empty() {
+            let error = if outcome.failed.is_empty() {
+                Some("publish failed: no relays settled".to_string())
+            } else {
+                Some(
+                    outcome
+                        .failed
+                        .iter()
+                        .map(|(url, reason)| format!("{}: {}", url, reason))
+                        .collect::<Vec<_>>()
+                        .join("; "),
+                )
+            };
+            Self {
+                correlation_id: handle.clone(),
+                status: "failed",
+                error,
+            }
+        } else {
+            Self {
+                correlation_id: handle.clone(),
+                status: "ok",
+                error: None,
+            }
+        }
+    }
+}
+
 pub struct PublishEngine {
     in_flight: HashMap<PublishHandle, InFlight>,
     unavailable_relays: BTreeSet<RelayUrl>,
@@ -107,6 +159,13 @@ pub struct PublishEngine {
     /// [`PublishEngine::take_completed`] after every engine call to update
     /// the `PublishQueueEntry` projection iOS reads.
     recently_completed: BTreeMap<PublishHandle, TerminalOutcome>,
+    /// Direction review #24: the most recent terminal action result, retained
+    /// (overwritten, never drained) so the kernel can emit a
+    /// `last_action_result` snapshot projection. `None` until the first
+    /// publish settles. Every site that records into `recently_completed`
+    /// (and `cancel_publish`, which does not) also overwrites this so the
+    /// host always has a terminal signal to clear its spinner.
+    last_terminal: Option<LastTerminal>,
 }
 
 impl PublishEngine {
@@ -128,6 +187,7 @@ impl PublishEngine {
             signer,
             needs_in_flight_rebuild: false,
             recently_completed: BTreeMap::new(),
+            last_terminal: None,
         }
     }
 
@@ -246,6 +306,17 @@ impl PublishEngine {
             }
             self.store.delete(&handle)?;
         }
+        // Direction review #24: cancellation is a terminal action result, but
+        // it never flows through `recently_completed` (the kernel surfaces
+        // "cancelled" separately via `set_publish_entry_terminal`). Record it
+        // here directly so `last_action_result` clears the host spinner. The
+        // overwrite happens unconditionally — even a cancel for an unknown /
+        // already-settled handle is a terminal verdict the host asked for.
+        self.last_terminal = Some(LastTerminal {
+            correlation_id: handle,
+            status: "cancelled",
+            error: None,
+        });
         self.flush_view();
         Ok(())
     }
@@ -276,6 +347,7 @@ impl PublishEngine {
             }
             helpers::for_each_terminal(in_flight, &handle, &mut self.view, now_ms);
             let outcome = helpers::terminal_outcome_of(in_flight);
+            self.last_terminal = Some(LastTerminal::from_outcome(&handle, &outcome));
             self.recently_completed.insert(handle.clone(), outcome);
             let _ = self.store.delete(&handle);
             self.in_flight.remove(&handle);
@@ -373,6 +445,7 @@ impl PublishEngine {
             // hook to recover the Ok/Failed map (recent_ok / recent_errors
             // are capped at 32 and not indexed by handle).
             let outcome = helpers::terminal_outcome_of(in_flight);
+            self.last_terminal = Some(LastTerminal::from_outcome(handle, &outcome));
             self.recently_completed.insert(handle.clone(), outcome);
             if let Err(err) = self.store.delete(handle) {
                 self.view.push_failure(RecentFailure {
@@ -419,6 +492,17 @@ impl PublishEngine {
         std::mem::take(&mut self.recently_completed)
             .into_values()
             .collect()
+    }
+
+    /// Direction review #24: the most recent terminal action result, retained
+    /// for the kernel's `last_action_result` snapshot projection. Unlike
+    /// [`Self::take_completed`] this is a non-draining read — the field is
+    /// overwritten when the next action settles, never cleared — so a snapshot
+    /// taken at any time after a publish settles still reports the last
+    /// verdict. `None` until the first publish settles. The kernel translates
+    /// the internal `"ok"` status to the wire-level `"published"`.
+    pub(crate) fn last_terminal(&self) -> Option<&LastTerminal> {
+        self.last_terminal.as_ref()
     }
 
     /// D6 FFI mapping path: convert a `PublishEngineError` into a snapshot
@@ -552,6 +636,16 @@ impl PublishEngine {
             relay_url: "(none)".to_string(),
             reason: "no relays resolved for publish target".to_string(),
             at_ms: now_ms,
+        });
+        // Direction review #24: NoTargets is a terminal "failed" outcome — the
+        // publish never gets queued and `start_publish` returns Err(NoTargets),
+        // so it never reaches the `recently_completed` / `on_ack` paths.
+        // Record it here so `last_action_result` reports the failure and the
+        // host clears its spinner instead of waiting on an op that never ran.
+        self.last_terminal = Some(LastTerminal {
+            correlation_id: handle.clone(),
+            status: "failed",
+            error: Some("no relays resolved for publish target".to_string()),
         });
         self.view.bump_rev();
     }

@@ -230,6 +230,16 @@ impl Kernel {
             serde_json::to_value(self.relay_edit_rows_snapshot())
                 .unwrap_or(serde_json::Value::Null),
         );
+        // Direction review #24: the most recent terminal action result, so a
+        // host can clear a per-action spinner (published / failed / cancelled)
+        // without polling. `null` when no action has settled yet. This is a
+        // direct read of the publish engine's sticky `last_terminal` field —
+        // it is NOT drained, so every snapshot tick after a publish settles
+        // still reports the last verdict.
+        projections.insert(
+            "last_action_result".to_string(),
+            self.last_action_result_projection(),
+        );
         // D0: identity output. `account_snapshot()` returns the substrate
         // `(&[AccountSummary], Option<&String>)` pair; the snapshot surfaces it
         // through `projections` instead of typed fields. A serialization

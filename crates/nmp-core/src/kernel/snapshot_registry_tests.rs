@@ -76,11 +76,12 @@ fn multiple_projections_each_get_their_namespace() {
 /// the kernel-owned built-in projections — and no host namespace.
 ///
 /// D0: `make_update` always inserts the publish cluster (`publish_queue` /
-/// `publish_outbox` / `relay_edit_rows`) and the identity pair (`accounts` /
-/// `active_account`) — all kernel-owned domain state, not host registrations —
-/// so the map is never empty and `skip_serializing_if` no longer drops it. A
-/// host that registers nothing simply contributes no extra keys: the social
-/// shell still sees only the five built-ins it expects.
+/// `publish_outbox` / `relay_edit_rows`), the identity pair (`accounts` /
+/// `active_account`), and the terminal-action signal (`last_action_result`,
+/// direction review #24) — all kernel-owned domain state, not host
+/// registrations — so the map is never empty and `skip_serializing_if` no
+/// longer drops it. A host that registers nothing simply contributes no extra
+/// keys: the social shell still sees only the six built-ins it expects.
 #[test]
 fn no_host_projection_leaves_only_the_builtin_projections() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -99,6 +100,7 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
         [
             "accounts",
             "active_account",
+            "last_action_result",
             "publish_outbox",
             "publish_queue",
             "relay_edit_rows"

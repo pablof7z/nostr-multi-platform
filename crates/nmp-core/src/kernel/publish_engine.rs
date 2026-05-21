@@ -405,6 +405,35 @@ impl Kernel {
         self.publish_engine.snapshot()
     }
 
+    /// Direction review #24: serialize the publish engine's most recent
+    /// terminal action result for the `last_action_result` snapshot
+    /// projection. Returns `serde_json::Value::Null` when no action has
+    /// settled yet (the host treats null/absent as "no terminal result —
+    /// keep the spinner"). Otherwise an object:
+    /// `{"correlation_id":"<hex>","status":"published|failed|cancelled",
+    /// "error":null|"<msg>"}`.
+    ///
+    /// The engine's internal status vocabulary is `"ok" | "failed" |
+    /// "cancelled"`; `"ok"` is translated to the wire-level `"published"`
+    /// here so the engine's internal vocabulary (depended on by the publish
+    /// queue tests) is left undisturbed.
+    pub(super) fn last_action_result_projection(&self) -> serde_json::Value {
+        match self.publish_engine.last_terminal() {
+            None => serde_json::Value::Null,
+            Some(terminal) => {
+                let status = match terminal.status {
+                    "ok" => "published",
+                    other => other,
+                };
+                serde_json::json!({
+                    "correlation_id": terminal.correlation_id,
+                    "status": status,
+                    "error": terminal.error,
+                })
+            }
+        }
+    }
+
     /// T128: drain every terminal verdict the engine recorded since the last
     /// drain and flip the matching `PublishQueueEntry` from `accepted_locally`
     /// to its terminal `"ok"` / `"failed"` status, carrying the per-relay
