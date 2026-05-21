@@ -63,6 +63,6 @@ and fetches the PR head only for diff inspection. It does not execute scripts
 from the PR branch. The review report records provider, model, base SHA, head
 SHA, changed files, verdict, and findings, and is uploaded as a CI artifact.
 
-Before `ARCHITECTURE_REVIEW_REQUIRED=true`, the runner can use the mock provider
-for workflow validation. Once required, mock review is rejected and a configured
-provider/model/API key must be present.
+For local plumbing tests, developers can invoke the runner with
+`--provider mock`. GitHub Actions rejects mock review entirely and requires a
+configured provider, model, and API key.

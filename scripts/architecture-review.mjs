@@ -234,11 +234,19 @@ async function main() {
     throw new Error("--base or GITHUB_BASE_SHA is required");
   }
 
-  const required = process.env.ARCHITECTURE_REVIEW_REQUIRED === "true";
-  const provider = args.provider || process.env.ARCHITECTURE_REVIEW_PROVIDER || "mock";
+  const providerFromCli = Boolean(args.provider);
+  const provider = args.provider || process.env.ARCHITECTURE_REVIEW_PROVIDER || "";
   const model = args.model || process.env.ARCHITECTURE_REVIEW_MODEL || "";
-  if (required && provider === "mock") {
-    throw new Error("mock architecture review is not allowed when ARCHITECTURE_REVIEW_REQUIRED=true");
+  if (!provider) {
+    throw new Error(
+      "ARCHITECTURE_REVIEW_PROVIDER or --provider is required; use anthropic/openai in CI"
+    );
+  }
+  if (provider === "mock" && !providerFromCli) {
+    throw new Error("mock architecture review is local-only; pass --provider mock explicitly");
+  }
+  if (provider === "mock" && process.env.GITHUB_ACTIONS === "true") {
+    throw new Error("mock architecture review is not allowed in GitHub Actions");
   }
   if (provider !== "mock" && !model) {
     throw new Error("ARCHITECTURE_REVIEW_MODEL or --model is required");
@@ -272,7 +280,7 @@ async function main() {
   const report = {
     provider,
     model: provider === "mock" ? "mock" : model,
-    required,
+    required: true,
     base_sha: base,
     head_sha: head,
     generated_at: new Date().toISOString(),
