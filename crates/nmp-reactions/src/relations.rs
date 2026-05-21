@@ -5,14 +5,14 @@
 //! it have", "what's the reply chain", "how many sats has it been zapped",
 //! "what are the comments on it", and on the write side "give me a reply",
 //! "give me a reaction", "give me a repost", "give me a zap-request", "give
-//! me a comment". Without a facade, each app re-wires four `ViewModule`
-//! specs and reaches into four crates for the four builder entrypoints. This
-//! module collapses that boilerplate into:
+//! me a comment". Without a facade, each app re-wires four view specs and
+//! reaches into four crates for the four builder entrypoints. This module
+//! collapses that boilerplate into:
 //!
 //! - [`Relations::for_event`] returning a [`RelationSpecs`] bundle of
-//!   pre-wired `ViewModule` `Spec` values from `nmp-relations` (reactions
-//!   summary + reposts), `nmp-nip01` (replies + thread), `nmp-nip22`
-//!   (comments), and `nmp-nip57` (zaps).
+//!   pre-wired view spec values from `nmp-relations` (reactions summary +
+//!   reposts), `nmp-nip01` (replies + thread), `nmp-nip22` (comments), and
+//!   `nmp-nip57` (zaps).
 //! - [`Relations::reply_to`], [`Relations::react_to`], [`Relations::repost`],
 //!   [`Relations::zap_request`], [`Relations::comment_on`] — free-fn
 //!   entrypoints into the per-NIP builders.
@@ -49,7 +49,7 @@ use crate::build::{Reaction, ReactionBuilder, Repost, RepostBuilder};
 use crate::decode::ReactionTarget;
 use crate::view::{ReactionSummarySpec, RepostsSpec};
 
-/// A bundle of pre-wired `ViewModule` specs targeting a single event.
+/// A bundle of pre-wired view specs targeting a single event.
 ///
 /// Apps open whichever of these are relevant for the surface they're
 /// rendering. `replies` and `thread` are populated only when the event kind

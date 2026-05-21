@@ -5,9 +5,7 @@
 //! kind:7 reactions are filtered out (they belong to `ReactionSummaryView`).
 //! A generic repost preserves its original `k` kind in the decoded record.
 
-use nmp_core::substrate::{
-    EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies, ViewModule,
-};
+use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
 use serde::{Deserialize, Serialize};
 
 use crate::decode::{ReactionTarget, ReactionRecord};
@@ -56,19 +54,14 @@ impl RepostsState {
 }
 
 pub struct RepostsView;
-impl ViewModule for RepostsView {
-    const NAMESPACE: &'static str = "nmp.reactions.reposts";
-    type Spec = RepostsSpec;
-    type Payload = RepostsPayload;
-    type Delta = ReactionViewDelta;
-    type Key = RepostsSpec;
-    type State = RepostsState;
+impl RepostsView {
+    pub const NAMESPACE: &'static str = "nmp.reactions.reposts";
 
-    fn key(spec: &Self::Spec) -> Self::Key {
+    pub fn key(spec: &RepostsSpec) -> RepostsSpec {
         spec.clone()
     }
 
-    fn dependencies(spec: &Self::Spec) -> ViewDependencies {
+    pub fn dependencies(spec: &RepostsSpec) -> ViewDependencies {
         let mut deps = ViewDependencies {
             kinds: vec![KIND_REPOST, KIND_GENERIC_REPOST],
             ..Default::default()
@@ -90,7 +83,7 @@ impl ViewModule for RepostsView {
         deps
     }
 
-    fn open(_ctx: &ViewContext, spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(_ctx: &ViewContext, spec: RepostsSpec) -> (RepostsState, RepostsPayload) {
         let state = RepostsState {
             spec,
             inner: ReactionAccumulator::default(),
@@ -98,46 +91,38 @@ impl ViewModule for RepostsView {
         (state, RepostsPayload::default())
     }
 
-    fn on_event_inserted(
+    pub fn on_event_inserted(
         _ctx: &ViewContext,
-        state: &mut Self::State,
+        state: &mut RepostsState,
         event: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<ReactionViewDelta> {
         if !state.event_in_scope(event) {
             return None;
         }
         state.inner.insert(event)
     }
 
-    fn on_event_removed(
+    pub fn on_event_removed(
         _ctx: &ViewContext,
-        state: &mut Self::State,
+        state: &mut RepostsState,
         id: &EventId,
-    ) -> Option<Self::Delta> {
+    ) -> Option<ReactionViewDelta> {
         state.inner.remove(id)
     }
 
-    fn on_event_replaced(
+    pub fn on_event_replaced(
         _ctx: &ViewContext,
-        state: &mut Self::State,
+        state: &mut RepostsState,
         old_id: &EventId,
         new_event: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<ReactionViewDelta> {
         if !state.event_in_scope(new_event) {
             return state.inner.remove(old_id);
         }
         state.inner.replace(old_id, new_event)
     }
 
-    fn on_projection_changed(
-        _ctx: &ViewContext,
-        _state: &mut Self::State,
-        _change: &ProjectionChange,
-    ) -> Option<Self::Delta> {
-        None
-    }
-
-    fn snapshot(_ctx: &ViewContext, state: &Self::State) -> Self::Payload {
+    pub fn snapshot(_ctx: &ViewContext, state: &RepostsState) -> RepostsPayload {
         // Every record in `inner` already passed the scope predicate (which
         // requires kind 6/16), so the snapshot is reposts-only by construction.
         RepostsPayload {

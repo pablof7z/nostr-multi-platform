@@ -1,4 +1,4 @@
-//! Shared accumulator for the 3 Marmot ViewModule impls.
+//! Shared accumulator for the Marmot reactive views.
 //!
 //! Mirrors `nmp-nip29::view::shared`. Each view's `State` is a thin
 //! append-only list of ingested `KernelEvent`s; `Payload` is the ordered

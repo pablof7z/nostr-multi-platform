@@ -58,8 +58,8 @@ pub enum PublishAction {
     /// Publish a kind:0 profile metadata event for the active account.
     /// `fields` is a flat JSON object with string-valued keys such as
     /// `"name"`, `"about"`, `"picture"` — the actor serializes it into the
-    /// kind:0 `content` field, signs with the active `IdentityModule`, and
-    /// routes through the NIP-65 outbox. Like `PublishNote`, the event is
+    /// kind:0 `content` field, signs with the active signer, and routes
+    /// through the NIP-65 outbox. Like `PublishNote`, the event is
     /// *not* pre-signed: the actor stamps `created_at` and signs. This is the
     /// `ActionModule`-native replacement for hosts hand-rolling a kind:0
     /// event dict and calling `nmp_app_publish_unsigned_event` directly.

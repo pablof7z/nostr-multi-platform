@@ -1,4 +1,4 @@
-//! 3 `ViewModule` impls per `docs/plan/marmot-mls.md` §Step 1.
+//! 3 reactive views per `docs/plan/marmot-mls.md` §Step 1.
 //!
 //! `GroupList`, `GroupMessages`, `MemberList`. All group-scoped views are
 //! relay-pinned to the group relay via `InterestShape::relay_pin` (ADR-0012);

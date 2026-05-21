@@ -1,7 +1,7 @@
 //! Repost surfacing: kind:6 and kind:16 of event X surfaced by `RepostsView`;
 //! a generic repost preserves its original `k`.
 
-use nmp_core::substrate::{KernelEvent, ViewContext, ViewModule};
+use nmp_core::substrate::{KernelEvent, ViewContext};
 use nmp_relations::{
     ReactionTarget, RepostsSpec, RepostsView, ReactionKind, KIND_GENERIC_REPOST, KIND_REPOST,
 };
