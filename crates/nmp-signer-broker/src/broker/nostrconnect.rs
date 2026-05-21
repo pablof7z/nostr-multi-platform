@@ -11,6 +11,14 @@ use crate::handshake::{build_req_frame, run_nostrconnect_handshake, HandshakeOut
 use crate::relay_client::{EventCallback, RelayClient, TungsteniteRelayClient};
 use crate::transport::BrokerTransport;
 
+/// Protocol-neutral `name=` value advertised in the `nostrconnect://` URI.
+///
+/// D0: a protocol crate must not bake an app brand (e.g. `Chirp`) into a wire
+/// string. The `name` field is the human-readable client identifier the remote
+/// signer shows the user; the protocol layer reports the substrate's own name
+/// and leaves app-specific branding to the app layer.
+const NOSTRCONNECT_CLIENT_NAME: &str = "nmp";
+
 impl BunkerBroker {
     /// Begin the signer-initiated (`nostrconnect://`) handshake and return the
     /// URI immediately so native code can render the QR code.
@@ -25,8 +33,9 @@ impl BunkerBroker {
             .map(char::from)
             .collect();
         let encoded_relay = percent_encode_query_value(&relay_url);
+        let name = NOSTRCONNECT_CLIENT_NAME;
         let uri = format!(
-            "nostrconnect://{pubkey_hex}?relay={encoded_relay}&secret={secret}&name=Chirp&perms=sign_event%3A1%2Csign_event%3A7"
+            "nostrconnect://{pubkey_hex}?relay={encoded_relay}&secret={secret}&name={name}&perms=sign_event%3A1%2Csign_event%3A7"
         );
 
         let me = Arc::clone(self);
