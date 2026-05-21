@@ -704,11 +704,14 @@ mod tests {
         let registry = default_registry();
         let action_json =
             r#"{"PublishProfile":{"fields":{"name":"Alice","about":"hello"}}}"#;
-        let (id, plan) = registry
+        let id = registry
             .start(&mut ctx(), "nmp.publish", action_json)
             .expect("publish-profile action with string fields should be accepted");
         assert_eq!(id.len(), 32, "correlation id should be 32 hex chars");
-        assert_eq!(plan.initial_status, ActionStatus::Pending);
+        assert!(
+            id.chars().all(|c| c.is_ascii_hexdigit()),
+            "correlation id should be hex: {id}"
+        );
     }
 
     #[test]
