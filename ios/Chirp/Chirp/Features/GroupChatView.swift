@@ -6,7 +6,7 @@ import SwiftUI
 // First real consumer of the NIP-29 seam:
 //   • Read:  `projections["nip29.group_chat"]`, mirrored by `GroupChatStore`
 //            (registered via `nmp_app_chirp_register_group_chat`).
-//   • Write: `nip29.post_chat_message` via `KernelHandle.postChatMessage`.
+//   • Write: `nmp.nip29.post_chat_message` via `KernelHandle.postChatMessage`.
 //
 // Thin-shell rule: ZERO protocol logic here. Messages arrive newest-first
 // from the Rust `GroupChatProjection`; this view only renders them and
@@ -169,7 +169,7 @@ struct GroupChatView: View {
         // Fire-and-forget: the sent message reappears via the next snapshot
         // tick. Clearing the draft optimistically matches `ComposeView` /
         // `MarmotGroupChatView`. A non-nil `replyTarget` routes the send to
-        // `nip29.comment_in_group` (a kind:1111 reply); the verb choice is
+        // `nmp.nip29.comment_in_group` (a kind:1111 reply); the verb choice is
         // the store's, not the view's (thin-shell rule).
         store.sendMessage(text, replyToEventId: replyTarget?.id)
         draft = ""
@@ -188,10 +188,10 @@ private func shortPubkey(_ hex: String) -> String {
 
 private struct GroupChatMessageRow: View {
     let message: GroupChatMessage
-    /// Long-press → "React ❤️": dispatches `nip29.react_in_group`.
+    /// Long-press → "React ❤️": dispatches `nmp.nip29.react_in_group`.
     let onReact: () -> Void
     /// Long-press → "Reply": arms the composer's reply target so the next
-    /// send dispatches `nip29.comment_in_group`.
+    /// send dispatches `nmp.nip29.comment_in_group`.
     let onReply: () -> Void
 
     var body: some View {
