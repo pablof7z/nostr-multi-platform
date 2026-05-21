@@ -3229,6 +3229,7 @@ dependencies = [
  "nmp-marmot",
  "nmp-nip01",
  "nmp-nip29",
+ "nmp-nip57",
  "nmp-signer-broker",
  "nmp-threading",
  "nostr",

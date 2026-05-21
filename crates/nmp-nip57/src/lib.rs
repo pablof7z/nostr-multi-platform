@@ -13,6 +13,7 @@
 //!   zapped event id.
 //! - **ZapsDomain** — `(zapped_event_id → receipt_ids)` reverse-index.
 
+pub mod action;
 pub mod bolt11;
 pub mod build;
 pub mod decode;
@@ -20,6 +21,7 @@ pub mod domain;
 pub mod kinds;
 pub mod view;
 
+pub use action::{zap_request_command, ZapAction, ZapModule};
 pub use build::{ZapRequest, ZapRequestBuildError, ZapRequestBuilder};
 pub use decode::{try_from_event, try_from_kernel_event, ZapReceiptRecord};
 pub use domain::{decode_and_route, list_by_target, ZapsDomain, NAMESPACE};

@@ -32,6 +32,7 @@ use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection, Unsigned
 use nmp_core::{ActorCommand, KernelEventObserverId, NmpApp};
 use nmp_nip29::action::{JoinRequestAction, JoinRequestInput};
 use nmp_nip29::kinds::KIND_JOIN_REQUEST;
+use nmp_nip57::action::{zap_request_command, ZapAction, ZapModule};
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
 use nmp_threading::ModulePolicy;
@@ -122,6 +123,15 @@ pub extern "C" fn nmp_app_chirp_register(
     // SAFETY: same exclusive-borrow rationale as `register_chirp_actions` —
     // no other reference aliases `app` at this point.
     register_nip29_actions(unsafe { &mut *app });
+
+    // Register the NIP-57 `ZapModule` against the kernel — the second
+    // NIP-crate `ActionModule` wired through the host-extensibility seam
+    // after `nmp-nip29`. Same `&mut NmpApp` / pre-`nmp_app_start` ordering
+    // rule as the registrations above.
+    //
+    // SAFETY: same exclusive-borrow rationale as `register_chirp_actions` —
+    // no other reference aliases `app` at this point.
+    register_nip57_actions(unsafe { &mut *app });
 
     // SAFETY: caller guarantees `app` is a valid pointer allocated by
     // `nmp_app_new` for the duration of this call. We do not hold the
@@ -394,6 +404,54 @@ fn nip29_join_request_command(action_json: &str) -> Result<ActorCommand, String>
         event: unsigned,
         relays: vec![input.group.host_relay_url.clone()],
     })
+}
+
+/// Register the NIP-57 `ZapModule` action namespace against `app`'s action
+/// registry — the second NIP-crate `ActionModule` wired through the
+/// host-extensibility seam after `nmp-nip29`'s `JoinRequestAction`.
+///
+/// JSON schema (the third arg to `nmp_app_dispatch_action`):
+/// * `nmp.zap` —
+///   `{"Zap":{"zapped_event_id":"<hex>","recipient_pubkey":"<hex64>",
+///     "amount_sats":21,"lnurl":"https://…","relays":["wss://…"],
+///     "comment":null}}`
+///
+/// The **module** validator delegates straight to the typed
+/// [`ZapModule::start`] — the crate's real validation (hex-pubkey check,
+/// non-zero amount, non-empty lnurl + relays) runs; it is not re-imitated
+/// here.
+///
+/// The **executor** builds the kind:9734 zap-request `UnsignedEvent` via
+/// [`zap_request_command`] and enqueues [`ActorCommand::PublishUnsignedEventToRelays`]
+/// pinned to the request's own `relays` set. The actor signs with the active
+/// account and publishes the kind:9734 to exactly those relays.
+///
+/// SCOPE: NIP-57 has a second leg — the signed kind:9734 must be POSTed to
+/// the recipient's `lnurl` callback over HTTP to obtain a bolt11 invoice the
+/// wallet then pays. The kernel has no LNURL HTTP capability yet, so that
+/// leg is unwired: the `lnurl` field is validated and carried for the future
+/// HTTP executor, but the executor here only handles the Nostr-event leg.
+fn register_nip57_actions(app: &mut NmpApp) {
+    // Module (validator): delegate to the typed `nmp-nip57` `ActionModule`.
+    app.register_action_module(ZapModule::NAMESPACE, |action_json| {
+        let action: ZapAction = serde_json::from_str(action_json)
+            .map_err(|e| ActionRejection::Invalid(e.to_string()))?;
+        let mut ctx = ActionContext { now_ms: 0 };
+        ZapModule::start(&mut ctx, action)
+    });
+
+    // Executor: build the kind:9734 zap-request event and enqueue a
+    // relay-pinned publish. The closure is a thin shim over
+    // `zap_request_command` so the action→command mapping stays unit-testable
+    // in the `nmp-nip57` crate without the FFI / actor channel.
+    app.register_action_executor(
+        ZapModule::NAMESPACE,
+        |action_json, _correlation_id, send| {
+            let cmd = zap_request_command(action_json)?;
+            send(cmd);
+            Ok(())
+        },
+    );
 }
 
 /// `chirp.react` action body: `{"target_event_id":"<hex>","reaction":"+"}`.
