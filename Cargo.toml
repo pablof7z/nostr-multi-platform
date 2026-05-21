@@ -3,6 +3,7 @@ members = [
     "apps/chirp/nmp-app-chirp",
     "apps/fixture/nmp-app-fixture",
     "crates/fixture-todo-core",
+    "crates/chirp-tui",
     "crates/chirp-repl",
     "crates/nmp-cli",
     "crates/nmp-codegen",
