@@ -30,6 +30,7 @@ pub use bunker_hook::{register_bunker_hook, BunkerHookFn, BunkerHookRequest};
 pub use ffi::NmpApp;
 pub use kernel::{read_eligible_relay_urls, RelayEditRow};
 pub use kernel_reducer::KernelReducer;
+pub use relay::{chirp_default_relay_bootstrap, chirp_default_relay_urls, ChirpRelayBootstrapEntry};
 pub use remote_signer::RemoteSignerHandle;
 pub use update_envelope::{
     panic_message, wrap_panic, wrap_snapshot, wrap_update, DeltaEnvelope, PanicFrame,

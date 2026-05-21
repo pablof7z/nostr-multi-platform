@@ -1,0 +1,8 @@
+[package]
+name = "nmp-chirp-config"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Rust-owned Chirp product configuration shared by platform shells."
+
+[dependencies]

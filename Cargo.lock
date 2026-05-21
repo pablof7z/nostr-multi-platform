@@ -3775,6 +3775,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-chirp-config"
+version = "0.1.0"
+
+[[package]]
 name = "nmp-cli"
 version = "0.1.0"
 dependencies = [
@@ -3819,6 +3823,7 @@ dependencies = [
  "bech32",
  "chrono",
  "heed",
+ "nmp-chirp-config",
  "nmp-nip42-types",
  "nmp-nip59",
  "nmp-nostr-lmdb",
@@ -4093,6 +4098,7 @@ name = "nmp-wasm"
 version = "0.1.0"
 dependencies = [
  "js-sys",
+ "nmp-chirp-config",
  "serde",
  "serde_json",
  "wasm-bindgen",

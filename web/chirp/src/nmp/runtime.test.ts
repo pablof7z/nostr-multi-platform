@@ -31,7 +31,6 @@ describe("DegradedRuntime protocol flow", () => {
       runtime.handle({
         type: "start",
         app_id: "chirp",
-        relays: ["wss://relay.example"],
         database_name: "chirp-test",
         correlation_id: "start-1",
       }),
@@ -127,7 +126,6 @@ describe("worker runtime bridge", () => {
     await sendWorkerRequest(harness, {
       type: "start",
       app_id: "chirp",
-      relays: ["wss://relay.example"],
       database_name: "chirp-test",
       correlation_id: "start-1",
     });

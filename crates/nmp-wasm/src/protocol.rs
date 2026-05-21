@@ -21,6 +21,7 @@ pub struct ClientHello {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StartConfig {
     pub app_id: String,
+    #[serde(default = "nmp_chirp_config::chirp_default_relay_urls")]
     pub relays: Vec<String>,
     pub database_name: String,
     pub correlation_id: String,

@@ -14,13 +14,11 @@ export type RuntimeSnapshot = {
 
 export type RuntimeConnection = {
   appId: string;
-  relays: string[];
   databaseName: string;
 };
 
 export const runtimeConnection: RuntimeConnection = {
   appId: "chirp",
-  relays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"],
   databaseName: "chirp-web",
 };
 
@@ -102,7 +100,6 @@ class WorkerNmpClient extends BaseClient {
     return this.request({
       type: "start",
       app_id: runtimeConnection.appId,
-      relays: runtimeConnection.relays,
       database_name: runtimeConnection.databaseName,
       correlation_id: "web-start",
     });
@@ -167,7 +164,6 @@ class InProcessNmpClient extends BaseClient {
     return this.send({
       type: "start",
       app_id: runtimeConnection.appId,
-      relays: runtimeConnection.relays,
       database_name: runtimeConnection.databaseName,
       correlation_id: "web-start",
     });

@@ -20,6 +20,12 @@ pub(crate) const DEFAULT_VISIBLE_LIMIT: usize = 80;
 pub(crate) const DEFAULT_EMIT_HZ: u32 = 4;
 pub(crate) const TIMELINE_AUTHOR_LIMIT: usize = 500;
 
+pub use nmp_chirp_config::{
+    chirp_default_relay_bootstrap, chirp_default_relay_urls, ChirpRelayBootstrapEntry,
+};
+#[cfg(any(test, feature = "test-support"))]
+use nmp_chirp_config::{CHIRP_CONTENT_RELAY_URL, CHIRP_INDEXER_RELAY_URL};
+
 /// A `wss://`/`ws://` URL for a relay, in plain (non-canonicalized) string
 /// form.
 ///
@@ -38,7 +44,7 @@ pub type RelayUrl = String;
 
 #[cfg(any(test, feature = "test-support"))]
 pub(crate) const BOOTSTRAP_DISCOVERY_RELAYS: &[&str] =
-    &["wss://relay.damus.io", "wss://purplepag.es"];
+    &[CHIRP_CONTENT_RELAY_URL, CHIRP_INDEXER_RELAY_URL];
 
 #[cfg(test)]
 pub(crate) const CONTENT_RELAY_URL: &str = BOOTSTRAP_DISCOVERY_RELAYS[0];

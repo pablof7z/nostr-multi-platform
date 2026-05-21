@@ -6,6 +6,7 @@ members = [
     "crates/chirp-tui",
     "crates/chirp-repl",
     "crates/nmp-cli",
+    "crates/nmp-chirp-config",
     "crates/nmp-codegen",
     "crates/nmp-content",
     "crates/nmp-content-fixtures",

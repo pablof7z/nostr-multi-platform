@@ -3,7 +3,7 @@ export type WorkerRequest =
   | {
       type: "start";
       app_id: string;
-      relays: string[];
+      relays?: string[];
       database_name: string;
       correlation_id: string;
     }

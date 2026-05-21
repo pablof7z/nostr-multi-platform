@@ -68,6 +68,11 @@ impl WasmRuntime {
                 "database_name is required".to_string(),
             ));
         }
+        if config.relays.is_empty() {
+            return Err(WasmRuntimeError::InvalidConfig(
+                "at least one relay is required".to_string(),
+            ));
+        }
         self.started = true;
         Ok(WorkerEvent::RuntimeStatus {
             status: RuntimeStatus::Degraded(DegradedMode::BrowserActorDriverMissing),
