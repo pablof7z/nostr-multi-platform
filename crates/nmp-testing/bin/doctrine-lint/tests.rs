@@ -373,15 +373,37 @@ fn d9_negative_fixture_clean() {
     );
 }
 
-/// THE LIVE GUARD: every protocol crate on master must already satisfy D9.
-/// If a `crates/nmp-*/` ActionModule sneaks a non-`nmp.`-prefixed NAMESPACE
-/// past code review, this test fails — the whole point of the rule.
+/// THE LIVE GUARD: every protocol crate on master must already satisfy
+/// D9 — AND, because `scan_one_file` runs every applicable rule per file,
+/// every other applicable rule too.
+///
+/// SCOPE — this is a full-doctrine scan (D0/D6/D7/D8/D9), not D9-only.
+/// `scan_one_file` has no "only this rule" mode; opening the scan to
+/// every protocol crate's `src/` means D6 (`.unwrap()` / `panic!` outside
+/// `#[cfg(test)]`) and D8's no-polling check now apply to every
+/// `nmp-nipNN` crate as well, not just `nmp-core`.
+///
+/// That is intentional, with one caveat: D6's `.unwrap()` and `panic!`
+/// bans are universal correctness rules, NOT nmp-core-scoped doctrine.
+/// The same goes for D8 no-polling. D0 doesn't fire here because
+/// `d0::file_is_exempt` exempts every non-`nmp-core` crate under
+/// `crates/nmp-*/src/...` (its mandate is the kernel substrate only;
+/// fixing this exemption was part of this PR — see `rules/d0.rs`).
+/// D7 is file-scoped to `nmp-core/src/substrate/capability.rs` and
+/// likewise doesn't reach NIP crates.
+///
+/// Net: a future D6 regression in `nmp-nipNN` will fail THIS test even
+/// though the test name promises D9 cleanliness. That is the right
+/// trade-off — `.unwrap()` in production code is a bug everywhere,
+/// not just in `nmp-core` — but reviewers should know the scope is
+/// broader than the name suggests.
 #[test]
-fn protocol_crates_are_d9_clean() {
+fn protocol_crates_are_doctrine_clean() {
     // Scan every protocol crate. The default mode targets `nmp-core`; we
     // explicitly add the NIP crates by path so the workspace's whole
     // protocol surface is covered. (App crates under `apps/` are out of
-    // scope by D9 design.)
+    // scope by D9 design — `d9::file_in_scope` excludes them — and by D0
+    // design — `d0::file_is_exempt` exempts them.)
     let nip_crates = [
         "nmp-nip01",
         "nmp-nip17",
@@ -402,9 +424,12 @@ fn protocol_crates_are_d9_clean() {
     let (code, stdout, stderr) = run_lint(&arg_refs);
     assert_eq!(
         code, 0,
-        "protocol crates must be D9 clean; stdout:\n{}\nstderr:\n{}",
+        "protocol crates must be doctrine-lint clean; stdout:\n{}\nstderr:\n{}",
         stdout, stderr
     );
+    // Spell out D9 specifically — the rule this PR adds. A D6 / D8 hit
+    // would already fail the `code == 0` check above; an explicit D9
+    // assertion makes the intent obvious in the test name.
     assert!(
         !stdout.contains("error[D9]"),
         "protocol crates must not contain D9 findings; stdout:\n{}",
