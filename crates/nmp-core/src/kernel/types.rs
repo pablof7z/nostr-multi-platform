@@ -554,12 +554,11 @@ pub(super) struct KernelSnapshot {
     /// observes it instead of silent empty frames. `null` in steady state.
     pub(super) last_planner_error: Option<String>,
     pub(super) relay_edit_rows: Vec<super::RelayEditRow>,
-    // ── NIP-47 wallet projection ───────────────────────────────────────────
-    // D0: NIP-47 NWC is an app noun. The field is gated behind the `wallet`
-    // feature; with `--no-default-features` the snapshot JSON simply omits
-    // `wallet_status` (Swift's `Optional` decoder tolerates the absence).
-    #[cfg(feature = "wallet")]
-    pub(super) wallet_status: Option<super::WalletStatus>,
+    // D0: NIP-47 NWC is an app noun — there is NO typed `wallet_status` field.
+    // Wallet state is surfaced through the host-registered `"wallet"` snapshot
+    // projection (see `projections` below): a shell reads `projections.wallet`
+    // instead of a baked-in kernel field. This is the first internal consumer
+    // of the snapshot-projection seam.
     // ── NIP-46 bunker handshake projection ─────────────────────────────────
     pub(super) bunker_handshake: Option<super::BunkerHandshakeDto>,
     /// Host-registered projection data. Each registered projection closure

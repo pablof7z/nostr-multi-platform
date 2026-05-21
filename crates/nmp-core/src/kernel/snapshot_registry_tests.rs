@@ -128,3 +128,104 @@ fn unbound_slot_yields_empty_projections() {
     let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     assert!(kernel.run_snapshot_projections().is_empty());
 }
+
+/// D0 — first internal consumer of the snapshot-projection seam: the `"wallet"`
+/// projection.
+///
+/// NIP-47 NWC is an app noun, so wallet state was removed as a typed
+/// `KernelSnapshot.wallet_status` field and is now surfaced through a
+/// host-registered `"wallet"` projection — the same seam a marketplace or todo
+/// app uses. This test wires the projection exactly as `nmp_app_new` does (a
+/// closure over the shared `WalletStatusSlot`) and drives it through the real
+/// `make_update` JSON path, asserting the connect → disconnect lifecycle:
+///
+/// - no wallet connected → `projections["wallet"]` is JSON `null`;
+/// - wallet connected → `projections["wallet"]` carries the serialized status;
+/// - wallet disconnected → `projections["wallet"]` clears back to `null`,
+///   never a stale `ready` card.
+#[cfg(feature = "wallet")]
+#[test]
+fn wallet_projection_appears_and_clears_through_make_update() {
+    use crate::actor::{new_wallet_status_slot, WalletStatus};
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    // The shared wallet-status slot — in production the actor's `WalletRuntime`
+    // is the sole writer (D4) and `nmp_app_new` captures a clone in the
+    // `"wallet"` projection closure. Here the test plays both roles.
+    let wallet_status = new_wallet_status_slot();
+    let projection_slot = new_snapshot_projection_slot();
+    {
+        // Register the SAME closure `nmp_app_new` installs: serialize the slot,
+        // contributing `null` when no wallet is connected (D6: a poisoned
+        // mutex also collapses to `null`).
+        let wallet_status = wallet_status.clone();
+        projection_slot.lock().unwrap().register("wallet", move || {
+            match wallet_status.lock() {
+                Ok(slot) => slot
+                    .as_ref()
+                    .map(|status| {
+                        serde_json::to_value(status).unwrap_or(serde_json::Value::Null)
+                    })
+                    .unwrap_or(serde_json::Value::Null),
+                Err(_) => serde_json::Value::Null,
+            }
+        });
+    }
+    kernel.set_snapshot_projection_handle(projection_slot);
+
+    // No wallet connected → projections["wallet"] is JSON null.
+    let before: serde_json::Value =
+        serde_json::from_str(&kernel.make_update(true)).expect("snapshot json");
+    assert!(
+        before
+            .get("projections")
+            .and_then(|p| p.get("wallet"))
+            .map(serde_json::Value::is_null)
+            .unwrap_or(true),
+        "with no wallet connected projections[\"wallet\"] must be null, got: {before}"
+    );
+
+    // Connect a wallet — write to the shared slot exactly as the actor's
+    // `sync_wallet_status` does.
+    *wallet_status.lock().unwrap() = Some(WalletStatus {
+        status: "ready".to_string(),
+        relay_url: "wss://wallet.example/".to_string(),
+        wallet_npub: "npub1walletexample".to_string(),
+        balance_msats: Some(21_000),
+    });
+    let connected: serde_json::Value =
+        serde_json::from_str(&kernel.make_update(true)).expect("snapshot json");
+    let wallet = connected
+        .get("projections")
+        .and_then(|p| p.get("wallet"))
+        .expect("projections[\"wallet\"] must be present once a wallet connects");
+    assert_eq!(
+        wallet.get("status").and_then(serde_json::Value::as_str),
+        Some("ready"),
+        "a connected wallet must project status=ready",
+    );
+    assert_eq!(
+        wallet.get("relay_url").and_then(serde_json::Value::as_str),
+        Some("wss://wallet.example/"),
+        "the wallet relay URL must be projected",
+    );
+    assert_eq!(
+        wallet.get("balance_msats").and_then(serde_json::Value::as_u64),
+        Some(21_000),
+        "the wallet balance must be projected when known",
+    );
+
+    // Disconnect → the projection clears back to null, not a stale `ready`.
+    *wallet_status.lock().unwrap() = None;
+    let disconnected: serde_json::Value =
+        serde_json::from_str(&kernel.make_update(true)).expect("snapshot json");
+    assert!(
+        disconnected
+            .get("projections")
+            .and_then(|p| p.get("wallet"))
+            .map(serde_json::Value::is_null)
+            .unwrap_or(true),
+        "after disconnect projections[\"wallet\"] must clear to null, got: {disconnected}"
+    );
+}

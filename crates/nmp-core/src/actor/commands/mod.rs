@@ -123,3 +123,13 @@ pub(super) use relays::{add_relay, remove_relay};
 pub(super) use wallet::{
     handle_nwc_text, wallet_connect, wallet_disconnect, wallet_pay_invoice, WalletRuntime,
 };
+// D0: NIP-47 NWC is an app noun — the wallet-status slot + its constructor are
+// re-exported (crate-wide) so the `ffi` module can build the shared slot and
+// register the `"wallet"` snapshot projection.
+#[cfg(feature = "wallet")]
+pub(crate) use wallet::{new_wallet_status_slot, WalletStatusSlot};
+// `WalletStatus` is re-exported for the snapshot-projection test only, which
+// constructs a status value when driving the `"wallet"` projection through
+// `make_update`.
+#[cfg(all(test, feature = "wallet"))]
+pub(crate) use wallet::WalletStatus;

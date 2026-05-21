@@ -550,58 +550,11 @@ fn relay_status_appears_in_snapshot_after_connection_events() {
     );
 }
 
-// ─── NIP-47 wallet status → wallet projection (appear / disappear) ───────────
-
-/// The `wallet_status` snapshot key must appear when a wallet connects and
-/// disappear (`null`) when it disconnects. NIP-47 NWC is an app noun gated
-/// behind the `wallet` Cargo feature (on by default), so this test is gated
-/// the same way — under `--no-default-features` the key does not exist.
-#[cfg(feature = "wallet")]
-#[test]
-fn wallet_status_appears_and_clears_in_snapshot_on_connect_disconnect() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-
-    // No wallet connected → the projected key is null.
-    let before = snapshot(&mut kernel);
-    assert!(
-        before
-            .get("wallet_status")
-            .map(serde_json::Value::is_null)
-            .unwrap_or(true),
-        "with no wallet connected the wallet_status key must be null",
-    );
-
-    // Connect a wallet.
-    kernel.set_wallet_status(Some(super::WalletStatus {
-        status: "ready".to_string(),
-        relay_url: "wss://wallet.example/".to_string(),
-        wallet_npub: "npub1walletexample".to_string(),
-        balance_msats: Some(21_000),
-    }));
-    let connected = snapshot(&mut kernel);
-    let wallet = &connected["wallet_status"];
-    assert_eq!(
-        wallet["status"].as_str(),
-        Some("ready"),
-        "a connected wallet must project status=ready",
-    );
-    assert_eq!(
-        wallet["relay_url"].as_str(),
-        Some("wss://wallet.example/"),
-        "the wallet relay URL must be projected",
-    );
-    assert_eq!(
-        wallet["balance_msats"].as_u64(),
-        Some(21_000),
-        "the wallet balance must be projected when known",
-    );
-
-    // Disconnect → the projection must clear back to null, not retain a stale
-    // `ready` card after the wallet is gone.
-    kernel.set_wallet_status(None);
-    let disconnected = snapshot(&mut kernel);
-    assert!(
-        disconnected["wallet_status"].is_null(),
-        "after disconnect the wallet_status projection must clear to null",
-    );
-}
+// ─── NIP-47 wallet status ───────────────────────────────────────────────────
+//
+// D0: NIP-47 NWC is an app noun — wallet state is NO LONGER a typed
+// `KernelSnapshot` field. It is surfaced through the `"wallet"` host-registered
+// snapshot projection. The connect / disconnect lifecycle proof lives with the
+// other snapshot-projection tests in `snapshot_registry_tests.rs`
+// (`wallet_projection_appears_and_clears_through_make_update`), since it now
+// exercises the projection seam rather than a kernel-owned field.

@@ -150,10 +150,10 @@ pub(crate) use identity_state::{
 // `nmp_app_register_snapshot_projection` C-ABI entry point.
 pub(crate) use snapshot_registry::{new_snapshot_projection_slot, SnapshotProjectionSlot};
 pub(crate) use lifecycle::{LifecyclePhase, LifecycleTransition};
-// D0: NIP-47 NWC is an app noun — `WalletStatus` is gated behind the `wallet`
-// feature so the protocol-neutral kernel compiles without `nmp-nwc`.
-#[cfg(feature = "wallet")]
-pub(crate) use identity_state::WalletStatus;
+// D0: NIP-47 NWC is an app noun. `WalletStatus` no longer lives in the kernel
+// — it moved to the wallet command runtime (`actor::commands::wallet`) and is
+// surfaced via the `projections["wallet"]` snapshot projection, NOT a typed
+// `KernelSnapshot` field. The kernel never names the NWC noun.
 use std::sync::atomic::{AtomicU64, Ordering};
 use types::*;
 
@@ -353,12 +353,9 @@ pub(crate) struct Kernel {
     /// stale category shadowing it.
     last_error_category: Option<String>,
     relay_edit_rows: Vec<RelayEditRow>,
-    /// NIP-47 NWC wallet projection. D0: wallet is an app noun, not a kernel
-    /// primitive — the field (and its `WalletStatus` type) only exist when the
-    /// `wallet` Cargo feature is enabled. With `--no-default-features` the
-    /// kernel carries no wallet state at all.
-    #[cfg(feature = "wallet")]
-    wallet_status: Option<WalletStatus>,
+    // D0: NIP-47 NWC is an app noun. Wallet state is no longer a kernel field
+    // — the actor's wallet runtime owns it and the `projections["wallet"]`
+    // snapshot projection surfaces it. The kernel holds no NWC state.
     /// Stage 3 of NIP-46 wiring: the broker pushes handshake progress through
     /// `ActorCommand::BunkerHandshakeProgress`; the actor stores the latest
     /// into this projection. `None` means no handshake is in flight.
@@ -727,8 +724,6 @@ impl Kernel {
             last_error_toast: None,
             last_error_category: None,
             relay_edit_rows: Vec::new(),
-            #[cfg(feature = "wallet")]
-            wallet_status: None,
             bunker_handshake: None,
             publish_engine,
             publish_dispatcher,
@@ -1017,6 +1012,26 @@ impl Kernel {
 
     pub(crate) fn changed_since_emit(&self) -> bool {
         self.changed_since_emit
+    }
+
+    /// Force the next due tick to emit a snapshot, even though no kernel field
+    /// changed.
+    ///
+    /// The actor's regular tick only emits when `changed_since_emit()` is true
+    /// (see `tick::flush_due`). State that lives OUTSIDE the kernel — notably
+    /// the NIP-47 wallet status, an app noun surfaced through the `"wallet"`
+    /// snapshot projection (D0) — has no kernel field to flip the flag. The
+    /// wallet runtime calls this after writing its shared status slot so a
+    /// kind:23195 balance response (which the kernel itself drops as an
+    /// unknown kind) still drives a timely projection refresh.
+    ///
+    /// D0: gated behind the `wallet` feature — the wallet runtime is currently
+    /// its only caller (the protocol-neutral kernel has no off-kernel state to
+    /// signal). New off-kernel projections that need this should widen the
+    /// gate at that point.
+    #[cfg(feature = "wallet")]
+    pub(crate) fn mark_changed_since_emit(&mut self) {
+        self.changed_since_emit = true;
     }
 
     /// Mutable access to the subscription lifecycle (registry + trigger inbox).
