@@ -311,9 +311,18 @@ pub enum ActorCommand {
     ///
     /// The gift-wrap crypto runs on the actor thread (D7 — the kernel owns key
     /// access and the wall clock). The `rumor.created_at` is re-stamped from
-    /// `kernel.now_secs()` before wrapping. A remote (NIP-46) signer that
-    /// exposes no local key cannot gift-wrap; the actor records an action
-    /// failure rather than panicking (D6).
+    /// `kernel.now_secs()` before wrapping.
+    ///
+    /// # Phase 1.5 MVP — local keys only
+    ///
+    /// `nmp_nip59::gift_wrap` requires `&nostr::Keys` (NIP-44 ECDH seal). A
+    /// remote (NIP-46) signer exposes only `sign()` — no `nip44_encrypt` —
+    /// so a bunker account CANNOT gift-wrap a DM through this path. The actor
+    /// detects the missing local key and surfaces a toast (D6 — explicit
+    /// failure, never silent, never a panic). Bunker support is gated on
+    /// ADR-0026 (extend `RemoteSignerHandle` with a NIP-44 encrypt/decrypt
+    /// seam), which is not yet built. This variant is the local-keys-only
+    /// infrastructure MVP.
     SendGiftWrappedDm {
         rumor: crate::substrate::UnsignedEvent,
         recipient_pubkey: String,

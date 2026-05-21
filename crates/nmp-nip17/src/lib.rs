@@ -22,6 +22,12 @@
 //! actor thread (D7 — the kernel owns key access and the wall clock), driven by
 //! `ActorCommand::SendGiftWrappedDm`.
 //!
+//! The actor's `SendGiftWrappedDm` arm is a **local-keys-only MVP**: a remote
+//! (NIP-46 / bunker) signer cannot gift-wrap because `nmp_nip59::gift_wrap`
+//! needs raw `nostr::Keys` for the NIP-44 seal. Bunker support is gated on
+//! ADR-0026 (a NIP-44 encrypt/decrypt seam on `RemoteSignerHandle`). This
+//! rumor-builder crate is signer-agnostic and unaffected by that gap.
+//!
 //! # D7: `created_at` sentinel
 //!
 //! The rumor is built with `created_at: 0`. The kernel owns the wall clock;

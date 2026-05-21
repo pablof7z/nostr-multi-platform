@@ -1,5 +1,25 @@
 //! NIP-17 gift-wrapped DM send handler.
 //!
+//! # Phase 1.5 MVP — local keys only
+//!
+//! `nmp_nip59::gift_wrap` requires `&nostr::Keys` because the NIP-59 seal is a
+//! NIP-44 ECDH encryption. The `RemoteSignerHandle` trait
+//! (`nmp-core/src/remote_signer.rs`) exposes only `sign()` — there is no
+//! `nip44_encrypt` / `nip44_decrypt` seam — so a remote (NIP-46 / bunker)
+//! account CANNOT gift-wrap a DM through this path. This handler detects the
+//! missing local key and surfaces a toast (explicit failure, never silent,
+//! never a panic — D6); bunker users are simply excluded for now.
+//!
+//! Bunker support is gated on **ADR-0026** (extend `RemoteSignerHandle` with a
+//! NIP-44 encrypt/decrypt seam), which is not yet built. This handler is the
+//! local-keys-only infrastructure MVP — correct and shippable, with the bunker
+//! gap named rather than papered over.
+//!
+//! It deliberately does NOT read the `NmpApp::active_local_nsec` FFI field to
+//! bypass the actor: that would exfiltrate the key off the actor thread and
+//! still silently exclude bunker users. The executor uses the actor's own
+//! identity state (`IdentityRuntime::active_local_keys`).
+//!
 //! `ActorCommand::SendGiftWrappedDm` arrives carrying an **unsigned** kind:14
 //! chat-message rumor (built host-side by `nmp_nip17::build_dm_rumor`). This
 //! handler:
@@ -7,7 +27,7 @@
 //! 1. Resolves the active account's local `nostr::Keys`. A remote (NIP-46)
 //!    signer exposes no local key — sealing a NIP-59 rumor is not a single
 //!    "sign this event" op a remote signer can serve — so that case is a
-//!    graceful `Err` surfaced as a toast, never a panic (D6).
+//!    graceful `Err` surfaced as a toast, never a panic (D6). See ADR-0026.
 //! 2. Re-stamps `rumor.created_at` from `kernel.now_secs()` (D7 — the kernel
 //!    owns the wall clock; the host sends `0` as a sentinel).
 //! 3. Gift-wraps the rumor TWICE via `nmp_nip59::gift_wrap`: once to the
