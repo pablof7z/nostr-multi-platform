@@ -561,9 +561,8 @@ impl NmpApp {
     /// namespace"); a validator-only one is rejected by `execute()` ("no
     /// executor registered").
     ///
-    /// `validate` receives the raw action JSON and returns an
-    /// [`crate::substrate::ActionPlan`] on accept or an
-    /// [`crate::substrate::ActionRejection`] on reject.
+    /// `validate` receives the raw action JSON and returns `Ok(())` on accept
+    /// or an [`crate::substrate::ActionRejection`] on reject.
     ///
     /// Registration MUST happen during host init — before `nmp_app_start`
     /// and before any [`action::nmp_app_dispatch_action`] call — because it
@@ -571,12 +570,8 @@ impl NmpApp {
     pub fn register_action_module(
         &mut self,
         namespace: impl Into<String>,
-        validate: impl Fn(
-                &str,
-            ) -> Result<
-                crate::substrate::ActionPlan<serde_json::Value>,
-                crate::substrate::ActionRejection,
-            > + Send
+        validate: impl Fn(&str) -> Result<(), crate::substrate::ActionRejection>
+            + Send
             + Sync
             + 'static,
     ) {

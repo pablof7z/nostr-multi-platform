@@ -54,15 +54,11 @@ fn make_event(id: &str, kind: u32, author: &str, created_at: u64, tags: Vec<Vec<
 
 #[test]
 fn nip29_group_lifecycle_create_then_ingest_metadata() {
-    // Step A: founder fires CreateGroup → action returns a Pending plan with a
-    // host-pinned PublishPlan for kind 9007.
+    // Step A: founder fires CreateGroup → the action validates the
+    // host-pinned PublishPlan for kind 9007 and accepts.
     let mut ctx = ActionContext { now_ms: 1_000 };
     let input = CreateGroupInput { group: group(), fields: Default::default() };
-    let plan = CreateGroupAction::start(&mut ctx, input).expect("create accepted");
-    assert!(matches!(
-        plan.initial_status,
-        nmp_core::substrate::ActionStatus::Pending
-    ));
+    CreateGroupAction::start(&mut ctx, input).expect("create accepted");
 
     // Step B: relay reflects 39000 + 39001 + 39002. Trust check pins on the
     // 39000 (cold TOFU, no NIP-11 pubkey declared); 39001 + 39002 then accepted.

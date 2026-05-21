@@ -42,8 +42,7 @@ mod traits;
 mod view;
 
 pub use action::{
-    PublishAction, PublishHandle, PublishModule, PublishOutcome, PublishStep, PublishTarget,
-    RelayUrl,
+    PublishAction, PublishHandle, PublishModule, PublishOutcome, PublishTarget, RelayUrl,
 };
 pub use engine::{
     engine_error_to_failure, outcome_of, LastTerminal, PublishEngine, PublishEngineError,

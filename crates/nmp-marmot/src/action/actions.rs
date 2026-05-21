@@ -14,16 +14,11 @@
 //! `group_relay_url`) so the publish planner gets the relay pin from the
 //! [`PublishPlan`] carrier and never derives routing from raw tags.
 
-use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionPlan, ActionRejection, ActionStatus,
-};
+use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use serde::{Deserialize, Serialize};
 
 use super::publish_plan::PublishPlan;
 use crate::interest::{KIND_GROUP_MESSAGE, KIND_KEY_PACKAGE};
-
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub struct MarmotStep;
 
 /// Group-scoped action input: the typed group identity drives the relay pin.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -51,11 +46,10 @@ macro_rules! pinned_group_action {
         impl ActionModule for $Module {
             const NAMESPACE: &'static str = $ns;
             type Action = GroupActionInput;
-            type Step = MarmotStep;
             fn start(
                 _ctx: &mut ActionContext,
                 action: Self::Action,
-            ) -> Result<ActionPlan<Self::Step>, ActionRejection> {
+            ) -> Result<(), ActionRejection> {
                 if action.group_relay_url.is_empty() {
                     return Err(ActionRejection::Invalid(
                         "missing group relay url for group event".into(),
@@ -77,11 +71,7 @@ macro_rules! pinned_group_action {
                         "missing group relay pin for kind:445 event".into(),
                     ));
                 }
-                Ok(ActionPlan {
-                    initial_step: MarmotStep,
-                    initial_status: ActionStatus::Pending,
-                    deadline_ms: None,
-                })
+                Ok(())
             }
         }
     };
@@ -107,11 +97,10 @@ pub struct PublishKeyPackageAction;
 impl ActionModule for PublishKeyPackageAction {
     const NAMESPACE: &'static str = "marmot.publish_key_package";
     type Action = PublishKeyPackageInput;
-    type Step = MarmotStep;
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,
-    ) -> Result<ActionPlan<Self::Step>, ActionRejection> {
+    ) -> Result<(), ActionRejection> {
         if action.relays.is_empty() {
             return Err(ActionRejection::Invalid(
                 "key package must advertise at least one relay".into(),
@@ -121,10 +110,6 @@ impl ActionModule for PublishKeyPackageAction {
         // the real content+tags are produced by MDK via crate::service.
         let plan = PublishPlan::outbox(KIND_KEY_PACKAGE, String::new(), Vec::new());
         debug_assert!(plan.validate_group_event_pinned().is_ok());
-        Ok(ActionPlan {
-            initial_step: MarmotStep,
-            initial_status: ActionStatus::Pending,
-            deadline_ms: None,
-        })
+        Ok(())
     }
 }

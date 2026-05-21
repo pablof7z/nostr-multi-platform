@@ -110,19 +110,12 @@ pub fn register(app: &mut NmpApp) -> TodoStore {
 
     // Module half — `start()` validation. Decode the action JSON into the
     // typed `Action`, then delegate to the existing `TodoActionModule::start`
-    // so the empty-title rejection rule has exactly one home. The kernel keys
-    // its registry on `serde_json::Value` steps, so erase the typed `TodoStep`.
+    // so the empty-title rejection rule has exactly one home.
     app.register_action_module(ACTION_NAMESPACE, |action_json| {
         let action: Action = serde_json::from_str(action_json)
             .map_err(|e| ActionRejection::Invalid(e.to_string()))?;
         let mut ctx = ActionContext::default();
-        let plan = TodoActionModule::start(&mut ctx, action)?;
-        Ok(ActionPlan {
-            initial_step: serde_json::to_value(&plan.initial_step)
-                .unwrap_or(serde_json::Value::Null),
-            initial_status: plan.initial_status,
-            deadline_ms: plan.deadline_ms,
-        })
+        TodoActionModule::start(&mut ctx, action)
     });
 
     // Executor half — `execute()`. Decode the (already-validated) action and
@@ -201,31 +194,21 @@ pub enum Action {
     ClearCompleted,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum TodoStep {
-    ApplyLocalWrite,
-}
-
 pub struct TodoActionModule;
 
 impl ActionModule for TodoActionModule {
     const NAMESPACE: &'static str = "fixture.todo.action";
 
     type Action = Action;
-    type Step = TodoStep;
 
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,
-    ) -> Result<ActionPlan<Self::Step>, ActionRejection> {
+    ) -> Result<(), ActionRejection> {
         if matches!(&action, Action::Add { title, .. } if title.trim().is_empty()) {
             return Err(ActionRejection::Invalid("todo title is empty".to_string()));
         }
-        Ok(ActionPlan {
-            initial_step: TodoStep::ApplyLocalWrite,
-            initial_status: ActionStatus::Running,
-            deadline_ms: None,
-        })
+        Ok(())
     }
 }
 

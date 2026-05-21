@@ -15,7 +15,7 @@ mod publish_plan;
 
 pub use actions::{
     CreateGroupAction, GroupActionInput, InviteMemberAction, LeaveGroupAction, MarmotActionFields,
-    MarmotStep, PublishKeyPackageAction, PublishKeyPackageInput, RemoveMemberAction,
-    SendMessageAction, UpdateKeysAction,
+    PublishKeyPackageAction, PublishKeyPackageInput, RemoveMemberAction, SendMessageAction,
+    UpdateKeysAction,
 };
 pub use publish_plan::{PublishPlan, PublishPlanError, RelayPin};

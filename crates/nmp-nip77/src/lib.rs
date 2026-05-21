@@ -63,7 +63,7 @@ pub use reconciler::{
     Reconciler, ReconcilerError, ReconcilerOutcome, ReconcilerRole, SyncedItem,
 };
 pub use run_sync::{
-    RunSync, RunSyncAction, RunSyncOutput, RunSyncStep, ACTION_NAMESPACE as RUN_SYNC_NAMESPACE,
+    RunSync, RunSyncAction, RunSyncOutput, ACTION_NAMESPACE as RUN_SYNC_NAMESPACE,
 };
 pub use triggers::{ReconcileWork, TriggerEngine, TriggerEvent};
 pub use wire::{ClientFrame, RelayFrame, WireError};

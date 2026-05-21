@@ -6,18 +6,13 @@
 //! tag) is the discriminator; the corresponding non-`h` actions live in
 //! `nmp-nip25` / `nmp-nip22` / future `nmp-nip18`.
 
-use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionPlan, ActionRejection, ActionStatus,
-};
+use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
 use crate::kinds::{KIND_COMMENT, KIND_REACTION, KIND_REPOST};
 
 use super::publish_plan::PublishPlan;
-
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub struct ComposedStep;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ShareEventIntoGroupInput {
@@ -31,11 +26,10 @@ pub struct ShareEventIntoGroupAction;
 impl ActionModule for ShareEventIntoGroupAction {
     const NAMESPACE: &'static str = "nip29.share_event_into_group";
     type Action = ShareEventIntoGroupInput;
-    type Step = ComposedStep;
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,
-    ) -> Result<ActionPlan<Self::Step>, ActionRejection> {
+    ) -> Result<(), ActionRejection> {
         let mut tags = vec![
             vec!["h".into(), action.group.local_id.clone()],
             vec!["e".into(), action.event_ref.clone()],
@@ -49,7 +43,7 @@ impl ActionModule for ShareEventIntoGroupAction {
         let plan = PublishPlan::pinned(&action.group, KIND_REPOST, "", tags);
         plan.validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for share-into-group".into()))?;
-        Ok(ActionPlan { initial_step: ComposedStep, initial_status: ActionStatus::Pending, deadline_ms: None })
+        Ok(())
     }
 }
 
@@ -65,11 +59,10 @@ pub struct ReactInGroupAction;
 impl ActionModule for ReactInGroupAction {
     const NAMESPACE: &'static str = "nip29.react_in_group";
     type Action = ReactInGroupInput;
-    type Step = ComposedStep;
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,
-    ) -> Result<ActionPlan<Self::Step>, ActionRejection> {
+    ) -> Result<(), ActionRejection> {
         let mut tags = vec![
             vec!["h".into(), action.group.local_id.clone()],
             vec!["e".into(), action.target_event_id.clone()],
@@ -80,7 +73,7 @@ impl ActionModule for ReactInGroupAction {
         let plan = PublishPlan::pinned(&action.group, KIND_REACTION, action.content, tags);
         plan.validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for in-group reaction".into()))?;
-        Ok(ActionPlan { initial_step: ComposedStep, initial_status: ActionStatus::Pending, deadline_ms: None })
+        Ok(())
     }
 }
 
@@ -96,11 +89,10 @@ pub struct CommentInGroupAction;
 impl ActionModule for CommentInGroupAction {
     const NAMESPACE: &'static str = "nip29.comment_in_group";
     type Action = CommentInGroupInput;
-    type Step = ComposedStep;
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,
-    ) -> Result<ActionPlan<Self::Step>, ActionRejection> {
+    ) -> Result<(), ActionRejection> {
         let mut tags = vec![vec!["h".into(), action.group.local_id.clone()]];
         if let Some(root) = &action.root_event_id {
             tags.push(vec!["E".into(), root.clone()]);
@@ -111,6 +103,6 @@ impl ActionModule for CommentInGroupAction {
         let plan = PublishPlan::pinned(&action.group, KIND_COMMENT, action.content, tags);
         plan.validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for in-group comment".into()))?;
-        Ok(ActionPlan { initial_step: ComposedStep, initial_status: ActionStatus::Pending, deadline_ms: None })
+        Ok(())
     }
 }

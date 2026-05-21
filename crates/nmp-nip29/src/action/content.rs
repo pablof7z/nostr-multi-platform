@@ -1,9 +1,7 @@
 //! User-sent content actions: chat (9), discussion (11 + t=discussion),
 //! artifact (11 + catalog tags).
 
-use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionPlan, ActionRejection, ActionStatus,
-};
+use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use serde::{Deserialize, Serialize};
 
 use crate::cache::previous_tag_prefix;
@@ -11,9 +9,6 @@ use crate::group_id::GroupId;
 use crate::kinds::{KIND_CHAT_MESSAGE, KIND_DISCUSSION_OR_ARTIFACT};
 
 use super::publish_plan::PublishPlan;
-
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub struct ContentStep;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct PostChatMessageInput {
@@ -34,11 +29,10 @@ pub struct PostChatMessageAction;
 impl ActionModule for PostChatMessageAction {
     const NAMESPACE: &'static str = "nip29.post_chat_message";
     type Action = PostChatMessageInput;
-    type Step = ContentStep;
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,
-    ) -> Result<ActionPlan<Self::Step>, ActionRejection> {
+    ) -> Result<(), ActionRejection> {
         if action.content.is_empty() {
             return Err(ActionRejection::Invalid("empty chat message".into()));
         }
@@ -52,11 +46,7 @@ impl ActionModule for PostChatMessageAction {
         let plan = PublishPlan::pinned(&action.group, KIND_CHAT_MESSAGE, action.content, tags);
         plan.validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for chat message".into()))?;
-        Ok(ActionPlan {
-            initial_step: ContentStep,
-            initial_status: ActionStatus::Pending,
-            deadline_ms: None,
-        })
+        Ok(())
     }
 }
 
@@ -73,11 +63,10 @@ pub struct PostDiscussionAction;
 impl ActionModule for PostDiscussionAction {
     const NAMESPACE: &'static str = "nip29.post_discussion";
     type Action = PostDiscussionInput;
-    type Step = ContentStep;
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,
-    ) -> Result<ActionPlan<Self::Step>, ActionRejection> {
+    ) -> Result<(), ActionRejection> {
         let mut tags = vec![
             vec!["h".into(), action.group.local_id.clone()],
             vec!["t".into(), "discussion".into()],
@@ -92,11 +81,7 @@ impl ActionModule for PostDiscussionAction {
         );
         plan.validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for discussion".into()))?;
-        Ok(ActionPlan {
-            initial_step: ContentStep,
-            initial_status: ActionStatus::Pending,
-            deadline_ms: None,
-        })
+        Ok(())
     }
 }
 
@@ -115,11 +100,10 @@ pub struct PostArtifactAction;
 impl ActionModule for PostArtifactAction {
     const NAMESPACE: &'static str = "nip29.post_artifact";
     type Action = PostArtifactInput;
-    type Step = ContentStep;
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,
-    ) -> Result<ActionPlan<Self::Step>, ActionRejection> {
+    ) -> Result<(), ActionRejection> {
         let mut tags = vec![
             vec!["h".into(), action.group.local_id.clone()],
             vec!["d".into(), action.artifact_id.clone()],
@@ -136,10 +120,6 @@ impl ActionModule for PostArtifactAction {
         );
         plan.validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for artifact share".into()))?;
-        Ok(ActionPlan {
-            initial_step: ContentStep,
-            initial_status: ActionStatus::Pending,
-            deadline_ms: None,
-        })
+        Ok(())
     }
 }

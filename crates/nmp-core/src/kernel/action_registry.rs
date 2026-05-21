@@ -29,34 +29,32 @@
 //!
 //! # Type erasure
 //!
-//! `ActionModule` is generic over associated types (`Action`, `Step`,
-//! `Output`), so a `HashMap` of trait objects needs a dyn-safe facade.
-//! [`ErasedActionModule`] is that facade: it speaks `serde_json::Value` at
-//! the boundary and [`ActionModuleAdapter`] translates to/from each
-//! module's concrete associated types via serde.
+//! `ActionModule` is generic over an associated `Action` type, so a `HashMap`
+//! of trait objects needs a dyn-safe facade. [`ErasedActionModule`] is that
+//! facade: it speaks `serde_json::Value` at the boundary and
+//! [`ActionModuleAdapter`] translates to/from each module's concrete
+//! `Action` type via serde.
 
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde_json::Value;
-
 use crate::substrate::{
-    ActionContext, ActionId, ActionModule, ActionPlan, ActionRejection, ActionResult,
+    ActionContext, ActionId, ActionModule, ActionRejection, ActionResult,
 };
 
 /// Dyn-safe facade over [`ActionModule`].
 ///
-/// `ActionModule` carries three associated types, so it cannot be stored as
-/// `Box<dyn ActionModule>` directly. This trait erases them to
-/// `serde_json::Value` so the registry can hold a heterogeneous map of
-/// modules. [`ActionModuleAdapter`] is the only implementor; it round-trips
-/// each module's typed shapes through serde.
+/// `ActionModule` carries an associated `Action` type, so it cannot be stored
+/// as `Box<dyn ActionModule>` directly. This trait erases it to a JSON string
+/// at the boundary so the registry can hold a heterogeneous map of modules.
+/// [`ActionModuleAdapter`] is the only implementor; it round-trips each
+/// module's typed action shape through serde.
 trait ErasedActionModule: Send + Sync {
     /// Validate `action_json` against the module's `Action` type and return
-    /// an optional preferred correlation id plus the erased [`ActionPlan`].
-    /// Mirrors [`ActionModule::start`] + [`ActionModule::preferred_action_id`].
+    /// an optional preferred correlation id. Mirrors [`ActionModule::start`] +
+    /// [`ActionModule::preferred_action_id`].
     ///
     /// `None` preferred id → caller uses [`new_action_id`]. `Some(id)` →
     /// caller uses that id directly (e.g. the signed event's `id` field for
@@ -66,7 +64,7 @@ trait ErasedActionModule: Send + Sync {
         &self,
         ctx: &mut ActionContext,
         action_json: &str,
-    ) -> Result<(Option<ActionId>, ActionPlan<Value>), ActionRejection>;
+    ) -> Result<Option<ActionId>, ActionRejection>;
 }
 
 /// Zero-sized adapter binding a concrete [`ActionModule`] `M` to the
@@ -85,17 +83,13 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
         &self,
         ctx: &mut ActionContext,
         action_json: &str,
-    ) -> Result<(Option<ActionId>, ActionPlan<Value>), ActionRejection> {
+    ) -> Result<Option<ActionId>, ActionRejection> {
         let action: M::Action = serde_json::from_str(action_json)
             .map_err(|e| ActionRejection::Invalid(e.to_string()))?;
         // Query preferred id before moving `action` into `M::start`.
         let preferred_id = M::preferred_action_id(&action);
-        let plan = M::start(ctx, action)?;
-        Ok((preferred_id, ActionPlan {
-            initial_step: serde_json::to_value(&plan.initial_step).unwrap_or(Value::Null),
-            initial_status: plan.initial_status,
-            deadline_ms: plan.deadline_ms,
-        }))
+        M::start(ctx, action)?;
+        Ok(preferred_id)
     }
 }
 
@@ -117,9 +111,9 @@ type ExecutorFn = Box<
 
 /// Dyn-safe host-validator closure type — the [`ErasedActionModule::start`]
 /// boundary minus the unused [`ActionContext`] (a host validator works from
-/// the action JSON alone).
+/// the action JSON alone). `Ok(())` accepts the action, `Err` rejects it.
 type ValidatorFn =
-    Box<dyn Fn(&str) -> Result<ActionPlan<Value>, ActionRejection> + Send + Sync>;
+    Box<dyn Fn(&str) -> Result<(), ActionRejection> + Send + Sync>;
 
 /// Shared, mutable slot holding the optional host-registered action-result
 /// observer.
@@ -158,7 +152,7 @@ impl ErasedActionModule for ClosureModule {
         &self,
         _ctx: &mut ActionContext,
         action_json: &str,
-    ) -> Result<(Option<ActionId>, ActionPlan<Value>), ActionRejection> {
+    ) -> Result<Option<ActionId>, ActionRejection> {
         // `AssertUnwindSafe`: a boxed `Fn` closure is not `UnwindSafe`, but a
         // panic here is fully contained — nothing the closure touched is
         // observed again after it unwinds, so there is no broken-invariant
@@ -166,7 +160,7 @@ impl ErasedActionModule for ClosureModule {
         // Host-supplied validators have no natural correlation id to suggest,
         // so the preferred id is always `None`.
         match catch_unwind(AssertUnwindSafe(|| (self.validate)(action_json))) {
-            Ok(result) => result.map(|plan| (None, plan)),
+            Ok(result) => result.map(|()| None),
             Err(_) => Err(ActionRejection::Invalid(
                 "action validator panicked".into(),
             )),
@@ -235,7 +229,7 @@ impl ActionRegistry {
 
     /// Register a host-provided closure as the *module validator* for
     /// `namespace`. The closure receives the raw action JSON and returns
-    /// either an [`ActionPlan`] or an [`ActionRejection`].
+    /// `Ok(())` to accept it or an [`ActionRejection`] to reject it.
     ///
     /// This is the complement to [`Self::register_executor`]: that wires the
     /// `execute()` half of a namespace, this wires the `start()` validation
@@ -247,7 +241,7 @@ impl ActionRegistry {
     pub fn register_with_validator(
         &mut self,
         namespace: impl Into<String>,
-        validate: impl Fn(&str) -> Result<ActionPlan<Value>, ActionRejection> + Send + Sync + 'static,
+        validate: impl Fn(&str) -> Result<(), ActionRejection> + Send + Sync + 'static,
     ) {
         self.modules.insert(
             namespace.into(),
@@ -258,7 +252,7 @@ impl ActionRegistry {
     }
 
     /// Validate `action_json` against the module registered under
-    /// `namespace`, returning a correlation id plus the erased [`ActionPlan`].
+    /// `namespace`, returning the action's correlation id.
     ///
     /// An unknown namespace is an [`ActionRejection::Invalid`]; a JSON shape
     /// that does not match the module's `Action` type is also
@@ -276,13 +270,12 @@ impl ActionRegistry {
         ctx: &mut ActionContext,
         namespace: &str,
         action_json: &str,
-    ) -> Result<(ActionId, ActionPlan<Value>), ActionRejection> {
+    ) -> Result<ActionId, ActionRejection> {
         let module = self.modules.get(namespace).ok_or_else(|| {
             ActionRejection::Invalid(format!("unknown action namespace: {namespace}"))
         })?;
-        let (preferred_id, plan) = module.start(ctx, action_json)?;
-        let id = preferred_id.unwrap_or_else(new_action_id);
-        Ok((id, plan))
+        let preferred_id = module.start(ctx, action_json)?;
+        Ok(preferred_id.unwrap_or_else(new_action_id))
     }
 
     /// Execute the validated action by invoking the registered executor for
@@ -502,7 +495,7 @@ fn relays_for_target(target: &crate::publish::PublishTarget) -> Vec<crate::publi
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::substrate::{ActionStatus, SignedEvent, UnsignedEvent};
+    use crate::substrate::{SignedEvent, UnsignedEvent};
 
     fn ctx() -> ActionContext {
         ActionContext { now_ms: 1_700_000_000_000 }
@@ -539,7 +532,7 @@ mod tests {
         // without needing a fully-signed event fixture.
         let registry = default_registry();
         let action_json = r#"{"Cancel":{"handle":"smoke-test"}}"#;
-        let (id, plan) = registry
+        let id = registry
             .start(&mut ctx(), "nmp.publish", action_json)
             .expect("cancel action should be accepted");
         assert_eq!(id.len(), 32, "correlation id should be 32 hex chars");
@@ -547,7 +540,6 @@ mod tests {
             id.chars().all(|c| c.is_ascii_hexdigit()),
             "correlation id should be hex: {id}"
         );
-        assert_eq!(plan.initial_status, ActionStatus::Cancelled);
     }
 
     #[test]
@@ -568,11 +560,10 @@ mod tests {
             target: crate::publish::PublishTarget::Auto,
         };
         let action_json = serde_json::to_string(&action).unwrap();
-        let (id, plan) = registry
+        let id = registry
             .start(&mut ctx(), "nmp.publish", &action_json)
             .expect("publish action with id+sig should be accepted");
         assert_eq!(id, expected_id, "Publish action must use event.id as correlation_id");
-        assert_eq!(plan.initial_status, ActionStatus::Pending);
     }
 
     #[test]
@@ -621,11 +612,10 @@ mod tests {
         let registry = default_registry();
         let action_json =
             r#"{"PublishNote":{"content":"hello","reply_to_id":null,"target":"Auto"}}"#;
-        let (id, plan) = registry
+        let id = registry
             .start(&mut ctx(), "nmp.publish", action_json)
             .expect("publish-note action with content should be accepted");
         assert_eq!(id.len(), 32);
-        assert_eq!(plan.initial_status, ActionStatus::Pending);
     }
 
     /// THE FIX: the `nmp.publish` executor threads the registry-minted
@@ -877,7 +867,7 @@ mod tests {
         let action_json = r#"{"Cancel":{"handle":"h"}}"#;
         let mut seen = std::collections::HashSet::new();
         for _ in 0..256 {
-            let (id, _) = registry
+            let id = registry
                 .start(&mut ctx(), "nmp.publish", action_json)
                 .unwrap();
             assert!(seen.insert(id.clone()), "duplicate correlation id: {id}");

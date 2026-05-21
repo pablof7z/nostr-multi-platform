@@ -26,18 +26,14 @@ use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 // ─── ActionModule behaviour ──────────────────────────────────────────────────
 
 #[test]
-fn create_group_action_emits_pinned_plan() {
+fn create_group_action_accepts_pinned_input() {
     let mut ctx = ActionContext { now_ms: 1 };
     let input = GroupActionInput {
         group_id_hex: "abcd".into(),
         group_relay_url: "wss://group.example.com".into(),
         fields: Default::default(),
     };
-    let plan = CreateGroupAction::start(&mut ctx, input).expect("plan");
-    assert_eq!(
-        plan.initial_status,
-        nmp_core::substrate::ActionStatus::Pending
-    );
+    CreateGroupAction::start(&mut ctx, input).expect("create group accepted");
 }
 
 #[test]

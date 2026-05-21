@@ -8,9 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::substrate::{
-    ActionContext, ActionModule, ActionPlan, ActionRejection, ActionStatus, SignedEvent,
-};
+use crate::substrate::{ActionContext, ActionModule, ActionRejection, SignedEvent};
 
 /// Stable handle returned to the caller of `Publish`. Used to key snapshot
 /// entries and to address the action in the ledger when M6 wires the ledger.
@@ -73,16 +71,6 @@ pub enum PublishAction {
     },
 }
 
-/// Action ledger step — coarse-grained so the ledger can persist it without
-/// knowing the engine's internal per-relay timing state.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum PublishStep {
-    Planning,
-    Dispatching,
-    Waiting,
-    Done,
-}
-
 /// Final outcome reported to the action ledger when the engine finishes.
 ///
 /// `Mixed` covers the common case where some relays accepted and some
@@ -112,7 +100,6 @@ impl ActionModule for PublishModule {
     const NAMESPACE: &'static str = "nmp.publish";
 
     type Action = PublishAction;
-    type Step = PublishStep;
 
     /// For pre-signed `Publish` actions, use the event's `id` as the
     /// correlation_id. The publish engine's `LastTerminal.correlation_id` is
@@ -135,7 +122,7 @@ impl ActionModule for PublishModule {
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,
-    ) -> Result<ActionPlan<Self::Step>, ActionRejection> {
+    ) -> Result<(), ActionRejection> {
         match action {
             PublishAction::Publish { event, .. } => {
                 if event.id.is_empty() || event.sig.is_empty() {
@@ -143,11 +130,7 @@ impl ActionModule for PublishModule {
                         "publish action requires a signed event with id+sig".to_string(),
                     ));
                 }
-                Ok(ActionPlan {
-                    initial_step: PublishStep::Planning,
-                    initial_status: ActionStatus::Pending,
-                    deadline_ms: None,
-                })
+                Ok(())
             }
             PublishAction::PublishNote { content, .. } => {
                 if content.is_empty() {
@@ -155,11 +138,7 @@ impl ActionModule for PublishModule {
                         "publish note requires non-empty content".to_string(),
                     ));
                 }
-                Ok(ActionPlan {
-                    initial_step: PublishStep::Planning,
-                    initial_status: ActionStatus::Pending,
-                    deadline_ms: None,
-                })
+                Ok(())
             }
             PublishAction::PublishProfile { fields } => {
                 // A kind:0 `content` is a flat JSON object of string values
@@ -184,13 +163,8 @@ impl ActionModule for PublishModule {
                         "cancel requires a publish handle".to_string(),
                     ));
                 }
-                Ok(ActionPlan {
-                    initial_step: PublishStep::Done,
-                    initial_status: ActionStatus::Cancelled,
-                    deadline_ms: None,
-                })
+                Ok(())
             }
         }
     }
-
 }

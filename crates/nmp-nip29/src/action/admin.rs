@@ -1,9 +1,7 @@
 //! Admin-only actions (signer must be in latest 39001 except for `CreateGroup`,
 //! which has no admin check per `kinds.md` §2.3). All emit host-pinned plans.
 
-use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionPlan, ActionRejection, ActionStatus,
-};
+use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
@@ -13,9 +11,6 @@ use crate::kinds::{
 };
 
 use super::publish_plan::PublishPlan;
-
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub struct AdminStep;
 
 macro_rules! admin_action {
     ($Module:ident, $Input:ident, $kind_const:expr, $build_plan:expr) => {
@@ -30,11 +25,10 @@ macro_rules! admin_action {
         impl ActionModule for $Module {
             const NAMESPACE: &'static str = concat!("nip29.", stringify!($Module));
             type Action = $Input;
-            type Step = AdminStep;
             fn start(
                 _ctx: &mut ActionContext,
                 action: Self::Action,
-            ) -> Result<ActionPlan<Self::Step>, ActionRejection> {
+            ) -> Result<(), ActionRejection> {
                 let plan: PublishPlan = $build_plan(&action);
                 if plan.validate_no_unpinned_h().is_err() {
                     return Err(ActionRejection::Invalid(
@@ -42,11 +36,7 @@ macro_rules! admin_action {
                     ));
                 }
                 let _ = $kind_const; // sanity-link the constant
-                Ok(ActionPlan {
-                    initial_step: AdminStep,
-                    initial_status: ActionStatus::Pending,
-                    deadline_ms: None,
-                })
+                Ok(())
             }
         }
     };

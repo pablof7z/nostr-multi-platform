@@ -20,10 +20,9 @@
 //!   re-verifies the Schnorr signature + id hash (D4 — only the actor loop
 //!   signs/publishes; a forged event is rejected, never published) and
 //!   routes it through the NIP-65 outbox resolver.
-//! * For [`PublishAction::Cancel`], no actor command exists yet — the
-//!   registry already reports `ActionStatus::Cancelled`, so dispatch returns
-//!   the correlation id without an actor round-trip. Wiring a real cancel
-//!   into the publish engine is a follow-up.
+//! * For [`PublishAction::Cancel`], no actor command exists yet — dispatch
+//!   returns the correlation id without an actor round-trip. Wiring a real
+//!   cancel into the publish engine is a follow-up.
 //!
 //! A returned `{"correlation_id":"…"}` for a `Publish` action means the
 //! event was *accepted and enqueued for publication* — the actor owns the
@@ -186,11 +185,11 @@ pub extern "C" fn nmp_app_register_action_executor(
 /// Host-supplied action *validator* callback.
 ///
 /// Receives the raw `action_json` as a NUL-terminated C string. Returns
-/// `NULL` to **accept** the action (the registry mints a correlation id with
-/// a default `Pending` plan), or a NUL-terminated C string describing the
-/// **rejection** reason. The returned error string is read immediately and
-/// copied into an owned Rust `String`; the host owns its lifetime and may
-/// free or reuse it after the callback returns.
+/// `NULL` to **accept** the action (the registry mints a correlation id), or
+/// a NUL-terminated C string describing the **rejection** reason. The
+/// returned error string is read immediately and copied into an owned Rust
+/// `String`; the host owns its lifetime and may free or reuse it after the
+/// callback returns.
 pub type NmpActionValidator = unsafe extern "C" fn(*const c_char) -> *const c_char;
 
 /// Register a host-supplied *module validator* for `namespace` against the
@@ -205,10 +204,9 @@ pub type NmpActionValidator = unsafe extern "C" fn(*const c_char) -> *const c_ch
 /// **without editing `nmp-core`** — a host can dispatch any custom namespace.
 ///
 /// The `validator` callback receives the action JSON and returns `NULL` to
-/// accept (the action gets a default `Pending` plan) or a NUL-terminated
-/// error string to reject. Passing a `NULL` `validator` registers an
-/// **accept-all** module: every action under `namespace` is accepted with a
-/// default `Pending` plan — useful when shape validation lives entirely in
+/// accept the action or a NUL-terminated error string to reject. Passing a
+/// `NULL` `validator` registers an **accept-all** module: every action under
+/// `namespace` is accepted — useful when shape validation lives entirely in
 /// the host's executor.
 ///
 /// THREADING: this call takes `&mut NmpApp`. It MUST be invoked during host
@@ -246,9 +244,9 @@ pub extern "C" fn nmp_app_register_action_module(
         return;
     }
     let Some(validate) = validator else {
-        // No validator → accept-all: every action is accepted with a default
-        // pending plan. Shape validation is then the host executor's job.
-        app.register_action_module(ns, |_action_json| Ok(default_pending_plan()));
+        // No validator → accept-all: every action is accepted. Shape
+        // validation is then the host executor's job.
+        app.register_action_module(ns, |_action_json| Ok(()));
         return;
     };
     app.register_action_module(ns, move |action_json| {
@@ -263,8 +261,8 @@ pub extern "C" fn nmp_app_register_action_module(
         // live for the duration of the call.
         let result_ptr = unsafe { validate(cstr.as_ptr()) };
         if result_ptr.is_null() {
-            // NULL return = accept with the default pending plan.
-            Ok(default_pending_plan())
+            // NULL return = accept.
+            Ok(())
         } else {
             // SAFETY: a non-null return is, per the callback contract, a
             // valid NUL-terminated C string. Copied immediately into an owned
@@ -346,19 +344,6 @@ pub extern "C" fn nmp_app_register_action_result_observer(
     });
 }
 
-/// The default erased [`ActionPlan`] a host-registered module hands back on
-/// **accept**: a `Pending` action with a `"Pending"` step and no deadline.
-/// The host's executor owns the real work; the plan is only the registry's
-/// initial-status bookkeeping (the M6 action ledger may persist it later).
-fn default_pending_plan() -> crate::substrate::ActionPlan<serde_json::Value> {
-    use crate::substrate::{ActionPlan, ActionStatus};
-    ActionPlan {
-        initial_step: serde_json::Value::String("Pending".into()),
-        initial_status: ActionStatus::Pending,
-        deadline_ms: None,
-    }
-}
-
 /// Pure (FFI-free) core of [`nmp_app_dispatch_action`]: validate the action
 /// against the registry, drive its execution through the actor, and return
 /// the JSON result string. Split out so the unit tests can exercise the
@@ -371,10 +356,9 @@ fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str
         now_ms: now_ms(),
     };
     match app.action_registry.start(&mut ctx, namespace, action_json) {
-        Ok((correlation_id, _plan)) => {
-            // `_plan` (the `ActionPlan`) is intentionally dropped: plan
-            // persistence is the M6 action ledger's job (a follow-up). The
-            // correlation id is the handle the caller acts on.
+        Ok(correlation_id) => {
+            // `start()` is a pure validator and the correlation id is the
+            // handle the caller acts on.
             //
             // Execution: `start()` only validated the action. Now drive it
             // through the actor. `execute_action` is namespace-aware; an
@@ -727,14 +711,7 @@ mod tests {
         // until `nmp_app_free` below, and no other reference aliases it here.
         let app_mut = unsafe { &mut *app };
         // Register both halves for "test.todo".
-        app_mut.register_action_module("test.todo", |_action_json| {
-            use crate::substrate::{ActionPlan, ActionStatus};
-            Ok(ActionPlan {
-                initial_step: serde_json::Value::String("Pending".into()),
-                initial_status: ActionStatus::Pending,
-                deadline_ms: None,
-            })
-        });
+        app_mut.register_action_module("test.todo", |_action_json| Ok(()));
         app_mut.register_action_executor("test.todo", |_action_json, _correlation_id, _send| Ok(()));
 
         // Now `dispatch_action` should succeed end-to-end.

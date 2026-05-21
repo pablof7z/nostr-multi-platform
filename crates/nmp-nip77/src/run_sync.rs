@@ -10,9 +10,7 @@
 //! it lets the action surface a `busy` flag and a `toast` field per D6
 //! without hand-rolling action plumbing in every app.
 
-use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionPlan, ActionRejection, ActionStatus,
-};
+use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use serde::{Deserialize, Serialize};
 
 /// Action namespace; surfaced as the public `NAMESPACE` constant on
@@ -25,17 +23,10 @@ pub struct RunSyncAction {
     /// `(filter_hash_hex, relay_url)` targets.  Empty list ⇒ reconcile every
     /// open pair the trigger engine knows about (the actor expands this).
     pub targets: Vec<(String, String)>,
-    /// Optional deadline in milliseconds since epoch.
+    /// Optional deadline in milliseconds since epoch. Part of the action's
+    /// public input shape; consumed by the actor/reconciler layer that drives
+    /// the sync — `start` is a pure validator and does not read it.
     pub deadline_ms: Option<u64>,
-}
-
-/// Steps the action transitions through.  Stored as a small enum so a
-/// crashing app can resume from disk without losing more than one step.
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub enum RunSyncStep {
-    Prepared { remaining: u32 },
-    Running { remaining: u32, completed: u32 },
-    Finalising,
 }
 
 /// Final summary the action emits on success.
@@ -56,20 +47,12 @@ impl ActionModule for RunSync {
     const NAMESPACE: &'static str = ACTION_NAMESPACE;
 
     type Action = RunSyncAction;
-    type Step = RunSyncStep;
 
     fn start(
         _ctx: &mut ActionContext,
-        action: Self::Action,
-    ) -> Result<ActionPlan<Self::Step>, ActionRejection> {
-        let target_count = action.targets.len() as u32;
-        Ok(ActionPlan {
-            initial_step: RunSyncStep::Prepared {
-                remaining: target_count,
-            },
-            initial_status: ActionStatus::Pending,
-            deadline_ms: action.deadline_ms,
-        })
+        _action: Self::Action,
+    ) -> Result<(), ActionRejection> {
+        Ok(())
     }
 }
 
@@ -82,20 +65,14 @@ mod tests {
     }
 
     #[test]
-    fn start_returns_pending_plan() {
-        let plan = RunSync::start(
+    fn start_accepts_run_sync_action() {
+        RunSync::start(
             &mut ctx(),
             RunSyncAction {
                 targets: vec![("aa".into(), "wss://r/".into())],
                 deadline_ms: Some(1_000),
             },
         )
-        .unwrap();
-        assert_eq!(plan.initial_status, ActionStatus::Pending);
-        assert!(matches!(
-            plan.initial_step,
-            RunSyncStep::Prepared { remaining: 1 }
-        ));
-        assert_eq!(plan.deadline_ms, Some(1_000));
+        .expect("run sync action should be accepted");
     }
 }

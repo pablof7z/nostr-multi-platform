@@ -11,12 +11,18 @@ pub trait ActionModule: Send + Sync + 'static {
     const NAMESPACE: &'static str;
 
     type Action: Clone + Serialize + DeserializeOwned + Send + 'static;
-    type Step: Clone + Serialize + DeserializeOwned + Send + 'static;
 
+    /// Validate `action`. `Ok(())` accepts it (the registry mints a
+    /// correlation id and the executor enqueues it); `Err` rejects it.
+    ///
+    /// `start` carries no return payload: it is a pure validator. The
+    /// per-action lifecycle (step / status / deadline) was discarded at the
+    /// `dispatch_action` boundary and never reached the host or the actor, so
+    /// the `ActionPlan` return type it once produced has been removed.
     fn start(
         ctx: &mut ActionContext,
         action: Self::Action,
-    ) -> Result<ActionPlan<Self::Step>, ActionRejection>;
+    ) -> Result<(), ActionRejection>;
 
     /// Optional: suggest the correlation_id the registry should assign to
     /// this action instead of the auto-generated one. Returning `Some(id)`
@@ -32,22 +38,6 @@ pub trait ActionModule: Send + Sync + 'static {
     fn preferred_action_id(_action: &Self::Action) -> Option<ActionId> {
         None
     }
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct ActionPlan<Step> {
-    pub initial_step: Step,
-    pub initial_status: ActionStatus,
-    pub deadline_ms: Option<u64>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum ActionStatus {
-    Pending,
-    Running,
-    Completed,
-    Failed,
-    Cancelled,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

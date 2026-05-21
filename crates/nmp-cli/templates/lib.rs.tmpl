@@ -159,31 +159,21 @@ pub enum Action {
     Archive { id: String },
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum EntryStep {
-    ApplyLocalWrite,
-}
-
 pub struct EntryActionModule;
 
 impl ActionModule for EntryActionModule {
     const NAMESPACE: &'static str = "{{name}}.entries.action";
 
     type Action = Action;
-    type Step = EntryStep;
 
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,
-    ) -> Result<ActionPlan<Self::Step>, ActionRejection> {
+    ) -> Result<(), ActionRejection> {
         if matches!(&action, Action::Add { label, .. } if label.trim().is_empty()) {
             return Err(ActionRejection::Invalid("entry label is empty".to_string()));
         }
-        Ok(ActionPlan {
-            initial_step: EntryStep::ApplyLocalWrite,
-            initial_status: ActionStatus::Running,
-            deadline_ms: None,
-        })
+        Ok(())
     }
 }
 

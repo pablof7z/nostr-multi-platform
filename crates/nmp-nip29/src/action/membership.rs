@@ -4,18 +4,13 @@
 //! an admin. The relay reaction (auto-emit 39002, optionally consume invite
 //! code) is server-side; the client just publishes the request.
 
-use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionPlan, ActionRejection, ActionStatus,
-};
+use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
 use crate::kinds::{KIND_JOIN_REQUEST, KIND_LEAVE_REQUEST};
 
 use super::publish_plan::PublishPlan;
-
-#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
-pub struct MembershipStep;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct JoinRequestInput {
@@ -32,11 +27,10 @@ pub struct JoinRequestAction;
 impl ActionModule for JoinRequestAction {
     const NAMESPACE: &'static str = "nip29.join_request";
     type Action = JoinRequestInput;
-    type Step = MembershipStep;
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,
-    ) -> Result<ActionPlan<Self::Step>, ActionRejection> {
+    ) -> Result<(), ActionRejection> {
         let mut tags = vec![vec!["h".into(), action.group.local_id.clone()]];
         if let Some(code) = action.invite_code {
             tags.push(vec!["code".into(), code]);
@@ -48,11 +42,7 @@ impl ActionModule for JoinRequestAction {
         let plan = PublishPlan::pinned(&action.group, KIND_JOIN_REQUEST, content, tags);
         plan.validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for join request".into()))?;
-        Ok(ActionPlan {
-            initial_step: MembershipStep,
-            initial_status: ActionStatus::Pending,
-            deadline_ms: None,
-        })
+        Ok(())
     }
 }
 
@@ -67,11 +57,10 @@ pub struct LeaveRequestAction;
 impl ActionModule for LeaveRequestAction {
     const NAMESPACE: &'static str = "nip29.leave_request";
     type Action = LeaveRequestInput;
-    type Step = MembershipStep;
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,
-    ) -> Result<ActionPlan<Self::Step>, ActionRejection> {
+    ) -> Result<(), ActionRejection> {
         let tags = vec![vec!["h".into(), action.group.local_id.clone()]];
         let plan = PublishPlan::pinned(
             &action.group,
@@ -81,10 +70,6 @@ impl ActionModule for LeaveRequestAction {
         );
         plan.validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for leave request".into()))?;
-        Ok(ActionPlan {
-            initial_step: MembershipStep,
-            initial_status: ActionStatus::Pending,
-            deadline_ms: None,
-        })
+        Ok(())
     }
 }

@@ -28,9 +28,7 @@
 use std::ffi::{c_char, CStr, CString};
 use std::sync::Arc;
 
-use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionPlan, ActionRejection, ActionStatus, UnsignedEvent,
-};
+use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection, UnsignedEvent};
 use nmp_core::{ActorCommand, KernelEventObserverId, NmpApp};
 use nmp_nip29::action::{JoinRequestAction, JoinRequestInput};
 use nmp_nip29::kinds::KIND_JOIN_REQUEST;
@@ -226,19 +224,6 @@ fn c_string_opt(ptr: *const c_char) -> Option<String> {
         .map(|s| s.to_owned())
 }
 
-/// A trivially-`Pending` [`ActionPlan`] for a fire-and-forget social verb.
-/// Chirp's social verbs (`react` / `follow` / `unfollow`) have no multi-step
-/// lifecycle — the action is accepted, an `ActorCommand` is enqueued, and the
-/// outcome surfaces through the kernel snapshot. So every module validator
-/// here returns the same shape: `initial_status: Pending`, no deadline.
-fn fire_and_forget_plan() -> ActionPlan<serde_json::Value> {
-    ActionPlan {
-        initial_step: serde_json::Value::String("Pending".to_string()),
-        initial_status: ActionStatus::Pending,
-        deadline_ms: None,
-    }
-}
-
 /// Register Chirp's social-verb action namespaces against `app`'s action
 /// registry. Each namespace gets BOTH a module (shape validator, consumed by
 /// `ActionRegistry::start`) AND an executor (the `ActorCommand` enqueue,
@@ -262,7 +247,7 @@ fn register_chirp_actions(app: &mut NmpApp) {
     // chirp.react — kind:7 reaction.
     app.register_action_module("chirp.react", |action_json| {
         serde_json::from_str::<ReactAction>(action_json)
-            .map(|_| fire_and_forget_plan())
+            .map(|_| ())
             .map_err(|e| ActionRejection::Invalid(e.to_string()))
     });
     app.register_action_executor("chirp.react", |action_json, _correlation_id, send| {
@@ -278,7 +263,7 @@ fn register_chirp_actions(app: &mut NmpApp) {
     // chirp.follow — append `pubkey` to the active account's kind:3 set.
     app.register_action_module("chirp.follow", |action_json| {
         serde_json::from_str::<PubkeyAction>(action_json)
-            .map(|_| fire_and_forget_plan())
+            .map(|_| ())
             .map_err(|e| ActionRejection::Invalid(e.to_string()))
     });
     app.register_action_executor("chirp.follow", |action_json, _correlation_id, send| {
@@ -291,7 +276,7 @@ fn register_chirp_actions(app: &mut NmpApp) {
     // chirp.unfollow — remove `pubkey` from the kind:3 set.
     app.register_action_module("chirp.unfollow", |action_json| {
         serde_json::from_str::<PubkeyAction>(action_json)
-            .map(|_| fire_and_forget_plan())
+            .map(|_| ())
             .map_err(|e| ActionRejection::Invalid(e.to_string()))
     });
     app.register_action_executor("chirp.unfollow", |action_json, _correlation_id, send| {
@@ -324,8 +309,7 @@ fn register_chirp_actions(app: &mut NmpApp) {
 /// The **module** validator delegates straight to the typed
 /// [`JoinRequestAction::start`] — so the crate's real validation logic
 /// (host-pin enforcement, tag construction, `validate_no_unpinned_h`) runs;
-/// it is not re-imitated here. The resulting `ActionPlan<MembershipStep>` is
-/// erased to `ActionPlan<serde_json::Value>` for the host seam.
+/// it is not re-imitated here.
 ///
 /// The **executor** builds the kind:9021 join-request `UnsignedEvent` from the
 /// typed `JoinRequestInput` and enqueues
@@ -341,17 +325,7 @@ fn register_nip29_actions(app: &mut NmpApp) {
         let action: JoinRequestInput = serde_json::from_str(action_json)
             .map_err(|e| ActionRejection::Invalid(e.to_string()))?;
         let mut ctx = ActionContext { now_ms: 0 };
-        let plan = JoinRequestAction::start(&mut ctx, action)?;
-        // Erase the typed `MembershipStep` to `serde_json::Value` for the
-        // host-seam `ActionPlan` shape. `MembershipStep` is a unit struct so
-        // this is infallible in practice; treat an encode error as invalid.
-        let initial_step = serde_json::to_value(&plan.initial_step)
-            .map_err(|e| ActionRejection::Invalid(e.to_string()))?;
-        Ok(ActionPlan {
-            initial_step,
-            initial_status: plan.initial_status,
-            deadline_ms: plan.deadline_ms,
-        })
+        JoinRequestAction::start(&mut ctx, action)
     });
 
     // Executor: build the kind:9021 join-request event and enqueue a
