@@ -7,13 +7,18 @@ use nmp_app_chirp::{
     nmp_app_chirp_unregister, ChirpHandle,
 };
 use nmp_core::{
-    nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string, nmp_app_open_author,
-    nmp_app_open_thread, nmp_app_open_timeline, nmp_app_start, NmpApp,
+    nmp_app_claim_profile, nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string,
+    nmp_app_open_author, nmp_app_open_thread, nmp_app_open_timeline, nmp_app_release_profile,
+    nmp_app_start, NmpApp,
 };
 use serde_json::{json, Value};
 
 use crate::bridge::{self, NmpEvent, NmpUpdateBridge};
 use crate::Result;
+
+const VISIBLE_AUTHOR_PROFILE_CONSUMER_PREFIX: &str = "chirp-tui.visible-author";
+const RELATION_COUNT_CLAIMS_UNAVAILABLE: &str =
+    "relation-count render claims are not available in nmp-core yet";
 
 pub struct AppRuntime {
     app: *mut NmpApp,
@@ -62,6 +67,28 @@ impl AppRuntime {
 
     pub fn open_author(&self, pubkey: &str) -> Result<()> {
         self.with_cstr(pubkey, |c| nmp_app_open_author(self.app, c.as_ptr()))
+    }
+
+    pub fn claim_visible_author_profile(&self, pubkey: &str) -> Result<()> {
+        self.with_visible_author_profile_args(pubkey, |pubkey, consumer| {
+            nmp_app_claim_profile(self.app, pubkey.as_ptr(), consumer.as_ptr());
+        })
+    }
+
+    pub fn release_visible_author_profile(&self, pubkey: &str) -> Result<()> {
+        self.with_visible_author_profile_args(pubkey, |pubkey, consumer| {
+            nmp_app_release_profile(self.app, pubkey.as_ptr(), consumer.as_ptr());
+        })
+    }
+
+    pub fn claim_visible_note_relation_counts(&self, event_id: &str) -> Result<()> {
+        validate_hex64("event id", event_id)?;
+        Err(RELATION_COUNT_CLAIMS_UNAVAILABLE.to_string())
+    }
+
+    pub fn release_visible_note_relation_counts(&self, event_id: &str) -> Result<()> {
+        validate_hex64("event id", event_id)?;
+        Err(RELATION_COUNT_CLAIMS_UNAVAILABLE.to_string())
     }
 
     pub fn publish_note(&self, content: &str, reply_to: Option<&str>) -> Result<()> {
@@ -132,6 +159,22 @@ impl AppRuntime {
         let c = CString::new(value).map_err(|_| "string contains NUL byte".to_string())?;
         Ok(f(&c))
     }
+
+    fn with_visible_author_profile_args(
+        &self,
+        pubkey: &str,
+        f: impl FnOnce(&CString, &CString),
+    ) -> Result<()> {
+        if self.app.is_null() {
+            return Err("runtime app is not available".to_string());
+        }
+        let consumer_id = visible_author_profile_consumer_id(pubkey)?;
+        let pubkey = CString::new(pubkey).map_err(|_| "pubkey contains NUL byte".to_string())?;
+        let consumer_id = CString::new(consumer_id)
+            .map_err(|_| "profile consumer id contains NUL byte".to_string())?;
+        f(&pubkey, &consumer_id);
+        Ok(())
+    }
 }
 
 impl Drop for AppRuntime {
@@ -148,5 +191,76 @@ impl Drop for AppRuntime {
             nmp_app_free(self.app);
             self.app = ptr::null_mut();
         }
+    }
+}
+
+fn visible_author_profile_consumer_id(pubkey: &str) -> Result<String> {
+    validate_hex64("pubkey", pubkey)?;
+    Ok(format!("{VISIBLE_AUTHOR_PROFILE_CONSUMER_PREFIX}:{pubkey}"))
+}
+
+fn validate_hex64(label: &str, value: &str) -> Result<()> {
+    if value.len() == 64 && value.chars().all(|c| c.is_ascii_hexdigit()) {
+        Ok(())
+    } else {
+        Err(format!("{label} must be 64 hex characters"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const EVENT: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+    #[test]
+    fn visible_author_profile_consumer_id_is_stable() {
+        assert_eq!(
+            visible_author_profile_consumer_id(ALICE).unwrap(),
+            format!("{VISIBLE_AUTHOR_PROFILE_CONSUMER_PREFIX}:{ALICE}")
+        );
+    }
+
+    #[test]
+    fn visible_author_profile_claims_reject_invalid_pubkeys() {
+        let (runtime, _rx) = AppRuntime::new().expect("runtime starts without live relays");
+
+        assert_eq!(
+            runtime.claim_visible_author_profile("not-a-pubkey"),
+            Err("pubkey must be 64 hex characters".to_string())
+        );
+        assert_eq!(
+            runtime.release_visible_author_profile("not-a-pubkey"),
+            Err("pubkey must be 64 hex characters".to_string())
+        );
+    }
+
+    #[test]
+    fn visible_author_profile_claim_release_are_idempotent() {
+        let (runtime, _rx) = AppRuntime::new().expect("runtime starts without live relays");
+
+        assert_eq!(runtime.claim_visible_author_profile(ALICE), Ok(()));
+        assert_eq!(runtime.claim_visible_author_profile(ALICE), Ok(()));
+        assert_eq!(runtime.release_visible_author_profile(ALICE), Ok(()));
+        assert_eq!(runtime.release_visible_author_profile(ALICE), Ok(()));
+    }
+
+    #[test]
+    fn note_relation_count_claim_seam_is_explicitly_unavailable() {
+        let (runtime, _rx) = AppRuntime::new().expect("runtime starts without live relays");
+
+        assert_eq!(
+            runtime.claim_visible_note_relation_counts(EVENT),
+            Err(RELATION_COUNT_CLAIMS_UNAVAILABLE.to_string())
+        );
+        assert_eq!(
+            runtime.release_visible_note_relation_counts(EVENT),
+            Err(RELATION_COUNT_CLAIMS_UNAVAILABLE.to_string())
+        );
+        assert_eq!(
+            runtime.claim_visible_note_relation_counts("bad"),
+            Err("event id must be 64 hex characters".to_string())
+        );
     }
 }

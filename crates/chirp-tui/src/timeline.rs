@@ -9,6 +9,7 @@ pub struct TimelineRow {
     pub created_at: u64,
     pub depth: usize,
     pub has_gap: bool,
+    pub relation_counts: RowRelationCounts,
 }
 
 impl TimelineRow {
@@ -47,16 +48,76 @@ impl TimelineRow {
     fn from_card(card: &Value, depth: usize, has_gap: bool) -> Self {
         let id = string_field(card, "id");
         let author_pubkey = string_field(card, "author_pubkey");
+        let author = card
+            .get("author_display")
+            .and_then(|display| display.get("name"))
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| short_key(&author_pubkey));
         let content = string_field(card, "content");
         let created_at = card.get("created_at").and_then(Value::as_u64).unwrap_or(0);
         Self {
             id,
-            author: short_key(&author_pubkey),
+            author,
             author_pubkey,
             content: content_preview(&content),
             created_at,
             depth,
             has_gap,
+            relation_counts: RowRelationCounts::from_card(card),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RowRelationCounts {
+    pub replies: RowRelationCount,
+    pub reactions: RowRelationCount,
+    pub reposts: RowRelationCount,
+}
+
+impl RowRelationCounts {
+    fn from_card(card: &Value) -> Self {
+        let relation_counts = card.get("relation_counts");
+        Self {
+            replies: count_from(relation_counts, "replies"),
+            reactions: count_from(relation_counts, "reactions"),
+            reposts: count_from(relation_counts, "reposts"),
+        }
+    }
+
+    pub fn summary(&self) -> String {
+        format!(
+            "reply {}  react {}  repost {}",
+            self.replies.label(),
+            self.reactions.label(),
+            self.reposts.label()
+        )
+    }
+}
+
+impl Default for RowRelationCounts {
+    fn default() -> Self {
+        Self {
+            replies: RowRelationCount::Loading,
+            reactions: RowRelationCount::Loading,
+            reposts: RowRelationCount::Loading,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RowRelationCount {
+    Known(u64),
+    Loading,
+}
+
+impl RowRelationCount {
+    fn label(&self) -> String {
+        match self {
+            Self::Known(count) => count.to_string(),
+            Self::Loading => "...".to_string(),
         }
     }
 }
@@ -88,6 +149,20 @@ fn string_field(card: &Value, key: &str) -> String {
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string()
+}
+
+fn count_from(relation_counts: Option<&Value>, key: &str) -> RowRelationCount {
+    let Some(value) = relation_counts.and_then(|counts| counts.get(key)) else {
+        return RowRelationCount::Loading;
+    };
+    match value.get("state").and_then(Value::as_str) {
+        Some("known") => value
+            .get("count")
+            .and_then(Value::as_u64)
+            .map(RowRelationCount::Known)
+            .unwrap_or(RowRelationCount::Loading),
+        _ => RowRelationCount::Loading,
+    }
 }
 
 fn short_key(value: &str) -> String {
@@ -134,5 +209,60 @@ mod tests {
         assert_eq!(rows[0].depth, 0);
         assert_eq!(rows[1].depth, 1);
         assert!(rows[1].has_gap);
+    }
+
+    #[test]
+    fn row_uses_profile_display_and_relation_counts_when_present() {
+        let snapshot = serde_json::json!({
+            "cards": [{
+                "id": "note",
+                "author_pubkey": "aaaaaaaaaaaaaaaa",
+                "author_display": {"name": "Alice"},
+                "created_at": 1,
+                "content": "hello",
+                "relation_counts": {
+                    "replies": {"state": "known", "count": 2},
+                    "reactions": {"state": "known", "count": 3},
+                    "reposts": {"state": "known", "count": 1}
+                }
+            }]
+        });
+
+        let rows = TimelineRow::from_snapshot(&snapshot);
+
+        assert_eq!(rows[0].author, "Alice");
+        assert_eq!(rows[0].relation_counts.replies, RowRelationCount::Known(2));
+        assert_eq!(
+            rows[0].relation_counts.reactions,
+            RowRelationCount::Known(3)
+        );
+        assert_eq!(rows[0].relation_counts.reposts, RowRelationCount::Known(1));
+    }
+
+    #[test]
+    fn relation_counts_preserve_loading_vs_known_zero() {
+        let snapshot = serde_json::json!({
+            "cards": [{
+                "id": "note",
+                "author_pubkey": "aaaaaaaaaaaaaaaa",
+                "created_at": 1,
+                "content": "hello",
+                "relation_counts": {
+                    "replies": {"state": "known", "count": 0},
+                    "reactions": {"state": "loading", "interest": {"namespace": "nmp.reactions.summary"}},
+                    "reposts": {"state": "known", "count": 0}
+                }
+            }]
+        });
+
+        let rows = TimelineRow::from_snapshot(&snapshot);
+
+        assert_eq!(rows[0].relation_counts.replies, RowRelationCount::Known(0));
+        assert_eq!(rows[0].relation_counts.reactions, RowRelationCount::Loading);
+        assert_eq!(rows[0].relation_counts.reposts, RowRelationCount::Known(0));
+        assert_eq!(
+            rows[0].relation_counts.summary(),
+            "reply 0  react ...  repost 0"
+        );
     }
 }

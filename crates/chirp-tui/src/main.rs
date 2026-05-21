@@ -14,6 +14,7 @@ use ratatui::Terminal;
 use chirp_tui::app::{AppRuntime, AppState};
 use chirp_tui::bridge::NmpEvent;
 use chirp_tui::input::{self, InputFlow};
+use chirp_tui::render_intents::{RenderIntent, RenderIntentDiff, RenderIntentTracker};
 use chirp_tui::ui;
 
 #[derive(Debug, Parser)]
@@ -58,6 +59,7 @@ fn run(args: Args) -> Result<()> {
     spawn_nmp_forwarder(nmp_rx, ui_tx);
 
     let mut state = AppState::default();
+    let mut render_intents = RenderIntentTracker::default();
     if args.basic {
         state.set_basic();
     }
@@ -74,9 +76,25 @@ fn run(args: Args) -> Result<()> {
             UiEvent::Terminal(_) => {}
             UiEvent::Nmp(event) => state.apply_nmp_event(&runtime, event),
         }
+        let diff = render_intents.sync_rows(&state.rows);
+        apply_render_intents(&runtime, diff).map_err(|e| eyre!(e))?;
         terminal.draw(|frame| ui::layout::render(frame, &state))?;
     }
 
+    Ok(())
+}
+
+fn apply_render_intents(runtime: &AppRuntime, diff: RenderIntentDiff) -> chirp_tui::Result<()> {
+    for intent in diff.removed {
+        if let RenderIntent::AuthorProfile { pubkey } = intent {
+            runtime.release_visible_author_profile(&pubkey)?;
+        }
+    }
+    for intent in diff.added {
+        if let RenderIntent::AuthorProfile { pubkey } = intent {
+            runtime.claim_visible_author_profile(&pubkey)?;
+        }
+    }
     Ok(())
 }
 

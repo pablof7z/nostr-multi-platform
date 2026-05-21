@@ -26,6 +26,8 @@ pub mod decode;
 pub mod domain;
 pub mod kinds;
 pub mod meta_timeline;
+mod note_relations;
+mod profile_display;
 pub mod timeline_projection;
 pub mod view;
 
@@ -37,6 +39,8 @@ pub use meta_timeline::{
     ModularTimelineDelta, ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState,
     Nip10ModularTimelineView, Nip10Resolver,
 };
+pub use note_relations::{NoteRelationCounts, RelationCount, RelationCountInterest};
+pub use profile_display::{AuthorDisplay, AuthorDisplaySource};
 pub use timeline_projection::{
     ModularTimelineProjection, ModularTimelineSnapshot, TimelineEventCard,
 };
