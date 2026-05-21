@@ -39,7 +39,7 @@ pub enum SignerPayload {
 pub struct LocalPayload {
     /// One of:
     /// - `Raw(hex)` — raw secret hex.  Use only when storage is already secure
-    ///   (e.g. iOS Keychain item value).
+    ///   (e.g. an OS keychain/keystore item value).
     /// - `Ncryptsec(s)` — NIP-49-encrypted; requires password to decrypt.
     pub key: LocalKeyMaterial,
 }

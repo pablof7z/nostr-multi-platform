@@ -20,11 +20,12 @@
 //!    `Nip46Signer::resolve_response`.
 //! 4. **Progress reporting**: emits [`nmp_core::ActorCommand::BunkerHandshakeProgress`]
 //!    snapshots (`"connecting"` → `"awaiting_pubkey"` → `"ready"`, or
-//!    `"failed"` on error) so the SwiftUI sign-in flow can render live
-//!    feedback. `"ready"` is the terminal success stage; the Chirp
-//!    `AccountsView` auto-dismisses the sheet when a new
-//!    `signer_kind == "nip46"` account appears, tearing the progress card
-//!    down with it.
+//!    `"failed"` on error) so the host UI can render live feedback.
+//!    `"ready"` is the terminal success stage; no `"idle"` follow-up is
+//!    emitted — once the new `signer_kind == "nip46"` account appears in the
+//!    kernel snapshot, the host can dismiss its progress UI on its own
+//!    schedule. Timer-driven cleanup belongs to the UI layer, not this crate
+//!    (D8).
 //!
 //! ## Threading
 //!
