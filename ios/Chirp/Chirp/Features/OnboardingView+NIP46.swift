@@ -4,6 +4,11 @@ import CoreImage
 extension OnboardingView {
 
     // MARK: — Remote signer (NIP-46)
+    //
+    // Pure view: Rust's `nip46_onboarding` projection owns the typed
+    // `stageKind` + pre-computed `isInFlight` / `isFailed` /
+    // `isTerminalSuccess` / `canCancel` flags, plus the signer-app probe
+    // table. No stage-string comparisons or URL string-mashing happens here.
 
     var nip46SignerSection: some View {
         VStack(alignment: .leading, spacing: ChirpSpace.m) {
@@ -50,20 +55,21 @@ extension OnboardingView {
                 .frame(maxWidth: .infinity)
             }
 
-            // Open in signer app — only when a compatible app is installed
-            if let signer = detectedSigner, let url = nostrConnectURL {
+            if let signer = detectedSignerApp, let url = nostrConnectURL {
                 Button {
-                    openSignerApp(url)
+                    openSignerApp(connectURL: url)
                 } label: {
-                    Label("Open in \(signer.rawValue)", systemImage: "arrow.up.forward.app")
-                        .font(ChirpFont.callout)
+                    Label(
+                        "Open in \(signer.displayLabel)",
+                        systemImage: "arrow.up.forward.app"
+                    )
+                    .font(ChirpFont.callout)
                 }
                 .buttonStyle(.plain)
             }
 
             Divider()
 
-            // Paste bunker:// URI — always visible
             VStack(alignment: .leading, spacing: ChirpSpace.s) {
                 Text("Or paste a bunker:// URI")
                     .font(ChirpFont.caption)
@@ -75,17 +81,17 @@ extension OnboardingView {
                     .autocorrectionDisabled()
             }
 
-            // Handshake progress
-            if let handshake = model.bunkerHandshake, handshake.stage != "idle" {
+            if let onboarding = model.nip46Onboarding,
+               let stage = onboarding.stageKind, stage != .idle {
                 HStack(spacing: ChirpSpace.s) {
-                    if handshake.stage == "connecting" || handshake.stage == "awaiting_pubkey" {
+                    if onboarding.isInFlight {
                         ProgressView().tint(.accentColor).scaleEffect(0.8)
-                    } else if handshake.stage == "ready" {
+                    } else if onboarding.isTerminalSuccess {
                         Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                    } else if handshake.stage == "failed" {
+                    } else if onboarding.isFailed {
                         Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
                     }
-                    Text(handshake.message ?? handshake.stage)
+                    Text(onboarding.progressMessage ?? "")
                         .font(ChirpFont.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -103,8 +109,7 @@ extension OnboardingView {
                 .buttonStyle(.borderedProminent)
                 .disabled(bunkerUri.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
-                if let stage = model.bunkerHandshake?.stage,
-                   stage == "connecting" || stage == "awaiting_pubkey" {
+                if model.nip46Onboarding?.canCancel == true {
                     Button("Cancel") { model.cancelBunkerHandshake() }
                         .font(ChirpFont.callout)
                 }
@@ -117,16 +122,16 @@ extension OnboardingView {
 
     // MARK: — Helpers
 
+    /// Iterate Rust's signer-app table and check `UIApplication.canOpenURL`
+    /// for each scheme — Rust owns the protocol table; Swift owns only the
+    /// platform-capability probe.
     func detectSignerApps() {
-        let schemes: [(String, DetectedSigner)] = [
-            ("nostrsigner://", .nostrSigner),
-            ("primal://", .primal),
-        ]
-        for (scheme, signer) in schemes {
-            if let url = URL(string: scheme), UIApplication.shared.canOpenURL(url) {
-                detectedSigner = signer
-                return
-            }
+        guard let signerApps = model.nip46Onboarding?.signerApps else {
+            detectedSignerApp = nil
+            return
+        }
+        detectedSignerApp = signerApps.first { app in
+            URL(string: app.scheme).map { UIApplication.shared.canOpenURL($0) } ?? false
         }
     }
 
@@ -141,13 +146,11 @@ extension OnboardingView {
         return UIImage(cgImage: cgImage)
     }
 
-    func openSignerApp(_ connectURL: String) {
-        var url = connectURL
-        if let encoded = "chirp://nip46".addingPercentEncoding(withAllowedCharacters: .alphanumerics) {
-            url += "&callback=\(encoded)"
-        }
-        if let u = URL(string: url) {
-            UIApplication.shared.open(u)
-        }
+    /// Open the connect URL Rust generated verbatim — Rust already appended
+    /// the `&callback=` query parameter so Swift performs no protocol-string
+    /// composition (only the `UIApplication.open` platform capability).
+    func openSignerApp(connectURL: String) {
+        guard let url = URL(string: connectURL) else { return }
+        UIApplication.shared.open(url)
     }
 }

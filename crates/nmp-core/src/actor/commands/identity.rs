@@ -59,6 +59,153 @@ pub(crate) fn new_bunker_handshake_slot() -> BunkerHandshakeSlot {
     Arc::new(Mutex::new(None))
 }
 
+/// Typed token for the NIP-46 handshake stage. Mirrors the wire strings the
+/// broker writes into [`BunkerHandshakeDto::stage`] one-to-one; hosts read
+/// this instead of string-comparing the raw stage value (which is then a Rust
+/// implementation detail). `Unknown` covers forward-compat for any new wire
+/// value the host hasn't been re-typed against.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum BunkerStageKind {
+    Idle,
+    Connecting,
+    AwaitingPubkey,
+    Ready,
+    Failed,
+    Unknown,
+}
+
+impl BunkerStageKind {
+    /// Decode a wire stage string into the typed enum. Unknown values map to
+    /// `Unknown` so a host that has not been re-typed still gets a stable read.
+    fn from_wire(raw: &str) -> Self {
+        match raw {
+            "idle" => Self::Idle,
+            "connecting" => Self::Connecting,
+            "awaiting_pubkey" => Self::AwaitingPubkey,
+            "ready" => Self::Ready,
+            "failed" => Self::Failed,
+            _ => Self::Unknown,
+        }
+    }
+}
+
+/// One row of the static NIP-46 signer-app table — `(URL scheme, label)`
+/// the host shows the user. The table is owned by Rust so the protocol layer
+/// (not the platform shell) decides which signer apps qualify as "NIP-46
+/// compatible" and how each is labelled.
+///
+/// `signer_kind` is the stable label that matches `AccountSummary.signer_kind`
+/// once the user signs in through this app — exposed so hosts that want to
+/// branch on installed-signer kind can read one value, not parse `scheme`.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct SignerAppDescriptor {
+    /// Platform URL scheme to probe (`"nostrsigner://"`, `"primal://"`, …).
+    pub(crate) scheme: String,
+    /// Human-readable name to show in "Open in <X>".
+    pub(crate) display_label: String,
+    /// Stable signer-kind token. All entries here are NIP-46 brokered
+    /// signers, so this is always `"nip46"` today; carried as a field so a
+    /// future NIP-55 / hardware-signer entry can populate a different kind.
+    pub(crate) signer_kind: String,
+}
+
+/// Static signer-app probe table. Rust owns this list; the platform shell
+/// iterates it and uses its platform capability (e.g.
+/// `UIApplication.canOpenURL`) to detect which entry is installed, then
+/// renders the matching `display_label`.
+///
+/// D0: protocol-layer knowledge of which app schemes qualify as NIP-46
+/// signers must not live in the platform shell — schemes change as the
+/// ecosystem evolves (Nostr Signer, Primal, …) and that table is a
+/// protocol-substrate concern.
+fn signer_apps_table() -> Vec<SignerAppDescriptor> {
+    vec![
+        SignerAppDescriptor {
+            scheme: "nostrsigner://".to_string(),
+            display_label: "Nostr Signer".to_string(),
+            signer_kind: "nip46".to_string(),
+        },
+        SignerAppDescriptor {
+            scheme: "primal://".to_string(),
+            display_label: "Primal".to_string(),
+            signer_kind: "nip46".to_string(),
+        },
+    ]
+}
+
+/// Pre-computed NIP-46 onboarding read model — `projections["nip46_onboarding"]`.
+///
+/// Derives every field a host onboarding screen reads from the same
+/// [`BunkerHandshakeSlot`] the `"bunker_handshake"` projection serializes,
+/// plus the static signer-app table Rust owns. Hosts no longer:
+///   * keep a typed enum of stage strings (`stage_kind` carries the typed
+///     token)
+///   * switch on stage strings to decide which spinner / icon / button state
+///     to render (`is_in_flight`, `is_failed`, `is_terminal_success`,
+///     `can_cancel` are pre-computed)
+///   * hard-code which URL schemes count as NIP-46 signer apps
+///     (`signer_apps`)
+///
+/// D0: NIP-46 remote signing is an app noun, so this projection lives under
+/// the kernel's `projections` map exactly like `"bunker_handshake"` — never
+/// as a typed `KernelSnapshot` field.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct Nip46OnboardingDto {
+    /// Static table of `(scheme, display_label, signer_kind)` the host probes
+    /// for installed signer apps. Always present — never empty.
+    pub(crate) signer_apps: Vec<SignerAppDescriptor>,
+    /// Typed handshake stage; `None` when no handshake is in flight (mirrors
+    /// the bunker slot's `None` semantic).
+    pub(crate) stage_kind: Option<BunkerStageKind>,
+    /// Human-readable progress / error message; verbatim copy of the bunker
+    /// slot's `message`. Hosts display this verbatim — they never format
+    /// progress strings themselves.
+    pub(crate) progress_message: Option<String>,
+    /// True when a handshake is mid-flight (`connecting` / `awaiting_pubkey`).
+    /// Hosts use this to disable inputs and show a spinner without inspecting
+    /// `stage_kind`.
+    pub(crate) is_in_flight: bool,
+    /// True when the last handshake attempt ended in `failed`. Hosts swap
+    /// the "Connect" button to "Retry" on this signal.
+    pub(crate) is_failed: bool,
+    /// True when the handshake reached `ready` (final success). Hosts move
+    /// off the onboarding screen on this signal.
+    pub(crate) is_terminal_success: bool,
+    /// True when a cancel action would do something — i.e. a handshake is in
+    /// flight. Hosts gate the visibility of the cancel button on this.
+    pub(crate) can_cancel: bool,
+}
+
+/// Build the `nip46_onboarding` projection payload by reading the shared
+/// bunker-handshake slot and deriving the typed view. Runs on every snapshot
+/// tick (D8: lock-and-clone only, no allocation in the steady-state path
+/// beyond the static signer-app vec).
+pub(crate) fn build_nip46_onboarding_dto(
+    slot: &BunkerHandshakeSlot,
+) -> Nip46OnboardingDto {
+    let raw = slot.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let (stage_kind, progress_message) = match raw {
+        Some(dto) => (Some(BunkerStageKind::from_wire(&dto.stage)), dto.message),
+        None => (None, None),
+    };
+    let is_in_flight = matches!(
+        stage_kind,
+        Some(BunkerStageKind::Connecting) | Some(BunkerStageKind::AwaitingPubkey)
+    );
+    let is_failed = matches!(stage_kind, Some(BunkerStageKind::Failed));
+    let is_terminal_success = matches!(stage_kind, Some(BunkerStageKind::Ready));
+    Nip46OnboardingDto {
+        signer_apps: signer_apps_table(),
+        stage_kind,
+        progress_message,
+        is_in_flight,
+        is_failed,
+        is_terminal_success,
+        can_cancel: is_in_flight,
+    }
+}
+
 /// `SignerOp::wait` timeout for remote-signer signs.
 ///
 /// This blocks the actor thread — relay ingest, subscription management, and
@@ -913,5 +1060,115 @@ fn parse_bunker_remote(uri: &str) -> Option<String> {
         Some(pubkey.to_string())
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod nip46_onboarding_tests {
+    use super::*;
+
+    fn fresh_slot() -> BunkerHandshakeSlot {
+        new_bunker_handshake_slot()
+    }
+
+    fn set_stage(slot: &BunkerHandshakeSlot, stage: &str, message: Option<&str>) {
+        *slot.lock().unwrap() = Some(BunkerHandshakeDto {
+            stage: stage.to_string(),
+            message: message.map(str::to_string),
+        });
+    }
+
+    #[test]
+    fn idle_slot_yields_table_only_dto() {
+        let slot = fresh_slot();
+        let dto = build_nip46_onboarding_dto(&slot);
+        assert!(!dto.signer_apps.is_empty(), "signer-app table is static");
+        assert!(dto.signer_apps.iter().any(|a| a.scheme == "nostrsigner://"));
+        assert!(dto.signer_apps.iter().any(|a| a.scheme == "primal://"));
+        assert_eq!(dto.stage_kind, None);
+        assert_eq!(dto.progress_message, None);
+        assert!(!dto.is_in_flight);
+        assert!(!dto.is_failed);
+        assert!(!dto.is_terminal_success);
+        assert!(!dto.can_cancel);
+    }
+
+    #[test]
+    fn connecting_stage_flips_in_flight_and_cancel() {
+        let slot = fresh_slot();
+        set_stage(&slot, "connecting", Some("connecting to relay wss://r"));
+        let dto = build_nip46_onboarding_dto(&slot);
+        assert_eq!(dto.stage_kind, Some(BunkerStageKind::Connecting));
+        assert!(dto.is_in_flight);
+        assert!(dto.can_cancel);
+        assert!(!dto.is_failed);
+        assert!(!dto.is_terminal_success);
+        assert_eq!(
+            dto.progress_message.as_deref(),
+            Some("connecting to relay wss://r")
+        );
+    }
+
+    #[test]
+    fn awaiting_pubkey_is_in_flight() {
+        let slot = fresh_slot();
+        set_stage(&slot, "awaiting_pubkey", None);
+        let dto = build_nip46_onboarding_dto(&slot);
+        assert_eq!(dto.stage_kind, Some(BunkerStageKind::AwaitingPubkey));
+        assert!(dto.is_in_flight);
+        assert!(dto.can_cancel);
+    }
+
+    #[test]
+    fn ready_is_terminal_success_only() {
+        let slot = fresh_slot();
+        set_stage(&slot, "ready", None);
+        let dto = build_nip46_onboarding_dto(&slot);
+        assert_eq!(dto.stage_kind, Some(BunkerStageKind::Ready));
+        assert!(dto.is_terminal_success);
+        assert!(!dto.is_in_flight);
+        assert!(!dto.can_cancel);
+        assert!(!dto.is_failed);
+    }
+
+    #[test]
+    fn failed_flips_only_is_failed() {
+        let slot = fresh_slot();
+        set_stage(&slot, "failed", Some("relay connect failed"));
+        let dto = build_nip46_onboarding_dto(&slot);
+        assert_eq!(dto.stage_kind, Some(BunkerStageKind::Failed));
+        assert!(dto.is_failed);
+        assert!(!dto.is_in_flight);
+        assert!(!dto.can_cancel);
+        assert!(!dto.is_terminal_success);
+        assert_eq!(
+            dto.progress_message.as_deref(),
+            Some("relay connect failed")
+        );
+    }
+
+    #[test]
+    fn unknown_stage_maps_to_unknown_variant() {
+        let slot = fresh_slot();
+        set_stage(&slot, "some_future_stage", None);
+        let dto = build_nip46_onboarding_dto(&slot);
+        assert_eq!(dto.stage_kind, Some(BunkerStageKind::Unknown));
+        assert!(!dto.is_in_flight);
+        assert!(!dto.is_failed);
+        assert!(!dto.is_terminal_success);
+    }
+
+    #[test]
+    fn serialized_dto_uses_snake_case_stage_kind() {
+        let slot = fresh_slot();
+        set_stage(&slot, "awaiting_pubkey", None);
+        let dto = build_nip46_onboarding_dto(&slot);
+        let v = serde_json::to_value(&dto).unwrap();
+        assert_eq!(v["stage_kind"], "awaiting_pubkey");
+        assert!(v["signer_apps"].is_array());
+        assert_eq!(v["is_in_flight"], true);
+        assert_eq!(v["can_cancel"], true);
+        assert_eq!(v["is_failed"], false);
+        assert_eq!(v["is_terminal_success"], false);
     }
 }
