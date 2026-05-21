@@ -64,6 +64,8 @@ use nmp_core::{KindFilter, RawEventObserver};
 use nostr::{Event, JsonUtil};
 use serde::{Deserialize, Serialize};
 
+use crate::display;
+
 /// NIP-59 gift-wrap kind — the opaque outer envelope this projection taps.
 const KIND_GIFT_WRAP: u32 = 1059;
 
@@ -105,6 +107,21 @@ pub struct DmMessage {
 pub struct DmConversation {
     /// The OTHER party in the thread (hex pubkey) — never the local user.
     pub peer_pubkey: String,
+    /// Bech32-encoded `npub1…` form of `peer_pubkey`. Computed in Rust at
+    /// snapshot time so the host shell never does bech32 encoding (thin-shell
+    /// rule). Falls back to the raw hex on parse error (D6).
+    pub peer_npub: String,
+    /// Abbreviated bech32: first 10 chars + `"…"` + last 6 chars of the npub.
+    /// Ready for display in conversation rows and headers — no Swift-side
+    /// truncation needed.
+    pub peer_short_npub: String,
+    /// Two-char uppercase initials for the avatar tile — derived from the
+    /// first 2 characters of the bech32 body (the part after `"npub1"`).
+    pub peer_avatar_initials: String,
+    /// Deterministic 6-hex colour for the avatar background (uppercase, no
+    /// `#` prefix). Same djb2 algorithm as Marmot so tints are consistent
+    /// across surfaces.
+    pub peer_avatar_color: String,
     /// Messages in this thread, ordered chronologically — **oldest first,
     /// newest last**. This is the natural render order of a chat log so the
     /// host shell never re-sorts or reverses (thin-shell rule). The
@@ -210,7 +227,12 @@ impl DmInboxProjection {
                         .cmp(&b.created_at)
                         .then_with(|| a.id.cmp(&b.id))
                 });
+                let peer_npub = display::to_npub(&peer_pubkey);
                 DmConversation {
+                    peer_npub: peer_npub.clone(),
+                    peer_short_npub: display::short_npub(&peer_pubkey),
+                    peer_avatar_initials: display::avatar_initials(&peer_npub),
+                    peer_avatar_color: display::avatar_color_hex(&peer_pubkey),
                     peer_pubkey,
                     messages: msgs,
                 }

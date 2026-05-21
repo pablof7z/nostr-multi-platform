@@ -34,7 +34,7 @@
 //!   happens here / in `nmp-threading`.
 
 use std::ffi::{c_char, CStr, CString};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use nmp_core::{
@@ -54,6 +54,8 @@ use nmp_nip17::{
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
 use nmp_threading::ModulePolicy;
+
+use crate::follow_list::FollowListProjection;
 
 /// Register one typed `ActionModule` against `$app`'s action registry.
 ///
@@ -360,6 +362,72 @@ pub extern "C" fn nmp_app_chirp_register_dm_inbox(
     if let Some(pubkey) = c_string_opt(viewer_pubkey).filter(|s| !s.is_empty()) {
         app_ref.push_interest(giftwrap_inbox_interest(&pubkey));
     }
+}
+
+/// Wire a [`FollowListProjection`] for the active account into `app`.
+///
+/// This is **pure consumption** of the NIP-02 kind:3 contact list. It
+/// constructs a [`FollowListProjection`] bound to `active_pubkey`, plugs it
+/// into the kernel as a [`KernelEventObserver`] (ingest), and registers its
+/// `snapshot_json` read under the snapshot key `"chirp.follow_list"` (output).
+/// The active account's formatted follow list then surfaces on every kernel
+/// snapshot tick under that key.
+///
+/// `active_pubkey` is the active account's hex pubkey. It is stored in the
+/// projection's shared slot so `snapshot_json` returns the correct account's
+/// follows even if kind:3 events from multiple accounts have arrived.
+///
+/// The kernel already subscribes to kind:3 for the active account as part of
+/// the `account_profile_interest` (kind:0 + kind:3 + kind:10002), so no
+/// separate interest push is needed — events arrive through the standing
+/// subscription.
+///
+/// CALLER CONTRACT — re-invoke after account switch with the new pubkey.
+/// The projection accumulates follow lists for all observed authors; only the
+/// active pubkey's list surfaces in the snapshot. A re-invoke for the same
+/// account overwrites the `"chirp.follow_list"` snapshot key with an
+/// equivalent projection (small bounded leak on the observer slot).
+///
+/// D6 — fire-and-forget. A null `app` or a poisoned observer slot degrades
+/// to a silent return.
+///
+/// `app` MUST outlive the registration; it is only borrowed for this call.
+#[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn nmp_app_chirp_register_follow_list(
+    app: *mut NmpApp,
+    active_pubkey: *const c_char,
+) {
+    if app.is_null() {
+        return;
+    }
+    // SAFETY: caller guarantees `app` is a valid pointer from `nmp_app_new`,
+    // live for the duration of this call. The borrow is not held past return.
+    let app_ref = unsafe { &*app };
+
+    // Extract the active pubkey string; `None` is permitted (before sign-in).
+    let pubkey_opt = c_string_opt(active_pubkey).filter(|s| !s.is_empty());
+
+    // The shared slot the projection and the FFI both hold: the projection
+    // reads it at snapshot time, the caller updates it on account switch.
+    let active_pubkey_slot: Arc<Mutex<Option<String>>> =
+        Arc::new(Mutex::new(pubkey_opt));
+
+    let projection = Arc::new(FollowListProjection::new(Arc::clone(&active_pubkey_slot)));
+
+    let observer_id = app_ref
+        .register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
+    if observer_id.0 == 0 {
+        // Observer registration failed (poisoned slot). Don't register the
+        // snapshot closure for a projection that will never receive events.
+        return;
+    }
+
+    // Output side: the no-argument snapshot read runs on the actor thread
+    // inside each snapshot tick. The `move` consumes this last `Arc`.
+    app_ref.register_snapshot_projection("chirp.follow_list", move || {
+        projection.snapshot_json()
+    });
 }
 
 /// Serialize the current `ChirpTimelineSnapshot` into a JSON C string.

@@ -697,6 +697,8 @@ struct KernelUpdate: Decodable {
     /// gift-wrap envelopes have arrived. Computed so the `DmInboxStore`
     /// consumer keeps reading `update.dmInbox` unchanged.
     var dmInbox: DmInboxSnapshot? { projections?.dmInbox }
+    /// NIP-02 follow list — `projections["chirp.follow_list"]`.
+    var followList: FollowListSnapshot? { projections?.followList }
 
     /// Diagnostics-screen read model — `projections["relay_diagnostics"]`
     /// (aim.md §4.5 / §6 anti-pattern #1 / §"Where do views live?" cleanup).
@@ -777,6 +779,11 @@ struct SnapshotProjections: Decodable, Equatable {
     // string `"nip17.dm_inbox"` — same `.convertFromSnakeCase` caveat as
     // `groupChat`, handled by the explicit `CodingKeys` case below.
     let dmInbox: DmInboxSnapshot?
+    // Chirp follow list — `projections["chirp.follow_list"]`. Registered by
+    // `nmp_app_chirp_register_follow_list`. The dotted key is opaque to
+    // `.convertFromSnakeCase` (it only replaces `_`), so the post-transform
+    // key is `"chirp.followList"` — handled in the explicit `CodingKeys` below.
+    let followList: FollowListSnapshot?
     // Diagnostics roll-up — `projections["relay_diagnostics"]`. Built-in
     // kernel-owned projection (§4.5 / §6 anti-pattern #1 cleanup): replaces
     // the §"Where do views live?" violations the three diagnostics screens
@@ -835,6 +842,7 @@ struct SnapshotProjections: Decodable, Equatable {
         case removed
         case groupChat = "nip29.groupChat"
         case dmInbox = "nip17.dmInbox"
+        case followList = "chirp.followList"
         case relayDiagnostics
         case mentionProfiles
         case settingsHub
@@ -952,12 +960,47 @@ struct DmMessage: Decodable, Identifiable, Equatable {
 /// newest last — so the host renders a chat log in that order and never
 /// reverses (thin-shell rule). The thread's most-recent message is
 /// `messages.last`.
+///
+/// Display fields (`peerNpub`, `peerShortNpub`, `peerAvatarInitials`,
+/// `peerAvatarColor`) are computed in Rust at snapshot time — the shell
+/// renders them directly (thin-shell rule, no bech32 encoding in Swift).
 struct DmConversation: Decodable, Identifiable, Equatable {
     /// The OTHER party in the thread (hex pubkey). Also the list identity.
     let peerPubkey: String
+    /// Full bech32 `npub1…` encoding of `peerPubkey`. For copy/paste.
+    let peerNpub: String
+    /// Abbreviated bech32: 10-head + "…" + 6-tail. Ready for display rows.
+    let peerShortNpub: String
+    /// Two-char uppercase initials for the avatar tile.
+    let peerAvatarInitials: String
+    /// Six-hex deterministic avatar background colour (no `#` prefix).
+    let peerAvatarColor: String
     let messages: [DmMessage]
 
     var id: String { peerPubkey }
+}
+
+// ─── NIP-02 follow list read model ───────────────────────────────────────────
+//
+// Mirror of `nmp-app-chirp`'s `FollowListProjection` — the shape it serialises
+// under the snapshot key `"chirp.follow_list"`. All display strings are
+// computed in Rust; Swift renders what it receives (thin-shell rule).
+
+/// One entry in the active account's follow list.
+struct FollowEntry: Decodable, Identifiable, Equatable {
+    let pubkey: String
+    let npub: String
+    let shortNpub: String
+    let avatarInitials: String
+    let avatarColor: String
+    var id: String { pubkey }
+}
+
+/// The serialised follow-list snapshot. `follows` is the active account's
+/// NIP-02 kind:3 contact list, each entry pre-formatted for display.
+struct FollowListSnapshot: Decodable, Equatable {
+    let follows: [FollowEntry]
+    static let empty = FollowListSnapshot(follows: [])
 }
 
 /// The serialised read-model the DM screens consume. `conversations` is

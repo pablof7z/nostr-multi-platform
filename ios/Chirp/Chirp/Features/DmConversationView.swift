@@ -40,7 +40,7 @@ struct DmConversationView: View {
             composer
         }
         .chirpScreenBackground()
-        .navigationTitle(dmShortPubkey(peerPubkey))
+        .navigationTitle(conversation?.peerShortNpub ?? peerPubkey)
         .navigationBarTitleDisplayMode(.inline)
     }
 

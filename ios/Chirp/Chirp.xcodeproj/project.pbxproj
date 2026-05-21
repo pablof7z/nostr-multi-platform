@@ -50,6 +50,7 @@
 		D81055E50F7F365F57F3FD35 /* InvitesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E09352C7C1CC9D7C5BB6156 /* InvitesView.swift */; };
 		D93F87FAB4BDD5BB307789C0 /* KernelModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3808C5C6482C44109C442925 /* KernelModel.swift */; };
 		DC6FF9F50A594B0F3F0B84F8 /* DmBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDF6A637F032F16E09D2F6AC /* DmBridge.swift */; };
+		EC64CF76EA294066BFFBC763 /* FollowListBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79C93CBA91C746EC9150E62D /* FollowListBridge.swift */; };
 		E6AF81962D62F30FDB2F4F35 /* NoteRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6ADE8B08D5ABD0EA510EDC /* NoteRowView.swift */; };
 		EA0318372F152947A645ADC8 /* ProfileNoteRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C170D9BAEF17D256061902E9 /* ProfileNoteRow.swift */; };
 		EADA12AFFA8D08461F19DFA7 /* NoteContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ED689DD9659151162F819BC /* NoteContentView.swift */; };
@@ -133,6 +134,7 @@
 		F3554BAD41A86827FFAF1D06 /* ChirpUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ChirpUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		F4FC09F936C21E0D65E03D7B /* GroupChatBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupChatBridge.swift; sourceTree = "<group>"; };
 		FDF6A637F032F16E09D2F6AC /* DmBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DmBridge.swift; sourceTree = "<group>"; };
+		79C93CBA91C746EC9150E62D /* FollowListBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FollowListBridge.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -257,6 +259,7 @@
 			isa = PBXGroup;
 			children = (
 				FDF6A637F032F16E09D2F6AC /* DmBridge.swift */,
+				79C93CBA91C746EC9150E62D /* FollowListBridge.swift */,
 				F4FC09F936C21E0D65E03D7B /* GroupChatBridge.swift */,
 				1B303905AEF1833128E7C6BC /* KernelBridge.swift */,
 				3808C5C6482C44109C442925 /* KernelModel.swift */,
@@ -412,6 +415,7 @@
 				159A0AB673722908A2785D5C /* ComposeView.swift in Sources */,
 				683374BB2BBCDF65807EEFC8 /* DiagnosticsView.swift in Sources */,
 				DC6FF9F50A594B0F3F0B84F8 /* DmBridge.swift in Sources */,
+				EC64CF76EA294066BFFBC763 /* FollowListBridge.swift in Sources */,
 				B70D9AE10FD8CB75144CE7CB /* DmConversationView.swift in Sources */,
 				657C5ADC60FA028341CF8BD0 /* DmListView.swift in Sources */,
 				5F05576A5E81E79E0B4C9DE6 /* GroupChatBridge.swift in Sources */,

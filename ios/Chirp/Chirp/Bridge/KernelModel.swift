@@ -144,6 +144,14 @@ final class KernelModel: ObservableObject {
     /// active account is known so the kind:1059 gift-wrap interest is pushed.
     private(set) lazy var dmInbox = DmInboxStore(kernel: kernel)
 
+    /// NIP-02 follow list mirror — the active account's kind:3 contact list.
+    /// The store registers its read projection (`nmp_app_chirp_register_follow_list`)
+    /// in its initializer; that initializer runs on the first snapshot tick
+    /// because `apply` below touches `followList` every tick. The store
+    /// re-invokes the FFI once the active account is known so the projection's
+    /// active-pubkey slot is updated.
+    private(set) lazy var followList = FollowListStore(kernel: kernel)
+
     /// The NIP-29 group the group-chat screen reads and posts to. A single
     /// fixed room for the first-consumer proof; a real multi-group app
     /// would thread a chosen `GroupId` through navigation.
@@ -497,6 +505,13 @@ final class KernelModel: ObservableObject {
         // the FFI to push the kind:1059 gift-wrap interest once a user is
         // signed in — without that interest the inbox is wired but inert.
         dmInbox.apply(snapshot: update.dmInbox, activePubkey: update.activeAccount)
+        // NIP-02 follow list projection mirror. Push every tick so the store
+        // tracks `projections["chirp.follow_list"]`. Touching `followList`
+        // here forces the lazy `FollowListStore` init on the first snapshot,
+        // which registers the read projection (`nmp_app_chirp_register_follow_list`).
+        // The active-account pubkey is forwarded so the store can re-invoke
+        // the FFI to update the projection's active-pubkey slot after sign-in.
+        followList.apply(snapshot: update.followList, activePubkey: update.activeAccount)
         metrics = update.metrics
         relayStatuses = update.relayStatuses
         // T66a projections — mirror only; never derive (D8).

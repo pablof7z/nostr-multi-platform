@@ -342,6 +342,24 @@ void nmp_app_chirp_register_group_chat(void *app, const char *group_id_json);
 //     duration of this call.
 void nmp_app_chirp_register_dm_inbox(void *app, const char *viewer_pubkey_or_null);
 
+// ── NIP-02 follow list read projection ───────────────────────────────────
+//
+// Wires the active account's NIP-02 kind:3 follow list into the kernel as a
+// formatted snapshot. The kernel's standing account_profile_interest already
+// fetches kind:3 — no separate interest push is needed.
+//
+//   • `active_pubkey_or_null` is the active account's hex pubkey. The
+//     projection's active-pubkey slot is set so the snapshot returns the
+//     correct account's follows. NULL is permitted (startup before sign-in);
+//     the caller MUST re-invoke after sign-in / account switch.
+//   • Returns void — registers no handle. The follow list surfaces under
+//     the `projections` key `"chirp.follow_list"`, shaped
+//     `{ "follows": [ { pubkey, npub, short_npub, avatar_initials,
+//       avatar_color } ] }`.
+//   • Fire-and-forget (D6): a null `app` degrades to a silent no-op.
+//   • `app` MUST outlive the registration; it is borrowed only for this call.
+void nmp_app_chirp_register_follow_list(void *app, const char *active_pubkey_or_null);
+
 // ── Marmot (MLS encrypted groups) per-app FFI ────────────────────────────
 //
 // Six symbols exported from the same `libnmp_app_chirp.a` archive (the
