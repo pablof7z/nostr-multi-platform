@@ -44,7 +44,7 @@ macro_rules! noop_migrations {
 /// cryptographic state lives in MDK/SQLite — this record is projection only.
 pub struct MarmotGroupModule;
 impl DomainModule for MarmotGroupModule {
-    const NAMESPACE: &'static str = "marmot.group";
+    const NAMESPACE: &'static str = "marmot.group"; // doctrine-allow: D9 — DomainModule LMDB storage prefix; renaming requires a data migration
     const SCHEMA_VERSION: u32 = 1;
     noop_migrations!();
 }
@@ -52,7 +52,7 @@ impl DomainModule for MarmotGroupModule {
 /// Decrypted message records, keyed by group + epoch + sender.
 pub struct MarmotMessageModule;
 impl DomainModule for MarmotMessageModule {
-    const NAMESPACE: &'static str = "marmot.message";
+    const NAMESPACE: &'static str = "marmot.message"; // doctrine-allow: D9 — DomainModule LMDB storage prefix; renaming requires a data migration
     const SCHEMA_VERSION: u32 = 1;
     noop_migrations!();
 }
@@ -61,7 +61,7 @@ impl DomainModule for MarmotMessageModule {
 /// rotation lifecycle.
 pub struct MarmotKeyPackageModule;
 impl DomainModule for MarmotKeyPackageModule {
-    const NAMESPACE: &'static str = "marmot.key_package";
+    const NAMESPACE: &'static str = "marmot.key_package"; // doctrine-allow: D9 — DomainModule LMDB storage prefix; renaming requires a data migration
     const SCHEMA_VERSION: u32 = 1;
     noop_migrations!();
 }
@@ -69,7 +69,7 @@ impl DomainModule for MarmotKeyPackageModule {
 /// Tracks pending inbound Welcome messages.
 pub struct MarmotWelcomeModule;
 impl DomainModule for MarmotWelcomeModule {
-    const NAMESPACE: &'static str = "marmot.welcome";
+    const NAMESPACE: &'static str = "marmot.welcome"; // doctrine-allow: D9 — DomainModule LMDB storage prefix; renaming requires a data migration
     const SCHEMA_VERSION: u32 = 1;
     noop_migrations!();
 }

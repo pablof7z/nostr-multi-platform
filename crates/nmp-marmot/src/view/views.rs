@@ -41,7 +41,7 @@ pub struct GroupListPayload {
 /// snapshot is filled by the service/actor layer (the wire is ciphertext).
 pub struct GroupListView;
 impl GroupListView {
-    pub const NAMESPACE: &'static str = "marmot.group_list";
+    pub const NAMESPACE: &'static str = "nmp.marmot.group_list";
 
     pub fn key(spec: &GroupListSpec) -> String {
         spec.self_pubkey.clone()
@@ -118,7 +118,7 @@ pub struct GroupMessagesPayload {
 /// the service after `MDK::process_message`.
 pub struct GroupMessagesView;
 impl GroupMessagesView {
-    pub const NAMESPACE: &'static str = "marmot.group_messages";
+    pub const NAMESPACE: &'static str = "nmp.marmot.group_messages";
 
     pub fn key(spec: &GroupMessagesSpec) -> String {
         spec.group_id_hex.clone()
@@ -199,7 +199,7 @@ pub struct MemberListPayload {
 /// from `MDK::get_members()` + `MDK::group_leaf_map()` via [`crate::service`].
 pub struct MemberListView;
 impl MemberListView {
-    pub const NAMESPACE: &'static str = "marmot.member_list";
+    pub const NAMESPACE: &'static str = "nmp.marmot.member_list";
 
     pub fn key(spec: &MemberListSpec) -> String {
         spec.group_id_hex.clone()
@@ -282,7 +282,7 @@ pub struct KeyPackageLookupPayload {
 pub struct KeyPackageLookupView;
 
 impl KeyPackageLookupView {
-    pub const NAMESPACE: &'static str = "marmot.key_package_lookup";
+    pub const NAMESPACE: &'static str = "nmp.marmot.key_package_lookup";
 
     pub fn key(spec: &KeyPackageLookupSpec) -> String {
         spec.owner_pubkey.clone()

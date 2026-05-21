@@ -23,7 +23,7 @@ pub struct PublishKeyPackageInput {
 
 pub struct PublishKeyPackageAction;
 impl ActionModule for PublishKeyPackageAction {
-    const NAMESPACE: &'static str = "marmot.publish_key_package";
+    const NAMESPACE: &'static str = "nmp.marmot.publish_key_package";
     type Action = PublishKeyPackageInput;
     fn start(
         _ctx: &mut ActionContext,
