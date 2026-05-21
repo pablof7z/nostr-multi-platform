@@ -62,7 +62,7 @@ pub struct NaddrCoord {
 // land when the nmp-nip19 bech32 codec crate joins the workspace. Both helpers
 // are needed for `nmp_nip01::ThreadView` and `nmp_nip01::Nip10ModularTimelineView`
 // (the latter wrapping `nmp_threading::Grouper`) to accept user-facing naddr
-// strings from the Swift/Kotlin FFI surface.
+// strings from the host-language FFI surface.
 
 // ─── InterestShape ───────────────────────────────────────────────────────────
 

@@ -5,7 +5,7 @@
 //! client secret, subscribes for kind:23195, sends `get_info` + `get_balance`,
 //! prints every wire frame, decodes kind:23195 responses.
 //!
-//! Use this to isolate NWC protocol bugs from kernel / iOS plumbing.
+//! Use this to isolate NWC protocol bugs from kernel / host-app plumbing.
 //!
 //! Run:
 //! ```
