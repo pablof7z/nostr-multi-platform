@@ -38,6 +38,11 @@ lmdb-backend = ["nmp-core/lmdb-backend"]
 nmp-core = { path = "../../../crates/nmp-core" }
 nmp-signer-broker = { path = "../../../crates/nmp-signer-broker" }
 nmp-nip01 = { path = "../../../crates/nmp-nip01" }
+# NIP-29 relay-based groups. Chirp registers the crate's typed
+# `JoinRequestAction` `ActionModule` against the kernel action registry —
+# proving the host-extensibility seam works for NIP-crate modules, not just
+# Chirp's own social verbs. D0-clean: `nmp-core` gains no group nouns.
+nmp-nip29 = { path = "../../../crates/nmp-nip29" }
 nmp-threading = { path = "../../../crates/nmp-threading" }
 # Marmot (MLS-over-Nostr). This crate's `src/marmot/` module consumes the
 # typed `MarmotService` translation layer; no MLS type crosses its C-ABI
