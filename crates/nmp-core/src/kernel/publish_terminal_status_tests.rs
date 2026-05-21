@@ -408,49 +408,52 @@ fn t128_terminal_status_survives_snapshot_round_trip_to_wire_json() {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// Direction review #24 — `projections.last_action_result`.
+// Direction review #29 — `projections.action_results`.
 //
 // `dispatch_action` fires `deliver_result` the instant the executor's
 // channel-send returns `Ok` ("queued", not "published"). When a publish
 // settles terminally (every relay landed Ok / FailedAfterRetries, the user
-// cancelled, or no relays resolved) there was no terminal signal in the
-// snapshot — a host spinner span permanently. `KernelSnapshot.projections`
-// now carries a `"last_action_result"` key with the MOST RECENT terminal
-// verdict so the host can clear its spinner without polling.
+// cancelled, or no relays resolved) the host needs a terminal signal or its
+// spinner spins forever. `KernelSnapshot.projections` carries an
+// `"action_results"` array — every terminal verdict that settled since the
+// last emit — so the host can clear its spinner without polling.
 //
-// `last_action_result` is a most-recent convenience signal; the authoritative
-// per-correlation_id terminal state lives in `projections.publish_queue` via
-// the T128 `set_publish_entry_terminal` path (covered above). The tests below
-// pin both facts: the scalar shows the latest, AND `publish_queue` retains
-// every terminal — concurrent settles in one tick are never lost.
+// `action_results` is a per-tick DRAIN: two actions settling in one tick both
+// appear, neither is lost. The authoritative per-correlation_id terminal state
+// also lives in `projections.publish_queue` via the T128
+// `set_publish_entry_terminal` path (covered above). The tests below pin both:
+// `action_results` surfaces every settled verdict AND `publish_queue` retains
+// each terminal — concurrent settles in one tick are never lost.
 // ───────────────────────────────────────────────────────────────────────────
 
-/// Read `projections.last_action_result` from a fresh wire snapshot.
-fn last_action_result(kernel: &mut Kernel) -> serde_json::Value {
+/// Read `projections.action_results` from a fresh wire snapshot. The key is
+/// conditionally inserted (only when a terminal settled this tick), so absence
+/// is normal — it is reported as `Null` here.
+fn action_results(kernel: &mut Kernel) -> serde_json::Value {
     let snapshot_json = kernel.make_update(true);
     let parsed: serde_json::Value =
         serde_json::from_str(&snapshot_json).expect("snapshot must be valid JSON");
     parsed
         .get("projections")
-        .and_then(|v| v.get("last_action_result"))
+        .and_then(|v| v.get("action_results"))
         .cloned()
-        .expect("projections.last_action_result key must always be present")
+        .unwrap_or(serde_json::Value::Null)
+}
+
+/// Drain `action_results` and assert exactly one terminal settled this tick,
+/// returning it. Most terminal-status tests settle a single action.
+fn single_action_result(kernel: &mut Kernel) -> serde_json::Value {
+    let results = action_results(kernel);
+    let arr = results
+        .as_array()
+        .expect("action_results must be a JSON array when an action settled");
+    assert_eq!(arr.len(), 1, "exactly one terminal settled this tick");
+    arr[0].clone()
 }
 
 #[test]
-fn last_action_result_is_null_before_any_publish_settles() {
-    // A kernel that has never settled a publish reports a `null` value — the
-    // host treats null/absent as "no terminal result yet, keep the spinner".
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    assert!(
-        last_action_result(&mut kernel).is_null(),
-        "last_action_result must be null until the first action settles"
-    );
-}
-
-#[test]
-fn last_action_result_reports_published_on_all_ack_success() {
-    // Every relay acks Ok → `last_action_result` is
+fn action_results_reports_published_on_all_ack_success() {
+    // Every relay acks Ok → `action_results` carries one
     // `{status:"published", error:null}` keyed on the publish handle.
     let author = "a1".repeat(32);
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -458,16 +461,16 @@ fn last_action_result_reports_published_on_all_ack_success() {
     let signed = fake_signed("b1".repeat(32).as_str(), &author, 1, "publish ok");
     let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
 
-    // Not terminal after one ack — still null.
+    // Not terminal after one ack — the key is absent.
     let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, true, ""), 10);
     assert!(
-        last_action_result(&mut kernel).is_null(),
+        action_results(&mut kernel).is_null(),
         "a partially-acked publish has no terminal result yet"
     );
 
     // Second ack settles it.
     let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, true, ""), 20);
-    let result = last_action_result(&mut kernel);
+    let result = single_action_result(&mut kernel);
     assert_eq!(
         result.get("status").and_then(|v| v.as_str()),
         Some("published"),
@@ -485,8 +488,8 @@ fn last_action_result_reports_published_on_all_ack_success() {
 }
 
 #[test]
-fn last_action_result_reports_failed_with_reason_on_all_relays_giving_up() {
-    // Every relay burns through its retries → `last_action_result` is
+fn action_results_reports_failed_with_reason_on_all_relays_giving_up() {
+    // Every relay burns through its retries → `action_results` carries one
     // `{status:"failed", error:"<joined per-relay reasons>"}`.
     let author = "a2".repeat(32);
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -516,7 +519,7 @@ fn last_action_result_reports_failed_with_reason_on_all_relays_giving_up() {
     drive_to_giveup(&mut kernel, WRITE_R1, 0);
     drive_to_giveup(&mut kernel, WRITE_R2, 100_000);
 
-    let result = last_action_result(&mut kernel);
+    let result = single_action_result(&mut kernel);
     assert_eq!(
         result.get("status").and_then(|v| v.as_str()),
         Some("failed"),
@@ -538,17 +541,17 @@ fn last_action_result_reports_failed_with_reason_on_all_relays_giving_up() {
 }
 
 #[test]
-fn last_action_result_reports_failed_when_no_relays_resolve() {
+fn action_results_reports_failed_when_no_relays_resolve() {
     // No kind:10002 seeded → `Nip65OutboxResolver` resolves zero relays →
     // `emit_no_targets` runs and the publish never queues. This is a terminal
-    // `failed` from the host's view; `last_action_result` must report it so
+    // `failed` from the host's view; `action_results` must report it so
     // the spinner is cleared rather than spinning on an op that never ran.
     let author = "a3".repeat(32);
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let signed = fake_signed("b3".repeat(32).as_str(), &author, 1, "no targets");
     let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
 
-    let result = last_action_result(&mut kernel);
+    let result = single_action_result(&mut kernel);
     assert_eq!(
         result.get("status").and_then(|v| v.as_str()),
         Some("failed"),
@@ -569,10 +572,10 @@ fn last_action_result_reports_failed_when_no_relays_resolve() {
 }
 
 #[test]
-fn last_action_result_reports_cancelled_on_user_cancel() {
-    // User cancels an in-flight publish → `last_action_result` is
+fn action_results_reports_cancelled_on_user_cancel() {
+    // User cancels an in-flight publish → `action_results` carries one
     // `{status:"cancelled", error:null}`. Cancellation never flows through
-    // `recently_completed`, so the engine records `last_terminal` directly in
+    // `recently_completed`, so the engine records the terminal directly in
     // `cancel_publish` — this test pins that path.
     let author = "a4".repeat(32);
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -582,7 +585,7 @@ fn last_action_result_reports_cancelled_on_user_cancel() {
 
     kernel.cancel_publish(&signed.id);
 
-    let result = last_action_result(&mut kernel);
+    let result = single_action_result(&mut kernel);
     assert_eq!(
         result.get("status").and_then(|v| v.as_str()),
         Some("cancelled"),
@@ -599,49 +602,12 @@ fn last_action_result_reports_cancelled_on_user_cancel() {
 }
 
 #[test]
-fn last_action_result_is_overwritten_by_the_most_recent_terminal() {
-    // Two publishes settle in sequence — `last_action_result` is sticky-but-
-    // latest: it reports the SECOND publish's verdict, not the first. This is
-    // the deliberate "no queue, no history, no replay" tradeoff: the scalar is
-    // a convenience signal; per-action authoritative state lives in
-    // `publish_queue`.
-    let author = "a5".repeat(32);
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
-
-    let first = fake_signed("c1".repeat(32).as_str(), &author, 1, "first publish");
-    let _ = kernel.run_publish_engine_at(&first, &[], crate::publish::PublishTarget::Auto, None, 0);
-    let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&first.id, true, ""), 10);
-    let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&first.id, true, ""), 20);
-    assert_eq!(
-        last_action_result(&mut kernel)
-            .get("correlation_id")
-            .and_then(|v| v.as_str()),
-        Some(first.id.as_str()),
-        "after the first publish settles it is the latest terminal"
-    );
-
-    let second = fake_signed("c2".repeat(32).as_str(), &author, 1, "second publish");
-    let _ = kernel.run_publish_engine_at(&second, &[], crate::publish::PublishTarget::Auto, None, 100);
-    let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&second.id, true, ""), 110);
-    let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&second.id, true, ""), 120);
-
-    let result = last_action_result(&mut kernel);
-    assert_eq!(
-        result.get("correlation_id").and_then(|v| v.as_str()),
-        Some(second.id.as_str()),
-        "last_action_result is overwritten with the most recent terminal"
-    );
-}
-
-#[test]
 fn concurrent_terminals_in_one_tick_keep_all_in_publish_queue() {
     // Coordinator's concern (review #25): if two publishes settle in the same
-    // tick, the `last_action_result` scalar can only show one of them. This
-    // test proves no terminal is LOST — the authoritative per-correlation_id
-    // status lives in `projections.publish_queue` for BOTH, while
-    // `last_action_result` shows the most recently settled. The host resolves
-    // any other correlation_id by reading `publish_queue`.
+    // tick, no terminal is LOST — the authoritative per-correlation_id status
+    // lives in `projections.publish_queue` for BOTH. The host resolves any
+    // correlation_id by reading `publish_queue` (and `action_results` for the
+    // per-tick spinner-clear signal, covered separately).
     let author = "a6".repeat(32);
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
@@ -668,53 +634,16 @@ fn concurrent_terminals_in_one_tick_keep_all_in_publish_queue() {
         "ok",
         "the second concurrent publish's terminal status is retained in publish_queue"
     );
-
-    // last_action_result shows the most recently settled (second).
-    assert_eq!(
-        last_action_result(&mut kernel)
-            .get("correlation_id")
-            .and_then(|v| v.as_str()),
-        Some(second.id.as_str()),
-        "last_action_result shows the most recent terminal; publish_queue has the rest"
-    );
 }
 
 #[test]
-fn last_action_result_survives_apply_engine_completions_drain() {
-    // Regression guard for the drain trap: `apply_engine_completions` drains
-    // `recently_completed` via `take_completed()` inside every engine
-    // entrypoint. `last_terminal` is a SEPARATE sticky field — it must NOT be
-    // drained. After a settle, multiple snapshot reads in a row must all keep
-    // reporting the terminal result.
-    let author = "a7".repeat(32);
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
-    let signed = fake_signed("e1".repeat(32).as_str(), &author, 1, "drain guard");
-    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
-    let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, true, ""), 10);
-    let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, true, ""), 20);
-
-    // Three consecutive snapshots — each calls make_update; the terminal
-    // result must persist across all of them.
-    for read in 0..3 {
-        let result = last_action_result(&mut kernel);
-        assert_eq!(
-            result.get("status").and_then(|v| v.as_str()),
-            Some("published"),
-            "last_action_result must survive snapshot read #{} (no drain)",
-            read
-        );
-    }
-}
-
-#[test]
-fn last_action_result_reports_dispatch_correlation_id_for_publish_note() {
+fn action_results_reports_dispatch_correlation_id_for_publish_note() {
     // THE FIX (PublishNote correlation_id round-trip): a `PublishNote`
     // dispatch mints a random correlation_id because the event id is unknown
     // at dispatch time (the actor signs the event). When the publish settles,
-    // `last_action_result.correlation_id` MUST report that minted id — not the
-    // signed event's id — so the host's spinner, keyed on the dispatch return
-    // value, can be cleared.
+    // the `action_results` entry's `correlation_id` MUST report that minted id
+    // — not the signed event's id — so the host's spinner, keyed on the
+    // dispatch return value, can be cleared.
     //
     // This drives `run_publish_engine_at` with an explicit
     // `correlation_id_override` (the path `commands::publish_note` →
@@ -744,7 +673,7 @@ fn last_action_result_reports_dispatch_correlation_id_for_publish_note() {
     let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, true, ""), 10);
     let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, true, ""), 20);
 
-    let result = last_action_result(&mut kernel);
+    let result = single_action_result(&mut kernel);
     assert_eq!(
         result.get("status").and_then(|v| v.as_str()),
         Some("published"),
@@ -753,7 +682,7 @@ fn last_action_result_reports_dispatch_correlation_id_for_publish_note() {
     assert_eq!(
         result.get("correlation_id").and_then(|v| v.as_str()),
         Some(minted_correlation_id.as_str()),
-        "last_action_result must report the dispatch correlation_id, not the event id"
+        "action_results must report the dispatch correlation_id, not the event id"
     );
     assert_ne!(
         result.get("correlation_id").and_then(|v| v.as_str()),
@@ -763,7 +692,7 @@ fn last_action_result_reports_dispatch_correlation_id_for_publish_note() {
 }
 
 #[test]
-fn last_action_result_reports_dispatch_correlation_id_on_publish_note_failure() {
+fn action_results_reports_dispatch_correlation_id_on_publish_note_failure() {
     // The override must also survive the failure path: a `PublishNote` whose
     // relays all reject still has to report the minted correlation_id so the
     // host clears the spinner and shows the error against the right action.
@@ -784,7 +713,7 @@ fn last_action_result_reports_dispatch_correlation_id_on_publish_note_failure() 
     let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, false, "blocked: spam"), 10);
     let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, false, "blocked: spam"), 20);
 
-    let result = last_action_result(&mut kernel);
+    let result = single_action_result(&mut kernel);
     assert_eq!(
         result.get("status").and_then(|v| v.as_str()),
         Some("failed"),
@@ -795,31 +724,6 @@ fn last_action_result_reports_dispatch_correlation_id_on_publish_note_failure() 
         Some(minted_correlation_id.as_str()),
         "the failure path must also report the dispatch correlation_id"
     );
-}
-
-// ───────────────────────────────────────────────────────────────────────────
-// Direction review #29 — `projections.action_results` (the spinner-hang fix).
-//
-// `last_action_result` is a sticky scalar: when two actions settle in the same
-// snapshot tick the second OVERWRITES the first, so the host's spinner for the
-// first action hangs forever. `projections.action_results` is the per-tick
-// DRAIN — every terminal that settled since the last emit appears, as a JSON
-// array `[{correlation_id, status, error}, ...]`. The key is absent in steady
-// state. The host resolves each spinner by matching `correlation_id`.
-// ───────────────────────────────────────────────────────────────────────────
-
-/// Read `projections.action_results` from a fresh wire snapshot. The key is
-/// conditionally inserted (only when a terminal settled this tick), so absence
-/// is normal — it is reported as `Null` here.
-fn action_results(kernel: &mut Kernel) -> serde_json::Value {
-    let snapshot_json = kernel.make_update(true);
-    let parsed: serde_json::Value =
-        serde_json::from_str(&snapshot_json).expect("snapshot must be valid JSON");
-    parsed
-        .get("projections")
-        .and_then(|v| v.get("action_results"))
-        .cloned()
-        .unwrap_or(serde_json::Value::Null)
 }
 
 #[test]
@@ -837,8 +741,7 @@ fn action_results_is_absent_before_any_publish_settles() {
 #[test]
 fn two_terminals_in_one_tick_both_appear_in_action_results() {
     // THE USER-BUG REGRESSION GUARD. Two publishes settle back-to-back, before
-    // any snapshot is emitted. The sticky `last_action_result` scalar can only
-    // show ONE of them — but `action_results` must surface BOTH so the host
+    // any snapshot is emitted. `action_results` must surface BOTH so the host
     // resolves every spinner, not just the most recent one.
     let author = "f1".repeat(32);
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -892,47 +795,5 @@ fn two_terminals_in_one_tick_both_appear_in_action_results() {
     assert!(
         action_results(&mut kernel).is_null(),
         "action_results is drained per tick — a second read is absent"
-    );
-}
-
-#[test]
-fn action_results_does_not_disturb_the_sticky_last_action_result() {
-    // The two signals are complementary, not exclusive. `action_results`
-    // drains; `last_action_result` stays sticky. After two settlements in one
-    // tick, a single snapshot read must show BOTH in `action_results` AND the
-    // most-recent verdict still in `last_action_result`.
-    let author = "f2".repeat(32);
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
-
-    let first = fake_signed("e3".repeat(32).as_str(), &author, 1, "sticky first");
-    let second = fake_signed("e4".repeat(32).as_str(), &author, 1, "sticky second");
-    let _ = kernel.run_publish_engine_at(&first, &[], crate::publish::PublishTarget::Auto, None, 0);
-    let _ = kernel.run_publish_engine_at(&second, &[], crate::publish::PublishTarget::Auto, None, 0);
-    let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&first.id, true, ""), 10);
-    let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&first.id, true, ""), 20);
-    let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&second.id, true, ""), 30);
-    let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&second.id, true, ""), 40);
-
-    // Single snapshot: read both projections off the SAME wire payload so the
-    // drain happens exactly once.
-    let snapshot_json = kernel.make_update(true);
-    let parsed: serde_json::Value =
-        serde_json::from_str(&snapshot_json).expect("snapshot must be valid JSON");
-    let projections = parsed.get("projections").expect("projections present");
-
-    let arr = projections
-        .get("action_results")
-        .and_then(|v| v.as_array())
-        .expect("action_results array present when two actions settled");
-    assert_eq!(arr.len(), 2, "action_results drains BOTH terminals");
-
-    let sticky = projections
-        .get("last_action_result")
-        .expect("last_action_result key is always present");
-    assert_eq!(
-        sticky.get("correlation_id").and_then(|v| v.as_str()),
-        Some(second.id.as_str()),
-        "last_action_result stays the sticky most-recent scalar (backward compat)"
     );
 }

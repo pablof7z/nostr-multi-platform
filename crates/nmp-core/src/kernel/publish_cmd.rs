@@ -41,7 +41,7 @@ impl Kernel {
     }
 
     /// [`Kernel::publish_signed`] with an action `correlation_id` to report in
-    /// `last_action_result`. The `PublishNote` dispatch path uses this: the
+    /// `action_results`. The `PublishNote` dispatch path uses this: the
     /// host received a registry-minted correlation_id before the actor signed
     /// the event, so the publish engine must report that id (not the signed
     /// event's `id`) for the host spinner to be cleared. Every other publish

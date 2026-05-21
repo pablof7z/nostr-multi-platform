@@ -104,7 +104,7 @@ impl ActionModule for PublishModule {
     /// For pre-signed `Publish` actions, use the event's `id` as the
     /// correlation_id. The publish engine's `LastTerminal.correlation_id` is
     /// already the `PublishHandle` (== `event.id`), so using the same value
-    /// here means `dispatch_action`'s return and `last_action_result` in the
+    /// here means `dispatch_action`'s return and `action_results` in the
     /// snapshot share the same identifier.
     ///
     /// `PublishNote` and `Cancel` return `None` — the event id isn't known

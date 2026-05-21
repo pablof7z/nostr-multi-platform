@@ -108,7 +108,7 @@ impl Kernel {
     /// named opt-out and routes the verbatim event to exactly those relays.
     ///
     /// `correlation_id_override` is the action correlation_id to report in
-    /// `last_action_result` instead of the publish handle (== event id). It is
+    /// `action_results` instead of the publish handle (== event id). It is
     /// `Some` only on the `PublishNote` dispatch path — the host received a
     /// registry-minted id before the actor signed the event, so the engine
     /// must report that id, not the event's. Every other caller passes `None`.
@@ -422,39 +422,9 @@ impl Kernel {
         self.publish_engine.snapshot()
     }
 
-    /// Direction review #24: serialize the publish engine's most recent
-    /// terminal action result for the `last_action_result` snapshot
-    /// projection. Returns `serde_json::Value::Null` when no action has
-    /// settled yet (the host treats null/absent as "no terminal result —
-    /// keep the spinner"). Otherwise an object:
-    /// `{"correlation_id":"<hex>","status":"published|failed|cancelled",
-    /// "error":null|"<msg>"}`.
-    ///
-    /// The engine's internal status vocabulary is `"ok" | "failed" |
-    /// "cancelled"`; `"ok"` is translated to the wire-level `"published"`
-    /// here so the engine's internal vocabulary (depended on by the publish
-    /// queue tests) is left undisturbed.
-    pub(super) fn last_action_result_projection(&self) -> serde_json::Value {
-        match self.publish_engine.last_terminal() {
-            None => serde_json::Value::Null,
-            Some(terminal) => {
-                let status = match terminal.status {
-                    "ok" => "published",
-                    other => other,
-                };
-                serde_json::json!({
-                    "correlation_id": terminal.correlation_id,
-                    "status": status,
-                    "error": terminal.error,
-                })
-            }
-        }
-    }
-
     /// Direction review #29: drain ALL terminals that settled since the last
     /// emit, returning them as a JSON array for the `action_results` snapshot
-    /// projection. Unlike `last_action_result_projection` (sticky scalar), this
-    /// drains — so each tick surfaces every result that arrived, not just the
+    /// projection. Each tick surfaces every result that arrived, not just the
     /// most recent. The host uses this to resolve any spinner whose
     /// `correlation_id` appears here.
     pub(super) fn take_action_results_projection(&mut self) -> serde_json::Value {

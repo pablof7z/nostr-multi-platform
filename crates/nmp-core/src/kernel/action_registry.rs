@@ -59,7 +59,7 @@ trait ErasedActionModule: Send + Sync {
     /// `None` preferred id → caller uses [`new_action_id`]. `Some(id)` →
     /// caller uses that id directly (e.g. the signed event's `id` field for
     /// `PublishAction::Publish`, so that `dispatch_action`'s return and the
-    /// snapshot's `last_action_result` share the same identifier).
+    /// matching `action_results` entry share the same identifier).
     fn start(
         &self,
         ctx: &mut ActionContext,
@@ -103,7 +103,7 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
 /// an `ActorCommand` whose eventual terminal verdict must match that handle
 /// (e.g. `nmp.publish`'s `PublishNote` — the actor signs the event, so its
 /// `id` is unknown at dispatch time) threads this id onto the command so the
-/// publish engine reports it in `last_action_result` instead of the signed
+/// publish engine reports it in `action_results` instead of the signed
 /// event's id.
 type ExecutorFn = Box<
     dyn Fn(&str, &str, &dyn Fn(crate::actor::ActorCommand)) -> Result<(), String> + Send + Sync,
@@ -263,7 +263,7 @@ impl ActionRegistry {
     /// The returned id is either the module's [`ActionModule::preferred_action_id`]
     /// (when the module returns `Some`) or a freshly minted [`new_action_id`].
     /// Using the preferred id makes `dispatch_action`'s JSON return and the
-    /// snapshot's `last_action_result` use the same identifier — a requirement
+    /// matching `action_results` entry use the same identifier — a requirement
     /// for hosts that key UI spinners on the returned `correlation_id`.
     pub fn start(
         &self,
@@ -428,7 +428,7 @@ pub fn default_registry() -> ActionRegistry {
             // it), so `preferred_action_id()` returns `None` and the
             // registry minted a random `correlation_id`. Thread that id
             // onto the command so the publish engine reports it in
-            // `last_action_result` instead of the signed event's `id` —
+            // `action_results` instead of the signed event's `id` —
             // otherwise the host's spinner (keyed on the dispatch return
             // value) could never be cleared.
             PublishAction::PublishNote { content, reply_to_id, .. } => {
@@ -448,7 +448,7 @@ pub fn default_registry() -> ActionRegistry {
             // The event id is NOT known at dispatch time (the actor signs it),
             // so `preferred_action_id()` returns `None` and the registry minted
             // a random `correlation_id`. Thread that id onto the command so the
-            // publish engine reports it in `last_action_result`.
+            // publish engine reports it in `action_results`.
             PublishAction::PublishProfile { fields } => {
                 send(ActorCommand::PublishProfile {
                     fields,
@@ -548,7 +548,7 @@ mod tests {
         // `PublishModule::start`'s validation gate.
         //
         // `preferred_action_id` returns the event's `id` (64 hex chars) so that
-        // `dispatch_action`'s return value and `last_action_result` in the
+        // `dispatch_action`'s return value and `action_results` in the
         // snapshot share the same identifier. The fixture event has `id =
         // "a".repeat(64)` — 64 hex chars, not the 32-char minted `new_action_id`.
         let registry = default_registry();
@@ -737,7 +737,7 @@ mod tests {
     /// The `nmp.publish` executor threads the registry-minted `correlation_id`
     /// onto `ActorCommand::PublishProfile`. The actor signs the event, so its
     /// id is unknown at dispatch time — without this the publish engine could
-    /// not report the host's correlation_id in `last_action_result`. Exercises
+    /// not report the host's correlation_id in `action_results`. Exercises
     /// the real `default_registry()` executor closure via `execute()`.
     #[test]
     fn publish_profile_executor_threads_correlation_id_onto_actor_command() {

@@ -239,7 +239,7 @@ pub(crate) fn publish_signed_event(
 /// originates from `nmp_app_dispatch_action`'s `PublishAction::PublishNote`
 /// path. The actor signs the event here, so its `id` is unknown to the host
 /// at dispatch time; threading the minted id through makes the publish engine
-/// report it in `last_action_result` (instead of the signed event's `id`) so
+/// report it in `action_results` (instead of the signed event's `id`) so
 /// the host spinner keyed on the dispatch return value can be cleared. `None`
 /// for non-dispatch callers (conformance harness, tests) — the engine then
 /// reports the event id, the prior behaviour.
@@ -347,7 +347,7 @@ pub(crate) fn publish_note(
 /// Sibling of [`publish_note`] — same non-blocking sign + correlation_id
 /// threading, kind:0 instead of kind:1. `correlation_id` is the
 /// registry-minted action id; threading it through makes the publish engine
-/// report it in `last_action_result` so the host spinner keyed on the dispatch
+/// report it in `action_results` so the host spinner keyed on the dispatch
 /// return value can be cleared. `None` for non-dispatch callers.
 pub(crate) fn publish_profile(
     identity: &IdentityRuntime,

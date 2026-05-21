@@ -56,6 +56,7 @@ pub struct ActionFields {
     pub visibility_private: Option<bool>,
     pub access_closed: Option<bool>,
     pub restricted: Option<bool>,
+    #[serde(default)]
     pub invite_codes: Vec<String>,
 }
 
