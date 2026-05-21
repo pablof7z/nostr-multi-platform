@@ -57,6 +57,17 @@ extension View {
     }
 }
 
+/// Fades in when it appears — used by ChirpAvatar to soften image loads.
+private struct FadingImage: View {
+    let image: Image
+    @State private var opacity: Double = 0
+    var body: some View {
+        image.resizable().scaledToFill()
+            .opacity(opacity)
+            .onAppear { withAnimation(.easeInOut(duration: 0.2)) { opacity = 1 } }
+    }
+}
+
 /// Circular avatar — uses the kernel-supplied picture URL with a
 /// plain placeholder fill + initials (D1: never blank).
 struct ChirpAvatar: View {
@@ -68,9 +79,11 @@ struct ChirpAvatar: View {
         ZStack {
             Circle().fill(ChirpColor.avatar(from: colorHex))
             if let url, let u = URL(string: url) {
-                AsyncImage(url: u) { img in
-                    img.resizable().scaledToFill()
-                } placeholder: { Color.clear }
+                AsyncImage(url: u) { phase in
+                    if let img = phase.image {
+                        FadingImage(image: img)
+                    }
+                }
             }
             if url == nil || url?.isEmpty == true {
                 Text(initials)
