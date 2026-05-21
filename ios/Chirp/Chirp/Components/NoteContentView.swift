@@ -1,9 +1,17 @@
 import SwiftUI
+
+private struct TappedImage: Identifiable {
+    let url: URL
+    var id: String { url.absoluteString }
+}
+
 struct NoteContentView: View {
     let content: String
     let contentTree: ContentTreeWire?
     let renderContext: NoteRenderContext
     var font: Font = .body
+
+    @State private var tappedImage: TappedImage?
 
     init(
         content: String,
@@ -26,10 +34,15 @@ struct NoteContentView: View {
     }
 
     var body: some View {
-        if let contentTree {
-            richBody(contentTree)
-        } else {
-            legacyBody
+        Group {
+            if let contentTree {
+                richBody(contentTree)
+            } else {
+                legacyBody
+            }
+        }
+        .fullScreenCover(item: $tappedImage) { item in
+            FullScreenImageViewer(url: item.url)
         }
     }
 
@@ -124,11 +137,16 @@ struct NoteContentView: View {
         AsyncImage(url: url) { phase in
             switch phase {
             case .success(let img):
-                img.resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: 300)
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .fadeIn()
+                Button {
+                    tappedImage = TappedImage(url: url)
+                } label: {
+                    img.resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: 300)
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .fadeIn()
+                }
+                .buttonStyle(.plain)
             case .empty:
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.secondary.opacity(0.12))
@@ -250,4 +268,44 @@ enum NoteToken {
 
     private static let imageExtensions: Set<String> = ["jpg", "jpeg", "png", "gif", "webp", "avif", "svg", "heic"]
     private static let videoExtensions: Set<String> = ["mp4", "mov", "webm", "m4v", "mkv"]
+}
+
+private struct FullScreenImageViewer: View {
+    let url: URL
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            AsyncImage(url: url) { phase in
+                if let img = phase.image {
+                    img.resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if phase.error != nil {
+                    VStack(spacing: 12) {
+                        Image(systemName: "photo.badge.exclamationmark")
+                            .font(.system(size: 48, weight: .light))
+                        Text("Image unavailable")
+                            .font(.callout)
+                    }
+                    .foregroundStyle(.secondary)
+                } else {
+                    ProgressView().tint(.white)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title)
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.white, Color(.systemGray3).opacity(0.7))
+                    .padding(20)
+            }
+        }
+        .onTapGesture { dismiss() }
+    }
 }
