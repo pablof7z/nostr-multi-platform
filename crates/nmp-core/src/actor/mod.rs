@@ -467,6 +467,9 @@ pub enum ActorCommand {
     /// compile pass; matching inbound events then flow through the raw-event
     /// tap into the host-app service automatically (D4 / event-driven delivery).
     PushInterest(crate::planner::LogicalInterest),
+    /// Withdraw a previously registered logical interest by id and trigger a
+    /// recompile. Generic lifecycle counterpart to [`PushInterest`].
+    WithdrawInterest(crate::planner::InterestId),
 }
 
 /// One per-URL relay-worker handle. T105: `relay_url` (NOT `role`) is the

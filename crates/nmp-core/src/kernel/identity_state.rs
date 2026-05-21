@@ -97,7 +97,7 @@ pub(crate) struct RelayAckOutcome {
 /// One relay row the UI's Accounts screen edits. Mirrors the kernel's
 /// per-role `RelayHealth` for the relays Pulse drives.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-pub(crate) struct RelayEditRow {
+pub struct RelayEditRow {
     pub(crate) url: String,
     pub(crate) role: String,
     pub(crate) role_label: String,
@@ -116,6 +116,18 @@ impl RelayEditRow {
             role_tint,
         }
     }
+}
+
+/// URLs whose relay role includes the read lane.
+///
+/// This is the canonical relay-role filter for any Rust host/app module that
+/// needs the user's configured inbox/read relay set. Keeping it here avoids
+/// platform shells re-parsing `RelayEditRow.role` tokens.
+pub fn read_eligible_relay_urls(rows: &[RelayEditRow]) -> Vec<String> {
+    rows.iter()
+        .filter(|r| crate::actor::has_role(&r.role, "read"))
+        .map(|r| r.url.clone())
+        .collect()
 }
 
 /// Pre-formatted subtitle strings for the iOS Settings hub. Folds the
@@ -260,11 +272,7 @@ impl super::Kernel {
         if let Ok(mut guard) = self.indexer_relays_handle.lock() {
             *guard = indexer_urls;
         }
-        let read_urls = rows
-            .iter()
-            .filter(|r| crate::actor::has_role(&r.role, "read"))
-            .map(|r| r.url.clone())
-            .collect::<Vec<_>>();
+        let read_urls = read_eligible_relay_urls(&rows);
         self.lifecycle.set_app_relays(read_urls.clone());
         self.lifecycle.set_active_account_read_relays(read_urls);
         let write_urls = rows
@@ -317,5 +325,41 @@ impl super::Kernel {
 
     pub(crate) fn relay_edit_rows_snapshot(&self) -> &[RelayEditRow] {
         &self.relay_edit_rows
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(url: &str, role: &str) -> RelayEditRow {
+        RelayEditRow::new(url.to_string(), role.to_string())
+    }
+
+    #[test]
+    fn read_eligible_relay_urls_accepts_read_and_both() {
+        let rows = vec![
+            row("wss://read.example", "read"),
+            row("wss://both.example", "both"),
+            row("wss://write.example", "write"),
+            row("wss://index.example", "indexer"),
+        ];
+        assert_eq!(
+            read_eligible_relay_urls(&rows),
+            vec!["wss://read.example", "wss://both.example"]
+        );
+    }
+
+    #[test]
+    fn read_eligible_relay_urls_uses_canonical_role_tokens() {
+        let rows = vec![
+            row("wss://composite.example", "write + indexer + read"),
+            row("wss://upper.example", "BOTH,INDEXER"),
+            row("wss://not-read.example", "writer"),
+        ];
+        assert_eq!(
+            read_eligible_relay_urls(&rows),
+            vec!["wss://composite.example", "wss://upper.example"]
+        );
     }
 }

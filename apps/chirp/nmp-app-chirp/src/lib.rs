@@ -32,6 +32,7 @@
 //! * **D6** — every FFI symbol degrades silently on null pointers, lock
 //!   poisoning, or serialization failure.
 
+mod dm_runtime;
 pub mod ffi;
 pub mod follow_list;
 #[cfg(feature = "marmot")]

@@ -17,15 +17,12 @@ import os.log
 //
 // ── Read side ─────────────────────────────────────────────────────────────
 //
-//   • `registerDmInbox(viewerPubkey:)` wires a `DmInboxProjection` into the
-//     kernel. It registers no handle and exports no `unregister` — decrypted
+//   • `nmp_app_chirp_register` wires the Rust DM runtime eagerly. Decrypted
 //     conversations surface on every kernel snapshot under the `projections`
 //     key `"nip17.dm_inbox"` (decoded by `SnapshotProjections.dmInbox`).
-//   • The `viewerPubkey` is what makes the inbox LIVE rather than inert: the
-//     FFI uses it to push a kind:1059 `#p` gift-wrap interest so the kernel
-//     opens a REQ for incoming envelopes. `DmInboxStore` re-invokes after the
-//     active account is known / changes (the interest id is per-pubkey
-//     deterministic, so a re-invoke for the same account is a no-op).
+//   • Rust owns the active account's kind:1059 `#p` gift-wrap interest and
+//     kind:10050 DM-relay-list publish policy. The Swift store only mirrors
+//     snapshots.
 //
 // ── Write side ────────────────────────────────────────────────────────────
 //
@@ -40,30 +37,6 @@ private let dmLog = Logger(subsystem: "io.f7z.chirp", category: "DmBridge")
 // ── KernelHandle NIP-17 DM extension (C-FFI surface) ─────────────────────
 
 extension KernelHandle {
-    /// Wire the NIP-17 `DmInboxProjection` into the kernel.
-    ///
-    /// Pure consumption — registers no handle. Decrypted conversations then
-    /// surface on every kernel snapshot under the `projections` key
-    /// `"nip17.dm_inbox"`.
-    ///
-    /// `viewerPubkey` (the active account's hex pubkey) is forwarded so the
-    /// FFI can push the kind:1059 `#p` gift-wrap inbox interest — WITHOUT it
-    /// the projection is registered but inert (no REQ is opened, no envelopes
-    /// arrive). Pass `nil` only for the startup-before-sign-in call;
-    /// `DmInboxStore` re-invokes with a concrete pubkey once the account is
-    /// known. The interest id is deterministic per-pubkey, so a re-invoke for
-    /// the same account is an idempotent no-op.
-    func registerDmInbox(viewerPubkey: String?) {
-        if let viewerPubkey {
-            viewerPubkey.withCString { nmp_app_chirp_register_dm_inbox(raw, $0) }
-        } else {
-            nmp_app_chirp_register_dm_inbox(raw, nil)
-        }
-        dmLog.info(
-            "registered NIP-17 DM inbox (pubkey known: \(viewerPubkey != nil, privacy: .public))"
-        )
-    }
-
     /// Dispatch a `nmp.nip17.send` action — send a NIP-17 private direct message
     /// to `recipientPubkey`. Routes through the generic
     /// `nmp_app_dispatch_action` path; the kind:14 rumor, the NIP-59
@@ -98,39 +71,6 @@ extension KernelHandle {
         }
     }
 
-    /// Dispatch a `nmp.nip17.publish_relay_list` action — publish the active
-    /// account's kind:10050 NIP-17 DM-relay list so other clients can
-    /// discover where to send the user gift-wrapped DMs.
-    ///
-    /// `relays` is the user's DM-inbox relay set (per NIP-17 § 2: the relays
-    /// where the user wants to *receive* DMs — i.e. read-eligible relays).
-    /// Routes through the generic `nmp_app_dispatch_action` path; the
-    /// kind:10050 event build, URL canonicalization, signing, and NIP-65
-    /// outbox routing are all owned by Rust (thin-shell rule).
-    ///
-    /// Fire-and-forget: the returned correlation JSON is freed and ignored —
-    /// the Rust action rejects an empty relay set (publishing zero `relay`
-    /// tags would CLEAR the cache on every ingesting peer), so callers that
-    /// might race here should keep their own "have not yet computed a non-
-    /// empty set" guard. `KernelModel.maybePublishDmRelayList` does exactly
-    /// that.
-    func publishDmRelayList(relays: [String]) {
-        let payload: [String: Any] = ["relays": relays]
-        guard
-            let data = try? JSONSerialization.data(withJSONObject: payload),
-            let json = String(data: data, encoding: .utf8)
-        else {
-            dmLog.error("publishDmRelayList: failed to encode action payload")
-            return
-        }
-        json.withCString { jsonPtr in
-            "nmp.nip17.publish_relay_list".withCString { nsPtr in
-                if let ptr = nmp_app_dispatch_action(raw, nsPtr, jsonPtr) {
-                    nmp_app_free_string(ptr)
-                }
-            }
-        }
-    }
 }
 
 // ── DmInboxStore — projection mirror pushed by KernelModel.apply ─────────
@@ -148,49 +88,17 @@ final class DmInboxStore: ObservableObject {
     @Published private(set) var conversations: [DmConversation] = []
 
     private unowned let kernel: KernelHandle
-    /// The viewer pubkey the kind:1059 interest was last pushed for. `nil`
-    /// until the first account is known. Re-pushing only when this changes
-    /// keeps `apply` (called every tick) from spamming the FFI.
-    private var registeredPubkey: String?
 
     /// Construct a store and wire its read projection into the kernel.
     /// Mirrors `GroupChatStore(groupId:kernel:)` — `KernelModel` owns the
     /// single `KernelHandle` and constructs this lazily.
-    ///
-    /// The initial registration passes `nil` for the viewer pubkey (the
-    /// account is typically not yet known at construction). `apply` pushes
-    /// the kind:1059 interest once the active account surfaces.
     init(kernel: KernelHandle) {
         self.kernel = kernel
-        kernel.registerDmInbox(viewerPubkey: nil)
     }
 
-    /// Mirror the latest kernel snapshot and, when the active account becomes
-    /// known or changes, re-invoke the FFI so the kind:1059 gift-wrap
-    /// interest is pushed for that account. Called from `KernelModel.apply`
-    /// on every tick.
-    ///
-    /// `snapshot` `nil` (projection not yet wired) leaves `conversations`
-    /// untouched; an empty array clears it. `activePubkey` `nil` means no
-    /// account is signed in — no interest to push.
-    ///
-    /// `activePubkey` is used ONLY to drive the kind:1059 interest push; it
-    /// is NOT mirrored as state for the views. Per-message outgoing vs
-    /// incoming classification arrives pre-computed on `DmMessage.isOutgoing`
-    /// (thin-shell rule — the shell never compares pubkeys to decide).
-    func apply(snapshot: DmInboxSnapshot?, activePubkey: String?) {
-        let normalizedPubkey = (activePubkey?.isEmpty == true) ? nil : activePubkey
-        if let activePubkey = normalizedPubkey,
-            activePubkey != registeredPubkey
-        {
-            registeredPubkey = activePubkey
-            // Re-invoke so the FFI pushes the kind:1059 `#p` interest. The
-            // interest id is deterministic per-pubkey; the projection's
-            // snapshot key is simply overwritten with an equivalent
-            // projection — accepted single-screen-scope cost.
-            kernel.registerDmInbox(viewerPubkey: activePubkey)
-        }
-
+    /// Mirror the latest kernel snapshot. `snapshot` `nil` leaves
+    /// `conversations` untouched; an empty array clears it.
+    func apply(snapshot: DmInboxSnapshot?) {
         guard let snapshot else { return }
         if snapshot.conversations != conversations {
             conversations = snapshot.conversations

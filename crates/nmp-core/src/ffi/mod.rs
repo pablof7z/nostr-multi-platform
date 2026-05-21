@@ -1044,6 +1044,15 @@ impl NmpApp {
         Arc::clone(&self.nip17_local_keys)
     }
 
+    /// Clone of the live relay-edit row slot.
+    ///
+    /// Per-app Rust controllers use this to derive protocol-specific relay
+    /// projections without asking platform shells to parse `RelayEditRow.role`.
+    /// The actor is the sole writer; callers should take quick snapshots only.
+    pub fn relay_edit_rows_handle(&self) -> Arc<Mutex<Vec<crate::kernel::RelayEditRow>>> {
+        Arc::clone(&self.relay_edit_rows)
+    }
+
     /// Return the user's current write-relay URLs, read from the shared kernel relay-edit
     /// projection. Empty when the user has not configured any write relays.
     /// Used by per-app crates so relay resolution stays Rust-owned (D0).

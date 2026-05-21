@@ -10,10 +10,11 @@
 //!   `GroupChatProjection` for one group into the kernel: an event observer
 //!   (ingest) plus a `"nip29.group_chat"` snapshot projection (output). Pure
 //!   consumption — no handle, no actions, no unregister.
-//! - [`nmp_app_chirp_register_dm_inbox`] — wire a NIP-17 `DmInboxProjection`
-//!   into the kernel: a kind:1059 raw-event observer (ingest), a
-//!   `"nip17.dm_inbox"` snapshot projection (output), and a kind:1059 `#p`
-//!   gift-wrap inbox interest so envelopes actually arrive.
+//! - [`nmp_app_chirp_register_dm_inbox`] — compatibility entry point for the
+//!   NIP-17 DM runtime. `nmp_app_chirp_register` wires it eagerly: a kind:1059
+//!   raw-event observer, a `"nip17.dm_inbox"` snapshot projection, and a
+//!   Rust-owned controller for the active gift-wrap interest + kind:10050
+//!   relay-list publish.
 //! - [`nmp_app_chirp_snapshot`] — serialize the current `ChirpTimelineSnapshot`
 //!   into a freshly-allocated nul-terminated JSON C string. Swift owns the
 //!   pointer until it calls `nmp_app_chirp_snapshot_free`.
@@ -37,9 +38,7 @@ use std::ffi::{c_char, CStr, CString};
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
-use nmp_core::{
-    ActorCommand, KernelEventObserver, KernelEventObserverId, NmpApp, RawEventObserver,
-};
+use nmp_core::{ActorCommand, KernelEventObserver, KernelEventObserverId, NmpApp};
 use nmp_nip29::group_id::GroupId;
 use nmp_nip29::projection::{DiscoveredGroupsProjection, GroupChatProjection};
 use nmp_nip29::action::{
@@ -49,13 +48,14 @@ use nmp_nip29::action::{
     PostChatMessageAction, PostChatMessageInput, ReactInGroupAction, ReactInGroupInput,
 };
 use nmp_nip17::{
-    giftwrap_inbox_interest, publish_dm_relay_list_command, send_dm_command, DmInboxProjection,
-    PublishDmRelayListAction, PublishDmRelayListInput, SendDmAction, SendDmInput,
+    publish_dm_relay_list_command, send_dm_command, PublishDmRelayListAction,
+    PublishDmRelayListInput, SendDmAction, SendDmInput,
 };
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
 use nmp_threading::ModulePolicy;
 
+use crate::dm_runtime::register_dm_runtime;
 use crate::follow_list::FollowListProjection;
 
 /// Register one typed `ActionModule` against `$app`'s action registry.
@@ -189,6 +189,7 @@ pub extern "C" fn nmp_app_chirp_register(
     // `nmp_app_new` for the duration of this call. We do not hold the
     // borrow past this function.
     let app_ref = unsafe { &*app };
+    register_dm_runtime(app_ref);
 
     let viewer: Pubkey = c_string_opt(viewer_pubkey).unwrap_or_default();
     let spec = ModularTimelineSpec {
@@ -369,107 +370,26 @@ pub extern "C" fn nmp_app_chirp_register_group_discovery(
     });
 }
 
-/// Wire a NIP-17 [`DmInboxProjection`] for the local account into `app`.
+/// Wire the NIP-17 DM runtime into `app`.
 ///
-/// This is the **receive side** of NIP-17 private DMs. It constructs a
-/// `DmInboxProjection` bound to the kernel's shared local-keys slot
-/// (`NmpApp::nip17_local_keys`), plugs it in as a [`RawEventObserver`]
-/// (kind:1059 tap — ingest), and registers its `snapshot_json` read under the
-/// snapshot key `"nip17.dm_inbox"` (output). Decrypted conversations then
-/// surface on every kernel snapshot tick under that key.
-///
-/// Unlike the NIP-29 group-chat projection there is no `GroupId` argument —
-/// the DM inbox is global (every conversation the local account participates
-/// in).
-///
-/// `viewer_pubkey` is the active account's hex pubkey. When non-null and
-/// non-empty it is used to push a kind:1059 `#p <pubkey>` gift-wrap inbox
-/// interest so the kernel actually opens a REQ for incoming envelopes —
-/// WITHOUT it the projection is wired but inert (no events ever arrive).
-/// NULL is permitted (app-startup call before sign-in); in that case the
-/// projection still decrypts once the shared key slot is populated, but no
-/// REQ is opened until the caller re-invokes with a concrete pubkey.
-///
-/// CALLER CONTRACT — the host MUST re-invoke this after sign-in / account
-/// switch so the kind:1059 interest is pushed for the now-active account. The
-/// interest id is deterministic per-pubkey, so a re-invoke for the same
-/// account is an idempotent no-op; a re-invoke for a new account adds that
-/// account's interest.
-///
-/// D6 — fire-and-forget. A null `app` or a poisoned observer slot degrades to
-/// a silent return.
-///
-/// SCOPE — single-use, no unregister.
-///
-/// Re-invocation is **idempotent**: a subsequent call unregisters the previous
-/// projection's kind:1059 raw observer before registering the new one (via the
-/// per-app `swap_nip17_dm_inbox_observer` slot on `NmpApp`), and overwrites the
-/// `"nip17.dm_inbox"` snapshot key with the newer projection. This matters
-/// because Chirp deliberately re-invokes after every sign-in / account switch
-/// to push a new kind:1059 `#p` interest — without this contract, every
-/// sign-in would stack a fresh observer for the life of the app (a real
-/// leak, not just an academic one). A multi-inbox host that wants to keep N
-/// projections live in parallel would still need a handle-returning variant —
-/// single-slot idempotency does not generalize to N concurrent inboxes.
-///
-/// `app` MUST outlive the registration; it is only borrowed for this call.
+/// The `viewer_pubkey` argument is retained for C-ABI compatibility but is no
+/// longer read. Rust observes the active local-key slot and relay-edit rows on
+/// snapshot ticks, then owns the active-account kind:1059 gift-wrap interest,
+/// kind:10050 relay-list publish, and `"nip17.dm_inbox"` projection.
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn nmp_app_chirp_register_dm_inbox(
     app: *mut NmpApp,
     viewer_pubkey: *const c_char,
 ) {
+    let _ = viewer_pubkey;
     if app.is_null() {
         return;
     }
     // SAFETY: caller guarantees `app` is a valid pointer from `nmp_app_new`,
     // live for the duration of this call. The borrow is not held past return.
     let app_ref = unsafe { &*app };
-
-    // The projection reads the kernel's shared local-keys slot to decrypt
-    // each incoming gift-wrap — it needs no pubkey argument itself.
-    let local_keys = app_ref.nip17_local_keys();
-    let projection = Arc::new(DmInboxProjection::new(local_keys));
-
-    // Ingest side: the kind:1059 raw-event tap. `Arc::clone … as Arc<dyn …>`
-    // (NOT `Arc::new(projection)`, which would double-box).
-    let observer_id = app_ref.register_raw_event_observer(
-        DmInboxProjection::kind_filter(),
-        Arc::clone(&projection) as Arc<dyn RawEventObserver>,
-    );
-    if observer_id.0 == 0 {
-        // Raw-observer registration failed (poisoned slot). Don't register
-        // the snapshot closure for a projection that will never see events,
-        // and don't disturb the previously-installed slot — leave any prior
-        // observer in place rather than clearing it for nothing.
-        return;
-    }
-
-    // Idempotent re-invoke: atomically install the new id and take the prior
-    // id out of the per-app slot, then unregister the prior raw observer.
-    // The swap-then-unregister order is deliberate (see
-    // `swap_nip17_dm_inbox_observer`): the new observer is already live when
-    // the old one is dropped, so there is no inbox-gap window across the
-    // sign-in re-invoke and a concurrent re-invoke cannot leak the previous
-    // id.
-    if let Some(prev) = app_ref.swap_nip17_dm_inbox_observer(Some(observer_id)) {
-        app_ref.unregister_raw_event_observer(prev);
-    }
-
-    // Output side: the no-argument snapshot read runs on the actor thread
-    // inside each snapshot tick. The `move` consumes this last `Arc`.
-    app_ref.register_snapshot_projection("nip17.dm_inbox", move || {
-        projection.snapshot_json()
-    });
-
-    // Push the kind:1059 `#p <pubkey>` gift-wrap inbox interest so the kernel
-    // opens a REQ for incoming envelopes. Without this the projection is
-    // registered but inert. A NULL / empty pubkey means "not signed in yet"
-    // — the caller re-invokes after sign-in (see the CALLER CONTRACT above).
-    // The interest id is deterministic per-pubkey, so the re-invoke de-dupes.
-    if let Some(pubkey) = c_string_opt(viewer_pubkey).filter(|s| !s.is_empty()) {
-        app_ref.push_interest(giftwrap_inbox_interest(&pubkey));
-    }
+    register_dm_runtime(app_ref);
 }
 
 /// Wire a [`FollowListProjection`] for the active account into `app`.
@@ -1282,14 +1202,15 @@ mod tests {
 
     /// THE DM-INBOX WIRING PROOF: `nmp_app_chirp_register_dm_inbox` registers
     /// a `DmInboxProjection` against `app` — it runs to completion (raw-event
-    /// observer + snapshot-projection registration + interest push) without
-    /// panicking across the FFI boundary, with and without a viewer pubkey.
+    /// observer + snapshot-projection/controller registration) without
+    /// panicking across the FFI boundary. The legacy viewer-pubkey argument is
+    /// ignored; active-account interest ownership is Rust-side now.
     #[test]
     fn register_dm_inbox_runs_for_app() {
         let app = nmp_app_new();
-        // NULL viewer pubkey — startup-before-sign-in call.
+        // NULL viewer pubkey — accepted for ABI compatibility.
         nmp_app_chirp_register_dm_inbox(app, std::ptr::null());
-        // Concrete viewer pubkey — pushes the kind:1059 `#p` interest.
+        // Concrete viewer pubkey — ignored by the Rust-owned controller.
         let pubkey = CString::new(
             "aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee",
         )
@@ -1306,11 +1227,9 @@ mod tests {
     }
 
     /// THE IDEMPOTENCY PROOF: re-invoking `nmp_app_chirp_register_dm_inbox`
-    /// must NOT stack a fresh raw-event observer on every call. Chirp
-    /// deliberately re-invokes after every sign-in / account switch (to push
-    /// the kind:1059 `#p` interest), so the per-account re-invocation case is
-    /// the load-bearing one — without this contract, the kernel's raw-event
-    /// slot would grow linearly with sign-in cycles (the bug this PR closes).
+    /// must NOT stack a fresh raw-event observer on every call. The function
+    /// can still be reached via the retained C-ABI compatibility door, while
+    /// `nmp_app_chirp_register` also wires the runtime eagerly.
     ///
     /// Asserted observably through the per-app
     /// `swap_nip17_dm_inbox_observer` slot — the host-side handle that lets
@@ -1344,7 +1263,7 @@ mod tests {
             "slot must start empty (no DM inbox registered yet)"
         );
 
-        // First registration. NULL pubkey — the startup-before-sign-in call.
+        // First registration.
         nmp_app_chirp_register_dm_inbox(app, std::ptr::null());
         let id1 = app_ref
             .swap_nip17_dm_inbox_observer(None)
@@ -1354,7 +1273,7 @@ mod tests {
         let prev = app_ref.swap_nip17_dm_inbox_observer(Some(id1));
         assert!(prev.is_none(), "we just swap-took, slot was empty");
 
-        // Second registration — the Chirp sign-in re-invoke case.
+        // Second registration — compatibility re-invoke case.
         nmp_app_chirp_register_dm_inbox(app, std::ptr::null());
         let id2 = app_ref
             .swap_nip17_dm_inbox_observer(None)

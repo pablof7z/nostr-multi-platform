@@ -42,7 +42,6 @@
 		9E910ED32775EBC4511B2F90 /* ThreadScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C01000494AC737F8F8E286D /* ThreadScreen.swift */; };
 		A1F822E727F303BB5ED1ABEA /* MarmotInviteSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F084A0E109F23A641626E2F9 /* MarmotInviteSheet.swift */; };
 		A4D78531938555278B719582 /* AccountsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F9E4580C1A561577607FE7A /* AccountsView.swift */; };
-		AF5DE09E59DF49F328D25475 /* DmRelayListFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15F2FDBB2DAE271C0A15DC3E /* DmRelayListFilterTests.swift */; };
 		B38A5D94A5C43305C226EE4B /* RelayDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CD04CA5EB5E534F616BC342 /* RelayDetailView.swift */; };
 		B6D3716BDDDD6ECC762599C3 /* RelaySettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2F8B2163D47A913D43D7566 /* RelaySettingsView.swift */; };
 		B70D9AE10FD8CB75144CE7CB /* DmConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C726DE3D022225C5DCDF2A68 /* DmConversationView.swift */; };
@@ -83,7 +82,6 @@
 		06F566EF3969D45C9F6BDAE0 /* ChatsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatsView.swift; sourceTree = "<group>"; };
 		0C06D858D226689DC1A99E44 /* WireSubscriptionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WireSubscriptionDetailView.swift; sourceTree = "<group>"; };
 		0F7C6ADBA250165B0FFE7338 /* MarmotGroupsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarmotGroupsView.swift; sourceTree = "<group>"; };
-		15F2FDBB2DAE271C0A15DC3E /* DmRelayListFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DmRelayListFilterTests.swift; sourceTree = "<group>"; };
 		18F55EDA0CB6D234B934C44A /* NoteEntityViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteEntityViews.swift; sourceTree = "<group>"; };
 		1B303905AEF1833128E7C6BC /* KernelBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KernelBridge.swift; sourceTree = "<group>"; };
 		1ED689DD9659151162F819BC /* NoteContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteContentView.swift; sourceTree = "<group>"; };
@@ -220,7 +218,6 @@
 		505BB62CA7F7EF2B716CA57D /* ChirpTests */ = {
 			isa = PBXGroup;
 			children = (
-				15F2FDBB2DAE271C0A15DC3E /* DmRelayListFilterTests.swift */,
 				80CA160BF8239675560E695A /* GroupChatDecodeTests.swift */,
 				672D6715F6F793C4B032B8D0 /* NoteContentRenderingTests.swift */,
 				31B7447F6D5C5E1571BF6A03 /* SmokeScenariosTests.swift */,
@@ -393,7 +390,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AF5DE09E59DF49F328D25475 /* DmRelayListFilterTests.swift in Sources */,
 				39AD0535EF5E1619F46F3FFE /* GroupChatDecodeTests.swift in Sources */,
 				624A97B1D2CACA922E697753 /* NoteContentRenderingTests.swift in Sources */,
 				2355CCF12E5CA31216977162 /* SmokeScenariosTests.swift in Sources */,

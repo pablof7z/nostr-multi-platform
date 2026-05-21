@@ -28,6 +28,7 @@ pub use app::{
 };
 pub use bunker_hook::{register_bunker_hook, BunkerHookFn, BunkerHookRequest};
 pub use ffi::NmpApp;
+pub use kernel::{read_eligible_relay_urls, RelayEditRow};
 pub use kernel_reducer::KernelReducer;
 pub use remote_signer::RemoteSignerHandle;
 pub use update_envelope::{
