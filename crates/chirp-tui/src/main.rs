@@ -3,7 +3,7 @@ use std::thread;
 
 use clap::Parser;
 use color_eyre::eyre::{eyre, Result};
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{self, Event};
 use crossterm::execute;
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
@@ -11,8 +11,9 @@ use crossterm::terminal::{
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 
-use chirp_tui::app::{AppRuntime, AppState, Pane};
+use chirp_tui::app::{AppRuntime, AppState};
 use chirp_tui::bridge::NmpEvent;
+use chirp_tui::input::{self, InputFlow};
 use chirp_tui::ui;
 
 #[derive(Debug, Parser)]
@@ -65,8 +66,11 @@ fn run(args: Args) -> Result<()> {
 
     while let Ok(event) = ui_rx.recv() {
         match event {
-            UiEvent::Terminal(event) if should_quit(&event) => break,
-            UiEvent::Terminal(Event::Key(key)) => handle_key(&mut state, key),
+            UiEvent::Terminal(Event::Key(key)) => {
+                if input::handle_key(&mut state, &runtime, key) == InputFlow::Quit {
+                    break;
+                }
+            }
             UiEvent::Terminal(_) => {}
             UiEvent::Nmp(event) => state.apply_nmp_event(&runtime, event),
         }
@@ -94,30 +98,6 @@ fn spawn_nmp_forwarder(rx: mpsc::Receiver<NmpEvent>, tx: mpsc::Sender<UiEvent>) 
             }
         }
     });
-}
-
-fn should_quit(event: &Event) -> bool {
-    matches!(
-        event,
-        Event::Key(KeyEvent {
-            code: KeyCode::Char('q'),
-            ..
-        }) | Event::Key(KeyEvent {
-            code: KeyCode::Char('c'),
-            modifiers: KeyModifiers::CONTROL,
-            ..
-        })
-    )
-}
-
-fn handle_key(state: &mut AppState, key: KeyEvent) {
-    match key.code {
-        KeyCode::Char('1') => state.focus(Pane::Feed),
-        KeyCode::Char('2') => state.focus(Pane::Detail),
-        KeyCode::Char('3') => state.focus(Pane::Profile),
-        KeyCode::Esc => state.status = "detail closed".to_string(),
-        _ => {}
-    }
 }
 
 struct TerminalGuard;
