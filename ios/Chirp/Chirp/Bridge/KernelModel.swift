@@ -47,6 +47,17 @@ final class KernelModel: ObservableObject {
     /// PR-A / PR-L: synchronous dispatch-error toast slot, distinct from the
     /// snapshot-driven `lastErrorToast`.
     @Published private(set) var lastDispatchError: String?
+    /// PR-G2 — local cache of terminal `ActionStageEntry` values per
+    /// correlation_id, captured at the moment a terminal verdict lands on
+    /// `actionResults` and cleared when the deferred `ackActionStage`
+    /// FFI call runs. Bridges the render-after-ACK race the codex finding
+    /// flagged: SwiftUI body rendering for a snapshot does not run
+    /// synchronously with `snapshot = update`, so a view that re-reads the
+    /// projection map between snapshot assignment and the deferred ACK
+    /// could observe a missing entry if a fast next snapshot has already
+    /// landed. Keyed on correlation_id; bounded by the per-tick
+    /// `actionResults` count, so growth is naturally pinned.
+    @Published private(set) var pendingTerminalStages: [String: ActionStageEntry] = [:]
     @Published var visibleLimit: UInt32 = 80
     @Published var emitHz: UInt32 = 4
 
@@ -209,6 +220,7 @@ final class KernelModel: ObservableObject {
         appMetrics = AppRuntimeMetrics()
         lastLogicalInterestSummary = ""
         pendingActions = []
+        pendingTerminalStages = [:]
         lastDispatchError = nil
         lastErrorToast = nil
         capabilities.start()
@@ -329,6 +341,23 @@ final class KernelModel: ObservableObject {
     func isActionPending(_ correlationId: String) -> Bool {
         pendingActions.contains(correlationId)
     }
+
+    /// PR-G2 — terminal `ActionStageEntry` for `correlationId`, sourced
+    /// from the active snapshot's `actionStages` projection or — when the
+    /// projection has already been overwritten by a fast next snapshot
+    /// before the deferred ACK fired — from `pendingTerminalStages`. The
+    /// shell's progress indicator reads through here so it never observes
+    /// a terminal-then-empty flicker caused by the render-after-ACK race.
+    /// Returns `nil` when no terminal has been observed (or the host has
+    /// already ACKed and the cache was cleared).
+    func terminalActionStage(correlationId: String) -> ActionStageEntry? {
+        if let stages = snapshot?.actionStages?[correlationId],
+            let terminal = stages.last(where: { $0.stage.isTerminal })
+        {
+            return terminal
+        }
+        return pendingTerminalStages[correlationId]
+    }
     func clearDispatchError() { lastDispatchError = nil }
 
     /// PR-A: routes a `DispatchResult` through the pending / dispatch-error slots.
@@ -423,17 +452,55 @@ final class KernelModel: ObservableObject {
         discoveredGroups.apply(snapshot: update.discoveredGroups)
 
         // PR-A: drain `pendingActions` by every terminal verdict on this tick.
-        // PR-G: the `action_stages` mirror persists each correlation_id's
-        // stage history until the host acks. We ack on the same tick we drain
-        // `pendingActions` so the next snapshot no longer carries the entry —
-        // mirrors the spinner-cleanup edge `action_results` already exposes.
-        // `ackActionStage` is non-blocking (enqueues an ActorCommand), so
-        // calling it for every terminal in this tick costs one channel push
-        // per terminal — bounded by the count already in `results`.
+        // PR-G / PR-G2: the `action_stages` mirror persists each correlation_id's
+        // stage history until the host acks. The PR-G2 codex finding identified
+        // a render-after-ACK race: assigning `snapshot = update` schedules a
+        // SwiftUI body rerun but does not run it inline; an immediate
+        // `ackActionStage` could race the very snapshot that just landed, so a
+        // fast next snapshot could drop the terminal entry before any view
+        // reacted to it. The KernelBridge contract explicitly says ack runs
+        // "after reacting/rendering" — defer ACK by one main-runloop turn
+        // (`DispatchQueue.main.async`) so SwiftUI body rendering for THIS
+        // snapshot completes before we tell the kernel to drop the entry.
+        //
+        // `pendingActions.remove(...)` stays synchronous — it is a Swift-side
+        // set the views read; clearing the spinner is part of the rendering
+        // we are deferring the ACK behind. The cached terminal stage is held
+        // in `pendingTerminalStages` so a view that re-reads `actionStages`
+        // between the snapshot landing and the ACK firing sees the terminal
+        // even if a fast next snapshot has already overwritten the projection
+        // (the kernel mirrors the entry, but `snapshot` is the host's read
+        // surface; the cache makes the host robust to the race).
         if let results = update.actionResults, !results.isEmpty {
             for terminal in results {
                 pendingActions.remove(terminal.correlationId)
-                kernel.ackActionStage(terminal.correlationId)
+                // PR-G2: stash the terminal stage so a view re-reading
+                // `terminalActionStage(correlationId:)` between snapshot
+                // assignment and ACK firing sees the right value even if
+                // a fast next snapshot has already settled. Cleared when
+                // the deferred ACK actually runs (below).
+                if let stages = update.actionStages?[terminal.correlationId],
+                    let terminalStage = stages.last(where: { $0.stage.isTerminal })
+                {
+                    pendingTerminalStages[terminal.correlationId] = terminalStage
+                }
+            }
+            // Defer the ACKs to the next main-runloop turn so SwiftUI body
+            // rendering for THIS snapshot has a chance to read the terminal
+            // stage out of `snapshot?.actionStages` (or
+            // `pendingTerminalStages`) BEFORE we tell the kernel to drop the
+            // entry. `[weak self]` so a teardown that races a deferred ACK
+            // is a no-op — the kernel's ack-of-unknown is already a silent
+            // no-op (D6) but skipping the FFI call entirely is cheaper.
+            let terminalsToAck = results.map(\.correlationId)
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                MainActor.assumeIsolated {
+                    for cid in terminalsToAck {
+                        self.kernel.ackActionStage(cid)
+                        self.pendingTerminalStages.removeValue(forKey: cid)
+                    }
+                }
             }
         }
 

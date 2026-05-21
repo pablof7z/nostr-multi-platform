@@ -82,36 +82,42 @@ pub struct AsyncMarkerHit {
 }
 
 /// Scan a whole file's contents in one pass: collect every
-/// `is_async_completing` → `true` declaration line and every stage-recording
-/// call site; emit a finding for each marker that has no recording
-/// sibling. Returns an empty `Vec` for files that either don't declare the
-/// marker or do declare it AND record stages.
+/// `is_async_completing` → `true` declaration (single-line OR multi-line
+/// body) and every stage-recording call site; emit a finding for each
+/// marker that has no recording sibling. Returns an empty `Vec` for files
+/// that either don't declare the marker or do declare it AND record stages.
 ///
 /// Two cheap loops over the file lines:
-///   1. find every line that BOTH declares `fn is_async_completing(` and
-///      returns `true` (declaration + literal must coexist on the same
-///      line — the grep-level heuristic).
+///   1. find every `fn is_async_completing(` declaration; for each, scan
+///      the function body across newlines (tracking `{` / `}` depth)
+///      looking for a `true` literal. Both single-line and multi-line
+///      shapes match — the multi-line scan was added in PR-G2 to cover
+///      `PublishModule`'s declaration shape and prevent trivial formatting
+///      bypass for future modules.
 ///   2. find any line that contains a recording call.
 ///
 /// `is_comment` is computed by the caller (the walker tracks comment
 /// state across multi-line `/* */` blocks). The driver also honours
 /// `// doctrine-allow: D12 — ...` on the marker line.
 pub fn scan_file(text: &str, line_is_comment: &[bool]) -> Vec<AsyncMarkerHit> {
+    let lines: Vec<&str> = text.lines().collect();
     let mut markers: Vec<(usize, usize)> = Vec::new();
     let mut has_recording_call = false;
 
-    for (idx, line) in text.lines().enumerate() {
+    for (idx, line) in lines.iter().enumerate() {
         let is_comment = line_is_comment.get(idx).copied().unwrap_or(false);
-        if is_comment {
-            continue;
-        }
-        if line_has_async_marker_returning_true(line) {
-            // Column of the `is_async_completing` identifier — 1-indexed.
-            let col = line.find("is_async_completing").unwrap_or(0) + 1;
-            markers.push((idx + 1, col));
-        }
-        if line_records_action_stage(line) {
-            has_recording_call = true;
+        if !is_comment {
+            // The declaration line is where the finding is anchored.
+            // `body_returns_true` widens the scan across newlines if the
+            // body is multi-line.
+            if line_declares_async_marker(line) && body_returns_true(&lines, &line_is_comment, idx)
+            {
+                let col = line.find("is_async_completing").unwrap_or(0) + 1;
+                markers.push((idx + 1, col));
+            }
+            if line_records_action_stage(line) {
+                has_recording_call = true;
+            }
         }
     }
 
@@ -139,32 +145,152 @@ pub fn scan_file(text: &str, line_is_comment: &[bool]) -> Vec<AsyncMarkerHit> {
         .collect()
 }
 
-/// True iff `line` declares an `is_async_completing` function body that
-/// returns `true`. We accept three shapes the codebase actually uses:
+/// True iff `line` is the *declaration* line of an `is_async_completing`
+/// function — i.e. contains both `fn ` and the identifier. The body
+/// inspection (does it return `true`?) is split out into
+/// [`body_returns_true`] so multi-line bodies are covered.
 ///
-///   1. one-liner returning a literal:
+/// The `fn` prefix prevents false positives from a doc-comment or method
+/// CALL — `is_async_completing()` invocations don't have `fn` before
+/// them. The comment / `doctrine-allow` filtering is the caller's job.
+fn line_declares_async_marker(line: &str) -> bool {
+    line.contains("is_async_completing") && line.contains("fn ")
+}
+
+/// True iff the function body whose declaration starts at `lines[start]`
+/// contains a `true` literal anywhere (with `false` literals also present
+/// only ruling it out when NO `true` is present). Handles both shapes the
+/// codebase uses:
+///
+///   1. one-liner with body on the declaration line:
 ///      `fn is_async_completing() -> bool { true }`
-///   2. block opener whose body includes `true` on the same line:
-///      `fn is_async_completing() -> bool { return true; }`
-///   3. the same with a trailing comment.
+///   2. multi-line body — the PR-G2 case `PublishModule` exemplifies:
+///      ```ignore
+///      fn is_async_completing() -> bool {
+///          true
+///      }
+///      ```
 ///
-/// We do NOT match a declaration that spans multiple lines (rare in this
-/// codebase). The cost is a deferred lint: a multi-line definition slips
-/// through this version; the trait marker still drives behaviour and the
-/// missing recording-call is observable via the runtime stage mirror in
-/// production. Promoted to a multi-line scan once a real callsite needs it.
-fn line_has_async_marker_returning_true(line: &str) -> bool {
-    // Require both the fn name and a `true` literal on the same line. The
-    // `fn` prefix prevents false positives from a doc-comment or method
-    // CALL — `is_async_completing()` invocations don't have `fn` before
-    // them.
-    if !line.contains("is_async_completing") {
+/// Algorithm: locate the first `{` on or after the declaration line,
+/// then walk forward tracking brace depth. Inside the body (depth ≥ 1)
+/// collect every `true` literal that is NOT in a comment. Return `true`
+/// when we found at least one such literal before the matching closing
+/// brace.
+///
+/// `line_is_comment` carries the walker's per-line comment mask so a
+/// `true` inside a doc-comment inside the body cannot satisfy the rule.
+/// Comments INSIDE source lines (after `//`) are stripped via
+/// [`strip_line_comment`] so a trailing `// always true` doesn't make a
+/// `false`-returning body look async-completing.
+fn body_returns_true(lines: &[&str], line_is_comment: &[bool], start: usize) -> bool {
+    // 1. Find the opening `{` of the function body. It is either on the
+    //    declaration line OR on a following non-comment line. If we ever
+    //    hit a `;` (a trait method DECLARATION with no body — e.g. inside
+    //    a `trait` block) before the `{`, there is no body to scan.
+    let mut idx = start;
+    let mut found_open = false;
+    while idx < lines.len() {
+        let is_comment = line_is_comment.get(idx).copied().unwrap_or(false);
+        if is_comment {
+            idx += 1;
+            continue;
+        }
+        let code = strip_line_comment(lines[idx]);
+        // Stop at trait-method declaration with no body.
+        if let Some(semi_pos) = code.find(';') {
+            // A `;` BEFORE the first `{` means no body.
+            if !code[..semi_pos].contains('{') {
+                return false;
+            }
+        }
+        if code.contains('{') {
+            found_open = true;
+            break;
+        }
+        idx += 1;
+    }
+    if !found_open {
         return false;
     }
-    if !line.contains("fn ") {
-        return false;
+
+    // 2. Walk forward from `idx`, tracking brace depth across lines.
+    //    `depth` starts at 0; the first `{` we encounter on `lines[idx]`
+    //    bumps it to 1 (we are now inside the function body).
+    //
+    //    For single-line bodies (`{ true }`) depth ends the line at 0 but
+    //    a `true` literal between `{` and `}` is still inside the body.
+    //    Track depth char-by-char and check `true` only when at depth ≥ 1
+    //    at that point in the line — the single-line and multi-line shapes
+    //    both fall through this branch identically.
+    let mut depth: i32 = 0;
+    let mut saw_true = false;
+    for cursor in idx..lines.len() {
+        let is_comment = line_is_comment.get(cursor).copied().unwrap_or(false);
+        if is_comment {
+            continue;
+        }
+        let code = strip_line_comment(lines[cursor]);
+        // Char-by-char walk:
+        //   - `{` opens a scope (depth += 1)
+        //   - `}` closes a scope; if depth → 0 the function body ended
+        //   - inside the body (depth ≥ 1) check for `true` at the current
+        //     prefix position. The boundary check in `contains_word_true`
+        //     prevents false positives from `truely` / `intrue` /
+        //     `_true_count`.
+        let bytes = code.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            let b = bytes[i];
+            match b {
+                b'{' => depth += 1,
+                b'}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        // End of body — return what we found.
+                        return saw_true;
+                    }
+                }
+                _ => {
+                    // Cheap check: are we inside the body and looking at the
+                    // start of `true`? Avoids re-scanning the whole line.
+                    if depth >= 1
+                        && b == b't'
+                        && bytes.get(i + 1).copied() == Some(b'r')
+                        && bytes.get(i + 2).copied() == Some(b'u')
+                        && bytes.get(i + 3).copied() == Some(b'e')
+                    {
+                        let left_ok = i == 0 || !is_ident_char(bytes[i - 1]);
+                        let right_ok =
+                            i + 4 >= bytes.len() || !is_ident_char(bytes[i + 4]);
+                        if left_ok && right_ok {
+                            saw_true = true;
+                            i += 3; // skip past the literal
+                        }
+                    }
+                }
+            }
+            i += 1;
+        }
     }
-    contains_word_true(line)
+    // Unbalanced braces (malformed source) — be conservative and report
+    // what we saw. A file we can't parse cleanly is a file the next pass
+    // should re-scan.
+    saw_true
+}
+
+/// Return `line` with any trailing `// …` line-comment stripped. A bare
+/// occurrence of `//` outside of a string literal is treated as the
+/// comment opener — the codebase's source files never put a `//` inside
+/// a double-quoted string on a D12-relevant declaration line (the
+/// declarations live in `impl ActionModule for …` blocks). A more
+/// thorough implementation would lex Rust; the cost-vs-benefit here
+/// favours the trivial check the rest of doctrine-lint uses.
+fn strip_line_comment(line: &str) -> &str {
+    if let Some(pos) = line.find("//") {
+        &line[..pos]
+    } else {
+        line
+    }
 }
 
 /// True iff `line` contains a `record_action_stage(`, `record_action_failure(`,
@@ -182,6 +308,12 @@ fn line_records_action_stage(line: &str) -> bool {
 /// True iff `line` contains the keyword `true` as a standalone token (not
 /// e.g. `truely` or `intrue`). Cheap left-and-right boundary check — Rust
 /// keywords cannot abut identifier characters in a code-position context.
+///
+/// PR-G2: kept under `#[cfg(test)]` for the boundary-check unit test. The
+/// production scan path (`body_returns_true`) walks bytes directly and
+/// inlines the same boundary check; this helper survives only as the
+/// targeted unit-test seam for the boundary semantics.
+#[cfg(test)]
 fn contains_word_true(line: &str) -> bool {
     let bytes = line.as_bytes();
     let mut start = 0;
@@ -316,6 +448,116 @@ fn observe(_: &M) {
             "apps/chirp/nmp-app-chirp/src/lib.rs"
         )));
         assert!(file_in_scope(&Path::new("crates/nmp-core/src/publish.rs")));
+    }
+
+    /// PR-G2 — codex MEDIUM "D12 multi-line bypass" finding.
+    ///
+    /// A declaration whose body spans multiple lines used to slip through
+    /// the same-line `is_async_completing` + `true` heuristic. The
+    /// `PublishModule` declaration is the canonical real-world case that
+    /// motivated the fix; this exercises the same shape against the
+    /// rule's grep-level scan.
+    #[test]
+    fn flags_multi_line_async_marker_without_recording_call() {
+        let src = "\
+struct M;
+impl ActionModule for M {
+    fn is_async_completing() -> bool {
+        true
+    }
+}
+";
+        let hits = scan(src);
+        assert_eq!(
+            hits.len(),
+            1,
+            "the multi-line body returning `true` must be flagged exactly once"
+        );
+        assert_eq!(
+            hits[0].line, 3,
+            "the finding must anchor on the declaration line, not the body line"
+        );
+    }
+
+    /// A multi-line body returning `false` is NOT async-completing and
+    /// must NOT fire the rule — synchronous-by-declaration is the
+    /// default. This is the symmetric negative to
+    /// `flags_multi_line_async_marker_without_recording_call`.
+    #[test]
+    fn passes_multi_line_false_marker() {
+        let src = "\
+struct M;
+impl ActionModule for M {
+    fn is_async_completing() -> bool {
+        false
+    }
+}
+";
+        let hits = scan(src);
+        assert!(
+            hits.is_empty(),
+            "a multi-line `false` body must NOT fire the rule; got {hits:?}"
+        );
+    }
+
+    /// A multi-line body with a recording-call sibling in the same file
+    /// passes the rule. Exercises the multi-line scanner working WITH the
+    /// recording-call short-circuit.
+    #[test]
+    fn passes_multi_line_async_marker_when_recording_call_is_present() {
+        let src = "\
+struct M;
+impl ActionModule for M {
+    fn is_async_completing() -> bool {
+        true
+    }
+}
+fn drive(k: &mut Kernel) {
+    k.record_action_stage(\"x\", ActionStage::Publishing, None);
+}
+";
+        let hits = scan(src);
+        assert!(
+            hits.is_empty(),
+            "a sibling `record_action_stage` call satisfies the rule \
+             even with a multi-line declaration; got {hits:?}"
+        );
+    }
+
+    /// The trait-method DECLARATION case: a `fn is_async_completing() -> bool;`
+    /// inside a `trait` block has no body. The scanner must not be confused
+    /// into reporting a body-less declaration as async-completing.
+    #[test]
+    fn trait_method_declaration_without_body_does_not_fire() {
+        let src = "\
+trait ActionModule {
+    fn is_async_completing() -> bool;
+}
+";
+        let hits = scan(src);
+        assert!(
+            hits.is_empty(),
+            "a body-less trait declaration must not fire the rule; got {hits:?}"
+        );
+    }
+
+    /// A `true` literal in a trailing line comment must NOT make a
+    /// `false`-returning multi-line body look async-completing. The
+    /// scanner strips line comments before checking for `true`.
+    #[test]
+    fn trailing_comment_with_true_does_not_satisfy_marker() {
+        let src = "\
+impl ActionModule for M {
+    fn is_async_completing() -> bool {
+        false // never true here
+    }
+}
+";
+        let hits = scan(src);
+        assert!(
+            hits.is_empty(),
+            "a `true` inside a trailing line comment must not satisfy the rule; got {hits:?}"
+        );
     }
 
     #[test]

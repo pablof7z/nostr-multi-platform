@@ -445,7 +445,34 @@ fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str
                         json_string(&correlation_id)
                     )
                 }
-                Err(msg) => error_json(&msg),
+                Err(msg) => {
+                    // PR-G2 — codex MEDIUM finding: an executor that panicked
+                    // or returned `Err` *after* the registry minted a
+                    // correlation_id orphans that id under
+                    // `MAX_TRACKED_CORRELATIONS` eviction. The host received
+                    // the id (in the error envelope below) but the kernel
+                    // never produced an `action_stages` entry to ACK.
+                    //
+                    // Fan the failure into the actor so the kernel records a
+                    // terminal `Failed { reason }` stage under the same
+                    // correlation_id. The host then sees the terminal on its
+                    // very next snapshot tick and ACKs through the normal
+                    // PR-G lifecycle. This is fire-and-forget — the send is
+                    // non-blocking (D8) and a disconnected actor channel is
+                    // a benign no-op (D6).
+                    app.send_cmd(crate::actor::ActorCommand::RecordActionFailure {
+                        correlation_id: correlation_id.clone(),
+                        reason: msg.clone(),
+                    });
+                    // Return BOTH the correlation_id and the error message:
+                    // the host needs the id to drive its ACK path, the
+                    // message to render a toast. Older hosts that parse
+                    // `correlation_id` first will follow the accepted path
+                    // (which is correct — the failure is communicated
+                    // asynchronously via the recorded `Failed` stage on the
+                    // next tick); newer hosts inspect both fields.
+                    error_json_with_correlation_id(&correlation_id, &msg)
+                }
             }
         }
         Err(rejection) => error_json(&rejection_message(rejection)),
@@ -485,6 +512,21 @@ fn rejection_message(rejection: ActionRejection) -> String {
 /// Build an `{"error":"…"}` JSON object with `msg` JSON-escaped.
 fn error_json(msg: &str) -> String {
     format!(r#"{{"error":{}}}"#, json_string(msg))
+}
+
+/// PR-G2 — `{"correlation_id":"…","error":"…"}` envelope for the post-mint
+/// failure path. The correlation_id was already minted by
+/// [`ActionRegistry::start`] and a `Failed` terminal stage has been queued
+/// to the actor; including the id here lets the host drive the ACK
+/// lifecycle (`nmp_app_ack_action_stage`) once the next snapshot carries
+/// the `action_stages` entry. Both fields are JSON-escaped via
+/// [`json_string`].
+fn error_json_with_correlation_id(correlation_id: &str, msg: &str) -> String {
+    format!(
+        r#"{{"correlation_id":{},"error":{}}}"#,
+        json_string(correlation_id),
+        json_string(msg)
+    )
 }
 
 /// JSON-encode a string (quotes + escaping). Falls back to `""` — an empty
@@ -1006,6 +1048,91 @@ mod tests {
         // Null observer — must not crash.
         let app = nmp_app_new();
         nmp_app_register_action_result_observer(app, None);
+        nmp_app_free(app);
+    }
+
+    /// PR-G2 — codex MEDIUM "send-then-panic orphan" finding.
+    ///
+    /// An executor that panics (or returns `Err`) *after* the registry minted
+    /// the correlation_id used to orphan the entry under
+    /// `MAX_TRACKED_CORRELATIONS` eviction: the host received the id in the
+    /// error envelope but the kernel never produced an `action_stages`
+    /// entry to ACK.
+    ///
+    /// THE CONTRACT now is twofold:
+    ///   1. The error envelope MUST carry both `correlation_id` and `error`
+    ///      so the host can drive the ACK lifecycle.
+    ///   2. The actor MUST receive a `RecordActionFailure` command with that
+    ///      same correlation_id so a `Failed` terminal stage lands in the
+    ///      `action_stages` mirror on the next snapshot tick.
+    ///
+    /// This test asserts #1 directly (the envelope shape) and #2 indirectly
+    /// via the actor queue-depth counter — the FFI thread cannot block on
+    /// the actor's snapshot emission inside a unit test (the actor thread
+    /// publishes on its own cadence), so the projection observation is
+    /// covered by `record_action_failure_records_failed_stage_in_mirror`
+    /// in `kernel/action_stages_tests.rs`. The end-to-end seam from the FFI
+    /// thread → command → kernel is the new fan-out.
+    #[test]
+    fn executor_failure_returns_correlation_id_and_enqueues_failed_terminal() {
+        let app = nmp_app_new();
+        // SAFETY: `nmp_app_new` never returns null; valid until `nmp_app_free` below.
+        let app_mut = unsafe { &mut *app };
+
+        // Register a panicking executor under a non-`nmp.*` namespace. The
+        // registry's `catch_unwind` converts the panic into
+        // `Err("action executor panicked")`. The new dispatch path must then
+        // (a) still include the minted correlation_id in the envelope and
+        // (b) enqueue a `RecordActionFailure` on the actor channel.
+        app_mut.register_action_module("test.panic", |_action_json| Ok(()));
+        app_mut.register_action_executor(
+            "test.panic",
+            |_action_json, _correlation_id, _send| panic!("buggy executor"),
+        );
+
+        let depth_before = app_mut
+            .queue_depth
+            .load(std::sync::atomic::Ordering::Relaxed);
+        let out = dispatch_action_json(Some(&*app_mut), "test.panic", "{}");
+        let depth_after = app_mut
+            .queue_depth
+            .load(std::sync::atomic::Ordering::Relaxed);
+
+        let parsed: serde_json::Value = serde_json::from_str(&out)
+            .expect("dispatch envelope must be parseable JSON");
+        // (a) — envelope shape.
+        let id = parsed
+            .get("correlation_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| {
+                panic!(
+                    "executor failure envelope must include correlation_id; got: {out}"
+                )
+            });
+        assert_eq!(id.len(), 32, "correlation_id should still be 32 hex chars");
+        let err = parsed
+            .get("error")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| {
+                panic!(
+                    "executor failure envelope must include error message; got: {out}"
+                )
+            });
+        assert!(
+            err.contains("action executor panicked"),
+            "error must surface the panic reason verbatim; got: {err}"
+        );
+
+        // (b) — at least one ActorCommand was enqueued (the
+        // `RecordActionFailure` fan-out). The actor consumes commands on
+        // its own thread; the depth check is a straddle counter the
+        // `nmp_app_*` dispatch symbols all rely on for this assertion
+        // pattern.
+        assert!(
+            depth_after > depth_before,
+            "executor failure must enqueue at least one ActorCommand \
+             (RecordActionFailure); depth_before={depth_before} depth_after={depth_after}"
+        );
         nmp_app_free(app);
     }
 

@@ -151,11 +151,15 @@ impl ActionModule for PublishModule {
     ///
     /// The D12 grep-level lint asserts the *file* declaring the marker
     /// also contains a recording call. PublishModule's declaration file
-    /// (this one) has none — the lint slips through here by design: a
-    /// cross-file scan would be the AST-level rule the spec deferred.
+    /// (this one) has none — the recording sites listed above live in
+    /// sibling files (actor/dispatch.rs, kernel/publish_engine.rs,
+    /// kernel/publish_cmd.rs). A cross-file scan would be the AST-level
+    /// rule the spec deferred; until then we opt out via the
+    /// `// doctrine-allow: D12 — ...` directive D12 already honours.
     /// The recording sites above are exercised end-to-end by
-    /// `kernel/action_stages_tests.rs`.
-    fn is_async_completing() -> bool {
+    /// `kernel/action_stages_tests.rs` — a recording-missing regression
+    /// is caught there, just not at lint time.
+    fn is_async_completing() -> bool { // doctrine-allow: D12 — recording sites are cross-file (actor/dispatch.rs + kernel/publish_*.rs); exercised by kernel/action_stages_tests.rs
         true
     }
 
