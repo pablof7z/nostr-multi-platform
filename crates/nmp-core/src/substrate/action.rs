@@ -19,6 +19,21 @@ pub trait ActionModule: Send + Sync + 'static {
         action: Self::Action,
     ) -> Result<ActionPlan<Self::Step>, ActionRejection>;
 
+    /// Optional: suggest the correlation_id the registry should assign to
+    /// this action instead of the auto-generated one. Returning `Some(id)`
+    /// makes `dispatch_action`'s return value and `last_action_result` in the
+    /// snapshot use the same identifier — a requirement for hosts that key
+    /// spinners on the returned id.
+    ///
+    /// Default: `None` — the registry generates a unique 32-hex id.
+    ///
+    /// Override when the action's natural identity is already a stable,
+    /// collision-free string visible to the engine (e.g. the pre-signed
+    /// event's `id` for `PublishAction::Publish`).
+    fn preferred_action_id(_action: &Self::Action) -> Option<ActionId> {
+        None
+    }
+
     fn reduce(
         ctx: &mut ActionContext,
         id: ActionId,

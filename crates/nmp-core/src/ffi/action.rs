@@ -541,15 +541,21 @@ mod tests {
         }
     }
 
-    /// A `Publish` action through `dispatch_action` returns a correlation id.
-    /// The executor is now registered in the registry (not hardcoded here),
-    /// so this verifies the full registry → executor → actor-channel path.
+    /// A `Publish` action through `dispatch_action` returns a correlation id
+    /// equal to the event's `id`, not a freshly minted registry id.
+    ///
+    /// This is the round-trip contract: a host that keys a spinner on the
+    /// returned `correlation_id` must see the same value in the snapshot's
+    /// `last_action_result.correlation_id` (which equals the publish engine's
+    /// `PublishHandle` == event `id`).
     #[test]
-    fn dispatch_publish_action_returns_correlation_id() {
+    fn dispatch_publish_action_returns_event_id_as_correlation_id() {
         with_app(|app| {
+            let event = fixture_signed_event();
+            let expected_id = event.id.clone();
             let action = PublishAction::Publish {
                 handle: "h1".to_string(),
-                event: fixture_signed_event(),
+                event,
                 target: PublishTarget::Auto,
             };
             let action_json = serde_json::to_string(&action).unwrap();
@@ -559,7 +565,11 @@ mod tests {
                 .get("correlation_id")
                 .and_then(|v| v.as_str())
                 .unwrap_or_else(|| panic!("expected correlation_id, got: {out}"));
-            assert_eq!(id.len(), 32, "correlation id should be 32 hex chars");
+            assert_eq!(
+                id, expected_id,
+                "Publish action must return the event.id as correlation_id so \
+                 dispatch_action return and last_action_result share the same identifier"
+            );
         });
     }
 

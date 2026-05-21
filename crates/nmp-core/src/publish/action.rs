@@ -106,6 +106,24 @@ impl ActionModule for PublishModule {
     type Step = PublishStep;
     type Output = PublishOutcome;
 
+    /// For pre-signed `Publish` actions, use the event's `id` as the
+    /// correlation_id. The publish engine's `LastTerminal.correlation_id` is
+    /// already the `PublishHandle` (== `event.id`), so using the same value
+    /// here means `dispatch_action`'s return and `last_action_result` in the
+    /// snapshot share the same identifier.
+    ///
+    /// `PublishNote` and `Cancel` return `None` — the event id isn't known
+    /// until the actor signs (`PublishNote`), and `Cancel` acts on an
+    /// existing handle (`Cancel`).
+    fn preferred_action_id(action: &Self::Action) -> Option<crate::substrate::ActionId> {
+        match action {
+            PublishAction::Publish { event, .. } if !event.id.is_empty() => {
+                Some(event.id.clone())
+            }
+            _ => None,
+        }
+    }
+
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,

@@ -55,13 +55,18 @@ use crate::substrate::{
 /// each module's typed shapes through serde.
 trait ErasedActionModule: Send + Sync {
     /// Validate `action_json` against the module's `Action` type and return
-    /// the erased [`ActionPlan`]. Mirrors [`ActionModule::start`].
+    /// an optional preferred correlation id plus the erased [`ActionPlan`].
+    /// Mirrors [`ActionModule::start`] + [`ActionModule::preferred_action_id`].
+    ///
+    /// `None` preferred id → caller uses [`new_action_id`]. `Some(id)` →
+    /// caller uses that id directly (e.g. the signed event's `id` field for
+    /// `PublishAction::Publish`, so that `dispatch_action`'s return and the
+    /// snapshot's `last_action_result` share the same identifier).
     fn start(
         &self,
         ctx: &mut ActionContext,
         action_json: &str,
-    ) -> Result<ActionPlan<Value>, ActionRejection>;
-
+    ) -> Result<(Option<ActionId>, ActionPlan<Value>), ActionRejection>;
 }
 
 /// Zero-sized adapter binding a concrete [`ActionModule`] `M` to the
@@ -80,17 +85,18 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
         &self,
         ctx: &mut ActionContext,
         action_json: &str,
-    ) -> Result<ActionPlan<Value>, ActionRejection> {
+    ) -> Result<(Option<ActionId>, ActionPlan<Value>), ActionRejection> {
         let action: M::Action = serde_json::from_str(action_json)
             .map_err(|e| ActionRejection::Invalid(e.to_string()))?;
+        // Query preferred id before moving `action` into `M::start`.
+        let preferred_id = M::preferred_action_id(&action);
         let plan = M::start(ctx, action)?;
-        Ok(ActionPlan {
+        Ok((preferred_id, ActionPlan {
             initial_step: serde_json::to_value(&plan.initial_step).unwrap_or(Value::Null),
             initial_status: plan.initial_status,
             deadline_ms: plan.deadline_ms,
-        })
+        }))
     }
-
 }
 
 /// Dyn-safe executor closure type. Receives the already-validated action
@@ -143,13 +149,15 @@ impl ErasedActionModule for ClosureModule {
         &self,
         _ctx: &mut ActionContext,
         action_json: &str,
-    ) -> Result<ActionPlan<Value>, ActionRejection> {
+    ) -> Result<(Option<ActionId>, ActionPlan<Value>), ActionRejection> {
         // `AssertUnwindSafe`: a boxed `Fn` closure is not `UnwindSafe`, but a
         // panic here is fully contained — nothing the closure touched is
         // observed again after it unwinds, so there is no broken-invariant
         // hazard. `catch_unwind` nests the inner `Result`; flatten it.
+        // Host-supplied validators have no natural correlation id to suggest,
+        // so the preferred id is always `None`.
         match catch_unwind(AssertUnwindSafe(|| (self.validate)(action_json))) {
-            Ok(result) => result,
+            Ok(result) => result.map(|plan| (None, plan)),
             Err(_) => Err(ActionRejection::Invalid(
                 "action validator panicked".into(),
             )),
@@ -241,14 +249,19 @@ impl ActionRegistry {
     }
 
     /// Validate `action_json` against the module registered under
-    /// `namespace`, returning a fresh correlation id plus the erased
-    /// [`ActionPlan`].
+    /// `namespace`, returning a correlation id plus the erased [`ActionPlan`].
     ///
     /// An unknown namespace is an [`ActionRejection::Invalid`]; a JSON shape
     /// that does not match the module's `Action` type is also
     /// `ActionRejection::Invalid` (surfaced from the adapter). The
     /// correlation id is generated *after* validation succeeds so a rejected
     /// action never consumes one.
+    ///
+    /// The returned id is either the module's [`ActionModule::preferred_action_id`]
+    /// (when the module returns `Some`) or a freshly minted [`new_action_id`].
+    /// Using the preferred id makes `dispatch_action`'s JSON return and the
+    /// snapshot's `last_action_result` use the same identifier — a requirement
+    /// for hosts that key UI spinners on the returned `correlation_id`.
     pub fn start(
         &self,
         ctx: &mut ActionContext,
@@ -258,8 +271,9 @@ impl ActionRegistry {
         let module = self.modules.get(namespace).ok_or_else(|| {
             ActionRejection::Invalid(format!("unknown action namespace: {namespace}"))
         })?;
-        let plan = module.start(ctx, action_json)?;
-        Ok((new_action_id(), plan))
+        let (preferred_id, plan) = module.start(ctx, action_json)?;
+        let id = preferred_id.unwrap_or_else(new_action_id);
+        Ok((id, plan))
     }
 
     /// Execute the validated action by invoking the registered executor for
@@ -491,17 +505,24 @@ mod tests {
     fn start_publish_action_with_signed_event_is_accepted() {
         // A `PublishAction::Publish` with a non-empty id+sig passes
         // `PublishModule::start`'s validation gate.
+        //
+        // `preferred_action_id` returns the event's `id` (64 hex chars) so that
+        // `dispatch_action`'s return value and `last_action_result` in the
+        // snapshot share the same identifier. The fixture event has `id =
+        // "a".repeat(64)` — 64 hex chars, not the 32-char minted `new_action_id`.
         let registry = default_registry();
+        let event = fixture_signed_event();
+        let expected_id = event.id.clone();
         let action = crate::publish::PublishAction::Publish {
             handle: "h1".to_string(),
-            event: fixture_signed_event(),
+            event,
             target: crate::publish::PublishTarget::Auto,
         };
         let action_json = serde_json::to_string(&action).unwrap();
         let (id, plan) = registry
             .start(&mut ctx(), "nmp.publish", &action_json)
             .expect("publish action with id+sig should be accepted");
-        assert_eq!(id.len(), 32);
+        assert_eq!(id, expected_id, "Publish action must use event.id as correlation_id");
         assert_eq!(plan.initial_status, ActionStatus::Pending);
     }
 
