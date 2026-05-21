@@ -100,6 +100,11 @@ pub struct DmMessage {
     /// kind:13 seal authenticated this pubkey, and the host should not
     /// re-do that work).
     pub is_outgoing: bool,
+    /// Relay URLs that delivered the gift-wrap envelope for this message.
+    /// Populated from the kernel raw observer source provenance and kept
+    /// deduplicated in first-seen order.
+    #[serde(default)]
+    pub source_relays: Vec<String>,
 }
 
 /// One DM thread — every message exchanged with a single peer.
@@ -268,7 +273,7 @@ impl DmInboxProjection {
     /// no-op path (not signed in, addressed to someone else, not a kind:14,
     /// poisoned mutex). Factored out of [`RawEventObserver::on_raw_event`] so
     /// the unit tests can assert the outcome.
-    fn ingest_gift_wrap(&self, json: &str) -> bool {
+    fn ingest_gift_wrap(&self, json: &str, source_relay_url: Option<&str>) -> bool {
         // Parse the verbatim signed event off the borrowed buffer. A
         // malformed envelope is a silent no-op (D6).
         let Ok(event) = Event::from_json(json) else {
@@ -338,13 +343,19 @@ impl DmInboxProjection {
             created_at: rumor.created_at.as_secs(),
             reply_to: first_reply_e_tag(rumor),
             is_outgoing,
+            source_relays: source_relays_from(source_relay_url),
         };
 
-        // Idempotent insert — a re-delivered envelope replaces rather than
-        // duplicates. Poisoned mutex → silent no-op (D6).
+        // Idempotent insert — a re-delivered envelope updates source
+        // provenance rather than duplicating the message. Poisoned mutex →
+        // silent no-op (D6).
         let Ok(mut messages) = self.messages.lock() else {
             return false;
         };
+        if let Some((_peer, existing)) = messages.get_mut(&message_id) {
+            merge_source_relay(&mut existing.source_relays, source_relay_url);
+            return true;
+        }
         messages.insert(message_id, (peer_pubkey, message));
         true
     }
@@ -357,7 +368,11 @@ impl RawEventObserver for DmInboxProjection {
     /// projection mutation is the load-bearing effect a later snapshot tick
     /// surfaces.
     fn on_raw_event(&self, _kind: u32, json: &str) {
-        let _ = self.ingest_gift_wrap(json);
+        let _ = self.ingest_gift_wrap(json, None);
+    }
+
+    fn on_raw_event_with_source(&self, _kind: u32, json: &str, source_relay_url: Option<&str>) {
+        let _ = self.ingest_gift_wrap(json, source_relay_url);
     }
 }
 
@@ -368,7 +383,10 @@ impl RawEventObserver for DmInboxProjection {
 /// the same `#p` filter coalesce on the wire, but the ids stay separate so
 /// each consumer owns its own registration.
 fn giftwrap_interest_id(pubkey: &str) -> InterestId {
-    InterestId(nmp_core::stable_hash::stable_hash64(("nip17.giftwrap", pubkey)))
+    InterestId(nmp_core::stable_hash::stable_hash64((
+        "nip17.giftwrap",
+        pubkey,
+    )))
 }
 
 /// Stable id for the active-account-owned gift-wrap inbox interest.
@@ -445,14 +463,27 @@ fn first_reply_e_tag(rumor: &nostr::UnsignedEvent) -> Option<String> {
     rumor.tags.iter().find_map(|tag| {
         let slice = tag.as_slice();
         match slice {
-            [name, value, _hint, marker, ..]
-                if name == "e" && marker == "reply" =>
-            {
+            [name, value, _hint, marker, ..] if name == "e" && marker == "reply" => {
                 Some(value.clone())
             }
             _ => None,
         }
     })
+}
+
+fn source_relays_from(source_relay_url: Option<&str>) -> Vec<String> {
+    let mut relays = Vec::new();
+    merge_source_relay(&mut relays, source_relay_url);
+    relays
+}
+
+fn merge_source_relay(relays: &mut Vec<String>, source_relay_url: Option<&str>) {
+    let Some(source) = source_relay_url.filter(|source| !source.is_empty()) else {
+        return;
+    };
+    if !relays.iter().any(|existing| existing == source) {
+        relays.push(source.to_string());
+    }
 }
 
 #[cfg(test)]
@@ -486,8 +517,7 @@ mod tests {
             .tags(tags)
             .custom_created_at(Timestamp::from(created_at))
             .build(sender.public_key());
-        nmp_nip59::gift_wrap(sender, receiver, rumor, None)
-            .expect("gift wrap succeeds")
+        nmp_nip59::gift_wrap(sender, receiver, rumor, None).expect("gift wrap succeeds")
     }
 
     /// A projection bound to `keys` as the active local account.
@@ -519,9 +549,8 @@ mod tests {
         let inbox = DmInboxProjection::new(Arc::new(Mutex::new(None)));
         let alice = Keys::generate();
         let bob = Keys::generate();
-        let envelope =
-            gift_wrapped_dm(&alice, &bob.public_key(), "hi", 100, None);
-        assert!(!inbox.ingest_gift_wrap(&envelope.as_json()));
+        let envelope = gift_wrapped_dm(&alice, &bob.public_key(), "hi", 100, None);
+        assert!(!inbox.ingest_gift_wrap(&envelope.as_json(), None));
         assert!(inbox.snapshot().conversations.is_empty());
     }
 
@@ -529,8 +558,8 @@ mod tests {
     fn malformed_json_is_silent_no_op() {
         let bob = Keys::generate();
         let inbox = inbox_for(&bob);
-        assert!(!inbox.ingest_gift_wrap("not json at all"));
-        assert!(!inbox.ingest_gift_wrap("{}"));
+        assert!(!inbox.ingest_gift_wrap("not json at all", None));
+        assert!(!inbox.ingest_gift_wrap("{}", None));
         assert!(inbox.snapshot().conversations.is_empty());
     }
 
@@ -541,10 +570,9 @@ mod tests {
         let bob = Keys::generate();
         let carol = Keys::generate();
         let inbox = inbox_for(&bob);
-        let envelope =
-            gift_wrapped_dm(&alice, &carol.public_key(), "secret", 100, None);
+        let envelope = gift_wrapped_dm(&alice, &carol.public_key(), "secret", 100, None);
         assert!(
-            !inbox.ingest_gift_wrap(&envelope.as_json()),
+            !inbox.ingest_gift_wrap(&envelope.as_json(), None),
             "an envelope sealed for Carol must not decrypt for Bob"
         );
         assert!(inbox.snapshot().conversations.is_empty());
@@ -556,14 +584,8 @@ mod tests {
         let alice = Keys::generate();
         let bob = Keys::generate();
         let inbox = inbox_for(&bob);
-        let envelope = gift_wrapped_dm(
-            &alice,
-            &bob.public_key(),
-            "hello bob",
-            12345,
-            None,
-        );
-        assert!(inbox.ingest_gift_wrap(&envelope.as_json()));
+        let envelope = gift_wrapped_dm(&alice, &bob.public_key(), "hello bob", 12345, None);
+        assert!(inbox.ingest_gift_wrap(&envelope.as_json(), None));
 
         let snap = inbox.snapshot();
         assert_eq!(snap.conversations.len(), 1);
@@ -599,10 +621,9 @@ mod tests {
                 .tags(vec![Tag::public_key(alice.public_key())])
                 .custom_created_at(Timestamp::from(500))
                 .build(bob.public_key());
-            nmp_nip59::gift_wrap(&bob, &bob.public_key(), rumor, None)
-                .expect("self-copy gift wrap")
+            nmp_nip59::gift_wrap(&bob, &bob.public_key(), rumor, None).expect("self-copy gift wrap")
         };
-        assert!(inbox.ingest_gift_wrap(&self_copy.as_json()));
+        assert!(inbox.ingest_gift_wrap(&self_copy.as_json(), None));
 
         let snap = inbox.snapshot();
         assert_eq!(snap.conversations.len(), 1);
@@ -630,19 +651,17 @@ mod tests {
         let bob = Keys::generate();
         let inbox = inbox_for(&bob);
 
-        let received =
-            gift_wrapped_dm(&alice, &bob.public_key(), "hi bob", 100, None);
-        inbox.ingest_gift_wrap(&received.as_json());
+        let received = gift_wrapped_dm(&alice, &bob.public_key(), "hi bob", 100, None);
+        inbox.ingest_gift_wrap(&received.as_json(), None);
 
         let sent = {
             let rumor = EventBuilder::new(Kind::from_u16(14), "hi alice")
                 .tags(vec![Tag::public_key(alice.public_key())])
                 .custom_created_at(Timestamp::from(200))
                 .build(bob.public_key());
-            nmp_nip59::gift_wrap(&bob, &bob.public_key(), rumor, None)
-                .expect("self-copy gift wrap")
+            nmp_nip59::gift_wrap(&bob, &bob.public_key(), rumor, None).expect("self-copy gift wrap")
         };
-        inbox.ingest_gift_wrap(&sent.as_json());
+        inbox.ingest_gift_wrap(&sent.as_json(), None);
 
         let snap = inbox.snapshot();
         assert_eq!(
@@ -668,16 +687,9 @@ mod tests {
         let alice = Keys::generate();
         let bob = Keys::generate();
         let inbox = inbox_for(&bob);
-        let parent_id =
-            "cc11223344556677889900aabbccddeeff00112233445566778899aabbccdd00";
-        let envelope = gift_wrapped_dm(
-            &alice,
-            &bob.public_key(),
-            "replying",
-            300,
-            Some(parent_id),
-        );
-        assert!(inbox.ingest_gift_wrap(&envelope.as_json()));
+        let parent_id = "cc11223344556677889900aabbccddeeff00112233445566778899aabbccdd00";
+        let envelope = gift_wrapped_dm(&alice, &bob.public_key(), "replying", 300, Some(parent_id));
+        assert!(inbox.ingest_gift_wrap(&envelope.as_json(), None));
 
         let snap = inbox.snapshot();
         assert_eq!(
@@ -692,17 +704,41 @@ mod tests {
         let alice = Keys::generate();
         let bob = Keys::generate();
         let inbox = inbox_for(&bob);
-        let envelope =
-            gift_wrapped_dm(&alice, &bob.public_key(), "once", 100, None);
+        let envelope = gift_wrapped_dm(&alice, &bob.public_key(), "once", 100, None);
         // Same envelope delivered twice — the inner rumor id is identical.
-        inbox.ingest_gift_wrap(&envelope.as_json());
-        inbox.ingest_gift_wrap(&envelope.as_json());
+        inbox.ingest_gift_wrap(&envelope.as_json(), None);
+        inbox.ingest_gift_wrap(&envelope.as_json(), None);
         let snap = inbox.snapshot();
         assert_eq!(snap.conversations.len(), 1);
         assert_eq!(
             snap.conversations[0].messages.len(),
             1,
             "a re-delivered envelope must not duplicate the message"
+        );
+    }
+
+    #[test]
+    fn redelivered_dm_records_source_relays() {
+        let alice = Keys::generate();
+        let bob = Keys::generate();
+        let proj = Arc::new(inbox_for(&bob));
+        let observer: Arc<dyn RawEventObserver> = Arc::clone(&proj) as _;
+        let envelope =
+            gift_wrapped_dm(&alice, &bob.public_key(), "from relays", 100, None).as_json();
+
+        observer.on_raw_event_with_source(1059, &envelope, Some("wss://r1.example"));
+        observer.on_raw_event_with_source(1059, &envelope, Some("wss://r2.example"));
+        observer.on_raw_event_with_source(1059, &envelope, Some("wss://r1.example"));
+
+        let snap = proj.snapshot();
+        let relays = &snap.conversations[0].messages[0].source_relays;
+        assert_eq!(
+            relays,
+            &vec![
+                "wss://r1.example".to_string(),
+                "wss://r2.example".to_string()
+            ],
+            "the DM inbox must retain deduped source relay provenance"
         );
     }
 
@@ -715,12 +751,12 @@ mod tests {
         let inbox = inbox_for(&bob);
 
         inbox.ingest_gift_wrap(
-            &gift_wrapped_dm(&alice, &bob.public_key(), "older", 100, None)
-                .as_json(),
+            &gift_wrapped_dm(&alice, &bob.public_key(), "older", 100, None).as_json(),
+            None,
         );
         inbox.ingest_gift_wrap(
-            &gift_wrapped_dm(&carol, &bob.public_key(), "newer", 900, None)
-                .as_json(),
+            &gift_wrapped_dm(&carol, &bob.public_key(), "newer", 900, None).as_json(),
+            None,
         );
 
         let snap = inbox.snapshot();
@@ -740,8 +776,7 @@ mod tests {
         let bob = Keys::generate();
         let proj = Arc::new(inbox_for(&bob));
         let observer: Arc<dyn RawEventObserver> = Arc::clone(&proj) as _;
-        let envelope =
-            gift_wrapped_dm(&alice, &bob.public_key(), "via trait", 100, None);
+        let envelope = gift_wrapped_dm(&alice, &bob.public_key(), "via trait", 100, None);
         observer.on_raw_event(1059, &envelope.as_json());
         assert_eq!(proj.snapshot().conversations.len(), 1);
     }
@@ -757,10 +792,7 @@ mod tests {
             .map(|s| s.contains("selfpubkey"))
             .unwrap_or(false));
         assert!(interest.shape.relay_pin.is_none());
-        assert!(matches!(
-            interest.lifecycle,
-            InterestLifecycle::Tailing
-        ));
+        assert!(matches!(interest.lifecycle, InterestLifecycle::Tailing));
         assert!(matches!(
             interest.scope,
             InterestScope::Account(ref pk) if pk == "selfpubkey"
@@ -808,13 +840,12 @@ mod tests {
         let bob = Keys::generate();
         let inbox = inbox_for(&bob);
         inbox.ingest_gift_wrap(
-            &gift_wrapped_dm(&alice, &bob.public_key(), "hi", 100, None)
-                .as_json(),
+            &gift_wrapped_dm(&alice, &bob.public_key(), "hi", 100, None).as_json(),
+            None,
         );
         let snap = inbox.snapshot();
         let encoded = serde_json::to_string(&snap).expect("serialises");
-        let decoded: DmInboxSnapshot =
-            serde_json::from_str(&encoded).expect("deserialises");
+        let decoded: DmInboxSnapshot = serde_json::from_str(&encoded).expect("deserialises");
         assert_eq!(snap, decoded);
     }
 }

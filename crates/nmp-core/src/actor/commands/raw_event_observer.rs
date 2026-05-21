@@ -3,7 +3,8 @@
 //! A generic, additive tap that delivers INBOUND verbatim-signed Nostr
 //! events — the flat NIP-01 object `{id, pubkey, created_at, kind, tags,
 //! content, sig}` *including the `sig`* — to a registered consumer, after
-//! the kernel's existing Schnorr + id-hash gate has accepted the event.
+//! the kernel's existing Schnorr + id-hash gate and store provenance path
+//! have accepted the event.
 //!
 //! This is deliberately separate from the `KernelEventObserver` slot
 //! (`event_observer.rs`): that one emits the sig-stripped, projection-stable
@@ -23,6 +24,9 @@
 //!
 //! Each registration carries an optional kind filter (a set of u32 kinds).
 //! An empty filter means "deliver every kind".
+//! Unregistering an id deactivates its per-registration lifecycle before
+//! queued C-ABI envelopes drain, so stale callbacks are skipped and any
+//! already in-flight callback is fenced before unregister returns.
 //!
 //! ## Doctrine
 //!
@@ -58,8 +62,8 @@ use std::collections::BTreeSet;
 use std::ffi::{c_char, c_void, CString};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::mpsc::{sync_channel, SyncSender};
-use std::sync::{Arc, Mutex};
-use std::thread::JoinHandle;
+use std::sync::{Arc, Condvar, Mutex};
+use std::thread::{JoinHandle, ThreadId};
 
 /// Bound on the per-slot C-ABI fan-out channel. See the equivalent constant
 /// in `event_observer.rs` for the rationale.
@@ -69,7 +73,7 @@ const C_FANOUT_CHANNEL_BOUND: usize = 1024;
 /// registrations captured under the lock, plus the verbatim NIP-01 JSON
 /// serialized once. The drain thread owns this and invokes each callback.
 struct CRawFanoutEnvelope {
-    registrations: Vec<RawEventObserverRegistration>,
+    registrations: Vec<Arc<RawCObserverEntry>>,
     payload: Arc<CString>,
 }
 
@@ -120,6 +124,87 @@ pub struct RawEventObserverRegistration {
     pub kinds: KindFilter,
 }
 
+struct RawObserverLifecycle {
+    state: Mutex<RawObserverLifecycleState>,
+    idle: Condvar,
+}
+
+struct RawObserverLifecycleState {
+    active: bool,
+    in_flight: usize,
+    callers: Vec<ThreadId>,
+}
+
+struct RawObserverCallGuard<'a> {
+    lifecycle: &'a RawObserverLifecycle,
+}
+
+impl RawObserverLifecycle {
+    fn new() -> Self {
+        Self {
+            state: Mutex::new(RawObserverLifecycleState {
+                active: true,
+                in_flight: 0,
+                callers: Vec::new(),
+            }),
+            idle: Condvar::new(),
+        }
+    }
+
+    fn begin(&self) -> Option<RawObserverCallGuard<'_>> {
+        let mut state = self.state.lock().ok()?;
+        if !state.active {
+            return None;
+        }
+        state.in_flight = state.in_flight.saturating_add(1);
+        state.callers.push(std::thread::current().id());
+        Some(RawObserverCallGuard { lifecycle: self })
+    }
+
+    fn deactivate_and_wait(&self) {
+        let current = std::thread::current().id();
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        state.active = false;
+        while state.in_flight > 0 && !state.callers.iter().any(|id| *id == current) {
+            let Ok(next) = self.idle.wait(state) else {
+                return;
+            };
+            state = next;
+        }
+    }
+}
+
+impl Drop for RawObserverCallGuard<'_> {
+    fn drop(&mut self) {
+        let Ok(mut state) = self.lifecycle.state.lock() else {
+            return;
+        };
+        state.in_flight = state.in_flight.saturating_sub(1);
+        let current = std::thread::current().id();
+        if let Some(index) = state.callers.iter().position(|id| *id == current) {
+            state.callers.swap_remove(index);
+        }
+        if state.in_flight == 0 {
+            self.lifecycle.idle.notify_all();
+        }
+    }
+}
+
+struct RawRustObserverEntry {
+    id: RawEventObserverId,
+    kinds: KindFilter,
+    observer: Arc<dyn RawEventObserver>,
+    lifecycle: Arc<RawObserverLifecycle>,
+}
+
+struct RawCObserverEntry {
+    id: RawEventObserverId,
+    registration: RawEventObserverRegistration,
+    lifecycle: Arc<RawObserverLifecycle>,
+}
+
 /// In-process Rust observer. `Send + Sync` so it can live behind an `Arc`
 /// shared between the actor thread and any registrant.
 pub trait RawEventObserver: Send + Sync {
@@ -129,14 +214,23 @@ pub trait RawEventObserver: Send + Sync {
     /// sig}`). Implementations must be cheap and must not panic — the call
     /// site is on the actor thread between relay frames.
     fn on_raw_event(&self, kind: u32, json: &str);
+
+    /// Source-aware variant used by the kernel after the event has passed
+    /// store insertion. `source_relay_url` is the delivering relay URL that
+    /// was persisted as store provenance. Existing observers that only need
+    /// the verbatim event can implement [`Self::on_raw_event`] and inherit
+    /// this forwarding default.
+    fn on_raw_event_with_source(&self, kind: u32, json: &str, _source_relay_url: Option<&str>) {
+        self.on_raw_event(kind, json);
+    }
 }
 
 /// Slot contents: zero or more Rust + C-ABI registrations (each with its
 /// own kind filter), a monotonic id allocator, and the C-ABI fan-out
 /// channel sender.
 pub struct RawObserverInner {
-    rust: Vec<(RawEventObserverId, KindFilter, Arc<dyn RawEventObserver>)>,
-    c_abi: Vec<(RawEventObserverId, RawEventObserverRegistration)>,
+    rust: Vec<Arc<RawRustObserverEntry>>,
+    c_abi: Vec<Arc<RawCObserverEntry>>,
     next_id: u64,
     /// Sender half of the bounded C-ABI fan-out channel. Dropping the whole
     /// `RawObserverInner` drops this sender, ending the drain thread.
@@ -164,8 +258,11 @@ impl RawObserverInner {
     /// (and the duplicate Schnorr verify) are skipped entirely when nobody
     /// is listening for this kind.
     fn no_listener_for_kind(&self, kind: u32) -> bool {
-        !self.rust.iter().any(|(_, f, _)| f.matches(kind))
-            && !self.c_abi.iter().any(|(_, r)| r.kinds.matches(kind))
+        !self.rust.iter().any(|entry| entry.kinds.matches(kind))
+            && !self
+                .c_abi
+                .iter()
+                .any(|entry| entry.registration.kinds.matches(kind))
     }
 }
 
@@ -178,7 +275,11 @@ pub type RawEventObserverSlot = Arc<Mutex<RawObserverInner>>;
 /// [`crate::ffi_guard::guard_ffi_callback`].
 fn drain_c_raw_envelope(envelope: CRawFanoutEnvelope) {
     let ptr = envelope.payload.as_ptr();
-    for registration in &envelope.registrations {
+    for entry in &envelope.registrations {
+        let Some(_delivery) = entry.lifecycle.begin() else {
+            continue;
+        };
+        let registration = &entry.registration;
         crate::ffi_guard::guard_ffi_callback("raw event observer", || {
             (registration.callback)(registration.context as *mut c_void, ptr);
         });
@@ -221,7 +322,12 @@ pub fn register_rust_raw_observer(
         Err(_) => return RawEventObserverId(0),
     };
     let id = guard.alloc_id();
-    guard.rust.push((id, kinds, observer));
+    guard.rust.push(Arc::new(RawRustObserverEntry {
+        id,
+        kinds,
+        observer,
+        lifecycle: Arc::new(RawObserverLifecycle::new()),
+    }));
     id
 }
 
@@ -236,23 +342,43 @@ pub fn register_c_raw_observer(
         Err(_) => return RawEventObserverId(0),
     };
     let id = guard.alloc_id();
-    guard.c_abi.push((id, registration));
+    guard.c_abi.push(Arc::new(RawCObserverEntry {
+        id,
+        registration,
+        lifecycle: Arc::new(RawObserverLifecycle::new()),
+    }));
     id
 }
 
 /// Unregister by id (works for either Rust or C-ABI registrations).
 /// Idempotent: unknown ids are silent no-ops.
 ///
-/// For C-ABI registrations: an envelope already enqueued for the drain
-/// thread captured its snapshot *before* this call and will still fire
-/// once. The foreign caller's contract is unchanged — do not free the
-/// registration's `context` pointer until you have fenced against any
-/// in-flight callback (the decoupling only widens that pre-existing
-/// window by the drain latency).
+/// For C-ABI registrations this is also a callback fence: queued envelopes
+/// hold lifecycle-aware registration entries, so unregister marks the entry
+/// inactive and waits for any in-flight callback to return before the call
+/// completes. After this function returns, no callback for `id` can start.
 pub fn unregister_raw_observer(slot: &RawEventObserverSlot, id: RawEventObserverId) {
+    let mut lifecycles = Vec::new();
     if let Ok(mut guard) = slot.lock() {
-        guard.rust.retain(|(rid, _, _)| *rid != id);
-        guard.c_abi.retain(|(rid, _)| *rid != id);
+        guard.rust.retain(|entry| {
+            if entry.id == id {
+                lifecycles.push(Arc::clone(&entry.lifecycle));
+                false
+            } else {
+                true
+            }
+        });
+        guard.c_abi.retain(|entry| {
+            if entry.id == id {
+                lifecycles.push(Arc::clone(&entry.lifecycle));
+                false
+            } else {
+                true
+            }
+        });
+    }
+    for lifecycle in lifecycles {
+        lifecycle.deactivate_and_wait();
     }
 }
 
@@ -280,23 +406,27 @@ pub fn raw_observers_idle_for_kind(slot: &RawEventObserverSlot, kind: u32) -> bo
 /// duration. On channel overflow the envelope is dropped silently (D6
 /// backpressure — library code performs no I/O). Serialization failure is a
 /// D6 silent no-op.
-pub fn notify_raw_observers(slot: &RawEventObserverSlot, raw: &RawEvent) {
+pub fn notify_raw_observers(
+    slot: &RawEventObserverSlot,
+    raw: &RawEvent,
+    source_relay_url: Option<&str>,
+) {
     let kind = raw.kind;
     let (rust_snapshot, c_snapshot, c_fanout_tx) = {
         let Ok(guard) = slot.lock() else {
             return;
         };
-        let rust: Vec<Arc<dyn RawEventObserver>> = guard
+        let rust: Vec<Arc<RawRustObserverEntry>> = guard
             .rust
             .iter()
-            .filter(|(_, f, _)| f.matches(kind))
-            .map(|(_, _, o)| Arc::clone(o))
+            .filter(|entry| entry.kinds.matches(kind))
+            .map(Arc::clone)
             .collect();
-        let c_abi: Vec<RawEventObserverRegistration> = guard
+        let c_abi: Vec<Arc<RawCObserverEntry>> = guard
             .c_abi
             .iter()
-            .filter(|(_, r)| r.kinds.matches(kind))
-            .map(|(_, r)| r.clone())
+            .filter(|entry| entry.registration.kinds.matches(kind))
+            .map(Arc::clone)
             .collect();
         if rust.is_empty() && c_abi.is_empty() {
             return;
@@ -311,7 +441,10 @@ pub fn notify_raw_observers(slot: &RawEventObserverSlot, raw: &RawEvent) {
         return;
     };
 
-    for observer in &rust_snapshot {
+    for entry in &rust_snapshot {
+        let Some(_delivery) = entry.lifecycle.begin() else {
+            continue;
+        };
         // D6: mirrors the in-process Rust-observer panic isolation in
         // `event_observer.rs`. A buggy `RawEventObserver` firing on the
         // actor thread must not unwind the kernel; wrap each call in
@@ -320,7 +453,11 @@ pub fn notify_raw_observers(slot: &RawEventObserverSlot, raw: &RawEvent) {
         // the next iteration captures a fresh observer reference plus the
         // already-serialized `payload`. A swallowed panic still surfaces
         // via the default panic hook.
-        let _ = catch_unwind(AssertUnwindSafe(|| observer.on_raw_event(kind, &payload)));
+        let _ = catch_unwind(AssertUnwindSafe(|| {
+            entry
+                .observer
+                .on_raw_event_with_source(kind, &payload, source_relay_url)
+        }));
     }
 
     if !c_snapshot.is_empty() {
@@ -342,11 +479,17 @@ pub fn notify_raw_observers(slot: &RawEventObserverSlot, raw: &RawEvent) {
 mod tests {
     use super::*;
     use std::sync::atomic::{AtomicU32, Ordering};
+    use std::sync::mpsc::{channel, Receiver, Sender};
+    use std::sync::OnceLock;
     use std::time::{Duration, Instant};
 
     static C_CALLS: AtomicU32 = AtomicU32::new(0);
     static LAST_KIND: AtomicU32 = AtomicU32::new(0);
     static SERIAL: Mutex<()> = Mutex::new(());
+    static STALE_BLOCK_STARTED_TX: OnceLock<Mutex<Option<Sender<()>>>> = OnceLock::new();
+    static STALE_BLOCK_RELEASE_RX: OnceLock<Mutex<Option<Receiver<()>>>> = OnceLock::new();
+    static STALE_DRAINED_TX: OnceLock<Mutex<Option<Sender<()>>>> = OnceLock::new();
+    static STALE_TARGET_CALLS: AtomicU32 = AtomicU32::new(0);
 
     /// Block until `cond` holds or `timeout` elapses. C-ABI raw observers
     /// fire on the per-slot drain thread, so assertions on their side
@@ -373,6 +516,58 @@ mod tests {
                     if let Some(k) = v.get("kind").and_then(|k| k.as_u64()) {
                         LAST_KIND.store(k as u32, Ordering::SeqCst);
                     }
+                }
+            }
+        }
+    }
+
+    fn set_stale_block_started(tx: Option<Sender<()>>) {
+        *STALE_BLOCK_STARTED_TX
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .unwrap() = tx;
+    }
+
+    fn set_stale_block_release(rx: Option<Receiver<()>>) {
+        *STALE_BLOCK_RELEASE_RX
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .unwrap() = rx;
+    }
+
+    fn set_stale_drained(tx: Option<Sender<()>>) {
+        *STALE_DRAINED_TX
+            .get_or_init(|| Mutex::new(None))
+            .lock()
+            .unwrap() = tx;
+    }
+
+    extern "C" fn stale_blocking_shim(_ctx: *mut c_void, _payload: *const c_char) {
+        if let Some(slot) = STALE_BLOCK_STARTED_TX.get() {
+            if let Ok(guard) = slot.lock() {
+                if let Some(tx) = guard.as_ref() {
+                    let _ = tx.send(());
+                }
+            }
+        }
+        if let Some(slot) = STALE_BLOCK_RELEASE_RX.get() {
+            if let Ok(guard) = slot.lock() {
+                if let Some(rx) = guard.as_ref() {
+                    let _ = rx.recv();
+                }
+            }
+        }
+    }
+
+    extern "C" fn stale_target_shim(_ctx: *mut c_void, _payload: *const c_char) {
+        STALE_TARGET_CALLS.fetch_add(1, Ordering::SeqCst);
+    }
+
+    extern "C" fn stale_marker_shim(_ctx: *mut c_void, _payload: *const c_char) {
+        if let Some(slot) = STALE_DRAINED_TX.get() {
+            if let Ok(guard) = slot.lock() {
+                if let Some(tx) = guard.as_ref() {
+                    let _ = tx.send(());
                 }
             }
         }
@@ -423,7 +618,7 @@ mod tests {
         let slot = new_raw_event_observer_slot();
         let obs = Arc::new(CapturingObserver(Mutex::new(Vec::new())));
         register_rust_raw_observer(&slot, KindFilter::default(), obs.clone());
-        notify_raw_observers(&slot, &raw("aa", 1));
+        notify_raw_observers(&slot, &raw("aa", 1), None);
         let captured = obs.0.lock().unwrap();
         assert_eq!(captured.len(), 1);
         assert_eq!(captured[0].0, 1);
@@ -438,8 +633,8 @@ mod tests {
         let slot = new_raw_event_observer_slot();
         let obs = Arc::new(CapturingObserver(Mutex::new(Vec::new())));
         register_rust_raw_observer(&slot, KindFilter::from_kinds([445u32]), obs.clone());
-        notify_raw_observers(&slot, &raw("k1", 1)); // filtered out
-        notify_raw_observers(&slot, &raw("k445", 445)); // delivered
+        notify_raw_observers(&slot, &raw("k1", 1), None); // filtered out
+        notify_raw_observers(&slot, &raw("k445", 445), None); // delivered
         let captured = obs.0.lock().unwrap();
         assert_eq!(captured.len(), 1);
         assert_eq!(captured[0].0, 445);
@@ -475,11 +670,11 @@ mod tests {
                 kinds: KindFilter::from_kinds([1059u32]),
             },
         );
-        notify_raw_observers(&slot, &raw("nope", 1)); // filtered
-        notify_raw_observers(&slot, &raw("yes", 1059)); // delivered
-                                                        // C-ABI observers fire on the per-slot drain thread — poll on the
-                                                        // LAST side effect (`LAST_KIND`, written after `C_CALLS`) so the
-                                                        // wait does not race ahead of the callback body completing.
+        notify_raw_observers(&slot, &raw("nope", 1), None); // filtered
+        notify_raw_observers(&slot, &raw("yes", 1059), None); // delivered
+                                                              // C-ABI observers fire on the per-slot drain thread — poll on the
+                                                              // LAST side effect (`LAST_KIND`, written after `C_CALLS`) so the
+                                                              // wait does not race ahead of the callback body completing.
         assert!(
             wait_until(Duration::from_secs(5), || {
                 LAST_KIND.load(Ordering::SeqCst) == 1059
@@ -514,7 +709,7 @@ mod tests {
             },
         );
         let started = Instant::now();
-        notify_raw_observers(&slot, &raw("slow", 1));
+        notify_raw_observers(&slot, &raw("slow", 1), None);
         let elapsed = started.elapsed();
         assert!(
             elapsed < Duration::from_millis(100),
@@ -529,14 +724,71 @@ mod tests {
     }
 
     #[test]
+    fn unregister_fences_queued_c_callback_stale_delivery() {
+        let _g = SERIAL.lock().unwrap();
+        STALE_TARGET_CALLS.store(0, Ordering::SeqCst);
+        let (started_tx, started_rx) = channel::<()>();
+        let (release_tx, release_rx) = channel::<()>();
+        let (drained_tx, drained_rx) = channel::<()>();
+        set_stale_block_started(Some(started_tx));
+        set_stale_block_release(Some(release_rx));
+        set_stale_drained(Some(drained_tx));
+
+        let slot = new_raw_event_observer_slot();
+        register_c_raw_observer(
+            &slot,
+            RawEventObserverRegistration {
+                context: 0,
+                callback: stale_blocking_shim,
+                kinds: KindFilter::default(),
+            },
+        );
+        let target_id = register_c_raw_observer(
+            &slot,
+            RawEventObserverRegistration {
+                context: 0,
+                callback: stale_target_shim,
+                kinds: KindFilter::default(),
+            },
+        );
+        register_c_raw_observer(
+            &slot,
+            RawEventObserverRegistration {
+                context: 0,
+                callback: stale_marker_shim,
+                kinds: KindFilter::default(),
+            },
+        );
+
+        notify_raw_observers(&slot, &raw("queued", 1), None);
+        started_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("blocking callback must start");
+        unregister_raw_observer(&slot, target_id);
+        release_tx.send(()).expect("release blocking callback");
+        drained_rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("marker callback proves the queued envelope drained");
+        assert_eq!(
+            STALE_TARGET_CALLS.load(Ordering::SeqCst),
+            0,
+            "a C callback already snapshotted into a queued envelope must not fire after unregister"
+        );
+
+        set_stale_block_started(None);
+        set_stale_block_release(None);
+        set_stale_drained(None);
+    }
+
+    #[test]
     fn unregister_stops_callbacks() {
         let _g = SERIAL.lock().unwrap();
         let slot = new_raw_event_observer_slot();
         let obs = Arc::new(CapturingObserver(Mutex::new(Vec::new())));
         let id = register_rust_raw_observer(&slot, KindFilter::default(), obs.clone());
-        notify_raw_observers(&slot, &raw("a", 1));
+        notify_raw_observers(&slot, &raw("a", 1), None);
         unregister_raw_observer(&slot, id);
-        notify_raw_observers(&slot, &raw("b", 1));
+        notify_raw_observers(&slot, &raw("b", 1), None);
         assert_eq!(obs.0.lock().unwrap().len(), 1);
     }
 
@@ -544,7 +796,7 @@ mod tests {
     fn empty_slot_is_silent() {
         let _g = SERIAL.lock().unwrap();
         let slot = new_raw_event_observer_slot();
-        notify_raw_observers(&slot, &raw("a", 1)); // no panic, no-op
+        notify_raw_observers(&slot, &raw("a", 1), None); // no panic, no-op
     }
 
     /// D6 — a Rust raw observer that panics inside `on_raw_event` must not
@@ -569,8 +821,8 @@ mod tests {
         let sibling = Arc::new(CapturingObserver(Mutex::new(Vec::new())));
         register_rust_raw_observer(&slot, KindFilter::default(), sibling.clone());
 
-        notify_raw_observers(&slot, &raw("e1", 1));
-        notify_raw_observers(&slot, &raw("e2", 1));
+        notify_raw_observers(&slot, &raw("e1", 1), None);
+        notify_raw_observers(&slot, &raw("e2", 1), None);
 
         let captured = sibling.0.lock().unwrap();
         assert_eq!(
