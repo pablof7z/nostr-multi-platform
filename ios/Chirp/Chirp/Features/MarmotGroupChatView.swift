@@ -192,14 +192,12 @@ private struct MarmotMessageRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            ZStack {
-                Circle().fill(.quaternary)
-                Text(initials)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.primary)
-            }
-            .frame(width: 36, height: 36)
-            .overlay(Circle().stroke(Color(.separator), lineWidth: 1))
+            ChirpAvatar(
+                url: nil,
+                initials: initials,
+                colorHex: colorHex,
+                size: 36
+            )
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
