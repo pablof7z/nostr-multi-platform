@@ -167,8 +167,13 @@ mod tests {
         );
         // SAFETY: `nmp_app_new` never returns null.
         let app_ref = unsafe { &*app };
+        // A null key must register nothing — the registry contains only the
+        // built-in `"wallet"` projection (`feature = "wallet"`), never the
+        // test's `test.counter` key.
         assert!(
-            app_ref.run_snapshot_projections_for_test().is_empty(),
+            !app_ref
+                .run_snapshot_projections_for_test()
+                .contains_key("test.counter"),
             "a null key must register nothing"
         );
         nmp_app_free(app);
@@ -181,8 +186,13 @@ mod tests {
         nmp_app_register_snapshot_projection(app, key.as_ptr(), None);
         // SAFETY: `nmp_app_new` never returns null.
         let app_ref = unsafe { &*app };
+        // A null projector must register nothing — the registry never gains
+        // the test's `test.counter` key (the built-in `"wallet"` projection
+        // under `feature = "wallet"` may still be present).
         assert!(
-            app_ref.run_snapshot_projections_for_test().is_empty(),
+            !app_ref
+                .run_snapshot_projections_for_test()
+                .contains_key("test.counter"),
             "a null projector must register nothing"
         );
         nmp_app_free(app);

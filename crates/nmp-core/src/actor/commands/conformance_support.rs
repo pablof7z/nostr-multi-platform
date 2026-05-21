@@ -66,8 +66,10 @@ impl ConformanceHarness {
                 Arc::clone(&publish_store) as Arc<dyn PublishStore>,
             ),
             publish_store,
+            // D0: NIP-47 NWC is an app noun — the conformance harness wires a
+            // private throwaway wallet-status slot (no host reads it).
             #[cfg(feature = "wallet")]
-            wallet: WalletRuntime::new(),
+            wallet: WalletRuntime::new(super::new_wallet_status_slot()),
         }
     }
 
