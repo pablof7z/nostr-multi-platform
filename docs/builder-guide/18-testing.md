@@ -36,7 +36,7 @@ milestone owns the contract.
 | Subsystem | `cargo test -p nmp-testing --test '*'` | `crates/nmp-testing/tests/` |
 | Reactivity bench | `reactivity-bench --standard --fail-on-gate` | `crates/nmp-testing/bin/reactivity-bench/main.rs` |
 | Firehose bench | `firehose-bench replay --standard --fail-on-gate` | `crates/nmp-testing/bin/firehose-bench/main.rs` |
-| FFI stress (M10.5) | `ffi-stress` + `ios/NmpStress/StressUITests` | `crates/nmp-testing/bin/ffi-stress/main.rs` |
+| FFI stress (M10.5) | `ffi-stress` + Chirp smoke/UI tests | `crates/nmp-testing/bin/ffi-stress/main.rs` |
 
 `nmp-testing`'s library surface stays deliberately thin
 (`crates/nmp-testing/src/lib.rs`: `store_harness` + `crate_ready()`); the value

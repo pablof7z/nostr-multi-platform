@@ -2,19 +2,20 @@
 
 > Part of the [Build & Validation Plan](../plan.md). Kept fresh by the milestone heartbeat.
 >
-> **Reconciled 2026-05-20.** A strategic review found this file badly out of sync with
+> **Reconciled 2026-05-21.** A strategic review found this file badly out of sync with
 > the codebase (it claimed "~3,800 LOC, in-memory only"). The numbers and subsystem
 > inventory below are a fresh survey of `crates/` on master. Honest accounting before
-> forecasting forward.
+> forecasting forward. See `docs/perf/execution-assessment-2026-05-21.md` for the
+> latest risk and debt assessment.
 
 ## Codebase size — actual
 
-`find crates -name "*.rs" | xargs wc -l` totals **~124,200 LOC of Rust across 28 crates.**
+`find crates -name "*.rs" | xargs wc -l` totals **136,364 LOC of Rust across 28 crate directories.**
 Rough per-crate LOC (from `wc -l`, includes tests):
 
 | Crate | LOC | Crate | LOC |
 |---|---:|---|---:|
-| `nmp-core` | 52,300 | `nmp-nip01` | 2,300 |
+| `nmp-core` | 63,239 | `nmp-nip01` | 2,300 |
 | `nmp-testing` | 20,800 | `nmp-nip23` | 2,300 |
 | `nmp-repl` | 6,000 | `nmp-content-fixtures` | 2,300 |
 | `nmp-signers` | 4,500 | `nmp-nwc` | 1,600 |
@@ -30,7 +31,7 @@ Rough per-crate LOC (from `wc -l`, includes tests):
 Plus smaller crates: `nmp-nip42-types`, `fixture-todo-core`, `nmp-signer-iface`,
 and `nmp-android-ffi`.
 
-`nmp-core` alone (52k LOC) is the kernel substrate — far past the "~3,800 LOC"
+`nmp-core` alone (63k LOC) is the kernel substrate — far past the "~3,800 LOC"
 this file previously claimed.
 
 ## Implemented and running
@@ -81,8 +82,9 @@ The framework has grown well beyond the in-memory kernel slice. Built and on mas
   from active scope until Chirp is complete.
 - **Test + bench harness** `crates/nmp-testing` (~20,800 LOC): mock relays,
   reactivity-bench, firehose-bench. `nmp-repl` (~6,000 LOC) interactive harness.
-- **CI.** `cargo test --workspace` runs on every push/PR, plus a
-  `--features lmdb-backend` step and an `android-ffi` `cargo check` job.
+- **CI.** Rust CI runs workspace tests, a `--features lmdb-backend` step, and
+  an `android-ffi` host `cargo check`. Native iOS builds/tests, Gradle builds,
+  and Android instrumentation are not currently PR-gated.
 - **Architecture decisions** locked in ADRs `docs/decisions/0001`–`0022`.
 
 ## Designed but not implemented
@@ -118,7 +120,7 @@ The M0–M17 ladder predates the current codebase. Reality, milestone by milesto
 | M8 Multi-session | pending | ✅ Multi-account + `switch_active` built |
 | ~~M9~~ DMs | deferred post-v1 | 🟡 gift-wrap built; conversation layer not |
 | M10 Blossom + media | pending | ❌ Not built |
-| M10.5 FFI hardening | design done | 🟡 In progress (see arch-review-queue.md) |
+| M10.5 FFI hardening | design done | ✅ S2/S3/S4/S5 gates closed; native CI coverage still a gap |
 | ~~M11~~ Podcast rebuild | deferred | Deferred until Chirp is complete |
 | ~~M11.5~~ Highlighter app proof | deferred | `nmp-nip29` built as generic infrastructure; app shell removed |
 | ~~M12~~ Wallet | deferred post-v1 | 🟡 NWC + NIP-57 built; Cashu/nutzaps not |

@@ -14,7 +14,7 @@ calls `dispatch(action)` and re-renders a snapshot. The framing thesis, from
 Whole bug classes — stale replaceable events, leaked subscriptions, wrong
 relays for wrong events, local/relay state races, multi-account desync — are
 ruled out by the type system, single-actor ownership, and the FFI surface,
-not by documentation or a linter. The doctrine D0–D8 (`docs/plan.md:9`) is the
+not by documentation or a linter. The doctrine D0–D10 (`docs/plan.md:9`) is the
 contract that enforces this; see `03-doctrine-d0-d8.md`.
 
 ## Why it exists — the thesis
@@ -121,5 +121,5 @@ not an application framework. NMP does not claim the app-layer axes as a
 ## See also
 
 - [02 — Mental model — kernel + 5 trait families](02-mental-model.md)
-- [03 — Doctrine D0–D8 end-to-end](03-doctrine-d0-d8.md)
+- [03 — Doctrine D0–D10 end-to-end](03-doctrine-d0-d8.md)
 - [25 — Migration — NDK / Applesauce → NMP](25-migration-from-ndk-applesauce.md)

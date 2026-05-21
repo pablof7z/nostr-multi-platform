@@ -2,7 +2,7 @@
 
 > A Rust multiplatform framework for building Nostr apps. One Rust core + thin platform shells (iOS / Android / desktop / web). Goal: make it nearly impossible to ship a broken Nostr app — invariants enforced by the type system, actor ownership, and FFI surface rather than docs.
 
-**Live status snapshot — see `docs/perf/orchestration-log.md` for per-heartbeat detail and `docs/perf/pending-user-decisions.md` for autonomous-mode decisions awaiting review.**
+**Live status snapshot — see `docs/perf/execution-assessment-2026-05-21.md` for the latest repo-grounded assessment, `docs/perf/orchestration-log.md` for historical heartbeat detail, and `docs/perf/pending-user-decisions.md` for autonomous-mode decisions awaiting review.**
 
 ---
 
@@ -20,10 +20,10 @@
 - **M7 (publishing pipeline):** ✅ LANDED (`08fc01f` — Publish action + per-relay state machine + NIP-65 auto-route + durable retry queue + PublishStatusView). T117 wired PublishEngine FSM to live REQ path (`6711b01`); T127 actor-tick + boot-resume (`2e249a6`); T128 terminal status + per-relay outcomes + iOS lockstep (`1486eed`).
 - **M8 (subscription lifecycle / RelayManager):** ✅ LANDED (`9ca90c9` — registry + trigger inbox + wire emitter + connection pool + auth gate).
 - **M10 (Blossom + long-running capabilities):** pending.
-- **M10.5 (FFI hardening + iOS empirical proof):** ✅ **§G-S2 gate CLOSED** (`83430ca` T114b — all 7 numeric gates green; retained heap 0.15–0.52 MiB ≤ 1 MiB ceiling; 250× reduction from 38 MiB pre-fix). S2 6/6 + S3 6/6 + S4 6/6 + S5 5/5 PASS with VerifiedEvent injection. **Five computed-but-not-on-wire gaps all CLOSED** (T105 outbox keystone, T117 publish engine FSM, T118 iOS scenePhase, T119 NIP-46 bunker — empirically proven `1f6ae64`, T116 reconnect-replay). Workspace **1234 passed / 0 failed / 17 ignored** on master (post-T136b LMDB + PD-025 fixes).
+- **M10.5 (FFI hardening + iOS empirical proof):** ✅ **§G-S2 gate CLOSED** (`83430ca` T114b — all 7 numeric gates green; retained heap 0.15–0.52 MiB ≤ 1 MiB ceiling; 250× reduction from 38 MiB pre-fix). S2 6/6 + S3 6/6 + S4 6/6 + S5 5/5 PASS with VerifiedEvent injection. **Five computed-but-not-on-wire gaps all CLOSED** (T105 outbox keystone, T117 publish engine FSM, T118 iOS scenePhase, T119 NIP-46 bunker — empirically proven `1f6ae64`, T116 reconnect-replay). Historical full-workspace result: **1234 passed / 0 failed / 17 ignored** on master (post-T136b LMDB + PD-025 fixes); refresh before using that count as current.
 - **Deferred app proofs:** Podcast and Highlighter app surfaces are removed from active scope until Chirp is a polished, complete showcase. Reusable protocol infrastructure that came from those explorations, such as `nmp-nip29`, remains because it is generic Nostr substrate.
 - **M13 (WoT), M14 (UniFFI), M15 (cross-platform), M16 (CLI), M17 (v1 release):** scoped, pending.
-- **Framework-magic contract** (kind:3 auto-tracking, `bunker://` onboarding, new-nsec creation, outbox-by-default-on-publish): designed at [`docs/design/framework-magic.md`](docs/design/framework-magic.md). 14 tests in `crates/nmp-testing/tests/framework_magic_contract.rs` — **7 of 14 passing on master; 7 ignored pending M2 (C5/C8/C13), M4 (C10), M6 (C7/C11), M8 (C12)**.
+- **Framework-magic contract** (kind:3 auto-tracking, `bunker://` onboarding, new-nsec creation, outbox-by-default-on-publish): designed at [`docs/design/framework-magic.md`](docs/design/framework-magic.md). Live proof target `cargo test -p nmp-testing --test framework_magic_contract` is **14 passed, 0 failed, 0 ignored** on the current tree.
 - **E2E pipeline tests** (`d0b7df6`): 6-scenario `crates/nmp-testing/tests/e2e_full_pipeline.rs` + audit companion forcing test-de-ignoring as milestones land.
 - **Sessions research** (`de9e7b4` + `a3bf036`): NDK + applesauce deep-dives + NMP M6 synthesis at `docs/research/sessions/`.
 - **Plan structure:** `docs/plan.md` is the index; per-milestone files under `docs/plan/m*.md` (≤300 LOC each). Scope shifts captured in [`docs/plan/scope-adjustments-2026-05-18.md`](docs/plan/scope-adjustments-2026-05-18.md) — DMs (was M9) and Wallet (was M12) deferred to post-v1 (see [`docs/plan/post-v1.md`](docs/plan/post-v1.md)).
@@ -31,7 +31,7 @@
 
 ## High-level decisions
 
-- **Cardinal doctrine (D0–D8).** Canonical wording from [`docs/product-spec/overview-and-dx.md` §1.5](docs/product-spec/overview-and-dx.md). Every PR is reviewed against this rubric. A change that makes any doctrine harder to enforce is rewritten or rejected. Conflicts resolve in the order listed. **Two kinds:** D0–D5 are *policy* doctrines (user-facing semantics); D6–D8 are *substrate invariants* (runtime / FFI / hot-path constraints). Both equally binding.
+- **Cardinal doctrine (D0–D10).** Canonical wording from [`docs/product-spec/overview-and-dx.md` §1.5](docs/product-spec/overview-and-dx.md). Every PR is reviewed against this rubric. A change that makes any doctrine harder to enforce is rewritten or rejected. Conflicts resolve in the order listed. **Two kinds:** D0–D5 are *policy* doctrines (user-facing semantics); D6–D10 are *substrate invariants* (runtime / FFI / hot-path, kernel-time, and provenance constraints). Both equally binding.
   - **D0** Kernel + extension modules — no app nouns in `nmp-core`.
   - **D1** Best-effort rendering — render now, refine in place. Placeholders are part of the type contract.
   - **D2** Negentropy first, REQ second. NIP-77 reconciliation with durable watermarks is the default backfill. (M4.)
@@ -81,7 +81,7 @@
    └───┘      └─────┘    └────────┘    └──────────┘
 ```
 
-**Single source of truth, four delivery paths.** The kernel is compiled as `cdylib + staticlib + rlib`. Desktop and CLI consumers link the rlib directly (no FFI). iOS links the staticlib via xcframework. Android links the cdylib via cargo-ndk. Web compiles to wasm32-unknown-unknown via the wasm crate.
+**Single source of truth, multiple delivery paths.** The kernel is compiled as `cdylib + staticlib + rlib`. Desktop and CLI consumers link the rlib directly (no FFI). iOS links the staticlib via xcframework. Android links the cdylib via cargo-ndk. Web (wasm32 via wasm-bindgen) is an aspirational target — no `wasm_bindgen` surface exists yet.
 
 ## Execution mode
 
@@ -98,7 +98,7 @@
 | `docs/plan.md` + `docs/plan/` | Milestone ladder (M0–M17) with exit gates per milestone. |
 | `docs/plan/chirp-showcase.md` | Chirp's standing goal as the full-featured NMP reference client. |
 | `docs/plan/scope-adjustments-2026-05-18.md` | Historical scope shifts and deferrals. |
-| `docs/product-spec.md` + `docs/product-spec/` | What we ship at v1. The cardinal doctrine D0–D8 lives in §1.5. |
+| `docs/product-spec.md` + `docs/product-spec/` | What we ship at v1. The cardinal doctrine D0–D10 lives in §1.5. |
 | `docs/decisions/` | ADR-0001..0010 (and counting). |
 | `docs/design/` | Per-subsystem design docs — subscription compilation, LMDB schema, FFI hardening, framework-magic, NIP-29 crate. |
 | `docs/research/` | Reverse-engineering notes on NDK + Applesauce — outbox, kind:3 auto-tracking, signers, gotchas, missing-features deltas. |
@@ -111,7 +111,7 @@
 ## Worth reading before contributing
 
 1. `docs/aim.md` — the north star.
-2. `docs/product-spec.md` §1.5 — the doctrine D0–D8.
+2. `docs/product-spec.md` §1.5 — the doctrine D0–D10.
 3. `docs/plan.md` — the milestone ladder.
 4. `docs/decisions/0009-app-extension-kernel-boundary.md` — why the kernel is a kernel.
 5. `docs/decisions/0010-generated-app-enum-vs-type-erased-registry.md` — how FFI types are generated.

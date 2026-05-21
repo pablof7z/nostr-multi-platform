@@ -133,7 +133,7 @@ JSON-over-string (`crates/nmp-core/src/ffi.rs`); the UniFFI migration is M14
 | NIP-77 sync reconciler | `nmp-nip77` | protocol noun |
 | Media `Episode`, feed records | future media app crate | app noun; keep it outside `nmp-core` |
 | `TodoRecord` | `fixture-todo-core` | app noun (non-Nostr proof) |
-| SwiftUI list cell, OS audio handle | `ios/NmpStress` / shell | rendering / OS execution |
+| SwiftUI list cell, OS audio handle | `ios/Chirp` / shell | rendering / OS execution |
 
 The single test of correctness: a future app module can be added with **zero
 changes to `nmp-core`** (ADR-0009 acceptance criterion 3).
@@ -164,7 +164,7 @@ changes to `nmp-core`** (ADR-0009 acceptance criterion 3).
 - **"Where does X live?" map** (above) — paste it next to any PR that adds a
   new type and answer the column "why" before merging.
 
-See also: [03 — Doctrine D0–D8 end-to-end](03-doctrine-d0-d8.md) ·
+See also: [03 — Doctrine D0–D10 end-to-end](03-doctrine-d0-d8.md) ·
 [05 — Kernel substrate — the 5 trait families](05-substrate-traits.md) ·
 [15 — Codegen — `nmp gen modules` + per-app FFI crate](15-codegen-and-ffi.md) ·
 [20 — Adding a new protocol module (`nmp-nip29` as reference)](20-new-protocol-module.md)

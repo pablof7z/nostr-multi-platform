@@ -18,14 +18,14 @@ rust-ios-sim:
     cargo build -p nmp-app-chirp --target aarch64-apple-ios-sim
 
 gen-ios:
-    xcodegen generate --spec ios/NmpStress/project.yml
+    xcodegen generate --spec ios/Chirp/project.yml
 
 build-ios: rust-ios-sim gen-ios
-    xcodebuild -project ios/NmpStress/NmpStress.xcodeproj -scheme NmpStress -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -derivedDataPath ios/DerivedData build
+    xcodebuild -project ios/Chirp/Chirp.xcodeproj -scheme Chirp -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -derivedDataPath ios/DerivedData build
 
 run-ios: build-ios
-    xcrun simctl install booted ios/DerivedData/Build/Products/Debug-iphonesimulator/NmpStress.app
-    xcrun simctl launch booted com.example.NmpStress
+    xcrun simctl install booted ios/DerivedData/Build/Products/Debug-iphonesimulator/Chirp.app
+    xcrun simctl launch booted com.example.Chirp
 
 # === FFI hardening (M10.5 phase 1) ===
 # Runs S1..S5 Rust harness scenarios against nmp_app_* C symbols.

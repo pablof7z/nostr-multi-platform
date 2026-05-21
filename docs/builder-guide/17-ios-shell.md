@@ -5,7 +5,7 @@
 The kernel is the brain. SwiftUI is a **dumb render of a snapshot the kernel
 hands you**. The platform never owns state, never decides retry policy, never
 gates content on "is it loaded yet?". This section shows the exact bridge that
-ships today in `ios/NmpStress` (the only kernel-wired iOS app) and the rules
+ships today in `ios/Chirp` (the active kernel-wired iOS app) and the rules
 that keep it doctrine-clean.
 
 ## The bridge — raw C FFI today
@@ -18,7 +18,7 @@ There is no UniFFI on master (that is M14; see
 
 ### `KernelHandle` — the thin wrapper (annotated)
 
-`ios/NmpStress/NmpStress/KernelBridge.swift:3-91`:
+`ios/Chirp/Chirp/Bridge/KernelBridge.swift`:
 
 ```swift
 final class KernelHandle {

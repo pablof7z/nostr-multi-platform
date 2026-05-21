@@ -126,8 +126,9 @@ impl BunkerBroker {
                 .store(true, std::sync::atomic::Ordering::Relaxed);
             session.relay.shutdown();
             if let Some(handle) = session.handshake_thread {
-                // Best-effort join — bound wait so a wedged thread doesn't
-                // hang the caller.
+                // Best-effort join — operationally bounded because the
+                // tungstenite read loop uses a 100ms timeout, so the thread
+                // exits promptly once the cancel flag is set.
                 let _ = handle.join();
             }
         }
