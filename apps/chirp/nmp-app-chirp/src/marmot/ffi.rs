@@ -320,7 +320,7 @@ pub extern "C" fn nmp_app_chirp_marmot_register_active(
     }
     // SAFETY: app is non-null and valid for this call.
     let app_ref = unsafe { &*app };
-    let Some(sk) = app_ref.active_local_nsec() else {
+    let Some(sk) = app_ref.marmot_local_nsec() else {
         return std::ptr::null_mut();
     };
     let Ok(keys) = Keys::parse(&sk) else {

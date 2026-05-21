@@ -231,13 +231,16 @@ pub struct NmpApp {
     /// actor thread writes this after every identity mutation that changes
     /// the active local key (create, sign-in, switch, remove). Remote-signer
     /// accounts leave this `None`. Per-app crates (e.g. `nmp-app-chirp`
-    /// Marmot) read it via [`NmpApp::active_local_nsec`] so they can
+    /// Marmot) read it via [`NmpApp::marmot_local_nsec`] so they can
     /// register a signer without Swift ever seeing the key.
+    ///
+    /// ADR-0025 exception: Marmot needs the raw nsec for MLS. NIP-17 DMs must
+    /// NOT read this slot.
     ///
     /// Wrapped in [`Zeroizing`] so the bech32 secret is wiped from the heap
     /// when the slot is overwritten or the app drops — a plain `String` would
     /// leave the key recoverable in freed memory.
-    active_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>>,
+    marmot_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>>,
     /// FFI-supplied persistent storage directory for the LMDB `EventStore`
     /// backend. Set by [`nmp_app_set_storage_path`] before
     /// [`nmp_app_start`]. Shared `Arc` with the actor thread: the C-ABI
@@ -382,9 +385,9 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         Arc::new(Mutex::new(Vec::new()));
     let actor_relay_edit_rows = Arc::clone(&relay_edit_rows);
     // Active local (nsec) key slot. The actor updates this after every
-    // identity mutation; per-app crates read via NmpApp::active_local_nsec.
-    let active_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>> = Arc::new(Mutex::new(None));
-    let actor_active_local_nsec = Arc::clone(&active_local_nsec);
+    // identity mutation; per-app crates read via NmpApp::marmot_local_nsec.
+    let marmot_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>> = Arc::new(Mutex::new(None));
+    let actor_marmot_local_nsec = Arc::clone(&marmot_local_nsec);
     // Shared capability callback slot. FFI registration writes through the
     // app clone; the actor reads through its clone when issuing keyring
     // requests during start/sign-in/create/switch/remove.
@@ -438,7 +441,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // the matching clone.
                 actor_bunker_handshake,
                 actor_relay_edit_rows,
-                actor_active_local_nsec,
+                actor_marmot_local_nsec,
                 actor_capability_callback,
                 actor_storage_path,
                 // G-S4 — the actor's clone of the command-channel depth
@@ -487,7 +490,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         event_observers,
         raw_event_observers,
         relay_edit_rows,
-        active_local_nsec,
+        marmot_local_nsec,
         storage_path,
         pending_mls_autopublish,
         actor: Mutex::new(Some(actor)),
@@ -889,8 +892,8 @@ impl NmpApp {
     /// always see the up-to-date value. Used by per-app crates (e.g.
     /// `nmp-app-chirp` Marmot registration) so the key stays Rust-owned
     /// (D0 — Swift never sees it for the `createAccount` path).
-    pub fn active_local_nsec(&self) -> Option<Zeroizing<String>> {
-        self.active_local_nsec.lock().ok()?.clone()
+    pub fn marmot_local_nsec(&self) -> Option<Zeroizing<String>> {
+        self.marmot_local_nsec.lock().ok()?.clone()
     }
 
     /// Return the user's current write-relay URLs, read from the shared kernel relay-edit

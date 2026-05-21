@@ -27,10 +27,12 @@ pub struct UnwrappedGift {
 ///
 /// # Seam note
 ///
-/// This function requires the caller to hold sender `Keys`. In the post-v1
-/// Marmot flow the actor's signer-bridge will hold keys via
-/// `KeyringCapability`; for this milestone callers invoke this free function
-/// directly.
+/// `gift_wrap` is a **local-keys primitive**: it requires the caller to hold
+/// the sender's raw `Keys` and performs the NIP-44 seal/wrap in-process.
+/// Callers that need remote-signer support (NIP-46 bunker, hardware) must NOT
+/// use this function — they must go through the signer NIP-44 seam (ADR-0026),
+/// which is not yet built. Marmot is the named ADR-0025 bounded exception: it
+/// holds raw local keys for MLS and may call this primitive directly.
 pub fn gift_wrap(
     sender: &Keys,
     receiver: &PublicKey,

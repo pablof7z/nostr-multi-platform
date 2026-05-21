@@ -41,7 +41,6 @@
 mod action;
 mod capability;
 mod domain;
-mod http;
 mod identity;
 mod keyring;
 pub mod placeholder;
@@ -52,7 +51,6 @@ pub use action::{
 };
 pub use capability::{CapabilityEnvelope, CapabilityModule, CapabilityRequest};
 pub use domain::{DomainIndex, DomainMigration, DomainModule, MigrationTx};
-pub use http::{HttpCapability, HttpCapabilityWiring, HttpMethod, HttpRequest, HttpResult};
 pub use identity::{SignedEvent, SigningError, UnsignedEvent};
 pub use keyring::{
     KeyringCapability, KeyringIdentityWiring, KeyringRequest, KeyringResult, KeyringStatus,
