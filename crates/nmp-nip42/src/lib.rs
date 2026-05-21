@@ -43,7 +43,7 @@
 //! - It does not call the signer asynchronously — `LocalKeySigner` is
 //!   synchronous via `SignerOp::Ready`, sufficient for M5; NIP-46 async is
 //!   M6 follow-up.
-//! - It does not own the iOS FFI surface — the signer is bound by M6's
+//! - It does not own the FFI surface — the signer is bound by M6's
 //!   account-manager wiring, not by a hand-rolled C callback.
 
 pub mod builder;
