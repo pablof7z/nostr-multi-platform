@@ -40,8 +40,6 @@
 //!   inserts it into `IdentityRuntime.remote_signers`, becomes active if
 //!   no account was active, and routes all subsequent `sign_active`
 //!   through the handle's `sign(unsigned).wait(timeout)` call.
-//! - `ActorCommand::RemoveRemoteSigner { identity_id }` — broker (or UI)
-//!   asks the actor to drop the handle (e.g. logout).
 //!
 //! The actor never imports `nmp-signers`; it only touches the trait. NIP-42
 //! is currently cleared while a remote signer is active (the broker's
@@ -77,8 +75,7 @@ mod wallet;
 
 pub(super) use identity::{
     add_remote_signer, bunker_handshake_progress, create_account, remove_account,
-    remove_remote_signer, restore_bunker_session, sign_in_bunker, sign_in_nsec, switch_active,
-    IdentityRuntime,
+    restore_bunker_session, sign_in_bunker, sign_in_nsec, switch_active, IdentityRuntime,
 };
 // D0: NIP-46 remote signing is an app noun — the bunker-handshake slot + its
 // constructor are re-exported (crate-wide) so the `ffi` module can build the

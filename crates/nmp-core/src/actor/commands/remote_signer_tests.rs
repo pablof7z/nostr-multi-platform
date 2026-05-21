@@ -180,23 +180,6 @@ fn add_remote_signer_projects_nip46_account_summary() {
 }
 
 #[test]
-fn remove_remote_signer_drops_account_from_snapshot() {
-    let (mut id, mut kernel) = fresh();
-    let (handle, _count) = stub_signer();
-    let pk = handle.pubkey_hex();
-    add_remote_signer(&mut id, &mut kernel, handle, false);
-    assert!(!kernel.account_snapshot().0.is_empty());
-
-    let _ = remove_remote_signer(&mut id, &mut kernel, &pk);
-    let (accounts, active) = kernel.account_snapshot();
-    assert!(
-        accounts.iter().all(|a| a.id != pk),
-        "account survived remove_remote_signer: {accounts:?}"
-    );
-    assert!(active.is_none(), "active should be cleared, got {active:?}");
-}
-
-#[test]
 fn bunker_handshake_progress_writes_then_clears() {
     let (id, mut kernel) = fresh();
     bunker_handshake_progress(
@@ -385,63 +368,6 @@ fn dispatch_add_remote_signer_then_progress_surfaces_on_snapshot() {
         last_frame.contains("\"stage\":\"ready\""),
         "snapshot missing handshake stage=ready: {last_frame}"
     );
-}
-
-#[test]
-fn dispatch_remove_remote_signer_drops_account_via_actor() {
-    use std::sync::mpsc;
-    use std::thread;
-    use std::time::Duration;
-
-    use crate::actor::{run_actor, ActorCommand};
-
-    let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
-    let (upd_tx, upd_rx) = mpsc::channel::<String>();
-    thread::spawn(move || run_actor(cmd_rx, upd_tx));
-
-    cmd_tx
-        .send(ActorCommand::Start {
-            visible_limit: 50,
-            emit_hz: 30,
-        })
-        .unwrap();
-    let (handle, _count) = stub_signer();
-    let pk = handle.pubkey_hex();
-    cmd_tx
-        .send(ActorCommand::AddRemoteSigner { handle })
-        .unwrap();
-    cmd_tx
-        .send(ActorCommand::RemoveRemoteSigner {
-            identity_id: pk.clone(),
-        })
-        .unwrap();
-
-    thread::sleep(Duration::from_millis(300));
-    let _ = cmd_tx.send(ActorCommand::Shutdown);
-
-    let mut last_frame = String::new();
-    while let Ok(frame) = upd_rx.try_recv() {
-        last_frame = frame;
-    }
-    assert!(!last_frame.is_empty(), "actor produced no snapshot frames");
-    // After removal the account row should be gone. The pubkey can survive
-    // elsewhere on the snapshot (the AddRemoteSigner path retargets the
-    // timeline, which leaves the pubkey in the `selected_author` view); we
-    // only care that the `accounts` and `active_account` fields are cleared.
-    assert!(
-        last_frame.contains("\"accounts\":[]"),
-        "accounts must be empty after RemoveRemoteSigner: {last_frame}"
-    );
-    assert!(
-        last_frame.contains("\"active_account\":null"),
-        "active_account must be cleared after RemoveRemoteSigner: {last_frame}"
-    );
-    // And nothing labelled signer_kind=nip46 should survive in the snapshot.
-    assert!(
-        !last_frame.contains("\"signer_kind\":\"nip46\""),
-        "snapshot still has nip46 row after remove: {last_frame}"
-    );
-    let _ = pk; // tied to test setup; kept for symmetry with the add test.
 }
 
 // ──────────────────────────────────────────────────────────────────────────

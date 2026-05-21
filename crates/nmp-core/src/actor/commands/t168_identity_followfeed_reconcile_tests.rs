@@ -1,6 +1,6 @@
 //! T168 RED — logout / remove / switch must reconcile M2 follow interests.
 //!
-//! `remove_account` / `remove_remote_signer` / `switch_active` only call
+//! `remove_account` / `switch_active` only call
 //! `sync_kernel`; they never reconcile the M2 follow-feed. With
 //! `active_account=None` (logout of the last account)
 //! `register_follow_feed_for_active_account()` early-returns, leaving the

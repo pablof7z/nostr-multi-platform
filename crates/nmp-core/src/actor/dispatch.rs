@@ -259,17 +259,6 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::RemoveRemoteSigner { identity_id } => {
-            let outbound = commands::remove_remote_signer(ctx.identity, ctx.kernel, &identity_id);
-            update_nsec_slot(ctx.identity, ctx.marmot_local_nsec);
-            session_persistence::forget_account(&identity_id, ctx.capability_callback);
-            session_persistence::persist_current_active_session(
-                ctx.identity,
-                ctx.capability_callback,
-            );
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
         ActorCommand::BunkerHandshakeProgress { stage, message } => {
             commands::bunker_handshake_progress(ctx.identity, ctx.kernel, stage, message);
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
