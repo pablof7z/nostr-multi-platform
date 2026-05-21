@@ -253,15 +253,22 @@ pub struct NmpApp {
     /// any host wiring a single DM-inbox per app shares this contract. A
     /// multi-inbox host would need a handle-returning variant instead.
     nip17_dm_inbox_observer_id: Arc<Mutex<Option<RawEventObserverId>>>,
-    /// Previously-installed NIP-29 group-chat kernel-event observer id, for
-    /// the idempotent re-invoke contract on the per-app crate's
-    /// `register_group_chat` entry point. Same swap-style semantics as
-    /// `nip17_dm_inbox_observer_id`: see
-    /// [`Self::swap_nip29_group_chat_observer`].
+    /// Singleton kernel-event observer-id slot used by per-app crates that
+    /// register exactly one auxiliary `KernelEventObserver` per app and want
+    /// the registration to be idempotent across re-invokes — see
+    /// [`Self::swap_singleton_event_observer`]. The per-app crate swaps the
+    /// slot atomically: the previous id is taken out, the new observer is
+    /// registered, and the new id is stored back — so a re-invoke
+    /// unregisters the prior observer before installing the new one,
+    /// instead of stacking a fresh observer on every re-entry.
     ///
-    /// Protocol-named (not chirp-named) because it tracks a NIP-29 surface.
-    /// A multi-group host would need a handle-returning variant instead.
-    nip29_group_chat_observer_id: Arc<Mutex<Option<KernelEventObserverId>>>,
+    /// Substrate-generic (kernel-level): the slot holds a bare
+    /// [`KernelEventObserverId`]; the per-app crate decides what protocol
+    /// surface uses it (D0 — the kernel never names the app noun). The
+    /// first internal consumer is `nmp-app-chirp`'s per-app group-chat
+    /// registration. A host that wants to keep N projections live in
+    /// parallel still needs a handle-returning variant.
+    singleton_event_observer_id: Arc<Mutex<Option<KernelEventObserverId>>>,
     /// Shared relay-edit rows handle. Cloned to the actor thread and bound
     /// onto the kernel so external Rust callers (e.g. per-app crates) can read
     /// the user's current relay list without crossing FFI.
@@ -404,16 +411,15 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     let raw_event_observers = new_raw_event_observer_slot();
     let actor_raw_event_observers = Arc::clone(&raw_event_observers);
     // Per-app idempotency slots — track the previously-installed observer id
-    // for the single-instance NIP-17 DM-inbox / NIP-29 group-chat
-    // registrations a per-app crate (`nmp-app-chirp`) wires through
-    // `swap_nip17_dm_inbox_observer` / `swap_nip29_group_chat_observer`.
-    // NOT shared with the actor thread — the actor never reads these; only
-    // the FFI side calls the swap accessors. Owned by `NmpApp`, dropped with
-    // it (so the slot dies with the app — no global aliasing across
-    // `nmp_app_free`).
+    // for single-instance auxiliary observer registrations a per-app crate
+    // (e.g. `nmp-app-chirp`) wires through `swap_nip17_dm_inbox_observer` /
+    // `swap_singleton_event_observer`. NOT shared with the actor thread —
+    // the actor never reads these; only the FFI side calls the swap
+    // accessors. Owned by `NmpApp`, dropped with it (so the slot dies with
+    // the app — no global aliasing across `nmp_app_free`).
     let nip17_dm_inbox_observer_id: Arc<Mutex<Option<RawEventObserverId>>> =
         Arc::new(Mutex::new(None));
-    let nip29_group_chat_observer_id: Arc<Mutex<Option<KernelEventObserverId>>> =
+    let singleton_event_observer_id: Arc<Mutex<Option<KernelEventObserverId>>> =
         Arc::new(Mutex::new(None));
     // Host-extensible snapshot output slot. Same shared-`Arc` pattern: the
     // `NmpApp` keeps one clone (Rust + C-ABI registration entry points), the
@@ -563,7 +569,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         event_observers,
         raw_event_observers,
         nip17_dm_inbox_observer_id,
-        nip29_group_chat_observer_id,
+        singleton_event_observer_id,
         relay_edit_rows,
         marmot_local_nsec,
         nip17_local_keys,
@@ -962,17 +968,24 @@ impl NmpApp {
         prev
     }
 
-    /// Atomically swap the per-app's NIP-29 group-chat kernel-observer id
-    /// slot: store `new` and return whatever was previously installed there.
+    /// Atomically swap the per-app's singleton kernel-event observer-id slot:
+    /// store `new` and return whatever was previously installed there.
     ///
-    /// Mirrors [`Self::swap_nip17_dm_inbox_observer`] for the NIP-29
-    /// group-chat surface. Same idempotent-re-invoke contract. A poisoned
-    /// mutex degrades to `None` (D6).
-    pub fn swap_nip29_group_chat_observer(
+    /// Mirrors [`Self::swap_nip17_dm_inbox_observer`] for the typed
+    /// [`KernelEventObserver`] fan-out (in contrast to the raw signed-event
+    /// tap). Same idempotent-re-invoke contract: a per-app crate that wires
+    /// exactly one auxiliary `KernelEventObserver` per app uses this slot
+    /// to ensure a second registration unregisters the first one before
+    /// installing itself. A poisoned mutex degrades to `None` (D6).
+    ///
+    /// The slot is substrate-generic (D0 — the kernel never names the app
+    /// noun); the per-app crate decides what protocol surface the singleton
+    /// observer projects.
+    pub fn swap_singleton_event_observer(
         &self,
         new: Option<KernelEventObserverId>,
     ) -> Option<KernelEventObserverId> {
-        let mut guard = self.nip29_group_chat_observer_id.lock().ok()?;
+        let mut guard = self.singleton_event_observer_id.lock().ok()?;
         let prev = guard.take();
         *guard = new;
         prev

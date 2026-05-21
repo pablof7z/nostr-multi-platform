@@ -237,7 +237,7 @@ pub extern "C" fn nmp_app_chirp_register(
 ///
 /// Re-invocation is **idempotent**: a subsequent call unregisters the previous
 /// projection's observer before registering the new one (via the per-app
-/// `swap_nip29_group_chat_observer` slot on `NmpApp`), and overwrites the
+/// `swap_singleton_event_observer` slot on `NmpApp`), and overwrites the
 /// `"nip29.group_chat"` snapshot key with the newer projection. The
 /// per-account re-invocation case (the only re-invocation Chirp actually
 /// performs) is leak-free. A multi-group host that wants to keep N projections
@@ -285,7 +285,7 @@ pub extern "C" fn nmp_app_chirp_register_group_chat(
     // observer`): the new observer is already live when the old one is
     // dropped, so there is no event-loss gap and a concurrent re-invoke
     // cannot leak the previous id.
-    if let Some(prev) = app_ref.swap_nip29_group_chat_observer(Some(observer_id)) {
+    if let Some(prev) = app_ref.swap_singleton_event_observer(Some(observer_id)) {
         app_ref.unregister_event_observer(prev);
     }
 
@@ -1054,7 +1054,7 @@ mod tests {
     /// THE IDEMPOTENCY PROOF — group-chat variant. Same shape as the
     /// DM-inbox test: two consecutive `register_group_chat` calls leave
     /// exactly one `KernelEventObserverId` in the per-app
-    /// `nip29_group_chat_observer_id` slot, with the second register's id
+    /// `singleton_event_observer_id` slot, with the second register's id
     /// distinct from the first (proving the slot was overwritten and the
     /// previous observer was unregistered against the kernel).
     #[test]
@@ -1065,7 +1065,7 @@ mod tests {
         let app_ref = unsafe { &*app };
 
         assert!(
-            app_ref.swap_nip29_group_chat_observer(None).is_none(),
+            app_ref.swap_singleton_event_observer(None).is_none(),
             "slot must start empty (no group chat registered yet)"
         );
 
@@ -1081,16 +1081,16 @@ mod tests {
         // First registration.
         nmp_app_chirp_register_group_chat(app, group_a.as_ptr());
         let id1 = app_ref
-            .swap_nip29_group_chat_observer(None)
+            .swap_singleton_event_observer(None)
             .expect("first register must install a kernel-observer id in the per-app slot");
-        let prev = app_ref.swap_nip29_group_chat_observer(Some(id1));
+        let prev = app_ref.swap_singleton_event_observer(Some(id1));
         assert!(prev.is_none(), "we just swap-took, slot was empty");
 
         // Second registration with a different group — the multi-screen
         // navigation case that previously leaked the prior observer.
         nmp_app_chirp_register_group_chat(app, group_b.as_ptr());
         let id2 = app_ref
-            .swap_nip29_group_chat_observer(None)
+            .swap_singleton_event_observer(None)
             .expect("second register must install a fresh id in the per-app slot");
         assert_ne!(
             id1, id2,
