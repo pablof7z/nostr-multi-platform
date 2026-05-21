@@ -40,11 +40,11 @@
 //! and the token order is deterministic.
 
 use std::collections::BTreeMap;
-use std::hash::{Hash, Hasher};
 
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
+use crate::stable_hash::stable_hash64;
 use crate::subs::registry::InterestRegistry;
 use crate::subs::sub_key::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 
@@ -188,11 +188,7 @@ fn scope_to_sub_scope(scope: &InterestScope) -> SubScope {
 /// Deterministic dedup key for a oneshot: hash `(scope, shape)` so two
 /// requests for the same transient read collapse to one registry slot.
 fn shape_key(scope: &SubScope, shape: &InterestShape) -> SubKey {
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    "oneshot".hash(&mut h);
-    scope.hash(&mut h);
-    shape.hash(&mut h);
-    SubKey(h.finish())
+    SubKey(stable_hash64(("oneshot", scope, shape)))
 }
 
 #[cfg(test)]
@@ -201,6 +197,13 @@ mod tests {
 
     fn profile_shape(pk: &str) -> InterestShape {
         InterestShape::profile_for(pk.to_string())
+    }
+
+    #[test]
+    fn oneshot_shape_key_is_restart_stable() {
+        let key = shape_key(&SubScope::Global, &profile_shape("alice"));
+        assert_eq!(key, SubKey(0x8de5_6fe9_d40d_41b4));
+        assert_ne!(key, shape_key(&SubScope::Global, &profile_shape("bob")));
     }
 
     #[test]

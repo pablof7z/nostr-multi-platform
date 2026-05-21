@@ -6,10 +6,9 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 
 use super::interest::{InterestId, InterestShape, Pubkey, RelayUrl};
+use crate::stable_hash::stable_hash64;
 
 // ─── UserConfiguredCategory ──────────────────────────────────────────────────
 
@@ -132,8 +131,8 @@ impl SubShape {
 /// Canonical filter hash — single source of truth for `(filter, relay)`
 /// identity across the planner, wire-emitter, and watermark store.
 ///
-/// The current implementation is the stop-gap `DefaultHasher` digest produced
-/// by the compiler since M2 (see `compiler/mod.rs::simple_shape_hash`). It is
+/// The current implementation is the stop-gap stable FNV digest produced by
+/// the compiler since M2 (see `compiler/mod.rs::simple_shape_hash`). It is
 /// stable across recompiles of an identical `InterestShape` because every
 /// collection field uses a sorted container (`BTreeSet` / `BTreeMap`) and the
 /// JSON serialisation is therefore deterministic.
@@ -144,11 +143,10 @@ impl SubShape {
 /// All callers (compiler, planner gate, wire-emitter, watermark store) read
 /// this single helper so the swap is one edit.
 pub fn canonical_filter_hash(shape: &InterestShape) -> String {
-    let mut h = DefaultHasher::new();
-    if let Ok(json) = serde_json::to_string(shape) {
-        json.hash(&mut h);
-    }
-    format!("{:08x}", h.finish() & 0xffff_ffff)
+    let hash = serde_json::to_string(shape)
+        .map(|json| stable_hash64(("canonical-filter", json)))
+        .unwrap_or_else(|_| stable_hash64("canonical-filter-invalid-json"));
+    format!("{:08x}", hash & 0xffff_ffff)
 }
 
 // ─── RelayPlan ───────────────────────────────────────────────────────────────

@@ -16,6 +16,7 @@ use std::collections::BTreeSet;
 use nmp_core::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
+use nmp_core::stable_hash::stable_hash64;
 
 /// Marmot KeyPackage event kind (NIP-33 addressable). CURRENT spec.
 pub const KIND_KEY_PACKAGE: u32 = 30443;
@@ -32,30 +33,21 @@ pub const KIND_GIFT_WRAP: u32 = 1059;
 /// FFI bridge push the interest idempotently (re-registration produces the
 /// same id, the kernel de-dupes).
 fn giftwrap_interest_id(pubkey: &str) -> InterestId {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    "marmot.giftwrap".hash(&mut h);
-    pubkey.hash(&mut h);
-    InterestId(h.finish())
+    InterestId(stable_hash64(("marmot.giftwrap", pubkey)))
 }
 
 /// Stable id for a peer KeyPackage lookup subscription.
 fn key_package_lookup_interest_id(pubkey: &str) -> InterestId {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    "marmot.key_package_lookup".hash(&mut h);
-    pubkey.hash(&mut h);
-    InterestId(h.finish())
+    InterestId(stable_hash64(("marmot.key_package_lookup", pubkey)))
 }
 
 /// Stable id for one relay-pinned group-message subscription.
 fn group_message_interest_id(group_id_hex: &str, relay_url: &str) -> InterestId {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    "marmot.group_messages".hash(&mut h);
-    group_id_hex.hash(&mut h);
-    relay_url.hash(&mut h);
-    InterestId(h.finish())
+    InterestId(stable_hash64((
+        "marmot.group_messages",
+        group_id_hex,
+        relay_url,
+    )))
 }
 
 /// Tailing `LogicalInterest` for kind:1059 `#p <pubkey>` gift-wraps — the
@@ -153,6 +145,19 @@ mod tests {
         let c = giftwrap_interest_id("def456");
         assert_eq!(a, b, "same pubkey must yield same id");
         assert_ne!(a, c, "different pubkeys must yield different ids");
+        assert_eq!(a, InterestId(0x95ff_bdc5_c509_4315));
+    }
+
+    #[test]
+    fn lookup_and_group_interest_ids_are_restart_stable() {
+        assert_eq!(
+            key_package_lookup_interest_id("peerpubkey"),
+            InterestId(0xfa96_6f05_f77c_1fe2)
+        );
+        assert_eq!(
+            group_message_interest_id("abcd", "wss://group-a/"),
+            InterestId(0x65ae_a778_1d18_8e5d)
+        );
     }
 
     #[test]
