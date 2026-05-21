@@ -29,8 +29,20 @@ use super::publish_plan::PublishPlan;
 /// the plan, and converts it into an [`ActorCommand`] via
 /// [`PublishPlan::into_actor_command`] — the bridge that finally lets these
 /// dormant validators drive a real publish.
+///
+/// `$require` is a closure `fn(&$Input) -> Result<(), &'static str>` checking
+/// per-action required fields BEFORE the plan is built. Actions whose plan
+/// builder reads an `Option` field that NIP-29 marks mandatory (the `p` tag on
+/// `put_user`/`remove_user`, the `e` tag on `delete_event`) MUST pass a real
+/// check here — otherwise a missing field silently becomes an empty wire value
+/// (`["p", ""]`) and `dispatch_action` returns a success `correlation_id` for
+/// a malformed admin event published under the user's signature (a D6
+/// violation: a missing required field must be rejection data, never a
+/// published artifact). Actions with no required fields beyond the group
+/// (`create_group`, `delete_group`, `edit_metadata`, `create_invite`) pass the
+/// always-accepting `|_| Ok(())`.
 macro_rules! admin_action {
-    ($Module:ident, $Input:ident, $command_fn:ident, $namespace:literal, $kind_const:expr, $build_plan:expr) => {
+    ($Module:ident, $Input:ident, $command_fn:ident, $namespace:literal, $kind_const:expr, $require:expr, $build_plan:expr) => {
         #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
         pub struct $Input {
             pub group: GroupId,
@@ -46,6 +58,8 @@ macro_rules! admin_action {
                 _ctx: &mut ActionContext,
                 action: Self::Action,
             ) -> Result<(), ActionRejection> {
+                let require: fn(&$Input) -> Result<(), &'static str> = $require;
+                require(&action).map_err(|msg| ActionRejection::Invalid(msg.into()))?;
                 let plan: PublishPlan = $build_plan(&action);
                 if plan.validate_no_unpinned_h().is_err() {
                     return Err(ActionRejection::Invalid(
@@ -59,11 +73,15 @@ macro_rules! admin_action {
 
         /// Map a validated admin action JSON to the [`ActorCommand`] that
         /// publishes its group event, host-pinned to the group's own relay.
-        /// Re-decodes its own input — the executor never trusts an upstream
-        /// shape it did not verify.
+        /// Re-decodes its own input AND re-runs the required-field check — the
+        /// executor never trusts an upstream shape it did not verify, so a
+        /// missing mandatory field is an `Err` here too, never a malformed
+        /// published event.
         pub fn $command_fn(action_json: &str) -> Result<ActorCommand, String> {
             let input: $Input =
                 serde_json::from_str(action_json).map_err(|e| e.to_string())?;
+            let require: fn(&$Input) -> Result<(), &'static str> = $require;
+            require(&input).map_err(|msg| msg.to_string())?;
             let build = $build_plan;
             build(&input).into_actor_command()
         }
@@ -92,11 +110,22 @@ fn group_h_tag(group: &GroupId) -> Vec<String> {
     vec!["h".into(), group.local_id.clone()]
 }
 
-admin_action!(CreateGroupAction, CreateGroupInput, create_group_command, "create_group", KIND_CREATE_GROUP, |a: &CreateGroupInput| {
+/// Reject an absent or empty optional field that the action's wire shape
+/// treats as mandatory. `serde(default)` lets an admin action JSON omit the
+/// whole `fields` object, so a required tag value can arrive as `None` (or as
+/// `Some("")`); either way the published event would carry a blank tag value.
+fn require_nonempty(field: &Option<String>, msg: &'static str) -> Result<(), &'static str> {
+    match field {
+        Some(v) if !v.is_empty() => Ok(()),
+        _ => Err(msg),
+    }
+}
+
+admin_action!(CreateGroupAction, CreateGroupInput, create_group_command, "create_group", KIND_CREATE_GROUP, |_| Ok(()), |a: &CreateGroupInput| {
     PublishPlan::pinned(&a.group, KIND_CREATE_GROUP, "", vec![group_h_tag(&a.group)])
 });
 
-admin_action!(EditMetadataAction, EditMetadataInput, edit_metadata_command, "edit_metadata", KIND_EDIT_METADATA, |a: &EditMetadataInput| {
+admin_action!(EditMetadataAction, EditMetadataInput, edit_metadata_command, "edit_metadata", KIND_EDIT_METADATA, |_| Ok(()), |a: &EditMetadataInput| {
     let mut tags = vec![group_h_tag(&a.group)];
     if let Some(name) = &a.fields.name { tags.push(vec!["name".into(), name.clone()]); }
     if let Some(about) = &a.fields.about { tags.push(vec!["about".into(), about.clone()]); }
@@ -107,7 +136,12 @@ admin_action!(EditMetadataAction, EditMetadataInput, edit_metadata_command, "edi
     PublishPlan::pinned(&a.group, KIND_EDIT_METADATA, "", tags)
 });
 
-admin_action!(PutUserAction, PutUserInput, put_user_command, "put_user", KIND_PUT_USER, |a: &PutUserInput| {
+// kind:9000 carries the moderated user as a `["p", <pubkey>]` tag — the
+// pubkey is mandatory, so reject a missing `target_pubkey` rather than
+// publishing `["p", ""]`.
+admin_action!(PutUserAction, PutUserInput, put_user_command, "put_user", KIND_PUT_USER,
+    |a: &PutUserInput| require_nonempty(&a.fields.target_pubkey, "put_user requires fields.target_pubkey"),
+    |a: &PutUserInput| {
     let pubkey = a.fields.target_pubkey.clone().unwrap_or_default();
     let mut p_tag = vec!["p".into(), pubkey];
     if let Some(role) = &a.fields.role { p_tag.push(role.clone()); }
@@ -116,14 +150,17 @@ admin_action!(PutUserAction, PutUserInput, put_user_command, "put_user", KIND_PU
     PublishPlan::pinned(&a.group, KIND_PUT_USER, "", tags)
 });
 
-admin_action!(RemoveUserAction, RemoveUserInput, remove_user_command, "remove_user", KIND_REMOVE_USER, |a: &RemoveUserInput| {
+// kind:9001 carries the removed user as a `["p", <pubkey>]` tag — mandatory.
+admin_action!(RemoveUserAction, RemoveUserInput, remove_user_command, "remove_user", KIND_REMOVE_USER,
+    |a: &RemoveUserInput| require_nonempty(&a.fields.target_pubkey, "remove_user requires fields.target_pubkey"),
+    |a: &RemoveUserInput| {
     let pubkey = a.fields.target_pubkey.clone().unwrap_or_default();
     let mut tags = vec![group_h_tag(&a.group), vec!["p".into(), pubkey]];
     if let Some(reason) = &a.fields.reason { tags.push(vec!["reason".into(), reason.clone()]); }
     PublishPlan::pinned(&a.group, KIND_REMOVE_USER, "", tags)
 });
 
-admin_action!(CreateInviteAction, CreateInviteInput, create_invite_command, "create_invite", KIND_CREATE_INVITE, |a: &CreateInviteInput| {
+admin_action!(CreateInviteAction, CreateInviteInput, create_invite_command, "create_invite", KIND_CREATE_INVITE, |_| Ok(()), |a: &CreateInviteInput| {
     let mut tags = vec![group_h_tag(&a.group)];
     for code in &a.fields.invite_codes {
         tags.push(vec!["code".into(), code.clone()]);
@@ -131,7 +168,11 @@ admin_action!(CreateInviteAction, CreateInviteInput, create_invite_command, "cre
     PublishPlan::pinned(&a.group, KIND_CREATE_INVITE, "", tags)
 });
 
-admin_action!(DeleteEventAction, DeleteEventInput, delete_event_command, "delete_event", KIND_DELETE_EVENT, |a: &DeleteEventInput| {
+// kind:9005 carries the event to delete as a `["e", <event_id>]` tag — an
+// empty value is a "delete nothing" admin event under the user's signature.
+admin_action!(DeleteEventAction, DeleteEventInput, delete_event_command, "delete_event", KIND_DELETE_EVENT,
+    |a: &DeleteEventInput| require_nonempty(&a.fields.target_event_id, "delete_event requires fields.target_event_id"),
+    |a: &DeleteEventInput| {
     let evt = a.fields.target_event_id.clone().unwrap_or_default();
     PublishPlan::pinned(
         &a.group,
@@ -141,7 +182,7 @@ admin_action!(DeleteEventAction, DeleteEventInput, delete_event_command, "delete
     )
 });
 
-admin_action!(DeleteGroupAction, DeleteGroupInput, delete_group_command, "delete_group", KIND_DELETE_GROUP, |a: &DeleteGroupInput| {
+admin_action!(DeleteGroupAction, DeleteGroupInput, delete_group_command, "delete_group", KIND_DELETE_GROUP, |_| Ok(()), |a: &DeleteGroupInput| {
     PublishPlan::pinned(&a.group, KIND_DELETE_GROUP, "", vec![group_h_tag(&a.group)])
 });
 
@@ -191,5 +232,55 @@ mod tests {
     #[test]
     fn admin_command_rejects_malformed_body() {
         assert!(delete_group_command(r#"{"no_group":true}"#).is_err());
+    }
+
+    /// A `put_user` with no `target_pubkey` must be rejected — otherwise the
+    /// executor would publish a kind:9000 carrying `["p", ""]` (a malformed
+    /// admin event under the user's signature).
+    #[test]
+    fn put_user_command_rejects_missing_target_pubkey() {
+        let json = r#"{"group":{"host_relay_url":"wss://groups.example.com","local_id":"room"}}"#;
+        let err = put_user_command(json).expect_err("missing target_pubkey must reject");
+        assert!(err.contains("target_pubkey"), "got: {err}");
+    }
+
+    /// An empty-string `target_pubkey` is rejected too — `Some("")` is as
+    /// malformed on the wire as `None`.
+    #[test]
+    fn put_user_command_rejects_empty_target_pubkey() {
+        let json = r#"{"group":{"host_relay_url":"wss://groups.example.com","local_id":"room"},"fields":{"target_pubkey":""}}"#;
+        assert!(put_user_command(json).is_err());
+    }
+
+    #[test]
+    fn remove_user_command_rejects_missing_target_pubkey() {
+        let json = r#"{"group":{"host_relay_url":"wss://groups.example.com","local_id":"room"}}"#;
+        let err = remove_user_command(json).expect_err("missing target_pubkey must reject");
+        assert!(err.contains("target_pubkey"), "got: {err}");
+    }
+
+    /// A `delete_event` with no `target_event_id` must be rejected — an empty
+    /// `["e", ""]` tag is a "delete nothing" admin event.
+    #[test]
+    fn delete_event_command_rejects_missing_target_event_id() {
+        let json = r#"{"group":{"host_relay_url":"wss://groups.example.com","local_id":"room"}}"#;
+        let err = delete_event_command(json).expect_err("missing target_event_id must reject");
+        assert!(err.contains("target_event_id"), "got: {err}");
+    }
+
+    /// The `start()` validator rejects the same missing-field case the executor
+    /// does, so `dispatch_action` returns an error rather than a success
+    /// `correlation_id` for a malformed admin event.
+    #[test]
+    fn put_user_start_rejects_missing_target_pubkey() {
+        let action = PutUserInput {
+            group: GroupId::new("wss://groups.example.com", "room"),
+            fields: ActionFields::default(),
+        };
+        let mut ctx = ActionContext { now_ms: 0 };
+        assert!(matches!(
+            PutUserAction::start(&mut ctx, action),
+            Err(ActionRejection::Invalid(_))
+        ));
     }
 }
