@@ -47,7 +47,7 @@ fn cargo_toml(manifest: &AppManifest) -> String {
     // `FfiApp` (non-test code) calls `nmp_app_new` / `nmp_app_free` /
     // `nmp_app_dispatch_action` through their Rust paths, which the
     // `test-support` gate exposes. The generated app crate is an rlib host
-    // shell with no Swift/staticlib consumer, so the gate has no downstream
+    // shell with no staticlib consumer, so the gate has no downstream
     // impact.
     let mut out = format!(
         "[package]\nname = \"{}\"\nversion.workspace = true\nedition.workspace = true\nlicense.workspace = true\n\n[dependencies]\nnmp-core = {{ path = \"../../../crates/nmp-core\", features = [\"test-support\"] }}\nserde = {{ version = \"1.0\", features = [\"derive\"] }}\nserde_json = \"1.0\"\n",
