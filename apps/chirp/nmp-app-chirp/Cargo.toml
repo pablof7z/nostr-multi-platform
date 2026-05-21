@@ -91,3 +91,9 @@ mdk-sqlite-storage = { version = "0.8.0", features = ["test-utils"] }
 # real `create_group` round-trip. Logic moved to `nmp-marmot`, so this is
 # now a dev-only dependency (Chirp ships zero MLS types in production).
 mdk-core = "0.8.0"
+# `nmp-nip59` supplies the `gift_wrap` primitive used in the DM-inbox
+# round-trip tests so the test fixtures construct kind:1059 envelopes through
+# the same production path the inbox unwraps (mirroring the unit tests in
+# `crates/nmp-nip17/src/inbox.rs`). Dev-only — Chirp depends on `nmp-nip17`
+# in production but never calls the gift-wrap primitive directly.
+nmp-nip59 = { path = "../../../crates/nmp-nip59" }
