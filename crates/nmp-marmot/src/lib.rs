@@ -38,13 +38,15 @@
 //!
 //! ## Two-layer architecture
 //!
-//! 1. **Substrate module layer** ([`domain`], [`view`], [`action`]) — mirrors
-//!    `nmp-nip29`. Stateless `ActionModule` trait impl ([`action::PublishKeyPackageAction`])
-//!    plus plain view types, exported as public types. These impls carry NO
-//!    MDK types — they satisfy the kernel-boundary grep. Group-scoped ops
-//!    (`CreateGroup`, `InviteMember`, etc.) require handle-scoped MLS state
-//!    and are covered by the bespoke `nmp_app_chirp_marmot_dispatch` C cluster
-//!    (ADR-0025) until a state-transport mechanism exists.
+//! 1. **Substrate module layer** ([`domain`], [`view`]) — mirrors `nmp-nip29`.
+//!    `DomainModule` impls plus plain view types, exported as public types.
+//!    These impls carry NO MDK types — they satisfy the kernel-boundary grep.
+//!    All Marmot capabilities (key-package publish, group-scoped ops:
+//!    `CreateGroup`, `InviteMember`, `SendMessage`, etc.) are covered by the
+//!    bespoke `nmp_app_chirp_marmot_dispatch` C cluster (ADR-0025), not the
+//!    generic `dispatch_action` seam. The previous `ActionModule` impls were
+//!    deleted as dormant (zero registry callers); re-add only when a non-bespoke
+//!    caller demands `dispatch_action` routing for a Marmot capability.
 //! 2. **Service layer** ([`service::MarmotService`]) — the real MDK-driving
 //!    API. Holds an `MDK<S>` + `nostr::Keys`. This is what the in-crate
 //!    round-trip tests exercise and what a headless integration-test driver
@@ -64,7 +66,6 @@
 //! KeyPackage events (kind:30443/443) use standard author-write outbox
 //! routing. Interest helpers live in [`interest`].
 
-pub mod action;
 pub mod domain;
 pub mod interest;
 pub mod projection;
@@ -85,14 +86,18 @@ pub mod mls_types {
     pub use mdk_core::prelude::{GroupId, MessageProcessingResult, NostrGroupConfigData};
 }
 
-// NOTE: `nmp-marmot` exposes its 4 `DomainModule` / 7 `ActionModule` impls
-// and its 4 view types as public types under `domain`, `action`, and `view`.
-// The view types are plain types whose `open` / `on_event_*` / `snapshot`
-// inherent methods are reached via static dispatch — the `ViewModule` trait
-// and the former `register(&mut ModuleRegistry)` entry point were both
-// deleted because no kernel-side registry ever drove them. The live
-// extension path is `KernelEventObserver` — see `nmp_core::substrate` module
-// docs; the Marmot projection registers one in `projection/`.
+// NOTE: `nmp-marmot` exposes its 4 `DomainModule` impls and its 4 view types
+// as public types under `domain` and `view`. The view types are plain types
+// whose `open` / `on_event_*` / `snapshot` inherent methods are reached via
+// static dispatch — the `ViewModule` trait and the former
+// `register(&mut ModuleRegistry)` entry point were both deleted because no
+// kernel-side registry ever drove them. The live extension path is
+// `KernelEventObserver` — see `nmp_core::substrate` module docs; the Marmot
+// projection registers one in `projection/`. The previous `ActionModule`
+// impls were deleted (6 group-scoped in PR #200, the last
+// `PublishKeyPackageAction` shortly after); the bespoke
+// `nmp_app_chirp_marmot_dispatch` C cluster (ADR-0025) covers every live
+// Marmot capability today.
 
 #[cfg(test)]
 mod tests;
