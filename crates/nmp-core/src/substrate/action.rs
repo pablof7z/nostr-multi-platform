@@ -72,6 +72,21 @@ pub trait ActionModule: Send + Sync + 'static {
         action: Self::Action,
     ) -> Result<(), ActionRejection>;
 
+    /// Build and dispatch the [`crate::actor::ActorCommand`] for a validated
+    /// action (ADR-0027 — the unified `ActionModule` trait). The adapter
+    /// decodes the action JSON once during `start` and forwards the typed
+    /// value here, so the executor sees exactly what the validator saw.
+    /// `correlation_id` is the registry-minted handle the host received from
+    /// `nmp_app_dispatch_action`; threading it onto an `ActorCommand` whose
+    /// terminal verdict must report that id keeps the host's spinner key
+    /// consistent with `action_results`. `send` is a non-blocking channel
+    /// send into the actor mailbox (D8).
+    fn execute(
+        action: Self::Action,
+        correlation_id: &str,
+        send: &dyn Fn(crate::actor::ActorCommand),
+    ) -> Result<(), String>;
+
     /// Optional: suggest the correlation_id the registry should assign to
     /// this action instead of the auto-generated one. Returning `Some(id)`
     /// makes `dispatch_action`'s return value and `action_results` in the
