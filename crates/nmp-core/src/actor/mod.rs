@@ -301,9 +301,11 @@ pub enum ActorCommand {
     /// originates from `nmp_app_dispatch_action`'s `PublishAction::Publish`
     /// path. Threading it makes the publish engine report THAT id in
     /// `action_results` (via `correlation_id_override`) — explicit symmetry
-    /// with the `PublishNote` path. `None` for non-dispatch callers (the
-    /// `nmp_app_publish_signed_event*` C-ABI symbols, conformance tests); the
-    /// engine then falls back to the publish handle (== event id), preserving
+    /// with the `PublishNote` path. `None` for non-dispatch callers
+    /// (`NmpApp::publish_signed_explicit` — Marmot's MLS / gift-wrap seam,
+    /// PR-F replaced the deleted `nmp_app_publish_signed_event*` symbols
+    /// with this typed Rust API — and conformance harnesses); the engine
+    /// then falls back to the publish handle (== event id), preserving
     /// prior behaviour. The pre-signed `Publish` round-trip already happened
     /// to work by coincidence (`preferred_action_id` returns `event.id`, the
     /// `None`-fallback also reports `event.id`); this field upgrades that

@@ -46,6 +46,13 @@ pub use actor::ActorCommand;
 // Rust-side crate) can call them directly via the Rust rlib dependency,
 // without an `extern "C"` block. The symbols remain `#[no_mangle]` on the
 // ffi:: side and are still reachable from Swift/C unchanged.
+// PR-F (one door per capability): `nmp_app_publish_signed_event`,
+// `nmp_app_publish_signed_event_to`, and `nmp_app_publish_unsigned_event`
+// were deleted — every user/app-authored event-producing publish now goes
+// through `nmp_app_dispatch_action` under the `nmp.publish` namespace.
+// `nmp_app_retry_publish` / `nmp_app_cancel_publish` survive as the
+// publish-lifecycle control plane (no event production; the D11 lint
+// whitelists them).
 #[cfg(any(test, feature = "test-support"))]
 pub use ffi::{
     nmp_app_add_relay, nmp_app_cancel_publish, nmp_app_claim_profile, nmp_app_close_author,
@@ -53,8 +60,7 @@ pub use ffi::{
     nmp_app_dispatch_capability, nmp_app_free, nmp_app_free_string,
     nmp_app_inject_pre_verified_events, nmp_app_inject_signed_events, nmp_app_lifecycle_background,
     nmp_app_lifecycle_foreground, nmp_app_new, nmp_app_open_author, nmp_app_open_firehose_tag,
-    nmp_app_open_thread, nmp_app_open_timeline, nmp_app_open_uri, nmp_app_publish_signed_event,
-    nmp_app_publish_signed_event_to, nmp_app_publish_unsigned_event,
+    nmp_app_open_thread, nmp_app_open_timeline, nmp_app_open_uri,
     nmp_app_register_event_observer, nmp_app_register_raw_event_observer, nmp_app_release_profile,
     nmp_app_remove_relay, nmp_app_retry_publish, nmp_app_set_capability_callback,
     nmp_app_set_lifecycle_callback, nmp_app_set_storage_path, nmp_app_set_update_callback,
@@ -89,9 +95,10 @@ pub use ffi::{
     nmp_app_open_thread,
     nmp_app_open_timeline,
     nmp_app_open_uri,
-    nmp_app_publish_signed_event,
-    nmp_app_publish_signed_event_to,
-    nmp_app_publish_unsigned_event,
+    // PR-F deleted `nmp_app_publish_signed_event{,_to}` /
+    // `nmp_app_publish_unsigned_event` — every event-producing publish now
+    // goes through `nmp_app_dispatch_action` (`nmp.publish`). The Android
+    // JNI shim's matching call sites are removed alongside.
     // T146 — kernel event observer FFI for Android JNI.
     nmp_app_register_event_observer,
     // Raw signed-event tap FFI for Android JNI.

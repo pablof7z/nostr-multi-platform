@@ -183,10 +183,12 @@ pub(crate) fn publish_unsigned_event_to_relays(
 /// originates from `nmp_app_dispatch_action`'s pre-signed `PublishAction::Publish`
 /// path. Threading it makes the publish engine report THAT id in
 /// `action_results` via `correlation_id_override` — explicit symmetry with
-/// `publish_note`. `None` for non-dispatch callers (the
-/// `nmp_app_publish_signed_event*` C-ABI symbols, conformance tests); the
-/// engine then falls back to the publish handle (== event id), preserving the
-/// prior behaviour.
+/// `publish_note`. `None` for non-dispatch callers (PR-F left the
+/// kernel-internal `NmpApp::publish_signed_explicit` Marmot seam +
+/// conformance harnesses on this `None` path; the deleted
+/// `nmp_app_publish_signed_event*` C-ABI symbols used to land here too,
+/// always with `None`); the engine then falls back to the publish handle
+/// (== event id), preserving the prior behaviour.
 pub(crate) fn publish_signed_event(
     kernel: &mut Kernel,
     raw: crate::store::RawEvent,

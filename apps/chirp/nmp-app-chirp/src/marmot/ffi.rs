@@ -41,9 +41,11 @@
 //! `invite`'s kind:445 commit + kind:1059 gift-wraps, `send`'s kind:445,
 //! `accept_welcome`'s post-join kind:445 self-update), this crate performs
 //! the `MarmotService` op and then publishes the signed events INTERNALLY
-//! via [`nmp_marmot::projection::publish`] (the `nmp-core`
-//! `nmp_app_publish_signed_event*` kernel capabilities, called against the
-//! retained `*mut NmpApp`). There is NO Swift relay path — that hook never
+//! via [`nmp_marmot::projection::publish`] (the workspace-internal
+//! `nmp_core::NmpApp::publish_signed_explicit` kernel API, called against
+//! the retained `&NmpApp`). PR-F replaced the prior `extern "C"` block +
+//! `unsafe` invocation of `nmp_app_publish_signed_event_to` with this
+//! typed Rust call. There is NO Swift relay path — that hook never
 //! existed (see `MarmotBridge.swift`). The result still carries the signed
 //! event JSON (`event` / `events` / `evolution_event` / `welcome_rumors`)
 //! but it is now INFORMATIONAL only; publish already happened

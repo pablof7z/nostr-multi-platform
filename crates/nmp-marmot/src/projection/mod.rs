@@ -11,8 +11,9 @@
 //! * [`ops`] — dispatch + read-projection handlers; the ONLY place
 //!   `mdk-core` input types are named for this layer.
 //! * [`publish`] — the internal relay-publish bridge that CLOSES the
-//!   outbound seam (calls the `nmp-core` `nmp_app_publish_signed_event*`
-//!   kernel capabilities against the retained `*mut NmpApp`).
+//!   outbound seam (calls the workspace-internal
+//!   `nmp_core::NmpApp::publish_signed_explicit` kernel API against the
+//!   retained `&NmpApp`; PR-F deleted the prior `extern "C"` block).
 //! * [`tap`] — the inbound raw-event observer that CLOSES the inbound
 //!   ingest seam (drives accepted kind:1059/445 events through the shared
 //!   `ops::ingest_signed_event_core`).

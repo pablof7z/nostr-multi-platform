@@ -34,13 +34,18 @@
 //! ## Outbound relay seam — CLOSED (this is the publish direction)
 //!
 //! The dispatch ops now publish their signed events to relays INTERNALLY
-//! via [`crate::projection::publish`] (the `nmp-core`
-//! `nmp_app_publish_signed_event*` kernel capabilities, called against the
-//! retained `*mut NmpApp`). They no longer rely on a non-existent Swift
-//! relay path. The op result still carries the signed event JSON
-//! (`event` / `events` / `evolution_event` / `welcome_rumors`) but it is
-//! now INFORMATIONAL only — publish already happened (fire-and-forget;
-//! success == "submitted to the kernel publish pipeline").
+//! via [`crate::projection::publish`] (the workspace-internal pure-Rust
+//! `nmp_core::NmpApp::publish_signed_explicit` kernel API, called against
+//! the retained `&NmpApp`). They no longer rely on a non-existent Swift
+//! relay path. PR-F (one door per capability) replaced the prior
+//! `extern "C"` block + `unsafe` invocation of
+//! `nmp_app_publish_signed_event_to` with this typed Rust call — the
+//! publish module is `unsafe`-free for publish routing, and the bespoke
+//! event-producing FFI surface has been deleted. The op result still
+//! carries the signed event JSON (`event` / `events` / `evolution_event`
+//! / `welcome_rumors`) but it is now INFORMATIONAL only — publish
+//! already happened (fire-and-forget; success == "submitted to the
+//! kernel publish pipeline").
 //!
 //! ## Inbound ingest seam — CLOSED (this is the receive direction)
 //!
@@ -352,15 +357,41 @@ impl<'a> InnerHandle<'a> {
         self.subscribe_group_messages(&group_id_hex, relay_urls);
     }
 
-    fn subscribe_group_messages(&self, group_id_hex: &str, relay_urls: Vec<String>) {
+    /// Borrow the retained host `NmpApp` as `&NmpApp`, or `None` if no host
+    /// app is bound (the in-memory test projection sets `app` to null).
+    ///
+    /// This is the SOLE `unsafe` deref of the retained `*mut NmpApp` in
+    /// this crate. Every other call site (publish routing, write-relay
+    /// lookup, interest push, key-package fetch) routes through here, so
+    /// the soundness argument lives in ONE place and the publish-routing
+    /// modules (`projection::publish`, `publish_group_pinned`,
+    /// `publish_explicit`) are themselves `unsafe`-free — satisfying the
+    /// PR-F acceptance criterion verbatim.
+    ///
+    /// # SAFETY
+    ///
+    /// `inner.app` is the live `*mut NmpApp` retained by the host Marmot
+    /// handle for the handle's lifetime. The host shell guarantees the
+    /// pointer is non-null only after `MarmotProjection::set_app` was
+    /// called, and that `nmp_app_free` (`NmpApp::Drop`) sends `Shutdown`
+    /// and `join()`s the actor thread before freeing the allocation —
+    /// every reader here runs inline on that actor thread, so the join
+    /// fences any in-flight access (see the `unsafe impl Send/Sync` block
+    /// at the top of this file for the full soundness argument).
+    fn app(&self) -> Option<&NmpApp> {
         if self.inner.app.is_null() {
-            return;
+            return None;
         }
-        // SAFETY: `app` is the live NmpApp pointer retained by this projection
-        // for the host Marmot handle's lifetime; push_interest is best-effort.
-        let app_ref = unsafe { &*self.inner.app };
+        // SAFETY: see this function's rustdoc.
+        Some(unsafe { &*self.inner.app })
+    }
+
+    fn subscribe_group_messages(&self, group_id_hex: &str, relay_urls: Vec<String>) {
+        let Some(app) = self.app() else {
+            return;
+        };
         for interest in crate::interest::group_message_interests(group_id_hex, relay_urls) {
-            app_ref.push_interest(interest);
+            app.push_interest(interest);
         }
     }
 
@@ -376,12 +407,19 @@ impl<'a> InnerHandle<'a> {
 
     /// Publish a signed event to the group's relay-pinned relays
     /// (`Explicit`); a cache miss → `Auto` (empty relay set falls through
-    /// to the author outbox — the kernel symbol's documented behaviour).
+    /// to the author outbox — the kernel API's documented behaviour).
     /// Used for kind:445 (group message / commit) and the kind:1059
     /// gift-wrap inbox-routing approximation.
+    ///
+    /// PR-F (one door per capability): this method contains no `unsafe`
+    /// block. The pointer deref happens once inside [`Self::app`]; the
+    /// publish-routing call site is plain safe Rust.
     pub(crate) fn publish_group_pinned(&self, group_id_hex: &str, event: &nostr::Event) {
+        let Some(app) = self.app() else {
+            return;
+        };
         let relays = self.group_relays(group_id_hex);
-        crate::projection::publish::publish_to(self.inner.app, event, &relays);
+        crate::projection::publish::publish_to(app, event, &relays);
     }
 
     /// Publish a signed event to an EXPLICIT relay set (`Explicit`; empty
@@ -389,21 +427,22 @@ impl<'a> InnerHandle<'a> {
     /// `PendingGroupChange` is still live (the relay-pinned cache is keyed
     /// by group and the relays are already known from the envelope, so we
     /// route directly without a `&mut self` cache read/write).
+    ///
+    /// PR-F: `unsafe`-free for publish routing (see `publish_group_pinned`).
     pub(crate) fn publish_explicit(&self, event: &nostr::Event, relays: &[RelayUrl]) {
-        crate::projection::publish::publish_to(self.inner.app, event, relays);
+        let Some(app) = self.app() else {
+            return;
+        };
+        crate::projection::publish::publish_to(app, event, relays);
     }
 
     /// Read the user's current write-relay URLs from the shared kernel
     /// relay-edit projection. Empty when no write relays are configured.
     pub(crate) fn write_relay_urls(&self) -> Vec<String> {
-        if self.inner.app.is_null() {
+        let Some(app) = self.app() else {
             return Vec::new();
-        }
-        // SAFETY: identical rationale to `publish_to` — `app` is the live
-        // `*mut NmpApp` retained by the host Marmot handle for the handle's
-        // lifetime.
-        let app_ref = unsafe { &*self.inner.app };
-        app_ref.write_relay_urls()
+        };
+        app.write_relay_urls()
     }
 
     /// Ask the kernel to fetch peer KeyPackage events for the given pubkeys.
@@ -413,13 +452,10 @@ impl<'a> InnerHandle<'a> {
     /// return a pending result for the UI to render. Native does not decide
     /// when to fetch or retry.
     pub(crate) fn request_key_package_fetch(&self, pubkeys: &[PublicKey]) -> usize {
-        if self.inner.app.is_null() {
+        let Some(app) = self.app() else {
             return 0;
-        }
-        // SAFETY: `app` is the live NmpApp pointer retained by this projection
-        // for the host Marmot handle's lifetime; actor sends are best-effort.
-        let app_ref = unsafe { &*self.inner.app };
-        let sender = app_ref.actor_sender();
+        };
+        let sender = app.actor_sender();
         let mut sent = 0;
         for pk in pubkeys {
             if sender

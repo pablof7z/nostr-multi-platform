@@ -1,7 +1,7 @@
-//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10/D15.
+//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10/D11/D15.
 //!
 //! See `walker.rs` for the `#[cfg(test)]` module tracker, `allow.rs` for the
-//! per-line opt-out comment, and `rules/d{0,6,7,8,9,10,15}.rs` for individual
+//! per-line opt-out comment, and `rules/d{0,6,7,8,9,10,11,15}.rs` for individual
 //! rule definitions. Brainstorm item #8 in
 //! `docs/perf/parallel-work-brainstorm-2026-05-18.md`.
 //!
@@ -58,7 +58,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use rules::{d0, d10, d15, d6, d7, d8, d9};
+use rules::{d0, d10, d11, d15, d6, d7, d8, d9};
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
@@ -126,7 +126,7 @@ fn main() -> ExitCode {
         let rules = if cfg.workspace_d8 {
             "D8 no-polling"
         } else {
-            "D0/D6/D7/D8/D9/D10/D15"
+            "D0/D6/D7/D8/D9/D10/D11/D15"
         };
         eprintln!(
             "doctrine-lint: 0 findings across {} root(s) ({} clean).",
@@ -171,6 +171,7 @@ fn scan_one_file(
     let mut d6_state = d6::State::default();
     let mut d8_tracker = d8::HotPathTracker::default();
     let mut d10_tracker = d10::PrivatePublishTracker::default();
+    let mut d11_tracker = d11::FnTracker::default();
     let mut d15_state = d15::State::default();
 
     walker::scan_file(path, |sl| {
@@ -184,6 +185,8 @@ fn scan_one_file(
         // marker-gated state is captured at line start, then advanced.
         let in_d10_marked_fn = d10_tracker.in_marked_fn();
         d10_tracker.observe_line(sl.text);
+        let in_nmp_app_extern_fn = d11_tracker.in_nmp_app_extern_fn();
+        d11_tracker.observe_line(sl.text, false);
 
         // D0
         if !workspace_d8 && !d0_exempt {
@@ -286,6 +289,28 @@ fn scan_one_file(
                 }
                 findings.push(report::Finding {
                     rule: d10::ID,
+                    path: path.to_path_buf(),
+                    line: sl.line_no,
+                    col,
+                    message: msg,
+                    suggested,
+                });
+            }
+        }
+        // D11 — one door per publish capability. Every user/app-authored
+        // publish-engine event goes through `nmp_app_dispatch_action`;
+        // bespoke event-producing `nmp_app_*` FFI must stay deleted.
+        if !workspace_d8 {
+            for (col, msg, suggested) in d11::check(
+                sl.text,
+                sl.is_comment,
+                in_nmp_app_extern_fn,
+            ) {
+                if allow::line_allows(sl.text, d11::ID) {
+                    continue;
+                }
+                findings.push(report::Finding {
+                    rule: d11::ID,
                     path: path.to_path_buf(),
                     line: sl.line_no,
                     col,

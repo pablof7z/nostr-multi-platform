@@ -23,10 +23,12 @@ import os.log
 //
 // Both relay seams are NOW CLOSED at the Rust layer:
 //
-//   Outbound: `dispatch` ops publish signed events INTERNALLY via
-//   `nmp_app_publish_signed_event*` kernel capabilities — no Swift relay
-//   path needed. The op result still carries the signed event JSON but
-//   it is INFORMATIONAL only.
+//   Outbound: `dispatch` ops publish signed events INTERNALLY via the
+//   workspace-internal `NmpApp::publish_signed_explicit` kernel API
+//   (PR-F replaced the prior `nmp_app_publish_signed_event*` `extern "C"`
+//   detour with a typed Rust call) — no Swift relay path needed. The op
+//   result still carries the signed event JSON but it is INFORMATIONAL
+//   only.
 //
 //   Inbound: the kernel exposes a `RawEventObserver` tap registered for
 //   kinds [443, 444, 445, 1059, 30443]. Every accepted inbound signed

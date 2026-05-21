@@ -1,29 +1,33 @@
-//! Finding 3 coverage (codex-batch review e895c09 — FFI silent malformed JSON):
-//! `nmp_app_publish_unsigned_event` previously returned silently when given
-//! unparseable JSON — no toast, no observable state.  The fix routes parse
-//! failures through `ActorCommand::ShowToast`, which the actor thread folds
-//! into `kernel.set_last_error_toast`.  The integration test below confirms
-//! that the ShowToast command reaches the kernel as D6 state (via the actor's
-//! update channel) and that a well-formed JSON path still publishes normally.
+//! Coverage for the post-PR-F publish flow: per-NIP builder →
+//! `ActorCommand::PublishUnsignedEvent` → kernel signs + routes via the
+//! NIP-65 outbox resolver (D3).
 //!
-//! Pins the recommended developer flow for creating a Nostr event with NMP:
-//! per-NIP builder → `ActorCommand::PublishUnsignedEvent` → kernel signs +
-//! routes via the NIP-65 outbox resolver (D3).
+//! PR-F (one door per capability) deleted the bespoke `extern "C"`
+//! event-producing FFI surface (`nmp_app_publish_signed_event{,_to}` /
+//! `nmp_app_publish_unsigned_event`). Every user / app-authored publish
+//! now reaches the kernel through one of two doors:
 //!
-//! Two layers covered together:
+//! 1. `nmp_app_dispatch_action("nmp.publish", ...)` — the single
+//!    namespace-keyed action seam for content actions (the front door).
+//!    Internally it routes through `ActorCommand::PublishUnsignedEvent` /
+//!    `ActorCommand::PublishSignedEvent` exactly as the deleted FFI used to.
+//! 2. `NmpApp::publish_signed_explicit` — the workspace-internal pure-Rust
+//!    kernel API for system-authored events the kernel signer cannot
+//!    re-mint (MLS group commits, NIP-59 gift wraps). Theme A's
+//!    system-authored / lifecycle exception.
 //!
-//! 1. **Builder wire shape** (this file) — `nmp_nip23::Article::new(...)
+//! What this file still pins:
+//!
+//! 1. **Builder wire shape** — `nmp_nip23::Article::new(...)
 //!    .build(...)` produces a wire-form `UnsignedEvent` with the expected
 //!    kind + canonical tag order. Pure, no actor.
-//! 2. **Compile-shape handoff** (this file) — the `UnsignedEvent` plugs
-//!    directly into `ActorCommand::PublishUnsignedEvent(_)` so apps don't
-//!    re-wrap or convert.
-//! 3. **Sign + publish runtime** (`nmp-core::actor::commands::tests`) — the
-//!    actor's `publish_unsigned_event` handler signs with the active
-//!    identity and queues the kind:30023 wire frame via the outbox
-//!    resolver. Driven directly against `Kernel` + `IdentityRuntime` rather
-//!    than through the actor's bounded command channel so the test stays
-//!    deterministic.
+//! 2. **Compile-shape handoff** — the `UnsignedEvent` plugs directly into
+//!    `ActorCommand::PublishUnsignedEvent(_)` so apps don't re-wrap or
+//!    convert (the action seam's executor lands on this exact variant).
+//! 3. **`ShowToast` end-to-end** — the `dispatch_action` JSON-decode path
+//!    surfaces parse failures through `ActorCommand::ShowToast`; this
+//!    file's coverage of that primitive is independent of which FFI door
+//!    sends the toast.
 
 use nmp_core::testing::ActorCommand;
 use nmp_nip23::Article;
@@ -32,7 +36,9 @@ use std::time::Duration;
 #[test]
 fn build_article_unsigned_event_has_expected_wire_shape() {
     // Pure builder — no actor, no signing, no clock. This is the only part
-    // an app touches before handing off to PublishUnsignedEvent.
+    // an app touches before handing off to PublishUnsignedEvent (whether
+    // directly inside a kernel-side executor, or indirectly through the
+    // `dispatch_action` seam — both land on the same variant).
     let unsigned = Article::new("my-article")
         .title("Hello")
         .summary("a short summary")
@@ -56,13 +62,15 @@ fn build_article_unsigned_event_has_expected_wire_shape() {
 fn builder_output_plugs_directly_into_publish_unsigned_event_command() {
     // The shape pin: `ArticleBuilder::build()` returns the exact
     // `UnsignedEvent` type `ActorCommand::PublishUnsignedEvent(_)` expects.
-    // Apps in production write:
+    //
+    // The post-PR-F flow inside an `nmp.publish` action executor:
     //
     //   let unsigned = Article::new(d).title(t).content(c).build(pk, ts)?;
-    //   app.tx.send(ActorCommand::PublishUnsignedEvent(unsigned))?;
+    //   send(ActorCommand::PublishUnsignedEvent(unsigned));
     //
-    // Or via the FFI: `nmp_app_publish_unsigned_event(app, json_ptr)` where
-    // `json_ptr` is serde_json::to_string(&unsigned).
+    // (The C / Swift / Kotlin shells reach this same variant by going
+    // through `nmp_app_dispatch_action` — the deleted
+    // `nmp_app_publish_unsigned_event` no longer exists.)
     //
     // The runtime sign + outbox-route behaviour is covered by the
     // `publish_unsigned_event_signs_and_publishes_arbitrary_kind` unit test
@@ -84,11 +92,13 @@ fn builder_output_plugs_directly_into_publish_unsigned_event_command() {
 }
 
 #[test]
-fn unsigned_event_round_trips_through_ffi_json_shape() {
-    // The FFI entry-point (`nmp_app_publish_unsigned_event`) takes a JSON
-    // string of `UnsignedEvent` and routes it through the same command.
-    // Apps that aren't in-process Rust (Swift, Kotlin) hit this path.
-    let unsigned = Article::new("ffi-shape")
+fn unsigned_event_serde_round_trips_for_action_payload() {
+    // The post-PR-F door for non-Rust hosts (Swift / Kotlin) is
+    // `nmp_app_dispatch_action` under the `nmp.publish` namespace. The
+    // payload it carries is a JSON-encoded `UnsignedEvent` — exactly what
+    // this round-trip pins. Builders produce something the action seam's
+    // executor will decode without loss.
+    let unsigned = Article::new("dispatch-shape")
         .title("Wire")
         .content("hello")
         .build("pk", 1_700_000_300)
@@ -99,12 +109,14 @@ fn unsigned_event_round_trips_through_ffi_json_shape() {
     assert_eq!(decoded, unsigned);
 }
 
-// ── Finding 3 (codex-batch review e895c09) ──────────────────────────────────
+// ── ShowToast end-to-end ────────────────────────────────────────────────────
 //
-// `ActorCommand::ShowToast` is the actor-side primitive the FFI layer uses to
-// surface `nmp_app_publish_unsigned_event` parse failures as D6 state.  This
-// test drives the command through `spawn_actor` and confirms the toast reaches
-// the kernel snapshot's `last_error_toast` field.
+// `ActorCommand::ShowToast` is the actor-side primitive that surfaces
+// publish-path parse failures (and other recoverable errors) as kernel
+// snapshot state. PR-F deleted the bespoke FFI symbol that used to be the
+// only Swift caller of this primitive, but the primitive itself stays —
+// the `dispatch_action` JSON-decode path emits the same `ShowToast` when a
+// host hands it malformed action JSON.
 
 /// Drain the update channel until either a snapshot containing
 /// `last_error_toast` with the given substring appears or the deadline passes.
@@ -134,10 +146,12 @@ fn find_toast_in_updates(
 
 #[test]
 fn show_toast_command_surfaces_message_in_snapshot() {
-    // Finding 3 (codex-batch review e895c09): the FFI layer routes malformed
-    // JSON through `ActorCommand::ShowToast`; this test verifies the actor
-    // thread routes that command to `kernel.set_last_error_toast` and the
-    // message appears in the next snapshot emission.
+    // The `dispatch_action` decoder (and every other in-actor handler that
+    // needs to surface a recoverable failure) emits
+    // `ActorCommand::ShowToast`; the actor folds it into
+    // `kernel.set_last_error_toast`, which appears in the next snapshot
+    // emission as `last_error_toast`. This test pins that primitive
+    // end-to-end via `spawn_actor`.
     let (tx, rx) = nmp_core::testing::spawn_actor();
     tx.send(ActorCommand::Start {
         visible_limit: 64,
