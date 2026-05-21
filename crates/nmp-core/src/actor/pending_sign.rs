@@ -46,7 +46,7 @@ pub(crate) struct PendingSign {
     /// the target has to survive the remote-sign park (otherwise a bunker
     /// user's group event would silently fall back to the wrong relay set).
     pub target: PublishTarget,
-    /// Action correlation_id to report in `last_action_result` once the parked
+    /// Action correlation_id to report in `action_results` once the parked
     /// publish settles, when it differs from the eventual event id. Set on the
     /// `PublishNote` dispatch path: the host received a registry-minted id
     /// before this remote-sign op was parked, and the event id is only known

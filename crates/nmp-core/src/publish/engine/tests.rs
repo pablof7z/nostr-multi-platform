@@ -153,12 +153,12 @@ fn engine_take_completed_reports_mixed_accepted_and_failed_split() {
 }
 
 #[test]
-fn correlation_id_override_is_reported_in_last_terminal_not_the_handle() {
+fn correlation_id_override_is_reported_in_pending_terminal_not_the_handle() {
     // THE FIX: a `PublishNote` dispatch mints a random correlation_id (the
     // event id is unknown — the actor signs the event). When the publish
-    // settles, `last_terminal()` must report that minted id, NOT the publish
-    // handle (== event id). Without the override the host's spinner — keyed
-    // on the dispatch return value — could never be cleared.
+    // settles, the drained terminal must report that minted id, NOT the
+    // publish handle (== event id). Without the override the host's spinner —
+    // keyed on the dispatch return value — could never be cleared.
     let mut outbox = StaticOutbox::default();
     outbox
         .author_writes
@@ -182,12 +182,12 @@ fn correlation_id_override_is_reported_in_last_terminal_not_the_handle() {
         .unwrap();
 
     // The scripted OK settled the publish synchronously inside start_publish.
-    let terminal = engine
-        .last_terminal()
-        .expect("a settled publish must record a LastTerminal");
+    let drained = engine.take_pending_terminals();
+    assert_eq!(drained.len(), 1, "a settled publish records one terminal");
+    let terminal = &drained[0];
     assert_eq!(
         terminal.correlation_id, minted_correlation_id,
-        "last_terminal must report the minted correlation_id, not the handle"
+        "the terminal must report the minted correlation_id, not the handle"
     );
     assert_ne!(
         terminal.correlation_id, "ev-publishnote",
@@ -197,7 +197,7 @@ fn correlation_id_override_is_reported_in_last_terminal_not_the_handle() {
 }
 
 #[test]
-fn no_correlation_id_override_falls_back_to_handle_in_last_terminal() {
+fn no_correlation_id_override_falls_back_to_handle_in_pending_terminal() {
     // The pre-existing behaviour for every non-dispatch publish path
     // (`react`, `follow`, pre-signed `Publish`): with no override, the
     // terminal verdict reports the publish handle (== event id). This guards
@@ -223,11 +223,10 @@ fn no_correlation_id_override_falls_back_to_handle_in_last_terminal() {
         )
         .unwrap();
 
-    let terminal = engine
-        .last_terminal()
-        .expect("a settled publish must record a LastTerminal");
+    let drained = engine.take_pending_terminals();
+    assert_eq!(drained.len(), 1, "a settled publish records one terminal");
     assert_eq!(
-        terminal.correlation_id, "ev-presigned",
+        drained[0].correlation_id, "ev-presigned",
         "with no override the terminal verdict reports the handle (event id)"
     );
 }
@@ -236,10 +235,9 @@ fn no_correlation_id_override_falls_back_to_handle_in_last_terminal() {
 fn two_terminals_in_one_tick_both_appear_in_pending() {
     // Direction review #29 — THE SPINNER-HANG FIX at the engine layer.
     //
-    // Before the fix, `last_terminal` was a sticky scalar: when two actions
-    // settled between two snapshot emits, the second OVERWROTE the first and
-    // the host's spinner for the first action hung forever. `pending_terminals`
-    // ACCUMULATES — both settlements survive until the kernel drains them.
+    // `pending_terminals` ACCUMULATES — when two actions settle between two
+    // snapshot emits, both settlements survive until the kernel drains them,
+    // so neither host spinner hangs.
     //
     // Both publishes settle synchronously inside `start_publish` (the
     // `ReplayDispatcher` returns scripted OK acks), and crucially we do NOT
@@ -296,17 +294,6 @@ fn two_terminals_in_one_tick_both_appear_in_pending() {
         ids,
         vec!["tick-ev-1", "tick-ev-2"],
         "both correlation_ids appear in the drained pending terminals"
-    );
-
-    // The sticky `last_terminal` scalar is preserved (backward compat) — it
-    // still reports the MOST RECENT settlement.
-    assert_eq!(
-        engine
-            .last_terminal()
-            .expect("last_terminal stays populated after a drain")
-            .correlation_id,
-        "tick-ev-2",
-        "last_terminal is the sticky scalar — most recent verdict, never drained"
     );
 
     // Pure drain: a second call yields nothing.

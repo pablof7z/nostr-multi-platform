@@ -222,7 +222,7 @@ pub enum ActorCommand {
     /// The actor signs the event, so its `id` is unknown at dispatch time and
     /// `preferred_action_id()` could not pre-bind the host's correlation_id to
     /// it. Threading the minted id here makes the publish engine report it in
-    /// `last_action_result` (instead of the signed event's `id`), so the host
+    /// `action_results` (instead of the signed event's `id`), so the host
     /// spinner keyed on the dispatch return value can be cleared. `None` for
     /// the legacy non-dispatch callers — the engine then falls back to the
     /// publish handle (== event id), preserving the prior behaviour.
@@ -243,7 +243,7 @@ pub enum ActorCommand {
     /// `correlation_id` is the registry-minted action id when this command
     /// originates from `nmp_app_dispatch_action` (`PublishAction::PublishProfile`).
     /// Threading it through makes the publish engine report it in
-    /// `last_action_result` so the host spinner keyed on the dispatch return
+    /// `action_results` so the host spinner keyed on the dispatch return
     /// value can be cleared. `None` for non-dispatch callers.
     PublishProfile {
         fields: serde_json::Map<String, serde_json::Value>,

@@ -26,7 +26,7 @@ pub trait ActionModule: Send + Sync + 'static {
 
     /// Optional: suggest the correlation_id the registry should assign to
     /// this action instead of the auto-generated one. Returning `Some(id)`
-    /// makes `dispatch_action`'s return value and `last_action_result` in the
+    /// makes `dispatch_action`'s return value and `action_results` in the
     /// snapshot use the same identifier — a requirement for hosts that key
     /// spinners on the returned id.
     ///

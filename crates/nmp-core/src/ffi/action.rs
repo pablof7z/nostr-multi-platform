@@ -370,7 +370,7 @@ fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str
             // an executor whose `ActorCommand` settles asynchronously (the
             // `nmp.publish` `PublishNote` path — the actor signs the event)
             // can thread it onto the command. The publish engine then reports
-            // this id in `last_action_result`, matching the host's spinner
+            // this id in `action_results`, matching the host's spinner
             // key. For pre-signed `Publish` actions the id is redundant
             // (preferred_action_id already bound it to the event id).
             match execute_action(app, namespace, action_json, &correlation_id) {
@@ -551,8 +551,8 @@ mod tests {
     ///
     /// This is the round-trip contract: a host that keys a spinner on the
     /// returned `correlation_id` must see the same value in the snapshot's
-    /// `last_action_result.correlation_id` (which equals the publish engine's
-    /// `PublishHandle` == event `id`).
+    /// `action_results` entry `correlation_id` (which equals the publish
+    /// engine's `PublishHandle` == event `id`).
     #[test]
     fn dispatch_publish_action_returns_event_id_as_correlation_id() {
         with_app(|app| {
@@ -573,7 +573,7 @@ mod tests {
             assert_eq!(
                 id, expected_id,
                 "Publish action must return the event.id as correlation_id so \
-                 dispatch_action return and last_action_result share the same identifier"
+                 dispatch_action return and action_results share the same identifier"
             );
         });
     }

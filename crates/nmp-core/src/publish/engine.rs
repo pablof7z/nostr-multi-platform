@@ -96,12 +96,11 @@ pub struct TerminalOutcome {
     pub failed: Vec<(RelayUrl, String)>,
 }
 
-/// Direction review #24: the sticky "most recent terminal action result" the
-/// engine retains so the kernel can surface a `last_action_result` snapshot
-/// projection. Unlike `recently_completed` (which the kernel *drains* via
-/// `take_completed`), this field is *overwritten* — never cleared — so a
-/// snapshot taken at any point after a publish settles still reports the last
-/// terminal verdict. The host reads it to clear a per-action spinner.
+/// Direction review #29: one terminal action result the engine records into
+/// `pending_terminals` so the kernel can drain it into the `action_results`
+/// snapshot projection. The host reads `action_results` to clear a per-action
+/// spinner — each tick surfaces every action that settled, not just the most
+/// recent.
 ///
 /// `correlation_id` is the `PublishHandle` (== `event_id` for publish actions).
 /// `status` uses the engine's internal vocabulary `"ok" | "failed" |
@@ -183,21 +182,12 @@ pub struct PublishEngine {
     /// [`PublishEngine::take_completed`] after every engine call to update
     /// the `PublishQueueEntry` projection iOS reads.
     recently_completed: BTreeMap<PublishHandle, TerminalOutcome>,
-    /// Direction review #24: the most recent terminal action result, retained
-    /// (overwritten, never drained) so the kernel can emit a
-    /// `last_action_result` snapshot projection. `None` until the first
-    /// publish settles. Every site that records into `recently_completed`
-    /// (and `cancel_publish`, which does not) also overwrites this so the
-    /// host always has a terminal signal to clear its spinner.
-    last_terminal: Option<LastTerminal>,
     /// Direction review #29: every terminal action result that settled since
-    /// the last drain. Unlike `last_terminal` (a sticky scalar that is
-    /// *overwritten* on every settlement), this Vec *accumulates* — so when
-    /// two actions reach a terminal state between two snapshot emits, both are
-    /// retained. The kernel drains it via [`Self::take_pending_terminals`]
-    /// into the `action_results` snapshot projection so the host can resolve
-    /// every spinner, not just the most recent. Populated alongside every
-    /// `last_terminal` overwrite.
+    /// the last drain. This Vec *accumulates* — so when two actions reach a
+    /// terminal state between two snapshot emits, both are retained. The
+    /// kernel drains it via [`Self::take_pending_terminals`] into the
+    /// `action_results` snapshot projection so the host can resolve every
+    /// spinner, not just the most recent.
     pending_terminals: Vec<LastTerminal>,
 }
 
@@ -220,7 +210,6 @@ impl PublishEngine {
             signer,
             needs_in_flight_rebuild: false,
             recently_completed: BTreeMap::new(),
-            last_terminal: None,
             pending_terminals: Vec::new(),
         }
     }
@@ -267,7 +256,7 @@ impl PublishEngine {
     /// Drive a `PublishAction` into the engine.
     ///
     /// `correlation_id_override` is the action correlation_id to report in
-    /// `last_action_result` when it differs from the publish handle — set for
+    /// `action_results` when it differs from the publish handle — set for
     /// the `PublishNote` dispatch path (the actor signs the event, so the host
     /// received a registry-minted id, not the event id). `None` for every
     /// other caller: the terminal verdict then reports the handle, preserving
@@ -369,11 +358,9 @@ impl PublishEngine {
         // Direction review #24: cancellation is a terminal action result, but
         // it never flows through `recently_completed` (the kernel surfaces
         // "cancelled" separately via `set_publish_entry_terminal`). Record it
-        // here directly so `last_action_result` clears the host spinner. The
-        // overwrite happens unconditionally — even a cancel for an unknown /
-        // already-settled handle is a terminal verdict the host asked for.
-        // Direction review #29: also append to `pending_terminals` so a cancel
-        // settling in the same tick as another action is not overwritten.
+        // here directly so `action_results` clears the host spinner — even a
+        // cancel for an unknown / already-settled handle is a terminal verdict
+        // the host asked for.
         self.record_terminal(LastTerminal {
             correlation_id: handle,
             status: "cancelled",
@@ -575,17 +562,6 @@ impl PublishEngine {
             .collect()
     }
 
-    /// Direction review #24: the most recent terminal action result, retained
-    /// for the kernel's `last_action_result` snapshot projection. Unlike
-    /// [`Self::take_completed`] this is a non-draining read — the field is
-    /// overwritten when the next action settles, never cleared — so a snapshot
-    /// taken at any time after a publish settles still reports the last
-    /// verdict. `None` until the first publish settles. The kernel translates
-    /// the internal `"ok"` status to the wire-level `"published"`.
-    pub(crate) fn last_terminal(&self) -> Option<&LastTerminal> {
-        self.last_terminal.as_ref()
-    }
-
     /// D6 FFI mapping path: convert a `PublishEngineError` into a snapshot
     /// `RecentFailure` row and bump the view rev. The actor / FFI adapter
     /// calls this for any error returned from `start_publish` /
@@ -727,7 +703,7 @@ impl PublishEngine {
         // Direction review #24: NoTargets is a terminal "failed" outcome — the
         // publish never gets queued and `start_publish` returns Err(NoTargets),
         // so it never reaches the `recently_completed` / `on_ack` paths.
-        // Record it here so `last_action_result` reports the failure and the
+        // Record it here so `action_results` reports the failure and the
         // host clears its spinner instead of waiting on an op that never ran.
         //
         // Report the dispatch correlation_id when one was supplied (the
@@ -743,24 +719,19 @@ impl PublishEngine {
         self.view.bump_rev();
     }
 
-    /// Direction review #29: record one terminal action verdict. Overwrites
-    /// the sticky `last_terminal` scalar (backward-compat — `last_action_result`
-    /// still reports the most recent) AND appends to `pending_terminals` (the
-    /// per-tick drain that fixes the spinner-hang bug — two settlements in one
-    /// tick both survive). Every site that produces a terminal verdict routes
-    /// through here so the two stores can never diverge.
+    /// Direction review #29: record one terminal action verdict by appending
+    /// to `pending_terminals` (the per-tick drain that fixes the spinner-hang
+    /// bug — two settlements in one tick both survive). Every site that
+    /// produces a terminal verdict routes through here.
     fn record_terminal(&mut self, terminal: LastTerminal) {
-        self.last_terminal = Some(terminal.clone());
         self.pending_terminals.push(terminal);
     }
 
     /// Direction review #29: drain every terminal verdict recorded since the
     /// last call. The kernel calls this from the snapshot path
     /// (`make_update` → `take_action_results_projection`) so each tick surfaces
-    /// every action that settled — unlike `last_terminal()` (a sticky scalar
-    /// that only reports the most recent). Pure drain: after this call the
-    /// engine retains no per-tick terminal history. `last_terminal` is left
-    /// untouched (it is the separate non-draining backward-compat signal).
+    /// every action that settled. Pure drain: after this call the engine
+    /// retains no per-tick terminal history.
     pub(crate) fn take_pending_terminals(&mut self) -> Vec<LastTerminal> {
         std::mem::take(&mut self.pending_terminals)
     }

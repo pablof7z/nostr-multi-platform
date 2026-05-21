@@ -251,24 +251,14 @@ impl Kernel {
             serde_json::to_value(self.relay_edit_rows_snapshot())
                 .unwrap_or(serde_json::Value::Null),
         );
-        // Direction review #24: the most recent terminal action result, so a
-        // host can clear a per-action spinner (published / failed / cancelled)
-        // without polling. `null` when no action has settled yet. This is a
-        // direct read of the publish engine's sticky `last_terminal` field —
-        // it is NOT drained, so every snapshot tick after a publish settles
-        // still reports the last verdict.
-        projections.insert(
-            "last_action_result".to_string(),
-            self.last_action_result_projection(),
-        );
         // Direction review #29: drain EVERY terminal that settled since the
-        // last emit into the `action_results` array. The sticky
-        // `last_action_result` scalar above only ever reports the most recent
-        // verdict — if two actions settled in the same tick the host would
-        // never see the first, and its spinner would hang forever. This key
-        // is absent in steady state (drain returns `Null` → not inserted) and
-        // a `[{correlation_id, status, error}, ...]` array whenever any action
-        // settled this tick. The host resolves each spinner by correlation_id.
+        // last emit into the `action_results` array. The host can clear a
+        // per-action spinner (published / failed / cancelled) without polling.
+        // If two actions settled in the same tick the host sees both, so no
+        // spinner hangs. This key is absent in steady state (drain returns
+        // `Null` → not inserted) and a `[{correlation_id, status, error}, ...]`
+        // array whenever any action settled this tick. The host resolves each
+        // spinner by correlation_id.
         let action_results = self.take_action_results_projection();
         if !action_results.is_null() {
             projections.insert("action_results".to_string(), action_results);
