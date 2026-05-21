@@ -603,6 +603,125 @@ fn d11_negative_fixture_clean() {
     );
 }
 
+// ─── D13 (DM-path raw-key isolation, ADR-0026) ───────────────────────────────
+
+#[test]
+fn d13_part_a_positive_fixture_fires() {
+    // Stage pos.rs in isolation so neg.rs cannot pollute the assertion.
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d13_pos");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let pos_src = workspace.join(fixture_path("d13/pos.rs"));
+    std::fs::copy(&pos_src, tmp.join("pos.rs")).expect("copy pos fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    // D13 Part A is path-scoped to `dm.rs` by default + marker-driven —
+    // the staged fixture under `target/` is opted in via `--d13-extra-scope`
+    // (mirrors `--d9-extra-scope`).
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d13-extra-scope",
+        "doctrine_lint_d13_pos",
+    ]);
+    assert_eq!(
+        code, 1,
+        "d13 positive must exit 1; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[D13]"),
+        "d13 positive must emit ≥1 D13 finding; stdout:\n{}",
+        stdout
+    );
+    // Each banned shape in the fixture must surface so a regression that
+    // silently swallows one cannot pass this test.
+    for token in [
+        "active_local_keys",
+        ".secret_key()",
+        "Keys::parse",
+        "marmot_local_nsec",
+    ] {
+        assert!(
+            stdout.contains(token),
+            "d13 positive must name banned token `{}`; stdout:\n{}",
+            token,
+            stdout
+        );
+    }
+}
+
+#[test]
+fn d13_negative_fixture_clean() {
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d13_neg");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let neg_src = workspace.join(fixture_path("d13/neg.rs"));
+    std::fs::copy(&neg_src, tmp.join("neg.rs")).expect("copy neg fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d13-extra-scope",
+        "doctrine_lint_d13_neg",
+    ]);
+    assert_eq!(
+        code, 0,
+        "d13 negative must exit 0; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.contains("error[D13]"),
+        "d13 negative must produce zero D13 findings; stdout:\n{}",
+        stdout
+    );
+}
+
+#[test]
+fn d13_part_b_positive_fixture_fires_outside_marmot() {
+    // Part B is path-derived: any non-marmot, non-testing, non-actor,
+    // non-ffi file that reads `marmot_local_nsec` is a violation. Stage
+    // the fixture under `target/` (outside the carve-outs) — but path
+    // matching uses contains("/crates/") etc., so staging at
+    // `target/doctrine_lint_d13_part_b_pos/` puts the file outside the
+    // exemption set entirely, which is the in-scope condition.
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d13_part_b_pos");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let pos_src = workspace.join(fixture_path("d13/part_b_pos.rs"));
+    std::fs::copy(&pos_src, tmp.join("part_b_pos.rs")).expect("copy fixture");
+
+    // Stage it inside a fake `crates/some-app-crate/src/` tree so Part B's
+    // scope check (`contains("/crates/")` + outside-marmot/testing/ffi/actor)
+    // resolves to in-scope.
+    let crate_src = tmp.join("crates").join("some-app-crate").join("src");
+    std::fs::create_dir_all(&crate_src).expect("create fake crate src");
+    std::fs::copy(&pos_src, crate_src.join("part_b_pos.rs"))
+        .expect("copy fixture into fake crate");
+
+    let crate_src_str = crate_src.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&["--path", &crate_src_str]);
+    assert_eq!(
+        code, 1,
+        "d13 Part B positive must exit 1; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[D13]"),
+        "d13 Part B positive must emit a D13 finding; stdout:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("marmot_local_nsec"),
+        "d13 Part B finding must name `marmot_local_nsec`; stdout:\n{}",
+        stdout
+    );
+}
+
 // ─── D15 (host-closure invocations must be panic-guarded) ────────────────────
 
 #[test]
