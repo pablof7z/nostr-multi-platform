@@ -71,7 +71,7 @@ impl ActionModule for SendDmAction {
     }
     fn execute(
         action: Self::Action,
-        _correlation_id: &str,
+        correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
         let dm_input = DmInput {
@@ -80,9 +80,16 @@ impl ActionModule for SendDmAction {
             reply_to: action.reply_to,
         };
         let rumor = build_dm_rumor(&dm_input, "");
+        // Thread the registry-minted `correlation_id` onto the actor command so
+        // the DM send participates in the action_results / action_stages round
+        // trip — the actor records `Requested` on receipt and the per-envelope
+        // `publish_signed_event` calls thread the id into the publish engine's
+        // `correlation_id_override`. Without this, the host's spinner keyed on
+        // the dispatched id would hang forever.
         send(ActorCommand::SendGiftWrappedDm {
             rumor,
             recipient_pubkey: action.recipient_pubkey,
+            correlation_id: Some(correlation_id.to_string()),
         });
         Ok(())
     }
@@ -108,9 +115,15 @@ pub fn send_dm_command(action_json: &str) -> Result<ActorCommand, String> {
     // `pubkey` field is never used by `dm.rs::build_nostr_rumor`).
     let rumor = build_dm_rumor(&dm_input, "");
 
+    // `send_dm_command` is the JSON → ActorCommand helper used by
+    // conformance harnesses; it has no host-minted correlation_id (the
+    // dispatch path runs through `SendDmAction::execute` instead, which
+    // threads its `correlation_id` argument). Non-dispatch sends report
+    // their terminal verdict against the gift-wrap envelope id as before.
     Ok(ActorCommand::SendGiftWrappedDm {
         rumor,
         recipient_pubkey: input.recipient_pubkey,
+        correlation_id: None,
     })
 }
 
@@ -176,6 +189,7 @@ mod tests {
             ActorCommand::SendGiftWrappedDm {
                 rumor,
                 recipient_pubkey,
+                correlation_id,
             } => {
                 assert_eq!(rumor.kind, 14, "the carried rumor is kind:14");
                 assert_eq!(rumor.content, "hello there");
@@ -190,6 +204,15 @@ mod tests {
                     .tags
                     .iter()
                     .any(|t| t == &vec!["p".to_string(), RECIPIENT.to_string()]));
+                // The standalone helper carries no host-minted correlation_id
+                // (the dispatch path threads its own through
+                // `SendDmAction::execute`); confirm the variant defaults to
+                // `None` so a conformance-harness send keeps reporting under
+                // the gift-wrap envelope id, as it did before.
+                assert!(
+                    correlation_id.is_none(),
+                    "send_dm_command JSON helper must not invent a correlation_id"
+                );
             }
             other => panic!("expected SendGiftWrappedDm, got {other:?}"),
         }

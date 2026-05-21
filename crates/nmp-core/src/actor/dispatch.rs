@@ -395,13 +395,38 @@ pub(super) fn dispatch_command(
         ActorCommand::SendGiftWrappedDm {
             rumor,
             recipient_pubkey,
+            correlation_id,
         } => {
             // NIP-17: seal + gift-wrap the kind:14 rumor into two kind:1059
             // envelopes (recipient + self-copy) and publish them. The gift-wrap
             // crypto runs here on the actor thread (D7). `created_at == 0` is
             // re-stamped from the kernel clock inside the handler.
-            let outbound =
-                commands::send_gift_wrapped_dm(ctx.identity, ctx.kernel, rumor, &recipient_pubkey);
+            //
+            // PR-G — when the send originates from `dispatch_action`
+            // (`nmp.nip17.send`), the host received a registry-minted
+            // correlation_id and is waiting on `action_results` / the
+            // action_stages mirror to see the verdict. Record `Requested`
+            // here (mirroring the `PublishSignedEvent` precedent above) so
+            // the lifecycle history starts at dispatch time; the handler's
+            // early-exit failure branches record terminal `Failed` entries
+            // and the per-envelope `publish_signed_event` calls thread the
+            // id into the publish engine's `correlation_id_override` so the
+            // kind:1059 terminal verdict reaches `action_results` under the
+            // dispatched id (not the gift-wrap envelope's event id).
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
+            let outbound = commands::send_gift_wrapped_dm(
+                ctx.identity,
+                ctx.kernel,
+                rumor,
+                &recipient_pubkey,
+                correlation_id,
+            );
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
