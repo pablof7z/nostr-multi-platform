@@ -9,10 +9,13 @@
 //! toast (explicit failure, never silent, never a panic — D6); bunker users are
 //! excluded for now.
 //!
-//! Bunker support requires the `RemoteSignerHandle::nip44_encrypt` seam built in
-//! ADR-0026 (PR #125). The seam exists; wiring it into the seal step is the
-//! Phase 2 bunker-DM story — deferred until `DmInboxProjection` (the receive
-//! side) ships so both paths can be tested end-to-end.
+//! Bunker support requires a new `nmp_nip59::gift_wrap_with_signer` primitive
+//! that calls `nostr::nips::nip59::make_seal(signer, receiver, rumor)` for the
+//! kind:13 seal step (NIP-44 using the sender's account key via ADR-0026's
+//! `RemoteSignerHandle::nip44_encrypt`) and generates an ephemeral key locally
+//! for the outer kind:1059 wrap. The blocker is that `nmp_nip59::gift_wrap`
+//! currently thin-wraps `nostr::EventBuilder::gift_wrap(&Keys, ...)`, which
+//! requires raw keys end-to-end; the ADR-0026 seam exists but is not yet wired.
 //!
 //! It deliberately does NOT read the `NmpApp::marmot_local_nsec` FFI field to
 //! bypass the actor: that slot is the ADR-0025 Marmot exception and must not be

@@ -320,14 +320,15 @@ pub enum ActorCommand {
     ///
     /// # Phase 1 — local keys only
     ///
-    /// `nmp_nip59::gift_wrap` requires `&nostr::Keys` (NIP-44 ECDH seal). A
-    /// remote (NIP-46) signer exposes no accessible local key, so a bunker
-    /// account CANNOT gift-wrap a DM through this path. The actor detects the
-    /// missing local key and surfaces a toast (D6 — explicit failure, never
-    /// silent, never a panic). Bunker support requires using the
-    /// `RemoteSignerHandle::nip44_encrypt` seam from ADR-0026 on the seal
-    /// step — deferred to the bunker-DM phase after `DmInboxProjection`
-    /// ships so both paths can be tested end-to-end.
+    /// `nmp_nip59::gift_wrap` requires `&nostr::Keys` because it thin-wraps
+    /// `nostr::EventBuilder::gift_wrap(&Keys, ...)` — raw keys end-to-end. A
+    /// remote (NIP-46) signer exposes no local key, so bunker accounts cannot
+    /// use this path; the actor detects the missing key and surfaces a toast
+    /// (D6 — explicit failure, never silent, never a panic). Bunker support
+    /// requires a new `nmp_nip59::gift_wrap_with_signer` that calls
+    /// `nostr::nips::nip59::make_seal(signer, receiver, rumor)` for the
+    /// kind:13 seal step (NIP-44 via `RemoteSignerHandle::nip44_encrypt`,
+    /// ADR-0026) and mints an ephemeral key locally for the kind:1059 wrap.
     SendGiftWrappedDm {
         rumor: crate::substrate::UnsignedEvent,
         recipient_pubkey: String,
