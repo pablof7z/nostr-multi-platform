@@ -79,9 +79,12 @@ struct ThreadScreen: View {
         ScrollViewReader { proxy in
         ScrollView {
             LazyVStack(spacing: 0) {
-                // "Show N earlier" affordance
+                // "Show N earlier" affordance — kernel pre-formats the label
+                // (aim.md §6 anti-pattern #1). `??` falls back to empty for
+                // older kernel builds; the `previousCount > 0` gate suppresses
+                // an empty row in that case.
                 if thread.previousCount > 0 {
-                    earlierAffordance(count: thread.previousCount)
+                    earlierAffordance(label: thread.previousCountLabel ?? "")
                 }
 
                 // All thread items — focused one is highlighted
@@ -114,12 +117,16 @@ struct ThreadScreen: View {
                     }
                 }
 
-                // More replies below affordance
+                // More replies below affordance. Kernel pre-formats the
+                // pluralized label (aim.md §6 anti-pattern #1: no native-side
+                // pluralization). `??` falls back to the empty string for
+                // older kernel builds that predate `nextCountLabel` — the row
+                // collapses naturally because `nextCount > 0` is the gate.
                 if thread.nextCount > 0 {
                     HStack(spacing: 4) {
                         Image(systemName: "ellipsis.bubble")
                             .font(.system(size: 13))
-                        Text("\(thread.nextCount) more repl\(thread.nextCount == 1 ? "y" : "ies")")
+                        Text(thread.nextCountLabel ?? "")
                             .font(.callout)
                     }
                     .foregroundStyle(.secondary)
@@ -132,23 +139,28 @@ struct ThreadScreen: View {
             }
         }
         .accessibilityIdentifier("thread-detail-list")
-        .onAppear {
-            // Scroll to focused event once view appears
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                proxy.scrollTo(thread.focusedEventId, anchor: .center)
-            }
+        // Scroll to the focused event whenever the kernel snapshot delivers
+        // a focused id — fires on first appearance (`initial: true`) and on
+        // any subsequent snapshot tick that changes the focused row. This is
+        // a snapshot observer, not a time-delayed sleep (AGENTS.md:60 — "No
+        // polling — ever": no `DispatchQueue.main.asyncAfter` waiting for the
+        // `LazyVStack` to lay out before we act). The id changing IS the
+        // event we react to; SwiftUI re-runs this closure after layout has
+        // resolved row identities, so `proxy.scrollTo` resolves the anchor.
+        .onChange(of: thread.focusedEventId, initial: true) { _, newId in
+            proxy.scrollTo(newId, anchor: .center)
         }
         } // ScrollViewReader
     }
 
     // MARK: – Sub-views
 
-    private func earlierAffordance(count: Int) -> some View {
+    private func earlierAffordance(label: String) -> some View {
         HStack(spacing: 4) {
             Image(systemName: "arrow.up.circle")
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(Color.accentColor)
-            Text("Show \(count) earlier \(count == 1 ? "note" : "notes")")
+            Text(label)
                 .font(.callout)
                 .foregroundStyle(Color.accentColor)
             Spacer()

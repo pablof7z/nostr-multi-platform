@@ -553,6 +553,8 @@ impl Kernel {
         } else {
             "ready"
         };
+        let previous_count_label = format_previous_count_label(previous_count);
+        let next_count_label = format_next_count_label(next_count);
 
         Some(ThreadViewPayload {
             focused_event_id: focused_id.clone(),
@@ -561,6 +563,8 @@ impl Kernel {
             items,
             previous_count,
             next_count,
+            previous_count_label,
+            next_count_label,
         })
     }
 
@@ -598,5 +602,50 @@ impl Kernel {
         root_event_id(event)
             .or_else(|| first_event_ref(event))
             .or_else(|| Some(focused_id.to_string()))
+    }
+}
+
+/// Pluralized affordance label for the "Show N earlier" header above the
+/// focused thread item. Empty when `count == 0` so the host renders nothing
+/// without a branch (host renders `Text(label)` unconditionally; an empty
+/// string collapses to a no-op). Plain English form — see aim.md §6
+/// anti-pattern #1: native must not duplicate pluralization.
+fn format_previous_count_label(count: usize) -> String {
+    match count {
+        0 => String::new(),
+        1 => "Show 1 earlier note".to_string(),
+        n => format!("Show {n} earlier notes"),
+    }
+}
+
+/// Pluralized affordance label for the "N more replies" footer below the
+/// focused thread item. Empty when `count == 0`. Same rationale as
+/// [`format_previous_count_label`].
+fn format_next_count_label(count: usize) -> String {
+    match count {
+        0 => String::new(),
+        1 => "1 more reply".to_string(),
+        n => format!("{n} more replies"),
+    }
+}
+
+#[cfg(test)]
+mod thread_label_tests {
+    use super::{format_next_count_label, format_previous_count_label};
+
+    #[test]
+    fn previous_count_label_pluralizes_correctly() {
+        assert_eq!(format_previous_count_label(0), "");
+        assert_eq!(format_previous_count_label(1), "Show 1 earlier note");
+        assert_eq!(format_previous_count_label(2), "Show 2 earlier notes");
+        assert_eq!(format_previous_count_label(42), "Show 42 earlier notes");
+    }
+
+    #[test]
+    fn next_count_label_pluralizes_correctly() {
+        assert_eq!(format_next_count_label(0), "");
+        assert_eq!(format_next_count_label(1), "1 more reply");
+        assert_eq!(format_next_count_label(2), "2 more replies");
+        assert_eq!(format_next_count_label(99), "99 more replies");
     }
 }
