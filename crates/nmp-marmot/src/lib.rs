@@ -39,12 +39,12 @@
 //! ## Two-layer architecture
 //!
 //! 1. **Substrate module layer** ([`domain`], [`view`], [`action`]) — mirrors
-//!    `nmp-nip29`. Stateless `DomainModule` / `ActionModule` trait impls plus
-//!    plain view types, exported as public types. ActionModules emit an
-//!    unsigned [`action::PublishPlan`] + [`action::RelayPin`] carrier; the
-//!    actor's
-//!    signer-bridge signs. These impls carry NO MDK types — they satisfy the
-//!    kernel-boundary grep.
+//!    `nmp-nip29`. Stateless `ActionModule` trait impl ([`action::PublishKeyPackageAction`])
+//!    plus plain view types, exported as public types. These impls carry NO
+//!    MDK types — they satisfy the kernel-boundary grep. Group-scoped ops
+//!    (`CreateGroup`, `InviteMember`, etc.) require handle-scoped MLS state
+//!    and are covered by the bespoke `nmp_app_chirp_marmot_dispatch` C cluster
+//!    (ADR-0025) until a state-transport mechanism exists.
 //! 2. **Service layer** ([`service::MarmotService`]) — the real MDK-driving
 //!    API. Holds an `MDK<S>` + `nostr::Keys`. This is what the in-crate
 //!    round-trip tests exercise and what a headless integration-test driver
@@ -61,11 +61,8 @@
 //!
 //! ## Relay routing
 //!
-//! Group events (kind:445) are relay-pinned to the group relay via the
-//! [`action::PublishPlan`] / [`action::RelayPin`] carrier (ADR-0012,
-//! `InterestShape::relay_pin`). KeyPackage events (kind:30443/443) use
-//! standard author-write outbox routing. Interest helpers live in
-//! [`interest`].
+//! KeyPackage events (kind:30443/443) use standard author-write outbox
+//! routing. Interest helpers live in [`interest`].
 
 pub mod action;
 pub mod domain;

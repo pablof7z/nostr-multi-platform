@@ -1,8 +1,8 @@
 //! `nmp-marmot` in-crate tests.
 //!
 //! Two families:
-//! 1. **Substrate module behaviour** — `ActionModule` impls emit
-//!    correctly-pinned `PublishPlan`s.
+//! 1. **Substrate module behaviour** — `PublishKeyPackageAction` validates
+//!    relay-list coverage.
 //! 2. **MDK + NIP-59 round-trip** — publish key package → create group →
 //!    gift-wrap Welcome → unwrap → join → message round-trip using in-memory
 //!    storage + explicit keys, driven entirely through the public
@@ -17,38 +17,11 @@ use mdk_core::prelude::{MessageProcessingResult, NostrGroupConfigData};
 use mdk_sqlite_storage::MdkSqliteStorage;
 use nostr::{EventBuilder, Keys, Kind, PublicKey, RelayUrl};
 
-use crate::action::{
-    CreateGroupAction, GroupActionInput, PublishKeyPackageAction, PublishKeyPackageInput,
-};
+use crate::action::{PublishKeyPackageAction, PublishKeyPackageInput};
 use crate::service::MarmotService;
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 
 // ─── ActionModule behaviour ──────────────────────────────────────────────────
-
-#[test]
-fn create_group_action_accepts_pinned_input() {
-    let mut ctx = ActionContext { now_ms: 1 };
-    let input = GroupActionInput {
-        group_id_hex: "abcd".into(),
-        group_relay_url: "wss://group.example.com".into(),
-        fields: Default::default(),
-    };
-    CreateGroupAction::start(&mut ctx, input).expect("create group accepted");
-}
-
-#[test]
-fn group_action_rejects_missing_relay() {
-    let mut ctx = ActionContext { now_ms: 1 };
-    let input = GroupActionInput {
-        group_id_hex: "abcd".into(),
-        group_relay_url: String::new(),
-        fields: Default::default(),
-    };
-    match CreateGroupAction::start(&mut ctx, input) {
-        Err(ActionRejection::Invalid(_)) => {}
-        other => panic!("expected Invalid rejection, got {other:?}"),
-    }
-}
 
 #[test]
 fn publish_key_package_action_requires_relays() {
