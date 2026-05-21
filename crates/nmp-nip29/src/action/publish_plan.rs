@@ -81,7 +81,8 @@ impl PublishPlan {
     /// The built `UnsignedEvent` carries an empty `pubkey` placeholder — the
     /// actor derives it from the active identity at sign time and overwrites
     /// the field (see `ActorCommand::PublishUnsignedEventToRelays`).
-    /// `created_at` is stamped here; the actor does not re-stamp.
+    /// `created_at` is set to 0 here as a sentinel; the actor re-stamps it
+    /// via `kernel.now_secs()` (D7 — kernel owns the wall clock).
     ///
     /// Routes via [`ActorCommand::PublishUnsignedEventToRelays`] pinned to
     /// exactly the plan's host relay — a NIP-29 group event must reach the
@@ -96,17 +97,13 @@ impl PublishPlan {
             .pin_to
             .ok_or_else(|| "publish plan has no relay pin".to_string())?
             .relay_url;
-        let created_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
         Ok(ActorCommand::PublishUnsignedEventToRelays {
             event: UnsignedEvent {
                 pubkey: String::new(),
                 kind: self.kind,
                 tags: self.tags,
                 content: self.content,
-                created_at,
+                created_at: 0, // kernel re-stamps via now_secs() (D7)
             },
             relays: vec![relay],
         })

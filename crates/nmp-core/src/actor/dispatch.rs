@@ -315,7 +315,14 @@ pub(super) fn dispatch_command(
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::PublishUnsignedEventToRelays { event, relays } => {
+        ActorCommand::PublishUnsignedEventToRelays { mut event, relays } => {
+            // D7: kernel owns the wall clock. Executors in NIP crates set
+            // created_at = 0 as a sentinel; we re-stamp here so they never
+            // call SystemTime::now() and the FixedClock test hook stays
+            // effective end-to-end.
+            if event.created_at == 0 {
+                event.created_at = ctx.kernel.now_secs();
+            }
             let outbound = commands::publish_unsigned_event_to_relays(
                 ctx.identity,
                 ctx.kernel,

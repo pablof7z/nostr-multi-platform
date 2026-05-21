@@ -152,7 +152,8 @@ fn is_hex64(s: &str) -> bool {
 ///
 /// The `pubkey` on the built `UnsignedEvent` is a placeholder: the actor
 /// derives it from the active identity at sign time and overwrites this
-/// field. `created_at` is stamped here; the actor does not re-stamp.
+/// field. `created_at` is set to 0 as a sentinel; the actor re-stamps it
+/// via `kernel.now_secs()` (D7 — kernel owns the wall clock).
 ///
 /// Routes via [`ActorCommand::PublishUnsignedEventToRelays`] pinned to the
 /// zap request's own `relays` set — the recipient watches exactly those
@@ -177,11 +178,6 @@ pub fn zap_request_command(action_json: &str) -> Result<ActorCommand, String> {
     let relays: Vec<String> =
         relays.into_iter().filter(|r| !r.trim().is_empty()).collect();
 
-    let created_at = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-
     let mut builder = ZapRequest::to_pubkey(recipient_pubkey)
         // NIP-57: `amount` is msats. 1 sat = 1000 msat.
         .amount_msats(amount_sats.saturating_mul(1000))
@@ -192,8 +188,9 @@ pub fn zap_request_command(action_json: &str) -> Result<ActorCommand, String> {
     }
 
     // `pubkey` placeholder — the actor overwrites it at sign time.
+    // `created_at = 0` — the actor re-stamps via kernel.now_secs() (D7).
     let unsigned = builder
-        .build(String::new(), created_at)
+        .build(String::new(), 0)
         .map_err(|e| e.to_string())?;
 
     Ok(ActorCommand::PublishUnsignedEventToRelays {
