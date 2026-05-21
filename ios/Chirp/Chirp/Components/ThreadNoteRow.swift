@@ -6,6 +6,10 @@ import SwiftUI
 struct ThreadNoteRow: View {
     let item: TimelineItem
     let isFocused: Bool
+    let contentTree: ContentTreeWire?
+    let mentionProfiles: [String: MentionProfile]
+    let eventCards: [String: ChirpEventCard]
+    let timelineItems: [String: TimelineItem]
     let onAvatarTap: () -> Void
     let onLike: () -> Void
     let onReply: () -> Void
@@ -47,6 +51,10 @@ struct ThreadNoteRow: View {
 
                     NoteContentView(
                         content: item.content,
+                        contentTree: contentTree,
+                        mentionProfiles: mentionProfiles,
+                        eventCards: eventCards,
+                        timelineItems: timelineItems,
                         font: isFocused ? .body : .callout
                     )
                     .foregroundStyle(.primary)

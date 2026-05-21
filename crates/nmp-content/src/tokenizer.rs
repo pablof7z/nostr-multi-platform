@@ -200,7 +200,7 @@ fn classify_match(
     emoji_table: &HashMap<String, Url>,
 ) -> Option<Segment> {
     match kind {
-        PatternKind::NostrUri => match parse_nostr_uri(raw) {
+        PatternKind::NostrUri => match parse_nostr_uri(&canonical_nostr_uri(raw)) {
             Ok(uri) => {
                 use nmp_core::nip21::NostrUri;
                 match uri {
@@ -228,6 +228,14 @@ fn classify_match(
         PatternKind::Bolt11 => Some(Segment::Invoice(InvoiceKind::Bolt11(raw.to_string()))),
         PatternKind::Bolt12 => Some(Segment::Invoice(InvoiceKind::Bolt12(raw.to_string()))),
         PatternKind::Cashu => Some(Segment::Invoice(InvoiceKind::Cashu(raw.to_string()))),
+    }
+}
+
+fn canonical_nostr_uri(raw: &str) -> String {
+    if raw.len() >= 6 && raw[..6].eq_ignore_ascii_case("nostr:") {
+        raw.to_string()
+    } else {
+        format!("nostr:{}", raw.trim_start_matches('@'))
     }
 }
 
@@ -327,6 +335,44 @@ mod tests {
         // No URI-shaped match validates -> the regex still matches the prefix
         // but parse fails -> falls back to Text.
         assert!(matches!(tree.segments[0], Segment::Text(_)));
+    }
+
+    #[test]
+    fn social_shorthand_npub_emits_mention() {
+        use nmp_core::nip19::encode_npub;
+
+        const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+        let npub = encode_npub(PK).expect("fixture npub encodes");
+        let tree = tokenize(&format!("hello @{npub}"), &[], RenderMode::Plain);
+        assert!(tree.segments.iter().any(|seg| {
+            matches!(
+                seg,
+                Segment::Mention(nmp_core::nip21::NostrUri::Profile { pubkey, .. })
+                    if pubkey == PK
+            )
+        }));
+    }
+
+    #[test]
+    fn social_shorthand_nevent_emits_event_ref() {
+        use nmp_core::nip19::{encode_nevent, NeventData};
+
+        const ID: &str = "0000000000000000000000000000000000000000000000000000000000000001";
+        let nevent = encode_nevent(&NeventData {
+            event_id: ID.to_string(),
+            relays: vec![],
+            author: None,
+            kind: Some(1),
+        })
+        .expect("fixture nevent encodes");
+        let tree = tokenize(&format!("here is @{nevent}"), &[], RenderMode::Plain);
+        assert!(tree.segments.iter().any(|seg| {
+            matches!(
+                seg,
+                Segment::EventRef(nmp_core::nip21::NostrUri::Event { event_id, .. })
+                    if event_id == ID
+            )
+        }));
     }
 
     #[test]

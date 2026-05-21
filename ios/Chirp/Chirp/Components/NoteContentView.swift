@@ -3,17 +3,26 @@ struct NoteContentView: View {
     let content: String
     let contentTree: ContentTreeWire?
     let mentionProfiles: [String: MentionProfile]
+    let eventCards: [String: ChirpEventCard]
+    let timelineItems: [String: TimelineItem]
+    let embedDepth: Int
     var font: Font = .body
 
     init(
         content: String,
         contentTree: ContentTreeWire? = nil,
         mentionProfiles: [String: MentionProfile] = [:],
+        eventCards: [String: ChirpEventCard] = [:],
+        timelineItems: [String: TimelineItem] = [:],
+        embedDepth: Int = 0,
         font: Font = .body
     ) {
         self.content = content
         self.contentTree = contentTree
         self.mentionProfiles = mentionProfiles
+        self.eventCards = eventCards
+        self.timelineItems = timelineItems
+        self.embedDepth = embedDepth
         self.font = font
     }
 
@@ -146,6 +155,72 @@ struct NoteContentView: View {
     }
 
     private func eventReferenceView(_ uri: WireNostrUri) -> some View {
+        if embedDepth < 1, let card = eventCards[uri.primaryId] {
+            return AnyView(embeddedEventView(card))
+        }
+        if let item = timelineItems[uri.primaryId] {
+            return AnyView(embeddedItemView(item))
+        }
+        return AnyView(unavailableEventView(uri))
+    }
+
+    private func embeddedEventView(_ card: ChirpEventCard) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            embeddedHeader(
+                display: timelineItems[card.id]?.authorDisplay ?? mentionProfiles[card.authorPubkey]?.display ?? shortHex(card.authorPubkey),
+                pubkey: card.authorPubkey
+            )
+            NoteContentView(
+                content: card.content,
+                contentTree: card.contentTree,
+                mentionProfiles: mentionProfiles,
+                eventCards: eventCards,
+                timelineItems: timelineItems,
+                embedDepth: embedDepth + 1,
+                font: .callout
+            )
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+        )
+    }
+
+    private func embeddedItemView(_ item: TimelineItem) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            embeddedHeader(display: item.authorDisplay, pubkey: item.authorPubkey)
+            Text(item.contentPreview.isEmpty ? item.content : item.contentPreview)
+                .font(.callout)
+                .foregroundStyle(.primary)
+                .lineLimit(4)
+        }
+        .padding(10)
+        .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.secondary.opacity(0.18), lineWidth: 1)
+        )
+    }
+
+    private func embeddedHeader(display: String, pubkey: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "quote.bubble")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+            Text("@\(display)")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            Text(shortHex(pubkey))
+                .font(.caption2.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+    }
+
+    private func unavailableEventView(_ uri: WireNostrUri) -> some View {
         HStack(alignment: .center, spacing: 10) {
             Image(systemName: "quote.bubble")
                 .font(.callout.weight(.semibold))
