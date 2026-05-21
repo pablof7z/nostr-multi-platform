@@ -44,6 +44,7 @@ impl Kernel {
                     created_at_display,
                     status,
                     status_label,
+                    system_image: publish_event_system_image(row.kind),
                     can_retry,
                     target_relays: relays.len(),
                     target_summary,
@@ -287,6 +288,23 @@ fn publish_event_title(kind: u32) -> String {
         7 => "Reaction",
         10002 => "Relay list",
         _ => "Event",
+    }
+    .to_string()
+}
+
+/// SF Symbol name for the outbox row icon, pre-classified from the Nostr event
+/// kind. Mirrors the closed match in `publish_event_title` so the shell renders
+/// `system_image` verbatim — no Swift-side `switch item.kind` branching on a
+/// protocol concept (aim.md §4.4 / §6 anti-pattern). Default `"doc.text"`
+/// keeps the shell rendering unconditionally for any future kind.
+fn publish_event_system_image(kind: u32) -> String {
+    match kind {
+        0 => "person.crop.circle",
+        1 => "text.bubble",
+        3 => "person.2",
+        7 => "heart",
+        10002 => "antenna.radiowaves.left.and.right",
+        _ => "doc.text",
     }
     .to_string()
 }

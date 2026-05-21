@@ -354,6 +354,10 @@ fn publish_outbox_projects_pending_event_details_and_relays() {
     );
     assert_eq!(outbox[0]["status"].as_str(), Some("sending"));
     assert_eq!(outbox[0]["status_label"].as_str(), Some("Sending"));
+    // aim.md §4.4 / §6 anti-pattern: the SF Symbol name is pre-classified in
+    // Rust so the iOS shell never `switch`es on `kind` (a Nostr protocol
+    // concept). Kind 1 (text note) → `"text.bubble"`.
+    assert_eq!(outbox[0]["system_image"].as_str(), Some("text.bubble"));
     // RMP bible commandment #4: a row currently sending cannot be retried.
     // The kernel emits the decision; the shell binds it directly (no Swift
     // `if status != "sending"` branch).

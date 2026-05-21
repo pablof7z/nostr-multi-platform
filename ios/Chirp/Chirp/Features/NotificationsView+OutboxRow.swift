@@ -2,10 +2,11 @@ import SwiftUI
 
 // Per-row UI for `NotificationsView`. Lifted into a sibling file so the
 // parent screen stays focused on the summary + section composition. All
-// display strings (`statusLabel`, `targetSummary`, `attemptLabel`) and the
-// retry-enablement flag (`canRetry`) come pre-formatted from Rust
-// (`projections["publish_outbox"]`); these structs only choose colors and
-// icons — presentation, not policy (RMP bible commandment #4).
+// display strings (`statusLabel`, `targetSummary`, `attemptLabel`), the
+// SF Symbol name (`systemImage`), and the retry-enablement flag (`canRetry`)
+// come pre-formatted from Rust (`projections["publish_outbox"]`); these
+// structs only choose status-driven colors — presentation, not policy
+// (RMP bible commandment #4 / aim.md §4.4: no kind-number switches in Swift).
 
 struct OutboxEventRow: View {
     let item: PublishOutboxItem
@@ -17,7 +18,7 @@ struct OutboxEventRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: iconName)
+                Image(systemName: item.systemImage)
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(iconColor)
                     .frame(width: 22)
@@ -78,17 +79,6 @@ struct OutboxEventRow: View {
         }
         .padding(.vertical, 4)
         .accessibilityIdentifier("publish-outbox-card")
-    }
-
-    private var iconName: String {
-        switch item.kind {
-        case 0: return "person.crop.circle"
-        case 1: return "text.bubble"
-        case 3: return "person.2"
-        case 7: return "heart"
-        case 10002: return "antenna.radiowaves.left.and.right"
-        default: return "doc.text"
-        }
     }
 
     private var iconColor: Color {

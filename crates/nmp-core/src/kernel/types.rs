@@ -237,6 +237,12 @@ pub(super) struct PublishOutboxItem {
     /// Doctrine §6 anti-pattern #1: the shell renders this directly — it never
     /// switches on `status` to choose a label string. Always non-empty.
     pub(super) status_label: String,
+    /// SF Symbol name for the row icon, pre-classified from `kind`. The shell
+    /// renders this verbatim via `Image(systemName:)` so it never branches on
+    /// the Nostr kind number — `kind` is a protocol concept that belongs in
+    /// Rust (aim.md §4.4 / §6 anti-pattern: "kind-number switches in views").
+    /// Always non-empty (default `"doc.text"`).
+    pub(super) system_image: String,
     /// Pre-decided "is the Retry button enabled" flag. The kernel knows the
     /// retry-policy rule ("a row already sending cannot be retried"); the
     /// shell never reconstructs it. RMP bible commandment #4 — no native `if`

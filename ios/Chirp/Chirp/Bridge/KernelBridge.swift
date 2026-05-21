@@ -1111,6 +1111,11 @@ struct PublishOutboxItem: Decodable, Identifiable, Equatable {
     /// Doctrine §6 anti-pattern #1: the shell renders this verbatim — it
     /// never `switch`es on `status` to choose a label string. Always non-empty.
     let statusLabel: String
+    /// SF Symbol name pre-classified from the Nostr `kind` in Rust. The view
+    /// passes this directly to `Image(systemName:)` — it never branches on
+    /// `kind` to pick an icon (aim.md §4.4 / §6 anti-pattern: kind-number
+    /// switches in Swift). Always non-empty (default `"doc.text"`).
+    let systemImage: String
     /// Pre-decided "is the Retry button enabled" flag. The kernel owns the
     /// retry-policy rule ("a row already sending cannot be retried"); the
     /// shell binds this directly to `.disabled(!canRetry)` (RMP bible
