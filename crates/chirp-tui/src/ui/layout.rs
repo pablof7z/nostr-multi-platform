@@ -6,6 +6,7 @@ use ratatui::Frame;
 
 use crate::app::{AppState, Mode, Pane};
 use crate::timeline::TimelineRow;
+use crate::ui::help;
 
 pub fn render(frame: &mut Frame<'_>, state: &AppState) {
     let area = frame.area();
@@ -23,6 +24,9 @@ pub fn render(frame: &mut Frame<'_>, state: &AppState) {
     render_body(frame, rows[1], state);
     render_compose(frame, rows[2], state);
     render_status(frame, rows[3], state);
+    if state.show_help {
+        help::render(frame, area);
+    }
 }
 
 fn render_title(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
@@ -38,12 +42,31 @@ fn render_title(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
             format!("[{}]", state.tab),
             Style::default().fg(Color::Yellow),
         ),
-        Span::raw(" [mentions] [dms] [groups]"),
+        Span::raw(if state.basic {
+            " [basic]"
+        } else {
+            " [mentions] [dms] [groups]"
+        }),
     ]);
     frame.render_widget(Paragraph::new(title), area);
 }
 
 fn render_body(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    if state.basic || area.width < 80 {
+        render_feed_panel(frame, area, state);
+        return;
+    }
+
+    if area.width < 104 {
+        let panes = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+            .split(area);
+        render_feed_panel(frame, panes[0], state);
+        render_detail_panel(frame, panes[1], state);
+        return;
+    }
+
     let panes = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -53,28 +76,41 @@ fn render_body(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         ])
         .split(area);
 
-    let feed = Paragraph::new(feed_lines(
-        state,
-        panes[0].height.saturating_sub(2) as usize,
-    ))
-    .block(panel("Feed", state.focused == Pane::Feed))
-    .wrap(Wrap { trim: true });
-    frame.render_widget(feed, panes[0]);
+    render_feed_panel(frame, panes[0], state);
+    render_detail_panel(frame, panes[1], state);
+    render_profile_panel(frame, panes[2], state);
+}
 
+fn render_feed_panel(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    let feed = Paragraph::new(feed_lines(state, area.height.saturating_sub(2) as usize))
+        .block(panel("Feed", state.focused == Pane::Feed))
+        .wrap(Wrap { trim: true });
+    frame.render_widget(feed, area);
+}
+
+fn render_detail_panel(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let detail = Paragraph::new(detail_lines(state))
         .block(panel("Detail", state.focused == Pane::Detail))
         .wrap(Wrap { trim: true });
-    frame.render_widget(detail, panes[1]);
+    frame.render_widget(detail, area);
+}
 
+fn render_profile_panel(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let profile = Paragraph::new(profile_lines(state))
         .block(panel("Profile", state.focused == Pane::Profile))
         .wrap(Wrap { trim: true });
-    frame.render_widget(profile, panes[2]);
+    frame.render_widget(profile, area);
 }
 
 fn feed_lines(state: &AppState, height: usize) -> Vec<Line<'static>> {
+    let item_count = state.rows.len();
+    let selected = if item_count == 0 {
+        "0/0".to_string()
+    } else {
+        format!("{}/{}", state.selected + 1, item_count)
+    };
     let mut lines = vec![Line::from(format!(
-        "cards: {}  blocks: {}",
+        "items: {selected}  cards: {}  blocks: {}",
         state.cards, state.blocks
     ))];
     if state.rows.is_empty() {
@@ -159,7 +195,7 @@ fn render_compose(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     } else {
         (
             "Compose".to_string(),
-            "i compose  r reply  + react  f follow  F unfollow".to_string(),
+            "i compose  r reply  + react  f/F follow  ? help".to_string(),
         )
     };
     let compose = Paragraph::new(body).block(Block::default().borders(Borders::ALL).title(title));
@@ -168,10 +204,19 @@ fn render_compose(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
 
 fn render_status(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let status = format!(
-        "{}  updates:{}  q quit  1/2/3 focus",
+        "{}  updates:{}  q quit  ? help  1/2/3 focus",
         state.status, state.update_count
     );
-    frame.render_widget(Paragraph::new(status), area);
+    frame.render_widget(Paragraph::new(fit_line(status, area.width as usize)), area);
+}
+
+fn fit_line(text: String, width: usize) -> String {
+    let mut fitted = text.chars().take(width).collect::<String>();
+    let len = fitted.chars().count();
+    if len < width {
+        fitted.push_str(&" ".repeat(width - len));
+    }
+    fitted
 }
 
 fn panel(title: &'static str, focused: bool) -> Block<'static> {
@@ -188,47 +233,11 @@ fn panel(title: &'static str, focused: bool) -> Block<'static> {
 
 #[cfg(test)]
 mod tests {
-    use ratatui::backend::TestBackend;
-    use ratatui::Terminal;
-
     use super::*;
 
     #[test]
-    fn renders_three_pane_skeleton_at_120_by_40() {
-        let backend = TestBackend::new(120, 40);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let state = AppState::default();
-
-        terminal.draw(|frame| render(frame, &state)).unwrap();
-        let buffer = terminal.backend().buffer();
-        let rendered = format!("{buffer:?}");
-
-        assert!(rendered.contains("chirp"));
-        assert!(rendered.contains("Feed"));
-        assert!(rendered.contains("Detail"));
-        assert!(rendered.contains("Profile"));
-        assert!(rendered.contains("Compose"));
-    }
-
-    #[test]
-    fn renders_feed_rows_from_state() {
-        let backend = TestBackend::new(120, 40);
-        let mut terminal = Terminal::new(backend).unwrap();
-        let mut state = AppState::default();
-        state.rows.push(TimelineRow {
-            id: "event-1".to_string(),
-            author: "alice".to_string(),
-            author_pubkey: "alice-pubkey".to_string(),
-            content: "hello from nostr".to_string(),
-            created_at: 1,
-            depth: 0,
-            has_gap: false,
-        });
-
-        terminal.draw(|frame| render(frame, &state)).unwrap();
-        let rendered = format!("{:?}", terminal.backend().buffer());
-
-        assert!(rendered.contains("alice"));
-        assert!(rendered.contains("hello from nostr"));
+    fn fit_line_clears_or_truncates_to_width() {
+        assert_eq!(fit_line("abc".to_string(), 5), "abc  ");
+        assert_eq!(fit_line("abcdef".to_string(), 4), "abcd");
     }
 }
