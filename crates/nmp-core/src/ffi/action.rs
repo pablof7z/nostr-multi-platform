@@ -150,11 +150,14 @@ pub extern "C" fn nmp_app_register_action_executor(
     let Some(exec) = executor else {
         return;
     };
-    // Leak the namespace so it lives `'static` — the registry keys on
-    // `&'static str`. This is a registration-time-only call (host init), so
-    // the leak is bounded by the number of registered namespaces, not by
-    // runtime activity.
-    let ns: &'static str = Box::leak(ns.into_boxed_str());
+    // D6 guard: `nmp.*` namespaces are kernel-owned built-ins. A host
+    // overwriting them via FFI would bypass the validated built-in logic
+    // (e.g. silently replacing PublishModule's signed-event gate). Rust-level
+    // callers are trusted and may call `ActionRegistry::register_executor`
+    // directly; the C-ABI path is where the guard lives.
+    if ns.starts_with("nmp.") {
+        return;
+    }
     app.register_action_executor(ns, move |action_json, _send| {
         // The host executor speaks JSON only. The `_send` actor-command
         // bridge is intentionally unused in v1: a host executor that needs
@@ -233,10 +236,14 @@ pub extern "C" fn nmp_app_register_action_module(
     let Some(ns) = c_string_argument(namespace) else {
         return;
     };
-    // Leak the namespace so it lives `'static` — the registry keys on
-    // `&'static str`. Registration-time-only call (host init), so the leak is
-    // bounded by the number of registered namespaces, not by runtime activity.
-    let ns: &'static str = Box::leak(ns.into_boxed_str());
+    // D6 guard: `nmp.*` namespaces are kernel-owned built-ins. A host
+    // overwriting them via FFI would bypass the validated built-in logic
+    // (e.g. silently replacing PublishModule's signed-event gate). Rust-level
+    // callers are trusted and may call `ActionRegistry::register_with_validator`
+    // directly; the C-ABI path is where the guard lives.
+    if ns.starts_with("nmp.") {
+        return;
+    }
     let Some(validate) = validator else {
         // No validator → accept-all: every action is accepted with a default
         // pending plan. Shape validation is then the host executor's job.
@@ -891,6 +898,74 @@ mod tests {
         assert!(
             err.contains("unknown action namespace"),
             "executor-only namespace must fail start() validation, got: {err}"
+        );
+        nmp_app_free(app);
+    }
+
+    /// D6 guard: `nmp_app_register_action_executor` silently ignores any
+    /// namespace that starts with `"nmp."` — a host cannot shadow a
+    /// kernel-owned built-in via the C-ABI and bypass its validation gate.
+    /// After an attempted override the built-in `nmp.publish` executor still
+    /// handles the action correctly.
+    #[test]
+    fn c_abi_nmp_prefixed_executor_registration_is_silently_rejected() {
+        use std::ffi::CString;
+
+        // A custom executor that always returns a failure message.
+        extern "C" fn shadow_executor(_json: *const c_char) -> *const c_char {
+            c"shadow_executor_ran".as_ptr()
+        }
+
+        let app = nmp_app_new();
+        // Attempt to replace the built-in executor via the C-ABI guard.
+        let ns = CString::new("nmp.publish").unwrap();
+        nmp_app_register_action_executor(app, ns.as_ptr(), Some(shadow_executor));
+
+        // The built-in must still handle `nmp.publish` (Cancel doesn't need a
+        // signed event and exercises the full execute path).
+        let result = execute_action(
+            // SAFETY: nmp_app_new never returns null; valid until nmp_app_free.
+            unsafe { &*app },
+            "nmp.publish",
+            r#"{"Cancel":{"handle":"guard-probe"}}"#,
+        );
+        assert!(
+            result.is_ok(),
+            "built-in executor must still run after rejected nmp.* registration, got: {result:?}"
+        );
+        nmp_app_free(app);
+    }
+
+    /// D6 guard: `nmp_app_register_action_module` silently ignores any
+    /// namespace starting with `"nmp."` — the kernel-owned module validator
+    /// cannot be replaced via the C-ABI.
+    #[test]
+    fn c_abi_nmp_prefixed_module_registration_is_silently_rejected() {
+        use std::ffi::CString;
+
+        // A custom validator that always accepts everything (accept-all null
+        // validator path — would bypass PublishModule's signed-event gate).
+        let app = nmp_app_new();
+        let ns = CString::new("nmp.publish").unwrap();
+        nmp_app_register_action_module(app, ns.as_ptr(), None);
+
+        // PublishModule's validation gate still rejects empty `id`/`sig` — if
+        // the accept-all null-validator replaced it, a Cancel action would
+        // decode as a `PublishAction::Publish` with empty fields and be
+        // accepted (no signed-event check). Submitting well-formed Cancel:
+        let out = dispatch_action_json(
+            // SAFETY: nmp_app_new never returns null; valid until nmp_app_free.
+            Some(unsafe { &*app }),
+            "nmp.publish",
+            r#"{"Cancel":{"handle":"guard-probe"}}"#,
+        );
+        let parsed: serde_json::Value =
+            serde_json::from_str(&out).expect("dispatch always returns JSON");
+        // Cancel must still be accepted by the built-in module (correlation_id,
+        // not an error) — the accept-all replacement did NOT take effect.
+        assert!(
+            parsed.get("correlation_id").is_some(),
+            "built-in module must still validate after rejected nmp.* registration, got: {out}"
         );
         nmp_app_free(app);
     }

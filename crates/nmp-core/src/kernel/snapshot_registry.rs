@@ -56,15 +56,15 @@ use super::Kernel;
 /// thread (D8: the closure itself must also be non-blocking).
 pub type ProjectionFn = Box<dyn Fn() -> serde_json::Value + Send + Sync + 'static>;
 
-/// Append-only registry of host-supplied snapshot projections.
+/// Registry of host-supplied snapshot projections.
 ///
-/// Stored as a `Vec` of `(key, closure)` pairs rather than a `HashMap` so the
-/// registration order is preserved and a host registering the same key twice
-/// is a deterministic last-writer-wins on collection
-/// (see [`SnapshotRegistry::run`]).
+/// Keyed by `String` so re-registering the same key replaces the old closure
+/// rather than appending a duplicate. This prevents CPU waste: a re-registered
+/// projection previously caused both the old and new closures to run on every
+/// snapshot tick, with only the last result surfacing in the output.
 #[derive(Default)]
 pub struct SnapshotRegistry {
-    projections: Vec<(String, ProjectionFn)>,
+    projections: HashMap<String, ProjectionFn>,
 }
 
 impl SnapshotRegistry {
@@ -76,14 +76,14 @@ impl SnapshotRegistry {
     /// Register a projection closure under `key`.
     ///
     /// `key` is the host-chosen snapshot namespace (e.g. `"market.listings"`).
-    /// Registering the same key twice keeps both entries; [`Self::run`]
-    /// collapses them last-writer-wins, so the most recent registration wins.
+    /// Registering the same key twice replaces the first — last-writer-wins,
+    /// with no duplicate-closure CPU cost on subsequent ticks.
     pub fn register(
         &mut self,
         key: impl Into<String>,
         f: impl Fn() -> serde_json::Value + Send + Sync + 'static,
     ) {
-        self.projections.push((key.into(), Box::new(f)));
+        self.projections.insert(key.into(), Box::new(f));
     }
 
     /// Run every registered projection and collect the results into the map

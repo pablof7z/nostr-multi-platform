@@ -166,8 +166,8 @@ impl ErasedActionModule for ClosureModule {
 /// `Err("no executor registered for namespace '…'")` from `execute` — the
 /// caller surfaces this as `{"error":…}` (D6).
 pub struct ActionRegistry {
-    modules: HashMap<&'static str, Box<dyn ErasedActionModule>>,
-    executors: HashMap<&'static str, ExecutorFn>,
+    modules: HashMap<String, Box<dyn ErasedActionModule>>,
+    executors: HashMap<String, ExecutorFn>,
     /// Optional host-registered observer notified when an action is accepted
     /// and enqueued. See [`Self::set_result_observer`] /
     /// [`Self::deliver_result`]. `None` until a host registers one — an
@@ -196,7 +196,7 @@ impl ActionRegistry {
     /// registration of the same namespace replaces the first.
     pub fn register<M: ActionModule + 'static>(&mut self) {
         self.modules.insert(
-            M::NAMESPACE,
+            M::NAMESPACE.to_string(),
             Box::new(ActionModuleAdapter::<M>::default()),
         );
     }
@@ -207,13 +207,13 @@ impl ActionRegistry {
     /// replaces the first.
     pub fn register_executor(
         &mut self,
-        namespace: &'static str,
+        namespace: impl Into<String>,
         f: impl Fn(&str, &dyn Fn(crate::actor::ActorCommand)) -> Result<(), String>
             + Send
             + Sync
             + 'static,
     ) {
-        self.executors.insert(namespace, Box::new(f));
+        self.executors.insert(namespace.into(), Box::new(f));
     }
 
     /// Register a host-provided closure as the *module validator* for
@@ -229,11 +229,11 @@ impl ActionRegistry {
     /// registration of the same namespace replaces the first.
     pub fn register_with_validator(
         &mut self,
-        namespace: &'static str,
+        namespace: impl Into<String>,
         validate: impl Fn(&str) -> Result<ActionPlan<Value>, ActionRejection> + Send + Sync + 'static,
     ) {
         self.modules.insert(
-            namespace,
+            namespace.into(),
             Box::new(ClosureModule {
                 validate: Box::new(validate),
             }),
