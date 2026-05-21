@@ -116,15 +116,15 @@ pub use identity::{
     nmp_app_signin_nsec,
 };
 
-// test-support: expose the publish-handle FFI entry-points (extracted from
-// `identity` into the sibling `publish` module per AGENTS.md "co-locate by
-// owner"). Same `#[no_mangle] extern "C"` symbols, same byte-stable ABI —
-// only the Rust-side `pub use` path changed.
+// test-support: expose the publish-lifecycle control-plane FFI entry-points
+// (retry/cancel). PR-F (one door per capability) deleted the bespoke
+// event-producing siblings `nmp_app_publish_signed_event` /
+// `nmp_app_publish_signed_event_to` / `nmp_app_publish_unsigned_event` —
+// those are the deleted door. Retry/cancel address a publish *handle* (not
+// an event) and have no `dispatch_action` equivalent, so they stay on
+// these dedicated symbols (the D11 lint whitelists them).
 #[cfg(any(test, feature = "test-support"))]
-pub use publish::{
-    nmp_app_cancel_publish, nmp_app_publish_signed_event, nmp_app_publish_signed_event_to,
-    nmp_app_publish_unsigned_event, nmp_app_retry_publish,
-};
+pub use publish::{nmp_app_cancel_publish, nmp_app_retry_publish};
 
 // android-ffi: expose all FFI entry-points via Rust paths so nmp-android-ffi
 // can call them through the rlib. These re-exports are the ONLY thing that
@@ -134,14 +134,11 @@ pub use identity::{
     nmp_app_add_relay, nmp_app_create_new_account, nmp_app_open_timeline, nmp_app_remove_account,
     nmp_app_remove_relay, nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_switch_active,
 };
-// android-ffi: publish-handle FFI extracted from `identity` into `publish`.
-// Same byte-stable `#[no_mangle] extern "C"` symbols — the JNI shim links
-// them by name and is unaffected.
+// android-ffi: publish-lifecycle control-plane FFI (retry/cancel). PR-F
+// deleted the bespoke event-producing siblings from this module; what
+// remains is the narrow control surface the action seam does not carry.
 #[cfg(feature = "android-ffi")]
-pub use publish::{
-    nmp_app_cancel_publish, nmp_app_publish_signed_event, nmp_app_publish_signed_event_to,
-    nmp_app_publish_unsigned_event, nmp_app_retry_publish,
-};
+pub use publish::{nmp_app_cancel_publish, nmp_app_retry_publish};
 // T118 / G3 — android-ffi must also reach the lifecycle symbols; without this
 // re-export rustc doesn't pull the symbol bodies into the cdylib CGU and the
 // Android JNI shim can't link.
@@ -1059,6 +1056,69 @@ impl NmpApp {
             .filter(|r| crate::actor::has_role(&r.role, "write"))
             .map(|r| r.url.clone())
             .collect()
+    }
+
+    /// Workspace-internal kernel publish API — verbatim publish of an
+    /// already-signed `nostr::Event` to an EXPLICIT relay set, with `Auto`
+    /// (NIP-65 outbox) fallback when `relays` is empty.
+    ///
+    /// PR-F (one door per capability) — this is the Rust-typed replacement for
+    /// the deleted `nmp_app_publish_signed_event*` `extern "C"` symbols. App
+    /// composition crates that retain an `NmpApp` (e.g. `nmp-marmot`'s
+    /// `MarmotProjection`) reach the kernel through this method instead of
+    /// re-declaring those symbols in their own `extern "C"` blocks. The
+    /// Schnorr signature + event-id hash are verified on the actor side
+    /// (same `commands::publish::publish_signed_event` path the deleted FFI
+    /// symbols used to land on); forged or garbled events are dropped with a
+    /// kernel toast.
+    ///
+    /// Routing mode mirrors the deleted FFI exactly:
+    /// - empty `relays` → `PublishTarget::Auto` (author's NIP-65 outbox).
+    /// - non-empty → `PublishTarget::Explicit { relays }`, bypassing the
+    ///   outbox resolver. Marmot uses this for relay-pinned kind:445 commits
+    ///   / messages and as the documented kind:1059 inbox-routing
+    ///   approximation.
+    ///
+    /// Theme A discriminator (see `substrate/action.rs`): this is the
+    /// system-authored / lifecycle exception to "every event-producing
+    /// publish goes through `dispatch_action`". Marmot publishes MLS-signed
+    /// events whose outer signature was minted by an ephemeral key (gift
+    /// wraps) or by an MLS group credential — neither of which the kernel's
+    /// signer can re-mint. The generic action seam (`nmp.publish`) signs +
+    /// publishes; this entrypoint publishes verbatim without re-signing.
+    ///
+    /// Fire-and-forget (D6): a poisoned actor channel is a silent drop, the
+    /// same as the deleted FFI symbols. `correlation_id` is always `None`
+    /// here — this path is not the `dispatch_action` action-result channel.
+    pub fn publish_signed_explicit(&self, event: nostr::Event, relays: &[nostr::RelayUrl]) {
+        // RawEvent (flat NIP-01) is what `ActorCommand::PublishSignedEvent`
+        // carries; `commands::publish::publish_signed_event` runs the
+        // `VerifiedEvent::try_from_raw` gate (signature + id hash) before
+        // anything else, so a Marmot caller that constructed `event` from a
+        // dispatch op's signed-JSON output is still subject to the same
+        // crypto bar as a wire-arrived event. The `tags` clone mirrors
+        // every other RawEvent construction site in the crate
+        // (`commands::publish` action_registry.rs:420).
+        let raw = crate::store::RawEvent {
+            id: event.id.to_hex(),
+            pubkey: event.pubkey.to_hex(),
+            created_at: event.created_at.as_secs(),
+            kind: event.kind.as_u16() as u32,
+            tags: event
+                .tags
+                .iter()
+                .map(|t| t.as_slice().to_vec())
+                .collect(),
+            content: event.content.clone(),
+            sig: event.sig.to_string(),
+        };
+        let relays: Vec<crate::publish::RelayUrl> =
+            relays.iter().map(|r| r.to_string()).collect();
+        self.send_cmd(ActorCommand::PublishSignedEvent {
+            raw,
+            relays,
+            correlation_id: None,
+        });
     }
 }
 

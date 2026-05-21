@@ -465,9 +465,10 @@ pub fn default_registry() -> ActionRegistry {
             }
             // D8 — non-blocking channel send only; the actor loop builds the
             // kind:0 event, stamps `created_at`, and signs with the active
-            // account (D4/D7). The `ActionModule`-native path replacing hosts
-            // that hand-rolled a kind:0 dict and called
-            // `nmp_app_publish_unsigned_event` directly.
+            // account (D4/D7). The `ActionModule`-native path for kind:0
+            // metadata publish; PR-F deleted the prior
+            // `nmp_app_publish_unsigned_event` FFI symbol, so this is the
+            // sole entrypoint for it.
             //
             // The event id is NOT known at dispatch time (the actor signs it),
             // so `preferred_action_id()` returns `None` and the registry minted
@@ -767,8 +768,9 @@ mod tests {
     fn start_publish_profile_action_with_string_fields_is_accepted() {
         // `PublishAction::PublishProfile` with a flat string-valued `fields`
         // map passes `PublishModule::start`'s validation gate — the
-        // `ActionModule`-native path replacing hosts that hand-rolled a kind:0
-        // event dict and called `nmp_app_publish_unsigned_event` directly.
+        // `ActionModule`-native path for kind:0 metadata publish. PR-F
+        // deleted the prior `nmp_app_publish_unsigned_event` FFI symbol;
+        // this `nmp.publish` dispatch is the sole entrypoint for it.
         let registry = default_registry();
         let action_json =
             r#"{"PublishProfile":{"fields":{"name":"Alice","about":"hello"}}}"#;

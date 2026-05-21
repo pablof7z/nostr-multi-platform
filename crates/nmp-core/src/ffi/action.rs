@@ -16,7 +16,9 @@
 //! * For `nmp.publish` / [`PublishAction::Publish`], the validated signed
 //!   event is converted to a [`crate::store::RawEvent`] and handed to the
 //!   actor via [`ActorCommand::PublishSignedEvent`] — the same actor command
-//!   the `nmp_app_publish_signed_event*` symbols already use. The actor
+//!   the (PR-F-deleted) bespoke `nmp_app_publish_signed_event*` FFI symbols
+//!   used to use, plus the workspace-internal
+//!   [`crate::NmpApp::publish_signed_explicit`] Marmot seam. The actor
 //!   re-verifies the Schnorr signature + id hash (D4 — only the actor loop
 //!   signs/publishes; a forged event is rejected, never published) and
 //!   routes it through the NIP-65 outbox resolver.

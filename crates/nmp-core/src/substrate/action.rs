@@ -1,3 +1,51 @@
+//! Action substrate — the `ActionModule` trait + `ActionResult` shape that
+//! back the kernel's `dispatch_action` runtime.
+//!
+//! # Theme A discriminator — one door per publish capability
+//!
+//! PR-F (one door per capability) codified the rule that already governed
+//! the FFI surface after the bespoke `nmp_app_publish_signed_event{,_to}` /
+//! `nmp_app_publish_unsigned_event` symbols were deleted:
+//!
+//! - **Generic user/app-authored publish-engine events go through
+//!   [`crate::ffi::action::nmp_app_dispatch_action`]** under the
+//!   `nmp.publish` namespace (or a per-NIP namespace whose executor builds
+//!   `PublishAction::*` and routes via the same engine). The host hands the
+//!   action seam an `UnsignedEvent` / pre-signed `Event`; the kernel signs
+//!   (when needed), verifies, and dispatches through the publish engine
+//!   with a registry-minted `correlation_id` reported in
+//!   `action_results`. This is the single, observable, host-extensible
+//!   door for content actions.
+//!
+//! - **System-authored / lifecycle / wallet capabilities stay bespoke.**
+//!   They are not "actions a user dispatches"; they are mechanisms the
+//!   kernel or a sibling crate uses to keep the system honest:
+//!     - publish-lifecycle control plane —
+//!       [`crate::ffi::publish::nmp_app_retry_publish`] /
+//!       [`crate::ffi::publish::nmp_app_cancel_publish`] address an
+//!       already-queued publish *handle*, never produce events, and have
+//!       no `dispatch_action` equivalent (and never should — the action
+//!       seam is for content actions).
+//!     - MLS / gift-wrap publish — [`crate::NmpApp::publish_signed_explicit`]
+//!       carries events signed by an MLS group credential (kind:445) or an
+//!       ephemeral key (kind:1059 gift-wrap) that the kernel's signer
+//!       cannot re-mint. The generic action seam signs + publishes; this
+//!       entrypoint publishes verbatim without re-signing.
+//!     - NIP-47 wallet — bespoke `nmp_app_wallet_*` symbols (gated by the
+//!       `wallet` feature). NWC RPC is a connection-oriented protocol, not
+//!       a content action.
+//!
+//! The discriminator a reviewer applies to any new symbol:
+//!
+//! > *Is this a user or app intent to author a Nostr event, where the
+//! > kernel decides which identity signs and where it lands?* If yes,
+//! > register an `ActionModule` and route through `dispatch_action`. If
+//! > no — it is system-authored, addresses a publish handle, or operates
+//! > on a non-content protocol — it may live on a bespoke entrypoint, but
+//! > it MUST NOT construct `ActorCommand::PublishSignedEvent` /
+//! > `PublishUnsignedEvent` inside an `extern "C" fn nmp_app_*` body
+//! > (D11 lint catches that regression).
+
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 pub type ActionId = String;

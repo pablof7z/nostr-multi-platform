@@ -61,8 +61,11 @@ pub enum PublishAction {
     /// kind:0 `content` field, signs with the active signer, and routes
     /// through the NIP-65 outbox. Like `PublishNote`, the event is
     /// *not* pre-signed: the actor stamps `created_at` and signs. This is the
-    /// `ActionModule`-native replacement for hosts hand-rolling a kind:0
-    /// event dict and calling `nmp_app_publish_unsigned_event` directly.
+    /// `ActionModule`-native path for hosts that need to publish kind:0
+    /// metadata events; PR-F deleted the prior bespoke
+    /// `nmp_app_publish_unsigned_event` FFI symbol, so this `PublishAction`
+    /// variant + `nmp_app_dispatch_action("nmp.publish", ...)` is the only
+    /// door for it.
     PublishProfile {
         fields: serde_json::Map<String, serde_json::Value>,
     },

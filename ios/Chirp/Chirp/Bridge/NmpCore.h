@@ -49,24 +49,19 @@ void nmp_app_add_relay(void *app, const char *url, const char *role);
 void nmp_app_remove_relay(void *app, const char *url);
 void nmp_app_open_timeline(void *app);
 
-// ── Verbatim signed-event publish ────────────────────────────────────────
+// ── Publish lifecycle (control plane only) ───────────────────────────────
 //
-// `nmp_app_publish_signed_event` routes a fully-formed, externally-signed
-// flat NIP-01 event `{id,pubkey,created_at,kind,tags,content,sig}` to the
-// author's NIP-65 outbox. The kernel's signer is never consulted; Schnorr
-// signature + event-id hash are still verified on the actor side and
-// forged/garbled events are dropped (never published). Fire-and-forget
-// (D6): null app / null / non-UTF-8 `event_json` are silent no-ops;
-// malformed JSON surfaces via `last_error_toast`.
-void nmp_app_publish_signed_event(void *app, const char *event_json);
-
-// Explicit-relay-target sibling of `nmp_app_publish_signed_event`: routes
-// the verbatim event to exactly the relays in `relays_json` (a JSON array
-// of relay-URL strings) instead of the NIP-65 outbox. A null / non-UTF-8 /
-// empty-array `relays_json` falls back to Auto (outbox) behaviour, byte-
-// identical to `nmp_app_publish_signed_event`. Same verify / no-re-sign /
-// fire-and-forget (D6) semantics; malformed input surfaces as a toast.
-void nmp_app_publish_signed_event_to(void *app, const char *event_json, const char *relays_json);
+// PR-F (one door per capability) DELETED the bespoke event-producing
+// publish FFI:
+//   * `nmp_app_publish_signed_event` [event_json]
+//   * `nmp_app_publish_signed_event_to` [event_json, relays_json]
+//   * `nmp_app_publish_unsigned_event` [unsigned_json]
+//
+// Every user / app-authored publish now goes through the single
+// `nmp_app_dispatch_action` door under the `"nmp.publish"` namespace
+// (see the action seam below). What stays here is the *control plane* —
+// retry / cancel address an already-queued publish handle, never produce
+// events, and have no `dispatch_action` equivalent.
 void nmp_app_retry_publish(void *app, const char *handle);
 void nmp_app_cancel_publish(void *app, const char *handle);
 
@@ -149,9 +144,13 @@ void nmp_app_set_lifecycle_callback(void *app, void *context, NmpLifecycleCallba
 // by the caller via `nmp_app_free_string`.  Never returns NULL for a
 // non-NULL app/request_json (D6).
 //
-// `nmp_app_publish_unsigned_event` signs and publishes an `UnsignedEvent`
-// JSON (fields: pubkey, kind, tags, content, created_at).  Fire-and-forget
-// (D6); outcomes arrive via `last_error_toast` / `publish_queue`.
+// (PR-F: the `nmp_app_publish_unsigned_event` symbol was deleted — every
+// user / app-authored publish now reaches the kernel through
+// `nmp_app_dispatch_action` under the `"nmp.publish"` namespace instead.
+// The action JSON carries the same `UnsignedEvent` shape the deleted
+// symbol used to take, plus the registry-minted `correlation_id` in the
+// dispatch return value so a host can correlate the eventual
+// `last_error_toast` / `action_results` outcome.)
 //
 // `nmp_app_open_uri` opens whatever a `nostr:` URI (or bare NIP-19 entity)
 // points at.  Fire-and-forget (D6): null/invalid input is a silent no-op.
@@ -238,7 +237,8 @@ void nmp_app_register_action_result_observer(void *app, NmpActionResultObserver 
 typedef const char *(*NmpSnapshotProjector)(void);
 void nmp_app_register_snapshot_projection(void *app, const char *key, NmpSnapshotProjector projector);
 void nmp_app_free_string(char *ptr);
-void nmp_app_publish_unsigned_event(void *app, const char *unsigned_json);
+// PR-F deleted `nmp_app_publish_unsigned_event` — use
+// `nmp_app_dispatch_action(app, "nmp.publish", action_json)` instead.
 void nmp_app_open_uri(void *app, const char *uri);
 
 // ── NIP-46 signer broker (Stage 4) ───────────────────────────────────────

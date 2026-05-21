@@ -544,6 +544,65 @@ fn d10_scoped_crates_are_clean() {
     );
 }
 
+// ─── D11 (one door per publish capability) ──────────────────────────────────
+
+#[test]
+fn d11_positive_fixture_fires() {
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d11_pos");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let pos_src = workspace.join(fixture_path("d11/pos.rs"));
+    std::fs::copy(&pos_src, tmp.join("pos.rs")).expect("copy pos fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&["--path", &tmp_str]);
+    assert_eq!(
+        code, 1,
+        "d11 positive must exit 1; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[D11]"),
+        "d11 positive must emit a D11 finding; stdout:\n{}",
+        stdout
+    );
+    for token in [
+        "ActorCommand::PublishSignedEvent",
+        "ActorCommand::PublishUnsignedEvent",
+    ] {
+        assert!(
+            stdout.contains(token),
+            "d11 positive must name `{}`; stdout:\n{}",
+            token,
+            stdout
+        );
+    }
+}
+
+#[test]
+fn d11_negative_fixture_clean() {
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d11_neg");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let neg_src = workspace.join(fixture_path("d11/neg.rs"));
+    std::fs::copy(&neg_src, tmp.join("neg.rs")).expect("copy neg fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&["--path", &tmp_str]);
+    assert_eq!(
+        code, 0,
+        "d11 negative must exit 0; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.contains("error[D11]"),
+        "d11 negative must produce zero D11 findings; stdout:\n{}",
+        stdout
+    );
+}
+
 // ─── D15 (host-closure invocations must be panic-guarded) ────────────────────
 
 #[test]
