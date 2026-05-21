@@ -41,6 +41,7 @@ pub use update_envelope::{
 // `actor` module is crate-private so this re-export is the only path. The
 // enum variants themselves are already `pub`.
 pub use actor::ActorCommand;
+pub use actor::NOSTRCONNECT_DEFAULT_RELAY_URL;
 
 // Re-export the FFI entry-points so the ffi-stress harness (and any other
 // Rust-side crate) can call them directly via the Rust rlib dependency,

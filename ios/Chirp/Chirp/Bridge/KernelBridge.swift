@@ -162,31 +162,25 @@ final class KernelHandle {
     /// a new ephemeral keypair and session secret.
     ///
     /// `callbackScheme` is the deep-link URL the signer app should open after
-    /// approval (e.g. `"chirp://nip46"`). Rust percent-encodes and appends
-    /// the `&callback=` query parameter — Swift NEVER composes the suffix
-    /// itself. Pass `nil` if no deep-link return path is required (the QR-only
-    /// flow).
-    func nostrConnectURI(relay: String, callbackScheme: String? = nil) -> String? {
-        relay.withCString { relayPtr in
-            let result: String? = { () -> String? in
-                if let cb = callbackScheme {
-                    return cb.withCString { cbPtr in
-                        guard let ptr = nmp_app_nostrconnect_uri(raw, relayPtr, cbPtr) else {
-                            return nil
-                        }
-                        defer { nmp_broker_free_string(ptr) }
-                        return String(cString: ptr)
-                    }
-                } else {
-                    guard let ptr = nmp_app_nostrconnect_uri(raw, relayPtr, nil) else {
-                        return nil
-                    }
-                    defer { nmp_broker_free_string(ptr) }
-                    return String(cString: ptr)
+    /// approval (e.g. `"chirp://nip46"`). Rust chooses the relay from the
+    /// kernel relay projection, percent-encodes the callback, and appends the
+    /// `&callback=` query parameter. Swift supplies only platform callback
+    /// information.
+    func nostrConnectURI(callbackScheme: String? = nil) -> String? {
+        if let cb = callbackScheme {
+            return cb.withCString { cbPtr in
+                guard let ptr = nmp_app_nostrconnect_uri(raw, nil, cbPtr) else {
+                    return nil
                 }
-            }()
-            return result
+                defer { nmp_broker_free_string(ptr) }
+                return String(cString: ptr)
+            }
         }
+        guard let ptr = nmp_app_nostrconnect_uri(raw, nil, nil) else {
+            return nil
+        }
+        defer { nmp_broker_free_string(ptr) }
+        return String(cString: ptr)
     }
 
     /// Dispatch a `nmp_app_create_new_account` call.

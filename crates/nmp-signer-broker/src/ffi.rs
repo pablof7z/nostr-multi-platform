@@ -10,7 +10,7 @@
 
 use std::sync::{Arc, OnceLock};
 
-use nmp_core::{register_bunker_hook, BunkerHookRequest, NmpApp};
+use nmp_core::{register_bunker_hook, BunkerHookRequest, NmpApp, NOSTRCONNECT_DEFAULT_RELAY_URL};
 
 use crate::broker::BunkerBroker;
 
@@ -96,8 +96,9 @@ pub extern "C" fn nmp_app_cancel_bunker_handshake(_app: *mut NmpApp) {
 /// been called) or if the string contains interior NUL bytes (impossible in
 /// practice but guarded for D6).
 ///
-/// `relay_url` may be null; if so, `wss://relay.damus.io` is used as the
-/// default relay.
+/// `relay_url` may be null; if so, Rust selects the first configured
+/// write-capable relay from the app kernel. If the app is null or has no
+/// write relay, [`NOSTRCONNECT_DEFAULT_RELAY_URL`] is used.
 ///
 /// `callback_scheme` may be null. When non-null, Rust appends a
 /// `&callback=<percent-encoded callback_scheme>` query parameter to the
@@ -110,19 +111,11 @@ pub extern "C" fn nmp_app_cancel_bunker_handshake(_app: *mut NmpApp) {
 #[allow(unsafe_code)]
 #[no_mangle]
 pub extern "C" fn nmp_app_nostrconnect_uri(
-    _app: *mut NmpApp,
+    app: *mut NmpApp,
     relay_url: *const std::os::raw::c_char,
     callback_scheme: *const std::os::raw::c_char,
 ) -> *mut std::os::raw::c_char {
-    let relay: &str = if relay_url.is_null() {
-        "wss://relay.damus.io"
-    } else {
-        // SAFETY: caller guarantees non-null => valid C string for the call duration.
-        match unsafe { std::ffi::CStr::from_ptr(relay_url).to_str() } {
-            Ok(s) => s,
-            Err(_) => "wss://relay.damus.io",
-        }
-    };
+    let relay = relay_url_from_arg_or_app(app, relay_url);
     let callback: Option<&str> = if callback_scheme.is_null() {
         None
     } else {
@@ -137,7 +130,7 @@ pub extern "C" fn nmp_app_nostrconnect_uri(
     let Some(broker) = GLOBAL_BROKER.get() else {
         return std::ptr::null_mut();
     };
-    let mut uri = broker.start_nostrconnect_handshake(relay.to_string());
+    let mut uri = broker.start_nostrconnect_handshake(relay);
     if let Some(scheme) = callback {
         let encoded = percent_encode_query_value(scheme);
         uri.push_str("&callback=");
@@ -147,6 +140,21 @@ pub extern "C" fn nmp_app_nostrconnect_uri(
         Ok(cs) => cs.into_raw(),
         Err(_) => std::ptr::null_mut(),
     }
+}
+
+#[allow(unsafe_code)]
+fn relay_url_from_arg_or_app(app: *mut NmpApp, relay_url: *const std::os::raw::c_char) -> String {
+    if !relay_url.is_null() {
+        // SAFETY: caller guarantees non-null => valid C string for the call duration.
+        if let Ok(relay) = unsafe { std::ffi::CStr::from_ptr(relay_url).to_str() } {
+            if !relay.is_empty() {
+                return relay.to_string();
+            }
+        }
+    }
+    unsafe_app_ref::app_ref(app)
+        .map(NmpApp::nostrconnect_relay_url)
+        .unwrap_or_else(|| NOSTRCONNECT_DEFAULT_RELAY_URL.to_string())
 }
 
 /// Percent-encode a URI query-value byte-for-byte using the RFC 3986 unreserved
@@ -179,11 +187,15 @@ pub extern "C" fn nmp_broker_free_string(ptr: *mut std::os::raw::c_char) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::CString;
 
     #[test]
     fn percent_encode_passes_unreserved_chars() {
         let out = percent_encode_query_value("AZaz09-_.~");
-        assert_eq!(out, "AZaz09-_.~", "unreserved RFC 3986 set must be passed verbatim");
+        assert_eq!(
+            out, "AZaz09-_.~",
+            "unreserved RFC 3986 set must be passed verbatim"
+        );
     }
 
     #[test]
@@ -196,5 +208,23 @@ mod tests {
     #[test]
     fn percent_encode_handles_empty_string() {
         assert_eq!(percent_encode_query_value(""), "");
+    }
+
+    #[test]
+    fn explicit_relay_arg_still_overrides_kernel_selection() {
+        let relay = CString::new("wss://explicit.example").expect("valid CString");
+
+        assert_eq!(
+            relay_url_from_arg_or_app(std::ptr::null_mut(), relay.as_ptr()),
+            "wss://explicit.example"
+        );
+    }
+
+    #[test]
+    fn null_app_null_relay_uses_core_default() {
+        assert_eq!(
+            relay_url_from_arg_or_app(std::ptr::null_mut(), std::ptr::null()),
+            NOSTRCONNECT_DEFAULT_RELAY_URL
+        );
     }
 }

@@ -252,15 +252,12 @@ final class KernelModel: ObservableObject {
     func cancelBunkerHandshake() { kernel.cancelBunkerHandshake() }
 
     func nostrConnectURI() -> String? {
-        let relay = relayEditRows.first { row in
-            let roles = row.role
-                .split(separator: ",")
-                .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
-            return roles.contains("both") || roles.contains("write")
-        }?.url ?? "wss://r.f7z.io"
-        // Rust composes the `&callback=` suffix from the scheme; Swift never
-        // builds the URL itself.
-        return kernel.nostrConnectURI(relay: relay, callbackScheme: "chirp://nip46")
+        // Chirp registers `chirp://` as a custom URL scheme (Info.plist
+        // `CFBundleURLTypes`); the signer app deep-links back to
+        // `chirp://nip46?...` on approval (handled in `ChirpApp.onOpenURL`).
+        // Rust chooses the relay and composes the protocol URL; Swift only
+        // supplies the platform callback route.
+        return kernel.nostrConnectURI(callbackScheme: "chirp://nip46")
     }
 
     func createAccount(

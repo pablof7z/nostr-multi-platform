@@ -1120,6 +1120,21 @@ impl NmpApp {
             correlation_id: None,
         });
     }
+
+    /// Choose the relay for a client-initiated NIP-46 `nostrconnect://`
+    /// handshake from the shared kernel relay-edit projection. Empty or
+    /// poisoned state falls back through the same Rust-owned policy as an app
+    /// with no configured write relays.
+    pub fn nostrconnect_relay_url(&self) -> String {
+        let Ok(guard) = self.relay_edit_rows.lock() else {
+            return crate::NOSTRCONNECT_DEFAULT_RELAY_URL.to_string();
+        };
+        crate::actor::nostrconnect_relay_url(
+            guard
+                .iter()
+                .map(|row| (row.url.as_str(), row.role.as_str())),
+        )
+    }
 }
 
 // SAFETY: `app` is a raw pointer from `nmp_app_new()`. The function is `extern "C"` (callable
