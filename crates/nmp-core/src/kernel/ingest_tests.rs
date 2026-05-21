@@ -317,8 +317,8 @@ fn ingest_dm_relay_list_empty_for_unknown_author_is_noop() {
 
 /// An empty kind:10050 for an author who DOES have a cached DM-relay list
 /// clears the stale entry — the author explicitly emptied their kind:10050,
-/// and the send path must fall back to Content relays rather than route to a
-/// stale DM-relay list.
+/// and the send path must fail closed rather than route to a stale DM-relay
+/// list or generic Content relays.
 #[test]
 fn ingest_dm_relay_list_empty_for_known_author_clears_entry() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -389,7 +389,7 @@ fn ingest_dm_relay_list_replaces_cached_list() {
 }
 
 /// `recipient_dm_relays` returns `None` for a pubkey with no kind:10050 — the
-/// genuinely-missing case the DM send path falls back to Content relays for.
+/// genuinely-missing case the DM send path treats as not ready.
 #[test]
 fn recipient_dm_relays_none_for_uncached_pubkey() {
     let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);

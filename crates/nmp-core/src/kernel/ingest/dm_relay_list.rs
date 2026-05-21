@@ -67,9 +67,8 @@ impl Kernel {
     /// explicitly cleared their DM-relay list. The existing cache entry is
     /// *removed* rather than left stale — an empty-but-canonical event must not
     /// let an old list persist. With no entry, `recipient_dm_relays` returns
-    /// `None` and the DM send path falls back to the configured Content relays
-    /// (with a `tracing::warn!`), exactly as for an author who never published
-    /// a kind:10050.
+    /// `None` and the DM send path fails closed, exactly as for an author who
+    /// never published a kind:10050.
     ///
     /// Unlike kind:10002, kind:10050 never populates generic mailbox routing.
     /// It does now feed the planner through the NIP-17 DM-specific p-tag
