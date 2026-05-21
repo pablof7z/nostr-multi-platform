@@ -13,6 +13,14 @@ final class KernelModel: ObservableObject {
     @Published private(set) var rev: UInt64 = 0
     @Published private(set) var profile: ProfileCard?
     @Published private(set) var authorView: AuthorProfileSnapshot?
+    /// Per-author mention payload map sourced from
+    /// `projections["mention_profiles"]`. Scoped to the open author-view
+    /// items so ProfileView can pass it straight into `NoteRenderContext`
+    /// without rebuilding a `[String: MentionProfile]` dictionary at body
+    /// time. Empty `[:]` when no author view is open; current-schema kernels
+    /// always emit the projection (older builds yield `nil` → the property
+    /// degrades to empty, matching the legacy fallback).
+    @Published private(set) var mentionProfiles: [String: MentionProfile] = [:]
     @Published private(set) var items: [TimelineItem] = []
     /// T146 — modular timeline blocks produced by `nmp-app-chirp`'s
     /// `Nip10ModularTimelineView` projection. Refreshed on every kernel
@@ -348,6 +356,18 @@ final class KernelModel: ObservableObject {
         track(kernel.unfollow(pubkey: pubkey))
     }
 
+    /// Fire a write action authored by Rust through the namespace-keyed
+    /// dispatch seam. `spec.namespace` + `spec.bodyJson` are the verbatim
+    /// pair the kernel built inside its `profile_action_for` projector — the
+    /// shell does not choose either (aim.md §4.4: writes flow through
+    /// registered ActionModules, the shell binds blindly). Used by views
+    /// that render a `ProfileAction` to wire its primary button straight
+    /// into `nmp_app_dispatch_action`, killing per-verb Swift `switch`es.
+    @discardableResult
+    func dispatchProfileAction(_ spec: ProfileDispatchSpec) -> DispatchResult {
+        track(kernel.dispatchRawAction(namespace: spec.namespace, bodyJson: spec.bodyJson))
+    }
+
     /// PR-A: returns true while `correlationId` is still in the pending set —
     /// the dispatch was accepted but no terminal verdict has arrived in
     /// `projections["action_results"]` yet. Views key spinners on this.
@@ -425,6 +445,16 @@ final class KernelModel: ObservableObject {
         // prior card (D1) — the current kernel always emits it.
         if let p = update.profile { profile = p }
         authorView = update.authorView
+        // `projections["mention_profiles"]` — Rust-derived per-author
+        // mention map (kernel/update.rs `mention_profiles_from_items`).
+        // Adapt wire DTOs to the existing `MentionProfile` type the
+        // `NoteRenderContext` consumes. Falls back to `[:]` when an older
+        // kernel elides the projection (D1).
+        if let wire = update.mentionProfiles {
+            mentionProfiles = wire.mapValues(MentionProfile.init(wire:))
+        } else {
+            mentionProfiles = [:]
+        }
         let timelineItemsChanged = update.items != items
         if timelineItemsChanged {
             items = update.items

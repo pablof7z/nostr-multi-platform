@@ -345,6 +345,23 @@ impl Kernel {
             serde_json::to_value(self.relay_diagnostics_snapshot())
                 .unwrap_or(serde_json::Value::Null),
         );
+        // `mention_profiles` — derived view (aim.md §4.2): pubkey ->
+        // {display, picture_url, avatar_initials, avatar_color} for every
+        // author surfaced in the open author-view items. Built from
+        // `author_view().items` rather than the kernel `timeline` so the
+        // ProfileView's mention-resolution map is scoped to that screen's
+        // visible authors — matching the Swift Dictionary derivation it
+        // replaces (`ProfileView.swift:28-40`). Empty `{}` when no author
+        // view is open; never absent (D1).
+        let mention_profiles = self
+            .author_view()
+            .map(|av| Self::mention_profiles_from_items(&av.items))
+            .unwrap_or_default();
+        projections.insert(
+            "mention_profiles".to_string(),
+            serde_json::to_value(&mention_profiles)
+                .unwrap_or_else(|_| serde_json::Value::Object(Default::default())),
+        );
         projections
     }
 
@@ -424,9 +441,12 @@ impl Kernel {
         let picture_url = real_picture
             .map(str::to_owned)
             .unwrap_or_else(|| picture_placeholder(pubkey));
+        let npub_str = npub.unwrap_or(pubkey).to_string();
+        let npub_short = profile_npub_short(&npub_str);
         ProfileCard {
             pubkey: pubkey.to_string(),
-            npub: npub.unwrap_or(pubkey).to_string(),
+            npub: npub_str,
+            npub_short,
             display: profile
                 .map(|profile| profile.display.clone())
                 .filter(|display| !display.is_empty())
@@ -471,10 +491,17 @@ impl Kernel {
         }
         let active = self.active_account.as_deref()?;
         if active == pubkey {
+            // edit_profile is a LOCAL-UI intent (open the edit sheet) —
+            // there is no registered ActionModule for it. `dispatch: None`
+            // lets the shell branch on presence-of-dispatch rather than
+            // switching on `kind`. (aim.md §4.4: only writes flow through
+            // registered ActionModules.)
             return Some(ProfileAction {
                 kind: "edit_profile",
                 label: "Edit",
                 target_pubkey: pubkey.to_string(),
+                icon_name: "square.and.pencil",
+                dispatch: None,
             });
         }
 
@@ -483,15 +510,29 @@ impl Kernel {
             .get(active)
             .map(|follows| follows.iter().any(|follow| follow == pubkey))
             .unwrap_or(false);
-        let (kind, label) = if is_following {
-            ("unfollow", "Unfollow")
+        let (kind, label, icon_name, namespace) = if is_following {
+            (
+                "unfollow",
+                "Unfollow",
+                "person.badge.minus",
+                "chirp.unfollow",
+            )
         } else {
-            ("follow", "Follow")
+            ("follow", "Follow", "person.badge.plus", "chirp.follow")
         };
+        // Pre-serialize the action body so the shell sends the same bytes
+        // the executor validates: `{"pubkey":"<hex>"}` per
+        // `apps/chirp/nmp-app-chirp/src/ffi.rs` (NS_FOLLOW / NS_UNFOLLOW).
+        let body_json = serde_json::json!({ "pubkey": pubkey }).to_string();
         Some(ProfileAction {
             kind,
             label,
             target_pubkey: pubkey.to_string(),
+            icon_name,
+            dispatch: Some(ProfileDispatchSpec {
+                namespace,
+                body_json,
+            }),
         })
     }
 
@@ -506,11 +547,13 @@ impl Kernel {
             "ready"
         };
 
+        let note_count = items.len();
         Some(AuthorViewPayload {
             pubkey: pubkey.clone(),
             state: state.to_string(),
             profile: self.profile_card_for(pubkey, None, "Waiting for selected author kind:0"),
-            note_count: items.len(),
+            note_count,
+            note_count_display: note_count.to_string(),
             primary_action: self.profile_action_for(pubkey),
             items,
         })
@@ -602,6 +645,76 @@ impl Kernel {
         root_event_id(event)
             .or_else(|| first_event_ref(event))
             .or_else(|| Some(focused_id.to_string()))
+    }
+
+    /// Build the `mention_profiles` projection from a slice of timeline
+    /// items.  Maps `author_pubkey -> MentionProfilePayload` using the same
+    /// per-author fields the timeline already carries — first writer wins
+    /// on collision (mirroring the Swift `Dictionary(uniquingKeysWith:)` it
+    /// replaces). The shell binds the resulting map directly into its
+    /// `NoteRenderContext` (aim.md §4.2: derived views are kernel output).
+    pub(super) fn mention_profiles_from_items(
+        items: &[TimelineItem],
+    ) -> std::collections::HashMap<String, MentionProfilePayload> {
+        let mut out: std::collections::HashMap<String, MentionProfilePayload> =
+            std::collections::HashMap::new();
+        for item in items {
+            out.entry(item.author_pubkey.clone())
+                .or_insert_with(|| MentionProfilePayload {
+                    display: item.author_display.clone(),
+                    picture_url: item.author_picture_url.clone(),
+                    avatar_initials: item.author_avatar_initials.clone(),
+                    avatar_color: item.author_avatar_color.clone(),
+                });
+        }
+        out
+    }
+}
+
+/// Truncate an `npub`-or-hex pubkey string to the compact display form the
+/// profile card shows next to the copy button: `<first10>…<last8>`. Values
+/// short enough that truncation would not help are returned unchanged. This
+/// mirrors the policy the Swift `truncatedNpub` helper used to own — Rust
+/// owns the display string now (aim.md §6.9, Chirp thin-shell).
+fn profile_npub_short(value: &str) -> String {
+    let count = value.chars().count();
+    if count <= 20 {
+        return value.to_string();
+    }
+    let prefix: String = value.chars().take(10).collect();
+    let suffix: String = value
+        .chars()
+        .rev()
+        .take(8)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
+    format!("{prefix}…{suffix}")
+}
+
+#[cfg(test)]
+mod npub_short_tests {
+    use super::profile_npub_short;
+
+    #[test]
+    fn short_value_returned_verbatim() {
+        assert_eq!(profile_npub_short("abc"), "abc");
+        assert_eq!(profile_npub_short(""), "");
+    }
+
+    #[test]
+    fn boundary_value_at_20_chars_kept() {
+        let twenty = "a".repeat(20);
+        assert_eq!(profile_npub_short(&twenty), twenty);
+    }
+
+    #[test]
+    fn long_hex_truncated_first10_last8_with_ellipsis() {
+        let hex = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        let out = profile_npub_short(hex);
+        assert_eq!(out, "0123456789…89abcdef");
+        assert!(out.contains('…'));
     }
 }
 

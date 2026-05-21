@@ -304,6 +304,29 @@ final class KernelHandle {
         dispatchAction(namespace: "chirp.unfollow", body: ["pubkey": pubkey])
     }
 
+    /// Generic dispatch entry-point keyed on a kernel-supplied
+    /// `ProfileDispatchSpec`. The shell does NOT pick the namespace or build
+    /// the body — Rust authored both inside `profile_action_for` (aim.md
+    /// §4.4: writes flow through registered ActionModules, the shell binds
+    /// blindly). `bodyJson` is the verbatim string the executor validates,
+    /// passed straight to `nmp_app_dispatch_action` without re-serialisation.
+    @discardableResult
+    func dispatchRawAction(namespace: String, bodyJson: String) -> DispatchResult {
+        let envelope: String? = bodyJson.withCString { jsonPtr in
+            namespace.withCString { nsPtr in
+                guard let ptr = nmp_app_dispatch_action(raw, nsPtr, jsonPtr) else {
+                    return nil
+                }
+                defer { nmp_app_free_string(ptr) }
+                return String(cString: ptr)
+            }
+        }
+        guard let envelope else {
+            return .failure("dispatch returned a null envelope")
+        }
+        return DispatchResult.parse(envelope: envelope)
+    }
+
     func addRelay(url: String, role: String) {
         url.withCString { uPtr in
             role.withCString { rPtr in
@@ -653,6 +676,14 @@ struct KernelUpdate: Decodable {
     /// Per-tick timeline delta — removed item ids (`projections["removed"]`).
     var removed: [String]? { projections?.removed }
 
+    /// Per-author mention payloads scoped to the open author-view items
+    /// (`projections["mention_profiles"]`). Replaces the Swift
+    /// `Dictionary(items.map { ... MentionProfile(...) })` derivation
+    /// ProfileView used to build at body-time. Empty `[:]` when no author
+    /// view is open; never nil for a current-schema kernel. Computed so
+    /// the consumer keeps reading `update.mentionProfiles` unchanged.
+    var mentionProfiles: [String: MentionProfileWire]? { projections?.mentionProfiles }
+
     /// NIP-29 group-chat read model — `projections["nip29.group_chat"]`.
     /// `nil` until `nmp_app_chirp_register_group_chat` has wired a group's
     /// projection; an empty `messages` array once registered but no chat
@@ -747,6 +778,12 @@ struct SnapshotProjections: Decodable, Equatable {
     // protocol-keyword switches). Always emitted by a current kernel build;
     // optional so a stale kernel still decodes.
     let relayDiagnostics: RelayDiagnosticsSnapshot?
+    /// Per-author mention payload map — `projections["mention_profiles"]`.
+    /// Replaces the Swift Dictionary derivation ProfileView used to build
+    /// (`ProfileView.swift:28-40`); the Rust derivation lives in
+    /// `Kernel::mention_profiles_from_items` (kernel/update.rs). Optional
+    /// so an older kernel that pre-dates the projection still decodes (D1).
+    let mentionProfiles: [String: MentionProfileWire]?
 
     /// Explicit coding keys.
     ///
@@ -787,6 +824,42 @@ struct SnapshotProjections: Decodable, Equatable {
         case groupChat = "nip29.groupChat"
         case dmInbox = "nip17.dmInbox"
         case relayDiagnostics
+        case mentionProfiles
+    }
+}
+
+// ─── mention_profiles projection wire type ────────────────────────────────
+//
+// Per-author DTO bundled in `projections["mention_profiles"]`. Mirrors
+// `nmp-core::kernel::types::MentionProfilePayload`. Thin-shell rule: a pure
+// transport DTO — the projection's `MentionProfile` adapter below converts
+// it to the existing rich struct used by `NoteRenderContext`. No Swift
+// derives a `MentionProfile` from a `TimelineItem` anymore.
+
+/// Wire shape for one entry in `projections["mention_profiles"]`.
+/// `pictureUrl` is always non-empty (Rust falls back to the identicon URI),
+/// so it surfaces as a plain `String` and the call site coerces to the
+/// existing `MentionProfile.pictureUrl: String?` (empty → nil) at the
+/// adapter boundary.
+struct MentionProfileWire: Decodable, Equatable {
+    let display: String
+    let pictureUrl: String
+    let avatarInitials: String
+    let avatarColor: String
+}
+
+extension MentionProfile {
+    /// Bridge from the kernel-supplied wire payload. An empty
+    /// `picture_url` (which Rust never emits today — the placeholder URI is
+    /// always populated) collapses to `nil` so the existing
+    /// `MentionProfile.pictureUrl: String?` semantics stay unchanged.
+    init(wire: MentionProfileWire) {
+        self.init(
+            display: wire.display,
+            pictureUrl: wire.pictureUrl.isEmpty ? nil : wire.pictureUrl,
+            initials: wire.avatarInitials,
+            colorHex: wire.avatarColor
+        )
     }
 }
 
@@ -1202,6 +1275,10 @@ struct WalletStatusData: Decodable, Equatable {
 struct ProfileCard: Decodable, Equatable {
     let pubkey: String
     let npub: String
+    /// Pre-truncated display form Rust formats with the `<first10>…<last8>`
+    /// policy. The shell binds this verbatim — no Swift-side truncation helper
+    /// (aim.md §6.9, Chirp thin-shell: zero display formatting in Swift).
+    let npubShort: String
     let display: String
     let pictureUrl: String?
     let nip05: String
@@ -1212,10 +1289,26 @@ struct ProfileCard: Decodable, Equatable {
     let hasProfile: Bool
 }
 
+/// Dispatch spec for a `ProfileAction` that fires a write through
+/// `nmp_app_dispatch_action`. Present for follow / unfollow, absent for the
+/// local-UI `edit_profile` intent. The shell branches on
+/// `profileAction.dispatch != nil`, never on `kind` — aim.md §4.4 forbids a
+/// Swift `switch action.kind { … }` deciding which write to perform.
+struct ProfileDispatchSpec: Decodable, Equatable {
+    let namespace: String
+    let bodyJson: String
+}
+
 struct ProfileAction: Decodable, Equatable {
+    /// Stable discriminator preserved for diagnostics/tests. The shell must
+    /// NOT switch on this — branch on `dispatch` instead.
     let kind: String
     let label: String
     let targetPubkey: String
+    /// SF Symbol name the shell renders without further mapping.
+    let iconName: String
+    /// Present for write actions; absent for local intents (edit sheet).
+    let dispatch: ProfileDispatchSpec?
 }
 
 struct AuthorProfileSnapshot: Decodable, Equatable {
@@ -1224,6 +1317,10 @@ struct AuthorProfileSnapshot: Decodable, Equatable {
     let profile: ProfileCard
     let items: [TimelineItem]
     let noteCount: Int
+    /// Pre-formatted post-count string the shell binds verbatim
+    /// (e.g. `"5"`). Rust owns the format so the shell never derives display
+    /// state from the items array (aim.md §6.9).
+    let noteCountDisplay: String
     let primaryAction: ProfileAction?
 }
 

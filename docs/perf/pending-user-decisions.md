@@ -870,3 +870,28 @@ Opening a PR anyway — manufacturing a doc tweak or dead-field cleanup to satis
    - If a follow-up is wanted, the right one is migrating `bunker_handshake` (a genuine D0 violation still typed into `KernelSnapshot`) to a registered snapshot projection — the first *internal* consumer of the new seam. That must be **stacked on PR #65** (not branched from master) and also touches iOS-side registration, so it needs a differently-scoped agent.
 
 **Why flagged:** the task brief was authored against a stale view of master; the work it asks for already exists in an open PR. Confirm the merge of #65, or redirect.
+
+---
+
+## 2026-05-21 — ProfileView aim.md §4/§6 fix: Swift LOC target unmet (-6% vs −25% bar)
+
+**Decision made autonomously (user unavailable).** Task: fix `performProfileAction` switches + 3-dict derivations in `ProfileView.swift` (329 LOC), target ≥25% Swift LOC drop. **All logic violations resolved** but Swift LOC dropped only 6% (331→311; -20 lines).
+
+**Logic violations fixed (this PR):**
+- `switch action.kind` at line 242 → branch on `action.dispatch != nil` (kernel-supplied `ProfileDispatchSpec` carries namespace+body; shell wires straight into `nmp_app_dispatch_action`)
+- `switch action.kind` at line 257 (icon name) → bind to `action.iconName` (Rust authors the SF Symbol name)
+- `truncatedNpub` Swift helper → bind to `profile.npubShort` (Rust formats `<first10>…<last8>`)
+- `Text("\(items.count)")` → bind to `authorView.noteCountDisplay`
+- `mentionProfiles` Dictionary derivation → `projections["mention_profiles"]` Rust projection
+- `cardLookup` + `itemLookup` Dictionaries → consolidated into ONE `NoteRenderContext` built once at the body root
+
+**Why LOC bar not hit:** the original file had ~32 lines of logic violations among ~300 lines of pure SwiftUI layout (profile header, edit sheet, list scaffolding). Removing 100% of the logic violations only nets ~10% of the file — the rest is rendering code, which the audit does not flag. To reach −25% would require either deleting layout (not requested) or removing the local `ProfileEditSheet` private struct (50 lines — separate concern, separate ownership). Padding-by-aggressive-comment-stripping was considered and rejected: doctrine comments document why a Rust field exists vs why a Swift switch is forbidden; deleting them would not be honest LOC reduction.
+
+**`event_card_lookup` projection NOT added in this PR.** Card data lives in `nmp-app-chirp`'s `ChirpTimelineSnapshot.cards` (not nmp-core). Adding a Chirp-side projection key is the right next step but adds a second registered surface and touches Chirp-side state that other in-flight fix agents may also be migrating. Deferred per "every new Rust field consumed by Swift in same PR" hard rule.
+
+**Recommended next move (needs user decision):**
+- Accept the 6% drop as honest given the surface area, OR
+- Open a follow-up PR migrating `cardLookup` to a `chirp.event_card_lookup` projection (saves ~6 more Swift lines, ~9% total), OR
+- Refactor `ProfileEditSheet` into its own file (separate concern; not requested by the audit).
+
+**Why flagged:** the explicit `≥25%` definition-of-done item is not met. Recording the gap honestly per advisor guidance.

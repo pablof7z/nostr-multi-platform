@@ -490,6 +490,147 @@ fn author_view_projects_unfollow_when_active_contacts_include_author() {
     assert_eq!(action["target_pubkey"].as_str(), Some(FOLLOW_A));
 }
 
+/// Profile-action dispatch shape: follow/unfollow must carry the registered
+/// ActionModule namespace + pre-serialised body so the shell wires the button
+/// straight into `nmp_app_dispatch_action`. Mirrors aim.md §4.4 — writes flow
+/// through registered actions, never through a Swift `switch action.kind`.
+#[test]
+fn profile_action_follow_carries_chirp_follow_dispatch_spec() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.active_account = Some(ACCOUNT.to_string());
+    kernel.open_author(FOLLOW_A.to_string(), false);
+
+    let snap = snapshot(&mut kernel);
+    let action = &snap["projections"]["author_view"]["primary_action"];
+    assert_eq!(action["kind"].as_str(), Some("follow"));
+    assert_eq!(action["icon_name"].as_str(), Some("person.badge.plus"));
+    let dispatch = &action["dispatch"];
+    assert!(!dispatch.is_null(), "follow action must carry a dispatch spec");
+    assert_eq!(dispatch["namespace"].as_str(), Some("chirp.follow"));
+    let body_json = dispatch["body_json"]
+        .as_str()
+        .expect("body_json must be a string");
+    let body: serde_json::Value = serde_json::from_str(body_json).expect("body_json must parse");
+    assert_eq!(body["pubkey"].as_str(), Some(FOLLOW_A));
+}
+
+#[test]
+fn profile_action_unfollow_carries_chirp_unfollow_dispatch_spec() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.active_account = Some(ACCOUNT.to_string());
+    kernel.prepopulate_seed_contacts(ACCOUNT.to_string(), vec![FOLLOW_A.to_string()]);
+    kernel.open_author(FOLLOW_A.to_string(), false);
+
+    let snap = snapshot(&mut kernel);
+    let action = &snap["projections"]["author_view"]["primary_action"];
+    assert_eq!(action["kind"].as_str(), Some("unfollow"));
+    assert_eq!(action["icon_name"].as_str(), Some("person.badge.minus"));
+    let dispatch = &action["dispatch"];
+    assert_eq!(dispatch["namespace"].as_str(), Some("chirp.unfollow"));
+    let body_json = dispatch["body_json"]
+        .as_str()
+        .expect("body_json must be a string");
+    let body: serde_json::Value = serde_json::from_str(body_json).expect("body_json must parse");
+    assert_eq!(body["pubkey"].as_str(), Some(FOLLOW_A));
+}
+
+/// `edit_profile` is the only local-UI intent — it opens a sheet, it is not a
+/// write — so `dispatch` is explicitly absent. The shell branches on
+/// presence-of-dispatch, not on `kind`, killing the Swift `switch action.kind`.
+#[test]
+fn profile_action_edit_profile_has_no_dispatch_spec() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.active_account = Some(ACCOUNT.to_string());
+    kernel.open_author(ACCOUNT.to_string(), false);
+
+    let snap = snapshot(&mut kernel);
+    let action = &snap["projections"]["author_view"]["primary_action"];
+    assert_eq!(action["kind"].as_str(), Some("edit_profile"));
+    assert_eq!(action["icon_name"].as_str(), Some("square.and.pencil"));
+    assert!(
+        action["dispatch"].is_null(),
+        "edit_profile is a local-UI intent — must not carry a dispatch spec"
+    );
+}
+
+/// `author_view.note_count_display` is the Rust-formatted post-count string
+/// the shell binds verbatim — killing the `Text("\(items.count)")` Swift
+/// interpolation that derived display state from the items array.
+#[test]
+fn author_view_carries_note_count_display_string() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.active_account = Some(ACCOUNT.to_string());
+    kernel.open_author(ACCOUNT.to_string(), false);
+
+    let snap = snapshot(&mut kernel);
+    let av = &snap["projections"]["author_view"];
+    assert_eq!(av["note_count"].as_u64(), Some(0));
+    assert_eq!(av["note_count_display"].as_str(), Some("0"));
+}
+
+/// `profile.npub_short` is the truncated copy-button form — Rust owns the
+/// truncation policy (`<first10>…<last8>`), no Swift `truncatedNpub` helper.
+#[test]
+fn profile_card_carries_npub_short() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.active_account = Some(ACCOUNT.to_string());
+
+    let snap = snapshot(&mut kernel);
+    let profile = &snap["projections"]["profile"];
+    let npub_short = profile["npub_short"]
+        .as_str()
+        .expect("profile.npub_short must be a string");
+    assert!(
+        !npub_short.is_empty(),
+        "npub_short must be populated when an active account is set"
+    );
+    // ACCOUNT is a 64-hex pubkey, well over the 20-char no-op threshold.
+    assert!(
+        npub_short.contains('…'),
+        "long pubkey must be truncated with an ellipsis: {npub_short}"
+    );
+}
+
+/// `projections.mention_profiles` mirrors the per-author display fields the
+/// open author-view items carry — replacing the Swift `Dictionary(items.map …
+/// MentionProfile(...))` derivation at `ProfileView.swift:28-40`. Empty `{}`
+/// when no author view is open (D1: key always present).
+#[test]
+fn mention_profiles_projection_carries_each_author_in_author_view() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.active_account = Some(ACCOUNT.to_string());
+    ingest_note(&mut kernel, NOTE_ID, ACCOUNT, 1_700_000_000, "hello world");
+    kernel.open_author(ACCOUNT.to_string(), false);
+
+    let snap = snapshot(&mut kernel);
+    let mp = &snap["projections"]["mention_profiles"];
+    assert!(mp.is_object(), "mention_profiles must be a JSON object");
+    let entry = &mp[ACCOUNT];
+    assert!(
+        !entry.is_null(),
+        "mention_profiles must carry an entry for the author of the open author-view"
+    );
+    assert!(entry["display"].is_string());
+    assert!(entry["picture_url"].is_string());
+    assert!(entry["avatar_initials"].is_string());
+    assert!(entry["avatar_color"].is_string());
+}
+
+#[test]
+fn mention_profiles_projection_empty_when_no_author_view_open() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.active_account = Some(ACCOUNT.to_string());
+
+    let snap = snapshot(&mut kernel);
+    let mp = &snap["projections"]["mention_profiles"];
+    assert!(mp.is_object(), "mention_profiles must always be present");
+    assert_eq!(
+        mp.as_object().map(|m| m.len()),
+        Some(0),
+        "mention_profiles must be empty when no author view is open"
+    );
+}
+
 /// A kind:0 author's note in the timeline must show the kind:0 display/avatar
 /// in its `projections.timeline[]` row — proving the profile join happens at
 /// projection time, not just on the standalone `profile` card. Order of ingest

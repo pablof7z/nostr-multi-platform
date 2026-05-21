@@ -2,12 +2,17 @@ import SwiftUI
 
 /// Compact note row used inside ProfileView's post list.
 /// Avatar tap → profile, row tap → thread.
+///
+/// `renderContext` carries the per-note mention map, event-card lookup, and
+/// timeline-item lookup `NoteContentView` consumes. ProfileView builds it
+/// once at the body root rather than passing three separate dictionaries
+/// (aim.md §4.2 — derived views are kernel-supplied; ProfileView reads
+/// `mentionProfiles` from `projections["mention_profiles"]` instead of
+/// rebuilding it from `items`).
 struct ProfileNoteRow: View {
     let item: TimelineItem
     let contentTree: ContentTreeWire?
-    let mentionProfiles: [String: MentionProfile]
-    let eventCards: [String: ChirpEventCard]
-    let timelineItems: [String: TimelineItem]
+    let renderContext: NoteRenderContext
     let onAvatarTap: () -> Void
     let onRowTap: () -> Void
     let onLike: () -> Void
@@ -42,9 +47,7 @@ struct ProfileNoteRow: View {
                     NoteContentView(
                         content: item.content,
                         contentTree: contentTree,
-                        mentionProfiles: mentionProfiles,
-                        eventCards: eventCards,
-                        timelineItems: timelineItems,
+                        renderContext: renderContext,
                         font: .body
                     )
                         .foregroundStyle(.primary)
