@@ -527,7 +527,9 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
         // throwaway bunker-handshake slot (no FFI surface to register the
         // `"bunker_handshake"` projection here).
         new_bunker_handshake_slot(),
-        Arc::new(Mutex::new(Vec::new())),
+        // PR-I: typed slot constructor; the backwards-compatible entry
+        // point has no FFI surface to read the slot, so it's a throwaway.
+        crate::kernel::new_relay_edit_rows_slot(),
         Arc::new(Mutex::new(None)),
         // NIP-17 DM-inbox key slot — private throwaway: this backwards-compatible
         // entry point has no FFI surface for a `DmInboxProjection` to read it.
@@ -565,7 +567,8 @@ pub fn run_actor_with_lifecycle_observer(
         // D0: NIP-46 remote signing is an app noun — private throwaway
         // bunker-handshake slot (no FFI surface here).
         new_bunker_handshake_slot(),
-        Arc::new(Mutex::new(Vec::new())),
+        // PR-I: typed slot constructor; private throwaway here.
+        crate::kernel::new_relay_edit_rows_slot(),
         Arc::new(Mutex::new(None)),
         // NIP-17 DM-inbox key slot — private throwaway: no FFI surface here.
         Arc::new(Mutex::new(None)),
@@ -614,7 +617,10 @@ pub fn run_actor_with_observers(
     // snapshot-projection closure on the `NmpApp`; this one is handed to the
     // actor's `IdentityRuntime`, which is the sole writer (D4).
     bunker_handshake: BunkerHandshakeSlot,
-    relay_edit_rows: Arc<Mutex<Vec<crate::kernel::RelayEditRow>>>,
+    // PR-I: typed slot ([`crate::kernel::RelayEditRowsSlot`]) so the actor
+    // parameter type signals the slot's purpose; D14 forbids new bare
+    // `Arc<Mutex<Vec<…>>>` parameters here.
+    relay_edit_rows: crate::kernel::RelayEditRowsSlot,
     marmot_local_nsec: Arc<Mutex<Option<zeroize::Zeroizing<String>>>>,
     // NIP-17 DM-inbox decryption key seam. Shared `Arc` with the `NmpApp`:
     // per-app crates read the slot through `NmpApp::nip17_local_keys`; this

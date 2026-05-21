@@ -260,7 +260,9 @@ impl super::Kernel {
         }
         if let Some(handle) = self.relay_edit_rows_handle.as_ref() {
             if let Ok(mut guard) = handle.lock() {
-                *guard = rows.clone();
+                // PR-I: typed slot — `.replace()` is the sole-writer
+                // affordance defined on `RelayEditRowList`.
+                guard.replace(rows.clone());
             }
         }
         let indexer_urls = rows
@@ -270,7 +272,9 @@ impl super::Kernel {
             .collect::<Vec<_>>();
         self.lifecycle.set_indexer_relays(indexer_urls.clone());
         if let Ok(mut guard) = self.indexer_relays_handle.lock() {
-            *guard = indexer_urls;
+            // PR-I: typed slot — `.replace()` overwrites the underlying
+            // `RelayUrls(Vec<String>)` newtype.
+            guard.replace(indexer_urls);
         }
         let read_urls = read_eligible_relay_urls(&rows);
         self.lifecycle.set_app_relays(read_urls.clone());
@@ -281,7 +285,8 @@ impl super::Kernel {
             .map(|r| r.url.clone())
             .collect::<Vec<_>>();
         if let Ok(mut guard) = self.local_write_relays_handle.lock() {
-            *guard = write_urls;
+            // PR-I: typed slot — see indexer_relays_handle above.
+            guard.replace(write_urls);
         }
         if changed {
             self.lifecycle.clear_probed_mailboxes();
@@ -325,6 +330,36 @@ impl super::Kernel {
 
     pub(crate) fn relay_edit_rows_snapshot(&self) -> &[RelayEditRow] {
         &self.relay_edit_rows
+    }
+
+    /// PR-I — typed getter for the indexer-relay URL set. Derived from the
+    /// kernel-owned `relay_edit_rows` source-of-truth on each call (cold
+    /// path — only the snapshot builder reads this once per tick).
+    ///
+    /// Returns an owned `Vec<String>` rather than a borrow because the
+    /// derivation allocates anyway and the snapshot builder serializes a
+    /// value the kernel will not mutate further this tick.
+    pub(crate) fn indexer_relays(&self) -> Vec<String> {
+        self.relay_edit_rows
+            .iter()
+            .filter(|r| crate::actor::has_role(&r.role, "indexer"))
+            .map(|r| r.url.clone())
+            .collect()
+    }
+
+    /// PR-I — typed getter for the local write-relay URL set. Same shape as
+    /// [`Self::indexer_relays`] above: derived from `relay_edit_rows` and
+    /// returned owned. The publish resolver reads this through the shared
+    /// `local_write_relays_handle` slot rather than via this getter (the
+    /// resolver lives one Arc-hop deeper than the kernel); this getter
+    /// exists so the projection builder has a single, kernel-blessed
+    /// definition of "write relay URLs from the edit projection".
+    pub(crate) fn write_relays(&self) -> Vec<String> {
+        self.relay_edit_rows
+            .iter()
+            .filter(|r| crate::actor::has_role(&r.role, "write"))
+            .map(|r| r.url.clone())
+            .collect()
     }
 }
 

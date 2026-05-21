@@ -14,8 +14,33 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
 use super::{Nip65OutboxResolver, PublishTarget, RECIPIENT_INBOX_FANOUT_PTAG_THRESHOLD};
+use crate::kernel::{
+    new_indexer_relays_slot, new_local_write_relays_slot, IndexerRelaysSlot, LocalWriteRelaysSlot,
+};
 use crate::publish::traits::OutboxResolver;
 use crate::store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
+
+/// PR-I test helper — typed [`IndexerRelaysSlot`] pre-populated with `urls`.
+/// Pre-PR-I the tests built `Arc::new(Mutex::new(vec![...]))` inline; this
+/// helper centralizes the typed-slot construction so the production type
+/// change does not ripple into every test that needs a non-empty indexer set.
+fn indexer_slot_with(urls: Vec<String>) -> IndexerRelaysSlot {
+    let slot = new_indexer_relays_slot();
+    if let Ok(mut guard) = slot.lock() {
+        guard.replace(urls);
+    }
+    slot
+}
+
+/// PR-I test helper — typed [`LocalWriteRelaysSlot`] pre-populated with
+/// `urls`. Same rationale as [`indexer_slot_with`].
+fn local_write_slot_with(urls: Vec<String>) -> LocalWriteRelaysSlot {
+    let slot = new_local_write_relays_slot();
+    if let Ok(mut guard) = slot.lock() {
+        guard.replace(urls);
+    }
+    slot
+}
 
 const AUTHOR_HEX: &str = "1111111111111111111111111111111111111111111111111111111111111111";
 const RECIPIENT_HEX: &str = "2222222222222222222222222222222222222222222222222222222222222222";
@@ -41,7 +66,7 @@ fn store_kind10002(store: &dyn EventStore, author_hex: &str, tags: Vec<Vec<Strin
 }
 
 fn mk_resolver(store: Arc<dyn EventStore>) -> Nip65OutboxResolver {
-    Nip65OutboxResolver::new(store, Arc::new(Mutex::new(Vec::new())))
+    Nip65OutboxResolver::new(store, new_indexer_relays_slot())
 }
 
 fn pk(n: u8) -> String {
@@ -96,8 +121,8 @@ fn nip65_resolver_uses_local_writes_for_active_account_only() {
     let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
     let resolver = Nip65OutboxResolver::with_local_relays(
         store,
-        Arc::new(Mutex::new(Vec::new())),
-        Arc::new(Mutex::new(vec!["wss://local-write.example".to_string()])),
+        new_indexer_relays_slot(),
+        local_write_slot_with(vec!["wss://local-write.example".to_string()]),
         Arc::new(Mutex::new(Some(AUTHOR_HEX.to_string()))),
     );
 
@@ -203,7 +228,7 @@ fn nip65_resolver_keeps_discovery_indexers_when_p_tag_threshold_skips_inboxes() 
     let recipients = threshold_recipients();
     let resolver = Nip65OutboxResolver::new(
         store,
-        Arc::new(Mutex::new(vec!["wss://indexer.example".to_string()])),
+        indexer_slot_with(vec!["wss://indexer.example".to_string()]),
     );
 
     let out = resolver.resolve(AUTHOR_HEX, &recipients, &PublishTarget::Auto, 3);
