@@ -13,8 +13,21 @@
 
 use serde::Serialize;
 
-/// One account row in the snapshot. `signer_kind` is a stable label
-/// (`"local"` | `"bunker"`) the UI renders verbatim — never a policy input.
+/// One account row in the snapshot.
+///
+/// `signer_kind` is the stable wire token (`"local"` | `"nip46"` | …) other
+/// platforms switch on; it is kept for backward compatibility with Android +
+/// diagnostic surfaces, but Swift no longer derives display labels from it
+/// (aim.md §4.4 / §4.5). Native should bind the pre-classified fields below.
+///
+/// Pre-classified fields (D4: actor populates, Swift binds):
+/// - `signer_label` — human-readable label for the row's signer.
+/// - `signer_is_remote` — `true` for any signer whose key material lives
+///   outside the kernel (NIP-46 today, NIP-07 / hardware later). Lets the UI
+///   scope a "remote signers" section without lowercased string filtering.
+/// - `is_active` — pre-derived `status == "active"` so view code does not
+///   compare strings to decide active-ness. `status` stays for the same
+///   backward-compat reason as `signer_kind`.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub(crate) struct AccountSummary {
     /// Hex pubkey — the canonical `IdentityId` (matches NDK / applesauce).
@@ -24,6 +37,15 @@ pub(crate) struct AccountSummary {
     pub(crate) signer_kind: String,
     /// `"active"` for the active account, `"idle"` otherwise.
     pub(crate) status: String,
+    /// Pre-classified, human-readable signer label (e.g. `"nsec"`, `"NIP-46"`).
+    /// Swift renders this verbatim instead of switching on `signer_kind`.
+    pub(crate) signer_label: String,
+    /// `true` when the signer's key material lives outside the kernel
+    /// (NIP-46 bunker today, NIP-07 / hardware later). Lets native scope
+    /// remote-signer-only sections without string-matching `signer_kind`.
+    pub(crate) signer_is_remote: bool,
+    /// Pre-derived `status == "active"`. Native binds this directly.
+    pub(crate) is_active: bool,
 }
 
 /// One in-flight / recently-completed publish. Per D1 (best-effort

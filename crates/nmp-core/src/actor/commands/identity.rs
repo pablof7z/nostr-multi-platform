@@ -341,6 +341,25 @@ fn npub_from_hex(hex: &str) -> String {
         .unwrap_or_else(|| hex.to_string())
 }
 
+/// Pre-classified human-readable label for the row's signer. Swift binds
+/// this verbatim — the previous Swift-side `switch kind.lowercased() { … }`
+/// (aim.md §4.4 violation) is now this Rust-side classification.
+///
+/// Wire tokens recognised today:
+/// - `"local"` — nsec / generated key kept inside the kernel.
+/// - `"nip46"` — NIP-46 bunker (remote signer).
+///
+/// An unknown / future token returns the token unchanged so a forward-compat
+/// signer adapter can ship a custom label simply by returning a new
+/// `signer_kind()` string.
+fn signer_label_for_kind(kind: &str) -> String {
+    match kind {
+        "local" => "Local key".to_string(),
+        "nip46" => "NIP-46".to_string(),
+        other => other.to_string(),
+    }
+}
+
 fn display_name_from_hex(id: &str) -> String {
     format!(
         "{}…{}",
@@ -360,25 +379,25 @@ pub(super) fn sync_kernel(identity: &IdentityRuntime, kernel: &mut Kernel) {
         .order
         .iter()
         .filter_map(|id| {
-            let (signer_kind, npub) = if let Some(handle) = identity.remote_signers.get(id) {
-                (handle.signer_kind().to_string(), npub_from_hex(id))
-            } else if let Some(keys) = identity.keys.get(id) {
-                let npub = keys.public_key().to_bech32().unwrap_or_else(|_| id.clone());
-                ("local".to_string(), npub)
-            } else {
-                return None;
-            };
+            let (signer_kind, npub, signer_is_remote) =
+                if let Some(handle) = identity.remote_signers.get(id) {
+                    (handle.signer_kind().to_string(), npub_from_hex(id), true)
+                } else if let Some(keys) = identity.keys.get(id) {
+                    let npub = keys.public_key().to_bech32().unwrap_or_else(|_| id.clone());
+                    ("local".to_string(), npub, false)
+                } else {
+                    return None;
+                };
+            let is_active = active.as_deref() == Some(id);
             Some(AccountSummary {
                 id: id.clone(),
                 npub,
                 display_name: display_name_from_hex(id),
+                signer_label: signer_label_for_kind(&signer_kind),
                 signer_kind,
-                status: if active.as_deref() == Some(id) {
-                    "active"
-                } else {
-                    "idle"
-                }
-                .to_string(),
+                signer_is_remote,
+                status: if is_active { "active" } else { "idle" }.to_string(),
+                is_active,
             })
         })
         .collect::<Vec<_>>();

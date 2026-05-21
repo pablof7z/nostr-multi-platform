@@ -82,6 +82,22 @@ fn sign_in_nsec_adds_active_account_and_projects_it() {
     assert!(accounts[0].npub.starts_with("npub1"));
 }
 
+/// aim.md §4.4 / §4.5: native cannot derive signer-display labels with a
+/// `switch` on a wire token, nor scope a "remote signers" list with a
+/// lowercased string comparison, nor compute `isActive` from `status == ..`.
+/// The actor pre-classifies all three on every row.
+#[test]
+fn local_account_projection_carries_preclassified_signer_fields() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_nsec(&mut id, &mut kernel, TEST_NSEC, false);
+    let (accounts, _) = kernel.account_snapshot();
+    let row = &accounts[0];
+    assert_eq!(row.signer_kind, "local");
+    assert_eq!(row.signer_label, "Local key");
+    assert!(!row.signer_is_remote);
+    assert!(row.is_active);
+}
+
 #[test]
 fn sign_in_nsec_rejects_garbage_with_toast() {
     let (mut id, mut kernel) = fresh();

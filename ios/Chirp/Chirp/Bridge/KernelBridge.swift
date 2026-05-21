@@ -853,9 +853,22 @@ struct AccountSummary: Decodable, Identifiable, Equatable {
     let id: String
     let npub: String
     let displayName: String
+    /// Stable wire token (`"local"` | `"nip46"` | …). Kept for the diagnostics
+    /// surface that still renders the raw string; new view code MUST bind
+    /// `signerLabel` / `signerIsRemote` instead (aim.md §4.4 / §4.5).
     let signerKind: String
+    /// Stable status token (`"active"` | `"idle"`). Kept for backward compat;
+    /// new view code MUST bind `isActive` instead.
     let status: String
-    var isActive: Bool { status == "active" }
+    /// Pre-classified, human-readable label rendered verbatim by the UI.
+    /// Replaces the old `switch kind.lowercased() { … }` in AccountsView.
+    let signerLabel: String
+    /// `true` when the signer's key material lives outside the kernel
+    /// (NIP-46 bunker today, NIP-07 / hardware later). Replaces
+    /// `.filter { $0.signerKind.lowercased() == "nip46" }` in AccountsView.
+    let signerIsRemote: Bool
+    /// Pre-derived `status == "active"`. Native binds this directly.
+    let isActive: Bool
 }
 
 struct PublishQueueEntry: Decodable, Identifiable, Equatable {
