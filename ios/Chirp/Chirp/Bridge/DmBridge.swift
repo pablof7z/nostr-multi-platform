@@ -97,6 +97,40 @@ extension KernelHandle {
             }
         }
     }
+
+    /// Dispatch a `nmp.dm.publish_relay_list` action — publish the active
+    /// account's kind:10050 NIP-17 DM-relay list so other clients can
+    /// discover where to send the user gift-wrapped DMs.
+    ///
+    /// `relays` is the user's DM-inbox relay set (per NIP-17 § 2: the relays
+    /// where the user wants to *receive* DMs — i.e. read-eligible relays).
+    /// Routes through the generic `nmp_app_dispatch_action` path; the
+    /// kind:10050 event build, URL canonicalization, signing, and NIP-65
+    /// outbox routing are all owned by Rust (thin-shell rule).
+    ///
+    /// Fire-and-forget: the returned correlation JSON is freed and ignored —
+    /// the Rust action rejects an empty relay set (publishing zero `relay`
+    /// tags would CLEAR the cache on every ingesting peer), so callers that
+    /// might race here should keep their own "have not yet computed a non-
+    /// empty set" guard. `KernelModel.maybePublishDmRelayList` does exactly
+    /// that.
+    func publishDmRelayList(relays: [String]) {
+        let payload: [String: Any] = ["relays": relays]
+        guard
+            let data = try? JSONSerialization.data(withJSONObject: payload),
+            let json = String(data: data, encoding: .utf8)
+        else {
+            dmLog.error("publishDmRelayList: failed to encode action payload")
+            return
+        }
+        json.withCString { jsonPtr in
+            "nmp.dm.publish_relay_list".withCString { nsPtr in
+                if let ptr = nmp_app_dispatch_action(raw, nsPtr, jsonPtr) {
+                    nmp_app_free_string(ptr)
+                }
+            }
+        }
+    }
 }
 
 // ── DmInboxStore — projection mirror pushed by KernelModel.apply ─────────
