@@ -2,7 +2,7 @@
 
 > Part of the [Build & Validation Plan](../plan.md).
 
-Required CI gates (apply from the milestone they become possible):
+Required CI target state (apply from the milestone they become possible):
 
 - `cargo fmt --all -- --check` (always).
 - `cargo test --workspace` (always).
@@ -17,3 +17,14 @@ Required CI gates (apply from the milestone they become possible):
 - Cross-platform consistency test from [M15](m15-cross-platform.md).
 
 Live firehose runs are not in pre-merge CI (would block on relay flakes); they run nightly on a dedicated runner and produce reports tagged `live` in `docs/perf/m<N>/`.
+
+## Currently Enforced
+
+As of the 2026-05-21 assessment, GitHub Actions enforce Rust workspace tests
+with exclusions, `nmp-core --features lmdb-backend`, `nmp-android-ffi` host
+`cargo check`, doctrine lint, file-size checks for changed files, FFI header
+drift, supply-chain checks, and scheduled/manual S2 retention.
+
+Native iOS builds/tests, Gradle builds, Android instrumentation, codegen
+determinism, reactivity bench, and firehose bench are target-state gates, not
+currently PR-blocking gates.

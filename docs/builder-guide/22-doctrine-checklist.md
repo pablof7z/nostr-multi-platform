@@ -149,7 +149,7 @@ closed when the recipient inbox is unknown.
 ## Doctrine-map comment — minimum fields
 
 The full template lives in
-[03 — Doctrine D0–D8](03-doctrine-d0-d8.md#in-crate-doctrine-map-comments).
+[03 — Doctrine D0–D10](03-doctrine-d0-d8.md#in-crate-doctrine-map-comments).
 Every new crate / major module root must carry at minimum:
 
 ```rust
@@ -189,7 +189,7 @@ mechanism, not an app noun. No ADR → no waiver → the box stays unchecked.
 
 ## See also
 
-- [03 — Doctrine D0–D8 end-to-end](03-doctrine-d0-d8.md)
+- [03 — Doctrine D0–D10 end-to-end](03-doctrine-d0-d8.md)
 - [05 — Kernel substrate — the 5 trait families](05-substrate-traits.md)
 - [18 — Testing — `nmp-testing`, benches, contract tests](18-testing.md)
 - [27 — Doc/code discrepancies (orchestrator queue)](27-discrepancies.md)

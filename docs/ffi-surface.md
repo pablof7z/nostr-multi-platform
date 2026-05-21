@@ -1,9 +1,9 @@
 # FFI Surface Reference
 
-> **Reviewed:** 2026-05-18 (T143). Pinned to `origin/master` at the commit
-> when T143 landed. Previous revision (91d76b9) was stale: `capability.rs`
-> and `lifecycle.rs` symbols were listed as "in-flight / pending"; `nmp-signer-broker`
-> was absent; caller column still named Pulse (deleted HB50).
+> **Reviewed:** 2026-05-21. Previous revisions were stale in both directions:
+> `capability.rs`, unsigned-event, and URI-opening symbols are now declared in
+> `ios/Chirp/Chirp/Bridge/NmpCore.h`; newer action/projection and Marmot helper
+> symbols are still being folded into this reference.
 
 The kernel ships a flat `extern "C"` raw C ABI regardless of Rust module layout.
 All production functions accept a `*mut NmpApp` opaque handle and return void
@@ -13,8 +13,10 @@ crosses the boundary. The callers are **Chirp** (iOS, via `NmpCore.h`) and
 **Android** (via `nmp-android-ffi` JNI shim which calls through Rust paths, not
 direct C ABI). Pulse was deleted in HB50.
 
-Total: **39 production** `#[no_mangle]` symbols + **2 test-support-only** symbols
-(cfg-gated, never in shipping builds).
+This document describes the hand-maintained public surface. Treat exact symbol
+counts as generated-check territory; the live tree exports additional app,
+Android JNI, signer-broker, event-observer, snapshot-projection, and Marmot
+helper symbols.
 
 ---
 
@@ -66,15 +68,14 @@ Routes kernel `CapabilityRequest` JSON to a registered native handler (e.g.
 Swift `KeychainCapability.handleJSON(_:)`) and returns a `CapabilityEnvelope`
 JSON. This is the seam for PD-019 / T96 keychain capability.
 
-> **STOP — not declared in `NmpCore.h`:** all three symbols exist in the Rust
-> ABI but are absent from `ios/Chirp/Chirp/Bridge/NmpCore.h`. Chirp cannot
-> currently call them. Header update is needed before KeychainCapability wiring
-> can go live.
+These symbols exist in the Rust ABI and are declared in
+`ios/Chirp/Chirp/Bridge/NmpCore.h`. Chirp registers the keychain capability
+handler before `start()`.
 
 | Symbol | Signature | Behavior | Callers | Threading | D6 | D7 |
 |---|---|---|---|---|---|---|
-| `nmp_app_set_capability_callback` | `(app: *mut NmpApp, context: *mut c_void, callback: Option<fn(*mut c_void, *const c_char) -> *mut c_char>)` | Register the native capability handler. `None` unregisters. A request received while unregistered yields an error envelope, never a crash. | none today (not in header) | Synchronous registration; callback invoked on the thread that calls `dispatch_capability` | null app / poisoned lock → early return | D7-clean: socket transports envelopes, decides no policy |
-| `nmp_app_dispatch_capability` | `(app: *mut NmpApp, request_json: *const c_char) -> *mut c_char` | Route a `CapabilityRequest` JSON to the registered handler, return a heap-allocated `CapabilityEnvelope` JSON string. MUST be released via `nmp_app_free_string`. Returns a populated error envelope on missing handler, malformed request, or NULL handler return — never NULL for valid app+request. | none today (not in header) | Synchronous on calling thread | Never returns NULL for non-null app+request; error is data | D7-clean: pure transport |
+| `nmp_app_set_capability_callback` | `(app: *mut NmpApp, context: *mut c_void, callback: Option<fn(*mut c_void, *const c_char) -> *mut c_char>)` | Register the native capability handler. `None` unregisters. A request received while unregistered yields an error envelope, never a crash. | Chirp | Synchronous registration; callback invoked on the thread that calls `dispatch_capability` | null app / poisoned lock → early return | D7-clean: socket transports envelopes, decides no policy |
+| `nmp_app_dispatch_capability` | `(app: *mut NmpApp, request_json: *const c_char) -> *mut c_char` | Route a `CapabilityRequest` JSON to the registered handler, return a heap-allocated `CapabilityEnvelope` JSON string. MUST be released via `nmp_app_free_string`. Returns a populated error envelope on missing handler, malformed request, or NULL handler return — never NULL for valid app+request. | Chirp via `KernelBridge.registerCapabilityHandler` | Synchronous on calling thread | Never returns NULL for non-null app+request; error is data | D7-clean: pure transport |
 | `nmp_app_free_string` | `(ptr: *mut c_char)` | Release a Rust-allocated `*mut c_char` returned by `dispatch_capability`. null is a no-op. This is the ONLY symbol where Rust allocates memory the caller must free. | Callers of `dispatch_capability` | Synchronous | null → no-op | n/a |
 
 ---
@@ -82,8 +83,9 @@ JSON. This is the seam for PD-019 / T96 keychain capability.
 ## 5. Action dispatch — identity / publish / account / relay (`ffi/identity.rs`)
 
 All fire-and-forget. Outcomes surface via snapshot fields (`last_error_toast`,
-`accounts`, `publish_queue`). There is no single `nmp_dispatch` symbol — the
-surface is per-verb.
+`accounts`, `publish_queue`). Social app verbs and newer publish actions should
+prefer the namespace-keyed `nmp_app_dispatch_action` path; remaining per-verb
+symbols are compatibility and kernel-owned surfaces.
 
 | Symbol | Signature | Behavior | Callers | D6 | D7 |
 |---|---|---|---|---|---|
@@ -93,7 +95,7 @@ surface is per-verb.
 | `nmp_app_switch_active` | `(app, identity_id: *const c_char)` | Switch the active signing identity. | Chirp | invalid → early return | n/a |
 | `nmp_app_remove_account` | `(app, identity_id: *const c_char)` | Remove account from the identity store. | Chirp | invalid → early return | n/a |
 | `nmp_app_publish_note` | `(app, content: *const c_char, reply_to_id_or_null: *const c_char)` | Sign + publish a kind:1 note. `reply_to_id_or_null` NULL means top-level (valid, not a drop). | Chirp | null/empty content → early return; null reply is valid | n/a |
-| `nmp_app_publish_unsigned_event` | `(app, unsigned_json: *const c_char)` | Sign + publish a pre-constructed `UnsignedEvent` JSON (`pubkey`, `kind`, `tags`, `content`, `created_at`). Caller's `pubkey` field is ignored — kernel derives from active identity's signing key (D7: caller cannot pick which identity signs). Malformed JSON → silent drop. | none today — exported but absent from `NmpCore.h` (STOP) | invalid/malformed → silent drop | D7-clean: signing identity is kernel's decision |
+| `nmp_app_publish_unsigned_event` | `(app, unsigned_json: *const c_char)` | Sign + publish a pre-constructed `UnsignedEvent` JSON (`pubkey`, `kind`, `tags`, `content`, `created_at`). Caller's `pubkey` field is ignored — kernel derives from active identity's signing key (D7: caller cannot pick which identity signs). Malformed JSON → silent drop. | declared in `NmpCore.h`; no Chirp UI caller today | invalid/malformed → silent drop | D7-clean: signing identity is kernel's decision |
 | `nmp_app_react` | `(app, target_event_id: *const c_char, reaction: *const c_char)` | Publish a kind:7 reaction. `reaction` NULL defaults to `"+"`. | Chirp | non-hex target → early return | n/a |
 | `nmp_app_follow` | `(app, pubkey: *const c_char)` | Add pubkey to kind:3 follow list. Validates hex pubkey. | Chirp | non-hex → early return | n/a |
 | `nmp_app_unfollow` | `(app, pubkey: *const c_char)` | Remove pubkey from kind:3 follow list. | Chirp | non-hex → early return | n/a |
@@ -116,7 +118,7 @@ are fire-and-forget dispatches that cause subsequent snapshot emissions.
 | `nmp_app_open_author` | `(app, pubkey: *const c_char)` | Register interest in an author's notes feed. Validates hex pubkey. | Chirp | non-hex → early return | n/a |
 | `nmp_app_open_thread` | `(app, event_id: *const c_char)` | Register interest in an event thread. Validates hex event ID. | Chirp | non-hex → early return | n/a |
 | `nmp_app_open_firehose_tag` | `(app, tag: *const c_char)` | Register interest in a hashtag firehose. Free-form string (no hex check). | Chirp | null/empty → early return | n/a |
-| `nmp_app_open_uri` | `(app, uri: *const c_char)` | Route a `nostr:` URI or bare NIP-19 entity. Kernel resolves the entity and pushes `ViewOpened` or `UriRejected` via snapshot. T80/T95. | none today — exported but absent from `NmpCore.h` (STOP) | null/invalid → silent no-op | D7-clean: kernel decides routing |
+| `nmp_app_open_uri` | `(app, uri: *const c_char)` | Route a `nostr:` URI or bare NIP-19 entity. Kernel resolves the entity and pushes `ViewOpened` or `UriRejected` via snapshot. T80/T95. | declared in `NmpCore.h`; no Chirp UI caller today | null/invalid → silent no-op | D7-clean: kernel decides routing |
 | `nmp_app_claim_profile` | `(app, pubkey: *const c_char, consumer_id: *const c_char)` | Increment refcount for a profile interest. Kernel fetches and emits profile metadata while any consumer holds a claim. Validates hex pubkey. | Chirp | any invalid arg → early return | n/a |
 | `nmp_app_release_profile` | `(app, pubkey: *const c_char, consumer_id: *const c_char)` | Decrement refcount. When refcount reaches zero, kernel stops fetching. Validates hex pubkey. | Chirp | any invalid arg → early return | n/a |
 | `nmp_app_close_author` | `(app, pubkey: *const c_char)` | Deregister author interest. Declared in `NmpCore.h` but not called from `KernelBridge.swift` — header-declared, unwired in Swift bridge layer. | declared, not wired in Chirp | non-hex → early return | n/a |
@@ -258,26 +260,18 @@ policy (when to reconcile NIP-77, how to route relays, which identity signs).
 
 ---
 
-## STOP findings
+## Current findings
 
 1. **`nmp_drain_updates` does not exist.** The task brief presumed a pull-side
    drain symbol. Snapshot delivery is push-only via `nmp_app_set_update_callback`.
    No action needed — the architecture is intentionally push.
 
-2. **`nmp_app_set_capability_callback`, `nmp_app_dispatch_capability`,
-   `nmp_app_free_string` are NOT declared in `NmpCore.h`** (`ios/Chirp/Chirp/Bridge/NmpCore.h`).
-   These symbols exist in the Rust ABI and are needed for KeychainCapability
-   (PD-019 / T96), but Chirp's C header is missing their declarations. The
-   header must be updated before iOS can wire the keychain capability.
+2. **This reference still needs a generated symbol audit.** The live tree now
+   exports more symbols than the old T143 count, including app-specific Chirp,
+   Marmot, event observer, raw tap, action dispatch, and snapshot projection
+   helpers.
 
-3. **`nmp_app_publish_unsigned_event` is NOT declared in `NmpCore.h`.**
-   Exported from the Rust ABI, missing from the Swift header. Chirp cannot
-   call it today.
-
-4. **`nmp_app_open_uri` is NOT declared in `NmpCore.h`.**
-   Exported from the Rust ABI (T80/T95), missing from the Swift header.
-
-5. **`nmp_app_close_author` and `nmp_app_close_thread` are declared in
+3. **`nmp_app_close_author` and `nmp_app_close_thread` are declared in
    `NmpCore.h` but not called from `KernelBridge.swift`.** The Chirp Swift
    bridge exposes `openAuthor`/`openThread` but provides no close path. Views
    that open an author or thread feed never deregister their interest —

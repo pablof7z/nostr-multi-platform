@@ -10,7 +10,7 @@
 | **LANDED** | `docs/design/**/*.md`§, `docs/decisions/000N-*.md`, `docs/plan/m*.md`, plus partial `crates/` cites for scaffolded-but-incomplete code | `path:line` for code paths that don't exist on master |
 | **PLANNED** | `docs/plan/m*.md`, ADRs, `docs/design/**/*.md`, scope memo | any `crates/`/`apps/`/`ios/` path absent from master |
 
-Doctrine canon: `docs/product-spec/doctrine.md` (canonical D0–D8 file) + `docs/product-spec/overview-and-dx.md` §1.5 (in-page restatement). Research synthesis: `docs/research/sessions/synthesis.md` + `docs/design/ndk-applesauce-lessons.md` + `docs/research/{ndk,applesauce}/`. Current scope: kernel substrate + planner + EventStore/MemEventStore + subscription pool + NIP-42 auth gate + publish engine **all SHIP**; protocol crates `nmp-signers` / `nmp-nip29` / `nmp-nip42` / `nmp-nip77` **all SHIP**; Chirp is the active product shell. Podcast and Highlighter app surfaces are deferred until Chirp is complete. FFI today is raw C JSON-over-string (`crates/nmp-core/src/ffi.rs`); UniFFI migration is M14 (PLANNED).
+Doctrine canon: `docs/product-spec/doctrine.md` (canonical D0–D10 file) + `docs/product-spec/overview-and-dx.md` §1.5 (in-page restatement). Research synthesis: `docs/research/sessions/synthesis.md` + `docs/design/ndk-applesauce-lessons.md` + `docs/research/{ndk,applesauce}/`. Current scope: kernel substrate + planner + EventStore/MemEventStore + subscription pool + NIP-42 auth gate + publish engine **all SHIP**; protocol crates `nmp-signers` / `nmp-nip29` / `nmp-nip42` / `nmp-nip77` **all SHIP**; Chirp is the active product shell. Podcast and Highlighter app surfaces are deferred until Chirp is complete. FFI today is raw C JSON-over-string (`crates/nmp-core/src/ffi.rs`); UniFFI migration is M14 (PLANNED).
 
 ## Master TOC (28 sections)
 
@@ -19,7 +19,7 @@ Doctrine canon: `docs/product-spec/doctrine.md` (canonical D0–D8 file) + `docs
 | 00 | How to read this guide | `00-how-to-read.md` | SHIPS | both | 500 |
 | 01 | What NMP is + why it exists | `01-what-nmp-is.md` | SHIPS | builders | 1800 |
 | 02 | Mental model — kernel + 5 trait families | `02-mental-model.md` | SHIPS | both | 2200 |
-| 03 | Doctrine D0–D8 end-to-end | `03-doctrine-d0-d8.md` | SHIPS | both | 2500 |
+| 03 | Doctrine D0–D10 end-to-end | `03-doctrine-d0-d8.md` | SHIPS | both | 2500 |
 | 04 | RMP bible + actor model (TEA on one thread) | `04-actor-and-tea.md` | SHIPS | both | 1800 |
 | 05 | Kernel substrate — the 5 trait families | `05-substrate-traits.md` | SHIPS | both | 2800 |
 | 06 | Reactivity contract (D8) | `06-reactivity-contract.md` | SHIPS | agents | 2400 |
@@ -70,8 +70,8 @@ Compact format. Each section: **covers** (1 line) · **cite** (file:line refs) �
 - anti: putting `Highlight`/`Episode`/`Project` in `nmp-core`; conflating ViewModule with platform UI components; bypassing ViewModule to render raw events in SwiftUI; adding a 6th trait family without an ADR.
 - xref: 03, 05, 15, 20.
 
-### 03 — Doctrine D0–D8 end-to-end  *(SHIPS · both · 2500)*
-- covers: each D0–D8 with statement · what it forbids · where it's enforced today · regression test (or `[PENDING M_n]`); note D0–D5 are policy / D6–D8 are substrate; conflict resolution = listed order; pointers to in-crate doctrine map comments.
+### 03 — Doctrine D0–D10 end-to-end  *(SHIPS · both · 2500)*
+- covers: each D0–D10 with statement · what it forbids · where it's enforced today · regression test (or `[PENDING M_n]`); note D0–D5 are policy / D6–D10 are substrate; conflict resolution = listed order; pointers to in-crate doctrine map comments.
 - cite: `docs/product-spec/doctrine.md:1-98` (canonical); `docs/product-spec/overview-and-dx.md:27-118` (in-page restatement); `docs/aim.md` §6; `docs/decisions/0001-..0004-*.md` (D8 substrate); `docs/design/framework-magic.md:24-72` (contract table); `crates/nmp-testing/tests/framework_magic_contract.rs` (named tests); `crates/nmp-core/src/publish/mod.rs:1-40` (D3/D4/D5/D6/D7/D8 in-crate map); `crates/nmp-nip77/src/lib.rs:25-44` (D2/D6/D8 in-crate map); `crates/nmp-nip29/src/lib.rs:11-19` (D0 boundary statement).
 - deliver: 9-row table (doctrine · statement · forbids · enforced-by · test); reusable PR-review rubric code-block; "doctrine map comment" template for new modules.
 - anti: `Result<T,E>` across FFI; AppState growing beyond open-view projection; per-event hot-path allocations; native code deciding retry policy; growing `nmp-core` to host app nouns.
@@ -206,7 +206,7 @@ Compact format. Each section: **covers** (1 line) · **cite** (file:line refs) �
 ### 22 — Doctrine compliance checklist  *(SHIPS · agents · 1000)*
 - covers: ~25-item checklist (≥1 per doctrine) as yes/no questions; PR-template usage; how post-merge codex review consumes it (per `docs/perf/codex-reviews/`); the "doctrine map comment" convention shipping in `publish/mod.rs` and `nip77/lib.rs`.
 - cite: `docs/product-spec/doctrine.md:1-98`; `docs/product-spec/overview-and-dx.md:27-118`; `docs/perf/orchestration-log.md` (codex cadence); `docs/perf/codex-reviews/`; `AGENTS.md`; `docs/plan/ci-hygiene.md`; `crates/nmp-core/src/publish/mod.rs:1-40` (canonical doctrine-map comment).
-- deliver: checklist as markdown checkbox list; one paragraph per D0–D8 of red-flag patterns; "doctrine map comment" template; "when in doubt, file an ADR" footer.
+- deliver: checklist as markdown checkbox list; one paragraph per D0–D10 of red-flag patterns; "doctrine map comment" template; "when in doubt, file an ADR" footer.
 - anti: ticking boxes mechanically; skipping D8 because "perf is fine in dev"; silent doctrine waivers; "future PR will fix it" carve-outs; PRs that grow `nmp-core` to make app X work.
 - xref: 03, 05, 18, 27.
 
@@ -218,7 +218,7 @@ Compact format. Each section: **covers** (1 line) · **cite** (file:line refs) �
 - xref: linked from every section's first use of each term.
 
 ### 24 — Reference cards  *(SHIPS · both · 800)*
-- covers: today's KernelAction variants; today's KernelUpdate variants; today's KernelViewSpec variants; the 5 trait families one-liner each; v1 capability catalog per spec §6.5; the 9 doctrines D0–D8 one-liners; the 4-stage planner pipeline; the 9 merge-lattice rules; SyncStrategy decision matrix.
+- covers: today's KernelAction variants; today's KernelUpdate variants; today's KernelViewSpec variants; the 5 trait families one-liner each; v1 capability catalog per spec §6.5; the 11 doctrines D0–D10 one-liners; the 4-stage planner pipeline; the 9 merge-lattice rules; SyncStrategy decision matrix.
 - cite: `crates/nmp-core/src/app.rs:1-30`; `crates/nmp-core/src/substrate/*.rs`; `crates/nmp-core/src/planner/mod.rs`; `crates/nmp-nip77/src/coverage_gate.rs`; `docs/product-spec/api-surface.md:193-228`; `docs/product-spec/doctrine.md:1-98`.
 - deliver: 6 single-page tables suitable for bookmarking.
 - anti: linking outdated variant lists; conflating long-term catalog with what ships today; aspirational entries without a status marker.
@@ -233,7 +233,7 @@ Compact format. Each section: **covers** (1 line) · **cite** (file:line refs) �
 
 ### 26 — FAQ + troubleshooting  *(SHIPS · builders · 1500)*
 - covers: common build errors (Cargo workspace mismatches, codegen drift, sim toolchain, `--features lmdb-backend`); runtime issues (no events → relay-status check; snapshot stale → rev guard / emit pacing; subscription leak → claim/release); reading `RelayStatus` / `LogicalInterestStatus` / `WireSubscriptionStatus` in the JSON snapshot; how to enable + read `DebugDiagnostics`; logs.
-- cite: `crates/nmp-core/src/kernel/status.rs`; `crates/nmp-core/src/kernel/types.rs`; `crates/nmp-core/src/kernel/mod.rs`; `ios/NmpStress/NmpStress/KernelBridge.swift` (decode path); `docs/perf/ios-demo/`; `docs/product-spec/subsystems.md:323-336` (guardrails); `docs/perf/m10.5/`.
+- cite: `crates/nmp-core/src/kernel/status.rs`; `crates/nmp-core/src/kernel/types.rs`; `crates/nmp-core/src/kernel/mod.rs`; `ios/Chirp/Chirp/Bridge/KernelBridge.swift` (decode path); `docs/perf/ios-demo/`; `docs/product-spec/subsystems.md:323-336` (guardrails); `docs/perf/m10.5/`.
 - deliver: Q&A list (~15 items); "debug a missing snapshot in 3 steps" flow; "debug a non-connecting relay in 3 steps" flow; the JSON-snapshot top-level field reference.
 - anti: blaming relays for stale `rev` guards; debugging in Swift instead of inspecting JSON snapshot first; editing generated code to fix symptoms; disabling the rev guard.
 - xref: 17, 18, 27.

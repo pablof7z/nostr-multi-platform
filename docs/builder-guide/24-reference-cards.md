@@ -50,7 +50,7 @@ idempotent (`start` after `start` = no-op) and reports only — it never
 decides retry, recovery, or routing (D7). Protocol-specific or app-specific
 capabilities compose the same way.
 
-## Card 4 — Doctrine D0–D8 (`docs/product-spec/doctrine.md:1-98`)
+## Card 4 — Doctrine D0–D10 (`docs/product-spec/doctrine.md:1-98`)
 
 | # | Kind | One-liner |
 |---|---|---|
@@ -124,4 +124,4 @@ evaluated in `lattice/mod.rs` order 6, 9, 1, 2, 3, 4, 5, 7, 8):
   rule *numbers* are stable identities; the *evaluation* order
   (`lattice/mod.rs`) is 6, 9, 1, 2, … for early cheap pruning. Quote both.
 
-See also: [03 — Doctrine D0–D8 end-to-end](03-doctrine-d0-d8.md), [05 — Kernel substrate — the 5 trait families](05-substrate-traits.md), [16 — Capabilities (D7)](16-capabilities.md).
+See also: [03 — Doctrine D0–D10 end-to-end](03-doctrine-d0-d8.md), [05 — Kernel substrate — the 5 trait families](05-substrate-traits.md), [16 — Capabilities (D7)](16-capabilities.md).

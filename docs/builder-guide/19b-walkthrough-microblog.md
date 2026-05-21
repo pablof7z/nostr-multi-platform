@@ -37,18 +37,18 @@ cargo run -p nmp-codegen -- gen modules --manifest apps/microblog/nmp.toml --che
 
 ### 3. Build the FFI library + run on the iOS simulator
 
-The reference shell is **NmpStress** (`ios/NmpStress/`, the only live
-1,375-LOC iOS app). It links the Rust static lib and decodes the JSON
+The reference shell is **Chirp** (`ios/Chirp/`, the active live iOS app).
+It links the Rust static lib and decodes the JSON
 snapshot via
-[`ios/NmpStress/NmpStress/KernelBridge.swift:74-138`](../../ios/NmpStress/NmpStress/KernelBridge.swift).
+[`ios/Chirp/Chirp/Bridge/KernelBridge.swift`](../../ios/Chirp/Chirp/Bridge/KernelBridge.swift).
 You point a shell at your FFI crate's static lib; you do not write a new
 Swift app from scratch for this walkthrough.
 
 ```sh
 # 1. build the Rust cdylib/staticlib for the sim target
 cargo build -p nmp-app-microblog --target aarch64-apple-ios-sim --release
-# 2. generate the Xcode project (NmpStress uses xcodegen: ios/NmpStress/project.yml)
-cd ios/NmpStress && xcodegen generate
+# 2. generate the Xcode project (Chirp uses xcodegen: ios/Chirp/project.yml)
+cd ios/Chirp && xcodegen generate
 # 3. build + run on a booted simulator (see section 17 for the bridge details)
 ```
 

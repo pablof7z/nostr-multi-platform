@@ -1,6 +1,10 @@
 # E2E Validation App — Build Instructions
 
-Companion to [`e2e-validation-app.md`](./e2e-validation-app.md). This file is the **how**: FFI extensions, two new Rust integration pieces, Xcode project, lipo/xcframework, sim launch, iPhone install. The other file is the **what** + demo script.
+Companion to [`e2e-validation-app.md`](./e2e-validation-app.md). This file is
+the **historical how** for the deleted Pulse app: FFI extensions, two new Rust
+integration pieces, Xcode project, lipo/xcframework, sim launch, iPhone install.
+Pulse and Stress were deleted on 2026-05-18 and their validation goals were
+merged into Chirp; use `ios/Chirp` for current iOS execution.
 
 The builder is one agent in one session. Follow steps in order. Push per rung via `git push origin HEAD:master` (per `~/.claude/projects/-Users-pablofernandez-Work-nostr-multi-platform/memory/agent-push-protocol.md`). Commit message prefix: `feat(pulse): L<N> …`.
 

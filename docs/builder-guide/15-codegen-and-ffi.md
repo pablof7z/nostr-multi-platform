@@ -104,7 +104,7 @@ checked-in output — that is the `nmp gen modules --check` CI gate primitive.
 │ The GENERATED FfiApp (generate.rs:158) is a STUB: dispatch() just   │
 │ bumps `rev` and returns KernelUpdate::Diagnostics. It does not yet  │
 │ wire to the live actor — the live actor is reached through the      │
-│ hand-written raw C FFI in nmp-core, which ios/NmpStress consumes.   │
+│ hand-written raw C FFI in nmp-core, which ios/Chirp consumes.       │
 ├─ M14 — UniFFI (PLANNED, docs/plan/m14-uniffi.md) ───────────────────┤
 │ nmp-codegen extended to emit `uniffi::setup_scaffolding!()` +       │
 │ `#[derive(uniffi::Enum)]` (see ADR-0010 §Codegen output). iOS stops │

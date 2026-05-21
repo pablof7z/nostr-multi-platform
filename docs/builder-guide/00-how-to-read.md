@@ -6,7 +6,7 @@ This guide has two audiences and one promise.
   ship a Nostr app without re-implementing outbox routing, kind:3 tracking,
   reconnect replay, and reactivity for the hundredth time. NMP makes the
   common broken-Nostr-app failure modes *impossible by construction*.
-- **Agents** — you are an LLM extending the kernel. The doctrine D0–D8 is the
+- **Agents** — you are an LLM extending the kernel. The doctrine D0–D10 is the
   contract you cannot violate; every section ties its claims to enforced code
   or marks them aspirational.
 
@@ -32,7 +32,7 @@ Authoritative status lives in `docs/plan/status.md` (per-milestone) and
 `README.md` (live snapshot, regenerated each heartbeat). The full dispatch
 spec — section briefs, citation discipline, milestone→section map — is
 `docs/builder-guide/PLAN.md`. Doctrine canon: `docs/product-spec/doctrine.md`
-(D0–D8, conflicts resolve in listed order).
+(D0–D10, conflicts resolve in listed order).
 
 ## Two reading paths
 
@@ -59,7 +59,7 @@ not re-implement it). **26** when something breaks.
 ### Path B — "I want to extend the kernel" (agents)
 
 ```
-03 doctrine D0–D8 ──▶ 02 mental model ──▶ 04 actor / TEA
+03 doctrine D0–D10 ──▶ 02 mental model ──▶ 04 actor / TEA
         │                                      │
         ▼                                      ▼
 05 trait families ──▶ 06 reactivity ──▶ 07 planner ──▶ 08 EventStore

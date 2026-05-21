@@ -129,7 +129,7 @@ an ADR (`docs/design/framework-magic/intro.md` §4). To add C14:
   (`test-scaffolding.md` §1); renaming it or its tests breaks the meta-test and
   needs an ADR.
 
-See also: [03 — Doctrine D0–D8 end-to-end](03-doctrine-d0-d8.md) ·
+See also: [03 — Doctrine D0–D10 end-to-end](03-doctrine-d0-d8.md) ·
 [08 — EventStore + insert invariants + GC](08-eventstore.md) ·
 [10 — Outbox routing (NIP-65)](10-outbox-routing.md) ·
 [11 — Sessions + signers + identity scopes](11-sessions-signers.md) ·

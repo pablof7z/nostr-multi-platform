@@ -1,6 +1,9 @@
 # E2E Validation App — "Pulse"
 
-**Status:** spec for ONE builder-agent session. Companion: [`e2e-validation-build.md`](./e2e-validation-build.md) (the how).
+**Status:** historical spec. Pulse and Stress were deleted on 2026-05-18 and
+their validation goals were merged into Chirp; use `ios/Chirp` for current iOS
+execution. Companion: [`e2e-validation-build.md`](./e2e-validation-build.md)
+(the historical how).
 
 **Scope priority (per orchestrator HB31 directive + user intent "run on my iPhone"):**
 The user's stated goal — "empirical proof on real iOS hardware before M11 podcast rebuild" — makes device install (L5) a **required** rung, not a stretch goal. The L1–L5 ladder in §6 lists rungs in execution order, but the success criterion is **all rungs land**. A rung that fails (e.g. dev-cert issues block L5) is an **escalation to the user**, not "partial success." The fallback for an L5 blocker is to file an issue, fix it in this session, and re-attempt — not to declare done.

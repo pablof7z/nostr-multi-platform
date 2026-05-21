@@ -1,8 +1,8 @@
 # Design: Framework Magic Contract — Things That Just Work
 
-> **Status:** Draft. Research citations folded in from `docs/research/applesauce/event-store-query-builders.md` and `docs/research/ndk/kind3-auto-tracking.md`. Doctrine wording aligned with `docs/product-spec/overview-and-dx.md` §1.5 (D0–D8 canonical set).
+> **Status:** Draft. Research citations folded in from `docs/research/applesauce/event-store-query-builders.md` and `docs/research/ndk/kind3-auto-tracking.md`. Doctrine wording aligned with `docs/product-spec/overview-and-dx.md` §1.5 (D0–D10 canonical set).
 > **Date:** 2026-05-18.
-> **Source directives:** `docs/plan/scope-adjustments-2026-05-18.md` "Framework magic contract" section; `docs/product-spec/overview-and-dx.md` §1.5 (cardinal doctrines D0–D8) + §3.3 (bug-class extinction); `docs/product-spec/subsystems.md` §7.1–§7.8.
+> **Source directives:** `docs/plan/scope-adjustments-2026-05-18.md` "Framework magic contract" section; `docs/product-spec/overview-and-dx.md` §1.5 (cardinal doctrines D0–D10) + §3.3 (bug-class extinction); `docs/product-spec/subsystems.md` §7.1–§7.8.
 > **Companion test file:** `crates/nmp-testing/tests/framework_magic_contract.rs` (one test per contract bullet plus a coverage meta-test; layout in [test-scaffolding.md](framework-magic/test-scaffolding.md)).
 > **Scope:** Enumerate every behavior the framework guarantees so the application does not have to author code for it. The user directive is explicit: *"apps shouldn't have to care or know about these operations happening in the background, things should just work."* This document is the contract; the test suite is the proof; the milestone implementations are the substrate.
 
@@ -28,7 +28,7 @@ Each row binds a behavior to: the sub-file that specifies it, the test name in `
 > **Ground-truth note (reconciled 2026-05-18, PD-006).** Status cells below are
 > derived from a real run of the proof target, not from milestone-doc state:
 > `cargo test -p nmp-testing --test framework_magic_contract` →
-> **14 tests; 13 pass; 1 fail (`c13_view_payload_uses_placeholders_then_refines_in_place`); 0 ignored.**
+> **14 tests; 14 pass; 0 fail; 0 ignored.**
 > All gating milestones (M2/M3/M4/M6/M8) are DONE on master and every test is
 > active (no `#[ignore]` remains — the un-ignore landed in commit `79e0257`).
 > `[DONE]` ⇒ test active **and passing**; `[PARTIAL]` ⇒ test active but failing
@@ -51,7 +51,7 @@ Each row binds a behavior to: the sub-file that specifies it, the test name in `
 | C10 | Sync watermarks: planner consults `(filter, relay)` coverage before issuing historical REQ; full coverage makes cache-miss authoritative; NIP-77 negentropy is the default backfill where supported | sync.md | `c10_watermark_gates_backfill_and_authoritative_miss` | **[DONE]** · M4 · `c10.rs:34` | D2; spec §7.1 watermarks, §7.8 sync engine |
 | C11 | Signer onboarding: pasted `bunker://` URL parses + connects via NIP-46; "create new nsec" generates, NIP-49-encrypts, and persists via KeyringCapability — both as kernel actions, no app code | signers.md | `c11_bunker_url_and_nsec_creation_complete_via_actions` | **[DONE]** · M6 · `c7_c11.rs:159` (¹) | scope-adj §"Folded into M6"; spec §7.4 |
 | C12 | Account switch is a state transition: dispatching the switch action re-resolves every `ActiveAccount`-scoped view without the app issuing CLOSE/REQ or rebuilding view handles | sessions.md | `c12_account_switch_rebinds_views_without_imperative_dance` | **[DONE]** · M8 · `c12.rs:53` | D4; spec §7.4; §3.3 bug #5; M2 §4 trigger A4 |
-| C13 | Best-effort rendering: every view payload field is non-`Option`; missing data uses defined placeholders (shortened npub, identicon, "just now"); the same payload updates in place when authoritative data arrives | capabilities.md | `c13_view_payload_uses_placeholders_then_refines_in_place` | **[PARTIAL]** · M2/M3 · `c5_c8_c13.rs:238` (²) | D1; spec §7.6 "Best-effort field contract"; aim §4.12 |
+| C13 | Best-effort rendering: every view payload field is non-`Option`; missing data uses defined placeholders (shortened npub, identicon, "just now"); the same payload updates in place when authoritative data arrives | capabilities.md | `c13_view_payload_uses_placeholders_then_refines_in_place` | **[DONE]** · M2/M3 · `c5_c8_c13.rs:238` (²) | D1; spec §7.6 "Best-effort field contract"; aim §4.12 |
 
 **Footnotes.**
 
@@ -63,17 +63,10 @@ Each row binds a behavior to: the sub-file that specifies it, the test name in `
    Similarly C5's registry push that expands the author set is a synthetic
    stand-in for the M11 ViewModule rebuild; the trigger, ingest fan, and
    `drain_tick` routing it exercises are real.
-2. **C13 is `[PARTIAL]`, not `[DONE]` — substrate landed but the proof is RED.**
-   The D1 placeholder substrate (`Placeholder<T>` newtype, `picture_placeholder`,
-   ADR-0017) landed in `d3067a6` and the test was made active there, but
-   `c13_view_payload_uses_placeholders_then_refines_in_place` **fails on master
-   today**: the actor emits an update whose JSON has no `items` array (panic at
-   `c5_c8_c13.rs:291`). The placeholder *shape* exists; the end-to-end actor
-   projection path the test asserts does not yet satisfy it. Per PD-006 doctrine
-   ("update the status truthfully — do not inflate") this bullet stays
-   `[PARTIAL]` until the test is green. Tracked as a follow-up (see final
-   reconcile note); fixing it requires `crates/` source changes out of this
-   doc-only task's scope.
+2. **C13 is now `[DONE]`.** The D1 placeholder substrate
+   (`Placeholder<T>` newtype, `picture_placeholder`, ADR-0017) and the actor
+   projection path now satisfy the active proof target. The prior RED note is
+   retained in git history, not in the current status table.
 
 **Bullet count:** 13 (eleven sourced verbatim from `scope-adjustments-2026-05-18.md`; two — **C3** kind:5 delete propagation and **C4** NIP-40 expiration — derived from `product-spec/subsystems.md` §7.1 because they are guaranteed invariants of the same insert path and the contract is incomplete without them).
 
