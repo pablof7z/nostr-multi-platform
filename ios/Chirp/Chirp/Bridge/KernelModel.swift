@@ -46,6 +46,14 @@ final class KernelModel: ObservableObject {
     // Live data once Stage 3 lands; see snapshot field `bunker_handshake`.
     @Published private(set) var bunkerHandshake: BunkerHandshake?
 
+    /// NIP-46 typed onboarding read model — `projections["nip46_onboarding"]`.
+    /// Prefer this over `bunkerHandshake` from any onboarding/UI consumer:
+    /// it carries the typed `stageKind`, pre-computed `isInFlight` / `isFailed`
+    /// / `isTerminalSuccess` / `canCancel` flags, AND the Rust-owned
+    /// signer-app probe table (`signerApps`). Views never string-compare
+    /// `bunker_handshake.stage` themselves.
+    @Published private(set) var nip46Onboarding: Nip46Onboarding?
+
     /// PR-A: correlation ids of dispatched actions whose terminal verdict has
     /// not yet arrived in `projections["action_results"]`. Add on accept,
     /// remove when the snapshot's `actionResults` tick carries the same id.
@@ -265,7 +273,12 @@ final class KernelModel: ObservableObject {
             return roles.contains("both") || roles.contains("write")
         }?.url
             ?? "wss://r.f7z.io"
-        return kernel.nostrConnectURI(relay: relay)
+        // Chirp registers `chirp://` as a custom URL scheme (Info.plist
+        // `CFBundleURLTypes`); the signer app deep-links back to
+        // `chirp://nip46?...` on approval (handled in `ChirpApp.onOpenURL`).
+        // Rust composes the `&callback=` query-parameter suffix from this
+        // scheme — Swift never builds the URL itself.
+        return kernel.nostrConnectURI(relay: relay, callbackScheme: "chirp://nip46")
     }
     func createAccount(
         profile: [String: String] = ["name": "New User"],
@@ -450,6 +463,7 @@ final class KernelModel: ObservableObject {
         maybePublishDmRelayList()
         walletStatus = update.walletStatus
         bunkerHandshake = update.bunkerHandshake
+        nip46Onboarding = update.nip46Onboarding
 
         // PR-A: drain `pendingActions` by every terminal verdict surfaced on
         // this tick. Direction review #29 prefers the per-tick `actionResults`

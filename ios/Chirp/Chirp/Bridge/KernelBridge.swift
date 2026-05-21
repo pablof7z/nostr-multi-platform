@@ -160,11 +160,32 @@ final class KernelHandle {
     /// flow. Returns `nil` if the broker is not yet initialised (which would
     /// be unusual — it's init'd in `KernelHandle.init()`). Each call produces
     /// a new ephemeral keypair and session secret.
-    func nostrConnectURI(relay: String) -> String? {
+    ///
+    /// `callbackScheme` is the deep-link URL the signer app should open after
+    /// approval (e.g. `"chirp://nip46"`). Rust percent-encodes and appends
+    /// the `&callback=` query parameter — Swift NEVER composes the suffix
+    /// itself. Pass `nil` if no deep-link return path is required (the QR-only
+    /// flow).
+    func nostrConnectURI(relay: String, callbackScheme: String? = nil) -> String? {
         relay.withCString { relayPtr in
-            guard let ptr = nmp_app_nostrconnect_uri(raw, relayPtr) else { return nil }
-            defer { nmp_broker_free_string(ptr) }
-            return String(cString: ptr)
+            let result: String? = { () -> String? in
+                if let cb = callbackScheme {
+                    return cb.withCString { cbPtr in
+                        guard let ptr = nmp_app_nostrconnect_uri(raw, relayPtr, cbPtr) else {
+                            return nil
+                        }
+                        defer { nmp_broker_free_string(ptr) }
+                        return String(cString: ptr)
+                    }
+                } else {
+                    guard let ptr = nmp_app_nostrconnect_uri(raw, relayPtr, nil) else {
+                        return nil
+                    }
+                    defer { nmp_broker_free_string(ptr) }
+                    return String(cString: ptr)
+                }
+            }()
+            return result
         }
     }
 
@@ -550,6 +571,12 @@ struct KernelUpdate: Decodable {
     /// Computed so call sites keep reading `update.bunkerHandshake` unchanged.
     var bunkerHandshake: BunkerHandshake? { projections?.bunkerHandshake }
 
+    /// NIP-46 onboarding read model — `projections["nip46_onboarding"]`. Carries
+    /// the typed `stageKind` + pre-computed flags + the signer-app probe table
+    /// the onboarding screen reads. Always present once the kernel has emitted
+    /// a snapshot (the projection contributes a non-null payload on every tick).
+    var nip46Onboarding: Nip46Onboarding? { projections?.nip46Onboarding }
+
     /// Publish queue projection — `projections["publish_queue"]`. Computed so
     /// call sites (`KernelModel`) keep reading `update.publishQueue` unchanged.
     var publishQueue: [PublishQueueEntry]? { projections?.publishQueue }
@@ -647,6 +674,11 @@ struct KernelUpdate: Decodable {
 struct SnapshotProjections: Decodable, Equatable {
     let wallet: WalletStatusData?
     let bunkerHandshake: BunkerHandshake?
+    // Built-in NIP-46 typed onboarding read model. Always populated by the
+    // kernel (the underlying projection produces a non-null payload on every
+    // tick); optional only so an older kernel build that predates the
+    // projection still decodes (D1).
+    let nip46Onboarding: Nip46Onboarding?
     let publishQueue: [PublishQueueEntry]?
     let publishOutbox: [PublishOutboxItem]?
     let relayEditRows: [RelayEditRow]?
@@ -709,6 +741,7 @@ struct SnapshotProjections: Decodable, Equatable {
     enum CodingKeys: String, CodingKey {
         case wallet
         case bunkerHandshake
+        case nip46Onboarding
         case publishQueue
         case publishOutbox
         case relayEditRows
@@ -807,9 +840,56 @@ struct DmInboxSnapshot: Decodable, Equatable {
 /// under `projections["bunker_handshake"]`. Stage values: `"connecting"`,
 /// `"awaiting_pubkey"`, `"ready"`, `"failed"`, `"idle"`. `message` is a
 /// human-readable progress / error hint.
+///
+/// **Prefer `Nip46Onboarding` for UI**: that projection carries the typed
+/// `stageKind` enum + pre-computed `isInFlight` / `isFailed` /
+/// `isTerminalSuccess` / `canCancel` flags, so views never string-compare
+/// `stage` themselves. This struct stays for the few diagnostic call sites
+/// that still want the raw broker output.
 struct BunkerHandshake: Decodable, Equatable {
     let stage: String
     let message: String?
+}
+
+/// NIP-46 onboarding read model — `projections["nip46_onboarding"]`.
+///
+/// Rust owns the entire onboarding state machine and pre-computes every value
+/// a host UI reads: the static signer-app probe table, the typed `stageKind`,
+/// and the boolean flags shells use to render spinners / icons / buttons.
+/// Views never string-compare stage values; they read `stageKind` directly.
+///
+/// Always present (the projection contributes a non-null payload on every
+/// tick) so `signerApps` is reachable even when no handshake is in flight.
+struct Nip46Onboarding: Decodable, Equatable {
+    /// One row of the signer-app table. Rust owns the URL schemes that
+    /// qualify as NIP-46 compatible; Swift only iterates and calls
+    /// `UIApplication.canOpenURL` (a platform capability per aim.md §4.6).
+    struct SignerApp: Decodable, Equatable, Identifiable {
+        let scheme: String
+        let displayLabel: String
+        let signerKind: String
+        var id: String { scheme }
+    }
+
+    /// Typed stage token. `nil` when no handshake is in flight (mirrors the
+    /// `bunker_handshake` slot's empty state). `unknown` is the forward-compat
+    /// fall-through for any wire stage the host hasn't been re-typed against.
+    enum StageKind: String, Decodable, Equatable {
+        case idle
+        case connecting
+        case awaitingPubkey = "awaiting_pubkey"
+        case ready
+        case failed
+        case unknown
+    }
+
+    let signerApps: [SignerApp]
+    let stageKind: StageKind?
+    let progressMessage: String?
+    let isInFlight: Bool
+    let isFailed: Bool
+    let isTerminalSuccess: Bool
+    let canCancel: Bool
 }
 
 // ─── Perf-diagnostic types ────────────────────────────────────────────────

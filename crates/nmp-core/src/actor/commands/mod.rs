@@ -83,7 +83,9 @@ pub(super) use identity::{
 // shared slot and register the built-in `"bunker_handshake"` snapshot
 // projection. `BunkerHandshakeDto` stays `identity`-private — callers drive it
 // only through `bunker_handshake_progress` / `sign_in_bunker`.
-pub(crate) use identity::{new_bunker_handshake_slot, BunkerHandshakeSlot};
+pub(crate) use identity::{
+    build_nip46_onboarding_dto, new_bunker_handshake_slot, BunkerHandshakeSlot,
+};
 pub(super) use lifecycle::handle_lifecycle_event;
 pub(crate) use lifecycle::{
     new_observer_slot, LifecycleObserverRegistration, LifecycleObserverSlot,

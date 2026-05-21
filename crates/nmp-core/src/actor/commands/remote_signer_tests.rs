@@ -317,6 +317,113 @@ fn snapshot_carries_bunker_handshake_value() {
 // ──────────────────────────────────────────────────────────────────────────
 
 #[test]
+fn snapshot_carries_nip46_onboarding_projection() {
+    // The built-in `"nip46_onboarding"` projection is wired alongside
+    // `"bunker_handshake"` and produces a typed DTO with the static
+    // signer-app table + pre-computed flags. This end-to-end test drives
+    // a `BunkerHandshakeProgress` through the actor and asserts both
+    // projections appear in the emitted snapshot.
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::Duration;
+
+    use crate::actor::{run_actor_with_observers, ActorCommand};
+    use crate::capability_socket::new_capability_callback_slot;
+    use std::sync::atomic::AtomicU64;
+    use std::sync::Arc;
+
+    let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
+    let (upd_tx, upd_rx) = mpsc::channel::<String>();
+
+    let snapshot_projections = crate::kernel::new_snapshot_projection_slot();
+    let bunker_slot = crate::actor::new_bunker_handshake_slot();
+    // Replicate the wiring `nmp_app_new` does for the two NIP-46 projections.
+    {
+        let slot = Arc::clone(&bunker_slot);
+        snapshot_projections
+            .lock()
+            .expect("registry lock")
+            .register("bunker_handshake", move || {
+                let s = slot.lock().unwrap_or_else(|e| e.into_inner());
+                s.as_ref()
+                    .map(|dto| serde_json::to_value(dto).unwrap_or(serde_json::Value::Null))
+                    .unwrap_or(serde_json::Value::Null)
+            });
+    }
+    {
+        let slot = Arc::clone(&bunker_slot);
+        snapshot_projections
+            .lock()
+            .expect("registry lock")
+            .register("nip46_onboarding", move || {
+                let dto = crate::actor::build_nip46_onboarding_dto(&slot);
+                serde_json::to_value(&dto).unwrap_or(serde_json::Value::Null)
+            });
+    }
+
+    thread::spawn(move || {
+        run_actor_with_observers(
+            cmd_rx,
+            upd_tx,
+            crate::actor::new_lifecycle_observer_slot(),
+            crate::actor::new_event_observer_slot(),
+            crate::actor::new_raw_event_observer_slot(),
+            snapshot_projections,
+            #[cfg(feature = "wallet")]
+            crate::actor::new_wallet_status_slot(),
+            bunker_slot,
+            Arc::new(std::sync::Mutex::new(Vec::new())),
+            Arc::new(std::sync::Mutex::new(None)),
+            Arc::new(std::sync::Mutex::new(None)),
+            new_capability_callback_slot(),
+            Arc::new(std::sync::Mutex::new(None)),
+            Arc::new(AtomicU64::new(0)),
+        );
+    });
+
+    cmd_tx
+        .send(ActorCommand::Start {
+            visible_limit: 50,
+            emit_hz: 30,
+        })
+        .unwrap();
+
+    cmd_tx
+        .send(ActorCommand::BunkerHandshakeProgress {
+            stage: "connecting".to_string(),
+            message: Some("dialing relay".to_string()),
+        })
+        .unwrap();
+
+    thread::sleep(Duration::from_millis(300));
+    let _ = cmd_tx.send(ActorCommand::Shutdown);
+
+    let mut last_frame = String::new();
+    while let Ok(frame) = upd_rx.try_recv() {
+        last_frame = frame;
+    }
+    assert!(!last_frame.is_empty(), "actor produced no snapshot frames");
+    // Both NIP-46 projection keys must appear and the typed projection's
+    // `stage_kind` + `is_in_flight` must reflect the same broker progress.
+    assert!(
+        last_frame.contains("\"nip46_onboarding\""),
+        "snapshot missing nip46_onboarding projection: {last_frame}"
+    );
+    assert!(
+        last_frame.contains("\"stage_kind\":\"connecting\""),
+        "nip46_onboarding must carry typed stage_kind: {last_frame}"
+    );
+    assert!(
+        last_frame.contains("\"is_in_flight\":true"),
+        "nip46_onboarding must pre-compute is_in_flight=true for connecting: {last_frame}"
+    );
+    assert!(
+        last_frame.contains("\"signer_apps\""),
+        "nip46_onboarding must carry signer_apps table: {last_frame}"
+    );
+}
+
+#[test]
 fn dispatch_add_remote_signer_then_progress_surfaces_on_snapshot() {
     use std::sync::mpsc;
     use std::thread;

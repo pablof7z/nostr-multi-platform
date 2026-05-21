@@ -98,12 +98,21 @@ pub extern "C" fn nmp_app_cancel_bunker_handshake(_app: *mut NmpApp) {
 ///
 /// `relay_url` may be null; if so, `wss://relay.damus.io` is used as the
 /// default relay.
+///
+/// `callback_scheme` may be null. When non-null, Rust appends a
+/// `&callback=<percent-encoded callback_scheme>` query parameter to the
+/// generated `nostrconnect://` URI so the signer app can deep-link back to
+/// the originating host. The percent-encoding is performed in Rust — hosts
+/// MUST NOT mash the callback onto the URI themselves. This keeps the
+/// substrate-owned wire string fully owned by Rust (aim.md §4.6: native code
+/// supplies platform capabilities; Rust composes protocol strings).
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[allow(unsafe_code)]
 #[no_mangle]
 pub extern "C" fn nmp_app_nostrconnect_uri(
     _app: *mut NmpApp,
     relay_url: *const std::os::raw::c_char,
+    callback_scheme: *const std::os::raw::c_char,
 ) -> *mut std::os::raw::c_char {
     let relay: &str = if relay_url.is_null() {
         "wss://relay.damus.io"
@@ -114,14 +123,45 @@ pub extern "C" fn nmp_app_nostrconnect_uri(
             Err(_) => "wss://relay.damus.io",
         }
     };
+    let callback: Option<&str> = if callback_scheme.is_null() {
+        None
+    } else {
+        // SAFETY: caller guarantees non-null => valid C string for the call duration.
+        // An invalid UTF-8 callback is treated as "no callback" rather than
+        // panicking across the FFI (D6 — errors become state).
+        match unsafe { std::ffi::CStr::from_ptr(callback_scheme).to_str() } {
+            Ok(s) if !s.is_empty() => Some(s),
+            _ => None,
+        }
+    };
     let Some(broker) = GLOBAL_BROKER.get() else {
         return std::ptr::null_mut();
     };
-    let uri = broker.start_nostrconnect_handshake(relay.to_string());
+    let mut uri = broker.start_nostrconnect_handshake(relay.to_string());
+    if let Some(scheme) = callback {
+        let encoded = percent_encode_query_value(scheme);
+        uri.push_str("&callback=");
+        uri.push_str(&encoded);
+    }
     match std::ffi::CString::new(uri) {
         Ok(cs) => cs.into_raw(),
         Err(_) => std::ptr::null_mut(),
     }
+}
+
+/// Percent-encode a URI query-value byte-for-byte using the RFC 3986 unreserved
+/// set (`ALPHA / DIGIT / "-" / "_" / "." / "~"`). Duplicated here (the broker
+/// crate has its own copy in `broker/nostrconnect.rs`) to keep the FFI surface
+/// dependency-light; the substrate / app boundary is what matters, not the
+/// six-line helper.
+fn percent_encode_query_value(value: &str) -> String {
+    value
+        .bytes()
+        .flat_map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => vec![b as char],
+            _ => format!("%{b:02X}").chars().collect::<Vec<_>>(),
+        })
+        .collect()
 }
 
 /// Free a string returned by `nmp_app_nostrconnect_uri`. Null-safe (no-op).
@@ -134,4 +174,27 @@ pub extern "C" fn nmp_broker_free_string(ptr: *mut std::os::raw::c_char) {
     }
     // SAFETY: ptr was created by CString::into_raw() in this module.
     unsafe { drop(std::ffi::CString::from_raw(ptr)) };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn percent_encode_passes_unreserved_chars() {
+        let out = percent_encode_query_value("AZaz09-_.~");
+        assert_eq!(out, "AZaz09-_.~", "unreserved RFC 3986 set must be passed verbatim");
+    }
+
+    #[test]
+    fn percent_encode_quotes_reserved_chars() {
+        // `:`, `/`, `?`, `=`, `&`, `#` are all reserved and must be %-encoded.
+        let out = percent_encode_query_value("chirp://nip46");
+        assert_eq!(out, "chirp%3A%2F%2Fnip46");
+    }
+
+    #[test]
+    fn percent_encode_handles_empty_string() {
+        assert_eq!(percent_encode_query_value(""), "");
+    }
 }

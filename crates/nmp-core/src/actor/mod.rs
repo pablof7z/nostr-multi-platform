@@ -58,7 +58,9 @@ pub(crate) use commands::{
 // re-exported so the `ffi` module can build it, hand one clone to the actor's
 // `IdentityRuntime`, and capture the other in the built-in
 // `"bunker_handshake"` snapshot-projection closure.
-pub(crate) use commands::{new_bunker_handshake_slot, BunkerHandshakeSlot};
+pub(crate) use commands::{
+    build_nip46_onboarding_dto, new_bunker_handshake_slot, BunkerHandshakeSlot,
+};
 // `pub` (not `pub(crate)`) so the `lib.rs` test-support re-export reaches
 // integration tests outside the crate. The `actor` module itself is
 // crate-private (`mod actor;` in `lib.rs`), so external Rust callers still
@@ -695,6 +697,25 @@ pub fn run_actor_with_observers(
                 slot.as_ref()
                     .map(|dto| serde_json::to_value(dto).unwrap_or(serde_json::Value::Null))
                     .unwrap_or(serde_json::Value::Null)
+            });
+        }
+    }
+    // D0 — second built-in NIP-46 projection: `"nip46_onboarding"`. Where
+    // `"bunker_handshake"` carries the raw broker progress (stage string +
+    // message), this projection carries the *typed* onboarding read model
+    // shells render directly — the static signer-app probe table, the typed
+    // `stage_kind`, and pre-computed `is_in_flight` / `is_failed` /
+    // `is_terminal_success` / `can_cancel` flags. The closure reads the same
+    // shared bunker-handshake slot the previous projection serializes, plus a
+    // Rust-owned static signer-app list (no platform-shell ownership of
+    // protocol-knowledge tables). Always present (never JSON null) so the host
+    // can read `signer_apps` even when no handshake is in flight.
+    {
+        let projection_slot = Arc::clone(&bunker_handshake);
+        if let Ok(mut registry) = snapshot_projections.lock() {
+            registry.register("nip46_onboarding", move || {
+                let dto = build_nip46_onboarding_dto(&projection_slot);
+                serde_json::to_value(&dto).unwrap_or(serde_json::Value::Null)
             });
         }
     }

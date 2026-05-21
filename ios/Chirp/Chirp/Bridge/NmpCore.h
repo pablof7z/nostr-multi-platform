@@ -260,8 +260,12 @@ void nmp_app_cancel_bunker_handshake(void *app);
 // Generate a nostrconnect:// URI for the QR-code NIP-46 sign-in flow.
 // The returned string must be freed via nmp_broker_free_string.
 // Returns NULL if the broker is not yet initialised.
-// relay_url may be NULL (uses wss://r.f7z.io as default).
-char *nmp_app_nostrconnect_uri(void *app, const char *relay_url);
+// relay_url may be NULL (uses wss://relay.damus.io as default).
+// callback_scheme may be NULL. When non-null, Rust appends
+// `&callback=<percent-encoded callback_scheme>` to the URI so the signer
+// app deep-links back to the host on approval. Hosts MUST NOT compose this
+// suffix themselves — protocol-owned strings stay in Rust.
+char *nmp_app_nostrconnect_uri(void *app, const char *relay_url, const char *callback_scheme);
 void nmp_broker_free_string(char *ptr);
 
 // ── T146: nmp-app-chirp per-app FFI ──────────────────────────────────────
