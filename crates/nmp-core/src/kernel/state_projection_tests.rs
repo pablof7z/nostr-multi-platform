@@ -331,9 +331,12 @@ fn publish_outbox_projects_pending_event_details_and_relays() {
     assert_eq!(outbound.len(), 1);
 
     let snap = snapshot(&mut kernel);
-    let outbox = snap["publish_outbox"]
+    // D0: the publish cluster is no longer a typed `KernelSnapshot` field —
+    // `publish_outbox` is a built-in entry in the host-extensible `projections`
+    // map.
+    let outbox = snap["projections"]["publish_outbox"]
         .as_array()
-        .expect("publish_outbox must be an array");
+        .expect("projections.publish_outbox must be an array");
     assert_eq!(outbox.len(), 1);
     assert_eq!(outbox[0]["handle"].as_str(), Some(signed.id.as_str()));
     assert_eq!(outbox[0]["kind"].as_u64(), Some(1));

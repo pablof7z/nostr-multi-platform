@@ -537,11 +537,19 @@ pub(super) struct KernelSnapshot {
     pub(super) logical_interests: Vec<LogicalInterestStatus>,
     pub(super) wire_subscriptions: Vec<WireSubscriptionStatus>,
     pub(super) logs: Vec<String>,
-    // ── T66a identity / publish / relay-edit projections ──────────────────
+    // ── T66a identity / relay-edit projections ────────────────────────────
     pub(super) accounts: Vec<super::AccountSummary>,
     pub(super) active_account: Option<String>,
-    pub(super) publish_queue: Vec<super::PublishQueueEntry>,
-    pub(super) publish_outbox: Vec<PublishOutboxItem>,
+    // D0: the publish cluster (`publish_queue`, `publish_outbox`,
+    // `relay_edit_rows`) is app-shaped relay/publish state — NOT a
+    // protocol-neutral kernel primitive. There are NO typed fields for them.
+    // All three are surfaced through the host-extensible `projections` map
+    // below under the built-in keys `"publish_queue"`, `"publish_outbox"`, and
+    // `"relay_edit_rows"`: a shell reads `projections.publish_queue` etc.
+    // instead of a baked-in kernel field. Unlike the host-registered `"wallet"`
+    // / `"bunker_handshake"` projections, these three are kernel-owned domain
+    // state, so `make_update` inserts them into the map directly after running
+    // the host-registered projection closures.
     pub(super) last_error_toast: Option<String>,
     /// Machine-readable category for `last_error_toast`. Closed key set:
     /// `auth_required | transient | permanent | malformed_event | policy_denied`
@@ -553,7 +561,6 @@ pub(super) struct KernelSnapshot {
     /// `SubscriptionLifecycle::last_planner_error()`, surfaced so the host
     /// observes it instead of silent empty frames. `null` in steady state.
     pub(super) last_planner_error: Option<String>,
-    pub(super) relay_edit_rows: Vec<super::RelayEditRow>,
     // D0: NIP-47 NWC is an app noun — there is NO typed `wallet_status` field.
     // Wallet state is surfaced through the host-registered `"wallet"` snapshot
     // projection (see `projections` below): a shell reads `projections.wallet`
@@ -564,9 +571,17 @@ pub(super) struct KernelSnapshot {
     // `bunker_handshake` field. Handshake state is surfaced through the
     // built-in `"bunker_handshake"` snapshot projection: a shell reads
     // `projections.bunker_handshake` instead of a baked-in kernel field.
-    /// Host-registered projection data. Each registered projection closure
-    /// runs on every tick and appends a namespaced JSON value under its key.
-    /// Keys are host-chosen (e.g. `"market.listings"`, `"todo.items"`).
+    /// Host-registered and built-in projection data. Each host-registered
+    /// projection closure runs on every tick and appends a namespaced JSON
+    /// value under its key. Host keys are host-chosen (e.g. `"market.listings"`,
+    /// `"todo.items"`).
+    ///
+    /// `make_update` also inserts the kernel-owned built-in projections after
+    /// running the host closures: `"publish_queue"`, `"publish_outbox"`, and
+    /// `"relay_edit_rows"` — the publish cluster (D0: relay/publish state is an
+    /// app noun, not a typed `KernelSnapshot` field). A host projection that
+    /// registers one of those reserved keys is overwritten by the built-in
+    /// value (built-in wins) so the publish cluster is always authoritative.
     ///
     /// This is the output-side counterpart to the action-registry seam: a
     /// non-social app extends the snapshot with its own namespace WITHOUT

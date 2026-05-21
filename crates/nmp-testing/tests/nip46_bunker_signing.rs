@@ -215,7 +215,10 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
     // echo); instead we assert on the queue entry itself and the mock methods
     // to prove that bunker signing flowed correctly.
     // `"publish_queue\":[{` means the array is non-empty. `"kind\":1` in the
-    // same frame proves it's the right event type (kind:1 note).
+    // same frame proves it's the right event type (kind:1 note). D0: the
+    // publish cluster now nests under the snapshot's `projections` map — the
+    // `"publish_queue":[…]` key still serializes verbatim, so this substring
+    // probe is unaffected by the field's relocation.
     let last_frame = wait_for_snapshot_predicate(&upd_rx, Duration::from_secs(15), move |frame| {
         frame.contains("\"publish_queue\":[{") && frame.contains("\"target_relays\"")
     })
