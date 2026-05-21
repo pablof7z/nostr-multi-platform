@@ -14,6 +14,8 @@ struct ThreadNoteRow: View {
     let onLike: () -> Void
     let onReply: () -> Void
 
+    @State private var likeTapped = false
+
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
             // Accent hairline for focused note
@@ -62,11 +64,17 @@ struct ThreadNoteRow: View {
 
                     // Action row
                     HStack(spacing: 24) {
-                        Button(action: onLike) {
-                            Label("Like", systemImage: "heart")
+                        Button {
+                            guard !likeTapped else { return }
+                            likeTapped = true
+                            onLike()
+                            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                        } label: {
+                            Image(systemName: likeTapped ? "heart.fill" : "heart")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .labelStyle(.iconOnly)
+                                .foregroundStyle(likeTapped ? Color.red : Color.secondary)
+                                .scaleEffect(likeTapped ? 1.35 : 1.0)
+                                .animation(.spring(response: 0.25, dampingFraction: 0.4), value: likeTapped)
                         }
                         .buttonStyle(.plain)
 
