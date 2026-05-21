@@ -33,17 +33,29 @@
 //!    recipient, once to the sender's own pubkey (the self-copy, so sent
 //!    messages stay readable). Each call mints a fresh ephemeral key for the
 //!    outer kind:1059 envelope — the unlinkability guarantee.
-//! 4. Publishes both kind:1059 envelopes to the configured Content relays via
-//!    the explicit-target publish path. The envelopes are already signed (by
-//!    their ephemeral keys); they MUST NOT be re-signed with the account key,
-//!    which would destroy unlinkability — so they route through
+//! 4. Publishes each kind:1059 envelope to its receiver's kind:10050 DM-inbox
+//!    relays via the explicit-target publish path. The envelopes are already
+//!    signed (by their ephemeral keys); they MUST NOT be re-signed with the
+//!    account key, which would destroy unlinkability — so they route through
 //!    `publish_signed_event`, not the unsigned publish path.
 //!
-//! # Phase 1 relay routing
+//! # Relay routing — NIP-17 § 2
 //!
-//! Each envelope SHOULD go to the recipient's kind:10050 DM-relay list. That
-//! lookup is a follow-up; Phase 1 falls back to the actor's configured Content
-//! relays for both envelopes. See the `TODO(nip17-dm-relays)` below.
+//! NIP-17 requires each kind:1059 envelope to be published to the **receiver's**
+//! kind:10050 DM-relay list — the recipient envelope to the recipient's list,
+//! the self-copy envelope to the *sender's* own list (so the sender's other
+//! clients can read sent messages). Routing both envelopes to the sender's
+//! Content relays — as an earlier draft did — silently loses the message when
+//! the recipient reads a different relay set: the send "succeeds" with no toast
+//! but nothing is delivered.
+//!
+//! kind:10050 ingestion is not yet built, so `Kernel::recipient_dm_relays`
+//! (the lookup seam) returns `None` for now. When that happens this handler
+//! falls back to the actor's configured Content relays AND emits a
+//! `tracing::warn!` — the routing gap is visible in logs, never a silent
+//! delivery failure. When kind:10050 ingest lands, `recipient_dm_relays`
+//! starts returning `Some(..)` and this handler routes correctly with no
+//! further change here.
 
 use nostr::{EventBuilder, Kind, PublicKey, Tag, Timestamp};
 
@@ -109,8 +121,17 @@ pub(crate) fn send_gift_wrapped_dm(
     // 4. Gift-wrap TWICE — fresh ephemeral outer key per call (NIP-59).
     //    Envelope A: wrapped to the recipient.
     //    Envelope B: the self-copy, wrapped to the sender's own pubkey.
+    //
+    //    Each envelope is routed to *its receiver's* kind:10050 DM-inbox
+    //    relays (NIP-17 § 2): the recipient envelope to the recipient's list,
+    //    the self-copy to the sender's own list. The receiver's pubkey hex is
+    //    carried alongside so `recipient_dm_relays` can be keyed correctly.
+    let sender_hex = sender.to_hex();
     let mut outbound = Vec::new();
-    for (label, receiver) in [("recipient", &recipient), ("self-copy", &sender)] {
+    for (label, receiver, receiver_hex) in [
+        ("recipient", &recipient, recipient_pubkey),
+        ("self-copy", &sender, sender_hex.as_str()),
+    ] {
         let envelope = match nmp_nip59::gift_wrap(keys, receiver, nostr_rumor.clone(), None) {
             Ok(ev) => ev,
             Err(e) => {
@@ -125,11 +146,20 @@ pub(crate) fn send_gift_wrapped_dm(
         // forwards it VERBATIM — re-signing with the account key would destroy
         // the unlinkability gift-wrap exists to provide.
         let raw = nostr_event_to_raw(&envelope);
-        // TODO(nip17-dm-relays): resolve the receiver's kind:10050 DM-relay
-        // list and pin the envelope there. Phase 1 routes both envelopes to
-        // the actor's configured Content relays (empty → NIP-65 outbox of the
-        // ephemeral pubkey, a defensive degrade).
-        let relays = kernel.bootstrap_urls_for_role(crate::relay::RelayRole::Content);
+        // NIP-17 § 2: pin the envelope to the receiver's kind:10050 DM-inbox
+        // relays. The lookup seam returns `None` until kind:10050 ingestion is
+        // built — when it does, fall back to the configured Content relays AND
+        // warn, so the routing gap is visible in logs rather than a silent
+        // delivery failure (the recipient simply never receiving the message).
+        let relays = kernel.recipient_dm_relays(receiver_hex).unwrap_or_else(|| {
+            tracing::warn!(
+                envelope = label,
+                "NIP-17 DM: no cached kind:10050 DM-relay list for receiver; \
+                 falling back to configured Content relays — delivery may be \
+                 lost if the receiver reads a different relay set"
+            );
+            kernel.bootstrap_urls_for_role(crate::relay::RelayRole::Content)
+        });
         outbound.extend(super::publish::publish_signed_event(kernel, raw, &relays));
     }
 
@@ -281,6 +311,38 @@ mod tests {
         assert!(
             !outbound.is_empty(),
             "both gift-wrap envelopes should produce outbound frames"
+        );
+    }
+
+    #[test]
+    fn send_gift_wrapped_dm_without_kind10050_falls_back_without_toasting() {
+        // NIP-17 § 2 routing: each envelope should go to its receiver's
+        // kind:10050 DM-inbox relays. kind:10050 ingestion is not yet built,
+        // so `recipient_dm_relays` returns `None` and the handler falls back
+        // to the configured Content relays. That fallback is a *diagnostic*
+        // gap (a `tracing::warn!`), NOT a user-facing failure: the send still
+        // succeeds and `last_error_toast_snapshot()` must stay `None` so the
+        // D6 toast channel is reserved for genuine errors (no local key,
+        // malformed pubkey). This test pins that distinction.
+        let (mut identity, mut kernel) = fresh();
+        sign_in_nsec(&mut identity, &mut kernel, TEST_NSEC, false);
+        let sender = identity.active_pubkey().expect("signed in");
+
+        // No kind:10050 cache exists for anyone — the receiver pubkey is a
+        // fresh keypair with no relay data of any kind.
+        let recipient_pk = nostr::Keys::generate().public_key().to_hex();
+
+        let rumor = sample_rumor(&sender);
+        let outbound = send_gift_wrapped_dm(&identity, &mut kernel, rumor, &recipient_pk);
+
+        assert!(
+            kernel.last_error_toast_snapshot().is_none(),
+            "the kind:10050 fallback is a warn-level diagnostic, not a toast: {:?}",
+            kernel.last_error_toast_snapshot()
+        );
+        assert!(
+            !outbound.is_empty(),
+            "the send still succeeds via the Content-relay fallback"
         );
     }
 

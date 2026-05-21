@@ -300,8 +300,11 @@ pub enum ActorCommand {
     },
     /// Send a NIP-17 gift-wrapped DM. The actor constructs one kind:1059
     /// envelope per recipient and one self-copy, using the active signer's
-    /// keys. Published to each recipient's DM relay (kind:10050); falls back to
-    /// the actor's configured relays.
+    /// keys. Each envelope is published to *its receiver's* kind:10050 DM-inbox
+    /// relays (NIP-17 § 2) — the recipient envelope to the recipient's list,
+    /// the self-copy to the sender's own list. Until kind:10050 ingestion
+    /// exists the lookup returns `None`, and the handler falls back to the
+    /// actor's configured Content relays while emitting a diagnostic warning.
     ///
     /// `rumor` is the **unsigned** kind:14 chat-message event built by
     /// `nmp_nip17::build_dm_rumor` — it is never signed or published as-is.
