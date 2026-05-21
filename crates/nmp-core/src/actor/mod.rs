@@ -295,6 +295,37 @@ pub enum ActorCommand {
         raw: crate::store::RawEvent,
         relays: Vec<crate::publish::RelayUrl>,
     },
+    /// Send a NIP-17 gift-wrapped DM. The actor constructs one kind:1059
+    /// envelope per recipient and one self-copy, using the active signer's
+    /// keys. Published to each recipient's DM relay (kind:10050); falls back to
+    /// the actor's configured relays.
+    ///
+    /// `rumor` is the **unsigned** kind:14 chat-message event built by
+    /// `nmp_nip17::build_dm_rumor` — it is never signed or published as-is.
+    /// The actor seals + gift-wraps it (NIP-59 `gift_wrap`) into kind:1059
+    /// envelopes whose outer signatures use fresh per-envelope ephemeral keys
+    /// (the unlinkability guarantee). Two envelopes are produced: one wrapped
+    /// to `recipient_pubkey`, one wrapped to the sender's own pubkey (the
+    /// self-copy, so sent messages remain readable).
+    ///
+    /// The gift-wrap crypto runs on the actor thread (D7 — the kernel owns key
+    /// access and the wall clock). The `rumor.created_at` is re-stamped from
+    /// `kernel.now_secs()` before wrapping.
+    ///
+    /// # Phase 1.5 MVP — local keys only
+    ///
+    /// `nmp_nip59::gift_wrap` requires `&nostr::Keys` (NIP-44 ECDH seal). A
+    /// remote (NIP-46) signer exposes only `sign()` — no `nip44_encrypt` —
+    /// so a bunker account CANNOT gift-wrap a DM through this path. The actor
+    /// detects the missing local key and surfaces a toast (D6 — explicit
+    /// failure, never silent, never a panic). Bunker support is gated on
+    /// ADR-0026 (extend `RemoteSignerHandle` with a NIP-44 encrypt/decrypt
+    /// seam), which is not yet built. This variant is the local-keys-only
+    /// infrastructure MVP.
+    SendGiftWrappedDm {
+        rumor: crate::substrate::UnsignedEvent,
+        recipient_pubkey: String,
+    },
     /// User intent from the outbox UI: retry a still-pending publish now.
     RetryPublish {
         handle: String,

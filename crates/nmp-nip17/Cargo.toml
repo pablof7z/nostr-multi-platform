@@ -1,0 +1,15 @@
+[package]
+name = "nmp-nip17"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+description = "NIP-17 private direct messages — kind:14 chat-message rumor builder. The gift-wrap (NIP-59) happens on the actor thread; this crate is a pure rumor builder."
+
+[dependencies]
+# `nmp-core` supplies the substrate `UnsignedEvent` type — the same flat
+# repr every other `ActorCommand` payload uses, so `build_dm_rumor` output
+# drops straight into `ActorCommand::SendGiftWrappedDm` with no conversion.
+nmp-core = { path = "../nmp-core" }
+
+[dev-dependencies]
+nmp-core = { path = "../nmp-core", features = ["test-support"] }

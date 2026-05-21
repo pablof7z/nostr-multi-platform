@@ -188,6 +188,21 @@ impl IdentityRuntime {
         self.active.as_ref().and_then(|id| self.keys.get(id))
     }
 
+    /// Borrow the active account's local `nostr::Keys`, or `None`.
+    ///
+    /// Returns `None` both when no account is active AND when the active
+    /// account is a remote (NIP-46) signer — a remote signer holds no local
+    /// secret key, so callers that need raw key material (NIP-59 gift-wrap)
+    /// must surface a graceful error for that case rather than assuming a key.
+    ///
+    /// This is the deliberate seam for the `SendGiftWrappedDm` actor arm:
+    /// `gift_wrap` requires `&Keys`, and `sign_active` (which transparently
+    /// routes to a remote signer) cannot satisfy that — sealing the rumor is
+    /// not a single "sign this event" operation.
+    pub(crate) fn active_local_keys(&self) -> Option<&Keys> {
+        self.active_keys()
+    }
+
     fn active_remote(&self) -> Option<&dyn RemoteSignerHandle> {
         self.active
             .as_ref()

@@ -344,6 +344,19 @@ pub(super) fn dispatch_command(
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
+        ActorCommand::SendGiftWrappedDm {
+            rumor,
+            recipient_pubkey,
+        } => {
+            // NIP-17: seal + gift-wrap the kind:14 rumor into two kind:1059
+            // envelopes (recipient + self-copy) and publish them. The gift-wrap
+            // crypto runs here on the actor thread (D7). `created_at == 0` is
+            // re-stamped from the kernel clock inside the handler.
+            let outbound =
+                commands::send_gift_wrapped_dm(ctx.identity, ctx.kernel, rumor, &recipient_pubkey);
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(outbound)
+        }
         ActorCommand::RetryPublish { handle } => {
             let outbound = ctx.kernel.retry_publish_now(&handle);
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
