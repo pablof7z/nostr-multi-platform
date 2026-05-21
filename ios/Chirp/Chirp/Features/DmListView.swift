@@ -4,7 +4,7 @@ import SwiftUI
 // DmListView — the NIP-17 private direct-message inbox.
 //
 // First consumer of the NIP-17 receive seam:
-//   • Read:  `projections["nip17.dm_inbox"]`, mirrored by `DmInboxStore`
+//   • Read:  `projections["nmp.nip17.dm_inbox"]`, mirrored by `DmInboxStore`
 //            (registered via `nmp_app_chirp_register_dm_inbox`).
 //   • Write: `nmp.nip17.send` via `KernelHandle.sendDm` — reached from
 //            `DmConversationView`.

@@ -747,14 +747,14 @@ struct KernelUpdate: Decodable {
     /// the consumer keeps reading `update.mentionProfiles` unchanged.
     var mentionProfiles: [String: MentionProfileWire]? { projections?.mentionProfiles }
 
-    /// NIP-29 group-chat read model — `projections["nip29.group_chat"]`.
+    /// NIP-29 group-chat read model — `projections["nmp.nip29.group_chat"]`.
     /// `nil` until `nmp_app_chirp_register_group_chat` has wired a group's
     /// projection; an empty `messages` array once registered but no chat
     /// events have arrived. Computed so the `GroupChatStore` consumer keeps
     /// reading `update.groupChat` unchanged.
     var groupChat: GroupChatSnapshot? { projections?.groupChat }
 
-    /// NIP-17 DM inbox read model — `projections["nip17.dm_inbox"]`.
+    /// NIP-17 DM inbox read model — `projections["nmp.nip17.dm_inbox"]`.
     /// `nil` until `nmp_app_chirp_register_dm_inbox` has wired the inbox
     /// projection; an empty `conversations` array once registered but no
     /// gift-wrap envelopes have arrived. Computed so the `DmInboxStore`
@@ -764,7 +764,7 @@ struct KernelUpdate: Decodable {
     var followList: FollowListSnapshot? { projections?.followList }
 
     /// NIP-29 group-discovery read model —
-    /// `projections["nip29.discovered_groups"]`. `nil` until
+    /// `projections["nmp.nip29.discovered_groups"]`. `nil` until
     /// `nmp_app_chirp_register_group_discovery` has wired a relay's
     /// projection; an empty `groups` array once registered but no
     /// kind:39000/39001/39002 events have arrived. Computed so the
@@ -847,14 +847,14 @@ struct SnapshotProjections: Decodable, Equatable {
     let removed: [String]?
     // NIP-29: the group-chat read projection registered by
     // `nmp_app_chirp_register_group_chat`. Its snapshot key is the dotted
-    // string `"nip29.group_chat"`, which `.convertFromSnakeCase` cannot
+    // string `"nmp.nip29.group_chat"`, which `.convertFromSnakeCase` cannot
     // derive from a Swift property name — hence the explicit `CodingKeys`
     // below (an explicit enum is all-or-nothing, so every other member is
     // re-listed there with its snake_case raw value).
     let groupChat: GroupChatSnapshot?
     // NIP-17: the DM inbox read projection registered by
     // `nmp_app_chirp_register_dm_inbox`. Its snapshot key is the dotted
-    // string `"nip17.dm_inbox"` — same `.convertFromSnakeCase` caveat as
+    // string `"nmp.nip17.dm_inbox"` — same `.convertFromSnakeCase` caveat as
     // `groupChat`, handled by the explicit `CodingKeys` case below.
     let dmInbox: DmInboxSnapshot?
     // Chirp follow list — `projections["chirp.follow_list"]`. Registered by
@@ -865,7 +865,7 @@ struct SnapshotProjections: Decodable, Equatable {
 
     // NIP-29: the group-discovery read projection registered by
     // `nmp_app_chirp_register_group_discovery`. Its snapshot key is the
-    // dotted string `"nip29.discovered_groups"` — same `.convertFromSnakeCase`
+    // dotted string `"nmp.nip29.discovered_groups"` — same `.convertFromSnakeCase`
     // caveat as `groupChat` / `dmInbox`, handled by the explicit
     // `CodingKeys` case below.
     let discoveredGroups: DiscoveredGroupsSnapshot?
@@ -896,10 +896,10 @@ struct SnapshotProjections: Decodable, Equatable {
     /// every case here must carry the *post-transform* (camelCase) name —
     /// which is exactly the synthesized default — EXCEPT `groupChat`.
     ///
-    /// The kernel's keys are dotted strings — `"nip29.group_chat"` and
-    /// `"nip17.dm_inbox"`. `.convertFromSnakeCase` splits on `_` only (`.`
-    /// is opaque), so it maps `"nip29.group_chat"` → `"nip29.groupChat"`
-    /// and `"nip17.dm_inbox"` → `"nip17.dmInbox"`. Those post-transform
+    /// The kernel's keys are dotted strings — `"nmp.nip29.group_chat"` and
+    /// `"nmp.nip17.dm_inbox"`. `.convertFromSnakeCase` splits on `_` only (`.`
+    /// is opaque), so it maps `"nmp.nip29.group_chat"` → `"nmp.nip29.groupChat"`
+    /// and `"nmp.nip17.dm_inbox"` → `"nmp.nip17.dmInbox"`. Those post-transform
     /// strings are the raw values `groupChat` / `dmInbox` must declare; the
     /// synthesized defaults would never match.
     ///
@@ -927,13 +927,13 @@ struct SnapshotProjections: Decodable, Equatable {
         case inserted
         case updated
         case removed
-        case groupChat = "nip29.groupChat"
-        case dmInbox = "nip17.dmInbox"
+        case groupChat = "nmp.nip29.groupChat"
+        case dmInbox = "nmp.nip17.dmInbox"
         case followList = "chirp.followList"
-        // `.convertFromSnakeCase` maps `"nip29.discovered_groups"` →
-        // `"nip29.discoveredGroups"` (split on `_` only, `.` opaque) — that
+        // `.convertFromSnakeCase` maps `"nmp.nip29.discovered_groups"` →
+        // `"nmp.nip29.discoveredGroups"` (split on `_` only, `.` opaque) — that
         // is the post-transform string this case must declare.
-        case discoveredGroups = "nip29.discoveredGroups"
+        case discoveredGroups = "nmp.nip29.discoveredGroups"
         case relayDiagnostics
         case mentionProfiles
         case settingsHub
@@ -990,7 +990,7 @@ struct SettingsHubSummary: Decodable, Equatable {
 //
 // Mirror of `nmp-nip29`'s `GroupChatSnapshot` / `GroupChatMessage` — the
 // shape the `GroupChatProjection` serialises under the snapshot key
-// `"nip29.group_chat"`. Thin-shell rule: these are pure DTOs; no Swift
+// `"nmp.nip29.group_chat"`. Thin-shell rule: these are pure DTOs; no Swift
 // owns the ordering (the projection emits newest-first) or the membership
 // filter (the projection matches kind + `h`-tag).
 
@@ -1023,7 +1023,7 @@ struct GroupChatSnapshot: Decodable, Equatable {
 //
 // Mirror of `nmp-nip29`'s `DiscoveredGroupsSnapshot` / `DiscoveredGroup` —
 // the shape the `DiscoveredGroupsProjection` serialises under the snapshot
-// key `"nip29.discovered_groups"`. Thin-shell rule: pure DTOs; no Swift
+// key `"nmp.nip29.discovered_groups"`. Thin-shell rule: pure DTOs; no Swift
 // owns the ordering (the projection emits alphabetical by `groupId`) or the
 // member-count math (the projection counts `["p", _]` tags).
 
@@ -1067,7 +1067,7 @@ struct DiscoveredGroupsSnapshot: Decodable, Equatable {
 //
 // Mirror of `nmp-nip17`'s `DmInboxSnapshot` / `DmConversation` / `DmMessage`
 // — the shape the `DmInboxProjection` serialises under the snapshot key
-// `"nip17.dm_inbox"`. Thin-shell rule: these are pure DTOs. The Rust
+// `"nmp.nip17.dm_inbox"`. Thin-shell rule: these are pure DTOs. The Rust
 // projection owns ALL protocol logic — NIP-44 decryption, kind:14 filtering,
 // per-peer grouping, and newest-first ordering. Swift never re-sorts or
 // re-groups.

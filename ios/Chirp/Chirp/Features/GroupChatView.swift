@@ -4,7 +4,7 @@ import SwiftUI
 // GroupChatView — one NIP-29 group's chat stream.
 //
 // First real consumer of the NIP-29 seam:
-//   • Read:  `projections["nip29.group_chat"]`, mirrored by `GroupChatStore`
+//   • Read:  `projections["nmp.nip29.group_chat"]`, mirrored by `GroupChatStore`
 //            (registered via `nmp_app_chirp_register_group_chat`).
 //   • Write: `nmp.nip29.post_chat_message` via `KernelHandle.postChatMessage`.
 //
