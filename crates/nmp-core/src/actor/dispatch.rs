@@ -315,7 +315,17 @@ pub(super) fn dispatch_command(
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::PublishUnsignedEventToRelays { event, relays } => {
+        ActorCommand::PublishUnsignedEventToRelays { mut event, relays } => {
+            // D7: the kernel owns the wall clock. Protocol-crate action
+            // builders (`nmp-nip29`, `nmp-nip57`) run as `ActionModule`
+            // executors with no kernel handle, so they cannot call
+            // `now_secs()`; they emit `created_at: 0` as a "stamp me" sentinel.
+            // Re-stamp here from the kernel clock. A non-zero value is left
+            // untouched — a caller that already holds an authoritative
+            // timestamp (e.g. a re-published event) keeps it.
+            if event.created_at == 0 {
+                event.created_at = ctx.kernel.now_secs();
+            }
             let outbound = commands::publish_unsigned_event_to_relays(
                 ctx.identity,
                 ctx.kernel,

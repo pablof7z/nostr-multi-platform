@@ -81,7 +81,10 @@ impl PublishPlan {
     /// The built `UnsignedEvent` carries an empty `pubkey` placeholder — the
     /// actor derives it from the active identity at sign time and overwrites
     /// the field (see `ActorCommand::PublishUnsignedEventToRelays`).
-    /// `created_at` is stamped here; the actor does not re-stamp.
+    /// `created_at` is left as `0`: D7 — this crate runs as an `ActionModule`
+    /// executor with no kernel handle, so it cannot read the wall clock. The
+    /// `0` is a "stamp me" sentinel; the actor's `PublishUnsignedEventToRelays`
+    /// dispatch arm fills it in from `kernel.now_secs()`.
     ///
     /// Routes via [`ActorCommand::PublishUnsignedEventToRelays`] pinned to
     /// exactly the plan's host relay — a NIP-29 group event must reach the
@@ -96,17 +99,15 @@ impl PublishPlan {
             .pin_to
             .ok_or_else(|| "publish plan has no relay pin".to_string())?
             .relay_url;
-        let created_at = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
         Ok(ActorCommand::PublishUnsignedEventToRelays {
             event: UnsignedEvent {
                 pubkey: String::new(),
                 kind: self.kind,
                 tags: self.tags,
                 content: self.content,
-                created_at,
+                // D7: `0` sentinel — the actor stamps the real clock value
+                // (see the `PublishUnsignedEventToRelays` dispatch arm).
+                created_at: 0,
             },
             relays: vec![relay],
         })
@@ -173,6 +174,9 @@ mod tests {
                 assert_eq!(event.tags, vec![vec!["h".to_string(), "room".to_string()]]);
                 // `pubkey` is a placeholder — the actor fills it at sign time.
                 assert!(event.pubkey.is_empty());
+                // D7: `created_at` is the `0` sentinel — the actor stamps the
+                // real clock value; this crate has no kernel handle.
+                assert_eq!(event.created_at, 0);
             }
             other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
         }

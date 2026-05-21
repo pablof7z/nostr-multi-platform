@@ -152,7 +152,11 @@ fn is_hex64(s: &str) -> bool {
 ///
 /// The `pubkey` on the built `UnsignedEvent` is a placeholder: the actor
 /// derives it from the active identity at sign time and overwrites this
-/// field. `created_at` is stamped here; the actor does not re-stamp.
+/// field. `created_at` is left as `0`: D7 — this crate runs as an
+/// `ActionModule` executor with no kernel handle, so it cannot read the wall
+/// clock. The `0` is a "stamp me" sentinel; the actor's
+/// `PublishUnsignedEventToRelays` dispatch arm fills it from
+/// `kernel.now_secs()`.
 ///
 /// Routes via [`ActorCommand::PublishUnsignedEventToRelays`] pinned to the
 /// zap request's own `relays` set — the recipient watches exactly those
@@ -177,11 +181,6 @@ pub fn zap_request_command(action_json: &str) -> Result<ActorCommand, String> {
     let relays: Vec<String> =
         relays.into_iter().filter(|r| !r.trim().is_empty()).collect();
 
-    let created_at = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-
     let mut builder = ZapRequest::to_pubkey(recipient_pubkey)
         // NIP-57: `amount` is msats. 1 sat = 1000 msat.
         .amount_msats(amount_sats.saturating_mul(1000))
@@ -192,8 +191,11 @@ pub fn zap_request_command(action_json: &str) -> Result<ActorCommand, String> {
     }
 
     // `pubkey` placeholder — the actor overwrites it at sign time.
+    // `created_at: 0` sentinel — D7: this crate has no kernel handle; the
+    // actor's `PublishUnsignedEventToRelays` dispatch arm stamps the real
+    // clock value.
     let unsigned = builder
-        .build(String::new(), created_at)
+        .build(String::new(), 0)
         .map_err(|e| e.to_string())?;
 
     Ok(ActorCommand::PublishUnsignedEventToRelays {
@@ -386,6 +388,9 @@ mod tests {
                 assert_eq!(e[1], "b".repeat(64));
                 // comment lands in content.
                 assert_eq!(event.content, "great post");
+                // D7: `created_at` is the `0` sentinel — the actor stamps the
+                // real clock value; this crate has no kernel handle.
+                assert_eq!(event.created_at, 0);
             }
             other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
         }
