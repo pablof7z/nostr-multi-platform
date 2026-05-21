@@ -8,6 +8,25 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
+### PD-033 NEEDS USER ACTION (2026-05-21) — `pending_mls_autopublish` cannot be routed through `ActorCommand` as briefed; Fix 2 deferred
+
+A polish brief asked for two `nmp-core` fixes: (1) remove an `eprintln!` from `ffi_guard.rs`, (2) replace the `pending_mls_autopublish: Arc<Mutex<bool>>` field on `NmpApp` with an `ActorCommand::SetPendingMlsAutopublish(bool)` variant, on the stated rationale that the flag "is never read by the actor thread — it's FFI-thread-only mutable state shared via a Mutex as a workaround for ownership, not because it's genuinely shared."
+
+**Fix 1 shipped** — clean, warning-free, 749 nmp-core lib tests pass.
+
+**Fix 2 was NOT done — the brief's rationale is factually wrong**, verified by `grep`:
+
+- The flag is **written** by `nmp_app_create_new_account` (`crates/nmp-core/src/ffi/identity.rs:78`, via `set_pending_mls_autopublish`).
+- It is **read-and-cleared** by a *different* FFI entry point — `nmp_app_chirp_marmot_register_active` (`apps/chirp/nmp-app-chirp/src/marmot/ffi.rs:334`, via `take_pending_mls_autopublish`) — to decide whether to publish the MLS key package right after the Marmot projection registers.
+
+So the `Arc<Mutex<bool>>` is doing genuine work: it carries a one-shot intent **across two separate FFI calls** on the host thread (create-account → later marmot-register). The brief's plan — "store `flag` in a local variable in the actor loop" and "update callers to send `ActorCommand::SetPendingMlsAutopublish`" — breaks this. `take_` is a **synchronous reader**; the actor thread cannot return a value to a future FFI call, so an actor-loop local strands chirp's reader and `nmp_app_chirp_marmot_register_active` would never autopublish. The brief anticipated only Swift/Kotlin follow-up references and missed the live **Rust** caller in chirp.
+
+Decision: shipped Fix 1 only; did **not** do Fix 2. Doing it literally would silently break Chirp's post-create-account MLS key-package autopublish. The honest fix needs an API change the brief explicitly forbids touching: pass `mls_autopublish` as a parameter to `nmp_app_chirp_marmot_register_active` so iOS supplies it at register time, removing the cross-call shared flag entirely — but that changes the chirp FFI signature and its Swift caller (`MarmotBridge.swift`), out of this brief's scope.
+
+USER ACTION: choose one — (a) re-spec Fix 2 to also change `nmp_app_chirp_marmot_register_active`'s signature + the Swift caller (cross-FFI, multi-file); or (b) accept that `pending_mls_autopublish` is genuinely two-call shared state and leave the `Arc<Mutex<bool>>` as-is; or (c) some other design (e.g. fold the autopublish intent into the Marmot projection's own state).
+
+---
+
 ### PD-032 NEEDS USER ACTION (2026-05-20) — PR #11 has merge conflicts with master; CI cannot schedule the FFI drift check
 
 After fixing the FFI drift CI script (PD-031, commit `8f22ac94` on `chirp-nmp-thin-shell-policy`), I could not get CI to confirm the green check. Root cause: **PR #11 is `CONFLICTING`/`DIRTY` against master.**
