@@ -126,7 +126,8 @@ use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-pub(crate) use relay_roles::{canonical_relay_role, has_role};
+pub use relay_roles::NOSTRCONNECT_DEFAULT_RELAY_URL;
+pub(crate) use relay_roles::{canonical_relay_role, has_role, nostrconnect_relay_url};
 
 /// Actor command variants.  The `actor` module is private (`mod actor`, not
 /// `pub mod actor`), so this `pub` is only reachable from outside the crate

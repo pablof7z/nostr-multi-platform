@@ -1,5 +1,9 @@
 //! Relay role parsing for `RelayEditRow.role`.
 
+/// Fallback relay for client-initiated NIP-46 `nostrconnect://` handshakes
+/// when the user has no configured write relay.
+pub const NOSTRCONNECT_DEFAULT_RELAY_URL: &str = "wss://relay.damus.io";
+
 /// True when `role` semantically includes `needle`.
 ///
 /// `both` means read+write only; it does not imply indexer. Composite role
@@ -54,4 +58,62 @@ fn role_tokens(role: &str) -> impl Iterator<Item = String> + '_ {
     role.split(|c: char| c == ',' || c == '+' || c.is_whitespace())
         .filter(|token| !token.is_empty())
         .map(|token| token.to_ascii_lowercase())
+}
+
+/// Choose the relay for a client-initiated NIP-46 `nostrconnect://` flow.
+///
+/// The relay is the first configured relay whose canonical role includes
+/// write semantics. If none exists, use the substrate-owned fallback.
+pub(crate) fn nostrconnect_relay_url<'a, I>(rows: I) -> String
+where
+    I: IntoIterator<Item = (&'a str, &'a str)>,
+{
+    rows.into_iter()
+        .find(|(_, role)| has_role(role, "write"))
+        .map(|(url, _)| url.to_string())
+        .unwrap_or_else(|| NOSTRCONNECT_DEFAULT_RELAY_URL.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn nostrconnect_prefers_first_write_eligible_relay() {
+        let rows = [
+            ("wss://read.example", "read"),
+            ("wss://write.example", "write"),
+            ("wss://both.example", "both"),
+        ];
+
+        assert_eq!(
+            nostrconnect_relay_url(rows),
+            "wss://write.example",
+            "first write-capable relay should own nostrconnect handshakes"
+        );
+    }
+
+    #[test]
+    fn nostrconnect_accepts_composite_role_tokens() {
+        let rows = [
+            ("wss://indexer.example", "indexer"),
+            ("wss://composite.example", "both,indexer"),
+        ];
+
+        assert_eq!(
+            nostrconnect_relay_url(rows),
+            "wss://composite.example",
+            "both,indexer semantically includes write"
+        );
+    }
+
+    #[test]
+    fn nostrconnect_falls_back_without_write_relay() {
+        let rows = [
+            ("wss://read.example", "read"),
+            ("wss://indexer.example", "indexer"),
+        ];
+
+        assert_eq!(nostrconnect_relay_url(rows), NOSTRCONNECT_DEFAULT_RELAY_URL);
+    }
 }
