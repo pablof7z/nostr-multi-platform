@@ -222,7 +222,20 @@ pub(super) struct PublishOutboxItem {
     pub(super) preview: String,
     pub(super) created_at_display: String,
     pub(super) status: String,
+    /// Pre-formatted English label for `status` (e.g. `"Sending"`, `"Retrying"`).
+    /// Doctrine §6 anti-pattern #1: the shell renders this directly — it never
+    /// switches on `status` to choose a label string. Always non-empty.
+    pub(super) status_label: String,
+    /// Pre-decided "is the Retry button enabled" flag. The kernel knows the
+    /// retry-policy rule ("a row already sending cannot be retried"); the
+    /// shell never reconstructs it. RMP bible commandment #4 — no native `if`
+    /// deciding what the app should *do*.
+    pub(super) can_retry: bool,
     pub(super) target_relays: usize,
+    /// Pre-formatted "N relays · <created_at>" header line (or "1 relay · …"
+    /// — pluralization is server-side). The shell renders this verbatim
+    /// instead of reconstructing the plural with a ternary on `target_relays`.
+    pub(super) target_summary: String,
     pub(super) relays: Vec<PublishOutboxRelay>,
 }
 
@@ -230,8 +243,40 @@ pub(super) struct PublishOutboxItem {
 pub(super) struct PublishOutboxRelay {
     pub(super) relay_url: String,
     pub(super) status: String,
+    /// Pre-formatted English label for `status` (e.g. `"Sending"`, `"Retrying"`).
+    /// Always non-empty — the shell never `.capitalized`s `status` or switches
+    /// on it to choose a label string.
+    pub(super) status_label: String,
     pub(super) attempt: u32,
+    /// Pre-formatted "try N" badge — empty string when `attempt` is zero so
+    /// the shell renders unconditionally (D1: best-effort rendering — no
+    /// `if attempt > 0` deciding whether to show the badge). When non-empty
+    /// the shell renders it as-is.
+    pub(super) attempt_label: String,
     pub(super) message: String,
+}
+
+/// Pre-formatted outbox summary header for `NotificationsView` (and similar
+/// shells). The kernel owns the counters AND the user-facing English strings;
+/// the shell only binds the strings.
+///
+/// Doctrine §6 anti-pattern #1 ("Duplicated formatting logic across platforms")
+/// + RMP bible commandment #4 ("no native business logic"). The shell never
+/// counts `publish_outbox` entries by status to derive a subtitle; it reads
+/// `outbox_summary.subtitle` directly.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub(super) struct OutboxSummarySnapshot {
+    /// Pre-formatted headline — e.g. `"Nothing waiting"`, `"3 pending
+    /// publishes"`, or `"1 pending publish"`. Always non-empty (D1).
+    pub(super) title: String,
+    /// Pre-formatted explanatory subtitle that decomposes per-status counts
+    /// into a single sentence. Always non-empty (D1).
+    pub(super) subtitle: String,
+    pub(super) total: u32,
+    pub(super) sending: u32,
+    pub(super) retrying: u32,
+    pub(super) queued: u32,
+    pub(super) failed: u32,
 }
 
 /// Per-relay rolling counters for diagnostics.

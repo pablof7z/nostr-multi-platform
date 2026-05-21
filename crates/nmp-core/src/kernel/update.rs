@@ -250,6 +250,15 @@ impl Kernel {
             serde_json::to_value(self.publish_outbox_items())
                 .unwrap_or(serde_json::Value::Null),
         );
+        // D0: outbox header summary — `OutboxSummarySnapshot`. The kernel owns
+        // the per-status counters AND the English `title` / `subtitle`
+        // strings (§6 anti-pattern #1); shells bind the strings verbatim
+        // instead of `.filter`-counting `publish_outbox` to derive them.
+        projections.insert(
+            "outbox_summary".to_string(),
+            serde_json::to_value(self.outbox_summary_snapshot())
+                .unwrap_or(serde_json::Value::Null),
+        );
         projections.insert(
             "relay_edit_rows".to_string(),
             serde_json::to_value(self.relay_edit_rows_snapshot())

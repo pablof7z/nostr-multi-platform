@@ -353,10 +353,97 @@ fn publish_outbox_projects_pending_event_details_and_relays() {
         Some("This note is still waiting for relays")
     );
     assert_eq!(outbox[0]["status"].as_str(), Some("sending"));
+    assert_eq!(outbox[0]["status_label"].as_str(), Some("Sending"));
+    // RMP bible commandment #4: a row currently sending cannot be retried.
+    // The kernel emits the decision; the shell binds it directly (no Swift
+    // `if status != "sending"` branch).
+    assert_eq!(outbox[0]["can_retry"].as_bool(), Some(false));
+    // §6 anti-pattern #1: pluralization lives in Rust. Single relay → "1 relay";
+    // the shell never reconstructs the plural with a ternary.
+    assert!(
+        outbox[0]["target_summary"]
+            .as_str()
+            .map(|s| s.starts_with("1 relay · "))
+            .unwrap_or(false),
+        "target_summary must pluralize server-side: got {:?}",
+        outbox[0]["target_summary"]
+    );
     assert_eq!(
         outbox[0]["relays"][0]["relay_url"].as_str(),
         Some("wss://outbox.test")
     );
+    // Per-relay status label is pre-formatted (no Swift `.capitalized`).
+    assert_eq!(
+        outbox[0]["relays"][0]["status_label"].as_str(),
+        Some("Sending")
+    );
+    // attempt == 1 on first send → "try 1" badge text comes from Rust.
+    assert_eq!(
+        outbox[0]["relays"][0]["attempt_label"].as_str(),
+        Some("try 1")
+    );
+}
+
+/// `outbox_summary` projects an empty-outbox headline + subtitle when nothing
+/// is pending. §6 anti-pattern #1: the shell binds `title` / `subtitle`
+/// strings directly — it never `.filter`-counts `publish_outbox` to derive
+/// them.
+#[test]
+fn outbox_summary_projects_empty_state_strings() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let snap = snapshot(&mut kernel);
+    let summary = &snap["projections"]["outbox_summary"];
+    assert_eq!(summary["title"].as_str(), Some("Nothing waiting"));
+    assert_eq!(
+        summary["subtitle"].as_str(),
+        Some("Your local outbox is clear.")
+    );
+    assert_eq!(summary["total"].as_u64(), Some(0));
+    assert_eq!(summary["sending"].as_u64(), Some(0));
+    assert_eq!(summary["retrying"].as_u64(), Some(0));
+    assert_eq!(summary["queued"].as_u64(), Some(0));
+    assert_eq!(summary["failed"].as_u64(), Some(0));
+}
+
+/// `outbox_summary` projects an "N pending publish(es)" headline and a per-status
+/// subtitle when rows are in flight. Pins the strings the kernel emits so a
+/// Swift refactor cannot quietly resurrect the §6 anti-pattern.
+#[test]
+fn outbox_summary_projects_sending_counters_and_strings() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let signed = SignedEvent {
+        id: "f".repeat(64),
+        sig: "a".repeat(128),
+        unsigned: UnsignedEvent {
+            pubkey: ACCOUNT.to_string(),
+            kind: 1,
+            tags: Vec::new(),
+            content: "single sending row".to_string(),
+            created_at: 1_700_000_000,
+        },
+    };
+
+    let outbound = kernel.run_publish_engine_at(
+        &signed,
+        &[],
+        crate::publish::PublishTarget::Explicit {
+            relays: vec!["wss://outbox.test".to_string()],
+        },
+        None,
+        0,
+    );
+    assert_eq!(outbound.len(), 1);
+
+    let snap = snapshot(&mut kernel);
+    let summary = &snap["projections"]["outbox_summary"];
+    assert_eq!(summary["title"].as_str(), Some("1 pending publish"));
+    assert_eq!(
+        summary["subtitle"].as_str(),
+        Some("1 currently sending.")
+    );
+    assert_eq!(summary["total"].as_u64(), Some(1));
+    assert_eq!(summary["sending"].as_u64(), Some(1));
+    assert_eq!(summary["retrying"].as_u64(), Some(0));
 }
 
 #[test]

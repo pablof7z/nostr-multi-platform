@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		06F6D20F46F0A4211F7B63D5 /* OnboardingView+Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3840302F0BFF2818BFE295C6 /* OnboardingView+Components.swift */; };
+		A587215ADAEC4A71BEC92D4E /* NotificationsView+OutboxRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8BD15ED21274FDC958A0DAC /* NotificationsView+OutboxRow.swift */; };
 		072991FD6319A37D692C27E4 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 985298ED1B842E892A6FA759 /* ProfileView.swift */; };
 		0D422FF23569CEEFFC4AB10E /* HomeFeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F03417D370984DB9AC4212B /* HomeFeedView.swift */; };
 		159A0AB673722908A2785D5C /* ComposeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C239DE349111247765A86A53 /* ComposeView.swift */; };
@@ -90,6 +91,7 @@
 		31F55FC6A139DA43D434DBF9 /* RootShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootShell.swift; sourceTree = "<group>"; };
 		3808C5C6482C44109C442925 /* KernelModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KernelModel.swift; sourceTree = "<group>"; };
 		3840302F0BFF2818BFE295C6 /* OnboardingView+Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OnboardingView+Components.swift"; sourceTree = "<group>"; };
+		F8BD15ED21274FDC958A0DAC /* NotificationsView+OutboxRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NotificationsView+OutboxRow.swift"; sourceTree = "<group>"; };
 		4F03417D370984DB9AC4212B /* HomeFeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFeedView.swift; sourceTree = "<group>"; };
 		50F5B25557B2147731A5F75C /* KeychainCapability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainCapability.swift; sourceTree = "<group>"; };
 		5EB771E148A6FCB120C2ADCF /* AccountAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountAvatar.swift; sourceTree = "<group>"; };
@@ -182,6 +184,7 @@
 				0F7C6ADBA250165B0FFE7338 /* MarmotGroupsView.swift */,
 				F084A0E109F23A641626E2F9 /* MarmotInviteSheet.swift */,
 				C79DFA56568C01E3AE76955E /* NotificationsView.swift */,
+				F8BD15ED21274FDC958A0DAC /* NotificationsView+OutboxRow.swift */,
 				D32D744B5446C909E7AEEB8F /* OnboardingView.swift */,
 				3840302F0BFF2818BFE295C6 /* OnboardingView+Components.swift */,
 				23D004DA6D1AFB36F6FBBAE0 /* OnboardingView+NIP46.swift */,
@@ -429,6 +432,7 @@
 				5AD3263D1EAB352DEDE89C80 /* NoteEntityViews.swift in Sources */,
 				E6AF81962D62F30FDB2F4F35 /* NoteRowView.swift in Sources */,
 				BA5D10F42934B36256492BCC /* NotificationsView.swift in Sources */,
+				A587215ADAEC4A71BEC92D4E /* NotificationsView+OutboxRow.swift in Sources */,
 				06F6D20F46F0A4211F7B63D5 /* OnboardingView+Components.swift in Sources */,
 				8EF0FEE876C6ADF593CE2BDB /* OnboardingView+NIP46.swift in Sources */,
 				82CC2009FF54F2B7DAD35B06 /* OnboardingView.swift in Sources */,
