@@ -12,6 +12,18 @@ export type RuntimeSnapshot = {
   events: WorkerEvent[];
 };
 
+export type RuntimeConnection = {
+  appId: string;
+  relays: string[];
+  databaseName: string;
+};
+
+export const runtimeConnection: RuntimeConnection = {
+  appId: "chirp",
+  relays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"],
+  databaseName: "chirp-web",
+};
+
 export type NmpClient = {
   snapshot(): RuntimeSnapshot;
   subscribe(listener: (snapshot: RuntimeSnapshot) => void): () => void;
@@ -79,7 +91,7 @@ class WorkerNmpClient extends BaseClient {
     };
     this.worker.postMessage({
       type: "hello",
-      app_id: "chirp",
+      app_id: runtimeConnection.appId,
       platform: "web",
       protocol_version: protocolVersion,
     } satisfies WorkerRequest);
@@ -89,9 +101,9 @@ class WorkerNmpClient extends BaseClient {
     await this.helloReady;
     return this.request({
       type: "start",
-      app_id: "chirp",
-      relays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"],
-      database_name: "chirp-web",
+      app_id: runtimeConnection.appId,
+      relays: runtimeConnection.relays,
+      database_name: runtimeConnection.databaseName,
       correlation_id: "web-start",
     });
   }
@@ -145,7 +157,7 @@ class InProcessNmpClient extends BaseClient {
     super();
     this.send({
       type: "hello",
-      app_id: "chirp",
+      app_id: runtimeConnection.appId,
       platform: "web",
       protocol_version: protocolVersion,
     });
@@ -154,9 +166,9 @@ class InProcessNmpClient extends BaseClient {
   async start(): Promise<RuntimeSnapshot> {
     return this.send({
       type: "start",
-      app_id: "chirp",
-      relays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"],
-      database_name: "chirp-web",
+      app_id: runtimeConnection.appId,
+      relays: runtimeConnection.relays,
+      database_name: runtimeConnection.databaseName,
       correlation_id: "web-start",
     });
   }
