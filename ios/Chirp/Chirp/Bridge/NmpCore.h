@@ -208,6 +208,22 @@ void nmp_app_set_lifecycle_callback(void *app, void *context, NmpLifecycleCallba
 // non-blocking (no I/O, no waits), or every subsequent snapshot stalls.
 // A shell that predates this field never sees the `projections` key (it is
 // omitted from the JSON when empty — backwards compatible).
+//
+// `nmp_app_register_action_result_observer` is the PUSH-side counterpart to
+// the snapshot-projection (pull) output seam.  After `nmp_app_dispatch_action`
+// accepts an action and its executor returns success, the registered
+// `observer` callback is invoked with a NUL-terminated JSON C string
+// `{"correlation_id":"<hex>","result_json":<value>}`.  This is an "action
+// accepted and enqueued" signal — NOT a completion carrier: for `nmp.publish`
+// the actor still has to verify+publish after this fires, and built-in
+// executors are fire-and-forget so `result_json` is `null`.  An action that
+// needs to return a value writes it into a snapshot projection (the pull
+// model).  The JSON pointer is owned by nmp-core and valid only for the
+// duration of the callback — copy any needed bytes before returning; do NOT
+// free or retain it.  Unlike the action-executor/module seams this takes only
+// the app handle (the observer lives behind a shared slot), so it may be
+// registered before OR after `nmp_app_start`; a second registration replaces
+// the first.  A null `app` or null `observer` is a silent no-op (D6).
 
 typedef char *(*NmpCapabilityCallback)(void *context, const char *request_json);
 void nmp_app_set_capability_callback(void *app, void *context, NmpCapabilityCallback callback);
@@ -217,6 +233,8 @@ typedef const char *(*NmpActionExecutor)(const char *action_json);
 void nmp_app_register_action_executor(void *app, const char *namespace, NmpActionExecutor executor);
 typedef const char *(*NmpActionValidator)(const char *action_json);
 void nmp_app_register_action_module(void *app, const char *namespace, NmpActionValidator validator);
+typedef void (*NmpActionResultObserver)(const char *result_json);
+void nmp_app_register_action_result_observer(void *app, NmpActionResultObserver observer);
 typedef const char *(*NmpSnapshotProjector)(void);
 void nmp_app_register_snapshot_projection(void *app, const char *key, NmpSnapshotProjector projector);
 void nmp_app_free_string(char *ptr);

@@ -53,7 +53,7 @@
 use std::ffi::{c_char, CStr, CString};
 
 use super::{app_ref, app_ref_mut, c_string_argument, NmpApp};
-use crate::substrate::{ActionContext, ActionRejection};
+use crate::substrate::{ActionContext, ActionRejection, ActionResult};
 
 /// Dispatch a named action through the action registry.
 ///
@@ -269,6 +269,75 @@ pub extern "C" fn nmp_app_register_action_module(
     });
 }
 
+/// Host-supplied action result observer callback.
+///
+/// Invoked after a dispatched action has been accepted by the registry and
+/// enqueued for execution. Receives a NUL-terminated JSON C string
+/// `{"correlation_id":"<hex>","result_json":<value>}` — the serialized
+/// [`ActionResult`]. The pointer is owned by `nmp-core`, is valid only for
+/// the duration of the callback, and MUST NOT be freed or retained by the
+/// host; copy any needed bytes before returning.
+///
+/// This is an "action accepted" push signal, NOT a completion carrier.
+/// Built-in executors are fire-and-forget, so `result_json` is `null`; an
+/// action's eventual outcome is reported via the snapshot-projection (pull)
+/// path, not this channel. See [`ActionResult`].
+pub type NmpActionResultObserver = unsafe extern "C" fn(*const c_char);
+
+/// Register a host-supplied action-result observer against the app's action
+/// registry — the *push* counterpart to the snapshot-projection (pull)
+/// output seam.
+///
+/// After [`nmp_app_dispatch_action`] validates an action and its executor
+/// returns `Ok`, the registry hands the observer a JSON string
+/// `{"correlation_id":"<hex>","result_json":<value>}`. For built-in
+/// (fire-and-forget) executors `result_json` is `null`; the signal means the
+/// action was *accepted and enqueued*, not that the actor has finished
+/// publishing.
+///
+/// THREADING: this call takes `&NmpApp` (the observer lives behind an
+/// `Arc<Mutex<…>>` slot), so — unlike `nmp_app_register_action_executor` —
+/// it may be invoked before *or after* `nmp_app_start`. A second
+/// registration replaces the first.
+///
+/// A null `app` or a null `observer` is a silent no-op (D6: a bad
+/// registration argument never crashes the host).
+///
+/// # Safety
+/// `app` must be a valid pointer from [`super::nmp_app_new`] (or null).
+/// `observer`, when `Some`, must be a valid function pointer for the
+/// remaining lifetime of `app` — the registry retains it.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn nmp_app_register_action_result_observer(
+    app: *mut NmpApp,
+    observer: Option<NmpActionResultObserver>,
+) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let Some(observer) = observer else {
+        return;
+    };
+    app.register_action_result_observer(move |result: ActionResult| {
+        // Serialize the `ActionResult` to its `{"correlation_id":…,
+        // "result_json":…}` JSON shape. `serde_json` output never contains
+        // an interior NUL, so `CString::new` does not fail in practice; a
+        // failure is treated as a silent drop (D6 — never panic across the
+        // ABI boundary).
+        let Ok(json) = serde_json::to_string(&result) else {
+            return;
+        };
+        let Ok(cstr) = CString::new(json) else {
+            return;
+        };
+        // SAFETY: `observer` is a valid function pointer per this symbol's
+        // safety contract; `cstr.as_ptr()` is a valid NUL-terminated C
+        // string live for the duration of the call.
+        unsafe { observer(cstr.as_ptr()) };
+    });
+}
+
 /// The default erased [`ActionPlan`] a host-registered module hands back on
 /// **accept**: a `Pending` action with a `"Pending"` step and no deadline.
 /// The host's executor owns the real work; the plan is only the registry's
@@ -305,10 +374,22 @@ fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str
             // already-minted correlation id is discarded — a rejected
             // dispatch must not look like an accepted one.
             match execute_action(app, namespace, action_json) {
-                Ok(()) => format!(
-                    r#"{{"correlation_id":{}}}"#,
-                    json_string(&correlation_id)
-                ),
+                Ok(()) => {
+                    // Push the "action accepted and enqueued" signal to the
+                    // host's result observer, if one is registered. Built-in
+                    // executors are fire-and-forget, so `result_json` is
+                    // `null`; a host executor that needs to return a value
+                    // writes it to a snapshot projection (the pull model).
+                    // A no-op when no observer is registered.
+                    app.action_registry.deliver_result(ActionResult {
+                        correlation_id: correlation_id.clone(),
+                        result_json: serde_json::Value::Null,
+                    });
+                    format!(
+                        r#"{{"correlation_id":{}}}"#,
+                        json_string(&correlation_id)
+                    )
+                }
                 Err(msg) => error_json(&msg),
             }
         }
@@ -656,6 +737,137 @@ mod tests {
             err.contains("host rejected: title required"),
             "rejection message should reach the host, got: {err}"
         );
+        nmp_app_free(app);
+    }
+
+    use std::sync::Mutex;
+
+    /// THE SEAM PROOF: a host registers an action-result observer, dispatches
+    /// an action through `dispatch_action`, and the observer fires with the
+    /// SAME `correlation_id` the dispatch call returned. This proves the push
+    /// channel is wired end-to-end through the dispatcher — not just the
+    /// registry slot in isolation.
+    #[test]
+    fn dispatch_action_delivers_result_to_observer_with_correlation_id() {
+        let seen: Arc<Mutex<Vec<crate::substrate::ActionResult>>> =
+            Arc::new(Mutex::new(Vec::new()));
+        let seen_in_observer = Arc::clone(&seen);
+
+        with_app(|app| {
+            app.register_action_result_observer(move |result| {
+                seen_in_observer.lock().unwrap().push(result);
+            });
+
+            let out = dispatch_action_json(
+                Some(app),
+                "nmp.publish",
+                r#"{"Cancel":{"handle":"observer-test"}}"#,
+            );
+            let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
+            let returned_id = parsed
+                .get("correlation_id")
+                .and_then(|v| v.as_str())
+                .expect("dispatch should return a correlation_id")
+                .to_string();
+
+            let captured = seen.lock().unwrap();
+            assert_eq!(
+                captured.len(),
+                1,
+                "the result observer should fire exactly once per accepted action"
+            );
+            assert_eq!(
+                captured[0].correlation_id, returned_id,
+                "observer correlation_id must match the dispatch return value"
+            );
+            assert!(
+                captured[0].result_json.is_null(),
+                "a fire-and-forget built-in executor delivers a null result_json"
+            );
+        });
+    }
+
+    /// A rejected action (unknown namespace) never reaches `execute`, so the
+    /// result observer must NOT fire — delivery is gated on `Ok` execution.
+    #[test]
+    fn dispatch_action_does_not_deliver_result_on_rejection() {
+        let fired = Arc::new(AtomicBool::new(false));
+        let fired_in_observer = Arc::clone(&fired);
+
+        with_app(|app| {
+            app.register_action_result_observer(move |_| {
+                fired_in_observer.store(true, Ordering::SeqCst);
+            });
+            let out = dispatch_action_json(Some(app), "nmp.unknown", "{}");
+            assert!(
+                out.contains("error"),
+                "an unknown namespace must be rejected, got: {out}"
+            );
+            assert!(
+                !fired.load(Ordering::SeqCst),
+                "the observer must not fire for a rejected action"
+            );
+        });
+    }
+
+    /// The C-ABI registration entry point: registering an observer through
+    /// `nmp_app_register_action_result_observer` and dispatching an action
+    /// invokes the C callback with the `{"correlation_id":…}` JSON shape.
+    #[test]
+    fn c_abi_register_action_result_observer_receives_json() {
+        // A `static` slot the C callback writes into — an `extern "C" fn`
+        // cannot capture, so the observed JSON is parked here.
+        static OBSERVED: Mutex<Option<String>> = Mutex::new(None);
+
+        extern "C" fn observer(json: *const c_char) {
+            // SAFETY: per the callback contract `json` is a valid
+            // NUL-terminated C string live for the duration of this call.
+            let s = unsafe { CStr::from_ptr(json) }
+                .to_string_lossy()
+                .into_owned();
+            *OBSERVED.lock().unwrap() = Some(s);
+        }
+
+        *OBSERVED.lock().unwrap() = None;
+        let app = nmp_app_new();
+        nmp_app_register_action_result_observer(app, Some(observer));
+        let out = dispatch_action_json(
+            // SAFETY: `nmp_app_new` never returns null.
+            Some(unsafe { &*app }),
+            "nmp.publish",
+            r#"{"Cancel":{"handle":"c-abi-test"}}"#,
+        );
+        let returned_id: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let returned_id = returned_id
+            .get("correlation_id")
+            .and_then(|v| v.as_str())
+            .expect("dispatch should return a correlation_id");
+
+        let observed = OBSERVED.lock().unwrap().clone();
+        let observed = observed.expect("the C observer callback should have fired");
+        let parsed: serde_json::Value = serde_json::from_str(&observed)
+            .expect("the observer payload should be valid JSON");
+        assert_eq!(
+            parsed.get("correlation_id").and_then(|v| v.as_str()),
+            Some(returned_id),
+            "C observer payload must carry the dispatch correlation_id"
+        );
+        assert!(
+            parsed.get("result_json").map(|v| v.is_null()).unwrap_or(false),
+            "C observer payload must carry a result_json field (null here)"
+        );
+        nmp_app_free(app);
+    }
+
+    /// A null `app` or null `observer` is a silent no-op (D6).
+    #[test]
+    fn c_abi_register_action_result_observer_null_args_are_noop() {
+        extern "C" fn observer(_json: *const c_char) {}
+        // Null app — must not crash.
+        nmp_app_register_action_result_observer(std::ptr::null_mut(), Some(observer));
+        // Null observer — must not crash.
+        let app = nmp_app_new();
+        nmp_app_register_action_result_observer(app, None);
         nmp_app_free(app);
     }
 
