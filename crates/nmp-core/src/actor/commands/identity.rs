@@ -50,8 +50,8 @@ pub(crate) struct BunkerHandshakeDto {
 ///
 /// `None` (the default) means no handshake is in flight — the projection then
 /// contributes JSON `null` under the `"bunker_handshake"` key, preserving the
-/// "key present, value null when idle" semantic the SwiftUI sign-in flow
-/// already decodes (an explicit `"idle"` stage from the broker maps to `None`).
+/// "key present, value null when idle" semantic host sign-in flows
+/// decode (an explicit `"idle"` stage from the broker maps to `None`).
 pub(crate) type BunkerHandshakeSlot = Arc<Mutex<Option<BunkerHandshakeDto>>>;
 
 /// Construct a fresh, empty [`BunkerHandshakeSlot`].

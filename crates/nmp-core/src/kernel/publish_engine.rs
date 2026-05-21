@@ -126,7 +126,7 @@ impl Kernel {
             event: signed.clone(),
             // D3: `target` is `Auto` for every existing caller (the engine's
             // `Nip65OutboxResolver` reads kind:10002 from the shared event
-            // store) or the `Explicit` opt-out for Marmot group/gift-wrap
+            // store) or the `Explicit` opt-out for gift-wrap and similar
             // routing. `_p_tags` is the legacy parameter; the engine
             // recomputes `#p` tags from `event.unsigned.tags` itself, so we
             // don't pass it through.

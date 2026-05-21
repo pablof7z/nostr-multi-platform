@@ -3,7 +3,7 @@
 //! # What this is (and is NOT)
 //!
 //! `substrate::ActionModule` has 15+ implementations (`PublishModule`, the
-//! NIP-29 actions, the Marmot group actions). This module is the dispatch
+//! NIP-29 actions, and other app-module actions). This module is the dispatch
 //! table that drives into them.
 //!
 //! This is deliberately NOT the deleted `ModuleRegistry` that

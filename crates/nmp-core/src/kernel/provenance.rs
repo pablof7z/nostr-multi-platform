@@ -26,8 +26,8 @@
 //!
 //! ## D0 — kernel vocabulary only
 //!
-//! No app nouns; works on any event id and any relay URL. The named
-//! consumer (`ios/Chirp/`) lives outside the kernel (design doc §6).
+//! No app nouns; works on any event id and any relay URL. All consumers
+//! live outside the kernel (design doc §6).
 
 use std::collections::HashMap;
 

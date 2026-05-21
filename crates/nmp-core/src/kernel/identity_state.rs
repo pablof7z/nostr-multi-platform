@@ -56,8 +56,7 @@ pub(crate) struct PublishQueueEntry {
 }
 
 /// One relay's terminal verdict for a publish. The string `status` keeps the
-/// wire shape friendly to platforms that switch on tokens (Chirp's
-/// `DiagnosticsView.statusColor` already does this for `"ok"`/`"failed"`).
+/// wire shape friendly to platforms that switch on token strings.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub(crate) struct RelayAckOutcome {
     pub(crate) relay_url: String,
@@ -172,7 +171,7 @@ impl super::Kernel {
     }
 
     /// Replace the editable relay projection (D4: actor is sole writer).
-    /// Also syncs the shared handles so FFI-side reads (e.g. Marmot dispatch)
+    /// Also syncs the shared handles so FFI-side reads
     /// and planner/publish routing see the latest rows.
     pub(crate) fn set_relay_edit_rows(&mut self, rows: Vec<RelayEditRow>) {
         let changed = self.relay_edit_rows != rows;

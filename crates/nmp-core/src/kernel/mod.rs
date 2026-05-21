@@ -171,7 +171,7 @@ use types::*;
 /// line-11 and `docs/perf/m10.5/s2-drain-analysis.md`). The S2 flood mix issues
 /// unique consumer_ids per dispatch with no matching release, isolating this leak.
 ///
-/// 256 is generous for legitimate UI: every concurrent SwiftUI view that
+/// 256 is generous for legitimate UI: every concurrent view that
 /// calls `ProfileInterestAvatar` carries its own consumer_id; real apps hold
 /// at most a few dozen simultaneously (one per visible row in a list view).
 /// Caps worst-case retention per pubkey at ~12 KiB (256 × ~50 B node + key);
@@ -440,8 +440,8 @@ pub(crate) struct Kernel {
     /// counterpart to the action registry (D0 — the kernel emits, never
     /// names a host noun).
     snapshot_projections: Option<SnapshotProjectionSlot>,
-    /// Shared handle to the relay-edit rows so the FFI layer (e.g. Marmot
-    /// dispatch) can read the current user-configured write relays without
+    /// Shared handle to the relay-edit rows so the FFI layer can read the
+    /// current user-configured write relays without
     /// importing kernel internals. Synced by `set_relay_edit_rows` in
     /// `identity_state.rs`.
     relay_edit_rows_handle: Option<Arc<Mutex<Vec<RelayEditRow>>>>,

@@ -341,7 +341,7 @@ pub(super) struct AuthorRelayList {
 // ── View interest (refcounted) ────────────────────────────────────────────────
 /// Tracks an open view (author, thread, firehose) with a refcount.
 ///
-/// Refcounting allows multiple SwiftUI view instances to share the same relay
+/// Refcounting allows multiple view instances to share the same relay
 /// subscription.  The subscription is closed only when the last claimant calls
 /// `close_*`.
 #[derive(Clone, Debug)]
