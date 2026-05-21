@@ -17,9 +17,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::decode::{try_from_kernel_event, ReactionKind, ReactionRecord};
 
-/// In-memory state for the reaction/repost `ViewModule` impls. The inner map is
-/// private so external mutation goes through `insert` / `remove`, which enforce
-/// the event-id idempotency contract.
+/// In-memory state for the reaction/repost views. The inner map is private so
+/// external mutation goes through `insert` / `remove`, which enforce the
+/// event-id idempotency contract.
 #[derive(Default)]
 pub struct ReactionAccumulator {
     /// `event_id` → decoded record. The map key gives free idempotency.

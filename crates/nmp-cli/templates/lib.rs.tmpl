@@ -4,12 +4,15 @@
 //! This crate owns your app's nouns. Per cardinal doctrine **D0**, app nouns
 //! never live in `nmp-core` — `EntryRecord` and friends are defined *here*,
 //! and the kernel stays generic. This skeleton demonstrates the kernel
-//! boundary with one of each extension family:
+//! boundary with a domain store, a reactive view, and an action:
 //!
-//! * [`EntryDomainModule`] — a domain store materialised from app-local
-//!   writes (no Nostr ingest).
-//! * [`EntryListView`]'s [`EntryViewModule`] — a reactive view over it.
-//! * [`EntryActionModule`] — an action that validates and accepts input.
+//! * [`EntryDomainModule`] — a `DomainModule` store materialised from
+//!   app-local writes (no Nostr ingest).
+//! * [`EntryViewModule`] — a reactive view over it. Its `open` / `on_event_*`
+//!   / `snapshot` methods are plain inherent methods reached via static
+//!   dispatch; there is no `ViewModule` trait.
+//! * [`EntryActionModule`] — an `ActionModule` that validates and accepts
+//!   input.
 //!
 //! Replace `Entry` with your real domain. Add protocol modules
 //! (`nmp-nip01`, ...) to `nmp.toml` and run `nmp gen modules`.
@@ -80,26 +83,26 @@ pub struct EntryViewState {
     payload: EntryListView,
 }
 
+/// A reactive view over [`EntryRecord`]s. Its methods are plain inherent
+/// methods reached via static dispatch (`EntryViewModule::open(...)`); there
+/// is no kernel-side `ViewModule` trait or registry.
 pub struct EntryViewModule;
 
-impl ViewModule for EntryViewModule {
-    const NAMESPACE: &'static str = "{{name}}.entries.view";
+impl EntryViewModule {
+    pub const NAMESPACE: &'static str = "{{name}}.entries.view";
 
-    type Spec = EntryListSpec;
-    type Payload = EntryListView;
-    type Delta = EntryDelta;
-    type Key = bool;
-    type State = EntryViewState;
-
-    fn key(spec: &Self::Spec) -> Self::Key {
+    pub fn key(spec: &EntryListSpec) -> bool {
         spec.include_archived
     }
 
-    fn dependencies(_spec: &Self::Spec) -> ViewDependencies {
+    pub fn dependencies(_spec: &EntryListSpec) -> ViewDependencies {
         ViewDependencies::default()
     }
 
-    fn open(_ctx: &ViewContext, _spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(
+        _ctx: &ViewContext,
+        _spec: EntryListSpec,
+    ) -> (EntryViewState, EntryListView) {
         let payload = EntryListView::default();
         (
             EntryViewState {
@@ -109,42 +112,42 @@ impl ViewModule for EntryViewModule {
         )
     }
 
-    fn on_event_inserted(
+    pub fn on_event_inserted(
         _ctx: &ViewContext,
-        _state: &mut Self::State,
+        _state: &mut EntryViewState,
         _event: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<EntryDelta> {
         None
     }
 
-    fn on_event_removed(
+    pub fn on_event_removed(
         _ctx: &ViewContext,
-        _state: &mut Self::State,
+        _state: &mut EntryViewState,
         _id: &EventId,
-    ) -> Option<Self::Delta> {
+    ) -> Option<EntryDelta> {
         None
     }
 
-    fn on_event_replaced(
+    pub fn on_event_replaced(
         _ctx: &ViewContext,
-        _state: &mut Self::State,
+        _state: &mut EntryViewState,
         _old_id: &EventId,
         _new_event: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<EntryDelta> {
         None
     }
 
-    fn on_projection_changed(
+    pub fn on_projection_changed(
         _ctx: &ViewContext,
-        state: &mut Self::State,
+        state: &mut EntryViewState,
         _change: &ProjectionChange,
-    ) -> Option<Self::Delta> {
+    ) -> Option<EntryDelta> {
         Some(EntryDelta::Replaced {
             payload: state.payload.clone(),
         })
     }
 
-    fn snapshot(_ctx: &ViewContext, state: &Self::State) -> Self::Payload {
+    pub fn snapshot(_ctx: &ViewContext, state: &EntryViewState) -> EntryListView {
         state.payload.clone()
     }
 }

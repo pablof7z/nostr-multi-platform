@@ -1,16 +1,14 @@
 //! `ReactionSummaryView` — aggregate reactions for one target.
 //!
-//! The `Spec`/`Key` carries the [`ReactionTarget`] (a true composite
-//! dependency key, mirroring nip23's `ArticleDetailView` coord key). State is
+//! The spec/key carries the [`ReactionTarget`] (a true composite dependency
+//! key, mirroring nip23's `ArticleDetailView` coord key). State is
 //! target-scoped: the shared [`ReactionAccumulator`] alone would admit a
 //! misrouted reaction on a *different* target (the codex-finding-#2 analogue),
 //! so we store the spec's target alongside it and reject any event whose
 //! decoded target does not match — the view can never observe an off-target
 //! reaction.
 
-use nmp_core::substrate::{
-    EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies, ViewModule,
-};
+use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
 use serde::{Deserialize, Serialize};
 
 use crate::decode::ReactionTarget;
@@ -66,19 +64,14 @@ fn target_tag_ref(target: &ReactionTarget) -> (String, String) {
 }
 
 pub struct ReactionSummaryView;
-impl ViewModule for ReactionSummaryView {
-    const NAMESPACE: &'static str = "nmp.reactions.summary";
-    type Spec = ReactionSummarySpec;
-    type Payload = ReactionSummaryPayload;
-    type Delta = ReactionViewDelta;
-    type Key = ReactionTarget;
-    type State = SummaryState;
+impl ReactionSummaryView {
+    pub const NAMESPACE: &'static str = "nmp.reactions.summary";
 
-    fn key(spec: &Self::Spec) -> Self::Key {
+    pub fn key(spec: &ReactionSummarySpec) -> ReactionTarget {
         spec.target.clone()
     }
 
-    fn dependencies(spec: &Self::Spec) -> ViewDependencies {
+    pub fn dependencies(spec: &ReactionSummarySpec) -> ViewDependencies {
         ViewDependencies {
             kinds: vec![crate::kinds::KIND_REACTION],
             tag_refs: vec![target_tag_ref(&spec.target)],
@@ -86,7 +79,10 @@ impl ViewModule for ReactionSummaryView {
         }
     }
 
-    fn open(_ctx: &ViewContext, spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(
+        _ctx: &ViewContext,
+        spec: ReactionSummarySpec,
+    ) -> (SummaryState, ReactionSummaryPayload) {
         let state = SummaryState {
             target: spec.target,
             inner: ReactionAccumulator::default(),
@@ -94,46 +90,38 @@ impl ViewModule for ReactionSummaryView {
         (state, ReactionSummaryPayload::default())
     }
 
-    fn on_event_inserted(
+    pub fn on_event_inserted(
         _ctx: &ViewContext,
-        state: &mut Self::State,
+        state: &mut SummaryState,
         event: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<ReactionViewDelta> {
         if !state.event_matches_target(event) {
             return None;
         }
         state.inner.insert(event)
     }
 
-    fn on_event_removed(
+    pub fn on_event_removed(
         _ctx: &ViewContext,
-        state: &mut Self::State,
+        state: &mut SummaryState,
         id: &EventId,
-    ) -> Option<Self::Delta> {
+    ) -> Option<ReactionViewDelta> {
         state.inner.remove(id)
     }
 
-    fn on_event_replaced(
+    pub fn on_event_replaced(
         _ctx: &ViewContext,
-        state: &mut Self::State,
+        state: &mut SummaryState,
         old_id: &EventId,
         new_event: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<ReactionViewDelta> {
         if !state.event_matches_target(new_event) {
             return state.inner.remove(old_id);
         }
         state.inner.replace(old_id, new_event)
     }
 
-    fn on_projection_changed(
-        _ctx: &ViewContext,
-        _state: &mut Self::State,
-        _change: &ProjectionChange,
-    ) -> Option<Self::Delta> {
-        None
-    }
-
-    fn snapshot(_ctx: &ViewContext, state: &Self::State) -> Self::Payload {
+    pub fn snapshot(_ctx: &ViewContext, state: &SummaryState) -> ReactionSummaryPayload {
         let (entries, total) = state.inner.reaction_summary();
         ReactionSummaryPayload { entries, total }
     }

@@ -63,9 +63,11 @@ pub use view::{
     ReactionViewDelta, RepostsPayload, RepostsSpec, RepostsView,
 };
 
-// NOTE: `nmp-relations` exposes its `DomainModule` / `ViewModule` impls
+// NOTE: `nmp-relations` exposes its `DomainModule` impl and its view types
 // (`ReactionsDomain`, `ReactionSummaryView`, `RepostsView`) as public types.
-// The former `register(&mut ModuleRegistry)` entry point was deleted:
-// `ModuleRegistry` only collected name strings and the kernel never read
-// them. The live extension path is `KernelEventObserver` — see
-// `nmp_core::substrate` module docs.
+// The view types are plain types whose `open` / `on_event_*` / `snapshot`
+// inherent methods are reached via static dispatch — the `ViewModule` trait
+// and the former `register(&mut ModuleRegistry)` entry point were both
+// deleted because no kernel-side registry ever drove them. The live
+// extension path is `KernelEventObserver` — see `nmp_core::substrate` module
+// docs.

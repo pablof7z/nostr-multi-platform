@@ -4,8 +4,8 @@
 //! (mailbox discovery + compilation + selection) is now driven by the
 //! production [`nmp_core::subs::SubscriptionLifecycle`] from `req.rs`. What
 //! remains here is the thin targeted fetch that turns a `$follows` variable
-//! into a concrete author set — exactly what a real "following feed"
-//! ViewModule does to build its `LogicalInterest`. The manual phase-B
+//! into a concrete author set — exactly what a real "following feed" view
+//! does to build its `LogicalInterest`. The manual phase-B
 //! kind:10002 fan that hand-built an `InMemoryMailboxCache` has been
 //! **deleted**; `recompile_and_diff` emits its own implicit discovery REQs.
 //!

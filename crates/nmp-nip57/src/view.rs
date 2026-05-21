@@ -6,9 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use nmp_core::substrate::{
-    EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies, ViewModule,
-};
+use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
 use serde::{Deserialize, Serialize};
 
 use crate::decode::try_from_kernel_event;
@@ -80,19 +78,14 @@ impl ZapsState {
 
 pub struct ZapsView;
 
-impl ViewModule for ZapsView {
-    const NAMESPACE: &'static str = "nmp.nip57.zaps";
-    type Spec = ZapsSpec;
-    type Payload = ZapsPayload;
-    type Delta = ZapsDelta;
-    type Key = EventId;
-    type State = ZapsState;
+impl ZapsView {
+    pub const NAMESPACE: &'static str = "nmp.nip57.zaps";
 
-    fn key(spec: &Self::Spec) -> Self::Key {
+    pub fn key(spec: &ZapsSpec) -> EventId {
         spec.target.clone()
     }
 
-    fn dependencies(spec: &Self::Spec) -> ViewDependencies {
+    pub fn dependencies(spec: &ZapsSpec) -> ViewDependencies {
         ViewDependencies {
             kinds: vec![KIND_ZAP_RECEIPT],
             tag_refs: vec![("e".into(), spec.target.clone())],
@@ -100,7 +93,7 @@ impl ViewModule for ZapsView {
         }
     }
 
-    fn open(_ctx: &ViewContext, spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(_ctx: &ViewContext, spec: ZapsSpec) -> (ZapsState, ZapsPayload) {
         let state = ZapsState {
             target: spec.target.clone(),
             ..ZapsState::default()
@@ -114,43 +107,35 @@ impl ViewModule for ZapsView {
         (state, payload)
     }
 
-    fn on_event_inserted(
+    pub fn on_event_inserted(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut ZapsState,
         e: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<ZapsDelta> {
         s.insert(e)
     }
 
-    fn on_event_removed(
+    pub fn on_event_removed(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut ZapsState,
         id: &EventId,
-    ) -> Option<Self::Delta> {
+    ) -> Option<ZapsDelta> {
         s.remove(id)
     }
 
-    fn on_event_replaced(
+    pub fn on_event_replaced(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut ZapsState,
         old: &EventId,
         e: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<ZapsDelta> {
         // Treat replace as remove+insert. Receipts aren't replaceable per the
         // spec but a relay-side replay shouldn't break us.
         let _ = s.remove(old);
         s.insert(e)
     }
 
-    fn on_projection_changed(
-        _c: &ViewContext,
-        _s: &mut Self::State,
-        _ch: &ProjectionChange,
-    ) -> Option<Self::Delta> {
-        None
-    }
-
-    fn snapshot(_c: &ViewContext, state: &Self::State) -> Self::Payload {
+    pub fn snapshot(_c: &ViewContext, state: &ZapsState) -> ZapsPayload {
         let total_msats = state.by_id.values().map(|e| e.msats).sum();
         let zap_count = state.by_id.len() as u32;
         let zappers: Vec<ZapEntry> = state.by_id.values().cloned().collect();

@@ -3,15 +3,14 @@
 //! `nmp-nip57`, `nmp-relations`) plus the cross-NIP `Relations` facade.
 //!
 //! Asserts the applesauce-shape ergonomic the user asked for: with a single
-//! root event and one child event of each relevant kind, every per-kind
-//! ViewModule lands the child in its payload, and the facade entrypoints
-//! produce correctly-tagged `UnsignedEvent`s.
+//! root event and one child event of each relevant kind, every per-kind view
+//! lands the child in its payload, and the facade entrypoints produce
+//! correctly-tagged `UnsignedEvent`s.
 //!
-//! No real relays, no signing pipeline — this drives the substrate seams
-//! directly (`ViewModule::on_event_inserted` → `snapshot`) so the test is
-//! deterministic and fast.
+//! No real relays, no signing pipeline — this drives the view types directly
+//! (`on_event_inserted` → `snapshot`) so the test is deterministic and fast.
 
-use nmp_core::substrate::{KernelEvent, ViewContext, ViewModule};
+use nmp_core::substrate::{KernelEvent, ViewContext};
 use nmp_nip01::{
     NoteRecord, RepliesPayload, RepliesSpec, RepliesView, ThreadPayload, ThreadSpec, ThreadView,
 };
@@ -228,7 +227,7 @@ fn facade_for_event_wires_every_spec_to_the_root() {
 
 #[test]
 fn facade_for_event_drives_views_end_to_end() {
-    // The whole point of the facade: hand the specs to `ViewModule::open` and
+    // The whole point of the facade: hand the specs to each view's `open` and
     // drive each with the same child events used above — every payload is
     // populated without the caller writing any per-NIP wiring.
     let specs = Relations::for_event(root_event_id(), 1);

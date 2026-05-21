@@ -47,7 +47,7 @@ use nmp_core::planner::{
     EmptyMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
     LogicalInterest, SubscriptionCompiler,
 };
-use nmp_core::substrate::{ActionContext, ActionModule, KernelEvent, ViewContext, ViewModule};
+use nmp_core::substrate::{ActionContext, ActionModule, KernelEvent, ViewContext};
 
 use nmp_nip29::action::{
     CreateGroupAction, CreateGroupInput, JoinRequestAction, JoinRequestInput,

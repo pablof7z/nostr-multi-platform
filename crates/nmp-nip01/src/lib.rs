@@ -45,9 +45,11 @@ pub use view::{
     ThreadPayload, ThreadSpec, ThreadState, ThreadView,
 };
 
-// NOTE: `nmp-nip01` exposes its `DomainModule` / `ViewModule` impls
+// NOTE: `nmp-nip01` exposes its `DomainModule` impl and its view types
 // (`RepliesDomain`, `RepliesView`, `ThreadView`, `Nip10ModularTimelineView`)
-// as public types. The former `register(&mut ModuleRegistry)` entry point
-// was deleted: `ModuleRegistry` only collected name strings and the kernel
-// never read them. The live extension path is `KernelEventObserver` — see
-// `nmp_core::substrate` module docs.
+// as public types. The view types are plain types whose `open` / `on_event_*`
+// / `snapshot` inherent methods are reached via static dispatch — the
+// `ViewModule` trait and the former `register(&mut ModuleRegistry)` entry
+// point were both deleted because no kernel-side registry ever drove them.
+// The live extension path is `KernelEventObserver` — see `nmp_core::substrate`
+// module docs.

@@ -1,4 +1,4 @@
-//! 7 `ViewModule` impls per `docs/design/nip29-crate.md` §3.2.
+//! 7 reactive views per `docs/design/nip29-crate.md` §3.2.
 //!
 //! Each view declares `LogicalInterest`s via `dependencies()` that the M2
 //! compiler turns into per-relay REQs. All NIP-29 views are **host-pinned**

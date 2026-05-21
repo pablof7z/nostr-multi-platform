@@ -1,11 +1,11 @@
-//! `ViewModule` impls for NIP-25 reactions + NIP-18 reposts.
+//! Reactive views for NIP-25 reactions + NIP-18 reposts.
 //!
 //! Two views per the task brief:
 //! - [`ReactionSummaryView`] — aggregate reactions for one target. Composite
-//!   `Key` = the [`crate::decode::ReactionTarget`]; per-`(reactor, target)`
+//!   key = the [`crate::decode::ReactionTarget`]; per-`(reactor, target)`
 //!   newest-wins collapse computed at snapshot.
 //! - [`RepostsView`] — reposts (kinds 6/16) of a target, or by an author.
-//!   Composite `Key` = the [`RepostsSpec`] enum.
+//!   Composite key = the [`RepostsSpec`] enum.
 //!
 //! Both share the [`ReactionAccumulator`], keyed on `event_id` for idempotency
 //! (kinds 7/6/16 are regular events — not replaceable). Decode happens once at
@@ -25,7 +25,7 @@ mod tests {
     use super::*;
     use crate::decode::ReactionTarget;
     use crate::kinds::{KIND_GENERIC_REPOST, KIND_REACTION, KIND_REPOST};
-    use nmp_core::substrate::{KernelEvent, ViewContext, ViewModule};
+    use nmp_core::substrate::{KernelEvent, ViewContext};
 
     fn ke(
         id: &str,

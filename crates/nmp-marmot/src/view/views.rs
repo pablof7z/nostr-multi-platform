@@ -1,4 +1,4 @@
-//! `GroupList`, `GroupMessages`, `MemberList` ViewModule impls per
+//! `GroupList`, `GroupMessages`, `MemberList` reactive views per
 //! `docs/plan/marmot-mls.md` §Step 1 + mdk-api.md §6.
 //!
 //! `GroupMessages` is relay-pinned to the group relay (kind:445) via
@@ -9,9 +9,7 @@
 //! decrypted payload is filled by the service/actor layer (same scope-cut
 //! as nmp-nip29's Step 0 views).
 
-use nmp_core::substrate::{
-    EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies, ViewModule,
-};
+use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
 use serde::{Deserialize, Serialize};
 
 use super::shared::{EventAccumulator, EventAccumulatorDelta};
@@ -42,18 +40,13 @@ pub struct GroupListPayload {
 /// group set comes from `MDK::get_groups()` via [`crate::service`]; this view's
 /// snapshot is filled by the service/actor layer (the wire is ciphertext).
 pub struct GroupListView;
-impl ViewModule for GroupListView {
-    const NAMESPACE: &'static str = "marmot.group_list";
-    type Spec = GroupListSpec;
-    type Payload = GroupListPayload;
-    type Delta = EventAccumulatorDelta;
-    type Key = String;
-    type State = EventAccumulator;
+impl GroupListView {
+    pub const NAMESPACE: &'static str = "marmot.group_list";
 
-    fn key(spec: &Self::Spec) -> Self::Key {
+    pub fn key(spec: &GroupListSpec) -> String {
         spec.self_pubkey.clone()
     }
-    fn dependencies(_spec: &Self::Spec) -> ViewDependencies {
+    pub fn dependencies(_spec: &GroupListSpec) -> ViewDependencies {
         // KeyPackage stream (own publications, standard outbox — no pin) is the
         // structural trigger surface; group membership itself is MDK state.
         ViewDependencies {
@@ -61,42 +54,35 @@ impl ViewModule for GroupListView {
             ..Default::default()
         }
     }
-    fn open(_c: &ViewContext, _spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(_c: &ViewContext, _spec: GroupListSpec) -> (EventAccumulator, GroupListPayload) {
         (
             EventAccumulator::default(),
             GroupListPayload { groups: Vec::new() },
         )
     }
-    fn on_event_inserted(
+    pub fn on_event_inserted(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut EventAccumulator,
         e: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<EventAccumulatorDelta> {
         s.insert(e)
     }
-    fn on_event_removed(
+    pub fn on_event_removed(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut EventAccumulator,
         id: &EventId,
-    ) -> Option<Self::Delta> {
+    ) -> Option<EventAccumulatorDelta> {
         s.remove(id)
     }
-    fn on_event_replaced(
+    pub fn on_event_replaced(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut EventAccumulator,
         old: &EventId,
         e: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<EventAccumulatorDelta> {
         s.replace(old, e)
     }
-    fn on_projection_changed(
-        _c: &ViewContext,
-        _s: &mut Self::State,
-        _ch: &ProjectionChange,
-    ) -> Option<Self::Delta> {
-        None
-    }
-    fn snapshot(_c: &ViewContext, _state: &Self::State) -> Self::Payload {
+    pub fn snapshot(_c: &ViewContext, _state: &EventAccumulator) -> GroupListPayload {
         // Authoritative list is MDK-side; the service/actor layer fills this
         // snapshot. The structural accumulator only drives re-projection ticks.
         GroupListPayload { groups: Vec::new() }
@@ -131,18 +117,13 @@ pub struct GroupMessagesPayload {
 /// Relay-pinned to the group relay (kind:445). Decrypted content is filled by
 /// the service after `MDK::process_message`.
 pub struct GroupMessagesView;
-impl ViewModule for GroupMessagesView {
-    const NAMESPACE: &'static str = "marmot.group_messages";
-    type Spec = GroupMessagesSpec;
-    type Payload = GroupMessagesPayload;
-    type Delta = EventAccumulatorDelta;
-    type Key = String;
-    type State = EventAccumulator;
+impl GroupMessagesView {
+    pub const NAMESPACE: &'static str = "marmot.group_messages";
 
-    fn key(spec: &Self::Spec) -> Self::Key {
+    pub fn key(spec: &GroupMessagesSpec) -> String {
         spec.group_id_hex.clone()
     }
-    fn dependencies(spec: &Self::Spec) -> ViewDependencies {
+    pub fn dependencies(spec: &GroupMessagesSpec) -> ViewDependencies {
         // kind:445 group-event stream, pinned to the group relay (ADR-0012
         // third lane). The structural surface declares the kind; `relay_pin`
         // declares the host affinity in the data model.
@@ -152,7 +133,10 @@ impl ViewModule for GroupMessagesView {
             ..Default::default()
         }
     }
-    fn open(_c: &ViewContext, _spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(
+        _c: &ViewContext,
+        _spec: GroupMessagesSpec,
+    ) -> (EventAccumulator, GroupMessagesPayload) {
         (
             EventAccumulator::default(),
             GroupMessagesPayload {
@@ -160,36 +144,29 @@ impl ViewModule for GroupMessagesView {
             },
         )
     }
-    fn on_event_inserted(
+    pub fn on_event_inserted(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut EventAccumulator,
         e: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<EventAccumulatorDelta> {
         s.insert(e)
     }
-    fn on_event_removed(
+    pub fn on_event_removed(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut EventAccumulator,
         id: &EventId,
-    ) -> Option<Self::Delta> {
+    ) -> Option<EventAccumulatorDelta> {
         s.remove(id)
     }
-    fn on_event_replaced(
+    pub fn on_event_replaced(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut EventAccumulator,
         old: &EventId,
         e: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<EventAccumulatorDelta> {
         s.replace(old, e)
     }
-    fn on_projection_changed(
-        _c: &ViewContext,
-        _s: &mut Self::State,
-        _ch: &ProjectionChange,
-    ) -> Option<Self::Delta> {
-        None
-    }
-    fn snapshot(_c: &ViewContext, _state: &Self::State) -> Self::Payload {
+    pub fn snapshot(_c: &ViewContext, _state: &EventAccumulator) -> GroupMessagesPayload {
         // Decrypted messages are filled by the service after MDK processing;
         // the structural accumulator only drives re-projection ticks.
         GroupMessagesPayload {
@@ -221,18 +198,13 @@ pub struct MemberListPayload {
 /// Current group member list with MLS leaf indices. Authoritative set comes
 /// from `MDK::get_members()` + `MDK::group_leaf_map()` via [`crate::service`].
 pub struct MemberListView;
-impl ViewModule for MemberListView {
-    const NAMESPACE: &'static str = "marmot.member_list";
-    type Spec = MemberListSpec;
-    type Payload = MemberListPayload;
-    type Delta = EventAccumulatorDelta;
-    type Key = String;
-    type State = EventAccumulator;
+impl MemberListView {
+    pub const NAMESPACE: &'static str = "marmot.member_list";
 
-    fn key(spec: &Self::Spec) -> Self::Key {
+    pub fn key(spec: &MemberListSpec) -> String {
         spec.group_id_hex.clone()
     }
-    fn dependencies(spec: &Self::Spec) -> ViewDependencies {
+    pub fn dependencies(spec: &MemberListSpec) -> ViewDependencies {
         // Member changes arrive as kind:445 commits pinned to the group relay
         // (ADR-0012). `relay_pin` declares that host affinity in the data model.
         ViewDependencies {
@@ -241,7 +213,10 @@ impl ViewModule for MemberListView {
             ..Default::default()
         }
     }
-    fn open(_c: &ViewContext, _spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(
+        _c: &ViewContext,
+        _spec: MemberListSpec,
+    ) -> (EventAccumulator, MemberListPayload) {
         (
             EventAccumulator::default(),
             MemberListPayload {
@@ -249,36 +224,29 @@ impl ViewModule for MemberListView {
             },
         )
     }
-    fn on_event_inserted(
+    pub fn on_event_inserted(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut EventAccumulator,
         e: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<EventAccumulatorDelta> {
         s.insert(e)
     }
-    fn on_event_removed(
+    pub fn on_event_removed(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut EventAccumulator,
         id: &EventId,
-    ) -> Option<Self::Delta> {
+    ) -> Option<EventAccumulatorDelta> {
         s.remove(id)
     }
-    fn on_event_replaced(
+    pub fn on_event_replaced(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut EventAccumulator,
         old: &EventId,
         e: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<EventAccumulatorDelta> {
         s.replace(old, e)
     }
-    fn on_projection_changed(
-        _c: &ViewContext,
-        _s: &mut Self::State,
-        _ch: &ProjectionChange,
-    ) -> Option<Self::Delta> {
-        None
-    }
-    fn snapshot(_c: &ViewContext, _state: &Self::State) -> Self::Payload {
+    pub fn snapshot(_c: &ViewContext, _state: &EventAccumulator) -> MemberListPayload {
         // Authoritative member set is MDK-side; the service/actor layer fills
         // this snapshot. The structural accumulator only drives ticks.
         MemberListPayload {
@@ -313,43 +281,38 @@ pub struct KeyPackageLookupPayload {
 /// subscription — it is a subscription stub, not a data store.
 pub struct KeyPackageLookupView;
 
-impl ViewModule for KeyPackageLookupView {
-    const NAMESPACE: &'static str = "marmot.key_package_lookup";
-    type Spec = KeyPackageLookupSpec;
-    type Payload = KeyPackageLookupPayload;
-    type Delta = EventAccumulatorDelta;
-    type Key = String;
-    type State = EventAccumulator;
+impl KeyPackageLookupView {
+    pub const NAMESPACE: &'static str = "marmot.key_package_lookup";
 
-    fn key(spec: &Self::Spec) -> Self::Key {
+    pub fn key(spec: &KeyPackageLookupSpec) -> String {
         spec.owner_pubkey.clone()
     }
-    fn dependencies(spec: &Self::Spec) -> ViewDependencies {
+    pub fn dependencies(spec: &KeyPackageLookupSpec) -> ViewDependencies {
         ViewDependencies {
             kinds: vec![KIND_KEY_PACKAGE, KIND_KEY_PACKAGE_LEGACY],
             authors: vec![spec.owner_pubkey.clone()],
             ..Default::default()
         }
     }
-    fn open(_c: &ViewContext, spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(
+        _c: &ViewContext,
+        spec: KeyPackageLookupSpec,
+    ) -> (EventAccumulator, KeyPackageLookupPayload) {
         (
             EventAccumulator::default(),
             KeyPackageLookupPayload { owner_pubkey: spec.owner_pubkey, found: false },
         )
     }
-    fn on_event_inserted(_c: &ViewContext, s: &mut Self::State, e: &KernelEvent) -> Option<Self::Delta> {
+    pub fn on_event_inserted(_c: &ViewContext, s: &mut EventAccumulator, e: &KernelEvent) -> Option<EventAccumulatorDelta> {
         s.insert(e)
     }
-    fn on_event_removed(_c: &ViewContext, s: &mut Self::State, id: &EventId) -> Option<Self::Delta> {
+    pub fn on_event_removed(_c: &ViewContext, s: &mut EventAccumulator, id: &EventId) -> Option<EventAccumulatorDelta> {
         s.remove(id)
     }
-    fn on_event_replaced(_c: &ViewContext, s: &mut Self::State, old: &EventId, e: &KernelEvent) -> Option<Self::Delta> {
+    pub fn on_event_replaced(_c: &ViewContext, s: &mut EventAccumulator, old: &EventId, e: &KernelEvent) -> Option<EventAccumulatorDelta> {
         s.replace(old, e)
     }
-    fn on_projection_changed(_c: &ViewContext, _s: &mut Self::State, _ch: &ProjectionChange) -> Option<Self::Delta> {
-        None
-    }
-    fn snapshot(_c: &ViewContext, state: &Self::State) -> Self::Payload {
+    pub fn snapshot(_c: &ViewContext, state: &EventAccumulator) -> KeyPackageLookupPayload {
         KeyPackageLookupPayload {
             owner_pubkey: String::new(),
             found: !state.events.is_empty(),

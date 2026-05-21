@@ -25,7 +25,7 @@
 //!
 //! ## Why no dynamic dependency injection
 //!
-//! `ViewModule::dependencies` is a pure function of `Spec`. There is no API
+//! A view's `dependencies` is a pure function of its spec. There is no API
 //! to re-publish dependencies with `pending_ancestor_ids` learned at
 //! runtime. `ThreadView` lives with the same constraint and relies on the
 //! surrounding planner subscription (broad `("e", target)` tag-ref) to

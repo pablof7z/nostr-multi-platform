@@ -1,6 +1,6 @@
 use super::*;
 use nmp_core::nip21::NostrUri;
-use nmp_core::substrate::{KernelEvent, ViewContext, ViewModule};
+use nmp_core::substrate::{KernelEvent, ViewContext};
 
 fn ev(id: &str, kind: u32) -> KernelEvent {
     KernelEvent {
@@ -131,7 +131,7 @@ fn event_insert_updates_resolution_for_claimed_event() {
 
     let ctx = ViewContext::default();
     let delta =
-        <EmbedClaimRegistry as ViewModule>::on_event_inserted(&ctx, &mut state, &ev(&id, 1));
+        EmbedClaimRegistry::on_event_inserted(&ctx, &mut state, &ev(&id, 1));
     assert!(delta.is_some());
     assert!(EmbedClaimRegistry::resolved(&state, &target).is_some());
 }
@@ -140,7 +140,7 @@ fn event_insert_updates_resolution_for_claimed_event() {
 fn event_insert_for_unclaimed_target_is_noop() {
     let mut state = EmbedClaimRegistry::state();
     let ctx = ViewContext::default();
-    let delta = <EmbedClaimRegistry as ViewModule>::on_event_inserted(
+    let delta = EmbedClaimRegistry::on_event_inserted(
         &ctx,
         &mut state,
         &ev("uninterested", 1),
@@ -162,7 +162,7 @@ fn address_coordinated_embed_resolves_via_d_tag() {
 
     let ctx = ViewContext::default();
     let delta =
-        <EmbedClaimRegistry as ViewModule>::on_event_inserted(&ctx, &mut state, &event);
+        EmbedClaimRegistry::on_event_inserted(&ctx, &mut state, &event);
     assert!(delta.is_some());
     assert!(EmbedClaimRegistry::resolved(&state, &target).is_some());
 }
@@ -179,7 +179,7 @@ fn address_target_resolution_cleared_on_bare_event_removal() {
     };
     let (_h, _) = EmbedClaimRegistry::claim(&mut state, target.clone());
     let ctx = ViewContext::default();
-    <EmbedClaimRegistry as ViewModule>::on_event_inserted(
+    EmbedClaimRegistry::on_event_inserted(
         &ctx,
         &mut state,
         &article("art-v1", "my-article"),
@@ -188,7 +188,7 @@ fn address_target_resolution_cleared_on_bare_event_removal() {
 
     // Pre-fix: removing "art-v1" only cleared Event targets, leaving the
     // Address resolution stale. It must now clear.
-    let delta = <EmbedClaimRegistry as ViewModule>::on_event_removed(
+    let delta = EmbedClaimRegistry::on_event_removed(
         &ctx,
         &mut state,
         &"art-v1".to_string(),
@@ -211,7 +211,7 @@ fn address_target_re_resolves_on_event_replace() {
     };
     let (_h, _) = EmbedClaimRegistry::claim(&mut state, target.clone());
     let ctx = ViewContext::default();
-    <EmbedClaimRegistry as ViewModule>::on_event_inserted(
+    EmbedClaimRegistry::on_event_inserted(
         &ctx,
         &mut state,
         &article("art-v1", "my-article"),
@@ -221,7 +221,7 @@ fn address_target_re_resolves_on_event_replace() {
         "art-v1"
     );
 
-    let delta = <EmbedClaimRegistry as ViewModule>::on_event_replaced(
+    let delta = EmbedClaimRegistry::on_event_replaced(
         &ctx,
         &mut state,
         &"art-v1".to_string(),
@@ -266,7 +266,7 @@ fn snapshot_includes_refcount_and_resolution() {
     let (_h1, _) = EmbedClaimRegistry::claim(&mut state, target.clone());
     let (_h2, _) = EmbedClaimRegistry::claim(&mut state, target.clone());
     let ctx = ViewContext::default();
-    let snap = <EmbedClaimRegistry as ViewModule>::snapshot(&ctx, &state);
+    let snap = EmbedClaimRegistry::snapshot(&ctx, &state);
     assert_eq!(snap.entries.len(), 1);
     assert_eq!(snap.entries[0].1, 2);
     assert!(snap.entries[0].2.is_none());

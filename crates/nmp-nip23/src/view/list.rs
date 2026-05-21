@@ -1,9 +1,7 @@
 //! `ArticleListView` — list articles, optionally filtered by author, sorted
 //! by `published_at` desc.
 
-use nmp_core::substrate::{
-    EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies, ViewModule,
-};
+use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
 use serde::{Deserialize, Serialize};
 
 use crate::decode::ArticleRecord;
@@ -24,19 +22,14 @@ pub struct ArticleListPayload {
 }
 
 pub struct ArticleListView;
-impl ViewModule for ArticleListView {
-    const NAMESPACE: &'static str = "nmp.nip23.article_list";
-    type Spec = ArticleListSpec;
-    type Payload = ArticleListPayload;
-    type Delta = ArticleViewDelta;
-    type Key = Option<PublicKey>;
-    type State = ArticleAccumulator;
+impl ArticleListView {
+    pub const NAMESPACE: &'static str = "nmp.nip23.article_list";
 
-    fn key(spec: &Self::Spec) -> Self::Key {
+    pub fn key(spec: &ArticleListSpec) -> Option<PublicKey> {
         spec.author.clone()
     }
 
-    fn dependencies(spec: &Self::Spec) -> ViewDependencies {
+    pub fn dependencies(spec: &ArticleListSpec) -> ViewDependencies {
         ViewDependencies {
             kinds: vec![KIND_LONG_FORM_ARTICLE],
             authors: spec.author.iter().cloned().collect(),
@@ -44,44 +37,39 @@ impl ViewModule for ArticleListView {
         }
     }
 
-    fn open(_ctx: &ViewContext, _spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(
+        _ctx: &ViewContext,
+        _spec: ArticleListSpec,
+    ) -> (ArticleAccumulator, ArticleListPayload) {
         (ArticleAccumulator::default(), ArticleListPayload::default())
     }
 
-    fn on_event_inserted(
+    pub fn on_event_inserted(
         _ctx: &ViewContext,
-        state: &mut Self::State,
+        state: &mut ArticleAccumulator,
         event: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<ArticleViewDelta> {
         state.insert(event)
     }
 
-    fn on_event_removed(
+    pub fn on_event_removed(
         _ctx: &ViewContext,
-        state: &mut Self::State,
+        state: &mut ArticleAccumulator,
         id: &EventId,
-    ) -> Option<Self::Delta> {
+    ) -> Option<ArticleViewDelta> {
         state.remove(id)
     }
 
-    fn on_event_replaced(
+    pub fn on_event_replaced(
         _ctx: &ViewContext,
-        state: &mut Self::State,
+        state: &mut ArticleAccumulator,
         old_id: &EventId,
         new_event: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<ArticleViewDelta> {
         state.replace(old_id, new_event)
     }
 
-    fn on_projection_changed(
-        _ctx: &ViewContext,
-        _state: &mut Self::State,
-        _change: &ProjectionChange,
-    ) -> Option<Self::Delta> {
-        None
-    }
-
-    fn snapshot(_ctx: &ViewContext, state: &Self::State) -> Self::Payload {
+    pub fn snapshot(_ctx: &ViewContext, state: &ArticleAccumulator) -> ArticleListPayload {
         ArticleListPayload {
             articles: state.snapshot_sorted(),
         }

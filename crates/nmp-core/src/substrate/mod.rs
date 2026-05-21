@@ -1,22 +1,28 @@
-//! Substrate — the per-protocol extension contracts (`ViewModule`,
-//! `ActionModule`, `DomainModule`, `CapabilityModule`, `IdentityModule`).
+//! Substrate — the per-protocol extension contracts (`ActionModule`,
+//! `DomainModule`, `CapabilityModule`).
 //!
 //! # Extension mechanism: v1 vs v2
 //!
-//! The five traits in this module are the **v2** extension design — a
-//! family of typed, namespace-keyed modules the kernel would discover and
-//! drive through a dispatch runtime. That runtime does not exist yet. The
-//! per-NIP crates implement these traits and tests invoke their methods
-//! directly (static dispatch — `<RepliesView as ViewModule>::open(...)`),
-//! so the trait *contracts* are real and load-bearing. What never shipped
-//! is a kernel-side registry that stores `dyn Trait` objects and fans
-//! events to them.
+//! The traits in this module are the **v2** extension design — a family of
+//! typed, namespace-keyed modules the kernel would discover and drive
+//! through a dispatch runtime. That runtime does not exist yet. The per-NIP
+//! crates implement these traits and tests invoke their methods directly
+//! (static dispatch — `<PublishModule as ActionModule>::plan(...)`), so the
+//! trait *contracts* are real and load-bearing. What never shipped is a
+//! kernel-side registry that stores `dyn Trait` objects and fans events to
+//! them.
 //!
 //! A previous iteration shipped a `ModuleRegistry` that *looked* like that
 //! runtime but only collected `(namespace, family, type_name)` strings —
 //! nothing in the kernel, the actor, or codegen ever read them back. It
 //! has been removed; it was documentation theater that misled readers
 //! about how extension actually works today.
+//!
+//! Two further v2 traits — `ViewModule` and `IdentityModule` — were removed
+//! for the same reason: no `ViewRegistry` or identity-dispatch runtime ever
+//! shipped. The per-protocol view types still exist as plain types whose
+//! `open` / `on_event_*` / `snapshot` inherent methods are reached via
+//! static dispatch; `ViewDependencies` survives as the planner bridge.
 //!
 //! ## v1 extension mechanism: `KernelEventObserver`
 //!
@@ -45,16 +51,13 @@ pub use action::{
 };
 pub use capability::{CapabilityEnvelope, CapabilityModule, CapabilityRequest};
 pub use domain::{DomainIndex, DomainMigration, DomainModule, MigrationTx};
-pub use identity::{
-    BoxFuture, IdentityContext, IdentityError, IdentityId, IdentityModule, IdentityScopeKind,
-    SignedEvent, SigningError, UnsignedEvent,
-};
+pub use identity::{SignedEvent, SigningError, UnsignedEvent};
 pub use keyring::{
     KeyringCapability, KeyringIdentityWiring, KeyringRequest, KeyringResult, KeyringStatus,
     MALFORMED_RESULT,
 };
 pub use placeholder::{picture_placeholder, Placeholder};
-pub use view::{EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies, ViewModule};
+pub use view::{EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies};
 
 // NIP-10 / tag codec lives in `crate::tags` (a protocol codec, like nip19 /
 // nip21 — not a per-kind decoder, so D0-clean). Re-exported here so the

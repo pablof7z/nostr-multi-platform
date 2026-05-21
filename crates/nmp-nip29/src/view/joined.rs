@@ -5,9 +5,7 @@
 //! interest per host for the 39001/39002 stream filtered to the user's pubkey.
 //! The cache itself lives in `nmp_nip29::cache::JoinedHostsCache`.
 
-use nmp_core::substrate::{
-    EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies, ViewModule,
-};
+use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
@@ -29,17 +27,12 @@ pub struct JoinedPayload {
 }
 
 pub struct JoinedGroupsView;
-impl ViewModule for JoinedGroupsView {
-    const NAMESPACE: &'static str = "nip29.joined_groups";
-    type Spec = JoinedSpec;
-    type Payload = JoinedPayload;
-    type Delta = EventAccumulatorDelta;
-    type Key = String;
-    type State = EventAccumulator;
+impl JoinedGroupsView {
+    pub const NAMESPACE: &'static str = "nip29.joined_groups";
 
-    fn key(spec: &Self::Spec) -> Self::Key { spec.user_pubkey.clone() }
+    pub fn key(spec: &JoinedSpec) -> String { spec.user_pubkey.clone() }
 
-    fn dependencies(spec: &Self::Spec) -> ViewDependencies {
+    pub fn dependencies(spec: &JoinedSpec) -> ViewDependencies {
         // The actual fan-out (one pinned LogicalInterest per host) happens via
         // `interest::joined_groups_for_host` driven by `JoinedHostsCache`. The
         // ViewDependencies surface here is the structural shape the compiler
@@ -52,14 +45,13 @@ impl ViewModule for JoinedGroupsView {
             ..Default::default()
         }
     }
-    fn open(_c: &ViewContext, _spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(_c: &ViewContext, _spec: JoinedSpec) -> (EventAccumulator, JoinedPayload) {
         (EventAccumulator::default(), JoinedPayload { groups: Vec::new() })
     }
-    fn on_event_inserted(_c: &ViewContext, s: &mut Self::State, e: &KernelEvent) -> Option<Self::Delta> { s.insert(e) }
-    fn on_event_removed(_c: &ViewContext, s: &mut Self::State, id: &EventId) -> Option<Self::Delta> { s.remove(id) }
-    fn on_event_replaced(_c: &ViewContext, s: &mut Self::State, old: &EventId, e: &KernelEvent) -> Option<Self::Delta> { s.replace(old, e) }
-    fn on_projection_changed(_c: &ViewContext, _s: &mut Self::State, _ch: &ProjectionChange) -> Option<Self::Delta> { None }
-    fn snapshot(_c: &ViewContext, state: &Self::State) -> Self::Payload {
+    pub fn on_event_inserted(_c: &ViewContext, s: &mut EventAccumulator, e: &KernelEvent) -> Option<EventAccumulatorDelta> { s.insert(e) }
+    pub fn on_event_removed(_c: &ViewContext, s: &mut EventAccumulator, id: &EventId) -> Option<EventAccumulatorDelta> { s.remove(id) }
+    pub fn on_event_replaced(_c: &ViewContext, s: &mut EventAccumulator, old: &EventId, e: &KernelEvent) -> Option<EventAccumulatorDelta> { s.replace(old, e) }
+    pub fn snapshot(_c: &ViewContext, state: &EventAccumulator) -> JoinedPayload {
         // We don't know the host_relay_url from inside the projection here
         // (the kernel's provenance lane carries it; M11.5 Step 5 wires that
         // through). For the Step 0 deliverable, the snapshot is a placeholder

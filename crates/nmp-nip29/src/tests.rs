@@ -21,7 +21,7 @@ use nmp_core::planner::{
     merge as lattice_merge, EmptyMailboxCache, InterestId, InterestLifecycle, InterestScope,
     InterestShape, LogicalInterest, MergeOutcome, SubscriptionCompiler,
 };
-use nmp_core::substrate::{ActionContext, ActionModule, KernelEvent, ViewContext, ViewModule};
+use nmp_core::substrate::{ActionContext, ActionModule, KernelEvent, ViewContext};
 
 use crate::action::{CreateGroupAction, CreateGroupInput};
 use crate::cache::{TofuSignerCache, TrustCheckOutcome};

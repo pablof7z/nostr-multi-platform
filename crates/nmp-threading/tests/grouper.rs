@@ -410,12 +410,10 @@ fn mismatched_root_id_marks_has_gap() {
     }
 }
 
-// ── ViewModule projection behaviour ─────────────────────────────────────
+// ── View projection behaviour ───────────────────────────────────────────
 //
-// The grouper itself doesn't see mute projections — its `on_projection_
-// changed` analogue lives in the wrapping ViewModule. As of this PR, no
-// view in the workspace consumes `ProjectionChange` (every existing
-// `on_projection_changed` returns `None`). When mute lands as a real
-// `DomainModule`, the NIP-10 / NIP-22 wrappers will filter at their
-// `on_event_inserted` boundary before forwarding to the grouper. Skipped
-// here intentionally — see grouper.rs module doc.
+// The grouper itself doesn't see mute projections — projection handling
+// lives in the wrapping view. When mute lands as a real `DomainModule`, the
+// NIP-10 / NIP-22 wrappers will filter at their `on_event_inserted` boundary
+// before forwarding to the grouper. Skipped here intentionally — see
+// grouper.rs module doc.

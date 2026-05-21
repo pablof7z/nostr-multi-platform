@@ -152,7 +152,7 @@ fn c7_publish_routes_outbox_and_private_fails_closed() {
 /// `AccountManager::add` — are all present and exercised here.
 ///
 /// A follow-up task (#57-c11-keyring) tracks the `KeyringCapability` +
-/// `IdentityModule` kernel wiring.
+/// identity-layer kernel wiring.
 ///
 /// Design: `docs/design/framework-magic/signers.md`
 #[test]

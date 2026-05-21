@@ -1,5 +1,4 @@
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::hash::Hash;
+use serde::{Deserialize, Serialize};
 
 use crate::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
 use std::collections::{BTreeMap, BTreeSet};
@@ -86,53 +85,16 @@ pub struct ViewContext {
     pub now_ms: u64,
 }
 
-pub trait ViewModule: Send + Sync + 'static {
-    const NAMESPACE: &'static str;
-
-    type Spec: Clone + Serialize + DeserializeOwned + Send + 'static;
-    type Payload: Clone + Serialize + Send + 'static;
-    type Delta: Clone + Serialize + Send + 'static;
-    type Key: Hash + Eq + Clone + Serialize + Send + 'static;
-    type State: Send + 'static;
-
-    fn key(spec: &Self::Spec) -> Self::Key;
-    /// Returns the events this view needs. Callers should convert the result via
-    /// [`ViewDependencies::into_logical_interest`] to obtain a [`LogicalInterest`]
-    /// for `NmpApp::push_interest`.
-    fn dependencies(spec: &Self::Spec) -> ViewDependencies;
-    fn open(ctx: &ViewContext, spec: Self::Spec) -> (Self::State, Self::Payload);
-
-    fn on_event_inserted(
-        ctx: &ViewContext,
-        state: &mut Self::State,
-        event: &KernelEvent,
-    ) -> Option<Self::Delta>;
-
-    fn on_event_removed(
-        ctx: &ViewContext,
-        state: &mut Self::State,
-        id: &EventId,
-    ) -> Option<Self::Delta>;
-
-    fn on_event_replaced(
-        ctx: &ViewContext,
-        state: &mut Self::State,
-        old_id: &EventId,
-        new_event: &KernelEvent,
-    ) -> Option<Self::Delta>;
-
-    fn on_projection_changed(
-        ctx: &ViewContext,
-        state: &mut Self::State,
-        change: &ProjectionChange,
-    ) -> Option<Self::Delta>;
-
-    fn on_tick(_ctx: &ViewContext, _state: &mut Self::State) -> Option<Self::Delta> {
-        None
-    }
-
-    fn snapshot(ctx: &ViewContext, state: &Self::State) -> Self::Payload;
-}
+// NOTE: there was once a `ViewModule` trait here — a substrate extension
+// contract for reactive views. It has been removed. No `ViewRegistry` ever
+// shipped: nothing in the kernel, actor, or codegen stored or drove
+// `dyn ViewModule` objects. The per-protocol view types (`RepliesView`,
+// `Nip10ModularTimelineView`, …) still exist and expose their `open` /
+// `on_event_*` / `snapshot` methods as plain inherent methods, reached via
+// static dispatch (`Nip10ModularTimelineView::open(...)`). The one live
+// consumer, `ModularTimelineProjection`, drives those inherent methods
+// directly. `ViewDependencies` below is kept — it is the load-bearing bridge
+// from a view's event needs to the planner's `LogicalInterest`.
 
 #[cfg(test)]
 mod tests {

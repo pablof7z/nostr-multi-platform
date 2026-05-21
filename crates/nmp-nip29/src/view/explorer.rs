@@ -3,9 +3,7 @@
 //! Lists all 39000 events without the `hidden` marker, host-pinned to one
 //! relay. Used by the "Room Explorer" surface in `Features/Communities/`.
 
-use nmp_core::substrate::{
-    EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies, ViewModule,
-};
+use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::RelayUrl;
@@ -24,34 +22,28 @@ pub struct ExplorerPayload {
 }
 
 pub struct GroupExplorerView;
-impl ViewModule for GroupExplorerView {
-    const NAMESPACE: &'static str = "nip29.group_explorer";
-    type Spec = ExplorerSpec;
-    type Payload = ExplorerPayload;
-    type Delta = EventAccumulatorDelta;
-    type Key = RelayUrl;
-    type State = EventAccumulator;
+impl GroupExplorerView {
+    pub const NAMESPACE: &'static str = "nip29.group_explorer";
 
-    fn key(spec: &Self::Spec) -> Self::Key { spec.host_relay_url.clone() }
-    fn dependencies(_spec: &Self::Spec) -> ViewDependencies {
+    pub fn key(spec: &ExplorerSpec) -> RelayUrl { spec.host_relay_url.clone() }
+    pub fn dependencies(_spec: &ExplorerSpec) -> ViewDependencies {
         ViewDependencies {
             kinds: vec![KIND_GROUP_METADATA],
             ..Default::default()
         }
     }
-    fn open(_c: &ViewContext, _spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(_c: &ViewContext, _spec: ExplorerSpec) -> (EventAccumulator, ExplorerPayload) {
         (EventAccumulator::default(), ExplorerPayload { group_count: 0 })
     }
-    fn on_event_inserted(_c: &ViewContext, s: &mut Self::State, e: &KernelEvent) -> Option<Self::Delta> {
+    pub fn on_event_inserted(_c: &ViewContext, s: &mut EventAccumulator, e: &KernelEvent) -> Option<EventAccumulatorDelta> {
         // Filter out `hidden` groups per nip29-crate.md §7 deferral list note.
         let hidden = e.tags.iter().any(|t| !t.is_empty() && t[0] == "hidden");
         if hidden { return None; }
         s.insert(e)
     }
-    fn on_event_removed(_c: &ViewContext, s: &mut Self::State, id: &EventId) -> Option<Self::Delta> { s.remove(id) }
-    fn on_event_replaced(_c: &ViewContext, s: &mut Self::State, old: &EventId, e: &KernelEvent) -> Option<Self::Delta> { s.replace(old, e) }
-    fn on_projection_changed(_c: &ViewContext, _s: &mut Self::State, _ch: &ProjectionChange) -> Option<Self::Delta> { None }
-    fn snapshot(_c: &ViewContext, state: &Self::State) -> Self::Payload {
+    pub fn on_event_removed(_c: &ViewContext, s: &mut EventAccumulator, id: &EventId) -> Option<EventAccumulatorDelta> { s.remove(id) }
+    pub fn on_event_replaced(_c: &ViewContext, s: &mut EventAccumulator, old: &EventId, e: &KernelEvent) -> Option<EventAccumulatorDelta> { s.replace(old, e) }
+    pub fn snapshot(_c: &ViewContext, state: &EventAccumulator) -> ExplorerPayload {
         ExplorerPayload { group_count: state.events.len() }
     }
 }

@@ -1,56 +1,14 @@
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::future::Future;
-use std::pin::Pin;
+//! Signing value types shared across the publish / signer pipeline.
+//!
+//! NOTE: this module once also defined an `IdentityModule` substrate trait
+//! (plus `IdentityContext` / `IdentityScopeKind` / `IdentityError` / `IdentityId`
+//! / `BoxFuture`). That trait was a v2 extension contract the kernel never
+//! drove — no registry stored `dyn IdentityModule`, and nothing implemented it.
+//! It has been removed. The signing value types below (`UnsignedEvent`,
+//! `SignedEvent`, `SigningError`) are load-bearing: the publish engine, the
+//! NIP-42 flow, and every signer crate exchange events through them.
 
-pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
-pub type IdentityId = String;
-
-pub trait IdentityModule: Send + Sync + 'static {
-    const NAMESPACE: &'static str;
-
-    type Descriptor: Clone + Serialize + DeserializeOwned + Send + 'static;
-
-    fn scope_kind() -> IdentityScopeKind;
-    fn create(
-        ctx: &mut IdentityContext,
-        descriptor: Self::Descriptor,
-    ) -> Result<IdentityId, IdentityError>;
-    fn sign<'a>(
-        ctx: &'a IdentityContext,
-        id: &'a IdentityId,
-        unsigned: &'a UnsignedEvent,
-    ) -> BoxFuture<'a, Result<SignedEvent, SigningError>>;
-    fn destroy(ctx: &mut IdentityContext, id: &IdentityId);
-}
-
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum IdentityScopeKind {
-    HumanAccount,
-    AppLocal,
-    ExternalSigner,
-    Ephemeral,
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct IdentityContext {
-    created: Vec<IdentityId>,
-}
-
-impl IdentityContext {
-    pub fn remember(&mut self, id: IdentityId) {
-        self.created.push(id);
-    }
-
-    pub fn created(&self) -> &[IdentityId] {
-        &self.created
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum IdentityError {
-    InvalidDescriptor(String),
-    Storage(String),
-}
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct UnsignedEvent {

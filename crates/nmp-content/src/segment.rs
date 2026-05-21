@@ -2,9 +2,9 @@
 //!
 //! These types are the internal, ergonomic, **recursive** representation. They
 //! are NOT themselves serde-serializable (see the [`Segment`] doc-comment) and
-//! therefore are NOT directly a `ViewModule::Payload`. The **FFI-stable wire
-//! boundary** every consuming UI (SwiftUI / Compose / iced / wasm) actually
-//! decodes is [`crate::wire::ContentTreeWire`], produced by the pure projection
+//! therefore are NOT directly an FFI payload. The **FFI-stable wire boundary**
+//! every consuming UI (SwiftUI / Compose / iced / wasm) actually decodes is
+//! [`crate::wire::ContentTreeWire`], produced by the pure projection
 //! [`ContentTree::to_wire`]. See
 //! `docs/decisions/0018-content-tree-ffi-projection.md`. Changing a variant's
 //! shape still ripples through the wire projection, so add fields

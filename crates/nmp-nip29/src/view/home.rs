@@ -4,9 +4,7 @@
 //! discussions preview. Cross-protocol joins (profile hydration) live at the
 //! app layer.
 
-use nmp_core::substrate::{
-    EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies, ViewModule,
-};
+use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
@@ -30,16 +28,11 @@ pub struct HomePayload {
 }
 
 pub struct GroupHomeView;
-impl ViewModule for GroupHomeView {
-    const NAMESPACE: &'static str = "nip29.group_home";
-    type Spec = HomeSpec;
-    type Payload = HomePayload;
-    type Delta = EventAccumulatorDelta;
-    type Key = GroupId;
-    type State = EventAccumulator;
+impl GroupHomeView {
+    pub const NAMESPACE: &'static str = "nip29.group_home";
 
-    fn key(spec: &Self::Spec) -> Self::Key { spec.group.clone() }
-    fn dependencies(spec: &Self::Spec) -> ViewDependencies {
+    pub fn key(spec: &HomeSpec) -> GroupId { spec.group.clone() }
+    pub fn dependencies(spec: &HomeSpec) -> ViewDependencies {
         ViewDependencies {
             kinds: vec![
                 KIND_GROUP_METADATA, KIND_GROUP_ADMINS, KIND_GROUP_MEMBERS,
@@ -49,15 +42,14 @@ impl ViewModule for GroupHomeView {
             ..Default::default()
         }
     }
-    fn open(_c: &ViewContext, _spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(_c: &ViewContext, _spec: HomeSpec) -> (EventAccumulator, HomePayload) {
         (EventAccumulator::default(), HomePayload::default())
     }
-    fn on_event_inserted(_c: &ViewContext, s: &mut Self::State, e: &KernelEvent) -> Option<Self::Delta> { s.insert(e) }
-    fn on_event_removed(_c: &ViewContext, s: &mut Self::State, id: &EventId) -> Option<Self::Delta> { s.remove(id) }
-    fn on_event_replaced(_c: &ViewContext, s: &mut Self::State, old: &EventId, e: &KernelEvent) -> Option<Self::Delta> { s.replace(old, e) }
-    fn on_projection_changed(_c: &ViewContext, _s: &mut Self::State, _ch: &ProjectionChange) -> Option<Self::Delta> { None }
+    pub fn on_event_inserted(_c: &ViewContext, s: &mut EventAccumulator, e: &KernelEvent) -> Option<EventAccumulatorDelta> { s.insert(e) }
+    pub fn on_event_removed(_c: &ViewContext, s: &mut EventAccumulator, id: &EventId) -> Option<EventAccumulatorDelta> { s.remove(id) }
+    pub fn on_event_replaced(_c: &ViewContext, s: &mut EventAccumulator, old: &EventId, e: &KernelEvent) -> Option<EventAccumulatorDelta> { s.replace(old, e) }
 
-    fn snapshot(_c: &ViewContext, state: &Self::State) -> Self::Payload {
+    pub fn snapshot(_c: &ViewContext, state: &EventAccumulator) -> HomePayload {
         let mut p = HomePayload::default();
         for e in &state.events {
             match e.kind {

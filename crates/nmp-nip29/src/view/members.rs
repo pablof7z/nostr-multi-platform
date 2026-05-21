@@ -1,8 +1,6 @@
 //! `GroupMembersView` — projection of the latest 39001 + 39002 snapshots.
 
-use nmp_core::substrate::{
-    EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies, ViewModule,
-};
+use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
@@ -20,31 +18,25 @@ pub struct MembersPayload {
 }
 
 pub struct GroupMembersView;
-impl ViewModule for GroupMembersView {
-    const NAMESPACE: &'static str = "nip29.group_members";
-    type Spec = MembersSpec;
-    type Payload = MembersPayload;
-    type Delta = EventAccumulatorDelta;
-    type Key = GroupId;
-    type State = EventAccumulator;
+impl GroupMembersView {
+    pub const NAMESPACE: &'static str = "nip29.group_members";
 
-    fn key(spec: &Self::Spec) -> Self::Key { spec.group.clone() }
-    fn dependencies(spec: &Self::Spec) -> ViewDependencies {
+    pub fn key(spec: &MembersSpec) -> GroupId { spec.group.clone() }
+    pub fn dependencies(spec: &MembersSpec) -> ViewDependencies {
         ViewDependencies {
             kinds: vec![KIND_GROUP_ADMINS, KIND_GROUP_MEMBERS],
             tag_refs: vec![("d".into(), spec.group.local_id.clone())],
             ..Default::default()
         }
     }
-    fn open(_c: &ViewContext, _spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(_c: &ViewContext, _spec: MembersSpec) -> (EventAccumulator, MembersPayload) {
         (EventAccumulator::default(), MembersPayload { admins: Vec::new(), members: Vec::new() })
     }
-    fn on_event_inserted(_c: &ViewContext, s: &mut Self::State, e: &KernelEvent) -> Option<Self::Delta> { s.insert(e) }
-    fn on_event_removed(_c: &ViewContext, s: &mut Self::State, id: &EventId) -> Option<Self::Delta> { s.remove(id) }
-    fn on_event_replaced(_c: &ViewContext, s: &mut Self::State, old: &EventId, e: &KernelEvent) -> Option<Self::Delta> { s.replace(old, e) }
-    fn on_projection_changed(_c: &ViewContext, _s: &mut Self::State, _ch: &ProjectionChange) -> Option<Self::Delta> { None }
+    pub fn on_event_inserted(_c: &ViewContext, s: &mut EventAccumulator, e: &KernelEvent) -> Option<EventAccumulatorDelta> { s.insert(e) }
+    pub fn on_event_removed(_c: &ViewContext, s: &mut EventAccumulator, id: &EventId) -> Option<EventAccumulatorDelta> { s.remove(id) }
+    pub fn on_event_replaced(_c: &ViewContext, s: &mut EventAccumulator, old: &EventId, e: &KernelEvent) -> Option<EventAccumulatorDelta> { s.replace(old, e) }
 
-    fn snapshot(_c: &ViewContext, state: &Self::State) -> Self::Payload {
+    pub fn snapshot(_c: &ViewContext, state: &EventAccumulator) -> MembersPayload {
         let pick_latest = |kind: u32| -> Option<&KernelEvent> {
             state.events.iter().filter(|e| e.kind == kind).max_by_key(|e| e.created_at)
         };

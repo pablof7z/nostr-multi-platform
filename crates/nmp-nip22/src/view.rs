@@ -6,9 +6,7 @@
 //! view shape — they'd need a `CommentsByAddressView` / `CommentsByUriView`
 //! sibling, intentionally out of scope here.
 
-use nmp_core::substrate::{
-    EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies, ViewModule,
-};
+use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
 use serde::{Deserialize, Serialize};
 
 use crate::decode::{try_from_kernel_event, CommentPointer};
@@ -85,19 +83,14 @@ impl CommentsState {
 
 pub struct CommentsView;
 
-impl ViewModule for CommentsView {
-    const NAMESPACE: &'static str = "nmp.nip22.comments";
-    type Spec = CommentsSpec;
-    type Payload = CommentsPayload;
-    type Delta = CommentsDelta;
-    type Key = EventId;
-    type State = CommentsState;
+impl CommentsView {
+    pub const NAMESPACE: &'static str = "nmp.nip22.comments";
 
-    fn key(spec: &Self::Spec) -> Self::Key {
+    pub fn key(spec: &CommentsSpec) -> EventId {
         spec.target.clone()
     }
 
-    fn dependencies(spec: &Self::Spec) -> ViewDependencies {
+    pub fn dependencies(spec: &CommentsSpec) -> ViewDependencies {
         ViewDependencies {
             kinds: vec![KIND_COMMENT],
             // NIP-22 parent event id sits in a lowercase `e` tag — the
@@ -108,7 +101,7 @@ impl ViewModule for CommentsView {
         }
     }
 
-    fn open(_ctx: &ViewContext, spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(_ctx: &ViewContext, spec: CommentsSpec) -> (CommentsState, CommentsPayload) {
         let state = CommentsState {
             target: spec.target.clone(),
             events: Vec::new(),
@@ -120,40 +113,32 @@ impl ViewModule for CommentsView {
         (state, payload)
     }
 
-    fn on_event_inserted(
+    pub fn on_event_inserted(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut CommentsState,
         e: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<CommentsDelta> {
         s.insert(e)
     }
 
-    fn on_event_removed(
+    pub fn on_event_removed(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut CommentsState,
         id: &EventId,
-    ) -> Option<Self::Delta> {
+    ) -> Option<CommentsDelta> {
         s.remove(id)
     }
 
-    fn on_event_replaced(
+    pub fn on_event_replaced(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut CommentsState,
         old: &EventId,
         e: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<CommentsDelta> {
         s.replace(old, e)
     }
 
-    fn on_projection_changed(
-        _c: &ViewContext,
-        _s: &mut Self::State,
-        _ch: &ProjectionChange,
-    ) -> Option<Self::Delta> {
-        None
-    }
-
-    fn snapshot(_c: &ViewContext, state: &Self::State) -> Self::Payload {
+    pub fn snapshot(_c: &ViewContext, state: &CommentsState) -> CommentsPayload {
         CommentsPayload {
             target_id: state.target.clone(),
             comments: state.events.clone(),

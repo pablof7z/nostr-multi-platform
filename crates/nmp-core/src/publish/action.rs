@@ -34,9 +34,9 @@ pub enum PublishTarget {
 /// The single public publish action.
 ///
 /// The signed event is included pre-signed because the kernel ledger (M6) will
-/// sign once via the active `IdentityModule` and then enqueue the publish — we
-/// never re-sign on retry (per the M6 exit gate "re-publish of an event
-/// preserves `id` and `sig`").
+/// sign once via the active signer and then enqueue the publish — we never
+/// re-sign on retry (per the M6 exit gate "re-publish of an event preserves
+/// `id` and `sig`").
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum PublishAction {
     Publish {
@@ -46,10 +46,10 @@ pub enum PublishAction {
     },
     /// Sign-and-publish a kind:1 note (optionally a reply) with the active
     /// account. Unlike `Publish`, the event is *not* pre-signed — the actor
-    /// signs it via the active `IdentityModule`. This is the
-    /// `ActionModule`-native replacement for the deleted per-verb
-    /// `nmp_app_publish_note` FFI symbol; the executor routes it to the
-    /// existing `ActorCommand::PublishNote` handler.
+    /// signs it via the active signer. This is the `ActionModule`-native
+    /// replacement for the deleted per-verb `nmp_app_publish_note` FFI symbol;
+    /// the executor routes it to the existing `ActorCommand::PublishNote`
+    /// handler.
     PublishNote {
         content: String,
         reply_to_id: Option<String>,
@@ -58,8 +58,8 @@ pub enum PublishAction {
     /// Publish a kind:0 profile metadata event for the active account.
     /// `fields` is a flat JSON object with string-valued keys such as
     /// `"name"`, `"about"`, `"picture"` — the actor serializes it into the
-    /// kind:0 `content` field, signs with the active `IdentityModule`, and
-    /// routes through the NIP-65 outbox. Like `PublishNote`, the event is
+    /// kind:0 `content` field, signs with the active signer, and routes
+    /// through the NIP-65 outbox. Like `PublishNote`, the event is
     /// *not* pre-signed: the actor stamps `created_at` and signs. This is the
     /// `ActionModule`-native replacement for hosts hand-rolling a kind:0
     /// event dict and calling `nmp_app_publish_unsigned_event` directly.

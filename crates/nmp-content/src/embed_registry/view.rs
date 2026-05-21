@@ -1,23 +1,19 @@
-//! `ViewModule` adapter — kernel-event ingest drives embed resolution.
+//! Kernel-event ingest drives embed resolution.
 //!
-//! The trait shape is callback-driven and singleton (`Key = ()`). Event
-//! ingest updates the `resolved` payload of *already-claimed* targets;
-//! removal clears stale resolutions for both event-id and
-//! coordinate-addressed (`naddr`) embeds.
+//! The view shape is callback-driven and singleton. Event ingest updates the
+//! `resolved` payload of *already-claimed* targets; removal clears stale
+//! resolutions for both event-id and coordinate-addressed (`naddr`) embeds.
 
-use nmp_core::substrate::{
-    EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies, ViewModule,
-};
+use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
 use serde::{Deserialize, Serialize};
 
 use super::state::EmbedClaimState;
 use super::target::{EmbedTarget, ResolvedEvent};
 use super::EmbedClaimRegistry;
 
-/// `ViewModule::Spec` — apps don't actually open one `EmbedClaimRegistry`
-/// per "view"; the spec is unit-shaped. The registry is conceptually
-/// app-singleton, with `claim`/`release` driving its state. We satisfy the
-/// `ViewModule` trait for ADR-0009 conformance.
+/// Open-spec for the registry view — apps don't actually open one
+/// `EmbedClaimRegistry` per "view"; the spec is unit-shaped. The registry is
+/// conceptually app-singleton, with `claim`/`release` driving its state.
 #[derive(Clone, Debug, Default, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub struct EmbedClaimSpec;
 
@@ -101,37 +97,37 @@ impl EmbedClaimRegistry {
     }
 }
 
-impl ViewModule for EmbedClaimRegistry {
-    const NAMESPACE: &'static str = "nmp.content.embed_registry";
+impl EmbedClaimRegistry {
+    /// View key — the registry is an app-singleton, so the key is unit.
+    pub fn key(_spec: &EmbedClaimSpec) {}
 
-    type Spec = EmbedClaimSpec;
-    type Payload = EmbedRegistrySnapshot;
-    type Delta = EmbedClaimDelta;
-    type Key = (); // singleton
-    type State = EmbedClaimState;
-
-    fn key(_spec: &Self::Spec) -> Self::Key {}
-
-    fn dependencies(_spec: &Self::Spec) -> ViewDependencies {
-        // The `ViewModule` dependency contract is spec-driven and static;
-        // the spec here is unit-shaped, so there is nothing to declare.
-        // Kernel-side claim-driven subscription wiring is a Phase-2 seam
-        // (see the crate-level docs on `EmbedClaimRegistry`); this module
-        // delivers in-memory claim dedupe only, not upstream fetch.
+    /// Event dependencies for this view. Unit-shaped spec → none declared.
+    pub fn dependencies(_spec: &EmbedClaimSpec) -> ViewDependencies {
+        // The dependency contract is spec-driven and static; the spec here is
+        // unit-shaped, so there is nothing to declare. Kernel-side
+        // claim-driven subscription wiring is a Phase-2 seam (see the
+        // crate-level docs on `EmbedClaimRegistry`); this module delivers
+        // in-memory claim dedupe only, not upstream fetch.
         ViewDependencies::default()
     }
 
-    fn open(_ctx: &ViewContext, _spec: Self::Spec) -> (Self::State, Self::Payload) {
+    /// Open a fresh registry view, returning its empty state + snapshot.
+    pub fn open(
+        _ctx: &ViewContext,
+        _spec: EmbedClaimSpec,
+    ) -> (EmbedClaimState, EmbedRegistrySnapshot) {
         let state = EmbedClaimRegistry::state();
         let payload = Self::snapshot_state(&state);
         (state, payload)
     }
 
-    fn on_event_inserted(
+    /// Ingest an inserted kernel event — resolves any claimed target it
+    /// matches (direct event-id or coordinate-addressed).
+    pub fn on_event_inserted(
         _ctx: &ViewContext,
-        state: &mut Self::State,
+        state: &mut EmbedClaimState,
         event: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<EmbedClaimDelta> {
         // If this event is currently claimed, update its resolution.
         let target = EmbedTarget::Event(event.id.clone());
         if state.entries.contains_key(&target) {
@@ -157,33 +153,29 @@ impl ViewModule for EmbedClaimRegistry {
         None
     }
 
-    fn on_event_removed(
+    /// Ingest a removed kernel event — clears stale resolutions for any
+    /// claimed target that resolved to `id`.
+    pub fn on_event_removed(
         _ctx: &ViewContext,
-        state: &mut Self::State,
+        state: &mut EmbedClaimState,
         id: &EventId,
-    ) -> Option<Self::Delta> {
+    ) -> Option<EmbedClaimDelta> {
         Self::clear_resolutions_for(state, id)
     }
 
-    fn on_event_replaced(
+    /// Ingest a replaced kernel event — remove + insert.
+    pub fn on_event_replaced(
         ctx: &ViewContext,
-        state: &mut Self::State,
+        state: &mut EmbedClaimState,
         old_id: &EventId,
         new_event: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<EmbedClaimDelta> {
         let _ = Self::on_event_removed(ctx, state, old_id);
         Self::on_event_inserted(ctx, state, new_event)
     }
 
-    fn on_projection_changed(
-        _ctx: &ViewContext,
-        _state: &mut Self::State,
-        _change: &ProjectionChange,
-    ) -> Option<Self::Delta> {
-        None
-    }
-
-    fn snapshot(_ctx: &ViewContext, state: &Self::State) -> Self::Payload {
+    /// Outward-facing snapshot of the registry state.
+    pub fn snapshot(_ctx: &ViewContext, state: &EmbedClaimState) -> EmbedRegistrySnapshot {
         Self::snapshot_state(state)
     }
 }

@@ -2,7 +2,6 @@
 
 use std::ffi::c_char;
 
-use nmp_core::substrate::ViewModule;
 use nmp_core::{ActorCommand, KernelAction};
 
 use super::ffi::{c_str_opt, MarmotHandle};

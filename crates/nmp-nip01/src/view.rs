@@ -1,16 +1,16 @@
 //! `RepliesView` (flat direct replies) and `ThreadView` (parent/child tree).
 //!
-//! Both `ViewModule` impls accept kind-1 events whose [`Nip10Refs`] chain
-//! them into the target / root the spec names. The planner is responsible
-//! for surfacing the kind-1 stream — `ViewDependencies` declares
-//! `kinds: vec![1]` plus a single `("e", target)` tag-ref hint so the
-//! subscription compiler can route efficiently.
+//! Both views accept kind-1 events whose [`Nip10Refs`] chain them into the
+//! target / root the spec names. The planner is responsible for surfacing
+//! the kind-1 stream — `ViewDependencies` declares `kinds: vec![1]` plus a
+//! single `("e", target)` tag-ref hint so the subscription compiler can
+//! route efficiently.
 //!
 //! ## Lazy `#e` expansion (ThreadView)
 //!
 //! `view-catalog.md §5` calls for replies-of-replies to expand the `#e` set
-//! lazily as nested replies arrive. The current [`ViewModule::dependencies`]
-//! is a static snapshot — there is no API to mutate dependencies post-open.
+//! lazily as nested replies arrive. The current `dependencies` method is a
+//! static snapshot — there is no API to mutate dependencies post-open.
 //! This crate therefore relies on the planner also surfacing nested replies
 //! (e.g. via a separate `RepliesView` per intermediate node). When a child
 //! reply that points at an as-yet-unseen parent arrives, it is buffered in
@@ -19,9 +19,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use nmp_core::substrate::{
-    EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies, ViewModule,
-};
+use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
 use serde::{Deserialize, Serialize};
 
 use crate::decode::try_from_kernel_event;
@@ -106,19 +104,14 @@ impl RepliesState {
 /// fire as kind-1 events whose `refs.reply.id == spec.target` arrive.
 pub struct RepliesView;
 
-impl ViewModule for RepliesView {
-    const NAMESPACE: &'static str = "nmp.nip01.replies";
-    type Spec = RepliesSpec;
-    type Payload = RepliesPayload;
-    type Delta = RepliesDelta;
-    type Key = EventId;
-    type State = RepliesState;
+impl RepliesView {
+    pub const NAMESPACE: &'static str = "nmp.nip01.replies";
 
-    fn key(spec: &Self::Spec) -> Self::Key {
+    pub fn key(spec: &RepliesSpec) -> EventId {
         spec.target.clone()
     }
 
-    fn dependencies(spec: &Self::Spec) -> ViewDependencies {
+    pub fn dependencies(spec: &RepliesSpec) -> ViewDependencies {
         ViewDependencies {
             kinds: vec![KIND_SHORT_NOTE],
             tag_refs: vec![("e".into(), spec.target.clone())],
@@ -126,7 +119,7 @@ impl ViewModule for RepliesView {
         }
     }
 
-    fn open(_ctx: &ViewContext, spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(_ctx: &ViewContext, spec: RepliesSpec) -> (RepliesState, RepliesPayload) {
         let state = RepliesState {
             target: spec.target.clone(),
             events: Vec::new(),
@@ -138,40 +131,32 @@ impl ViewModule for RepliesView {
         (state, payload)
     }
 
-    fn on_event_inserted(
+    pub fn on_event_inserted(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut RepliesState,
         e: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<RepliesDelta> {
         s.insert(e)
     }
 
-    fn on_event_removed(
+    pub fn on_event_removed(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut RepliesState,
         id: &EventId,
-    ) -> Option<Self::Delta> {
+    ) -> Option<RepliesDelta> {
         s.remove(id)
     }
 
-    fn on_event_replaced(
+    pub fn on_event_replaced(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut RepliesState,
         old: &EventId,
         e: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<RepliesDelta> {
         s.replace(old, e)
     }
 
-    fn on_projection_changed(
-        _c: &ViewContext,
-        _s: &mut Self::State,
-        _ch: &ProjectionChange,
-    ) -> Option<Self::Delta> {
-        None
-    }
-
-    fn snapshot(_c: &ViewContext, state: &Self::State) -> Self::Payload {
+    pub fn snapshot(_c: &ViewContext, state: &RepliesState) -> RepliesPayload {
         RepliesPayload {
             target_id: state.target.clone(),
             replies: state.events.clone(),
@@ -399,19 +384,14 @@ impl ThreadState {
 /// shows up (`orphans` table — applesauce's `parentReferences` pattern).
 pub struct ThreadView;
 
-impl ViewModule for ThreadView {
-    const NAMESPACE: &'static str = "nmp.nip01.thread";
-    type Spec = ThreadSpec;
-    type Payload = ThreadPayload;
-    type Delta = ThreadDelta;
-    type Key = EventId;
-    type State = ThreadState;
+impl ThreadView {
+    pub const NAMESPACE: &'static str = "nmp.nip01.thread";
 
-    fn key(spec: &Self::Spec) -> Self::Key {
+    pub fn key(spec: &ThreadSpec) -> EventId {
         spec.root_event.clone()
     }
 
-    fn dependencies(spec: &Self::Spec) -> ViewDependencies {
+    pub fn dependencies(spec: &ThreadSpec) -> ViewDependencies {
         ViewDependencies {
             kinds: vec![KIND_SHORT_NOTE],
             tag_refs: vec![("e".into(), spec.root_event.clone())],
@@ -419,7 +399,7 @@ impl ViewModule for ThreadView {
         }
     }
 
-    fn open(_ctx: &ViewContext, spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(_ctx: &ViewContext, spec: ThreadSpec) -> (ThreadState, ThreadPayload) {
         let state = ThreadState {
             root: spec.root_event.clone(),
             ..ThreadState::default()
@@ -431,45 +411,36 @@ impl ViewModule for ThreadView {
         (state, payload)
     }
 
-    fn on_event_inserted(
+    pub fn on_event_inserted(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut ThreadState,
         e: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<ThreadDelta> {
         s.insert(e)
     }
 
-    fn on_event_removed(
+    pub fn on_event_removed(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut ThreadState,
         id: &EventId,
-    ) -> Option<Self::Delta> {
+    ) -> Option<ThreadDelta> {
         s.remove(id)
     }
 
-    fn on_event_replaced(
+    pub fn on_event_replaced(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut ThreadState,
         old: &EventId,
         e: &KernelEvent,
-    ) -> Option<Self::Delta> {
-        // Treat replace as remove + insert. Two deltas would be nicer but the
-        // trait returns a single Option<Delta>; the kernel always re-emits a
+    ) -> Option<ThreadDelta> {
+        // Treat replace as remove + insert. The kernel always re-emits a
         // fresh snapshot after a delta, so a single NodeAdded(new) suffices
         // for downstream correctness.
         let _ = s.remove(old);
         s.insert(e)
     }
 
-    fn on_projection_changed(
-        _c: &ViewContext,
-        _s: &mut Self::State,
-        _ch: &ProjectionChange,
-    ) -> Option<Self::Delta> {
-        None
-    }
-
-    fn snapshot(_c: &ViewContext, state: &Self::State) -> Self::Payload {
+    pub fn snapshot(_c: &ViewContext, state: &ThreadState) -> ThreadPayload {
         ThreadPayload {
             root_event: state.root.clone(),
             nodes: state.flatten(),
