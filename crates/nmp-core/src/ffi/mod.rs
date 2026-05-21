@@ -269,7 +269,12 @@ pub struct NmpApp {
     /// Shared relay-edit rows handle. Cloned to the actor thread and bound
     /// onto the kernel so external Rust callers (e.g. per-app crates) can read
     /// the user's current relay list without crossing FFI.
-    relay_edit_rows: Arc<Mutex<Vec<crate::kernel::RelayEditRow>>>,
+    ///
+    /// PR-I: the slot is now a typed [`crate::kernel::RelayEditRowsSlot`]
+    /// (`Arc<Mutex<RelayEditRowList>>`) — D14 forbids new bare
+    /// `Arc<Mutex<Vec<…>>>` fields on `NmpApp` and the typed wrapper makes
+    /// the slot's purpose visible at the declaration site.
+    relay_edit_rows: crate::kernel::RelayEditRowsSlot,
     /// Active local (nsec-backed) secret key in bech32 form (`nsec1…`). The
     /// actor thread writes this after every identity mutation that changes
     /// the active local key (create, sign-in, switch, remove). Remote-signer
@@ -450,8 +455,10 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // Shared relay-edit rows handle. Cloned to the actor thread and bound
     // onto the kernel so external Rust callers can read the user's current
     // relay list without crossing FFI.
-    let relay_edit_rows: Arc<Mutex<Vec<crate::kernel::RelayEditRow>>> =
-        Arc::new(Mutex::new(Vec::new()));
+    //
+    // PR-I: typed slot constructor — see `kernel/relay_projection.rs`.
+    let relay_edit_rows: crate::kernel::RelayEditRowsSlot =
+        crate::kernel::new_relay_edit_rows_slot();
     let actor_relay_edit_rows = Arc::clone(&relay_edit_rows);
     // Active local (nsec) key slot. The actor updates this after every
     // identity mutation; per-app crates read via NmpApp::marmot_local_nsec.
@@ -1049,18 +1056,30 @@ impl NmpApp {
     /// Per-app Rust controllers use this to derive protocol-specific relay
     /// projections without asking platform shells to parse `RelayEditRow.role`.
     /// The actor is the sole writer; callers should take quick snapshots only.
-    pub fn relay_edit_rows_handle(&self) -> Arc<Mutex<Vec<crate::kernel::RelayEditRow>>> {
+    ///
+    /// PR-I: the slot type is now [`crate::kernel::RelayEditRowsSlot`] — a
+    /// newtype `Arc<Mutex<RelayEditRowList>>`. Readers iterate via
+    /// `guard.as_slice()` so they never touch the inner `Vec` directly. D14
+    /// (`crates/nmp-testing/bin/doctrine-lint/rules/d14.rs`) forbids new bare
+    /// `Arc<Mutex<Vec<…>>>` fields on `NmpApp`; the typed alias makes the
+    /// slot's purpose visible at every call site.
+    pub fn relay_edit_rows_handle(&self) -> crate::kernel::RelayEditRowsSlot {
         Arc::clone(&self.relay_edit_rows)
     }
 
     /// Return the user's current write-relay URLs, read from the shared kernel relay-edit
     /// projection. Empty when the user has not configured any write relays.
     /// Used by per-app crates so relay resolution stays Rust-owned (D0).
+    ///
+    /// PR-I: the underlying slot is now a typed `RelayEditRowList`; the
+    /// reader iterates via `as_slice()` so it never touches the inner `Vec`
+    /// directly.
     pub fn write_relay_urls(&self) -> Vec<String> {
         let Ok(guard) = self.relay_edit_rows.lock() else {
             return Vec::new();
         };
         guard
+            .as_slice()
             .iter()
             .filter(|r| crate::actor::has_role(&r.role, "write"))
             .map(|r| r.url.clone())
@@ -1152,8 +1171,11 @@ impl NmpApp {
         let Ok(guard) = self.relay_edit_rows.lock() else {
             return crate::NOSTRCONNECT_DEFAULT_RELAY_URL.to_string();
         };
+        // PR-I: typed slot — iterate via `as_slice()` so the inner `Vec`
+        // never leaks through this consumer.
         crate::actor::nostrconnect_relay_url(
             guard
+                .as_slice()
                 .iter()
                 .map(|row| (row.url.as_str(), row.role.as_str())),
         )

@@ -437,6 +437,124 @@ fn protocol_crates_are_doctrine_clean() {
     );
 }
 
+// ─── D14 (typed snapshot-projection slot) ──────────────────────────────────
+
+#[test]
+fn d14_positive_fixture_fires() {
+    // Stage pos.rs in isolation so neg.rs (also under fixtures/d14/) cannot
+    // confuse the assertion — mirrors the d6/d8/d9 positive fixture pattern.
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d14_pos");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let pos_src = workspace.join(fixture_path("d14/pos.rs"));
+    std::fs::copy(&pos_src, tmp.join("pos.rs")).expect("copy pos fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    // D14 is path-scoped to `crates/nmp-core/src/` — the smoke fixture
+    // staged under `target/` falls outside that scope, so
+    // `--d14-extra-scope` opts it in (mirrors `--d8-extra-scope` /
+    // `--d9-extra-scope`).
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d14-extra-scope",
+        "doctrine_lint_d14_pos",
+    ]);
+    assert_eq!(
+        code, 1,
+        "d14 positive must exit 1; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[D14]"),
+        "d14 positive must emit >=1 D14 finding; stdout:\n{}",
+        stdout
+    );
+    // The fixture defines three offending fields, one per in-scope struct
+    // (`Kernel`, `NmpApp`, `ActorRuntime`). All three must surface — a
+    // regression that silently swallows one fails this test.
+    for token in ["indexer_relays", "pending_outbound", "queued_commands"] {
+        assert!(
+            stdout.contains(token),
+            "d14 positive must name `{}`; stdout:\n{}",
+            token,
+            stdout
+        );
+    }
+    for struct_name in ["Kernel", "NmpApp", "ActorRuntime"] {
+        assert!(
+            stdout.contains(struct_name),
+            "d14 finding must name the enclosing struct `{}`; stdout:\n{}",
+            struct_name,
+            stdout
+        );
+    }
+}
+
+#[test]
+fn d14_negative_fixture_clean() {
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d14_neg");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let neg_src = workspace.join(fixture_path("d14/neg.rs"));
+    std::fs::copy(&neg_src, tmp.join("neg.rs")).expect("copy neg fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d14-extra-scope",
+        "doctrine_lint_d14_neg",
+    ]);
+    assert_eq!(
+        code, 0,
+        "d14 negative must exit 0; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.contains("error[D14]"),
+        "d14 negative must produce zero D14 findings; stdout:\n{}",
+        stdout
+    );
+}
+
+#[test]
+fn d14_skips_out_of_scope_crates() {
+    // Even with a bare `Arc<Mutex<Vec<…>>>` field on a `Kernel`-named
+    // struct, a file outside `crates/nmp-core/src/` (and outside the
+    // explicit `--d14-extra-scope`) must NOT trigger — the rule is
+    // substrate-scoped, not workspace-wide.
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d14_out_of_scope");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    std::fs::write(
+        tmp.join("out_of_scope.rs"),
+        "use std::sync::{Arc, Mutex};\n\
+         pub struct Kernel {\n    \
+            indexer_relays: Arc<Mutex<Vec<String>>>,\n\
+         }\n",
+    )
+    .expect("write fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    // NOTE: no --d14-extra-scope here — the rule must self-gate itself
+    // away because the path lacks the `crates/nmp-core/src/` fragment.
+    let (code, stdout, stderr) = run_lint(&["--path", &tmp_str]);
+    assert_eq!(
+        code, 0,
+        "d14 out-of-scope must exit 0; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.contains("error[D14]"),
+        "d14 must not fire on out-of-scope paths; stdout:\n{}",
+        stdout
+    );
+}
+
 // ─── D10 (provenance: gift-wrap publish never escapes to public relays) ────
 
 #[test]

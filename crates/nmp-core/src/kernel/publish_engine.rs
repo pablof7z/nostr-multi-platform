@@ -34,18 +34,24 @@ use crate::store::EventStore;
 use crate::substrate::SignedEvent;
 
 use super::publish_engine_wire::{describe_engine_error, now_epoch_ms, split_ok_message};
-use super::Kernel;
+use super::{IndexerRelaysSlot, Kernel, LocalWriteRelaysSlot};
 
 /// Build the kernel's publish engine over a fresh `Nip65OutboxResolver` rooted
 /// in the shared `EventStore`. `indexer_relays` is a shared handle the kernel
 /// keeps in sync with its relay config; the resolver reads it on every publish
 /// so discovery-kind fan-out always uses current URLs.
+///
+/// PR-I: the `indexer_relays` / `local_write_relays` handles are now typed
+/// slots ([`IndexerRelaysSlot`] / [`LocalWriteRelaysSlot`]). The previous
+/// bare `Arc<Mutex<Vec<String>>>` shape would trip the new D14 lint on any
+/// future field declaration; threading the typed alias through the
+/// constructor keeps the call-site shape uniform with the kernel field.
 pub(super) fn build_engine(
     event_store: Arc<dyn EventStore>,
     dispatcher: Arc<QueueDispatcher>,
     publish_store: Arc<dyn PublishStore>,
-    indexer_relays: Arc<Mutex<Vec<String>>>,
-    local_write_relays: Arc<Mutex<Vec<String>>>,
+    indexer_relays: IndexerRelaysSlot,
+    local_write_relays: LocalWriteRelaysSlot,
     active_account: Arc<Mutex<Option<String>>>,
 ) -> PublishEngine {
     let resolver = Nip65OutboxResolver::with_local_relays(

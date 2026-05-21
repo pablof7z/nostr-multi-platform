@@ -10,7 +10,9 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::UnsignedEvent;
-use nmp_core::{ActorCommand, NmpApp, RawEventObserver, RelayEditRow, read_eligible_relay_urls};
+use nmp_core::{
+    ActorCommand, NmpApp, RawEventObserver, RelayEditRowsSlot, read_eligible_relay_urls,
+};
 use nmp_nip17::{
     DmInboxProjection, active_giftwrap_inbox_interest, active_giftwrap_inbox_interest_id,
     build_dm_relay_list_event,
@@ -45,7 +47,11 @@ fn register_inbox_projection(app: &NmpApp) {
 }
 
 struct DmRuntimeController {
-    relay_rows: Arc<Mutex<Vec<RelayEditRow>>>,
+    // PR-I: the kernel relay-edit slot is now a typed
+    // [`RelayEditRowsSlot`] (`Arc<Mutex<RelayEditRowList>>`). We read via
+    // `guard.as_slice()` so the inner `Vec<RelayEditRow>` never leaks
+    // through this consumer's call sites.
+    relay_rows: RelayEditRowsSlot,
     local_keys: Arc<Mutex<Option<nostr::Keys>>>,
     tx: Sender<ActorCommand>,
     state: Mutex<DmRuntimeState>,
@@ -76,9 +82,11 @@ impl DmRuntimeController {
     }
 
     fn read_relay_urls(&self) -> Vec<String> {
+        // PR-I: typed slot — iterate via `as_slice()` so we never touch
+        // the inner `Vec<RelayEditRow>` directly.
         self.relay_rows
             .lock()
-            .map(|rows| read_eligible_relay_urls(&rows))
+            .map(|rows| read_eligible_relay_urls(rows.as_slice()))
             .unwrap_or_default()
     }
 

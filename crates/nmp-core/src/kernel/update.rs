@@ -320,6 +320,41 @@ impl Kernel {
             "active_account".to_string(),
             serde_json::to_value(active_account).unwrap_or(serde_json::Value::Null),
         );
+        // PR-I — typed relay projections. The kernel-owned `relay_edit_rows`
+        // field is the source of truth; the `indexer_set` and `write_set`
+        // derivations are role-filtered views over the same rows. Three
+        // projection keys ride alongside `accounts` / `active_account`
+        // because they are all kernel-owned identity-shaped projections,
+        // not host-registered closures.
+        //
+        // - `relays.edit_rows` — the verbatim user-editable rows (mirrors
+        //   the existing `relay_edit_rows` projection, but namespaced under
+        //   the `relays.*` family so future relay-shaped projections cluster
+        //   under one prefix).
+        // - `relays.indexer_set` — role-filtered `["indexer"]` URLs the
+        //   publish resolver fans discovery kinds out to.
+        // - `relays.write_set` — role-filtered `["write"]` URLs the local
+        //   write-relay fallback uses before the user's kind:10002 round-
+        //   trips.
+        //
+        // A serialization failure degrades each key to the empty-array
+        // shape so the keys are always present, matching the publish-cluster
+        // contract above (D6: never a panic at the snapshot boundary).
+        projections.insert(
+            "relays.edit_rows".to_string(),
+            serde_json::to_value(self.relay_edit_rows_snapshot())
+                .unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
+        );
+        projections.insert(
+            "relays.indexer_set".to_string(),
+            serde_json::to_value(self.indexer_relays())
+                .unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
+        );
+        projections.insert(
+            "relays.write_set".to_string(),
+            serde_json::to_value(self.write_relays())
+                .unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
+        );
         // D0: views cluster. `profile` is the active-account profile card;
         // `timeline` is the visible item list (renamed from the generic
         // typed-field name `items`); `author_view` / `thread_view` are the

@@ -1,0 +1,231 @@
+//! Typed projection slots for relay-shaped actor-owned state (PR-I).
+//!
+//! Pre-PR-I three relay-shaped fact caches sat behind bare
+//! `Arc<Mutex<Vec<...>>>` slots — `Nip65OutboxResolver::indexer_relays`,
+//! `Nip65OutboxResolver::local_write_relays`, and `NmpApp::relay_edit_rows`.
+//! All three are actor-owned (the actor thread is the sole writer via
+//! `IdentityState::set_relay_edit_rows`) but the bare-`Vec` shape gave away
+//! no type-level cue that the slot's purpose was a snapshot projection.
+//!
+//! D14 (this PR): every actor-owned relay-shaped cache crosses thread
+//! boundaries through a **named** typed slot. The lint
+//! (`crates/nmp-testing/bin/doctrine-lint/rules/d14.rs`) flags any new
+//! `Arc<Mutex<Vec<...>>>` field on `NmpApp` / `Kernel` / `Actor*` structs in
+//! `crates/nmp-core/src/`. The escape hatch is to introduce a typed slot
+//! here (or wherever the slot's owner already lives) so the field's purpose
+//! is visible at the declaration site.
+//!
+//! ## What lives here
+//!
+//! - [`RelayUrls`] — newtype around `Vec<String>` for relay URL lists
+//!   (indexer set / local write set).
+//! - [`RelayEditRowList`] — newtype around `Vec<RelayEditRow>` for the
+//!   user-editable relay-row projection.
+//! - [`IndexerRelaysSlot`] / [`LocalWriteRelaysSlot`] /
+//!   [`RelayEditRowsSlot`] — `Arc<Mutex<…>>` type aliases the resolver / FFI
+//!   layer use as fields.
+//! - [`new_indexer_relays_slot`] / [`new_local_write_relays_slot`] /
+//!   [`new_relay_edit_rows_slot`] — constructors so call-sites never need to
+//!   spell `Arc::new(Mutex::new(Default::default()))` inline.
+//!
+//! ## Threading
+//!
+//! The actor thread is the **sole writer** for every slot (D4): the
+//! `IdentityState::set_relay_edit_rows` reducer takes the kernel-owned
+//! authoritative `relay_edit_rows: Vec<RelayEditRow>` source-of-truth and
+//! pushes derived URL lists into the shared slots. Readers (the publish
+//! `Nip65OutboxResolver` on the actor thread, per-app crates via
+//! `NmpApp::write_relay_urls()` on the FFI thread) take a short-lived lock
+//! and clone out. No reader ever holds the lock across a `.await` or a
+//! `send`.
+//!
+//! ## Why not a single struct?
+//!
+//! A unified `Arc<Mutex<RelayProjections>>` slot was considered. Rejected
+//! because the three readers have non-overlapping needs (the resolver wants
+//! `indexer_set` + `write_set`, FFI wants `edit_rows`) and a unified lock
+//! would force any reader to contend on every relay-state write. Three
+//! independent slots keep the lock-radius minimal — D8 (≤ 60 Hz emission /
+//! no shared-state coupling on the hot path).
+
+use std::sync::{Arc, Mutex};
+
+use serde::Serialize;
+
+use super::identity_state::RelayEditRow;
+
+/// Typed wrapper around a list of relay URLs. Used for the indexer-relay set
+/// and the local-write-relay set that the publish resolver reads on every
+/// publish.
+///
+/// `Serialize` so the kernel can append the slot contents under the
+/// `relays.indexer_set` / `relays.write_set` keys in `KernelSnapshot::projections`
+/// without an intermediate `Vec<String>` copy. `#[serde(transparent)]` so the
+/// wrapper is invisible on the wire — consumers decode the projection value
+/// as a plain JSON array of strings, exactly as the bare `Vec<String>` would
+/// have serialized pre-PR-I.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct RelayUrls(pub(crate) Vec<String>);
+
+impl RelayUrls {
+    /// Construct a fresh, empty slot value.
+    pub(crate) fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    /// Replace the slot contents in-place. Sole-writer helper — the actor
+    /// thread is the only caller (D4).
+    pub(crate) fn replace(&mut self, urls: Vec<String>) {
+        self.0 = urls;
+    }
+
+    /// Borrow the underlying list. Readers iterate this; never re-hand the
+    /// inner `Vec` across an `await` boundary.
+    pub(crate) fn as_slice(&self) -> &[String] {
+        &self.0
+    }
+}
+
+/// Typed wrapper around the user-editable relay-row projection. Mirrors the
+/// kernel's authoritative `relay_edit_rows: Vec<RelayEditRow>` field; the
+/// actor pushes a clone into the shared slot every time the kernel reducer
+/// settles a new value, so external readers (FFI, per-app crates) observe a
+/// consistent snapshot without crossing the kernel boundary.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct RelayEditRowList(pub(crate) Vec<RelayEditRow>);
+
+impl RelayEditRowList {
+    /// Construct a fresh, empty slot value.
+    pub(crate) fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    /// Replace the slot contents in-place. Sole-writer helper — the actor
+    /// thread is the only caller (D4).
+    pub(crate) fn replace(&mut self, rows: Vec<RelayEditRow>) {
+        self.0 = rows;
+    }
+
+    /// Borrow the underlying rows. Readers iterate; never re-hand the inner
+    /// `Vec` across an `await` boundary.
+    ///
+    /// Marked `pub` so per-app crates that hold a `RelayEditRowsSlot` clone
+    /// (via `NmpApp::relay_edit_rows_handle()`) can read the slot through
+    /// the named slice affordance — without it the consumer would have to
+    /// touch the inner `Vec` directly, which is exactly what the typed
+    /// wrapper is meant to hide.
+    pub fn as_slice(&self) -> &[RelayEditRow] {
+        &self.0
+    }
+}
+
+/// Shared slot for the indexer relay URL set. Cloned by the publish
+/// `Nip65OutboxResolver` so it can fan discovery-kind publishes out to the
+/// configured indexer relays.
+///
+/// `pub` (not `pub(crate)`) because `Nip65OutboxResolver::new` is part of
+/// the publish module's `pub` surface and this alias appears in its
+/// parameter list.
+pub type IndexerRelaysSlot = Arc<Mutex<RelayUrls>>;
+
+/// Shared slot for the local write-relay URL set. The publish resolver
+/// falls back to these for the active account between the time the user
+/// edits relay rows and the time the kernel:10002 round-trips from a relay.
+pub type LocalWriteRelaysSlot = Arc<Mutex<RelayUrls>>;
+
+/// Shared slot for the user-editable relay-row projection. Cloned by the
+/// FFI `NmpApp` so per-app crates (e.g. `nmp-marmot`) can read the live
+/// relay list without crossing FFI.
+///
+/// `pub` so `crate::ffi::NmpApp` can name the slot type in its field
+/// declaration (the field itself is private; only the *type alias* needs
+/// to be importable).
+pub type RelayEditRowsSlot = Arc<Mutex<RelayEditRowList>>;
+
+/// Construct a fresh, empty [`IndexerRelaysSlot`].
+pub fn new_indexer_relays_slot() -> IndexerRelaysSlot {
+    Arc::new(Mutex::new(RelayUrls::new()))
+}
+
+/// Construct a fresh, empty [`LocalWriteRelaysSlot`].
+pub fn new_local_write_relays_slot() -> LocalWriteRelaysSlot {
+    Arc::new(Mutex::new(RelayUrls::new()))
+}
+
+/// Construct a fresh, empty [`RelayEditRowsSlot`].
+pub fn new_relay_edit_rows_slot() -> RelayEditRowsSlot {
+    Arc::new(Mutex::new(RelayEditRowList::new()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn relay_urls_default_is_empty() {
+        // A fresh slot starts empty so resolver / FFI readers observe the
+        // safe "nothing configured yet" shape before the actor pushes
+        // anything.
+        let urls = RelayUrls::new();
+        assert!(urls.as_slice().is_empty());
+    }
+
+    #[test]
+    fn relay_urls_replace_overwrites_inner() {
+        // Replace is the sole-writer affordance — confirm it actually
+        // overwrites instead of merging.
+        let mut urls = RelayUrls::new();
+        urls.replace(vec!["wss://one.example".to_string()]);
+        assert_eq!(urls.as_slice(), &["wss://one.example".to_string()]);
+        urls.replace(vec!["wss://two.example".to_string()]);
+        assert_eq!(urls.as_slice(), &["wss://two.example".to_string()]);
+    }
+
+    #[test]
+    fn relay_edit_row_list_replace_overwrites_inner() {
+        // Same sole-writer semantics as `RelayUrls::replace`, but holding
+        // typed `RelayEditRow` records instead of bare URL strings.
+        // PR-I update: `RelayEditRow` is built via `::new(url, role)` —
+        // the constructor canonicalizes the role and derives `role_label`
+        // / `role_tint` (post-PR-#213 fields), so the test never names
+        // those derived fields directly.
+        let mut rows = RelayEditRowList::new();
+        rows.replace(vec![RelayEditRow::new(
+            "wss://r.example".to_string(),
+            "read".to_string(),
+        )]);
+        assert_eq!(rows.as_slice().len(), 1);
+        rows.replace(Vec::new());
+        assert!(rows.as_slice().is_empty());
+    }
+
+    #[test]
+    fn slot_constructors_return_independent_handles() {
+        // Each `new_*_slot` must return a fresh `Arc<Mutex<…>>` so two
+        // constructors never alias each other's contents.
+        let a = new_indexer_relays_slot();
+        let b = new_indexer_relays_slot();
+        assert!(!Arc::ptr_eq(&a, &b));
+    }
+
+    #[test]
+    fn relay_urls_serialize_round_trips_through_projection_value() {
+        // The slot is serialized into `KernelSnapshot::projections` as a JSON
+        // array of strings. The newtype around `Vec<String>` must serialize
+        // identically to the underlying `Vec<String>` so consumers can decode
+        // the projection key as a plain string list.
+        let urls = RelayUrls(vec![
+            "wss://a.example".to_string(),
+            "wss://b.example".to_string(),
+        ]);
+        let value = serde_json::to_value(&urls).expect("serializes");
+        let plain = serde_json::to_value(vec![
+            "wss://a.example".to_string(),
+            "wss://b.example".to_string(),
+        ])
+        .expect("serializes");
+        assert_eq!(value, plain);
+    }
+}

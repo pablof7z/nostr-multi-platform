@@ -74,6 +74,11 @@ mod publish_terminal_status_tests;
 // derivations the three iOS diagnostics views used to do client-side. See
 // the module doc for the bible references.
 mod relay_diagnostics;
+// PR-I — typed slot wrappers for relay-shaped actor-owned caches. The bare
+// `Arc<Mutex<Vec<String>>>` / `Arc<Mutex<Vec<RelayEditRow>>>` slots from the
+// publish resolver and `NmpApp` move behind named types here so D14 (the
+// lint added in this PR) can flag future regressions on the field shape.
+mod relay_projection;
 mod raw_event_observer;
 #[cfg(test)]
 mod raw_event_observer_tests;
@@ -170,6 +175,19 @@ pub use identity_state::{read_eligible_relay_urls, RelayEditRow};
 // Host-extensible snapshot output — reachable from the `ffi` module for the
 // `nmp_app_register_snapshot_projection` C-ABI entry point.
 pub(crate) use snapshot_registry::{new_snapshot_projection_slot, SnapshotProjectionSlot};
+// PR-I — typed slot wrappers + constructors. `RelayEditRowsSlot` /
+// `RelayEditRowList` are re-exported below at `pub use` because per-app
+// crates (e.g. `nmp-app-chirp`) consume the slot via
+// `NmpApp::relay_edit_rows_handle()` and iterate via `guard.as_slice()`;
+// without the public re-export Chirp could not name the returned slot type.
+// `RelayUrls` and the URL-slot aliases stay kernel-internal: no external
+// caller names them directly (the resolver constructs slots via the
+// `new_*_slot()` helpers and reads through `as_slice()`).
+pub use relay_projection::{RelayEditRowList, RelayEditRowsSlot};
+pub(crate) use relay_projection::{
+    new_indexer_relays_slot, new_local_write_relays_slot, new_relay_edit_rows_slot,
+    IndexerRelaysSlot, LocalWriteRelaysSlot,
+};
 pub(crate) use lifecycle::{LifecyclePhase, LifecycleTransition};
 // D0: NIP-47 NWC is an app noun. `WalletStatus` no longer lives in the kernel
 // — it moved to the wallet command runtime (`actor::commands::wallet`) and is
@@ -472,15 +490,25 @@ pub(crate) struct Kernel {
     /// current user-configured write relays without
     /// importing kernel internals. Synced by `set_relay_edit_rows` in
     /// `identity_state.rs`.
-    relay_edit_rows_handle: Option<Arc<Mutex<Vec<RelayEditRow>>>>,
+    ///
+    /// PR-I: the slot type is now [`RelayEditRowsSlot`]
+    /// (`Arc<Mutex<RelayEditRowList>>`) — D14 forbids new bare
+    /// `Arc<Mutex<Vec<…>>>` fields on `Kernel` and the typed wrapper makes
+    /// the slot's purpose visible at the declaration site.
+    relay_edit_rows_handle: Option<RelayEditRowsSlot>,
     /// Shared list of indexer relay URLs, kept in sync with `relay_edit_rows`
     /// by `set_relay_edit_rows`. The `Nip65OutboxResolver` holds a clone of
     /// this Arc and reads it on every discovery-kind publish.
-    indexer_relays_handle: Arc<Mutex<Vec<String>>>,
+    ///
+    /// PR-I: typed slot ([`IndexerRelaysSlot`]) so the bare-`Vec` shape
+    /// disappears from the field declaration (D14).
+    indexer_relays_handle: IndexerRelaysSlot,
     /// Shared list of local write relays for the active account. This bridges
     /// onboarding relay rows into publish routing before the user's freshly
     /// published kind:10002 has round-tripped from a relay.
-    local_write_relays_handle: Arc<Mutex<Vec<String>>>,
+    ///
+    /// PR-I: typed slot ([`LocalWriteRelaysSlot`]) — see relay_projection.rs.
+    local_write_relays_handle: LocalWriteRelaysSlot,
     /// Shared active-account pubkey used by the publish resolver to scope the
     /// local relay-row fallback to the viewer's own events only.
     active_account_handle: Arc<Mutex<Option<String>>>,
@@ -655,8 +683,10 @@ impl Kernel {
             .unwrap_or_else(|| resolve_publish_store(storage_path, &store));
         let local_profile_intents = load_profile_intents(&publish_store);
         let publish_dispatcher = Arc::new(crate::publish::QueueDispatcher::new());
-        let indexer_relays_handle: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-        let local_write_relays_handle: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        // PR-I — typed-slot constructors so the slot's purpose is visible at
+        // the call site and D14 does not fire on the field declaration.
+        let indexer_relays_handle: IndexerRelaysSlot = new_indexer_relays_slot();
+        let local_write_relays_handle: LocalWriteRelaysSlot = new_local_write_relays_slot();
         let active_account_handle: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let publish_engine = publish_engine::build_engine(
             Arc::clone(&store),
@@ -1019,9 +1049,12 @@ impl Kernel {
         self.auth_signers.remove(&RelayRole::Indexer);
     }
 
-    /// Bind the shared `Arc<Mutex<Vec<RelayEditRow>>>` handle so the FFI
-    /// layer can read relay-edit rows without reaching into kernel internals.
-    pub(crate) fn set_relay_edit_rows_handle(&mut self, handle: Arc<Mutex<Vec<RelayEditRow>>>) {
+    /// Bind the shared relay-edit rows slot so the FFI layer can read
+    /// relay-edit rows without reaching into kernel internals.
+    ///
+    /// PR-I: the slot is now a typed [`RelayEditRowsSlot`]
+    /// (`Arc<Mutex<RelayEditRowList>>`).
+    pub(crate) fn set_relay_edit_rows_handle(&mut self, handle: RelayEditRowsSlot) {
         self.relay_edit_rows_handle = Some(handle);
     }
 
@@ -1030,7 +1063,7 @@ impl Kernel {
     /// across kernel reinstantiation.
     pub(crate) fn take_relay_edit_rows_handle_for_reset(
         &mut self,
-    ) -> Option<Arc<Mutex<Vec<RelayEditRow>>>> {
+    ) -> Option<RelayEditRowsSlot> {
         self.relay_edit_rows_handle.take()
     }
 
