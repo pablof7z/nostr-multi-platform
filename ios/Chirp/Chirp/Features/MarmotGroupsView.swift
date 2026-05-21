@@ -32,6 +32,7 @@ struct GroupsView: View {
             .navigationTitle("Groups")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
+                discoverButton
                 createButton
             }
             .sheet(isPresented: $showCreate) {
@@ -120,6 +121,27 @@ struct GroupsView: View {
             .buttonStyle(.borderless)
             .disabled(!store.isRegistered)
             .accessibilityLabel("Create group")
+        }
+    }
+
+    // ── Toolbar: discover ────────────────────────────────────────────────
+    //
+    // Pushes `JoinGroupView` so the user can enter a NIP-29 relay URL and
+    // see the public groups that relay hosts. Separate from the "+" button
+    // (which creates a new MLS-encrypted group) — finding an existing
+    // public group is a distinct gesture.
+
+    @ToolbarContentBuilder
+    private var discoverButton: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarTrailing) {
+            NavigationLink {
+                JoinGroupView(store: model.discoveredGroups)
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 17, weight: .semibold))
+            }
+            .accessibilityLabel("Find public groups")
+            .accessibilityIdentifier("groups-discover-button")
         }
     }
 }

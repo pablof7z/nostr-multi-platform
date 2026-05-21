@@ -117,6 +117,15 @@ final class KernelModel: ObservableObject {
     /// active-pubkey slot is updated.
     private(set) lazy var followList = FollowListStore(kernel: kernel)
 
+    /// NIP-29 group-discovery + join mirror — the read side of
+    /// `JoinGroupView`. Unlike `groupChat` / `dmInbox` this is lazy AND
+    /// relay-keyed: registration deferred until the user enters a relay
+    /// URL and taps "Search" (the store's `searchGroups` is the trigger).
+    /// Until then the snapshot key is unwired and the store stays empty.
+    /// Touching it every tick keeps `apply` symmetric with the other
+    /// projection mirrors.
+    private(set) lazy var discoveredGroups = DiscoveredGroupsStore(kernel: kernel)
+
     /// The NIP-29 group the group-chat screen reads and posts to. A single
     /// fixed room for the first-consumer proof; a real multi-group app
     /// would thread a chosen `GroupId` through navigation.
@@ -408,6 +417,14 @@ final class KernelModel: ObservableObject {
         // The active-account pubkey is forwarded so the store can re-invoke
         // the FFI to update the projection's active-pubkey slot after sign-in.
         followList.apply(snapshot: update.followList, activePubkey: update.activeAccount)
+
+        // NIP-29 group-discovery projection mirror. Push every tick so the
+        // store tracks `projections["nip29.discovered_groups"]`. The store
+        // is unwired until the user enters a relay and taps Search
+        // (`searchGroups`); the snapshot key is `nil` until then, and the
+        // store ignores stale snapshots from a previously-registered
+        // relay during a switch.
+        discoveredGroups.apply(snapshot: update.discoveredGroups)
 
         // NIP-17 § 2 — auto-publish kind:10050 when relay set / account changes.
         if activeAccountChanged { lastPublishedDmRelaySet = nil }

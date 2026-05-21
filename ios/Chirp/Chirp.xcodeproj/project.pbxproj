@@ -7,12 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0248D621EC2123D7B7E13C0A /* GroupDiscoveryBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7D480A8BF704C4F5C1F80AE /* GroupDiscoveryBridge.swift */; };
 		06F6D20F46F0A4211F7B63D5 /* OnboardingView+Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3840302F0BFF2818BFE295C6 /* OnboardingView+Components.swift */; };
-		A587215ADAEC4A71BEC92D4E /* NotificationsView+OutboxRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8BD15ED21274FDC958A0DAC /* NotificationsView+OutboxRow.swift */; };
 		072991FD6319A37D692C27E4 /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 985298ED1B842E892A6FA759 /* ProfileView.swift */; };
 		0D422FF23569CEEFFC4AB10E /* HomeFeedView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F03417D370984DB9AC4212B /* HomeFeedView.swift */; };
 		159A0AB673722908A2785D5C /* ComposeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C239DE349111247765A86A53 /* ComposeView.swift */; };
 		192CF49D1BB3B5A4799329E4 /* ChirpApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E58C0EC2EAF4941E587B9B94 /* ChirpApp.swift */; };
+		1A45788CB7CE5807CC73537A /* JoinGroupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4B102E18AA406E26FBF1957 /* JoinGroupView.swift */; };
 		1F389E8F5C1BA2EC974ED543 /* HttpCapability.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1DC0A1A9CFA48052B46448B /* HttpCapability.swift */; };
 		2355CCF12E5CA31216977162 /* SmokeScenariosTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31B7447F6D5C5E1571BF6A03 /* SmokeScenariosTests.swift */; };
 		28DDB51A3E188547CD78D215 /* ChirpTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = C40C90EE715FD709B3C9BDCC /* ChirpTheme.swift */; };
@@ -26,6 +27,7 @@
 		624A97B1D2CACA922E697753 /* NoteContentRenderingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 672D6715F6F793C4B032B8D0 /* NoteContentRenderingTests.swift */; };
 		62D73DD96F75F8C35AE03566 /* ChirpCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = E62A6E7134CA2EED2577DA50 /* ChirpCapabilities.swift */; };
 		657C5ADC60FA028341CF8BD0 /* DmListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AFCA4A8404400622F483ABF9 /* DmListView.swift */; };
+		68007D368B2D3F09A8EF77D0 /* NotificationsView+OutboxRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5D0C52F394D2EB8C433FE58 /* NotificationsView+OutboxRow.swift */; };
 		683374BB2BBCDF65807EEFC8 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C88FE40DE954EED68068786 /* DiagnosticsView.swift */; };
 		68379E6C144BFF7F0D9395CE /* KernelBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B303905AEF1833128E7C6BC /* KernelBridge.swift */; };
 		6BE96583DDB7BC3A89DA1D79 /* ModularTimelineBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE028B856FE7D32538CE605 /* ModularTimelineBridge.swift */; };
@@ -94,7 +96,6 @@
 		31F55FC6A139DA43D434DBF9 /* RootShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootShell.swift; sourceTree = "<group>"; };
 		3808C5C6482C44109C442925 /* KernelModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KernelModel.swift; sourceTree = "<group>"; };
 		3840302F0BFF2818BFE295C6 /* OnboardingView+Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OnboardingView+Components.swift"; sourceTree = "<group>"; };
-		F8BD15ED21274FDC958A0DAC /* NotificationsView+OutboxRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NotificationsView+OutboxRow.swift"; sourceTree = "<group>"; };
 		4F03417D370984DB9AC4212B /* HomeFeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFeedView.swift; sourceTree = "<group>"; };
 		50F5B25557B2147731A5F75C /* KeychainCapability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainCapability.swift; sourceTree = "<group>"; };
 		5EB771E148A6FCB120C2ADCF /* AccountAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountAvatar.swift; sourceTree = "<group>"; };
@@ -111,6 +112,8 @@
 		985298ED1B842E892A6FA759 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		9CD04CA5EB5E534F616BC342 /* RelayDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayDetailView.swift; sourceTree = "<group>"; };
 		9E09352C7C1CC9D7C5BB6156 /* InvitesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InvitesView.swift; sourceTree = "<group>"; };
+		A5D0C52F394D2EB8C433FE58 /* NotificationsView+OutboxRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NotificationsView+OutboxRow.swift"; sourceTree = "<group>"; };
+		A7D480A8BF704C4F5C1F80AE /* GroupDiscoveryBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupDiscoveryBridge.swift; sourceTree = "<group>"; };
 		A8C41D2993559ABD9B5468DE /* MarmotGroupChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarmotGroupChatView.swift; sourceTree = "<group>"; };
 		ABF5AA8E2264637D1CA3BCA4 /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
 		AFCA4A8404400622F483ABF9 /* DmListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DmListView.swift; sourceTree = "<group>"; };
@@ -132,6 +135,7 @@
 		E62A6E7134CA2EED2577DA50 /* ChirpCapabilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChirpCapabilities.swift; sourceTree = "<group>"; };
 		F084A0E109F23A641626E2F9 /* MarmotInviteSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarmotInviteSheet.swift; sourceTree = "<group>"; };
 		F3554BAD41A86827FFAF1D06 /* ChirpUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = ChirpUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		F4B102E18AA406E26FBF1957 /* JoinGroupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JoinGroupView.swift; sourceTree = "<group>"; };
 		F4FC09F936C21E0D65E03D7B /* GroupChatBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupChatBridge.swift; sourceTree = "<group>"; };
 		FDF6A637F032F16E09D2F6AC /* DmBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DmBridge.swift; sourceTree = "<group>"; };
 		79C93CBA91C746EC9150E62D /* FollowListBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FollowListBridge.swift; sourceTree = "<group>"; };
@@ -182,11 +186,12 @@
 				22815F76AA03DAE183DBA656 /* GroupChatView.swift */,
 				4F03417D370984DB9AC4212B /* HomeFeedView.swift */,
 				9E09352C7C1CC9D7C5BB6156 /* InvitesView.swift */,
+				F4B102E18AA406E26FBF1957 /* JoinGroupView.swift */,
 				A8C41D2993559ABD9B5468DE /* MarmotGroupChatView.swift */,
 				0F7C6ADBA250165B0FFE7338 /* MarmotGroupsView.swift */,
 				F084A0E109F23A641626E2F9 /* MarmotInviteSheet.swift */,
 				C79DFA56568C01E3AE76955E /* NotificationsView.swift */,
-				F8BD15ED21274FDC958A0DAC /* NotificationsView+OutboxRow.swift */,
+				A5D0C52F394D2EB8C433FE58 /* NotificationsView+OutboxRow.swift */,
 				D32D744B5446C909E7AEEB8F /* OnboardingView.swift */,
 				3840302F0BFF2818BFE295C6 /* OnboardingView+Components.swift */,
 				23D004DA6D1AFB36F6FBBAE0 /* OnboardingView+NIP46.swift */,
@@ -261,6 +266,7 @@
 				FDF6A637F032F16E09D2F6AC /* DmBridge.swift */,
 				79C93CBA91C746EC9150E62D /* FollowListBridge.swift */,
 				F4FC09F936C21E0D65E03D7B /* GroupChatBridge.swift */,
+				A7D480A8BF704C4F5C1F80AE /* GroupDiscoveryBridge.swift */,
 				1B303905AEF1833128E7C6BC /* KernelBridge.swift */,
 				3808C5C6482C44109C442925 /* KernelModel.swift */,
 				D0F076F49C2C0FD895EB8D82 /* MarmotBridge.swift */,
@@ -420,9 +426,11 @@
 				657C5ADC60FA028341CF8BD0 /* DmListView.swift in Sources */,
 				5F05576A5E81E79E0B4C9DE6 /* GroupChatBridge.swift in Sources */,
 				EEDE116FC91062BBFA1DA249 /* GroupChatView.swift in Sources */,
+				0248D621EC2123D7B7E13C0A /* GroupDiscoveryBridge.swift in Sources */,
 				0D422FF23569CEEFFC4AB10E /* HomeFeedView.swift in Sources */,
 				1F389E8F5C1BA2EC974ED543 /* HttpCapability.swift in Sources */,
 				D81055E50F7F365F57F3FD35 /* InvitesView.swift in Sources */,
+				1A45788CB7CE5807CC73537A /* JoinGroupView.swift in Sources */,
 				68379E6C144BFF7F0D9395CE /* KernelBridge.swift in Sources */,
 				D93F87FAB4BDD5BB307789C0 /* KernelModel.swift in Sources */,
 				998745C91A2392EBF235E258 /* KeychainCapability.swift in Sources */,
@@ -435,8 +443,8 @@
 				EADA12AFFA8D08461F19DFA7 /* NoteContentView.swift in Sources */,
 				5AD3263D1EAB352DEDE89C80 /* NoteEntityViews.swift in Sources */,
 				E6AF81962D62F30FDB2F4F35 /* NoteRowView.swift in Sources */,
+				68007D368B2D3F09A8EF77D0 /* NotificationsView+OutboxRow.swift in Sources */,
 				BA5D10F42934B36256492BCC /* NotificationsView.swift in Sources */,
-				A587215ADAEC4A71BEC92D4E /* NotificationsView+OutboxRow.swift in Sources */,
 				06F6D20F46F0A4211F7B63D5 /* OnboardingView+Components.swift in Sources */,
 				8EF0FEE876C6ADF593CE2BDB /* OnboardingView+NIP46.swift in Sources */,
 				82CC2009FF54F2B7DAD35B06 /* OnboardingView.swift in Sources */,

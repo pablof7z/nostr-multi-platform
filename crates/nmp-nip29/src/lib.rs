@@ -45,7 +45,10 @@ pub mod projection;
 
 pub use group_id::GroupId;
 pub use kinds::{event_is_group_event, group_id_from_tags, GroupEventClass, KindClass};
-pub use projection::{GroupChatMessage, GroupChatProjection, GroupChatSnapshot};
+pub use projection::{
+    DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot, GroupChatMessage,
+    GroupChatProjection, GroupChatSnapshot,
+};
 
 #[cfg(test)]
 mod tests;

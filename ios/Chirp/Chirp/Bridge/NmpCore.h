@@ -317,6 +317,37 @@ void nmp_app_chirp_unregister(void *handle);
 //     duration of this call.
 void nmp_app_chirp_register_group_chat(void *app, const char *group_id_json);
 
+// ── NIP-29 group-discovery read projection ───────────────────────────────
+//
+// Wires a single host relay's NIP-29 group catalog (kinds 39000/39001/39002)
+// into the kernel. Pure consumption — the read side of a group-discovery /
+// join screen.
+//
+//   • `host_relay_url` is the relay to discover groups on (`wss://…`).
+//     This projection is per-relay scoped; two relays with the same
+//     `local_id` are two different groups (NIP-29 identity is the pair).
+//   • Returns void — registers no handle and exports no companion
+//     `unregister`. Discovered groups surface on every kernel snapshot
+//     tick under the `projections` key `"nip29.discovered_groups"`,
+//     shaped `{ "host_relay_url": "wss://…", "groups": [
+//     { group_id, host_relay_url, name?, picture?, about?, member_count,
+//       admin_count, public, open } ] }` ordered alphabetically by
+//     `group_id`.
+//   • The companion publish side is the `nmp.nip29.discover` action — its
+//     executor pushes the kind:39000/39001/39002 LogicalInterest so the
+//     kernel opens a REQ. This FFI symbol registers the *read* side; both
+//     halves are needed for events to surface (registration alone is
+//     inert).
+//   • Single-screen scope: calling it twice overwrites the snapshot key
+//     and leaks the older event observer for the life of `app` (a small,
+//     bounded leak). A multi-relay discovery host would need a
+//     handle-returning variant.
+//   • Fire-and-forget (D6): a null `app`, null / invalid-UTF-8
+//     `host_relay_url`, or an empty string all degrade to a silent no-op.
+//   • `app` MUST outlive the registration; it is borrowed only for the
+//     duration of this call.
+void nmp_app_chirp_register_group_discovery(void *app, const char *host_relay_url);
+
 // ── NIP-17 private direct-message inbox read projection ───────────────────
 //
 // Wires the NIP-17 DM inbox read model into the kernel — the receive side of

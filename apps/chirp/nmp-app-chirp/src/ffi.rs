@@ -41,11 +41,12 @@ use nmp_core::{
     ActorCommand, KernelEventObserver, KernelEventObserverId, NmpApp, RawEventObserver,
 };
 use nmp_nip29::group_id::GroupId;
-use nmp_nip29::projection::GroupChatProjection;
+use nmp_nip29::projection::{DiscoveredGroupsProjection, GroupChatProjection};
 use nmp_nip29::action::{
-    comment_in_group_command, post_chat_message_command, react_in_group_command,
-    CommentInGroupAction, CommentInGroupInput, PostChatMessageAction, PostChatMessageInput,
-    ReactInGroupAction, ReactInGroupInput,
+    comment_in_group_command, discover_groups_command, join_group_command,
+    post_chat_message_command, react_in_group_command, CommentInGroupAction, CommentInGroupInput,
+    DiscoverGroupsAction, DiscoverGroupsInput, JoinGroupAction, JoinGroupInput,
+    PostChatMessageAction, PostChatMessageInput, ReactInGroupAction, ReactInGroupInput,
 };
 use nmp_nip17::{
     giftwrap_inbox_interest, publish_dm_relay_list_command, send_dm_command, DmInboxProjection,
@@ -294,6 +295,78 @@ pub extern "C" fn nmp_app_chirp_register_group_chat(
     // Output side: the no-argument snapshot read runs on the actor thread
     // inside each snapshot tick. The `move` consumes this last `Arc`.
     app_ref.register_snapshot_projection("nip29.group_chat", move || projection.snapshot_json());
+}
+
+/// Wire a NIP-29 [`DiscoveredGroupsProjection`] for one host relay into `app`.
+///
+/// This is the **read side** of the NIP-29 group-discovery flow. It
+/// constructs a projection scoped to the supplied relay URL, plugs it in
+/// as a [`KernelEventObserver`] (ingest), and registers its
+/// [`DiscoveredGroupsProjection::snapshot_json`] read under the snapshot key
+/// `"nip29.discovered_groups"` (output). Kind:39000/39001/39002 events for
+/// that host relay then surface on every snapshot tick under that key.
+///
+/// The companion publish side is the `nmp.nip29.discover` action — its
+/// executor pushes a relay-pinned [`LogicalInterest`] (kinds
+/// 39000/39001/39002) so the kernel opens a REQ and metadata events
+/// actually arrive. The projection registered here is *inert* without that
+/// interest. A host shell drives both halves from one user gesture
+/// ("discover groups on this relay"): first this FFI registers the read
+/// projection, then `nmp_app_dispatch_action("nmp.nip29.discover", ...)`
+/// pushes the interest.
+///
+/// `host_relay_url` is a plain C string (`wss://groups.example.com`). The
+/// Rust side accepts it verbatim — same canonicalisation rules as
+/// `LogicalInterest::relay_pin`.
+///
+/// D6 — fire-and-forget. A null `app`, a null or non-UTF-8
+/// `host_relay_url`, or a poisoned observer slot all degrade to a silent
+/// return — nothing is registered and no error crosses the FFI.
+///
+/// SCOPE — single-screen, no unregister. Like
+/// [`nmp_app_chirp_register_group_chat`], this returns no handle and has no
+/// companion unregister. Calling it twice overwrites the
+/// `"nip29.discovered_groups"` snapshot key with the newer projection and
+/// leaves the older event observer registered for the life of the `app`
+/// (a small, bounded leak). The Swift `JoinGroupView` drives one relay at
+/// a time, so this is acceptable for v1; a multi-relay discovery screen
+/// would need a handle-returning variant.
+///
+/// `app` MUST outlive the registration. It is only borrowed for the
+/// duration of this call; the projection it registers is owned by the
+/// kernel.
+#[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn nmp_app_chirp_register_group_discovery(
+    app: *mut NmpApp,
+    host_relay_url: *const c_char,
+) {
+    if app.is_null() {
+        return;
+    }
+    // SAFETY: caller guarantees `app` is a valid pointer from `nmp_app_new`,
+    // live for the duration of this call. The borrow is not held past return.
+    let app_ref = unsafe { &*app };
+
+    // Reject silently on a missing or malformed relay URL — D6.
+    let Some(relay_url) = c_string_opt(host_relay_url).filter(|s| !s.is_empty()) else {
+        return;
+    };
+
+    let projection = Arc::new(DiscoveredGroupsProjection::new(relay_url));
+    let observer_id = app_ref
+        .register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
+    if observer_id.0 == 0 {
+        // Observer registration failed (poisoned slot). Don't register a
+        // snapshot closure for a projection that will never see events.
+        return;
+    }
+
+    // Output side: the no-argument snapshot read runs on the actor thread
+    // inside each snapshot tick. The `move` consumes this last `Arc`.
+    app_ref.register_snapshot_projection("nip29.discovered_groups", move || {
+        projection.snapshot_json()
+    });
 }
 
 /// Wire a NIP-17 [`DmInboxProjection`] for the local account into `app`.
@@ -637,17 +710,27 @@ fn register_chirp_actions(app: &mut NmpApp) {
 ///
 /// Namespaces come from each `<Action>::NAMESPACE` constant — the single
 /// source of truth: `nmp.nip29.post_chat_message`, `nmp.nip29.react_in_group`,
-/// `nmp.nip29.comment_in_group`. The shared [`wire_action!`] macro ensures
-/// validator and executor are always registered against the same constant,
-/// preventing namespace mismatch.
+/// `nmp.nip29.comment_in_group`, `nmp.nip29.discover`, `nmp.nip29.join`. The
+/// shared [`wire_action!`] macro ensures validator and executor are always
+/// registered against the same constant, preventing namespace mismatch.
 ///
-/// SCOPE: NIP-29 ships only its relay-group chat surface in v1 — the admin /
-/// membership / artifact / discussion / share executors were deleted (no
-/// group-administration UI is planned; Marmot MLS covers private groups).
+/// SCOPE: NIP-29 v1 ships chat (3 actions), discovery, and join. The admin /
+/// membership (9000-9009) and artifact / discussion executors are deliberately
+/// out of scope — Marmot MLS covers private groups; group administration UI
+/// is not planned for this milestone.
+///
+/// `nmp.nip29.discover` is structurally different from the four publish-side
+/// actions: it returns [`ActorCommand::PushInterest`] (subscribe to the
+/// host relay's kind:39000/39001/39002 catalog), not
+/// `PublishUnsignedEventToRelays`. The companion read-side is
+/// [`nmp_app_chirp_register_group_discovery`] below — a
+/// [`DiscoveredGroupsProjection`] scoped to the same relay.
 fn register_nip29_actions(app: &mut NmpApp) {
     wire_action!(app, PostChatMessageAction, PostChatMessageInput, post_chat_message_command);
     wire_action!(app, ReactInGroupAction, ReactInGroupInput, react_in_group_command);
     wire_action!(app, CommentInGroupAction, CommentInGroupInput, comment_in_group_command);
+    wire_action!(app, DiscoverGroupsAction, DiscoverGroupsInput, discover_groups_command);
+    wire_action!(app, JoinGroupAction, JoinGroupInput, join_group_command);
 }
 
 /// Register the NIP-17 direct-message `ActionModule` (`nmp.nip17.send`) against
@@ -935,6 +1018,182 @@ mod tests {
         }
 
         nmp_app_chirp_unregister(handle);
+        nmp_app_free(app);
+    }
+
+    /// THE DISCOVERY DISPATCH PROOF: `nmp.nip29.discover` is reachable through
+    /// the generic `dispatch_action` path with a well-formed body — the
+    /// validator + executor land a 32-hex `correlation_id`. The executor
+    /// returns an [`ActorCommand::PushInterest`] (not a publish command),
+    /// proving the seam supports subscribe-side actions, not just publish-side.
+    #[test]
+    fn nip29_discover_dispatches_through_action_registry_and_emits_push_interest() {
+        let app = nmp_app_new();
+        let handle = nmp_app_chirp_register(app, std::ptr::null());
+        assert!(!handle.is_null());
+
+        // Well-formed: a `wss://` host relay URL. The executor pushes a
+        // host-pinned LogicalInterest scoped to that relay.
+        let body = r#"{"relay_url":"wss://groups.example.com"}"#;
+        let parsed = dispatch(app, DiscoverGroupsAction::NAMESPACE, body);
+        let id = parsed
+            .get("correlation_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("expected correlation_id, got {parsed}"));
+        assert_eq!(id.len(), 32, "discover correlation id should be 32 hex");
+
+        // Empty relay_url is rejected by the typed validator (D6).
+        let parsed = dispatch(
+            app,
+            DiscoverGroupsAction::NAMESPACE,
+            r#"{"relay_url":""}"#,
+        );
+        assert!(
+            parsed.get("error").is_some(),
+            "empty relay_url must be rejected: {parsed}"
+        );
+
+        // Non-websocket scheme is rejected by the typed validator (D6).
+        let parsed = dispatch(
+            app,
+            DiscoverGroupsAction::NAMESPACE,
+            r#"{"relay_url":"https://groups.example.com"}"#,
+        );
+        assert!(
+            parsed.get("error").is_some(),
+            "non-wss relay_url must be rejected: {parsed}"
+        );
+
+        nmp_app_chirp_unregister(handle);
+        nmp_app_free(app);
+    }
+
+    /// THE DISCOVERY EXECUTOR PROOF: the `nmp.nip29.discover` executor maps
+    /// a validated `DiscoverGroupsInput` to a concrete
+    /// [`ActorCommand::PushInterest`] pinned to the supplied relay — the
+    /// subscribe-side seam end-to-end.
+    #[test]
+    fn nip29_discover_executor_emits_host_pinned_push_interest_command() {
+        let body = r#"{"relay_url":"wss://groups.example.com"}"#;
+        let cmd = discover_groups_command(body).expect("well-formed discover body");
+
+        match cmd {
+            ActorCommand::PushInterest(interest) => {
+                // Pinned to the relay — Case E (the third routing lane).
+                assert_eq!(
+                    interest.shape.relay_pin.as_deref(),
+                    Some("wss://groups.example.com")
+                );
+                // Three metadata kinds, no `d` tag filter (discovery is
+                // per-relay, not per-group).
+                for k in [39000_u32, 39001, 39002] {
+                    assert!(
+                        interest.shape.kinds.contains(&k),
+                        "discover interest must request kind {k}"
+                    );
+                }
+                assert!(
+                    interest.shape.tags.get("d").is_none(),
+                    "discover must not constrain by group id"
+                );
+            }
+            other => panic!("expected PushInterest, got {other:?}"),
+        }
+    }
+
+    /// THE JOIN DISPATCH PROOF: `nmp.nip29.join` is reachable through the
+    /// generic `dispatch_action` path with a well-formed body — the validator
+    /// + executor land a 32-hex `correlation_id`. The executor returns a
+    /// [`ActorCommand::PublishUnsignedEventToRelays`] host-pinned to the
+    /// group's own relay (kind:9021), same Case-E lane as the chat actions.
+    #[test]
+    fn nip29_join_dispatches_through_action_registry() {
+        let app = nmp_app_new();
+        let handle = nmp_app_chirp_register(app, std::ptr::null());
+        assert!(!handle.is_null());
+
+        let group =
+            r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#;
+        let body = format!(r#"{{"group":{group}}}"#);
+        let parsed = dispatch(app, JoinGroupAction::NAMESPACE, &body);
+        let id = parsed
+            .get("correlation_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("expected correlation_id, got {parsed}"));
+        assert_eq!(id.len(), 32, "join correlation id should be 32 hex");
+
+        // Malformed shape (no `group`) is rejected by the typed validator.
+        let parsed = dispatch(app, JoinGroupAction::NAMESPACE, r#"{"bad":"shape"}"#);
+        assert!(
+            parsed.get("error").is_some(),
+            "join without group must be rejected: {parsed}"
+        );
+
+        // Missing host relay URL inside the group is rejected by the
+        // validator (we'd otherwise route the request through the NIP-65
+        // outbox — wrong relay).
+        let parsed = dispatch(
+            app,
+            JoinGroupAction::NAMESPACE,
+            r#"{"group":{"host_relay_url":"","local_id":"room"}}"#,
+        );
+        assert!(
+            parsed.get("error").is_some(),
+            "join with empty host_relay_url must be rejected: {parsed}"
+        );
+
+        nmp_app_chirp_unregister(handle);
+        nmp_app_free(app);
+    }
+
+    /// THE JOIN EXECUTOR PROOF: kind:9021 (`["h", local_id]`), host-pinned
+    /// to the group's relay, optional invite-code carried as `["code", _]`,
+    /// optional reason carried as the event content.
+    #[test]
+    fn nip29_join_executor_emits_kind_9021_with_host_pin() {
+        let body = r#"{"group":{"host_relay_url":"wss://groups.example.com","local_id":"room"},"invite_code":"abc","reason":"please"}"#;
+        let cmd = join_group_command(body).expect("well-formed join body");
+        match cmd {
+            ActorCommand::PublishUnsignedEventToRelays { event, relays } => {
+                assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
+                assert_eq!(event.kind, 9021);
+                assert!(event.tags.iter().any(|t| t == &vec!["h".to_string(), "room".to_string()]));
+                assert!(event.tags.iter().any(|t| t == &vec!["code".to_string(), "abc".to_string()]));
+                assert_eq!(event.content, "please");
+            }
+            other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
+        }
+    }
+
+    /// THE DISCOVERY REGISTRATION WIRING PROOF: `nmp_app_chirp_register_group_discovery`
+    /// registers a `DiscoveredGroupsProjection` against `app` for a well-formed
+    /// relay URL — it runs to completion (event-observer + snapshot-projection
+    /// registration) without panicking. The snapshot closure surfacing under
+    /// `"nip29.discovered_groups"` is proven end-to-end by the generic seam
+    /// tests in `nmp-core` and the projection's own tests in `nmp-nip29`.
+    #[test]
+    fn register_group_discovery_runs_for_well_formed_relay_url() {
+        let app = nmp_app_new();
+        let relay = CString::new("wss://groups.example.com").unwrap();
+        nmp_app_chirp_register_group_discovery(app, relay.as_ptr());
+        nmp_app_free(app);
+    }
+
+    /// D6: a null `app`, a null `host_relay_url`, an empty `host_relay_url`,
+    /// and non-UTF-8 garbage all degrade to a silent no-op — the function
+    /// must never panic across the FFI boundary.
+    #[test]
+    fn register_group_discovery_null_and_empty_input_are_silent_noops() {
+        let relay = CString::new("wss://groups.example.com").unwrap();
+        // Null app — must not dereference.
+        nmp_app_chirp_register_group_discovery(std::ptr::null_mut(), relay.as_ptr());
+
+        let app = nmp_app_new();
+        // Null host_relay_url — silent return.
+        nmp_app_chirp_register_group_discovery(app, std::ptr::null());
+        // Empty string — silent return.
+        let empty = CString::new("").unwrap();
+        nmp_app_chirp_register_group_discovery(app, empty.as_ptr());
         nmp_app_free(app);
     }
 
