@@ -67,6 +67,16 @@ final class KernelModel: ObservableObject {
     private let kernel = KernelHandle()
     private var lastLogicalInterestSummary = ""
     private var marmotRegistrationRequested = false
+    /// Last `(activeAccount, read-eligible-relay-set)` pair that was published
+    /// as a kind:10050 NIP-17 DM-relay list. Tracking the pair prevents the
+    /// snapshot-driven auto-dispatch in `apply` from re-publishing on every
+    /// tick (the pair only differs when the user actually edits relays or
+    /// switches account). `nil` until the first publish fires.
+    ///
+    /// The Rust action rejects empty input outright, so an empty
+    /// `readEligibleSet` is never published — the cache is left in its
+    /// previous state when the user clears all read-role relays.
+    private var lastPublishedDmRelaySet: (account: String, urls: Set<String>)?
 
     /// Marmot (MLS encrypted groups) projection mirror. Rust owns identity
     /// restore/persist/register policy; this store only mirrors pushed
@@ -419,12 +429,25 @@ final class KernelModel: ObservableObject {
         relayStatuses = update.relayStatuses
         // T66a projections — mirror only; never derive (D8).
         if let a = update.accounts { accounts = a }
+        let activeAccountChanged = update.activeAccount != activeAccount
         activeAccount = update.activeAccount
         if let q = update.publishQueue { publishQueue = q }
         if let outbox = update.publishOutbox { publishOutbox = outbox }
         lastErrorToast = update.lastErrorToast
         if let r = update.relayEditRows { relayEditRows = r }
         threadView = update.threadView
+
+        // NIP-17 § 2 — publish the user's kind:10050 DM-relay list whenever
+        // the read-eligible relay set changes (or the active account does).
+        // Snapshot-driven: catches account creation, identity restore, and
+        // settings-screen edits with one piece of code. The Rust action
+        // (`nmp.dm.publish_relay_list`) owns build / sign / publish.
+        if activeAccountChanged {
+            // Drop the cache so the new identity republishes its set even if
+            // the URLs happen to match the previous identity's.
+            lastPublishedDmRelaySet = nil
+        }
+        maybePublishDmRelayList()
         walletStatus = update.walletStatus
         bunkerHandshake = update.bunkerHandshake
 
@@ -470,6 +493,66 @@ final class KernelModel: ObservableObject {
 
         snapshotCount &+= 1
         lastSnapshotAt = Date()
+    }
+
+    // ── NIP-17 kind:10050 DM-relay list publish ──────────────────────────
+    //
+    // The Rust ingest cache (`nmp-core::kernel::ingest::dm_relay_list`) tells
+    // the NIP-17 send path WHERE to deliver a gift-wrap envelope, but without
+    // a symmetric *publish* of our own list every Chirp user is invisible as
+    // a DM recipient. The `nmp.dm.publish_relay_list` action closes that gap;
+    // this helper is its only iOS caller — fired snapshot-driven from
+    // `apply()` so it covers account creation, identity restore, and
+    // settings-screen relay edits with a single seam (no per-call-site hook).
+    //
+    // Thin-shell concession: per NIP-17 § 2, kind:10050 lists the user's
+    // *read*-eligible relays (their DM inbox). The kernel's
+    // `RelayEditRow.role` field is the only source of role info on the Swift
+    // side, so this helper does a minimal role-token filter mirroring the
+    // Rust `relay_roles::has_role` semantics. A future cleanup could collapse
+    // this kernel-side by exposing a `dm_relay_urls: Vec<String>` projection,
+    // letting Swift drop the role parsing entirely.
+
+    /// If the active account's read-eligible relay set has changed since the
+    /// last publish, dispatch `nmp.dm.publish_relay_list`. No-ops when:
+    ///   * No active account (nothing to sign with).
+    ///   * `relayEditRows` produced an empty read-eligible set — the Rust
+    ///     action rejects empty input (a kind:10050 with zero `relay` tags
+    ///     would clear the cache on every peer).
+    ///   * The set matches what was last published for this account.
+    private func maybePublishDmRelayList() {
+        guard let account = activeAccount, !account.isEmpty else { return }
+        let readUrls = Self.readEligibleRelayUrls(rows: relayEditRows)
+        guard !readUrls.isEmpty else { return }
+        let readSet = Set(readUrls)
+        if let last = lastPublishedDmRelaySet,
+           last.account == account,
+           last.urls == readSet
+        {
+            return
+        }
+        lastPublishedDmRelaySet = (account, readSet)
+        kernel.publishDmRelayList(relays: readUrls)
+    }
+
+    /// Return the URLs of relays whose `role` includes `read` or `both`.
+    /// Mirrors `nmp_core::actor::relay_roles::has_role` — tokens split on
+    /// `,`, `+`, or whitespace, lowercased, and `both` implies both `read`
+    /// and `write`. URLs are returned in `rows` order; the kernel already
+    /// canonicalizes them on insert so no further normalization is needed
+    /// before the FFI hand-off.
+    ///
+    /// `nonisolated` so unit tests can exercise the pure filter without
+    /// awaiting the `@MainActor` `KernelModel` isolation (the function
+    /// touches no instance state).
+    nonisolated static func readEligibleRelayUrls(rows: [RelayEditRow]) -> [String] {
+        rows.compactMap { row in
+            let tokens = row.role
+                .lowercased()
+                .split(whereSeparator: { $0 == "," || $0 == "+" || $0.isWhitespace })
+                .map(String.init)
+            return tokens.contains("read") || tokens.contains("both") ? row.url : nil
+        }
     }
 }
 
