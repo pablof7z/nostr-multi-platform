@@ -23,13 +23,17 @@
 //!   on `nostr::Keys` resolves both the encrypt and sign steps
 //!   synchronously, so `gift_wrap_with_signer` runs the whole chain on the
 //!   actor thread and returns the kind:1059 envelope immediately.
-//! - `None` for a remote account — `gift_wrap_with_signer` itself can drive
-//!   a remote chain (it spawns a per-invocation driver thread that owns the
-//!   multi-step `SignerOp::Pending` round-trips), but wiring the remote
-//!   `RemoteSignerHandle → SignerForSeal` adapter (with the substrate
-//!   `SignedEvent ↔ nostr::Event` bridge) is the Phase 2 follow-up to
-//!   ADR-0026. Until then `None` is the graceful-degrade signal: surface
-//!   a toast (D6), publish nothing, never panic.
+//! - `Some(Arc<dyn SignerForSeal>)` for a remote account — ADR-0026
+//!   Phase 2. The `RemoteSignerForSeal` adapter (`commands::
+//!   remote_signer_for_seal`) bridges the substrate `SignedEvent` ↔
+//!   `nostr::Event` shapes and routes `nip44_encrypt` + `sign` through
+//!   the active `RemoteSignerHandle`. `gift_wrap_with_signer` spawns a
+//!   per-invocation driver thread for the `SignerOp::Pending` chain so
+//!   the actor itself does not block on bunker RPCs (the actor still
+//!   waits below via `op.wait(GIFT_WRAP_TOTAL_TIMEOUT)`; the 12s budget
+//!   covers both bunker RPCs plus the in-process wrap assembly).
+//! - `None` only when no account is active, OR when the active bunker
+//!   handle returns a malformed `pubkey_hex()` (graceful-degrade).
 //!
 //! It deliberately does NOT read the `NmpApp::marmot_local_nsec` FFI field
 //! to bypass the actor: that slot is the ADR-0025 Marmot exception and must
@@ -120,6 +124,10 @@ pub(crate) fn send_gift_wrapped_dm(
     //    handle and the Phase-2 adapter is not wired yet; surface a toast
     //    and publish nothing (D6 — graceful degrade, never a panic).
     let Some(signer) = identity.active_signer_for_seal() else {
+        // `active_signer_for_seal` only returns `None` when there is no
+        // active account at all, OR when the active remote signer
+        // reported a malformed `pubkey_hex()` (RemoteSignerForSeal::new
+        // graceful-degrade path). Both surface as toasts (D6).
         let reason = match identity.active_signer_kind() {
             Some("local") => {
                 // Unreachable in practice — a local signer always produces
@@ -129,8 +137,7 @@ pub(crate) fn send_gift_wrapped_dm(
                     .to_string()
             }
             Some(other) => format!(
-                "cannot send DM: remote signer ({}) not yet supported for NIP-17 \
-                 (ADR-0026 Phase 2)",
+                "cannot send DM: remote signer ({}) reported a malformed pubkey",
                 other
             ),
             None => "cannot send DM: no active account".to_string(),
@@ -185,11 +192,15 @@ pub(crate) fn send_gift_wrapped_dm(
     //    Each call to `gift_wrap_with_signer` runs the seal+wrap chain for
     //    one envelope. On the LOCAL fast path (every `SignerOp` from a
     //    `Keys`-backed `SignerForSeal` is `Ready`), the chain completes on
-    //    the actor thread and `wait()` resolves synchronously. The Phase-2
-    //    REMOTE path returns `SignerOp::Pending` — wiring that into the
-    //    actor's existing `pending_signs` queue (so the actor never blocks
-    //    on a bunker round-trip) is the next follow-up; right now `None`
-    //    above short-circuits the remote case to a toast.
+    //    the actor thread and `wait()` resolves synchronously. On the
+    //    ADR-0026 Phase 2 REMOTE path (`RemoteSignerForSeal` adapter,
+    //    `commands::remote_signer_for_seal`), `gift_wrap_with_signer`
+    //    spawns a per-invocation driver thread for the encrypt → sign →
+    //    wrap chain and `wait()` blocks the actor for up to
+    //    `GIFT_WRAP_TOTAL_TIMEOUT` (12s). Routing this into the actor's
+    //    `pending_signs` queue (so the actor never blocks at all) is a
+    //    documented follow-up — bounded blocking is the deliberate
+    //    trade-off chosen for the substrate-thin Phase 2 landing.
     let sender_hex = sender.to_hex();
 
     // D10 fail-closed gate — resolve BOTH receivers' kind:10050 DM-inbox
@@ -241,15 +252,19 @@ pub(crate) fn send_gift_wrapped_dm(
             nostr_rumor.clone(),
             tweaked,
         );
-        // LOCAL fast path: `wait(0)` resolves a `Ready` op immediately.
-        // For the REMOTE path this `wait` would block the actor thread —
-        // but `active_signer_for_seal` returns `None` for remote accounts
-        // today, so this branch is unreachable for a Pending op. The
-        // generous timeout here (matching the per-step driver budget)
-        // is purely defensive: if a future signer impl violates the
-        // contract by returning Pending on a synchronous-looking path,
-        // we surface a toast rather than wedge.
-        let envelope = match op.wait(nmp_nip59::DRIVER_STEP_TIMEOUT) {
+        // LOCAL fast path: every `SignerOp` is `Ready`, so `wait`
+        // resolves immediately regardless of the timeout argument.
+        //
+        // REMOTE path (ADR-0026 Phase 2): `gift_wrap_with_signer` spawns
+        // a driver thread that owns both bunker RPCs (encrypt + sign);
+        // the actor blocks here on the resulting `Pending` channel for
+        // up to `GIFT_WRAP_TOTAL_TIMEOUT` (12s) — the per-step budget is
+        // `DRIVER_STEP_TIMEOUT` (5s), and the total covers both steps
+        // plus the in-process wrap assembly with 2s of headroom. Using
+        // the per-step budget instead would silently fail a real bunker
+        // mid-chain: the driver would still succeed but the actor would
+        // already have timed out and reported a misleading toast.
+        let envelope = match op.wait(nmp_nip59::GIFT_WRAP_TOTAL_TIMEOUT) {
             Ok(ev) => ev,
             Err(e) => {
                 kernel.set_last_error_toast(Some(format!(

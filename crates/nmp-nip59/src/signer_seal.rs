@@ -11,9 +11,10 @@
 //!
 //! ADR-0026 introduces a single seam over both shapes: this trait. A
 //! caller that wants to gift-wrap a rumor produces a `SignerForSeal` (from
-//! `nostr::Keys` for local, from a `Box<dyn RemoteSignerHandle>` adapter
-//! for remote) and hands it to [`gift_wrap_with_signer`]. The kind:13 seal
-//! step routes through the trait's `nip44_encrypt` + `sign` methods; the
+//! `nostr::Keys` for local, from an `Arc<dyn RemoteSignerHandle>` adapter
+//! for remote — see `nmp-core::actor::commands::remote_signer_for_seal`)
+//! and hands it to [`gift_wrap_with_signer`]. The kind:13 seal step
+//! routes through the trait's `nip44_encrypt` + `sign` methods; the
 //! kind:1059 outer wrap is always local (an ephemeral key minted in
 //! process — the unlinkability guarantee).
 //!
@@ -55,8 +56,20 @@ use crate::error::Nip59Error;
 ///
 /// Total bound on a remote chain: `2 × DRIVER_STEP_TIMEOUT` (one `nip44_
 /// encrypt`, one `sign`). The caller's outer `PendingSign` deadline
-/// should accommodate this.
+/// should accommodate this — see [`GIFT_WRAP_TOTAL_TIMEOUT`].
 pub const DRIVER_STEP_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// End-to-end budget for [`gift_wrap_with_signer`] on the remote-signer
+/// path: covers two sequential bunker RPCs ([`DRIVER_STEP_TIMEOUT`] each
+/// for `nip44_encrypt` + `sign_seal`) plus the in-process wrap assembly
+/// and channel hand-off, with 2s of headroom.
+///
+/// Callers waiting on the returned `SignerOp` MUST use this (not
+/// [`DRIVER_STEP_TIMEOUT`]) as their `wait` budget — otherwise a slow
+/// bunker that responds within the per-step bound still misses the
+/// caller's window, surfacing a misleading "timed out" toast for a send
+/// that actually succeeded mid-chain.
+pub const GIFT_WRAP_TOTAL_TIMEOUT: Duration = Duration::from_secs(12);
 
 /// Abstract signer surface for the NIP-59 seal step.
 ///
