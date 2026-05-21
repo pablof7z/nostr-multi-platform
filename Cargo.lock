@@ -3407,10 +3407,7 @@ name = "nmp-nip59"
 version = "0.1.0"
 dependencies = [
  "futures",
- "nmp-core",
  "nostr",
- "serde",
- "serde_json",
 ]
 
 [[package]]
