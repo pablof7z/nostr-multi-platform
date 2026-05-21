@@ -50,21 +50,22 @@ crates/chirp-tui/src/
 tokio::select! {
     ev  = crossterm::EventStream  => handle_terminal_event(ev),
     msg = nmp_rx                  => handle_nmp_event(msg),   // push, not poll
-    _   = tick_interval           => handle_tick(),           // 30Hz render clock
+    _   = render_tick             => handle_render_tick(),    // animation cadence only
     _   = shutdown                => break,
 }
 ```
 
 `handle_nmp_event` reads the latest snapshot via `chirp_snapshot()` and diffs against
-previous state. The 30Hz tick drives animations only; data arrives event-driven via
+previous state. The render tick must never poll app state, inspect relay state, or drain
+channels; it only advances already-known animation frames. All data changes arrive via
 `nmp_app_set_update_callback()` → bounded mpsc (capacity 64).
 
 ### 2.4 Profile resolver
 
-Separate tokio task. Receives pubkeys from a channel, queries the NMP profile cache via
-`nmp_app_open_author` + snapshot tick, returns `(display_name, picture_url, nip05, color)`
-to a 512-entry LRU. Colors: `djb2(npub_bytes) mod 14` → semantic 14-slot palette
-(excludes white/black). Color is stable across display-name renames (hashed on npub, not name).
+Separate tokio task. Receives pubkeys from a channel, requests profile opening through NMP,
+and updates the 512-entry LRU only after the pushed snapshot contains profile data. Colors:
+`djb2(npub_bytes) mod 14` → semantic 14-slot palette (excludes white/black). Color is
+stable across display-name renames because it is hashed on npub, not name.
 
 ### 2.5 Image pipeline
 
@@ -79,26 +80,11 @@ behind `IsTerminal` check so CI never deadlocks.
 
 ## 3. Layout
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│ chirp  [home] [mentions] [dms] [groups]  ●damus ●primal ○blastr  ⚡  │  ← title bar
-├─────────────────┬───────────────────────┬────────────────────────────┤
-│                 │                       │                            │
-│  Feed list      │  Note / Thread        │  Profile / Detail          │
-│  (miller-col    │  (depth-indented      │  (right pane, `v` opens,   │
-│   left pane)    │   flat DAG)           │   `q` closes)              │
-│                 │                       │                            │
-├─────────────────┴───────────────────────┴────────────────────────────┤
-│  Compose / input  (expands on `i`, collapses on Esc)                 │
-├──────────────────────────────────────────────────────────────────────┤
-│  3 mentions  2 DMs  1 zap  ●relay.damus.io  q:12  [?] help          │  ← status/hotlist
-└──────────────────────────────────────────────────────────────────────┘
-```
-
-- Pane focus: `1` feed · `2` detail · `3` profile
-- Zoom cycle: `+` / `_` expands / shrinks focused pane (lazygit model)
-- Min terminal: 80×24 — hides right pane first, then wraps content
-- `--basic` flag: collapses to single-pane, disables all images/animations
+Wide layout: title/hotlist bar, left feed, center note/thread, right profile/detail,
+collapsible compose tray, and bottom status bar. Pane focus is `1` feed, `2` detail,
+`3` profile. `z` cycles focused-pane zoom. Minimum terminal is 80×24: hide the right
+pane first, then wrap content. `--basic` collapses to one pane and disables images and
+animations.
 
 ---
 
@@ -114,7 +100,7 @@ behind `IsTerminal` check so CI never deadlocks.
 | `[` / `]` | prev / next sibling reply |
 | `Tab` / `Shift+Tab` | cycle feed tabs |
 | `1` `2` `3` | focus pane |
-| `+` / `_` | zoom / shrink pane |
+| `z` | cycle focused-pane zoom |
 | `/` | open search / command palette |
 | `Ctrl+?` | contextual keybinding overlay |
 | `q` / `Esc` | close detail / cancel |
@@ -122,16 +108,15 @@ behind `IsTerminal` check so CI never deadlocks.
 ### Normal mode — actions
 | Key | Action |
 |-----|--------|
-| `Ctrl+N` | compose new note |
-| `Ctrl+R` | reply to selected note |
-| `Ctrl+L` | react ⚡ (NIP-25 `+`) |
-| `Ctrl+B` | repost/boost |
-| `Ctrl+F` | follow author |
-| `Ctrl+U` | unfollow author |
-| `Ctrl+P` | open author profile |
-| `Ctrl+O` | list URLs, open in browser |
-| `Ctrl+I` | toggle inline image preview |
-| `Ctrl+Y` | yank note-id to clipboard |
+| `i` | compose new note |
+| `r` | reply to selected note |
+| `+` | react ⚡ (NIP-25 `+`) |
+| `b` | repost/boost |
+| `f` / `F` | follow / unfollow author |
+| `p` | open author profile |
+| `o` | list URLs, open in browser |
+| `I` | toggle inline image preview |
+| `y` | yank note-id to clipboard |
 
 ### Compose mode (tui-input + custom multiline)
 | Key | Action |
@@ -166,10 +151,10 @@ behind `IsTerminal` check so CI never deadlocks.
 - `[` / `]` navigate sibling replies
 
 ### F3 — Compose / Reply / React
-- `tui-textarea` (multiline, undo/redo, search)
+- Custom multiline compose widget on top of `tui-input`; split if it exceeds ~50 LOC
 - @-mention: `@` → `tui-popup` + `tui-widget-list` filtered by typed prefix
 - Character counter: >280 yellow, >800 red
-- Optimistic local update: note appears in feed within 200ms of `Ctrl+Enter`
+- Pending publish appears in feed only through a Rust-produced pending/published snapshot
 - Relay ACK spinner → ✓ on success, error in status bar on failure
 - Reply shows parent note preview above textarea
 
@@ -184,16 +169,16 @@ behind `IsTerminal` check so CI never deadlocks.
 
 ### F6 — Group chat (Marmot MLS)
 - Room list + chat log; same bubble layout as DMs
-- `:mls-invite` / `:mls-accept` via command palette
+- `/mls invite` / `/mls accept` via command palette
 
 ### F7 — Search
-- `:search #tag` opens firehose-tag feed tab
+- `/search #tag` opens firehose-tag feed tab
 - Command palette fuzzy search over display names / npubs via nucleo
 
 ### F8 — Relay management
 - Status bar: per-relay health dot (●/○)
-- `:relay status` pane: latency, event counts
-- `:relay add` / `:relay rm`
+- `/relay status` pane: latency, event counts
+- `/relay add` / `/relay rm`
 
 ### F9 — Animations & polish
 - tachyonfx slide-in (120ms) for new notes arriving in feed
@@ -205,43 +190,18 @@ behind `IsTerminal` check so CI never deadlocks.
 
 ## 6. Dependency List
 
-```toml
-[dependencies]
-ratatui                 = { version = "0.30", features = ["crossterm"] }
-ratatui-macros          = "0.7"
-crossterm               = "0.29"
-ratatui-image           = { version = "11.0", features = ["tokio"] }
-tachyonfx               = "0.25"
-tui-input               = { version = "0.15", features = ["ratatui", "crossterm"] }
-tui-popup               = "0.7"
-tui-scrollview          = "0.6"
-tui-widget-list         = "0.15"
-throbber-widgets-tui    = "0.11"
-tui-markdown            = "0.3"
-tui-big-text            = "0.8"
-opaline                 = "0.4"
-tokio                   = { version = "1.45", features = ["full"] }
-tokio-util              = "0.7"
-color-eyre              = "0.6"
-nucleo                  = "0.5"
-reqwest                 = { version = "0.12", features = ["json"] }
-image                   = "0.25"
-lru                     = "0.12"
-clap                    = { version = "4", features = ["derive"] }
-serde_json              = "1"
-is-terminal             = "0.4"
+Initial dependencies: `ratatui 0.30`, `crossterm 0.29`, `tokio 1.45`, `tokio-util`,
+`color-eyre`, `clap`, `serde_json`, and `is-terminal`; UI helpers `ratatui-image 11.0`,
+`ratatui-macros`, `tachyonfx`, `tui-input`, `tui-popup`, `tui-scrollview`,
+`tui-widget-list`, `throbber-widgets-tui`, `tui-markdown`, `tui-big-text`, `opaline`;
+data helpers `nucleo`, `reqwest`, `image`, `lru`; dev tools `insta` and `expectrl`.
 
-[dev-dependencies]
-insta                   = { version = "1", features = ["yaml"] }
-expectrl                = "0.7"
-```
-
-**Note**: Using ratatui 0.30 + `tui-input 0.15` for single-line input + a hand-rolled
-~50-LOC multiline compose widget. No tui-textarea dependency (avoids 0.29 pin).
-
----
+Do not add `tui-textarea` for v1 unless its ratatui version matches the crate. The v1
+compose surface is `tui-input` plus a small custom multiline wrapper.
 
 ## 7. Milestones & Acceptance Criteria
+
+Treat each milestone as an independent PR/agent lane; split M4 into DM and group PRs if either exceeds one reviewable diff.
 
 ### M1 — Skeleton + observer wiring
 **Scope**: `crates/chirp-tui` compiles, renders placeholder layout, NMP push callback fires.
@@ -270,7 +230,7 @@ expectrl                = "0.7"
 **Scope**: Full write experience matching chirp-repl command surface.
 
 - [ ] `i` opens compose textarea; `Ctrl+Enter` publishes; `Esc` cancels
-- [ ] Published note appears optimistically in feed within 200ms of `Ctrl+Enter`
+- [ ] Pending/published note appears via Rust snapshot within 200ms of `Ctrl+Enter`
 - [ ] Relay ACK spinner resolves to ✓; failure shown in status bar
 - [ ] `r` on selected note opens reply with parent note preview above textarea
 - [ ] `+` sends NIP-25 `+` reaction; confirmation in status bar
@@ -287,7 +247,7 @@ expectrl                = "0.7"
 - [ ] Group chat tab lists Marmot groups; Enter opens chat log
 - [ ] Unread badge in hotlist for DMs and mentions
 - [ ] `[`/`]` navigate sibling replies in thread view
-- [ ] `:profile <npub>` opens profile pane with avatar, bio, recent notes
+- [ ] `/profile <npub>` opens profile pane with avatar, bio, recent notes
 
 ### M5 — Animations + polish + CI golden tests
 **Scope**: Production visual polish, full test suite, demo recordings.
@@ -320,12 +280,12 @@ Agents MUST scope all test runs: `cargo test -p chirp-tui`. Never `cargo test` w
 
 | # | Risk | Mitigation |
 |---|------|------------|
-| R1 | `tui-textarea 0.7` pins ratatui to 0.29 | Accept; reassess when 0.8 ships. Fallback: `tui-input` + 50-LOC multiline |
+| R1 | Custom multiline widget grows beyond the intended small wrapper | Split under `ui/compose/`; only add `tui-textarea` if ratatui-compatible |
 | R2 | VHS doesn't render iTerm2/Kitty images | QuickTime for image demos; VHS for non-image flows |
 | R3 | `Picker::from_query_stdio()` deadlocks in CI (no tty) | `IsTerminal` guard; always halfblocks in CI |
 | R4 | Profile resolver floods relays with kind:0 on cold start | Batch single filter per 50 pubkeys; debounce 500ms |
 | R5 | NIP-10 DAG cycles / very deep threads | Clamp depth 6; de-dup event ids in render path |
-| R6 | Mouse capture breaks native text selection | Document Shift+click; provide `:mouse off` toggle |
+| R6 | Mouse capture breaks native text selection | Document Shift+click; provide `/mouse off` toggle |
 | R7 | emit_hz=4 (250ms) lags compose feedback | Raise to emit_hz=10 in TUI `nmp_app_start()` call |
 
 ---
