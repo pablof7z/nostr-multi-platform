@@ -23,6 +23,8 @@
 
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
+use crate::store::{RawEvent, VerifiedEvent};
+use crate::substrate::{SignedEvent, UnsignedEvent};
 
 /// Read `projections.action_results` from a fresh wire snapshot. The key is
 /// conditionally inserted (only when a terminal settled this tick), so absence
@@ -126,4 +128,109 @@ fn multiple_action_failures_in_one_tick_all_survive() {
             "each recorded sign-step failure reports `failed`"
         );
     }
+}
+
+fn signed(id: &str, author: &str) -> SignedEvent {
+    SignedEvent {
+        id: id.to_string(),
+        sig: format!("sig-{id}"),
+        unsigned: UnsignedEvent {
+            pubkey: author.to_string(),
+            kind: 1,
+            tags: Vec::new(),
+            content: format!("content-{id}"),
+            created_at: 1_700_000_000,
+        },
+    }
+}
+
+/// Seed a kind:10002 so the `Nip65OutboxResolver` resolves a write relay —
+/// without it the engine returns `NoTargets` before the in-flight handle is
+/// ever registered. Mirrors `publish_terminal_status_tests::seed_kind10002`.
+fn seed_kind10002(kernel: &mut Kernel, author_pubkey: &str, write_url: &str) {
+    let raw = RawEvent {
+        id: format!("{:0<64}", format!("{}k10002", &author_pubkey[..2])),
+        pubkey: author_pubkey.to_string(),
+        created_at: 1_700_000_000,
+        kind: 10002,
+        tags: vec![vec![
+            "r".to_string(),
+            write_url.to_string(),
+            "write".to_string(),
+        ]],
+        content: String::new(),
+        sig: "0".repeat(128),
+    };
+    kernel
+        .store
+        .insert(
+            VerifiedEvent::from_raw_unchecked(raw),
+            &"wss://seed".to_string(),
+            1_700_000_000_000,
+        )
+        .expect("seed_kind10002 insert");
+}
+
+#[test]
+fn engine_error_for_dispatched_action_reaches_action_results() {
+    // A dispatched action can also fail at the *engine* layer (after a
+    // successful local sign): `DuplicateHandle`, `Store`, `UnsupportedAction`.
+    // `record_engine_error` writes a `RecentFailure` row but no terminal
+    // action verdict — so a dispatched action carrying a `correlation_id`
+    // would leak (broken promise). `run_publish_engine_at`'s `Err` arm must
+    // also push the correlation_id into `action_results`.
+    //
+    // `DuplicateHandle` is the deterministic trigger: a kind:10002 is seeded
+    // so the FIRST publish resolves a relay and registers the in-flight
+    // handle; the SECOND publish of the same event then hits the
+    // `in_flight.contains_key` guard and returns `DuplicateHandle`.
+    let author = "ab".repeat(32);
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    seed_kind10002(&mut kernel, &author, "wss://action-failure-r1.test");
+    let event = signed(&"cd".repeat(32), &author);
+    let correlation_id = "corr-engine-dup".to_string();
+
+    // First publish — resolves the seeded relay, registers the in-flight
+    // handle (stays in flight: the relay never acks).
+    let _ = kernel.run_publish_engine_at(
+        &event,
+        &[],
+        crate::publish::PublishTarget::Auto,
+        Some(correlation_id.clone()),
+        0,
+    );
+    // Drain whatever the first publish produced so the next snapshot read is
+    // about the second (duplicate) publish only.
+    let _ = action_results(&mut kernel);
+
+    // Second publish of the SAME event → `DuplicateHandle`.
+    let _ = kernel.run_publish_engine_at(
+        &event,
+        &[],
+        crate::publish::PublishTarget::Auto,
+        Some(correlation_id.clone()),
+        10,
+    );
+
+    let results = action_results(&mut kernel);
+    let arr = results
+        .as_array()
+        .expect("a duplicate dispatched publish must surface a terminal in action_results");
+    let entry = arr
+        .iter()
+        .find(|e| e.get("correlation_id").and_then(|v| v.as_str()) == Some(correlation_id.as_str()))
+        .expect("the dispatch correlation_id must appear in action_results");
+    assert_eq!(
+        entry.get("status").and_then(|v| v.as_str()),
+        Some("failed"),
+        "an engine-level error reports the terminal `failed` status"
+    );
+    let error = entry
+        .get("error")
+        .and_then(|v| v.as_str())
+        .expect("a failed engine-error result carries a non-null error");
+    assert!(
+        error.contains("already in flight"),
+        "the error carries the DuplicateHandle reason: {error}"
+    );
 }

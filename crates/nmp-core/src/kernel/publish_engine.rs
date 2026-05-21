@@ -134,6 +134,9 @@ impl Kernel {
         };
         let event_id = signed.id.clone();
         let kind = signed.unsigned.kind;
+        // Cloned before the move into `start_publish` so the `Err` arm can
+        // still honour the dispatch correlation_id (broken-promise fix).
+        let correlation_id_for_failure = correlation_id_override.clone();
         match self
             .publish_engine
             .start_publish(action, now_ms, correlation_id_override)
@@ -157,6 +160,17 @@ impl Kernel {
                 self.publish_engine
                     .record_engine_error(&err, &handle, &signed.id, now_ms);
                 let (toast, status, category) = describe_engine_error(&err);
+                // Broken-promise fix: an engine-level error (`DuplicateHandle`,
+                // `Store`, `UnsupportedAction`) for a dispatched action — one
+                // that carries a `correlation_id_override` — must also reach
+                // `action_results` so the host spinner clears. `record_engine_error`
+                // above writes only a `RecentFailure` row, not a terminal
+                // action verdict. (`NoTargets` does not reach here — it is a
+                // terminal handled by `emit_no_targets`, which records its own
+                // verdict.) `None` (a non-dispatch publish) is a no-op.
+                if let Some(id) = correlation_id_for_failure {
+                    self.record_action_failure(id, toast.clone());
+                }
                 self.set_error_toast_with_category(toast, category);
                 self.push_publish_entry(super::PublishQueueEntry {
                     event_id: signed.id.clone(),
