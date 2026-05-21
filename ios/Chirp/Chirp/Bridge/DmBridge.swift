@@ -143,14 +143,9 @@ extension KernelHandle {
 final class DmInboxStore: ObservableObject {
     /// Conversations, newest-thread-first, mirrored verbatim from the kernel
     /// projection. Ordering and grouping are owned by the Rust
-    /// `DmInboxProjection`.
+    /// `DmInboxProjection`. Within each conversation, `messages` is in
+    /// chronological order — oldest first, newest last.
     @Published private(set) var conversations: [DmConversation] = []
-
-    /// The active account's hex pubkey, mirrored from the snapshot. The
-    /// conversation view reads it to tell sent messages from received ones
-    /// (a message whose `senderPubkey` equals this is outgoing). `nil` until
-    /// an account is signed in.
-    @Published private(set) var localPubkey: String?
 
     private unowned let kernel: KernelHandle
     /// The viewer pubkey the kind:1059 interest was last pushed for. `nil`
@@ -178,11 +173,13 @@ final class DmInboxStore: ObservableObject {
     /// `snapshot` `nil` (projection not yet wired) leaves `conversations`
     /// untouched; an empty array clears it. `activePubkey` `nil` means no
     /// account is signed in — no interest to push.
+    ///
+    /// `activePubkey` is used ONLY to drive the kind:1059 interest push; it
+    /// is NOT mirrored as state for the views. Per-message outgoing vs
+    /// incoming classification arrives pre-computed on `DmMessage.isOutgoing`
+    /// (thin-shell rule — the shell never compares pubkeys to decide).
     func apply(snapshot: DmInboxSnapshot?, activePubkey: String?) {
         let normalizedPubkey = (activePubkey?.isEmpty == true) ? nil : activePubkey
-        if localPubkey != normalizedPubkey {
-            localPubkey = normalizedPubkey
-        }
         if let activePubkey = normalizedPubkey,
             activePubkey != registeredPubkey
         {

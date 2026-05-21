@@ -91,6 +91,13 @@ pub struct DmMessage {
     /// When the rumor carries a NIP-10 `["e", <id>, _, "reply"]` marker, the
     /// id of the message this one replies to.
     pub reply_to: Option<String>,
+    /// `true` when the local account wrote this message — `sender_pubkey`
+    /// equals the active account's pubkey. Pre-classified in Rust so the
+    /// host shell never compares pubkeys to decide bubble alignment
+    /// (thin-shell rule: that comparison is a protocol decision — the
+    /// kind:13 seal authenticated this pubkey, and the host should not
+    /// re-do that work).
+    pub is_outgoing: bool,
 }
 
 /// One DM thread — every message exchanged with a single peer.
@@ -98,7 +105,11 @@ pub struct DmMessage {
 pub struct DmConversation {
     /// The OTHER party in the thread (hex pubkey) — never the local user.
     pub peer_pubkey: String,
-    /// Messages in this thread, ordered newest-first.
+    /// Messages in this thread, ordered chronologically — **oldest first,
+    /// newest last**. This is the natural render order of a chat log so the
+    /// host shell never re-sorts or reverses (thin-shell rule). The
+    /// thread-level "most recent message" used by the inbox sort is
+    /// `messages.last()`.
     pub messages: Vec<DmMessage>,
 }
 
@@ -156,10 +167,11 @@ impl DmInboxProjection {
 
     /// Snapshot the current inbox as a typed [`DmInboxSnapshot`].
     ///
-    /// Messages are grouped per peer, each conversation ordered newest-first,
-    /// and conversations ordered by their most-recent message (newest thread
-    /// first). Ties break on a stable secondary key so the order is total and
-    /// deterministic across snapshot ticks.
+    /// Messages are grouped per peer, each conversation ordered
+    /// chronologically (oldest first, newest last — the natural render order
+    /// of a chat log), and conversations ordered by their most-recent message
+    /// (newest thread first). Ties break on a stable secondary key so the
+    /// order is total and deterministic across snapshot ticks.
     ///
     /// D6: a poisoned mutex degrades to [`DmInboxSnapshot::empty`] rather than
     /// panicking — this runs on the actor thread inside a snapshot tick.
@@ -188,13 +200,15 @@ impl DmInboxProjection {
         let mut conversations: Vec<DmConversation> = by_peer
             .into_iter()
             .map(|(peer_pubkey, mut msgs)| {
-                // Newest-first within the thread. Tie-break on id descending
+                // Chronological within the thread — oldest first, newest
+                // last. This is the natural render order of a chat log, so
+                // the host shell never reverses. Tie-break on id ascending
                 // so the order is total even when two messages share a
                 // `created_at`.
                 msgs.sort_by(|a, b| {
-                    b.created_at
-                        .cmp(&a.created_at)
-                        .then_with(|| b.id.cmp(&a.id))
+                    a.created_at
+                        .cmp(&b.created_at)
+                        .then_with(|| a.id.cmp(&b.id))
                 });
                 DmConversation {
                     peer_pubkey,
@@ -204,11 +218,11 @@ impl DmInboxProjection {
             .collect();
 
         // Newest conversation first — keyed on the thread's most-recent
-        // message (index 0 after the newest-first sort above). Tie-break on
-        // peer pubkey descending for a total, stable order.
+        // message (the last entry after the chronological sort above).
+        // Tie-break on peer pubkey descending for a total, stable order.
         conversations.sort_by(|a, b| {
-            let a_latest = a.messages.first().map(|m| m.created_at).unwrap_or(0);
-            let b_latest = b.messages.first().map(|m| m.created_at).unwrap_or(0);
+            let a_latest = a.messages.last().map(|m| m.created_at).unwrap_or(0);
+            let b_latest = b.messages.last().map(|m| m.created_at).unwrap_or(0);
             b_latest
                 .cmp(&a_latest)
                 .then_with(|| b.peer_pubkey.cmp(&a.peer_pubkey))
@@ -289,6 +303,11 @@ impl DmInboxProjection {
             sender_pubkey.clone()
         };
 
+        // Pre-classify outgoing vs incoming so the host shell never compares
+        // pubkeys to align a bubble. The kind:13 seal authenticated
+        // `sender_pubkey`; replaying that comparison in the shell would be
+        // protocol logic leaking out (thin-shell rule).
+        let is_outgoing = sender_pubkey == local_pubkey;
         let message = DmMessage {
             id: message_id.clone(),
             sender_pubkey,
@@ -296,6 +315,7 @@ impl DmInboxProjection {
             // D7: the rumor's `created_at` is the sender's real send time.
             created_at: rumor.created_at.as_secs(),
             reply_to: first_reply_e_tag(rumor),
+            is_outgoing,
         };
 
         // Idempotent insert — a re-delivered envelope replaces rather than
@@ -507,6 +527,10 @@ mod tests {
         assert_eq!(msg.sender_pubkey, alice.public_key().to_hex());
         assert_eq!(msg.created_at, 12345, "D7: the rumor's send time verbatim");
         assert_eq!(msg.reply_to, None);
+        assert!(
+            !msg.is_outgoing,
+            "a message sent by Alice to Bob's inbox is incoming (not outgoing)"
+        );
     }
 
     #[test]
@@ -540,6 +564,10 @@ mod tests {
             bob.public_key().to_hex(),
             "the message author is still Bob (the local sender)"
         );
+        assert!(
+            snap.conversations[0].messages[0].is_outgoing,
+            "a self-copy whose seal authenticates the local key is outgoing"
+        );
     }
 
     #[test]
@@ -572,9 +600,15 @@ mod tests {
         );
         let convo = &snap.conversations[0];
         assert_eq!(convo.messages.len(), 2);
-        // Newest-first ordering within the thread.
-        assert_eq!(convo.messages[0].content, "hi alice");
-        assert_eq!(convo.messages[1].content, "hi bob");
+        // Chronological ordering within the thread — oldest first, newest
+        // last. "hi bob" was stamped at 100, "hi alice" at 200.
+        assert_eq!(convo.messages[0].content, "hi bob");
+        assert!(!convo.messages[0].is_outgoing, "Alice→Bob is incoming");
+        assert_eq!(convo.messages[1].content, "hi alice");
+        assert!(
+            convo.messages[1].is_outgoing,
+            "Bob's self-copy of his outbound DM is outgoing"
+        );
     }
 
     #[test]
