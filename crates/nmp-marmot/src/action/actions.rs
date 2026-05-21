@@ -1,4 +1,5 @@
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
+use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
 // ─── PublishKeyPackage (kind:30443/443, standard author-write outbox) ─────────
@@ -35,5 +36,25 @@ impl ActionModule for PublishKeyPackageAction {
             ));
         }
         Ok(())
+    }
+
+    /// ADR-0027 — Marmot's `PublishKeyPackage` is currently not registered
+    /// against any [`nmp_core::kernel::ActionRegistry`]; the call site lives
+    /// in [`crate::service::MarmotService::publish_key_package`], reached
+    /// through the bespoke `nmp_app_chirp_marmot_dispatch` FFI cluster
+    /// (ADR-0025). The trait now requires `execute`, so this body returns
+    /// a documented `Err` — if a future change ever routes this namespace
+    /// through `dispatch_action`, replace this with the typed
+    /// `ActorCommand` enqueue. The Err is D6: a never-reached path that
+    /// fails loudly if someone wires it up without finishing the work.
+    fn execute(
+        _action: Self::Action,
+        _correlation_id: &str,
+        _send: &dyn Fn(ActorCommand),
+    ) -> Result<(), String> {
+        Err("nmp.marmot.publish_key_package is routed through the \
+             nmp_app_chirp_marmot_dispatch FFI cluster (ADR-0025), \
+             not the generic dispatch_action seam"
+            .to_string())
     }
 }
