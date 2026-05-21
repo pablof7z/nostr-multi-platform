@@ -2,7 +2,7 @@ import SwiftUI
 
 enum NoteContentGroup: Equatable {
     case inline([UInt32])
-    case media(urls: [String], kind: String)
+    case media(urls: [String], kind: MediaKind)
     case eventRef(WireNostrUri)
 }
 

@@ -189,13 +189,22 @@ struct ContentTreeWire: Decodable, Equatable {
     let mode: String?
 }
 
+/// Typed mirror of the Rust `nmp_content::MediaKind` enum. Raw values match the
+/// PascalCase Rust serde representation (the Rust enum has no `rename_all`).
+/// Pinned cross-platform by `crates/nmp-content/src/wire/tests.rs`.
+enum MediaKind: String, Decodable, Equatable {
+    case image = "Image"
+    case video = "Video"
+    case audio = "Audio"
+}
+
 enum ContentWireNode: Decodable, Equatable {
     case text(String)
     case mention(WireNostrUri)
     case eventRef(WireNostrUri)
     case hashtag(String)
     case url(String)
-    case media(urls: [String], mediaKind: String)
+    case media(urls: [String], mediaKind: MediaKind)
     case emoji(shortcode: String, url: String?)
     case paragraph(children: [UInt32])
     case heading(level: UInt8, children: [UInt32])
@@ -227,7 +236,7 @@ enum ContentWireNode: Decodable, Equatable {
         case "media":
             self = .media(
                 urls: try c.decode([String].self, forKey: .urls),
-                mediaKind: try c.decode(String.self, forKey: .mediaKind)
+                mediaKind: try c.decode(MediaKind.self, forKey: .mediaKind)
             )
         case "emoji":
             self = .emoji(
