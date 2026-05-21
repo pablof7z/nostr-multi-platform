@@ -144,6 +144,7 @@ struct ComposeView: View {
 
     private func submit() {
         model.publishNote(trimmed, replyToID: replyToID)
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
         dismiss()
     }
 

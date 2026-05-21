@@ -244,8 +244,10 @@ struct ProfileView: View {
             isEditingProfile = true
         case "follow":
             model.follow(action.targetPubkey)
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         case "unfollow":
             model.unfollow(action.targetPubkey)
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
         default:
             break
         }
