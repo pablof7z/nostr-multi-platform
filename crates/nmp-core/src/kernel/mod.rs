@@ -89,6 +89,10 @@ mod t142_drain_lifecycle_tick_tests;
 mod t170_relay_scoped_keying_tests;
 #[cfg(test)]
 mod t171_planner_error_projection_tests;
+#[cfg(test)]
+mod timeline_perf_tests;
+#[cfg(test)]
+mod timeline_order_tests;
 #[cfg(any(test, feature = "test-support"))]
 mod test_support;
 #[cfg(test)]

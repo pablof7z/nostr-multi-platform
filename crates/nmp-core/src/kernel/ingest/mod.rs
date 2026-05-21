@@ -14,6 +14,7 @@ mod contacts;
 mod profile;
 mod relay_list;
 mod timeline;
+mod timeline_order;
 
 use super::*;
 

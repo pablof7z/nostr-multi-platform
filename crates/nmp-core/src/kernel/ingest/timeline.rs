@@ -26,7 +26,8 @@ impl Kernel {
         }
 
         // D4: route through EventStore for ALL deliveries, including duplicates.
-        let verified = match crate::store::VerifiedEvent::try_from_raw(raw_event_from_nostr(&event)) {
+        let verified = match crate::store::VerifiedEvent::try_from_raw(raw_event_from_nostr(&event))
+        {
             Ok(v) => v,
             Err(e) => {
                 self.log(format!(
@@ -160,8 +161,7 @@ impl Kernel {
         }
         self.enqueue_thread_hydration_from_event(&event.id);
         if self.timeline_authors.contains(&event.pubkey) || sub_id.starts_with("diag-firehose-") {
-            self.timeline.push_back(event.id);
-            self.sort_timeline();
+            self.insert_timeline_id_sorted(event.id);
             self.timing
                 .timeline_first_item_at
                 .get_or_insert_with(Instant::now);
@@ -216,25 +216,6 @@ impl Kernel {
             self.enqueue_thread_id(id.clone());
             self.enqueue_thread_reply_target(id);
         }
-    }
-
-    pub(in crate::kernel) fn sort_timeline(&mut self) {
-        let mut ids = self.timeline.iter().cloned().collect::<Vec<_>>();
-        ids.sort_by(|left, right| {
-            let a = self
-                .events
-                .get(left)
-                .map(|event| event.created_at)
-                .unwrap_or(0);
-            let b = self
-                .events
-                .get(right)
-                .map(|event| event.created_at)
-                .unwrap_or(0);
-            b.cmp(&a).then_with(|| left.cmp(right))
-        });
-        ids.truncate(500);
-        self.timeline = ids.into();
     }
 
     /// T140 — follow-feed open milestone + pending profile-claim flush.
