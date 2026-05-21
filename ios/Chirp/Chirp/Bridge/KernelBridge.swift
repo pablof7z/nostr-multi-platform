@@ -399,11 +399,16 @@ private final class KernelUpdateSink {
 /// via `nmp_app_free_string` / `CString::from_raw`. Uses `strdup` so the
 /// allocation is compatible with Rust's `CString::from_raw` on Apple platforms
 /// (both use the system malloc allocator).
+///
+/// There is one C callback for every capability; `ChirpCapabilities.handleJSON`
+/// routes the request to the capability owning its `namespace` (keyring vs
+/// HTTP). Rust invokes this from the actor thread (never the main thread), so
+/// a synchronous capability like `HttpCapability` may block here safely.
 private let nmpCapabilityCallback: NmpCapabilityCallback = { context, requestJSON in
     guard let context, let requestJSON else { return nil }
     let capabilities = Unmanaged<ChirpCapabilities>.fromOpaque(context).takeUnretainedValue()
     let requestStr = String(cString: requestJSON)
-    let resultStr = capabilities.keyring.handleJSON(requestStr)
+    let resultStr = capabilities.handleJSON(requestStr)
     return resultStr.withCString { strdup($0) }
 }
 

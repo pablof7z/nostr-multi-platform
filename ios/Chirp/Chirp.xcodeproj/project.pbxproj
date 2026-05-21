@@ -19,6 +19,7 @@
 		5A64FFA65566FF2762F1A8B7 /* WalletView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 900229FDEE3330B7264E8A33 /* WalletView.swift */; };
 		62D73DD96F75F8C35AE03566 /* ChirpCapabilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = E62A6E7134CA2EED2577DA50 /* ChirpCapabilities.swift */; };
 		683374BB2BBCDF65807EEFC8 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C88FE40DE954EED68068786 /* DiagnosticsView.swift */; };
+		A1B2C3D4E5F60718293A4B5C /* HttpCapability.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F1E2D3C4B5A69788796A5B4 /* HttpCapability.swift */; };
 		68379E6C144BFF7F0D9395CE /* KernelBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B303905AEF1833128E7C6BC /* KernelBridge.swift */; };
 		6BE96583DDB7BC3A89DA1D79 /* ModularTimelineBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE028B856FE7D32538CE605 /* ModularTimelineBridge.swift */; };
 		72E6C28DE61F97428F972267 /* RootShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31F55FC6A139DA43D434DBF9 /* RootShell.swift */; };
@@ -77,6 +78,7 @@
 		3808C5C6482C44109C442925 /* KernelModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KernelModel.swift; sourceTree = "<group>"; };
 		3840302F0BFF2818BFE295C6 /* OnboardingView+Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OnboardingView+Components.swift"; sourceTree = "<group>"; };
 		4F03417D370984DB9AC4212B /* HomeFeedView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFeedView.swift; sourceTree = "<group>"; };
+		0F1E2D3C4B5A69788796A5B4 /* HttpCapability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HttpCapability.swift; sourceTree = "<group>"; };
 		50F5B25557B2147731A5F75C /* KeychainCapability.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainCapability.swift; sourceTree = "<group>"; };
 		5EB771E148A6FCB120C2ADCF /* AccountAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountAvatar.swift; sourceTree = "<group>"; };
 		6642DD3D8D6000AC2E047C03 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -171,6 +173,7 @@
 			isa = PBXGroup;
 			children = (
 				E62A6E7134CA2EED2577DA50 /* ChirpCapabilities.swift */,
+				0F1E2D3C4B5A69788796A5B4 /* HttpCapability.swift */,
 				50F5B25557B2147731A5F75C /* KeychainCapability.swift */,
 			);
 			path = Capabilities;
@@ -365,6 +368,7 @@
 				A4D78531938555278B719582 /* AccountsView.swift in Sources */,
 				192CF49D1BB3B5A4799329E4 /* ChirpApp.swift in Sources */,
 				62D73DD96F75F8C35AE03566 /* ChirpCapabilities.swift in Sources */,
+				A1B2C3D4E5F60718293A4B5C /* HttpCapability.swift in Sources */,
 				28DDB51A3E188547CD78D215 /* ChirpTheme.swift in Sources */,
 				159A0AB673722908A2785D5C /* ComposeView.swift in Sources */,
 				683374BB2BBCDF65807EEFC8 /* DiagnosticsView.swift in Sources */,
