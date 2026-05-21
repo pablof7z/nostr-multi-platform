@@ -471,10 +471,15 @@ fn d14_positive_fixture_fires() {
         "d14 positive must emit >=1 D14 finding; stdout:\n{}",
         stdout
     );
-    // The fixture defines three offending fields, one per in-scope struct
-    // (`Kernel`, `NmpApp`, `ActorRuntime`). All three must surface — a
-    // regression that silently swallows one fails this test.
-    for token in ["indexer_relays", "pending_outbound", "queued_commands"] {
+    // The fixture defines four offending fields, one per in-scope struct
+    // (`Kernel`, `NmpApp`, `ActorRuntime`, `Nip65OutboxResolver`). All four
+    // must surface — a regression that silently swallows one fails this test.
+    for token in [
+        "indexer_relays",
+        "pending_outbound",
+        "queued_commands",
+        "local_write_relays",
+    ] {
         assert!(
             stdout.contains(token),
             "d14 positive must name `{}`; stdout:\n{}",
@@ -482,7 +487,7 @@ fn d14_positive_fixture_fires() {
             stdout
         );
     }
-    for struct_name in ["Kernel", "NmpApp", "ActorRuntime"] {
+    for struct_name in ["Kernel", "NmpApp", "ActorRuntime", "Nip65OutboxResolver"] {
         assert!(
             stdout.contains(struct_name),
             "d14 finding must name the enclosing struct `{}`; stdout:\n{}",
