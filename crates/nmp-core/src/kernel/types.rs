@@ -522,8 +522,6 @@ pub(super) struct KernelSnapshot {
     pub(super) last_tick_ms: u64,
     pub(super) update_kind: &'static str,
     pub(super) running: bool,
-    pub(super) relay_url: &'static str,
-    pub(super) test_npub: &'static str,
     pub(super) profile: ProfileCard,
     pub(super) items: Vec<TimelineItem>,
     pub(super) author_view: Option<AuthorViewPayload>,
