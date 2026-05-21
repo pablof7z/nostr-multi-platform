@@ -9,13 +9,17 @@
 //!
 //! - `content` — PostChatMessage (kind:9).
 //! - `composed` — ReactInGroup (kind:7+h), CommentInGroup (kind:1111+h).
+//! - `discover` — DiscoverGroups (no publish; pushes a metadata interest).
+//! - `join` — JoinGroup (kind:9021, user-management request).
 //!
-//! The admin / membership / artifact / discussion / share executors were
-//! deleted: NIP-29 ships only its relay-group chat surface in v1 (group
-//! administration and private groups are out of scope for this crate).
+//! NIP-29 ships its relay-group chat surface plus discovery + join in v1.
+//! Group administration (9000-9009 admin actions) remains out of scope for
+//! this crate — Marmot MLS covers private groups.
 
 mod composed;
 mod content;
+mod discover;
+mod join;
 mod publish_plan;
 
 pub use composed::{
@@ -23,4 +27,6 @@ pub use composed::{
     ReactInGroupAction, ReactInGroupInput,
 };
 pub use content::{post_chat_message_command, PostChatMessageAction, PostChatMessageInput};
+pub use discover::{discover_groups_command, DiscoverGroupsAction, DiscoverGroupsInput};
+pub use join::{join_group_command, JoinGroupAction, JoinGroupInput};
 pub use publish_plan::{PublishPlan, PublishPlanError, RelayPin};

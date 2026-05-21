@@ -757,6 +757,15 @@ struct KernelUpdate: Decodable {
     /// NIP-02 follow list — `projections["chirp.follow_list"]`.
     var followList: FollowListSnapshot? { projections?.followList }
 
+    /// NIP-29 group-discovery read model —
+    /// `projections["nip29.discovered_groups"]`. `nil` until
+    /// `nmp_app_chirp_register_group_discovery` has wired a relay's
+    /// projection; an empty `groups` array once registered but no
+    /// kind:39000/39001/39002 events have arrived. Computed so the
+    /// `DiscoveredGroupsStore` consumer keeps reading
+    /// `update.discoveredGroups` unchanged.
+    var discoveredGroups: DiscoveredGroupsSnapshot? { projections?.discoveredGroups }
+
     /// Diagnostics-screen read model — `projections["relay_diagnostics"]`
     /// (aim.md §4.5 / §6 anti-pattern #1 / §"Where do views live?" cleanup).
     /// One pre-rolled row per known relay URL with every aggregate (active /
@@ -841,6 +850,13 @@ struct SnapshotProjections: Decodable, Equatable {
     // `.convertFromSnakeCase` (it only replaces `_`), so the post-transform
     // key is `"chirp.followList"` — handled in the explicit `CodingKeys` below.
     let followList: FollowListSnapshot?
+
+    // NIP-29: the group-discovery read projection registered by
+    // `nmp_app_chirp_register_group_discovery`. Its snapshot key is the
+    // dotted string `"nip29.discovered_groups"` — same `.convertFromSnakeCase`
+    // caveat as `groupChat` / `dmInbox`, handled by the explicit
+    // `CodingKeys` case below.
+    let discoveredGroups: DiscoveredGroupsSnapshot?
     // Diagnostics roll-up — `projections["relay_diagnostics"]`. Built-in
     // kernel-owned projection (§4.5 / §6 anti-pattern #1 cleanup): replaces
     // the §"Where do views live?" violations the three diagnostics screens
@@ -900,6 +916,10 @@ struct SnapshotProjections: Decodable, Equatable {
         case groupChat = "nip29.groupChat"
         case dmInbox = "nip17.dmInbox"
         case followList = "chirp.followList"
+        // `.convertFromSnakeCase` maps `"nip29.discovered_groups"` →
+        // `"nip29.discoveredGroups"` (split on `_` only, `.` opaque) — that
+        // is the post-transform string this case must declare.
+        case discoveredGroups = "nip29.discoveredGroups"
         case relayDiagnostics
         case mentionProfiles
         case settingsHub
@@ -983,6 +1003,50 @@ struct GroupChatSnapshot: Decodable, Equatable {
     let messages: [GroupChatMessage]
 
     static let empty = GroupChatSnapshot(messages: [])
+}
+
+// ─── NIP-29 group-discovery read model ────────────────────────────────────
+//
+// Mirror of `nmp-nip29`'s `DiscoveredGroupsSnapshot` / `DiscoveredGroup` —
+// the shape the `DiscoveredGroupsProjection` serialises under the snapshot
+// key `"nip29.discovered_groups"`. Thin-shell rule: pure DTOs; no Swift
+// owns the ordering (the projection emits alphabetical by `groupId`) or the
+// member-count math (the projection counts `["p", _]` tags).
+
+/// One discovered NIP-29 group, ready for `JoinGroupView` to render.
+///
+/// No explicit `CodingKeys`: the top-level `.convertFromSnakeCase` strategy
+/// maps `"group_id"` / `"host_relay_url"` / `"member_count"` / `"admin_count"`
+/// automatically.
+struct DiscoveredGroup: Decodable, Identifiable, Equatable {
+    /// The NIP-29 in-relay group id (the `["d", _]` tag value). Stable
+    /// list identity inside `JoinGroupView`.
+    let groupId: String
+    /// The host relay this group lives on. NIP-29 identity is the pair
+    /// `(host_relay_url, group_id)` — surfaced here so Swift can build a
+    /// typed `GroupId` for the join action without re-supplying the URL.
+    let hostRelayUrl: String
+    let name: String?
+    let picture: String?
+    let about: String?
+    let memberCount: UInt32
+    let adminCount: UInt32
+    let `public`: Bool
+    let open: Bool
+
+    var id: String { "\(hostRelayUrl)|\(groupId)" }
+}
+
+/// The serialised read-model `JoinGroupView` consumes. `groups` is ordered
+/// alphabetically by `groupId` by the Rust projection — Swift does not
+/// re-sort.
+struct DiscoveredGroupsSnapshot: Decodable, Equatable {
+    /// The host relay this snapshot describes — every row's `hostRelayUrl`
+    /// equals this value (the projection is single-relay scoped).
+    let hostRelayUrl: String
+    let groups: [DiscoveredGroup]
+
+    static let empty = DiscoveredGroupsSnapshot(hostRelayUrl: "", groups: [])
 }
 
 // ─── NIP-17 DM inbox read model ───────────────────────────────────────────
