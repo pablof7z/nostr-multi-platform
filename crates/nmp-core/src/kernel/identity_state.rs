@@ -102,6 +102,30 @@ pub(crate) struct RelayEditRow {
     pub(crate) role: String,
 }
 
+/// Pre-formatted subtitle strings for the iOS Settings hub. Folds the
+/// pluralization and zero-row branches into a single string so the shell
+/// never duplicates the §6/AP1 "N relay(s) configured" / "No relays
+/// configured" formatting.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub(crate) struct SettingsHubSummary {
+    /// Subtitle shown under the "Relays" entry in the Settings hub.
+    pub(crate) relays_subtitle: String,
+}
+
+impl SettingsHubSummary {
+    /// Build the subtitle from the live relay-edit projection row count.
+    /// Kept here (vs an iOS-side helper) so platforms share the same copy.
+    pub(crate) fn from_relay_edit_rows(rows: &[RelayEditRow]) -> Self {
+        let count = rows.len();
+        let relays_subtitle = match count {
+            0 => "No relays configured".to_string(),
+            1 => "1 relay".to_string(),
+            n => format!("{n} relays"),
+        };
+        Self { relays_subtitle }
+    }
+}
+
 // D0: NIP-46 remote signing is an app noun, not a kernel primitive. The
 // `BunkerHandshakeDto` type and its state moved out of the kernel entirely —
 // they now live in the identity command runtime (`actor::commands::identity`)
