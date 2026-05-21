@@ -529,7 +529,7 @@ impl NmpApp {
     /// requires `&mut self`. See [`app_ref_mut`] for the aliasing contract.
     pub fn register_action_executor(
         &mut self,
-        namespace: &'static str,
+        namespace: impl Into<String>,
         f: impl Fn(&str, &dyn Fn(ActorCommand)) -> Result<(), String> + Send + Sync + 'static,
     ) {
         self.action_registry.register_executor(namespace, f);
@@ -557,7 +557,7 @@ impl NmpApp {
     /// requires `&mut self`. See [`app_ref_mut`] for the aliasing contract.
     pub fn register_action_module(
         &mut self,
-        namespace: &'static str,
+        namespace: impl Into<String>,
         validate: impl Fn(
                 &str,
             ) -> Result<

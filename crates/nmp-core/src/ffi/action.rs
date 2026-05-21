@@ -150,11 +150,6 @@ pub extern "C" fn nmp_app_register_action_executor(
     let Some(exec) = executor else {
         return;
     };
-    // Leak the namespace so it lives `'static` — the registry keys on
-    // `&'static str`. This is a registration-time-only call (host init), so
-    // the leak is bounded by the number of registered namespaces, not by
-    // runtime activity.
-    let ns: &'static str = Box::leak(ns.into_boxed_str());
     app.register_action_executor(ns, move |action_json, _send| {
         // The host executor speaks JSON only. The `_send` actor-command
         // bridge is intentionally unused in v1: a host executor that needs
@@ -233,10 +228,6 @@ pub extern "C" fn nmp_app_register_action_module(
     let Some(ns) = c_string_argument(namespace) else {
         return;
     };
-    // Leak the namespace so it lives `'static` — the registry keys on
-    // `&'static str`. Registration-time-only call (host init), so the leak is
-    // bounded by the number of registered namespaces, not by runtime activity.
-    let ns: &'static str = Box::leak(ns.into_boxed_str());
     let Some(validate) = validator else {
         // No validator → accept-all: every action is accepted with a default
         // pending plan. Shape validation is then the host executor's job.
