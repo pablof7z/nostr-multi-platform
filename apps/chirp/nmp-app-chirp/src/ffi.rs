@@ -1,11 +1,15 @@
 //! Chirp per-app FFI surface.
 //!
-//! Four `extern "C"` symbols Swift links against:
+//! Five `extern "C"` symbols Swift links against:
 //!
 //! - [`nmp_app_chirp_register`] — instantiate `ChirpModularTimeline` with the
 //!   active viewer pubkey and register it as a kernel event observer on the
 //!   supplied `NmpApp`. Returns an opaque handle (boxed projection +
 //!   observer id) for later snapshots / unregister.
+//! - [`nmp_app_chirp_register_group_chat`] — wire a NIP-29
+//!   `GroupChatProjection` for one group into the kernel: an event observer
+//!   (ingest) plus a `"nip29.group_chat"` snapshot projection (output). Pure
+//!   consumption — no handle, no actions, no unregister.
 //! - [`nmp_app_chirp_snapshot`] — serialize the current `ChirpTimelineSnapshot`
 //!   into a freshly-allocated nul-terminated JSON C string. Swift owns the
 //!   pointer until it calls `nmp_app_chirp_snapshot_free`.
@@ -29,7 +33,9 @@ use std::ffi::{c_char, CStr, CString};
 use std::sync::Arc;
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
-use nmp_core::{ActorCommand, KernelEventObserverId, NmpApp};
+use nmp_core::{ActorCommand, KernelEventObserver, KernelEventObserverId, NmpApp};
+use nmp_nip29::group_id::GroupId;
+use nmp_nip29::projection::GroupChatProjection;
 use nmp_nip29::action::{
     comment_in_group_command, create_group_command, create_invite_command, delete_event_command,
     delete_group_command, edit_metadata_command, join_request_command, leave_request_command,
@@ -203,6 +209,73 @@ pub extern "C" fn nmp_app_chirp_register(
         observer_id,
         app,
     }))
+}
+
+/// Wire a NIP-29 `GroupChatProjection` for a single group into `app`.
+///
+/// This is **pure consumption** — the read-side of a group-chat screen. It
+/// adds no new C-ABI handle type and registers no actions: it constructs a
+/// [`GroupChatProjection`] scoped to the supplied group, plugs it into the
+/// kernel as a [`KernelEventObserver`] (ingest), and registers its
+/// [`GroupChatProjection::snapshot_json`] read under the snapshot key
+/// `"nip29.group_chat"` (output). The group's chat messages then surface in
+/// every snapshot tick under that key.
+///
+/// `group_id_json` is a JSON object naming the target group:
+///
+/// ```json
+/// {"host_relay_url":"wss://groups.example.com","local_id":"room"}
+/// ```
+///
+/// D6 — fire-and-forget. A null `app`, a null/invalid-UTF-8 `group_id_json`,
+/// a JSON shape that does not deserialize to a [`GroupId`], or a poisoned
+/// observer slot all degrade to a silent return — nothing is registered and
+/// no error crosses the FFI.
+///
+/// SCOPE — single-screen, no unregister. Unlike [`nmp_app_chirp_register`]
+/// this returns no handle, so there is no companion `unregister`. Calling it
+/// twice overwrites the `"nip29.group_chat"` snapshot key with the newer
+/// projection and leaves the older event observer registered for the life of
+/// the `app` (a small, bounded leak). Chirp's group-chat screen registers
+/// exactly one group per `app`, so this is acceptable; a multi-group host
+/// would need a handle-returning variant.
+///
+/// `app` MUST outlive the registration. It is only borrowed for the duration
+/// of this call; the projection it registers is owned by the kernel.
+#[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn nmp_app_chirp_register_group_chat(
+    app: *mut NmpApp,
+    group_id_json: *const c_char,
+) {
+    if app.is_null() {
+        return;
+    }
+    // SAFETY: caller guarantees `app` is a valid pointer from `nmp_app_new`,
+    // live for the duration of this call. The borrow is not held past return.
+    let app_ref = unsafe { &*app };
+
+    // Reject silently on a missing or malformed group id — D6. The JSON must
+    // deserialize to the typed `GroupId { host_relay_url, local_id }`.
+    let Some(raw) = c_string_opt(group_id_json) else {
+        return;
+    };
+    let Ok(group_id) = serde_json::from_str::<GroupId>(&raw) else {
+        return;
+    };
+
+    let projection = Arc::new(GroupChatProjection::new(group_id));
+    let observer_id = app_ref
+        .register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
+    if observer_id.0 == 0 {
+        // Observer registration failed (poisoned slot). Don't register the
+        // snapshot closure for a projection that will never receive events.
+        return;
+    }
+
+    // Output side: the no-argument snapshot read runs on the actor thread
+    // inside each snapshot tick. The `move` consumes this last `Arc`.
+    app_ref.register_snapshot_projection("nip29.group_chat", move || projection.snapshot_json());
 }
 
 /// Serialize the current `ChirpTimelineSnapshot` into a JSON C string.
@@ -738,6 +811,73 @@ mod tests {
         }
 
         nmp_app_chirp_unregister(handle);
+        nmp_app_free(app);
+    }
+
+    /// THE GROUP-ID WIRE-SHAPE CONTRACT: the JSON shape documented on
+    /// `nmp_app_chirp_register_group_chat` — `{"host_relay_url":…,
+    /// "local_id":…}` — is exactly what `GroupId`'s serde derive accepts.
+    /// This is the contract a Swift caller depends on: a body of any other
+    /// shape is rejected by the `serde_json::from_str::<GroupId>` parse gate
+    /// inside the function and the registration silently no-ops (D6).
+    #[test]
+    fn register_group_chat_group_id_wire_shape_matches_serde() {
+        let parsed: GroupId = serde_json::from_str(
+            r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#,
+        )
+        .expect("documented group_id_json shape must deserialize to GroupId");
+        assert_eq!(parsed.host_relay_url, "wss://groups.example.com");
+        assert_eq!(parsed.local_id, "room");
+
+        // A JSON object missing the required fields is NOT a `GroupId` — the
+        // parse gate rejects it, so the function returns without registering.
+        assert!(
+            serde_json::from_str::<GroupId>(r#"{"not":"a group id"}"#).is_err(),
+            "a wrong-shape body must fail the GroupId parse gate"
+        );
+    }
+
+    /// THE GROUP-CHAT WIRING PROOF: `nmp_app_chirp_register_group_chat`
+    /// registers a `GroupChatProjection` against `app` for a well-formed
+    /// group id — it runs to completion (event-observer + snapshot-projection
+    /// registration) without panicking. The snapshot closure surfacing under
+    /// `"nip29.group_chat"` is proven end-to-end by the generic seam tests in
+    /// `nmp-core` (`snapshot_registry_tests.rs`) and the projection's own
+    /// tests in `nmp-nip29`; this asserts the Chirp-side wiring call is sound.
+    #[test]
+    fn register_group_chat_runs_for_well_formed_group() {
+        let app = nmp_app_new();
+        let group = CString::new(
+            r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#,
+        )
+        .unwrap();
+        // Must register both halves (observer + snapshot projection) without
+        // panicking across the FFI boundary.
+        nmp_app_chirp_register_group_chat(app, group.as_ptr());
+        nmp_app_free(app);
+    }
+
+    /// D6: a null `app`, a null `group_id_json`, and a malformed
+    /// `group_id_json` (valid JSON, wrong fields) all degrade to a silent
+    /// no-op — the function must never panic across the FFI boundary.
+    #[test]
+    fn register_group_chat_null_and_malformed_input_are_silent_noops() {
+        let group = CString::new(
+            r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#,
+        )
+        .unwrap();
+        // Null app — must not dereference.
+        nmp_app_chirp_register_group_chat(std::ptr::null_mut(), group.as_ptr());
+
+        let app = nmp_app_new();
+        // Null group id — silent return.
+        nmp_app_chirp_register_group_chat(app, std::ptr::null());
+        // Malformed JSON shape — fails the `GroupId` parse gate, silent return.
+        let bad = CString::new(r#"{"not":"a group id"}"#).unwrap();
+        nmp_app_chirp_register_group_chat(app, bad.as_ptr());
+        // Non-JSON garbage — also fails the parse gate, silent return.
+        let garbage = CString::new("not json at all").unwrap();
+        nmp_app_chirp_register_group_chat(app, garbage.as_ptr());
         nmp_app_free(app);
     }
 }
