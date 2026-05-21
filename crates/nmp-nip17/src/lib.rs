@@ -52,9 +52,14 @@
 use nmp_core::substrate::UnsignedEvent;
 
 pub mod action;
+pub mod dm_relay_list;
 pub mod inbox;
 
 pub use action::{send_dm_command, SendDmAction, SendDmInput};
+pub use dm_relay_list::{
+    build_dm_relay_list_event, publish_dm_relay_list_command, PublishDmRelayListAction,
+    PublishDmRelayListInput,
+};
 pub use inbox::{
     giftwrap_inbox_interest, DmConversation, DmInboxProjection, DmInboxSnapshot, DmMessage,
 };

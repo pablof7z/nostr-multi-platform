@@ -48,7 +48,8 @@ use nmp_nip29::action::{
     ReactInGroupAction, ReactInGroupInput,
 };
 use nmp_nip17::{
-    giftwrap_inbox_interest, send_dm_command, DmInboxProjection, SendDmAction, SendDmInput,
+    giftwrap_inbox_interest, publish_dm_relay_list_command, send_dm_command, DmInboxProjection,
+    PublishDmRelayListAction, PublishDmRelayListInput, SendDmAction, SendDmInput,
 };
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
@@ -557,8 +558,24 @@ fn register_nip29_actions(app: &mut NmpApp) {
 ///
 /// JSON schema (the third arg the host passes to `nmp_app_dispatch_action`):
 /// * `nmp.dm.send` — `{"recipient_pubkey":"<hex>","content":"…","reply_to":"<hex>"?}`
+/// * `nmp.dm.publish_relay_list` — `{"relays":["wss://relay.example", ...]}`
+///
+/// `nmp.dm.publish_relay_list` closes the symmetric publish gap: the kernel
+/// ingests kind:10050 (NIP-17 DM-relay list) into `dm_relay_lists`, but
+/// without a publish path every NMP user is invisible to other clients
+/// trying to send them gift-wrapped DMs. The executor builds the kind:10050
+/// unsigned event with `["relay", <url>]` tags and enqueues
+/// `ActorCommand::PublishUnsignedEventToRelays` with an EMPTY relay set —
+/// kind:10050 is a NIP-65 replaceable event and the actor routes empty-relay
+/// publishes through the NIP-65 outbox (the author's kind:10002 write relays).
 fn register_nip17_actions(app: &mut NmpApp) {
     wire_action!(app, SendDmAction, SendDmInput, send_dm_command);
+    wire_action!(
+        app,
+        PublishDmRelayListAction,
+        PublishDmRelayListInput,
+        publish_dm_relay_list_command
+    );
 }
 
 /// `chirp.react` action body: `{"target_event_id":"<hex>","reaction":"+"}`.
