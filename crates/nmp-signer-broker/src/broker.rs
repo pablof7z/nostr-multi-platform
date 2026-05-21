@@ -376,6 +376,14 @@ impl RemoteSignerHandle for ArcRemoteSigner {
     fn deliver_rpc_response(&self, response_json: &str) {
         self.0.deliver_rpc_response(response_json);
     }
+    fn disconnect(&self) {
+        // MUST forward — the actor holds this wrapper as its
+        // `Box<dyn RemoteSignerHandle>` and calls `disconnect()` on
+        // `RemoveAccount`. Without this the trait's default no-op runs and
+        // in-flight `sign()` ops hang for the full remote-sign timeout
+        // instead of failing fast (`Nip46Signer::disconnect` drains them).
+        self.0.disconnect();
+    }
 }
 
 /// Placeholder relay client used while a session entry is being constructed.
