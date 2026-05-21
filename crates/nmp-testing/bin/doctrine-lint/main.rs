@@ -282,9 +282,17 @@ fn scan_one_file(
         // rule fires only inside functions opted-in via the
         // `// D10: private-kind publish` marker comment. Skipped in
         // --workspace-d8 (no-polling sweep only).
+        //
+        // Escape hatch: D10 uses its OWN tightened parser
+        // [`d10::line_allows_d10`] that REQUIRES a non-whitespace reason
+        // after the separator. The generic `allow::line_allows` (which
+        // accepts a bare `// doctrine-allow: D10`) is intentionally NOT
+        // used here — every D10 escape must carry a written justification
+        // a reviewer can audit. Other rules keep the lenient parser until
+        // they opt in to their own per-rule variant.
         if !workspace_d8 && d10_in_scope {
             for (col, msg, suggested) in d10::check(sl.text, sl.is_comment, in_d10_marked_fn) {
-                if allow::line_allows(sl.text, d10::ID) {
+                if d10::line_allows_d10(sl.text) {
                     continue;
                 }
                 findings.push(report::Finding {

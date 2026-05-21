@@ -61,6 +61,22 @@
 //! routing gap is visible in logs. The warn is no longer a stub-marker for an
 //! unbuilt feature — it is the documented diagnostic for a recipient without a
 //! kind:10050 list.
+//!
+//! ## D10 empty-relay guard — kind:1059 NEVER Auto-routes
+//!
+//! `bootstrap_urls_for_role(Content)` may return empty in production builds
+//! (the operator has not configured any Content relays yet). Without a guard,
+//! `publish_signed_event` then maps the empty slice → `PublishTarget::Auto`,
+//! which leaks the encrypted envelope to the author's NIP-65 outbox — the
+//! exact D10 violation gift-wrap exists to prevent. The runtime guard in
+//! [`is_empty_relays_kind1059_block`] refuses any kind:1059 publish whose
+//! resolved relay list is empty (no kind:10050 cache AND no configured
+//! Content fallback). The refusal surfaces as a D6 toast and skips the
+//! `publish_signed_event` call entirely — the in-memory event is dropped.
+//!
+//! This is the call-site (NIP-17) twin of the
+//! `nmp-marmot::projection::publish::publish_to` Marmot guard PR-K added at
+//! the Marmot bridge — defence in depth at every kind:1059 publish surface.
 
 use nostr::{EventBuilder, Kind, PublicKey, Tag, Timestamp};
 
@@ -140,6 +156,7 @@ pub(crate) fn send_gift_wrapped_dm(
     //    carried alongside so `recipient_dm_relays` can be keyed correctly.
     let sender_hex = sender.to_hex();
     let mut outbound = Vec::new();
+    let mut empty_relay_skips: Vec<&'static str> = Vec::new();
     for (label, receiver, receiver_hex) in [
         ("recipient", &recipient, recipient_pubkey),
         ("self-copy", &sender, sender_hex.as_str()),
@@ -174,15 +191,74 @@ pub(crate) fn send_gift_wrapped_dm(
             );
             kernel.bootstrap_urls_for_role(crate::relay::RelayRole::Content)
         });
+        // D10 empty-relay guard — `bootstrap_urls_for_role` may return empty
+        // in production when the operator has configured no Content relays.
+        // `publish_signed_event` would then map the empty slice → Auto and
+        // leak the kind:1059 envelope through the author's NIP-65 outbox.
+        // Refuse the publish on the empty branch; the envelope is dropped.
+        // This is the call-site twin of the `nmp-marmot::publish_to` D10
+        // guard PR-K added at the Marmot bridge — every kind:1059 publish
+        // surface now refuses an empty relay set.
+        if is_empty_relays_kind1059_block(&relays) {
+            tracing::warn!(
+                envelope = label,
+                "NIP-17 DM: kind:1059 publish refused — no DM-inbox relays for \
+                 receiver and no configured Content relays to fall back to; \
+                 D10 forbids Auto-routing the encrypted envelope to the \
+                 author's NIP-65 outbox"
+            );
+            empty_relay_skips.push(label);
+            continue;
+        }
         // NIP-17 gift-wrap is not a `dispatch_action` path — no host
         // correlation_id to thread; the engine falls back to the publish
         // handle (== gift-wrap envelope id) as before.
-        outbound.extend(super::publish::publish_signed_event(
+        //
+        // The `doctrine-allow: D10 — …` annotation MUST be a trailing
+        // comment on the offending line itself (the lint parser is line-
+        // scoped); the prose reason here covers why it is safe:
+        // `is_empty_relays_kind1059_block` above proved `relays` non-empty
+        // before this call, so `publish_signed_event` cannot fall through
+        // to its `relays.is_empty()` → `PublishTarget::Auto` branch and
+        // cannot leak the kind:1059 envelope to the author's NIP-65 outbox.
+        outbound.extend(super::publish::publish_signed_event( // doctrine-allow: D10 — empty-relay kind:1059 Auto-route guarded above by is_empty_relays_kind1059_block
             kernel, raw, &relays, None,
         ));
     }
 
+    // If any envelope was skipped because its relay set resolved empty,
+    // surface a single toast — D6: the failure is observable state, never a
+    // silent drop. The toast names the affected envelope so the user can
+    // tell whether the recipient or the self-copy (or both) failed.
+    if !empty_relay_skips.is_empty() {
+        let which = empty_relay_skips.join(", ");
+        kernel.set_last_error_toast(Some(format!(
+            "Cannot send DM: no DM-inbox relays configured for {which} \
+             (publish skipped to avoid leaking encrypted envelope to public relays)"
+        )));
+    }
+
     outbound
+}
+
+/// D10 empty-relay guard predicate — true iff this kind:1059 publish must
+/// be refused because the resolved relay set is empty.
+///
+/// Centralizes the gate so the unit test in this module can pin its shape
+/// directly (mirrors the Marmot `is_d10_blocked` helper next to
+/// `publish_to`). Production behaviour: `publish_signed_event` with an empty
+/// `relays` slice falls through to `PublishTarget::Auto`, which publishes to
+/// the author's NIP-65 outbox — for a kind:1059 envelope that is a D10
+/// violation by construction (the envelope's *existence* leaks to every
+/// public relay the author advertises). The caller refuses the publish on
+/// `true`.
+///
+/// This predicate is intentionally relay-shape only: the caller has already
+/// constructed a kind:1059 envelope by the time it consults the guard, so
+/// the kind discrimination the Marmot twin needs (it handles 1059/445/30443
+/// in one bridge) is not required here.
+pub(crate) fn is_empty_relays_kind1059_block(relays: &[String]) -> bool {
+    relays.is_empty()
 }
 
 /// Build a `nostr::UnsignedEvent` (the rumor) from the substrate flat repr.
@@ -400,6 +476,58 @@ mod tests {
             "the recipient envelope must route to the recipient's kind:10050 \
              DM-relay list; got: {:?}",
             outbound.iter().map(|m| &m.relay_url).collect::<Vec<_>>()
+        );
+    }
+
+    // ── D10 empty-relay guard ────────────────────────────────────────────
+    //
+    // The bootstrap_urls fallback at `kernel::bootstrap_urls_for_role` is
+    // back-stopped under `#[cfg(test)]` so it ALWAYS returns a default URL
+    // in test builds, which means we cannot directly exercise the empty-
+    // bootstrap branch end-to-end here. We pin the guard's shape via the
+    // [`is_empty_relays_kind1059_block`] predicate (mirrors the Marmot
+    // `is_d10_blocked` test pattern) and assert: (a) the predicate fires on
+    // empty relays, (b) it does NOT fire when relays are present. The
+    // call-site wiring is exercised end-to-end by the existing
+    // `send_gift_wrapped_dm_routes_recipient_envelope_to_kind10050_relays`
+    // test (kind:10050 seeded → non-empty → predicate false → publish).
+
+    #[test]
+    fn is_empty_relays_kind1059_block_fires_on_empty_slice() {
+        // Production scenario: no kind:10050 cache for the receiver AND
+        // `bootstrap_urls_for_role(Content)` returns empty (operator has
+        // configured no Content relays). The guard MUST refuse the publish
+        // so the kind:1059 envelope never reaches `publish_signed_event`'s
+        // Auto-fallback path.
+        let empty: Vec<String> = Vec::new();
+        assert!(
+            is_empty_relays_kind1059_block(&empty),
+            "empty relays for a kind:1059 publish must be blocked (D10)"
+        );
+    }
+
+    #[test]
+    fn is_empty_relays_kind1059_block_passes_with_kind10050_pin() {
+        // The recipient has published a kind:10050 DM-relay list — the
+        // explicit pin is non-empty and the guard MUST NOT block.
+        let pin = vec!["wss://recipient-dm.relay".to_string()];
+        assert!(
+            !is_empty_relays_kind1059_block(&pin),
+            "an explicit kind:10050 pin must pass the D10 guard"
+        );
+    }
+
+    #[test]
+    fn is_empty_relays_kind1059_block_passes_with_content_fallback() {
+        // The bootstrap Content-relay fallback is non-empty (operator has
+        // configured at least one Content relay). The guard MUST NOT block —
+        // the recipient may read a different relay set so delivery is best-
+        // effort, but the envelope is going to a caller-supplied relay, not
+        // the Auto outbox.
+        let fallback = vec!["wss://relay.damus.io".to_string()];
+        assert!(
+            !is_empty_relays_kind1059_block(&fallback),
+            "a non-empty Content fallback must pass the D10 guard"
         );
     }
 
