@@ -144,6 +144,13 @@ impl Kernel {
             #[cfg(feature = "wallet")]
             wallet_status: self.wallet_status_snapshot().cloned(),
             bunker_handshake: self.bunker_handshake_snapshot().cloned(),
+            // Host-extensible snapshot output: run every host-registered
+            // projection closure and append its namespaced JSON value. Empty
+            // (and `skip_serializing_if`'d off the wire) when no host has
+            // registered one — backwards compatible with social-only shells.
+            // D8: the closures run on this actor thread inside the tick;
+            // `run_snapshot_projections` documents the non-blocking contract.
+            projections: self.run_snapshot_projections(),
         };
 
         // Serialize the snapshot exactly once. The on-wire `payload_bytes`

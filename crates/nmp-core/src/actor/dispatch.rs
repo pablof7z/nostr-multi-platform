@@ -458,6 +458,12 @@ pub(super) fn dispatch_command(
             // disconnect every registered raw observer.
             let raw_event_observers_handle =
                 ctx.kernel.take_raw_event_observers_handle_for_reset();
+            // Preserve the snapshot-projection slot across Reset for the same
+            // reason: the `Arc<Mutex<…>>` is shared with the FFI surface and
+            // per-app crates; replacing it would silently drop every
+            // host-registered projection from the snapshot.
+            let snapshot_projection_handle =
+                ctx.kernel.take_snapshot_projection_handle_for_reset();
             // Preserve the relay-edit rows handle across Reset for the same
             // reason: the `Arc<Mutex<…>>` is shared with the FFI surface
             // and per-app crates; replacing it would silently return stale
@@ -479,6 +485,9 @@ pub(super) fn dispatch_command(
             }
             if let Some(handle) = raw_event_observers_handle {
                 ctx.kernel.set_raw_event_observers_handle(handle);
+            }
+            if let Some(handle) = snapshot_projection_handle {
+                ctx.kernel.set_snapshot_projection_handle(handle);
             }
             if let Some(handle) = relay_edit_rows_handle {
                 ctx.kernel.set_relay_edit_rows_handle(handle);

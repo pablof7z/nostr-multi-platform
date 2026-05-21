@@ -10,6 +10,7 @@ mod event_observer;
 mod identity;
 mod lifecycle;
 mod raw_event_tap;
+mod snapshot;
 mod timeline;
 // D0: NIP-47 NWC is an app noun — the `nmp_app_wallet_*` FFI symbols are
 // gated behind the `wallet` Cargo feature.
@@ -36,6 +37,17 @@ pub use capability::{
 // test-support gate.
 #[cfg(any(test, feature = "test-support"))]
 pub use action::nmp_app_dispatch_action;
+
+// Host-extensible snapshot output — the `nmp_app_register_snapshot_projection`
+// registration entry point. Re-exported through the test-support facade so
+// integration tests can call it through the rlib without an `extern "C"`
+// block. The symbol stays `#[no_mangle] extern "C"` in `snapshot`; the
+// `pub use` is only consumed under the test-support gate. `allow(unused)`:
+// the in-crate `ffi::snapshot::tests` reach the symbol by its module path,
+// so the facade re-export is used only by out-of-crate integration tests.
+#[cfg(any(test, feature = "test-support"))]
+#[allow(unused_imports)]
+pub use snapshot::nmp_app_register_snapshot_projection;
 
 // T118 / G3 — lifecycle FFI exposed through the test-support facade so
 // integration tests (`nmp-testing/tests/lifecycle_ffi_*`) can drive
@@ -124,6 +136,11 @@ pub use capability::{
 pub use action::{
     nmp_app_dispatch_action, nmp_app_register_action_executor, nmp_app_register_action_module,
 };
+// Host-extensible snapshot output — registration entry point reachable via
+// the Rust path so the Android JNI shim pulls the symbol body into the
+// cdylib CGU.
+#[cfg(feature = "android-ffi")]
+pub use snapshot::nmp_app_register_snapshot_projection;
 #[cfg(feature = "android-ffi")]
 pub use lifecycle::{
     nmp_app_lifecycle_background, nmp_app_lifecycle_foreground, nmp_app_set_lifecycle_callback,
@@ -235,6 +252,17 @@ pub struct NmpApp {
     /// action ledger) is the M6 follow-up; see
     /// [`crate::kernel::action_registry`].
     action_registry: crate::kernel::ActionRegistry,
+    /// Host-extensible snapshot output registry — the output-side counterpart
+    /// to `action_registry`. Shared `Arc<Mutex<…>>` with the actor thread
+    /// (bound onto the kernel via `set_snapshot_projection_handle`): a host
+    /// registers a projection closure through
+    /// [`Self::register_snapshot_projection`] / the C-ABI
+    /// `nmp_app_register_snapshot_projection`, and the kernel runs every
+    /// registered closure in `make_update`, appending the result to
+    /// `KernelSnapshot::projections`. Unlike `action_registry`, this is NOT
+    /// queried on the FFI thread — it fires from inside the actor tick, hence
+    /// the shared-`Arc` slot rather than a plain owned field.
+    snapshot_projections: crate::kernel::SnapshotProjectionSlot,
 }
 
 impl Drop for NmpApp {
@@ -282,6 +310,13 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // (`set_raw_event_observers_handle`).
     let raw_event_observers = new_raw_event_observer_slot();
     let actor_raw_event_observers = Arc::clone(&raw_event_observers);
+    // Host-extensible snapshot output slot. Same shared-`Arc` pattern: the
+    // `NmpApp` keeps one clone (Rust + C-ABI registration entry points), the
+    // actor thread carries another and binds it onto the kernel
+    // (`set_snapshot_projection_handle`). Registrations mutate the inner
+    // `Mutex<SnapshotRegistry>` visible to both sides.
+    let snapshot_projections = crate::kernel::new_snapshot_projection_slot();
+    let actor_snapshot_projections = Arc::clone(&snapshot_projections);
     // Shared relay-edit rows handle. Cloned to the actor thread and bound
     // onto the kernel so external Rust callers can read the user's current
     // relay list without crossing FFI.
@@ -324,6 +359,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 actor_lifecycle_observer,
                 actor_event_observers,
                 actor_raw_event_observers,
+                actor_snapshot_projections,
                 actor_relay_edit_rows,
                 actor_active_local_nsec,
                 actor_capability_callback,
@@ -379,6 +415,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // only. NIP-29 / NIP-59 modules are app nouns (D0) and are
         // registered by the app host against its own registry instance.
         action_registry: crate::kernel::default_registry(),
+        // Host-extensible snapshot output: ships empty. A non-social host
+        // registers its projections via `nmp_app_register_snapshot_projection`
+        // during init; the social shells register nothing and the
+        // `projections` snapshot key is `skip_serializing_if`'d off the wire.
+        snapshot_projections,
     }))
 }
 
@@ -454,6 +495,49 @@ impl NmpApp {
     ) {
         self.action_registry
             .register_with_validator(namespace, validate);
+    }
+
+    /// Register a host-supplied snapshot projection — the output-side
+    /// counterpart to [`Self::register_action_executor`].
+    ///
+    /// The closure runs on **every snapshot tick** (inside the actor's
+    /// `make_update`) and its returned JSON value is appended to
+    /// `KernelSnapshot::projections` under `key`. A marketplace app registers
+    /// `"market.listings"`, a todo app registers `"todo.items"` — each gets
+    /// its own snapshot namespace WITHOUT editing `nmp-core`'s sealed social
+    /// `KernelSnapshot` fields.
+    ///
+    /// Unlike `register_action_executor`, this does NOT require `&mut self`:
+    /// the registry lives behind a shared `Arc<Mutex<…>>` and the mutation is
+    /// a lock-and-push. It is still intended as a host-init call.
+    ///
+    /// D8 — the closure runs on the actor thread inside the snapshot tick. It
+    /// MUST be cheap and non-blocking (no I/O, no mutex waits): a blocking
+    /// closure stalls every subsequent snapshot and freezes the host's
+    /// update stream. A poisoned registry mutex is a silent no-op (D6).
+    pub fn register_snapshot_projection(
+        &self,
+        key: impl Into<String>,
+        f: impl Fn() -> serde_json::Value + Send + Sync + 'static,
+    ) {
+        if let Ok(mut registry) = self.snapshot_projections.lock() {
+            registry.register(key, f);
+        }
+    }
+
+    /// Test-only: run every registered snapshot projection directly against
+    /// the app's shared registry, bypassing the actor/kernel tick. The
+    /// end-to-end `make_update`-driven proof lives in the kernel test module
+    /// (`kernel/snapshot_registry_tests.rs`); this helper lets the FFI
+    /// registration tests assert the C-callback bridge in isolation.
+    #[cfg(test)]
+    pub(crate) fn run_snapshot_projections_for_test(
+        &self,
+    ) -> std::collections::HashMap<String, serde_json::Value> {
+        self.snapshot_projections
+            .lock()
+            .map(|registry| registry.run())
+            .unwrap_or_default()
     }
 
     /// Test-only direct execution path into the action registry.

@@ -562,4 +562,15 @@ pub(super) struct KernelSnapshot {
     pub(super) wallet_status: Option<super::WalletStatus>,
     // ── NIP-46 bunker handshake projection ─────────────────────────────────
     pub(super) bunker_handshake: Option<super::BunkerHandshakeDto>,
+    /// Host-registered projection data. Each registered projection closure
+    /// runs on every tick and appends a namespaced JSON value under its key.
+    /// Keys are host-chosen (e.g. `"market.listings"`, `"todo.items"`).
+    ///
+    /// This is the output-side counterpart to the action-registry seam: a
+    /// non-social app extends the snapshot with its own namespace WITHOUT
+    /// editing `KernelSnapshot`'s typed social fields. Append-only and
+    /// `skip_serializing_if` empty — a shell that predates this field simply
+    /// never sees the key (backwards compatible, D1).
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub(super) projections: std::collections::HashMap<String, serde_json::Value>,
 }
