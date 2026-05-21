@@ -62,12 +62,13 @@ pub fn file_is_exempt(path: &Path) -> bool {
     // D0's mandate is `nmp-core` specifically — every OTHER protocol crate
     // under `crates/nmp-*` legitimately uses the domain nouns it owns
     // (`nmp-nip29` defines `GroupId`; flagging the very crate that defines
-    // it is nonsense). Exempt every `crates/nmp-*/src/...` path that is NOT
-    // `crates/nmp-core/`. Requiring the `/src/` segment keeps test-fixture
-    // paths like `crates/nmp-testing/bin/doctrine-lint/fixtures/...`
-    // (intentional negative examples for D0 itself) unaffected.
+    // it is nonsense). Exempt every `crates/nmp-*/src/...` and
+    // `crates/nmp-*/tests/...` path that is NOT `crates/nmp-core/`. Requiring
+    // the `/src/` or `/tests/` segment keeps test-fixture paths like
+    // `crates/nmp-testing/bin/doctrine-lint/fixtures/...` (intentional
+    // negative examples for D0 itself) unaffected.
     let in_other_nmp_crate_src = (s.contains("/crates/nmp-") || s.starts_with("crates/nmp-"))
-        && s.contains("/src/")
+        && (s.contains("/src/") || s.contains("/tests/"))
         && !s.contains("/nmp-core/")
         && !s.starts_with("nmp-core/");
     if in_other_nmp_crate_src {
@@ -166,6 +167,23 @@ mod tests {
         )));
         assert!(file_is_exempt(&std::path::PathBuf::from(
             "crates/nmp-marmot/src/projection/mod.rs"
+        )));
+    }
+
+    #[test]
+    fn exempts_non_nmp_core_protocol_crate_tests() {
+        // Integration-test files under `crates/nmp-*/tests/` legitimately use
+        // the domain nouns their crate defines — same exemption as `/src/`.
+        // (Before this fix the `/tests/` segment was missing and files like
+        // `nmp-nip29/tests/lifecycle.rs` produced 9 false D0 positives.)
+        assert!(file_is_exempt(&std::path::PathBuf::from(
+            "crates/nmp-nip29/tests/lifecycle.rs"
+        )));
+        assert!(file_is_exempt(&std::path::PathBuf::from(
+            "/abs/path/crates/nmp-nip17/tests/integration.rs"
+        )));
+        assert!(file_is_exempt(&std::path::PathBuf::from(
+            "crates/nmp-marmot/tests/round_trip.rs"
         )));
     }
 

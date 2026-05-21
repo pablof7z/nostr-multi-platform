@@ -63,21 +63,20 @@ pub fn phase_d_fanout(
         let work_rx = work_rx.clone();
         let msg_tx = msg_tx.clone();
         thread::spawn(move || loop {
-            if Instant::now() >= global_deadline {
-                return;
-            }
             let job = {
                 let lock = work_rx.lock().unwrap();
-                lock.try_recv()
+                lock.recv_timeout(Duration::from_millis(50))
             };
             match job {
                 Ok((url, authors)) => {
                     run_relay_thread(url, authors, msg_tx.clone(), global_deadline);
                 }
-                Err(mpsc::TryRecvError::Empty) => {
-                    thread::sleep(Duration::from_millis(50));
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    if Instant::now() >= global_deadline {
+                        return;
+                    }
                 }
-                Err(mpsc::TryRecvError::Disconnected) => return,
+                Err(mpsc::RecvTimeoutError::Disconnected) => return,
             }
         });
     }
