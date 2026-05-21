@@ -18,9 +18,10 @@
 use nmp_core::substrate::{SignedEvent, UnsignedEvent};
 use nmp_core::RemoteSignerHandle;
 use nmp_signer_iface::{SignerError, SignerOp};
+use nostr::PublicKey;
 
 use super::Nip46Signer;
-use crate::signers::traits::Signer;
+use crate::signers::traits::{Nip44, Signer};
 
 impl RemoteSignerHandle for Nip46Signer {
     fn pubkey_hex(&self) -> String {
@@ -37,6 +38,33 @@ impl RemoteSignerHandle for Nip46Signer {
 
     fn sign(&self, unsigned: &UnsignedEvent) -> SignerOp<SignedEvent> {
         <Self as Signer>::sign(self, unsigned.clone())
+    }
+
+    fn nip44_encrypt(&self, recipient_pubkey: &str, plaintext: &str) -> SignerOp<String> {
+        // ADR-0026: the actor-facing trait carries hex; parse it here before
+        // delegating to the existing `Nip44` impl. A malformed pubkey surfaces
+        // as a `SignerOp` error (D6 — never a panic across the seam).
+        let recipient = match PublicKey::from_hex(recipient_pubkey) {
+            Ok(pk) => pk,
+            Err(e) => {
+                return SignerOp::err(SignerError::Backend(format!(
+                    "invalid recipient pubkey: {e}"
+                )))
+            }
+        };
+        <Self as Nip44>::encrypt(self, &recipient, plaintext)
+    }
+
+    fn nip44_decrypt(&self, sender_pubkey: &str, ciphertext: &str) -> SignerOp<String> {
+        let sender = match PublicKey::from_hex(sender_pubkey) {
+            Ok(pk) => pk,
+            Err(e) => {
+                return SignerOp::err(SignerError::Backend(format!(
+                    "invalid sender pubkey: {e}"
+                )))
+            }
+        };
+        <Self as Nip44>::decrypt(self, &sender, ciphertext)
     }
 
     fn deliver_rpc_response(&self, response_json: &str) {
@@ -541,6 +569,61 @@ mod tests {
             Err(SignerError::Rejected(m)) => assert!(m.contains("cannot decrypt")),
             other => panic!("expected Rejected, got {other:?}"),
         }
+    }
+
+    // ---- RemoteSignerHandle NIP-44 seam (ADR-0026) ------------------------
+
+    #[test]
+    fn remote_handle_nip44_encrypt_queues_rpc_and_round_trips() {
+        // ADR-0026: the actor-facing `RemoteSignerHandle::nip44_encrypt` parses
+        // hex, then delegates to the inner `Nip44` impl — the RPC must carry
+        // the `nip44_encrypt` method and the opaque ciphertext result must
+        // surface verbatim (no verify() step).
+        let remote_user = LocalKeySigner::generate();
+        let (signer, transport) = build_signer_with_remote(&remote_user);
+        let recipient = LocalKeySigner::generate().pubkey();
+
+        let op =
+            RemoteSignerHandle::nip44_encrypt(&signer, &recipient.to_hex(), "seal plaintext");
+        let rpc = single_rpc(&transport);
+        assert!(rpc.body_json.contains(r#""method":"nip44_encrypt""#));
+        assert!(rpc.body_json.contains(&recipient.to_hex()));
+
+        signer.resolve_response(&rpc.id, Ok("sealed-ciphertext".to_string()));
+        let got = op.wait(Duration::from_secs(1)).expect("encrypt resolves");
+        assert_eq!(got, "sealed-ciphertext");
+    }
+
+    #[test]
+    fn remote_handle_nip44_decrypt_queues_rpc_with_sender() {
+        let remote_user = LocalKeySigner::generate();
+        let (signer, transport) = build_signer_with_remote(&remote_user);
+        let sender = LocalKeySigner::generate().pubkey();
+
+        let _op =
+            RemoteSignerHandle::nip44_decrypt(&signer, &sender.to_hex(), "sealed-payload");
+        let rpc = single_rpc(&transport);
+        assert!(rpc.body_json.contains(r#""method":"nip44_decrypt""#));
+        assert!(rpc.body_json.contains(&sender.to_hex()));
+    }
+
+    #[test]
+    fn remote_handle_nip44_encrypt_with_malformed_pubkey_surfaces_err() {
+        // D6: a bad hex pubkey must surface as a SignerOp error, never panic,
+        // and must NOT enqueue an RPC.
+        let remote_user = LocalKeySigner::generate();
+        let (signer, transport) = build_signer_with_remote(&remote_user);
+
+        let op = RemoteSignerHandle::nip44_encrypt(&signer, "not-hex", "plaintext");
+        match op.wait(Duration::from_millis(100)) {
+            Err(SignerError::Backend(m)) => assert!(m.contains("invalid recipient pubkey")),
+            other => panic!("expected Backend Err, got {other:?}"),
+        }
+        assert_eq!(
+            transport.sent.lock().unwrap().len(),
+            0,
+            "a malformed pubkey must not enqueue an RPC"
+        );
     }
 
     #[test]

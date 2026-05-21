@@ -374,6 +374,12 @@ impl RemoteSignerHandle for ArcRemoteSigner {
     fn sign(&self, unsigned: &UnsignedEvent) -> SignerOp<nmp_core::substrate::SignedEvent> {
         RemoteSignerHandle::sign(&*self.0, unsigned)
     }
+    fn nip44_encrypt(&self, recipient_pubkey: &str, plaintext: &str) -> SignerOp<String> {
+        RemoteSignerHandle::nip44_encrypt(&*self.0, recipient_pubkey, plaintext)
+    }
+    fn nip44_decrypt(&self, sender_pubkey: &str, ciphertext: &str) -> SignerOp<String> {
+        RemoteSignerHandle::nip44_decrypt(&*self.0, sender_pubkey, ciphertext)
+    }
     fn deliver_rpc_response(&self, response_json: &str) {
         self.0.deliver_rpc_response(response_json);
     }
