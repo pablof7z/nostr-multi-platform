@@ -37,11 +37,14 @@
 
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 
-use crate::substrate::{ActionContext, ActionId, ActionModule, ActionPlan, ActionRejection};
+use crate::substrate::{
+    ActionContext, ActionId, ActionModule, ActionPlan, ActionRejection, ActionResult,
+};
 
 /// Dyn-safe facade over [`ActionModule`].
 ///
@@ -103,6 +106,17 @@ type ExecutorFn =
 type ValidatorFn =
     Box<dyn Fn(&str) -> Result<ActionPlan<Value>, ActionRejection> + Send + Sync>;
 
+/// Shared, mutable slot holding the optional host-registered action-result
+/// observer.
+///
+/// `Arc<Mutex<…>>` so [`ActionRegistry::set_result_observer`] and
+/// [`ActionRegistry::deliver_result`] both take `&self` — registration and
+/// delivery never need `&mut ActionRegistry`. The observer fires from the FFI
+/// dispatch thread (where the registry already lives), so this slot does NOT
+/// cross the actor/kernel boundary; it stays a private detail of the registry.
+pub(crate) type ResultObserverSlot =
+    Arc<Mutex<Option<Box<dyn Fn(ActionResult) + Send + Sync + 'static>>>>;
+
 /// [`ErasedActionModule`] implementor backed by a host-supplied validator
 /// closure rather than a compile-time [`ActionModule`] type — the *module*
 /// counterpart to the host-registered *executor*. It wires the `start()`
@@ -154,6 +168,11 @@ impl ErasedActionModule for ClosureModule {
 pub struct ActionRegistry {
     modules: HashMap<&'static str, Box<dyn ErasedActionModule>>,
     executors: HashMap<&'static str, ExecutorFn>,
+    /// Optional host-registered observer notified when an action is accepted
+    /// and enqueued. See [`Self::set_result_observer`] /
+    /// [`Self::deliver_result`]. `None` until a host registers one — an
+    /// unregistered observer makes delivery a silent no-op.
+    result_observer: ResultObserverSlot,
 }
 
 impl Default for ActionRegistry {
@@ -169,6 +188,7 @@ impl ActionRegistry {
         Self {
             modules: HashMap::new(),
             executors: HashMap::new(),
+            result_observer: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -277,6 +297,44 @@ impl ActionRegistry {
             None => Err(format!(
                 "no executor registered for namespace '{namespace}'"
             )),
+        }
+    }
+
+    /// Register the host-supplied action-result observer.
+    ///
+    /// The observer is the *push* counterpart to the snapshot-projection
+    /// (pull) output seam: after [`Self::execute`] returns `Ok` for a
+    /// dispatched action, [`Self::deliver_result`] hands the observer an
+    /// [`ActionResult`] carrying the action's `correlation_id`. This is an
+    /// "action accepted and enqueued" signal — for `nmp.publish` the actor
+    /// still has to verify+publish after this fires (see [`ActionResult`]).
+    ///
+    /// Takes `&self`: the observer lives behind an `Arc<Mutex<…>>` slot, so a
+    /// host may register it before *or after* `nmp_app_start`. A second
+    /// registration replaces the first. A poisoned slot is a silent no-op
+    /// (D6 — a bad registration never crashes the host).
+    pub fn set_result_observer(
+        &self,
+        f: impl Fn(ActionResult) + Send + Sync + 'static,
+    ) {
+        if let Ok(mut slot) = self.result_observer.lock() {
+            *slot = Some(Box::new(f));
+        }
+    }
+
+    /// Deliver `result` to the registered observer, if any.
+    ///
+    /// A no-op when no observer is registered, or when the observer slot
+    /// mutex is poisoned (D6 — delivery failures are never a crash). Holding
+    /// the lock across the observer call is intentional: registration is a
+    /// host-init-time event, so contention with [`Self::set_result_observer`]
+    /// is not expected. A panicking observer poisons the slot, which simply
+    /// disables all further delivery — never a crash.
+    pub fn deliver_result(&self, result: ActionResult) {
+        if let Ok(slot) = self.result_observer.lock() {
+            if let Some(observer) = slot.as_ref() {
+                observer(result);
+            }
         }
     }
 
@@ -515,6 +573,71 @@ mod tests {
             }
             other => panic!("expected Invalid, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn deliver_result_invokes_registered_observer() {
+        use std::sync::{Arc, Mutex};
+        // The observer captures every `ActionResult` it receives.
+        let seen: Arc<Mutex<Vec<ActionResult>>> = Arc::new(Mutex::new(Vec::new()));
+        let seen_in_observer = Arc::clone(&seen);
+
+        let registry = default_registry();
+        registry.set_result_observer(move |result| {
+            seen_in_observer.lock().unwrap().push(result);
+        });
+
+        registry.deliver_result(ActionResult {
+            correlation_id: "abc123".to_string(),
+            result_json: serde_json::Value::Null,
+        });
+
+        let captured = seen.lock().unwrap();
+        assert_eq!(captured.len(), 1, "observer should be called exactly once");
+        assert_eq!(
+            captured[0].correlation_id, "abc123",
+            "observer should receive the delivered correlation id"
+        );
+        assert!(
+            captured[0].result_json.is_null(),
+            "fire-and-forget delivery carries a null result_json"
+        );
+    }
+
+    #[test]
+    fn deliver_result_without_observer_is_silent_noop() {
+        // No observer registered — delivery must not panic.
+        let registry = default_registry();
+        registry.deliver_result(ActionResult {
+            correlation_id: "no-observer".to_string(),
+            result_json: serde_json::Value::Null,
+        });
+    }
+
+    #[test]
+    fn set_result_observer_second_registration_replaces_first() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::sync::Arc;
+        let first = Arc::new(AtomicU32::new(0));
+        let second = Arc::new(AtomicU32::new(0));
+        let first_c = Arc::clone(&first);
+        let second_c = Arc::clone(&second);
+
+        let registry = default_registry();
+        registry.set_result_observer(move |_| {
+            first_c.fetch_add(1, Ordering::SeqCst);
+        });
+        registry.set_result_observer(move |_| {
+            second_c.fetch_add(1, Ordering::SeqCst);
+        });
+
+        registry.deliver_result(ActionResult {
+            correlation_id: "x".to_string(),
+            result_json: serde_json::Value::Null,
+        });
+
+        assert_eq!(first.load(Ordering::SeqCst), 0, "first observer is replaced");
+        assert_eq!(second.load(Ordering::SeqCst), 1, "second observer receives it");
     }
 
     #[test]

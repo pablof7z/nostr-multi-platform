@@ -38,6 +38,16 @@ pub use capability::{
 #[cfg(any(test, feature = "test-support"))]
 pub use action::nmp_app_dispatch_action;
 
+// Action-result observer registration — the push-side output seam. Re-exported
+// through the test-support facade so integration tests can register an observer
+// through the rlib without an `extern "C"` block. The symbol stays
+// `#[no_mangle] extern "C"` in `action`; `allow(unused)`: the in-crate
+// `ffi::action::tests` reach it by module path, so this facade re-export is
+// used only by out-of-crate integration tests.
+#[cfg(any(test, feature = "test-support"))]
+#[allow(unused_imports)]
+pub use action::nmp_app_register_action_result_observer;
+
 // Host-extensible snapshot output — the `nmp_app_register_snapshot_projection`
 // registration entry point. Re-exported through the test-support facade so
 // integration tests can call it through the rlib without an `extern "C"`
@@ -135,6 +145,7 @@ pub use capability::{
 #[allow(unused_imports)]
 pub use action::{
     nmp_app_dispatch_action, nmp_app_register_action_executor, nmp_app_register_action_module,
+    nmp_app_register_action_result_observer,
 };
 // Host-extensible snapshot output — registration entry point reachable via
 // the Rust path so the Android JNI shim pulls the symbol body into the
@@ -586,6 +597,28 @@ impl NmpApp {
         if let Ok(mut registry) = self.snapshot_projections.lock() {
             registry.register(key, f);
         }
+    }
+
+    /// Register a host-supplied action-result observer — the *push*
+    /// counterpart to [`Self::register_snapshot_projection`]'s pull seam.
+    ///
+    /// After [`action::nmp_app_dispatch_action`] accepts an action and its
+    /// executor returns `Ok`, the observer is handed a
+    /// [`crate::substrate::ActionResult`] carrying the action's
+    /// `correlation_id`. This is an "action accepted and enqueued" signal,
+    /// not a completion carrier — for `nmp.publish` the actor still has to
+    /// verify+publish after this fires; that outcome reaches the host via
+    /// the snapshot-projection (pull) path.
+    ///
+    /// Like `register_snapshot_projection`, this does NOT require `&mut self`:
+    /// the observer lives behind a shared `Arc<Mutex<…>>` slot inside the
+    /// action registry, so a host may register it before or after
+    /// `nmp_app_start`. A second registration replaces the first.
+    pub fn register_action_result_observer(
+        &self,
+        f: impl Fn(crate::substrate::ActionResult) + Send + Sync + 'static,
+    ) {
+        self.action_registry.set_result_observer(f);
     }
 
     /// Test-only: run every registered snapshot projection directly against
