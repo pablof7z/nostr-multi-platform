@@ -35,7 +35,7 @@ import os.log
 //     surfaces through the next snapshot tick (matches `react` / `follow`).
 // ─────────────────────────────────────────────────────────────────────────
 
-private let gcLog = Logger(subsystem: "com.example.Chirp", category: "GroupChatBridge")
+private let gcLog = Logger(subsystem: "io.f7z.chirp", category: "GroupChatBridge")
 
 // ── GroupId — the typed NIP-29 group identity ────────────────────────────
 

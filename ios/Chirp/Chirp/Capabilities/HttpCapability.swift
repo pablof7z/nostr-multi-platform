@@ -129,7 +129,7 @@ final class HttpCapability {
         config.timeoutIntervalForRequest = timeout
         config.waitsForConnectivity = false
         let queue = OperationQueue()
-        queue.name = "com.example.Chirp.HttpCapability"
+        queue.name = "io.f7z.chirp.HttpCapability"
         self.session = URLSession(configuration: config, delegate: nil, delegateQueue: queue)
     }
 

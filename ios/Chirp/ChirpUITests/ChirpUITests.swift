@@ -396,7 +396,7 @@ final class ChirpUITests: XCTestCase {
     }
 
     private func isolatedKeychainService(_ suffix: String) -> String {
-        "com.example.Chirp.uitests.\(suffix).\(UUID().uuidString)"
+        "io.f7z.chirp.uitests.\(suffix).\(UUID().uuidString)"
     }
 
     private func launchApp(keychainService: String) -> XCUIApplication {

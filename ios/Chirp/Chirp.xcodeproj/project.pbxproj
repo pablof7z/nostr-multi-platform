@@ -451,8 +451,8 @@
 					"$(SRCROOT)/../../target/aarch64-apple-ios/release",
 				);
 				OTHER_LDFLAGS = "$(inherited) -lnmp_app_chirp";
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.Chirp;
-				PRODUCT_NAME = Chirp;
+				PRODUCT_BUNDLE_IDENTIFIER = io.f7z.chirp;
+				PRODUCT_NAME = Chirp7z;
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = Chirp/Bridge/NmpCore.h;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -528,7 +528,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.ChirpUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = io.f7z.chirp.uitests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Chirp;
@@ -545,10 +545,10 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.ChirpTests;
+				PRODUCT_BUNDLE_IDENTIFIER = io.f7z.chirp.tests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Chirp.app/Chirp";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Chirp7z.app/Chirp7z";
 			};
 			name = Debug;
 		};
@@ -638,8 +638,8 @@
 					"$(SRCROOT)/../../target/aarch64-apple-ios/release",
 				);
 				OTHER_LDFLAGS = "$(inherited) -lnmp_app_chirp";
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.Chirp;
-				PRODUCT_NAME = Chirp;
+				PRODUCT_BUNDLE_IDENTIFIER = io.f7z.chirp;
+				PRODUCT_NAME = Chirp7z;
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = Chirp/Bridge/NmpCore.h;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -656,10 +656,10 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.ChirpTests;
+				PRODUCT_BUNDLE_IDENTIFIER = io.f7z.chirp.tests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Chirp.app/Chirp";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Chirp7z.app/Chirp7z";
 			};
 			name = Release;
 		};
@@ -673,7 +673,7 @@
 					"@executable_path/Frameworks",
 					"@loader_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.example.ChirpUITests;
+				PRODUCT_BUNDLE_IDENTIFIER = io.f7z.chirp.uitests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Chirp;
