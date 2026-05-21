@@ -296,7 +296,10 @@ final class KernelModel: ObservableObject {
         }
         rev = update.rev
         isRunning = update.running
-        profile = update.profile
+        // D0: profile now reads from projections via computed accessor.
+        // Guarded so a legacy kernel that elides the projection keeps the
+        // prior card (D1) — the current kernel always emits it.
+        if let p = update.profile { profile = p }
         authorView = update.authorView
         let timelineItemsChanged = update.items != items
         if timelineItemsChanged {

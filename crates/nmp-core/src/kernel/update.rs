@@ -56,13 +56,13 @@ impl Kernel {
             last_tick_ms,
             update_kind: "ViewBatch",
             running,
-            profile: self.profile_card(),
-            items,
-            author_view: self.author_view(),
-            thread_view: self.thread_view(),
-            inserted: inserted.clone(),
-            updated: updated.clone(),
-            removed: removed.clone(),
+            // D0: the views cluster (`profile`, the visible timeline,
+            // `author_view`, `thread_view`, and the `inserted` / `updated` /
+            // `removed` deltas) is no longer a typed field set — all seven are
+            // inserted into `projections` below under their built-in keys by
+            // `snapshot_projections_with_publish_cluster`. The `items`,
+            // `inserted`, `updated`, and `removed` locals stay live: they still
+            // feed the `metrics` counters and the `NMP_PERF` log line.
             metrics: Metrics {
                 generated_events: counters.events_rx,
                 // Diagnostic counters maintained incrementally at the `events`
@@ -158,7 +158,16 @@ impl Kernel {
             // the old typed fields' always-emitted shape.
             // D8: the host closures run on this actor thread inside the tick;
             // `run_snapshot_projections` documents the non-blocking contract.
-            projections: self.snapshot_projections_with_publish_cluster(),
+            //
+            // D0: the views cluster (`profile`, `timeline`, `author_view`,
+            // `thread_view`, `inserted`, `updated`, `removed`) is folded into
+            // the same map. `items` / `inserted` / `updated` / `removed` are
+            // tick-local bindings, so they are passed in; `profile_card()`,
+            // `author_view()`, and `thread_view()` read `&self` and are called
+            // inside the helper.
+            projections: self.snapshot_projections_with_publish_cluster(
+                &items, &inserted, &updated, &removed,
+            ),
         };
 
         // Serialize the snapshot exactly once. The on-wire `payload_bytes`
@@ -191,26 +200,40 @@ impl Kernel {
 
     /// Collect the snapshot `projections` map: every host-registered
     /// projection closure plus the kernel-owned built-in projections (the
-    /// publish cluster and the identity pair).
+    /// publish cluster, the identity pair, and the views cluster).
     ///
     /// D0: `publish_queue`, `publish_outbox`, and `relay_edit_rows` are
-    /// app-shaped relay/publish state, and `accounts` / `active_account` are
-    /// identity output — none are protocol-neutral kernel primitives, so none
-    /// carry a typed `KernelSnapshot` field. Unlike the host-registered
-    /// `"wallet"` / `"bunker_handshake"` projections (which read actor-runtime
-    /// slots through a no-arg closure), these are kernel-owned, so they cannot
-    /// be expressed as a `SnapshotRegistry` closure — they are inserted here
-    /// directly after the host closures run.
+    /// app-shaped relay/publish state; `accounts` / `active_account` are
+    /// identity output; and the views cluster (`profile`, `timeline`,
+    /// `author_view`, `thread_view`, `inserted`, `updated`, `removed`) is
+    /// app-shaped social view state — none are protocol-neutral kernel
+    /// primitives, so none carry a typed `KernelSnapshot` field. Unlike the
+    /// host-registered `"wallet"` / `"bunker_handshake"` projections (which
+    /// read actor-runtime slots through a no-arg closure), these are
+    /// kernel-owned, so they cannot be expressed as a `SnapshotRegistry`
+    /// closure — they are inserted here directly after the host closures run.
+    ///
+    /// The views-cluster deltas (`items`, `inserted`, `updated`, `removed`)
+    /// are tick-local values computed in `make_update`, so they are passed in
+    /// by reference; `profile_card()`, `author_view()`, and `thread_view()`
+    /// read `&self` and are called inside this helper. The generic typed-field
+    /// name `items` is deliberately surfaced under the more descriptive
+    /// projection key `"timeline"`.
     ///
     /// Built-in keys win on collision: a host that registers `"publish_queue"`,
-    /// `"publish_outbox"`, `"relay_edit_rows"`, `"accounts"`, or
-    /// `"active_account"` is overwritten so the kernel-owned value stays
-    /// authoritative. A serialization failure degrades to a stable empty value
-    /// (`[]` for the lists, `null` for `active_account`) — D6: never a panic at
-    /// the snapshot boundary — and the key is still present, mirroring the old
-    /// always-emitted typed fields.
+    /// `"publish_outbox"`, `"relay_edit_rows"`, `"accounts"`, `"active_account"`,
+    /// `"profile"`, `"timeline"`, `"author_view"`, `"thread_view"`,
+    /// `"inserted"`, `"updated"`, or `"removed"` is overwritten so the
+    /// kernel-owned value stays authoritative. A serialization failure degrades
+    /// to a stable empty value (`[]` for the lists, `null` for the optional
+    /// payloads) — D6: never a panic at the snapshot boundary — and the key is
+    /// still present, mirroring the old always-emitted typed fields.
     fn snapshot_projections_with_publish_cluster(
         &self,
+        items: &[TimelineItem],
+        inserted: &[TimelineItem],
+        updated: &[TimelineItem],
+        removed: &[String],
     ) -> std::collections::HashMap<String, serde_json::Value> {
         let mut projections = self.run_snapshot_projections();
         projections.insert(
@@ -251,6 +274,46 @@ impl Kernel {
         projections.insert(
             "active_account".to_string(),
             serde_json::to_value(active_account).unwrap_or(serde_json::Value::Null),
+        );
+        // D0: views cluster. `profile` is the active-account profile card;
+        // `timeline` is the visible item list (renamed from the generic
+        // typed-field name `items`); `author_view` / `thread_view` are the
+        // open-view payloads (`null` when no view is open); `inserted` /
+        // `updated` / `removed` are the per-tick timeline deltas. A
+        // serialization failure degrades to `[]` for the lists and `null` for
+        // the optional payloads so every key is always present, matching the
+        // old always-emitted typed fields.
+        projections.insert(
+            "profile".to_string(),
+            serde_json::to_value(self.profile_card()).unwrap_or(serde_json::Value::Null),
+        );
+        projections.insert(
+            "timeline".to_string(),
+            serde_json::to_value(items)
+                .unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
+        );
+        projections.insert(
+            "author_view".to_string(),
+            serde_json::to_value(self.author_view()).unwrap_or(serde_json::Value::Null),
+        );
+        projections.insert(
+            "thread_view".to_string(),
+            serde_json::to_value(self.thread_view()).unwrap_or(serde_json::Value::Null),
+        );
+        projections.insert(
+            "inserted".to_string(),
+            serde_json::to_value(inserted)
+                .unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
+        );
+        projections.insert(
+            "updated".to_string(),
+            serde_json::to_value(updated)
+                .unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
+        );
+        projections.insert(
+            "removed".to_string(),
+            serde_json::to_value(removed)
+                .unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
         );
         projections
     }

@@ -437,13 +437,14 @@ struct KernelUpdate: Decodable {
     let rev: UInt64
     let updateKind: String?
     let running: Bool
-    let profile: ProfileCard
-    let authorView: AuthorProfileSnapshot?
-    let items: [TimelineItem]
-    // Delta tracking — optional so older snapshots without these still decode.
-    let inserted: [TimelineItem]?
-    let updated: [TimelineItem]?
-    let removed: [String]?
+    // D0: the views cluster (`profile`, the visible timeline, `author_view`,
+    // `thread_view`, and the `inserted` / `updated` / `removed` deltas) is no
+    // longer a typed `KernelSnapshot` field set — all seven are surfaced
+    // through the host-extensible `projections` map under built-in keys. The
+    // stored decode for these fields is removed (a stored property would throw
+    // `keyNotFound` and drop the entire snapshot at `decode`); computed
+    // accessors below keep call sites (`KernelModel`) reading `update.profile`
+    // / `update.items` / `update.authorView` etc. unchanged.
     let metrics: KernelMetrics
     // Single-relay backwards compat field alongside the array.
     let relayStatus: RelayStatus?
@@ -452,9 +453,6 @@ struct KernelUpdate: Decodable {
     let logicalInterests: [LogicalInterestStatus]?
     let wireSubscriptions: [WireSubscriptionStatus]?
     let logs: [String]?
-    // T66a projections. Optional so a kernel that elides one (or an older
-    // build) still decodes — the model keeps its prior value (D1).
-    let threadView: ThreadView?
     // D0: identity output (`accounts`, `active_account`) is no longer a typed
     // `KernelSnapshot` field — both are surfaced through the host-extensible
     // `projections` map under the built-in keys `"accounts"` /
@@ -508,6 +506,44 @@ struct KernelUpdate: Decodable {
     /// host uses to clear a per-action spinner. Computed so call sites read
     /// `update.lastActionResult` directly.
     var lastActionResult: LastActionResult? { projections?.lastActionResult }
+
+    // ── D0 views cluster — projections-backed accessors ───────────────────
+    //
+    // The kernel no longer emits typed `profile` / `items` / `author_view` /
+    // `thread_view` / `inserted` / `updated` / `removed` fields; all seven
+    // live in `projections`. These computed accessors keep every call site
+    // (`KernelModel.apply`, the feature views) reading `update.profile`,
+    // `update.items`, etc. exactly as before.
+
+    /// Active-account profile card — `projections["profile"]`. Falls back to a
+    /// neutral placeholder card if a (legacy) kernel elides the projection, so
+    /// the non-optional `KernelModel.profile` consumer never breaks.
+    var profile: ProfileCard? { projections?.profile }
+
+    /// Visible timeline — `projections["timeline"]` (the kernel renamed the
+    /// generic `items` key to `timeline`). Non-optional with an empty default
+    /// so the existing `update.items != items` change-detection in
+    /// `KernelModel.apply` — which the modular-timeline refresh depends on —
+    /// keeps working without an `Optional` unwrap. This deliberately differs
+    /// from the identity-cluster optional pattern to preserve that flow.
+    var items: [TimelineItem] { projections?.timeline ?? [] }
+
+    /// Open author-view payload — `projections["author_view"]`. `nil` when no
+    /// author view is open (kernel emits JSON null).
+    var authorView: AuthorProfileSnapshot? { projections?.authorView }
+
+    /// Open thread-view payload — `projections["thread_view"]`. `nil` when no
+    /// thread view is open (kernel emits JSON null).
+    var threadView: ThreadView? { projections?.threadView }
+
+    /// Per-tick timeline delta — newly inserted items (`projections["inserted"]`).
+    var inserted: [TimelineItem]? { projections?.inserted }
+
+    /// Per-tick timeline delta — updated items (`projections["updated"]`).
+    var updated: [TimelineItem]? { projections?.updated }
+
+    /// Per-tick timeline delta — removed item ids (`projections["removed"]`).
+    var removed: [String]? { projections?.removed }
 }
 
 /// The kernel's host-extensible `projections` map. Each built-in app-noun
@@ -533,6 +569,20 @@ struct SnapshotProjections: Decodable, Equatable {
     // from `projections["last_action_result"]` — JSON `null` (no action has
     // settled yet) decodes to `nil`.
     let lastActionResult: LastActionResult?
+    // D0: views cluster. The active-account `profile` card, the visible
+    // `timeline` (the kernel renamed the generic `items` key to the more
+    // descriptive `timeline`), the open-view `authorView` / `threadView`
+    // payloads, and the per-tick `inserted` / `updated` / `removed` timeline
+    // deltas are no longer typed `KernelSnapshot` fields — all seven are
+    // built-in entries in this map. Every member is optional so an older
+    // kernel that predates the migration still decodes (D1).
+    let profile: ProfileCard?
+    let timeline: [TimelineItem]?
+    let authorView: AuthorProfileSnapshot?
+    let threadView: ThreadView?
+    let inserted: [TimelineItem]?
+    let updated: [TimelineItem]?
+    let removed: [String]?
 }
 
 /// NIP-46 (`bunker://`) handshake progress, projected from the kernel snapshot

@@ -98,12 +98,24 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
     assert_eq!(
         keys,
         [
+            // identity pair
             "accounts",
             "active_account",
+            // views cluster (D0)
+            "author_view",
+            "inserted",
             "last_action_result",
+            // views cluster (D0)
+            "profile",
+            // publish cluster
             "publish_outbox",
             "publish_queue",
-            "relay_edit_rows"
+            "relay_edit_rows",
+            // views cluster (D0)
+            "removed",
+            "thread_view",
+            "timeline",
+            "updated",
         ],
         "with no host projection the map carries only the kernel-owned built-ins"
     );
