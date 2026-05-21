@@ -25,7 +25,13 @@ export type RuntimeStatus =
   | "ready"
   | "running"
   | "stopped"
-  | { degraded: "browser_actor_driver_missing" | "capability_rejected" | "protocol_mismatch" };
+  | {
+      degraded:
+        | "browser_actor_driver_missing"
+        | "browser_bridge_unavailable"
+        | "capability_rejected"
+        | "protocol_mismatch";
+    };
 
 export type WorkerEvent =
   | { type: "hello_accepted"; protocol_version: number; status: RuntimeStatus }
@@ -38,6 +44,20 @@ export type WorkerEvent =
       reason: string;
     }
   | { type: "error"; code: string; message: string; correlation_id?: string };
+
+export const protocolVersion = 1;
+
+export function eventCorrelationId(event: WorkerEvent): string | undefined {
+  switch (event.type) {
+    case "runtime_status":
+    case "capability_failure":
+    case "error":
+      return event.correlation_id;
+    case "hello_accepted":
+    case "update":
+      return undefined;
+  }
+}
 
 export function labelRuntimeStatus(status: RuntimeStatus): string {
   if (typeof status === "string") {

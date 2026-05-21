@@ -81,7 +81,7 @@
    └───┘      └─────┘    └────────┘    └──────────┘
 ```
 
-**Single source of truth, multiple delivery paths.** The kernel is compiled as `cdylib + staticlib + rlib`. Desktop and CLI consumers link the rlib directly (no FFI). iOS links the staticlib via xcframework. Android links the cdylib via cargo-ndk. Web (wasm32 via wasm-bindgen) is an aspirational target — no `wasm_bindgen` surface exists yet.
+**Single source of truth, multiple delivery paths.** The kernel is compiled as `cdylib + staticlib + rlib`. Desktop and CLI consumers link the rlib directly (no FFI). iOS links the staticlib via xcframework. Android links the cdylib via cargo-ndk. Web now has an early `nmp-wasm`/`wasm_bindgen` worker facade and Vite host, but the browser actor driver is still an explicit degraded state until generated Chirp dispatch is linked.
 
 ## Execution mode
 
@@ -106,6 +106,7 @@
 | `crates/` | `nmp-core` (substrate), `nmp-codegen` (per-app FFI crate generator), `nmp-testing` (mock relay, harnesses, scenarios), `fixture-todo-core` (non-Nostr extension-module proof). |
 | `apps/` | Generated per-app crates for active proofs (`apps/fixture/nmp-app-fixture`, `apps/chirp/nmp-app-chirp`). |
 | `ios/Chirp` | Production Nostr client and full NMP showcase. Former NmpStress diagnostics and NmpPulse smoke coverage now live here. |
+| `web/chirp` | Chirp web proof package. Build, preview, and static deploy commands live in [`web/chirp/README.md`](web/chirp/README.md). |
 | `AGENTS.md` | Rules: file-size limit 300 LOC soft / 500 hard. |
 
 ## Worth reading before contributing
