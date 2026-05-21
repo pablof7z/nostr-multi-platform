@@ -115,7 +115,7 @@ use crate::relay::{CanonicalRelayUrl, RelayRole, DEFAULT_EMIT_HZ, DEFAULT_VISIBL
 use crate::relay_worker::{RelayCommand, RelayEvent};
 use std::collections::{HashMap, HashSet};
 use std::panic::{self, AssertUnwindSafe};
-use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -458,6 +458,9 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
         Arc::new(Mutex::new(None)),
         new_capability_callback_slot(),
         Arc::new(Mutex::new(None)),
+        // G-S4 — no `NmpApp` is wired through this backwards-compatible entry
+        // point, so the queue-depth counter is a private throwaway.
+        Arc::new(AtomicU64::new(0)),
     );
 }
 
@@ -490,6 +493,9 @@ pub fn run_actor_with_lifecycle_observer(
         Arc::new(Mutex::new(None)),
         new_capability_callback_slot(),
         Arc::new(Mutex::new(None)),
+        // G-S4 — no `NmpApp` is wired through this backwards-compatible entry
+        // point, so the queue-depth counter is a private throwaway.
+        Arc::new(AtomicU64::new(0)),
     );
 }
 
@@ -537,6 +543,11 @@ pub fn run_actor_with_observers(
     // it constructs the kernel below. `None` (the test / web default)
     // keeps the in-memory store.
     storage_path: Arc<Mutex<Option<String>>>,
+    // G-S4 — actor command-channel depth straddle counter. Shared `Arc` with
+    // the `NmpApp`: `send_cmd` does `fetch_add(1)` before every channel send;
+    // this actor thread does `fetch_sub(1)` per dequeued command and binds the
+    // handle onto the kernel so `make_update` surfaces `actor_queue_depth`.
+    queue_depth: Arc<AtomicU64>,
 ) {
     // Dual-channel design: relay events get their own dedicated channel.
     // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.
@@ -573,6 +584,12 @@ pub fn run_actor_with_observers(
     // command replaces the kernel; we re-bind there so the counter stays
     // visible (the underlying `Arc<AtomicU64>` survives Reset).
     kernel.set_dispatch_drops_handle(Arc::clone(&dispatch_drops));
+    // G-S4 — bind the actor command-channel depth counter so it surfaces on
+    // the diagnostic snapshot (`Metrics::actor_queue_depth`). `NmpApp::send_cmd`
+    // increments it; this loop decrements per dequeued command (both recv
+    // sites below). Survives `Reset` the same way the drop counter does —
+    // re-bound there so the counter stays visible across a kernel rebuild.
+    kernel.set_queue_depth_handle(Arc::clone(&queue_depth));
     // T146 — bind the shared kernel event observer slot. The kernel calls
     // `notify_event_observers` after every `EventStore::insert` returning
     // `Inserted | Replaced` (see `kernel/ingest/timeline.rs`). Per-app
@@ -670,6 +687,20 @@ pub fn run_actor_with_observers(
             };
             match command_result {
                 Ok(command) => {
+                    // G-S4 — straddle counter: one command has left the channel
+                    // (either the replayed `first_command`, which `command_rx
+                    // .recv()` already dequeued, or a fresh `try_recv`). Mirror
+                    // `NmpApp::send_cmd`'s `fetch_add(1)` so the depth tracks
+                    // occupancy. `saturating_sub` guards the (benign) race where
+                    // the actor drains a command sent through `actor_sender`,
+                    // which bypasses the increment. `Relaxed` — observability,
+                    // not synchronization.
+                    queue_depth.fetch_update(
+                        Ordering::Relaxed,
+                        Ordering::Relaxed,
+                        |d| Some(d.saturating_sub(1)),
+                    )
+                    .ok();
                     // Bundle the actor's mutable runtime state into a borrowed
                     // `ActorContext` for the duration of this one dispatch.
                     // Built fresh per command and dropped immediately after, so

@@ -101,7 +101,11 @@ impl Kernel {
                     self.estimated_store_bytes(),
                     self.last_payload_bytes,
                 ),
-                actor_queue_depth: 0,
+                // G-S4 — live actor command-channel depth from the straddle
+                // counter (`NmpApp::send_cmd` increments, the actor loop
+                // decrements). Zero when the kernel runs outside the actor
+                // (tests, codegen) — no handle bound. Saturates at `u32::MAX`.
+                actor_queue_depth: self.actor_queue_depth(),
                 frames_rx: counters.frames_rx,
                 events_rx: counters.events_rx,
                 eose_rx: counters.eose_rx,

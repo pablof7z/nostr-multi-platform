@@ -182,7 +182,7 @@ use crate::actor::{
 use crate::capability_socket::{new_capability_callback_slot, CapabilityCallbackSlot};
 use crate::relay::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 use std::ffi::{c_char, c_uint, c_void, CStr, CString};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -282,6 +282,21 @@ pub struct NmpApp {
     /// queried on the FFI thread — it fires from inside the actor tick, hence
     /// the shared-`Arc` slot rather than a plain owned field.
     snapshot_projections: crate::kernel::SnapshotProjectionSlot,
+    /// G-S4 — straddle counter for the actor command channel depth. The
+    /// command channel is an unbounded `std::sync::mpsc::channel()` whose
+    /// `Receiver` has no `len()`, so depth is observed indirectly: `send_cmd`
+    /// (the sole funnel for FFI command sends) does `fetch_add(1)` before the
+    /// `send`, and the actor does `fetch_sub(1)` per command it dequeues. The
+    /// matching `Arc` clone is bound onto the kernel via
+    /// `set_queue_depth_handle` so `make_update` surfaces the value as
+    /// `Metrics::actor_queue_depth`. `Relaxed` ordering throughout — this is an
+    /// approximate observability counter, not a synchronization primitive.
+    ///
+    /// Note: external sends through [`Self::actor_sender`] (used by
+    /// `nmp-signer-broker`) bypass this counter; the depth is therefore a
+    /// lower bound when a broker is wired. That is acceptable for the
+    /// backpressure gate, which watches for *buildup*, not exact occupancy.
+    queue_depth: Arc<AtomicU64>,
 }
 
 impl Drop for NmpApp {
@@ -289,7 +304,9 @@ impl Drop for NmpApp {
         if let Ok(mut callback) = self.update_callback.lock() {
             *callback = None;
         }
-        let _ = self.tx.send(ActorCommand::Shutdown);
+        // Route through `send_cmd` so the G-S4 queue-depth counter stays
+        // consistent: the actor decrements it as it dequeues `Shutdown`.
+        self.send_cmd(ActorCommand::Shutdown);
         if let Ok(mut actor) = self.actor.lock() {
             if let Some(handle) = actor.take() {
                 let _ = handle.join();
@@ -382,6 +399,13 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // One-shot MLS-autopublish intent flag. Not shared with the actor thread,
     // so a bare `AtomicBool` — no `Arc`, no `Mutex` — is the right primitive.
     let pending_mls_autopublish = AtomicBool::new(false);
+    // G-S4 — actor command-channel depth straddle counter. The `NmpApp` keeps
+    // one `Arc` clone (incremented by `send_cmd` before every channel send);
+    // the actor carries the other (decremented per command dequeued) and binds
+    // it onto the kernel so `make_update` reads it. See the `queue_depth` field
+    // doc on `NmpApp` for the full contract.
+    let queue_depth: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
+    let actor_queue_depth = Arc::clone(&queue_depth);
     // Clone so we can report actor death through the same listener pipe.
     // The actor `move`s its own `update_tx` into `run_actor_with_observers`;
     // this clone is the supervisor's last live handle once that one is
@@ -417,6 +441,10 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 actor_active_local_nsec,
                 actor_capability_callback,
                 actor_storage_path,
+                // G-S4 — the actor's clone of the command-channel depth
+                // counter. Decremented per dequeued command; bound onto the
+                // kernel for the `actor_queue_depth` snapshot field.
+                actor_queue_depth,
             );
         }));
         if let Err(e) = result {
@@ -473,6 +501,9 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // host registers its own projections via
         // `nmp_app_register_snapshot_projection` during init.
         snapshot_projections,
+        // G-S4 — the `NmpApp`'s clone of the command-channel depth counter,
+        // incremented by `send_cmd`. The actor holds the matching clone.
+        queue_depth,
     };
 
     // D0 — first internal consumer of the snapshot-projection seam: register
@@ -523,6 +554,13 @@ impl NmpApp {
     /// received (or will receive) the terminal panic frame and is expected
     /// to surface a fatal error rather than keep sending.
     pub(crate) fn send_cmd(&self, cmd: ActorCommand) {
+        // G-S4 — straddle counter: increment before the send so the kernel
+        // never observes a command "in flight" with a stale-low depth. The
+        // actor decrements as it dequeues. `Relaxed` is sufficient — the value
+        // is approximate observability, not a synchronization edge. If the
+        // send fails (actor thread gone) the command is dropped and the
+        // counter is left one high; that is harmless on a dead actor.
+        self.queue_depth.fetch_add(1, Ordering::Relaxed);
         let _ = self.tx.send(cmd);
     }
 
@@ -682,6 +720,12 @@ impl NmpApp {
     /// importing private internals. Stage 4 of the NIP-46 wiring (D0 stays
     /// clean — the broker depends on `nmp-core` + `nmp-signers`; `nmp-core`
     /// has no idea the broker exists).
+    ///
+    /// G-S4 caveat: sends through this raw clone bypass the `queue_depth`
+    /// straddle counter (`send_cmd` is the only incrementing path). The
+    /// `actor_queue_depth` snapshot metric is therefore a lower bound when a
+    /// broker is wired — acceptable for a backpressure gate that watches for
+    /// buildup, not exact occupancy.
     pub fn actor_sender(&self) -> Sender<ActorCommand> {
         self.tx.clone()
     }

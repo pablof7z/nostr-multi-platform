@@ -456,8 +456,12 @@ pub fn default_registry() -> ActionRegistry {
                 });
                 Ok(())
             }
-            // No publish-engine cancel command yet; the registry
-            // already marked the action `Cancelled`.
+            // Unreachable in practice: `PublishModule::start` rejects `Cancel`
+            // before the registry ever runs this executor, so a `Cancel`
+            // action never gets here. The arm exists only for match
+            // exhaustiveness — D6 forbids `unreachable!()` on a production
+            // path, hence a bare `Ok(())`. Publish cancel is driven by the
+            // `nmp_app_cancel_publish` FFI symbol, not `dispatch_action`.
             PublishAction::Cancel { .. } => Ok(()),
         }
     });
@@ -526,20 +530,45 @@ mod tests {
     }
 
     #[test]
-    fn start_cancel_action_returns_correlation_id() {
-        // `PublishAction::Cancel` only needs a non-empty handle — it
+    fn start_publish_note_action_returns_correlation_id() {
+        // `PublishAction::PublishNote` only needs non-empty content — it
         // exercises the full registry → adapter → module::start path
-        // without needing a fully-signed event fixture.
+        // without needing a fully-signed event fixture. The actor signs the
+        // note, so `preferred_action_id` returns `None` and the registry
+        // mints a random 32-hex-char `correlation_id`.
         let registry = default_registry();
-        let action_json = r#"{"Cancel":{"handle":"smoke-test"}}"#;
+        let action_json =
+            r#"{"PublishNote":{"content":"hello","reply_to_id":null,"target":"Auto"}}"#;
         let id = registry
             .start(&mut ctx(), "nmp.publish", action_json)
-            .expect("cancel action should be accepted");
+            .expect("publish note action should be accepted");
         assert_eq!(id.len(), 32, "correlation id should be 32 hex chars");
         assert!(
             id.chars().all(|c| c.is_ascii_hexdigit()),
             "correlation id should be hex: {id}"
         );
+    }
+
+    #[test]
+    fn start_cancel_action_is_rejected_via_dispatch() {
+        // Publish cancel is engine-internal — it is driven by the
+        // `nmp_app_cancel_publish` FFI symbol, never `dispatch_action`.
+        // `PublishModule::start` therefore rejects a `Cancel` action so the
+        // generic action seam carries nothing for cancel.
+        let registry = default_registry();
+        let action_json = r#"{"Cancel":{"handle":"smoke-test"}}"#;
+        let err = registry
+            .start(&mut ctx(), "nmp.publish", action_json)
+            .expect_err("cancel must not be dispatchable via dispatch_action");
+        match err {
+            ActionRejection::Invalid(msg) => {
+                assert!(
+                    msg.contains("nmp_app_cancel_publish"),
+                    "rejection should point at the FFI symbol: {msg}"
+                );
+            }
+            other => panic!("expected Invalid rejection, got {other:?}"),
+        }
     }
 
     #[test]
@@ -867,7 +896,8 @@ mod tests {
     #[test]
     fn correlation_ids_are_unique_across_calls() {
         let registry = default_registry();
-        let action_json = r#"{"Cancel":{"handle":"h"}}"#;
+        let action_json =
+            r#"{"PublishNote":{"content":"x","reply_to_id":null,"target":"Auto"}}"#;
         let mut seen = std::collections::HashSet::new();
         for _ in 0..256 {
             let id = registry

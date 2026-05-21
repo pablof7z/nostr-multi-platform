@@ -290,9 +290,9 @@ pub extern "C" fn nmp_app_publish_signed_event_to(
     };
     match serde_json::from_str::<crate::store::RawEvent>(&json) {
         Ok(raw) => {
-            let _ = app
-                .tx
-                .send(ActorCommand::PublishSignedEvent { raw, relays });
+            // Route through `send_cmd` so the G-S4 queue-depth counter stays
+            // consistent with every other FFI command send.
+            app.send_cmd(ActorCommand::PublishSignedEvent { raw, relays });
         }
         Err(_) => {
             app.send_cmd(ActorCommand::ShowToast {
@@ -302,6 +302,10 @@ pub extern "C" fn nmp_app_publish_signed_event_to(
     }
 }
 
+/// Retry a failed publish, addressed by its handle. This is the intentional
+/// control-plane door for the publish lifecycle — `dispatch_action` deliberately
+/// does NOT carry retry; the generic action seam is for *content* actions, while
+/// publish cancel/retry stay on these dedicated symbols.
 #[no_mangle]
 pub extern "C" fn nmp_app_retry_publish(app: *mut NmpApp, handle: *const c_char) {
     let Some(app) = app_ref(app) else {
@@ -313,6 +317,11 @@ pub extern "C" fn nmp_app_retry_publish(app: *mut NmpApp, handle: *const c_char)
     app.send_cmd(ActorCommand::RetryPublish { handle });
 }
 
+/// Cancel an in-flight publish, addressed by its handle. This is the intentional
+/// control-plane door for the publish lifecycle — `dispatch_action` deliberately
+/// does NOT carry cancel (`PublishModule::start` rejects `PublishAction::Cancel`);
+/// the generic action seam is for *content* actions, while publish cancel/retry
+/// stay on these dedicated symbols.
 #[no_mangle]
 pub extern "C" fn nmp_app_cancel_publish(app: *mut NmpApp, handle: *const c_char) {
     let Some(app) = app_ref(app) else {

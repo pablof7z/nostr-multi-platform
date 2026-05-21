@@ -237,10 +237,10 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
         .count() as u64;
 
     // G-S4: actor_queue_depth peak during any stall <= 50 (gates.md §G-S4 row 2).
-    // The kernel hardcodes actor_queue_depth=0 in update.rs (queue not yet wired
-    // to the emit path).  The gate is added for spec compliance; it trivially passes
-    // until the kernel populates the field.  A follow-up task must wire the mpsc
-    // channel length to the metric (requires crossbeam or a custom AtomicUsize counter).
+    // The kernel now populates `actor_queue_depth` from an `Arc<AtomicU64>`
+    // straddle counter: `NmpApp::send_cmd` increments it before each channel
+    // send, the actor decrements it per dequeued command. The gate is no longer
+    // structurally vacuous — it observes real command-channel occupancy.
     let max_actor_queue_depth = state.actor_queue_depths.iter().copied().max().unwrap_or(0);
 
     // G-S4: apply-burst-after-resume max <= 33 ms.
@@ -290,15 +290,15 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
         )
         .with_note("G-S4: stalls_injected == 12"),
     );
-    // G-S4 row 2: Actor actor_queue_depth peak during any stall <= 50.
-    // Note: kernel hardcodes actor_queue_depth=0 until wired (always passes).
-    // Follow-up required to populate this field from the actor's channel length.
+    // G-S4 row 2: Actor actor_queue_depth peak during any stall <= 50. The
+    // metric is now wired to the command-channel straddle counter, so the gate
+    // observes real occupancy rather than a hardcoded 0.
     report.gates.push(
         Gate::lte("actor_queue_depth_peak", max_actor_queue_depth as f64, 50.0)
             .with_note(
                 "G-S4 row 2: actor_queue_depth peak during stall <= 50 \
-                 (kernel hardcodes 0 until wired — gate added for spec compliance; \
-                 follow-up: wire mpsc channel length to Metrics::actor_queue_depth)",
+                 (wired to the Arc<AtomicU64> command-channel straddle counter — \
+                 send_cmd increments, the actor decrements per dequeued command)",
             ),
     );
     report.gates.push(
@@ -418,10 +418,13 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
             .to_string(),
     );
     report.notes.push(
-        "actor_queue_depth: kernel hardcodes to 0 (update.rs:68); \
-         gate added for spec compliance but always passes until wired. \
-         Follow-up: wire std::sync::mpsc channel length (or switch to crossbeam) \
-         to Metrics::actor_queue_depth in the actor loop."
+        "actor_queue_depth: wired to an Arc<AtomicU64> straddle counter — \
+         NmpApp::send_cmd does fetch_add before each command-channel send, the \
+         actor does fetch_sub per dequeued command, and the kernel reads it for \
+         the snapshot field. The gate now observes real occupancy. Note: under \
+         this S4 scenario the command channel may still not climb above 0 (S4 \
+         stalls the relay-event lane, not the command lane); confirming the gate \
+         catches a genuine command-lane buildup is a separate follow-up."
             .to_string(),
     );
 

@@ -20,9 +20,10 @@
 //!   re-verifies the Schnorr signature + id hash (D4 — only the actor loop
 //!   signs/publishes; a forged event is rejected, never published) and
 //!   routes it through the NIP-65 outbox resolver.
-//! * For [`PublishAction::Cancel`], no actor command exists yet — dispatch
-//!   returns the correlation id without an actor round-trip. Wiring a real
-//!   cancel into the publish engine is a follow-up.
+//! * [`PublishAction::Cancel`] is engine-internal — `PublishModule::start`
+//!   rejects it, so it is NOT dispatchable through `dispatch_action`. The
+//!   publish lifecycle's control plane (cancel / retry) stays on the dedicated
+//!   FFI symbols `nmp_app_cancel_publish` / `nmp_app_retry_publish`.
 //!
 //! A returned `{"correlation_id":"…"}` for a `Publish` action means the
 //! event was *accepted and enqueued for publication* — the actor owns the
@@ -479,16 +480,16 @@ mod tests {
     }
 
     /// The verification case from the task: dispatching a publish action
-    /// returns a `correlation_id` string. `PublishAction::Cancel` is used
-    /// because it only needs a non-empty handle — no signed-event fixture —
+    /// returns a `correlation_id` string. `PublishAction::PublishNote` is used
+    /// because it only needs non-empty content — no signed-event fixture —
     /// and still exercises the full registry → adapter → module path.
     #[test]
-    fn dispatch_cancel_action_returns_correlation_id() {
+    fn dispatch_publish_note_action_returns_correlation_id() {
         with_app(|app| {
             let out = dispatch_action_json(
                 Some(app),
                 "nmp.publish",
-                r#"{"Cancel":{"handle":"smoke-test"}}"#,
+                r#"{"PublishNote":{"content":"smoke-test","reply_to_id":null,"target":"Auto"}}"#,
             );
             let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
             let id = parsed
@@ -597,9 +598,10 @@ mod tests {
     }
 
     #[test]
-    fn execute_action_cancel_is_ok_without_actor() {
+    fn execute_action_publish_note_is_ok_without_actor() {
         with_app(|app| {
-            let json = r#"{"Cancel":{"handle":"h3"}}"#;
+            let json =
+                r#"{"PublishNote":{"content":"h3","reply_to_id":null,"target":"Auto"}}"#;
             assert!(execute_action(app, "nmp.publish", json, "corr-id").is_ok());
         });
     }
@@ -776,7 +778,7 @@ mod tests {
             let out = dispatch_action_json(
                 Some(app),
                 "nmp.publish",
-                r#"{"Cancel":{"handle":"observer-test"}}"#,
+                r#"{"PublishNote":{"content":"observer-test","reply_to_id":null,"target":"Auto"}}"#,
             );
             let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
             let returned_id = parsed
@@ -850,7 +852,7 @@ mod tests {
             // SAFETY: `nmp_app_new` never returns null.
             Some(unsafe { &*app }),
             "nmp.publish",
-            r#"{"Cancel":{"handle":"c-abi-test"}}"#,
+            r#"{"PublishNote":{"content":"c-abi-test","reply_to_id":null,"target":"Auto"}}"#,
         );
         let returned_id: serde_json::Value = serde_json::from_str(&out).unwrap();
         let returned_id = returned_id
@@ -929,13 +931,13 @@ mod tests {
         let ns = CString::new("nmp.publish").unwrap();
         nmp_app_register_action_executor(app, ns.as_ptr(), Some(shadow_executor));
 
-        // The built-in must still handle `nmp.publish` (Cancel doesn't need a
+        // The built-in must still handle `nmp.publish` (`PublishNote` needs no
         // signed event and exercises the full execute path).
         let result = execute_action(
             // SAFETY: nmp_app_new never returns null; valid until nmp_app_free.
             unsafe { &*app },
             "nmp.publish",
-            r#"{"Cancel":{"handle":"guard-probe"}}"#,
+            r#"{"PublishNote":{"content":"guard-probe","reply_to_id":null,"target":"Auto"}}"#,
             "corr-id",
         );
         assert!(
@@ -958,20 +960,21 @@ mod tests {
         let ns = CString::new("nmp.publish").unwrap();
         nmp_app_register_action_module(app, ns.as_ptr(), None);
 
-        // PublishModule's validation gate still rejects empty `id`/`sig` — if
-        // the accept-all null-validator replaced it, a Cancel action would
-        // decode as a `PublishAction::Publish` with empty fields and be
-        // accepted (no signed-event check). Submitting well-formed Cancel:
+        // PublishModule's validation gate is still in force — the C-ABI
+        // registration with a `None` validator was silently rejected, so the
+        // built-in `PublishModule::start` (not an accept-all replacement) runs.
+        // A well-formed `PublishNote` exercises that gate and is accepted:
         let out = dispatch_action_json(
             // SAFETY: nmp_app_new never returns null; valid until nmp_app_free.
             Some(unsafe { &*app }),
             "nmp.publish",
-            r#"{"Cancel":{"handle":"guard-probe"}}"#,
+            r#"{"PublishNote":{"content":"guard-probe","reply_to_id":null,"target":"Auto"}}"#,
         );
         let parsed: serde_json::Value =
             serde_json::from_str(&out).expect("dispatch always returns JSON");
-        // Cancel must still be accepted by the built-in module (correlation_id,
-        // not an error) — the accept-all replacement did NOT take effect.
+        // `PublishNote` must still be accepted by the built-in module
+        // (correlation_id, not an error) — the accept-all replacement did NOT
+        // take effect.
         assert!(
             parsed.get("correlation_id").is_some(),
             "built-in module must still validate after rejected nmp.* registration, got: {out}"

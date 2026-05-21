@@ -400,6 +400,15 @@ pub(crate) struct Kernel {
     /// then reports `dispatch_drops_total = 0`. Surfaced on the snapshot via
     /// [`Metrics::dispatch_drops_total`].
     dispatch_drops: Option<Arc<AtomicU64>>,
+    /// G-S4 — actor command-channel depth straddle counter (the same
+    /// `Arc<AtomicU64>` `NmpApp::send_cmd` increments and the actor loop
+    /// decrements per dequeued command). The kernel only reads it, surfacing
+    /// the value as [`Metrics::actor_queue_depth`] in `make_update`. `None`
+    /// when the kernel is constructed outside the actor (tests, codegen); the
+    /// snapshot then reports `actor_queue_depth = 0`. Bound once by
+    /// `run_actor_with_observers` and rebound by the `Reset` path the same way
+    /// `dispatch_drops` is.
+    queue_depth: Option<Arc<AtomicU64>>,
     /// T118 / G3 — current iOS scenePhase reported through the lifecycle
     /// FFI. Starts as [`LifecyclePhase::Inactive`] (the sentinel meaning
     /// "shell hasn't reported a phase yet"). `set_lifecycle_phase`
@@ -731,6 +740,7 @@ impl Kernel {
             event_provenance: provenance::EventProvenance::new(),
             claim_drops_total: 0,
             dispatch_drops: None,
+            queue_depth: None,
             lifecycle_phase: LifecyclePhase::Inactive,
             event_observers: None,
             raw_event_observers: None,
@@ -842,6 +852,36 @@ impl Kernel {
             .as_ref()
             .map(|c| c.load(Ordering::Relaxed))
             .unwrap_or(0)
+    }
+
+    /// G-S4 — install the actor's command-channel depth counter so the
+    /// diagnostic snapshot surfaces it as `actor_queue_depth`. Idempotent:
+    /// re-binding replaces the prior handle. `None`-on-construction is fine —
+    /// the snapshot reports zero when unbound (tests, codegen). Called once by
+    /// `run_actor_with_observers` immediately after the kernel is built.
+    pub(crate) fn set_queue_depth_handle(&mut self, handle: Arc<AtomicU64>) {
+        self.queue_depth = Some(handle);
+    }
+
+    /// G-S4 — extract the queue-depth counter handle before a `Reset` replaces
+    /// the kernel. The counter is process-lifetime (shared with `NmpApp`'s
+    /// `send_cmd`) so the Reset path moves it onto the fresh kernel via
+    /// `set_queue_depth_handle`.
+    pub(crate) fn take_queue_depth_handle_for_reset(&mut self) -> Option<Arc<AtomicU64>> {
+        self.queue_depth.take()
+    }
+
+    /// G-S4 — current actor command-channel depth (`send_cmd` increments,
+    /// the actor loop decrements per dequeued command). Returns 0 when the
+    /// kernel was constructed outside the actor and no handle is bound.
+    /// Saturates at `u32::MAX` because `Metrics::actor_queue_depth` is `u32`.
+    pub(crate) fn actor_queue_depth(&self) -> u32 {
+        let depth = self
+            .queue_depth
+            .as_ref()
+            .map(|c| c.load(Ordering::Relaxed))
+            .unwrap_or(0);
+        depth.min(u32::MAX as u64) as u32
     }
 
     /// T114b — number of `claim_profile` requests dropped because a pubkey's
