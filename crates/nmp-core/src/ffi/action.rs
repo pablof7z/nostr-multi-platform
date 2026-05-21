@@ -158,11 +158,12 @@ pub extern "C" fn nmp_app_register_action_executor(
     if ns.starts_with("nmp.") {
         return;
     }
-    app.register_action_executor(ns, move |action_json, _send| {
+    app.register_action_executor(ns, move |action_json, _correlation_id, _send| {
         // The host executor speaks JSON only. The `_send` actor-command
-        // bridge is intentionally unused in v1: a host executor that needs
-        // to enqueue an `ActorCommand` uses a separate mechanism; the seam
-        // here proves post-construction registration works.
+        // bridge and `_correlation_id` are intentionally unused in v1: a host
+        // executor that needs to enqueue an `ActorCommand` (or thread the
+        // correlation id onto one) uses a separate mechanism; the seam here
+        // proves post-construction registration works.
         let cstr = CString::new(action_json).map_err(|e| e.to_string())?;
         // SAFETY: `exec` is a valid function pointer per this symbol's
         // safety contract; `cstr.as_ptr()` is a valid NUL-terminated C
@@ -380,7 +381,15 @@ fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str
             // execution failure is surfaced as `{"error":...}` (D6) and the
             // already-minted correlation id is discarded — a rejected
             // dispatch must not look like an accepted one.
-            match execute_action(app, namespace, action_json) {
+            //
+            // The minted `correlation_id` is passed into `execute_action` so
+            // an executor whose `ActorCommand` settles asynchronously (the
+            // `nmp.publish` `PublishNote` path — the actor signs the event)
+            // can thread it onto the command. The publish engine then reports
+            // this id in `last_action_result`, matching the host's spinner
+            // key. For pre-signed `Publish` actions the id is redundant
+            // (preferred_action_id already bound it to the event id).
+            match execute_action(app, namespace, action_json, &correlation_id) {
                 Ok(()) => {
                     // Push the "action accepted and enqueued" signal to the
                     // host's result observer, if one is registered. Built-in
@@ -408,9 +417,21 @@ fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str
 /// map. Each module registers its own executor in
 /// [`crate::kernel::default_registry`]; this function delegates without
 /// naming any module directly (D0).
-fn execute_action(app: &NmpApp, namespace: &str, action_json: &str) -> Result<(), String> {
+///
+/// `correlation_id` is the registry-minted action id the caller will return
+/// to the host. It is forwarded to the executor so an `ActorCommand` whose
+/// terminal verdict must carry this id (the `PublishNote` path) can be built
+/// with it.
+fn execute_action(
+    app: &NmpApp,
+    namespace: &str,
+    action_json: &str,
+    correlation_id: &str,
+) -> Result<(), String> {
     app.action_registry
-        .execute(namespace, action_json, &|cmd| app.send_cmd(cmd))
+        .execute(namespace, action_json, correlation_id, &|cmd| {
+            app.send_cmd(cmd)
+        })
 }
 
 /// Flatten an [`ActionRejection`] into a human-readable message.
@@ -585,7 +606,7 @@ mod tests {
             };
             let action_json = serde_json::to_string(&action).unwrap();
             assert!(
-                execute_action(app, "nmp.publish", &action_json).is_ok(),
+                execute_action(app, "nmp.publish", &action_json, "corr-id").is_ok(),
                 "publish execution should not error"
             );
         });
@@ -595,7 +616,7 @@ mod tests {
     fn execute_action_cancel_is_ok_without_actor() {
         with_app(|app| {
             let json = r#"{"Cancel":{"handle":"h3"}}"#;
-            assert!(execute_action(app, "nmp.publish", json).is_ok());
+            assert!(execute_action(app, "nmp.publish", json, "corr-id").is_ok());
         });
     }
 
@@ -605,7 +626,7 @@ mod tests {
     #[test]
     fn execute_action_unknown_namespace_returns_err() {
         with_app(|app| {
-            let err = execute_action(app, "nmp.future", "{}")
+            let err = execute_action(app, "nmp.future", "{}", "corr-id")
                 .expect_err("unwired namespace must surface an error");
             assert!(
                 err.contains("no executor registered") && err.contains("nmp.future"),
@@ -633,7 +654,7 @@ mod tests {
         // SAFETY: `nmp_app_new` never returns null; the pointer is valid
         // until `nmp_app_free` below, and no other reference aliases it here.
         let app_mut = unsafe { &mut *app };
-        app_mut.register_action_executor("test.greeting", move |action_json, _send| {
+        app_mut.register_action_executor("test.greeting", move |action_json, _correlation_id, _send| {
             assert_eq!(action_json, r#"{"hello":"world"}"#);
             called_in_closure.store(true, Ordering::SeqCst);
             Ok(())
@@ -660,7 +681,7 @@ mod tests {
         let app = nmp_app_new();
         // SAFETY: see `host_registered_executor_dispatches_successfully`.
         let app_mut = unsafe { &mut *app };
-        app_mut.register_action_executor("test.failing", |_action_json, _send| {
+        app_mut.register_action_executor("test.failing", |_action_json, _correlation_id, _send| {
             Err("host rejected the action".to_string())
         });
 
@@ -679,7 +700,7 @@ mod tests {
         let app = nmp_app_new();
         // SAFETY: see `host_registered_executor_dispatches_successfully`.
         let app_mut = unsafe { &mut *app };
-        app_mut.register_action_executor("test.greeting", |_json, _send| Ok(()));
+        app_mut.register_action_executor("test.greeting", |_json, _correlation_id, _send| Ok(()));
 
         let err = app_mut
             .test_execute_action("test.unregistered", "{}")
@@ -714,7 +735,7 @@ mod tests {
                 deadline_ms: None,
             })
         });
-        app_mut.register_action_executor("test.todo", |_action_json, _send| Ok(()));
+        app_mut.register_action_executor("test.todo", |_action_json, _correlation_id, _send| Ok(()));
 
         // Now `dispatch_action` should succeed end-to-end.
         let out = dispatch_action_json(
@@ -742,7 +763,7 @@ mod tests {
         app_mut.register_action_module("test.todo", |_action_json| {
             Err(ActionRejection::Invalid("host rejected: title required".into()))
         });
-        app_mut.register_action_executor("test.todo", |_action_json, _send| Ok(()));
+        app_mut.register_action_executor("test.todo", |_action_json, _correlation_id, _send| Ok(()));
 
         let out = dispatch_action_json(Some(&*app_mut), "test.todo", "{}");
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -897,7 +918,7 @@ mod tests {
         let app = nmp_app_new();
         // SAFETY: see `host_registered_module_and_executor_enables_dispatch_action`.
         let app_mut = unsafe { &mut *app };
-        app_mut.register_action_executor("test.todo", |_action_json, _send| Ok(()));
+        app_mut.register_action_executor("test.todo", |_action_json, _correlation_id, _send| Ok(()));
 
         let out = dispatch_action_json(Some(&*app_mut), "test.todo", "{}");
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -938,6 +959,7 @@ mod tests {
             unsafe { &*app },
             "nmp.publish",
             r#"{"Cancel":{"handle":"guard-probe"}}"#,
+            "corr-id",
         );
         assert!(
             result.is_ok(),

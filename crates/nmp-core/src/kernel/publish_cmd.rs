@@ -37,7 +37,23 @@ impl Kernel {
         signed: &SignedEvent,
         p_tags: &[String],
     ) -> Vec<OutboundMessage> {
-        self.run_publish_engine(signed, p_tags, PublishTarget::Auto)
+        self.run_publish_engine(signed, p_tags, PublishTarget::Auto, None)
+    }
+
+    /// [`Kernel::publish_signed`] with an action `correlation_id` to report in
+    /// `last_action_result`. The `PublishNote` dispatch path uses this: the
+    /// host received a registry-minted correlation_id before the actor signed
+    /// the event, so the publish engine must report that id (not the signed
+    /// event's `id`) for the host spinner to be cleared. Every other publish
+    /// path (`react`, `follow`, `publish_unsigned_event`, …) uses the plain
+    /// [`Kernel::publish_signed`], which reports the event id.
+    pub(crate) fn publish_signed_with_correlation(
+        &mut self,
+        signed: &SignedEvent,
+        p_tags: &[String],
+        correlation_id_override: Option<String>,
+    ) -> Vec<OutboundMessage> {
+        self.run_publish_engine(signed, p_tags, PublishTarget::Auto, correlation_id_override)
     }
 
     /// Publish a signed event to an EXPLICIT relay set — the named D3 opt-out
@@ -54,7 +70,23 @@ impl Kernel {
         p_tags: &[String],
         target: PublishTarget,
     ) -> Vec<OutboundMessage> {
-        self.run_publish_engine(signed, p_tags, target)
+        self.run_publish_engine(signed, p_tags, target, None)
+    }
+
+    /// [`Kernel::publish_signed_to`] with an action `correlation_id` override.
+    /// The remote-signer (NIP-46) `PublishNote` path uses this: a parked sign
+    /// op carries the registry-minted correlation_id, and when the broker
+    /// turns the request around the idle-tick loop publishes through here so
+    /// the engine reports the dispatch correlation_id rather than the freshly
+    /// signed event's `id`.
+    pub(crate) fn publish_signed_to_with_correlation(
+        &mut self,
+        signed: &SignedEvent,
+        p_tags: &[String],
+        target: PublishTarget,
+        correlation_id_override: Option<String>,
+    ) -> Vec<OutboundMessage> {
+        self.run_publish_engine(signed, p_tags, target, correlation_id_override)
     }
 
     /// Hex pubkey of the author of `event_id_hex`, or `None` if that event is

@@ -182,7 +182,7 @@ fn engine_explicit_target_dispatches_to_named_relays() {
             relays: vec!["wss://r1".to_string(), "wss://r2".to_string()],
         },
     };
-    engine.start_publish(action, 100).unwrap();
+    engine.start_publish(action, 100, None).unwrap();
 
     let sent = dispatcher.sent_frames();
     let urls: Vec<String> = sent.iter().map(|(u, _)| u.clone()).collect();
@@ -210,7 +210,7 @@ fn engine_auto_target_resolves_outbox_author_writes() {
         event: signed_event("ev2", "alice", 1, &[]),
         target: PublishTarget::Auto,
     };
-    engine.start_publish(action, 100).unwrap();
+    engine.start_publish(action, 100, None).unwrap();
 
     let urls: Vec<String> = dispatcher
         .sent_frames()
@@ -240,7 +240,7 @@ fn engine_auto_target_includes_p_tag_inbox_relays() {
         event: signed_event("ev3", "alice", 1, &["bob"]),
         target: PublishTarget::Auto,
     };
-    engine.start_publish(action, 100).unwrap();
+    engine.start_publish(action, 100, None).unwrap();
 
     let mut urls: Vec<String> = dispatcher
         .sent_frames()
@@ -268,7 +268,7 @@ fn engine_no_targets_emits_recent_failure_and_errors() {
         event: signed_event("ev4", "alice", 1, &[]),
         target: PublishTarget::Auto,
     };
-    let result = engine.start_publish(action, 100);
+    let result = engine.start_publish(action, 100, None);
     assert!(matches!(
         result,
         Err(super::engine::PublishEngineError::NoTargets)
@@ -296,8 +296,8 @@ fn engine_dedups_handle_on_double_start() {
         event: signed_event("ev5", "alice", 1, &[]),
         target: PublishTarget::Auto,
     };
-    engine.start_publish(action.clone(), 100).unwrap();
-    let dup = engine.start_publish(action, 200);
+    engine.start_publish(action.clone(), 100, None).unwrap();
+    let dup = engine.start_publish(action, 200, None);
     assert!(matches!(
         dup,
         Err(super::engine::PublishEngineError::DuplicateHandle(_))
@@ -328,7 +328,7 @@ fn engine_view_rev_bumps_once_per_batch_not_per_relay() {
         event: signed_event("ev6", "alice", 1, &[]),
         target: PublishTarget::Auto,
     };
-    engine.start_publish(action, 100).unwrap();
+    engine.start_publish(action, 100, None).unwrap();
     let rev_after = engine.snapshot().rev;
     // Rev should bump for the start (in-flight rows) plus once for each ack
     // settling, but the total is bounded — definitely far less than 3-per-relay

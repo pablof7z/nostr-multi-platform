@@ -233,11 +233,22 @@ pub(crate) fn publish_signed_event(
     }
 }
 
+/// Sign and publish a kind:1 note (optionally a NIP-10 reply).
+///
+/// `correlation_id` is the registry-minted action id when this publish
+/// originates from `nmp_app_dispatch_action`'s `PublishAction::PublishNote`
+/// path. The actor signs the event here, so its `id` is unknown to the host
+/// at dispatch time; threading the minted id through makes the publish engine
+/// report it in `last_action_result` (instead of the signed event's `id`) so
+/// the host spinner keyed on the dispatch return value can be cleared. `None`
+/// for non-dispatch callers (conformance harness, tests) — the engine then
+/// reports the event id, the prior behaviour.
 pub(crate) fn publish_note(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
     content: &str,
     reply_to_id: Option<&str>,
+    correlation_id: Option<String>,
     pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
     let Some(pubkey) = identity.active_pubkey() else {
@@ -294,16 +305,26 @@ pub(crate) fn publish_note(
         }
     };
     let mut outbound = match op.poll() {
-        Some(Ok(signed)) => kernel.publish_signed(&signed, &[]),
+        // Local key resolved on the spot — publish through the engine with the
+        // dispatch correlation_id so the terminal verdict reports it.
+        Some(Ok(signed)) => {
+            kernel.publish_signed_with_correlation(&signed, &[], correlation_id)
+        }
         Some(Err(e)) => {
             kernel.set_last_error_toast(Some(format!("sign failed: {e}")));
             return Vec::new();
         }
         None => {
-            // Remote signer pending — park the op. The signed note publishes
-            // once the broker responds; the hydration kick (independent of the
-            // reply event) still fires below so the parent can be fetched.
-            pending_signs.push(PendingSign::new(op, Vec::new()));
+            // Remote signer pending — park the op WITH its correlation_id so
+            // the dispatched note still settles under the id the host is
+            // waiting on once the broker turns the sign request around. The
+            // hydration kick (independent of the reply event) still fires
+            // below so the parent can be fetched.
+            pending_signs.push(PendingSign::with_correlation_id(
+                op,
+                Vec::new(),
+                correlation_id,
+            ));
             Vec::new()
         }
     };

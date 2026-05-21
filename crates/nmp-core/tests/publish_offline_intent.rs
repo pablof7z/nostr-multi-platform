@@ -56,7 +56,7 @@ fn offline_relay_keeps_publish_intent_pending_until_available() {
                     relays: vec![relay.to_string()],
                 },
             },
-            100,
+            100, None,
         )
         .unwrap();
 
@@ -100,7 +100,7 @@ fn retry_tick_dispatches_due_intent_after_relay_becomes_available() {
                     relays: vec![relay.to_string()],
                 },
             },
-            0,
+            0, None,
         )
         .unwrap();
     assert_eq!(dispatcher.drain().len(), 1);

@@ -68,6 +68,7 @@ fn engine_take_completed_drains_terminal_outcome_then_empties() {
                 target: PublishTarget::Auto,
             },
             100,
+            None,
         )
         .unwrap();
 
@@ -126,6 +127,7 @@ fn engine_take_completed_reports_mixed_accepted_and_failed_split() {
                 target: PublishTarget::Auto,
             },
             100,
+            None,
         )
         .unwrap();
 
@@ -147,6 +149,86 @@ fn engine_take_completed_reports_mixed_accepted_and_failed_split() {
         outcome.failed[0].1.contains("blocked"),
         "failure reason is carried for the kernel: {:?}",
         outcome.failed[0].1
+    );
+}
+
+#[test]
+fn correlation_id_override_is_reported_in_last_terminal_not_the_handle() {
+    // THE FIX: a `PublishNote` dispatch mints a random correlation_id (the
+    // event id is unknown — the actor signs the event). When the publish
+    // settles, `last_terminal()` must report that minted id, NOT the publish
+    // handle (== event id). Without the override the host's spinner — keyed
+    // on the dispatch return value — could never be cleared.
+    let mut outbox = StaticOutbox::default();
+    outbox
+        .author_writes
+        .insert("alice".to_string(), vec!["wss://ok-a".to_string()]);
+    let dispatcher = Arc::new(ReplayDispatcher::new());
+    dispatcher.script("wss://ok-a", vec![RelayAck::ok("wss://ok-a")]);
+    let mut engine = engine_with(Arc::new(outbox), dispatcher);
+
+    // The minted action correlation_id (32-hex) differs from the event id.
+    let minted_correlation_id = "ab".repeat(16);
+    engine
+        .start_publish(
+            PublishAction::Publish {
+                handle: "ev-publishnote".to_string(),
+                event: signed_event("ev-publishnote", "alice", 1),
+                target: PublishTarget::Auto,
+            },
+            100,
+            Some(minted_correlation_id.clone()),
+        )
+        .unwrap();
+
+    // The scripted OK settled the publish synchronously inside start_publish.
+    let terminal = engine
+        .last_terminal()
+        .expect("a settled publish must record a LastTerminal");
+    assert_eq!(
+        terminal.correlation_id, minted_correlation_id,
+        "last_terminal must report the minted correlation_id, not the handle"
+    );
+    assert_ne!(
+        terminal.correlation_id, "ev-publishnote",
+        "the publish handle (event id) must NOT leak as the correlation_id"
+    );
+    assert_eq!(terminal.status, "ok", "the all-OK publish settles ok");
+}
+
+#[test]
+fn no_correlation_id_override_falls_back_to_handle_in_last_terminal() {
+    // The pre-existing behaviour for every non-dispatch publish path
+    // (`react`, `follow`, pre-signed `Publish`): with no override, the
+    // terminal verdict reports the publish handle (== event id). This guards
+    // against the fix accidentally changing the handle-as-correlation-id
+    // contract the publish-queue tests depend on.
+    let mut outbox = StaticOutbox::default();
+    outbox
+        .author_writes
+        .insert("alice".to_string(), vec!["wss://ok-a".to_string()]);
+    let dispatcher = Arc::new(ReplayDispatcher::new());
+    dispatcher.script("wss://ok-a", vec![RelayAck::ok("wss://ok-a")]);
+    let mut engine = engine_with(Arc::new(outbox), dispatcher);
+
+    engine
+        .start_publish(
+            PublishAction::Publish {
+                handle: "ev-presigned".to_string(),
+                event: signed_event("ev-presigned", "alice", 1),
+                target: PublishTarget::Auto,
+            },
+            100,
+            None,
+        )
+        .unwrap();
+
+    let terminal = engine
+        .last_terminal()
+        .expect("a settled publish must record a LastTerminal");
+    assert_eq!(
+        terminal.correlation_id, "ev-presigned",
+        "with no override the terminal verdict reports the handle (event id)"
     );
 }
 
@@ -190,6 +272,7 @@ fn inflight_timeout_sweep_transitions_stuck_relay_through_retry_to_failure() {
                 target: PublishTarget::Auto,
             },
             t0,
+            None,
         )
         .unwrap();
 

@@ -265,7 +265,7 @@ fn register_chirp_actions(app: &mut NmpApp) {
             .map(|_| fire_and_forget_plan())
             .map_err(|e| ActionRejection::Invalid(e.to_string()))
     });
-    app.register_action_executor("chirp.react", |action_json, send| {
+    app.register_action_executor("chirp.react", |action_json, _correlation_id, send| {
         let a: ReactAction =
             serde_json::from_str(action_json).map_err(|e| e.to_string())?;
         send(ActorCommand::React {
@@ -281,7 +281,7 @@ fn register_chirp_actions(app: &mut NmpApp) {
             .map(|_| fire_and_forget_plan())
             .map_err(|e| ActionRejection::Invalid(e.to_string()))
     });
-    app.register_action_executor("chirp.follow", |action_json, send| {
+    app.register_action_executor("chirp.follow", |action_json, _correlation_id, send| {
         let a: PubkeyAction =
             serde_json::from_str(action_json).map_err(|e| e.to_string())?;
         send(ActorCommand::Follow { pubkey: a.pubkey });
@@ -294,7 +294,7 @@ fn register_chirp_actions(app: &mut NmpApp) {
             .map(|_| fire_and_forget_plan())
             .map_err(|e| ActionRejection::Invalid(e.to_string()))
     });
-    app.register_action_executor("chirp.unfollow", |action_json, send| {
+    app.register_action_executor("chirp.unfollow", |action_json, _correlation_id, send| {
         let a: PubkeyAction =
             serde_json::from_str(action_json).map_err(|e| e.to_string())?;
         send(ActorCommand::Unfollow { pubkey: a.pubkey });
@@ -359,11 +359,14 @@ fn register_nip29_actions(app: &mut NmpApp) {
     // to the group's own host relay (D3 Explicit opt-out). The closure is a
     // thin shim over `nip29_join_request_command` so the action→command
     // mapping is unit-testable without the FFI / actor channel.
-    app.register_action_executor(JoinRequestAction::NAMESPACE, |action_json, send| {
-        let cmd = nip29_join_request_command(action_json)?;
-        send(cmd);
-        Ok(())
-    });
+    app.register_action_executor(
+        JoinRequestAction::NAMESPACE,
+        |action_json, _correlation_id, send| {
+            let cmd = nip29_join_request_command(action_json)?;
+            send(cmd);
+            Ok(())
+        },
+    );
 }
 
 /// Map a validated `nip29.join_request` action JSON to the

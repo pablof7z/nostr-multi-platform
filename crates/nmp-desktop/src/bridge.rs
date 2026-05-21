@@ -74,6 +74,10 @@ impl KernelBridge {
         let _ = self.tx.send(ActorCommand::PublishNote {
             content,
             reply_to_id: None,
+            // Direct actor-command path (not `dispatch_action`) — no
+            // registry-minted correlation_id to thread; the engine reports
+            // the event id, as it always did for this path.
+            correlation_id: None,
         });
     }
 

@@ -262,7 +262,7 @@ fn ok_true_wire_frame_settles_publish_as_accepted() {
     seed_kind10002(&mut kernel, &author, WRITE_R1);
 
     let signed = fake_signed(&"11".repeat(32), &author, "hello eon");
-    let outbound = kernel.run_publish_engine_at(&signed, &[], PublishTarget::Auto, 1_000);
+    let outbound = kernel.run_publish_engine_at(&signed, &[], PublishTarget::Auto, None, 1_000);
     assert_eq!(outbound.len(), 1, "publish routes to the single write relay");
 
     // The OK ack arrives as a raw wire frame on the same write relay.
@@ -291,7 +291,7 @@ fn ok_false_wire_frame_with_reason_settles_publish_as_rejected() {
     seed_kind10002(&mut kernel, &author, WRITE_R1);
 
     let signed = fake_signed(&"22".repeat(32), &author, "spammy eon");
-    let _ = kernel.run_publish_engine_at(&signed, &[], PublishTarget::Auto, 1_000);
+    let _ = kernel.run_publish_engine_at(&signed, &[], PublishTarget::Auto, None, 1_000);
 
     // `blocked:` is a terminal NIP-20 rejection prefix — no retry, the
     // publish settles straight to a failure.

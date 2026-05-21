@@ -278,12 +278,14 @@ pub(super) fn dispatch_command(
         ActorCommand::PublishNote {
             content,
             reply_to_id,
+            correlation_id,
         } => {
             let outbound = commands::publish_note(
                 ctx.identity,
                 ctx.kernel,
                 &content,
                 reply_to_id.as_deref(),
+                correlation_id,
                 ctx.pending_signs,
             );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);

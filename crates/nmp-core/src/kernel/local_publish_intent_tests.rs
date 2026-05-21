@@ -52,7 +52,7 @@ fn local_kind3_publish_updates_profile_action_from_contacts_projection() {
         Some("follow")
     );
 
-    let outbound = kernel.run_publish_engine_at(&signed, &[], PublishTarget::Auto, 1_000);
+    let outbound = kernel.run_publish_engine_at(&signed, &[], PublishTarget::Auto, None, 1_000);
 
     assert!(!outbound.is_empty(), "publish should have an outbox target");
     assert_eq!(

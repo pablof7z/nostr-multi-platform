@@ -520,9 +520,12 @@ impl NmpApp {
     ///
     /// This is the post-construction registration seam: a host can wire an
     /// action namespace into the registry *without editing `nmp-core`*. The
-    /// closure receives the validated action JSON and a `send` callback that
-    /// routes an [`ActorCommand`] to the actor; it returns `Ok(())` on
-    /// success or `Err(msg)` on a decode/dispatch failure.
+    /// closure receives the validated action JSON, the registry-minted
+    /// `correlation_id`, and a `send` callback that routes an [`ActorCommand`]
+    /// to the actor; it returns `Ok(())` on success or `Err(msg)` on a
+    /// decode/dispatch failure. The `correlation_id` lets an executor thread
+    /// the action's correlation handle onto an `ActorCommand` whose terminal
+    /// verdict must report that id (see `ActorCommand::PublishNote`).
     ///
     /// Registration MUST happen during host init — before `nmp_app_start`
     /// and before any [`action::nmp_app_dispatch_action`] call — because it
@@ -530,7 +533,7 @@ impl NmpApp {
     pub fn register_action_executor(
         &mut self,
         namespace: impl Into<String>,
-        f: impl Fn(&str, &dyn Fn(ActorCommand)) -> Result<(), String> + Send + Sync + 'static,
+        f: impl Fn(&str, &str, &dyn Fn(ActorCommand)) -> Result<(), String> + Send + Sync + 'static,
     ) {
         self.action_registry.register_executor(namespace, f);
     }
@@ -641,7 +644,9 @@ impl NmpApp {
     /// Bypasses [`crate::kernel::ActionRegistry::start`] (which needs a
     /// registered *module* to validate the JSON shape) so a unit test can
     /// exercise a host-registered *executor* on its own — the v1 seam only
-    /// exposes executor registration, not module registration.
+    /// exposes executor registration, not module registration. A fixed
+    /// placeholder `correlation_id` stands in for the registry-minted id that
+    /// the real `dispatch_action` path threads in.
     #[cfg(test)]
     pub(crate) fn test_execute_action(
         &self,
@@ -649,7 +654,9 @@ impl NmpApp {
         action_json: &str,
     ) -> Result<(), String> {
         self.action_registry
-            .execute(namespace, action_json, &|cmd| self.send_cmd(cmd))
+            .execute(namespace, action_json, "test-correlation-id", &|cmd| {
+                self.send_cmd(cmd)
+            })
     }
 
     pub(crate) fn set_pending_mls_autopublish(&self, enabled: bool) {

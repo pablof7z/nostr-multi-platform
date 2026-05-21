@@ -133,6 +133,7 @@ impl ConformanceHarness {
             &mut self.kernel,
             content,
             reply_to,
+            None,
             &mut Vec::new(),
         );
         last_event_json(&outbound)

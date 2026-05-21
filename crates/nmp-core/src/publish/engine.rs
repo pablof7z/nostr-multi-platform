@@ -67,6 +67,16 @@ pub(super) struct InFlight {
     pub per_relay: BTreeMap<RelayUrl, PerRelayState>,
     pub pending_retries: BTreeMap<RelayUrl, u64>, // relay -> earliest retry epoch ms
     pub dirty: bool,
+    /// Optional action correlation_id to report in `LastTerminal` instead of
+    /// the publish `handle` (== event id). Set when the publish originates
+    /// from `nmp_app_dispatch_action`'s `PublishAction::PublishNote` path: the
+    /// actor signs the event, so its `id` is not known at dispatch time and
+    /// the host received a registry-minted correlation_id that differs from
+    /// the event id. The terminal sites (`on_ack`, `tick`) report this id so
+    /// the host spinner can be cleared. `None` for every other publish path
+    /// (pre-signed `Publish`, `react`, `follow`, …) — the terminal verdict
+    /// then uses the `handle`, preserving prior behaviour.
+    pub correlation_id_override: Option<String>,
 }
 
 /// T128: terminal verdict for a settled publish. The engine records one of
@@ -109,7 +119,21 @@ impl LastTerminal {
     /// Build a `LastTerminal` from a settled `TerminalOutcome`. Mirrors the
     /// kernel's `classify_terminal_outcome` status rule: any accepted relay →
     /// `"ok"`, otherwise `"failed"`.
-    fn from_outcome(handle: &PublishHandle, outcome: &TerminalOutcome) -> Self {
+    ///
+    /// `correlation_id_override` is the action correlation_id the host received
+    /// from `nmp_app_dispatch_action` when it differs from the publish handle
+    /// (the `PublishNote` path — the actor signs the event, so the host got a
+    /// registry-minted id, not the event id). When `Some`, the returned
+    /// `correlation_id` is that override; when `None`, it falls back to the
+    /// `handle` (the pre-existing behaviour for every other publish path).
+    fn from_outcome(
+        handle: &PublishHandle,
+        correlation_id_override: Option<&str>,
+        outcome: &TerminalOutcome,
+    ) -> Self {
+        let correlation_id = correlation_id_override
+            .map(str::to_string)
+            .unwrap_or_else(|| handle.clone());
         if outcome.accepted.is_empty() {
             let error = if outcome.failed.is_empty() {
                 Some("publish failed: no relays settled".to_string())
@@ -124,13 +148,13 @@ impl LastTerminal {
                 )
             };
             Self {
-                correlation_id: handle.clone(),
+                correlation_id,
                 status: "failed",
                 error,
             }
         } else {
             Self {
-                correlation_id: handle.clone(),
+                correlation_id,
                 status: "ok",
                 error: None,
             }
@@ -217,6 +241,11 @@ impl PublishEngine {
                 per_relay,
                 pending_retries,
                 dirty: true,
+                // A resumed publish survived a process restart; the minted
+                // correlation_id was process-scoped and the host that issued
+                // the dispatch is gone. The terminal verdict falls back to the
+                // handle — the same id a non-dispatch publish would report.
+                correlation_id_override: None,
             };
             self.in_flight.insert(record.handle.clone(), in_flight);
             self.dispatch_pending(&record.handle, now_ms);
@@ -225,17 +254,28 @@ impl PublishEngine {
         Ok(())
     }
 
+    /// Drive a `PublishAction` into the engine.
+    ///
+    /// `correlation_id_override` is the action correlation_id to report in
+    /// `last_action_result` when it differs from the publish handle — set for
+    /// the `PublishNote` dispatch path (the actor signs the event, so the host
+    /// received a registry-minted id, not the event id). `None` for every
+    /// other caller: the terminal verdict then reports the handle, preserving
+    /// the prior behaviour. Only the `Publish` variant carries the override
+    /// into an `InFlight` row; `Cancel` already reports `handle` as the
+    /// correlation_id (which is what the host got back from dispatch).
     pub fn start_publish(
         &mut self,
         action: PublishAction,
         now_ms: u64,
+        correlation_id_override: Option<String>,
     ) -> Result<(), PublishEngineError> {
         match action {
             PublishAction::Publish {
                 handle,
                 event,
                 target,
-            } => self.start_publish_inner(handle, event, target, now_ms),
+            } => self.start_publish_inner(handle, event, target, correlation_id_override, now_ms),
             PublishAction::Cancel { handle } => self.cancel_publish(handle, now_ms),
             // `PublishNote` is signed-and-published by the actor's
             // `ActorCommand::PublishNote` handler; the engine only services
@@ -255,6 +295,7 @@ impl PublishEngine {
         handle: PublishHandle,
         event: SignedEvent,
         target: PublishTarget,
+        correlation_id_override: Option<String>,
         now_ms: u64,
     ) -> Result<(), PublishEngineError> {
         if self.in_flight.contains_key(&handle) {
@@ -267,7 +308,7 @@ impl PublishEngine {
             event.unsigned.kind,
         );
         if relays.is_empty() {
-            self.emit_no_targets(&handle, &event, now_ms);
+            self.emit_no_targets(&handle, &event, correlation_id_override.as_deref(), now_ms);
             return Err(PublishEngineError::NoTargets);
         }
         let mut per_relay = BTreeMap::new();
@@ -281,6 +322,7 @@ impl PublishEngine {
                 per_relay,
                 pending_retries: BTreeMap::new(),
                 dirty: true,
+                correlation_id_override,
             },
         );
         self.persist(&handle)?;
@@ -347,7 +389,11 @@ impl PublishEngine {
             }
             helpers::for_each_terminal(in_flight, &handle, &mut self.view, now_ms);
             let outcome = helpers::terminal_outcome_of(in_flight);
-            self.last_terminal = Some(LastTerminal::from_outcome(&handle, &outcome));
+            self.last_terminal = Some(LastTerminal::from_outcome(
+                &handle,
+                in_flight.correlation_id_override.as_deref(),
+                &outcome,
+            ));
             self.recently_completed.insert(handle.clone(), outcome);
             let _ = self.store.delete(&handle);
             self.in_flight.remove(&handle);
@@ -445,7 +491,11 @@ impl PublishEngine {
             // hook to recover the Ok/Failed map (recent_ok / recent_errors
             // are capped at 32 and not indexed by handle).
             let outcome = helpers::terminal_outcome_of(in_flight);
-            self.last_terminal = Some(LastTerminal::from_outcome(handle, &outcome));
+            self.last_terminal = Some(LastTerminal::from_outcome(
+                handle,
+                in_flight.correlation_id_override.as_deref(),
+                &outcome,
+            ));
             self.recently_completed.insert(handle.clone(), outcome);
             if let Err(err) = self.store.delete(handle) {
                 self.view.push_failure(RecentFailure {
@@ -629,7 +679,13 @@ impl PublishEngine {
         self.view.bump_rev();
     }
 
-    fn emit_no_targets(&mut self, handle: &PublishHandle, event: &SignedEvent, now_ms: u64) {
+    fn emit_no_targets(
+        &mut self,
+        handle: &PublishHandle,
+        event: &SignedEvent,
+        correlation_id_override: Option<&str>,
+        now_ms: u64,
+    ) {
         self.view.push_failure(RecentFailure {
             handle: handle.clone(),
             event_id: event.id.clone(),
@@ -642,8 +698,14 @@ impl PublishEngine {
         // so it never reaches the `recently_completed` / `on_ack` paths.
         // Record it here so `last_action_result` reports the failure and the
         // host clears its spinner instead of waiting on an op that never ran.
+        //
+        // Report the dispatch correlation_id when one was supplied (the
+        // `PublishNote` path), otherwise the handle — same fallback rule as
+        // `LastTerminal::from_outcome`.
         self.last_terminal = Some(LastTerminal {
-            correlation_id: handle.clone(),
+            correlation_id: correlation_id_override
+                .map(str::to_string)
+                .unwrap_or_else(|| handle.clone()),
             status: "failed",
             error: Some("no relays resolved for publish target".to_string()),
         });
