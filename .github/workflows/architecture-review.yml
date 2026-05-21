@@ -1,0 +1,61 @@
+name: architecture-review
+
+# Runs from the protected base branch via pull_request_target. The workflow
+# checks out trusted base-branch code, fetches the PR head for diff inspection,
+# and never executes scripts from the PR branch.
+
+on:
+  pull_request_target:
+    branches: [master]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  architecture-review:
+    name: AI architecture signoff
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout base branch workflow code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+
+      - name: Fetch pull request head
+        run: git fetch origin "pull/${{ github.event.pull_request.number }}/head:pr-head" --depth=1
+
+      - name: Run architecture review
+        env:
+          ARCHITECTURE_REVIEW_REQUIRED: ${{ vars.ARCHITECTURE_REVIEW_REQUIRED }}
+          ARCHITECTURE_REVIEW_PROVIDER: ${{ vars.ARCHITECTURE_REVIEW_PROVIDER }}
+          ARCHITECTURE_REVIEW_MODEL: ${{ vars.ARCHITECTURE_REVIEW_MODEL }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          node scripts/architecture-review.mjs \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head pr-head \
+            --out architecture-review.json
+
+      - name: Write summary
+        if: always()
+        run: |
+          if [[ -f architecture-review.json ]]; then
+            {
+              echo "## Architecture Review"
+              echo
+              jq -r '"Verdict: **\(.verdict)**\n\n\(.summary)\n"' architecture-review.json
+              jq -r '.findings[]? | "- **\(.severity)** `\(.path):\(.line // "?")` \(.rule): \(.evidence)"' architecture-review.json
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload architecture review report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: architecture-review
+          path: architecture-review.json
+          if-no-files-found: ignore
