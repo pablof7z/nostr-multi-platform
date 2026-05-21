@@ -8,6 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::actor::ActorCommand;
 use crate::substrate::{ActionContext, ActionModule, ActionRejection, SignedEvent};
 
 /// Stable handle returned to the caller of `Publish`. Used to key snapshot
@@ -211,5 +212,65 @@ impl ActionModule for PublishModule {
                     .to_string(),
             )),
         }
+    }
+
+    fn execute(
+        action: Self::Action,
+        correlation_id: &str,
+        send: &dyn Fn(ActorCommand),
+    ) -> Result<(), String> {
+        match action {
+            PublishAction::Publish { event, target, .. } => {
+                send(ActorCommand::PublishSignedEvent {
+                    raw: publish_signed_event_to_raw(event),
+                    relays: relays_for_publish_target(&target),
+                    correlation_id: Some(correlation_id.to_string()),
+                });
+                Ok(())
+            }
+            PublishAction::PublishNote { content, reply_to_id, .. } => {
+                send(ActorCommand::PublishNote {
+                    content,
+                    reply_to_id,
+                    correlation_id: Some(correlation_id.to_string()),
+                });
+                Ok(())
+            }
+            PublishAction::PublishProfile { fields } => {
+                send(ActorCommand::PublishProfile {
+                    fields,
+                    correlation_id: Some(correlation_id.to_string()),
+                });
+                Ok(())
+            }
+            // Cancel is rejected by `start` before `execute` is reached.
+            // This arm exists only for match exhaustiveness (D6 — no
+            // `unreachable!()` on a production path).
+            PublishAction::Cancel { .. } => Ok(()),
+        }
+    }
+}
+
+/// Convert a [`SignedEvent`] into the flat [`crate::store::RawEvent`] shape
+/// the actor's publish command expects. Pure field move — no re-signing.
+fn publish_signed_event_to_raw(event: SignedEvent) -> crate::store::RawEvent {
+    crate::store::RawEvent {
+        id: event.id,
+        pubkey: event.unsigned.pubkey,
+        created_at: event.unsigned.created_at,
+        kind: event.unsigned.kind,
+        tags: event.unsigned.tags,
+        content: event.unsigned.content,
+        sig: event.sig,
+    }
+}
+
+/// Resolve a [`PublishTarget`] into the relay list
+/// [`ActorCommand::PublishSignedEvent`] expects: `Auto` → empty (NIP-65
+/// outbox resolver, D3 default), `Explicit` → the named opt-out relays.
+fn relays_for_publish_target(target: &PublishTarget) -> Vec<RelayUrl> {
+    match target {
+        PublishTarget::Auto => Vec::new(),
+        PublishTarget::Explicit { relays } => relays.clone(),
     }
 }
