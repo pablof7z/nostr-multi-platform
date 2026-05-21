@@ -115,6 +115,18 @@ pub enum PublishPlanError {
     MissingHostPinForGroupEvent,
 }
 
+impl std::fmt::Display for PublishPlanError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingHostPinForGroupEvent => {
+                f.write_str("group event has no host relay pin")
+            }
+        }
+    }
+}
+
+impl std::error::Error for PublishPlanError {}
+
 #[cfg(test)]
 mod tests {
     use super::*;

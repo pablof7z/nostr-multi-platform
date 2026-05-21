@@ -62,7 +62,11 @@ macro_rules! wire_action {
         $app.register_action_module($Action::NAMESPACE, |action_json| {
             let action: $Input = serde_json::from_str(action_json)
                 .map_err(|e| ActionRejection::Invalid(e.to_string()))?;
-            let mut ctx = ActionContext { now_ms: 0 };
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0);
+            let mut ctx = ActionContext { now_ms };
             $Action::start(&mut ctx, action)
         });
         $app.register_action_executor(
