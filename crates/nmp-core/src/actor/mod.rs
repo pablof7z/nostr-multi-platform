@@ -128,8 +128,8 @@ use std::time::{Duration, Instant};
 
 pub use relay_roles::NOSTRCONNECT_DEFAULT_RELAY_URL;
 pub(crate) use relay_roles::{
-    canonical_relay_role, has_role, nostrconnect_relay_url, relay_role_label,
-    relay_role_options, relay_role_tint,
+    canonical_relay_role, has_role, nostrconnect_relay_url, relay_role_label, relay_role_options,
+    relay_role_tint,
 };
 
 /// Actor command variants.  The `actor` module is private (`mod actor`, not
@@ -206,7 +206,8 @@ pub enum ActorCommand {
     /// (`BunkerBroker::spawn_handshake` in `nmp-signer-broker/src/broker.rs`);
     /// `#[allow(dead_code)]` only suppresses rustc's *per-crate* dead-code
     /// lint, which cannot see the cross-crate constructor.
-    #[allow(dead_code)] // live cross-crate caller in nmp-signer-broker — per-crate lint false positive
+    #[allow(dead_code)]
+    // live cross-crate caller in nmp-signer-broker — per-crate lint false positive
     AddRemoteSigner {
         handle: Box<dyn crate::RemoteSignerHandle>,
     },
@@ -216,7 +217,8 @@ pub enum ActorCommand {
     /// production caller (`BunkerBroker::emit_progress` in
     /// `nmp-signer-broker/src/broker.rs`); `#[allow(dead_code)]` only
     /// suppresses rustc's per-crate lint, which cannot see it.
-    #[allow(dead_code)] // live cross-crate caller in nmp-signer-broker — per-crate lint false positive
+    #[allow(dead_code)]
+    // live cross-crate caller in nmp-signer-broker — per-crate lint false positive
     BunkerHandshakeProgress {
         /// `"connecting"` | `"awaiting_pubkey"` | `"ready"` | `"failed"` | `"idle"`.
         stage: String,
@@ -238,6 +240,7 @@ pub enum ActorCommand {
     PublishNote {
         content: String,
         reply_to_id: Option<String>,
+        target: crate::publish::PublishTarget,
         correlation_id: Option<String>,
     },
     /// T66a publish — sign a kind:0 profile metadata event with the active
@@ -282,8 +285,9 @@ pub enum ActorCommand {
     ///
     /// Like the unsigned sibling, the event's `pubkey` is derived from the
     /// active identity at sign time; the caller's `event.pubkey` is ignored.
-    /// An empty `relays` falls back to `PublishTarget::Auto` (NIP-65 outbox)
-    /// — a defensive degrade, but callers should always supply the pin.
+    /// Empty or malformed `relays` fail closed in the publish handler. Callers
+    /// that want NIP-65 outbox routing must use [`ActorCommand::PublishUnsignedEvent`]
+    /// so `Auto` and `Explicit` never share the same empty-vector encoding.
     PublishUnsignedEventToRelays {
         event: crate::substrate::UnsignedEvent,
         relays: Vec<crate::publish::RelayUrl>,
@@ -297,9 +301,10 @@ pub enum ActorCommand {
     /// own pubkey. Generic capability (D0); externally-signed group events are
     /// the first consumer but the kernel has no protocol nouns.
     ///
-    /// `relays` selects the D3 routing mode: empty → `PublishTarget::Auto`
-    /// (NIP-65 outbox, back-compat); non-empty → the named `Explicit` opt-out,
-    /// dispatched to exactly those relays (e.g. kind:445 / kind:1059).
+    /// `target` selects the D3 routing mode without erasing intent:
+    /// `Auto` asks the kernel to resolve via NIP-65, while
+    /// `Explicit { relays }` dispatches to exactly those relays and fails
+    /// closed when the set is empty or malformed.
     ///
     /// `correlation_id` is the registry-minted action id when this publish
     /// originates from `nmp_app_dispatch_action`'s `PublishAction::Publish`
@@ -316,7 +321,7 @@ pub enum ActorCommand {
     /// coincidence into an explicit guarantee a host can rely on.
     PublishSignedEvent {
         raw: crate::store::RawEvent,
-        relays: Vec<crate::publish::RelayUrl>,
+        target: crate::publish::PublishTarget,
         correlation_id: Option<String>,
     },
     /// Send a NIP-17 gift-wrapped DM. The actor constructs one kind:1059
@@ -1075,10 +1080,8 @@ pub fn run_actor_with_observers(
                             // `react` / `follow` park) is a no-op — nothing is
                             // waiting on an id.
                             if let Some(id) = ps.correlation_id_override.clone() {
-                                kernel.record_action_failure(
-                                    id,
-                                    "remote sign timed out".to_string(),
-                                );
+                                kernel
+                                    .record_action_failure(id, "remote sign timed out".to_string());
                             }
                             // Surface the toast immediately rather than
                             // waiting up to one periodic flush tick —

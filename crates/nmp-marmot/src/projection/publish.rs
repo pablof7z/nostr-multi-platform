@@ -12,12 +12,11 @@
 //! This module closes that seam by publishing INTERNALLY through the
 //! kernel: it calls the workspace-internal pure-Rust kernel API
 //! [`nmp_core::NmpApp::publish_signed_explicit`] against the `&NmpApp` the
-//! host shell's Marmot handle already retains. An empty relay set falls
-//! through to the author NIP-65 outbox (`PublishTarget::Auto`), so the
-//! single Explicit-target entrypoint covers both routing modes. It is a
-//! generic kernel capability (no MLS/Marmot nouns kernel-side — D0 holds);
-//! it verifies Schnorr + id and routes fire-and-forget via the actor
-//! channel.
+//! host shell's Marmot handle already retains. The seam is now strictly
+//! explicit-target: empty relay sets fail closed in the kernel instead of
+//! widening to the author NIP-65 outbox. It is a generic kernel capability
+//! (no MLS/Marmot nouns kernel-side — D0 holds); it verifies Schnorr + id and
+//! routes fire-and-forget via the actor channel.
 //!
 //! The inbound ingest seam (`{"op":"ingest_signed_event"}`) is a SEPARATE,
 //! still-open seam (the `KernelEventObserver` fan-out is lossy — no
@@ -51,10 +50,9 @@ use nostr::{Event, RelayUrl};
 /// encrypted DM / Marmot Welcome to every relay the author advertises for
 /// public traffic — defeating the unlinkability gift-wrap exists to provide.
 ///
-/// The kernel API treats an empty relay slice as `PublishTarget::Auto`
-/// (its documented fallback). That fallback is correct for
-/// kind:30443/443 KeyPackages and kind:445 group messages (when the group
-/// relay is cached out-of-band), but it is a **D10 leak** for kind:1059.
+/// The kernel API now treats an empty explicit relay slice as invalid for all
+/// kinds. This guard remains as a local provenance tripwire for kind:1059 so a
+/// private envelope never even reaches the actor publish door without a pin.
 ///
 /// This guard refuses the publish when `event.kind == 1059` and `relays`
 /// is empty. The kind:1059 envelope stays in the local store (callers like
@@ -68,9 +66,8 @@ use nostr::{Event, RelayUrl};
 /// is a silent drop, mirroring the contract of every other FFI publish path.
 pub(crate) fn publish_to(app: &NmpApp, event: &Event, relays: &[RelayUrl]) {
     // D10 provenance guard: a kind:1059 gift-wrap with NO explicit relay
-    // pin MUST NOT fall through to the kernel's Auto fallback (which would
-    // publish to the author's NIP-65 outbox — leaking the presence of an
-    // encrypted DM / Welcome to public relays). Refuse the publish; the
+    // pin MUST NOT reach any fallback path that could leak the presence of
+    // an encrypted DM / Welcome to public relays. Refuse the publish; the
     // caller's informational return still carries the signed envelope JSON
     // so callers retain ground-truth audit of what was built.
     if event.kind.as_u16() as u32 == crate::interest::KIND_GIFT_WRAP && relays.is_empty() {
@@ -93,9 +90,8 @@ mod tests {
     //! - `event.kind == 1059` + `relays.is_empty()` → no publish.
     //! - `event.kind == 1059` + non-empty `relays` → publish proceeds
     //!   (the guard does not block; the caller has supplied an explicit pin).
-    //! - `event.kind != 1059` + empty `relays` → publish proceeds (the
-    //!   kernel Auto-fallback is the documented behaviour for kind:445 /
-    //!   30443 / 443).
+    //! - `event.kind != 1059` + empty `relays` → the D10 predicate does not
+    //!   block, and kernel explicit-target validation fails closed later.
     //!
     //! Because `*mut NmpApp` is null in tests, no FFI symbol is reached;
     //! the assertions therefore inspect the guard *predicate* shape directly
@@ -133,8 +129,7 @@ mod tests {
     #[test]
     fn kind_1059_with_empty_relays_is_blocked() {
         // D10: a kind:1059 gift-wrap with no explicit relay pin must NOT
-        // fall through to the kernel's Auto-fallback (which would publish
-        // to the author's NIP-65 public outbox).
+        // reach the actor publish path without a relay pin.
         let event = sample_kind_1059();
         assert!(
             is_d10_blocked(&event, &[]),
@@ -156,29 +151,28 @@ mod tests {
     }
 
     #[test]
-    fn kind_445_with_empty_relays_is_permitted() {
-        // Kind:445 group messages legitimately fall back to Auto when the
-        // group-relay cache misses — the D10 guard is private-kind-only and
-        // MUST NOT regress that path.
+    fn kind_445_with_empty_relays_is_not_d10_blocked() {
+        // The D10 guard is private-kind-only. Empty explicit targets for
+        // non-private kinds now fail closed in the kernel publish boundary,
+        // not in this local provenance predicate.
         let event = sample_kind_445();
         assert!(
             !is_d10_blocked(&event, &[]),
-            "kind:445 + empty relays must pass the D10 guard (Auto-fallback is legitimate)"
+            "kind:445 + empty relays is not a D10 gift-wrap leak"
         );
     }
 
     #[test]
-    fn kind_30443_keypackage_with_empty_relays_is_permitted() {
-        // Kind:30443 KeyPackage publishes also use the Auto-fallback path
-        // (published to the author's NIP-65 outbox). The D10 guard is
-        // tightly scoped to kind:1059 and MUST NOT regress this.
+    fn kind_30443_keypackage_with_empty_relays_is_not_d10_blocked() {
+        // The D10 guard is tightly scoped to kind:1059. Empty explicit targets
+        // for other kinds fail closed at the kernel boundary instead.
         let keys = Keys::generate();
         let kp = EventBuilder::new(Kind::from_u16(30443), "")
             .sign_with_keys(&keys)
             .expect("test-only signing must succeed");
         assert!(
             !is_d10_blocked(&kp, &[]),
-            "kind:30443 KeyPackage + empty relays must pass the D10 guard"
+            "kind:30443 KeyPackage + empty relays is not a D10 gift-wrap leak"
         );
     }
 

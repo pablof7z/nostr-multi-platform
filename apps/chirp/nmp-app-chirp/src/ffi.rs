@@ -237,8 +237,8 @@ pub extern "C" fn nmp_app_chirp_register_group_chat(
     };
 
     let projection = Arc::new(GroupChatProjection::new(group_id));
-    let observer_id = app_ref
-        .register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
+    let observer_id =
+        app_ref.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
     if observer_id.0 == 0 {
         // Observer registration failed (poisoned slot). Don't register the
         // snapshot closure for a projection that will never receive events,
@@ -319,8 +319,8 @@ pub extern "C" fn nmp_app_chirp_register_group_discovery(
     };
 
     let projection = Arc::new(DiscoveredGroupsProjection::new(relay_url));
-    let observer_id = app_ref
-        .register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
+    let observer_id =
+        app_ref.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
     if observer_id.0 == 0 {
         // Observer registration failed (poisoned slot). Don't register a
         // snapshot closure for a projection that will never see events.
@@ -342,10 +342,7 @@ pub extern "C" fn nmp_app_chirp_register_group_discovery(
 /// kind:10050 relay-list publish, and `"nmp.nip17.dm_inbox"` projection.
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_app_chirp_register_dm_inbox(
-    app: *mut NmpApp,
-    viewer_pubkey: *const c_char,
-) {
+pub extern "C" fn nmp_app_chirp_register_dm_inbox(app: *mut NmpApp, viewer_pubkey: *const c_char) {
     let _ = viewer_pubkey;
     if app.is_null() {
         return;
@@ -402,13 +399,12 @@ pub extern "C" fn nmp_app_chirp_register_follow_list(
 
     // The shared slot the projection and the FFI both hold: the projection
     // reads it at snapshot time, the caller updates it on account switch.
-    let active_pubkey_slot: Arc<Mutex<Option<String>>> =
-        Arc::new(Mutex::new(pubkey_opt));
+    let active_pubkey_slot: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(pubkey_opt));
 
     let projection = Arc::new(FollowListProjection::new(Arc::clone(&active_pubkey_slot)));
 
-    let observer_id = app_ref
-        .register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
+    let observer_id =
+        app_ref.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
     if observer_id.0 == 0 {
         // Observer registration failed (poisoned slot). Don't register the
         // snapshot closure for a projection that will never receive events.
@@ -417,9 +413,7 @@ pub extern "C" fn nmp_app_chirp_register_follow_list(
 
     // Output side: the no-argument snapshot read runs on the actor thread
     // inside each snapshot tick. The `move` consumes this last `Arc`.
-    app_ref.register_snapshot_projection("chirp.follow_list", move || {
-        projection.snapshot_json()
-    });
+    app_ref.register_snapshot_projection("chirp.follow_list", move || projection.snapshot_json());
 }
 
 /// Serialize the current `ChirpTimelineSnapshot` into a JSON C string.
@@ -613,9 +607,8 @@ fn register_nip29_actions(app: &mut NmpApp) {
 /// without a publish path every NMP user is invisible to other clients
 /// trying to send them gift-wrapped DMs. The executor builds the kind:10050
 /// unsigned event with `["relay", <url>]` tags and enqueues
-/// `ActorCommand::PublishUnsignedEventToRelays` with an EMPTY relay set —
-/// kind:10050 is a NIP-65 replaceable event and the actor routes empty-relay
-/// publishes through the NIP-65 outbox (the author's kind:10002 write relays).
+/// `ActorCommand::PublishUnsignedEvent` — kind:10050 is a NIP-65 replaceable
+/// event and routes through the author's kind:10002 write relays.
 fn register_nip17_actions(app: &mut NmpApp) {
     app.register_action::<SendDmAction>();
     app.register_action::<PublishDmRelayListAction>();
@@ -770,7 +763,11 @@ mod tests {
 
         // Malformed shape (missing the required `group`) is rejected by the
         // typed module validator surfaced through the host seam (D6).
-        let parsed = dispatch(app, "nmp.nip29.post_chat_message", r#"{"content":"no group"}"#);
+        let parsed = dispatch(
+            app,
+            "nmp.nip29.post_chat_message",
+            r#"{"content":"no group"}"#,
+        );
         assert!(
             parsed.get("error").is_some(),
             "chat message without `group` must be rejected: {parsed}"
@@ -899,11 +896,7 @@ mod tests {
         assert_eq!(id.len(), 32, "discover correlation id should be 32 hex");
 
         // Empty relay_url is rejected by the typed validator (D6).
-        let parsed = dispatch(
-            app,
-            DiscoverGroupsAction::NAMESPACE,
-            r#"{"relay_url":""}"#,
-        );
+        let parsed = dispatch(app, DiscoverGroupsAction::NAMESPACE, r#"{"relay_url":""}"#);
         assert!(
             parsed.get("error").is_some(),
             "empty relay_url must be rejected: {parsed}"
@@ -968,8 +961,7 @@ mod tests {
         let handle = nmp_app_chirp_register(app, std::ptr::null());
         assert!(!handle.is_null());
 
-        let group =
-            r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#;
+        let group = r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#;
         let body = format!(r#"{{"group":{group}}}"#);
         let parsed = dispatch(app, JoinGroupAction::NAMESPACE, &body);
         let id = parsed
@@ -1013,8 +1005,14 @@ mod tests {
             ActorCommand::PublishUnsignedEventToRelays { event, relays } => {
                 assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
                 assert_eq!(event.kind, 9021);
-                assert!(event.tags.iter().any(|t| t == &vec!["h".to_string(), "room".to_string()]));
-                assert!(event.tags.iter().any(|t| t == &vec!["code".to_string(), "abc".to_string()]));
+                assert!(event
+                    .tags
+                    .iter()
+                    .any(|t| t == &vec!["h".to_string(), "room".to_string()]));
+                assert!(event
+                    .tags
+                    .iter()
+                    .any(|t| t == &vec!["code".to_string(), "abc".to_string()]));
                 assert_eq!(event.content, "please");
             }
             other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
@@ -1086,10 +1084,9 @@ mod tests {
     #[test]
     fn register_group_chat_runs_for_well_formed_group() {
         let app = nmp_app_new();
-        let group = CString::new(
-            r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#,
-        )
-        .unwrap();
+        let group =
+            CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#)
+                .unwrap();
         // Must register both halves (observer + snapshot projection) without
         // panicking across the FFI boundary.
         nmp_app_chirp_register_group_chat(app, group.as_ptr());
@@ -1108,11 +1105,8 @@ mod tests {
         let handle = nmp_app_chirp_register(app, std::ptr::null());
         assert!(!handle.is_null());
 
-        let recipient =
-            "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
-        let body = format!(
-            r#"{{"recipient_pubkey":"{recipient}","content":"hello over NIP-17"}}"#
-        );
+        let recipient = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
+        let body = format!(r#"{{"recipient_pubkey":"{recipient}","content":"hello over NIP-17"}}"#);
         let parsed = dispatch(app, "nmp.nip17.send", &body);
         let id = parsed
             .get("correlation_id")
@@ -1147,10 +1141,9 @@ mod tests {
         // NULL viewer pubkey — accepted for ABI compatibility.
         nmp_app_chirp_register_dm_inbox(app, std::ptr::null());
         // Concrete viewer pubkey — ignored by the Rust-owned controller.
-        let pubkey = CString::new(
-            "aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee",
-        )
-        .unwrap();
+        let pubkey =
+            CString::new("aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee")
+                .unwrap();
         nmp_app_chirp_register_dm_inbox(app, pubkey.as_ptr());
         nmp_app_free(app);
     }
@@ -1251,14 +1244,12 @@ mod tests {
             "slot must start empty (no group chat registered yet)"
         );
 
-        let group_a = CString::new(
-            r#"{"host_relay_url":"wss://groups.example.com","local_id":"room-a"}"#,
-        )
-        .unwrap();
-        let group_b = CString::new(
-            r#"{"host_relay_url":"wss://groups.example.com","local_id":"room-b"}"#,
-        )
-        .unwrap();
+        let group_a =
+            CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"room-a"}"#)
+                .unwrap();
+        let group_b =
+            CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"room-b"}"#)
+                .unwrap();
 
         // First registration.
         nmp_app_chirp_register_group_chat(app, group_a.as_ptr());
@@ -1288,10 +1279,9 @@ mod tests {
     /// no-op — the function must never panic across the FFI boundary.
     #[test]
     fn register_group_chat_null_and_malformed_input_are_silent_noops() {
-        let group = CString::new(
-            r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#,
-        )
-        .unwrap();
+        let group =
+            CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#)
+                .unwrap();
         // Null app — must not dereference.
         nmp_app_chirp_register_group_chat(std::ptr::null_mut(), group.as_ptr());
 
@@ -1306,5 +1296,4 @@ mod tests {
         nmp_app_chirp_register_group_chat(app, garbage.as_ptr());
         nmp_app_free(app);
     }
-
 }

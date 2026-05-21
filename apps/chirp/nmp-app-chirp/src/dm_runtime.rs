@@ -99,10 +99,7 @@ impl DmRuntimeController {
                 ActorCommand::WithdrawInterest(active_giftwrap_inbox_interest_id())
             }
             DmRuntimeEffect::PublishRelayList { event, .. } => {
-                ActorCommand::PublishUnsignedEventToRelays {
-                    event,
-                    relays: Vec::new(),
-                }
+                ActorCommand::PublishUnsignedEvent(event)
             }
         };
         let _ = self.tx.send(cmd);
@@ -212,11 +209,9 @@ mod tests {
                 DmRuntimeEffect::PublishRelayList { relay_set, .. }
             ] if pk == "alice" && relay_set.contains("wss://a.example")
         ));
-        assert!(
-            state
-                .reconcile(Some("alice"), &relays(&["wss://a.example"]))
-                .is_empty()
-        );
+        assert!(state
+            .reconcile(Some("alice"), &relays(&["wss://a.example"]))
+            .is_empty());
     }
 
     #[test]

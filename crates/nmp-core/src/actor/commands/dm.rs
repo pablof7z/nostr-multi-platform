@@ -279,11 +279,17 @@ pub(crate) fn send_gift_wrapped_dm(
         // on the offending line itself (the lint parser is line-scoped); the
         // prose reason here covers why it is safe: `required_dm_relays` above
         // rejected the missing/empty branch before any envelope was built, so
-        // `publish_signed_event` cannot fall through to its
-        // `relays.is_empty()` → `PublishTarget::Auto` branch and cannot leak
-        // the kind:1059 envelope to the author's NIP-65 outbox.
-        outbound.extend(super::publish::publish_signed_event( // doctrine-allow: D10 — required_dm_relays rejects missing/empty kind:10050 lists before any kind:1059 is built
-            kernel, raw, &relays, None,
+        // by the time we call `publish_signed_event` we are guaranteed to be
+        // passing `PublishTarget::Explicit { relays }` with a non-empty relay
+        // set. The publish command also validates the typed target up front
+        // and fails closed for an empty `Explicit`, so kind:1059 can never
+        // degrade to `PublishTarget::Auto` and leak the envelope to the
+        // author's NIP-65 outbox.
+        outbound.extend(super::publish::publish_signed_event( // doctrine-allow: D10 — required_dm_relays rejects missing/empty kind:10050 lists before any kind:1059 is built; publish helper additionally fails closed on an empty PublishTarget::Explicit
+            kernel,
+            raw,
+            crate::publish::PublishTarget::Explicit { relays },
+            None,
         ));
     }
 
@@ -380,11 +386,7 @@ fn nostr_event_to_raw(event: &nostr::Event) -> RawEvent {
         pubkey: event.pubkey.to_hex(),
         created_at: event.created_at.as_secs(),
         kind: event.kind.as_u16() as u32,
-        tags: event
-            .tags
-            .iter()
-            .map(|t| t.as_slice().to_vec())
-            .collect(),
+        tags: event.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
         content: event.content.clone(),
         sig: event.sig.to_string(),
     }
@@ -399,8 +401,7 @@ mod tests {
     use crate::relay::DEFAULT_VISIBLE_LIMIT;
 
     const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
-    const RECIPIENT: &str =
-        "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
+    const RECIPIENT: &str = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
 
     fn fresh() -> (IdentityRuntime, Kernel) {
         (
@@ -424,9 +425,8 @@ mod tests {
     #[test]
     fn send_gift_wrapped_dm_without_account_toasts_and_emits_nothing() {
         let (identity, mut kernel) = fresh();
-        let rumor = sample_rumor(
-            "aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee",
-        );
+        let rumor =
+            sample_rumor("aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee");
         let outbound = send_gift_wrapped_dm(&identity, &mut kernel, rumor, RECIPIENT);
         assert!(
             outbound.is_empty(),
@@ -445,7 +445,10 @@ mod tests {
         let sender = identity.active_pubkey().expect("signed in");
         let rumor = sample_rumor(&sender);
         let outbound = send_gift_wrapped_dm(&identity, &mut kernel, rumor, "not-a-pubkey");
-        assert!(outbound.is_empty(), "malformed recipient → nothing published");
+        assert!(
+            outbound.is_empty(),
+            "malformed recipient → nothing published"
+        );
         assert!(
             kernel
                 .last_error_toast_snapshot()
@@ -589,9 +592,7 @@ mod tests {
         // dispatch arm is exercised end-to-end by the actor loop tests; this
         // pins the variant signature so a rename breaks the build here.
         let cmd = ActorCommand::SendGiftWrappedDm {
-            rumor: sample_rumor(
-                "aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee",
-            ),
+            rumor: sample_rumor("aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee"),
             recipient_pubkey: RECIPIENT.to_string(),
         };
         match cmd {

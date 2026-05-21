@@ -40,9 +40,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::substrate::{
-    ActionContext, ActionId, ActionModule, ActionRejection, ActionResult,
-};
+use crate::substrate::{ActionContext, ActionId, ActionModule, ActionRejection, ActionResult};
 
 /// Dyn-safe facade over [`ActionModule`].
 ///
@@ -144,8 +142,7 @@ type ExecutorFn = Box<
 /// Dyn-safe host-validator closure type — the [`ErasedActionModule::start`]
 /// boundary minus the unused [`ActionContext`] (a host validator works from
 /// the action JSON alone). `Ok(())` accepts the action, `Err` rejects it.
-type ValidatorFn =
-    Box<dyn Fn(&str) -> Result<(), ActionRejection> + Send + Sync>;
+type ValidatorFn = Box<dyn Fn(&str) -> Result<(), ActionRejection> + Send + Sync>;
 
 /// Shared, mutable slot holding the optional host-registered action-result
 /// observer.
@@ -193,9 +190,7 @@ impl ErasedActionModule for ClosureModule {
         // so the preferred id is always `None`.
         match catch_unwind(AssertUnwindSafe(|| (self.validate)(action_json))) {
             Ok(result) => result.map(|()| None),
-            Err(_) => Err(ActionRejection::Invalid(
-                "action validator panicked".into(),
-            )),
+            Err(_) => Err(ActionRejection::Invalid("action validator panicked".into())),
         }
     }
 
@@ -358,9 +353,7 @@ impl ActionRegistry {
         // Pre-ADR-0027 fallback: closure registered via register_executor.
         match self.executors.get(namespace) {
             Some(exec) => {
-                match catch_unwind(AssertUnwindSafe(|| {
-                    exec(action_json, correlation_id, send)
-                })) {
+                match catch_unwind(AssertUnwindSafe(|| exec(action_json, correlation_id, send))) {
                     Ok(result) => result,
                     Err(_) => Err("action executor panicked".to_string()),
                 }
@@ -384,10 +377,7 @@ impl ActionRegistry {
     /// host may register it before *or after* `nmp_app_start`. A second
     /// registration replaces the first. A poisoned slot is a silent no-op
     /// (D6 — a bad registration never crashes the host).
-    pub fn set_result_observer(
-        &self,
-        f: impl Fn(ActionResult) + Send + Sync + 'static,
-    ) {
+    pub fn set_result_observer(&self, f: impl Fn(ActionResult) + Send + Sync + 'static) {
         if let Ok(mut slot) = self.result_observer.lock() {
             *slot = Some(Box::new(f));
         }
@@ -487,7 +477,7 @@ pub fn default_registry() -> ActionRegistry {
                 // value from the publish handle.
                 send(ActorCommand::PublishSignedEvent {
                     raw: signed_event_to_raw(event),
-                    relays: relays_for_target(&target),
+                    target,
                     correlation_id: Some(correlation_id.to_string()),
                 });
                 Ok(())
@@ -505,10 +495,15 @@ pub fn default_registry() -> ActionRegistry {
             // `action_results` instead of the signed event's `id` —
             // otherwise the host's spinner (keyed on the dispatch return
             // value) could never be cleared.
-            PublishAction::PublishNote { content, reply_to_id, .. } => {
+            PublishAction::PublishNote {
+                content,
+                reply_to_id,
+                target,
+            } => {
                 send(ActorCommand::PublishNote {
                     content,
                     reply_to_id,
+                    target,
                     correlation_id: Some(correlation_id.to_string()),
                 });
                 Ok(())
@@ -560,24 +555,15 @@ fn signed_event_to_raw(event: crate::substrate::SignedEvent) -> crate::store::Ra
     }
 }
 
-/// Resolve a [`crate::publish::PublishTarget`] into the relay slice
-/// [`crate::actor::ActorCommand::PublishSignedEvent`] expects: `Auto` →
-/// empty (NIP-65 outbox resolver, D3 default), `Explicit` → the named
-/// opt-out relays.
-fn relays_for_target(target: &crate::publish::PublishTarget) -> Vec<crate::publish::RelayUrl> {
-    match target {
-        crate::publish::PublishTarget::Auto => Vec::new(),
-        crate::publish::PublishTarget::Explicit { relays } => relays.clone(),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::substrate::{SignedEvent, UnsignedEvent};
 
     fn ctx() -> ActionContext {
-        ActionContext { now_ms: 1_700_000_000_000 }
+        ActionContext {
+            now_ms: 1_700_000_000_000,
+        }
     }
 
     /// A `SignedEvent` with non-empty `id`/`sig` — enough to pass
@@ -667,7 +653,10 @@ mod tests {
         let id = registry
             .start(&mut ctx(), "nmp.publish", &action_json)
             .expect("publish action with id+sig should be accepted");
-        assert_eq!(id, expected_id, "Publish action must use event.id as correlation_id");
+        assert_eq!(
+            id, expected_id,
+            "Publish action must use event.id as correlation_id"
+        );
     }
 
     #[test]
@@ -739,23 +728,34 @@ mod tests {
         let captured_in_send = Arc::clone(&captured);
 
         let minted_correlation_id = "fe".repeat(16);
-        let action_json =
-            r#"{"PublishNote":{"content":"hello","reply_to_id":null,"target":"Auto"}}"#;
+        let action_json = r#"{"PublishNote":{"content":"hello","reply_to_id":null,"target":{"Explicit":{"relays":["wss://relay.example"]}}}}"#;
         registry
             .execute("nmp.publish", action_json, &minted_correlation_id, &|cmd| {
                 *captured_in_send.lock().unwrap() = Some(cmd);
             })
             .expect("publish-note execution should succeed");
 
-        let cmd = captured.lock().unwrap().take().expect("an ActorCommand must be sent");
+        let cmd = captured
+            .lock()
+            .unwrap()
+            .take()
+            .expect("an ActorCommand must be sent");
         match cmd {
             ActorCommand::PublishNote {
                 content,
                 reply_to_id,
+                target,
                 correlation_id,
             } => {
                 assert_eq!(content, "hello");
                 assert_eq!(reply_to_id, None);
+                assert_eq!(
+                    target,
+                    crate::publish::PublishTarget::Explicit {
+                        relays: vec!["wss://relay.example".to_string()],
+                    },
+                    "the executor must preserve the validated publish target"
+                );
                 assert_eq!(
                     correlation_id,
                     Some(minted_correlation_id),
@@ -791,26 +791,35 @@ mod tests {
         let action_json = serde_json::to_string(&action).unwrap();
         let minted_correlation_id = "ae".repeat(16);
         registry
-            .execute("nmp.publish", &action_json, &minted_correlation_id, &|cmd| {
-                *captured_in_send.lock().unwrap() = Some(cmd);
-            })
+            .execute(
+                "nmp.publish",
+                &action_json,
+                &minted_correlation_id,
+                &|cmd| {
+                    *captured_in_send.lock().unwrap() = Some(cmd);
+                },
+            )
             .expect("publish execution should succeed");
 
-        let cmd = captured.lock().unwrap().take().expect("an ActorCommand must be sent");
+        let cmd = captured
+            .lock()
+            .unwrap()
+            .take()
+            .expect("an ActorCommand must be sent");
         match cmd {
             ActorCommand::PublishSignedEvent {
+                target,
                 correlation_id,
                 ..
             } => {
+                assert_eq!(target, crate::publish::PublishTarget::Auto);
                 assert_eq!(
                     correlation_id,
                     Some(minted_correlation_id),
                     "the executor must thread the minted correlation_id onto the command"
                 );
             }
-            other => panic!(
-                "a pre-signed Publish must route to PublishSignedEvent, got {other:?}"
-            ),
+            other => panic!("a pre-signed Publish must route to PublishSignedEvent, got {other:?}"),
         }
     }
 
@@ -822,8 +831,7 @@ mod tests {
         // deleted the prior `nmp_app_publish_unsigned_event` FFI symbol;
         // this `nmp.publish` dispatch is the sole entrypoint for it.
         let registry = default_registry();
-        let action_json =
-            r#"{"PublishProfile":{"fields":{"name":"Alice","about":"hello"}}}"#;
+        let action_json = r#"{"PublishProfile":{"fields":{"name":"Alice","about":"hello"}}}"#;
         let id = registry
             .start(&mut ctx(), "nmp.publish", action_json)
             .expect("publish-profile action with string fields should be accepted");
@@ -845,10 +853,7 @@ mod tests {
             .expect_err("non-string profile field must be rejected");
         match err {
             ActionRejection::Invalid(msg) => {
-                assert!(
-                    msg.contains("must be a string value"),
-                    "got: {msg}"
-                );
+                assert!(msg.contains("must be a string value"), "got: {msg}");
             }
             other => panic!("expected Invalid, got {other:?}"),
         }
@@ -877,7 +882,11 @@ mod tests {
             })
             .expect("publish-profile execution should succeed");
 
-        let cmd = captured.lock().unwrap().take().expect("an ActorCommand must be sent");
+        let cmd = captured
+            .lock()
+            .unwrap()
+            .take()
+            .expect("an ActorCommand must be sent");
         match cmd {
             ActorCommand::PublishProfile {
                 fields,
@@ -906,8 +915,7 @@ mod tests {
     fn start_publish_note_action_with_empty_content_is_rejected() {
         // Empty content fails the `PublishModule::start` gate.
         let registry = default_registry();
-        let action_json =
-            r#"{"PublishNote":{"content":"","reply_to_id":null,"target":"Auto"}}"#;
+        let action_json = r#"{"PublishNote":{"content":"","reply_to_id":null,"target":"Auto"}}"#;
         let err = registry
             .start(&mut ctx(), "nmp.publish", action_json)
             .expect_err("empty-content publish note must be rejected");
@@ -980,15 +988,22 @@ mod tests {
             result_json: serde_json::Value::Null,
         });
 
-        assert_eq!(first.load(Ordering::SeqCst), 0, "first observer is replaced");
-        assert_eq!(second.load(Ordering::SeqCst), 1, "second observer receives it");
+        assert_eq!(
+            first.load(Ordering::SeqCst),
+            0,
+            "first observer is replaced"
+        );
+        assert_eq!(
+            second.load(Ordering::SeqCst),
+            1,
+            "second observer receives it"
+        );
     }
 
     #[test]
     fn correlation_ids_are_unique_across_calls() {
         let registry = default_registry();
-        let action_json =
-            r#"{"PublishNote":{"content":"x","reply_to_id":null,"target":"Auto"}}"#;
+        let action_json = r#"{"PublishNote":{"content":"x","reply_to_id":null,"target":"Auto"}}"#;
         let mut seen = std::collections::HashSet::new();
         for _ in 0..256 {
             let id = registry
@@ -1070,7 +1085,10 @@ mod tests {
             // Panic on the first call only — subsequent deliveries must
             // still reach the observer, proving panic isolation per-result.
             if n == 1 {
-                panic!("buggy host result observer (call #{}, corr={})", n, result.correlation_id);
+                panic!(
+                    "buggy host result observer (call #{}, corr={})",
+                    n, result.correlation_id
+                );
             }
         });
 

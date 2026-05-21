@@ -9,6 +9,7 @@
 use crate::actor::commands::identity::{sign_active_nonblocking, IdentityRuntime};
 use crate::actor::pending_sign::PendingSign;
 use crate::kernel::Kernel;
+use crate::publish::{validate_explicit_relays, validate_publish_target, PublishTarget};
 use crate::relay::OutboundMessage;
 use crate::substrate::UnsignedEvent;
 
@@ -23,6 +24,19 @@ fn toast_no_account(kernel: &mut Kernel, action: &str) -> Vec<OutboundMessage> {
     kernel.set_last_error_toast(Some(format!(
         "cannot {action}: no active account — sign in first"
     )));
+    Vec::new()
+}
+
+fn fail_invalid_target(
+    kernel: &mut Kernel,
+    reason: String,
+    correlation_id: Option<String>,
+) -> Vec<OutboundMessage> {
+    let toast = format!("explicit publish target rejected: {reason}");
+    kernel.set_last_error_toast(Some(toast.clone()));
+    if let Some(id) = correlation_id {
+        kernel.record_action_failure(id, toast);
+    }
     Vec::new()
 }
 
@@ -101,10 +115,9 @@ pub(crate) fn publish_unsigned_event(
 /// `unsigned.pubkey` is ignored; signing derives the pubkey from the active
 /// identity and writes it onto the `SignedEvent`.
 ///
-/// **Empty `relays`.** A defensive degrade: falls back to
-/// `PublishTarget::Auto` so the publish is not silently dropped. Callers that
-/// reach this path always supply the pin; an empty set is a caller bug, not a
-/// supported mode.
+/// **Empty / invalid `relays`.** Fail closed. Callers that want NIP-65 outbox
+/// routing must use [`publish_unsigned_event`] / `ActorCommand::PublishUnsignedEvent`;
+/// an empty explicit target is a caller bug, not a request to widen to `Auto`.
 ///
 /// **Remote (NIP-46) signers.** The explicit target is carried through the
 /// remote-sign park via [`PendingSign::with_target`] — without it a bunker
@@ -120,13 +133,10 @@ pub(crate) fn publish_unsigned_event_to_relays(
     if identity.active_pubkey().is_none() {
         return toast_no_account(kernel, "publish");
     }
-    // Empty `relays` → Auto (NIP-65 outbox, defensive degrade); non-empty →
-    // the named D3 Explicit opt-out routed to exactly those relays.
-    let target = if relays.is_empty() {
-        crate::publish::PublishTarget::Auto
-    } else {
-        crate::publish::PublishTarget::Explicit { relays }
-    };
+    if let Err(reason) = validate_explicit_relays(&relays) {
+        return fail_invalid_target(kernel, reason, None);
+    }
+    let target = PublishTarget::Explicit { relays };
     // Non-blocking sign: a local key resolves now; a remote (NIP-46) signer
     // returns a `Pending` op parked in `pending_signs` with the explicit
     // target attached — the actor thread never blocks (D8).
@@ -172,15 +182,11 @@ pub(crate) fn publish_unsigned_event_to_relays(
 /// supported. The capability is generic (D0 —
 /// no app-layer nouns in the kernel).
 ///
-/// **Relay targeting.** `relays` selects the D3 routing mode:
-/// - empty slice → `PublishTarget::Auto`: route via the author's NIP-65
-///   kind:10002 outbox (the existing back-compat behavior — `kind:30443/443`
-///   key-packages take this path).
-/// - non-empty → `PublishTarget::Explicit { relays }`: the named D3 opt-out.
-///   The verbatim signed event is dispatched to **exactly** these relays,
-///   bypassing the outbox resolver. Consumers use this for group messages
-///   (pinned GROUP relay) and kind:1059 gift-wraps (recipient inbox
-///   relays) — relays the author's own kind:10002 does not cover.
+/// **Relay targeting.** `target` preserves the caller's intent:
+/// - `PublishTarget::Auto` routes via the author's NIP-65 kind:10002 outbox.
+/// - `PublishTarget::Explicit { relays }` dispatches to exactly those relays,
+///   bypassing the outbox resolver. Empty or malformed explicit relay sets
+///   fail closed rather than degrading to Auto.
 ///
 /// D6 — a signature/id verification failure is surfaced as a toast (error
 /// becomes kernel state, never a silent no-op) and produces no outbound
@@ -209,9 +215,12 @@ pub(crate) fn publish_unsigned_event_to_relays(
 pub(crate) fn publish_signed_event(
     kernel: &mut Kernel,
     raw: crate::store::RawEvent,
-    relays: &[crate::publish::RelayUrl],
+    target: PublishTarget,
     correlation_id: Option<String>,
 ) -> Vec<OutboundMessage> {
+    if let Err(reason) = validate_publish_target(&target) {
+        return fail_invalid_target(kernel, reason, correlation_id);
+    }
     // Reuse the store's verification gate: serializes to NIP-01 canonical
     // JSON, parses with the `nostr` crate, and checks BOTH the event-id hash
     // and the Schnorr signature. This is the exact primitive `kernel::ingest`
@@ -241,34 +250,36 @@ pub(crate) fn publish_signed_event(
     // path that reaches `publish_signed_event`. In particular:
     //
     //   1. The generic `dispatch_action("nmp.publish")` → `PublishAction::Publish`
-    //      arm: `relays_for_target(&PublishTarget::Auto) = Vec::new()` is
-    //      routed verbatim into `ActorCommand::PublishSignedEvent { relays }`,
+    //      arm: a `PublishTarget::Auto` carries no relays and is routed
+    //      verbatim into `ActorCommand::PublishSignedEvent { target: Auto }`,
     //      which lands here. Without this guard a host that dispatches a
     //      kind:1059 envelope with `target: Auto` would silently leak through
-    //      the empty-relays → Auto branch below.
+    //      the Auto branch below.
     //
     //   2. The `NmpApp::publish_signed_explicit` workspace-internal seam (used
-    //      by `nmp-marmot::MarmotProjection`). If a future caller passes an
-    //      empty `relays` slice for a kind:1059 envelope the same leak would
-    //      open. The Marmot runtime guard in
-    //      `nmp-marmot::projection::publish::publish_to` covers the FFI symbol
-    //      path; this covers the Rust-typed sibling.
+    //      by `nmp-marmot::MarmotProjection`) always builds
+    //      `PublishTarget::Explicit { relays }` (the branch's fail-closed
+    //      `validate_publish_target` already rejects an empty `Explicit`
+    //      relay set at the top of this function), so this Auto-leg of the
+    //      guard is unreachable from Marmot today. The Marmot runtime guard
+    //      in `nmp-marmot::projection::publish::publish_to` covers the
+    //      C-ABI symbol path; this covers the typed Rust sibling.
     //
-    // Structural invariant: kind:1059 + empty `relays` is NEVER routed to
-    // Auto. The refusal mirrors the dm.rs precedent — D6 toast set, no
+    // Structural invariant: kind:1059 + `Auto` is NEVER routed to the NIP-65
+    // outbox. The refusal mirrors the dm.rs precedent — D6 toast set, no
     // outbound frames, no publish-queue entry, plus a `tracing::warn!` so
     // the leak attempt is visible in logs. This is policy, not malformed
     // data — `set_last_error_toast` (the legacy uncategorized path) is the
     // right surface (kind:1059 routing leak is not in the closed
     // `error_category` key set defined by `kernel::closed_reason`).
-    if raw.kind == KIND_GIFT_WRAP && relays.is_empty() {
+    if raw.kind == KIND_GIFT_WRAP && matches!(target, PublishTarget::Auto) {
         let reason = "cannot publish kind:1059 gift-wrap: no explicit relay pin \
              (D10 would leak the encrypted envelope to the author's public relays)"
             .to_string();
         tracing::warn!(
             kind = raw.kind,
-            "publish_signed_event refused: kind:1059 envelope with empty relays \
-             would Auto-route through the author's NIP-65 outbox, leaking the \
+            "publish_signed_event refused: kind:1059 envelope with PublishTarget::Auto \
+             would route through the author's NIP-65 outbox, leaking the \
              existence of the encrypted gift-wrap (D10 violation). Caller must \
              pin recipient kind:10050 DM-inbox relays (NIP-17) or another \
              explicit set.",
@@ -303,24 +314,10 @@ pub(crate) fn publish_signed_event(
             created_at: raw.created_at,
         },
     };
-    // Empty `relays` → Auto (NIP-65 outbox, the back-compat path). Non-empty
-    // → the named D3 Explicit opt-out, routed to exactly those relays.
-    //
     // `correlation_id` threads through to the publish engine's
     // `correlation_id_override` — `None` preserves the prior fallback to the
     // publish handle (== event id) for every non-dispatch caller.
-    if relays.is_empty() {
-        kernel.publish_signed_with_correlation(&signed, &[], correlation_id)
-    } else {
-        kernel.publish_signed_to_with_correlation(
-            &signed,
-            &[],
-            crate::publish::PublishTarget::Explicit {
-                relays: relays.to_vec(),
-            },
-            correlation_id,
-        )
-    }
+    kernel.publish_signed_to_with_correlation(&signed, &[], target, correlation_id)
 }
 
 /// Sign and publish a kind:1 note (optionally a NIP-10 reply).
@@ -338,6 +335,7 @@ pub(crate) fn publish_note(
     kernel: &mut Kernel,
     content: &str,
     reply_to_id: Option<&str>,
+    target: PublishTarget,
     correlation_id: Option<String>,
     pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
@@ -351,6 +349,9 @@ pub(crate) fn publish_note(
         }
         return toast_no_account(kernel, "publish");
     };
+    if let Err(reason) = validate_publish_target(&target) {
+        return fail_invalid_target(kernel, reason, correlation_id);
+    }
 
     // T144: a kind:1 reply needs full NIP-10 structure (root forwarding,
     // parent-author re-notification, dedup) not just a minimal reply marker.
@@ -416,7 +417,7 @@ pub(crate) fn publish_note(
         // Local key resolved on the spot — publish through the engine with the
         // dispatch correlation_id so the terminal verdict reports it.
         Some(Ok(signed)) => {
-            kernel.publish_signed_with_correlation(&signed, &[], correlation_id)
+            kernel.publish_signed_to_with_correlation(&signed, &[], target, correlation_id)
         }
         Some(Err(e)) => {
             let reason = format!("sign failed: {e}");
@@ -435,9 +436,10 @@ pub(crate) fn publish_note(
             // waiting on once the broker turns the sign request around. The
             // hydration kick (independent of the reply event) still fires
             // below so the parent can be fetched.
-            pending_signs.push(PendingSign::with_correlation_id(
+            pending_signs.push(PendingSign::with_target_and_correlation_id(
                 op,
                 Vec::new(),
+                target,
                 correlation_id,
             ));
             Vec::new()
