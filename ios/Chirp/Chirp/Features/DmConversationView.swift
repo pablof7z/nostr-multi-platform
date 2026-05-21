@@ -133,6 +133,7 @@ struct DmConversationView: View {
         // tick (the actor gift-wraps a self-copy to the sender). Clearing the
         // draft optimistically matches `GroupChatView` / `ComposeView`.
         store.sendDm(to: peerPubkey, content: text)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
         draft = ""
     }
 }
