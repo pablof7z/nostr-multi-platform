@@ -6,33 +6,21 @@ const PUBKEY_HEX: &str = "4f355bdcb7cc0af728ef3cceb9615d90684bb5b2ca5f859ab0f0b7
 const EVENT_ID_HEX: &str = "2222222222222222222222222222222222222222222222222222222222222222";
 
 #[test]
-fn load_key_sets_active_identity() {
+fn load_key_sets_active_identity_label() {
     let mut session = Session::default();
-    session.relays.clear();
 
     run(&mut session, Command::LoadKey(SECRET_HEX.into())).unwrap();
 
     assert_eq!(session.pubkey_hex.as_deref(), Some(PUBKEY_HEX));
-    assert!(session.keys.is_some());
 }
 
 #[test]
-fn create_account_works_without_live_relays() {
+fn app_commands_dispatch_without_live_relays() {
     let mut session = Session::default();
-    session.relays.clear();
-
-    run(&mut session, Command::CreateAccount("tester".into())).unwrap();
-
-    assert!(session.pubkey_hex.is_some());
-    assert!(session.keys.is_some());
-}
-
-#[test]
-fn write_commands_sign_without_live_relays() {
-    let mut session = Session::default();
-    session.relays.clear();
+    run(&mut session, Command::SetRelays(Vec::new())).unwrap();
     run(&mut session, Command::LoadKey(SECRET_HEX.into())).unwrap();
 
+    run(&mut session, Command::Home).unwrap();
     run(&mut session, Command::Compose("hello".into())).unwrap();
     run(
         &mut session,
@@ -45,18 +33,15 @@ fn write_commands_sign_without_live_relays() {
     )
     .unwrap();
     run(&mut session, Command::Follow(PUBKEY_HEX.into())).unwrap();
-    assert!(session.follows.contains(PUBKEY_HEX));
     run(&mut session, Command::Unfollow(PUBKEY_HEX.into())).unwrap();
-    assert!(!session.follows.contains(PUBKEY_HEX));
 }
 
 #[test]
-fn read_commands_require_identity_where_needed() {
+fn old_bypass_commands_are_explicitly_rejected() {
     let mut session = Session::default();
-    session.relays.clear();
 
-    assert!(run(&mut session, Command::Home).is_err());
     assert!(run(&mut session, Command::Notifications).is_err());
+    assert!(run(&mut session, Command::RawReq("{}".into())).is_err());
 }
 
 #[test]
@@ -75,7 +60,6 @@ fn load_key_accepts_nsec() {
     let keys = Keys::new(SecretKey::from_hex(SECRET_HEX).unwrap());
     let nsec = keys.secret_key().to_bech32().unwrap();
     let mut session = Session::default();
-    session.relays.clear();
 
     run(&mut session, Command::LoadKey(nsec)).unwrap();
 

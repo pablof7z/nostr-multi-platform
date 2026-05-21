@@ -4,10 +4,6 @@ use chirp_repl::command::{parse, Command};
 use chirp_repl::session::Session;
 
 fn main() {
-    rustls::crypto::ring::default_provider()
-        .install_default()
-        .expect("install rustls crypto provider");
-
     let mut session = Session::default();
     chirp_repl::render::banner();
 
