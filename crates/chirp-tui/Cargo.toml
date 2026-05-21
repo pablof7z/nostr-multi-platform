@@ -1,0 +1,26 @@
+[package]
+name = "chirp-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Ratatui terminal shell for the Chirp Nostr client."
+
+[lib]
+name = "chirp_tui"
+path = "src/lib.rs"
+
+[[bin]]
+name = "chirp-tui"
+path = "src/main.rs"
+
+[dependencies]
+nmp-app-chirp = { path = "../../apps/chirp/nmp-app-chirp", default-features = false }
+nmp-core = { path = "../nmp-core", features = ["test-support"] }
+clap = { version = "4", features = ["derive"] }
+color-eyre = "0.6"
+crossterm = "0.29"
+ratatui = { version = "0.30", features = ["crossterm"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+insta = { version = "1", features = ["yaml"] }
