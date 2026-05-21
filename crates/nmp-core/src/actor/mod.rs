@@ -489,6 +489,9 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
         new_bunker_handshake_slot(),
         Arc::new(Mutex::new(Vec::new())),
         Arc::new(Mutex::new(None)),
+        // NIP-17 DM-inbox key slot — private throwaway: this backwards-compatible
+        // entry point has no FFI surface for a `DmInboxProjection` to read it.
+        Arc::new(Mutex::new(None)),
         new_capability_callback_slot(),
         Arc::new(Mutex::new(None)),
         // G-S4 — no `NmpApp` is wired through this backwards-compatible entry
@@ -523,6 +526,8 @@ pub fn run_actor_with_lifecycle_observer(
         // bunker-handshake slot (no FFI surface here).
         new_bunker_handshake_slot(),
         Arc::new(Mutex::new(Vec::new())),
+        Arc::new(Mutex::new(None)),
+        // NIP-17 DM-inbox key slot — private throwaway: no FFI surface here.
         Arc::new(Mutex::new(None)),
         new_capability_callback_slot(),
         Arc::new(Mutex::new(None)),
@@ -571,6 +576,11 @@ pub fn run_actor_with_observers(
     bunker_handshake: BunkerHandshakeSlot,
     relay_edit_rows: Arc<Mutex<Vec<crate::kernel::RelayEditRow>>>,
     marmot_local_nsec: Arc<Mutex<Option<zeroize::Zeroizing<String>>>>,
+    // NIP-17 DM-inbox decryption key seam. Shared `Arc` with the `NmpApp`:
+    // per-app crates read the slot through `NmpApp::nip17_local_keys`; this
+    // actor thread is the sole writer, updating it on every identity mutation
+    // (parallel to `marmot_local_nsec`).
+    nip17_local_keys: Arc<Mutex<Option<nostr::Keys>>>,
     capability_callback: CapabilityCallbackSlot,
     // FFI-supplied persistent LMDB storage path. Shared `Arc` with the
     // `NmpApp`: the C-ABI `nmp_app_set_storage_path` writes through one
@@ -762,6 +772,7 @@ pub fn run_actor_with_observers(
                         relays_ready,
                         lifecycle_observer: &lifecycle_observer,
                         marmot_local_nsec: &marmot_local_nsec,
+                        nip17_local_keys: &nip17_local_keys,
                         capability_callback: &capability_callback,
                         pending_signs: &mut pending_signs,
                     };

@@ -558,6 +558,13 @@ struct KernelUpdate: Decodable {
     /// events have arrived. Computed so the `GroupChatStore` consumer keeps
     /// reading `update.groupChat` unchanged.
     var groupChat: GroupChatSnapshot? { projections?.groupChat }
+
+    /// NIP-17 DM inbox read model — `projections["nip17.dm_inbox"]`.
+    /// `nil` until `nmp_app_chirp_register_dm_inbox` has wired the inbox
+    /// projection; an empty `conversations` array once registered but no
+    /// gift-wrap envelopes have arrived. Computed so the `DmInboxStore`
+    /// consumer keeps reading `update.dmInbox` unchanged.
+    var dmInbox: DmInboxSnapshot? { projections?.dmInbox }
 }
 
 /// The kernel's host-extensible `projections` map. Each built-in app-noun
@@ -607,6 +614,11 @@ struct SnapshotProjections: Decodable, Equatable {
     // below (an explicit enum is all-or-nothing, so every other member is
     // re-listed there with its snake_case raw value).
     let groupChat: GroupChatSnapshot?
+    // NIP-17: the DM inbox read projection registered by
+    // `nmp_app_chirp_register_dm_inbox`. Its snapshot key is the dotted
+    // string `"nip17.dm_inbox"` — same `.convertFromSnakeCase` caveat as
+    // `groupChat`, handled by the explicit `CodingKeys` case below.
+    let dmInbox: DmInboxSnapshot?
 
     /// Explicit coding keys.
     ///
@@ -615,14 +627,16 @@ struct SnapshotProjections: Decodable, Equatable {
     /// every case here must carry the *post-transform* (camelCase) name —
     /// which is exactly the synthesized default — EXCEPT `groupChat`.
     ///
-    /// The kernel's key is the dotted string `"nip29.group_chat"`.
-    /// `.convertFromSnakeCase` splits on `_` only (`.` is opaque), so it
-    /// maps `"nip29.group_chat"` → `"nip29.groupChat"`. That post-transform
-    /// string is the raw value `groupChat` must declare; the synthesized
-    /// default (`"groupChat"`) would never match.
+    /// The kernel's keys are dotted strings — `"nip29.group_chat"` and
+    /// `"nip17.dm_inbox"`. `.convertFromSnakeCase` splits on `_` only (`.`
+    /// is opaque), so it maps `"nip29.group_chat"` → `"nip29.groupChat"`
+    /// and `"nip17.dm_inbox"` → `"nip17.dmInbox"`. Those post-transform
+    /// strings are the raw values `groupChat` / `dmInbox` must declare; the
+    /// synthesized defaults would never match.
     ///
     /// Declaring a `CodingKeys` enum overrides synthesis entirely, so every
-    /// member is re-listed; all but `groupChat` simply restate the default.
+    /// member is re-listed; all but `groupChat` / `dmInbox` simply restate
+    /// the default.
     enum CodingKeys: String, CodingKey {
         case wallet
         case bunkerHandshake
@@ -641,6 +655,7 @@ struct SnapshotProjections: Decodable, Equatable {
         case updated
         case removed
         case groupChat = "nip29.groupChat"
+        case dmInbox = "nip17.dmInbox"
     }
 }
 
@@ -675,6 +690,48 @@ struct GroupChatSnapshot: Decodable, Equatable {
     let messages: [GroupChatMessage]
 
     static let empty = GroupChatSnapshot(messages: [])
+}
+
+// ─── NIP-17 DM inbox read model ───────────────────────────────────────────
+//
+// Mirror of `nmp-nip17`'s `DmInboxSnapshot` / `DmConversation` / `DmMessage`
+// — the shape the `DmInboxProjection` serialises under the snapshot key
+// `"nip17.dm_inbox"`. Thin-shell rule: these are pure DTOs. The Rust
+// projection owns ALL protocol logic — NIP-44 decryption, kind:14 filtering,
+// per-peer grouping, and newest-first ordering. Swift never re-sorts or
+// re-groups.
+
+/// One decrypted NIP-17 direct message. `senderPubkey` is taken from the
+/// verified kind:13 seal (not a forgeable tag); `id` is the inner rumor
+/// event id (hex) and the stable list identity.
+///
+/// No explicit `CodingKeys`: the top-level `.convertFromSnakeCase` strategy
+/// maps `"sender_pubkey"` / `"created_at"` / `"reply_to"` automatically.
+struct DmMessage: Decodable, Identifiable, Equatable {
+    let id: String
+    let senderPubkey: String
+    let content: String
+    let createdAt: UInt64
+    let replyTo: String?
+}
+
+/// One DM thread — every message exchanged with a single peer. `messages`
+/// is ordered newest-first by the Rust projection.
+struct DmConversation: Decodable, Identifiable, Equatable {
+    /// The OTHER party in the thread (hex pubkey). Also the list identity.
+    let peerPubkey: String
+    let messages: [DmMessage]
+
+    var id: String { peerPubkey }
+}
+
+/// The serialised read-model the DM screens consume. `conversations` is
+/// ordered by most-recent message (newest thread first) by the Rust
+/// projection — Swift does not re-sort.
+struct DmInboxSnapshot: Decodable, Equatable {
+    let conversations: [DmConversation]
+
+    static let empty = DmInboxSnapshot(conversations: [])
 }
 
 /// NIP-46 (`bunker://`) handshake progress, projected from the kernel snapshot

@@ -48,6 +48,11 @@ nmp-nip29 = { path = "../../../crates/nmp-nip29" }
 # module wired through the host-extensibility seam after `nmp-nip29`.
 # D0-clean: `nmp-core` gains no zap nouns.
 nmp-nip57 = { path = "../../../crates/nmp-nip57" }
+# NIP-17 private direct messages. Chirp wires the crate's `DmInboxProjection`
+# (kind:1059 raw-event observer + `nip17.dm_inbox` snapshot projection) and
+# registers its `SendDmAction` `ActionModule` for the `nmp.dm.send` verb.
+# D0-clean: `nmp-core` gains no DM nouns.
+nmp-nip17 = { path = "../../../crates/nmp-nip17" }
 nmp-threading = { path = "../../../crates/nmp-threading" }
 # Marmot (MLS-over-Nostr). This crate's `src/marmot/` module consumes the
 # typed `MarmotService` translation layer; no MLS type crosses its C-ABI

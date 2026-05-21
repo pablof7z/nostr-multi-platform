@@ -14,13 +14,22 @@
 //!    (the sender gift-wraps to their own pubkey so sent messages are
 //!    readable), each published to the recipient's kind:10050 DM relay.
 //!
-//! # Scope of this crate (Phase 1)
+//! # Scope of this crate
 //!
-//! This crate is a **pure rumor builder**. It carries no key material, performs
-//! no crypto, and emits no events. [`build_dm_rumor`] turns a [`DmInput`] into
-//! an [`UnsignedEvent`] (kind:14). The gift-wrap and publish happen on the
-//! actor thread (D7 — the kernel owns key access and the wall clock), driven by
-//! `ActorCommand::SendGiftWrappedDm`.
+//! Three concerns, mirroring the NIP-17 lifecycle:
+//!
+//! * **Send (rumor build)** — [`build_dm_rumor`] turns a [`DmInput`] into an
+//!   [`UnsignedEvent`] (kind:14). This carries no key material and performs no
+//!   crypto; the gift-wrap and publish happen on the actor thread (D7 — the
+//!   kernel owns key access and the wall clock), driven by
+//!   `ActorCommand::SendGiftWrappedDm`.
+//! * **Send (action)** — [`action::SendDmAction`] is the `ActionModule` a host
+//!   wires into the kernel's action registry so `nmp.dm.send` reaches the
+//!   actor through the generic `dispatch_action` path.
+//! * **Receive** — [`inbox::DmInboxProjection`] is the `RawEventObserver` that
+//!   taps kind:1059 gift-wraps, unseals them with the active account's local
+//!   keys, and projects the decrypted conversation list. Crypto here is the
+//!   NIP-44 unseal inside `nmp_nip59::unwrap_gift_wrap`.
 //!
 //! The actor's `SendGiftWrappedDm` arm is a **local-keys-only MVP**: a remote
 //! (NIP-46 / bunker) signer cannot gift-wrap because `nmp_nip59::gift_wrap`
@@ -41,6 +50,14 @@
 //! <https://github.com/nostr-protocol/nips/blob/master/17.md>
 
 use nmp_core::substrate::UnsignedEvent;
+
+pub mod action;
+pub mod inbox;
+
+pub use action::{send_dm_command, SendDmAction, SendDmInput};
+pub use inbox::{
+    giftwrap_inbox_interest, DmConversation, DmInboxProjection, DmInboxSnapshot, DmMessage,
+};
 
 /// NIP-17 kind: a "chat message" rumor.
 const KIND_CHAT_MESSAGE: u32 = 14;
