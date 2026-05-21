@@ -220,7 +220,7 @@ fn main() {
     // start, before any tungstenite::connect call.
     rustls::crypto::ring::default_provider()
         .install_default()
-        .expect("install rustls crypto provider");
+        .expect("install rustls crypto provider"); // doctrine-allow: D6 — process startup invariant; install failure means the binary cannot run
 
     let flags = parse_flags();
 

@@ -365,9 +365,8 @@ fn parse_duration(val: &str) -> Result<Duration, String> {
         .map_err(|_| format!("parse error: 'wall={val}' — expected duration like '20s', '500ms', '1m'"))?;
     Ok(match unit {
         "ms" => Duration::from_millis(n),
-        "s" => Duration::from_secs(n),
         "m" => Duration::from_secs(n * 60),
-        _ => unreachable!(),
+        _ => Duration::from_secs(n), // "s" or bare-integer fallback → seconds
     })
 }
 
