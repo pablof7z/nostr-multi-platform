@@ -53,13 +53,13 @@ struct ThreadNoteRow: View {
     // with view builders inside the parent `HStack`.
 
     private var noteBodyContent: some View {
-        let isRepost = item.kind == 6
-        // For reposts, render the inner kind:1's content. When the embedded
-        // event JSON is absent or malformed, fall back to an empty string —
-        // the "Repost" badge alone is enough to communicate state (D1).
-        let displayContent: String = isRepost
-            ? (repostInnerText(item.content) ?? "")
-            : item.content
+        // Rust pre-resolves the NIP-18 inner-event content during projection
+        // (`Kernel::timeline_item` in `kernel/update.rs`). `repostInnerContent`
+        // is `""` for kind:1 rows and either the inner kind:1's content or
+        // `""` (D1 fallback) for kind:6 — so the view never parses event JSON
+        // (aim.md §6.9, Chirp thin-shell).
+        let isRepost = item.isRepost
+        let displayContent: String = isRepost ? item.repostInnerContent : item.content
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
                 Text(item.authorDisplay)
@@ -138,15 +138,4 @@ struct ThreadNoteRow: View {
         }
     }
 
-    /// Kind:6 reposts (NIP-18) carry the full reposted-event JSON in their
-    /// `content` field. Return the inner event's content text, or nil if
-    /// `raw` is not a JSON object or the field is missing. Display-only.
-    private func repostInnerText(_ raw: String) -> String? {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix("{"),
-              let data = trimmed.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let content = json["content"] as? String else { return nil }
-        return content
-    }
 }

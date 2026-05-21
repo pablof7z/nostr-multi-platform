@@ -701,3 +701,119 @@ fn kind10002_empty_relay_list_clears_cache_entry() {
         "empty kind:10002 must remove stale cache entry"
     );
 }
+
+// ── kind:6 (NIP-18) repost view-field projection ────────────────────────────
+//
+// Companion tests for the thin-shell move: the inner-event JSON parse that
+// used to live in Swift (`NoteRowView.swift::innerEventField`,
+// `ThreadNoteRow.swift::repostInnerText`) now resolves once in Rust and is
+// emitted as `is_repost` / `nav_target_id` / `repost_inner_content`. Tests
+// pin the D1 fallback contract so a malformed/empty inner JSON never strands
+// the row in an unrenderable state.
+
+const REPOST_PK: &str = "ba51ba51ba51ba51ba51ba51ba51ba51ba51ba51ba51ba51ba51ba51ba51ba51";
+const REPOST_ID: &str = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
+const REPOST_INNER_ID: &str = "1234567812345678123456781234567812345678123456781234567812345678";
+
+fn ingest_kind6(kernel: &mut Kernel, content: &str) {
+    use crate::store::VerifiedEvent;
+    let raw = crate::store::RawEvent {
+        id: REPOST_ID.to_string(),
+        pubkey: REPOST_PK.to_string(),
+        created_at: 1_000,
+        kind: 6,
+        tags: vec![],
+        content: content.to_string(),
+        sig: "a".repeat(128),
+    };
+    kernel.ingest_pre_verified_event(
+        crate::relay::RelayRole::Content,
+        "diag-firehose-stress",
+        VerifiedEvent::from_raw_unchecked(raw),
+    );
+    kernel.sort_timeline_deferred();
+}
+
+#[test]
+fn timeline_item_kind1_has_no_repost_flag_and_nav_targets_self() {
+    use crate::store::VerifiedEvent;
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let raw = crate::store::RawEvent {
+        id: REPOST_ID.to_string(),
+        pubkey: REPOST_PK.to_string(),
+        created_at: 1_000,
+        kind: 1,
+        tags: vec![],
+        content: "plain note".to_string(),
+        sig: "a".repeat(128),
+    };
+    kernel.ingest_pre_verified_event(
+        crate::relay::RelayRole::Content,
+        "diag-firehose-stress",
+        VerifiedEvent::from_raw_unchecked(raw),
+    );
+    kernel.sort_timeline_deferred();
+    let event = kernel.events.get(REPOST_ID).expect("event cached");
+    let item = kernel.timeline_item(event);
+    assert!(!item.is_repost, "kind:1 must not be flagged as a repost");
+    assert_eq!(
+        item.nav_target_id, REPOST_ID,
+        "kind:1 thread navigation targets the event itself"
+    );
+    assert_eq!(
+        item.repost_inner_content, "",
+        "kind:1 must not surface a repost-inner content string"
+    );
+}
+
+#[test]
+fn timeline_item_kind6_well_formed_inner_event_extracts_id_and_content() {
+    let inner_json = format!(
+        r#"{{"id":"{}","pubkey":"{}","kind":1,"content":"inner note text","tags":[]}}"#,
+        REPOST_INNER_ID, REPOST_PK
+    );
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    ingest_kind6(&mut kernel, &inner_json);
+
+    let event = kernel.events.get(REPOST_ID).expect("event cached");
+    let item = kernel.timeline_item(event);
+    assert!(item.is_repost, "kind:6 must be flagged as a repost");
+    assert_eq!(
+        item.nav_target_id, REPOST_INNER_ID,
+        "kind:6 thread navigation targets the inner kind:1 id"
+    );
+    assert_eq!(item.repost_inner_content, "inner note text");
+}
+
+#[test]
+fn timeline_item_kind6_empty_content_falls_back_to_event_id_and_empty_text() {
+    // NIP-18 reposts MAY ship empty `content`; the row still needs to be
+    // renderable — the "Repost" badge alone communicates state (D1 best-effort).
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    ingest_kind6(&mut kernel, "");
+
+    let event = kernel.events.get(REPOST_ID).expect("event cached");
+    let item = kernel.timeline_item(event);
+    assert!(item.is_repost);
+    assert_eq!(
+        item.nav_target_id, REPOST_ID,
+        "empty inner JSON: navigation falls back to the repost's own id"
+    );
+    assert_eq!(item.repost_inner_content, "");
+    assert_eq!(
+        item.content_preview, "Repost",
+        "empty kind:6 still uses the 'Repost' preview (pre-existing contract)"
+    );
+}
+
+#[test]
+fn timeline_item_kind6_malformed_inner_event_falls_back_cleanly() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    ingest_kind6(&mut kernel, "RT some plain-text repost");
+
+    let event = kernel.events.get(REPOST_ID).expect("event cached");
+    let item = kernel.timeline_item(event);
+    assert!(item.is_repost);
+    assert_eq!(item.nav_target_id, REPOST_ID, "malformed JSON: id fallback");
+    assert_eq!(item.repost_inner_content, "", "malformed JSON: empty content");
+}
