@@ -70,6 +70,7 @@ use std::collections::BTreeSet;
 
 use mdk_core::prelude::{GroupId, NostrGroupConfigData};
 
+use crate::projection::display;
 use crate::projection::payload::MarmotMessageRow;
 use crate::projection::state::{hex_encode, parse_signed_event, InnerHandle};
 
@@ -111,6 +112,27 @@ fn str_array(v: &Value, k: &str) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// Resolve the invitee npub list from EITHER the typed array
+/// (`invitee_npubs`) OR a free-form text field (`invitee_text`) the UI
+/// captures verbatim. Splits on whitespace, comma, semicolon, newline;
+/// trims each token; drops empties. Validation (npub/hex parse) stays in
+/// the per-op pipeline — this is just the input-adapter step Rust owns
+/// per aim.md §4.5 / §6.
+fn resolve_invitees(v: &Value) -> Vec<String> {
+    let arr = str_array(v, "invitee_npubs");
+    if !arr.is_empty() {
+        return arr;
+    }
+    let Some(text) = v.get("invitee_text").and_then(Value::as_str) else {
+        return Vec::new();
+    };
+    text.split(|c: char| c.is_whitespace() || c == ',' || c == ';')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .collect()
 }
 
 fn parse_pubkeys(npubs: &[String]) -> Result<Vec<PublicKey>, String> {
@@ -205,20 +227,31 @@ fn missing_key_package_result(
     fetch_pubkeys: &[PublicKey],
 ) -> Value {
     let fetch_requested = h.request_key_package_fetch(fetch_pubkeys);
+    // Pre-format the abbreviated npub list the UI shows in its error
+    // string. Per aim.md §6, formatting belongs in Rust.
+    let needs_display: Vec<String> = needs
+        .iter()
+        .map(|n| display::short_npub_compact(n))
+        .collect();
     json!({
         "ok": false,
         "error": "key_package_unavailable",
         "needs": needs,
+        "needs_display": needs_display,
         "fetch_requested": fetch_requested,
         "hint": "key package lookup was requested; results arrive via the kernel tap"
     })
 }
 
 /// Newest-N decrypted application messages for one group, newest first.
+///
+/// Preserves the prior wire ordering (DESC) so existing Swift consumers
+/// keep working byte-for-byte against an extended row schema.
 pub fn group_messages(
     h: &mut InnerHandle<'_>,
     group_id_hex: &str,
     page: usize,
+    now_secs: u64,
 ) -> Vec<MarmotMessageRow> {
     let Ok(gid) = group_id_from_hex(group_id_hex) else {
         return Vec::new();
@@ -230,12 +263,27 @@ pub fn group_messages(
     msgs.sort_by(|a, b| b.created_at.cmp(&a.created_at).then(b.id.cmp(&a.id)));
     msgs.into_iter()
         .take(page)
-        .map(|m| MarmotMessageRow {
-            id: m.id.to_hex(),
-            sender_npub: m.pubkey.to_hex(),
-            content: m.content.clone(),
-            created_at: m.created_at.as_secs(),
-            epoch: m.epoch,
+        .map(|m| {
+            let sender_npub = m.pubkey.to_hex();
+            let sender_short = display::short_npub(&sender_npub);
+            // Avatar initials are first 2 ASCII hex chars of the pubkey
+            // (preserves the previous Swift derivation, which never
+            // matched `hasPrefix("npub1")` against the raw hex string).
+            let sender_initials = display::initials(&sender_npub);
+            let sender_color_hex = display::avatar_color_hex(&sender_npub);
+            let created_at = m.created_at.as_secs();
+            let created_at_display = display::relative_time(created_at, now_secs);
+            MarmotMessageRow {
+                id: m.id.to_hex(),
+                sender_npub,
+                sender_short,
+                sender_initials,
+                sender_color_hex,
+                content: m.content.clone(),
+                created_at,
+                created_at_display,
+                epoch: m.epoch,
+            }
         })
         .collect()
 }
@@ -384,7 +432,7 @@ fn create_group(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
         return Err("no write relays configured — add one in Settings > Relays".to_string());
     }
     let relays = parse_relays(&urls)?;
-    let invitee_npubs = str_array(v, "invitee_npubs");
+    let invitee_npubs = resolve_invitees(v);
     let mut kp_events = signed_key_package_events(v)?;
     // Fill from kp_cache (populated by the app's raw-event tap when the
     // kernel delivers peers' kind:30443 events), then require EVERY requested
@@ -425,7 +473,7 @@ fn create_group(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
 
 fn invite(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
     let gid = group_id_from_hex(str_field(v, "group_id_hex")?)?;
-    let invitee_npubs = str_array(v, "invitee_npubs");
+    let invitee_npubs = resolve_invitees(v);
     let mut kp_events = signed_key_package_events(v)?;
     // Fill from kp_cache (populated by the tap), then require EVERY requested
     // invitee to have a signed KeyPackage. A partial cache must not silently

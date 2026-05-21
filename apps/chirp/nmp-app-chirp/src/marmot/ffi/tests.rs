@@ -230,7 +230,7 @@ fn round_trip_publish_create_snapshot_send_messages() {
 
     // 5. group_messages returns the sent message.
     let rows = proj
-        .with_inner(|h| ops::group_messages(h, &group_id_hex, 200))
+        .with_inner(|h| ops::group_messages(h, &group_id_hex, 200, 1_004))
         .unwrap();
     assert_eq!(rows.len(), 1, "group_messages: {rows:?}");
     assert_eq!(rows[0].content, "hello marmot");

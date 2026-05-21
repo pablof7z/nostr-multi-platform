@@ -10,8 +10,11 @@ import SwiftUI
 // Pending invites appear as a chip at the top when present; tapping
 // navigates to InvitesView. Toolbar "+" opens NewGroupSheet.
 //
-// Thin-shell rule: ZERO protocol logic here. All ordering and state live
-// in Rust; this view only renders snapshots and navigates.
+// Thin-shell rule: this view is a pure render of `MarmotStore.snapshot`.
+// Every label, count string, plural form, and avatar prefix crosses the
+// FFI pre-formatted in `MarmotSnapshot`'s payload — Swift does no
+// `.filter` / `.sorted` / `.reduce` / `RelativeDateTimeFormatter` /
+// `JSONSerialization` here (chirp/AGENTS.md "canonical bad example").
 //
 // D6: any nil / decode failure surfaces as the empty state, never a crash.
 // ─────────────────────────────────────────────────────────────────────────
@@ -40,12 +43,12 @@ struct GroupsView: View {
     // ── Unified group list ────────────────────────────────────────────────
 
     private var groupList: some View {
-        let hasAny = !store.groups.isEmpty || !store.pendingWelcomes.isEmpty
+        let hasAny = !store.groups.isEmpty || store.invitesChipLabel != nil
         return Group {
             if hasAny {
                 List {
-                    // Pending invites chip — shown only when invites exist
-                    if !store.pendingWelcomes.isEmpty {
+                    // Pending invites chip — Rust supplies the label or nil.
+                    if let invitesLabel = store.invitesChipLabel {
                         NavigationLink {
                             InvitesView()
                                 .environmentObject(model)
@@ -53,12 +56,8 @@ struct GroupsView: View {
                             HStack {
                                 Image(systemName: "envelope.badge.fill")
                                     .foregroundStyle(.tint)
-                                Text(
-                                    store.pendingWelcomes.count == 1
-                                        ? "1 invite"
-                                        : "\(store.pendingWelcomes.count) invites"
-                                )
-                                .font(.callout.weight(.medium))
+                                Text(invitesLabel)
+                                    .font(.callout.weight(.medium))
                                 Spacer()
                             }
                             .padding(.vertical, 8)
@@ -84,7 +83,7 @@ struct GroupsView: View {
                             EncryptedGroupRow(group: group)
                         }
                         .accessibilityIdentifier("marmot-group-row-\(group.idHex)")
-                        .accessibilityValue(group.name)
+                        .accessibilityValue(group.displayName)
                     }
                 }
                 .scrollContentBackground(.hidden)
@@ -128,6 +127,9 @@ struct GroupsView: View {
 // ── Public group row (NIP-29) ─────────────────────────────────────────────
 //
 // Subtitle uses # prefix to signal public/unencrypted without protocol terms.
+// Initials are first-two of the local id — this is the NIP-29 sibling, NOT
+// the Marmot surface, so the avatar tile derivation lives here (the
+// Marmot rule covers Marmot rows).
 
 private struct PublicGroupRow: View {
     let groupId: GroupId
@@ -168,15 +170,11 @@ private struct PublicGroupRow: View {
 
 // ── Encrypted group row (MLS / Marmot) ───────────────────────────────────
 //
-// Lock emoji signals encrypted without using protocol vocabulary.
+// Lock emoji signals encrypted without using protocol vocabulary. EVERY
+// string here comes from the Rust snapshot — no derivation in Swift.
 
 private struct EncryptedGroupRow: View {
     let group: MarmotGroup
-
-    private var initials: String {
-        let n = group.name.isEmpty ? "?" : group.name
-        return String(n.prefix(2)).uppercased()
-    }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -184,31 +182,31 @@ private struct EncryptedGroupRow: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(.quaternary)
                     .frame(width: 40, height: 40)
-                Text(initials)
+                Text(group.initials)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.primary)
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(group.name.isEmpty ? "Untitled group" : group.name)
+                Text(group.displayName)
                     .font(.callout.weight(.medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                Text("🔒 \(group.members.count) member\(group.members.count == 1 ? "" : "s")")
+                Text("🔒 \(group.memberCountDisplay)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             Spacer()
 
-            if group.unread > 0 {
-                Text("\(group.unread)")
+            if let unreadLabel = group.unreadDisplay {
+                Text(unreadLabel)
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(.primary)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
                     .background(.quaternary, in: Capsule())
-                    .accessibilityLabel("\(group.unread) unread")
+                    .accessibilityLabel("\(unreadLabel) unread")
             }
         }
         .padding(.vertical, 4)
@@ -230,13 +228,6 @@ struct NewGroupSheet: View {
 
     private var trimmedName: String {
         name.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var invitees: [String] {
-        inviteeText
-            .split(whereSeparator: { $0 == "," || $0 == "\n" || $0 == " " })
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
     }
 
     var body: some View {
@@ -311,12 +302,13 @@ struct NewGroupSheet: View {
         let result = model.marmot.createGroup(
             name: trimmedName,
             description: groupDescription.trimmingCharacters(in: .whitespacesAndNewlines),
-            inviteeNpubs: invitees)
+            inviteeText: inviteeText)
         busy = false
         if result.ok {
             dismiss()
-        } else if let needs = result.needs, !needs.isEmpty {
-            errorMessage = "Waiting for key packages from \(needs.map(shortNpub).joined(separator: ", "))."
+        } else if let needsDisplay = result.needsDisplay, !needsDisplay.isEmpty {
+            // Rust pre-abbreviated each npub; Swift only joins them.
+            errorMessage = "Waiting for key packages from \(needsDisplay.joined(separator: ", "))."
         } else {
             errorMessage = result.error ?? "Could not create group"
         }
@@ -334,10 +326,5 @@ struct NewGroupSheet: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
         }
-    }
-
-    private func shortNpub(_ npub: String) -> String {
-        guard npub.count >= 16 else { return npub }
-        return "\(npub.prefix(8))…\(npub.suffix(4))"
     }
 }

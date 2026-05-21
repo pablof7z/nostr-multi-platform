@@ -53,8 +53,17 @@ private let mbLog = Logger(subsystem: "io.f7z.chirp", category: "MarmotBridge")
 struct MarmotGroup: Decodable, Identifiable, Equatable {
     let idHex: String
     let name: String
+    /// Empty-name fallback already applied by Rust ("Untitled group").
+    let displayName: String
+    /// 2-char ASCII initials for the avatar tile, Rust-derived.
+    let initials: String
     let members: [String]
+    /// Pluralised member-count string ("3 members" / "1 member"),
+    /// Rust-derived; the UI prepends the lock visual.
+    let memberCountDisplay: String
     let unread: UInt64
+    /// `Some("3")` when unread > 0, `nil` when no badge should render.
+    let unreadDisplay: String?
     let lastMsgAt: UInt64?
 
     var id: String { idHex }
@@ -62,8 +71,12 @@ struct MarmotGroup: Decodable, Identifiable, Equatable {
     enum CodingKeys: String, CodingKey {
         case idHex = "id_hex"
         case name
+        case displayName = "display_name"
+        case initials
         case members
+        case memberCountDisplay = "member_count_display"
         case unread
+        case unreadDisplay = "unread_display"
         case lastMsgAt = "last_msg_at"
     }
 }
@@ -71,14 +84,20 @@ struct MarmotGroup: Decodable, Identifiable, Equatable {
 struct MarmotPendingWelcome: Decodable, Identifiable, Equatable {
     let idHex: String
     let groupName: String
+    /// Empty-name fallback already applied by Rust ("Group invite").
+    let displayName: String
     let inviterNpub: String
+    /// Pre-abbreviated bech32 form `npub1abcd…wxyz` (Rust-derived).
+    let inviterShort: String
 
     var id: String { idHex }
 
     enum CodingKeys: String, CodingKey {
         case idHex = "id_hex"
         case groupName = "group_name"
+        case displayName = "display_name"
         case inviterNpub = "inviter_npub"
+        case inviterShort = "inviter_short"
     }
 }
 
@@ -103,29 +122,51 @@ struct MarmotSnapshot: Decodable, Equatable {
     let pendingWelcomes: [MarmotPendingWelcome]
     let keyPackage: MarmotKeyPackage
     let cachedKpPubkeys: [String]
+    /// Pluralised label for the top-of-list invites chip
+    /// (`"1 invite"` / `"3 invites"`), or `nil` when no pending invites.
+    let invitesChipLabel: String?
 
     enum CodingKeys: String, CodingKey {
         case groups
         case pendingWelcomes = "pending_welcomes"
         case keyPackage = "key_package"
         case cachedKpPubkeys = "cached_kp_pubkeys"
+        case invitesChipLabel = "invites_chip_label"
     }
 
-    static let empty = MarmotSnapshot(groups: [], pendingWelcomes: [], keyPackage: .empty, cachedKpPubkeys: [])
+    static let empty = MarmotSnapshot(
+        groups: [],
+        pendingWelcomes: [],
+        keyPackage: .empty,
+        cachedKpPubkeys: [],
+        invitesChipLabel: nil)
 }
 
 struct MarmotMessage: Decodable, Identifiable, Equatable {
     let id: String
     let senderNpub: String
+    /// `npub1abcd…wxyz` abbreviation (Rust-derived).
+    let senderShort: String
+    /// 2-char ASCII initials for the avatar tile (Rust-derived).
+    let senderInitials: String
+    /// 6-hex deterministic avatar tint (Rust-derived).
+    let senderColorHex: String
     let content: String
     let createdAt: UInt64
+    /// Relative-time stamp ("3m" / "2h" / "5d"), Rust-formatted against
+    /// the snapshot's `now_secs` — the UI renders verbatim.
+    let createdAtDisplay: String
     let epoch: UInt64?
 
     enum CodingKeys: String, CodingKey {
         case id
         case senderNpub = "sender_npub"
+        case senderShort = "sender_short"
+        case senderInitials = "sender_initials"
+        case senderColorHex = "sender_color_hex"
         case content
         case createdAt = "created_at"
+        case createdAtDisplay = "created_at_display"
         case epoch
     }
 }
@@ -139,11 +180,16 @@ struct MarmotOpResult: Decodable, Equatable {
     let ok: Bool
     let error: String?
     let needs: [String]?
+    /// Rust-derived abbreviated npubs paired 1:1 with `needs`. The UI
+    /// joins these directly into its error string — no `shortNpub` helper
+    /// in Swift.
+    let needsDisplay: [String]?
     let errors: [String]?
     let fetchRequested: Int?
 
     enum CodingKeys: String, CodingKey {
         case ok, error, needs, errors
+        case needsDisplay = "needs_display"
         case fetchRequested = "fetch_requested"
     }
 
@@ -151,7 +197,7 @@ struct MarmotOpResult: Decodable, Equatable {
 
     static func failure(_ message: String) -> MarmotOpResult {
         MarmotOpResult(ok: false, error: message, needs: nil,
-                       errors: nil, fetchRequested: nil)
+                       needsDisplay: nil, errors: nil, fetchRequested: nil)
     }
 }
 
@@ -312,10 +358,32 @@ final class MarmotStore: ObservableObject {
     var groups: [MarmotGroup] { snapshot.groups }
     var pendingWelcomes: [MarmotPendingWelcome] { snapshot.pendingWelcomes }
     var keyPackage: MarmotKeyPackage { snapshot.keyPackage }
+    /// Pre-formatted label for the top-of-list invites chip
+    /// (Rust-owned plural form), or `nil` when no pending invites.
+    var invitesChipLabel: String? { snapshot.invitesChipLabel }
+    /// Pre-built id-to-row lookup for the live snapshot. Indexing a
+    /// dictionary by key is render-grade lookup, not derivation — keeps
+    /// `.first(where:)` out of the View layer (chirp/AGENTS.md canonical
+    /// bad example). Recomputed only on snapshot apply.
+    private(set) var groupsByID: [String: MarmotGroup] = [:]
+
+    /// Lookup a group row by hex MLS id; falls back to the value the View
+    /// was constructed with when the row has disappeared (e.g. just left).
+    func group(idHex: String, fallback: MarmotGroup) -> MarmotGroup {
+        groupsByID[idHex] ?? fallback
+    }
 
     func apply(snapshot next: MarmotSnapshot, isRegistered registered: Bool) {
         isRegistered = registered
-        if next != snapshot { snapshot = next }
+        if next != snapshot {
+            snapshot = next
+            // Rebuild the id-keyed lookup on each apply. O(n) once per
+            // snapshot tick beats `.first(where:)` per render.
+            var byID: [String: MarmotGroup] = [:]
+            byID.reserveCapacity(next.groups.count)
+            for g in next.groups { byID[g.idHex] = g }
+            groupsByID = byID
+        }
     }
 
     func messages(groupIDHex: String) -> [MarmotMessage] {
@@ -347,23 +415,28 @@ final class MarmotStore: ObservableObject {
         return npubs.allSatisfy { cached.contains($0) }
     }
 
+    /// Create a new MLS group. `inviteeText` is the raw text the user
+    /// typed; Rust tokenises (whitespace / comma / semicolon / newline)
+    /// and validates each entry — Swift does no parsing.
     @discardableResult
-    func createGroup(name: String, description: String, inviteeNpubs: [String]) -> MarmotOpResult {
+    func createGroup(name: String, description: String, inviteeText: String) -> MarmotOpResult {
         return dispatch([
             "op": "create_group",
             "name": name,
             "description": description,
-            "invitee_npubs": inviteeNpubs,
+            "invitee_text": inviteeText,
             "signed_key_package_events_json": [String](),
         ])
     }
 
+    /// Invite peers to an existing MLS group. `inviteeText` is the raw
+    /// user-typed list; tokenisation + validation happen Rust-side.
     @discardableResult
-    func invite(groupIDHex: String, inviteeNpubs: [String]) -> MarmotOpResult {
+    func invite(groupIDHex: String, inviteeText: String) -> MarmotOpResult {
         return dispatch([
             "op": "invite",
             "group_id_hex": groupIDHex,
-            "invitee_npubs": inviteeNpubs,
+            "invitee_text": inviteeText,
             "signed_key_package_events_json": [String](),
         ])
     }

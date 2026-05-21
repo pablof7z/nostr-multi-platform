@@ -38,11 +38,11 @@ struct PendingInviteRow: View {
             HStack(spacing: 8) {
                 Image(systemName: "envelope.badge.fill")
                     .foregroundStyle(.tint)
-                Text(welcome.groupName.isEmpty ? "Group invite" : welcome.groupName)
+                Text(welcome.displayName)
                     .font(.headline)
                     .foregroundStyle(.primary)
             }
-            Text("From \(shortNpub(welcome.inviterNpub))")
+            Text("From \(welcome.inviterShort)")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -76,10 +76,5 @@ struct PendingInviteRow: View {
             .opacity(busy ? 0.5 : 1.0)
         }
         .padding(.vertical, 4)
-    }
-
-    private func shortNpub(_ npub: String) -> String {
-        guard npub.count >= 16 else { return npub }
-        return "\(npub.prefix(10))…\(npub.suffix(6))"
     }
 }

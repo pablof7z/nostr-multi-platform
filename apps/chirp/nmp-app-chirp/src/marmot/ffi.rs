@@ -333,10 +333,11 @@ pub extern "C" fn nmp_app_chirp_marmot_group_messages(
     let Some(gid_hex) = c_str_opt(group_id_hex) else {
         return to_c_string("[]");
     };
+    let now = now_secs();
     let rows = handle
         .projection
         .with_inner(|h| {
-            nmp_marmot::projection::ops::group_messages(h, &gid_hex, DEFAULT_MESSAGE_PAGE)
+            nmp_marmot::projection::ops::group_messages(h, &gid_hex, DEFAULT_MESSAGE_PAGE, now)
         })
         .unwrap_or_default();
     match serde_json::to_string(&rows) {

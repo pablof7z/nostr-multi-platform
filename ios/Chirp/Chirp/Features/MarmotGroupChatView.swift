@@ -4,15 +4,17 @@ import SwiftUI
 // MarmotGroupChatView — one MLS encrypted group's message stream.
 //
 // • Message rows reuse the NoteRow visual idiom (abbreviated sender npub +
-//   content + relative time), styled with the frozen design system.
-// • Composer reuses the ComposeView idiom (TextEditor inline at the bottom,
-//   calling `send`).
+//   content + relative time). Every display string — `senderShort`,
+//   `senderInitials`, `senderColorHex`, `createdAtDisplay` — is supplied
+//   by Rust in `MarmotMessage`; Swift renders verbatim.
+// • Composer reuses the ComposeView idiom.
 // • Header shows member count + an Invite button (→ MarmotInviteSheet).
 // • Overflow menu carries the "Leave group" destructive action.
 //
-// Messages are pulled on appear and on every kernel tick (the group's
-// `last_msg_at` / `unread` in the snapshot changes drive a re-pull). D6:
-// `messages(groupIDHex:)` returns `[]` on any failure — never crashes.
+// Thin-shell rule (chirp/AGENTS.md "canonical bad example"): no
+// `.filter` / `.sorted` / `.reduce` / `RelativeDateTimeFormatter` /
+// `JSONDecoder` / `switch` on protocol semantics. The "live group" lookup
+// is a typed dictionary index built once per snapshot in `MarmotStore`.
 // ─────────────────────────────────────────────────────────────────────────
 
 struct MarmotGroupChatView: View {
@@ -27,11 +29,12 @@ struct MarmotGroupChatView: View {
     @State private var sending = false
     @FocusState private var composerFocused: Bool
 
-    /// Live group record from the snapshot (member count / name can change
-    /// out from under us via evolution events) — fall back to the value we
-    /// were constructed with.
+    /// Live group row from the snapshot lookup; falls back to the
+    /// constructor-passed value when the row has disappeared. The lookup
+    /// itself lives in `MarmotStore` (render infrastructure, not view
+    /// logic).
     private var liveGroup: MarmotGroup {
-        model.marmot.groups.first(where: { $0.idHex == group.idHex }) ?? group
+        model.marmot.group(idHex: group.idHex, fallback: group)
     }
 
     private var trimmedDraft: String {
@@ -44,7 +47,7 @@ struct MarmotGroupChatView: View {
             composer
         }
         .chirpScreenBackground()
-        .navigationTitle(liveGroup.name.isEmpty ? "Group" : liveGroup.name)
+        .navigationTitle(liveGroup.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarContent }
         .sheet(isPresented: $showInvite) {
@@ -163,10 +166,10 @@ struct MarmotGroupChatView: View {
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .principal) {
             VStack(spacing: 1) {
-                Text(liveGroup.name.isEmpty ? "Group" : liveGroup.name)
+                Text(liveGroup.displayName)
                     .font(.headline)
                     .foregroundStyle(.primary)
-                Text("\(liveGroup.members.count) member\(liveGroup.members.count == 1 ? "" : "s")")
+                Text(liveGroup.memberCountDisplay)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -194,6 +197,10 @@ struct MarmotGroupChatView: View {
 }
 
 // ── Message row (NoteRow idiom) ───────────────────────────────────────────
+//
+// Every label here is rendered verbatim from `MarmotMessage`. The Rust
+// projection pre-computes the abbreviated npub, the 2-char initials, the
+// 6-hex avatar tint, and the relative-time stamp.
 
 private struct MarmotMessageRow: View {
     let message: MarmotMessage
@@ -202,18 +209,18 @@ private struct MarmotMessageRow: View {
         HStack(alignment: .top, spacing: 8) {
             ChirpAvatar(
                 url: nil,
-                initials: initials,
-                colorHex: colorHex,
+                initials: message.senderInitials,
+                colorHex: message.senderColorHex,
                 size: 36
             )
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text(shortNpub(message.senderNpub))
+                    Text(message.senderShort)
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
-                    Text(relativeTime(message.createdAt))
+                    Text(message.createdAtDisplay)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -231,32 +238,5 @@ private struct MarmotMessageRow: View {
                 .padding(.leading, 44)
         }
         .accessibilityIdentifier("marmot-message-\(message.id)")
-    }
-
-    private var colorHex: String {
-        // Deterministic gradient seed from the npub tail.
-        let tail = String(message.senderNpub.suffix(6))
-        var hash: UInt32 = 5381
-        for b in tail.utf8 { hash = (hash &* 33) &+ UInt32(b) }
-        return String(format: "%06X", hash & 0xFFFFFF)
-    }
-
-    private var initials: String {
-        let trimmed = message.senderNpub.hasPrefix("npub1")
-            ? String(message.senderNpub.dropFirst(5))
-            : message.senderNpub
-        return String(trimmed.prefix(2)).uppercased()
-    }
-
-    private func shortNpub(_ npub: String) -> String {
-        guard npub.count >= 16 else { return npub }
-        return "\(npub.prefix(10))…\(npub.suffix(6))"
-    }
-
-    private func relativeTime(_ unixSecs: UInt64) -> String {
-        let date = Date(timeIntervalSince1970: TimeInterval(unixSecs))
-        let fmt = RelativeDateTimeFormatter()
-        fmt.unitsStyle = .abbreviated
-        return fmt.localizedString(for: date, relativeTo: Date())
     }
 }
