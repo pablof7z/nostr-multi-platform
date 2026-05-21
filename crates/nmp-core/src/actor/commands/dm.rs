@@ -68,28 +68,24 @@
 //! `Kernel::recipient_dm_relays` reads a **live** kind:10050 cache
 //! (`dm_relay_lists`, populated by `ingest_dm_relay_list`). It returns
 //! `Some(relays)` for any receiver whose kind:10050 DM-relay list has been
-//! ingested, and `None` for a receiver who has never published one. The `None`
-//! branch here is the correct fallback for that genuinely-missing case: route
-//! to the actor's configured Content relays AND emit a `tracing::warn!` so the
-//! routing gap is visible in logs. The warn is no longer a stub-marker for an
-//! unbuilt feature — it is the documented diagnostic for a recipient without a
-//! kind:10050 list.
+//! ingested, and `None` for a receiver who has never published one or who
+//! published an empty list. `None` is not a safe substitute for Content relay
+//! routing: a kind:1059 envelope must stay pinned to the receiver's DM inbox
+//! relays. The send therefore fails closed with a toast and emits no publish
+//! frames until both the recipient and self-copy kind:10050 lists are known.
 //!
-//! ## D10 empty-relay guard — kind:1059 NEVER Auto-routes
+//! ## D10 fail-closed — kind:1059 NEVER Auto-routes
 //!
-//! `bootstrap_urls_for_role(Content)` may return empty in production builds
-//! (the operator has not configured any Content relays yet). Without a guard,
-//! `publish_signed_event` then maps the empty slice → `PublishTarget::Auto`,
-//! which leaks the encrypted envelope to the author's NIP-65 outbox — the
-//! exact D10 violation gift-wrap exists to prevent. The runtime guard in
-//! [`is_empty_relays_kind1059_block`] refuses any kind:1059 publish whose
-//! resolved relay list is empty (no kind:10050 cache AND no configured
-//! Content fallback). The refusal surfaces as a D6 toast and skips the
-//! `publish_signed_event` call entirely — the in-memory event is dropped.
-//!
-//! This is the call-site (NIP-17) twin of the
-//! `nmp-marmot::projection::publish::publish_to` Marmot guard PR-K added at
-//! the Marmot bridge — defence in depth at every kind:1059 publish surface.
+//! `recipient_dm_relays` returns `None` for a missing OR empty kind:10050
+//! cache entry (outbox.rs guards `relays.is_empty()` and returns `None`). The
+//! [`required_dm_relays`] helper turns that `None` into an early
+//! [`DmRelayNotReady`] error: the handler returns before any gift-wrap is
+//! built, so `publish_signed_event` is never called with an empty relay slice
+//! and can never fall through to `PublishTarget::Auto`. This is the call-site
+//! (NIP-17) twin of the `nmp-marmot::projection::publish::publish_to` Marmot
+//! guard PR-K added at the Marmot bridge — every kind:1059 publish surface
+//! refuses to substitute generic Content relays for a recipient's DM-inbox
+//! pin.
 
 use nostr::{nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK, EventBuilder, Kind, PublicKey, Tag, Timestamp};
 
@@ -111,12 +107,13 @@ pub(crate) fn send_gift_wrapped_dm(
     recipient_pubkey: &str,
 ) -> Vec<OutboundMessage> {
     // D10: private-kind publish
-    // Every publish call below MUST route via an Explicit pin (the
-    // recipient's kind:10050 DM-inbox relays or, on a cache miss, the
-    // configured Content relays). The doctrine-lint D10 rule enforces this
-    // structurally: any Auto-routing seam (`PublishTarget::Auto`,
-    // `publish_signed(...)`, `publish_unsigned_event(...)`) below this
-    // marker fires a lint finding.
+    // Every publish call below MUST route via an Explicit pin (the receiver's
+    // kind:10050 DM-inbox relays). Missing or empty DM-inbox lists fail closed
+    // before any gift-wrap is built, so this path never substitutes generic
+    // Content relays for a kind:1059 envelope. The doctrine-lint D10 rule
+    // enforces this structurally: any Auto-routing seam (`PublishTarget::Auto`,
+    // `publish_signed(...)`, `publish_unsigned_event(...)`) below this marker
+    // fires a lint finding.
     //
     // 1. Resolve a `SignerForSeal` for the active account (ADR-0026 seam).
     //    `None` here means the active signer is a remote (NIP-46 / NIP-07)
@@ -194,11 +191,44 @@ pub(crate) fn send_gift_wrapped_dm(
     //    on a bunker round-trip) is the next follow-up; right now `None`
     //    above short-circuits the remote case to a toast.
     let sender_hex = sender.to_hex();
+
+    // D10 fail-closed gate — resolve BOTH receivers' kind:10050 DM-inbox
+    // relays before constructing any envelope. `required_dm_relays` rejects
+    // the missing/empty cache cases up-front, so we never reach
+    // `publish_signed_event` with an empty relay slice (which would fall
+    // through to `PublishTarget::Auto` and leak the kind:1059 envelope to
+    // the author's NIP-65 outbox).
+    let recipient_relays = match required_dm_relays(kernel, "recipient", recipient_pubkey) {
+        Ok(relays) => relays,
+        Err(err) => {
+            tracing::warn!(
+                envelope = err.envelope,
+                receiver_pubkey = err.receiver_pubkey.as_str(),
+                "NIP-17 DM send blocked: missing or empty kind:10050 \
+                 DM-relay list; refusing Content relay fallback"
+            );
+            kernel.set_last_error_toast(Some(err.toast()));
+            return Vec::new();
+        }
+    };
+    let self_relays = match required_dm_relays(kernel, "self-copy", sender_hex.as_str()) {
+        Ok(relays) => relays,
+        Err(err) => {
+            tracing::warn!(
+                envelope = err.envelope,
+                receiver_pubkey = err.receiver_pubkey.as_str(),
+                "NIP-17 DM send blocked: missing or empty kind:10050 \
+                 DM-relay list; refusing Content relay fallback"
+            );
+            kernel.set_last_error_toast(Some(err.toast()));
+            return Vec::new();
+        }
+    };
+
     let mut outbound = Vec::new();
-    let mut empty_relay_skips: Vec<&'static str> = Vec::new();
-    for (label, receiver, receiver_hex) in [
-        ("recipient", &recipient, recipient_pubkey),
-        ("self-copy", &sender, sender_hex.as_str()),
+    for (label, receiver, relays) in [
+        ("recipient", &recipient, recipient_relays),
+        ("self-copy", &sender, self_relays),
     ] {
         // NIP-59 randomises the kind:13 + kind:1059 timestamps in a 2-day
         // window so an observer cannot correlate the envelope timestamp
@@ -233,90 +263,78 @@ pub(crate) fn send_gift_wrapped_dm(
         // forwards it VERBATIM — re-signing with the account key would destroy
         // the unlinkability gift-wrap exists to provide.
         let raw = nostr_event_to_raw(&envelope);
-        // NIP-17 § 2: pin the envelope to the receiver's kind:10050 DM-inbox
-        // relays. `recipient_dm_relays` reads the live kind:10050 cache; it
-        // returns `None` only when the receiver has never published a
-        // kind:10050 list. In that genuinely-missing case fall back to the
-        // configured Content relays AND warn, so the routing gap is visible in
-        // logs rather than a silent delivery failure (the recipient simply
-        // never receiving the message).
-        let relays = kernel.recipient_dm_relays(receiver_hex).unwrap_or_else(|| {
-            tracing::warn!(
-                envelope = label,
-                "NIP-17 DM: no cached kind:10050 DM-relay list for receiver; \
-                 falling back to configured Content relays — delivery may be \
-                 lost if the receiver reads a different relay set"
-            );
-            kernel.bootstrap_urls_for_role(crate::relay::RelayRole::Content)
-        });
-        // D10 empty-relay guard — `bootstrap_urls_for_role` may return empty
-        // in production when the operator has configured no Content relays.
-        // `publish_signed_event` would then map the empty slice → Auto and
-        // leak the kind:1059 envelope through the author's NIP-65 outbox.
-        // Refuse the publish on the empty branch; the envelope is dropped.
-        // This is the call-site twin of the `nmp-marmot::publish_to` D10
-        // guard PR-K added at the Marmot bridge — every kind:1059 publish
-        // surface now refuses an empty relay set.
-        if is_empty_relays_kind1059_block(&relays) {
-            tracing::warn!(
-                envelope = label,
-                "NIP-17 DM: kind:1059 publish refused — no DM-inbox relays for \
-                 receiver and no configured Content relays to fall back to; \
-                 D10 forbids Auto-routing the encrypted envelope to the \
-                 author's NIP-65 outbox"
-            );
-            empty_relay_skips.push(label);
-            continue;
-        }
-        // NIP-17 gift-wrap is not a `dispatch_action` path — no host
+        // NIP-17 § 2: `relays` is the receiver's kind:10050 DM-inbox pin
+        // resolved up-front by `required_dm_relays`. The helper returns an
+        // early error for missing OR empty kind:10050 lists (outbox.rs
+        // guarantees `recipient_dm_relays` never returns an empty `Some`), so
+        // by the time we reach this call `relays` is provably non-empty. That
+        // makes the `relays.is_empty()` → `PublishTarget::Auto` fall-through
+        // in `publish_signed_event` structurally unreachable for kind:1059 —
+        // the D10 leak the PR-K Marmot guard exists to prevent cannot fire
+        // here. NIP-17 gift-wrap is not a `dispatch_action` path — no host
         // correlation_id to thread; the engine falls back to the publish
         // handle (== gift-wrap envelope id) as before.
         //
-        // The `doctrine-allow: D10 — …` annotation MUST be a trailing
-        // comment on the offending line itself (the lint parser is line-
-        // scoped); the prose reason here covers why it is safe:
-        // `is_empty_relays_kind1059_block` above proved `relays` non-empty
-        // before this call, so `publish_signed_event` cannot fall through
-        // to its `relays.is_empty()` → `PublishTarget::Auto` branch and
-        // cannot leak the kind:1059 envelope to the author's NIP-65 outbox.
-        outbound.extend(super::publish::publish_signed_event( // doctrine-allow: D10 — empty-relay kind:1059 Auto-route guarded above by is_empty_relays_kind1059_block
+        // The `doctrine-allow: D10 — …` annotation MUST be a trailing comment
+        // on the offending line itself (the lint parser is line-scoped); the
+        // prose reason here covers why it is safe: `required_dm_relays` above
+        // rejected the missing/empty branch before any envelope was built, so
+        // `publish_signed_event` cannot fall through to its
+        // `relays.is_empty()` → `PublishTarget::Auto` branch and cannot leak
+        // the kind:1059 envelope to the author's NIP-65 outbox.
+        outbound.extend(super::publish::publish_signed_event( // doctrine-allow: D10 — required_dm_relays rejects missing/empty kind:10050 lists before any kind:1059 is built
             kernel, raw, &relays, None,
         ));
-    }
-
-    // If any envelope was skipped because its relay set resolved empty,
-    // surface a single toast — D6: the failure is observable state, never a
-    // silent drop. The toast names the affected envelope so the user can
-    // tell whether the recipient or the self-copy (or both) failed.
-    if !empty_relay_skips.is_empty() {
-        let which = empty_relay_skips.join(", ");
-        kernel.set_last_error_toast(Some(format!(
-            "Cannot send DM: no DM-inbox relays configured for {which} \
-             (publish skipped to avoid leaking encrypted envelope to public relays)"
-        )));
     }
 
     outbound
 }
 
-/// D10 empty-relay guard predicate — true iff this kind:1059 publish must
-/// be refused because the resolved relay set is empty.
+/// Receiver-side readiness error for the kind:10050 fail-closed gate.
 ///
-/// Centralizes the gate so the unit test in this module can pin its shape
-/// directly (mirrors the Marmot `is_d10_blocked` helper next to
-/// `publish_to`). Production behaviour: `publish_signed_event` with an empty
-/// `relays` slice falls through to `PublishTarget::Auto`, which publishes to
-/// the author's NIP-65 outbox — for a kind:1059 envelope that is a D10
-/// violation by construction (the envelope's *existence* leaks to every
-/// public relay the author advertises). The caller refuses the publish on
-/// `true`.
+/// `recipient_dm_relays` returns `None` for both the missing (never published
+/// a kind:10050) and empty (published one with no `relay` tags, which
+/// `ingest_dm_relay_list` collapses to "no entry" — see outbox.rs guard)
+/// cases. Both are unsafe substitutes for explicit kind:10050 routing for a
+/// kind:1059 envelope, so [`required_dm_relays`] converts that `None` into
+/// this error and the send fails closed before any gift-wrap is built. The
+/// `envelope` field names which of the two NIP-17 envelopes (`"recipient"`
+/// or `"self-copy"`) lacks a list, so the D6 toast can be specific.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DmRelayNotReady {
+    envelope: &'static str,
+    receiver_pubkey: String,
+}
+
+impl DmRelayNotReady {
+    fn toast(&self) -> String {
+        format!(
+            "cannot send DM: {} has no kind:10050 DM relay list yet",
+            self.envelope
+        )
+    }
+}
+
+/// D10 fail-closed gate — resolve a receiver's kind:10050 DM-inbox relays or
+/// return a [`DmRelayNotReady`] error.
 ///
-/// This predicate is intentionally relay-shape only: the caller has already
-/// constructed a kind:1059 envelope by the time it consults the guard, so
-/// the kind discrimination the Marmot twin needs (it handles 1059/445/30443
-/// in one bridge) is not required here.
-pub(crate) fn is_empty_relays_kind1059_block(relays: &[String]) -> bool {
-    relays.is_empty()
+/// This is the call-site (NIP-17) twin of the Marmot `publish_to` PR-K guard:
+/// every kind:1059 publish surface refuses to substitute generic Content
+/// relays for a recipient's DM-inbox pin. By rejecting the `None` branch
+/// before any gift-wrap is built, `publish_signed_event` is never called with
+/// an empty relay slice and cannot fall through to `PublishTarget::Auto`,
+/// which would leak the encrypted envelope to the author's NIP-65 outbox.
+fn required_dm_relays(
+    kernel: &Kernel,
+    envelope: &'static str,
+    receiver_pubkey: &str,
+) -> Result<Vec<String>, DmRelayNotReady> {
+    kernel
+        .recipient_dm_relays(receiver_pubkey)
+        .ok_or_else(|| DmRelayNotReady {
+            envelope,
+            receiver_pubkey: receiver_pubkey.to_string(),
+        })
 }
 
 /// Build a `nostr::UnsignedEvent` (the rumor) from the substrate flat repr.
@@ -444,12 +462,13 @@ mod tests {
         let (mut identity, mut kernel) = fresh();
         sign_in_nsec(&mut identity, &mut kernel, TEST_NSEC, false);
         let sender = identity.active_pubkey().expect("signed in");
-        kernel.seed_kind10002_for_test(&sender, &["wss://dm-relay.test"]);
 
         // NIP-59 gift-wrap performs a NIP-44 ECDH against the recipient key, so
         // the recipient pubkey MUST be a real secp256k1 curve point. Derive one
         // from a freshly generated keypair rather than a hand-typed hex string.
         let recipient_pk = nostr::Keys::generate().public_key().to_hex();
+        kernel.seed_kind10050_for_test(&sender, &["wss://sender-dm.relay"]);
+        kernel.seed_kind10050_for_test(&recipient_pk, &["wss://recipient-dm.relay"]);
 
         let rumor = sample_rumor(&sender);
         let outbound = send_gift_wrapped_dm(&identity, &mut kernel, rumor, &recipient_pk);
@@ -459,44 +478,53 @@ mod tests {
             "a local-key gift-wrap send must not toast an error: {:?}",
             kernel.last_error_toast_snapshot()
         );
-        // Two kind:1059 envelopes (recipient + self-copy) were published; each
-        // produces at least one outbound EVENT frame to the configured relay.
-        assert!(
-            !outbound.is_empty(),
-            "both gift-wrap envelopes should produce outbound frames"
+        let mut got: Vec<String> = outbound.iter().map(|m| m.relay_url.clone()).collect();
+        got.sort();
+        assert_eq!(
+            got,
+            vec![
+                "wss://recipient-dm.relay".to_string(),
+                "wss://sender-dm.relay".to_string(),
+            ],
+            "recipient and self-copy envelopes must use kind:10050 relays"
         );
     }
 
     #[test]
-    fn send_gift_wrapped_dm_without_kind10050_falls_back_without_toasting() {
-        // NIP-17 § 2 routing: each envelope should go to its receiver's
-        // kind:10050 DM-inbox relays. kind:10050 ingestion is not yet built,
-        // so `recipient_dm_relays` returns `None` and the handler falls back
-        // to the configured Content relays. That fallback is a *diagnostic*
-        // gap (a `tracing::warn!`), NOT a user-facing failure: the send still
-        // succeeds and `last_error_toast_snapshot()` must stay `None` so the
-        // D6 toast channel is reserved for genuine errors (no local key,
-        // malformed pubkey). This test pins that distinction.
-        let (mut identity, mut kernel) = fresh();
-        sign_in_nsec(&mut identity, &mut kernel, TEST_NSEC, false);
-        let sender = identity.active_pubkey().expect("signed in");
+    fn send_gift_wrapped_dm_without_recipient_kind10050_fails_closed() {
+        for empty_kind10050 in [false, true] {
+            let (mut identity, mut kernel) = fresh();
+            sign_in_nsec(&mut identity, &mut kernel, TEST_NSEC, false);
+            let sender = identity.active_pubkey().expect("signed in");
+            let recipient_pk = nostr::Keys::generate().public_key().to_hex();
+            kernel.seed_kind10050_for_test(&sender, &["wss://sender-dm.relay"]);
+            if empty_kind10050 {
+                let id = format!("{:064x}", 0x1050);
+                let _ = kernel.inject_replaceable_event(
+                    &id,
+                    &recipient_pk,
+                    1_000,
+                    10050,
+                    Vec::new(),
+                    "wss://seed",
+                    1_700_000_000_000,
+                );
+                assert!(kernel.recipient_dm_relays(&recipient_pk).is_none());
+            }
 
-        // No kind:10050 cache exists for anyone — the receiver pubkey is a
-        // fresh keypair with no relay data of any kind.
-        let recipient_pk = nostr::Keys::generate().public_key().to_hex();
+            let content_relays = kernel.bootstrap_urls_for_role(crate::relay::RelayRole::Content);
+            let rumor = sample_rumor(&sender);
+            let outbound = send_gift_wrapped_dm(&identity, &mut kernel, rumor, &recipient_pk);
 
-        let rumor = sample_rumor(&sender);
-        let outbound = send_gift_wrapped_dm(&identity, &mut kernel, rumor, &recipient_pk);
-
-        assert!(
-            kernel.last_error_toast_snapshot().is_none(),
-            "the kind:10050 fallback is a warn-level diagnostic, not a toast: {:?}",
-            kernel.last_error_toast_snapshot()
-        );
-        assert!(
-            !outbound.is_empty(),
-            "the send still succeeds via the Content-relay fallback"
-        );
+            assert!(outbound.is_empty(), "missing/empty kind:10050 must not publish");
+            assert!(outbound.iter().all(|m| !content_relays.contains(&m.relay_url)));
+            assert!(
+                kernel
+                    .last_error_toast_snapshot()
+                    .is_some_and(|t| t.contains("kind:10050")),
+                "fail-closed send must surface a kind:10050 readiness error"
+            );
+        }
     }
 
     #[test]
@@ -515,6 +543,7 @@ mod tests {
         // and the resolved `recipient_dm_relays` value compare exactly.
         let recipient_keys = nostr::Keys::generate();
         let recipient_pk = recipient_keys.public_key().to_hex();
+        kernel.seed_kind10050_for_test(&sender, &["wss://sender-dm.relay"]);
         kernel.seed_kind10050_for_test(&recipient_pk, &["wss://recipient-dm.relay"]);
 
         let rumor = sample_rumor(&sender);
@@ -537,57 +566,21 @@ mod tests {
         );
     }
 
-    // ── D10 empty-relay guard ────────────────────────────────────────────
+    // ── D10 fail-closed coverage ─────────────────────────────────────────
     //
-    // The bootstrap_urls fallback at `kernel::bootstrap_urls_for_role` is
-    // back-stopped under `#[cfg(test)]` so it ALWAYS returns a default URL
-    // in test builds, which means we cannot directly exercise the empty-
-    // bootstrap branch end-to-end here. We pin the guard's shape via the
-    // [`is_empty_relays_kind1059_block`] predicate (mirrors the Marmot
-    // `is_d10_blocked` test pattern) and assert: (a) the predicate fires on
-    // empty relays, (b) it does NOT fire when relays are present. The
-    // call-site wiring is exercised end-to-end by the existing
-    // `send_gift_wrapped_dm_routes_recipient_envelope_to_kind10050_relays`
-    // test (kind:10050 seeded → non-empty → predicate false → publish).
-
-    #[test]
-    fn is_empty_relays_kind1059_block_fires_on_empty_slice() {
-        // Production scenario: no kind:10050 cache for the receiver AND
-        // `bootstrap_urls_for_role(Content)` returns empty (operator has
-        // configured no Content relays). The guard MUST refuse the publish
-        // so the kind:1059 envelope never reaches `publish_signed_event`'s
-        // Auto-fallback path.
-        let empty: Vec<String> = Vec::new();
-        assert!(
-            is_empty_relays_kind1059_block(&empty),
-            "empty relays for a kind:1059 publish must be blocked (D10)"
-        );
-    }
-
-    #[test]
-    fn is_empty_relays_kind1059_block_passes_with_kind10050_pin() {
-        // The recipient has published a kind:10050 DM-relay list — the
-        // explicit pin is non-empty and the guard MUST NOT block.
-        let pin = vec!["wss://recipient-dm.relay".to_string()];
-        assert!(
-            !is_empty_relays_kind1059_block(&pin),
-            "an explicit kind:10050 pin must pass the D10 guard"
-        );
-    }
-
-    #[test]
-    fn is_empty_relays_kind1059_block_passes_with_content_fallback() {
-        // The bootstrap Content-relay fallback is non-empty (operator has
-        // configured at least one Content relay). The guard MUST NOT block —
-        // the recipient may read a different relay set so delivery is best-
-        // effort, but the envelope is going to a caller-supplied relay, not
-        // the Auto outbox.
-        let fallback = vec!["wss://relay.damus.io".to_string()];
-        assert!(
-            !is_empty_relays_kind1059_block(&fallback),
-            "a non-empty Content fallback must pass the D10 guard"
-        );
-    }
+    // The fail-closed gate (`required_dm_relays`) is exercised end-to-end by
+    // `send_gift_wrapped_dm_without_recipient_kind10050_fails_closed` above,
+    // which covers BOTH branches of the kind:10050 cache miss:
+    //   1. The receiver has never published a kind:10050 — `dm_relay_lists`
+    //      has no entry, `recipient_dm_relays` returns `None`, the helper
+    //      converts that to `DmRelayNotReady` and the send aborts with a toast.
+    //   2. The receiver published an EMPTY kind:10050 — `ingest_dm_relay_list`
+    //      removes the cached entry (outbox.rs guards `relays.is_empty()` →
+    //      `None`), so the path is structurally identical to case (1).
+    // Both branches are pinned in one parameterised test (the `for empty_kind10050`
+    // loop), so the predicate-shape micro-tests the previous design needed are
+    // subsumed: there is no relay-shape predicate to assert against because
+    // the gate happens before any envelope is constructed.
 
     #[test]
     fn send_gift_wrapped_dm_variant_is_matched_in_dispatch() {

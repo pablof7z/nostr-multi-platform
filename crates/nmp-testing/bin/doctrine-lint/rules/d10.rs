@@ -153,11 +153,13 @@ const BANNED_AUTO_ROUTES: &[&str] = &[
     // arm for `ActorCommand::PublishSignedEvent`. It maps `relays.is_empty()`
     // → `PublishTarget::Auto` (the documented D3 fallback), which is the
     // exact behaviour D10 forbids for a kind:1059 publish. A marked caller
-    // MUST therefore prove non-emptiness upstream (a guard like
-    // `is_empty_relays_kind1059_block` in `commands::dm`) and attach a
-    // reasoned `doctrine-allow: D10 — <reason>` annotation pointing to that
-    // guard. There is no `_with_correlation` sibling — `publish_signed_event`
-    // already threads the correlation_id through its signature.
+    // MUST therefore prove non-emptiness upstream (the NIP-17 send path uses
+    // `required_dm_relays` in `commands::dm`, which converts the kind:10050
+    // cache `None` into an early-return error before any envelope is built)
+    // and attach a reasoned `doctrine-allow: D10 — <reason>` annotation
+    // pointing to that guard. There is no `_with_correlation` sibling —
+    // `publish_signed_event` already threads the correlation_id through its
+    // signature.
     "publish_signed_event(",
 ];
 

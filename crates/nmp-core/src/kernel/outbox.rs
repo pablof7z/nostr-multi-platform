@@ -166,11 +166,9 @@ impl Kernel {
     /// pubkey has never published a kind:10050, or it published one carrying no
     /// `relay` tags (an empty list, which `ingest_dm_relay_list` treats as the
     /// author clearing their DM relays and so removes the cache entry). In both
-    /// cases the send path's `None` branch is the *correct* fallback: route to
-    /// the configured Content relays and emit a diagnostic `tracing::warn!` so
-    /// the routing gap is visible in logs. That warn is no longer a sign of a
-    /// missing feature — it is the documented fallback for a recipient who
-    /// genuinely has not published a kind:10050 DM-relay list.
+    /// cases the send path must fail closed: a kind:1059 envelope is only safe
+    /// to publish to a receiver's explicit kind:10050 DM-inbox relays, never to
+    /// generic Content relays.
     pub(crate) fn recipient_dm_relays(&self, pubkey: &str) -> Option<Vec<String>> {
         let relays = self.dm_relay_lists.get(pubkey)?;
         // A cached entry is never stored empty — `ingest_dm_relay_list` removes
