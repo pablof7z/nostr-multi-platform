@@ -37,11 +37,27 @@
 //!                                                  (its `_to` sibling pins)
 //! - `publish_signed_with_correlation(`           — Auto-routing twin
 //! - `publish_unsigned_event(` (not `_to_relays`) — Auto-routing twin
+//! - `publish_signed_event(`                      — the verified-publish entry
+//!                                                  point in `commands::publish`
+//!                                                  that maps empty relays →
+//!                                                  Auto. A guarded caller MUST
+//!                                                  prove non-emptiness before
+//!                                                  the call (or it is a D10
+//!                                                  leak by construction) and
+//!                                                  attach a reasoned
+//!                                                  `doctrine-allow: D10 — …`
+//!                                                  annotation pointing to the
+//!                                                  upstream guard.
 //!
 //! Each is a routing seam that resolves to the NIP-65 outbox; in a
 //! private-kind publisher that is a D10 violation by construction. The
 //! escape hatch `// doctrine-allow: D10 — <reason>` covers the rare
-//! legitimately-Auto private-kind path (none in tree today).
+//! legitimately-Auto private-kind path (e.g. a runtime guard upstream of
+//! the call has already proven `relays` non-empty). Unlike the generic
+//! `allow::line_allows`, D10's per-rule [`line_allows_d10`] REQUIRES a
+//! non-whitespace justification after the `— ` separator — a bare
+//! `// doctrine-allow: D10` is rejected so every escape carries a written
+//! reason a reviewer can audit.
 //!
 //! ## Scope (file allow-list)
 //!
@@ -132,6 +148,17 @@ const BANNED_AUTO_ROUTES: &[&str] = &[
     // The Auto-variant actor command. `publish_unsigned_event_to_relays`
     // is the Explicit-pin sibling and is NOT flagged.
     "publish_unsigned_event(",
+    // `commands::publish::publish_signed_event` is the verified-publish
+    // entry point used by the NIP-17 gift-wrap send path AND the dispatch
+    // arm for `ActorCommand::PublishSignedEvent`. It maps `relays.is_empty()`
+    // → `PublishTarget::Auto` (the documented D3 fallback), which is the
+    // exact behaviour D10 forbids for a kind:1059 publish. A marked caller
+    // MUST therefore prove non-emptiness upstream (a guard like
+    // `is_empty_relays_kind1059_block` in `commands::dm`) and attach a
+    // reasoned `doctrine-allow: D10 — <reason>` annotation pointing to that
+    // guard. There is no `_with_correlation` sibling — `publish_signed_event`
+    // already threads the correlation_id through its signature.
+    "publish_signed_event(",
 ];
 
 /// Per-file brace-depth tracker that decides whether the current line sits
@@ -210,6 +237,65 @@ impl PrivatePublishTracker {
             }
         }
     }
+}
+
+/// D10-specific escape-hatch parser.
+///
+/// Unlike the generic `allow::line_allows` (which accepts a bare
+/// `// doctrine-allow: D10` with no reason), D10 REQUIRES a written
+/// justification after a separator (`— ` or ` - `) so every escape carries
+/// an auditable reason. The orchestrator deliberately scopes this tightening
+/// to D10 only — other rules keep the lenient parser until they opt in to
+/// their own per-rule variant.
+///
+/// Accepted shapes:
+///
+/// ```text
+///     foo(); // doctrine-allow: D10 — kind:1059 empty-relay guarded above
+///     foo(); // doctrine-allow: D10 - alternative ASCII-only separator
+///     foo(); // doctrine-allow: D6,D10 — multi-rule annotation with reason
+/// ```
+///
+/// Rejected shapes (D10 NOT silenced):
+///
+/// ```text
+///     foo(); // doctrine-allow: D10
+///     foo(); // doctrine-allow: D10 —
+///     foo(); // doctrine-allow: D10 —    (only whitespace after separator)
+///     foo(); // doctrine-allow: D10,D6   (no separator anywhere)
+/// ```
+///
+/// A reason is "present" iff a non-whitespace character appears after the
+/// separator. Multi-rule annotations only need ONE separator+reason for the
+/// whole annotation (not one per rule id), mirroring the generic parser's
+/// shape.
+pub fn line_allows_d10(line: &str) -> bool {
+    let Some(after) = line.split("// doctrine-allow:").nth(1) else {
+        return false;
+    };
+    // Split at the first separator that signals "reason follows". Order:
+    // em-dash first (preferred), then ASCII `" - "` fallback.
+    let (head, reason) = if let Some((h, r)) = after.split_once('—') {
+        (h, r)
+    } else if let Some((h, r)) = after.split_once(" - ") {
+        (h, r)
+    } else {
+        // No separator at all → no reason → D10 is NOT silenced.
+        return false;
+    };
+    // The reason must contain at least one non-whitespace character.
+    if reason.trim().is_empty() {
+        return false;
+    }
+    // Head is the comma-separated rule-id list; the first whitespace-
+    // delimited token of each chunk is the id. Mirrors the generic parser's
+    // parsing for cross-rule consistency.
+    head.split(',').any(|r| {
+        r.split_whitespace()
+            .next()
+            .map(|t| t == ID)
+            .unwrap_or(false)
+    })
 }
 
 /// Per-line check: when `in_marked_fn` is true AND the line is not a
@@ -516,5 +602,129 @@ fn normal() {
             "unmarked-fn lines must NEVER produce D10 findings: {:?}",
             hits
         );
+    }
+
+    // ── banned-list: publish_signed_event ────────────────────────────────
+
+    #[test]
+    fn check_flags_publish_signed_event_inside_marked_fn() {
+        // `commands::publish::publish_signed_event` maps `relays.is_empty()`
+        // → `PublishTarget::Auto`. Inside a marked kind:1059 publisher that
+        // mapping is a D10 leak by construction — the call must be either
+        // guarded upstream (and annotated `doctrine-allow: D10 — …`) or
+        // refactored to a non-Auto entry point.
+        let hits = check(
+            "    outbound.extend(super::publish::publish_signed_event(kernel, raw, &relays, None));",
+            false,
+            true,
+        );
+        assert_eq!(
+            hits.len(),
+            1,
+            "publish_signed_event( inside a marked fn must fire D10: {:?}",
+            hits
+        );
+        assert!(
+            hits[0].1.contains("publish_signed_event"),
+            "the finding message must name the offending token: {}",
+            hits[0].1
+        );
+    }
+
+    #[test]
+    fn check_does_not_flag_publish_signed_event_outside_marked_fn() {
+        // The `commands::publish::publish_signed_event` call in
+        // `actor::dispatch::PublishSignedEvent` is the generic dispatch arm,
+        // NOT inside a marked private-kind publisher. It must stay silent —
+        // the marker is the opt-in.
+        let hits = check(
+            "    commands::publish_signed_event(ctx.kernel, raw, &relays, correlation_id);",
+            false,
+            false,
+        );
+        assert!(
+            hits.is_empty(),
+            "publish_signed_event in an unmarked dispatch arm must NOT fire D10: {:?}",
+            hits
+        );
+    }
+
+    // ── line_allows_d10 (tightened escape hatch) ─────────────────────────
+
+    #[test]
+    fn line_allows_d10_requires_em_dash_reason() {
+        let line = "    foo(); // doctrine-allow: D10 — kind:1059 empty-relay guarded above";
+        assert!(
+            line_allows_d10(line),
+            "an em-dash separator with a non-empty reason must silence D10"
+        );
+    }
+
+    #[test]
+    fn line_allows_d10_accepts_ascii_separator() {
+        let line = "    foo(); // doctrine-allow: D10 - guarded above";
+        assert!(
+            line_allows_d10(line),
+            "the ASCII ` - ` fallback separator must also silence D10"
+        );
+    }
+
+    #[test]
+    fn line_allows_d10_rejects_bare_annotation() {
+        // The whole point of the tightened parser: a bare
+        // `// doctrine-allow: D10` (no separator, no reason) must NOT
+        // silence the rule. Authors must justify the escape.
+        let line = "    foo(); // doctrine-allow: D10";
+        assert!(
+            !line_allows_d10(line),
+            "a bare D10 annotation with no reason must NOT silence the rule"
+        );
+    }
+
+    #[test]
+    fn line_allows_d10_rejects_empty_reason_after_separator() {
+        // A separator with only whitespace after it does not count as a
+        // written reason.
+        let line = "    foo(); // doctrine-allow: D10 —    ";
+        assert!(
+            !line_allows_d10(line),
+            "whitespace-only after the separator does not count as a reason"
+        );
+        let line_ascii = "    foo(); // doctrine-allow: D10 -    ";
+        assert!(
+            !line_allows_d10(line_ascii),
+            "whitespace-only after the ASCII separator must also fail"
+        );
+    }
+
+    #[test]
+    fn line_allows_d10_rejects_no_annotation() {
+        // No annotation at all → not silenced.
+        assert!(!line_allows_d10("    foo();"));
+    }
+
+    #[test]
+    fn line_allows_d10_works_inside_multi_rule_annotation() {
+        // The reason lives once at the end of the multi-rule comma list;
+        // D10 must recognize itself as one of the listed ids and accept
+        // the shared reason.
+        let line = "    foo(); // doctrine-allow: D6,D10 — shared reason";
+        assert!(
+            line_allows_d10(line),
+            "D10 must be recognized inside a multi-rule annotation"
+        );
+        let line_other_only = "    foo(); // doctrine-allow: D6,D7 — shared reason";
+        assert!(
+            !line_allows_d10(line_other_only),
+            "D10 absent from the id list must NOT be silenced"
+        );
+    }
+
+    #[test]
+    fn line_allows_d10_rejects_when_other_rule_has_reason_but_d10_not_listed() {
+        // Sanity: an annotation that explicitly excludes D10 cannot
+        // accidentally pick up the silencing via the reason text.
+        let line = "    foo(); // doctrine-allow: D8 — sleep is legitimate in this bench";
+        assert!(!line_allows_d10(line));
     }
 }
