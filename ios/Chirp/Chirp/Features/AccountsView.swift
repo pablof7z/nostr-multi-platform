@@ -48,13 +48,9 @@ private struct AccountRowView: View {
     let account: AccountSummary
     @EnvironmentObject private var model: KernelModel
 
-    private var isActive: Bool {
-        model.activeAccount == account.id
-    }
-
     var body: some View {
         Button {
-            if !isActive {
+            if !account.isActive {
                 model.switchActive(account.id)
             }
         } label: {
@@ -77,31 +73,23 @@ private struct AccountRowView: View {
 
                 Spacer()
 
-                Text(signerLabel(account.signerKind))
+                Text(account.signerLabel)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
 
-                if isActive {
+                if account.isActive {
                     Image(systemName: "checkmark")
                         .foregroundStyle(Color.accentColor)
                 }
             }
         }
-        .accessibilityIdentifier(isActive ? "account-row-active" : "account-row-\(account.id)")
+        .accessibilityIdentifier(account.isActive ? "account-row-active" : "account-row-\(account.id)")
         .accessibilityValue(account.npub)
     }
 
     private func shortNpub(_ npub: String) -> String {
         guard npub.count >= 16 else { return npub }
         return "\(npub.prefix(10))…\(npub.suffix(6))"
-    }
-
-    private func signerLabel(_ kind: String) -> String {
-        switch kind.lowercased() {
-        case "nsec": return "nsec"
-        case "bunker", "nip46": return "NIP-46"
-        default: return kind
-        }
     }
 }
 
@@ -113,7 +101,7 @@ private struct AddAccountSheet: View {
     @State private var bunkerURI = ""
     @State private var selectedTab = 0
     @State private var bunkerSubmitted = false
-    @State private var initialNip46Ids: Set<String> = []
+    @State private var initialRemoteSignerIds: Set<String> = []
 
     var body: some View {
         NavigationStack {
@@ -142,19 +130,18 @@ private struct AddAccountSheet: View {
                 }
             }
             .onAppear {
-                initialNip46Ids = Set(
+                initialRemoteSignerIds = Set(
                     model.accounts
-                        .filter { $0.signerKind.lowercased() == "nip46" }
+                        .filter(\.signerIsRemote)
                         .map(\.id)
                 )
             }
             .onChange(of: model.accounts) { _, newValue in
                 guard bunkerSubmitted else { return }
-                let arrivedNip46 = newValue.first { account in
-                    account.signerKind.lowercased() == "nip46"
-                        && !initialNip46Ids.contains(account.id)
+                let arrivedRemote = newValue.first { account in
+                    account.signerIsRemote && !initialRemoteSignerIds.contains(account.id)
                 }
-                if arrivedNip46 != nil {
+                if arrivedRemote != nil {
                     bunkerSubmitted = false
                     bunkerURI = ""
                     dismiss()

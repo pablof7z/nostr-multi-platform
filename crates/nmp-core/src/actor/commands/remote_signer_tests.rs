@@ -177,6 +177,13 @@ fn add_remote_signer_projects_nip46_account_summary() {
     assert_eq!(row.status, "active");
     assert!(row.npub.starts_with("npub1"));
     assert_eq!(active, Some(&expected_pk));
+    // aim.md §4.4 / §4.5: pre-classified fields the UI binds directly.
+    assert_eq!(row.signer_label, "NIP-46");
+    assert!(
+        row.signer_is_remote,
+        "nip46 row must be flagged as a remote signer"
+    );
+    assert!(row.is_active, "first remote signer becomes active");
 }
 
 #[test]
