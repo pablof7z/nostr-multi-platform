@@ -342,10 +342,11 @@ fn register_chirp_actions(app: &mut NmpApp) {
 /// publishes.
 ///
 /// Namespaces come from each `<Action>::NAMESPACE` constant — the single
-/// source of truth — so `nmp-core` is never edited to hardcode them. The
-/// admin namespaces are macro-generated as `nip29.<ModuleIdent>` (e.g.
-/// `nip29.CreateGroupAction`); registering against the constant keeps this
-/// correct regardless of that naming.
+/// source of truth — so `nmp-core` is never edited to hardcode them. All 15
+/// namespaces follow the same snake_case convention (`nip29.create_group`,
+/// `nip29.join_request`, …); the admin ones take an explicit snake_case
+/// literal in their `admin_action!` macro invocation rather than deriving the
+/// CamelCase module ident, so the wire format stays uniform.
 fn register_nip29_actions(app: &mut NmpApp) {
     /// Register one NIP-29 action: a typed `<Action>::start` validator (the
     /// `<Input>` type drives the JSON shape) plus an executor that delegates
@@ -690,10 +691,11 @@ mod tests {
     /// `correlation_id` (BOTH the typed module validator AND the executor are
     /// bound under that namespace); a malformed body is rejected with `error`.
     ///
-    /// Namespaces come from each `<Action>::NAMESPACE` constant — the admin
-    /// ones are the macro-generated `nip29.<ModuleIdent>` form (CamelCase,
-    /// e.g. `nip29.CreateGroupAction`), which is exactly why this asserts via
-    /// the constant rather than a hardcoded string.
+    /// Namespaces come from each `<Action>::NAMESPACE` constant — including
+    /// the admin ones, which are the snake_case `nip29.create_group` form
+    /// (the `admin_action!` macro takes an explicit snake_case literal so all
+    /// 15 namespaces stay uniform). Asserting via the constant keeps this test
+    /// correct regardless of the underlying string.
     #[test]
     fn nip29_all_namespaces_dispatch_through_action_registry() {
         let app = nmp_app_new();
@@ -719,7 +721,7 @@ mod tests {
                 ReactInGroupAction::NAMESPACE,
                 format!(r#"{{"group":{group},"target_event_id":"deadbeef","content":"+"}}"#),
             ),
-            // admin (macro-generated `nip29.CreateGroupAction` namespace)
+            // admin (`nip29.create_group` namespace)
             (
                 CreateGroupAction::NAMESPACE,
                 format!(r#"{{"group":{group}}}"#),
