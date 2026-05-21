@@ -330,13 +330,12 @@ impl BunkerBroker {
             handle: actor_handle,
         });
 
-        // `"ready"` is the broker's terminal success signal. The Chirp
-        // `AccountsView` auto-dismisses the sign-in sheet once the new
-        // `signer_kind == "nip46"` account row appears, so the progress card
-        // is torn down with the sheet — no Rust-side `"idle"` emission is
-        // needed. A delayed `"idle"` here would be a D8 violation
-        // (timer-driven control flow); presentation timing belongs to the UI
-        // layer, which can run its own animation if a lingering "Connected"
+        // `"ready"` is the broker's terminal success signal. Observers that
+        // also watch for a new `signer_kind == "nip46"` account row can drop
+        // their progress UI as soon as the row appears — no Rust-side `"idle"`
+        // emission is needed. A delayed `"idle"` would be a D8 violation
+        // (timer-driven control flow); presentation lifecycle belongs to the
+        // UI layer, which can run its own animation if a lingering "Connected"
         // card is desired.
         self.emit_progress("ready", Some("Bunker connected"));
     }
