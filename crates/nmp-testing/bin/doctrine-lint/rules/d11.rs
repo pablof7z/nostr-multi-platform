@@ -8,14 +8,15 @@
 //! `crates/nmp-core/src/substrate/action.rs` module docs).
 //!
 //! D11 prevents that door from being silently re-opened. A new
-//! `#[no_mangle] extern "C" fn nmp_app_<verb>(...)` whose body sends
-//! `ActorCommand::PublishSignedEvent { ... }` or
-//! `ActorCommand::PublishUnsignedEvent(...)` is a regression of the deleted
-//! seam, and D11 flags it.
+//! `#[no_mangle] extern "C" fn nmp_app_publish_*(...)` is a regression even
+//! before its body is inspected. A new `#[no_mangle] extern "C" fn
+//! nmp_app_<verb>(...)` whose body sends `ActorCommand::PublishSignedEvent {
+//! ... }` or `ActorCommand::PublishUnsignedEvent(...)` is also a regression.
 //!
 //! ## What this catches
 //!
-//! Inside a function whose signature is
+//! A function signature whose symbol starts with `nmp_app_publish_` is flagged.
+//! Inside any other function whose signature is
 //! `[pub] extern "C" fn nmp_app_<verb>(...)` (the FFI prefix; D11 does not
 //! fire inside Rust-only helpers), a line that mentions
 //! `ActorCommand::PublishSignedEvent` or `ActorCommand::PublishUnsignedEvent`
@@ -79,10 +80,25 @@ pub fn check(
     is_comment: bool,
     in_nmp_app_extern_fn: bool,
 ) -> Vec<(usize, String, String)> {
-    if is_comment || !in_nmp_app_extern_fn {
+    if is_comment {
         return Vec::new();
     }
     let mut hits = Vec::new();
+    if let Some((col, symbol)) = find_banned_publish_symbol(line) {
+        hits.push((
+            col,
+            format!(
+                "`{symbol}` violates D11 — bespoke `nmp_app_publish_*` FFI doors \
+                 are deleted; route through `nmp_app_dispatch_action(\"nmp.publish\", ...)`"
+            ),
+            "delete the publish-specific C symbol; expose publish through the \
+             typed action namespace instead"
+                .to_string(),
+        ));
+    }
+    if !in_nmp_app_extern_fn {
+        return hits;
+    }
     for variant in BANNED_VARIANTS {
         if let Some(rel) = line.find(variant) {
             hits.push((
@@ -101,6 +117,19 @@ pub fn check(
         }
     }
     hits
+}
+
+fn find_banned_publish_symbol(line: &str) -> Option<(usize, String)> {
+    if !line.contains("extern \"C\"") || !line.contains("nmp_app_publish_") {
+        return None;
+    }
+    let idx = line.find("nmp_app_publish_")?;
+    let symbol = parse_nmp_app_verb(&line[idx..])?;
+    if symbol.starts_with("nmp_app_publish_") {
+        Some((idx + 1, symbol))
+    } else {
+        None
+    }
 }
 
 /// Per-file tracker — same shape as [`super::d8::HotPathTracker`], with
@@ -346,13 +375,18 @@ mod tests {
     fn flags_publishsignedevent_in_new_nmp_app_extern_fn() {
         let lines = [
             "#[no_mangle]",
-            "pub extern \"C\" fn nmp_app_publish_via_legacy_door(app: *mut NmpApp) {",
+            "pub extern \"C\" fn nmp_app_legacy_publish_door(app: *mut NmpApp) {",
             "    let raw = todo!();",
             "    app.send_cmd(ActorCommand::PublishSignedEvent { raw, relays: Vec::new(), correlation_id: None });",
             "}",
         ];
         let hits = run_tracker(&lines);
-        assert_eq!(hits.len(), 1, "expected exactly one D11 finding; got {:?}", hits);
+        assert_eq!(
+            hits.len(),
+            1,
+            "expected exactly one D11 finding; got {:?}",
+            hits
+        );
         assert!(
             hits[0].1.contains("ActorCommand::PublishSignedEvent"),
             "message must name the banned variant; got: {}",
@@ -363,6 +397,17 @@ mod tests {
             "rule id must appear in the message; got: {}",
             hits[0].1
         );
+    }
+
+    #[test]
+    fn flags_publish_specific_symbol_even_without_actor_command() {
+        let hits = check(
+            "pub extern \"C\" fn nmp_app_publish_signed_event(_app: *mut NmpApp) {}",
+            false,
+            false,
+        );
+        assert_eq!(hits.len(), 1, "publish-specific symbol must trip D11");
+        assert!(hits[0].1.contains("nmp_app_publish_signed_event"));
     }
 
     #[test]
@@ -421,7 +466,11 @@ mod tests {
             "}",
         ];
         let hits = run_tracker(&lines);
-        assert!(hits.is_empty(), "non-FFI helpers must not trip D11; got {:?}", hits);
+        assert!(
+            hits.is_empty(),
+            "non-FFI helpers must not trip D11; got {:?}",
+            hits
+        );
     }
 
     #[test]
@@ -451,7 +500,12 @@ mod tests {
             "pub fn unrelated() { let _ = ActorCommand::PublishSignedEvent; }",
         ];
         let hits = run_tracker(&lines);
-        assert_eq!(hits.len(), 1, "exactly one D11 hit (the body line) expected; got {:?}", hits);
+        assert_eq!(
+            hits.len(),
+            1,
+            "exactly one D11 hit (the body line) expected; got {:?}",
+            hits
+        );
         assert!(hits[0].1.contains("PublishSignedEvent"));
     }
 
@@ -465,7 +519,11 @@ mod tests {
             true,
             true,
         );
-        assert!(hits.is_empty(), "comment lines must be exempt; got {:?}", hits);
+        assert!(
+            hits.is_empty(),
+            "comment lines must be exempt; got {:?}",
+            hits
+        );
     }
 
     #[test]

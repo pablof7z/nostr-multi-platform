@@ -425,7 +425,7 @@ fn wrap_and_publish_welcomes(
             .map_err(|e| e.to_string())?;
         // kind:1059 is ALREADY signed (NIP-59 ephemeral key) — publish
         // verbatim, never re-sign. Inbox approximation → group relays
-        // (empty → kernel Auto-fallback).
+        // (empty → kernel explicit-target fail-closed).
         h.publish_explicit(&wrapped, group_relays);
         out.push(wrapped.as_json());
     }
@@ -467,7 +467,7 @@ fn create_group(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
     let group_id_hex = hex_encode(group.mls_group_id.as_slice());
     let rumors = pending.welcome_rumors.clone();
     // NIP-59 gift-wrap + internally publish each kind:444 welcome to the
-    // group relays (inbox-routing approximation; empty → Auto).
+    // group relays (inbox-routing approximation; empty → fail closed).
     let welcomes = wrap_and_publish_welcomes(h, &relays, &kp_events, &rumors)?;
     // Events produced + submitted → commit eagerly so the group is not
     // wedged (pending-commit discipline, see module rustdoc). This drops
@@ -499,7 +499,7 @@ fn invite(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
     }
     let group_id_hex = hex_encode(gid.as_slice());
     // Resolve the relay-pinned relays BEFORE creating the borrowed
-    // `pending` (cache read is `&self`; a miss → empty → Auto-fallback).
+    // `pending` (cache read is `&self`; a miss → explicit target fails closed).
     let group_relays = h.group_relays(&group_id_hex);
     let pending = h
         .service()
@@ -507,7 +507,7 @@ fn invite(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
         .map_err(|e| e.to_string())?;
     let evolution = pending.evolution_event.as_json();
     // kind:445 commit → group relay-pinned relays (Explicit; cache miss
-    // → Auto). MUST go to the group relay(s), not the author outbox.
+    // → fail closed). MUST go to the group relay(s), not the author outbox.
     h.publish_explicit(&pending.evolution_event, &group_relays);
     let rumors = pending.welcome_rumors.clone();
     // kind:444 rumors → NIP-59 gift-wrap + internal publish.
@@ -531,7 +531,7 @@ fn send(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
         .create_message(&gid, rumor)
         .map_err(|e| e.to_string())?;
     // Signed kind:445 (MDK signs with the MLS credential). Relay-pinned →
-    // the group's configured relays (Explicit; cache miss → Auto).
+    // the group's configured relays (Explicit; cache miss → fail closed).
     let group_id_hex = hex_encode(gid.as_slice());
     h.publish_group_pinned(&group_id_hex, &msg);
     Ok(json!({
@@ -564,7 +564,7 @@ fn remove(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
         .map_err(|e| e.to_string())?;
     let evolution = pending.evolution_event.as_json();
     // kind:445 remove commit → group relay-pinned relays (Explicit;
-    // cache miss → Auto).
+    // cache miss → fail closed).
     h.publish_group_pinned(&group_id_hex, &pending.evolution_event);
     pending.commit().map_err(|e| e.to_string())?;
     Ok(json!({ "evolution_event": evolution }))

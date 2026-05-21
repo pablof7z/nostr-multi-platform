@@ -95,10 +95,27 @@ impl PendingSign {
         p_tags: Vec<String>,
         correlation_id_override: Option<String>,
     ) -> Self {
+        Self::with_target_and_correlation_id(
+            op,
+            p_tags,
+            PublishTarget::Auto,
+            correlation_id_override,
+        )
+    }
+
+    /// Park a sign op with both a routing target and an optional action
+    /// correlation id. This is the lossless path for dispatched publishes
+    /// whose `PublishTarget` is not always `Auto`.
+    pub fn with_target_and_correlation_id(
+        op: SignerOp<SignedEvent>,
+        p_tags: Vec<String>,
+        target: PublishTarget,
+        correlation_id_override: Option<String>,
+    ) -> Self {
         Self {
             op,
             p_tags,
-            target: PublishTarget::Auto,
+            target,
             correlation_id_override,
             deadline: Instant::now() + PENDING_SIGN_TIMEOUT,
         }

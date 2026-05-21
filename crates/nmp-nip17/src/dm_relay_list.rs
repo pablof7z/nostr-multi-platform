@@ -34,9 +34,7 @@
 //! kind:10050 is a NIP-65 replaceable event (`10000 ≤ kind < 20000`). It
 //! should land on the **author's kind:10002 write relays** so other clients
 //! pulling the author's relay graph find it. The executor enqueues
-//! [`ActorCommand::PublishUnsignedEventToRelays`] with an empty `relays`
-//! vec — the actor's dispatch arm falls back to the NIP-65 outbox in that
-//! case (see `crates/nmp-core/src/actor/dispatch.rs::PublishUnsignedEventToRelays`).
+//! [`ActorCommand::PublishUnsignedEvent`], the actor's typed Auto path.
 //!
 //! # D7 — `created_at` sentinel
 //!
@@ -124,7 +122,7 @@ pub fn build_dm_relay_list_event(relay_urls: &[String]) -> UnsignedEvent {
     }
     UnsignedEvent {
         // Empty placeholder — the actor re-derives the pubkey from the
-        // signing key at sign time (see `ActorCommand::PublishUnsignedEventToRelays`).
+        // signing key at sign time (see `ActorCommand::PublishUnsignedEvent`).
         pubkey: String::new(),
         kind: KIND_DM_RELAY_LIST,
         tags,
@@ -167,10 +165,7 @@ impl ActionModule for PublishDmRelayListAction {
     /// destructive operation and should not be reachable via the "publish my
     /// list" verb (a host wanting to clear the list needs its own explicit
     /// verb, which this v1 does not ship).
-    fn start(
-        _ctx: &mut ActionContext,
-        action: Self::Action,
-    ) -> Result<(), ActionRejection> {
+    fn start(_ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         if action.relays.is_empty() {
             return Err(ActionRejection::Invalid(
                 "empty DM-relay list — refusing to publish a kind:10050 \
@@ -205,18 +200,15 @@ impl ActionModule for PublishDmRelayListAction {
 }
 
 /// Executor: build the kind:10050 unsigned event and dispatch
-/// [`ActorCommand::PublishUnsignedEventToRelays`] with an EMPTY `relays`
-/// vec — kind:10050 is a NIP-65 replaceable event and must land on the
-/// author's kind:10002 write relays. An empty `relays` triggers the actor's
-/// NIP-65 outbox fallback (`PublishTarget::Auto`).
+/// [`ActorCommand::PublishUnsignedEvent`] — kind:10050 is a NIP-65
+/// replaceable event and must land on the author's kind:10002 write relays.
+/// The explicit-target command is not used here because empty explicit
+/// targets fail closed.
 pub fn publish_dm_relay_list_command(action_json: &str) -> Result<ActorCommand, String> {
     let input: PublishDmRelayListInput =
         serde_json::from_str(action_json).map_err(|e| e.to_string())?;
     let event = build_dm_relay_list_event(&input.relays);
-    Ok(ActorCommand::PublishUnsignedEventToRelays {
-        event,
-        relays: Vec::new(),
-    })
+    Ok(ActorCommand::PublishUnsignedEvent(event))
 }
 
 #[cfg(test)]
@@ -268,7 +260,10 @@ mod tests {
             "wss://c.example".to_string(),
         ]);
         let urls: Vec<&String> = event.tags.iter().map(|t| &t[1]).collect();
-        assert_eq!(urls, vec!["wss://b.example", "wss://a.example", "wss://c.example"]);
+        assert_eq!(
+            urls,
+            vec!["wss://b.example", "wss://a.example", "wss://c.example"]
+        );
     }
 
     #[test]
@@ -280,7 +275,10 @@ mod tests {
             "wss://relay.example".to_string(),
         ]);
         assert_eq!(event.tags.len(), 1);
-        assert_eq!(event.tags[0], vec!["relay".to_string(), "wss://relay.example".to_string()]);
+        assert_eq!(
+            event.tags[0],
+            vec!["relay".to_string(), "wss://relay.example".to_string()]
+        );
     }
 
     #[test]
@@ -298,8 +296,7 @@ mod tests {
         let trimmed = build_dm_relay_list_event(&["wss://relay.example/".to_string()]);
         assert_eq!(trimmed.tags[0][1], "wss://relay.example");
         // Non-empty path → trailing slash preserved.
-        let preserved =
-            build_dm_relay_list_event(&["wss://relay.example/nostr/".to_string()]);
+        let preserved = build_dm_relay_list_event(&["wss://relay.example/nostr/".to_string()]);
         assert_eq!(preserved.tags[0][1], "wss://relay.example/nostr/");
     }
 
@@ -356,9 +353,7 @@ mod tests {
 
     #[test]
     fn start_rejects_empty_relay_list() {
-        let input = PublishDmRelayListInput {
-            relays: Vec::new(),
-        };
+        let input = PublishDmRelayListInput { relays: Vec::new() };
         assert!(matches!(
             PublishDmRelayListAction::start(&mut ctx(), input),
             Err(ActionRejection::Invalid(_))
@@ -380,11 +375,11 @@ mod tests {
     }
 
     #[test]
-    fn command_builds_publish_unsigned_event_to_relays() {
+    fn command_builds_publish_unsigned_event_auto() {
         let body = r#"{"relays":["wss://relay.example"]}"#;
         let cmd = publish_dm_relay_list_command(body).expect("well-formed body");
         match cmd {
-            ActorCommand::PublishUnsignedEventToRelays { event, relays } => {
+            ActorCommand::PublishUnsignedEvent(event) => {
                 assert_eq!(event.kind, 10050);
                 assert_eq!(
                     event.tags,
@@ -392,13 +387,8 @@ mod tests {
                 );
                 assert_eq!(event.created_at, 0, "D7 sentinel — actor re-stamps");
                 assert!(event.pubkey.is_empty(), "actor derives pubkey at sign time");
-                assert!(
-                    relays.is_empty(),
-                    "empty relays → actor's NIP-65 outbox fallback \
-                     (kind:10050 is a replaceable event; lands on kind:10002 write relays)"
-                );
             }
-            other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
+            other => panic!("expected PublishUnsignedEvent, got {other:?}"),
         }
     }
 

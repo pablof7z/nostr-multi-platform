@@ -9,6 +9,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::actor::ActorCommand;
+use crate::relay::CanonicalRelayUrl;
 use crate::substrate::{ActionContext, ActionModule, ActionRejection, SignedEvent};
 
 /// Stable handle returned to the caller of `Publish`. Used to key snapshot
@@ -30,6 +31,32 @@ pub use crate::relay::RelayUrl;
 pub enum PublishTarget {
     Auto,
     Explicit { relays: Vec<RelayUrl> },
+}
+
+/// Validate a publish target before it can cross the action/actor boundary.
+///
+/// `Auto` is always valid: it deliberately asks the kernel to resolve via
+/// NIP-65. `Explicit` is fail-closed: an empty or malformed relay set is a
+/// caller bug, not a request to silently widen to `Auto`.
+pub(crate) fn validate_publish_target(target: &PublishTarget) -> Result<(), String> {
+    match target {
+        PublishTarget::Auto => Ok(()),
+        PublishTarget::Explicit { relays } => validate_explicit_relays(relays),
+    }
+}
+
+pub(crate) fn validate_explicit_relays(relays: &[RelayUrl]) -> Result<(), String> {
+    if relays.is_empty() {
+        return Err("explicit publish target requires at least one relay".to_string());
+    }
+    for relay in relays {
+        if CanonicalRelayUrl::parse(relay).is_none() {
+            return Err(format!(
+                "explicit publish target relay '{relay}' must be a ws:// or wss:// relay URL"
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// The single public publish action.
@@ -79,9 +106,7 @@ pub enum PublishAction {
     /// dispatchable through `dispatch_action`: `PublishModule::start` rejects
     /// it so the publish lifecycle's control plane (cancel / retry) stays on
     /// the dedicated FFI symbols rather than the generic action seam.
-    Cancel {
-        handle: PublishHandle,
-    },
+    Cancel { handle: PublishHandle },
 }
 
 /// Final outcome reported to the action ledger when the engine finishes.
@@ -126,9 +151,7 @@ impl ActionModule for PublishModule {
     /// function; it falls into the `_` arm and returns `None`.
     fn preferred_action_id(action: &Self::Action) -> Option<crate::substrate::ActionId> {
         match action {
-            PublishAction::Publish { event, .. } if !event.id.is_empty() => {
-                Some(event.id.clone())
-            }
+            PublishAction::Publish { event, .. } if !event.id.is_empty() => Some(event.id.clone()),
             _ => None,
         }
     }
@@ -169,20 +192,24 @@ impl ActionModule for PublishModule {
         action: Self::Action,
     ) -> Result<(), ActionRejection> {
         match action {
-            PublishAction::Publish { event, .. } => {
+            PublishAction::Publish { event, target, .. } => {
                 if event.id.is_empty() || event.sig.is_empty() {
                     return Err(ActionRejection::Invalid(
                         "publish action requires a signed event with id+sig".to_string(),
                     ));
                 }
+                validate_publish_target(&target).map_err(ActionRejection::Invalid)?;
                 Ok(())
             }
-            PublishAction::PublishNote { content, .. } => {
+            PublishAction::PublishNote {
+                content, target, ..
+            } => {
                 if content.is_empty() {
                     return Err(ActionRejection::Invalid(
                         "publish note requires non-empty content".to_string(),
                     ));
                 }
+                validate_publish_target(&target).map_err(ActionRejection::Invalid)?;
                 Ok(())
             }
             PublishAction::PublishProfile { fields } => {
@@ -223,15 +250,16 @@ impl ActionModule for PublishModule {
             PublishAction::Publish { event, target, .. } => {
                 send(ActorCommand::PublishSignedEvent {
                     raw: publish_signed_event_to_raw(event),
-                    relays: relays_for_publish_target(&target),
+                    target,
                     correlation_id: Some(correlation_id.to_string()),
                 });
                 Ok(())
             }
-            PublishAction::PublishNote { content, reply_to_id, .. } => {
+            PublishAction::PublishNote { content, reply_to_id, target } => {
                 send(ActorCommand::PublishNote {
                     content,
                     reply_to_id,
+                    target,
                     correlation_id: Some(correlation_id.to_string()),
                 });
                 Ok(())
@@ -265,12 +293,67 @@ fn publish_signed_event_to_raw(event: SignedEvent) -> crate::store::RawEvent {
     }
 }
 
-/// Resolve a [`PublishTarget`] into the relay list
-/// [`ActorCommand::PublishSignedEvent`] expects: `Auto` → empty (NIP-65
-/// outbox resolver, D3 default), `Explicit` → the named opt-out relays.
-fn relays_for_publish_target(target: &PublishTarget) -> Vec<RelayUrl> {
-    match target {
-        PublishTarget::Auto => Vec::new(),
-        PublishTarget::Explicit { relays } => relays.clone(),
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::substrate::UnsignedEvent;
+
+    fn ctx() -> ActionContext {
+        ActionContext {
+            now_ms: 1_700_000_000_000,
+        }
+    }
+
+    fn signed_event() -> SignedEvent {
+        SignedEvent {
+            id: "a".repeat(64),
+            sig: "b".repeat(128),
+            unsigned: UnsignedEvent {
+                pubkey: "c".repeat(64),
+                kind: 1,
+                tags: Vec::new(),
+                content: "hello".to_string(),
+                created_at: 1_700_000_000,
+            },
+        }
+    }
+
+    #[test]
+    fn explicit_publish_target_requires_non_empty_relays() {
+        let action = PublishAction::PublishNote {
+            content: "hello".to_string(),
+            reply_to_id: None,
+            target: PublishTarget::Explicit { relays: Vec::new() },
+        };
+        let err = PublishModule::start(&mut ctx(), action)
+            .expect_err("empty explicit target must fail closed");
+        assert!(matches!(err, ActionRejection::Invalid(msg) if msg.contains("at least one relay")));
+    }
+
+    #[test]
+    fn explicit_publish_target_rejects_malformed_relay_url() {
+        let action = PublishAction::Publish {
+            handle: "h".to_string(),
+            event: signed_event(),
+            target: PublishTarget::Explicit {
+                relays: vec!["https://relay.example".to_string()],
+            },
+        };
+        let err = PublishModule::start(&mut ctx(), action)
+            .expect_err("malformed explicit relay must be rejected");
+        assert!(matches!(err, ActionRejection::Invalid(msg) if msg.contains("ws:// or wss://")));
+    }
+
+    #[test]
+    fn explicit_publish_target_accepts_valid_relay_url() {
+        let action = PublishAction::PublishNote {
+            content: "hello".to_string(),
+            reply_to_id: None,
+            target: PublishTarget::Explicit {
+                relays: vec!["wss://relay.example".to_string()],
+            },
+        };
+        PublishModule::start(&mut ctx(), action)
+            .expect("valid explicit target should pass validation");
     }
 }

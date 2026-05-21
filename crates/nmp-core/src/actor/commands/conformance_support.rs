@@ -25,7 +25,7 @@ use serde_json::Value;
 use super::identity::{create_account, sign_in_nsec, IdentityRuntime};
 use super::publish::{follow, publish_note, publish_unsigned_event, react};
 use crate::kernel::Kernel;
-use crate::publish::{InMemoryPublishStore, PublishStore};
+use crate::publish::{InMemoryPublishStore, PublishStore, PublishTarget};
 use crate::relay::{OutboundMessage, DEFAULT_VISIBLE_LIMIT};
 use crate::substrate::UnsignedEvent;
 
@@ -133,6 +133,7 @@ impl ConformanceHarness {
             &mut self.kernel,
             content,
             reply_to,
+            PublishTarget::Auto,
             None,
             &mut Vec::new(),
         );

@@ -203,12 +203,8 @@ pub(super) fn dispatch_command(
         ActorCommand::SignInNsec { secret } => {
             // `secret` is `Zeroizing<String>`; pass the borrowed `&str` and let
             // the wrapper wipe the plaintext when it drops at end of scope.
-            let outbound = commands::sign_in_nsec(
-                ctx.identity,
-                ctx.kernel,
-                secret.as_str(),
-                ctx.relays_ready,
-            );
+            let outbound =
+                commands::sign_in_nsec(ctx.identity, ctx.kernel, secret.as_str(), ctx.relays_ready);
             update_local_key_slots(ctx.identity, ctx.marmot_local_nsec, ctx.nip17_local_keys);
             session_persistence::persist_current_active_session(
                 ctx.identity,
@@ -293,6 +289,7 @@ pub(super) fn dispatch_command(
         ActorCommand::PublishNote {
             content,
             reply_to_id,
+            target,
             correlation_id,
         } => {
             // PR-G: record the `Requested` stage the moment the actor
@@ -314,6 +311,7 @@ pub(super) fn dispatch_command(
                 ctx.kernel,
                 &content,
                 reply_to_id.as_deref(),
+                target,
                 correlation_id,
                 ctx.pending_signs,
             );
@@ -378,7 +376,7 @@ pub(super) fn dispatch_command(
         }
         ActorCommand::PublishSignedEvent {
             raw,
-            relays,
+            target,
             correlation_id,
         } => {
             // PR-G — see PublishNote arm above. The pre-signed dispatch
@@ -390,8 +388,7 @@ pub(super) fn dispatch_command(
                     None,
                 );
             }
-            let outbound =
-                commands::publish_signed_event(ctx.kernel, raw, &relays, correlation_id);
+            let outbound = commands::publish_signed_event(ctx.kernel, raw, target, correlation_id);
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }

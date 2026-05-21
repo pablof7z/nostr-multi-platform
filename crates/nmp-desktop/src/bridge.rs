@@ -40,7 +40,9 @@ impl KernelBridge {
                     Ok(e) => e,
                     Err(_) => continue,
                 };
-                let UpdateEnvelope::Snapshot(v) = env else { continue };
+                let UpdateEnvelope::Snapshot(v) = env else {
+                    continue;
+                };
                 let snap: Snapshot = match serde_json::from_value(v) {
                     Ok(s) => s,
                     Err(_) => continue,
@@ -74,6 +76,7 @@ impl KernelBridge {
         let _ = self.tx.send(ActorCommand::PublishNote {
             content,
             reply_to_id: None,
+            target: nmp_core::publish::PublishTarget::Auto,
             // Direct actor-command path (not `dispatch_action`) — no
             // registry-minted correlation_id to thread; the engine reports
             // the event id, as it always did for this path.

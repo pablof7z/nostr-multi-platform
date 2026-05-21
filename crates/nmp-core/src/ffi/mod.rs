@@ -165,11 +165,11 @@ pub use action::{
 // the Rust path so the Android JNI shim pulls the symbol body into the
 // cdylib CGU.
 #[cfg(feature = "android-ffi")]
-pub use snapshot::nmp_app_register_snapshot_projection;
-#[cfg(feature = "android-ffi")]
 pub use lifecycle::{
     nmp_app_lifecycle_background, nmp_app_lifecycle_foreground, nmp_app_set_lifecycle_callback,
 };
+#[cfg(feature = "android-ffi")]
+pub use snapshot::nmp_app_register_snapshot_projection;
 // T146 — kernel event observer FFI symbols reachable via Rust paths so the
 // Android JNI shim can pull the symbol bodies into the cdylib CGU.
 #[cfg(feature = "android-ffi")]
@@ -609,9 +609,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         match wallet_status.lock() {
             Ok(slot) => slot
                 .as_ref()
-                .map(|status| {
-                    serde_json::to_value(status).unwrap_or(serde_json::Value::Null)
-                })
+                .map(|status| serde_json::to_value(status).unwrap_or(serde_json::Value::Null))
                 .unwrap_or(serde_json::Value::Null),
             // D6: a poisoned wallet-status mutex collapses to `null` rather
             // than panicking inside the snapshot tick.
@@ -697,10 +695,7 @@ impl NmpApp {
     pub fn register_action_module(
         &mut self,
         namespace: impl Into<String>,
-        validate: impl Fn(&str) -> Result<(), crate::substrate::ActionRejection>
-            + Send
-            + Sync
-            + 'static,
+        validate: impl Fn(&str) -> Result<(), crate::substrate::ActionRejection> + Send + Sync + 'static,
     ) {
         self.action_registry
             .register_with_validator(namespace, validate);
@@ -1101,8 +1096,10 @@ impl NmpApp {
     }
 
     /// Workspace-internal kernel publish API — verbatim publish of an
-    /// already-signed `nostr::Event` to an EXPLICIT relay set, with `Auto`
-    /// (NIP-65 outbox) fallback when `relays` is empty.
+    /// already-signed `nostr::Event` to an EXPLICIT relay set. Empty or
+    /// malformed relay sets fail closed in the actor publish handler; callers
+    /// that want `Auto` routing must use the typed `nmp.publish` action path
+    /// with `PublishTarget::Auto`.
     ///
     /// PR-F (one door per capability) — this is the Rust-typed replacement for
     /// the deleted `nmp_app_publish_signed_event*` `extern "C"` symbols. App
@@ -1114,26 +1111,24 @@ impl NmpApp {
     /// symbols used to land on); forged or garbled events are dropped with a
     /// kernel toast.
     ///
-    /// Routing mode:
-    /// - empty `relays` → `PublishTarget::Auto` (author's NIP-65 outbox)
-    ///   for every kind EXCEPT kind:1059 (gift-wrap), which is REFUSED by
-    ///   the kernel-side D10 defensive guard added in PR-K3.
-    /// - non-empty → `PublishTarget::Explicit { relays }`, bypassing the
-    ///   outbox resolver. Marmot uses this for relay-pinned kind:445 commits
-    ///   / messages and for kind:1059 inbox-routing (recipient kind:10050).
+    /// Routing is fail-closed: this entrypoint always builds a
+    /// `PublishTarget::Explicit { relays }`, bypassing the outbox resolver.
+    /// Marmot uses this for relay-pinned kind:445 commits / messages and as
+    /// the documented kind:1059 inbox-routing approximation. Callers that
+    /// want NIP-65 outbox (`PublishTarget::Auto`) must use the typed
+    /// `nmp.publish` action path through `dispatch_action` so `Auto` and
+    /// `Explicit` never share the same empty-vector encoding.
     ///
-    /// **kind:1059 callers MUST supply an explicit pin.** Earlier revisions
-    /// of this docstring described the empty-relays → Auto fallback as the
-    /// "documented kind:1059 inbox-routing approximation"; that allowance
-    /// is gone. `crates/nmp-core/src/actor/commands/publish.rs::publish_signed_event`
-    /// now refuses any kind:1059 envelope whose `relays` slice is empty,
-    /// sets a D6 toast on the kernel, and drops the envelope — the same
-    /// behaviour the call-site guard in `commands::dm::send_gift_wrapped_dm`
-    /// (PR #229) gives the NIP-17 send path. The Marmot bridge's own runtime
-    /// guard in `nmp-marmot::projection::publish::publish_to` is the
-    /// matching guard for the C-ABI symbol path; together they make a
-    /// kind:1059 Auto-route structurally impossible regardless of which
-    /// entry point a caller reaches the kernel through.
+    /// kind:1059 envelopes additionally hit the kernel-side D10 defensive
+    /// guard added in PR-K3: `commands::publish::publish_signed_event`
+    /// refuses any kind:1059 envelope whose `relays` slice is empty, sets a
+    /// D6 toast on the kernel, and drops the envelope — the same behaviour
+    /// the call-site guard in `commands::dm::send_gift_wrapped_dm` (PR #229)
+    /// gives the NIP-17 send path. The Marmot bridge's own runtime guard in
+    /// `nmp-marmot::projection::publish::publish_to` is the matching guard
+    /// for the C-ABI symbol path; together they make a kind:1059 Auto-route
+    /// structurally impossible regardless of which entry point a caller
+    /// reaches the kernel through.
     ///
     /// Theme A discriminator (see `substrate/action.rs`): this is the
     /// system-authored / lifecycle exception to "every event-producing
@@ -1160,19 +1155,14 @@ impl NmpApp {
             pubkey: event.pubkey.to_hex(),
             created_at: event.created_at.as_secs(),
             kind: event.kind.as_u16() as u32,
-            tags: event
-                .tags
-                .iter()
-                .map(|t| t.as_slice().to_vec())
-                .collect(),
+            tags: event.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
             content: event.content.clone(),
             sig: event.sig.to_string(),
         };
-        let relays: Vec<crate::publish::RelayUrl> =
-            relays.iter().map(|r| r.to_string()).collect();
+        let relays: Vec<crate::publish::RelayUrl> = relays.iter().map(|r| r.to_string()).collect();
         self.send_cmd(ActorCommand::PublishSignedEvent {
             raw,
-            relays,
+            target: crate::publish::PublishTarget::Explicit { relays },
             correlation_id: None,
         });
     }

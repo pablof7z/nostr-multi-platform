@@ -21,7 +21,7 @@
 //!   [`crate::NmpApp::publish_signed_explicit`] Marmot seam. The actor
 //!   re-verifies the Schnorr signature + id hash (D4 — only the actor loop
 //!   signs/publishes; a forged event is rejected, never published) and
-//!   routes it through the NIP-65 outbox resolver.
+//!   routes it through the typed `PublishTarget` carried by the action.
 //! * [`PublishAction::Cancel`] is engine-internal — `PublishModule::start`
 //!   rejects it, so it is NOT dispatchable through `dispatch_action`. The
 //!   publish lifecycle's control plane (cancel / retry) stays on the dedicated
@@ -392,10 +392,10 @@ pub extern "C" fn nmp_app_register_action_result_observer(
         // in `catch_unwind`, so a Rust panic raised by serde / `CString`
         // is already contained; this guard closes the foreign-throw half
         // of the gap.
-        let _: Option<()> = crate::ffi_guard::guard_ffi_callback(
-            "action result observer",
-            || unsafe { observer(cstr.as_ptr()) },
-        );
+        let _: Option<()> =
+            crate::ffi_guard::guard_ffi_callback("action result observer", || unsafe {
+                observer(cstr.as_ptr())
+            });
     });
 }
 
@@ -407,9 +407,7 @@ fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str
     let Some(app) = app else {
         return error_json("null app");
     };
-    let mut ctx = ActionContext {
-        now_ms: now_ms(),
-    };
+    let mut ctx = ActionContext { now_ms: now_ms() };
     match app.action_registry.start(&mut ctx, namespace, action_json) {
         Ok(correlation_id) => {
             // `start()` is a pure validator and the correlation id is the
@@ -440,10 +438,7 @@ fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str
                         correlation_id: correlation_id.clone(),
                         result_json: serde_json::Value::Null,
                     });
-                    format!(
-                        r#"{{"correlation_id":{}}}"#,
-                        json_string(&correlation_id)
-                    )
+                    format!(r#"{{"correlation_id":{}}}"#, json_string(&correlation_id))
                 }
                 Err(msg) => {
                     // PR-G2 — codex MEDIUM finding: an executor that panicked
@@ -546,11 +541,10 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::{nmp_app_free, nmp_app_new};
+    use super::*;
 
     /// Run `body` against a fresh `NmpApp`, freeing it afterwards. The raw
     /// pointer from `nmp_app_new` is non-null and valid for the closure's
@@ -600,7 +594,10 @@ mod tests {
         with_app(|app| {
             let out = dispatch_action_json(Some(app), "nmp.publish", "{bad json");
             let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
-            assert!(parsed.get("error").is_some(), "expected error object: {out}");
+            assert!(
+                parsed.get("error").is_some(),
+                "expected error object: {out}"
+            );
         });
     }
 
@@ -763,8 +760,7 @@ mod tests {
     #[test]
     fn execute_action_publish_note_is_ok_without_actor() {
         with_app(|app| {
-            let json =
-                r#"{"PublishNote":{"content":"h3","reply_to_id":null,"target":"Auto"}}"#;
+            let json = r#"{"PublishNote":{"content":"h3","reply_to_id":null,"target":"Auto"}}"#;
             assert!(execute_action(app, "nmp.publish", json, "corr-id").is_ok());
         });
     }
@@ -803,11 +799,14 @@ mod tests {
         // SAFETY: `nmp_app_new` never returns null; the pointer is valid
         // until `nmp_app_free` below, and no other reference aliases it here.
         let app_mut = unsafe { &mut *app };
-        app_mut.register_action_executor("test.greeting", move |action_json, _correlation_id, _send| {
-            assert_eq!(action_json, r#"{"hello":"world"}"#);
-            called_in_closure.store(true, Ordering::SeqCst);
-            Ok(())
-        });
+        app_mut.register_action_executor(
+            "test.greeting",
+            move |action_json, _correlation_id, _send| {
+                assert_eq!(action_json, r#"{"hello":"world"}"#);
+                called_in_closure.store(true, Ordering::SeqCst);
+                Ok(())
+            },
+        );
 
         // `test_execute_action` drives the registry's `execute` path
         // directly — the v1 seam exposes executor (not module) registration,
@@ -877,7 +876,8 @@ mod tests {
         let app_mut = unsafe { &mut *app };
         // Register both halves for "test.todo".
         app_mut.register_action_module("test.todo", |_action_json| Ok(()));
-        app_mut.register_action_executor("test.todo", |_action_json, _correlation_id, _send| Ok(()));
+        app_mut
+            .register_action_executor("test.todo", |_action_json, _correlation_id, _send| Ok(()));
 
         // Now `dispatch_action` should succeed end-to-end.
         let out = dispatch_action_json(
@@ -903,9 +903,12 @@ mod tests {
         // SAFETY: see `host_registered_module_and_executor_enables_dispatch_action`.
         let app_mut = unsafe { &mut *app };
         app_mut.register_action_module("test.todo", |_action_json| {
-            Err(ActionRejection::Invalid("host rejected: title required".into()))
+            Err(ActionRejection::Invalid(
+                "host rejected: title required".into(),
+            ))
         });
-        app_mut.register_action_executor("test.todo", |_action_json, _correlation_id, _send| Ok(()));
+        app_mut
+            .register_action_executor("test.todo", |_action_json, _correlation_id, _send| Ok(()));
 
         let out = dispatch_action_json(Some(&*app_mut), "test.todo", "{}");
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -1025,15 +1028,18 @@ mod tests {
 
         let observed = OBSERVED.lock().unwrap().clone();
         let observed = observed.expect("the C observer callback should have fired");
-        let parsed: serde_json::Value = serde_json::from_str(&observed)
-            .expect("the observer payload should be valid JSON");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&observed).expect("the observer payload should be valid JSON");
         assert_eq!(
             parsed.get("correlation_id").and_then(|v| v.as_str()),
             Some(returned_id),
             "C observer payload must carry the dispatch correlation_id"
         );
         assert!(
-            parsed.get("result_json").map(|v| v.is_null()).unwrap_or(false),
+            parsed
+                .get("result_json")
+                .map(|v| v.is_null())
+                .unwrap_or(false),
             "C observer payload must carry a result_json field (null here)"
         );
         nmp_app_free(app);
@@ -1145,7 +1151,8 @@ mod tests {
         let app = nmp_app_new();
         // SAFETY: see `host_registered_module_and_executor_enables_dispatch_action`.
         let app_mut = unsafe { &mut *app };
-        app_mut.register_action_executor("test.todo", |_action_json, _correlation_id, _send| Ok(()));
+        app_mut
+            .register_action_executor("test.todo", |_action_json, _correlation_id, _send| Ok(()));
 
         let out = dispatch_action_json(Some(&*app_mut), "test.todo", "{}");
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
