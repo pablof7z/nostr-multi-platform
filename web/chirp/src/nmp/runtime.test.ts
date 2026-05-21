@@ -93,7 +93,7 @@ describe("createNmpClient fallback", () => {
     unsubscribe();
 
     expect(snapshots[0].events[0]).toMatchObject({ type: "hello_accepted" });
-    expect(started.status).toEqual({ degraded: "browser_actor_driver_missing" });
+    expect(started.status).toEqual({ degraded: "browser_bridge_unavailable" });
     expect(started.events[0]).toMatchObject({
       type: "runtime_status",
       correlation_id: "web-start",
@@ -101,62 +101,67 @@ describe("createNmpClient fallback", () => {
     expect(dispatched.events[0]).toMatchObject({
       type: "capability_failure",
       capability: "chirp.compose",
-      reason: "nmp-wasm actor driver is not linked into the web worker yet",
+      reason: "Web Worker support is unavailable, so the nmp-wasm bridge cannot start",
     });
   });
 });
 
 describe("worker runtime bridge", () => {
-  it("posts hello/start/dispatch events from worker requests", async () => {
+  it("reports unavailable wasm bridge and posts degraded fallback events", async () => {
     const events: WorkerEvent[] = [];
     const harness: WorkerHarness = {
       onmessage: null,
       postMessage: (event) => events.push(event),
     };
+    vi.stubGlobal("location", { origin: "http://localhost" });
     vi.stubGlobal("self", harness);
 
     await import("./worker");
 
-    sendWorkerRequest(harness, {
+    await sendWorkerRequest(harness, {
       type: "hello",
       app_id: "chirp",
       platform: "web",
       protocol_version: protocolVersion,
     });
-    sendWorkerRequest(harness, {
+    await sendWorkerRequest(harness, {
       type: "start",
       app_id: "chirp",
       relays: ["wss://relay.example"],
       database_name: "chirp-test",
       correlation_id: "start-1",
     });
-    sendWorkerRequest(harness, {
+    await sendWorkerRequest(harness, {
       type: "dispatch",
       action_type: "chirp.compose",
       payload: { content: "hello" },
       correlation_id: "dispatch-1",
     });
 
-    expect(events).toEqual([
+    expect(events[0]).toMatchObject({
+      type: "error",
+      code: "wasm_bridge_unavailable",
+    });
+    expect(events.slice(1)).toEqual([
       { type: "hello_accepted", protocol_version: 1, status: "ready" },
       {
         type: "runtime_status",
-        status: { degraded: "browser_actor_driver_missing" },
+        status: { degraded: "browser_bridge_unavailable" },
         correlation_id: "start-1",
       },
       {
         type: "capability_failure",
         capability: "chirp.compose",
         correlation_id: "dispatch-1",
-        reason: "nmp-wasm actor driver is not linked into the web worker yet",
+        reason: events[0].type === "error" ? events[0].message : "",
       },
     ]);
   });
 });
 
-function sendWorkerRequest(harness: WorkerHarness, request: WorkerRequest) {
+async function sendWorkerRequest(harness: WorkerHarness, request: WorkerRequest) {
   if (!harness.onmessage) {
     throw new Error("worker did not register an onmessage handler");
   }
-  harness.onmessage({ data: request } as MessageEvent<WorkerRequest>);
+  await harness.onmessage({ data: request } as MessageEvent<WorkerRequest>);
 }

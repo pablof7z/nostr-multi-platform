@@ -1,14 +1,21 @@
 import type { RuntimeStatus, WorkerEvent, WorkerRequest } from "./protocol";
 
+export type DegradedRuntimeMode = "browser_actor_driver_missing" | "browser_bridge_unavailable";
+
 export class DegradedRuntime {
   private status: RuntimeStatus = "ready";
+
+  constructor(
+    private readonly mode: DegradedRuntimeMode = "browser_actor_driver_missing",
+    private readonly unavailableReason = "nmp-wasm actor driver is not linked into the web worker yet",
+  ) {}
 
   handle(request: WorkerRequest): WorkerEvent[] {
     switch (request.type) {
       case "hello":
         return this.hello(request.protocol_version);
       case "start":
-        this.status = { degraded: "browser_actor_driver_missing" };
+        this.status = { degraded: this.mode };
         return [
           {
             type: "runtime_status",
@@ -22,7 +29,7 @@ export class DegradedRuntime {
             type: "capability_failure",
             capability: request.action_type,
             correlation_id: request.correlation_id,
-            reason: "nmp-wasm actor driver is not linked into the web worker yet",
+            reason: this.unavailableReason,
           },
         ];
       case "capability_result":

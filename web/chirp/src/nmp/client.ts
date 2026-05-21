@@ -136,7 +136,10 @@ class WorkerNmpClient extends BaseClient {
 }
 
 class InProcessNmpClient extends BaseClient {
-  private readonly runtime = new DegradedRuntime();
+  private readonly runtime = new DegradedRuntime(
+    "browser_bridge_unavailable",
+    "Web Worker support is unavailable, so the nmp-wasm bridge cannot start",
+  );
 
   constructor() {
     super();
