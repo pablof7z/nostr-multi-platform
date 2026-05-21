@@ -30,6 +30,7 @@ members = [
     "crates/nmp-testing",
     "crates/nmp-threading",
     "crates/nmp-desktop",
+    "crates/nmp-wasm",
 ]
 resolver = "2"
 
