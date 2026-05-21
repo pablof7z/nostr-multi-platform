@@ -188,11 +188,10 @@ struct DiagnosticsView: View {
         }
     }
     private var allRelayURLs: [String] {
-        var urls = model.relayStatuses.map(\.relayUrl)
-        for sub in model.wireSubscriptions {
-            if !urls.contains(sub.relayUrl) {
-                urls.append(sub.relayUrl)
-            }
+        var seen = Set<String>()
+        var urls: [String] = []
+        for url in model.relayStatuses.map(\.relayUrl) + model.wireSubscriptions.map(\.relayUrl) {
+            if seen.insert(url).inserted { urls.append(url) }
         }
         return urls
     }
