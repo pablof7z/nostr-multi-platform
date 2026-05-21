@@ -21,7 +21,7 @@
 //! closes by WireSubId (compiler diff output), not string-prefix matching.
 
 use super::super::*;
-use std::hash::{Hash, Hasher};
+use crate::stable_hash::stable_hash64;
 
 /// Deterministic 8-char tag over `relay_url` for thread hydration sub-ids.
 ///
@@ -29,9 +29,28 @@ use std::hash::{Hash, Hasher};
 /// surface is stable and `close_subscriptions_with_prefixes` still matches
 /// the `thread-ids-` / `thread-replies-` prefixes used in `close_thread`.
 fn relay_short(relay_url: &str) -> String {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    relay_url.hash(&mut hasher);
-    format!("{:08x}", hasher.finish() & 0xFFFF_FFFF)
+    format!(
+        "{:08x}",
+        stable_hash64(("thread-relay-short", relay_url)) & 0xFFFF_FFFF
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn relay_short_is_restart_stable() {
+        assert_eq!(relay_short("wss://relay.example"), "5ea311a8");
+        assert_eq!(
+            relay_short("wss://relay.example"),
+            relay_short("wss://relay.example")
+        );
+        assert_ne!(
+            relay_short("wss://relay.example"),
+            relay_short("wss://other.example")
+        );
+    }
 }
 
 impl Kernel {
@@ -166,8 +185,7 @@ impl Kernel {
             }
         }
 
-        if !self.thread_view.pending_reply_targets.is_empty()
-            && !self.thread_view.replies_inflight
+        if !self.thread_view.pending_reply_targets.is_empty() && !self.thread_view.replies_inflight
         {
             let ids = self
                 .thread_view

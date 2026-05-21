@@ -20,15 +20,34 @@
 //! wire-emitter's `emit_req(relay_url, sub_id, filter)` call.
 
 use super::super::*;
-use std::hash::{Hash, Hasher};
+use crate::stable_hash::stable_hash64;
 
 /// Stable 8-hex-char suffix for a relay URL — used to disambiguate fan-out
 /// sub-ids across resolved relays so the `wire_subs` map (keyed by sub-id)
 /// does not collapse N per-relay subscriptions onto one row.
 fn relay_tag(relay_url: &str) -> String {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    relay_url.hash(&mut hasher);
-    format!("{:08x}", (hasher.finish() & 0xFFFF_FFFF))
+    format!(
+        "{:08x}",
+        stable_hash64(("profile-relay-tag", relay_url)) & 0xFFFF_FFFF
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn relay_tag_is_restart_stable() {
+        assert_eq!(relay_tag("wss://relay.example"), "0684d673");
+        assert_eq!(
+            relay_tag("wss://relay.example"),
+            relay_tag("wss://relay.example")
+        );
+        assert_ne!(
+            relay_tag("wss://relay.example"),
+            relay_tag("wss://other.example")
+        );
+    }
 }
 
 impl Kernel {

@@ -6,7 +6,9 @@
 //! # Dual-channel priority design
 //!
 //! Commands (`command_rx`) are checked via `try_recv` at the top of every
-//! iteration — zero latency, never dropped under relay event flood.
+//! iteration with a bounded burst budget — low latency, never dropped under
+//! relay event flood, while relay events and idle work still progress during
+//! sustained command bursts.
 //! Relay events go through their own separate channel, read via
 //! `recv_timeout(compute_wait(…))`. This replaces the old merged
 //! `SyncSender<ActorMsg>` design where a 4096-slot bounded channel could fill
@@ -15,24 +17,25 @@
 
 mod commands;
 mod dispatch;
+mod fairness;
 pub(crate) mod kernel_action;
 mod outbound;
 mod pending_sign;
-mod session_persistence;
 #[cfg(test)]
 mod publish_relay_dispatch_tests;
-mod relay_roles;
 mod relay_mgmt;
+mod relay_roles;
 #[cfg(test)]
 mod relay_url_canonical_tests;
+mod session_persistence;
 #[cfg(test)]
 mod session_persistence_tests;
 #[cfg(test)]
 mod tests;
 mod tick;
 
-use commands::IdentityRuntime;
 use crate::capability_socket::{new_capability_callback_slot, CapabilityCallbackSlot};
+use commands::IdentityRuntime;
 // D0: NIP-47 NWC is an app noun — `WalletRuntime` only exists with `wallet`.
 #[cfg(feature = "wallet")]
 use commands::WalletRuntime;
@@ -98,6 +101,7 @@ pub use commands::{
 #[cfg(any(test, feature = "test-support"))]
 pub use commands::ConformanceHarness;
 use dispatch::{dispatch_command, handle_relay_event, ActorContext};
+use fairness::{CommandDrain, COMMAND_DRAIN_BUDGET};
 use pending_sign::PendingSign;
 
 use crate::kernel::LifecyclePhase;
@@ -550,8 +554,10 @@ pub fn run_actor_with_lifecycle_observer(
 ///
 /// Dual-channel priority design: `command_rx` is drained via `try_recv` at
 /// the top of every iteration so UI commands are NEVER dropped under relay
-/// event flood. Relay events use a separate channel read with
-/// `recv_timeout(compute_wait(…))` so emit-hz cadence is respected.
+/// event flood. The drain is budgeted so relay events and idle work still
+/// progress under sustained command bursts. Relay events use a separate
+/// channel read with `recv_timeout(compute_wait(…))` so emit-hz cadence is
+/// respected when the command lane is not saturated.
 #[allow(clippy::too_many_arguments)]
 pub fn run_actor_with_observers(
     command_rx: Receiver<ActorCommand>,
@@ -673,9 +679,7 @@ pub fn run_actor_with_observers(
                 // `into_inner` rather than panicking inside the snapshot tick.
                 let slot = projection_slot.lock().unwrap_or_else(|e| e.into_inner());
                 slot.as_ref()
-                    .map(|dto| {
-                        serde_json::to_value(dto).unwrap_or(serde_json::Value::Null)
-                    })
+                    .map(|dto| serde_json::to_value(dto).unwrap_or(serde_json::Value::Null))
                     .unwrap_or(serde_json::Value::Null)
             });
         }
@@ -717,11 +721,15 @@ pub fn run_actor_with_observers(
 
     loop {
         // ── Priority lane: commands ──────────────────────────────────────
-        // Drain ALL pending commands before touching relay events. This is
-        // the core of the dual-channel priority guarantee: commands can never
-        // be starved by relay event floods because they bypass the relay_rx
-        // entirely and are never queued behind relay events.
+        // Drain a bounded burst of pending commands before touching relay
+        // events. Commands still get first service on every iteration, but the
+        // budget prevents a sustained command stream from starving relay
+        // events, subscription ticks, publish retries, and parked sign ops.
+        let mut command_drain = CommandDrain::new(COMMAND_DRAIN_BUDGET);
         loop {
+            if !command_drain.can_drain_command() {
+                break;
+            }
             let command_result = if let Some(command) = first_command.take() {
                 Ok(command)
             } else {
@@ -729,6 +737,7 @@ pub fn run_actor_with_observers(
             };
             match command_result {
                 Ok(command) => {
+                    command_drain.record_command();
                     // G-S4 — straddle counter: one command has left the channel
                     // (either the replayed `first_command`, which `command_rx
                     // .recv()` already dequeued, or a fresh `try_recv`). Mirror
@@ -737,12 +746,11 @@ pub fn run_actor_with_observers(
                     // the actor drains a command sent through `actor_sender`,
                     // which bypasses the increment. `Relaxed` — observability,
                     // not synchronization.
-                    queue_depth.fetch_update(
-                        Ordering::Relaxed,
-                        Ordering::Relaxed,
-                        |d| Some(d.saturating_sub(1)),
-                    )
-                    .ok();
+                    queue_depth
+                        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |d| {
+                            Some(d.saturating_sub(1))
+                        })
+                        .ok();
                     // Bundle the actor's mutable runtime state into a borrowed
                     // `ActorContext` for the duration of this one dispatch.
                     // Built fresh per command and dropped immediately after, so
@@ -783,15 +791,17 @@ pub fn run_actor_with_observers(
                         &mut next_relay_generation,
                         outbound,
                     );
-                    if running && maybe_send_startup(
-                        running,
-                        &mut startup_sent,
-                        &connected_relays,
-                        &mut relay_controls,
-                        &relay_tx,
-                        &mut kernel,
-                        &mut next_relay_generation,
-                    ) {
+                    if running
+                        && maybe_send_startup(
+                            running,
+                            &mut startup_sent,
+                            &connected_relays,
+                            &mut relay_controls,
+                            &relay_tx,
+                            &mut kernel,
+                            &mut next_relay_generation,
+                        )
+                    {
                         emit_now(&mut kernel, running, &update_tx, &mut last_emit);
                     }
                 }
@@ -806,7 +816,7 @@ pub fn run_actor_with_observers(
 
         // ── Relay event lane ─────────────────────────────────────────────
         // Block up to compute_wait so emit-hz is respected without busy-spin.
-        let wait = compute_wait(&kernel, running, last_emit, emit_hz);
+        let wait = command_drain.relay_wait(compute_wait(&kernel, running, last_emit, emit_hz));
         match relay_rx.recv_timeout(wait) {
             Ok(event) => {
                 // The pool is keyed by `CanonicalRelayUrl`; a relay worker is

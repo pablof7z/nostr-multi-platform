@@ -13,6 +13,7 @@ use crate::planner::{
     apply_selection, CompiledPlan, InterestId, InterestLifecycle, InterestShape, MailboxCache,
     PlannerError, SubscriptionCompiler,
 };
+use crate::stable_hash::stable_hash64;
 
 use super::trigger::CompileTrigger;
 use super::wire::{plan_diff, WireFrame};
@@ -56,7 +57,8 @@ impl SubscriptionLifecycle {
         // doing it AFTER apply_selection would leave dead relays in the
         // wire diff. Between the two is the right seam.
         if !self.dead_relays.is_empty() {
-            plan.per_relay.retain(|url, _| !self.dead_relays.contains(url));
+            plan.per_relay
+                .retain(|url, _| !self.dead_relays.contains(url));
         }
 
         // Greedy max-coverage selection — applesauce-style. The naive plan
@@ -71,7 +73,11 @@ impl SubscriptionLifecycle {
         // recomputed (see `planner/mod.rs` §"Plan-id determinism vs.
         // post-compile mutators"; M4 precedent in
         // `docs/perf/codex-reviews/076173d.md`).
-        apply_selection(&mut plan, self.select_max_connections, self.select_max_per_user);
+        apply_selection(
+            &mut plan,
+            self.select_max_connections,
+            self.select_max_per_user,
+        );
 
         // D2 negentropy-first: let the coverage-gate hook (M4) rewrite the
         // plan before the wire-emitter sees it — skipping authoritative
@@ -131,13 +137,9 @@ impl SubscriptionLifecycle {
             if !to_probe.is_empty() {
                 let batch: Vec<String> = to_probe.iter().cloned().collect();
                 for chunk in batch.chunks(MAILBOX_PROBE_BATCH) {
-                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                    for pk in chunk {
-                        std::hash::Hash::hash(pk, &mut hasher);
-                    }
                     let sub_id = format!(
                         "mailbox-probe-{:08x}",
-                        std::hash::Hasher::finish(&hasher) & 0xFFFF_FFFF
+                        stable_hash64(("mailbox-probe", chunk)) & 0xFFFF_FFFF
                     );
                     let filter_json = serde_json::json!({
                         "kinds": [10002],

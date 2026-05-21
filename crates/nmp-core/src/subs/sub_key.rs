@@ -23,6 +23,8 @@
 
 use std::hash::{Hash, Hasher};
 
+use crate::stable_hash::{stable_hash64, StableHasher};
+
 use crate::planner::Pubkey;
 
 // ─── SubKey ──────────────────────────────────────────────────────────────────
@@ -40,15 +42,13 @@ pub struct SubKey(pub u64);
 impl SubKey {
     /// Hash any single `Hash`-able value into a `SubKey`.
     pub fn new(value: impl Hash) -> Self {
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        value.hash(&mut h);
-        SubKey(h.finish())
+        SubKey(stable_hash64(value))
     }
 
     /// Start an incremental builder seeded with `seed`. Fold further parts in
     /// with [`SubKeyBuilder::with`], then [`SubKeyBuilder::finish`].
     pub fn builder(seed: impl Hash) -> SubKeyBuilder {
-        let mut h = std::collections::hash_map::DefaultHasher::new();
+        let mut h = StableHasher::new();
         seed.hash(&mut h);
         SubKeyBuilder { hasher: h }
     }
@@ -56,7 +56,7 @@ impl SubKey {
 
 /// Incremental [`SubKey`] builder (the `egui::Id` builder shape, §3.1).
 pub struct SubKeyBuilder {
-    hasher: std::collections::hash_map::DefaultHasher,
+    hasher: StableHasher,
 }
 
 impl SubKeyBuilder {
@@ -88,9 +88,7 @@ pub struct SubOwnerKey(pub u64);
 impl SubOwnerKey {
     /// Hash any single `Hash`-able value into a `SubOwnerKey`.
     pub fn new(value: impl Hash) -> Self {
-        let mut h = std::collections::hash_map::DefaultHasher::new();
-        value.hash(&mut h);
-        SubOwnerKey(h.finish())
+        SubOwnerKey(stable_hash64(value))
     }
 }
 
@@ -167,6 +165,7 @@ mod tests {
     fn sub_key_is_deterministic_and_stable() {
         assert_eq!(SubKey::new("thread:abc"), SubKey::new("thread:abc"));
         assert_ne!(SubKey::new("thread:abc"), SubKey::new("thread:xyz"));
+        assert_eq!(SubKey::new("thread:abc"), SubKey(0x3ac9_0cf9_3fcc_3690));
     }
 
     #[test]

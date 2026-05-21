@@ -1,7 +1,10 @@
 //! Kind:3 (contact list) ingest.
 
 use super::super::*;
-use crate::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
+use crate::planner::{
+    InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
+};
+use crate::stable_hash::stable_hash64;
 use crate::subs::{AccountId, CompileTrigger};
 use std::collections::BTreeSet as BTreeSetInner;
 
@@ -10,11 +13,7 @@ use std::collections::BTreeSet as BTreeSetInner;
 /// Hashes `("t140-follow-feed", pubkey)` so the same pubkey always produces the
 /// same id across restarts, enabling stable `withdraw` / `push` round-trips.
 fn follow_feed_interest_id(pubkey: &str) -> InterestId {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    "t140-follow-feed".hash(&mut h);
-    pubkey.hash(&mut h);
-    InterestId(h.finish())
+    InterestId(stable_hash64(("t140-follow-feed", pubkey)))
 }
 
 /// Per-author cap on the follow-feed REQ. Parity with the retired M1
@@ -47,6 +46,25 @@ fn follow_feed_interest(pubkey: &str) -> LogicalInterest {
         },
         hints: Vec::new(),
         lifecycle: InterestLifecycle::Tailing,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn follow_feed_interest_id_is_restart_stable() {
+        assert_eq!(
+            follow_feed_interest_id(
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            ),
+            InterestId(0x7d88_17f3_d513_31d9)
+        );
+        assert_ne!(
+            follow_feed_interest_id("alice"),
+            follow_feed_interest_id("bob")
+        );
     }
 }
 
