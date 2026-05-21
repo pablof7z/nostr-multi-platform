@@ -189,16 +189,52 @@ final class KernelHandle {
         }
     }
 
-    func createAccount(profile: [String: String], relays: [(String, String)], mls: Bool = true) {
-        let profileJson = try! JSONSerialization.data(withJSONObject: profile, options: [])
-        let profileStr = String(data: profileJson, encoding: .utf8)!
-        let relaysJson = try! JSONSerialization.data(withJSONObject: relays.map { [$0.0, $0.1] }, options: [])
-        let relaysStr = String(data: relaysJson, encoding: .utf8)!
+    /// Dispatch a `nmp_app_create_new_account` call.
+    ///
+    /// The profile + relays are encoded through the `CreateAccountFFIPayload`
+    /// `Codable` struct so the exact wire shape (`{"name":"…"}` + `[[url,role],…]`)
+    /// is preserved while the encode path stays typed and defensible.
+    ///
+    /// Returns `nil` on success. Returns a human-readable error string on
+    /// JSON-encode failure (typed-but-impossible for the `[String:String]` /
+    /// `[(String,String)]` shapes we accept here, but we defend the boundary
+    /// rather than trap with `try!`). Callers (`KernelModel.createAccount`)
+    /// surface the error through the dispatch-error toast slot and abort the
+    /// dispatch instead of crashing.
+    @discardableResult
+    func createAccount(
+        profile: [String: String],
+        relays: [(String, String)],
+        mls: Bool = true
+    ) -> String? {
+        let payload = CreateAccountFFIPayload(profile: profile, relays: relays)
+        let encoder = JSONEncoder()
+        let profileStr: String
+        let relaysStr: String
+        do {
+            let profileData = try encoder.encode(payload.profile)
+            guard let str = String(data: profileData, encoding: .utf8) else {
+                return "createAccount: failed to encode profile JSON as UTF-8"
+            }
+            profileStr = str
+        } catch {
+            return "createAccount: failed to encode profile (\(error.localizedDescription))"
+        }
+        do {
+            let relaysData = try encoder.encode(payload.relays)
+            guard let str = String(data: relaysData, encoding: .utf8) else {
+                return "createAccount: failed to encode relays JSON as UTF-8"
+            }
+            relaysStr = str
+        } catch {
+            return "createAccount: failed to encode relays (\(error.localizedDescription))"
+        }
         profileStr.withCString { profilePtr in
             relaysStr.withCString { relaysPtr in
                 nmp_app_create_new_account(raw, profilePtr, relaysPtr, mls)
             }
         }
+        return nil
     }
 
     /// Publish a kind:0 profile metadata event for the active account through
@@ -544,6 +580,27 @@ enum DispatchResult: Equatable {
             return .failure(message)
         }
         return .failure("dispatch envelope missing both correlation_id and error: \(envelope.prefix(120))")
+    }
+}
+
+// ─── createAccount FFI payload (Codable, PR-L) ────────────────────────────
+
+/// JSON payload for `nmp_app_create_new_account` — typed wrapper for the
+/// profile metadata + onboarding relay seed list. The wire shape mirrors
+/// what the Rust FFI expects exactly: a flat profile object
+/// (`{"name":"…","about":"…"}`) and an array of two-element relay tuples
+/// (`[["wss://…", "both"], …]`).
+///
+/// PR-L: replaces the `JSONSerialization.data(withJSONObject:)` + `try!`
+/// path in `KernelBridge.createAccount` so a typed-but-impossible encode
+/// failure surfaces as a toast instead of trapping the process.
+struct CreateAccountFFIPayload: Encodable {
+    let profile: [String: String]
+    let relays: [[String]]
+
+    init(profile: [String: String], relays: [(String, String)]) {
+        self.profile = profile
+        self.relays = relays.map { [$0.0, $0.1] }
     }
 }
 

@@ -4,144 +4,109 @@ import os.log
 
 private let kmLog = Logger(subsystem: "io.f7z.chirp", category: "KernelModel")
 
-/// `@Observable` mirror of the kernel snapshot. The Rust actor pushes JSON
-/// updates via the callback; this class decodes them and republishes for
-/// SwiftUI consumption.
+/// PR-L (no_print_in_bridge SwiftLint rule): structured replacement for the
+/// prior `print("NMP_DIAG …")` / `print("NMP_PERF …")` stdout lines. The
+/// dedicated `org.nmp.chirp.diag` subsystem keeps the perf trace filterable
+/// without polluting the primary `io.f7z.chirp` stream.
+private let diagLog = Logger(subsystem: "org.nmp.chirp.diag", category: "KernelModel")
+
+/// `ObservableObject` mirror of the kernel snapshot. The Rust actor pushes
+/// JSON updates via the callback; this class decodes them and republishes
+/// for SwiftUI consumption.
+///
+/// PR-L (KernelModel collapse): every kernel-driven projection lives behind
+/// the single `@Published var snapshot: KernelUpdate?` slot; the computed
+/// accessors below restore the per-field view-facing API (`model.profile`,
+/// `model.items`, …) verbatim. The four genuinely-local mutable slots —
+/// `lastErrorToast` (clearable by the toast tap), `appMetrics` (timing
+/// accumulator), `pendingActions` / `lastDispatchError` (PR-A) — stay
+/// individual `@Published` properties.
 @MainActor
 final class KernelModel: ObservableObject {
-    @Published private(set) var isRunning = false
-    @Published private(set) var rev: UInt64 = 0
-    @Published private(set) var profile: ProfileCard?
-    @Published private(set) var authorView: AuthorProfileSnapshot?
-    /// Per-author mention payload map sourced from
-    /// `projections["mention_profiles"]`. Scoped to the open author-view
-    /// items so ProfileView can pass it straight into `NoteRenderContext`
-    /// without rebuilding a `[String: MentionProfile]` dictionary at body
-    /// time. Empty `[:]` when no author view is open; current-schema kernels
-    /// always emit the projection (older builds yield `nil` → the property
-    /// degrades to empty, matching the legacy fallback).
-    @Published private(set) var mentionProfiles: [String: MentionProfile] = [:]
-    @Published private(set) var items: [TimelineItem] = []
-    /// T146 — modular timeline blocks produced by `nmp-app-chirp`'s
-    /// `Nip10ModularTimelineView` projection. Refreshed on every kernel
-    /// snapshot via `kernel.chirpSnapshot()`. Coexists with `items` for the
-    /// PR: `HomeFeedView` switches to blocks; `ProfileView` /
-    /// `ThreadScreen` still consume the original flat list (M2 follow-up
-    /// migrates them).
+
+    // ── Snapshot slot — single source of truth for kernel-driven state ──
+
+    /// Latest decoded snapshot. `nil` before the first tick lands.
+    @Published private(set) var snapshot: KernelUpdate?
+
+    // ── Local mutable state ──────────────────────────────────────────────
+
+    /// Modular timeline blocks — sourced from `kernel.chirpSnapshot()` rather
+    /// than the snapshot JSON, so this stays a standalone `@Published` slot.
     @Published private(set) var modularTimeline: ChirpTimelineSnapshot = .empty
-    @Published private(set) var metrics: KernelMetrics?
-    @Published private(set) var relayStatuses: [RelayStatus] = []
     @Published private(set) var snapshotCount: UInt64 = 0
     @Published private(set) var lastSnapshotAt: Date?
-    // T66a projections.
-    @Published private(set) var accounts: [AccountSummary] = []
-    @Published private(set) var activeAccount: String?
-    @Published private(set) var publishQueue: [PublishQueueEntry] = []
-    @Published private(set) var publishOutbox: [PublishOutboxItem] = []
-    /// Pre-formatted outbox header (title + subtitle + per-status counters)
-    /// from `projections["outbox_summary"]`. Doctrine §6 anti-pattern #1 —
-    /// the shell binds these strings directly instead of `.filter`-counting
-    /// `publishOutbox` to derive them. Empty-state fallback for legacy
-    /// kernels (D1).
-    @Published private(set) var outboxSummary: OutboxSummary = .empty
-    @Published private(set) var lastErrorToast: String?
-    @Published private(set) var relayEditRows: [RelayEditRow] = []
-    /// Pre-formatted Settings-hub subtitles — `projections["settings_hub"]`.
-    /// Empty until the first kernel tick lands; thereafter mirrors whatever
-    /// the kernel emitted for the current relay/account state.
-    @Published private(set) var settingsHub: SettingsHubSummary = .empty
-    @Published private(set) var threadView: ThreadView?
-    // NIP-47 wallet state
-    @Published private(set) var walletStatus: WalletStatusData?
-    // Perf diagnostics (ported from NmpStress goals).
-    @Published private(set) var logicalInterests: [LogicalInterestStatus] = []
-    @Published private(set) var wireSubscriptions: [WireSubscriptionStatus] = []
-    /// Pre-rolled diagnostics projection (aim.md §4.5 / §6 anti-pattern #1
-    /// cleanup). The three diagnostics screens read this directly — no
-    /// `.filter` / `.sorted` / `Date(timeIntervalSince1970:)` in Swift.
-    @Published private(set) var relayDiagnostics: RelayDiagnosticsSnapshot = .empty
-    @Published private(set) var logs: [String] = []
     @Published private(set) var appMetrics = AppRuntimeMetrics()
+    /// Snapshot-derived AND user-clearable, so we cannot fold this into the
+    /// `snapshot` accessor — the clear gesture has nowhere else to land.
+    @Published private(set) var lastErrorToast: String?
+    /// PR-A: correlation ids of dispatched actions whose terminal verdict
+    /// has not yet arrived in `projections["action_results"]`. Add on accept,
+    /// remove on terminal tick.
+    @Published private(set) var pendingActions: Set<String> = []
+    /// PR-A / PR-L: synchronous dispatch-error toast slot, distinct from the
+    /// snapshot-driven `lastErrorToast`.
+    @Published private(set) var lastDispatchError: String?
     @Published var visibleLimit: UInt32 = 80
     @Published var emitHz: UInt32 = 4
-    // NIP-46 bunker handshake progress (Stage 3 backend emits this).
-    // Live data once Stage 3 lands; see snapshot field `bunker_handshake`.
-    @Published private(set) var bunkerHandshake: BunkerHandshake?
 
-    /// NIP-46 typed onboarding read model — `projections["nip46_onboarding"]`.
-    /// Prefer this over `bunkerHandshake` from any onboarding/UI consumer:
-    /// it carries the typed `stageKind`, pre-computed `isInFlight` / `isFailed`
-    /// / `isTerminalSuccess` / `canCancel` flags, AND the Rust-owned
-    /// signer-app probe table (`signerApps`). Views never string-compare
-    /// `bunker_handshake.stage` themselves.
-    @Published private(set) var nip46Onboarding: Nip46Onboarding?
+    // ── Computed projections — read through `snapshot` ────────────────────
 
-    /// PR-A: correlation ids of dispatched actions whose terminal verdict has
-    /// not yet arrived in `projections["action_results"]`. Add on accept,
-    /// remove when the snapshot's `actionResults` tick carries the same id.
-    /// Views key per-button spinners on `isActionPending(_:)`. Failed
-    /// dispatches (the `{"error":...}` envelope) never enter the set — they
-    /// are surfaced through `lastDispatchError` instead.
-    @Published private(set) var pendingActions: Set<String> = []
+    var isRunning: Bool { snapshot?.running ?? false }
+    var rev: UInt64 { snapshot?.rev ?? 0 }
+    var profile: ProfileCard? { snapshot?.profile }
+    var authorView: AuthorProfileSnapshot? { snapshot?.authorView }
+    var items: [TimelineItem] { snapshot?.items ?? [] }
+    var metrics: KernelMetrics? { snapshot?.metrics }
+    var relayStatuses: [RelayStatus] { snapshot?.relayStatuses ?? [] }
+    var accounts: [AccountSummary] { snapshot?.accounts ?? [] }
+    var activeAccount: String? { snapshot?.activeAccount }
+    var publishQueue: [PublishQueueEntry] { snapshot?.publishQueue ?? [] }
+    var publishOutbox: [PublishOutboxItem] { snapshot?.publishOutbox ?? [] }
+    var outboxSummary: OutboxSummary { snapshot?.outboxSummary ?? .empty }
+    var relayEditRows: [RelayEditRow] { snapshot?.relayEditRows ?? [] }
+    var settingsHub: SettingsHubSummary { snapshot?.settingsHub ?? .empty }
+    var threadView: ThreadView? { snapshot?.threadView }
+    var walletStatus: WalletStatusData? { snapshot?.walletStatus }
+    var logicalInterests: [LogicalInterestStatus] { snapshot?.logicalInterests ?? [] }
+    var wireSubscriptions: [WireSubscriptionStatus] { snapshot?.wireSubscriptions ?? [] }
+    var relayDiagnostics: RelayDiagnosticsSnapshot { snapshot?.relayDiagnostics ?? .empty }
+    var logs: [String] { snapshot?.logs ?? [] }
+    var bunkerHandshake: BunkerHandshake? { snapshot?.bunkerHandshake }
+    var nip46Onboarding: Nip46Onboarding? { snapshot?.nip46Onboarding }
 
-    /// PR-A: most recent synchronous dispatch error (the `{"error":"..."}`
-    /// envelope from `nmp_app_dispatch_action`). Views consume this as a
-    /// toast; clear via `clearDispatchError()`. Distinct from
-    /// `lastErrorToast` (which mirrors the kernel snapshot's actor-level
-    /// toast and is overwritten every tick) so a dispatch-time rejection is
-    /// not silently wiped by the next snapshot emit.
-    @Published private(set) var lastDispatchError: String?
+    /// Per-author mention payloads — adapted from the wire DTO at read time.
+    /// Falls back to `[:]` when an older kernel elides the projection.
+    var mentionProfiles: [String: MentionProfile] {
+        guard let wire = snapshot?.mentionProfiles else { return [:] }
+        return wire.mapValues(MentionProfile.init(wire:))
+    }
 
     var hasActiveAccount: Bool { activeAccount != nil }
 
-    /// O(N) stable lookup of the currently-active `AccountSummary`. Surfaced
-    /// on the model so views never write `.first(where:)` — keeps the
-    /// diagnostics screens free of `Sequence` algorithms (aim.md §4.5).
-    /// `activeAccount` is the kernel-emitted identity handle (a substrate
-    /// projection field); pairing it with the matching row in `accounts`
-    /// is rendering, not derivation. Migrating this to a dedicated kernel
-    /// projection is a separate cleanup tracked outside this PR.
+    /// O(N) lookup of the active `AccountSummary` (kept on the model so
+    /// views never write `.first(where:)` — aim.md §4.5).
     var activeAccountSummary: AccountSummary? {
         guard let id = activeAccount else { return nil }
         for account in accounts where account.id == id { return account }
         return nil
     }
 
+    // ── Stores & capabilities (non-published) ────────────────────────────
+
     private let kernel = KernelHandle()
+    /// Re-entrance guard for `start()`. The snapshot-driven `isRunning`
+    /// accessor only flips after the first tick lands, so a re-entrant
+    /// `start()` before then would dispatch the FFI twice.
+    private var startedKernel = false
     private var lastLogicalInterestSummary = ""
     private var marmotRegistrationRequested = false
-    /// Last `(activeAccount, read-eligible-relay-set)` pair that was published
-    /// as a kind:10050 NIP-17 DM-relay list. Tracking the pair prevents the
-    /// snapshot-driven auto-dispatch in `apply` from re-publishing on every
-    /// tick (the pair only differs when the user actually edits relays or
-    /// switches account). `nil` until the first publish fires.
-    ///
-    /// The Rust action rejects empty input outright, so an empty
-    /// `readEligibleSet` is never published — the cache is left in its
-    /// previous state when the user clears all read-role relays.
+    /// Last `(activeAccount, read-eligible-relay-set)` pair published as a
+    /// kind:10050 NIP-17 DM-relay list. Prevents re-publish every tick.
     private var lastPublishedDmRelaySet: (account: String, urls: Set<String>)?
 
-    /// Marmot (MLS encrypted groups) projection mirror. Rust owns identity
-    /// restore/persist/register policy; this store only mirrors pushed
-    /// snapshots and dispatches user intents.
     private(set) lazy var marmot = MarmotStore(kernel: kernel)
-
-    /// NIP-29 group-chat projection mirror — the first real consumer of the
-    /// NIP-29 seam. The store registers its read projection
-    /// (`nmp_app_chirp_register_group_chat`) in its initializer; that
-    /// initializer runs on the first snapshot tick because `apply` below
-    /// touches `groupChat` every tick. The group is the single demo room —
-    /// multi-group support needs a handle-returning FFI variant (see
-    /// `GroupChatBridge.swift`).
-    private(set) lazy var groupChat = GroupChatStore(
-        groupId: Self.demoGroupId, kernel: kernel)
-
-    /// NIP-17 private direct-message inbox mirror — the first consumer of the
-    /// NIP-17 receive seam. The store registers its read projection
-    /// (`nmp_app_chirp_register_dm_inbox`) in its initializer; that
-    /// initializer runs on the first snapshot tick because `apply` below
-    /// touches `dmInbox` every tick. The store re-invokes the FFI once the
-    /// active account is known so the kind:1059 gift-wrap interest is pushed.
+    private(set) lazy var groupChat = GroupChatStore(groupId: Self.demoGroupId, kernel: kernel)
     private(set) lazy var dmInbox = DmInboxStore(kernel: kernel)
 
     /// NIP-02 follow list mirror — the active account's kind:3 contact list.
@@ -159,7 +124,6 @@ final class KernelModel: ObservableObject {
         hostRelayUrl: "wss://relay.groups.nip29.com",
         localId: "chirp-demo")
 
-    /// Platform capability implementations injected for the kernel to use.
     let capabilities: ChirpCapabilities
 
     init() {
@@ -180,11 +144,10 @@ final class KernelModel: ObservableObject {
                 MainActor.assumeIsolated { self.apply(result: result) }
             }
         }
-        // Register the keychain capability handler before start() so the kernel
-        // can route capability requests to the iOS Keychain from the first tick.
+        // Register the keychain capability handler before start() so the
+        // kernel can route capability requests from the first tick.
         kernel.registerCapabilityHandler(capabilities)
     }
-
 
     var onboardingRelayOverride: String? {
         if let relay = Self.launchArgument("CHIRP_MAESTRO_RELAY_URL"), !relay.isEmpty {
@@ -209,90 +172,63 @@ final class KernelModel: ObservableObject {
         return UserDefaults.standard.string(forKey: key)
     }
 
+    // ── Lifecycle ────────────────────────────────────────────────────────
+
     func start() {
-        guard !isRunning else { return }
+        guard !startedKernel else { return }
+        startedKernel = true
         capabilities.start()
         kernel.start(visibleLimit: visibleLimit, emitHz: emitHz)
-        isRunning = true
         kernel.restoreChirpIdentity(testNsec: ProcessInfo.processInfo.environment["NMP_TEST_NSEC"])
     }
 
     func stop() {
         kernel.stop()
         capabilities.stop()
-        isRunning = false
+        startedKernel = false
     }
 
     func resetAndRestart() {
         kernel.reset()
-        items = []
-        // T146 — `ActorCommand::Reset` preserves the kernel's observer
-        // slot so existing registrations stay alive, BUT the projection's
-        // internal state (the grouper + per-event card map) lives behind
-        // the same `Arc<ChirpModularTimeline>` as before the reset and
-        // would otherwise retain the prior session's blocks. Drop and
-        // re-register so the new handle's grouper starts empty; the next
-        // batch of events repopulates it.
+        // Dropping `snapshot` clears every kernel-driven projection in one
+        // move via the computed accessors. Local-only slots clear explicitly.
+        snapshot = nil
+        // T146 — Reset preserves the observer slot but the grouper retains
+        // the prior session's blocks; re-register so it starts empty.
         kernel.reregisterChirpProjection()
         modularTimeline = .empty
-        authorView = nil
-        threadView = nil
-        publishOutbox = []
-        outboxSummary = .empty
-        metrics = nil
-        rev = 0
-        relayStatuses = []
-        logicalInterests = []
-        wireSubscriptions = []
-        relayDiagnostics = .empty
-        logs = []
         appMetrics = AppRuntimeMetrics()
         lastLogicalInterestSummary = ""
-        // PR-A: a kernel reset abandons every in-flight action — drop the
-        // pending set so stale spinners never persist across a session reset.
         pendingActions = []
         lastDispatchError = nil
+        lastErrorToast = nil
         capabilities.start()
         kernel.start(visibleLimit: visibleLimit, emitHz: emitHz)
-        isRunning = true
+        startedKernel = true
     }
 
     func applyConfiguration() {
         kernel.configure(visibleLimit: visibleLimit, emitHz: emitHz)
     }
 
-    func openAuthor(pubkey: String) {
-        kernel.openAuthor(pubkey: pubkey)
-    }
+    // ── View/Author/Thread open + close ──────────────────────────────────
 
-    func closeAuthor(pubkey: String) {
-        kernel.closeAuthor(pubkey: pubkey)
-    }
-
-    func openThread(eventID: String) {
-        kernel.openThread(eventID: eventID)
-    }
-
-    func closeThread(eventID: String) {
-        kernel.closeThread(eventID: eventID)
-    }
-
+    func openAuthor(pubkey: String) { kernel.openAuthor(pubkey: pubkey) }
+    func closeAuthor(pubkey: String) { kernel.closeAuthor(pubkey: pubkey) }
+    func openThread(eventID: String) { kernel.openThread(eventID: eventID) }
+    func closeThread(eventID: String) { kernel.closeThread(eventID: eventID) }
     func claimProfile(pubkey: String, consumerID: String) {
         kernel.claimProfile(pubkey: pubkey, consumerID: consumerID)
     }
-
     func releaseProfile(pubkey: String, consumerID: String) {
         kernel.releaseProfile(pubkey: pubkey, consumerID: consumerID)
     }
+    func openFirehose(tag: String) { kernel.openFirehose(tag: tag) }
 
-    func openFirehose(tag: String) {
-        kernel.openFirehose(tag: tag)
-    }
-
-    // ── T66a command surface ──────────────────────────────────────────────
+    // ── T66a command surface (identity / publish / multi-account) ────────
     // Every method is a pass-through to a real kernel dispatch. No Swift-side
-    // business logic, no cached state (D5/D8) — the @Published properties
-    // above are a pure mirror of the kernel snapshot.
+    // business logic, no cached state (D5/D8) — every accessor above is a
+    // pure read of the kernel snapshot.
 
     func signInNsec(_ secret: String) {
         kmLog.info("signInNsec dispatched (len=\(secret.count))")
@@ -300,15 +236,11 @@ final class KernelModel: ObservableObject {
     }
 
     func signInBunker(_ uri: String) { kernel.signInBunker(uri) }
-    /// Cancel an in-flight NIP-46 handshake. Stage 4 (the broker) backs this
-    /// with `nmp_app_cancel_bunker_handshake`, which flips the handshake
-    /// thread's cancel flag and tears down its relay client. We also clear
-    /// the local mirror so the sheet resets immediately; the next snapshot
-    /// will reconcile through the broker's `idle` progress event.
-    func cancelBunkerHandshake() {
-        kernel.cancelBunkerHandshake()
-        bunkerHandshake = nil
-    }
+
+    /// Cancel an in-flight NIP-46 handshake. The handshake projection is part
+    /// of `snapshot`, so reading `bunkerHandshake` reconciles automatically
+    /// when the broker emits `idle` on the next tick.
+    func cancelBunkerHandshake() { kernel.cancelBunkerHandshake() }
 
     func nostrConnectURI() -> String? {
         let relay = relayEditRows.first { row in
@@ -316,15 +248,12 @@ final class KernelModel: ObservableObject {
                 .split(separator: ",")
                 .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
             return roles.contains("both") || roles.contains("write")
-        }?.url
-            ?? "wss://r.f7z.io"
-        // Chirp registers `chirp://` as a custom URL scheme (Info.plist
-        // `CFBundleURLTypes`); the signer app deep-links back to
-        // `chirp://nip46?...` on approval (handled in `ChirpApp.onOpenURL`).
-        // Rust composes the `&callback=` query-parameter suffix from this
-        // scheme — Swift never builds the URL itself.
+        }?.url ?? "wss://r.f7z.io"
+        // Rust composes the `&callback=` suffix from the scheme; Swift never
+        // builds the URL itself.
         return kernel.nostrConnectURI(relay: relay, callbackScheme: "chirp://nip46")
     }
+
     func createAccount(
         profile: [String: String] = ["name": "New User"],
         relays: [(String, String)]? = nil,
@@ -333,8 +262,17 @@ final class KernelModel: ObservableObject {
         kmLog.info("createAccount dispatched")
         let relayFacts = relays ?? onboardingRelayOverride.map { [($0, "")] } ?? []
         marmotRegistrationRequested = mls
-        kernel.createAccount(profile: profile, relays: relayFacts, mls: mls)
+        // PR-L: the bridge defends the JSON encode path instead of trapping
+        // with `try!`. A typed-but-impossible encode failure surfaces as a
+        // toast and the dispatch is aborted — never a crash.
+        if let encodeError = kernel.createAccount(profile: profile, relays: relayFacts, mls: mls) {
+            kmLog.error("createAccount encode failed: \(encodeError, privacy: .public)")
+            lastDispatchError = encodeError
+            lastErrorToast = encodeError
+            marmotRegistrationRequested = false
+        }
     }
+
     @discardableResult
     func publishProfile(name: String, about: String, picture: String) -> DispatchResult {
         var profile: [String: String] = ["name": name]
@@ -342,63 +280,52 @@ final class KernelModel: ObservableObject {
         if !picture.isEmpty { profile["picture"] = picture }
         return track(kernel.publishProfile(profile: profile))
     }
+
     func switchActive(_ identityID: String) {
         marmotRegistrationRequested = true
         kernel.switchActive(identityID: identityID)
     }
+
     func removeAccount(_ identityID: String) {
         kernel.removeAccountAndForgetSecret(identityID: identityID)
     }
+
     @discardableResult
     func publishNote(_ content: String, replyToID: String? = nil) -> DispatchResult {
         track(kernel.publishNote(content: content, replyToID: replyToID))
     }
+
     func retryPublish(handle: String) { kernel.retryPublish(handle: handle) }
     func cancelPublish(handle: String) { kernel.cancelPublish(handle: handle) }
+
     @discardableResult
     func react(targetEventID: String, reaction: String = "❤") -> DispatchResult {
         track(kernel.react(targetEventID: targetEventID, reaction: reaction))
     }
+
     @discardableResult
     func follow(_ pubkey: String) -> DispatchResult {
         track(kernel.follow(pubkey: pubkey))
     }
+
     @discardableResult
     func unfollow(_ pubkey: String) -> DispatchResult {
         track(kernel.unfollow(pubkey: pubkey))
     }
 
     /// Fire a write action authored by Rust through the namespace-keyed
-    /// dispatch seam. `spec.namespace` + `spec.bodyJson` are the verbatim
-    /// pair the kernel built inside its `profile_action_for` projector — the
-    /// shell does not choose either (aim.md §4.4: writes flow through
-    /// registered ActionModules, the shell binds blindly). Used by views
-    /// that render a `ProfileAction` to wire its primary button straight
-    /// into `nmp_app_dispatch_action`, killing per-verb Swift `switch`es.
+    /// dispatch seam. Rust composes both `namespace` and `bodyJson` (aim.md §4.4).
     @discardableResult
     func dispatchProfileAction(_ spec: ProfileDispatchSpec) -> DispatchResult {
         track(kernel.dispatchRawAction(namespace: spec.namespace, bodyJson: spec.bodyJson))
     }
 
-    /// PR-A: returns true while `correlationId` is still in the pending set —
-    /// the dispatch was accepted but no terminal verdict has arrived in
-    /// `projections["action_results"]` yet. Views key spinners on this.
     func isActionPending(_ correlationId: String) -> Bool {
         pendingActions.contains(correlationId)
     }
-
-    /// PR-A: clear the synchronous dispatch error toast after the user has
-    /// seen it. Distinct from `clearErrorToast()` which clears the
-    /// snapshot-driven actor toast.
     func clearDispatchError() { lastDispatchError = nil }
 
-    /// PR-A: route a `DispatchResult` from `KernelHandle` through the
-    /// `pendingActions` / `lastDispatchError` state machine. On accept the
-    /// correlation_id enters the pending set; on failure the message becomes
-    /// the dispatch-error toast and nothing enters the set (no spinner can
-    /// hang). The result is returned verbatim so call sites can also read it
-    /// (e.g. a publish-button view that wants to flash a local "queued"
-    /// indicator on accept).
+    /// PR-A: routes a `DispatchResult` through the pending / dispatch-error slots.
     @discardableResult
     private func track(_ result: DispatchResult) -> DispatchResult {
         switch result {
@@ -410,12 +337,14 @@ final class KernelModel: ObservableObject {
         }
         return result
     }
+
     func addRelay(url: String, role: String) { kernel.addRelay(url: url, role: role) }
     func removeRelay(url: String) { kernel.removeRelay(url: url) }
     func openTimeline() { kernel.openTimeline() }
     func clearErrorToast() { lastErrorToast = nil }
 
-    // ── NIP-47 wallet commands ────────────────────────────────────────────────
+    // ── NIP-47 wallet commands ────────────────────────────────────────────
+
     func walletConnect(uri: String) { kernel.walletConnect(uri: uri) }
     func walletDisconnect() { kernel.walletDisconnect() }
     func walletPayInvoice(bolt11: String, amountMsats: UInt64? = nil) {
@@ -423,22 +352,11 @@ final class KernelModel: ObservableObject {
     }
 
     // ── T118 / G3 — scenePhase pass-through ───────────────────────────────
-    //
-    // `ChirpApp` observes `@Environment(\.scenePhase)` and routes the OS
-    // event here. The kernel decides what each phase MEANS (D7); the model
-    // is a pure pass-through — no state, no policy.
 
-    /// iOS `.active` — app became visible / interactive. On a meaningful
-    /// `Background→Foreground` transition the kernel fans
-    /// `TriggerEvent::Foreground` through its registered observer so the
-    /// NIP-77 reconciler resumes from the persisted watermark.
     func lifecycleForeground() { kernel.lifecycleForeground() }
-
-    /// iOS `.background` — app is no longer visible. Symmetric counterpart;
-    /// today no in-kernel consumer reacts (NIP-77 has no Background trigger
-    /// variant), but the hook is in place for future close-idle-sockets
-    /// policy.
     func lifecycleBackground() { kernel.lifecycleBackground() }
+
+    // ── Snapshot apply ────────────────────────────────────────────────────
 
     private func apply(result: KernelUpdateResult) {
         let update = result.update
@@ -447,63 +365,41 @@ final class KernelModel: ObservableObject {
         let applyStart = ContinuousClock.now
         let callbackToApplyMicros = result.callbackReceivedAt.duration(to: applyStart).microseconds
 
-        if update.activeAccount != activeAccount {
-            kmLog.info("apply: activeAccount changing \(self.activeAccount ?? "nil") → \(update.activeAccount ?? "nil")")
+        // Capture pre-assignment values for delta-driven side-effects below.
+        let priorActiveAccount = activeAccount
+        let priorItems = items
+        if update.activeAccount != priorActiveAccount {
+            kmLog.info(
+                "apply: activeAccount \(priorActiveAccount ?? "nil") → \(update.activeAccount ?? "nil")")
         }
-        rev = update.rev
-        isRunning = update.running
-        // D0: profile now reads from projections via computed accessor.
-        // Guarded so a legacy kernel that elides the projection keeps the
-        // prior card (D1) — the current kernel always emits it.
-        if let p = update.profile { profile = p }
-        authorView = update.authorView
-        // `projections["mention_profiles"]` — Rust-derived per-author
-        // mention map (kernel/update.rs `mention_profiles_from_items`).
-        // Adapt wire DTOs to the existing `MentionProfile` type the
-        // `NoteRenderContext` consumes. Falls back to `[:]` when an older
-        // kernel elides the projection (D1).
-        if let wire = update.mentionProfiles {
-            mentionProfiles = wire.mapValues(MentionProfile.init(wire:))
-        } else {
-            mentionProfiles = [:]
-        }
-        let timelineItemsChanged = update.items != items
-        if timelineItemsChanged {
-            items = update.items
-        }
-        // T146 — refresh the modular timeline snapshot in the same apply
-        // pass. The grouper's state is fed by the kernel event observer
-        // (which fires synchronously inside `EventStore::insert`), so by
-        // the time the actor pushes its snapshot here the projection's
-        // blocks have already accepted every event in `items`. One JSON
-        // round-trip per snapshot is the cost; reads are O(blocks + cards)
-        // and avoid duplicating profile state (Swift looks the author up
-        // in `items` for display name / avatar).
-        if timelineItemsChanged {
+
+        // Single source-of-truth assignment — every projection accessor
+        // reads through this slot. `lastErrorToast` stays distinct because
+        // tap-to-dismiss has nowhere else to land.
+        snapshot = update
+        lastErrorToast = update.lastErrorToast
+
+        // T146 — refresh modular timeline blocks only when the flat items
+        // changed. The grouper has already accepted events by the time the
+        // snapshot lands (kernel event observer is synchronous).
+        if update.items != priorItems {
             let nextTimeline = kernel.chirpSnapshot()
             if nextTimeline != modularTimeline {
                 modularTimeline = nextTimeline
             }
         }
-        if marmotRegistrationRequested, update.activeAccount != activeAccount {
+
+        let activeAccountChanged = update.activeAccount != priorActiveAccount
+        if marmotRegistrationRequested, activeAccountChanged {
             _ = kernel.registerActiveMarmotIfAvailable()
             marmotRegistrationRequested = false
         }
         marmot.apply(snapshot: kernel.marmotSnapshot(), isRegistered: kernel.isMarmotRegistered)
-        // NIP-29 group-chat projection mirror. Push every tick so the store
-        // tracks `projections["nip29.group_chat"]`. Touching `groupChat`
-        // here forces the lazy `GroupChatStore` init on the first snapshot,
-        // which registers the read projection (`nmp_app_chirp_register_group_chat`)
-        // — eager, before the screen opens. A registered observer with no UI
-        // simply accumulates messages; opening `GroupChatView` then shows them.
+        // NIP-29 + NIP-17 stores — pushed every tick so their lazy init fires
+        // on the first snapshot (registering the read projections in the
+        // process). DM inbox forwards the active pubkey so the kind:1059
+        // gift-wrap interest is pushed once a user is signed in.
         groupChat.apply(snapshot: update.groupChat)
-        // NIP-17 DM inbox projection mirror. Push every tick so the store
-        // tracks `projections["nip17.dm_inbox"]`. Touching `dmInbox` here
-        // forces the lazy `DmInboxStore` init on the first snapshot, which
-        // registers the read projection (`nmp_app_chirp_register_dm_inbox`).
-        // The active-account pubkey is forwarded so the store can re-invoke
-        // the FFI to push the kind:1059 gift-wrap interest once a user is
-        // signed in — without that interest the inbox is wired but inert.
         dmInbox.apply(snapshot: update.dmInbox, activePubkey: update.activeAccount)
         // NIP-02 follow list projection mirror. Push every tick so the store
         // tracks `projections["chirp.follow_list"]`. Touching `followList`
@@ -512,61 +408,25 @@ final class KernelModel: ObservableObject {
         // The active-account pubkey is forwarded so the store can re-invoke
         // the FFI to update the projection's active-pubkey slot after sign-in.
         followList.apply(snapshot: update.followList, activePubkey: update.activeAccount)
-        metrics = update.metrics
-        relayStatuses = update.relayStatuses
-        // T66a projections — mirror only; never derive (D8).
-        if let a = update.accounts { accounts = a }
-        let activeAccountChanged = update.activeAccount != activeAccount
-        activeAccount = update.activeAccount
-        if let q = update.publishQueue { publishQueue = q }
-        if let outbox = update.publishOutbox { publishOutbox = outbox }
-        // §6 anti-pattern #1: pre-formatted outbox header strings from Rust.
-        // Fall back to the empty-state literal so a kernel build that predates
-        // the projection still renders a sensible header (D1).
-        outboxSummary = update.outboxSummary ?? .empty
-        lastErrorToast = update.lastErrorToast
-        if let r = update.relayEditRows { relayEditRows = r }
-        if let hub = update.settingsHub { settingsHub = hub }
-        threadView = update.threadView
 
-        // NIP-17 § 2 — publish the user's kind:10050 DM-relay list whenever
-        // the read-eligible relay set changes (or the active account does).
-        // Snapshot-driven: catches account creation, identity restore, and
-        // settings-screen edits with one piece of code. The Rust action
-        // (`nmp.nip17.publish_relay_list`) owns build / sign / publish.
-        if activeAccountChanged {
-            // Drop the cache so the new identity republishes its set even if
-            // the URLs happen to match the previous identity's.
-            lastPublishedDmRelaySet = nil
-        }
+        // NIP-17 § 2 — auto-publish kind:10050 when relay set / account changes.
+        if activeAccountChanged { lastPublishedDmRelaySet = nil }
         maybePublishDmRelayList()
-        walletStatus = update.walletStatus
-        bunkerHandshake = update.bunkerHandshake
-        nip46Onboarding = update.nip46Onboarding
 
-        // PR-A: drain `pendingActions` by every terminal verdict surfaced on
-        // this tick. Direction review #29 prefers the per-tick `actionResults`
-        // array over the sticky scalar — when two actions settle in one tick
-        // both correlation_ids arrive together, so neither host spinner is
-        // stranded. Removing from a `Set` is O(1) per id and idempotent if a
-        // terminal for an id we never tracked happens to arrive.
+        // PR-A: drain `pendingActions` by every terminal verdict on this tick.
         if let results = update.actionResults, !results.isEmpty {
             for terminal in results {
                 pendingActions.remove(terminal.correlationId)
             }
         }
-        // Perf diagnostics.
-        if let li = update.logicalInterests { logicalInterests = li }
-        if let ws = update.wireSubscriptions { wireSubscriptions = ws }
-        if let diag = update.relayDiagnostics { relayDiagnostics = diag }
-        if let lg = update.logs { logs = lg }
 
         let logicalInterestSummary = logicalInterests
             .map { "\($0.key)=\($0.state)[\($0.cacheCoverage)]" }
             .joined(separator: " | ")
         if !logicalInterestSummary.isEmpty, logicalInterestSummary != lastLogicalInterestSummary {
             lastLogicalInterestSummary = logicalInterestSummary
-            print("NMP_DIAG logical_interests rev=\(update.rev) \(logicalInterestSummary)")
+            diagLog.debug(
+                "NMP_DIAG logical_interests rev=\(update.rev, privacy: .public) \(logicalInterestSummary, privacy: .public)")
         }
 
         let applyMicros = applyStart.duration(to: .now).microseconds
@@ -581,8 +441,9 @@ final class KernelModel: ObservableObject {
         let insertedCount = update.inserted?.count ?? 0
         let updatedCount = update.updated?.count ?? 0
         let removedCount = update.removed?.count ?? 0
-        print(
-            "NMP_PERF swift_apply rev=\(update.rev) total_events=\(update.metrics.eventsRx) batch_events=\(update.metrics.eventsSinceLastUpdate) inserted=\(insertedCount) updated=\(updatedCount) removed=\(removedCount) visible=\(update.metrics.visibleItems) payload_bytes=\(result.payloadBytes) rust_event_to_emit_ms=\(update.metrics.lastEventToEmitMs.map(String.init) ?? "none") decode_us=\(result.decodeMicros) callback_to_apply_us=\(callbackToApplyMicros) apply_us=\(applyMicros) callback_to_applied_us=\(callbackToAppliedMicros)"
+        let lastEventToEmit = update.metrics.lastEventToEmitMs.map(String.init) ?? "none"
+        diagLog.debug(
+            "NMP_PERF swift_apply rev=\(update.rev, privacy: .public) total_events=\(update.metrics.eventsRx, privacy: .public) batch_events=\(update.metrics.eventsSinceLastUpdate, privacy: .public) inserted=\(insertedCount, privacy: .public) updated=\(updatedCount, privacy: .public) removed=\(removedCount, privacy: .public) visible=\(update.metrics.visibleItems, privacy: .public) payload_bytes=\(result.payloadBytes, privacy: .public) rust_event_to_emit_ms=\(lastEventToEmit, privacy: .public) decode_us=\(result.decodeMicros, privacy: .public) callback_to_apply_us=\(callbackToApplyMicros, privacy: .public) apply_us=\(applyMicros, privacy: .public) callback_to_applied_us=\(callbackToAppliedMicros, privacy: .public)"
         )
 
         snapshotCount &+= 1
@@ -590,30 +451,11 @@ final class KernelModel: ObservableObject {
     }
 
     // ── NIP-17 kind:10050 DM-relay list publish ──────────────────────────
-    //
-    // The Rust ingest cache (`nmp-core::kernel::ingest::dm_relay_list`) tells
-    // the NIP-17 send path WHERE to deliver a gift-wrap envelope, but without
-    // a symmetric *publish* of our own list every Chirp user is invisible as
-    // a DM recipient. The `nmp.nip17.publish_relay_list` action closes that gap;
-    // this helper is its only iOS caller — fired snapshot-driven from
-    // `apply()` so it covers account creation, identity restore, and
-    // settings-screen relay edits with a single seam (no per-call-site hook).
-    //
-    // Thin-shell concession: per NIP-17 § 2, kind:10050 lists the user's
-    // *read*-eligible relays (their DM inbox). The kernel's
-    // `RelayEditRow.role` field is the only source of role info on the Swift
-    // side, so this helper does a minimal role-token filter mirroring the
-    // Rust `relay_roles::has_role` semantics. A future cleanup could collapse
-    // this kernel-side by exposing a `dm_relay_urls: Vec<String>` projection,
-    // letting Swift drop the role parsing entirely.
 
-    /// If the active account's read-eligible relay set has changed since the
-    /// last publish, dispatch `nmp.nip17.publish_relay_list`. No-ops when:
-    ///   * No active account (nothing to sign with).
-    ///   * `relayEditRows` produced an empty read-eligible set — the Rust
-    ///     action rejects empty input (a kind:10050 with zero `relay` tags
-    ///     would clear the cache on every peer).
-    ///   * The set matches what was last published for this account.
+    /// Snapshot-driven kind:10050 publish: fires on relay-set / account
+    /// change. No-ops when there's no active account or no read-eligible
+    /// relays (the Rust action rejects empty input — kind:10050 with zero
+    /// `relay` tags would clear the cache on every peer).
     private func maybePublishDmRelayList() {
         guard let account = activeAccount, !account.isEmpty else { return }
         let readUrls = Self.readEligibleRelayUrls(rows: relayEditRows)
@@ -632,13 +474,7 @@ final class KernelModel: ObservableObject {
     /// Return the URLs of relays whose `role` includes `read` or `both`.
     /// Mirrors `nmp_core::actor::relay_roles::has_role` — tokens split on
     /// `,`, `+`, or whitespace, lowercased, and `both` implies both `read`
-    /// and `write`. URLs are returned in `rows` order; the kernel already
-    /// canonicalizes them on insert so no further normalization is needed
-    /// before the FFI hand-off.
-    ///
-    /// `nonisolated` so unit tests can exercise the pure filter without
-    /// awaiting the `@MainActor` `KernelModel` isolation (the function
-    /// touches no instance state).
+    /// and `write`.
     nonisolated static func readEligibleRelayUrls(rows: [RelayEditRow]) -> [String] {
         rows.compactMap { row in
             let tokens = row.role
