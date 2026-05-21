@@ -1,6 +1,8 @@
 use nmp_wasm::{
-    ClientHello, DegradedMode, RuntimeStatus, StartConfig, WasmRuntime, WorkerEvent, WorkerRequest,
+    ChirpAction, ChirpActionDispatch, ClientHello, DegradedMode, RuntimeStatus, StartConfig,
+    WasmRuntime, WorkerEvent, WorkerRequest,
 };
+use serde_json::json;
 
 #[test]
 fn hello_round_trips_through_json() {
@@ -53,5 +55,78 @@ fn invalid_protocol_is_rejected_before_start() {
     match event {
         WorkerEvent::Error { code, .. } => assert_eq!(code, "protocol_mismatch"),
         other => panic!("expected protocol error, got {other:?}"),
+    }
+}
+
+#[test]
+fn chirp_action_publish_note_maps_to_kernel_publish_action() {
+    let action = ChirpActionDispatch {
+        action: ChirpAction::PublishNote {
+            content: "hello from web".to_string(),
+            reply_to_id: None,
+        },
+        correlation_id: "pub-1".to_string(),
+    }
+    .into_action_dispatch();
+
+    assert_eq!(action.action_type, "nmp.publish");
+    assert_eq!(
+        action.payload,
+        json!({
+            "PublishNote": {
+                "content": "hello from web",
+                "reply_to_id": null,
+                "target": "Auto",
+            }
+        })
+    );
+}
+
+#[test]
+fn chirp_action_react_defaults_to_like_without_host_policy() {
+    let request: WorkerRequest = serde_json::from_value(json!({
+        "type": "chirp_action",
+        "correlation_id": "react-1",
+        "action": {
+            "action": "react",
+            "target_event_id": "event-id"
+        }
+    }))
+    .unwrap();
+
+    let WorkerRequest::ChirpAction(action) = request else {
+        panic!("expected chirp action request");
+    };
+    let dispatch = action.into_action_dispatch();
+
+    assert_eq!(dispatch.action_type, "chirp.react");
+    assert_eq!(
+        dispatch.payload,
+        json!({
+            "target_event_id": "event-id",
+            "reaction": "+"
+        })
+    );
+}
+
+#[test]
+fn chirp_action_uses_same_generic_worker_event_path() {
+    let mut runtime = WasmRuntime::new();
+
+    let event = runtime
+        .handle(WorkerRequest::ChirpAction(ChirpActionDispatch {
+            action: ChirpAction::Follow {
+                pubkey: "deadbeef".to_string(),
+            },
+            correlation_id: "follow-1".to_string(),
+        }))
+        .unwrap();
+
+    match event {
+        WorkerEvent::CapabilityFailure(failure) => {
+            assert_eq!(failure.capability, "chirp.follow");
+            assert_eq!(failure.correlation_id, "follow-1");
+        }
+        other => panic!("expected degraded dispatch failure, got {other:?}"),
     }
 }

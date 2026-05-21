@@ -35,20 +35,23 @@ impl WasmRuntime {
                 })
             }
             WorkerRequest::Start(config) => self.start(config),
-            WorkerRequest::Dispatch(action) => Ok(WorkerEvent::CapabilityFailure(
-                CapabilityFailure {
+            WorkerRequest::ChirpAction(action) => {
+                self.handle(WorkerRequest::Dispatch(action.into_action_dispatch()))
+            }
+            WorkerRequest::Dispatch(action) => {
+                Ok(WorkerEvent::CapabilityFailure(CapabilityFailure {
                     capability: action.action_type,
                     correlation_id: action.correlation_id,
                     reason: "browser actor driver is not linked yet".to_string(),
-                },
-            )),
-            WorkerRequest::CapabilityResult(result) => Ok(WorkerEvent::CapabilityFailure(
-                CapabilityFailure {
+                }))
+            }
+            WorkerRequest::CapabilityResult(result) => {
+                Ok(WorkerEvent::CapabilityFailure(CapabilityFailure {
                     capability: result.capability,
                     correlation_id: result.correlation_id,
                     reason: "capability completions require a running actor".to_string(),
-                },
-            )),
+                }))
+            }
             WorkerRequest::Stop { correlation_id } => {
                 self.started = false;
                 Ok(WorkerEvent::RuntimeStatus {
@@ -61,7 +64,9 @@ impl WasmRuntime {
 
     fn start(&mut self, config: StartConfig) -> Result<WorkerEvent, WasmRuntimeError> {
         if config.app_id.trim().is_empty() {
-            return Err(WasmRuntimeError::InvalidConfig("app_id is required".to_string()));
+            return Err(WasmRuntimeError::InvalidConfig(
+                "app_id is required".to_string(),
+            ));
         }
         if config.database_name.trim().is_empty() {
             return Err(WasmRuntimeError::InvalidConfig(

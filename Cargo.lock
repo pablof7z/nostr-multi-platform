@@ -3758,6 +3758,7 @@ dependencies = [
  "nmp-nip59",
  "nmp-signer-broker",
  "nmp-threading",
+ "nmp-wasm",
  "nostr",
  "serde",
  "serde_json",
