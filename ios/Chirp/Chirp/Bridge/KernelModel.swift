@@ -30,6 +30,12 @@ final class KernelModel: ObservableObject {
     @Published private(set) var activeAccount: String?
     @Published private(set) var publishQueue: [PublishQueueEntry] = []
     @Published private(set) var publishOutbox: [PublishOutboxItem] = []
+    /// Pre-formatted outbox header (title + subtitle + per-status counters)
+    /// from `projections["outbox_summary"]`. Doctrine §6 anti-pattern #1 —
+    /// the shell binds these strings directly instead of `.filter`-counting
+    /// `publishOutbox` to derive them. Empty-state fallback for legacy
+    /// kernels (D1).
+    @Published private(set) var outboxSummary: OutboxSummary = .empty
     @Published private(set) var lastErrorToast: String?
     @Published private(set) var relayEditRows: [RelayEditRow] = []
     @Published private(set) var threadView: ThreadView?
@@ -187,6 +193,7 @@ final class KernelModel: ObservableObject {
         authorView = nil
         threadView = nil
         publishOutbox = []
+        outboxSummary = .empty
         metrics = nil
         rev = 0
         relayStatuses = []
@@ -433,6 +440,10 @@ final class KernelModel: ObservableObject {
         activeAccount = update.activeAccount
         if let q = update.publishQueue { publishQueue = q }
         if let outbox = update.publishOutbox { publishOutbox = outbox }
+        // §6 anti-pattern #1: pre-formatted outbox header strings from Rust.
+        // Fall back to the empty-state literal so a kernel build that predates
+        // the projection still renders a sensible header (D1).
+        outboxSummary = update.outboxSummary ?? .empty
         lastErrorToast = update.lastErrorToast
         if let r = update.relayEditRows { relayEditRows = r }
         threadView = update.threadView

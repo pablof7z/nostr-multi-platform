@@ -27,19 +27,67 @@ impl Kernel {
                     .map(|(url, state)| publish_outbox_relay(url, state))
                     .collect::<Vec<_>>();
                 let status = publish_outbox_status(&row.per_relay);
+                let status_label = publish_outbox_status_label(&status);
+                // RMP bible commandment #4 — retry policy lives in Rust. The
+                // shell renders `can_retry` directly instead of branching on
+                // `status != "sending"` to decide whether to enable a button.
+                let can_retry = status != "sending";
+                let created_at_display = format_timestamp(row.created_at);
+                let target_summary =
+                    publish_outbox_target_summary(relays.len(), &created_at_display);
                 PublishOutboxItem {
                     handle: row.handle,
                     event_id: row.event_id,
                     kind: row.kind,
                     title: publish_event_title(row.kind),
                     preview: publish_event_preview(row.kind, &row.content),
-                    created_at_display: format_timestamp(row.created_at),
+                    created_at_display,
                     status,
+                    status_label,
+                    can_retry,
                     target_relays: relays.len(),
+                    target_summary,
                     relays,
                 }
             })
             .collect()
+    }
+
+    /// Pre-formatted summary of the publish-outbox state for shells that
+    /// render an "N pending" header. The kernel owns the counters AND the
+    /// English strings; shells render `title` / `subtitle` verbatim (no
+    /// `.filter`/`.count` chains, no ternary status strings — RMP bible
+    /// §6 anti-pattern #1).
+    pub(super) fn outbox_summary_snapshot(&self) -> OutboxSummarySnapshot {
+        let rows = &self.publish_engine.snapshot().in_flight;
+        let mut sending: u32 = 0;
+        let mut retrying: u32 = 0;
+        let mut queued: u32 = 0;
+        let mut failed: u32 = 0;
+        for row in rows {
+            match publish_outbox_status(&row.per_relay).as_str() {
+                "sending" => sending = sending.saturating_add(1),
+                "retrying" => retrying = retrying.saturating_add(1),
+                "failed" => failed = failed.saturating_add(1),
+                // `pending` (waiting for a relay socket) and the catch-all
+                // `queued` are both surfaced under the same UI bucket: the
+                // user can't act on either.
+                _ => queued = queued.saturating_add(1),
+            }
+        }
+        let total = sending
+            .saturating_add(retrying)
+            .saturating_add(queued)
+            .saturating_add(failed);
+        OutboxSummarySnapshot {
+            title: outbox_summary_title(total),
+            subtitle: outbox_summary_subtitle(total, sending, retrying, queued, failed),
+            total,
+            sending,
+            retrying,
+            queued,
+            failed,
+        }
     }
 
     pub(crate) fn retry_publish_now(&mut self, handle: &str) -> Vec<OutboundMessage> {
@@ -105,9 +153,100 @@ fn publish_outbox_relay(relay_url: &str, state: &PerRelayState) -> PublishOutbox
     PublishOutboxRelay {
         relay_url: relay_url.to_string(),
         status: status.to_string(),
+        status_label: publish_outbox_relay_status_label(status),
         attempt,
+        attempt_label: publish_outbox_attempt_label(attempt),
         message,
     }
+}
+
+/// English label for a relay-level status key. Mirrors the closed key set in
+/// `publish_outbox_relay`; the shell renders this verbatim (no Swift-side
+/// `.capitalized` or switch deciding text).
+fn publish_outbox_relay_status_label(status: &str) -> String {
+    match status {
+        "sending" => "Sending",
+        "retrying" => "Retrying",
+        "pending" => "Pending",
+        "ok" => "Ok",
+        "failed" => "Failed",
+        // Defensive fallback — surface the raw key rather than panic at the
+        // FFI boundary if the closed set ever grows without a label update.
+        other => other,
+    }
+    .to_string()
+}
+
+/// English badge for a relay attempt counter. Empty when the relay has not
+/// retried yet so the shell renders unconditionally without an `if attempt >
+/// 0` branch (D1: best-effort rendering — placeholders are server-side).
+fn publish_outbox_attempt_label(attempt: u32) -> String {
+    if attempt == 0 {
+        String::new()
+    } else {
+        format!("try {attempt}")
+    }
+}
+
+/// Row-level status label for `PublishOutboxItem.status_label`. Mirrors the
+/// closed set produced by `publish_outbox_status`; the shell binds this string
+/// directly into the status badge (no Swift-side switch on `status`).
+fn publish_outbox_status_label(status: &str) -> String {
+    match status {
+        "sending" => "Sending",
+        "retrying" => "Retrying",
+        "pending" => "Pending",
+        "failed" => "Failed",
+        "queued" => "Queued",
+        other => other,
+    }
+    .to_string()
+}
+
+/// Pre-formatted "N relays · <created_at>" header line for a single outbox
+/// row. Server-side pluralization keeps the shell free of the
+/// `count == 1 ? "" : "s"` ternary (§6 anti-pattern #1).
+fn publish_outbox_target_summary(target_relays: usize, created_at_display: &str) -> String {
+    let noun = if target_relays == 1 { "relay" } else { "relays" };
+    format!("{target_relays} {noun} · {created_at_display}")
+}
+
+/// Pre-formatted outbox-summary title. Empty outbox → `"Nothing waiting"`;
+/// otherwise an "N pending publish(es)" headline with server-side pluralization.
+fn outbox_summary_title(total: u32) -> String {
+    if total == 0 {
+        return "Nothing waiting".to_string();
+    }
+    let suffix = if total == 1 { "" } else { "es" };
+    format!("{total} pending publish{suffix}")
+}
+
+/// Pre-formatted outbox-summary subtitle. Decomposes per-status counts into a
+/// single English sentence (mirrors the old Swift ternary tree at lines 87–97
+/// of `NotificationsView.swift`).
+fn outbox_summary_subtitle(
+    total: u32,
+    sending: u32,
+    retrying: u32,
+    queued: u32,
+    failed: u32,
+) -> String {
+    if total == 0 {
+        return "Your local outbox is clear.".to_string();
+    }
+    if retrying > 0 {
+        return format!("{retrying} waiting to retry, {sending} currently sending.");
+    }
+    if sending > 0 {
+        return format!("{sending} currently sending.");
+    }
+    if failed > 0 {
+        return format!("{failed} failed.");
+    }
+    // `queued` covers both `pending` (waiting for a relay socket) and any
+    // genuinely-queued rows — same UI bucket per `outbox_summary_snapshot`.
+    let _ = queued;
+    "Waiting for relay connections.".to_string()
 }
 
 fn publish_outbox_status(per_relay: &[(String, PerRelayState)]) -> String {

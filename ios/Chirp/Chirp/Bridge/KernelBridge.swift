@@ -558,6 +558,11 @@ struct KernelUpdate: Decodable {
     /// call sites keep reading `update.publishOutbox` unchanged.
     var publishOutbox: [PublishOutboxItem]? { projections?.publishOutbox }
 
+    /// Outbox header summary — `projections["outbox_summary"]`. Pre-formatted
+    /// title + subtitle + per-status counters (§6 anti-pattern #1). Computed
+    /// so `NotificationsView` reads `update.outboxSummary` directly.
+    var outboxSummary: OutboxSummary? { projections?.outboxSummary }
+
     /// Relay-edit rows projection — `projections["relay_edit_rows"]`. Computed
     /// so call sites keep reading `update.relayEditRows` unchanged.
     var relayEditRows: [RelayEditRow]? { projections?.relayEditRows }
@@ -649,6 +654,10 @@ struct SnapshotProjections: Decodable, Equatable {
     let bunkerHandshake: BunkerHandshake?
     let publishQueue: [PublishQueueEntry]?
     let publishOutbox: [PublishOutboxItem]?
+    /// §6 anti-pattern #1 fix — pre-formatted outbox header (`"N pending
+    /// publishes"` + per-status subtitle) computed in Rust. Optional so an
+    /// older kernel that predates the projection still decodes (D1).
+    let outboxSummary: OutboxSummary?
     let relayEditRows: [RelayEditRow]?
     // D0: identity output. `accounts` decodes from `projections["accounts"]`;
     // `activeAccount` decodes from `projections["active_account"]` (the kernel
@@ -711,6 +720,7 @@ struct SnapshotProjections: Decodable, Equatable {
         case bunkerHandshake
         case publishQueue
         case publishOutbox
+        case outboxSummary
         case relayEditRows
         case accounts
         case activeAccount
@@ -911,7 +921,20 @@ struct PublishOutboxItem: Decodable, Identifiable, Equatable {
     let preview: String
     let createdAtDisplay: String
     let status: String
+    /// Pre-formatted English status label (e.g. `"Sending"`, `"Retrying"`).
+    /// Doctrine §6 anti-pattern #1: the shell renders this verbatim — it
+    /// never `switch`es on `status` to choose a label string. Always non-empty.
+    let statusLabel: String
+    /// Pre-decided "is the Retry button enabled" flag. The kernel owns the
+    /// retry-policy rule ("a row already sending cannot be retried"); the
+    /// shell binds this directly to `.disabled(!canRetry)` (RMP bible
+    /// commandment #4 — no native `if` deciding what the app should do).
+    let canRetry: Bool
     let targetRelays: Int
+    /// Pre-formatted "N relays · <created_at>" header line. Server-side
+    /// pluralization keeps the shell free of the `count == 1 ? "" : "s"`
+    /// ternary (§6 anti-pattern #1).
+    let targetSummary: String
     let relays: [PublishOutboxRelay]
 
     var id: String { handle }
@@ -920,10 +943,47 @@ struct PublishOutboxItem: Decodable, Identifiable, Equatable {
 struct PublishOutboxRelay: Decodable, Identifiable, Equatable {
     let relayUrl: String
     let status: String
+    /// Pre-formatted English status label (e.g. `"Sending"`, `"Retrying"`).
+    /// Always non-empty — the shell renders this verbatim, never
+    /// `.capitalized`s the wire `status` key or switches on it.
+    let statusLabel: String
     let attempt: UInt32
+    /// Pre-formatted "try N" badge text — empty when `attempt == 0` so the
+    /// shell renders unconditionally (D1: best-effort rendering, no
+    /// `if attempt > 0` branch). When non-empty the shell renders it as-is.
+    let attemptLabel: String
     let message: String
 
     var id: String { relayUrl }
+}
+
+/// Pre-formatted outbox-summary header (title + subtitle) plus per-status
+/// counters. Doctrine §6 anti-pattern #1 ("Duplicated formatting logic
+/// across platforms") + RMP bible commandment #4 ("no native business
+/// logic"). The shell binds `title` / `subtitle` directly — it never
+/// `.filter`-counts `publishOutbox` to derive them.
+struct OutboxSummary: Decodable, Equatable {
+    let title: String
+    let subtitle: String
+    let total: UInt32
+    let sending: UInt32
+    let retrying: UInt32
+    let queued: UInt32
+    let failed: UInt32
+
+    /// Empty-state fallback used when the snapshot predates the projection
+    /// (an older kernel build that ships no `outbox_summary` key). Mirrors
+    /// the Rust `outbox_summary_snapshot` empty-outbox shape so the shell
+    /// never has to reconstruct the strings.
+    static let empty = OutboxSummary(
+        title: "Nothing waiting",
+        subtitle: "Your local outbox is clear.",
+        total: 0,
+        sending: 0,
+        retrying: 0,
+        queued: 0,
+        failed: 0
+    )
 }
 
 struct RelayEditRow: Decodable, Identifiable, Equatable {

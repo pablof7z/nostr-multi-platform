@@ -1542,6 +1542,7 @@ fn snapshot_json_carries_new_projections() {
         .expect("snapshot must carry the projections map once the publish cluster is populated");
     assert!(projections.get("publish_queue").is_some());
     assert!(projections.get("publish_outbox").is_some());
+    assert!(projections.get("outbox_summary").is_some());
     assert!(projections.get("relay_edit_rows").is_some());
     // D0: the views cluster (`profile`, `timeline`, `author_view`,
     // `thread_view`, `inserted`, `updated`, `removed`) is likewise no longer a
