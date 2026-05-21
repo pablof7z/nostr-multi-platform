@@ -1,65 +1,18 @@
-//! `ShareEventIntoGroup` (kind:16), `ReactInGroup` (kind:7+h),
-//! `CommentInGroup` (kind:1111+h).
+//! `ReactInGroup` (kind:7+h), `CommentInGroup` (kind:1111+h).
 //!
 //! These are the "host-pinned variant of an otherwise cross-protocol action"
 //! per `kinds.md` §4. They live here because the routing concern (the `h`
 //! tag) is the discriminator; the corresponding non-`h` actions live in
-//! `nmp-nip25` / `nmp-nip22` / future `nmp-nip18`.
+//! `nmp-nip25` / `nmp-nip22`.
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
-use crate::kinds::{KIND_COMMENT, KIND_REACTION, KIND_REPOST};
+use crate::kinds::{KIND_COMMENT, KIND_REACTION};
 
 use super::publish_plan::PublishPlan;
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub struct ShareEventIntoGroupInput {
-    pub group: GroupId,
-    pub event_ref: String,
-    pub original_author_pubkey: Option<String>,
-    pub original_kind: Option<u32>,
-}
-
-/// Build the kind:16 share-into-group `PublishPlan` from a typed input.
-fn share_event_into_group_plan(action: &ShareEventIntoGroupInput) -> PublishPlan {
-    let mut tags = vec![
-        vec!["h".into(), action.group.local_id.clone()],
-        vec!["e".into(), action.event_ref.clone()],
-    ];
-    if let Some(p) = &action.original_author_pubkey {
-        tags.push(vec!["p".into(), p.clone()]);
-    }
-    if let Some(k) = action.original_kind {
-        tags.push(vec!["k".into(), k.to_string()]);
-    }
-    PublishPlan::pinned(&action.group, KIND_REPOST, "", tags)
-}
-
-/// Map a validated `nip29.share_event_into_group` action JSON to the
-/// [`ActorCommand`] that publishes the kind:16 group repost.
-pub fn share_event_into_group_command(action_json: &str) -> Result<ActorCommand, String> {
-    let input: ShareEventIntoGroupInput =
-        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-    share_event_into_group_plan(&input).into_actor_command()
-}
-
-pub struct ShareEventIntoGroupAction;
-impl ActionModule for ShareEventIntoGroupAction {
-    const NAMESPACE: &'static str = "nip29.share_event_into_group";
-    type Action = ShareEventIntoGroupInput;
-    fn start(
-        _ctx: &mut ActionContext,
-        action: Self::Action,
-    ) -> Result<(), ActionRejection> {
-        share_event_into_group_plan(&action)
-            .validate_no_unpinned_h()
-            .map_err(|_| ActionRejection::Invalid("missing host pin for share-into-group".into()))?;
-        Ok(())
-    }
-}
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ReactInGroupInput {
