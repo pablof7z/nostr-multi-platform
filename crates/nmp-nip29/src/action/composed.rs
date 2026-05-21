@@ -34,14 +34,6 @@ fn react_in_group_plan(action: &ReactInGroupInput) -> PublishPlan {
     PublishPlan::pinned(&action.group, KIND_REACTION, action.content.clone(), tags)
 }
 
-/// Map a validated `nmp.nip29.react_in_group` action JSON to the [`ActorCommand`]
-/// that publishes the kind:7 in-group reaction.
-pub fn react_in_group_command(action_json: &str) -> Result<ActorCommand, String> {
-    let input: ReactInGroupInput =
-        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-    react_in_group_plan(&input).into_actor_command()
-}
-
 pub struct ReactInGroupAction;
 impl ActionModule for ReactInGroupAction {
     /// Wire-schema note: was `nip29.react_in_group` before the namespace-prefix
@@ -56,6 +48,18 @@ impl ActionModule for ReactInGroupAction {
         react_in_group_plan(&action)
             .validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for in-group reaction".into()))?;
+        Ok(())
+    }
+
+    /// ADR-0027 — build the kind:7 in-group reaction publish plan and
+    /// enqueue the host-pinned [`ActorCommand::PublishUnsignedEventToRelays`].
+    fn execute(
+        action: Self::Action,
+        _correlation_id: &str,
+        send: &dyn Fn(ActorCommand),
+    ) -> Result<(), String> {
+        let cmd = react_in_group_plan(&action).into_actor_command()?;
+        send(cmd);
         Ok(())
     }
 }
@@ -80,14 +84,6 @@ fn comment_in_group_plan(action: &CommentInGroupInput) -> PublishPlan {
     PublishPlan::pinned(&action.group, KIND_COMMENT, action.content.clone(), tags)
 }
 
-/// Map a validated `nmp.nip29.comment_in_group` action JSON to the [`ActorCommand`]
-/// that publishes the kind:1111 in-group comment.
-pub fn comment_in_group_command(action_json: &str) -> Result<ActorCommand, String> {
-    let input: CommentInGroupInput =
-        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-    comment_in_group_plan(&input).into_actor_command()
-}
-
 pub struct CommentInGroupAction;
 impl ActionModule for CommentInGroupAction {
     /// Wire-schema note: was `nip29.comment_in_group` before the namespace-prefix
@@ -102,6 +98,18 @@ impl ActionModule for CommentInGroupAction {
         comment_in_group_plan(&action)
             .validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for in-group comment".into()))?;
+        Ok(())
+    }
+
+    /// ADR-0027 — build the kind:1111 in-group comment publish plan and
+    /// enqueue the host-pinned [`ActorCommand::PublishUnsignedEventToRelays`].
+    fn execute(
+        action: Self::Action,
+        _correlation_id: &str,
+        send: &dyn Fn(ActorCommand),
+    ) -> Result<(), String> {
+        let cmd = comment_in_group_plan(&action).into_actor_command()?;
+        send(cmd);
         Ok(())
     }
 }

@@ -38,14 +38,6 @@ fn discover_groups_command_inner(action: &DiscoverGroupsInput) -> Result<ActorCo
     Ok(ActorCommand::PushInterest(interest))
 }
 
-/// Map a validated `nmp.nip29.discover` action JSON to the [`ActorCommand`]
-/// that pushes the relay-pinned metadata interest.
-pub fn discover_groups_command(action_json: &str) -> Result<ActorCommand, String> {
-    let input: DiscoverGroupsInput =
-        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-    discover_groups_command_inner(&input)
-}
-
 /// Reject empty or non-websocket-scheme URLs. The kernel's relay planner
 /// will tolerate weird shapes (it just opens whatever it's handed), so the
 /// gate lives here.
@@ -69,6 +61,17 @@ impl ActionModule for DiscoverGroupsAction {
     ) -> Result<(), ActionRejection> {
         validate_relay_url(&action.relay_url)
             .map_err(ActionRejection::Invalid)?;
+        Ok(())
+    }
+
+    /// ADR-0027 — push the relay-pinned metadata interest.
+    fn execute(
+        action: Self::Action,
+        _correlation_id: &str,
+        send: &dyn Fn(ActorCommand),
+    ) -> Result<(), String> {
+        let cmd = discover_groups_command_inner(&action)?;
+        send(cmd);
         Ok(())
     }
 }

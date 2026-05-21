@@ -1,18 +1,18 @@
 //! `nmp.nip17.send` — the NIP-17 direct-message send [`ActionModule`].
 //!
 //! This is the typed action seam a host wires into the kernel's action
-//! registry (`register_action_module` + `register_action_executor`) so a DM
-//! send reaches the actor through the generic `dispatch_action` path — exactly
+//! registry via [`nmp_core::NmpApp::register_action_module`] so a DM send
+//! reaches the actor through the generic `dispatch_action` path — exactly
 //! like the NIP-29 `post_chat_message` action.
 //!
-//! # Two halves
+//! # ADR-0027 — one trait, two halves
 //!
-//! * [`SendDmAction`] — the `ActionModule` *validator*. `start` is a pure
-//!   shape check: non-empty content, non-empty recipient pubkey.
-//! * [`send_dm_command`] — the *executor* function. It maps a validated
-//!   [`SendDmInput`] to an [`ActorCommand::SendGiftWrappedDm`] carrying the
-//!   kind:14 rumor. The actor's `send_gift_wrapped_dm` handler (local-keys
-//!   MVP) does the seal + gift-wrap + publish.
+//! [`SendDmAction`] is the typed [`ActionModule`]. Its `start` is a pure
+//! shape validator (non-empty content + recipient pubkey); its `execute`
+//! builds the kind:14 rumor and enqueues [`ActorCommand::SendGiftWrappedDm`].
+//! Before ADR-0027 the two halves lived in separate symbols
+//! (`SendDmAction` + the free function `send_dm_command`); now they live
+//! on the same trait impl.
 //!
 //! # Why the rumor's `pubkey` is left empty
 //!
@@ -69,32 +69,30 @@ impl ActionModule for SendDmAction {
         }
         Ok(())
     }
-}
 
-/// Executor: map a validated `nmp.nip17.send` action JSON to the
-/// [`ActorCommand::SendGiftWrappedDm`] that drives the actor's DM handler.
-///
-/// The carried rumor is built with an empty `sender_pubkey` placeholder — the
-/// actor re-derives the real pubkey from the signing key (see the module
-/// docs). `created_at` is the D7 `0` sentinel; the actor re-stamps it from the
-/// kernel clock before wrapping.
-pub fn send_dm_command(action_json: &str) -> Result<ActorCommand, String> {
-    let input: SendDmInput =
-        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-
-    let dm_input = DmInput {
-        recipient_pubkey: input.recipient_pubkey.clone(),
-        content: input.content,
-        reply_to: input.reply_to,
-    };
-    // Empty sender pubkey — the actor overrides it at sign time (the rumor's
-    // `pubkey` field is never used by `dm.rs::build_nostr_rumor`).
-    let rumor = build_dm_rumor(&dm_input, "");
-
-    Ok(ActorCommand::SendGiftWrappedDm {
-        rumor,
-        recipient_pubkey: input.recipient_pubkey,
-    })
+    /// Map a validated [`SendDmInput`] to the
+    /// [`ActorCommand::SendGiftWrappedDm`] that drives the actor's DM
+    /// handler. The carried rumor is built with an empty `sender_pubkey`
+    /// placeholder — the actor re-derives the real pubkey from the signing
+    /// key (see the module docs). `created_at` is the D7 `0` sentinel; the
+    /// actor re-stamps it from the kernel clock before wrapping.
+    fn execute(
+        action: Self::Action,
+        _correlation_id: &str,
+        send: &dyn Fn(ActorCommand),
+    ) -> Result<(), String> {
+        let dm_input = DmInput {
+            recipient_pubkey: action.recipient_pubkey.clone(),
+            content: action.content,
+            reply_to: action.reply_to,
+        };
+        let rumor = build_dm_rumor(&dm_input, "");
+        send(ActorCommand::SendGiftWrappedDm {
+            rumor,
+            recipient_pubkey: action.recipient_pubkey,
+        });
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -149,13 +147,26 @@ mod tests {
         ));
     }
 
+    /// Capture every `ActorCommand` an `M::execute` call sends through.
+    fn capture_execute(input: SendDmInput) -> Vec<ActorCommand> {
+        use std::cell::RefCell;
+        let cell: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+        SendDmAction::execute(input, "test-corr-id", &|cmd| {
+            cell.borrow_mut().push(cmd);
+        })
+        .expect("well-formed");
+        cell.into_inner()
+    }
+
     #[test]
-    fn send_dm_command_builds_a_send_gift_wrapped_dm() {
-        let body = format!(
-            r#"{{"recipient_pubkey":"{RECIPIENT}","content":"hello there"}}"#
-        );
-        let cmd = send_dm_command(&body).expect("well-formed body");
-        match cmd {
+    fn execute_builds_a_send_gift_wrapped_dm() {
+        let cmds = capture_execute(SendDmInput {
+            recipient_pubkey: RECIPIENT.to_string(),
+            content: "hello there".to_string(),
+            reply_to: None,
+        });
+        assert_eq!(cmds.len(), 1, "execute must enqueue exactly one ActorCommand");
+        match cmds.into_iter().next().unwrap() {
             ActorCommand::SendGiftWrappedDm {
                 rumor,
                 recipient_pubkey,
@@ -165,10 +176,7 @@ mod tests {
                 assert_eq!(recipient_pubkey, RECIPIENT);
                 // D7: the rumor carries the `0` sentinel — the actor re-stamps.
                 assert_eq!(rumor.created_at, 0);
-                // The rumor's pubkey is the empty placeholder — the actor
-                // re-derives it from the signing key.
                 assert!(rumor.pubkey.is_empty());
-                // The recipient `p` tag is on the rumor.
                 assert!(rumor
                     .tags
                     .iter()
@@ -179,14 +187,15 @@ mod tests {
     }
 
     #[test]
-    fn send_dm_command_carries_the_reply_marker() {
+    fn execute_carries_the_reply_marker() {
         let parent =
             "cc11223344556677889900aabbccddeeff00112233445566778899aabbccdd00";
-        let body = format!(
-            r#"{{"recipient_pubkey":"{RECIPIENT}","content":"re","reply_to":"{parent}"}}"#
-        );
-        let cmd = send_dm_command(&body).expect("well-formed reply body");
-        match cmd {
+        let cmds = capture_execute(SendDmInput {
+            recipient_pubkey: RECIPIENT.to_string(),
+            content: "re".to_string(),
+            reply_to: Some(parent.to_string()),
+        });
+        match cmds.into_iter().next().unwrap() {
             ActorCommand::SendGiftWrappedDm { rumor, .. } => {
                 assert!(
                     rumor.tags.iter().any(|t| t
@@ -202,14 +211,5 @@ mod tests {
             }
             other => panic!("expected SendGiftWrappedDm, got {other:?}"),
         }
-    }
-
-    #[test]
-    fn send_dm_command_rejects_malformed_json() {
-        assert!(send_dm_command("not json").is_err());
-        assert!(
-            send_dm_command(r#"{"content":"no recipient"}"#).is_err(),
-            "missing recipient_pubkey must fail deserialization"
-        );
     }
 }

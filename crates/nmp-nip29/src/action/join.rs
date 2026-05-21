@@ -49,14 +49,6 @@ fn join_group_plan(action: &JoinGroupInput) -> PublishPlan {
     PublishPlan::pinned(&action.group, KIND_JOIN_REQUEST, content, tags)
 }
 
-/// Map a validated `nmp.nip29.join` action JSON to the [`ActorCommand`]
-/// that publishes the kind:9021 join request.
-pub fn join_group_command(action_json: &str) -> Result<ActorCommand, String> {
-    let input: JoinGroupInput =
-        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-    join_group_plan(&input).into_actor_command()
-}
-
 pub struct JoinGroupAction;
 impl ActionModule for JoinGroupAction {
     const NAMESPACE: &'static str = "nmp.nip29.join";
@@ -81,6 +73,18 @@ impl ActionModule for JoinGroupAction {
         join_group_plan(&action)
             .validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for join request".into()))?;
+        Ok(())
+    }
+
+    /// ADR-0027 — build the kind:9021 join-request publish plan and enqueue
+    /// the host-pinned [`ActorCommand::PublishUnsignedEventToRelays`].
+    fn execute(
+        action: Self::Action,
+        _correlation_id: &str,
+        send: &dyn Fn(ActorCommand),
+    ) -> Result<(), String> {
+        let cmd = join_group_plan(&action).into_actor_command()?;
+        send(cmd);
         Ok(())
     }
 }
