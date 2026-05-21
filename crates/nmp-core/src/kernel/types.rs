@@ -522,13 +522,19 @@ pub(super) struct KernelSnapshot {
     pub(super) last_tick_ms: u64,
     pub(super) update_kind: &'static str,
     pub(super) running: bool,
-    pub(super) profile: ProfileCard,
-    pub(super) items: Vec<TimelineItem>,
-    pub(super) author_view: Option<AuthorViewPayload>,
-    pub(super) thread_view: Option<ThreadViewPayload>,
-    pub(super) inserted: Vec<TimelineItem>,
-    pub(super) updated: Vec<TimelineItem>,
-    pub(super) removed: Vec<String>,
+    // D0: the views cluster (`profile`, the visible timeline, `author_view`,
+    // `thread_view`, and the `inserted` / `updated` / `removed` deltas) is
+    // app-shaped social view state — NOT a protocol-neutral kernel primitive.
+    // There are NO typed fields for them. All seven are surfaced through the
+    // host-extensible `projections` map below under the built-in keys
+    // `"profile"`, `"timeline"`, `"author_view"`, `"thread_view"`,
+    // `"inserted"`, `"updated"`, and `"removed"`: a shell reads
+    // `projections.timeline` etc. instead of a baked-in kernel field. The
+    // generic typed-field name `items` is deliberately renamed to the more
+    // descriptive `"timeline"` projection key. Like the publish cluster and
+    // the identity pair, these are kernel-owned domain state, so `make_update`
+    // inserts them into the map directly after running the host-registered
+    // projection closures.
     pub(super) metrics: Metrics,
     pub(super) relay_status: RelayStatus,
     pub(super) relay_statuses: Vec<RelayStatus>,
@@ -585,9 +591,13 @@ pub(super) struct KernelSnapshot {
     /// `make_update` also inserts the kernel-owned built-in projections after
     /// running the host closures: `"publish_queue"`, `"publish_outbox"`, and
     /// `"relay_edit_rows"` — the publish cluster (D0: relay/publish state is an
-    /// app noun, not a typed `KernelSnapshot` field). A host projection that
-    /// registers one of those reserved keys is overwritten by the built-in
-    /// value (built-in wins) so the publish cluster is always authoritative.
+    /// app noun, not a typed `KernelSnapshot` field); `"accounts"` /
+    /// `"active_account"` — the identity pair; and `"profile"`, `"timeline"`,
+    /// `"author_view"`, `"thread_view"`, `"inserted"`, `"updated"`,
+    /// `"removed"` — the views cluster (D0: social view state is an app noun).
+    /// A host projection that registers one of those reserved keys is
+    /// overwritten by the built-in value (built-in wins) so the kernel-owned
+    /// projections are always authoritative.
     ///
     /// This is the output-side counterpart to the action-registry seam: a
     /// non-social app extends the snapshot with its own namespace WITHOUT

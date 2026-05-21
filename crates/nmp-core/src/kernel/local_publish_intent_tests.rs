@@ -44,8 +44,11 @@ fn local_kind3_publish_updates_profile_action_from_contacts_projection() {
     kernel.seed_kind10002_for_test(&author, &["wss://write.test"]);
     kernel.open_author(FOLLOWED.to_string(), false);
 
+    // D0: the author view is no longer a typed `KernelSnapshot.author_view`
+    // field — it is a built-in entry in the `projections` map under the key
+    // `"author_view"`.
     assert_eq!(
-        snapshot(&mut kernel)["author_view"]["primary_action"]["kind"].as_str(),
+        snapshot(&mut kernel)["projections"]["author_view"]["primary_action"]["kind"].as_str(),
         Some("follow")
     );
 
@@ -53,7 +56,7 @@ fn local_kind3_publish_updates_profile_action_from_contacts_projection() {
 
     assert!(!outbound.is_empty(), "publish should have an outbox target");
     assert_eq!(
-        snapshot(&mut kernel)["author_view"]["primary_action"]["kind"].as_str(),
+        snapshot(&mut kernel)["projections"]["author_view"]["primary_action"]["kind"].as_str(),
         Some("unfollow")
     );
 }

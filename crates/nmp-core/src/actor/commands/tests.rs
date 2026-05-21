@@ -199,8 +199,10 @@ fn create_account_publishes_bootstrap_events_and_persists_relay_rows() {
 
     let snap: serde_json::Value =
         serde_json::from_str(&kernel.make_update(true)).expect("snapshot json");
+    // D0: the profile card is no longer a typed `KernelSnapshot.profile` field
+    // — it is a built-in entry in the `projections` map under `"profile"`.
     assert_eq!(
-        snap["profile"]["display"].as_str(),
+        snap["projections"]["profile"]["display"].as_str(),
         Some("Signup User"),
         "own profile must render from the local kind:0 publish intent before relay echo"
     );
@@ -1474,6 +1476,25 @@ fn snapshot_json_carries_new_projections() {
     assert!(projections.get("publish_queue").is_some());
     assert!(projections.get("publish_outbox").is_some());
     assert!(projections.get("relay_edit_rows").is_some());
+    // D0: the views cluster (`profile`, `timeline`, `author_view`,
+    // `thread_view`, `inserted`, `updated`, `removed`) is likewise no longer a
+    // typed `KernelSnapshot` field set — all seven are kernel-owned built-in
+    // entries in the same `projections` map, always present (matching the old
+    // always-emitted typed fields). `author_view` / `thread_view` are JSON
+    // null when no view is open.
+    assert!(projections.get("profile").is_some());
+    assert!(projections.get("timeline").is_some());
+    assert!(projections.get("author_view").is_some());
+    assert!(projections.get("thread_view").is_some());
+    assert!(projections.get("inserted").is_some());
+    assert!(projections.get("updated").is_some());
+    assert!(projections.get("removed").is_some());
+    // The typed `KernelSnapshot` fields must be gone — a shell that still
+    // reads them would silently get `null`.
+    assert!(parsed.get("profile").is_none());
+    assert!(parsed.get("items").is_none());
+    assert!(parsed.get("author_view").is_none());
+    assert!(parsed.get("thread_view").is_none());
     // D0: NIP-46 bunker handshake is no longer a typed `KernelSnapshot` field
     // — it is surfaced through the built-in `"bunker_handshake"` snapshot
     // projection registered in `nmp_app_new`. A bare `make_update` (no

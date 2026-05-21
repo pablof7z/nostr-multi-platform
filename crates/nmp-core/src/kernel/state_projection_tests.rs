@@ -121,11 +121,14 @@ fn timeline_event_appears_in_snapshot_items_after_ingest() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
     // Cold snapshot: no notes ingested yet → empty timeline projection.
+    // D0: the timeline is no longer a typed `KernelSnapshot.items` field —
+    // it is a built-in entry in the `projections` map under the key
+    // `"timeline"`.
     let before = snapshot(&mut kernel);
     assert_eq!(
-        before["items"].as_array().map(Vec::len),
+        before["projections"]["timeline"].as_array().map(Vec::len),
         Some(0),
-        "a fresh kernel must project an empty `items[]` timeline",
+        "a fresh kernel must project an empty `timeline[]`",
     );
 
     ingest_note(
@@ -137,9 +140,9 @@ fn timeline_event_appears_in_snapshot_items_after_ingest() {
     );
 
     let after = snapshot(&mut kernel);
-    let items = after["items"]
+    let items = after["projections"]["timeline"]
         .as_array()
-        .expect("`items` must be a JSON array");
+        .expect("`projections.timeline` must be a JSON array");
     assert_eq!(
         items.len(),
         1,
@@ -184,9 +187,9 @@ fn timeline_projection_respects_visible_limit() {
 
     let after = snapshot(&mut kernel);
     assert_eq!(
-        after["items"].as_array().map(Vec::len),
+        after["projections"]["timeline"].as_array().map(Vec::len),
         Some(LIMIT),
-        "the projection must clamp items[] to visible_limit, not dump the cache",
+        "the projection must clamp timeline[] to visible_limit, not dump the cache",
     );
 }
 
@@ -203,9 +206,12 @@ fn profile_metadata_appears_in_snapshot_after_kind0_ingest() {
     kernel.active_account = Some(ACCOUNT.to_string());
 
     // Cold snapshot: no kind:0 → placeholder card with the identicon source.
+    // D0: the profile card is no longer a typed `KernelSnapshot.profile`
+    // field — it is a built-in entry in the `projections` map under the
+    // key `"profile"`.
     let before = snapshot(&mut kernel);
     assert_eq!(
-        before["profile"]["source"].as_str(),
+        before["projections"]["profile"]["source"].as_str(),
         Some("placeholder"),
         "before any kind:0 the profile card source must be `placeholder`",
     );
@@ -224,7 +230,7 @@ fn profile_metadata_appears_in_snapshot_after_kind0_ingest() {
     kernel.ingest_profile(event);
 
     let after = snapshot(&mut kernel);
-    let card = &after["profile"];
+    let card = &after["projections"]["profile"];
     assert_eq!(
         card["display"].as_str(),
         Some("Satoshi"),
@@ -260,7 +266,7 @@ fn profile_card_does_not_project_metadata_source() {
 
     let snap = snapshot(&mut kernel);
     assert!(
-        snap["profile"].get("metadata_source").is_none(),
+        snap["projections"]["profile"].get("metadata_source").is_none(),
         "profile cards must not expose a second metadata-source discriminator"
     );
 }
@@ -294,7 +300,7 @@ fn profile_card_projects_pending_kind0_publish_intent_after_restart() {
 
     let snap = snapshot(&mut kernel);
     assert_eq!(
-        snap["profile"]["display"].as_str(),
+        snap["projections"]["profile"]["display"].as_str(),
         Some("Pending Profile"),
         "pending kind:0 publish intent must survive kernel reconstruction"
     );
@@ -359,7 +365,7 @@ fn author_view_projects_edit_action_for_active_profile() {
     kernel.open_author(ACCOUNT.to_string(), false);
 
     let snap = snapshot(&mut kernel);
-    let action = &snap["author_view"]["primary_action"];
+    let action = &snap["projections"]["author_view"]["primary_action"];
     assert_eq!(action["kind"].as_str(), Some("edit_profile"));
     assert_eq!(action["label"].as_str(), Some("Edit"));
     assert_eq!(action["target_pubkey"].as_str(), Some(ACCOUNT));
@@ -372,7 +378,7 @@ fn author_view_projects_follow_action_for_non_active_profile() {
     kernel.open_author(FOLLOW_A.to_string(), false);
 
     let snap = snapshot(&mut kernel);
-    let action = &snap["author_view"]["primary_action"];
+    let action = &snap["projections"]["author_view"]["primary_action"];
     assert_eq!(action["kind"].as_str(), Some("follow"));
     assert_eq!(action["label"].as_str(), Some("Follow"));
     assert_eq!(action["target_pubkey"].as_str(), Some(FOLLOW_A));
@@ -386,16 +392,17 @@ fn author_view_projects_unfollow_when_active_contacts_include_author() {
     kernel.open_author(FOLLOW_A.to_string(), false);
 
     let snap = snapshot(&mut kernel);
-    let action = &snap["author_view"]["primary_action"];
+    let action = &snap["projections"]["author_view"]["primary_action"];
     assert_eq!(action["kind"].as_str(), Some("unfollow"));
     assert_eq!(action["label"].as_str(), Some("Unfollow"));
     assert_eq!(action["target_pubkey"].as_str(), Some(FOLLOW_A));
 }
 
 /// A kind:0 author's note in the timeline must show the kind:0 display/avatar
-/// in its `items[]` row — proving the profile join happens at projection time,
-/// not just on the standalone `profile` card. Order of ingest must not matter:
-/// here the note is ingested BEFORE the kind:0 (the realistic relay race).
+/// in its `projections.timeline[]` row — proving the profile join happens at
+/// projection time, not just on the standalone `profile` card. Order of ingest
+/// must not matter: here the note is ingested BEFORE the kind:0 (the realistic
+/// relay race).
 #[test]
 fn timeline_item_picks_up_profile_after_later_kind0_ingest() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -404,7 +411,7 @@ fn timeline_item_picks_up_profile_after_later_kind0_ingest() {
     ingest_note(&mut kernel, NOTE_ID, ACCOUNT, 1_700_000_000, "a note");
     let before = snapshot(&mut kernel);
     assert_eq!(
-        before["items"][0]["author_avatar_source"].as_str(),
+        before["projections"]["timeline"][0]["author_avatar_source"].as_str(),
         Some("placeholder"),
         "before kind:0 the timeline item avatar source must be `placeholder`",
     );
@@ -424,12 +431,12 @@ fn timeline_item_picks_up_profile_after_later_kind0_ingest() {
 
     let after = snapshot(&mut kernel);
     assert_eq!(
-        after["items"][0]["author_display"].as_str(),
+        after["projections"]["timeline"][0]["author_display"].as_str(),
         Some("Late Profile"),
         "the timeline item must pick up the kind:0 display name in-place",
     );
     assert_eq!(
-        after["items"][0]["author_avatar_source"].as_str(),
+        after["projections"]["timeline"][0]["author_avatar_source"].as_str(),
         Some("kind0"),
         "the timeline item avatar source must refine to `kind0` after kind:0",
     );
