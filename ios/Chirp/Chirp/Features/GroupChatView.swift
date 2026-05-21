@@ -172,6 +172,7 @@ struct GroupChatView: View {
         // `nmp.nip29.comment_in_group` (a kind:1111 reply); the verb choice is
         // the store's, not the view's (thin-shell rule).
         store.sendMessage(text, replyToEventId: replyTarget?.id)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
         draft = ""
         replyTarget = nil
     }

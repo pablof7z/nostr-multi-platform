@@ -151,6 +151,7 @@ struct MarmotGroupChatView: View {
         let result = model.marmot.send(groupIDHex: group.idHex, text: text)
         sending = false
         if result.ok {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
             draft = ""
             reloadMessages()
         }
