@@ -46,7 +46,7 @@ import os.log
 // no Marmot handle for those users. NSec/local account sign-in works.
 // ─────────────────────────────────────────────────────────────────────────
 
-private let mbLog = Logger(subsystem: "com.example.Chirp", category: "MarmotBridge")
+private let mbLog = Logger(subsystem: "io.f7z.chirp", category: "MarmotBridge")
 
 // ── Decoded snapshot DTOs (verbatim FFI schema) ──────────────────────────
 

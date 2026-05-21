@@ -21,19 +21,20 @@ targets:
       properties:
         LSRequiresIPhoneOS: true
         UILaunchScreen: {}
+        CFBundleDisplayName: Chirp7z
         UIApplicationSupportsIndirectInputEvents: true
         LSApplicationQueriesSchemes:
           - nostrsigner
           - primal
           - nostrconnect
         CFBundleURLTypes:
-          - CFBundleURLName: com.example.Chirp.nip46
+          - CFBundleURLName: io.f7z.chirp.nip46
             CFBundleURLSchemes:
               - chirp
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.Chirp
-        PRODUCT_NAME: Chirp
+        PRODUCT_BUNDLE_IDENTIFIER: io.f7z.chirp
+        PRODUCT_NAME: Chirp7z
         CODE_SIGN_ENTITLEMENTS: Chirp/Chirp.entitlements
         GENERATE_INFOPLIST_FILE: NO
         SWIFT_OBJC_BRIDGING_HEADER: Chirp/Bridge/NmpCore.h
@@ -59,9 +60,9 @@ targets:
       - target: Chirp
     settings:
       base:
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Chirp.app/Chirp"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Chirp7z.app/Chirp7z"
         BUNDLE_LOADER: "$(TEST_HOST)"
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.ChirpTests
+        PRODUCT_BUNDLE_IDENTIFIER: io.f7z.chirp.tests
         GENERATE_INFOPLIST_FILE: YES
 
   ChirpUITests:
@@ -74,7 +75,7 @@ targets:
     settings:
       base:
         TEST_TARGET_NAME: Chirp
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.ChirpUITests
+        PRODUCT_BUNDLE_IDENTIFIER: io.f7z.chirp.uitests
         GENERATE_INFOPLIST_FILE: YES
 
 schemes:

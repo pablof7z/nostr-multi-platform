@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import os.log
 
-let kbLog = Logger(subsystem: "com.example.Chirp", category: "KernelBridge")
+let kbLog = Logger(subsystem: "io.f7z.chirp", category: "KernelBridge")
 
 /// Thin C-FFI wrapper around the `nmp_core` static library.
 final class KernelHandle {

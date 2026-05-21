@@ -2,7 +2,7 @@ import Foundation
 import SwiftUI
 import os.log
 
-private let kmLog = Logger(subsystem: "com.example.Chirp", category: "KernelModel")
+private let kmLog = Logger(subsystem: "io.f7z.chirp", category: "KernelModel")
 
 /// `@Observable` mirror of the kernel snapshot. The Rust actor pushes JSON
 /// updates via the callback; this class decodes them and republishes for
