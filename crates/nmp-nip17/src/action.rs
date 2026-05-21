@@ -1,4 +1,4 @@
-//! `nmp.dm.send` — the NIP-17 direct-message send [`ActionModule`].
+//! `nmp.nip17.send` — the NIP-17 direct-message send [`ActionModule`].
 //!
 //! This is the typed action seam a host wires into the kernel's action
 //! registry (`register_action_module` + `register_action_executor`) so a DM
@@ -30,7 +30,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{build_dm_rumor, DmInput};
 
-/// Wire shape for `nmp.dm.send` — the JSON a host passes to
+/// Wire shape for `nmp.nip17.send` — the JSON a host passes to
 /// `nmp_app_dispatch_action`.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct SendDmInput {
@@ -44,11 +44,11 @@ pub struct SendDmInput {
     pub reply_to: Option<String>,
 }
 
-/// The `nmp.dm.send` [`ActionModule`] — a pure shape validator.
+/// The `nmp.nip17.send` [`ActionModule`] — a pure shape validator.
 pub struct SendDmAction;
 
 impl ActionModule for SendDmAction {
-    const NAMESPACE: &'static str = "nmp.dm.send";
+    const NAMESPACE: &'static str = "nmp.nip17.send";
     type Action = SendDmInput;
 
     /// Validate a DM send request. `start` carries no side effects: it only
@@ -71,7 +71,7 @@ impl ActionModule for SendDmAction {
     }
 }
 
-/// Executor: map a validated `nmp.dm.send` action JSON to the
+/// Executor: map a validated `nmp.nip17.send` action JSON to the
 /// [`ActorCommand::SendGiftWrappedDm`] that drives the actor's DM handler.
 ///
 /// The carried rumor is built with an empty `sender_pubkey` placeholder — the
@@ -109,8 +109,8 @@ mod tests {
     }
 
     #[test]
-    fn namespace_is_nmp_dm_send() {
-        assert_eq!(SendDmAction::NAMESPACE, "nmp.dm.send");
+    fn namespace_is_nmp_nip17_send() {
+        assert_eq!(SendDmAction::NAMESPACE, "nmp.nip17.send");
     }
 
     #[test]

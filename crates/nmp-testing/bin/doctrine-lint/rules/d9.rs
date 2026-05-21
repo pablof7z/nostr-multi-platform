@@ -162,9 +162,9 @@ mod tests {
     }
 
     #[test]
-    fn allows_nmp_dm_send_namespace() {
+    fn allows_nmp_nip17_send_namespace() {
         let hits = check(
-            "    const NAMESPACE: &'static str = \"nmp.dm.send\";",
+            "    const NAMESPACE: &'static str = \"nmp.nip17.send\";",
             false,
         );
         assert!(hits.is_empty());

@@ -1,4 +1,4 @@
-//! `nmp.dm.publish_relay_list` — publish the user's own kind:10050 NIP-17
+//! `nmp.nip17.publish_relay_list` — publish the user's own kind:10050 NIP-17
 //! DM-relay list.
 //!
 //! # Why this exists
@@ -134,7 +134,7 @@ pub fn build_dm_relay_list_event(relay_urls: &[String]) -> UnsignedEvent {
     }
 }
 
-/// Wire shape for `nmp.dm.publish_relay_list` — the JSON a host passes to
+/// Wire shape for `nmp.nip17.publish_relay_list` — the JSON a host passes to
 /// `nmp_app_dispatch_action`.
 ///
 /// `relays` is the user's DM-inbox relay set. The host is the source of truth
@@ -151,14 +151,14 @@ pub struct PublishDmRelayListInput {
     pub relays: Vec<String>,
 }
 
-/// The `nmp.dm.publish_relay_list` [`ActionModule`] — a pure shape validator.
+/// The `nmp.nip17.publish_relay_list` [`ActionModule`] — a pure shape validator.
 ///
 /// Mirrors `SendDmAction`'s discipline: `start` is a side-effect-free shape
 /// check. The actual sign + publish happens on the actor thread (D7).
 pub struct PublishDmRelayListAction;
 
 impl ActionModule for PublishDmRelayListAction {
-    const NAMESPACE: &'static str = "nmp.dm.publish_relay_list";
+    const NAMESPACE: &'static str = "nmp.nip17.publish_relay_list";
     type Action = PublishDmRelayListInput;
 
     /// Reject an empty relay set — a kind:10050 with zero `relay` tags is
@@ -323,10 +323,10 @@ mod tests {
     }
 
     #[test]
-    fn namespace_is_nmp_dm_publish_relay_list() {
+    fn namespace_is_nmp_nip17_publish_relay_list() {
         assert_eq!(
             PublishDmRelayListAction::NAMESPACE,
-            "nmp.dm.publish_relay_list"
+            "nmp.nip17.publish_relay_list"
         );
     }
 

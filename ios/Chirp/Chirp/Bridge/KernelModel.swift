@@ -470,7 +470,7 @@ final class KernelModel: ObservableObject {
         // the read-eligible relay set changes (or the active account does).
         // Snapshot-driven: catches account creation, identity restore, and
         // settings-screen edits with one piece of code. The Rust action
-        // (`nmp.dm.publish_relay_list`) owns build / sign / publish.
+        // (`nmp.nip17.publish_relay_list`) owns build / sign / publish.
         if activeAccountChanged {
             // Drop the cache so the new identity republishes its set even if
             // the URLs happen to match the previous identity's.
@@ -530,7 +530,7 @@ final class KernelModel: ObservableObject {
     // The Rust ingest cache (`nmp-core::kernel::ingest::dm_relay_list`) tells
     // the NIP-17 send path WHERE to deliver a gift-wrap envelope, but without
     // a symmetric *publish* of our own list every Chirp user is invisible as
-    // a DM recipient. The `nmp.dm.publish_relay_list` action closes that gap;
+    // a DM recipient. The `nmp.nip17.publish_relay_list` action closes that gap;
     // this helper is its only iOS caller — fired snapshot-driven from
     // `apply()` so it covers account creation, identity restore, and
     // settings-screen relay edits with a single seam (no per-call-site hook).
@@ -544,7 +544,7 @@ final class KernelModel: ObservableObject {
     // letting Swift drop the role parsing entirely.
 
     /// If the active account's read-eligible relay set has changed since the
-    /// last publish, dispatch `nmp.dm.publish_relay_list`. No-ops when:
+    /// last publish, dispatch `nmp.nip17.publish_relay_list`. No-ops when:
     ///   * No active account (nothing to sign with).
     ///   * `relayEditRows` produced an empty read-eligible set — the Rust
     ///     action rejects empty input (a kind:10050 with zero `relay` tags

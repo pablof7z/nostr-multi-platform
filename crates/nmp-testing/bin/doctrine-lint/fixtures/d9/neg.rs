@@ -14,7 +14,7 @@ impl PublishAction {
 pub struct SendDmAction;
 
 impl SendDmAction {
-    pub const NAMESPACE: &'static str = "nmp.dm.send";
+    pub const NAMESPACE: &'static str = "nmp.nip17.send";
 }
 
 pub struct ZapAction;

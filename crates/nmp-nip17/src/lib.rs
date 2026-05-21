@@ -24,7 +24,7 @@
 //!   kernel owns key access and the wall clock), driven by
 //!   `ActorCommand::SendGiftWrappedDm`.
 //! * **Send (action)** — [`action::SendDmAction`] is the `ActionModule` a host
-//!   wires into the kernel's action registry so `nmp.dm.send` reaches the
+//!   wires into the kernel's action registry so `nmp.nip17.send` reaches the
 //!   actor through the generic `dispatch_action` path.
 //! * **Receive** — [`inbox::DmInboxProjection`] is the `RawEventObserver` that
 //!   taps kind:1059 gift-wraps, unseals them with the active account's local
