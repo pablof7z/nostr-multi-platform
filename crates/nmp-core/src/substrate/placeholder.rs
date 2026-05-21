@@ -30,7 +30,7 @@
 //! `identicon:<pubkey>`.  This is:
 //!
 //! - **Deterministic**: same pubkey always produces the same placeholder,
-//!   so SwiftUI diffing never sees spurious updates.
+//!   so diffing-based renderers never see spurious updates.
 //! - **Detectable**: the `identicon:` scheme prefix lets the UI decide to
 //!   show avatar initials + color instead of attempting a network fetch.
 //! - **Non-empty**: satisfies D1's "no empty string" invariant.

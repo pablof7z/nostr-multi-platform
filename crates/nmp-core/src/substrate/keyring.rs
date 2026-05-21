@@ -1,12 +1,10 @@
 //! Kernel-side `KeyringCapability` contract.
 //!
-//! This is the Rust half of the keyring capability. The iOS half already
-//! shipped (`ios/NmpPulse/NmpPulse/Capabilities/KeychainCapability.swift`)
-//! against the *generic* `CapabilityRequest`/`CapabilityEnvelope` because this
-//! typed contract did not exist (PD-019). This module defines exactly the
-//! store/retrieve/delete-by-`account_id` vocabulary the Swift side already
-//! speaks; the JSON shapes here are byte-compatible with the Swift
-//! `KeyringRequest`/`KeyringResult` types.
+//! Rust-side `KeyringCapability` contract — the store/retrieve/delete-by-`account_id`
+//! vocabulary the host keychain implementation speaks. Shell implementations
+//! were already built against the *generic* `CapabilityRequest`/`CapabilityEnvelope`
+//! before this typed contract existed (PD-019); the JSON shapes here are
+//! byte-compatible with those `KeyringRequest`/`KeyringResult` types.
 //!
 //! Doctrine (`docs/product-spec/doctrine.md`):
 //! * **D0** — this is generic key/secret storage keyed by an opaque

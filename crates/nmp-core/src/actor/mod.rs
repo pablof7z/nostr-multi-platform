@@ -312,16 +312,16 @@ pub enum ActorCommand {
     /// access and the wall clock). The `rumor.created_at` is re-stamped from
     /// `kernel.now_secs()` before wrapping.
     ///
-    /// # Phase 1.5 MVP — local keys only
+    /// # Phase 1 — local keys only
     ///
     /// `nmp_nip59::gift_wrap` requires `&nostr::Keys` (NIP-44 ECDH seal). A
-    /// remote (NIP-46) signer exposes only `sign()` — no `nip44_encrypt` —
-    /// so a bunker account CANNOT gift-wrap a DM through this path. The actor
-    /// detects the missing local key and surfaces a toast (D6 — explicit
-    /// failure, never silent, never a panic). Bunker support is gated on
-    /// ADR-0026 (extend `RemoteSignerHandle` with a NIP-44 encrypt/decrypt
-    /// seam), which is not yet built. This variant is the local-keys-only
-    /// infrastructure MVP.
+    /// remote (NIP-46) signer exposes no accessible local key, so a bunker
+    /// account CANNOT gift-wrap a DM through this path. The actor detects the
+    /// missing local key and surfaces a toast (D6 — explicit failure, never
+    /// silent, never a panic). Bunker support requires using the
+    /// `RemoteSignerHandle::nip44_encrypt` seam from ADR-0026 on the seal
+    /// step — deferred to the bunker-DM phase after `DmInboxProjection`
+    /// ships so both paths can be tested end-to-end.
     SendGiftWrappedDm {
         rumor: crate::substrate::UnsignedEvent,
         recipient_pubkey: String,
@@ -391,7 +391,7 @@ pub enum ActorCommand {
         bolt11: String,
         amount_msats: Option<u64>,
     },
-    /// T118 / G3 — iOS scenePhase transition reported by the Pulse shell
+    /// T118 / G3 — app lifecycle phase transition reported by the host shell
     /// (or any conforming consumer). The actor folds the phase into the
     /// kernel's [`crate::kernel::LifecyclePhase`] state and, on a
     /// meaningful transition (`Background → Foreground`, `Foreground →
@@ -650,7 +650,7 @@ pub fn run_actor_with_observers(
     // actor's `IdentityRuntime` writes; it runs on every snapshot tick (D8:
     // cheap, non-blocking — a single lock-and-clone). When no handshake is in
     // flight the slot holds `None` and the closure contributes JSON `null`,
-    // preserving the "key present, value null when idle" semantic the SwiftUI
+    // preserving the "key present, value null when idle" semantic the host
     // sign-in flow decodes. Registered here (the actor wiring site) rather than
     // on the FFI surface so every actor consumer — FFI or test — gets it.
     {

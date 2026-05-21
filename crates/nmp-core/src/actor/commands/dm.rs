@@ -1,24 +1,23 @@
 //! NIP-17 gift-wrapped DM send handler.
 //!
-//! # Phase 1.5 MVP — local keys only
+//! # Phase 1 — local keys only
 //!
 //! `nmp_nip59::gift_wrap` requires `&nostr::Keys` because the NIP-59 seal is a
-//! NIP-44 ECDH encryption. The `RemoteSignerHandle` trait
-//! (`nmp-core/src/remote_signer.rs`) exposes only `sign()` — there is no
-//! `nip44_encrypt` / `nip44_decrypt` seam — so a remote (NIP-46 / bunker)
-//! account CANNOT gift-wrap a DM through this path. This handler detects the
-//! missing local key and surfaces a toast (explicit failure, never silent,
-//! never a panic — D6); bunker users are simply excluded for now.
+//! NIP-44 ECDH encryption. A remote (NIP-46 / bunker) account has no accessible
+//! local key — sealing a NIP-59 rumor is not a single "sign this event" RPC a
+//! bunker can serve. This handler detects the missing local key and surfaces a
+//! toast (explicit failure, never silent, never a panic — D6); bunker users are
+//! excluded for now.
 //!
-//! Bunker support is gated on **ADR-0026** (extend `RemoteSignerHandle` with a
-//! NIP-44 encrypt/decrypt seam), which is not yet built. This handler is the
-//! local-keys-only infrastructure MVP — correct and shippable, with the bunker
-//! gap named rather than papered over.
+//! Bunker support requires the `RemoteSignerHandle::nip44_encrypt` seam built in
+//! ADR-0026 (PR #125). The seam exists; wiring it into the seal step is the
+//! Phase 2 bunker-DM story — deferred until `DmInboxProjection` (the receive
+//! side) ships so both paths can be tested end-to-end.
 //!
-//! It deliberately does NOT read the `NmpApp::active_local_nsec` FFI field to
-//! bypass the actor: that would exfiltrate the key off the actor thread and
-//! still silently exclude bunker users. The executor uses the actor's own
-//! identity state (`IdentityRuntime::active_local_keys`).
+//! It deliberately does NOT read the `NmpApp::marmot_local_nsec` FFI field to
+//! bypass the actor: that slot is the ADR-0025 Marmot exception and must not be
+//! read for NIP-17. The executor uses the actor's own identity state
+//! (`IdentityRuntime::active_local_keys`).
 //!
 //! `ActorCommand::SendGiftWrappedDm` arrives carrying an **unsigned** kind:14
 //! chat-message rumor (built host-side by `nmp_nip17::build_dm_rumor`). This
