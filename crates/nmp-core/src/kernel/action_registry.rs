@@ -36,6 +36,7 @@
 //! module's concrete associated types via serde.
 
 use std::collections::HashMap;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
@@ -116,12 +117,29 @@ impl ErasedActionModule for ClosureModule {
     /// validator works from the action JSON alone (the typed
     /// [`ActionModuleAdapter`] path is the one that threads `ctx` into
     /// `ActionModule::start`).
+    ///
+    /// D6: the host validator is untrusted plugin code registered via
+    /// `nmp_app_register_action_module`, and this runs on the call path of
+    /// `nmp_app_dispatch_action` — an `extern "C"` function. An unguarded
+    /// panic would unwind across the FFI boundary, which is undefined
+    /// behaviour. The closure is therefore invoked inside [`catch_unwind`]; a
+    /// caught panic becomes a plain [`ActionRejection::Invalid`], exactly the
+    /// rejection a host would see for any other malformed action.
     fn start(
         &self,
         _ctx: &mut ActionContext,
         action_json: &str,
     ) -> Result<ActionPlan<Value>, ActionRejection> {
-        (self.validate)(action_json)
+        // `AssertUnwindSafe`: a boxed `Fn` closure is not `UnwindSafe`, but a
+        // panic here is fully contained — nothing the closure touched is
+        // observed again after it unwinds, so there is no broken-invariant
+        // hazard. `catch_unwind` nests the inner `Result`; flatten it.
+        match catch_unwind(AssertUnwindSafe(|| (self.validate)(action_json))) {
+            Ok(result) => result,
+            Err(_) => Err(ActionRejection::Invalid(
+                "action validator panicked".into(),
+            )),
+        }
     }
 }
 
@@ -233,6 +251,13 @@ impl ActionRegistry {
     /// swallowed). This eliminates the `match namespace { "nmp.publish" => …
     /// _ => Err }` that was the only execution path and blocked all other
     /// modules from running without editing `nmp-core`.
+    ///
+    /// D6: the executor is untrusted host plugin code registered via
+    /// `nmp_app_register_action_executor`, and this runs on the call path of
+    /// `nmp_app_dispatch_action` — an `extern "C"` function. An unguarded
+    /// panic would unwind across the FFI boundary (undefined behaviour), so
+    /// the closure is invoked inside [`catch_unwind`]; a caught panic becomes
+    /// a plain `Err(String)`, the same shape as any other dispatch failure.
     pub(crate) fn execute(
         &self,
         namespace: &str,
@@ -240,7 +265,15 @@ impl ActionRegistry {
         send: &dyn Fn(crate::actor::ActorCommand),
     ) -> Result<(), String> {
         match self.executors.get(namespace) {
-            Some(exec) => exec(action_json, send),
+            // `AssertUnwindSafe`: a boxed `Fn` and the `send` callback are
+            // not `UnwindSafe`, but a panic here is fully contained — the
+            // executor's effects (a non-blocking channel send) are observed
+            // only through the actor, never re-read here. `catch_unwind`
+            // nests the inner `Result`; flatten it.
+            Some(exec) => match catch_unwind(AssertUnwindSafe(|| exec(action_json, send))) {
+                Ok(result) => result,
+                Err(_) => Err("action executor panicked".to_string()),
+            },
             None => Err(format!(
                 "no executor registered for namespace '{namespace}'"
             )),
@@ -495,5 +528,52 @@ mod tests {
                 .unwrap();
             assert!(seen.insert(id.clone()), "duplicate correlation id: {id}");
         }
+    }
+
+    /// D6 — a host validator closure that panics is contained: `start`
+    /// returns [`ActionRejection::Invalid`] instead of unwinding.
+    ///
+    /// The validator is untrusted host plugin code registered via
+    /// `register_with_validator` (the `nmp_app_register_action_module` seam).
+    /// `start` is reached from `nmp_app_dispatch_action`, an `extern "C"`
+    /// function — an unguarded panic would unwind across the FFI boundary
+    /// (undefined behaviour). Without the per-closure `catch_unwind` guard
+    /// this test panics out of `start` rather than returning a rejection.
+    #[test]
+    fn panicking_validator_is_rejected_not_unwound() {
+        let mut registry = ActionRegistry::new();
+        registry.register_with_validator("host.boom", |_action_json| {
+            panic!("buggy host validator");
+        });
+        let err = registry
+            .start(&mut ctx(), "host.boom", "{}")
+            .expect_err("a panicking validator must be rejected, not unwound");
+        match err {
+            ActionRejection::Invalid(msg) => {
+                assert_eq!(msg, "action validator panicked", "got: {msg}");
+            }
+            other => panic!("expected Invalid, got {other:?}"),
+        }
+    }
+
+    /// D6 — a host executor closure that panics is contained: `execute`
+    /// returns `Err` instead of unwinding.
+    ///
+    /// The executor is untrusted host plugin code registered via
+    /// `register_executor` (the `nmp_app_register_action_executor` seam).
+    /// `execute` is reached from `nmp_app_dispatch_action`, an `extern "C"`
+    /// function — an unguarded panic would unwind across the FFI boundary
+    /// (undefined behaviour). Without the per-closure `catch_unwind` guard
+    /// this test panics out of `execute` rather than returning `Err`.
+    #[test]
+    fn panicking_executor_returns_err_not_unwound() {
+        let mut registry = ActionRegistry::new();
+        registry.register_executor("host.boom", |_action_json, _send| {
+            panic!("buggy host executor");
+        });
+        let err = registry
+            .execute("host.boom", "{}", &|_cmd| {})
+            .expect_err("a panicking executor must return Err, not unwind");
+        assert_eq!(err, "action executor panicked", "got: {err}");
     }
 }
