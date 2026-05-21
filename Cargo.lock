@@ -3231,6 +3231,7 @@ dependencies = [
  "nmp-nip17",
  "nmp-nip29",
  "nmp-nip57",
+ "nmp-nip59",
  "nmp-signer-broker",
  "nmp-threading",
  "nostr",
