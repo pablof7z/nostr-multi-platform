@@ -7,8 +7,7 @@
 //! `nmp-nip25` / `nmp-nip22` / future `nmp-nip18`.
 
 use nmp_core::substrate::{
-    ActionContext, ActionId, ActionInput, ActionModule, ActionPlan, ActionRejection, ActionStatus,
-    ActionTransition,
+    ActionContext, ActionModule, ActionPlan, ActionRejection, ActionStatus,
 };
 use serde::{Deserialize, Serialize};
 
@@ -33,7 +32,6 @@ impl ActionModule for ShareEventIntoGroupAction {
     const NAMESPACE: &'static str = "nip29.share_event_into_group";
     type Action = ShareEventIntoGroupInput;
     type Step = ComposedStep;
-    type Output = PublishPlan;
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,
@@ -53,13 +51,6 @@ impl ActionModule for ShareEventIntoGroupAction {
             .map_err(|_| ActionRejection::Invalid("missing host pin for share-into-group".into()))?;
         Ok(ActionPlan { initial_step: ComposedStep, initial_status: ActionStatus::Pending, deadline_ms: None })
     }
-    fn reduce(
-        _ctx: &mut ActionContext,
-        _id: ActionId,
-        _input: ActionInput<Self::Step>,
-    ) -> ActionTransition<Self::Step, Self::Output> {
-        ActionTransition::Continue { step: ComposedStep, status: ActionStatus::Pending }
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -75,7 +66,6 @@ impl ActionModule for ReactInGroupAction {
     const NAMESPACE: &'static str = "nip29.react_in_group";
     type Action = ReactInGroupInput;
     type Step = ComposedStep;
-    type Output = PublishPlan;
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,
@@ -92,13 +82,6 @@ impl ActionModule for ReactInGroupAction {
             .map_err(|_| ActionRejection::Invalid("missing host pin for in-group reaction".into()))?;
         Ok(ActionPlan { initial_step: ComposedStep, initial_status: ActionStatus::Pending, deadline_ms: None })
     }
-    fn reduce(
-        _ctx: &mut ActionContext,
-        _id: ActionId,
-        _input: ActionInput<Self::Step>,
-    ) -> ActionTransition<Self::Step, Self::Output> {
-        ActionTransition::Continue { step: ComposedStep, status: ActionStatus::Pending }
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -114,7 +97,6 @@ impl ActionModule for CommentInGroupAction {
     const NAMESPACE: &'static str = "nip29.comment_in_group";
     type Action = CommentInGroupInput;
     type Step = ComposedStep;
-    type Output = PublishPlan;
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,
@@ -130,12 +112,5 @@ impl ActionModule for CommentInGroupAction {
         plan.validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for in-group comment".into()))?;
         Ok(ActionPlan { initial_step: ComposedStep, initial_status: ActionStatus::Pending, deadline_ms: None })
-    }
-    fn reduce(
-        _ctx: &mut ActionContext,
-        _id: ActionId,
-        _input: ActionInput<Self::Step>,
-    ) -> ActionTransition<Self::Step, Self::Output> {
-        ActionTransition::Continue { step: ComposedStep, status: ActionStatus::Pending }
     }
 }

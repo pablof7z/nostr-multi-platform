@@ -12,7 +12,6 @@ pub trait ActionModule: Send + Sync + 'static {
 
     type Action: Clone + Serialize + DeserializeOwned + Send + 'static;
     type Step: Clone + Serialize + DeserializeOwned + Send + 'static;
-    type Output: Clone + Serialize + Send + 'static;
 
     fn start(
         ctx: &mut ActionContext,
@@ -33,12 +32,6 @@ pub trait ActionModule: Send + Sync + 'static {
     fn preferred_action_id(_action: &Self::Action) -> Option<ActionId> {
         None
     }
-
-    fn reduce(
-        ctx: &mut ActionContext,
-        id: ActionId,
-        input: ActionInput<Self::Step>,
-    ) -> ActionTransition<Self::Step, Self::Output>;
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -55,40 +48,6 @@ pub enum ActionStatus {
     Completed,
     Failed,
     Cancelled,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub enum ActionInput<Step> {
-    Started,
-    ResumedAfterRestart { step: Step },
-    CapabilityResult { value: serde_json::Value },
-    RelayOk { relay_url: String },
-    Timeout,
-    Cancel,
-}
-
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
-pub enum ActionTransition<Step, Output> {
-    Continue {
-        step: Step,
-        status: ActionStatus,
-    },
-    Complete {
-        output: Output,
-    },
-    Fail {
-        reason: String,
-        transient: bool,
-    },
-    AwaitCapability {
-        request_namespace: String,
-        payload: serde_json::Value,
-        next_step: Step,
-    },
-    AwaitUserApproval {
-        prompt: String,
-        next_step: Step,
-    },
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

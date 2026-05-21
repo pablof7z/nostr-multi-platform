@@ -206,11 +206,6 @@ pub enum TodoStep {
     ApplyLocalWrite,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum ActionOutput {
-    Accepted,
-}
-
 pub struct TodoActionModule;
 
 impl ActionModule for TodoActionModule {
@@ -218,7 +213,6 @@ impl ActionModule for TodoActionModule {
 
     type Action = Action;
     type Step = TodoStep;
-    type Output = ActionOutput;
 
     fn start(
         _ctx: &mut ActionContext,
@@ -232,16 +226,6 @@ impl ActionModule for TodoActionModule {
             initial_status: ActionStatus::Running,
             deadline_ms: None,
         })
-    }
-
-    fn reduce(
-        _ctx: &mut ActionContext,
-        _id: ActionId,
-        _input: ActionInput<Self::Step>,
-    ) -> ActionTransition<Self::Step, Self::Output> {
-        ActionTransition::Complete {
-            output: ActionOutput::Accepted,
-        }
     }
 }
 

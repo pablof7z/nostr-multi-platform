@@ -2,17 +2,16 @@
 //!
 //! Implements [`ActionModule`] so apps can wire a "sync now" button to the
 //! M4 engine without inventing per-relay surface area.  The action accepts a
-//! list of `(filter_hash, relay_url)` targets, runs them through the
-//! reconciler, and emits a [`RunSyncOutput`] summary.
+//! list of `(filter_hash, relay_url)` targets and hands them to the
+//! reconciler.
 //!
-//! The reduce step here is *thin* — the real work happens at the planner /
-//! actor layer where the bytes actually fly across the wire.  This module is
-//! the orchestration shell; it lets the action surface a `busy` flag and a
-//! `toast` field per D6 without hand-rolling action plumbing in every app.
+//! The real work happens at the planner / actor layer where the bytes
+//! actually fly across the wire.  This module is the orchestration shell;
+//! it lets the action surface a `busy` flag and a `toast` field per D6
+//! without hand-rolling action plumbing in every app.
 
 use nmp_core::substrate::{
-    ActionContext, ActionId, ActionInput, ActionModule, ActionPlan, ActionRejection,
-    ActionStatus, ActionTransition,
+    ActionContext, ActionModule, ActionPlan, ActionRejection, ActionStatus,
 };
 use serde::{Deserialize, Serialize};
 
@@ -40,6 +39,9 @@ pub enum RunSyncStep {
 }
 
 /// Final summary the action emits on success.
+///
+/// Surfaced on the snapshot-projection (pull) path by the actor once the
+/// reconciler reports a terminal verdict.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct RunSyncOutput {
     pub completed: u32,
@@ -55,7 +57,6 @@ impl ActionModule for RunSync {
 
     type Action = RunSyncAction;
     type Step = RunSyncStep;
-    type Output = RunSyncOutput;
 
     fn start(
         _ctx: &mut ActionContext,
@@ -69,95 +70,6 @@ impl ActionModule for RunSync {
             initial_status: ActionStatus::Pending,
             deadline_ms: action.deadline_ms,
         })
-    }
-
-    fn reduce(
-        _ctx: &mut ActionContext,
-        _id: ActionId,
-        input: ActionInput<Self::Step>,
-    ) -> ActionTransition<Self::Step, Self::Output> {
-        match input {
-            ActionInput::Started => ActionTransition::Continue {
-                step: RunSyncStep::Running {
-                    remaining: 0,
-                    completed: 0,
-                },
-                status: ActionStatus::Running,
-            },
-            ActionInput::ResumedAfterRestart { step } => ActionTransition::Continue {
-                step,
-                status: ActionStatus::Running,
-            },
-            ActionInput::CapabilityResult { value } => match parse_progress(&value) {
-                Ok(progress) => {
-                    if progress.remaining == 0 {
-                        ActionTransition::Complete {
-                            output: RunSyncOutput {
-                                completed: progress.completed,
-                                bytes_on_wire_via_neg: progress
-                                    .bytes_on_wire_via_neg
-                                    .unwrap_or(0),
-                                bytes_saved_vs_req: progress.bytes_saved_vs_req.unwrap_or(0),
-                            },
-                        }
-                    } else {
-                        ActionTransition::Continue {
-                            step: RunSyncStep::Running {
-                                remaining: progress.remaining,
-                                completed: progress.completed,
-                            },
-                            status: ActionStatus::Running,
-                        }
-                    }
-                }
-                Err(err) => ActionTransition::Fail {
-                    reason: format!("malformed capability payload: {err}"),
-                    transient: false,
-                },
-            },
-            ActionInput::RelayOk { .. } => ActionTransition::Continue {
-                step: RunSyncStep::Running {
-                    remaining: 0,
-                    completed: 0,
-                },
-                status: ActionStatus::Running,
-            },
-            ActionInput::Timeout => ActionTransition::Fail {
-                reason: "deadline exceeded".into(),
-                transient: true,
-            },
-            ActionInput::Cancel => ActionTransition::Fail {
-                reason: "cancelled by user".into(),
-                transient: false,
-            },
-        }
-    }
-}
-
-#[derive(Deserialize)]
-struct ProgressPayload {
-    completed: u32,
-    remaining: u32,
-    bytes_on_wire_via_neg: Option<u64>,
-    bytes_saved_vs_req: Option<u64>,
-}
-
-fn parse_progress(value: &serde_json::Value) -> Result<ProgressPayload, String> {
-    serde_json::from_value(value.clone()).map_err(|e| e.to_string())
-}
-
-/// Helper for tests / actor: finalise a `Running` step into an output.
-pub fn finalise(
-    completed: u32,
-    bytes_on_wire_via_neg: u64,
-    bytes_saved_vs_req: u64,
-) -> ActionTransition<RunSyncStep, RunSyncOutput> {
-    ActionTransition::Complete {
-        output: RunSyncOutput {
-            completed,
-            bytes_on_wire_via_neg,
-            bytes_saved_vs_req,
-        },
     }
 }
 
@@ -185,84 +97,5 @@ mod tests {
             RunSyncStep::Prepared { remaining: 1 }
         ));
         assert_eq!(plan.deadline_ms, Some(1_000));
-    }
-
-    #[test]
-    fn started_input_transitions_to_running() {
-        let next = RunSync::reduce(&mut ctx(), "id".into(), ActionInput::Started);
-        match next {
-            ActionTransition::Continue { status, .. } => {
-                assert_eq!(status, ActionStatus::Running);
-            }
-            other => panic!("expected Continue, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn capability_progress_decrements_remaining() {
-        let value = serde_json::json!({"completed": 2, "remaining": 1});
-        let next = RunSync::reduce(
-            &mut ctx(),
-            "id".into(),
-            ActionInput::CapabilityResult { value },
-        );
-        match next {
-            ActionTransition::Continue {
-                step: RunSyncStep::Running {
-                    remaining,
-                    completed,
-                },
-                ..
-            } => {
-                assert_eq!(remaining, 1);
-                assert_eq!(completed, 2);
-            }
-            other => panic!("expected Running continue, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn final_progress_payload_completes_action() {
-        let value = serde_json::json!({
-            "completed": 5,
-            "remaining": 0,
-            "bytes_on_wire_via_neg": 2048,
-            "bytes_saved_vs_req": 32_768
-        });
-        let next = RunSync::reduce(
-            &mut ctx(),
-            "id".into(),
-            ActionInput::CapabilityResult { value },
-        );
-        match next {
-            ActionTransition::Complete { output } => {
-                assert_eq!(output.completed, 5);
-                assert_eq!(output.bytes_on_wire_via_neg, 2_048);
-                assert_eq!(output.bytes_saved_vs_req, 32_768);
-            }
-            other => panic!("expected Complete, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn timeout_input_fails_transiently() {
-        let next = RunSync::reduce(&mut ctx(), "id".into(), ActionInput::Timeout);
-        match next {
-            ActionTransition::Fail { transient, .. } => assert!(transient),
-            other => panic!("expected transient Fail, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn finalise_produces_output() {
-        let t = finalise(3, 1_024, 8_192);
-        match t {
-            ActionTransition::Complete { output } => {
-                assert_eq!(output.completed, 3);
-                assert_eq!(output.bytes_on_wire_via_neg, 1_024);
-                assert_eq!(output.bytes_saved_vs_req, 8_192);
-            }
-            other => panic!("expected Complete, got {other:?}"),
-        }
     }
 }

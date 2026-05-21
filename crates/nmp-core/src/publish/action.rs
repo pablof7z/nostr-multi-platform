@@ -3,15 +3,13 @@
 //! `start` is wired to the actor mailbox (M6): `ffi::action::execute_action`
 //! validates a `PublishAction` through `ActionRegistry`, then converts a
 //! `Publish` variant into `ActorCommand::PublishSignedEvent` for the actor
-//! to publish. `reduce` is not yet driven — the publish engine drives
-//! transitions in-process; feeding `RelayOk` / `Timeout` into `reduce`
-//! lands with the durable action ledger.
+//! to publish. The publish engine drives per-relay transitions in-process;
+//! its terminal verdict is surfaced as a [`PublishOutcome`] on the snapshot.
 
 use serde::{Deserialize, Serialize};
 
 use crate::substrate::{
-    ActionContext, ActionInput, ActionModule, ActionPlan, ActionRejection, ActionStatus,
-    ActionTransition, SignedEvent,
+    ActionContext, ActionModule, ActionPlan, ActionRejection, ActionStatus, SignedEvent,
 };
 
 /// Stable handle returned to the caller of `Publish`. Used to key snapshot
@@ -104,7 +102,6 @@ impl ActionModule for PublishModule {
 
     type Action = PublishAction;
     type Step = PublishStep;
-    type Output = PublishOutcome;
 
     /// For pre-signed `Publish` actions, use the event's `id` as the
     /// correlation_id. The publish engine's `LastTerminal.correlation_id` is
@@ -168,42 +165,4 @@ impl ActionModule for PublishModule {
         }
     }
 
-    fn reduce(
-        _ctx: &mut ActionContext,
-        _id: crate::substrate::ActionId,
-        input: ActionInput<Self::Step>,
-    ) -> ActionTransition<Self::Step, Self::Output> {
-        // The engine drives transitions in-process; the ledger merely
-        // observes the coarse step. When M6 lands and the ledger feeds
-        // RelayOk / Timeout into `reduce`, the bridge layer will translate
-        // them into `PublishEngine::on_ack` calls and re-derive the step
-        // from the engine. For now this is a deterministic pass-through so
-        // the action module satisfies the trait without making promises the
-        // engine can't keep.
-        match input {
-            ActionInput::Started => ActionTransition::Continue {
-                step: PublishStep::Dispatching,
-                status: ActionStatus::Running,
-            },
-            ActionInput::ResumedAfterRestart { step } => ActionTransition::Continue {
-                step,
-                status: ActionStatus::Running,
-            },
-            ActionInput::CapabilityResult { .. } => ActionTransition::Continue {
-                step: PublishStep::Waiting,
-                status: ActionStatus::Running,
-            },
-            ActionInput::RelayOk { .. } => ActionTransition::Continue {
-                step: PublishStep::Waiting,
-                status: ActionStatus::Running,
-            },
-            ActionInput::Timeout => ActionTransition::Fail {
-                reason: "publish timed out before engine ack".to_string(),
-                transient: true,
-            },
-            ActionInput::Cancel => ActionTransition::Complete {
-                output: PublishOutcome::Cancelled,
-            },
-        }
-    }
 }

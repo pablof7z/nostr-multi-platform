@@ -2,8 +2,7 @@
 //! artifact (11 + catalog tags).
 
 use nmp_core::substrate::{
-    ActionContext, ActionId, ActionInput, ActionModule, ActionPlan, ActionRejection, ActionStatus,
-    ActionTransition,
+    ActionContext, ActionModule, ActionPlan, ActionRejection, ActionStatus,
 };
 use serde::{Deserialize, Serialize};
 
@@ -36,7 +35,6 @@ impl ActionModule for PostChatMessageAction {
     const NAMESPACE: &'static str = "nip29.post_chat_message";
     type Action = PostChatMessageInput;
     type Step = ContentStep;
-    type Output = PublishPlan;
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,
@@ -60,13 +58,6 @@ impl ActionModule for PostChatMessageAction {
             deadline_ms: None,
         })
     }
-    fn reduce(
-        _ctx: &mut ActionContext,
-        _id: ActionId,
-        _input: ActionInput<Self::Step>,
-    ) -> ActionTransition<Self::Step, Self::Output> {
-        ActionTransition::Continue { step: ContentStep, status: ActionStatus::Pending }
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -83,7 +74,6 @@ impl ActionModule for PostDiscussionAction {
     const NAMESPACE: &'static str = "nip29.post_discussion";
     type Action = PostDiscussionInput;
     type Step = ContentStep;
-    type Output = PublishPlan;
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,
@@ -108,13 +98,6 @@ impl ActionModule for PostDiscussionAction {
             deadline_ms: None,
         })
     }
-    fn reduce(
-        _ctx: &mut ActionContext,
-        _id: ActionId,
-        _input: ActionInput<Self::Step>,
-    ) -> ActionTransition<Self::Step, Self::Output> {
-        ActionTransition::Continue { step: ContentStep, status: ActionStatus::Pending }
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -133,7 +116,6 @@ impl ActionModule for PostArtifactAction {
     const NAMESPACE: &'static str = "nip29.post_artifact";
     type Action = PostArtifactInput;
     type Step = ContentStep;
-    type Output = PublishPlan;
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,
@@ -159,12 +141,5 @@ impl ActionModule for PostArtifactAction {
             initial_status: ActionStatus::Pending,
             deadline_ms: None,
         })
-    }
-    fn reduce(
-        _ctx: &mut ActionContext,
-        _id: ActionId,
-        _input: ActionInput<Self::Step>,
-    ) -> ActionTransition<Self::Step, Self::Output> {
-        ActionTransition::Continue { step: ContentStep, status: ActionStatus::Pending }
     }
 }
