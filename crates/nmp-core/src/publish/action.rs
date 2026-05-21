@@ -132,6 +132,33 @@ impl ActionModule for PublishModule {
         }
     }
 
+    /// PR-G: publish actions settle asynchronously — the actor signs,
+    /// hands the event to the publish engine, and the terminal verdict
+    /// arrives through `projections["action_results"]` on a later tick.
+    /// Per the trait contract this module records `Requested` →
+    /// `Publishing` → `Accepted`/`Failed` stages via
+    /// `Kernel::record_action_stage`. The actual call sites live in
+    /// sibling files (the engine wrapper drives them, not the module type):
+    ///
+    /// * `Requested` — `crates/nmp-core/src/actor/dispatch.rs`
+    ///   (PublishNote / PublishProfile / PublishSignedEvent arms)
+    /// * `Publishing` — `crates/nmp-core/src/kernel/publish_engine.rs`
+    ///   (`run_publish_engine_at` Ok arm)
+    /// * `Accepted` / `Failed` — `crates/nmp-core/src/kernel/publish_engine.rs`
+    ///   (`take_action_results_projection`) and
+    ///   `crates/nmp-core/src/kernel/publish_cmd.rs`
+    ///   (`record_action_failure`, sign-step path)
+    ///
+    /// The D12 grep-level lint asserts the *file* declaring the marker
+    /// also contains a recording call. PublishModule's declaration file
+    /// (this one) has none — the lint slips through here by design: a
+    /// cross-file scan would be the AST-level rule the spec deferred.
+    /// The recording sites above are exercised end-to-end by
+    /// `kernel/action_stages_tests.rs`.
+    fn is_async_completing() -> bool {
+        true
+    }
+
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,

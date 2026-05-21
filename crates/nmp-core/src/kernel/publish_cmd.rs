@@ -107,11 +107,70 @@ impl Kernel {
     /// correlation_id; a `react` / `follow` / conformance-harness publish
     /// carries `None` and is a no-op here (nothing is waiting on an id).
     pub(crate) fn record_action_failure(&mut self, correlation_id: String, error: String) {
+        // PR-G: a sign-step failure also lifts into the `action_stages`
+        // mirror so a host listening only on the stage seam (not the
+        // per-tick action_results drain) still sees the `Failed`
+        // terminal. The mirror also drives the lifecycle history a
+        // diagnostic view would render. The shared `correlation_id` is
+        // the join key — the host's stage observer and its
+        // action_results observer match on the same value.
+        self.action_stages.record(
+            &correlation_id,
+            super::action_stages::ActionStage::Failed {
+                reason: error.clone(),
+            },
+            None,
+            self.now_ms(),
+        );
         self.publish_engine
             .record_action_terminal_failure(correlation_id, error);
         // A terminal verdict is always snapshot-worthy: the next emit drains
         // it into `action_results` via `take_action_results_projection`.
         self.changed_since_emit = true;
+    }
+
+    /// PR-G — append a lifecycle stage for `correlation_id` to the
+    /// `action_stages` projection. Persists until the host acks via
+    /// [`Kernel::ack_action_stage`].
+    ///
+    /// `at_ms` is sourced from the kernel clock (`now_ms`) so a test
+    /// `FixedClock` makes the recorded timestamps deterministic. `detail`
+    /// is opaque per-stage JSON the host renders verbatim (e.g. relay url
+    /// for `Publishing`, error class for `Failed`). The cap behaviour and
+    /// drop-oldest eviction live in [`super::action_stages`].
+    ///
+    /// `changed_since_emit` is set so the next snapshot tick re-serialises
+    /// the mirror — same flush convention the rest of the kernel uses for
+    /// projection updates.
+    pub(crate) fn record_action_stage(
+        &mut self,
+        correlation_id: &str,
+        stage: super::action_stages::ActionStage,
+        detail: Option<serde_json::Value>,
+    ) {
+        let at_ms = self.now_ms();
+        self.action_stages
+            .record(correlation_id, stage, detail, at_ms);
+        self.changed_since_emit = true;
+    }
+
+    /// PR-G — drop the entry for `correlation_id` from the `action_stages`
+    /// mirror. Idempotent — an unknown id is a silent no-op (D6).
+    /// `changed_since_emit` is set so the next tick re-serialises the now-
+    /// reduced mirror.
+    pub(crate) fn ack_action_stage(&mut self, correlation_id: &str) {
+        if self.action_stages.ack(correlation_id) {
+            self.changed_since_emit = true;
+        }
+    }
+
+    /// PR-G — read accessor for [`update`]'s projection emit site. Returns
+    /// the full JSON mirror as a copy (NOT a drain): the same correlation_id
+    /// stays in the snapshot across every tick until the host acks. Returns
+    /// `serde_json::Value::Null` when nothing is tracked so the helper can
+    /// omit the projection key in steady state.
+    pub(crate) fn action_stages_projection(&self) -> serde_json::Value {
+        self.action_stages.snapshot()
     }
 
     /// Hex pubkey of the author of `event_id_hex`, or `None` if that event is

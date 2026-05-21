@@ -294,6 +294,17 @@ impl Kernel {
         if !action_results.is_null() {
             projections.insert("action_results".to_string(), action_results);
         }
+        // PR-G: snapshot mirror of every in-flight action's lifecycle stages,
+        // keyed by `correlation_id`. Unlike `action_results` (drain on emit),
+        // `action_stages` is a *copy* — the same correlation_id reappears on
+        // every tick until the host calls `nmp_app_ack_action_stage`. The host
+        // renders a progress indicator from the latest stage in each id's
+        // history and clears it on the terminal stage (`Accepted` / `Failed`)
+        // before acking. Absent in steady state (`Null` → not inserted).
+        let action_stages = self.action_stages_projection();
+        if !action_stages.is_null() {
+            projections.insert("action_stages".to_string(), action_stages);
+        }
         // D0: identity output. `accounts_enriched()` returns `AccountSummary`
         // records patched with kind:0 picture_url / display_name so the toolbar
         // avatar and accounts list show real profile data. `active_account` is

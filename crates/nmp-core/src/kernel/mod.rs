@@ -15,8 +15,15 @@
 // `ActionRegistry` / `default_registry` for the `nmp_app_dispatch_action`
 // entry point.
 pub(crate) mod action_registry;
+// PR-G — actor-owned per-correlation_id stage tracker. `pub(crate)` so the
+// FFI ack symbol (`crate::ffi::action::nmp_app_ack_action_stage`) and the
+// dispatch handler (`actor::dispatch`) can reach the type aliases; the
+// `Kernel`-attached API itself lives on `impl Kernel` (see `mod.rs` below).
+pub(crate) mod action_stages;
 #[cfg(test)]
 mod action_failure_tests;
+#[cfg(test)]
+mod action_stages_tests;
 mod auth;
 mod clock;
 #[cfg(test)]
@@ -388,6 +395,11 @@ pub(crate) struct Kernel {
     /// `PublishAction::Publish`, drives the engine, and drains the queue
     /// dispatcher into outbound frames. Per-relay OKs are folded back via
     /// `Kernel::handle_publish_ok` (called from `ingest::handle_text`).
+    /// PR-G — actor-owned tracker for the snapshot-mirror `action_stages`
+    /// projection. Records lifecycle transitions per dispatched correlation_id
+    /// and retains them until the host acks via `nmp_app_ack_action_stage`.
+    /// Caps and drop-oldest semantics live in [`action_stages`].
+    action_stages: action_stages::ActionStageTracker,
     publish_engine: crate::publish::PublishEngine,
     /// Buffered (relay_url, frame) pairs produced by the engine. The kernel
     /// drains this after each engine call and wraps the pairs as
@@ -755,6 +767,7 @@ impl Kernel {
             last_error_toast: None,
             last_error_category: None,
             relay_edit_rows: Vec::new(),
+            action_stages: action_stages::ActionStageTracker::new(),
             publish_engine,
             publish_dispatcher,
             publish_store,
@@ -799,6 +812,19 @@ impl Kernel {
             .now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
+            .unwrap_or(0)
+    }
+
+    /// Current wall-clock time as milliseconds since the Unix epoch, read
+    /// through the injected [`Clock`]. Used by the `action_stages` mirror
+    /// (PR-G) so per-stage timestamps survive `FixedClock` injection and
+    /// stay deterministic in tests/replay. A pre-epoch clock collapses to
+    /// `0` (D6 — never panics).
+    pub(crate) fn now_ms(&self) -> u64 {
+        self.clock
+            .now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
             .unwrap_or(0)
     }
 

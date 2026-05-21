@@ -674,6 +674,76 @@ fn d15_negative_fixture_clean() {
     );
 }
 
+// ─── D12 (async-completing modules must record stages) ─────────────────────
+
+#[test]
+fn d12_positive_fixture_fires() {
+    // Stage `pos.rs` in isolation so `neg.rs` does not confuse the assertion.
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d12_pos");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let pos_src = workspace.join(fixture_path("d12/pos.rs"));
+    std::fs::copy(&pos_src, tmp.join("pos.rs")).expect("copy pos fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    // D12 is path-scoped to protocol/app crates — the smoke fixture staged
+    // under `target/` falls outside that scope, so `--d12-extra-scope` opts
+    // it in (mirrors `--d9-extra-scope`).
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d12-extra-scope",
+        "doctrine_lint_d12_pos",
+    ]);
+    assert_eq!(
+        code, 1,
+        "d12 positive must exit 1; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[D12]"),
+        "d12 positive must emit a D12 finding; stdout:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("is_async_completing"),
+        "d12 finding must name the offending marker; stdout:\n{}",
+        stdout
+    );
+}
+
+#[test]
+fn d12_negative_fixture_clean() {
+    // The negative fixture exercises three accepted shapes (compliant
+    // async, synchronous `false`, no override) — none must produce a
+    // D12 finding.
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d12_neg");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let neg_src = workspace.join(fixture_path("d12/neg.rs"));
+    std::fs::copy(&neg_src, tmp.join("neg.rs")).expect("copy neg fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d12-extra-scope",
+        "doctrine_lint_d12_neg",
+    ]);
+    assert_eq!(
+        code, 0,
+        "d12 negative must exit 0; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.contains("error[D12]"),
+        "d12 negative must produce zero D12 findings; stdout:\n{}",
+        stdout
+    );
+}
+
 // ─── --workspace-d8 (workspace-wide no-polling scan) ─────────────────────────
 
 /// Builds a throwaway `crates/<name>/src/<file>.rs` tree under `target/` and

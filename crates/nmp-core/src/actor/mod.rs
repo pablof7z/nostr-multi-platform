@@ -429,6 +429,18 @@ pub enum ActorCommand {
     /// itself does not name nip77 (D0). Idempotent: rapid scene oscillation
     /// debounces to a single observer call per transition.
     LifecycleEvent(LifecyclePhase),
+    /// PR-G — host acknowledgement of a `correlation_id` in the
+    /// `action_stages` snapshot mirror. The actor folds the ack into the
+    /// kernel's `ActionStageTracker`, dropping the entry's stage history
+    /// so the next tick's snapshot no longer carries it. Idempotent: an
+    /// unknown id is a silent no-op (D6).
+    ///
+    /// Originates from the FFI symbol `nmp_app_ack_action_stage`. The host
+    /// calls this after rendering a terminal stage (`Accepted` or
+    /// `Failed`) and clearing its UI; until the ack arrives the entry
+    /// stays in the snapshot, so a tick the host missed cannot strand
+    /// the action's state machine.
+    AckActionStage(String),
     Stop,
     Reset,
     Shutdown,
