@@ -76,7 +76,16 @@ struct ProfileView: View {
     private var profileHeader: some View {
         VStack(alignment: .leading, spacing: 0) {
             Rectangle()
-                .fill(Color(.secondarySystemBackground))
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            (Color(hex: profile?.avatarColor ?? "7B66FF") ?? .accentColor).opacity(0.28),
+                            Color(.secondarySystemBackground)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
                 .frame(height: 118)
                 .overlay(alignment: .bottom) {
                     Divider()
