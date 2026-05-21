@@ -4,6 +4,7 @@
 //! - kind:0  → `profile.rs` (`ingest_profile`)
 //! - kind:3  → `contacts.rs` (`ingest_contacts`)
 //! - kind:10002` → `relay_list.rs` (`ingest_relay_list`)
+//! - kind:10050 → `dm_relay_list.rs` (`ingest_dm_relay_list`)
 //! - kind:1|6 → `timeline.rs` (`ingest_timeline_event`)
 //!
 //! `verify_and_persist` is the shared store-insertion path for non-timeline kinds.
@@ -11,6 +12,7 @@
 mod auth_handlers;
 mod closed;
 mod contacts;
+mod dm_relay_list;
 mod profile;
 mod relay_list;
 mod timeline;
@@ -405,6 +407,21 @@ impl Kernel {
                     Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
                 ) {
                     self.ingest_relay_list(event);
+                }
+                self.changed_since_emit = true;
+            }
+            10050 => {
+                // NIP-17 DM-relay list. Same D4 gating as kind:10002: only an
+                // Inserted | Replaced outcome means this event is now the
+                // canonical kind:10050 for the author, so the cache mutation
+                // is gated on the store outcome.
+                use crate::store::InsertOutcome;
+                let outcome = self.verify_and_persist(relay_url, &event);
+                if matches!(
+                    outcome,
+                    Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
+                ) {
+                    self.ingest_dm_relay_list(event);
                 }
                 self.changed_since_emit = true;
             }
