@@ -89,8 +89,15 @@ impl Kernel {
         signed: &SignedEvent,
         p_tags: &[String],
         target: PublishTarget,
+        correlation_id_override: Option<String>,
     ) -> Vec<OutboundMessage> {
-        self.run_publish_engine_at(signed, p_tags, target, now_epoch_ms())
+        self.run_publish_engine_at(
+            signed,
+            p_tags,
+            target,
+            correlation_id_override,
+            now_epoch_ms(),
+        )
     }
 
     /// Time-injected variant for deterministic tests. Production callers use
@@ -99,11 +106,18 @@ impl Kernel {
     /// `target` selects the relay-resolution mode (D3): `Auto` defers to the
     /// `Nip65OutboxResolver` (kind:10002 outbox); `Explicit { relays }` is the
     /// named opt-out and routes the verbatim event to exactly those relays.
+    ///
+    /// `correlation_id_override` is the action correlation_id to report in
+    /// `last_action_result` instead of the publish handle (== event id). It is
+    /// `Some` only on the `PublishNote` dispatch path — the host received a
+    /// registry-minted id before the actor signed the event, so the engine
+    /// must report that id, not the event's. Every other caller passes `None`.
     pub(crate) fn run_publish_engine_at(
         &mut self,
         signed: &SignedEvent,
         _p_tags: &[String],
         target: PublishTarget,
+        correlation_id_override: Option<String>,
         now_ms: u64,
     ) -> Vec<OutboundMessage> {
         let handle = signed.id.clone();
@@ -120,7 +134,10 @@ impl Kernel {
         };
         let event_id = signed.id.clone();
         let kind = signed.unsigned.kind;
-        match self.publish_engine.start_publish(action, now_ms) {
+        match self
+            .publish_engine
+            .start_publish(action, now_ms, correlation_id_override)
+        {
             Ok(()) => {
                 self.record_local_publish_intent(signed);
                 let frames = self.drain_publish_engine_frames(&event_id, kind);

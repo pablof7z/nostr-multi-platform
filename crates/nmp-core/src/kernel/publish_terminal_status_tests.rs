@@ -106,7 +106,7 @@ fn t128_all_relays_ack_flips_status_to_ok_with_full_outcome_map() {
         1,
         "all-ack t128",
     );
-    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 1_000);
+    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 1_000);
     assert_eq!(outbound.len(), 2, "two NIP-65 write relays expected");
 
     // Immediately after `run_publish_engine_at` (no acks yet) the entry
@@ -180,7 +180,7 @@ fn t128_all_relays_give_up_flips_status_to_failed_with_failure_reasons() {
         1,
         "all-fail t128",
     );
-    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 0);
+    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
     assert_eq!(outbound.len(), 2);
 
     // Helper closure: drive a single relay through three transient acks +
@@ -257,7 +257,7 @@ fn t128_partial_success_reports_ok_with_mixed_outcome_map() {
         1,
         "partial t128",
     );
-    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 0);
+    let outbound = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
     assert_eq!(outbound.len(), 2);
 
     // r1 settles OK on attempt 1.
@@ -327,7 +327,7 @@ fn t128_late_ack_after_terminal_does_not_re_flip_status() {
         1,
         "idempotence t128",
     );
-    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 0);
+    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
 
     // Settle both relays.
     let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, true, ""), 10);
@@ -368,7 +368,7 @@ fn t128_terminal_status_survives_snapshot_round_trip_to_wire_json() {
         1,
         "wire-shape t128",
     );
-    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 0);
+    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
     let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, true, ""), 10);
     let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, true, ""), 20);
 
@@ -456,7 +456,7 @@ fn last_action_result_reports_published_on_all_ack_success() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
     let signed = fake_signed("b1".repeat(32).as_str(), &author, 1, "publish ok");
-    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 0);
+    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
 
     // Not terminal after one ack — still null.
     let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, true, ""), 10);
@@ -492,7 +492,7 @@ fn last_action_result_reports_failed_with_reason_on_all_relays_giving_up() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
     let signed = fake_signed("b2".repeat(32).as_str(), &author, 1, "publish fail");
-    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 0);
+    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
 
     let drive_to_giveup = |kernel: &mut Kernel, relay: &str, base_ms: u64| {
         let _ = kernel.handle_publish_ok_at(
@@ -546,7 +546,7 @@ fn last_action_result_reports_failed_when_no_relays_resolve() {
     let author = "a3".repeat(32);
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let signed = fake_signed("b3".repeat(32).as_str(), &author, 1, "no targets");
-    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 0);
+    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
 
     let result = last_action_result(&mut kernel);
     assert_eq!(
@@ -578,7 +578,7 @@ fn last_action_result_reports_cancelled_on_user_cancel() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
     let signed = fake_signed("b4".repeat(32).as_str(), &author, 1, "cancel me");
-    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 0);
+    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
 
     kernel.cancel_publish(&signed.id);
 
@@ -610,7 +610,7 @@ fn last_action_result_is_overwritten_by_the_most_recent_terminal() {
     seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
 
     let first = fake_signed("c1".repeat(32).as_str(), &author, 1, "first publish");
-    let _ = kernel.run_publish_engine_at(&first, &[], crate::publish::PublishTarget::Auto, 0);
+    let _ = kernel.run_publish_engine_at(&first, &[], crate::publish::PublishTarget::Auto, None, 0);
     let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&first.id, true, ""), 10);
     let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&first.id, true, ""), 20);
     assert_eq!(
@@ -622,7 +622,7 @@ fn last_action_result_is_overwritten_by_the_most_recent_terminal() {
     );
 
     let second = fake_signed("c2".repeat(32).as_str(), &author, 1, "second publish");
-    let _ = kernel.run_publish_engine_at(&second, &[], crate::publish::PublishTarget::Auto, 100);
+    let _ = kernel.run_publish_engine_at(&second, &[], crate::publish::PublishTarget::Auto, None, 100);
     let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&second.id, true, ""), 110);
     let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&second.id, true, ""), 120);
 
@@ -648,8 +648,8 @@ fn concurrent_terminals_in_one_tick_keep_all_in_publish_queue() {
 
     let first = fake_signed("d1".repeat(32).as_str(), &author, 1, "concurrent first");
     let second = fake_signed("d2".repeat(32).as_str(), &author, 1, "concurrent second");
-    let _ = kernel.run_publish_engine_at(&first, &[], crate::publish::PublishTarget::Auto, 0);
-    let _ = kernel.run_publish_engine_at(&second, &[], crate::publish::PublishTarget::Auto, 0);
+    let _ = kernel.run_publish_engine_at(&first, &[], crate::publish::PublishTarget::Auto, None, 0);
+    let _ = kernel.run_publish_engine_at(&second, &[], crate::publish::PublishTarget::Auto, None, 0);
 
     // Settle BOTH publishes back-to-back (both terminal before any snapshot).
     let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&first.id, true, ""), 10);
@@ -690,7 +690,7 @@ fn last_action_result_survives_apply_engine_completions_drain() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
     let signed = fake_signed("e1".repeat(32).as_str(), &author, 1, "drain guard");
-    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, 0);
+    let _ = kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, 0);
     let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, true, ""), 10);
     let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, true, ""), 20);
 
@@ -705,4 +705,94 @@ fn last_action_result_survives_apply_engine_completions_drain() {
             read
         );
     }
+}
+
+#[test]
+fn last_action_result_reports_dispatch_correlation_id_for_publish_note() {
+    // THE FIX (PublishNote correlation_id round-trip): a `PublishNote`
+    // dispatch mints a random correlation_id because the event id is unknown
+    // at dispatch time (the actor signs the event). When the publish settles,
+    // `last_action_result.correlation_id` MUST report that minted id — not the
+    // signed event's id — so the host's spinner, keyed on the dispatch return
+    // value, can be cleared.
+    //
+    // This drives `run_publish_engine_at` with an explicit
+    // `correlation_id_override` (the path `commands::publish_note` →
+    // `publish_signed_with_correlation` takes once the actor has signed) and
+    // asserts the projection reports the override verbatim.
+    let author = "c9".repeat(32);
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
+    // The signed kind:1 the actor produced — its id is the publish handle.
+    let signed = fake_signed("d9".repeat(32).as_str(), &author, 1, "publishnote roundtrip");
+    // The registry-minted action correlation_id the host received from
+    // `nmp_app_dispatch_action` — deliberately distinct from the event id.
+    let minted_correlation_id = "9f".repeat(16);
+    assert_ne!(
+        minted_correlation_id, signed.id,
+        "the test fixture must use a correlation_id distinct from the event id"
+    );
+
+    let _ = kernel.run_publish_engine_at(
+        &signed,
+        &[],
+        crate::publish::PublishTarget::Auto,
+        Some(minted_correlation_id.clone()),
+        0,
+    );
+    // Settle both NIP-65 write relays.
+    let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, true, ""), 10);
+    let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, true, ""), 20);
+
+    let result = last_action_result(&mut kernel);
+    assert_eq!(
+        result.get("status").and_then(|v| v.as_str()),
+        Some("published"),
+        "the all-ack PublishNote settles as `published`"
+    );
+    assert_eq!(
+        result.get("correlation_id").and_then(|v| v.as_str()),
+        Some(minted_correlation_id.as_str()),
+        "last_action_result must report the dispatch correlation_id, not the event id"
+    );
+    assert_ne!(
+        result.get("correlation_id").and_then(|v| v.as_str()),
+        Some(signed.id.as_str()),
+        "the signed event id must NOT leak as the correlation_id for a PublishNote"
+    );
+}
+
+#[test]
+fn last_action_result_reports_dispatch_correlation_id_on_publish_note_failure() {
+    // The override must also survive the failure path: a `PublishNote` whose
+    // relays all reject still has to report the minted correlation_id so the
+    // host clears the spinner and shows the error against the right action.
+    let author = "ca".repeat(32);
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
+    let signed = fake_signed("da".repeat(32).as_str(), &author, 1, "publishnote fail");
+    let minted_correlation_id = "7e".repeat(16);
+
+    let _ = kernel.run_publish_engine_at(
+        &signed,
+        &[],
+        crate::publish::PublishTarget::Auto,
+        Some(minted_correlation_id.clone()),
+        0,
+    );
+    // Both relays return a permanent NIP-20 rejection → terminal `failed`.
+    let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, false, "blocked: spam"), 10);
+    let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, false, "blocked: spam"), 20);
+
+    let result = last_action_result(&mut kernel);
+    assert_eq!(
+        result.get("status").and_then(|v| v.as_str()),
+        Some("failed"),
+        "an all-reject PublishNote settles as `failed`"
+    );
+    assert_eq!(
+        result.get("correlation_id").and_then(|v| v.as_str()),
+        Some(minted_correlation_id.as_str()),
+        "the failure path must also report the dispatch correlation_id"
+    );
 }

@@ -73,7 +73,9 @@ impl Kernel {
         let action = PublishAction::Cancel {
             handle: handle.clone(),
         };
-        if let Err(err) = self.publish_engine.start_publish(action, now_ms) {
+        // Cancel reports `handle` as the correlation_id directly (it is what
+        // the host received from dispatch), so no override is needed here.
+        if let Err(err) = self.publish_engine.start_publish(action, now_ms, None) {
             self.publish_engine
                 .record_engine_error(&err, &handle, "", now_ms);
             let (toast, _, _) = describe_engine_error(&err);

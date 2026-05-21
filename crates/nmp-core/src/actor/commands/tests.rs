@@ -226,6 +226,7 @@ fn create_account_next_note_routes_via_local_relay_rows_before_relay_echo() {
         &mut kernel,
         "first note after signup",
         None,
+        None,
         &mut Vec::new(),
     );
     assert!(
@@ -299,7 +300,7 @@ fn remove_active_account_clears_active_slot() {
 #[test]
 fn publish_note_without_account_toasts_and_no_outbound() {
     let (id, mut kernel) = fresh();
-    let outbound = publish_note(&id, &mut kernel, "hello pulse", None, &mut Vec::new());
+    let outbound = publish_note(&id, &mut kernel, "hello pulse", None, None, &mut Vec::new());
     assert!(outbound.is_empty());
     assert!(kernel
         .last_error_toast_snapshot()
@@ -313,7 +314,7 @@ fn publish_note_signs_and_routes_via_nip65() {
     // NIP-65 write relays and produces non-empty outbound frames.
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
-    let outbound = publish_note(&id, &mut kernel, "hello pulse e2e", None, &mut Vec::new());
+    let outbound = publish_note(&id, &mut kernel, "hello pulse e2e", None, None, &mut Vec::new());
     assert!(!outbound.is_empty());
     assert!(outbound[0].text.starts_with("[\"EVENT\""));
     let q = kernel.publish_queue_snapshot();
@@ -1456,7 +1457,7 @@ fn sign_in_bunker_without_broker_clears_progress_and_toasts() {
 fn snapshot_json_carries_new_projections() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
-    publish_note(&id, &mut kernel, "json shape check", None, &mut Vec::new());
+    publish_note(&id, &mut kernel, "json shape check", None, None, &mut Vec::new());
     add_relay(&mut kernel, "wss://relay.damus.io", "both");
     let json = kernel.make_update(true);
     assert!(json.contains("\"accounts\""));
@@ -1583,6 +1584,7 @@ fn publish_note_reply_to_mid_thread_forwards_root_and_carries_p_tags() {
         &mut kernel,
         "nested reply",
         Some(REPLY_B_ID),
+        None,
         &mut Vec::new(),
     );
     let event = last_published_event_json(&outbound);
@@ -1631,6 +1633,7 @@ fn publish_note_reply_to_root_promotes_parent_to_root_and_emits_both_markers() {
         &mut kernel,
         "first reply",
         Some(ROOT_A_ID),
+        None,
         &mut Vec::new(),
     );
     let event = last_published_event_json(&outbound);
@@ -1671,6 +1674,7 @@ fn publish_note_reply_to_unknown_parent_falls_back_and_kicks_hydration() {
         &mut kernel,
         "cold reply",
         Some(COLD_PARENT_ID),
+        None,
         &mut Vec::new(),
     );
     let event = last_published_event_json(&outbound);
@@ -1711,6 +1715,7 @@ fn publish_note_reply_to_malformed_id_toasts_and_refuses() {
         &mut kernel,
         "reply with bad parent id",
         Some("not-a-hex-event-id"),
+        None,
         &mut Vec::new(),
     );
 

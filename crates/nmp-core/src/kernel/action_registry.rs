@@ -100,11 +100,20 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
 }
 
 /// Dyn-safe executor closure type. Receives the already-validated action
-/// JSON and a `send` callback that routes an [`ActorCommand`] to the actor.
-/// Returns `Ok(())` when the actor command was queued, `Err(msg)` on decode
-/// or dispatch failure.
-type ExecutorFn =
-    Box<dyn Fn(&str, &dyn Fn(crate::actor::ActorCommand)) -> Result<(), String> + Send + Sync>;
+/// JSON, the registry-minted `correlation_id`, and a `send` callback that
+/// routes an [`ActorCommand`] to the actor. Returns `Ok(())` when the actor
+/// command was queued, `Err(msg)` on decode or dispatch failure.
+///
+/// The `correlation_id` is the handle [`ActionRegistry::start`] minted and
+/// the host received from `nmp_app_dispatch_action`. An executor that builds
+/// an `ActorCommand` whose eventual terminal verdict must match that handle
+/// (e.g. `nmp.publish`'s `PublishNote` — the actor signs the event, so its
+/// `id` is unknown at dispatch time) threads this id onto the command so the
+/// publish engine reports it in `last_action_result` instead of the signed
+/// event's id.
+type ExecutorFn = Box<
+    dyn Fn(&str, &str, &dyn Fn(crate::actor::ActorCommand)) -> Result<(), String> + Send + Sync,
+>;
 
 /// Dyn-safe host-validator closure type — the [`ErasedActionModule::start`]
 /// boundary minus the unused [`ActionContext`] (a host validator works from
@@ -210,13 +219,13 @@ impl ActionRegistry {
     }
 
     /// Register an executor closure for `namespace`. The closure receives the
-    /// validated action JSON and a `send` callback; it converts the action to
-    /// an [`ActorCommand`] and calls `send(cmd)`. A second registration
-    /// replaces the first.
+    /// validated action JSON, the registry-minted `correlation_id`, and a
+    /// `send` callback; it converts the action to an [`ActorCommand`] and calls
+    /// `send(cmd)`. A second registration replaces the first.
     pub fn register_executor(
         &mut self,
         namespace: impl Into<String>,
-        f: impl Fn(&str, &dyn Fn(crate::actor::ActorCommand)) -> Result<(), String>
+        f: impl Fn(&str, &str, &dyn Fn(crate::actor::ActorCommand)) -> Result<(), String>
             + Send
             + Sync
             + 'static,
@@ -296,6 +305,7 @@ impl ActionRegistry {
         &self,
         namespace: &str,
         action_json: &str,
+        correlation_id: &str,
         send: &dyn Fn(crate::actor::ActorCommand),
     ) -> Result<(), String> {
         match self.executors.get(namespace) {
@@ -304,10 +314,14 @@ impl ActionRegistry {
             // executor's effects (a non-blocking channel send) are observed
             // only through the actor, never re-read here. `catch_unwind`
             // nests the inner `Result`; flatten it.
-            Some(exec) => match catch_unwind(AssertUnwindSafe(|| exec(action_json, send))) {
-                Ok(result) => result,
-                Err(_) => Err("action executor panicked".to_string()),
-            },
+            Some(exec) => {
+                match catch_unwind(AssertUnwindSafe(|| {
+                    exec(action_json, correlation_id, send)
+                })) {
+                    Ok(result) => result,
+                    Err(_) => Err("action executor panicked".to_string()),
+                }
+            }
             None => Err(format!(
                 "no executor registered for namespace '{namespace}'"
             )),
@@ -391,7 +405,7 @@ pub fn default_registry() -> ActionRegistry {
 
     let mut registry = ActionRegistry::new();
     registry.register::<crate::publish::PublishModule>();
-    registry.register_executor("nmp.publish", |action_json, send| {
+    registry.register_executor("nmp.publish", |action_json, correlation_id, send| {
         let action: PublishAction = serde_json::from_str(action_json)
             .map_err(|e| format!("publish action decode failed: {e}"))?;
         match action {
@@ -399,6 +413,12 @@ pub fn default_registry() -> ActionRegistry {
                 // D8 — non-blocking channel send only; the actor loop
                 // owns signing/publishing (D4). The event is already
                 // signed; the actor re-verifies it before publishing.
+                //
+                // No `correlation_id` thread-through is needed here: the
+                // event is pre-signed, so its `id` is known at dispatch
+                // time and `PublishModule::preferred_action_id()` already
+                // makes the host's correlation_id == `event.id` == the
+                // engine's `PublishHandle` (PR #86).
                 send(ActorCommand::PublishSignedEvent {
                     raw: signed_event_to_raw(event),
                     relays: relays_for_target(&target),
@@ -410,8 +430,20 @@ pub fn default_registry() -> ActionRegistry {
             // `ActionModule`-native replacement for the deleted per-verb
             // `nmp_app_publish_note` FFI symbol — same `ActorCommand`,
             // same runtime path.
+            //
+            // The event id is NOT known at dispatch time (the actor signs
+            // it), so `preferred_action_id()` returns `None` and the
+            // registry minted a random `correlation_id`. Thread that id
+            // onto the command so the publish engine reports it in
+            // `last_action_result` instead of the signed event's `id` —
+            // otherwise the host's spinner (keyed on the dispatch return
+            // value) could never be cleared.
             PublishAction::PublishNote { content, reply_to_id, .. } => {
-                send(ActorCommand::PublishNote { content, reply_to_id });
+                send(ActorCommand::PublishNote {
+                    content,
+                    reply_to_id,
+                    correlation_id: Some(correlation_id.to_string()),
+                });
                 Ok(())
             }
             // No publish-engine cancel command yet; the registry
@@ -579,6 +611,83 @@ mod tests {
         assert_eq!(plan.initial_status, ActionStatus::Pending);
     }
 
+    /// THE FIX: the `nmp.publish` executor threads the registry-minted
+    /// `correlation_id` onto `ActorCommand::PublishNote`. The actor signs the
+    /// event, so its id is unknown at dispatch time — without this, the
+    /// publish engine would report the event id and the host's spinner (keyed
+    /// on the dispatch return value) could never be cleared. This exercises
+    /// the real `default_registry()` executor closure end-to-end via
+    /// `execute()`, capturing the `ActorCommand` it sends.
+    #[test]
+    fn publish_note_executor_threads_correlation_id_onto_actor_command() {
+        use crate::actor::ActorCommand;
+        use std::sync::{Arc, Mutex};
+
+        let registry = default_registry();
+        let captured: Arc<Mutex<Option<ActorCommand>>> = Arc::new(Mutex::new(None));
+        let captured_in_send = Arc::clone(&captured);
+
+        let minted_correlation_id = "fe".repeat(16);
+        let action_json =
+            r#"{"PublishNote":{"content":"hello","reply_to_id":null,"target":"Auto"}}"#;
+        registry
+            .execute("nmp.publish", action_json, &minted_correlation_id, &|cmd| {
+                *captured_in_send.lock().unwrap() = Some(cmd);
+            })
+            .expect("publish-note execution should succeed");
+
+        let cmd = captured.lock().unwrap().take().expect("an ActorCommand must be sent");
+        match cmd {
+            ActorCommand::PublishNote {
+                content,
+                reply_to_id,
+                correlation_id,
+            } => {
+                assert_eq!(content, "hello");
+                assert_eq!(reply_to_id, None);
+                assert_eq!(
+                    correlation_id,
+                    Some(minted_correlation_id),
+                    "the executor must thread the minted correlation_id onto the command"
+                );
+            }
+            other => panic!("expected ActorCommand::PublishNote, got {other:?}"),
+        }
+    }
+
+    /// The pre-signed `Publish` path does NOT need a correlation_id thread:
+    /// the event id is known at dispatch time and `preferred_action_id()`
+    /// already binds the host's correlation_id to it (PR #86). The executor
+    /// sends `ActorCommand::PublishSignedEvent`, which carries no
+    /// correlation_id field — guard that this stays the case.
+    #[test]
+    fn publish_signed_executor_sends_publish_signed_event_command() {
+        use crate::actor::ActorCommand;
+        use std::sync::{Arc, Mutex};
+
+        let registry = default_registry();
+        let captured: Arc<Mutex<Option<ActorCommand>>> = Arc::new(Mutex::new(None));
+        let captured_in_send = Arc::clone(&captured);
+
+        let action = crate::publish::PublishAction::Publish {
+            handle: "h-presigned".to_string(),
+            event: fixture_signed_event(),
+            target: crate::publish::PublishTarget::Auto,
+        };
+        let action_json = serde_json::to_string(&action).unwrap();
+        registry
+            .execute("nmp.publish", &action_json, "minted-id", &|cmd| {
+                *captured_in_send.lock().unwrap() = Some(cmd);
+            })
+            .expect("publish execution should succeed");
+
+        let cmd = captured.lock().unwrap().take().expect("an ActorCommand must be sent");
+        assert!(
+            matches!(cmd, ActorCommand::PublishSignedEvent { .. }),
+            "a pre-signed Publish routes to PublishSignedEvent, got {cmd:?}"
+        );
+    }
+
     #[test]
     fn start_publish_note_action_with_empty_content_is_rejected() {
         // Empty content fails the `PublishModule::start` gate.
@@ -712,11 +821,11 @@ mod tests {
     #[test]
     fn panicking_executor_returns_err_not_unwound() {
         let mut registry = ActionRegistry::new();
-        registry.register_executor("host.boom", |_action_json, _send| {
+        registry.register_executor("host.boom", |_action_json, _correlation_id, _send| {
             panic!("buggy host executor");
         });
         let err = registry
-            .execute("host.boom", "{}", &|_cmd| {})
+            .execute("host.boom", "{}", "corr-id", &|_cmd| {})
             .expect_err("a panicking executor must return Err, not unwind");
         assert_eq!(err, "action executor panicked", "got: {err}");
     }

@@ -86,7 +86,7 @@ fn publish_engine_error_ffi_mapping_routes_to_recent_failure_d6() {
         event: signed("ev-ffi-empty", "alice", 1, &[]),
         target: PublishTarget::Auto,
     };
-    let err = e.start_publish(action, 100).unwrap_err();
+    let err = e.start_publish(action, 100, None).unwrap_err();
     // start_publish_inner already pushed a recent_errors row for NoTargets;
     // verify the FFI mapping path is observable on top of that.
     let recent_before = e.snapshot().recent_errors.len();
@@ -140,7 +140,7 @@ fn publish_pending_retries_durable_across_restart() {
                 event: signed("ev-backoff", "alice", 1, &[]),
                 target: PublishTarget::Auto,
             },
-            0,
+            0, None,
         )
         .unwrap();
         // After the transient failure, the row is in RelayError and a
@@ -239,7 +239,7 @@ fn publish_partial_success_one_relay_rejected_others_accepted() {
                 event: signed("ev-mixed", "alice", 1, &[]),
                 target: PublishTarget::Auto,
             },
-            1_000,
+            1_000, None,
         )
         .unwrap();
 
@@ -339,7 +339,7 @@ fn publish_all_relays_accepted_marks_publish_complete() {
             event: signed("ev-all-ok", "alice", 1, &[]),
             target: PublishTarget::Auto,
         },
-        1_000,
+        1_000, None,
     )
     .unwrap();
 
@@ -402,7 +402,7 @@ fn publish_per_relay_states_tracked_independently_across_fanout() {
             event: signed("ev-indep", "alice", 1, &[]),
             target: PublishTarget::Auto,
         },
-        1_000,
+        1_000, None,
     )
     .unwrap();
 

@@ -46,6 +46,15 @@ pub(crate) struct PendingSign {
     /// the target has to survive the remote-sign park (otherwise a bunker
     /// user's group event would silently fall back to the wrong relay set).
     pub target: PublishTarget,
+    /// Action correlation_id to report in `last_action_result` once the parked
+    /// publish settles, when it differs from the eventual event id. Set on the
+    /// `PublishNote` dispatch path: the host received a registry-minted id
+    /// before this remote-sign op was parked, and the event id is only known
+    /// once the broker returns the signed event. Without carrying it here a
+    /// bunker user's dispatched `PublishNote` would settle under the event id
+    /// and the host spinner could never be cleared. `None` for every other
+    /// parked publish (`react`, `follow`, NIP-29 group actions, …).
+    pub correlation_id_override: Option<String>,
     /// Drop-dead time. Past this, the op is abandoned with a toast.
     pub deadline: Instant,
 }
@@ -72,6 +81,25 @@ impl PendingSign {
             op,
             p_tags,
             target,
+            correlation_id_override: None,
+            deadline: Instant::now() + PENDING_SIGN_TIMEOUT,
+        }
+    }
+
+    /// Park a sign op (NIP-65 `Auto` routing) that carries an action
+    /// `correlation_id` to report once the publish settles. Used by the
+    /// `PublishNote` dispatch path so a bunker user's dispatched note settles
+    /// under the registry-minted id the host is waiting on, not the event id.
+    pub fn with_correlation_id(
+        op: SignerOp<SignedEvent>,
+        p_tags: Vec<String>,
+        correlation_id_override: Option<String>,
+    ) -> Self {
+        Self {
+            op,
+            p_tags,
+            target: PublishTarget::Auto,
+            correlation_id_override,
             deadline: Instant::now() + PENDING_SIGN_TIMEOUT,
         }
     }
@@ -200,6 +228,7 @@ mod tests {
             op: SignerOp::Pending(rx2),
             p_tags: vec![],
             target: PublishTarget::Auto,
+            correlation_id_override: None,
             deadline: Instant::now() - Duration::from_millis(1),
         };
         assert!(

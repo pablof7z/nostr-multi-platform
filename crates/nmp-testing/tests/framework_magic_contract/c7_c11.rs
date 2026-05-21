@@ -88,7 +88,7 @@ fn c7_publish_routes_outbox_and_private_fails_closed() {
                 event,
                 target: PublishTarget::Auto,
             },
-            0,
+            0, None,
         )
         .expect("public publish must succeed");
 
@@ -128,7 +128,7 @@ fn c7_publish_routes_outbox_and_private_fails_closed() {
             event: dm_event,
             target: PublishTarget::Auto,
         },
-        0,
+        0, None,
     );
     assert!(
         matches!(result, Err(PublishEngineError::NoTargets)),

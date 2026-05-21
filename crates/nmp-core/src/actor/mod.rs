@@ -216,9 +216,20 @@ pub enum ActorCommand {
     },
     /// T66a publish — sign a kind:1 (optionally a reply) with the active
     /// account and emit it to the NIP-65 outbox-resolved write relays (D3).
+    ///
+    /// `correlation_id` is the registry-minted action id when this command
+    /// originates from `nmp_app_dispatch_action` (`PublishAction::PublishNote`).
+    /// The actor signs the event, so its `id` is unknown at dispatch time and
+    /// `preferred_action_id()` could not pre-bind the host's correlation_id to
+    /// it. Threading the minted id here makes the publish engine report it in
+    /// `last_action_result` (instead of the signed event's `id`), so the host
+    /// spinner keyed on the dispatch return value can be cleared. `None` for
+    /// the legacy non-dispatch callers — the engine then falls back to the
+    /// publish handle (== event id), preserving the prior behaviour.
     PublishNote {
         content: String,
         reply_to_id: Option<String>,
+        correlation_id: Option<String>,
     },
     /// Generic, kind-agnostic publish — take an `UnsignedEvent` already built
     /// by any protocol-crate builder (`nmp_nip23::Article`, `nmp_nip01::Note`,
@@ -881,10 +892,17 @@ pub fn run_actor_with_observers(
                         // for host-pinned action executors (NIP-29 group
                         // events). Without the parked target a bunker user's
                         // group event would silently revert to the outbox.
-                        let outbound = kernel.publish_signed_to(
+                        //
+                        // Carry the parked `correlation_id_override` too: a
+                        // dispatched `PublishNote` signed by a remote (NIP-46)
+                        // broker must settle under the registry-minted id the
+                        // host is waiting on, not the freshly signed event's
+                        // id. `None` for every other parked publish.
+                        let outbound = kernel.publish_signed_to_with_correlation(
                             &signed,
                             &ps.p_tags,
                             ps.target.clone(),
+                            ps.correlation_id_override.clone(),
                         );
                         route_dispatch_outbound(
                             running,

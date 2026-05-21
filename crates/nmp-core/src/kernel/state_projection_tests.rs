@@ -332,6 +332,7 @@ fn publish_outbox_projects_pending_event_details_and_relays() {
         crate::publish::PublishTarget::Explicit {
             relays: vec!["wss://outbox.test".to_string()],
         },
+        None,
         0,
     );
     assert_eq!(outbound.len(), 1);
