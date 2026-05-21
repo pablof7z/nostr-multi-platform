@@ -29,9 +29,9 @@
 //! app.register_snapshot_projection("nip29.group_chat", move || snap.snapshot_json());
 //! ```
 //!
-//! Wiring that closure is the host app's job (a separate PR — `nmp-app-chirp`);
-//! this crate only provides the projection type and a snapshot read that is
-//! safe to call from inside a tick.
+//! Wiring that closure is the host app composition crate's job (a separate
+//! PR); this crate only provides the projection type and a snapshot read
+//! that is safe to call from inside a tick.
 //!
 //! ## D8 — non-blocking
 //!

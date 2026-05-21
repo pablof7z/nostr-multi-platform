@@ -191,23 +191,35 @@ pub enum ActorCommand {
     /// only sees `dyn RemoteSignerHandle` (defined in
     /// [`crate::remote_signer`]).
     ///
-    /// Constructed by the broker crate (Stage 4) which depends on both
-    /// `nmp-core` and `nmp-signers`; only test code instantiates it today.
-    #[allow(dead_code)] // constructed only by the broker crate — see doc above
+    /// Constructed by the `nmp-signer-broker` crate, which depends on both
+    /// `nmp-core` and `nmp-signers`. It has a live production caller
+    /// (`BunkerBroker::spawn_handshake` in `nmp-signer-broker/src/broker.rs`);
+    /// `#[allow(dead_code)]` only suppresses rustc's *per-crate* dead-code
+    /// lint, which cannot see the cross-crate constructor.
+    #[allow(dead_code)] // live cross-crate caller in nmp-signer-broker — per-crate lint false positive
     AddRemoteSigner {
         handle: Box<dyn crate::RemoteSignerHandle>,
     },
     /// Broker → actor: drop a remote signer by user pubkey hex. See
     /// [`Self::AddRemoteSigner`] for the cross-crate construction story.
-    #[allow(dead_code)] // constructed only by the broker crate — see doc above
+    ///
+    /// Unlike its sibling variants this one has **no production constructor
+    /// today** — only the dispatch handler and `remote_signer_tests` exercise
+    /// it. The handler logic is real and a sign-out flow is the expected
+    /// caller.
+    /// TODO(2-cycle-deadline): if review #42 still finds no production caller,
+    /// delete this variant together with its `dispatch.rs` handler arm.
+    #[allow(dead_code)] // no production caller yet — see 2-cycle deletion deadline above
     RemoveRemoteSigner {
         identity_id: String,
     },
     /// Broker → actor: progress event for the bunker handshake UI. Actor
     /// stores the latest into a kernel snapshot field; the broker is the
-    /// sole writer. Stage `"idle"` clears the projection. Constructed by
-    /// the broker crate (Stage 4).
-    #[allow(dead_code)] // constructed only by the broker crate — see doc above
+    /// sole writer. Stage `"idle"` clears the projection. Has a live
+    /// production caller (`BunkerBroker::emit_progress` in
+    /// `nmp-signer-broker/src/broker.rs`); `#[allow(dead_code)]` only
+    /// suppresses rustc's per-crate lint, which cannot see it.
+    #[allow(dead_code)] // live cross-crate caller in nmp-signer-broker — per-crate lint false positive
     BunkerHandshakeProgress {
         /// `"connecting"` | `"awaiting_pubkey"` | `"ready"` | `"failed"` | `"idle"`.
         stage: String,
