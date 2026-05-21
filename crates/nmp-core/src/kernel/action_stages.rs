@@ -40,6 +40,19 @@
 //!    (Requested + Publishing + N relay-level retries + Accepted/Failed)
 //!    while pinning the worst case at ~64 × (key + small JSON detail).
 //!
+//!    **Terminals are load-bearing — never dropped.** When history reaches
+//!    the cap, an incoming `Accepted` / `Failed` evicts the oldest
+//!    *non-terminal* entry to make room instead of dropping the terminal.
+//!    The host's spinner-cleanup edge (its consumer of `action_results` +
+//!    `action_stages`) is keyed on the terminal stage; silently dropping it
+//!    under a pathological retry storm would leave the spinner spinning
+//!    forever. A non-terminal entry (`Requested` / `Publishing` /
+//!    `AwaitingCapability`) is diagnostic — its loss costs a row in the
+//!    history view, not a permanently-stuck UI. The terminal *always*
+//!    survives; only non-terminals are subject to drop. This makes the cap
+//!    an upper bound on *non-terminal* entries (63), not on the whole
+//!    history (which can hold the terminal as the 64th).
+//!
 //! 2. **Map cardinality** ([`MAX_TRACKED_CORRELATIONS`]): a buggy host that
 //!    never acks would otherwise accumulate one entry per dispatched
 //!    action forever. We cap at 1024 — large enough for any realistic
@@ -151,7 +164,18 @@ pub(crate) struct ActionStageTracker {
     pub(crate) global_cap_evictions: u64,
     /// D8 visibility: count of stage appends rejected by the
     /// per-correlation cap. Exposed to tests.
+    ///
+    /// Only ever incremented for *non-terminal* stages at cap. A terminal
+    /// stage at cap evicts the oldest non-terminal entry instead of
+    /// dropping itself — see [`Self::record`] — and bumps
+    /// `per_correlation_terminal_evictions` rather than this counter.
     pub(crate) per_correlation_cap_drops: u64,
+    /// D8 visibility: count of non-terminal entries evicted to make room
+    /// for an incoming terminal stage when the per-correlation history
+    /// hits [`MAX_STAGES_PER_CORRELATION`]. Distinct from
+    /// `per_correlation_cap_drops` so a test can prove the terminal
+    /// survival contract (the terminal arrived, the diagnostic was lost).
+    pub(crate) per_correlation_terminal_evictions: u64,
 }
 
 impl ActionStageTracker {
@@ -167,9 +191,21 @@ impl ActionStageTracker {
     /// `MAX_CLAIMS_PER_PUBKEY` convention).
     ///
     /// Cap behaviour:
-    /// * If the per-correlation history would exceed
-    ///   [`MAX_STAGES_PER_CORRELATION`] the call is a silent no-op and
-    ///   `per_correlation_cap_drops` increments.
+    /// * If the per-correlation history is at
+    ///   [`MAX_STAGES_PER_CORRELATION`] and the incoming stage is a
+    ///   **terminal** (`Accepted` / `Failed`), the oldest *non-terminal*
+    ///   entry in the history is evicted to make room, and
+    ///   `per_correlation_terminal_evictions` increments. The terminal
+    ///   always survives — the host's spinner-cleanup edge depends on it.
+    ///   If the history somehow contains only terminals (e.g. a buggy
+    ///   producer recording 64 `Accepted` rows on the same id) the
+    ///   incoming terminal IS the canonical one, so the oldest terminal
+    ///   is evicted; the contract "the latest terminal survives" still
+    ///   holds.
+    /// * If the per-correlation history is at the cap and the incoming
+    ///   stage is **non-terminal**, the call is a silent no-op and
+    ///   `per_correlation_cap_drops` increments — the diagnostic loss is
+    ///   safe (a non-terminal stage never drives UI cleanup).
     /// * If the global map would exceed [`MAX_TRACKED_CORRELATIONS`] the
     ///   oldest correlation_id (front of `correlation_order`) is evicted
     ///   wholesale, `global_cap_evictions` increments, and the append
@@ -193,10 +229,30 @@ impl ActionStageTracker {
                 self.global_cap_evictions = self.global_cap_evictions.saturating_add(1);
             }
         }
+        let stage_is_terminal = stage.is_terminal();
         let history = self.entries.entry(correlation_id.to_string()).or_default();
         if history.len() >= MAX_STAGES_PER_CORRELATION {
-            self.per_correlation_cap_drops = self.per_correlation_cap_drops.saturating_add(1);
-            return;
+            if stage_is_terminal {
+                // Terminals MUST survive: evict the oldest non-terminal entry
+                // (preserving prior terminals — a buggy producer recording a
+                // chain of terminals stays observable). Fallback: if the
+                // history is solely terminals (degenerate), evict the oldest
+                // one — the latest terminal is the canonical one and still
+                // survives.
+                let evict_idx = history
+                    .iter()
+                    .position(|e| !e.stage.is_terminal())
+                    .unwrap_or(0);
+                history.remove(evict_idx);
+                self.per_correlation_terminal_evictions =
+                    self.per_correlation_terminal_evictions.saturating_add(1);
+                // Fall through to push the terminal below.
+            } else {
+                // Non-terminal at cap: silent no-op. Diagnostic loss is safe.
+                self.per_correlation_cap_drops =
+                    self.per_correlation_cap_drops.saturating_add(1);
+                return;
+            }
         }
         history.push(StageEntry {
             stage,
@@ -445,14 +501,11 @@ mod tests {
         assert_eq!(stage_obj["reason"], "no relays settled");
     }
 
-    /// Per-correlation cap: the 65th record on the same id is dropped
-    /// silently and the diagnostic counter increments. Earlier stages
-    /// remain — this is drop-newest, not drop-oldest, because a
-    /// run-away producer is the failure mode the cap protects against
-    /// and the first few entries (`Requested`, `Publishing`) carry the
-    /// most signal.
+    /// Per-correlation cap, non-terminal arrival: a non-terminal stage at
+    /// cap is silently dropped (diagnostic loss is safe — non-terminals
+    /// never drive UI cleanup). The history's existing entries survive.
     #[test]
-    fn per_correlation_cap_drops_newest() {
+    fn per_correlation_cap_drops_non_terminal_silently() {
         let mut t = ActionStageTracker::new();
         let cid = "c-cap";
         for i in 0..MAX_STAGES_PER_CORRELATION {
@@ -461,18 +514,102 @@ mod tests {
         assert_eq!(t.history(cid).unwrap().len(), MAX_STAGES_PER_CORRELATION);
         assert_eq!(t.per_correlation_cap_drops, 0);
 
-        // The 65th is dropped.
-        t.record(cid, ActionStage::Accepted, None, 999);
+        // A non-terminal arrival at cap is dropped silently.
+        t.record(cid, ActionStage::Publishing, None, 999);
         assert_eq!(
             t.history(cid).unwrap().len(),
             MAX_STAGES_PER_CORRELATION,
             "history length is pinned at the cap"
         );
         assert_eq!(t.per_correlation_cap_drops, 1);
-        // The Accepted attempt was DROPPED — the last entry is still a
-        // Publishing recorded inside the loop.
-        let last = t.history(cid).unwrap().last().unwrap();
-        assert!(matches!(last.stage, ActionStage::Publishing));
+        assert_eq!(
+            t.per_correlation_terminal_evictions, 0,
+            "no terminal eviction occurred for a non-terminal drop"
+        );
+    }
+
+    /// THE CONTRACT: at cap, a terminal stage MUST survive. The
+    /// `per_correlation_terminal_evictions` counter increments and the
+    /// oldest *non-terminal* entry is evicted to make room. A host that
+    /// keys its spinner cleanup on the terminal stage now sees it even
+    /// under a pathological retry storm — codex's PR-G HIGH finding.
+    #[test]
+    fn per_correlation_cap_evicts_non_terminal_to_seat_terminal() {
+        let mut t = ActionStageTracker::new();
+        let cid = "c-cap-term";
+        for i in 0..MAX_STAGES_PER_CORRELATION {
+            t.record(cid, ActionStage::Publishing, None, i as u64);
+        }
+        assert_eq!(t.history(cid).unwrap().len(), MAX_STAGES_PER_CORRELATION);
+
+        // Arriving terminal: the oldest non-terminal is evicted; the
+        // terminal IS recorded; size stays at the cap.
+        t.record(cid, ActionStage::Accepted, None, 999);
+        let history = t.history(cid).unwrap();
+        assert_eq!(
+            history.len(),
+            MAX_STAGES_PER_CORRELATION,
+            "size pins at the cap — one in, one out"
+        );
+        assert_eq!(t.per_correlation_terminal_evictions, 1);
+        assert_eq!(
+            t.per_correlation_cap_drops, 0,
+            "no drop happened — the terminal was admitted, a non-terminal was evicted"
+        );
+
+        // THE LOAD-BEARING ASSERTION: the terminal is the LAST entry.
+        let last = history.last().unwrap();
+        assert!(
+            matches!(last.stage, ActionStage::Accepted),
+            "the terminal must survive at the tail of the history; got {:?}",
+            last.stage
+        );
+        // The Failed-shape variant also survives — exercises the
+        // `is_terminal` predicate on both arms.
+        let mut t2 = ActionStageTracker::new();
+        for i in 0..MAX_STAGES_PER_CORRELATION {
+            t2.record("c2", ActionStage::Publishing, None, i as u64);
+        }
+        t2.record(
+            "c2",
+            ActionStage::Failed { reason: "fail".to_string() },
+            None,
+            999,
+        );
+        let last2 = t2.history("c2").unwrap().last().unwrap();
+        assert!(matches!(last2.stage, ActionStage::Failed { .. }));
+    }
+
+    /// Degenerate edge: a history full of terminals already (which a real
+    /// producer never builds — a correlation_id settles exactly once) still
+    /// admits a new terminal. The oldest terminal is evicted; the latest
+    /// one becomes the canonical tail. The "the latest terminal survives"
+    /// contract still holds.
+    #[test]
+    fn per_correlation_cap_terminal_at_cap_full_of_terminals() {
+        let mut t = ActionStageTracker::new();
+        let cid = "c-degen";
+        for i in 0..MAX_STAGES_PER_CORRELATION {
+            t.record(cid, ActionStage::Accepted, None, i as u64);
+        }
+        assert_eq!(t.history(cid).unwrap().len(), MAX_STAGES_PER_CORRELATION);
+
+        t.record(
+            cid,
+            ActionStage::Failed { reason: "final".to_string() },
+            None,
+            999,
+        );
+        let history = t.history(cid).unwrap();
+        assert_eq!(history.len(), MAX_STAGES_PER_CORRELATION);
+        // The latest terminal is the tail; the oldest was evicted.
+        let last = history.last().unwrap();
+        match &last.stage {
+            ActionStage::Failed { reason } => assert_eq!(reason, "final"),
+            other => panic!("expected Failed terminal at tail, got {other:?}"),
+        }
+        assert_eq!(history.first().unwrap().at_ms, 1, "oldest entry was evicted");
+        assert_eq!(t.per_correlation_terminal_evictions, 1);
     }
 
     /// Global cap: the 1025th distinct correlation_id evicts the oldest

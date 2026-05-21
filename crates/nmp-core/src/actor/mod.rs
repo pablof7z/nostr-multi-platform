@@ -441,6 +441,30 @@ pub enum ActorCommand {
     /// stays in the snapshot, so a tick the host missed cannot strand
     /// the action's state machine.
     AckActionStage(String),
+    /// PR-G2 — record a terminal `Failed` stage for `correlation_id` on
+    /// behalf of an executor that panicked (or otherwise failed *after*
+    /// the registry minted the correlation id and before any
+    /// `ActorCommand` carrying it could be enqueued).
+    ///
+    /// Without this seam the failure is orphaned: the host received a
+    /// correlation_id from `nmp_app_dispatch_action`'s error envelope but
+    /// has no way to ACK an `action_stages` entry that was never produced.
+    /// The actor folds this command into [`Kernel::record_action_failure`]
+    /// — same engine the sign-step failure path uses — so a `Failed`
+    /// terminal lands in both `action_stages` (the mirror, for the host's
+    /// ACK lifecycle) and `action_results` (the drain, for the host's
+    /// spinner cleanup).
+    ///
+    /// Originates from [`crate::ffi::action::dispatch_action_json`] on the
+    /// FFI thread when the executor returned an `Err` (including a
+    /// `catch_unwind`-converted panic). Idempotent w.r.t. a buggy host
+    /// that re-sends — `record_action_failure` records a second `Failed`
+    /// stage, which is a benign no-op for the host (it sees the same
+    /// terminal twice; the second ACK is a silent no-op).
+    RecordActionFailure {
+        correlation_id: String,
+        reason: String,
+    },
     Stop,
     Reset,
     Shutdown,

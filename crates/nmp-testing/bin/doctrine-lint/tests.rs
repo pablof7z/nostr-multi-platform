@@ -953,6 +953,44 @@ fn d12_positive_fixture_fires() {
     );
 }
 
+/// PR-G2 — codex MEDIUM "D12 multi-line bypass" finding. The same fixture
+/// shape as `d12_positive_fixture_fires` but the declaration body spans
+/// three lines. Before PR-G2 this used to slip through the rule's
+/// same-line heuristic; the new scanner reads function bodies across
+/// newlines and fires on the declaration line regardless of formatting.
+#[test]
+fn d12_multiline_positive_fixture_fires() {
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d12_multiline_pos");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let pos_src = workspace.join(fixture_path("d12/pos_multiline.rs"));
+    std::fs::copy(&pos_src, tmp.join("pos_multiline.rs")).expect("copy pos_multiline fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d12-extra-scope",
+        "doctrine_lint_d12_multiline_pos",
+    ]);
+    assert_eq!(
+        code, 1,
+        "d12 multi-line positive must exit 1; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[D12]"),
+        "d12 multi-line positive must emit a D12 finding; stdout:\n{}",
+        stdout
+    );
+    assert!(
+        stdout.contains("is_async_completing"),
+        "d12 multi-line finding must name the offending marker; stdout:\n{}",
+        stdout
+    );
+}
+
 #[test]
 fn d12_negative_fixture_clean() {
     // The negative fixture exercises three accepted shapes (compliant

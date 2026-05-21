@@ -505,6 +505,31 @@ pub(super) fn dispatch_command(
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
+        ActorCommand::RecordActionFailure {
+            correlation_id,
+            reason,
+        } => {
+            // PR-G2 — executor-panic / executor-Err fan-out from the FFI
+            // thread. `record_action_failure` lifts the failure into both
+            // surfaces the host listens on:
+            //
+            //   * `action_stages` → `Failed { reason }` terminal — the
+            //     mirror entry the host's progress indicator polls until
+            //     it ACKs the correlation_id.
+            //   * `action_results` → terminal verdict — the per-tick drain
+            //     that clears the spinner.
+            //
+            // Without this command an executor that minted a
+            // correlation_id but failed before the actor saw an
+            // `ActorCommand` carrying it would orphan the entry: the host
+            // received the id from `nmp_app_dispatch_action`'s envelope
+            // but the kernel never produced a stage to ACK. The next
+            // emit fires promptly via `maybe_emit_after_dispatch` so the
+            // host sees the terminal on its very next tick.
+            ctx.kernel.record_action_failure(correlation_id, reason);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
+        }
         ActorCommand::AckActionStage(correlation_id) => {
             // PR-G — host acknowledged that it has consumed a terminal
             // stage for this correlation_id. Drop the entry from the
