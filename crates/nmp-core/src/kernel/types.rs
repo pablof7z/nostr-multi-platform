@@ -128,10 +128,16 @@ pub(super) struct ProfileCard {
 }
 
 /// Primary action the shell may render for an open profile view.
+///
+/// Thin-shell rule (aim.md §4.4 / §6): the kernel pre-classifies the
+/// SF Symbol name in `system_image` so the iOS shell never switches on
+/// the protocol-level `kind` string to pick an icon. Adding a new
+/// `kind` requires adding the matching `system_image` here, not in Swift.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub(super) struct ProfileAction {
     pub(super) kind: &'static str,
     pub(super) label: &'static str,
+    pub(super) system_image: &'static str,
     pub(super) target_pubkey: String,
 }
 

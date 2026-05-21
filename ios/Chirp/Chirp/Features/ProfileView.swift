@@ -122,7 +122,7 @@ struct ProfileView: View {
                 Button {
                     performProfileAction(primaryAction)
                 } label: {
-                    Label(primaryAction.label, systemImage: iconName(for: primaryAction))
+                    Label(primaryAction.label, systemImage: primaryAction.systemImage)
                         .font(.callout.weight(.semibold))
                         .labelStyle(.titleAndIcon)
                 }
@@ -250,17 +250,6 @@ struct ProfileView: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         default:
             break
-        }
-    }
-
-    private func iconName(for action: ProfileAction) -> String {
-        switch action.kind {
-        case "edit_profile":
-            return "square.and.pencil"
-        case "unfollow":
-            return "person.badge.minus"
-        default:
-            return "person.badge.plus"
         }
     }
 

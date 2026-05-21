@@ -456,6 +456,7 @@ fn author_view_projects_edit_action_for_active_profile() {
     let action = &snap["projections"]["author_view"]["primary_action"];
     assert_eq!(action["kind"].as_str(), Some("edit_profile"));
     assert_eq!(action["label"].as_str(), Some("Edit"));
+    assert_eq!(action["system_image"].as_str(), Some("square.and.pencil"));
     assert_eq!(action["target_pubkey"].as_str(), Some(ACCOUNT));
 }
 
@@ -469,6 +470,7 @@ fn author_view_projects_follow_action_for_non_active_profile() {
     let action = &snap["projections"]["author_view"]["primary_action"];
     assert_eq!(action["kind"].as_str(), Some("follow"));
     assert_eq!(action["label"].as_str(), Some("Follow"));
+    assert_eq!(action["system_image"].as_str(), Some("person.badge.plus"));
     assert_eq!(action["target_pubkey"].as_str(), Some(FOLLOW_A));
 }
 
@@ -483,6 +485,7 @@ fn author_view_projects_unfollow_when_active_contacts_include_author() {
     let action = &snap["projections"]["author_view"]["primary_action"];
     assert_eq!(action["kind"].as_str(), Some("unfollow"));
     assert_eq!(action["label"].as_str(), Some("Unfollow"));
+    assert_eq!(action["system_image"].as_str(), Some("person.badge.minus"));
     assert_eq!(action["target_pubkey"].as_str(), Some(FOLLOW_A));
 }
 

@@ -1121,6 +1121,10 @@ struct ProfileCard: Decodable, Equatable {
 struct ProfileAction: Decodable, Equatable {
     let kind: String
     let label: String
+    /// SF Symbol name pre-classified by the kernel (aim.md §4.4 thin-shell
+    /// rule). The shell renders this directly — never switches on `kind`
+    /// to pick an icon.
+    let systemImage: String
     let targetPubkey: String
 }
 

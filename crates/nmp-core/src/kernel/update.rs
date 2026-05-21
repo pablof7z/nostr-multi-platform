@@ -474,6 +474,7 @@ impl Kernel {
             return Some(ProfileAction {
                 kind: "edit_profile",
                 label: "Edit",
+                system_image: "square.and.pencil",
                 target_pubkey: pubkey.to_string(),
             });
         }
@@ -483,14 +484,15 @@ impl Kernel {
             .get(active)
             .map(|follows| follows.iter().any(|follow| follow == pubkey))
             .unwrap_or(false);
-        let (kind, label) = if is_following {
-            ("unfollow", "Unfollow")
+        let (kind, label, system_image) = if is_following {
+            ("unfollow", "Unfollow", "person.badge.minus")
         } else {
-            ("follow", "Follow")
+            ("follow", "Follow", "person.badge.plus")
         };
         Some(ProfileAction {
             kind,
             label,
+            system_image,
             target_pubkey: pubkey.to_string(),
         })
     }
