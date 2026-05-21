@@ -335,12 +335,18 @@ mod tests {
         let _ = cmd_tx.send(ActorCommand::Shutdown);
 
         // Drain all snapshots and find the one with activeAccount.
+        // D0: `active_account` is no longer a top-level snapshot field — it is
+        // surfaced through the host-extensible `projections` map under the
+        // built-in key `"active_account"`.
         let mut found_active = false;
         while let Ok(frame) = upd_rx.try_recv() {
             if let Ok(UpdateEnvelope::Snapshot(snap)) =
                 serde_json::from_str::<UpdateEnvelope>(&frame)
             {
-                if let Some(active) = snap.get("active_account") {
+                if let Some(active) = snap
+                    .get("projections")
+                    .and_then(|projections| projections.get("active_account"))
+                {
                     if !active.is_null() {
                         found_active = true;
                     }

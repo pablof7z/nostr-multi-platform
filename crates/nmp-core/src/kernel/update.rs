@@ -130,8 +130,10 @@ impl Kernel {
             logical_interests: self.logical_interests(),
             wire_subscriptions: self.wire_subscriptions(),
             logs: self.logs.iter().cloned().collect(),
-            accounts: self.account_snapshot().0.to_vec(),
-            active_account: self.account_snapshot().1.cloned(),
+            // D0: identity output (`accounts`, `active_account`) is no longer a
+            // typed field — both are inserted into `projections` below under the
+            // built-in keys `"accounts"` / `"active_account"` by
+            // `snapshot_projections_with_publish_cluster`.
             last_error_toast: self.last_error_toast_snapshot().cloned(),
             last_error_category: self.last_error_category_snapshot().cloned(),
             // #171 (D6): project the recorded planner error so the host can
@@ -190,21 +192,25 @@ impl Kernel {
     }
 
     /// Collect the snapshot `projections` map: every host-registered
-    /// projection closure plus the kernel-owned built-in publish cluster.
+    /// projection closure plus the kernel-owned built-in projections (the
+    /// publish cluster and the identity pair).
     ///
     /// D0: `publish_queue`, `publish_outbox`, and `relay_edit_rows` are
-    /// app-shaped relay/publish state, not protocol-neutral kernel primitives —
-    /// they carry NO typed `KernelSnapshot` field. Unlike the host-registered
+    /// app-shaped relay/publish state, and `accounts` / `active_account` are
+    /// identity output — none are protocol-neutral kernel primitives, so none
+    /// carry a typed `KernelSnapshot` field. Unlike the host-registered
     /// `"wallet"` / `"bunker_handshake"` projections (which read actor-runtime
-    /// slots through a no-arg closure), the publish cluster is kernel-owned, so
-    /// it cannot be expressed as a `SnapshotRegistry` closure — it is inserted
-    /// here directly after the host closures run.
+    /// slots through a no-arg closure), these are kernel-owned, so they cannot
+    /// be expressed as a `SnapshotRegistry` closure — they are inserted here
+    /// directly after the host closures run.
     ///
     /// Built-in keys win on collision: a host that registers `"publish_queue"`,
-    /// `"publish_outbox"`, or `"relay_edit_rows"` is overwritten so the publish
-    /// cluster stays authoritative. A serialization failure on any of the three
-    /// degrades to JSON `null` (D6: never a panic at the snapshot boundary) —
-    /// the key is still present, mirroring the old always-emitted typed field.
+    /// `"publish_outbox"`, `"relay_edit_rows"`, `"accounts"`, or
+    /// `"active_account"` is overwritten so the kernel-owned value stays
+    /// authoritative. A serialization failure degrades to a stable empty value
+    /// (`[]` for the lists, `null` for `active_account`) — D6: never a panic at
+    /// the snapshot boundary — and the key is still present, mirroring the old
+    /// always-emitted typed fields.
     fn snapshot_projections_with_publish_cluster(
         &self,
     ) -> std::collections::HashMap<String, serde_json::Value> {
@@ -223,6 +229,20 @@ impl Kernel {
             "relay_edit_rows".to_string(),
             serde_json::to_value(self.relay_edit_rows_snapshot())
                 .unwrap_or(serde_json::Value::Null),
+        );
+        // D0: identity output. `account_snapshot()` returns the substrate
+        // `(&[AccountSummary], Option<&String>)` pair; the snapshot surfaces it
+        // through `projections` instead of typed fields. A serialization
+        // failure degrades to `[]` / `null` so the keys are always present.
+        let (accounts, active_account) = self.account_snapshot();
+        projections.insert(
+            "accounts".to_string(),
+            serde_json::to_value(accounts)
+                .unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
+        );
+        projections.insert(
+            "active_account".to_string(),
+            serde_json::to_value(active_account).unwrap_or(serde_json::Value::Null),
         );
         projections
     }

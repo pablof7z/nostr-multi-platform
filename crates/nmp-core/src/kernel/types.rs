@@ -537,9 +537,17 @@ pub(super) struct KernelSnapshot {
     pub(super) logical_interests: Vec<LogicalInterestStatus>,
     pub(super) wire_subscriptions: Vec<WireSubscriptionStatus>,
     pub(super) logs: Vec<String>,
-    // ── T66a identity / relay-edit projections ────────────────────────────
-    pub(super) accounts: Vec<super::AccountSummary>,
-    pub(super) active_account: Option<String>,
+    // D0: identity output (`accounts`, `active_account`) is no longer a typed
+    // `KernelSnapshot` field set. `AccountSummary` stays a substrate type in
+    // `nmp-core`, but the *snapshot output* for the account list and the
+    // active-account handle is surfaced through the host-extensible
+    // `projections` map below under the built-in keys `"accounts"` and
+    // `"active_account"` — a shell reads `projections.accounts` /
+    // `projections.active_account` instead of a baked-in kernel field. This
+    // mirrors the publish cluster and the `"wallet"` / `"bunker_handshake"`
+    // projections: `make_update` inserts both keys directly after running the
+    // host-registered projection closures.
+    //
     // D0: the publish cluster (`publish_queue`, `publish_outbox`,
     // `relay_edit_rows`) is app-shaped relay/publish state — NOT a
     // protocol-neutral kernel primitive. There are NO typed fields for them.

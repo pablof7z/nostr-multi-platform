@@ -457,8 +457,12 @@ struct KernelUpdate: Decodable {
     // T66a projections. Optional so a kernel that elides one (or an older
     // build) still decodes — the model keeps its prior value (D1).
     let threadView: ThreadView?
-    let accounts: [AccountSummary]?
-    let activeAccount: String?
+    // D0: identity output (`accounts`, `active_account`) is no longer a typed
+    // `KernelSnapshot` field — both are surfaced through the host-extensible
+    // `projections` map under the built-in keys `"accounts"` /
+    // `"active_account"`. Computed accessors below keep call sites
+    // (`KernelModel`) reading `update.accounts` / `update.activeAccount`
+    // unchanged.
     let lastErrorToast: String?
     // D0: NIP-47 NWC and NIP-46 remote signing are app nouns — neither is a
     // typed `KernelSnapshot` field anymore. Both are surfaced through the
@@ -489,6 +493,16 @@ struct KernelUpdate: Decodable {
     /// Relay-edit rows projection — `projections["relay_edit_rows"]`. Computed
     /// so call sites keep reading `update.relayEditRows` unchanged.
     var relayEditRows: [RelayEditRow]? { projections?.relayEditRows }
+
+    /// Account list projection — `projections["accounts"]`. D0: identity
+    /// output is no longer a typed snapshot field. Computed so call sites
+    /// (`KernelModel`) keep reading `update.accounts` unchanged.
+    var accounts: [AccountSummary]? { projections?.accounts }
+
+    /// Active-account handle projection — `projections["active_account"]`.
+    /// D0: identity output is no longer a typed snapshot field. Computed so
+    /// call sites keep reading `update.activeAccount` unchanged.
+    var activeAccount: String? { projections?.activeAccount }
 }
 
 /// The kernel's host-extensible `projections` map. Each built-in app-noun
@@ -505,6 +519,11 @@ struct SnapshotProjections: Decodable, Equatable {
     let publishQueue: [PublishQueueEntry]?
     let publishOutbox: [PublishOutboxItem]?
     let relayEditRows: [RelayEditRow]?
+    // D0: identity output. `accounts` decodes from `projections["accounts"]`;
+    // `activeAccount` decodes from `projections["active_account"]` (the kernel
+    // emits snake_case and the decoder uses `.convertFromSnakeCase`).
+    let accounts: [AccountSummary]?
+    let activeAccount: String?
 }
 
 /// NIP-46 (`bunker://`) handshake progress, projected from the kernel snapshot
