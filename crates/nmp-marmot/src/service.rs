@@ -252,7 +252,7 @@ impl MarmotService {
     }
 
     /// Pubkeys (hex) that have a cached KeyPackage. Surfaced in the snapshot so
-    /// the Swift layer can know when `fetch_key_packages` has delivered results.
+    /// native can render pending state while Rust-owned lookup requests settle.
     pub fn cached_kp_pubkeys(&self) -> Vec<String> {
         self.kp_cache
             .lock()
@@ -322,9 +322,9 @@ impl MarmotService {
         member_key_package_events: Vec<Event>,
         config: NostrGroupConfigData,
     ) -> Result<(group_types::Group, CreateGroupPending<'_>)> {
-        let result = self
-            .mdk
-            .create_group(&self.keys.public_key(), member_key_package_events, config)?;
+        let result =
+            self.mdk
+                .create_group(&self.keys.public_key(), member_key_package_events, config)?;
         let group_id = result.group.mls_group_id.clone();
         Ok((
             result.group,
@@ -481,10 +481,7 @@ impl MarmotService {
     }
 
     /// The current member set (Nostr pubkeys). Backs `MemberList`.
-    pub fn get_members(
-        &self,
-        group_id: &GroupId,
-    ) -> Result<std::collections::BTreeSet<PublicKey>> {
+    pub fn get_members(&self, group_id: &GroupId) -> Result<std::collections::BTreeSet<PublicKey>> {
         self.mdk.get_members(group_id).map_err(MarmotError::from)
     }
 

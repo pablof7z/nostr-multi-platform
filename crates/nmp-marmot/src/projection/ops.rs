@@ -66,6 +66,7 @@
 
 use nostr::{EventBuilder, JsonUtil, Kind, PublicKey, RelayUrl};
 use serde_json::{json, Value};
+use std::collections::BTreeSet;
 
 use mdk_core::prelude::{GroupId, NostrGroupConfigData};
 
@@ -161,6 +162,56 @@ fn signed_key_package_events(v: &Value) -> Result<Vec<nostr::Event>, String> {
         out.push(parse_signed_event(&json)?);
     }
     Ok(out)
+}
+
+fn fill_key_packages_from_cache(
+    h: &InnerHandle<'_>,
+    invitee_npubs: &[String],
+    kp_events: &mut Vec<nostr::Event>,
+) -> (Vec<String>, Vec<PublicKey>) {
+    let valid_pubkeys = invitee_npubs
+        .iter()
+        .filter_map(|s| PublicKey::parse(s).ok())
+        .collect::<Vec<_>>();
+    let cached = h.service().cached_key_packages(&valid_pubkeys);
+    let mut present = kp_events
+        .iter()
+        .map(|event| event.pubkey.to_hex())
+        .collect::<BTreeSet<_>>();
+    for event in cached {
+        if present.insert(event.pubkey.to_hex()) {
+            kp_events.push(event);
+        }
+    }
+
+    let mut needs = Vec::new();
+    let mut fetch_pubkeys = Vec::new();
+    for invitee in invitee_npubs {
+        match PublicKey::parse(invitee) {
+            Ok(pk) if present.contains(&pk.to_hex()) => {}
+            Ok(pk) => {
+                needs.push(invitee.clone());
+                fetch_pubkeys.push(pk);
+            }
+            Err(_) => needs.push(invitee.clone()),
+        }
+    }
+    (needs, fetch_pubkeys)
+}
+
+fn missing_key_package_result(
+    h: &InnerHandle<'_>,
+    needs: Vec<String>,
+    fetch_pubkeys: &[PublicKey],
+) -> Value {
+    let fetch_requested = h.request_key_package_fetch(fetch_pubkeys);
+    json!({
+        "ok": false,
+        "error": "key_package_unavailable",
+        "needs": needs,
+        "fetch_requested": fetch_requested,
+        "hint": "key package lookup was requested; results arrive via the kernel tap"
+    })
 }
 
 /// Newest-N decrypted application messages for one group, newest first.
@@ -335,23 +386,15 @@ fn create_group(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
     let relays = parse_relays(&urls)?;
     let invitee_npubs = str_array(v, "invitee_npubs");
     let mut kp_events = signed_key_package_events(v)?;
-    // If no explicit key packages were supplied but invitees are named, try
-    // the service's kp_cache (populated by the app's raw-event tap when the
-    // kernel delivers peers' kind:30443 events). Solo groups (no invitees)
-    // skip this entirely — MDK allows creating a group with just the creator.
-    if kp_events.is_empty() && !invitee_npubs.is_empty() {
-        let pubkeys: Vec<PublicKey> = invitee_npubs
-            .iter()
-            .filter_map(|s| PublicKey::parse(s).ok())
-            .collect();
-        kp_events = h.service().cached_key_packages(&pubkeys);
-        if kp_events.is_empty() {
-            return Ok(json!({
-                "ok": false,
-                "error": "key_package_unavailable",
-                "needs": invitee_npubs,
-                "hint": "call fetch_key_packages first; results arrive via the kernel tap"
-            }));
+    // Fill from kp_cache (populated by the app's raw-event tap when the
+    // kernel delivers peers' kind:30443 events), then require EVERY requested
+    // invitee to have a signed KeyPackage. A partial cache must not silently
+    // create a group missing some requested members.
+    if !invitee_npubs.is_empty() {
+        let (needs, fetch_pubkeys) =
+            fill_key_packages_from_cache(h, &invitee_npubs, &mut kp_events);
+        if !needs.is_empty() {
+            return Ok(missing_key_package_result(h, needs, &fetch_pubkeys));
         }
     }
     let admins = vec![h.service().public_key()];
@@ -384,21 +427,14 @@ fn invite(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
     let gid = group_id_from_hex(str_field(v, "group_id_hex")?)?;
     let invitee_npubs = str_array(v, "invitee_npubs");
     let mut kp_events = signed_key_package_events(v)?;
-    // Fall back to the service's kp_cache (populated by the tap) when no
-    // explicit events were supplied. invite requires at least one invitee.
-    if kp_events.is_empty() {
-        let pubkeys: Vec<PublicKey> = invitee_npubs
-            .iter()
-            .filter_map(|s| PublicKey::parse(s).ok())
-            .collect();
-        kp_events = h.service().cached_key_packages(&pubkeys);
-        if kp_events.is_empty() {
-            return Ok(json!({
-                "ok": false,
-                "error": "key_package_unavailable",
-                "needs": invitee_npubs,
-                "hint": "call fetch_key_packages first; results arrive via the kernel tap"
-            }));
+    // Fill from kp_cache (populated by the tap), then require EVERY requested
+    // invitee to have a signed KeyPackage. A partial cache must not silently
+    // invite fewer members than the user requested.
+    if !invitee_npubs.is_empty() {
+        let (needs, fetch_pubkeys) =
+            fill_key_packages_from_cache(h, &invitee_npubs, &mut kp_events);
+        if !needs.is_empty() {
+            return Ok(missing_key_package_result(h, needs, &fetch_pubkeys));
         }
     }
     let group_id_hex = hex_encode(gid.as_slice());

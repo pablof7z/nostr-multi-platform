@@ -62,7 +62,6 @@ pub struct KeyPackageStatus {
     pub stale: bool,
 }
 
-
 /// Complete snapshot Swift consumes via `nmp_app_chirp_marmot_snapshot`.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct MarmotSnapshot {
@@ -71,9 +70,8 @@ pub struct MarmotSnapshot {
     pub key_package: KeyPackageStatus,
     /// Pubkeys (hex) of peers whose signed KeyPackage events are cached in
     /// `MarmotService::kp_cache`. Populated by the tap when the kernel
-    /// delivers a peer's kind:30443/443 event. Swift checks this to know
-    /// when `fetch_key_packages` has delivered results and a retry of
-    /// `create_group`/`invite` will succeed.
+    /// delivers a peer's kind:30443/443 event. Native renders this as
+    /// pending/completed state; Rust owns when lookup interests are opened.
     pub cached_kp_pubkeys: Vec<String>,
 }
 

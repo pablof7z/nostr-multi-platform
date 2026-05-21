@@ -36,8 +36,8 @@ import os.log
 // ── Key-package fetch ─────────────────────────────────────────────────────
 //
 // Before inviting a peer, their signed kind:30443 KeyPackage event must be
-// fetched from relays and cached locally. Use
-// `nmp_app_chirp_marmot_fetch_key_packages` to trigger a kernel relay fetch;
+// fetched from relays and cached locally. Rust owns that lookup policy:
+// `create_group` / `invite` dispatches enqueue missing KeyPackage fetches and
 // `snapshot.cachedKpPubkeys` updates on subsequent kernel snapshots.
 //
 // ── Remaining limitation ──────────────────────────────────────────────────
@@ -140,16 +140,18 @@ struct MarmotOpResult: Decodable, Equatable {
     let error: String?
     let needs: [String]?
     let errors: [String]?
+    let fetchRequested: Int?
 
     enum CodingKeys: String, CodingKey {
         case ok, error, needs, errors
+        case fetchRequested = "fetch_requested"
     }
 
     static let bridgeUnavailable = MarmotOpResult.failure("marmot bridge unavailable")
 
     static func failure(_ message: String) -> MarmotOpResult {
         MarmotOpResult(ok: false, error: message, needs: nil,
-                       errors: nil)
+                       errors: nil, fetchRequested: nil)
     }
 }
 
@@ -292,17 +294,6 @@ extension KernelHandle {
         }
     }
 
-    /// Register kernel interests for kind:30443/443 KeyPackage events for the
-    /// given pubkeys. Fire-and-forget; results arrive asynchronously via the
-    /// Marmot tap.
-    func fetchKeyPackagesForPeers(npubs: [String]) {
-        guard let handle = marmotHandle else { return }
-        guard let data = try? JSONSerialization.data(withJSONObject: npubs),
-              let json = String(data: data, encoding: .utf8) else { return }
-        json.withCString { ptr in
-            nmp_app_chirp_marmot_fetch_key_packages(handle, ptr)
-        }
-    }
 }
 
 // ── MarmotStore — projection mirror pushed by KernelModel.apply ───────────
@@ -350,12 +341,6 @@ final class MarmotStore: ObservableObject {
         dispatch(["op": "publish_key_package"])
     }
 
-    /// Trigger key-package fetch for the given npubs from relays. Fire-and-
-    /// forget; the kernel pushes matching signed events through the Marmot tap.
-    func fetchKeyPackages(npubs: [String]) {
-        kernel.fetchKeyPackagesForPeers(npubs: npubs)
-    }
-
     /// True if all of the given npubs have a cached key package locally.
     func hasKeyPackages(for npubs: [String]) -> Bool {
         let cached = Set(snapshot.cachedKpPubkeys)
@@ -364,9 +349,6 @@ final class MarmotStore: ObservableObject {
 
     @discardableResult
     func createGroup(name: String, description: String, inviteeNpubs: [String]) -> MarmotOpResult {
-        if !inviteeNpubs.isEmpty {
-            fetchKeyPackages(npubs: inviteeNpubs)
-        }
         return dispatch([
             "op": "create_group",
             "name": name,
@@ -378,12 +360,6 @@ final class MarmotStore: ObservableObject {
 
     @discardableResult
     func invite(groupIDHex: String, inviteeNpubs: [String]) -> MarmotOpResult {
-        // Trigger a background fetch of invitees' key packages (if not cached).
-        // The dispatch op uses the kp_cache; if still missing it returns
-        // key_package_unavailable with `needs` populated.
-        if !inviteeNpubs.isEmpty {
-            fetchKeyPackages(npubs: inviteeNpubs)
-        }
         return dispatch([
             "op": "invite",
             "group_id_hex": groupIDHex,

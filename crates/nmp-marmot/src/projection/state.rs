@@ -106,8 +106,8 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::{KernelEventObserver, NmpApp};
-use nostr::{Event, JsonUtil, RelayUrl};
+use nmp_core::{ActorCommand, KernelAction, KernelEventObserver, NmpApp};
+use nostr::{Event, JsonUtil, PublicKey, RelayUrl};
 
 use crate::service::MarmotService;
 
@@ -220,10 +220,7 @@ impl MarmotProjection {
 
     /// Borrow the inner state under the lock for an FFI op. Returns `None`
     /// on a poisoned mutex (D6 — caller degrades to null / `{"ok":false}`).
-    pub fn with_inner<R>(
-        &self,
-        f: impl FnOnce(&mut InnerHandle<'_>) -> R,
-    ) -> Option<R> {
+    pub fn with_inner<R>(&self, f: impl FnOnce(&mut InnerHandle<'_>) -> R) -> Option<R> {
         let mut guard = self.inner.lock().ok()?;
         let mut h = InnerHandle { inner: &mut guard };
         Some(f(&mut h))
@@ -243,9 +240,7 @@ impl MarmotProjection {
                     let members = inner
                         .service
                         .get_members(&g.mls_group_id)
-                        .map(|set| {
-                            set.into_iter().map(|pk| pk.to_hex()).collect::<Vec<_>>()
-                        })
+                        .map(|set| set.into_iter().map(|pk| pk.to_hex()).collect::<Vec<_>>())
                         .unwrap_or_default();
                     // Unread seam: no read-cursor — total app-message count.
                     let unread = inner
@@ -318,15 +313,14 @@ impl<'a> InnerHandle<'a> {
     /// from `create_group` (envelope `relays`) and `accept_welcome` /
     /// gift-wrap ingest (`Welcome::group_relays`). Empty list is ignored
     /// (keep any prior, more-specific entry).
-    pub(crate) fn cache_group_relays(
-        &mut self,
-        group_id_hex: String,
-        relays: Vec<RelayUrl>,
-    ) {
+    pub(crate) fn cache_group_relays(&mut self, group_id_hex: String, relays: Vec<RelayUrl>) {
         if relays.is_empty() {
             return;
         }
-        let relay_urls = relays.iter().map(|relay| relay.to_string()).collect::<Vec<_>>();
+        let relay_urls = relays
+            .iter()
+            .map(|relay| relay.to_string())
+            .collect::<Vec<_>>();
         self.inner.group_relays.insert(group_id_hex.clone(), relays);
         self.subscribe_group_messages(&group_id_hex, relay_urls);
     }
@@ -358,11 +352,7 @@ impl<'a> InnerHandle<'a> {
     /// to the author outbox — the kernel symbol's documented behaviour).
     /// Used for kind:445 (group message / commit) and the kind:1059
     /// gift-wrap inbox-routing approximation.
-    pub(crate) fn publish_group_pinned(
-        &self,
-        group_id_hex: &str,
-        event: &nostr::Event,
-    ) {
+    pub(crate) fn publish_group_pinned(&self, group_id_hex: &str, event: &nostr::Event) {
         let relays = self.group_relays(group_id_hex);
         crate::projection::publish::publish_to(self.inner.app, event, &relays);
     }
@@ -372,11 +362,7 @@ impl<'a> InnerHandle<'a> {
     /// `PendingGroupChange` is still live (the relay-pinned cache is keyed
     /// by group and the relays are already known from the envelope, so we
     /// route directly without a `&mut self` cache read/write).
-    pub(crate) fn publish_explicit(
-        &self,
-        event: &nostr::Event,
-        relays: &[RelayUrl],
-    ) {
+    pub(crate) fn publish_explicit(&self, event: &nostr::Event, relays: &[RelayUrl]) {
         crate::projection::publish::publish_to(self.inner.app, event, relays);
     }
 
@@ -391,6 +377,35 @@ impl<'a> InnerHandle<'a> {
         // lifetime.
         let app_ref = unsafe { &*self.inner.app };
         app_ref.write_relay_urls()
+    }
+
+    /// Ask the kernel to fetch peer KeyPackage events for the given pubkeys.
+    ///
+    /// This is Rust-owned retry/recovery policy: `create_group` / `invite`
+    /// discover the missing key packages, enqueue the lookup interests, then
+    /// return a pending result for the UI to render. Native does not decide
+    /// when to fetch or retry.
+    pub(crate) fn request_key_package_fetch(&self, pubkeys: &[PublicKey]) -> usize {
+        if self.inner.app.is_null() {
+            return 0;
+        }
+        // SAFETY: `app` is the live NmpApp pointer retained by this projection
+        // for the host Marmot handle's lifetime; actor sends are best-effort.
+        let app_ref = unsafe { &*self.inner.app };
+        let sender = app_ref.actor_sender();
+        let mut sent = 0;
+        for pk in pubkeys {
+            if sender
+                .send(ActorCommand::Kernel(KernelAction::OpenView {
+                    namespace: crate::view::KeyPackageLookupView::NAMESPACE.to_string(),
+                    key: pk.to_hex(),
+                }))
+                .is_ok()
+            {
+                sent += 1;
+            }
+        }
+        sent
     }
 
     /// Cache an incoming gift-wrap as a pending Welcome (no MLS type held).
@@ -444,8 +459,7 @@ impl KernelEventObserver for MarmotProjection {
     /// the `published` flag warm so the snapshot reflects reality even
     /// before a `publish_key_package` dispatch this session.
     fn on_kernel_event(&self, event: &KernelEvent) {
-        if event.kind != MLS_KEY_PACKAGE_KIND && event.kind != MLS_KEY_PACKAGE_KIND_LEGACY
-        {
+        if event.kind != MLS_KEY_PACKAGE_KIND && event.kind != MLS_KEY_PACKAGE_KIND_LEGACY {
             // kind:445 / kind:1059 require a signed event — driven by the
             // raw signed-event tap (`crate::projection::tap`), not here.
             return;
