@@ -9,10 +9,11 @@ import SwiftUI
 //            the NIP-59 gift-wrap, and signing are all Rust-owned.
 //
 // Thin-shell rule: ZERO protocol logic here. The view re-derives nothing —
-// the conversation list, ordering, and decrypted content all come from the
-// Rust `DmInboxProjection`. The only Swift-side comparison is `senderPubkey
-// == localPubkey` to align a bubble left vs right, which is presentation,
-// not protocol.
+// the conversation list, chronological ordering, decrypted content, and
+// the per-message `isOutgoing` flag (which side a bubble aligns to) all
+// come from the Rust `DmInboxProjection`. The shell never compares
+// pubkeys to decide — the kind:13 seal authenticated `sender_pubkey` once
+// already; replaying that comparison here is protocol logic leaking out.
 // ─────────────────────────────────────────────────────────────────────────
 
 struct DmConversationView: View {
@@ -61,13 +62,11 @@ struct DmConversationView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(spacing: 8) {
-                        // The projection emits newest-first; reverse for a chat
-                        // log (oldest at top) — display ordering only, not a
-                        // protocol decision.
-                        ForEach(messages.reversed()) { message in
-                            DmMessageBubble(
-                                message: message,
-                                isOutgoing: message.senderPubkey == store.localPubkey)
+                        // The projection emits messages in chronological
+                        // order (oldest first, newest last). No reverse here
+                        // — that decision lives in Rust.
+                        ForEach(messages) { message in
+                            DmMessageBubble(message: message)
                         }
                         Color.clear.frame(height: 1).id("dm-bottom")
                     }
@@ -78,6 +77,9 @@ struct DmConversationView: View {
                     proxy.scrollTo("dm-bottom")
                 }
                 .onAppear {
+                    // Pure UI animation timing: the ScrollViewReader needs
+                    // its first layout pass before `scrollTo` resolves. Not
+                    // a polling loop — no state is being awaited.
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                         proxy.scrollTo("dm-bottom")
                     }
@@ -142,26 +144,25 @@ struct DmConversationView: View {
 
 private struct DmMessageBubble: View {
     let message: DmMessage
-    /// `true` when the local account wrote this message (right-aligned).
-    let isOutgoing: Bool
 
     var body: some View {
+        let outgoing = message.isOutgoing
         HStack {
-            if isOutgoing { Spacer(minLength: 48) }
-            VStack(alignment: isOutgoing ? .trailing : .leading, spacing: 2) {
+            if outgoing { Spacer(minLength: 48) }
+            VStack(alignment: outgoing ? .trailing : .leading, spacing: 2) {
                 Text(message.content)
                     .font(.body)
-                    .foregroundStyle(isOutgoing ? Color.white : Color.primary)
+                    .foregroundStyle(outgoing ? Color.white : Color.primary)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(
-                        isOutgoing ? Color.accentColor : Color(.secondarySystemBackground),
+                        outgoing ? Color.accentColor : Color(.secondarySystemBackground),
                         in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 Text(dmRelativeTime(message.createdAt))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
-            if !isOutgoing { Spacer(minLength: 48) }
+            if !outgoing { Spacer(minLength: 48) }
         }
         .accessibilityIdentifier("dm-message-\(message.id)")
     }

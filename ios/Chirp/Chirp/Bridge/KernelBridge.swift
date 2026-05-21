@@ -772,20 +772,27 @@ struct GroupChatSnapshot: Decodable, Equatable {
 
 /// One decrypted NIP-17 direct message. `senderPubkey` is taken from the
 /// verified kind:13 seal (not a forgeable tag); `id` is the inner rumor
-/// event id (hex) and the stable list identity.
+/// event id (hex) and the stable list identity. `isOutgoing` is pre-
+/// classified by the Rust projection against the active local pubkey —
+/// the shell never compares pubkeys to align a bubble (thin-shell rule).
 ///
 /// No explicit `CodingKeys`: the top-level `.convertFromSnakeCase` strategy
-/// maps `"sender_pubkey"` / `"created_at"` / `"reply_to"` automatically.
+/// maps `"sender_pubkey"` / `"created_at"` / `"reply_to"` / `"is_outgoing"`
+/// automatically.
 struct DmMessage: Decodable, Identifiable, Equatable {
     let id: String
     let senderPubkey: String
     let content: String
     let createdAt: UInt64
     let replyTo: String?
+    let isOutgoing: Bool
 }
 
 /// One DM thread — every message exchanged with a single peer. `messages`
-/// is ordered newest-first by the Rust projection.
+/// is ordered chronologically by the Rust projection — oldest first,
+/// newest last — so the host renders a chat log in that order and never
+/// reverses (thin-shell rule). The thread's most-recent message is
+/// `messages.last`.
 struct DmConversation: Decodable, Identifiable, Equatable {
     /// The OTHER party in the thread (hex pubkey). Also the list identity.
     let peerPubkey: String

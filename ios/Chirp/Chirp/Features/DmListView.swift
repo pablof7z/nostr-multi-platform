@@ -82,9 +82,9 @@ struct DmListView: View {
 private struct DmConversationRow: View {
     let conversation: DmConversation
 
-    /// The most recent message — index 0, since the projection orders each
-    /// thread newest-first.
-    private var latest: DmMessage? { conversation.messages.first }
+    /// The most recent message — the last entry, since the projection
+    /// orders each thread chronologically (oldest first, newest last).
+    private var latest: DmMessage? { conversation.messages.last }
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
