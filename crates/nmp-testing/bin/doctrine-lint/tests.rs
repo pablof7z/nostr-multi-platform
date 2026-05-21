@@ -437,6 +437,113 @@ fn protocol_crates_are_doctrine_clean() {
     );
 }
 
+// ─── D10 (provenance: gift-wrap publish never escapes to public relays) ────
+
+#[test]
+fn d10_positive_fixture_fires() {
+    // Stage pos.rs in isolation so neg.rs (also under fixtures/d10/) cannot
+    // pollute the assertion — mirrors the d6/d8/d9 positive fixture pattern.
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d10_pos");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let pos_src = workspace.join(fixture_path("d10/pos.rs"));
+    std::fs::copy(&pos_src, tmp.join("pos.rs")).expect("copy pos fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    // D10 is path-scoped to `crates/nmp-{core,nip17,marmot}/` — the staged
+    // fixture under `target/` is opted in via `--d10-extra-scope`.
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d10-extra-scope",
+        "doctrine_lint_d10_pos",
+    ]);
+    assert_eq!(
+        code, 1,
+        "d10 positive must exit 1; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[D10]"),
+        "d10 positive must emit a D10 finding; stdout:\n{}",
+        stdout
+    );
+    // Every banned Auto-routing token in pos.rs must surface so a regression
+    // that silently swallows one cannot pass this test.
+    for token in [
+        "PublishTarget::Auto",
+        "publish_signed(",
+        "publish_unsigned_event(",
+    ] {
+        assert!(
+            stdout.contains(token),
+            "d10 positive must name banned token `{}`; stdout:\n{}",
+            token,
+            stdout
+        );
+    }
+}
+
+#[test]
+fn d10_negative_fixture_clean() {
+    // Isolate neg.rs so the sibling pos.rs cannot pollute the assertion.
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d10_neg");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let neg_src = workspace.join(fixture_path("d10/neg.rs"));
+    std::fs::copy(&neg_src, tmp.join("neg.rs")).expect("copy neg fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d10-extra-scope",
+        "doctrine_lint_d10_neg",
+    ]);
+    assert_eq!(
+        code, 0,
+        "d10 negative must exit 0; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.contains("error[D10]"),
+        "d10 negative must produce zero D10 findings; stdout:\n{}",
+        stdout
+    );
+}
+
+/// The current `nmp-core`, `nmp-nip17`, and `nmp-marmot` trees on master
+/// MUST be D10-clean. Real protocol code touches kind:1059 today — this
+/// test pins that none of those publishers regress to an Auto-routing
+/// seam without explicit `doctrine-allow: D10` justification.
+///
+/// SCOPE — this asserts D10 cleanliness specifically. The driver
+/// (`scan_one_file`) runs every applicable rule per file, so a run over
+/// `nmp-marmot/src/` also surfaces unrelated rules (`nmp-marmot` is NOT
+/// in `protocol_crates_are_doctrine_clean`'s scope and carries pre-existing
+/// findings for rules other than D10 — out of scope for PR-K). The
+/// exit-code assertion is therefore loose; only the **D10 substring** is
+/// the load-bearing check.
+#[test]
+fn d10_scoped_crates_are_clean() {
+    let scoped = ["nmp-core", "nmp-nip17", "nmp-marmot"];
+    let mut args: Vec<String> = Vec::new();
+    for c in &scoped {
+        args.push("--path".into());
+        args.push(format!("crates/{}/src", c));
+    }
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    let (_code, stdout, stderr) = run_lint(&arg_refs);
+    assert!(
+        !stdout.contains("error[D10]"),
+        "scoped crates must not contain D10 findings; stdout:\n{}\nstderr:\n{}",
+        stdout,
+        stderr
+    );
+}
+
 // ─── --workspace-d8 (workspace-wide no-polling scan) ─────────────────────────
 
 /// Builds a throwaway `crates/<name>/src/<file>.rs` tree under `target/` and

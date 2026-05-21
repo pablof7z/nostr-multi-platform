@@ -1,8 +1,8 @@
-//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9.
+//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10.
 //!
 //! See `walker.rs` for the `#[cfg(test)]` module tracker, `allow.rs` for the
-//! per-line opt-out comment, and `rules/d{0,6,7,8,9}.rs` for individual rule
-//! definitions. Brainstorm item #8 in
+//! per-line opt-out comment, and `rules/d{0,6,7,8,9,10}.rs` for individual
+//! rule definitions. Brainstorm item #8 in
 //! `docs/perf/parallel-work-brainstorm-2026-05-18.md`.
 //!
 //! ## Invocation
@@ -58,7 +58,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use rules::{d0, d6, d7, d8, d9};
+use rules::{d0, d10, d6, d7, d8, d9};
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
@@ -70,6 +70,7 @@ fn main() -> ExitCode {
             eprintln!(
                 "usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings] \
                  [--d8-extra-scope <fragment>] [--d9-extra-scope <fragment>] \
+                 [--d10-extra-scope <fragment>] \
                  [--workspace-d8 [--workspace-d8-root <dir>]]"
             );
             return ExitCode::from(2);
@@ -98,6 +99,7 @@ fn main() -> ExitCode {
                 path,
                 &cfg.d8_extra_scopes,
                 &cfg.d9_extra_scopes,
+                &cfg.d10_extra_scopes,
                 cfg.workspace_d8,
                 &mut all_findings,
             ) {
@@ -123,7 +125,7 @@ fn main() -> ExitCode {
         let rules = if cfg.workspace_d8 {
             "D8 no-polling"
         } else {
-            "D0/D6/D7/D8/D9"
+            "D0/D6/D7/D8/D9/D10"
         };
         eprintln!(
             "doctrine-lint: 0 findings across {} root(s) ({} clean).",
@@ -153,6 +155,7 @@ fn scan_one_file(
     path: &Path,
     d8_extra_scopes: &[String],
     d9_extra_scopes: &[String],
+    d10_extra_scopes: &[String],
     workspace_d8: bool,
     findings: &mut Vec<report::Finding>,
 ) -> std::io::Result<()> {
@@ -161,8 +164,10 @@ fn scan_one_file(
     let d7_in_scope = d7::file_in_scope(path);
     let d8_in_scope = d8::file_in_scope(path, d8_extra_scopes);
     let d9_in_scope = d9_file_in_scope(path, d9_extra_scopes);
+    let d10_in_scope = d10_file_in_scope(path, d10_extra_scopes);
     let mut d6_state = d6::State::default();
     let mut d8_tracker = d8::HotPathTracker::default();
+    let mut d10_tracker = d10::PrivatePublishTracker::default();
 
     walker::scan_file(path, |sl| {
         // D8 tracker must observe every line even when out-of-scope so its
@@ -170,6 +175,11 @@ fn scan_one_file(
         // check only fires when in_scope.
         let in_marked_fn = d8_tracker.in_marked_fn();
         d8_tracker.observe_line(sl.text, false);
+        // D10 tracker mirrors D8's contract: observe every line (so the
+        // brace counter stays in sync) but only fire when in scope. The
+        // marker-gated state is captured at line start, then advanced.
+        let in_d10_marked_fn = d10_tracker.in_marked_fn();
+        d10_tracker.observe_line(sl.text);
 
         // D0
         if !workspace_d8 && !d0_exempt {
@@ -260,6 +270,26 @@ fn scan_one_file(
                 });
             }
         }
+        // D10 — provenance: gift-wrap publish never escapes to public
+        // relays. Scope is `crates/nmp-{core,nip17,marmot}/src/`; the
+        // rule fires only inside functions opted-in via the
+        // `// D10: private-kind publish` marker comment. Skipped in
+        // --workspace-d8 (no-polling sweep only).
+        if !workspace_d8 && d10_in_scope {
+            for (col, msg, suggested) in d10::check(sl.text, sl.is_comment, in_d10_marked_fn) {
+                if allow::line_allows(sl.text, d10::ID) {
+                    continue;
+                }
+                findings.push(report::Finding {
+                    rule: d10::ID,
+                    path: path.to_path_buf(),
+                    line: sl.line_no,
+                    col,
+                    message: msg,
+                    suggested,
+                });
+            }
+        }
         // D8 — no polling (`thread::sleep`, `tokio::time::sleep`,
         // `tokio::time::sleep_until`). NOT path-scoped: the no-poll
         // doctrine applies to all non-test code under `nmp-core`. Reuses
@@ -301,6 +331,19 @@ fn d9_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
     extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
 }
 
+/// True iff D10 should scan `path` — either the file is inside one of the
+/// D10-scoped trees (`crates/nmp-{core,nip17,marmot}/src/`), or the caller
+/// opted-in via `--d10-extra-scope <fragment>` (the fixture smoke test
+/// uses this so a staged fixture under `target/<label>/` is reachable
+/// without faking a `crates/nmp-*` layout). Mirrors `d9_file_in_scope`.
+fn d10_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
+    if d10::file_in_scope(path) {
+        return true;
+    }
+    let s = path.to_string_lossy().replace('\\', "/");
+    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // CLI
 // ────────────────────────────────────────────────────────────────────────────
@@ -318,6 +361,11 @@ struct Config {
     /// rule at `bin/doctrine-lint/fixtures/d9/`, which otherwise falls
     /// outside the protocol-crate scope.
     d9_extra_scopes: Vec<String>,
+    /// Extra path fragments treated as D10-in-scope. Same role as
+    /// [`Self::d9_extra_scopes`]: lets the fixture smoke test point the
+    /// rule at `bin/doctrine-lint/fixtures/d10/`, which otherwise falls
+    /// outside the `nmp-{core,nip17,marmot}` scope.
+    d10_extra_scopes: Vec<String>,
     /// `--workspace-d8`: scan every production crate for D8 no-polling
     /// violations only. D0/D6/D7 (substrate-purity rules) stay nmp-core
     /// scoped — only the universally-applicable `thread::sleep` check runs.
@@ -367,6 +415,14 @@ fn parse_args(args: &[String]) -> Result<Config, String> {
                         .clone(),
                 );
             }
+            "--d10-extra-scope" => {
+                i += 1;
+                cfg.d10_extra_scopes.push(
+                    args.get(i)
+                        .ok_or_else(|| "--d10-extra-scope requires a path fragment".to_string())?
+                        .clone(),
+                );
+            }
             "--workspace-d8" => {
                 cfg.workspace_d8 = true;
             }
@@ -378,7 +434,7 @@ fn parse_args(args: &[String]) -> Result<Config, String> {
                 ));
             }
             "-h" | "--help" => {
-                println!("usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings] [--d8-extra-scope <fragment>] [--d9-extra-scope <fragment>] [--workspace-d8 [--workspace-d8-root <dir>]]");
+                println!("usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings] [--d8-extra-scope <fragment>] [--d9-extra-scope <fragment>] [--d10-extra-scope <fragment>] [--workspace-d8 [--workspace-d8-root <dir>]]");
                 std::process::exit(0);
             }
             other => return Err(format!("unknown argument: {}", other)),
