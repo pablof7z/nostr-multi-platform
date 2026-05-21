@@ -1,46 +1,59 @@
 //! NIP-17 gift-wrapped DM send handler.
 //!
-//! # Phase 1 — local keys only
+//! # D13: signer-only seal path
 //!
-//! `nmp_nip59::gift_wrap` requires `&nostr::Keys` because the NIP-59 seal is a
-//! NIP-44 ECDH encryption. A remote (NIP-46 / bunker) account has no accessible
-//! local key — sealing a NIP-59 rumor is not a single "sign this event" RPC a
-//! bunker can serve. This handler detects the missing local key and surfaces a
-//! toast (explicit failure, never silent, never a panic — D6); bunker users are
-//! excluded for now.
+//! This file is in the D13 Part-A default scope (see
+//! `crates/nmp-testing/bin/doctrine-lint/rules/d13.rs`). The DM seal path
+//! MUST NOT dereference raw key material directly — every gift-wrap call
+//! routes through `nmp_nip59::gift_wrap_with_signer` over the
+//! `SignerForSeal` abstraction. The marker comment above keeps the rule
+//! attached even if this file moves.
 //!
-//! Bunker support requires a new `nmp_nip59::gift_wrap_with_signer` primitive
-//! that calls `nostr::nips::nip59::make_seal(signer, receiver, rumor)` for the
-//! kind:13 seal step (NIP-44 using the sender's account key via ADR-0026's
-//! `RemoteSignerHandle::nip44_encrypt`) and generates an ephemeral key locally
-//! for the outer kind:1059 wrap. The blocker is that `nmp_nip59::gift_wrap`
-//! currently thin-wraps `nostr::EventBuilder::gift_wrap(&Keys, ...)`, which
-//! requires raw keys end-to-end; the ADR-0026 seam exists but is not yet wired.
+//! # Account-type branching
 //!
-//! It deliberately does NOT read the `NmpApp::marmot_local_nsec` FFI field to
-//! bypass the actor: that slot is the ADR-0025 Marmot exception and must not be
-//! read for NIP-17. The executor uses the actor's own identity state
-//! (`IdentityRuntime::active_local_keys`).
+//! Sealing a NIP-59 rumor needs a NIP-44 encrypt (kind:13 seal) followed by
+//! a signature, both keyed by the sender's account. ADR-0026 unifies the
+//! local-keys and remote-signer flavours through the `SignerForSeal` trait
+//! (`nmp_nip59::SignerForSeal`).
 //!
-//! `ActorCommand::SendGiftWrappedDm` arrives carrying an **unsigned** kind:14
-//! chat-message rumor (built host-side by `nmp_nip17::build_dm_rumor`). This
-//! handler:
+//! The handler resolves a `SignerForSeal` for the active account via
+//! `IdentityRuntime::active_signer_for_seal` and hands it to
+//! `nmp_nip59::gift_wrap_with_signer`. The accessor returns:
+//! - `Some(Arc<dyn SignerForSeal>)` for a local account — the blanket impl
+//!   on `nostr::Keys` resolves both the encrypt and sign steps
+//!   synchronously, so `gift_wrap_with_signer` runs the whole chain on the
+//!   actor thread and returns the kind:1059 envelope immediately.
+//! - `None` for a remote account — `gift_wrap_with_signer` itself can drive
+//!   a remote chain (it spawns a per-invocation driver thread that owns the
+//!   multi-step `SignerOp::Pending` round-trips), but wiring the remote
+//!   `RemoteSignerHandle → SignerForSeal` adapter (with the substrate
+//!   `SignedEvent ↔ nostr::Event` bridge) is the Phase 2 follow-up to
+//!   ADR-0026. Until then `None` is the graceful-degrade signal: surface
+//!   a toast (D6), publish nothing, never panic.
 //!
-//! 1. Resolves the active account's local `nostr::Keys`. A remote (NIP-46)
-//!    signer exposes no local key — sealing a NIP-59 rumor is not a single
-//!    "sign this event" op a remote signer can serve — so that case is a
-//!    graceful `Err` surfaced as a toast, never a panic (D6). See ADR-0026.
+//! It deliberately does NOT read the `NmpApp::marmot_local_nsec` FFI field
+//! to bypass the actor: that slot is the ADR-0025 Marmot exception and must
+//! not be read for NIP-17 (D13 Part A makes this structural).
+//!
+//! `ActorCommand::SendGiftWrappedDm` arrives carrying an **unsigned**
+//! kind:14 chat-message rumor (built host-side by
+//! `nmp_nip17::build_dm_rumor`). This handler:
+//!
+//! 1. Resolves the active account's `SignerForSeal` (see above).
 //! 2. Re-stamps `rumor.created_at` from `kernel.now_secs()` (D7 — the kernel
 //!    owns the wall clock; the host sends `0` as a sentinel).
-//! 3. Gift-wraps the rumor TWICE via `nmp_nip59::gift_wrap`: once to the
-//!    recipient, once to the sender's own pubkey (the self-copy, so sent
-//!    messages stay readable). Each call mints a fresh ephemeral key for the
-//!    outer kind:1059 envelope — the unlinkability guarantee.
+//! 3. Gift-wraps the rumor TWICE via `nmp_nip59::gift_wrap_with_signer`:
+//!    once to the recipient, once to the sender's own pubkey (the
+//!    self-copy, so sent messages stay readable). Each call mints a fresh
+//!    ephemeral key for the outer kind:1059 envelope — the unlinkability
+//!    guarantee.
 //! 4. Publishes each kind:1059 envelope to its receiver's kind:10050 DM-inbox
 //!    relays via the explicit-target publish path. The envelopes are already
 //!    signed (by their ephemeral keys); they MUST NOT be re-signed with the
 //!    account key, which would destroy unlinkability — so they route through
 //!    `publish_signed_event`, not the unsigned publish path.
+
+// D13: signer-only seal path
 //!
 //! # Relay routing — NIP-17 § 2
 //!
@@ -78,7 +91,7 @@
 //! `nmp-marmot::projection::publish::publish_to` Marmot guard PR-K added at
 //! the Marmot bridge — defence in depth at every kind:1059 publish surface.
 
-use nostr::{EventBuilder, Kind, PublicKey, Tag, Timestamp};
+use nostr::{nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK, EventBuilder, Kind, PublicKey, Tag, Timestamp};
 
 use crate::actor::commands::identity::IdentityRuntime;
 use crate::kernel::Kernel;
@@ -104,15 +117,28 @@ pub(crate) fn send_gift_wrapped_dm(
     // structurally: any Auto-routing seam (`PublishTarget::Auto`,
     // `publish_signed(...)`, `publish_unsigned_event(...)`) below this
     // marker fires a lint finding.
-    // 1. Active local keys. A remote (NIP-46) signer has no local secret key;
-    //    gift-wrap sealing cannot run through the remote-sign RPC, so this is a
-    //    graceful degrade — surface a toast, publish nothing (D6).
-    let Some(keys) = identity.active_local_keys() else {
-        kernel.set_last_error_toast(Some(
-            "cannot send DM: gift-wrap needs a local key — remote (bunker) \
-             signers are not yet supported for NIP-17"
-                .to_string(),
-        ));
+    //
+    // 1. Resolve a `SignerForSeal` for the active account (ADR-0026 seam).
+    //    `None` here means the active signer is a remote (NIP-46 / NIP-07)
+    //    handle and the Phase-2 adapter is not wired yet; surface a toast
+    //    and publish nothing (D6 — graceful degrade, never a panic).
+    let Some(signer) = identity.active_signer_for_seal() else {
+        let reason = match identity.active_signer_kind() {
+            Some("local") => {
+                // Unreachable in practice — a local signer always produces
+                // Some — but report it as a D6 error rather than a panic
+                // if the invariant ever breaks.
+                "internal error: local account did not produce a SignerForSeal"
+                    .to_string()
+            }
+            Some(other) => format!(
+                "cannot send DM: remote signer ({}) not yet supported for NIP-17 \
+                 (ADR-0026 Phase 2)",
+                other
+            ),
+            None => "cannot send DM: no active account".to_string(),
+        };
+        kernel.set_last_error_toast(Some(reason));
         return Vec::new();
     };
 
@@ -122,10 +148,15 @@ pub(crate) fn send_gift_wrapped_dm(
         rumor.created_at = kernel.now_secs();
     }
 
-    // 3. Convert the substrate rumor → `nostr::UnsignedEvent`. The rumor is
+    // 3. The signer carries the sender's pubkey; centralising the access
+    //    here keeps dm.rs D13-clean (no `active_local_keys` / `.secret_key()`
+    //    calls on the seal path).
+    let sender = signer.pubkey();
+
+    // 4. Convert the substrate rumor → `nostr::UnsignedEvent`. The rumor is
     //    NEVER signed; `EventBuilder::build` produces the unsigned form that
-    //    `gift_wrap` seals.
-    let nostr_rumor = match build_nostr_rumor(&rumor, keys.public_key()) {
+    //    `gift_wrap_with_signer` seals.
+    let nostr_rumor = match build_nostr_rumor(&rumor, sender) {
         Ok(r) => r,
         Err(reason) => {
             kernel.set_last_error_toast(Some(format!("cannot send DM: {reason}")));
@@ -144,9 +175,8 @@ pub(crate) fn send_gift_wrapped_dm(
             return Vec::new();
         }
     };
-    let sender = keys.public_key();
 
-    // 4. Gift-wrap TWICE — fresh ephemeral outer key per call (NIP-59).
+    // 5. Gift-wrap TWICE — fresh ephemeral outer key per call (NIP-59).
     //    Envelope A: wrapped to the recipient.
     //    Envelope B: the self-copy, wrapped to the sender's own pubkey.
     //
@@ -154,6 +184,15 @@ pub(crate) fn send_gift_wrapped_dm(
     //    relays (NIP-17 § 2): the recipient envelope to the recipient's list,
     //    the self-copy to the sender's own list. The receiver's pubkey hex is
     //    carried alongside so `recipient_dm_relays` can be keyed correctly.
+    //
+    //    Each call to `gift_wrap_with_signer` runs the seal+wrap chain for
+    //    one envelope. On the LOCAL fast path (every `SignerOp` from a
+    //    `Keys`-backed `SignerForSeal` is `Ready`), the chain completes on
+    //    the actor thread and `wait()` resolves synchronously. The Phase-2
+    //    REMOTE path returns `SignerOp::Pending` — wiring that into the
+    //    actor's existing `pending_signs` queue (so the actor never blocks
+    //    on a bunker round-trip) is the next follow-up; right now `None`
+    //    above short-circuits the remote case to a toast.
     let sender_hex = sender.to_hex();
     let mut outbound = Vec::new();
     let mut empty_relay_skips: Vec<&'static str> = Vec::new();
@@ -161,7 +200,26 @@ pub(crate) fn send_gift_wrapped_dm(
         ("recipient", &recipient, recipient_pubkey),
         ("self-copy", &sender, sender_hex.as_str()),
     ] {
-        let envelope = match nmp_nip59::gift_wrap(keys, receiver, nostr_rumor.clone(), None) {
+        // NIP-59 randomises the kind:13 + kind:1059 timestamps in a 2-day
+        // window so an observer cannot correlate the envelope timestamp
+        // with the underlying rumor; mirrors the behaviour of
+        // `nostr::nips::nip59::make_seal`.
+        let tweaked = Timestamp::tweaked(RANGE_RANDOM_TIMESTAMP_TWEAK);
+        let op = nmp_nip59::gift_wrap_with_signer(
+            std::sync::Arc::clone(&signer),
+            receiver,
+            nostr_rumor.clone(),
+            tweaked,
+        );
+        // LOCAL fast path: `wait(0)` resolves a `Ready` op immediately.
+        // For the REMOTE path this `wait` would block the actor thread —
+        // but `active_signer_for_seal` returns `None` for remote accounts
+        // today, so this branch is unreachable for a Pending op. The
+        // generous timeout here (matching the per-step driver budget)
+        // is purely defensive: if a future signer impl violates the
+        // contract by returning Pending on a synchronous-looking path,
+        // we surface a toast rather than wedge.
+        let envelope = match op.wait(nmp_nip59::DRIVER_STEP_TIMEOUT) {
             Ok(ev) => ev,
             Err(e) => {
                 kernel.set_last_error_toast(Some(format!(

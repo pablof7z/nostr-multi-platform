@@ -1,8 +1,8 @@
-//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10/D11/D12/D15.
+//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10/D11/D12/D13/D15.
 //!
 //! See `walker.rs` for the `#[cfg(test)]` module tracker, `allow.rs` for the
-//! per-line opt-out comment, and `rules/d{0,6,7,8,9,10,11,12,15}.rs` for individual
-//! rule definitions. Brainstorm item #8 in
+//! per-line opt-out comment, and `rules/d{0,6,7,8,9,10,11,12,13,15}.rs` for
+//! individual rule definitions. Brainstorm item #8 in
 //! `docs/perf/parallel-work-brainstorm-2026-05-18.md`.
 //!
 //! ## Invocation
@@ -58,7 +58,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use rules::{d0, d10, d11, d12, d15, d6, d7, d8, d9};
+use rules::{d0, d10, d11, d12, d13, d15, d6, d7, d8, d9};
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
@@ -71,6 +71,7 @@ fn main() -> ExitCode {
                 "usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings] \
                  [--d8-extra-scope <fragment>] [--d9-extra-scope <fragment>] \
                  [--d10-extra-scope <fragment>] [--d12-extra-scope <fragment>] \
+                 [--d13-extra-scope <fragment>] \
                  [--d15-extra-scope <fragment>] \
                  [--workspace-d8 [--workspace-d8-root <dir>]]"
             );
@@ -102,6 +103,7 @@ fn main() -> ExitCode {
                 &cfg.d9_extra_scopes,
                 &cfg.d10_extra_scopes,
                 &cfg.d12_extra_scopes,
+                &cfg.d13_extra_scopes,
                 &cfg.d15_extra_scopes,
                 cfg.workspace_d8,
                 &mut all_findings,
@@ -128,7 +130,7 @@ fn main() -> ExitCode {
         let rules = if cfg.workspace_d8 {
             "D8 no-polling"
         } else {
-            "D0/D6/D7/D8/D9/D10/D11/D12/D15"
+            "D0/D6/D7/D8/D9/D10/D11/D12/D13/D15"
         };
         eprintln!(
             "doctrine-lint: 0 findings across {} root(s) ({} clean).",
@@ -160,6 +162,7 @@ fn scan_one_file(
     d9_extra_scopes: &[String],
     d10_extra_scopes: &[String],
     d12_extra_scopes: &[String],
+    d13_extra_scopes: &[String],
     d15_extra_scopes: &[String],
     workspace_d8: bool,
     findings: &mut Vec<report::Finding>,
@@ -171,6 +174,22 @@ fn scan_one_file(
     let d9_in_scope = d9_file_in_scope(path, d9_extra_scopes);
     let d10_in_scope = d10_file_in_scope(path, d10_extra_scopes);
     let d12_in_scope = d12_file_in_scope(path, d12_extra_scopes);
+    // D13 Part A scope: default files + marker-driven opt-in + extra
+    // scopes (the fixture smoke test uses the last). The marker check
+    // requires the file body, so resolve it once up-front by reading the
+    // file — small price, same shape the other rules pay via observed
+    // line scans (the walker reads the file anyway; this just peeks first
+    // to set scope). On read error, fall back to "not in scope" so the
+    // outer walker emits its own better-formatted IO error below.
+    let d13_part_a_in_scope = {
+        let default = d13::file_in_part_a_default(path);
+        let extra = d13_file_extra_in_scope(path, d13_extra_scopes);
+        let marker = std::fs::read_to_string(path)
+            .map(|s| s.contains(d13::PART_A_MARKER))
+            .unwrap_or(false);
+        default || extra || marker
+    };
+    let d13_part_b_in_scope = d13::file_in_part_b_scope(path);
     let d15_in_scope = d15_file_in_scope(path, d15_extra_scopes);
     let mut d6_state = d6::State::default();
     let mut d8_tracker = d8::HotPathTracker::default();
@@ -343,6 +362,43 @@ fn scan_one_file(
                 });
             }
         }
+        // D13 — DM-path raw-key isolation (ADR-0026). Part A fires inside
+        // marked DM / zap / NIP-44 files; Part B fires on any read of
+        // `marmot_local_nsec` outside the marmot crate. Both halves are
+        // workspace-wide-relevant correctness rules (a leaked raw nsec is
+        // a leak everywhere), so they run regardless of `--workspace-d8`.
+        if d13_part_a_in_scope {
+            for (col, msg, suggested) in
+                d13::check_part_a(sl.text, sl.is_comment, sl.in_test_cfg)
+            {
+                if allow::line_allows(sl.text, d13::ID) {
+                    continue;
+                }
+                findings.push(report::Finding {
+                    rule: d13::ID,
+                    path: path.to_path_buf(),
+                    line: sl.line_no,
+                    col,
+                    message: msg,
+                    suggested,
+                });
+            }
+        }
+        if d13_part_b_in_scope {
+            for (col, msg, suggested) in d13::check_part_b(sl.text, sl.is_comment) {
+                if allow::line_allows(sl.text, d13::ID) {
+                    continue;
+                }
+                findings.push(report::Finding {
+                    rule: d13::ID,
+                    path: path.to_path_buf(),
+                    line: sl.line_no,
+                    col,
+                    message: msg,
+                    suggested,
+                });
+            }
+        }
         // D15 — host-supplied closure invocations MUST be wrapped in
         // `catch_unwind` / `guard_ffi_callback`. Scope is `nmp-core/src/`
         // (host-closure registration seams live in the substrate). The
@@ -476,6 +532,16 @@ fn d15_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
     extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
 }
 
+/// True iff `--d13-extra-scope` opts `path` into D13 Part A scope. Mirrors
+/// `--d9-extra-scope` etc: the fixture smoke test stages a positive D13
+/// fixture under `target/<label>/` (outside `crates/nmp-core/src/actor/
+/// commands/dm.rs`) and uses this hook to reach it without forging a
+/// fake `crates/` layout.
+fn d13_file_extra_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
+    let s = path.to_string_lossy().replace('\\', "/");
+    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // CLI
 // ────────────────────────────────────────────────────────────────────────────
@@ -502,6 +568,12 @@ struct Config {
     /// [`Self::d9_extra_scopes`]; the fixture smoke test opts the
     /// staged d12 fixture in.
     d12_extra_scopes: Vec<String>,
+    /// Extra path fragments treated as D13 Part-A in-scope. Same role as
+    /// [`Self::d9_extra_scopes`]: lets the fixture smoke test point the
+    /// rule at `bin/doctrine-lint/fixtures/d13/`, which otherwise falls
+    /// outside the default `dm.rs`-only Part-A scope (Part B is
+    /// path-derived workspace-wide so needs no extra-scope hook).
+    d13_extra_scopes: Vec<String>,
     /// Extra path fragments treated as D15-in-scope. Same role as
     /// [`Self::d8_extra_scopes`] / [`Self::d9_extra_scopes`]: opts a
     /// fixture path under `target/<label>/` into the D15 scan.
@@ -572,6 +644,14 @@ fn parse_args(args: &[String]) -> Result<Config, String> {
                         .clone(),
                 );
             }
+            "--d13-extra-scope" => {
+                i += 1;
+                cfg.d13_extra_scopes.push(
+                    args.get(i)
+                        .ok_or_else(|| "--d13-extra-scope requires a path fragment".to_string())?
+                        .clone(),
+                );
+            }
             "--d15-extra-scope" => {
                 i += 1;
                 cfg.d15_extra_scopes.push(
@@ -591,7 +671,7 @@ fn parse_args(args: &[String]) -> Result<Config, String> {
                     })?));
             }
             "-h" | "--help" => {
-                println!("usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings] [--d8-extra-scope <fragment>] [--d9-extra-scope <fragment>] [--d10-extra-scope <fragment>] [--d12-extra-scope <fragment>] [--d15-extra-scope <fragment>] [--workspace-d8 [--workspace-d8-root <dir>]]");
+                println!("usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings] [--d8-extra-scope <fragment>] [--d9-extra-scope <fragment>] [--d10-extra-scope <fragment>] [--d12-extra-scope <fragment>] [--d13-extra-scope <fragment>] [--d15-extra-scope <fragment>] [--workspace-d8 [--workspace-d8-root <dir>]]");
                 std::process::exit(0);
             }
             other => return Err(format!("unknown argument: {}", other)),
