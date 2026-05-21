@@ -58,19 +58,30 @@ struct DmConversationView: View {
                 .frame(minHeight: 320)
             }
         } else {
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    // The projection emits newest-first; reverse for a chat
-                    // log (oldest at top) — display ordering only, not a
-                    // protocol decision.
-                    ForEach(messages.reversed()) { message in
-                        DmMessageBubble(
-                            message: message,
-                            isOutgoing: message.senderPubkey == store.localPubkey)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        // The projection emits newest-first; reverse for a chat
+                        // log (oldest at top) — display ordering only, not a
+                        // protocol decision.
+                        ForEach(messages.reversed()) { message in
+                            DmMessageBubble(
+                                message: message,
+                                isOutgoing: message.senderPubkey == store.localPubkey)
+                        }
+                        Color.clear.frame(height: 1).id("dm-bottom")
+                    }
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 12)
+                }
+                .onChange(of: messages.count) { _, _ in
+                    proxy.scrollTo("dm-bottom")
+                }
+                .onAppear {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        proxy.scrollTo("dm-bottom")
                     }
                 }
-                .padding(.vertical, 10)
-                .padding(.horizontal, 12)
             }
         }
     }
