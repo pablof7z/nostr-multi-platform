@@ -51,6 +51,8 @@ use nmp_nip17::{
     giftwrap_inbox_interest, publish_dm_relay_list_command, send_dm_command, DmInboxProjection,
     PublishDmRelayListAction, PublishDmRelayListInput, SendDmAction, SendDmInput,
 };
+
+use crate::zap::register_nip57_actions;
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
 use nmp_threading::ModulePolicy;
@@ -181,6 +183,14 @@ pub extern "C" fn nmp_app_chirp_register(
     //
     // SAFETY: same exclusive-borrow rationale as `register_chirp_actions`.
     register_nip17_actions(unsafe { &mut *app });
+
+    // Register the NIP-57 zap `ActionModule` (`nmp.zap`). This is the fourth
+    // NIP-crate module wired through the host-extensibility seam, and the
+    // first whose executor performs an out-of-process HTTP round-trip (the
+    // LNURL-pay leg) on a dedicated worker thread.
+    //
+    // SAFETY: same exclusive-borrow rationale as `register_chirp_actions`.
+    register_nip57_actions(unsafe { &mut *app });
 
     // SAFETY: caller guarantees `app` is a valid pointer allocated by
     // `nmp_app_new` for the duration of this call. We do not hold the

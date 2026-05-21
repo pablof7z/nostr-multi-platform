@@ -43,13 +43,13 @@ nmp-nip01 = { path = "../../../crates/nmp-nip01" }
 # proving the host-extensibility seam works for NIP-crate modules, not just
 # Chirp's own social verbs. D0-clean: `nmp-core` gains no group nouns.
 nmp-nip29 = { path = "../../../crates/nmp-nip29" }
-# NIP-57 lightning zaps. Chirp pulls in this crate for the kind:9734
-# `ZapRequest` builder, kind:9735 `ZapReceiptRecord` decoder, and the
-# `nmp.nip57.zaps` `DomainModule` / `ZapsView`. The `ActionModule` surface
-# for `nmp.zap` was deleted as a dormant shipped-but-inert seam: a real LNURL
-# round-trip needs the async-capability protocol in ADR-0024, and until that
-# lands no host wires a zap executor. D0-clean: `nmp-core` gains no zap nouns.
-nmp-nip57 = { path = "../../../crates/nmp-nip57" }
+# NIP-57 lightning zaps. Chirp registers the crate's typed `ZapModule`
+# `ActionModule` against the kernel action registry — the second NIP-crate
+# module wired through the host-extensibility seam after `nmp-nip29`. The
+# `lnurl` feature pulls in the in-process LNURL-pay HTTP round-trip (leg 2
+# of NIP-57); the default crate has no HTTP dep. D0-clean: `nmp-core` gains
+# no zap nouns.
+nmp-nip57 = { path = "../../../crates/nmp-nip57", features = ["lnurl"] }
 # NIP-17 private direct messages. Chirp wires the crate's `DmInboxProjection`
 # (kind:1059 raw-event observer + `nip17.dm_inbox` snapshot projection) and
 # registers its `SendDmAction` `ActionModule` for the `nmp.dm.send` verb.

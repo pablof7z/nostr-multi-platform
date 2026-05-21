@@ -35,6 +35,10 @@
 pub mod ffi;
 #[cfg(feature = "marmot")]
 pub mod marmot;
+/// NIP-57 zap wiring — host-side glue between the `nmp.zap` `ActionModule`
+/// validator and the actor/LNURL worker. See `zap.rs` module docs for the
+/// rationale (D0: protocol stays in `nmp-nip57`, host wiring lives here).
+mod zap;
 
 pub use ffi::{
     nmp_app_chirp_register, nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free,
