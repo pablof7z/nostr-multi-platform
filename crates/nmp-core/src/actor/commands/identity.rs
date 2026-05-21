@@ -165,25 +165,6 @@ impl IdentityRuntime {
         id
     }
 
-    /// Drop the remote signer (if any) for `identity_id`. If it was active,
-    /// fall back to the next account in `order` (mirroring `remove_account`).
-    pub(crate) fn remove_remote(&mut self, identity_id: &str) {
-        let Some(handle) = self.remote_signers.remove(identity_id) else {
-            return;
-        };
-        // Drain in-flight requests before dropping so blocked callers fail
-        // fast rather than waiting for the remote-sign timeout.
-        handle.disconnect();
-        drop(handle);
-        // Only drop from `order` if no local key for the same pubkey survives.
-        if !self.keys.contains_key(identity_id) {
-            self.order.retain(|x| x != identity_id);
-        }
-        if self.active.as_deref() == Some(identity_id) {
-            self.active = self.order.first().cloned();
-        }
-    }
-
     fn active_keys(&self) -> Option<&Keys> {
         self.active.as_ref().and_then(|id| self.keys.get(id))
     }
@@ -789,24 +770,6 @@ pub(crate) fn add_remote_signer(
     retarget_timeline(identity, kernel, relays_ready)
 }
 
-/// Broker → actor: drop a remote signer by user pubkey hex. If it was the
-/// active account, fall back to the next account in `order`.
-pub(crate) fn remove_remote_signer(
-    identity: &mut IdentityRuntime,
-    kernel: &mut Kernel,
-    identity_id: &str,
-) -> Vec<OutboundMessage> {
-    if !identity.remote_signers.contains_key(identity_id) {
-        return Vec::new();
-    }
-    identity.remove_remote(identity_id);
-    sync_kernel(identity, kernel);
-    // #168: same reconcile as remove_account — a removed remote signer that
-    // was the active account must not leave its follow-feed interests live.
-    kernel.reconcile_follow_feed_after_identity_change();
-    Vec::new()
-}
-
 /// Broker → actor: latest NIP-46 handshake progress. Stage `"idle"` clears
 /// the projection; everything else replaces it.
 ///
@@ -837,7 +800,7 @@ pub(crate) fn sign_in_bunker(identity: &IdentityRuntime, kernel: &mut Kernel, ur
     // registered via `crate::bunker_hook::register_bunker_hook`.
     //
     // Here we shape-validate the URI, seed the snapshot with `"connecting"`
-    // so the SwiftUI sign-in flow renders progress immediately, then hand
+    // so the host sign-in flow renders progress immediately, then hand
     // the URI to the registered broker. The broker drives the connect /
     // get_public_key dance on its own thread and reports progress via
     // `BunkerHandshakeProgress` + `AddRemoteSigner`. D0 stays clean —

@@ -204,19 +204,6 @@ pub enum ActorCommand {
     AddRemoteSigner {
         handle: Box<dyn crate::RemoteSignerHandle>,
     },
-    /// Broker → actor: drop a remote signer by user pubkey hex. See
-    /// [`Self::AddRemoteSigner`] for the cross-crate construction story.
-    ///
-    /// Unlike its sibling variants this one has **no production constructor
-    /// today** — only the dispatch handler and `remote_signer_tests` exercise
-    /// it. The handler logic is real and a sign-out flow is the expected
-    /// caller.
-    /// TODO(2-cycle-deadline): if review #42 still finds no production caller,
-    /// delete this variant together with its `dispatch.rs` handler arm.
-    #[allow(dead_code)] // no production caller yet — see 2-cycle deletion deadline above
-    RemoveRemoteSigner {
-        identity_id: String,
-    },
     /// Broker → actor: progress event for the bunker handshake UI. Actor
     /// stores the latest into a kernel snapshot field; the broker is the
     /// sole writer. Stage `"idle"` clears the projection. Has a live
