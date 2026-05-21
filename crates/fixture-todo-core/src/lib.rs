@@ -129,7 +129,7 @@ pub fn register(app: &mut NmpApp) -> TodoStore {
     // apply it to the host-owned store. The todo flow is local-only: no
     // `ActorCommand` is needed, so the `send` bridge is deliberately unused.
     let executor_store = Arc::clone(&store);
-    app.register_action_executor(ACTION_NAMESPACE, move |action_json, _send| {
+    app.register_action_executor(ACTION_NAMESPACE, move |action_json, _correlation_id, _send| {
         let action: Action = serde_json::from_str(action_json).map_err(|e| e.to_string())?;
         let mut guard = executor_store
             .lock()
