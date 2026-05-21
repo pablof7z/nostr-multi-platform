@@ -28,8 +28,8 @@ struct DmListView: View {
             }
         }
         .chirpScreenBackground()
-        .navigationTitle("Messages")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationTitle("Chats")
+        .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
@@ -51,8 +51,8 @@ struct DmListView: View {
         ScrollView {
             ChirpPlaceholder(
                 systemImage: "lock.fill",
-                title: "No messages",
-                subtitle: "Private NIP-17 direct messages you send and receive appear here."
+                title: "No chats yet",
+                subtitle: "Your chats are private and end-to-end encrypted."
             )
             .frame(minHeight: 360)
         }
@@ -156,13 +156,12 @@ private struct DmComposeSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Recipient pubkey (hex)", text: $recipient)
-                        .font(.body.monospaced())
+                    TextField("npub1... or hex pubkey", text: $recipient)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .accessibilityIdentifier("dm-compose-recipient-field")
                 } header: {
-                    Text("To")
+                    Text("Recipient (npub or pubkey)")
                 }
 
                 Section {
@@ -205,11 +204,11 @@ private struct DmComposeSheet: View {
 
 // ── Shared helpers (thin-shell: pure display, no protocol decoding) ───────
 
-/// Truncated hex pubkey: `abcdef01…23456789`. No npub decoding — that would
+/// Truncated hex pubkey: `abcdef…6789`. No npub decoding — that would
 /// be protocol logic, which belongs in Rust.
 func dmShortPubkey(_ hex: String) -> String {
-    guard hex.count >= 16 else { return hex.isEmpty ? "Unknown" : hex }
-    return "\(hex.prefix(8))…\(hex.suffix(8))"
+    guard hex.count >= 10 else { return hex.isEmpty ? "Unknown" : hex }
+    return "\(hex.prefix(6))…\(hex.suffix(4))"
 }
 
 /// First two hex chars of a pubkey — a cheap deterministic avatar label.
