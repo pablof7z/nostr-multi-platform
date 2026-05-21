@@ -21,6 +21,8 @@ pub enum Mode {
 pub struct AppState {
     pub focused: Pane,
     pub mode: Mode,
+    pub basic: bool,
+    pub show_help: bool,
     pub tab: &'static str,
     pub update_count: u64,
     pub blocks: usize,
@@ -37,6 +39,8 @@ impl Default for AppState {
         Self {
             focused: Pane::Feed,
             mode: Mode::Normal,
+            basic: false,
+            show_help: false,
             tab: "home",
             update_count: 0,
             blocks: 0,
@@ -76,6 +80,22 @@ impl AppState {
 
     pub fn focus(&mut self, pane: Pane) {
         self.focused = pane;
+    }
+
+    pub fn set_basic(&mut self) {
+        self.basic = true;
+        self.focused = Pane::Feed;
+        self.status = "basic mode: single-pane terminal layout".to_string();
+    }
+
+    pub fn toggle_help(&mut self) {
+        self.show_help = !self.show_help;
+    }
+
+    pub fn close_help(&mut self) -> bool {
+        let was_open = self.show_help;
+        self.show_help = false;
+        was_open
     }
 
     pub fn select_next(&mut self) {

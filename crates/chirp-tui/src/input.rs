@@ -20,6 +20,7 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
 
     match key.code {
         KeyCode::Char('q') => return InputFlow::Quit,
+        KeyCode::Char('?') => state.toggle_help(),
         KeyCode::Char('1') => state.focus(Pane::Feed),
         KeyCode::Char('2') => state.focus(Pane::Detail),
         KeyCode::Char('3') => state.focus(Pane::Profile),
@@ -36,7 +37,11 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         KeyCode::Char('+') => react_to_selected(state, runtime),
         KeyCode::Char('f') => follow_selected(state, runtime, true),
         KeyCode::Char('F') => follow_selected(state, runtime, false),
-        KeyCode::Esc => state.status = "detail closed".to_string(),
+        KeyCode::Esc => {
+            if !state.close_help() {
+                state.status = "detail closed".to_string();
+            }
+        }
         _ => {}
     }
     InputFlow::Continue

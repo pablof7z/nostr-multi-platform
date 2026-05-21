@@ -59,7 +59,7 @@ fn run(args: Args) -> Result<()> {
 
     let mut state = AppState::default();
     if args.basic {
-        state.status = "basic mode: images and animations disabled".to_string();
+        state.set_basic();
     }
 
     terminal.draw(|frame| ui::layout::render(frame, &state))?;
