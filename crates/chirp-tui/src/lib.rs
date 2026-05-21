@@ -3,6 +3,7 @@
 pub mod app;
 pub mod bridge;
 pub mod input;
+pub mod render_intents;
 pub mod runtime;
 pub mod timeline;
 pub mod ui;

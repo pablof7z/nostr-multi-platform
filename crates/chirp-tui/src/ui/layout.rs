@@ -131,9 +131,10 @@ fn render_feed_row(row: &TimelineRow, selected: bool) -> Line<'static> {
     let indent = "  ".repeat(row.depth.min(3));
     let gap = if row.has_gap { "*" } else { " " };
     let text = format!(
-        "{prefix}{indent}{gap} {}  {}",
+        "{prefix}{indent}{gap} {}  {}  [{}]",
         row.author,
-        row.content.replace('\n', " ")
+        row.content.replace('\n', " "),
+        row.relation_counts.summary()
     );
     let style = if selected {
         Style::default()
@@ -156,6 +157,7 @@ fn detail_lines(state: &AppState) -> Vec<Line<'static>> {
     vec![
         Line::from(row.author.clone()),
         Line::from(format!("event {}", short_id(&row.id))),
+        Line::from(row.relation_counts.summary()),
         Line::from(row.content.clone()),
         Line::from("Enter opens the full thread through NMP."),
     ]
