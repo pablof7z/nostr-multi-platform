@@ -146,6 +146,35 @@ impl Kernel {
     }
 
 
+    /// Resolve a pubkey's NIP-17 **DM inbox** relays (the kind:10050 list).
+    ///
+    /// NIP-17 § 2: a kind:1059 gift-wrap MUST be published to the recipient's
+    /// kind:10050 DM-relay list — a relay set that is *deliberately distinct*
+    /// from the kind:10002 (NIP-65) generic mailbox. kind:10050 carries
+    /// `["relay", <url>]` tags (note: `relay`, not the `r` marker NIP-65 uses),
+    /// letting a user route private messages to a privacy-focused relay that is
+    /// not in their public read set. Collapsing the two would silently leak DM
+    /// routing onto public relays.
+    ///
+    /// This is the lookup **seam**: kind:10050 ingestion is not yet built (no
+    /// ingest dispatch arm, no subscription interest), so there is no cache to
+    /// consult and this returns `None` today. The DM send path
+    /// (`commands::send_gift_wrapped_dm`) treats `None` as "fall back to the
+    /// configured Content relays and emit a diagnostic `warn!`" — the failure
+    /// is visible, never silent. When kind:10050 ingest lands, this method
+    /// becomes the single edit point: look the pubkey up in the new cache and
+    /// return `Some(relays)`.
+    ///
+    /// Returns `None` when no kind:10050 list is known for `pubkey` (always,
+    /// for now). An empty `Some(Vec)` is reserved for "the pubkey published a
+    /// kind:10050 but it carried no relays" once ingestion exists — callers
+    /// must distinguish that from "not yet known".
+    pub(crate) fn recipient_dm_relays(&self, _pubkey: &str) -> Option<Vec<String>> {
+        // No kind:10050 ingest path exists yet — there is no cache to read.
+        // See the doc comment: this is the named follow-up seam.
+        None
+    }
+
     /// True iff every author in `authors` has a cached kind:10002 relay list
     /// (i.e. the next emission will route entirely off resolved relays, no
     /// bootstrap seed). Used by the A1 recompilation trigger to decide whether

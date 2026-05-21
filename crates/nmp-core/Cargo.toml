@@ -52,6 +52,12 @@ rustls = { workspace = true, default-features = false, features = ["ring"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["raw_value"] }
 tungstenite = { workspace = true, default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+# Lightweight logging facade. Used by the NIP-17 DM send path to emit a
+# diagnostic `warn!` when the recipient's kind:10050 DM-relay list is not yet
+# cached and the send falls back to the configured Content relays — making the
+# routing gap visible in logs rather than failing delivery silently. Already in
+# the lockfile as a transitive of `nostr`; declaring it direct adds nothing new.
+tracing = "0.1"
 zeroize = { workspace = true }
 
 # LMDB backend — feature-gated. The fork at crates/nmp-nostr-lmdb carries the
