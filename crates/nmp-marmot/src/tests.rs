@@ -1,13 +1,10 @@
 //! `nmp-marmot` in-crate tests.
 //!
-//! Two families:
-//! 1. **Substrate module behaviour** — `PublishKeyPackageAction` validates
-//!    relay-list coverage.
-//! 2. **MDK + NIP-59 round-trip** — publish key package → create group →
-//!    gift-wrap Welcome → unwrap → join → message round-trip using in-memory
-//!    storage + explicit keys, driven entirely through the public
-//!    [`crate::service::MarmotService`] API (the same surface a headless
-//!    integration-test driver uses).
+//! **MDK + NIP-59 round-trip** — publish key package → create group →
+//! gift-wrap Welcome → unwrap → join → message round-trip using in-memory
+//! storage + explicit keys, driven entirely through the public
+//! [`crate::service::MarmotService`] API (the same surface a headless
+//! integration-test driver uses).
 //!
 //! The FULL exit-gate proofs (forward-secrecy, post-compromise, perf) are a
 //! separate task in `nmp-testing/tests/marmot_*.rs`; this file proves the
@@ -17,25 +14,7 @@ use mdk_core::prelude::{MessageProcessingResult, NostrGroupConfigData};
 use mdk_sqlite_storage::MdkSqliteStorage;
 use nostr::{EventBuilder, Keys, Kind, PublicKey, RelayUrl};
 
-use crate::action::{PublishKeyPackageAction, PublishKeyPackageInput};
 use crate::service::MarmotService;
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
-
-// ─── ActionModule behaviour ──────────────────────────────────────────────────
-
-#[test]
-fn publish_key_package_action_requires_relays() {
-    let mut ctx = ActionContext { now_ms: 1 };
-    let bad = PublishKeyPackageInput { relays: vec![] };
-    assert!(matches!(
-        PublishKeyPackageAction::start(&mut ctx, bad),
-        Err(ActionRejection::Invalid(_))
-    ));
-    let ok = PublishKeyPackageInput {
-        relays: vec!["wss://r.example.com".into()],
-    };
-    assert!(PublishKeyPackageAction::start(&mut ctx, ok).is_ok());
-}
 
 // ─── MDK + NIP-59 round-trip via the service API ─────────────────────────────
 

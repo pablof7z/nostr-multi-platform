@@ -154,15 +154,20 @@ Files, verified against the code at commit `a1dcc568`:
 
 **Excluded from migration:**
 
-- **`crates/nmp-marmot/src/action/actions.rs:81-86, :96`** — `CreateGroupAction`,
+- **`crates/nmp-marmot/src/action/actions.rs`** (historical) — `CreateGroupAction`,
   `InviteMemberAction`, `SendMessageAction`, `LeaveGroupAction`,
   `RemoveMemberAction`, `UpdateKeysAction`, `PublishKeyPackageAction`. These
-  are not registered against any registry; the only references outside the
-  crate are `tests.rs`. Per **ADR-0025** the Marmot path is a named, bounded
-  exception that uses the bespoke `nmp_app_chirp_marmot_dispatch` envelope —
-  not the generic `dispatch_action` seam. These impls are either dormant
-  test-only code or should be deleted under a separate ADR. This ADR leaves
-  them alone.
+  were never registered against any registry; the only references outside
+  the crate were `tests.rs`. Per **ADR-0025** the Marmot path is a named,
+  bounded exception that uses the bespoke `nmp_app_chirp_marmot_dispatch`
+  envelope — not the generic `dispatch_action` seam. The 6 group-scoped
+  impls were deleted in PR #200; `PublishKeyPackageAction` and the entire
+  `crates/nmp-marmot/src/action/` directory were deleted shortly after under
+  anti-dormant policy (zero `register_action_module` callers; the iOS user
+  flow goes through `MarmotBridge.publishKeyPackage()` → bespoke dispatch).
+  Re-add an `ActionModule` impl only when a non-bespoke caller needs to drive
+  a stateless Marmot capability through `dispatch_action` per ADR-0025
+  Constraint #1.
 - **NIP-77 `RunSync`** (task brief, `crates/nmp-nip77/src/run_sync.rs:46`).
   The file does not exist; `crates/nmp-nip77/src/` has `reconciler.rs`,
   `planner_gate.rs`, etc., but no `run_sync.rs` and no `RunSync` symbol. The
