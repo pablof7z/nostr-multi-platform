@@ -50,6 +50,7 @@ final class KernelModel: ObservableObject {
 
     private let kernel = KernelHandle()
     private var lastLogicalInterestSummary = ""
+    private var marmotRegistrationRequested = false
 
     /// Marmot (MLS encrypted groups) projection mirror. Rust owns identity
     /// restore/persist/register policy; this store only mirrors pushed
@@ -100,24 +101,11 @@ final class KernelModel: ObservableObject {
     }
 
 
-    /// Seed the kernel with a default relay set when the user has not yet
-    /// configured any relays.  This replaces the old hardcoded Rust-side
-    /// defaults with an explicit app-side default injected before start.
-    private func addDefaultRelaysIfNeeded() {
-        guard relayEditRows.isEmpty else { return }
-        for (url, role) in onboardingRelays {
-            kernel.addRelay(url: url, role: role)
-        }
-    }
-
-    var onboardingRelays: [(String, String)] {
+    var onboardingRelayOverride: String? {
         if let relay = Self.launchArgument("CHIRP_MAESTRO_RELAY_URL"), !relay.isEmpty {
-            return [(relay, "both,indexer")]
+            return relay
         }
-        return [
-            ("wss://relay.primal.net", "both,indexer"),
-            ("wss://purplepag.es", "indexer"),
-        ]
+        return nil
     }
 
     private static func launchArgument(_ key: String) -> String? {
@@ -139,7 +127,6 @@ final class KernelModel: ObservableObject {
     func start() {
         guard !isRunning else { return }
         capabilities.start()
-        addDefaultRelaysIfNeeded()
         kernel.start(visibleLimit: visibleLimit, emitHz: emitHz)
         isRunning = true
         kernel.restoreChirpIdentity(testNsec: ProcessInfo.processInfo.environment["NMP_TEST_NSEC"])
@@ -175,7 +162,6 @@ final class KernelModel: ObservableObject {
         appMetrics = AppRuntimeMetrics()
         lastLogicalInterestSummary = ""
         capabilities.start()
-        addDefaultRelaysIfNeeded()
         kernel.start(visibleLimit: visibleLimit, emitHz: emitHz)
         isRunning = true
     }
@@ -249,7 +235,9 @@ final class KernelModel: ObservableObject {
         mls: Bool = true
     ) {
         kmLog.info("createAccount dispatched")
-        kernel.createAccount(profile: profile, relays: relays ?? onboardingRelays, mls: mls)
+        let relayFacts = relays ?? onboardingRelayOverride.map { [($0, "")] } ?? []
+        marmotRegistrationRequested = mls
+        kernel.createAccount(profile: profile, relays: relayFacts, mls: mls)
     }
     func publishProfile(name: String, about: String, picture: String) {
         var profile: [String: String] = ["name": name]
@@ -257,7 +245,10 @@ final class KernelModel: ObservableObject {
         if !picture.isEmpty { profile["picture"] = picture }
         kernel.publishProfile(profile: profile)
     }
-    func switchActive(_ identityID: String) { kernel.switchActive(identityID: identityID) }
+    func switchActive(_ identityID: String) {
+        marmotRegistrationRequested = true
+        kernel.switchActive(identityID: identityID)
+    }
     func removeAccount(_ identityID: String) {
         kernel.removeAccountAndForgetSecret(identityID: identityID)
     }
@@ -336,8 +327,9 @@ final class KernelModel: ObservableObject {
                 modularTimeline = nextTimeline
             }
         }
-        if !kernel.isMarmotRegistered {
-            kernel.registerActiveMarmotIfAvailable()
+        if marmotRegistrationRequested, update.activeAccount != activeAccount {
+            _ = kernel.registerActiveMarmotIfAvailable()
+            marmotRegistrationRequested = false
         }
         marmot.apply(snapshot: kernel.marmotSnapshot(), isRegistered: kernel.isMarmotRegistered)
         // NIP-29 group-chat projection mirror. Push every tick so the store

@@ -93,6 +93,7 @@ pub(super) fn dispatch_command(
             *ctx.emit_hz = hz;
             *ctx.startup_sent = false;
             ctx.kernel.set_visible_limit(visible_limit);
+            commands::ensure_default_onboarding_relays(ctx.kernel);
             ctx.kernel.start();
             let mut outbound = session_persistence::restore_active_session(
                 ctx.identity,
@@ -504,14 +505,12 @@ pub(super) fn dispatch_command(
             // same reason: the `Arc<Mutex<…>>` is shared with the FFI
             // surface and per-app crates; replacing it would silently
             // disconnect every registered raw observer.
-            let raw_event_observers_handle =
-                ctx.kernel.take_raw_event_observers_handle_for_reset();
+            let raw_event_observers_handle = ctx.kernel.take_raw_event_observers_handle_for_reset();
             // Preserve the snapshot-projection slot across Reset for the same
             // reason: the `Arc<Mutex<…>>` is shared with the FFI surface and
             // per-app crates; replacing it would silently drop every
             // host-registered projection from the snapshot.
-            let snapshot_projection_handle =
-                ctx.kernel.take_snapshot_projection_handle_for_reset();
+            let snapshot_projection_handle = ctx.kernel.take_snapshot_projection_handle_for_reset();
             // Preserve the relay-edit rows handle across Reset for the same
             // reason: the `Arc<Mutex<…>>` is shared with the FFI surface
             // and per-app crates; replacing it would silently return stale

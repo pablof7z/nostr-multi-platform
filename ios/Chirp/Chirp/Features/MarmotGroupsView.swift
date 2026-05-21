@@ -352,7 +352,7 @@ struct MarmotCreateGroupSheet: View {
         if result.ok {
             dismiss()
         } else if let needs = result.needs, !needs.isEmpty {
-            errorMessage = "Fetching key packages for \(needs.map(shortNpub).joined(separator: ", "))… tap Create again in a moment."
+            errorMessage = "Waiting for key packages from \(needs.map(shortNpub).joined(separator: ", "))."
         } else {
             errorMessage = result.error ?? "Could not create group"
         }
