@@ -3819,6 +3819,7 @@ dependencies = [
  "bech32",
  "chrono",
  "heed",
+ "mio",
  "nmp-nip42-types",
  "nmp-nip59",
  "nmp-nostr-lmdb",

@@ -48,6 +48,7 @@ nostr = { workspace = true, features = ["nip44", "nip59"] }
 # kernel never owns app nouns, so `nmp-core` must compile without it.
 nmp-nwc = { path = "../nmp-nwc", optional = true }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
+mio = { version = "1", features = ["os-ext", "os-poll"] }
 rustls = { workspace = true, default-features = false, features = ["ring"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["raw_value"] }
