@@ -89,6 +89,13 @@ struct MarmotGroupChatView: View {
                         proxy.scrollTo(last.id, anchor: .bottom)
                     }
                 }
+                .onAppear {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        if let last = messages.last {
+                            proxy.scrollTo(last.id, anchor: .bottom)
+                        }
+                    }
+                }
             }
         }
     }
