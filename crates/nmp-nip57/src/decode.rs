@@ -12,15 +12,28 @@
 //! - `description` (the embedded kind:9734 zap request as JSON, used as
 //!   sender + fallback amount source).
 //!
-//! ## Security precondition (not yet enforced)
+//! ## Receipt integrity — what this decoder enforces
 //!
-//! NIP-57 Appendix F requires that SHA-256(description_tag_raw_bytes) equals
-//! the payment hash embedded in the bolt11 data part (type 1 field, 32 bytes).
-//! This decoder does NOT yet perform that check — doing so requires BOLT-11
-//! bech32 data-part decoding and a SHA-256 dependency (`sha2` crate). Until
-//! that check is added, a receipt with a mismatched description could surface a
-//! forged `sender_pubkey` or `amount_msats`. **Do not use decoded fields for
-//! authorization decisions until this check lands.**
+//! NIP-57 has two integrity rules over the zap-receipt's `bolt11` invoice and
+//! its embedded `description` (the kind:9734 zap request):
+//!
+//! - **MUST (enforced here):** the bolt11 invoice amount MUST equal the embedded
+//!   zap request's `amount` tag, when both are present. A relay that rewrites
+//!   the `description` to embed a different `amount` (or a forged sender) is
+//!   detected by this mismatch. On a contradiction this decoder distrusts the
+//!   *description-derived* fields — `amount_msats` falls back to the
+//!   authoritative bolt11 HRP value and the description-derived `sender_pubkey`
+//!   is dropped. See [`decode_borrowed`].
+//! - **SHOULD (not enforced):** `SHA-256(description)` SHOULD equal the
+//!   *description hash* embedded in the bolt11 data part (the bolt11 `h` tag /
+//!   tagged-field type 23, 32 bytes — NOT the payment hash, which is
+//!   `SHA-256(preimage)` and unrelated to the zap request). Enforcing it
+//!   requires full BOLT-11 bech32 data-part decoding plus a SHA-256 dependency;
+//!   it is left as a follow-up. The amount-equality MUST check above already
+//!   closes the practical "forged embedded amount" path.
+//!
+//! The uppercase `P`-tag sender is set by the LN provider independently of the
+//! `description`, so it is trusted regardless of any description contradiction.
 
 use nmp_core::store::StoredEvent;
 use nmp_core::substrate::KernelEvent;
@@ -79,23 +92,41 @@ fn decode_borrowed(
     let parsed_request: Option<serde_json::Value> = description
         .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok());
 
-    // Sender precedence: explicit uppercase `P` tag wins; else the embedded
-    // request's `pubkey` field; else None.
-    let sender_pubkey = upper_sender.or_else(|| {
+    // The two independent amount sources.
+    let bolt11_amount = bolt11.as_deref().and_then(bolt11::amount_msats);
+    let embedded_amount = amount_from_embedded_request(parsed_request.as_ref());
+
+    // NIP-57 MUST: the bolt11 invoice amount equals the embedded zap request's
+    // `amount` tag when both are present. A mismatch means the `description`
+    // was rewritten (by a relay or a forging intermediary) and its embedded
+    // fields — `pubkey` (sender) and `amount` — cannot be trusted. The bolt11
+    // HRP is what the LN provider actually settled, so it stays authoritative;
+    // the description-derived sender is dropped.
+    let description_contradicted = matches!(
+        (bolt11_amount, embedded_amount),
+        (Some(b), Some(e)) if b != e
+    );
+
+    // Sender precedence: explicit uppercase `P` tag wins (set by the LN
+    // provider, independent of the `description`); else the embedded request's
+    // `pubkey` field — but only when the description is not contradicted; else
+    // None.
+    let embedded_sender = if description_contradicted {
+        None
+    } else {
         parsed_request
             .as_ref()
             .and_then(|v| v.get("pubkey"))
             .and_then(|v| v.as_str())
             .map(str::to_string)
-    });
+    };
+    let sender_pubkey = upper_sender.or(embedded_sender);
 
     // Amount precedence: bolt11 HRP (authoritative — the LN provider settled
     // exactly that); else the embedded zap-request's `amount` tag (millisats
-    // as a string).
-    let amount_msats = bolt11
-        .as_deref()
-        .and_then(bolt11::amount_msats)
-        .or_else(|| amount_from_embedded_request(parsed_request.as_ref()));
+    // as a string). On a contradiction the bolt11 value is already chosen by
+    // this `or_else` ordering, so the forged embedded amount never surfaces.
+    let amount_msats = bolt11_amount.or(embedded_amount);
 
     Some(ZapReceiptRecord {
         event_id: id.to_string(),
@@ -366,6 +397,78 @@ mod tests {
         ];
         let r = try_from_event(&make_stored(9735, tags)).unwrap();
         assert_eq!(r.zapped_event_id.as_deref(), Some("FIRST_NOTE"));
+    }
+
+    #[test]
+    fn description_amount_mismatch_distrusts_embedded_fields() {
+        // NIP-57 MUST: the bolt11 invoice amount equals the embedded zap
+        // request's `amount`. Here bolt11 settles 50_000_000 msat but the
+        // embedded request claims 999 — the `description` was rewritten. The
+        // decoder must distrust the description: the embedded sender is dropped
+        // and the amount falls back to the authoritative bolt11 HRP value.
+        let tags = vec![
+            vec!["p".into(), "recipient".into()],
+            vec!["bolt11".into(), "lnbc500u1pvj...".into()], // 50_000_000 msat
+            vec!["description".into(), embedded_request("forged_sender", 999)],
+        ];
+        let r = try_from_event(&make_stored(9735, tags)).unwrap();
+        assert_eq!(r.amount_msats, Some(50_000_000));
+        assert!(
+            r.sender_pubkey.is_none(),
+            "a contradicted description must not surface its embedded sender"
+        );
+    }
+
+    #[test]
+    fn description_amount_match_keeps_embedded_sender() {
+        // When the bolt11 amount and the embedded `amount` agree, the
+        // description is consistent and its embedded sender stays trusted.
+        let tags = vec![
+            vec!["p".into(), "recipient".into()],
+            vec!["bolt11".into(), "lnbc500u1pvj...".into()], // 50_000_000 msat
+            vec![
+                "description".into(),
+                embedded_request("real_sender", 50_000_000),
+            ],
+        ];
+        let r = try_from_event(&make_stored(9735, tags)).unwrap();
+        assert_eq!(r.amount_msats, Some(50_000_000));
+        assert_eq!(r.sender_pubkey.as_deref(), Some("real_sender"));
+    }
+
+    #[test]
+    fn embedded_request_without_amount_tag_is_not_a_contradiction() {
+        // A zap request that carries a `pubkey` but no `amount` tag cannot
+        // contradict the bolt11 amount — there is nothing to compare. The
+        // embedded sender stays trusted.
+        let no_amount_request = r#"{"pubkey":"real_sender","tags":[]}"#;
+        let tags = vec![
+            vec!["p".into(), "recipient".into()],
+            vec!["bolt11".into(), "lnbc500u1pvj...".into()],
+            vec!["description".into(), no_amount_request.into()],
+        ];
+        let r = try_from_event(&make_stored(9735, tags)).unwrap();
+        assert_eq!(r.amount_msats, Some(50_000_000));
+        assert_eq!(r.sender_pubkey.as_deref(), Some("real_sender"));
+    }
+
+    #[test]
+    fn uppercase_p_sender_survives_a_contradicted_description() {
+        // The uppercase `P` tag is set by the LN provider independently of the
+        // `description`, so an amount contradiction in the description does not
+        // taint it — the `P` sender still wins.
+        let tags = vec![
+            vec!["p".into(), "recipient".into()],
+            vec!["P".into(), "provider_attested_sender".into()],
+            vec!["bolt11".into(), "lnbc500u1pvj...".into()], // 50_000_000 msat
+            vec!["description".into(), embedded_request("forged_sender", 999)],
+        ];
+        let r = try_from_event(&make_stored(9735, tags)).unwrap();
+        assert_eq!(
+            r.sender_pubkey.as_deref(),
+            Some("provider_attested_sender")
+        );
+        assert_eq!(r.amount_msats, Some(50_000_000));
     }
 
     #[test]
