@@ -191,19 +191,16 @@ impl ActionModule for PublishDmRelayListAction {
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
         let event = build_dm_relay_list_event(&action.relays);
-        send(ActorCommand::PublishUnsignedEventToRelays {
-            event,
-            relays: Vec::new(),
-        });
+        // kind:10050 is a NIP-65 replaceable event — route through the
+        // author's NIP-65 write-relay outbox, not an explicit relay pin.
+        send(ActorCommand::PublishUnsignedEvent(event));
         Ok(())
     }
 }
 
 /// Executor: build the kind:10050 unsigned event and dispatch
 /// [`ActorCommand::PublishUnsignedEvent`] — kind:10050 is a NIP-65
-/// replaceable event and must land on the author's kind:10002 write relays.
-/// The explicit-target command is not used here because empty explicit
-/// targets fail closed.
+/// replaceable event that routes via the author's NIP-65 write-relay outbox.
 pub fn publish_dm_relay_list_command(action_json: &str) -> Result<ActorCommand, String> {
     let input: PublishDmRelayListInput =
         serde_json::from_str(action_json).map_err(|e| e.to_string())?;
@@ -423,5 +420,24 @@ mod tests {
         }
         let urls: Vec<&String> = event.tags.iter().map(|t| &t[1]).collect();
         assert_eq!(urls, vec!["wss://a.example", "wss://b.example"]);
+    }
+
+    #[test]
+    fn execute_uses_publish_unsigned_event_not_explicit_relays() {
+        use nmp_core::substrate::ActionModule;
+        use nmp_core::ActorCommand;
+        use std::cell::Cell;
+
+        let input = PublishDmRelayListInput {
+            relays: vec!["wss://inbox.example".to_string()],
+        };
+        let correct = Cell::new(false);
+        PublishDmRelayListAction::execute(input, "", &|cmd| {
+            if matches!(cmd, ActorCommand::PublishUnsignedEvent(_)) {
+                correct.set(true);
+            }
+        })
+        .expect("execute must not fail");
+        assert!(correct.get(), "expected PublishUnsignedEvent (NIP-65 outbox)");
     }
 }
