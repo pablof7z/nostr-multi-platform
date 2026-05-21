@@ -73,21 +73,22 @@ fn multiple_projections_each_get_their_namespace() {
 }
 
 /// With no *host* projection registered, the `projections` map carries only
-/// the kernel-owned built-in publish cluster — and no host namespace.
+/// the kernel-owned built-in projections — and no host namespace.
 ///
-/// D0: `make_update` always inserts `publish_queue` / `publish_outbox` /
-/// `relay_edit_rows` (the publish cluster is kernel-owned domain state, not a
-/// host registration), so the map is never empty and `skip_serializing_if` no
-/// longer drops it. A host that registers nothing simply contributes no extra
-/// keys — the social shell still sees only the three built-ins it expects.
+/// D0: `make_update` always inserts the publish cluster (`publish_queue` /
+/// `publish_outbox` / `relay_edit_rows`) and the identity pair (`accounts` /
+/// `active_account`) — all kernel-owned domain state, not host registrations —
+/// so the map is never empty and `skip_serializing_if` no longer drops it. A
+/// host that registers nothing simply contributes no extra keys: the social
+/// shell still sees only the five built-ins it expects.
 #[test]
-fn no_host_projection_leaves_only_the_publish_cluster() {
+fn no_host_projection_leaves_only_the_builtin_projections() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let parsed: serde_json::Value =
         serde_json::from_str(&kernel.make_update(true)).expect("snapshot json");
     let projections = parsed
         .get("projections")
-        .expect("the built-in publish cluster keeps the projections map on the wire");
+        .expect("the built-in projections keep the projections map on the wire");
     let map = projections
         .as_object()
         .expect("projections must serialize as a JSON object");
@@ -95,8 +96,14 @@ fn no_host_projection_leaves_only_the_publish_cluster() {
     keys.sort_unstable();
     assert_eq!(
         keys,
-        ["publish_outbox", "publish_queue", "relay_edit_rows"],
-        "with no host projection the map carries only the built-in publish cluster"
+        [
+            "accounts",
+            "active_account",
+            "publish_outbox",
+            "publish_queue",
+            "relay_edit_rows"
+        ],
+        "with no host projection the map carries only the kernel-owned built-ins"
     );
 }
 
