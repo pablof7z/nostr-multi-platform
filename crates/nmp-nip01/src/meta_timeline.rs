@@ -1,4 +1,4 @@
-//! `Nip10ModularTimelineView` — Chirp-style modular timeline over NIP-10
+//! `Nip10ModularTimelineView` — modular threaded timeline over NIP-10
 //! kind:1 events. Wraps the agnostic [`nmp_threading::Grouper`] with a
 //! NIP-10 [`ParentResolver`] driven by [`nmp_core::tags::parse_nip10`].
 //!

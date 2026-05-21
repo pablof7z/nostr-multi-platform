@@ -16,11 +16,11 @@
 //! # D0: no app/protocol nouns
 //!
 //! NIP-59 is a generic gift-wrap protocol crate — it deliberately carries no
-//! app/protocol nouns. The Marmot Welcome-delivery path consumes the free
-//! functions [`gift_wrap`] / [`unwrap_gift_wrap`] directly from
-//! `nmp-marmot::service`, which owns its own kind:1059 ingest (`MarmotWelcomeModule`)
-//! and record shape (`MarmotWelcomeRecord`). There is no MLS/Welcome-aware
-//! `DomainModule` here.
+//! app or higher-protocol nouns. Higher-layer consumers (e.g. the MLS
+//! group-messaging crate's Welcome-delivery path) call the free functions
+//! [`gift_wrap`] / [`unwrap_gift_wrap`] directly; each such consumer owns
+//! its own kind:1059 ingest module and record shape. There is no
+//! MLS/Welcome-aware `DomainModule` here.
 //!
 //! # Spec
 //!
