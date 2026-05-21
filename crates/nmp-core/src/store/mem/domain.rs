@@ -60,7 +60,7 @@ pub(super) fn run_migrations(
             continue;
         }
         let mut tx = crate::substrate::MigrationTx::default();
-        (m.apply)(&mut tx).map_err(|reason| StoreError::MigrationFailed {
+        (m.apply)(&mut tx).map_err(|reason| StoreError::MigrationFailed { // doctrine-allow: D15 — `Migration::apply` is an internal substrate-registered migration closure run at store init, not a host FFI seam; loud panic here is the intended bug-surfacing behaviour (mirrors the actor command drain allowlist rationale)
             namespace: namespace.to_string(),
             from: m.from_version,
             to: m.to_version,

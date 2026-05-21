@@ -349,12 +349,30 @@ impl ActionRegistry {
     /// mutex is poisoned (D6 — delivery failures are never a crash). Holding
     /// the lock across the observer call is intentional: registration is a
     /// host-init-time event, so contention with [`Self::set_result_observer`]
-    /// is not expected. A panicking observer poisons the slot, which simply
-    /// disables all further delivery — never a crash.
+    /// is not expected.
+    ///
+    /// D6: the observer is untrusted host plugin code registered via
+    /// `nmp_app_register_action_result_observer`, and this runs on the call
+    /// path of `nmp_app_dispatch_action` — an `extern "C"` function. An
+    /// unguarded panic would (a) poison the slot mutex, silently disabling
+    /// all future delivery, and (b) unwind across the FFI boundary
+    /// (undefined behaviour). The observer is therefore invoked inside
+    /// [`catch_unwind`]: a caught panic drops this result and leaves the
+    /// observer registered so the next `deliver_result` still fires, exactly
+    /// matching the per-callback panic-isolation pattern used by the actor
+    /// loop's relay-event observer (`actor/mod.rs`).
+    ///
+    /// `AssertUnwindSafe`: a boxed `Fn` closure is not `UnwindSafe`, but a
+    /// panic here is fully contained — nothing the closure touched is
+    /// observed again after it unwinds (this `&self` method holds no
+    /// invariants past the call), so there is no broken-invariant hazard.
     pub fn deliver_result(&self, result: ActionResult) {
         if let Ok(slot) = self.result_observer.lock() {
             if let Some(observer) = slot.as_ref() {
-                observer(result);
+                // The panic is swallowed: this `ActionResult` is dropped and
+                // future deliveries still fire. The default panic hook still
+                // prints the payload, so the bug stays visible to ops.
+                let _ = catch_unwind(AssertUnwindSafe(|| observer(result)));
             }
         }
     }
@@ -973,5 +991,53 @@ mod tests {
             .execute("host.boom", "{}", "corr-id", &|_cmd| {})
             .expect_err("a panicking executor must return Err, not unwind");
         assert_eq!(err, "action executor panicked", "got: {err}");
+    }
+
+    /// D6 — a host result-observer closure that panics is contained:
+    /// `deliver_result` swallows the unwind and the observer stays
+    /// registered so the next result is still delivered.
+    ///
+    /// The observer is untrusted host plugin code registered via
+    /// `set_result_observer` (the `nmp_app_register_action_result_observer`
+    /// seam). `deliver_result` runs on the FFI dispatch thread — an
+    /// unguarded panic would (a) poison the slot mutex (silently disabling
+    /// all future delivery) and (b) unwind across the FFI boundary
+    /// (undefined behaviour). The `catch_unwind` guard converts the panic
+    /// into a per-result drop while leaving the observer live.
+    #[test]
+    fn panicking_result_observer_does_not_kill_delivery() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::sync::Arc;
+
+        let calls = Arc::new(AtomicU32::new(0));
+        let calls_in_observer = Arc::clone(&calls);
+
+        let registry = default_registry();
+        registry.set_result_observer(move |result| {
+            let n = calls_in_observer.fetch_add(1, Ordering::SeqCst) + 1;
+            // Panic on the first call only — subsequent deliveries must
+            // still reach the observer, proving panic isolation per-result.
+            if n == 1 {
+                panic!("buggy host result observer (call #{}, corr={})", n, result.correlation_id);
+            }
+        });
+
+        // First delivery: observer panics, `deliver_result` must NOT
+        // propagate it (this test would abort the process if it did).
+        registry.deliver_result(ActionResult {
+            correlation_id: "first".to_string(),
+            result_json: serde_json::Value::Null,
+        });
+        // Second delivery: observer is still live and receives the call.
+        registry.deliver_result(ActionResult {
+            correlation_id: "second".to_string(),
+            result_json: serde_json::Value::Null,
+        });
+
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            2,
+            "observer must have been invoked twice — once panicking, once successfully"
+        );
     }
 }

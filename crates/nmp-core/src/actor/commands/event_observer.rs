@@ -64,6 +64,7 @@
 
 use crate::substrate::KernelEvent;
 use std::ffi::{c_char, c_void, CString};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -287,7 +288,34 @@ pub fn notify_observers(slot: &KernelEventObserverSlot, event: &KernelEvent) {
     };
 
     for observer in &rust_snapshot {
-        observer.on_kernel_event(event);
+        // D6: the Rust observer is untrusted in-process plugin code (a
+        // per-app crate's `KernelEventObserver` impl) firing on the actor
+        // thread, between relay frames. An unguarded panic here would
+        // unwind the actor loop — the actor's outer `catch_unwind` in
+        // `actor/mod.rs` only wraps the relay-event lane, NOT this
+        // observer fan-out — and kill the kernel. Wrap each observer
+        // invocation in `catch_unwind` so one buggy observer cannot stop
+        // its siblings nor halt ingest. `AssertUnwindSafe`: an
+        // `Arc<dyn KernelEventObserver>` plus `&KernelEvent` are not
+        // `UnwindSafe` by default; asserting is sound because the panic
+        // path discards both — the next iteration fetches the next
+        // observer from a fresh snapshot.
+        //
+        // Logging tradeoff (deliberate): a swallowed panic is dropped
+        // silently here, mirroring `kernel/snapshot_registry.rs`'s
+        // projection guard. The slot fan-out is invoked from
+        // `Kernel::notify_event_observers` via `&self` — we do not have
+        // a `&mut Kernel` here to call `kernel.log(...)`, and threading
+        // a log-fn through every fan-out site would touch every
+        // registration crate. The default panic hook still prints the
+        // payload to stderr, so the bug stays visible during dev and CI
+        // without the kernel risking the FSAFETY of a `&mut Kernel`
+        // reborrow inside an observer call. The relay-event lane is the
+        // explicit exception: it lives directly in the actor loop with
+        // `&mut kernel` already in scope and a `set_last_error_toast`
+        // call is the right diagnostic at that fan-out site (see
+        // `actor/mod.rs:905-918`).
+        let _ = catch_unwind(AssertUnwindSafe(|| observer.on_kernel_event(event)));
     }
 
     if !c_snapshot.is_empty() {
@@ -447,6 +475,48 @@ mod tests {
         let slot = new_event_observer_slot();
         // No registrations — should not panic, allocate, or do anything.
         notify_observers(&slot, &event());
+    }
+
+    /// D6 — a Rust observer that panics inside `on_kernel_event` must not
+    /// unwind the calling (actor) thread, must not stop sibling observers
+    /// from firing, and must stay registered so the next event still
+    /// reaches it. Mirrors the per-callback panic isolation in
+    /// `actor/mod.rs`'s relay-event lane: the outer actor `catch_unwind`
+    /// guards only the relay-event handler, NOT this fan-out, so each
+    /// in-process observer needs its own guard.
+    ///
+    /// Without the `catch_unwind` around `observer.on_kernel_event(event)`
+    /// in `notify_observers`, this test aborts the process.
+    #[test]
+    fn panicking_rust_observer_isolated_from_siblings() {
+        struct Boom;
+        impl KernelEventObserver for Boom {
+            fn on_kernel_event(&self, _event: &KernelEvent) {
+                panic!("buggy rust observer");
+            }
+        }
+
+        let _g = SERIAL.lock().unwrap();
+        let slot = new_event_observer_slot();
+        // Sibling observer registered AFTER the panicking one: with
+        // per-observer `catch_unwind` the sibling still fires; without it,
+        // the panic would unwind out of `notify_observers` and the
+        // sibling's counter would stay at 0.
+        register_rust_observer(&slot, Arc::new(Boom));
+        let sibling = Arc::new(CountingObserver(AtomicU32::new(0)));
+        register_rust_observer(&slot, sibling.clone());
+
+        // First notification — Boom panics, sibling must still fire.
+        notify_observers(&slot, &event());
+        // Second notification — Boom is still registered (the panic did
+        // not unregister it) and sibling fires again.
+        notify_observers(&slot, &event());
+
+        assert_eq!(
+            sibling.0.load(Ordering::SeqCst),
+            2,
+            "sibling observer must fire on both events despite the panicking sibling"
+        );
     }
 
     #[test]

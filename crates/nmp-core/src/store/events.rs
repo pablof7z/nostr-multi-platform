@@ -246,7 +246,7 @@ pub trait EventStore: Send + Sync {
         };
         for item in iter {
             let ev = item?;
-            if let ControlFlow::Break(()) = (visitor)(&ev) {
+            if let ControlFlow::Break(()) = (visitor)(&ev) { // doctrine-allow: D15 — `visitor` is an `impl Fn` parameter (compile-time monomorphic), not a stored `Box<dyn Fn>` host closure; no FFI surface involved
                 break;
             }
         }

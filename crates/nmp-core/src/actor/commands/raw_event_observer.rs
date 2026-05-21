@@ -56,6 +56,7 @@
 use crate::store::RawEvent;
 use std::collections::BTreeSet;
 use std::ffi::{c_char, c_void, CString};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::mpsc::{sync_channel, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
@@ -311,7 +312,15 @@ pub fn notify_raw_observers(slot: &RawEventObserverSlot, raw: &RawEvent) {
     };
 
     for observer in &rust_snapshot {
-        observer.on_raw_event(kind, &payload);
+        // D6: mirrors the in-process Rust-observer panic isolation in
+        // `event_observer.rs`. A buggy `RawEventObserver` firing on the
+        // actor thread must not unwind the kernel; wrap each call in
+        // `catch_unwind` so one observer panicking does not stop its
+        // siblings nor stall relay ingest. `AssertUnwindSafe` is sound:
+        // the next iteration captures a fresh observer reference plus the
+        // already-serialized `payload`. A swallowed panic still surfaces
+        // via the default panic hook.
+        let _ = catch_unwind(AssertUnwindSafe(|| observer.on_raw_event(kind, &payload)));
     }
 
     if !c_snapshot.is_empty() {
@@ -536,5 +545,38 @@ mod tests {
         let _g = SERIAL.lock().unwrap();
         let slot = new_raw_event_observer_slot();
         notify_raw_observers(&slot, &raw("a", 1)); // no panic, no-op
+    }
+
+    /// D6 — a Rust raw observer that panics inside `on_raw_event` must not
+    /// unwind the calling (actor) thread, must not stop sibling observers
+    /// from firing, and must stay registered for subsequent events.
+    /// Mirrors the equivalent invariant for the `KernelEventObserver` slot.
+    ///
+    /// Without the `catch_unwind` around `observer.on_raw_event(...)` in
+    /// `notify_raw_observers`, this test aborts the process.
+    #[test]
+    fn panicking_rust_observer_isolated_from_siblings() {
+        struct Boom;
+        impl RawEventObserver for Boom {
+            fn on_raw_event(&self, _kind: u32, _json: &str) {
+                panic!("buggy rust raw observer");
+            }
+        }
+
+        let _g = SERIAL.lock().unwrap();
+        let slot = new_raw_event_observer_slot();
+        register_rust_raw_observer(&slot, KindFilter::default(), Arc::new(Boom));
+        let sibling = Arc::new(CapturingObserver(Mutex::new(Vec::new())));
+        register_rust_raw_observer(&slot, KindFilter::default(), sibling.clone());
+
+        notify_raw_observers(&slot, &raw("e1", 1));
+        notify_raw_observers(&slot, &raw("e2", 1));
+
+        let captured = sibling.0.lock().unwrap();
+        assert_eq!(
+            captured.len(),
+            2,
+            "sibling raw observer must fire on both events despite the panicking sibling"
+        );
     }
 }
