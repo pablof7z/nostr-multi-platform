@@ -59,6 +59,8 @@ mod publish_engine_tests;
 mod publish_engine_wire;
 mod publish_outbox;
 #[cfg(test)]
+mod publish_relay_identity_tests;
+#[cfg(test)]
 mod publish_terminal_status_tests;
 // Diagnostics-screen projection — pre-rolled relay/wire-sub roll-ups +
 // pre-formatted display strings. Replaces the §4.5 / §6 anti-pattern #1
