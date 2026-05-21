@@ -18,6 +18,7 @@
 //! `PENDING_SIGN_TIMEOUT` has its `PendingSign` dropped and a toast surfaced
 //! (D6 — the error becomes kernel state, the actor never wedges).
 
+use crate::publish::PublishTarget;
 use crate::substrate::SignedEvent;
 use nmp_signer_iface::SignerOp;
 use std::time::{Duration, Instant};
@@ -37,15 +38,40 @@ pub(crate) struct PendingSign {
     /// engine resolves NIP-65 outbox relays itself); carried so the field
     /// can route p-tagged publishes without another signature change.
     pub p_tags: Vec<String>,
+    /// D3 routing mode for the publish that fires once the broker turns the
+    /// sign request around. `Auto` (the [`Self::new`] default) routes via the
+    /// NIP-65 outbox resolver — every kind:1/3/7 publish path. `Explicit` is
+    /// the host-pinned opt-out used by [`Self::with_target`]: a NIP-29 group
+    /// action must reach the group's own relays, not the author's outbox, so
+    /// the target has to survive the remote-sign park (otherwise a bunker
+    /// user's group event would silently fall back to the wrong relay set).
+    pub target: PublishTarget,
     /// Drop-dead time. Past this, the op is abandoned with a toast.
     pub deadline: Instant,
 }
 
 impl PendingSign {
+    /// Park a sign op whose publish routes via the NIP-65 outbox resolver
+    /// (`PublishTarget::Auto`) — the back-compat path every kind:1/3/7
+    /// publish handler uses.
     pub fn new(op: SignerOp<SignedEvent>, p_tags: Vec<String>) -> Self {
+        Self::with_target(op, p_tags, PublishTarget::Auto)
+    }
+
+    /// Park a sign op whose publish routes to an EXPLICIT relay set
+    /// (`PublishTarget::Explicit`). Used by host-pinned action executors
+    /// (e.g. NIP-29 group actions) so the relay pin survives a remote-signer
+    /// round-trip — the idle-tick poll loop publishes through
+    /// `Kernel::publish_signed_to` with this exact target.
+    pub fn with_target(
+        op: SignerOp<SignedEvent>,
+        p_tags: Vec<String>,
+        target: PublishTarget,
+    ) -> Self {
         Self {
             op,
             p_tags,
+            target,
             deadline: Instant::now() + PENDING_SIGN_TIMEOUT,
         }
     }
@@ -173,6 +199,7 @@ mod tests {
         let overdue = PendingSign {
             op: SignerOp::Pending(rx2),
             p_tags: vec![],
+            target: PublishTarget::Auto,
             deadline: Instant::now() - Duration::from_millis(1),
         };
         assert!(
