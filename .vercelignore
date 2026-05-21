@@ -1,0 +1,8 @@
+*
+!web/
+web/*
+!web/chirp/
+!web/chirp/**
+web/chirp/.vercel/
+web/chirp/dist/
+web/chirp/node_modules/
