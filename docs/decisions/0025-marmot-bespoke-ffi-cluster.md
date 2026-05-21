@@ -42,6 +42,26 @@ The Marmot FFI cluster is a **permanent, bounded exception** to the generic
 - This ADR does not cover `nmp_app_chirp_identity_*` symbols; those are a
   separate surface and should be audited independently.
 
+## Bounded exception — the raw-nsec slot
+
+Marmot's MLS layer needs the active account's raw secret key (`nostr::Keys`)
+to drive the OpenMLS credential. To keep that key Rust-owned (D0 — Swift never
+sees it on the `createAccount` path), `NmpApp` carries a dedicated slot:
+
+- **`NmpApp::marmot_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>>`** — the
+  active local account's `nsec1…` in bech32 form, written by the actor after
+  every identity mutation, read by `nmp_app_chirp_marmot_register` via the
+  `NmpApp::marmot_local_nsec()` accessor.
+
+This slot is part of the bounded exception. Hard limits:
+
+- The slot is named `marmot_local_nsec` (not a generic `active_local_nsec`) so
+  its single legitimate consumer is unambiguous at the call site.
+- **NIP-17 DMs must NOT read this slot.** DM gift-wrapping also needs signer
+  access, but per the Constraints above it must go through a dedicated
+  `ActorCommand::SendGiftWrappedDm` kernel command — never by reading
+  `marmot_local_nsec` directly.
+
 ## Consequences
 
 - The Marmot cluster remains as-is; no migration onto `dispatch_action` is

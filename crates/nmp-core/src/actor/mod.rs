@@ -193,13 +193,13 @@ pub enum ActorCommand {
     ///
     /// Constructed by the broker crate (Stage 4) which depends on both
     /// `nmp-core` and `nmp-signers`; only test code instantiates it today.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // constructed only by the broker crate — see doc above
     AddRemoteSigner {
         handle: Box<dyn crate::RemoteSignerHandle>,
     },
     /// Broker → actor: drop a remote signer by user pubkey hex. See
     /// [`Self::AddRemoteSigner`] for the cross-crate construction story.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // constructed only by the broker crate — see doc above
     RemoveRemoteSigner {
         identity_id: String,
     },
@@ -207,7 +207,7 @@ pub enum ActorCommand {
     /// stores the latest into a kernel snapshot field; the broker is the
     /// sole writer. Stage `"idle"` clears the projection. Constructed by
     /// the broker crate (Stage 4).
-    #[allow(dead_code)]
+    #[allow(dead_code)] // constructed only by the broker crate — see doc above
     BunkerHandshakeProgress {
         /// `"connecting"` | `"awaiting_pubkey"` | `"ready"` | `"failed"` | `"idle"`.
         stage: String,
@@ -275,7 +275,6 @@ pub enum ActorCommand {
     /// active identity at sign time; the caller's `event.pubkey` is ignored.
     /// An empty `relays` falls back to `PublishTarget::Auto` (NIP-65 outbox)
     /// — a defensive degrade, but callers should always supply the pin.
-    #[allow(dead_code)]
     PublishUnsignedEventToRelays {
         event: crate::substrate::UnsignedEvent,
         relays: Vec<crate::publish::RelayUrl>,
@@ -535,7 +534,7 @@ pub fn run_actor_with_observers(
     // actor's `IdentityRuntime`, which is the sole writer (D4).
     bunker_handshake: BunkerHandshakeSlot,
     relay_edit_rows: Arc<Mutex<Vec<crate::kernel::RelayEditRow>>>,
-    active_local_nsec: Arc<Mutex<Option<zeroize::Zeroizing<String>>>>,
+    marmot_local_nsec: Arc<Mutex<Option<zeroize::Zeroizing<String>>>>,
     capability_callback: CapabilityCallbackSlot,
     // FFI-supplied persistent LMDB storage path. Shared `Arc` with the
     // `NmpApp`: the C-ABI `nmp_app_set_storage_path` writes through one
@@ -724,7 +723,7 @@ pub fn run_actor_with_observers(
                         startup_sent: &mut startup_sent,
                         relays_ready,
                         lifecycle_observer: &lifecycle_observer,
-                        active_local_nsec: &active_local_nsec,
+                        marmot_local_nsec: &marmot_local_nsec,
                         capability_callback: &capability_callback,
                         pending_signs: &mut pending_signs,
                     };

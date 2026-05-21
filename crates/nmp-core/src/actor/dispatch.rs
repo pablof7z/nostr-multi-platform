@@ -75,7 +75,7 @@ pub(super) struct ActorContext<'a> {
     /// Derived per-call value (`all_relays_connected(...)`), not a borrow.
     pub(super) relays_ready: bool,
     pub(super) lifecycle_observer: &'a LifecycleObserverSlot,
-    pub(super) active_local_nsec: &'a Arc<Mutex<Option<Zeroizing<String>>>>,
+    pub(super) marmot_local_nsec: &'a Arc<Mutex<Option<Zeroizing<String>>>>,
     pub(super) capability_callback: &'a CapabilityCallbackSlot,
     pub(super) pending_signs: &'a mut Vec<PendingSign>,
 }
@@ -100,7 +100,7 @@ pub(super) fn dispatch_command(
                 ctx.capability_callback,
                 ctx.relays_ready,
             );
-            update_nsec_slot(ctx.identity, ctx.active_local_nsec);
+            update_nsec_slot(ctx.identity, ctx.marmot_local_nsec);
             spawn_missing_relays(
                 ctx.relay_controls,
                 ctx.relay_tx,
@@ -183,7 +183,7 @@ pub(super) fn dispatch_command(
                 secret.as_str(),
                 ctx.relays_ready,
             );
-            update_nsec_slot(ctx.identity, ctx.active_local_nsec);
+            update_nsec_slot(ctx.identity, ctx.marmot_local_nsec);
             session_persistence::persist_current_active_session(
                 ctx.identity,
                 ctx.capability_callback,
@@ -209,7 +209,7 @@ pub(super) fn dispatch_command(
                 &relays,
                 mls,
             );
-            update_nsec_slot(ctx.identity, ctx.active_local_nsec);
+            update_nsec_slot(ctx.identity, ctx.marmot_local_nsec);
             session_persistence::persist_current_active_session(
                 ctx.identity,
                 ctx.capability_callback,
@@ -220,7 +220,7 @@ pub(super) fn dispatch_command(
         ActorCommand::SwitchActive { identity_id } => {
             let outbound =
                 commands::switch_active(ctx.identity, ctx.kernel, &identity_id, ctx.relays_ready);
-            update_nsec_slot(ctx.identity, ctx.active_local_nsec);
+            update_nsec_slot(ctx.identity, ctx.marmot_local_nsec);
             session_persistence::persist_current_active_session(
                 ctx.identity,
                 ctx.capability_callback,
@@ -230,7 +230,7 @@ pub(super) fn dispatch_command(
         }
         ActorCommand::RemoveAccount { identity_id } => {
             let outbound = commands::remove_account(ctx.identity, ctx.kernel, &identity_id);
-            update_nsec_slot(ctx.identity, ctx.active_local_nsec);
+            update_nsec_slot(ctx.identity, ctx.marmot_local_nsec);
             session_persistence::forget_account(&identity_id, ctx.capability_callback);
             session_persistence::persist_current_active_session(
                 ctx.identity,
@@ -251,7 +251,7 @@ pub(super) fn dispatch_command(
                     ctx.capability_callback,
                 );
             }
-            update_nsec_slot(ctx.identity, ctx.active_local_nsec);
+            update_nsec_slot(ctx.identity, ctx.marmot_local_nsec);
             session_persistence::persist_current_active_session(
                 ctx.identity,
                 ctx.capability_callback,
@@ -261,7 +261,7 @@ pub(super) fn dispatch_command(
         }
         ActorCommand::RemoveRemoteSigner { identity_id } => {
             let outbound = commands::remove_remote_signer(ctx.identity, ctx.kernel, &identity_id);
-            update_nsec_slot(ctx.identity, ctx.active_local_nsec);
+            update_nsec_slot(ctx.identity, ctx.marmot_local_nsec);
             session_persistence::forget_account(&identity_id, ctx.capability_callback);
             session_persistence::persist_current_active_session(
                 ctx.identity,

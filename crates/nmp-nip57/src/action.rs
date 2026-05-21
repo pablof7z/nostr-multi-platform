@@ -19,23 +19,17 @@
 //!    bolt11 invoice; the wallet then pays that invoice and the LN provider
 //!    publishes the kind:9735 receipt.
 //!
-//! Leg 2 (the LNURL HTTP round-trip) now has a kernel capability —
-//! [`nmp_core::substrate::HttpCapability`] (`nmp.http.capability`), the second
-//! `CapabilityModule` after `KeyringCapability`. The transport itself is
-//! therefore **unblocked**: a host (iOS `URLSession`, desktop `reqwest`)
-//! supplies the HTTP leg through the FFI capability socket.
+//! Leg 2 (the LNURL HTTP round-trip) has **no kernel transport seam**. An
+//! earlier `HttpCapability` `CapabilityModule` scaffold was built for this leg
+//! but stayed inert across several direction reviews and was deleted once its
+//! only prospective consumer — this module's executor — never wired up. A
+//! future ADR will need to design the host HTTP seam afresh.
 //!
-//! What is **not** yet wired is the ZapModule *executor* through that
-//! capability. The action-registry executor closure
-//! (`Fn(&str, &str, &dyn Fn(ActorCommand))`) is intentionally given no path
-//! to the kernel's capability slot — reaching it would mean widening the
-//! action-registry machinery, a larger change than this seam warrants. So this
-//! module remains a *scaffold* for the LNURL leg: [`ZapAction::Zap`] carries
-//! the `lnurl` field through validation, and [`zap_request_command`] publishes
-//! the kind:9734 to Nostr relays (the `relays` tag's relays). Issuing the
-//! `HttpCapabilityWiring::get`/`post` round-trip to the `lnurl` endpoint is a
-//! follow-up — see `docs/decisions/0023-http-capability-synchronous-socket.md`
-//! for how that multi-step execution would work and why it is deferred.
+//! So this module remains a *scaffold* for the LNURL leg: [`ZapAction::Zap`]
+//! carries the `lnurl` field through validation, and [`zap_request_command`]
+//! publishes the kind:9734 to Nostr relays (the `relays` tag's relays).
+//! Issuing the actual HTTP `GET`/`POST` round-trip to the `lnurl` endpoint is
+//! a deferred follow-up that depends on that not-yet-designed transport seam.
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use nmp_core::ActorCommand;
@@ -62,8 +56,8 @@ pub enum ZapAction {
         /// LNURL-pay callback endpoint from the recipient's kind:0
         /// `lud16`/`lud06`. Carried through validation for the HTTP executor
         /// that POSTs the signed kind:9734 here — see the module docs: the
-        /// `HttpCapability` transport exists, but ZapModule's executor wiring
-        /// through it is a follow-up.
+        /// HTTP transport seam is not yet designed, so executor wiring through
+        /// it is a deferred follow-up.
         lnurl: String,
         /// Relays the recipient should watch for the kind:9735 receipt. The
         /// kind:9734 `relays` tag is mandatory per NIP-57; it is ALSO the
