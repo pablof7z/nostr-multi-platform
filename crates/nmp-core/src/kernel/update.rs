@@ -449,6 +449,7 @@ impl Kernel {
             } else {
                 "placeholder".to_string()
             },
+            has_profile: profile.is_some(),
         }
     }
 

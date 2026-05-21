@@ -1115,6 +1115,7 @@ struct ProfileCard: Decodable, Equatable {
     let avatarInitials: String
     let avatarColor: String
     let source: String
+    let hasProfile: Bool
 }
 
 struct ProfileAction: Decodable, Equatable {

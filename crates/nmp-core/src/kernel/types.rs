@@ -122,6 +122,9 @@ pub(super) struct ProfileCard {
     pub(super) avatar_color: String,
     /// Avatar image provenance for ADR-0017.
     pub(super) source: String,
+    /// True when a kind:0 metadata event has been received for this pubkey.
+    /// False means the profile card is a placeholder pending relay response.
+    pub(super) has_profile: bool,
 }
 
 /// Primary action the shell may render for an open profile view.
