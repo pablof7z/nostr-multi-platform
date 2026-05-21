@@ -285,6 +285,7 @@ void nmp_broker_free_string(char *ptr);
 // poisoned mutexes, or serialization failure (D6).
 void *nmp_app_chirp_register(void *app, const char *viewer_pubkey_or_null);
 void nmp_app_chirp_register_group_chat(void *app, const char *group_id_json);
+void nmp_app_chirp_register_dm_inbox(void *app, const char *viewer_pubkey_or_null);
 char *nmp_app_chirp_snapshot(void *handle);
 void nmp_app_chirp_snapshot_free(char *ptr);
 void nmp_app_chirp_unregister(void *handle);
@@ -311,6 +312,31 @@ void nmp_app_chirp_unregister(void *handle);
 //   • `app` MUST outlive the registration; it is borrowed only for the
 //     duration of this call.
 void nmp_app_chirp_register_group_chat(void *app, const char *group_id_json);
+
+// ── NIP-17 private direct-message inbox read projection ───────────────────
+//
+// Wires the NIP-17 DM inbox read model into the kernel — the receive side of
+// private direct messages. Unlike the NIP-29 group chat there is no group id:
+// the inbox is global (every conversation the local account participates in).
+//
+//   • `viewer_pubkey_or_null` is the active account's hex pubkey. When
+//     non-null it pushes a kind:1059 `#p <pubkey>` gift-wrap inbox interest
+//     so the kernel actually opens a REQ for incoming envelopes. WITHOUT it
+//     the projection is wired but inert. NULL is permitted (startup before
+//     sign-in); the caller MUST re-invoke after sign-in / account switch so
+//     the interest is pushed for the now-active account (the interest id is
+//     deterministic per-pubkey, so the re-invoke de-dupes).
+//   • Returns void — registers no handle, no companion `unregister`. The
+//     decrypted conversations surface on every kernel snapshot tick under
+//     the `projections` key `"nip17.dm_inbox"`, shaped
+//     `{ "conversations": [ { peer_pubkey, messages: [...] } ] }`.
+//   • Single-screen scope: a second call (other than a re-invoke to push the
+//     interest) registers a second observer (a small, bounded leak) and
+//     overwrites the snapshot key.
+//   • Fire-and-forget (D6): a null `app` degrades to a silent no-op.
+//   • `app` MUST outlive the registration; it is borrowed only for the
+//     duration of this call.
+void nmp_app_chirp_register_dm_inbox(void *app, const char *viewer_pubkey_or_null);
 
 // ── Marmot (MLS encrypted groups) per-app FFI ────────────────────────────
 //

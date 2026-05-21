@@ -49,6 +49,8 @@ struct MarmotGroupsView: View {
         List {
             nip29Section
 
+            dmSection
+
             if !store.pendingWelcomes.isEmpty {
                 Section {
                     ForEach(store.pendingWelcomes) { welcome in
@@ -105,6 +107,28 @@ struct MarmotGroupsView: View {
             Text("NIP-29 Groups")
         } footer: {
             Text("Relay-managed group chat (NIP-29). Unencrypted — distinct from the MLS-encrypted groups below.")
+        }
+    }
+
+    // ── NIP-17 direct messages ────────────────────────────────────────────
+    //
+    // First consumer of the NIP-17 receive seam: a `NavigationLink` to
+    // `DmListView`, backed by `model.dmInbox` (a `DmInboxStore` registered
+    // via `nmp_app_chirp_register_dm_inbox`). The inbox is global — every
+    // private conversation the local account participates in.
+
+    private var dmSection: some View {
+        Section {
+            NavigationLink {
+                DmListView(store: model.dmInbox)
+            } label: {
+                DmInboxRow(conversationCount: model.dmInbox.conversations.count)
+            }
+            .accessibilityIdentifier("nip17-dm-inbox-row")
+        } header: {
+            Text("Direct Messages")
+        } footer: {
+            Text("Private, gift-wrapped direct messages (NIP-17). End-to-end encrypted — relays cannot read them.")
         }
     }
 
@@ -194,6 +218,42 @@ private struct NIP29GroupRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+            }
+
+            Spacer()
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
+}
+
+// ── NIP-17 direct-messages row ────────────────────────────────────────────
+
+private struct DmInboxRow: View {
+    let conversationCount: Int
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(.quaternary)
+                    .frame(width: 40, height: 40)
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.tint)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Messages")
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.primary)
+                Text(
+                    conversationCount == 0
+                        ? "No conversations yet"
+                        : "\(conversationCount) conversation\(conversationCount == 1 ? "" : "s")"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
             }
 
             Spacer()
