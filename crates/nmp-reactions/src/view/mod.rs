@@ -10,7 +10,7 @@
 //! Both share the [`ReactionAccumulator`], keyed on `event_id` for idempotency
 //! (kinds 7/6/16 are regular events — not replaceable). Decode happens once at
 //! insert (`try_from_kernel_event`, D8 hot path). Snapshots are deterministic
-//! (count desc → content asc; records newest-first) for stable SwiftUI diffing.
+//! (count desc → content asc; records newest-first) for stable, deterministic diffing.
 
 mod accumulator;
 mod reposts;

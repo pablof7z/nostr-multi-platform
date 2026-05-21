@@ -255,7 +255,7 @@ pub fn list_by_reactor(
 /// (standard client behaviour — a user switching 👍→❤️ counts once, as ❤️).
 ///
 /// Returns `(content, count)` pairs sorted by count desc then content asc so
-/// SwiftUI diffing is stable, plus the total distinct-reactor count.
+/// diffing-based renderers see a stable order, plus the total distinct-reactor count.
 pub fn reaction_summary(
     handle: &DomainHandle,
     target: &ReactionTarget,
