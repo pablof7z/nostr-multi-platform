@@ -3,6 +3,7 @@ use nostr::{Keys, SecretKey};
 use serde_json::{json, Value};
 
 use crate::command::Command;
+use crate::marmot;
 use crate::render;
 use crate::session::{LastRun, Session};
 use crate::Result;
@@ -27,6 +28,13 @@ pub fn run(session: &mut Session, command: Command) -> Result<bool> {
         Command::React(id, reaction) => react(session, &id, &reaction)?,
         Command::Follow(pubkey) => follow(session, &pubkey, true)?,
         Command::Unfollow(pubkey) => follow(session, &pubkey, false)?,
+        Command::MlsInit => mls_init(session)?,
+        Command::MlsStatus => mls_status(session)?,
+        Command::MlsCreate(name, invitees) => mls_create(session, &name, &invitees)?,
+        Command::MlsInvite(group_id, invitee) => mls_invite(session, &group_id, &invitee)?,
+        Command::MlsAccept(welcome_id) => mls_accept(session, &welcome_id)?,
+        Command::MlsSend(group_id, text) => mls_send(session, &group_id, &text)?,
+        Command::MlsMessages(group_id) => mls_messages(session, &group_id)?,
         Command::RawReq(_) => unsupported("raw-req")?,
         Command::Quit => return Ok(true),
         Command::Noop => {}
@@ -57,7 +65,7 @@ fn load_key(session: &mut Session, input: &str) -> Result<()> {
         .secret_key()
         .to_bech32()
         .map_err(|e| format!("encode nsec: {e}"))?;
-    session.app.sign_in_nsec(&nsec)?;
+    session.app.sign_in_nsec_with_marmot(&nsec)?;
     set_identity_label(session, &keys)?;
     render::status_ok("loaded identity through NmpApp");
     Ok(())
@@ -125,6 +133,60 @@ fn follow(session: &mut Session, input: &str, add: bool) -> Result<()> {
     } else {
         "queued unfollow through NmpApp"
     });
+    Ok(())
+}
+
+fn mls_init(session: &mut Session) -> Result<()> {
+    let result = marmot::init(&mut session.app, &session.relays)?;
+    render::marmot_result("mls key package", &result);
+    Ok(())
+}
+
+fn mls_status(session: &mut Session) -> Result<()> {
+    let snapshot = session.app.marmot_snapshot()?;
+    render::marmot_snapshot(&snapshot);
+    Ok(())
+}
+
+fn mls_create(session: &mut Session, name: &str, invitees: &[String]) -> Result<()> {
+    let invitees = invitees
+        .iter()
+        .map(|s| normalize_pubkey(s))
+        .collect::<Result<Vec<_>>>()?;
+    let result = marmot::create_group(&session.app, name, &invitees, &session.relays)?;
+    render::marmot_result("mls create", &result);
+    Ok(())
+}
+
+fn mls_invite(session: &mut Session, group_id: &str, invitee: &str) -> Result<()> {
+    let invitee = normalize_pubkey(invitee)?;
+    let result = marmot::invite(&session.app, group_id, &[invitee])?;
+    render::marmot_result("mls invite", &result);
+    Ok(())
+}
+
+fn mls_accept(session: &mut Session, welcome_id: &str) -> Result<()> {
+    let welcome_id = if welcome_id == "first" {
+        let snapshot = session.app.marmot_snapshot()?;
+        marmot::first_pending_welcome_id(&snapshot)
+            .ok_or_else(|| "no pending welcome to accept".to_string())?
+    } else {
+        welcome_id.to_string()
+    };
+    let result = marmot::accept(&session.app, &welcome_id)?;
+    render::marmot_result("mls accept", &result);
+    Ok(())
+}
+
+fn mls_send(session: &mut Session, group_id: &str, text: &str) -> Result<()> {
+    let result = marmot::send(&session.app, group_id, text)?;
+    render::marmot_result("mls send", &result);
+    Ok(())
+}
+
+fn mls_messages(session: &mut Session, group_id: &str) -> Result<()> {
+    let rows = marmot::group_messages(&session.app, group_id)?;
+    render::marmot_messages(&rows);
     Ok(())
 }
 

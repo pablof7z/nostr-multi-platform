@@ -18,6 +18,13 @@ pub enum Command {
     React(String, String),
     Follow(String),
     Unfollow(String),
+    MlsInit,
+    MlsStatus,
+    MlsCreate(String, Vec<String>),
+    MlsInvite(String, String),
+    MlsAccept(String),
+    MlsSend(String, String),
+    MlsMessages(String),
     RawReq(String),
     Quit,
     Noop,
@@ -65,6 +72,31 @@ pub fn parse(line: &str) -> Result<Command, String> {
         }
         "follow" => one(rest, "follow <npub|nprofile|hex>").map(Command::Follow),
         "unfollow" => one(rest, "unfollow <npub|nprofile|hex>").map(Command::Unfollow),
+        "mls-init" => no_args(rest, Command::MlsInit, "mls-init"),
+        "mls-status" => no_args(rest, Command::MlsStatus, "mls-status"),
+        "mls-create" => {
+            if rest.is_empty() {
+                return Err("mls-create <name> [npub|hex ...]".into());
+            }
+            Ok(Command::MlsCreate(
+                rest[0].to_string(),
+                rest[1..].iter().map(|s| s.to_string()).collect(),
+            ))
+        }
+        "mls-invite" => {
+            if rest.len() != 2 {
+                return Err("mls-invite <group_id_hex> <npub|hex>".into());
+            }
+            Ok(Command::MlsInvite(rest[0].into(), rest[1].into()))
+        }
+        "mls-accept" => one(rest, "mls-accept <welcome_id_hex|first>").map(Command::MlsAccept),
+        "mls-send" => {
+            if rest.len() < 2 {
+                return Err("mls-send <group_id_hex> <text>".into());
+            }
+            Ok(Command::MlsSend(rest[0].into(), rest[1..].join(" ")))
+        }
+        "mls-messages" => one(rest, "mls-messages <group_id_hex>").map(Command::MlsMessages),
         "raw-req" => text(rest, "raw-req <json-filter>").map(Command::RawReq),
         "quit" | "exit" => Ok(Command::Quit),
         other => Err(format!("unknown command '{other}' (try help)")),
@@ -163,6 +195,14 @@ mod tests {
         assert_eq!(
             parse("raw-req {\"kinds\":[1]}").unwrap(),
             Command::RawReq("{\"kinds\":[1]}".into())
+        );
+        assert_eq!(
+            parse("mls-create test abc def").unwrap(),
+            Command::MlsCreate("test".into(), vec!["abc".into(), "def".into()])
+        );
+        assert_eq!(
+            parse("mls-send abc hello mls").unwrap(),
+            Command::MlsSend("abc".into(), "hello mls".into())
         );
     }
 

@@ -13,6 +13,7 @@
 //! * **D6** — every FFI symbol degrades silently (null / `{"ok":false}`),
 //!   never panics across the boundary.
 
+pub mod credential_store;
 pub mod fetch;
 pub mod ffi;
 pub mod identity;
