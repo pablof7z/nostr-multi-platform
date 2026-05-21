@@ -2,7 +2,7 @@
 //! seam.
 //!
 //! This is the output-side counterpart to the action-registry seam
-//! (`nmp_app_register_action_module` / `nmp_app_register_action_executor`).
+//! (`nmp_app_dispatch_action`).
 //! Where the action registry lets a host *dispatch* a custom namespace, the
 //! snapshot registry lets a host *project* a custom namespace into the
 //! snapshot every tick emits.

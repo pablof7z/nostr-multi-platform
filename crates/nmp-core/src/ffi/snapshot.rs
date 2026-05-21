@@ -1,7 +1,7 @@
 //! FFI snapshot-projection registration entry point.
 //!
 //! [`nmp_app_register_snapshot_projection`] is the output-side counterpart to
-//! [`super::action::nmp_app_register_action_executor`]. Where the action seam
+//! [`super::action::nmp_app_dispatch_action`]. Where the action seam
 //! lets a host *dispatch* a custom namespace, this seam lets a host *project*
 //! a custom namespace into every snapshot.
 //!

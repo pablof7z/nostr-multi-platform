@@ -146,21 +146,17 @@ pub use publish::{nmp_app_cancel_publish, nmp_app_retry_publish};
 pub use capability::{
     nmp_app_dispatch_capability, nmp_app_free_string, nmp_app_set_capability_callback,
 };
-// M6 — action-dispatch entry point + the host-extensible action-executor
-// registration seam, reachable via the Rust path so the Android JNI shim
-// pulls the symbol bodies into the cdylib CGU. `nmp_app_register_action_executor`
-// is `#[no_mangle] extern "C"` in `action` like its `dispatch` sibling; without
-// this re-export rustc omits its body from the cdylib CGU and an Android link
-// step against it fails (the `cargo check (android-ffi)` CI job never links, so
-// it does not catch this). `allow(unused_imports)`: the re-export exists only
-// to force the symbol body into the cdylib CGU — no Rust caller names it by
-// this path.
+// M6 — action-dispatch entry point + the action-result observer seam,
+// reachable via the Rust path so the Android JNI shim pulls the symbol
+// bodies into the cdylib CGU. ADR-0027 deleted
+// `nmp_app_register_action_executor` / `nmp_app_register_action_module`
+// (the dual closure-based seam); the unified `ActionModule` trait now
+// wires both halves from one Rust `register_action_module::<M>()` call.
+// `allow(unused_imports)`: the re-export exists only to force the symbol
+// bodies into the cdylib CGU — no Rust caller names them by this path.
 #[cfg(feature = "android-ffi")]
 #[allow(unused_imports)]
-pub use action::{
-    nmp_app_dispatch_action, nmp_app_register_action_executor, nmp_app_register_action_module,
-    nmp_app_register_action_result_observer,
-};
+pub use action::{nmp_app_dispatch_action, nmp_app_register_action_result_observer};
 // Host-extensible snapshot output — registration entry point reachable via
 // the Rust path so the Android JNI shim pulls the symbol body into the
 // cdylib CGU.
@@ -646,61 +642,31 @@ impl NmpApp {
         let _ = self.tx.send(cmd);
     }
 
-    /// Register a host-supplied executor against the app's action registry.
+    /// Register a typed [`crate::substrate::ActionModule`] against the app's
+    /// action registry — the ADR-0027 unified registration seam.
     ///
-    /// This is the post-construction registration seam: a host can wire an
-    /// action namespace into the registry *without editing `nmp-core`*. The
-    /// closure receives the validated action JSON, the registry-minted
-    /// `correlation_id`, and a `send` callback that routes an [`ActorCommand`]
-    /// to the actor; it returns `Ok(())` on success or `Err(msg)` on a
-    /// decode/dispatch failure. The `correlation_id` lets an executor thread
-    /// the action's correlation handle onto an `ActorCommand` whose terminal
-    /// verdict must report that id (see `ActorCommand::PublishNote`).
-    ///
-    /// Registration MUST happen during host init — before `nmp_app_start`
-    /// and before any [`action::nmp_app_dispatch_action`] call — because it
-    /// requires `&mut self`. See [`app_ref_mut`] for the aliasing contract.
-    pub fn register_action_executor(
-        &mut self,
-        namespace: impl Into<String>,
-        f: impl Fn(&str, &str, &dyn Fn(ActorCommand)) -> Result<(), String> + Send + Sync + 'static,
-    ) {
-        self.action_registry.register_executor(namespace, f);
-    }
-
-    /// Register a host-supplied *module validator* against the app's action
-    /// registry — the complement to [`Self::register_action_executor`].
-    ///
-    /// `register_action_executor` wires the `execute()` half of a namespace;
-    /// this wires the `start()` validation half. A namespace registered
-    /// through *both* is fully reachable via
-    /// [`action::nmp_app_dispatch_action`]: `start()` validates the action
-    /// JSON against `validate`, then `execute()` runs the registered executor.
-    /// Registering only one half leaves the namespace partially wired — an
-    /// executor-only namespace is rejected by `start()` ("unknown action
-    /// namespace"); a validator-only one is rejected by `execute()` ("no
-    /// executor registered").
-    ///
-    /// `validate` receives the raw action JSON and returns `Ok(())` on accept
-    /// or an [`crate::substrate::ActionRejection`] on reject.
+    /// One call binds BOTH the validator (`M::start`) and executor
+    /// (`M::execute`) halves of a namespace from the SAME typed trait impl.
+    /// The deleted closure-based seams (`register_action_executor` /
+    /// `register_action_module(_, closure)`) allowed a host to ship a
+    /// partial registration that surfaced only as a runtime error; the type
+    /// system now refuses that mistake.
     ///
     /// Registration MUST happen during host init — before `nmp_app_start`
     /// and before any [`action::nmp_app_dispatch_action`] call — because it
     /// requires `&mut self`. See [`app_ref_mut`] for the aliasing contract.
-    pub fn register_action_module(
-        &mut self,
-        namespace: impl Into<String>,
-        validate: impl Fn(&str) -> Result<(), crate::substrate::ActionRejection>
-            + Send
-            + Sync
-            + 'static,
-    ) {
-        self.action_registry
-            .register_with_validator(namespace, validate);
+    ///
+    /// There is no C-ABI counterpart: `M::Action` and
+    /// [`ActorCommand`] are Rust types with no stable C representation. A
+    /// non-Rust host that needs a custom action namespace registers a typed
+    /// `ActionModule` impl from a Rust shim crate it controls, or stays on
+    /// the kernel's built-in namespaces.
+    pub fn register_action_module<M: crate::substrate::ActionModule + 'static>(&mut self) {
+        self.action_registry.register::<M>();
     }
 
     /// Register a host-supplied snapshot projection — the output-side
-    /// counterpart to [`Self::register_action_executor`].
+    /// counterpart to [`Self::register_action_module`].
     ///
     /// The closure runs on **every snapshot tick** (inside the actor's
     /// `make_update`) and its returned JSON value is appended to
@@ -709,7 +675,7 @@ impl NmpApp {
     /// its own snapshot namespace WITHOUT editing `nmp-core`'s sealed social
     /// `KernelSnapshot` fields.
     ///
-    /// Unlike `register_action_executor`, this does NOT require `&mut self`:
+    /// Unlike `register_action_module`, this does NOT require `&mut self`:
     /// the registry lives behind a shared `Arc<Mutex<…>>` and the mutation is
     /// a lock-and-push. It is still intended as a host-init call.
     ///
@@ -762,26 +728,6 @@ impl NmpApp {
             .lock()
             .map(|registry| registry.run())
             .unwrap_or_default()
-    }
-
-    /// Test-only direct execution path into the action registry.
-    ///
-    /// Bypasses [`crate::kernel::ActionRegistry::start`] (which needs a
-    /// registered *module* to validate the JSON shape) so a unit test can
-    /// exercise a host-registered *executor* on its own — the v1 seam only
-    /// exposes executor registration, not module registration. A fixed
-    /// placeholder `correlation_id` stands in for the registry-minted id that
-    /// the real `dispatch_action` path threads in.
-    #[cfg(test)]
-    pub(crate) fn test_execute_action(
-        &self,
-        namespace: &str,
-        action_json: &str,
-    ) -> Result<(), String> {
-        self.action_registry
-            .execute(namespace, action_json, "test-correlation-id", &|cmd| {
-                self.send_cmd(cmd)
-            })
     }
 
     pub(crate) fn set_pending_mls_autopublish(&self, enabled: bool) {
