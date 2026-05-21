@@ -229,7 +229,7 @@ impl Kernel {
     /// payloads) — D6: never a panic at the snapshot boundary — and the key is
     /// still present, mirroring the old always-emitted typed fields.
     fn snapshot_projections_with_publish_cluster(
-        &self,
+        &mut self,
         items: &[TimelineItem],
         inserted: &[TimelineItem],
         updated: &[TimelineItem],
@@ -261,6 +261,18 @@ impl Kernel {
             "last_action_result".to_string(),
             self.last_action_result_projection(),
         );
+        // Direction review #29: drain EVERY terminal that settled since the
+        // last emit into the `action_results` array. The sticky
+        // `last_action_result` scalar above only ever reports the most recent
+        // verdict — if two actions settled in the same tick the host would
+        // never see the first, and its spinner would hang forever. This key
+        // is absent in steady state (drain returns `Null` → not inserted) and
+        // a `[{correlation_id, status, error}, ...]` array whenever any action
+        // settled this tick. The host resolves each spinner by correlation_id.
+        let action_results = self.take_action_results_projection();
+        if !action_results.is_null() {
+            projections.insert("action_results".to_string(), action_results);
+        }
         // D0: identity output. `account_snapshot()` returns the substrate
         // `(&[AccountSummary], Option<&String>)` pair; the snapshot surfaces it
         // through `projections` instead of typed fields. A serialization

@@ -190,6 +190,15 @@ pub struct PublishEngine {
     /// (and `cancel_publish`, which does not) also overwrites this so the
     /// host always has a terminal signal to clear its spinner.
     last_terminal: Option<LastTerminal>,
+    /// Direction review #29: every terminal action result that settled since
+    /// the last drain. Unlike `last_terminal` (a sticky scalar that is
+    /// *overwritten* on every settlement), this Vec *accumulates* — so when
+    /// two actions reach a terminal state between two snapshot emits, both are
+    /// retained. The kernel drains it via [`Self::take_pending_terminals`]
+    /// into the `action_results` snapshot projection so the host can resolve
+    /// every spinner, not just the most recent. Populated alongside every
+    /// `last_terminal` overwrite.
+    pending_terminals: Vec<LastTerminal>,
 }
 
 impl PublishEngine {
@@ -212,6 +221,7 @@ impl PublishEngine {
             needs_in_flight_rebuild: false,
             recently_completed: BTreeMap::new(),
             last_terminal: None,
+            pending_terminals: Vec::new(),
         }
     }
 
@@ -354,7 +364,9 @@ impl PublishEngine {
         // here directly so `last_action_result` clears the host spinner. The
         // overwrite happens unconditionally — even a cancel for an unknown /
         // already-settled handle is a terminal verdict the host asked for.
-        self.last_terminal = Some(LastTerminal {
+        // Direction review #29: also append to `pending_terminals` so a cancel
+        // settling in the same tick as another action is not overwritten.
+        self.record_terminal(LastTerminal {
             correlation_id: handle,
             status: "cancelled",
             error: None,
@@ -389,11 +401,15 @@ impl PublishEngine {
             }
             helpers::for_each_terminal(in_flight, &handle, &mut self.view, now_ms);
             let outcome = helpers::terminal_outcome_of(in_flight);
-            self.last_terminal = Some(LastTerminal::from_outcome(
+            // Build the verdict into a local before `record_terminal` (a
+            // `&mut self` method) so it does not reborrow `*self` while the
+            // `in_flight` immutable borrow above is still live.
+            let terminal = LastTerminal::from_outcome(
                 &handle,
                 in_flight.correlation_id_override.as_deref(),
                 &outcome,
-            ));
+            );
+            self.record_terminal(terminal);
             self.recently_completed.insert(handle.clone(), outcome);
             let _ = self.store.delete(&handle);
             self.in_flight.remove(&handle);
@@ -491,16 +507,23 @@ impl PublishEngine {
             // hook to recover the Ok/Failed map (recent_ok / recent_errors
             // are capped at 32 and not indexed by handle).
             let outcome = helpers::terminal_outcome_of(in_flight);
-            self.last_terminal = Some(LastTerminal::from_outcome(
+            // Build the terminal verdict into a local AND read `event_id` off
+            // `in_flight` before calling `record_terminal` — that method takes
+            // `&mut self`, so reborrowing `*self` while the `in_flight` borrow
+            // is still live (it is used in the store-delete failure branch
+            // below) would be an aliasing violation.
+            let terminal = LastTerminal::from_outcome(
                 handle,
                 in_flight.correlation_id_override.as_deref(),
                 &outcome,
-            ));
+            );
+            let event_id = in_flight.event.id.clone();
+            self.record_terminal(terminal);
             self.recently_completed.insert(handle.clone(), outcome);
             if let Err(err) = self.store.delete(handle) {
                 self.view.push_failure(RecentFailure {
                     handle: handle.clone(),
-                    event_id: in_flight.event.id.clone(),
+                    event_id,
                     relay_url: "(store)".to_string(),
                     reason: format!("store delete failed: {:?}", err),
                     at_ms: now_ms,
@@ -702,7 +725,7 @@ impl PublishEngine {
         // Report the dispatch correlation_id when one was supplied (the
         // `PublishNote` path), otherwise the handle — same fallback rule as
         // `LastTerminal::from_outcome`.
-        self.last_terminal = Some(LastTerminal {
+        self.record_terminal(LastTerminal {
             correlation_id: correlation_id_override
                 .map(str::to_string)
                 .unwrap_or_else(|| handle.clone()),
@@ -710,5 +733,27 @@ impl PublishEngine {
             error: Some("no relays resolved for publish target".to_string()),
         });
         self.view.bump_rev();
+    }
+
+    /// Direction review #29: record one terminal action verdict. Overwrites
+    /// the sticky `last_terminal` scalar (backward-compat — `last_action_result`
+    /// still reports the most recent) AND appends to `pending_terminals` (the
+    /// per-tick drain that fixes the spinner-hang bug — two settlements in one
+    /// tick both survive). Every site that produces a terminal verdict routes
+    /// through here so the two stores can never diverge.
+    fn record_terminal(&mut self, terminal: LastTerminal) {
+        self.last_terminal = Some(terminal.clone());
+        self.pending_terminals.push(terminal);
+    }
+
+    /// Direction review #29: drain every terminal verdict recorded since the
+    /// last call. The kernel calls this from the snapshot path
+    /// (`make_update` → `take_action_results_projection`) so each tick surfaces
+    /// every action that settled — unlike `last_terminal()` (a sticky scalar
+    /// that only reports the most recent). Pure drain: after this call the
+    /// engine retains no per-tick terminal history. `last_terminal` is left
+    /// untouched (it is the separate non-draining backward-compat signal).
+    pub(crate) fn take_pending_terminals(&mut self) -> Vec<LastTerminal> {
+        std::mem::take(&mut self.pending_terminals)
     }
 }
