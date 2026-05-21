@@ -112,6 +112,12 @@ pub(super) struct TimelineItem {
 pub(super) struct ProfileCard {
     pub(super) pubkey: String,
     pub(super) npub: String,
+    /// Pre-formatted, copy-button-ready short form of `npub` (or hex when
+    /// `npub` was not encoded). Rust owns the truncation policy
+    /// (`<first10>…<last8>`) so a Swift `truncatedNpub` helper would be
+    /// pure render duplication (aim.md §6.9 — no business logic in native).
+    /// Always non-empty when `npub` is non-empty.
+    pub(super) npub_short: String,
     pub(super) display: String,
     /// Always non-empty (D1).  Either the kind:0 picture URL or an
     /// `identicon:<pubkey-prefix>` placeholder URI.
@@ -127,12 +133,48 @@ pub(super) struct ProfileCard {
     pub(super) has_profile: bool,
 }
 
+/// Dispatch spec for a `ProfileAction` that fires a real write.
+///
+/// When this is `Some`, the shell wires the button to
+/// `nmp_app_dispatch_action(namespace, body_json)` with no further logic. The
+/// kernel/host registry decides what each namespace means; the shell never
+/// switches on a `kind` field to pick an FFI symbol (aim.md §4.4: writes go
+/// through the registered `ActionModule` family, not through hand-rolled
+/// per-verb plumbing).
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub(super) struct ProfileDispatchSpec {
+    /// Action namespace — registered via `register_action_module`. Today:
+    /// `chirp.follow` or `chirp.unfollow`.
+    pub(super) namespace: &'static str,
+    /// Serialised JSON body the action module expects. Rust formats this so
+    /// the shell sends bytes the executor already validates.
+    pub(super) body_json: String,
+}
+
 /// Primary action the shell may render for an open profile view.
+///
+/// `dispatch` carries the namespace+body the shell must send through
+/// `nmp_app_dispatch_action` for write verbs (follow / unfollow). When
+/// `dispatch` is `None` the action is a pure local-UI intent (open the edit
+/// sheet) — there is no registered ActionModule for it. The shell branches on
+/// `dispatch.is_some()`, not on the `kind` string, killing the §4.4 switch.
+///
+/// `icon_name` is the SF Symbol (or equivalent) the shell renders next to
+/// `label`. Owning the icon name here keeps both `Label` text and icon
+/// authored by Rust — the shell binds blindly.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub(super) struct ProfileAction {
+    /// Stable discriminator preserved for tests/diagnostics. The SHELL MUST
+    /// NOT switch on this — use `dispatch` (Some → write) or its absence
+    /// (None → local intent) instead.
     pub(super) kind: &'static str,
     pub(super) label: &'static str,
     pub(super) target_pubkey: String,
+    /// SF Symbol name (iOS) the shell renders without further mapping.
+    pub(super) icon_name: &'static str,
+    /// Present when the action is a write — the shell wires straight through
+    /// `nmp_app_dispatch_action`. Absent for local-UI intents (edit sheet).
+    pub(super) dispatch: Option<ProfileDispatchSpec>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -142,7 +184,27 @@ pub(super) struct AuthorViewPayload {
     pub(super) profile: ProfileCard,
     pub(super) items: Vec<TimelineItem>,
     pub(super) note_count: usize,
+    /// Pre-formatted post-count string the shell binds verbatim
+    /// (e.g. `"5"`). Trivial today but keeps the shell from interpolating
+    /// any count derived from the items array (aim.md §6.9). Future
+    /// localisation work plugs in here, not in Swift.
+    pub(super) note_count_display: String,
     pub(super) primary_action: Option<ProfileAction>,
+}
+
+/// Per-author payload bundled into the `mention_profiles` projection.
+///
+/// This is the same shape Chirp's `MentionProfile` consumes; emitting it from
+/// Rust kills the `Dictionary(uniqueKeysWithValues:)` derivation Swift was
+/// doing at `ProfileView.swift:28-40` (aim.md §4.2: derived views are pure
+/// functions of the event store and are emitted from the kernel, not
+/// reconstructed by the shell).
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub(super) struct MentionProfilePayload {
+    pub(super) display: String,
+    pub(super) picture_url: String,
+    pub(super) avatar_initials: String,
+    pub(super) avatar_color: String,
 }
 
 #[derive(Clone, Debug, Serialize)]

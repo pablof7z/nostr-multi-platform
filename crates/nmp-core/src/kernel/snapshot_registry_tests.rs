@@ -103,6 +103,9 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
             // views cluster (D0)
             "author_view",
             "inserted",
+            // derived view: per-author mention payloads scoped to the
+            // open author-view items (aim.md §4.2).
+            "mention_profiles",
             // publish cluster — outbox header summary (§6 anti-pattern #1)
             "outbox_summary",
             // views cluster (D0)

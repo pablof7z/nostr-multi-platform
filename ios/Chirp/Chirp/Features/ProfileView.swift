@@ -1,7 +1,12 @@
 import SwiftUI
 
-// OWNER: Phase-2 Agent B (Profile screen).
-// Init signature FIXED by nav contract: ProfileView(pubkey:).
+// OWNER: Phase-2 Agent B (Profile screen). Init fixed by nav: ProfileView(pubkey:).
+//
+// Thin-shell rule (aim.md §6.9): no business logic in Swift. Rust authors
+// the primary-action label/icon/dispatch (`profile_action_for`), the post-
+// count display string (`note_count_display`), the truncated npub
+// (`ProfileCard.npub_short`), and the per-author mention map
+// (`projections["mention_profiles"]`).
 
 struct ProfileView: View {
     let pubkey: String
@@ -10,7 +15,6 @@ struct ProfileView: View {
     @EnvironmentObject private var router: ChirpRouter
 
     @State private var copiedNpub = false
-    @State private var replyToID: String? = nil
     @State private var isEditingProfile = false
 
     private var authorView: AuthorProfileSnapshot? {
@@ -19,23 +23,17 @@ struct ProfileView: View {
     private var profile: ProfileCard? { authorView?.profile }
     private var items: [TimelineItem] { authorView?.items ?? [] }
     private var primaryAction: ProfileAction? { authorView?.primaryAction }
-    private var cardLookup: [String: ChirpEventCard] {
-        Dictionary(uniqueKeysWithValues: model.modularTimeline.cards.map { ($0.id, $0) })
-    }
-    private var itemLookup: [String: TimelineItem] {
-        Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
-    }
-    private var mentionProfiles: [String: MentionProfile] {
-        Dictionary(
-            items.map {
-                ($0.authorPubkey, MentionProfile(
-                    display: $0.authorDisplay,
-                    pictureUrl: $0.authorPictureUrl,
-                    initials: $0.authorAvatarInitials,
-                    colorHex: $0.authorAvatarColor
-                ))
-            },
-            uniquingKeysWith: { first, _ in first }
+
+    /// Render context fed to each `ProfileNoteRow`. `mentionProfiles` is the
+    /// Rust-derived projection (aim.md §4.2); the two remaining lookups are
+    /// folded into one context built once per body pass.
+    private var noteRenderContext: NoteRenderContext {
+        NoteRenderContext(
+            mentionProfiles: model.mentionProfiles,
+            eventCards: Dictionary(
+                uniqueKeysWithValues: model.modularTimeline.cards.map { ($0.id, $0) }),
+            timelineItems: Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) }),
+            embedDepth: 0
         )
     }
 
@@ -56,9 +54,7 @@ struct ProfileView: View {
             model.openAuthor(pubkey: pubkey)
         }
         .onDisappear {
-            // T152: release the author subscription when this view is no
-            // longer visible (NavigationStack pop, or another view pushed
-            // on top).  Keeps wire_subs at baseline after navigation.
+            // T152: release the author sub on nav-away (wire_subs baseline).
             model.closeAuthor(pubkey: pubkey)
         }
         .animation(.smooth(duration: 0.3), value: profile)
@@ -120,9 +116,11 @@ struct ProfileView: View {
         if let primaryAction {
             HStack(spacing: 8) {
                 Button {
-                    performProfileAction(primaryAction)
+                    perform(primaryAction)
                 } label: {
-                    Label(primaryAction.label, systemImage: iconName(for: primaryAction))
+                    // label + iconName both authored by Rust — no Swift
+                    // `switch action.kind` over SF Symbol names.
+                    Label(primaryAction.label, systemImage: primaryAction.iconName)
                         .font(.callout.weight(.semibold))
                         .labelStyle(.titleAndIcon)
                 }
@@ -150,10 +148,11 @@ struct ProfileView: View {
                 }
             }
 
-            if let npub = profile?.npub, !npub.isEmpty {
+            if let profile, !profile.npub.isEmpty {
                 Button(action: copyNpub) {
                     HStack(spacing: 4) {
-                        Text(truncatedNpub(npub))
+                        // Rust-truncated; no Swift formatter.
+                        Text(profile.npubShort)
                             .font(.body.monospaced())
                             .foregroundStyle(.secondary)
                         Image(systemName: copiedNpub ? "checkmark" : "doc.on.doc")
@@ -187,13 +186,15 @@ struct ProfileView: View {
             )
             .frame(minHeight: 260)
         } else {
+            let context = noteRenderContext
             LazyVStack(spacing: 0) {
                 VStack(spacing: 8) {
                     HStack(spacing: 6) {
                         Text("Posts")
                             .font(.headline)
                             .foregroundStyle(.primary)
-                        Text("\(items.count)")
+                        // `noteCountDisplay` is Rust-formatted — no `\(items.count)`.
+                        Text(authorView?.noteCountDisplay ?? "")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .accessibilityIdentifier("profile-notes-count-value")
@@ -211,10 +212,8 @@ struct ProfileView: View {
                 ForEach(items) { item in
                     ProfileNoteRow(
                         item: item,
-                        contentTree: cardLookup[item.id]?.contentTree,
-                        mentionProfiles: mentionProfiles,
-                        eventCards: cardLookup,
-                        timelineItems: itemLookup,
+                        contentTree: context.eventCards[item.id]?.contentTree,
+                        renderContext: context,
                         onAvatarTap: {
                             router.push(.profile(pubkey: item.authorPubkey))
                         },
@@ -238,35 +237,16 @@ struct ProfileView: View {
 
     // MARK: – Helpers
 
-    private func performProfileAction(_ action: ProfileAction) {
-        switch action.kind {
-        case "edit_profile":
-            isEditingProfile = true
-        case "follow":
-            model.follow(action.targetPubkey)
+    /// Branches on presence-of-dispatch (write vs local intent) — NOT on
+    /// `action.kind` (aim.md §4.4: writes flow through registered
+    /// ActionModules, shell binds blindly).
+    private func perform(_ action: ProfileAction) {
+        if let dispatch = action.dispatch {
+            model.dispatchProfileAction(dispatch)
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        case "unfollow":
-            model.unfollow(action.targetPubkey)
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        default:
-            break
+        } else {
+            isEditingProfile = true
         }
-    }
-
-    private func iconName(for action: ProfileAction) -> String {
-        switch action.kind {
-        case "edit_profile":
-            return "square.and.pencil"
-        case "unfollow":
-            return "person.badge.minus"
-        default:
-            return "person.badge.plus"
-        }
-    }
-
-    private func truncatedNpub(_ npub: String) -> String {
-        guard npub.count > 20 else { return npub }
-        return "\(npub.prefix(10))…\(npub.suffix(8))"
     }
 
     private func copyNpub() {
