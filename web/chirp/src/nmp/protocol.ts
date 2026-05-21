@@ -25,7 +25,13 @@ export type RuntimeStatus =
   | "ready"
   | "running"
   | "stopped"
-  | { degraded: "browser_actor_driver_missing" | "capability_rejected" | "protocol_mismatch" };
+  | {
+      degraded:
+        | "browser_actor_driver_missing"
+        | "browser_bridge_unavailable"
+        | "capability_rejected"
+        | "protocol_mismatch";
+    };
 
 export type WorkerEvent =
   | { type: "hello_accepted"; protocol_version: number; status: RuntimeStatus }
