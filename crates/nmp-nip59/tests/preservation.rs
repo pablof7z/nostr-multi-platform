@@ -14,11 +14,17 @@
 //! it without a red test.
 
 use nmp_nip59::{gift_wrap, unwrap_gift_wrap};
-use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
+use nostr::{EventBuilder, EventId, Keys, Kind, Tag, Timestamp};
 
 /// Sentinel `created_at` chosen far in the past so it cannot be confused
 /// with the gift-wrap envelope's randomised `now() - 0..172800` timestamp.
 const RUMOR_SENTINEL_TS: u64 = 1_600_000_000;
+
+/// Deterministic 32-byte sentinel for the Welcome-shaped rumor's `e` tag.
+/// Not a real Welcome event id — just a fixed hex string so the fixture
+/// is reproducible and the `e` tag round-trip is byte-exact.
+const WELCOME_E_TAG_HEX: &str =
+    "0000000000000000000000000000000000000000000000000000000077656c63";
 
 #[test]
 fn round_trip_preserves_rumor_created_at() {
@@ -49,13 +55,21 @@ fn round_trip_preserves_rumor_created_at() {
 #[test]
 fn round_trip_preserves_rumor_tags() {
     // NIP-17 DM rumors carry a recipient `p` tag plus a `subject` tag; Marmot
-    // Welcome rumors carry `relays` and `e` tags. Build a representative
-    // multi-tag rumor and assert every tag survives unchanged.
+    // Welcome rumors additionally reference the originating event via an `e`
+    // tag and carry a `relays` tag. Build a Welcome-shaped rumor that
+    // exercises all four tag kinds (`e`, `p`, `subject`, `relays`) and assert
+    // every tag survives unchanged. The `e` tag is the load-bearing addition
+    // here: a regression that drops single-value `e` tags would silently
+    // break Welcome routing.
     let alice = Keys::generate();
     let bob = Keys::generate();
     let charlie = Keys::generate();
 
+    let welcome_event_id = EventId::from_hex(WELCOME_E_TAG_HEX)
+        .expect("WELCOME_E_TAG_HEX must be valid 32-byte hex");
+
     let tags = vec![
+        Tag::event(welcome_event_id),
         Tag::public_key(bob.public_key()),
         Tag::public_key(charlie.public_key()),
         Tag::custom(

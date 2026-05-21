@@ -49,18 +49,35 @@ fn sample_rpc() -> Nip46Rpc {
     }
 }
 
+/// `Box<dyn Nip46Transport>` wrapper around a `StubTransport` that holds a
+/// side-channel `Arc` so the test can inspect what was sent without naming
+/// the concrete type at the dispatch site. This proves the trait is
+/// object-safe and that `Box<dyn ...>` dispatch round-trips correctly.
+#[derive(Debug)]
+struct BoxedTransport {
+    inner: Arc<StubTransport>,
+}
+
+impl Nip46Transport for BoxedTransport {
+    fn send_rpc(&self, rpc: Nip46Rpc) -> Result<(), SignerError> {
+        self.inner.send_rpc(rpc)
+    }
+}
+
 #[test]
 fn box_dyn_transport_round_trips_rpc() {
     // Construct via `Box<dyn Nip46Transport>` to exercise the dyn-trait
     // dispatch path. The test inspects the stub via a side-channel `Arc`
     // because the trait object intentionally hides the concrete type.
     let stub = Arc::new(StubTransport::default());
-    let dispatch: &dyn Nip46Transport = stub.as_ref();
+    let dispatch: Box<dyn Nip46Transport> = Box::new(BoxedTransport {
+        inner: stub.clone(),
+    });
 
     let rpc = sample_rpc();
     dispatch
         .send_rpc(rpc.clone())
-        .expect("&dyn Nip46Transport must accept send_rpc");
+        .expect("Box<dyn Nip46Transport> must accept send_rpc");
 
     let captured = stub.sent();
     assert_eq!(captured.len(), 1, "stub must record exactly one RPC");
