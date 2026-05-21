@@ -11,8 +11,8 @@
 //! - `composed` — ReactInGroup (kind:7+h), CommentInGroup (kind:1111+h).
 //!
 //! The admin / membership / artifact / discussion / share executors were
-//! deleted: NIP-29 ships only its relay-group chat surface in v1 (no group
-//! administration UI is planned — Marmot MLS covers private groups).
+//! deleted: NIP-29 ships only its relay-group chat surface in v1 (group
+//! administration and private groups are out of scope for this crate).
 
 mod composed;
 mod content;

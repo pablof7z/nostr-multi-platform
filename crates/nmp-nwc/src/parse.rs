@@ -7,7 +7,7 @@
 //! replacement for the real-world input this client must accept. `NwcUri`
 //! retains, each pinned by a test below:
 //!
-//! - **Case-insensitive scheme** (`Nostr+walletconnect://`) — iOS deeplink
+//! - **Case-insensitive scheme** (`Nostr+walletconnect://`) — some deeplink
 //!   handlers auto-capitalize the leading char; upstream rejects it.
 //! - **Whitespace tolerance** — surrounding *and* inner (pre-`&`) whitespace
 //!   from hand-copied wallet-UI strings is trimmed; upstream `url::Url` rejects.

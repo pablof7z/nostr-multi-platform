@@ -11,7 +11,7 @@
 //! Both functions operate at the `nostr::Keys` boundary — the caller supplies
 //! real key material. This is the appropriate seam for the M11.5 milestone;
 //! full kernel signer-bridge wiring (where the actor fetches keys via the
-//! `KeyringCapability` surface) is deferred to the post-v1 Marmot milestone.
+//! `KeyringCapability` surface) is deferred to a post-v1 milestone.
 //!
 //! # D0: no app/protocol nouns
 //!
