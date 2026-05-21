@@ -69,21 +69,17 @@ already renders `conversations`.
 - **D0 structural state: clean.** Zero app-crate imports in protocol crates.
   The doc sweep is genuinely complete. (Low)
 
-## Q-answers
+## Q-answers (see findings above for detail)
 
-- **Q1:** Cut ADR-0026 now. Minimal missing piece is *not* the seam — it is a
-  `gift_wrap` signature refactor to inject an encrypter. The seam as built can
-  never satisfy NIP-59's ephemeral-key seal.
-- **Q2:** Yes — additive `unsupported` field on `DmInboxSnapshot`. No D0/D3
-  break: it is a placeholder in the type contract (D1), set from existing
-  signed-in/no-local-key state the projection already observes.
-- **Q3:** `dm_relay_lists` lives in `Kernel` (D3-correct). Keyed by hex
-  pubkey, strict-`>` supersession like kind:10002, empty list removes the
-  entry. No eviction needed — replaceables self-supersede.
-- **Q4:** kind:10050 ingest. Reply threading and NIP-57 are moot while the
-  primary DM path loses messages.
-- **Q5:** The live anti-pattern is the third key slot (Finding 3), not doc
-  comments. Otherwise the live paths are D0-clean.
+- **Q1:** Cut ADR-0026. Missing piece is a `gift_wrap` encrypter-injection
+  refactor, not the seam — see Finding 2.
+- **Q2:** Yes — additive `unsupported` field on `DmInboxSnapshot` (D1
+  placeholder, no D0/D3 break) — see Finding 4.
+- **Q3:** `dm_relay_lists` in `Kernel` (D3): hex-keyed, strict-`>`
+  supersession, empty list removes entry, no eviction (replaceables
+  self-supersede).
+- **Q4:** kind:10050 ingest — Finding 1.
+- **Q5:** Third key slot (Finding 3); live paths otherwise D0-clean.
 
 ## Bottom line
 
