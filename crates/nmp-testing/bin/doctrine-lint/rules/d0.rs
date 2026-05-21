@@ -59,6 +59,20 @@ pub fn file_is_exempt(path: &Path) -> bool {
     if s.contains("/apps/") || s.starts_with("apps/") {
         return true;
     }
+    // D0's mandate is `nmp-core` specifically — every OTHER protocol crate
+    // under `crates/nmp-*` legitimately uses the domain nouns it owns
+    // (`nmp-nip29` defines `GroupId`; flagging the very crate that defines
+    // it is nonsense). Exempt every `crates/nmp-*/src/...` path that is NOT
+    // `crates/nmp-core/`. Requiring the `/src/` segment keeps test-fixture
+    // paths like `crates/nmp-testing/bin/doctrine-lint/fixtures/...`
+    // (intentional negative examples for D0 itself) unaffected.
+    let in_other_nmp_crate_src = (s.contains("/crates/nmp-") || s.starts_with("crates/nmp-"))
+        && s.contains("/src/")
+        && !s.contains("/nmp-core/")
+        && !s.starts_with("nmp-core/");
+    if in_other_nmp_crate_src {
+        return true;
+    }
     EXEMPT_FILE_SUFFIXES.iter().any(|suf| s.ends_with(suf))
 }
 
@@ -125,5 +139,44 @@ mod tests {
     fn flags_nip29_token() {
         let hits = check("use nip29_things::Whatever;", false);
         assert_eq!(hits.len(), 1);
+    }
+
+    #[test]
+    fn exempts_apps_path() {
+        // Per the existing rule: apps/<app>/ legitimately uses domain nouns.
+        assert!(file_is_exempt(&std::path::PathBuf::from(
+            "apps/chirp/nmp-app-chirp/src/ffi.rs"
+        )));
+        assert!(file_is_exempt(&std::path::PathBuf::from(
+            "/abs/path/apps/chirp/nmp-app-chirp/src/lib.rs"
+        )));
+    }
+
+    #[test]
+    fn exempts_non_nmp_core_protocol_crates() {
+        // D0's mandate is `nmp-core` only — every OTHER protocol crate under
+        // `crates/nmp-*` legitimately uses its own domain nouns. Flagging
+        // `GroupId` inside `nmp-nip29` (the very crate that defines it) is
+        // nonsense.
+        assert!(file_is_exempt(&std::path::PathBuf::from(
+            "crates/nmp-nip29/src/action/content.rs"
+        )));
+        assert!(file_is_exempt(&std::path::PathBuf::from(
+            "/abs/path/crates/nmp-nip17/src/lib.rs"
+        )));
+        assert!(file_is_exempt(&std::path::PathBuf::from(
+            "crates/nmp-marmot/src/projection/mod.rs"
+        )));
+    }
+
+    #[test]
+    fn does_not_exempt_nmp_core() {
+        // D0 must continue to fire on `nmp-core` — that's the whole point.
+        assert!(!file_is_exempt(&std::path::PathBuf::from(
+            "crates/nmp-core/src/kernel/types.rs"
+        )));
+        assert!(!file_is_exempt(&std::path::PathBuf::from(
+            "/abs/path/crates/nmp-core/src/lib.rs"
+        )));
     }
 }

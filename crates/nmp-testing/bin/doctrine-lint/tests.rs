@@ -300,6 +300,118 @@ fn d8_sleep_negative_fixture_clean() {
     );
 }
 
+// ─── D9 (protocol-crate action-namespace prefix) ────────────────────────────
+
+#[test]
+fn d9_positive_fixture_fires() {
+    // Stage pos.rs in isolation so neg.rs (also under fixtures/d9/) cannot
+    // confuse the assertion — mirrors the d6/d8 positive fixture pattern.
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d9_pos");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let pos_src = workspace.join(fixture_path("d9/pos.rs"));
+    std::fs::copy(&pos_src, tmp.join("pos.rs")).expect("copy pos fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    // D9 is path-scoped to `crates/nmp-*/` — the smoke fixture staged under
+    // `target/` falls outside that scope, so `--d9-extra-scope` opts it in
+    // (mirrors `--d8-extra-scope`).
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d9-extra-scope",
+        "doctrine_lint_d9_pos",
+    ]);
+    assert_eq!(
+        code, 1,
+        "d9 positive must exit 1; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[D9]"),
+        "d9 positive must emit ≥1 D9 finding; stdout:\n{}",
+        stdout
+    );
+    // Both bad namespaces in the fixture must surface in the report so a
+    // regression that silently swallows one cannot pass this test.
+    for token in ["nip29.post_chat_message", "nip29.react_in_group"] {
+        assert!(
+            stdout.contains(token),
+            "d9 positive must name `{}`; stdout:\n{}",
+            token,
+            stdout
+        );
+    }
+}
+
+#[test]
+fn d9_negative_fixture_clean() {
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d9_neg");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let neg_src = workspace.join(fixture_path("d9/neg.rs"));
+    std::fs::copy(&neg_src, tmp.join("neg.rs")).expect("copy neg fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d9-extra-scope",
+        "doctrine_lint_d9_neg",
+    ]);
+    assert_eq!(
+        code, 0,
+        "d9 negative must exit 0; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.contains("error[D9]"),
+        "d9 negative must produce zero D9 findings; stdout:\n{}",
+        stdout
+    );
+}
+
+/// THE LIVE GUARD: every protocol crate on master must already satisfy D9.
+/// If a `crates/nmp-*/` ActionModule sneaks a non-`nmp.`-prefixed NAMESPACE
+/// past code review, this test fails — the whole point of the rule.
+#[test]
+fn protocol_crates_are_d9_clean() {
+    // Scan every protocol crate. The default mode targets `nmp-core`; we
+    // explicitly add the NIP crates by path so the workspace's whole
+    // protocol surface is covered. (App crates under `apps/` are out of
+    // scope by D9 design.)
+    let nip_crates = [
+        "nmp-nip01",
+        "nmp-nip17",
+        "nmp-nip22",
+        "nmp-nip23",
+        "nmp-nip29",
+        "nmp-nip42",
+        "nmp-nip57",
+        "nmp-nip59",
+        "nmp-nip77",
+    ];
+    let mut args: Vec<String> = vec!["--crate".into(), "nmp-core".into()];
+    for c in &nip_crates {
+        args.push("--path".into());
+        args.push(format!("crates/{}/src", c));
+    }
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    let (code, stdout, stderr) = run_lint(&arg_refs);
+    assert_eq!(
+        code, 0,
+        "protocol crates must be D9 clean; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.contains("error[D9]"),
+        "protocol crates must not contain D9 findings; stdout:\n{}",
+        stdout
+    );
+}
+
 // ─── --workspace-d8 (workspace-wide no-polling scan) ─────────────────────────
 
 /// Builds a throwaway `crates/<name>/src/<file>.rs` tree under `target/` and
