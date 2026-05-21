@@ -25,3 +25,4 @@ ios/NmpPodcast/NmpPodcast.xcodeproj/project.xcworkspace/xcuserdata/
 # Xcode Instruments traces
 *.trace/
 *.trace
+.vercel
