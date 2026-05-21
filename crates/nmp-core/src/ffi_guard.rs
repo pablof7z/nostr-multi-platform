@@ -53,13 +53,11 @@ pub(crate) fn guard_ffi_callback<R>(site: &str, body: impl FnOnce() -> R) -> Opt
     // leaves a single edit point should a host-observable diagnostic seam
     // (D6-conforming — data, not stderr) ever be wired in.
     let _ = site;
-    match catch_unwind(AssertUnwindSafe(body)) {
-        Ok(value) => Some(value),
-        // D6: the `None` return IS the failure signal. Library code must
-        // never write to stderr — that side effect belongs to the host.
-        // Callers that need diagnostics observe `None` and log it themselves.
-        Err(_payload) => None,
-    }
+    // D6: the `None` return IS the failure signal. Library code must never
+    // write to stderr — that side effect belongs to the host. Callers that
+    // need diagnostics observe `None` and log it themselves. `.ok()` maps the
+    // `catch_unwind` `Result` to `Option`, discarding the panic payload.
+    catch_unwind(AssertUnwindSafe(body)).ok()
 }
 
 #[cfg(test)]
