@@ -11,9 +11,9 @@
 //! 3. an unverifiable event (bad sig) never reaches the tap.
 //!
 //! The fan-out path is shared with production: `handle_event` makes the
-//! same `notify_raw_event_observers(verified.raw())` call after the
-//! existing Schnorr + id-hash gate for any tapped kind. Generic
-//! capability (D0) — no protocol nouns.
+//! same post-store raw observer call after the existing Schnorr + id-hash
+//! gate and store provenance update for any tapped kind. Generic capability
+//! (D0) — no protocol nouns.
 
 use super::*;
 use crate::actor::{
@@ -23,7 +23,7 @@ use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
 use std::sync::{Arc, Mutex};
 
 struct CapturingRawObserver {
-    seen: Mutex<Vec<(u32, String)>>,
+    seen: Mutex<Vec<(u32, String, Option<String>)>>,
 }
 
 impl CapturingRawObserver {
@@ -36,7 +36,18 @@ impl CapturingRawObserver {
 
 impl RawEventObserver for CapturingRawObserver {
     fn on_raw_event(&self, kind: u32, json: &str) {
-        self.seen.lock().unwrap().push((kind, json.to_string()));
+        self.seen
+            .lock()
+            .unwrap()
+            .push((kind, json.to_string(), None));
+    }
+
+    fn on_raw_event_with_source(&self, kind: u32, json: &str, source_relay_url: Option<&str>) {
+        self.seen.lock().unwrap().push((
+            kind,
+            json.to_string(),
+            source_relay_url.map(ToOwned::to_owned),
+        ));
     }
 }
 
@@ -78,12 +89,26 @@ fn raw_tap_receives_verbatim_signed_event_through_handle_event() {
     kernel.set_raw_event_observers_handle(slot);
 
     let value = signed_event_value(1, "verbatim tap content");
-    kernel.handle_event(RelayRole::Content, "wss://relay.test", "sub-1", &value);
+    kernel.handle_event(
+        RelayRole::Content,
+        "wss://relay.test",
+        "diag-firehose-raw-tap",
+        &value,
+    );
 
     let seen = observer.seen.lock().unwrap();
-    assert_eq!(seen.len(), 1, "exactly one tap delivery for the matching kind");
-    let (kind, json) = &seen[0];
+    assert_eq!(
+        seen.len(),
+        1,
+        "exactly one tap delivery for the matching kind"
+    );
+    let (kind, json, source) = &seen[0];
     assert_eq!(*kind, 1);
+    assert_eq!(
+        source.as_deref(),
+        Some("wss://relay.test"),
+        "raw observers must receive the relay URL persisted as source provenance"
+    );
 
     // Byte-faithful: the delivered JSON round-trips to the SAME id /
     // pubkey / sig the wire event carried, and the sig is a real 128-hex
@@ -139,6 +164,30 @@ fn raw_tap_filters_out_non_matching_kind() {
     let seen = observer.seen.lock().unwrap();
     assert_eq!(seen.len(), 1);
     assert_eq!(seen[0].0, 1059);
+    assert_eq!(seen[0].2.as_deref(), Some("wss://relay.test"));
+}
+
+#[test]
+fn raw_tap_waits_for_store_acceptance() {
+    let slot = new_raw_event_observer_slot();
+    let observer = CapturingRawObserver::new();
+    register_rust_raw_observer(&slot, KindFilter::from_kinds([1u32]), observer.clone());
+
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.set_raw_event_observers_handle(slot);
+
+    let value = signed_event_value(1, "not in canonical store");
+    kernel.handle_event(
+        RelayRole::Content,
+        "wss://relay.test",
+        "untracked-sub",
+        &value,
+    );
+
+    assert!(
+        observer.seen.lock().unwrap().is_empty(),
+        "raw tap must not fire before the store accepts the event"
+    );
 }
 
 #[test]

@@ -15,8 +15,8 @@
 //!   verbatim event. When no registration filters on `kind` (or the slot
 //!   is unbound) the tap is a zero-cost no-op.
 //! - `notify_raw_event_observers` — fan-out entry called from the single
-//!   all-kinds ingest point (`kernel/ingest/mod.rs::handle_event`) AFTER
-//!   the event has passed the kernel's existing Schnorr + id-hash gate.
+//!   all-kinds ingest point after the event has passed the kernel's existing
+//!   Schnorr + id-hash gate and the store provenance path.
 //!
 //! D0 — the kernel never names a NIP / protocol; this is a generic
 //! verbatim-signed-event seam. ADR-0009.
@@ -62,15 +62,16 @@ impl Kernel {
     /// Fan one verbatim signed event out to every raw-tap registration
     /// whose kind filter matches `raw.kind`. Called from the single
     /// all-kinds ingest point (`kernel/ingest/mod.rs::handle_event`) only
-    /// for events that passed the kernel's existing Schnorr + id-hash
-    /// gate. Best-effort: unbound slot, poisoned mutex, or serialization
-    /// failure on the C-ABI side are all silent no-ops (D6). The payload
+    /// for events that passed the kernel's existing Schnorr + id-hash gate
+    /// and store provenance path. Best-effort: unbound slot, poisoned mutex,
+    /// or serialization failure on the C-ABI side are all silent no-ops (D6).
+    /// The payload
     /// is the byte-faithful flat NIP-01 object
     /// `{id, pubkey, created_at, kind, tags, content, sig}` — the `sig` is
     /// preserved verbatim (this is the whole point of the seam).
-    pub(in crate::kernel) fn notify_raw_event_observers(&self, raw: &RawEvent) {
+    pub(in crate::kernel) fn notify_raw_event_observers(&self, raw: &RawEvent, relay_url: &str) {
         if let Some(slot) = &self.raw_event_observers {
-            crate::actor::notify_raw_observers(slot, raw);
+            crate::actor::notify_raw_observers(slot, raw, Some(relay_url));
         }
     }
 }

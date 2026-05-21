@@ -424,13 +424,7 @@ final class KernelHandle {
         let payload = String(cString: pointer)
         let data = Data(payload.utf8)
         guard let outer = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            // PD-025 finding 4: log the offending payload prefix so decode failures
-            // are observable (the original regression: decode failure → hasActiveAccount
-            // never flips → stuck on OnboardingView). Toast injection is impossible
-            // here because the toast surface is driven by the snapshot that just failed
-            // to decode — logging is the only correct path at this layer.
-            let preview = payload.prefix(200)
-            kbLog.error("outer JSON parse failed — payload prefix: \(preview)")
+            kbLog.error("outer JSON parse failed bytes=\(data.count)")
             return nil
         }
         let frameTag = outer["t"] as? String
@@ -441,7 +435,7 @@ final class KernelHandle {
             if frameTag == "update" {
                 kbLog.debug("discrete update frame received (not applied by snapshot bridge)")
             } else {
-                kbLog.error("unknown envelope tag=\(frameTag ?? "<nil>") — payload prefix: \(payload.prefix(200))")
+                kbLog.error("unknown envelope tag=\(frameTag ?? "<nil>") bytes=\(data.count)")
             }
             return nil
         }
@@ -466,10 +460,7 @@ final class KernelHandle {
                 decodeMicros: duration.microseconds
             )
         } catch {
-            kbLog.error("decode error: \(error.localizedDescription)")
-            if let preview = String(data: innerData.prefix(500), encoding: .utf8) {
-                kbLog.error("JSON preview: \(preview)")
-            }
+            kbLog.error("decode error: \(error.localizedDescription) bytes=\(innerData.count)")
             return nil
         }
     }
@@ -504,8 +495,7 @@ private let nmpUpdateCallback: NmpUpdateCallback = { context, pointer in
     guard let context, let pointer else { return }
     let payload = String(cString: pointer)
     if payload.contains("\"t\":\"panic\"") {
-        kbLog.fault("NMP_ACTOR_PANIC detected")
-        NSLog("NMP_ACTOR_PANIC: %@", payload)
+        kbLog.fault("NMP_ACTOR_PANIC detected bytes=\(payload.utf8.count)")
         return
     }
     guard let result = KernelHandle.decode(pointer: pointer) else { return }
@@ -565,7 +555,7 @@ enum DispatchResult: Equatable {
         guard let data = envelope.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
-            return .failure("dispatch envelope was not a JSON object: \(envelope.prefix(120))")
+            return .failure("dispatch envelope was not a JSON object (bytes=\(envelope.utf8.count))")
         }
         if let correlationId = object["correlation_id"] as? String, !correlationId.isEmpty {
             return .accepted(correlationId: correlationId)
@@ -573,7 +563,7 @@ enum DispatchResult: Equatable {
         if let message = object["error"] as? String {
             return .failure(message)
         }
-        return .failure("dispatch envelope missing both correlation_id and error: \(envelope.prefix(120))")
+        return .failure("dispatch envelope missing both correlation_id and error (bytes=\(envelope.utf8.count))")
     }
 }
 
@@ -1065,8 +1055,8 @@ struct DiscoveredGroupsSnapshot: Decodable, Equatable {
 /// the shell never compares pubkeys to align a bubble (thin-shell rule).
 ///
 /// No explicit `CodingKeys`: the top-level `.convertFromSnakeCase` strategy
-/// maps `"sender_pubkey"` / `"created_at"` / `"reply_to"` / `"is_outgoing"`
-/// automatically.
+/// maps `"sender_pubkey"` / `"created_at"` / `"reply_to"` / `"is_outgoing"` /
+/// `"source_relays"` automatically.
 struct DmMessage: Decodable, Identifiable, Equatable {
     let id: String
     let senderPubkey: String
@@ -1074,6 +1064,7 @@ struct DmMessage: Decodable, Identifiable, Equatable {
     let createdAt: UInt64
     let replyTo: String?
     let isOutgoing: Bool
+    let sourceRelays: [String]?
 }
 
 /// One DM thread — every message exchanged with a single peer. `messages`

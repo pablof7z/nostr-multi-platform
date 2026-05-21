@@ -4,7 +4,7 @@
 //! queue management, and the seed-timeline open gate.
 
 use super::super::*;
-use super::{event_short_id, raw_event_from_nostr};
+use super::{event_short_id, raw_event_from_nostr, raw_tap_should_fire};
 
 impl Kernel {
     /// Ingest a kind:1 or kind:6 event into the local read-cache and timeline.
@@ -37,6 +37,11 @@ impl Kernel {
                 return;
             }
         };
+        let raw_for_observer = if self.raw_event_observers_idle_for_kind(event.kind) {
+            None
+        } else {
+            Some(verified.raw().clone())
+        };
         // T105: provenance is the resolved per-author write relay the EVENT
         // actually arrived on, not the lane's bootstrap URL.
         let provenance = relay_url.to_string();
@@ -47,6 +52,14 @@ impl Kernel {
         let proceed = match self.store.insert(verified, &provenance, received_at_ms) {
             Ok(outcome) => {
                 use crate::store::InsertOutcome;
+                if raw_for_observer
+                    .as_ref()
+                    .is_some_and(|_| raw_tap_should_fire(&outcome))
+                {
+                    if let Some(raw) = raw_for_observer.as_ref() {
+                        self.notify_raw_event_observers(raw, &provenance);
+                    }
+                }
                 // T131 — bump per-URL `RelayUsefulness` counters in the
                 // same match arms (design doc §3 line 188: 0 per-event
                 // alloc on the hot path; the `provenance` URL is already

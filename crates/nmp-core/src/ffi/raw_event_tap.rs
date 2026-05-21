@@ -73,9 +73,10 @@ fn parse_kind_filter(kinds_json: *const c_char) -> KindFilter {
 
 /// Register a C-ABI raw signed-event observer.
 ///
-/// `callback` fires on the actor thread once per inbound event that has
-/// passed the kernel's Schnorr + id-hash gate AND whose `kind` matches
-/// `kinds_json`. The C string argument is a nul-terminated JSON encoding
+/// `callback` fires on the raw-observer drain thread once per inbound
+/// event that has passed the kernel's Schnorr + id-hash gate, entered
+/// canonical store semantics, AND whose `kind` matches `kinds_json`.
+/// The C string argument is a nul-terminated JSON encoding
 /// of the verbatim flat NIP-01 signed event
 /// `{id, pubkey, created_at, kind, tags, content, sig}`.
 ///
@@ -190,12 +191,8 @@ mod tests {
     fn null_callback_returns_zero_id() {
         let _g = SERIAL.lock().unwrap();
         let app = nmp_app_new();
-        let id = nmp_app_register_raw_event_observer(
-            app,
-            std::ptr::null_mut(),
-            None,
-            std::ptr::null(),
-        );
+        let id =
+            nmp_app_register_raw_event_observer(app, std::ptr::null_mut(), None, std::ptr::null());
         assert_eq!(id, 0);
         nmp_app_free(app);
     }
