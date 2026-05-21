@@ -276,14 +276,15 @@ impl Kernel {
         if !action_results.is_null() {
             projections.insert("action_results".to_string(), action_results);
         }
-        // D0: identity output. `account_snapshot()` returns the substrate
-        // `(&[AccountSummary], Option<&String>)` pair; the snapshot surfaces it
-        // through `projections` instead of typed fields. A serialization
-        // failure degrades to `[]` / `null` so the keys are always present.
-        let (accounts, active_account) = self.account_snapshot();
+        // D0: identity output. `accounts_enriched()` returns `AccountSummary`
+        // records patched with kind:0 picture_url / display_name so the toolbar
+        // avatar and accounts list show real profile data. `active_account` is
+        // still sourced from the raw snapshot (it is just a pubkey string).
+        let (_, active_account) = self.account_snapshot();
+        let enriched = self.accounts_enriched();
         projections.insert(
             "accounts".to_string(),
-            serde_json::to_value(accounts)
+            serde_json::to_value(&enriched)
                 .unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
         );
         projections.insert(
@@ -534,6 +535,30 @@ impl Kernel {
                 body_json,
             }),
         })
+    }
+
+    /// Returns the accounts list enriched with profile picture URLs and real
+    /// display names from cached kind:0 metadata. The base `AccountSummary`
+    /// (built in the identity layer) doesn't see profile data; we patch here.
+    pub(super) fn accounts_enriched(&self) -> Vec<AccountSummary> {
+        let (accounts, _) = self.account_snapshot();
+        accounts
+            .iter()
+            .cloned()
+            .map(|mut acc| {
+                if let Some(profile) = self.profile_for_pubkey(&acc.id) {
+                    let real_picture = profile
+                        .picture_url
+                        .as_deref()
+                        .filter(|url| !url.is_empty());
+                    acc.picture_url = real_picture.map(str::to_owned);
+                    if !profile.display.is_empty() {
+                        acc.display_name = profile.display.clone();
+                    }
+                }
+                acc
+            })
+            .collect()
     }
 
     pub(super) fn author_view(&self) -> Option<AuthorViewPayload> {
