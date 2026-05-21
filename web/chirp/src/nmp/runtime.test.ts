@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { publishNoteAction } from "./actions";
 import { createNmpClient } from "./client";
 import { DegradedRuntime } from "./degradedRuntime";
 import type { WorkerEvent, WorkerRequest } from "./protocol";
 import { protocolVersion } from "./protocol";
+import { chirpTimelineFromEnvelope, displayRows, kernelSnapshotFromEnvelope } from "./snapshot";
 
 type WorkerHarness = {
   onmessage: ((message: MessageEvent<WorkerRequest>) => void) | null;
@@ -103,6 +105,63 @@ describe("createNmpClient fallback", () => {
       capability: "chirp.compose",
       reason: "Web Worker support is unavailable, so the nmp-wasm bridge cannot start",
     });
+  });
+});
+
+describe("shared Chirp web semantics", () => {
+  it("builds the same publish note action body used by native and chirp-repl", () => {
+    expect(publishNoteAction("hello web")).toEqual({
+      PublishNote: {
+        content: "hello web",
+        reply_to_id: null,
+        target: "Auto",
+      },
+    });
+  });
+
+  it("renders rows from Rust snapshot envelopes instead of local feed fixtures", () => {
+    const kernel = kernelSnapshotFromEnvelope({
+      t: "snapshot",
+      v: {
+        rev: 7,
+        projections: {
+          timeline: [
+            {
+              id: "note-a",
+              displayName: "alice",
+              content: "from shared timeline",
+            },
+          ],
+        },
+      },
+    });
+
+    expect(kernel?.rev).toBe(7);
+    expect(displayRows(kernel, undefined)).toEqual([
+      {
+        id: "note-a",
+        displayName: "alice",
+        content: "from shared timeline",
+      },
+    ]);
+  });
+
+  it("can fall back to the Chirp modular snapshot card shape", () => {
+    const chirp = chirpTimelineFromEnvelope({
+      chirpTimeline: {
+        blocks: [{ Standalone: "note-a" }],
+        cards: [{ id: "note-a", author_pubkey: "abc", content: "from chirp cards" }],
+      },
+    });
+
+    expect(displayRows(undefined, chirp)).toEqual([
+      {
+        id: "note-a",
+        authorPubkey: "abc",
+        content: "from chirp cards",
+        createdAt: undefined,
+      },
+    ]);
   });
 });
 

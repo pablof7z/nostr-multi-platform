@@ -10,6 +10,7 @@ import {
 export type RuntimeSnapshot = {
   status: RuntimeStatus;
   events: WorkerEvent[];
+  latestUpdate?: unknown;
 };
 
 export type RuntimeConnection = {
@@ -20,8 +21,8 @@ export type RuntimeConnection = {
 
 export const runtimeConnection: RuntimeConnection = {
   appId: "chirp",
-  relays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"],
-  databaseName: "chirp-web",
+  relays: envList("VITE_CHIRP_RELAYS"),
+  databaseName: envString("VITE_CHIRP_DATABASE", "chirp-web"),
 };
 
 export type NmpClient = {
@@ -44,11 +45,12 @@ export function createNmpClient(): NmpClient {
 
 abstract class BaseClient implements NmpClient {
   private events: WorkerEvent[] = [];
+  private latestUpdate: unknown;
   private status: RuntimeStatus = "ready";
   private listeners = new Set<(snapshot: RuntimeSnapshot) => void>();
 
   snapshot(): RuntimeSnapshot {
-    return { status: this.status, events: [...this.events] };
+    return { status: this.status, events: [...this.events], latestUpdate: this.latestUpdate };
   }
 
   subscribe(listener: (snapshot: RuntimeSnapshot) => void): () => void {
@@ -61,6 +63,9 @@ abstract class BaseClient implements NmpClient {
     if (event.type === "runtime_status" || event.type === "hello_accepted") {
       this.status = event.status;
     }
+    if (event.type === "update") {
+      this.latestUpdate = event.envelope;
+    }
     this.events = [event, ...this.events].slice(0, 8);
     const snapshot = this.snapshot();
     for (const listener of this.listeners) {
@@ -71,6 +76,18 @@ abstract class BaseClient implements NmpClient {
 
   abstract start(): Promise<RuntimeSnapshot>;
   abstract dispatch(actionType: string, payload: unknown): Promise<RuntimeSnapshot>;
+}
+
+function envString(key: string, fallback: string): string {
+  const value = (import.meta.env[key] as string | undefined)?.trim();
+  return value && value.length > 0 ? value : fallback;
+}
+
+function envList(key: string): string[] {
+  return ((import.meta.env[key] as string | undefined) ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
 }
 
 class WorkerNmpClient extends BaseClient {

@@ -41,22 +41,26 @@ npm run dev
 
 ## Static Deploy
 
-Deploy from `web/chirp`, not the repository root.
+The repository root includes `vercel.json` so a Vercel project pointed at the
+repo root still installs and builds `web/chirp`.
 
 Use these settings for static hosts:
 
 | Setting | Value |
 | --- | --- |
-| Install command | `npm ci` |
-| Build command | `npm run build` |
-| Output directory | `dist` |
+| Install command | `cd web/chirp && npm ci` |
+| Build command | `cd web/chirp && npm run build` |
+| Output directory | `web/chirp/dist` |
 | Node version | `20` or newer |
 
-The current proof has no required environment variables. If the host needs an
-SPA fallback, route all paths to `index.html`.
+Optional runtime config:
 
-For Vercel, set the project root directory to `web/chirp`, keep the build
-command as `npm run build`, and set the output directory to `dist`.
+| Variable | Meaning |
+| --- | --- |
+| `VITE_CHIRP_RELAYS` | Comma-separated relay URLs passed to the Rust worker `start` config. |
+| `VITE_CHIRP_DATABASE` | Browser database name; defaults to `chirp-web`. |
+
+If the host needs an SPA fallback, route all paths to `index.html`.
 
 ## Optional Wasm Package
 
