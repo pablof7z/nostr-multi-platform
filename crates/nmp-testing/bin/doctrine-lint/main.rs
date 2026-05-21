@@ -323,7 +323,10 @@ fn scan_one_file(
         // `catch_unwind` / `guard_ffi_callback`. Scope is `nmp-core/src/`
         // (host-closure registration seams live in the substrate). The
         // check is stateful (brace-depth + guard stack), so the state
-        // must observe every line of the in-scope file.
+        // must observe every line of the in-scope file — even comment
+        // lines — so brace counting stays accurate even when invocation
+        // detection is suppressed. Skipped in --workspace-d8 (no-polling
+        // sweep only).
         if !workspace_d8 && d15_in_scope {
             for (col, msg, suggested) in
                 d15::check(&mut d15_state, path, sl.text, sl.is_comment)
@@ -341,6 +344,9 @@ fn scan_one_file(
                 });
             }
         } else if d15_in_scope {
+            // Even when D15 reporting is suppressed (e.g. --workspace-d8)
+            // we still observe lines so the state stays in sync within a
+            // file — important if a future driver pass interleaves modes.
             let _ = d15::check(&mut d15_state, path, sl.text, sl.is_comment);
         }
         // D8 — no polling (`thread::sleep`, `tokio::time::sleep`,
@@ -398,7 +404,9 @@ fn d10_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
 }
 
 /// True iff D15 should scan `path` — either `nmp-core/src/` via
-/// `d15::file_in_scope`, or the caller opted-in via `--d15-extra-scope`.
+/// `d15::file_in_scope`, or the caller opted-in via `--d15-extra-scope`
+/// (used by the fixture smoke test to stage a positive fixture under
+/// `target/` outside the nmp-core path tree).
 fn d15_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
     if d15::file_in_scope(path) {
         return true;
@@ -429,7 +437,9 @@ struct Config {
     /// rule at `bin/doctrine-lint/fixtures/d10/`, which otherwise falls
     /// outside the `nmp-{core,nip17,marmot}` scope.
     d10_extra_scopes: Vec<String>,
-    /// Extra path fragments treated as D15-in-scope.
+    /// Extra path fragments treated as D15-in-scope. Same role as
+    /// [`Self::d8_extra_scopes`] / [`Self::d9_extra_scopes`]: opts a
+    /// fixture path under `target/<label>/` into the D15 scan.
     d15_extra_scopes: Vec<String>,
     /// `--workspace-d8`: scan every production crate for D8 no-polling
     /// violations only. D0/D6/D7 (substrate-purity rules) stay nmp-core

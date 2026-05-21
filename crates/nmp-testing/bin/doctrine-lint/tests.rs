@@ -607,6 +607,9 @@ fn d11_negative_fixture_clean() {
 
 #[test]
 fn d15_positive_fixture_fires() {
+    // Stage pos.rs in isolation under `target/` so neg.rs (also under
+    // fixtures/d15/) cannot pollute the assertion — mirrors the d6/d8/d9
+    // positive fixture pattern.
     let workspace = workspace_root();
     let tmp = workspace.join("target").join("doctrine_lint_d15_pos");
     let _ = std::fs::remove_dir_all(&tmp);
@@ -628,9 +631,11 @@ fn d15_positive_fixture_fires() {
     );
     assert!(
         stdout.contains("error[D15]"),
-        "d15 positive must emit >=1 D15 finding; stdout:\n{}",
+        "d15 positive must emit ≥1 D15 finding; stdout:\n{}",
         stdout
     );
+    // Each banned invocation shape in the fixture must surface so a
+    // regression that silently swallows one shape cannot pass.
     for token in ["observer(", "(self.callback)(", "callback("] {
         assert!(
             stdout.contains(token),
