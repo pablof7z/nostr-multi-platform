@@ -180,7 +180,7 @@ pub struct PublishEngine {
     /// Populated in `on_ack` (and any other path that evicts a completed row)
     /// just before `in_flight.remove(handle)`. The kernel drains via
     /// [`PublishEngine::take_completed`] after every engine call to update
-    /// the `PublishQueueEntry` projection iOS reads.
+    /// the `PublishQueueEntry` projection the shell reads.
     recently_completed: BTreeMap<PublishHandle, TerminalOutcome>,
     /// Direction review #29: every terminal action result that settled since
     /// the last drain. This Vec *accumulates* — so when two actions reach a

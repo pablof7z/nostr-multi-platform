@@ -30,8 +30,8 @@
 //! [`KernelEventObserver`](crate::KernelEventObserver) — a flat raw-event
 //! fan-out. Per-app crates register `Arc<dyn KernelEventObserver>`
 //! observers; the kernel fans every accepted event (`Inserted | Replaced`)
-//! to all registered observers. This is what Chirp's modular timeline and
-//! the Marmot projection use today.
+//! to all registered observers. The modular timeline projection and the
+//! MLS group-messaging projection are the canonical live consumers.
 //!
 //! Canonical pattern:
 //! - the slot + registration helpers: `actor/commands/event_observer.rs`

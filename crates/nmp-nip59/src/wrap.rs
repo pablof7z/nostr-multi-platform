@@ -30,9 +30,10 @@ pub struct UnwrappedGift {
 /// `gift_wrap` is a **local-keys primitive**: it requires the caller to hold
 /// the sender's raw `Keys` and performs the NIP-44 seal/wrap in-process.
 /// Callers that need remote-signer support (NIP-46 bunker, hardware) must NOT
-/// use this function — they must go through the signer NIP-44 seam (ADR-0026),
-/// which is not yet built. Marmot is the named ADR-0025 bounded exception: it
-/// holds raw local keys for MLS and may call this primitive directly.
+/// use this function — they must go through the signer NIP-44 seam (ADR-0026,
+/// `RemoteSignerHandle::nip44_encrypt`). Marmot is the named ADR-0025 bounded
+/// exception: it holds raw local keys for MLS and may call this primitive
+/// directly.
 pub fn gift_wrap(
     sender: &Keys,
     receiver: &PublicKey,
