@@ -194,96 +194,6 @@ impl DomainModule for TodoDomainModule {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
-pub struct TodoListSpec {
-    pub include_completed: bool,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-pub struct TodoListView {
-    pub items: Vec<TodoRecord>,
-    pub open_count: usize,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum TodoDelta {
-    Replaced { payload: TodoListView },
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct TodoViewState {
-    payload: TodoListView,
-}
-
-pub struct TodoViewModule;
-
-impl ViewModule for TodoViewModule {
-    const NAMESPACE: &'static str = "fixture.todo.view";
-
-    type Spec = TodoListSpec;
-    type Payload = TodoListView;
-    type Delta = TodoDelta;
-    type Key = bool;
-    type State = TodoViewState;
-
-    fn key(spec: &Self::Spec) -> Self::Key {
-        spec.include_completed
-    }
-
-    fn dependencies(_spec: &Self::Spec) -> ViewDependencies {
-        ViewDependencies::default()
-    }
-
-    fn open(_ctx: &ViewContext, _spec: Self::Spec) -> (Self::State, Self::Payload) {
-        let payload = TodoListView::default();
-        (
-            TodoViewState {
-                payload: payload.clone(),
-            },
-            payload,
-        )
-    }
-
-    fn on_event_inserted(
-        _ctx: &ViewContext,
-        _state: &mut Self::State,
-        _event: &KernelEvent,
-    ) -> Option<Self::Delta> {
-        None
-    }
-
-    fn on_event_removed(
-        _ctx: &ViewContext,
-        _state: &mut Self::State,
-        _id: &EventId,
-    ) -> Option<Self::Delta> {
-        None
-    }
-
-    fn on_event_replaced(
-        _ctx: &ViewContext,
-        _state: &mut Self::State,
-        _old_id: &EventId,
-        _new_event: &KernelEvent,
-    ) -> Option<Self::Delta> {
-        None
-    }
-
-    fn on_projection_changed(
-        _ctx: &ViewContext,
-        state: &mut Self::State,
-        _change: &ProjectionChange,
-    ) -> Option<Self::Delta> {
-        Some(TodoDelta::Replaced {
-            payload: state.payload.clone(),
-        })
-    }
-
-    fn snapshot(_ctx: &ViewContext, state: &Self::State) -> Self::Payload {
-        state.payload.clone()
-    }
-}
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Action {
     Add { id: String, title: String },
@@ -358,57 +268,23 @@ impl CapabilityModule for TodoCapabilityModule {
     }
 }
 
+/// The projected view-spec enum for this app module — the **codegen
+/// convention name** `<crate>::ViewSpec`. `nmp-codegen` emits a
+/// `FixtureTodoCore(fixture_todo_core::ViewSpec)` variant in the generated
+/// fixture app's `ViewSpec` enum, so every app module crate MUST export this
+/// exact symbol. The fixture's todo flow exposes no views, so the enum is
+/// intentionally empty (uninhabited) — the wrapping variant simply never gets
+/// constructed.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct TodoIdentityDescriptor {
-    pub label: String,
-}
+pub enum ViewSpec {}
 
-pub struct TodoIdentityModule;
-
-impl IdentityModule for TodoIdentityModule {
-    const NAMESPACE: &'static str = "fixture.todo.identity";
-
-    type Descriptor = TodoIdentityDescriptor;
-
-    fn scope_kind() -> IdentityScopeKind {
-        IdentityScopeKind::AppLocal
-    }
-
-    fn create(
-        ctx: &mut IdentityContext,
-        descriptor: Self::Descriptor,
-    ) -> Result<IdentityId, IdentityError> {
-        if descriptor.label.trim().is_empty() {
-            return Err(IdentityError::InvalidDescriptor("empty label".to_string()));
-        }
-        let id = format!("fixture-todo:{}", descriptor.label);
-        ctx.remember(id.clone());
-        Ok(id)
-    }
-
-    fn sign<'a>(
-        _ctx: &'a IdentityContext,
-        _id: &'a IdentityId,
-        _unsigned: &'a UnsignedEvent,
-    ) -> BoxFuture<'a, Result<SignedEvent, SigningError>> {
-        Box::pin(async {
-            Err(SigningError::Unsupported(
-                "fixture identity does not sign Nostr events".to_string(),
-            ))
-        })
-    }
-
-    fn destroy(_ctx: &mut IdentityContext, _id: &IdentityId) {}
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum ViewSpec {
-    TodoList(TodoListSpec),
-}
-
+/// The projected update enum for this app module — the **codegen convention
+/// name** `<crate>::Update`. `nmp-codegen` emits a
+/// `FixtureTodoCore(fixture_todo_core::Update)` variant in the generated
+/// fixture app's `AppUpdate` enum, so every app module crate MUST export this
+/// exact symbol. [`accepted`] returns [`Update::ActionAccepted`].
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Update {
-    TodoList(TodoListView),
     ActionAccepted,
 }
 
