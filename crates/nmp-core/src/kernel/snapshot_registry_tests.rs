@@ -129,6 +129,60 @@ fn unbound_slot_yields_empty_projections() {
     assert!(kernel.run_snapshot_projections().is_empty());
 }
 
+/// D6 — a host projection closure that panics is contained: its key is
+/// omitted (the same shape as an unregistered namespace), every other
+/// projection in the same tick still produces its value, and the actor
+/// thread is never unwound.
+///
+/// Without the per-closure `catch_unwind` guard, a single buggy host plugin
+/// would panic *inside* `make_update` on the actor thread — the actor's
+/// outer `catch_unwind` then catches a terminal `Panic` frame and the
+/// kernel is permanently dead. A snapshot projection MUST never be able to
+/// kill the kernel.
+#[test]
+fn panicking_projection_is_contained_and_others_survive() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let slot = new_snapshot_projection_slot();
+    {
+        let mut registry = slot.lock().unwrap();
+        // A well-behaved projection registered alongside the bad one.
+        registry.register("good.value", || serde_json::json!({ "ok": true }));
+        // A buggy host plugin: panics every time it is polled.
+        registry.register("bad.value", || -> serde_json::Value {
+            panic!("buggy host projection");
+        });
+    }
+    kernel.set_snapshot_projection_handle(slot);
+
+    // First tick: the panic must not propagate out of `make_update`.
+    let first: serde_json::Value =
+        serde_json::from_str(&kernel.make_update(true)).expect("snapshot json survives a panic");
+    let projections = first
+        .get("projections")
+        .expect("the surviving projection must still produce a projections object");
+    assert_eq!(
+        projections.get("good.value"),
+        Some(&serde_json::json!({ "ok": true })),
+        "a panicking sibling must not poison the other projections in the same tick",
+    );
+    assert!(
+        projections.get("bad.value").is_none(),
+        "a panicking projection's key must be omitted, not surfaced as garbage: {first}",
+    );
+
+    // Second tick: the kernel is still alive and still emits a valid
+    // snapshot — the panic did not unwind the actor / kernel.
+    let second: serde_json::Value = serde_json::from_str(&kernel.make_update(true))
+        .expect("the kernel must survive a panicking projection and keep ticking");
+    assert_eq!(
+        second
+            .get("projections")
+            .and_then(|p| p.get("good.value")),
+        Some(&serde_json::json!({ "ok": true })),
+        "the good projection must keep firing on every subsequent tick",
+    );
+}
+
 /// D0 — first internal consumer of the snapshot-projection seam: the `"wallet"`
 /// projection.
 ///
