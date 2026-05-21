@@ -1,6 +1,6 @@
 //! Chirp per-app FFI surface.
 //!
-//! Five `extern "C"` symbols Swift links against:
+//! `extern "C"` symbols Swift links against:
 //!
 //! - [`nmp_app_chirp_register`] — instantiate `ChirpModularTimeline` with the
 //!   active viewer pubkey and register it as a kernel event observer on the
@@ -10,6 +10,10 @@
 //!   `GroupChatProjection` for one group into the kernel: an event observer
 //!   (ingest) plus a `"nip29.group_chat"` snapshot projection (output). Pure
 //!   consumption — no handle, no actions, no unregister.
+//! - [`nmp_app_chirp_register_dm_inbox`] — wire a NIP-17 `DmInboxProjection`
+//!   into the kernel: a kind:1059 raw-event observer (ingest), a
+//!   `"nip17.dm_inbox"` snapshot projection (output), and a kind:1059 `#p`
+//!   gift-wrap inbox interest so envelopes actually arrive.
 //! - [`nmp_app_chirp_snapshot`] — serialize the current `ChirpTimelineSnapshot`
 //!   into a freshly-allocated nul-terminated JSON C string. Swift owns the
 //!   pointer until it calls `nmp_app_chirp_snapshot_free`.
@@ -33,13 +37,18 @@ use std::ffi::{c_char, CStr, CString};
 use std::sync::Arc;
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
-use nmp_core::{ActorCommand, KernelEventObserver, KernelEventObserverId, NmpApp};
+use nmp_core::{
+    ActorCommand, KernelEventObserver, KernelEventObserverId, NmpApp, RawEventObserver,
+};
 use nmp_nip29::group_id::GroupId;
 use nmp_nip29::projection::GroupChatProjection;
 use nmp_nip29::action::{
     comment_in_group_command, post_chat_message_command, react_in_group_command,
     CommentInGroupAction, CommentInGroupInput, PostChatMessageAction, PostChatMessageInput,
     ReactInGroupAction, ReactInGroupInput,
+};
+use nmp_nip17::{
+    giftwrap_inbox_interest, send_dm_command, DmInboxProjection, SendDmAction, SendDmInput,
 };
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
@@ -164,6 +173,14 @@ pub extern "C" fn nmp_app_chirp_register(
     // no other reference aliases `app` at this point.
     register_nip29_actions(unsafe { &mut *app });
 
+    // Register the NIP-17 direct-message `ActionModule` (`nmp.dm.send`).
+    // Same `&mut NmpApp` / pre-`nmp_app_start` ordering rule as the NIP-29
+    // registration above — a third NIP-crate `ActionModule` reached through
+    // the generic `dispatch_action` seam (D0 — no DM nouns in `nmp-core`).
+    //
+    // SAFETY: same exclusive-borrow rationale as `register_chirp_actions`.
+    register_nip17_actions(unsafe { &mut *app });
+
     // SAFETY: caller guarantees `app` is a valid pointer allocated by
     // `nmp_app_new` for the duration of this call. We do not hold the
     // borrow past this function.
@@ -258,6 +275,90 @@ pub extern "C" fn nmp_app_chirp_register_group_chat(
     // Output side: the no-argument snapshot read runs on the actor thread
     // inside each snapshot tick. The `move` consumes this last `Arc`.
     app_ref.register_snapshot_projection("nip29.group_chat", move || projection.snapshot_json());
+}
+
+/// Wire a NIP-17 [`DmInboxProjection`] for the local account into `app`.
+///
+/// This is the **receive side** of NIP-17 private DMs. It constructs a
+/// `DmInboxProjection` bound to the kernel's shared local-keys slot
+/// (`NmpApp::nip17_local_keys`), plugs it in as a [`RawEventObserver`]
+/// (kind:1059 tap — ingest), and registers its `snapshot_json` read under the
+/// snapshot key `"nip17.dm_inbox"` (output). Decrypted conversations then
+/// surface on every kernel snapshot tick under that key.
+///
+/// Unlike the NIP-29 group-chat projection there is no `GroupId` argument —
+/// the DM inbox is global (every conversation the local account participates
+/// in).
+///
+/// `viewer_pubkey` is the active account's hex pubkey. When non-null and
+/// non-empty it is used to push a kind:1059 `#p <pubkey>` gift-wrap inbox
+/// interest so the kernel actually opens a REQ for incoming envelopes —
+/// WITHOUT it the projection is wired but inert (no events ever arrive).
+/// NULL is permitted (app-startup call before sign-in); in that case the
+/// projection still decrypts once the shared key slot is populated, but no
+/// REQ is opened until the caller re-invokes with a concrete pubkey.
+///
+/// CALLER CONTRACT — the host MUST re-invoke this after sign-in / account
+/// switch so the kind:1059 interest is pushed for the now-active account. The
+/// interest id is deterministic per-pubkey, so a re-invoke for the same
+/// account is an idempotent no-op; a re-invoke for a new account adds that
+/// account's interest.
+///
+/// D6 — fire-and-forget. A null `app` or a poisoned observer slot degrades to
+/// a silent return.
+///
+/// SCOPE — single-use, no unregister. Calling it twice registers a second
+/// event observer (a small, bounded leak) and overwrites the
+/// `"nip17.dm_inbox"` snapshot key with the newer projection. Chirp calls it
+/// once at startup (then re-invokes only to push the interest after sign-in —
+/// idempotent on the projection side because the snapshot key is just
+/// overwritten with an equivalent projection).
+///
+/// `app` MUST outlive the registration; it is only borrowed for this call.
+#[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn nmp_app_chirp_register_dm_inbox(
+    app: *mut NmpApp,
+    viewer_pubkey: *const c_char,
+) {
+    if app.is_null() {
+        return;
+    }
+    // SAFETY: caller guarantees `app` is a valid pointer from `nmp_app_new`,
+    // live for the duration of this call. The borrow is not held past return.
+    let app_ref = unsafe { &*app };
+
+    // The projection reads the kernel's shared local-keys slot to decrypt
+    // each incoming gift-wrap — it needs no pubkey argument itself.
+    let local_keys = app_ref.nip17_local_keys();
+    let projection = Arc::new(DmInboxProjection::new(local_keys));
+
+    // Ingest side: the kind:1059 raw-event tap. `Arc::clone … as Arc<dyn …>`
+    // (NOT `Arc::new(projection)`, which would double-box).
+    let observer_id = app_ref.register_raw_event_observer(
+        DmInboxProjection::kind_filter(),
+        Arc::clone(&projection) as Arc<dyn RawEventObserver>,
+    );
+    if observer_id.0 == 0 {
+        // Raw-observer registration failed (poisoned slot). Don't register
+        // the snapshot closure for a projection that will never see events.
+        return;
+    }
+
+    // Output side: the no-argument snapshot read runs on the actor thread
+    // inside each snapshot tick. The `move` consumes this last `Arc`.
+    app_ref.register_snapshot_projection("nip17.dm_inbox", move || {
+        projection.snapshot_json()
+    });
+
+    // Push the kind:1059 `#p <pubkey>` gift-wrap inbox interest so the kernel
+    // opens a REQ for incoming envelopes. Without this the projection is
+    // registered but inert. A NULL / empty pubkey means "not signed in yet"
+    // — the caller re-invokes after sign-in (see the CALLER CONTRACT above).
+    // The interest id is deterministic per-pubkey, so the re-invoke de-dupes.
+    if let Some(pubkey) = c_string_opt(viewer_pubkey).filter(|s| !s.is_empty()) {
+        app_ref.push_interest(giftwrap_inbox_interest(&pubkey));
+    }
 }
 
 /// Serialize the current `ChirpTimelineSnapshot` into a JSON C string.
@@ -443,6 +544,21 @@ fn register_nip29_actions(app: &mut NmpApp) {
     wire_action!(app, PostChatMessageAction, PostChatMessageInput, post_chat_message_command);
     wire_action!(app, ReactInGroupAction, ReactInGroupInput, react_in_group_command);
     wire_action!(app, CommentInGroupAction, CommentInGroupInput, comment_in_group_command);
+}
+
+/// Register the NIP-17 direct-message `ActionModule` (`nmp.dm.send`) against
+/// `app`'s action registry.
+///
+/// Wires the typed [`SendDmAction`] from the `nmp-nip17` protocol crate
+/// through the same host-extensibility seam the NIP-29 actions use. The
+/// executor delegates to `nmp_nip17::send_dm_command`, which builds the
+/// kind:14 rumor and enqueues [`ActorCommand::SendGiftWrappedDm`] — the
+/// actor's local-keys-MVP handler does the NIP-59 seal + gift-wrap + publish.
+///
+/// JSON schema (the third arg the host passes to `nmp_app_dispatch_action`):
+/// * `nmp.dm.send` — `{"recipient_pubkey":"<hex>","content":"…","reply_to":"<hex>"?}`
+fn register_nip17_actions(app: &mut NmpApp) {
+    wire_action!(app, SendDmAction, SendDmInput, send_dm_command);
 }
 
 /// `chirp.react` action body: `{"target_event_id":"<hex>","reaction":"+"}`.
@@ -743,6 +859,71 @@ mod tests {
         // panicking across the FFI boundary.
         nmp_app_chirp_register_group_chat(app, group.as_ptr());
         nmp_app_free(app);
+    }
+
+    /// THE NIP-17 SEND-VERB PROOF: after `nmp_app_chirp_register`, the
+    /// `nmp.dm.send` action — `SendDmAction`, an `ActionModule` living in the
+    /// `nmp-nip17` protocol crate — is reachable through the generic
+    /// `dispatch_action` path. A well-formed `SendDmInput` yields a 32-hex
+    /// `correlation_id` (both the typed module validator AND the executor are
+    /// wired); a malformed / empty body is rejected with `error`.
+    #[test]
+    fn nip17_dm_send_dispatches_through_action_registry() {
+        let app = nmp_app_new();
+        let handle = nmp_app_chirp_register(app, std::ptr::null());
+        assert!(!handle.is_null());
+
+        let recipient =
+            "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
+        let body = format!(
+            r#"{{"recipient_pubkey":"{recipient}","content":"hello over NIP-17"}}"#
+        );
+        let parsed = dispatch(app, "nmp.dm.send", &body);
+        let id = parsed
+            .get("correlation_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("expected correlation_id, got {parsed}"));
+        assert_eq!(id.len(), 32, "correlation id should be 32 hex");
+
+        // Empty content is rejected by the typed `SendDmAction::start`
+        // validator surfaced through the host seam (D6).
+        let parsed = dispatch(
+            app,
+            "nmp.dm.send",
+            &format!(r#"{{"recipient_pubkey":"{recipient}","content":"  "}}"#),
+        );
+        assert!(
+            parsed.get("error").is_some(),
+            "an empty-content DM must be rejected: {parsed}"
+        );
+
+        nmp_app_chirp_unregister(handle);
+        nmp_app_free(app);
+    }
+
+    /// THE DM-INBOX WIRING PROOF: `nmp_app_chirp_register_dm_inbox` registers
+    /// a `DmInboxProjection` against `app` — it runs to completion (raw-event
+    /// observer + snapshot-projection registration + interest push) without
+    /// panicking across the FFI boundary, with and without a viewer pubkey.
+    #[test]
+    fn register_dm_inbox_runs_for_app() {
+        let app = nmp_app_new();
+        // NULL viewer pubkey — startup-before-sign-in call.
+        nmp_app_chirp_register_dm_inbox(app, std::ptr::null());
+        // Concrete viewer pubkey — pushes the kind:1059 `#p` interest.
+        let pubkey = CString::new(
+            "aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee",
+        )
+        .unwrap();
+        nmp_app_chirp_register_dm_inbox(app, pubkey.as_ptr());
+        nmp_app_free(app);
+    }
+
+    /// D6: a null `app` is a silent no-op — the function must never
+    /// dereference a null pointer or panic across the FFI boundary.
+    #[test]
+    fn register_dm_inbox_null_app_is_silent_noop() {
+        nmp_app_chirp_register_dm_inbox(std::ptr::null_mut(), std::ptr::null());
     }
 
     /// D6: a null `app`, a null `group_id_json`, and a malformed

@@ -241,6 +241,21 @@ pub struct NmpApp {
     /// when the slot is overwritten or the app drops — a plain `String` would
     /// leave the key recoverable in freed memory.
     marmot_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>>,
+    /// Active account's local `nostr::Keys`, or `None` for a remote-signer
+    /// (NIP-46 / bunker) account. The actor thread writes this after every
+    /// identity mutation that changes the active local key (create, sign-in,
+    /// switch, remove) — exactly parallel to `marmot_local_nsec`.
+    ///
+    /// This slot is the NIP-44 key seam for protocol-crate consumers that
+    /// need the in-process keypair to seal / unseal gift-wraps (NIP-17 DM
+    /// inbox decryption). It is DISTINCT from `marmot_local_nsec`: that field
+    /// is the ADR-0025 bounded exception for MLS, and the ADR explicitly
+    /// scopes the exception to Marmot. A consumer that is not Marmot reads
+    /// THIS slot instead.
+    ///
+    /// `nostr::Keys` is `Clone` and zeroizes its own secret on drop, so no
+    /// `Zeroizing` wrapper is needed here.
+    nip17_local_keys: Arc<Mutex<Option<nostr::Keys>>>,
     /// FFI-supplied persistent storage directory for the LMDB `EventStore`
     /// backend. Set by [`nmp_app_set_storage_path`] before
     /// [`nmp_app_start`]. Shared `Arc` with the actor thread: the C-ABI
@@ -388,6 +403,12 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // identity mutation; per-app crates read via NmpApp::marmot_local_nsec.
     let marmot_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>> = Arc::new(Mutex::new(None));
     let actor_marmot_local_nsec = Arc::clone(&marmot_local_nsec);
+    // Active local `nostr::Keys` slot — the NIP-44 key seam for non-Marmot
+    // protocol consumers (NIP-17 DM inbox decryption). Same shared-`Arc`
+    // pattern as `marmot_local_nsec`: the actor updates it on every identity
+    // mutation; per-app crates read via `NmpApp::nip17_local_keys`.
+    let nip17_local_keys: Arc<Mutex<Option<nostr::Keys>>> = Arc::new(Mutex::new(None));
+    let actor_nip17_local_keys = Arc::clone(&nip17_local_keys);
     // Shared capability callback slot. FFI registration writes through the
     // app clone; the actor reads through its clone when issuing keyring
     // requests during start/sign-in/create/switch/remove.
@@ -442,6 +463,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 actor_bunker_handshake,
                 actor_relay_edit_rows,
                 actor_marmot_local_nsec,
+                actor_nip17_local_keys,
                 actor_capability_callback,
                 actor_storage_path,
                 // G-S4 — the actor's clone of the command-channel depth
@@ -491,6 +513,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         raw_event_observers,
         relay_edit_rows,
         marmot_local_nsec,
+        nip17_local_keys,
         storage_path,
         pending_mls_autopublish,
         actor: Mutex::new(Some(actor)),
@@ -894,6 +917,21 @@ impl NmpApp {
     /// (D0 — Swift never sees it for the `createAccount` path).
     pub fn marmot_local_nsec(&self) -> Option<Zeroizing<String>> {
         self.marmot_local_nsec.lock().ok()?.clone()
+    }
+
+    /// Clone of the active-local-`nostr::Keys` slot — the NIP-44 key seam
+    /// for non-Marmot protocol consumers (NIP-17 DM inbox decryption).
+    ///
+    /// Returns a clone of the shared `Arc` so the caller (e.g. a
+    /// `DmInboxProjection`) holds its own handle and reads the current keys
+    /// at decrypt time. The actor is the sole writer; it updates the inner
+    /// `Option<Keys>` on every identity mutation, so a long-lived consumer
+    /// always observes the up-to-date account without re-registering.
+    ///
+    /// This is DELIBERATELY separate from [`Self::marmot_local_nsec`]: that
+    /// accessor backs the ADR-0025 Marmot exception; NIP-17 uses this slot.
+    pub fn nip17_local_keys(&self) -> Arc<Mutex<Option<nostr::Keys>>> {
+        Arc::clone(&self.nip17_local_keys)
     }
 
     /// Return the user's current write-relay URLs, read from the shared kernel relay-edit

@@ -9,7 +9,18 @@ description = "NIP-17 private direct messages — kind:14 chat-message rumor bui
 # `nmp-core` supplies the substrate `UnsignedEvent` type — the same flat
 # repr every other `ActorCommand` payload uses, so `build_dm_rumor` output
 # drops straight into `ActorCommand::SendGiftWrappedDm` with no conversion.
+# It also supplies the `RawEventObserver` / `KindFilter` ingest seam the
+# `DmInboxProjection` plugs into and the `ActionModule` substrate trait the
+# `nmp.dm.send` action implements.
 nmp-core = { path = "../nmp-core" }
+# `nmp-nip59` owns the gift-wrap primitives — the inbox calls
+# `unwrap_gift_wrap` to unseal an incoming kind:1059 envelope.
+nmp-nip59 = { path = "../nmp-nip59" }
+# `nostr` parses the verbatim kind:1059 wire JSON into a signed `Event`
+# (the `sig` is required for NIP-44 decryption) and supplies `Keys`.
+nostr = { workspace = true, features = ["nip44", "nip59"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }

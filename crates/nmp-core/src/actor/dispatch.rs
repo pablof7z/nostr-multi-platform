@@ -44,6 +44,22 @@ fn update_nsec_slot(identity: &IdentityRuntime, slot: &Arc<Mutex<Option<Zeroizin
     }
 }
 
+/// Write the active account's local `nostr::Keys` (or `None` for a remote
+/// signer) to `slot`. Called alongside [`update_nsec_slot`] at every identity
+/// mutation so the NIP-17 DM inbox decryption seam (`NmpApp::nip17_local_keys`)
+/// always observes the current account.
+///
+/// `nostr::Keys` zeroizes its own secret on drop, so the overwrite wipes the
+/// previous keypair without an explicit `Zeroizing` wrapper.
+fn update_nip17_keys_slot(
+    identity: &IdentityRuntime,
+    slot: &Arc<Mutex<Option<nostr::Keys>>>,
+) {
+    if let Ok(mut guard) = slot.lock() {
+        *guard = identity.active_local_keys().cloned();
+    }
+}
+
 /// Borrowed bundle of the actor loop's mutable runtime state.
 ///
 /// Replaces the 15+ explicit parameters that `dispatch_command` used to take.
@@ -76,6 +92,10 @@ pub(super) struct ActorContext<'a> {
     pub(super) relays_ready: bool,
     pub(super) lifecycle_observer: &'a LifecycleObserverSlot,
     pub(super) marmot_local_nsec: &'a Arc<Mutex<Option<Zeroizing<String>>>>,
+    /// NIP-17 DM-inbox decryption key seam — the active account's local
+    /// `nostr::Keys`. Updated alongside `marmot_local_nsec` at every identity
+    /// mutation. See [`update_nip17_keys_slot`].
+    pub(super) nip17_local_keys: &'a Arc<Mutex<Option<nostr::Keys>>>,
     pub(super) capability_callback: &'a CapabilityCallbackSlot,
     pub(super) pending_signs: &'a mut Vec<PendingSign>,
 }
@@ -101,6 +121,7 @@ pub(super) fn dispatch_command(
                 ctx.relays_ready,
             );
             update_nsec_slot(ctx.identity, ctx.marmot_local_nsec);
+            update_nip17_keys_slot(ctx.identity, ctx.nip17_local_keys);
             spawn_missing_relays(
                 ctx.relay_controls,
                 ctx.relay_tx,
@@ -184,6 +205,7 @@ pub(super) fn dispatch_command(
                 ctx.relays_ready,
             );
             update_nsec_slot(ctx.identity, ctx.marmot_local_nsec);
+            update_nip17_keys_slot(ctx.identity, ctx.nip17_local_keys);
             session_persistence::persist_current_active_session(
                 ctx.identity,
                 ctx.capability_callback,
@@ -210,6 +232,7 @@ pub(super) fn dispatch_command(
                 mls,
             );
             update_nsec_slot(ctx.identity, ctx.marmot_local_nsec);
+            update_nip17_keys_slot(ctx.identity, ctx.nip17_local_keys);
             session_persistence::persist_current_active_session(
                 ctx.identity,
                 ctx.capability_callback,
@@ -221,6 +244,7 @@ pub(super) fn dispatch_command(
             let outbound =
                 commands::switch_active(ctx.identity, ctx.kernel, &identity_id, ctx.relays_ready);
             update_nsec_slot(ctx.identity, ctx.marmot_local_nsec);
+            update_nip17_keys_slot(ctx.identity, ctx.nip17_local_keys);
             session_persistence::persist_current_active_session(
                 ctx.identity,
                 ctx.capability_callback,
@@ -231,6 +255,7 @@ pub(super) fn dispatch_command(
         ActorCommand::RemoveAccount { identity_id } => {
             let outbound = commands::remove_account(ctx.identity, ctx.kernel, &identity_id);
             update_nsec_slot(ctx.identity, ctx.marmot_local_nsec);
+            update_nip17_keys_slot(ctx.identity, ctx.nip17_local_keys);
             session_persistence::forget_account(&identity_id, ctx.capability_callback);
             session_persistence::persist_current_active_session(
                 ctx.identity,
@@ -252,6 +277,7 @@ pub(super) fn dispatch_command(
                 );
             }
             update_nsec_slot(ctx.identity, ctx.marmot_local_nsec);
+            update_nip17_keys_slot(ctx.identity, ctx.nip17_local_keys);
             session_persistence::persist_current_active_session(
                 ctx.identity,
                 ctx.capability_callback,
