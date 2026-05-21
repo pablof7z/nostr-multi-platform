@@ -24,7 +24,9 @@ struct SettingsHubView: View {
                         icon: "antenna.radiowaves.left.and.right",
                         iconColor: ChirpColor.accent,
                         title: "Relays",
-                        subtitle: relaySubtitle
+                        // §6/AP1: subtitle is pre-formatted in Rust
+                        // (`projections.settings_hub.relays_subtitle`).
+                        subtitle: model.settingsHub.relaysSubtitle
                     )
                 }
                 .listRowBackground(Color.clear)
@@ -76,20 +78,6 @@ struct SettingsHubView: View {
         .navigationTitle("Settings")
     }
 
-    // ── Active account subtitle ───────────────────────────────────────────
-
-    private var relaySubtitle: String {
-        let count = model.relayEditRows.count
-        return count == 0 ? "No relays configured" : "\(count) relay\(count == 1 ? "" : "s")"
-    }
-
-    private var activeAccountSubtitle: String {
-        guard let activeID = model.activeAccount,
-              let account = model.accounts.first(where: { $0.id == activeID })
-        else { return "No active account" }
-        return account.displayName.isEmpty ? shortNpub(account.npub) : account.displayName
-    }
-
     // ── Helpers ───────────────────────────────────────────────────────────
 
     @ViewBuilder
@@ -121,92 +109,49 @@ struct SettingsHubView: View {
         }
         .padding(.vertical, ChirpSpace.xs)
     }
-
-    @ViewBuilder
-    private func roadmapItem(cx: String, title: String, description: String) -> some View {
-        HStack(alignment: .top, spacing: ChirpSpace.m) {
-            Text(cx)
-                .font(.system(.caption2, design: .rounded).weight(.bold))
-                .foregroundStyle(.primary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(ChirpColor.accent, in: Capsule())
-                .fixedSize()
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(ChirpFont.callout.weight(.medium))
-                    .foregroundStyle(ChirpColor.textPrimary)
-                Text(description)
-                    .font(ChirpFont.caption)
-                    .foregroundStyle(ChirpColor.textSecondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-
-    private func shortNpub(_ npub: String) -> String {
-        guard npub.count >= 16 else { return npub }
-        return "\(npub.prefix(10))…\(npub.suffix(6))"
-    }
 }
 
 // ── Marmot key-package status row ─────────────────────────────────────────
 //
-// Surfaces the local MLS key-package state (published? · age · stale) and a
-// publish / rotate action calling the `publish_key_package` dispatch op.
-// Key-package visibility lives in Settings, not a top-level screen, per the
-// milestone scope.
+// Surfaces the local MLS key-package state (subtitle + action label, both
+// pre-formatted in `nmp-marmot::projection`) and a publish / rotate action
+// calling the `publish_key_package` dispatch op. Key-package visibility lives
+// in Settings, not a top-level screen, per the milestone scope.
 
 private struct MarmotKeyPackageRow: View {
     @EnvironmentObject private var model: KernelModel
-    @State private var busy = false
 
-    private var kp: MarmotKeyPackage { model.marmot.keyPackage }
+    private var snapshot: MarmotSnapshot { model.marmot.snapshot }
+    private var kp: MarmotKeyPackage { snapshot.keyPackage }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text("Key package")
                 Spacer()
-            if kp.stale {
-                Text("Stale")
-                    .foregroundStyle(ChirpColor.zap)
-                    .font(.caption)
+                if kp.stale {
+                    Text("Stale")
+                        .foregroundStyle(ChirpColor.zap)
+                        .font(.caption)
+                }
             }
-            }
-            Text(statusSubtitle)
+            Text(kp.subtitle)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("marmot-key-package-status")
 
+            // Dispatch is fire-and-forget per aim.md §2 commandment #3; the
+            // result comes back as a refreshed snapshot. No Swift-owned
+            // `busy` flag (the prior `busy = true; …; busy = false` never
+            // actually showed because the call returned synchronously — see
+            // audit SH-5).
             Button {
-                busy = true
                 _ = model.marmot.publishKeyPackage()
-                busy = false
             } label: {
-                Text(kp.published ? "Rotate key package" : "Publish key package")
+                Text(kp.actionLabel)
             }
-            .disabled(!model.marmot.isRegistered || busy)
+            .disabled(!snapshot.isRegistered)
             .accessibilityIdentifier("marmot-publish-key-package-button")
         }
-    }
-
-    private var statusSubtitle: String {
-        guard model.marmot.isRegistered else {
-            return "Sign in with an nsec to enable"
-        }
-        guard kp.published else { return "Not published" }
-        if let age = kp.ageSecs {
-            return "Published · \(ageString(age))\(kp.stale ? " · needs rotation" : "")"
-        }
-        return "Published"
-    }
-
-    private func ageString(_ secs: UInt64) -> String {
-        if secs < 60 { return "\(secs)s old" }
-        if secs < 3600 { return "\(secs / 60)m old" }
-        if secs < 86_400 { return "\(secs / 3600)h old" }
-        return "\(secs / 86_400)d old"
     }
 }

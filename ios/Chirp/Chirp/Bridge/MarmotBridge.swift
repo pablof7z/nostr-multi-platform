@@ -106,15 +106,37 @@ struct MarmotKeyPackage: Decodable, Equatable {
     let dTag: String?
     let ageSecs: UInt64?
     let stale: Bool
+    /// Pre-formatted bucketed age ("12s old" / "7m old" / …) — Rust owns the
+    /// §6/AP1 string so the iOS shell never re-derives it.
+    let ageDisplay: String?
+    /// Pre-formatted row subtitle. Encodes the four-branch policy
+    /// (registered? · published? · age · stale) so the shell renders one
+    /// string verbatim.
+    let subtitle: String
+    /// Button label ("Publish key package" / "Rotate key package") — the
+    /// kernel picks the verb off `published` to keep the §4.4 ternary out of
+    /// the shell.
+    let actionLabel: String
 
     enum CodingKeys: String, CodingKey {
         case published
         case dTag = "d_tag"
         case ageSecs = "age_secs"
         case stale
+        case ageDisplay = "age_display"
+        case subtitle
+        case actionLabel = "action_label"
     }
 
-    static let empty = MarmotKeyPackage(published: false, dTag: nil, ageSecs: nil, stale: false)
+    static let empty = MarmotKeyPackage(
+        published: false,
+        dTag: nil,
+        ageSecs: nil,
+        stale: false,
+        ageDisplay: nil,
+        subtitle: "",
+        actionLabel: ""
+    )
 }
 
 struct MarmotSnapshot: Decodable, Equatable {
@@ -125,6 +147,11 @@ struct MarmotSnapshot: Decodable, Equatable {
     /// Pluralised label for the top-of-list invites chip
     /// (`"1 invite"` / `"3 invites"`), or `nil` when no pending invites.
     let invitesChipLabel: String?
+    /// `true` when this snapshot came from a registered Marmot signing
+    /// identity. `false` for the `.empty` fallback the Swift shell uses when
+    /// no `MarmotHandle` exists. Lets the iOS row read `keyPackage.subtitle`
+    /// verbatim — both branches of the registration policy are now Rust-owned.
+    let isRegistered: Bool
 
     enum CodingKeys: String, CodingKey {
         case groups
@@ -132,6 +159,7 @@ struct MarmotSnapshot: Decodable, Equatable {
         case keyPackage = "key_package"
         case cachedKpPubkeys = "cached_kp_pubkeys"
         case invitesChipLabel = "invites_chip_label"
+        case isRegistered = "is_registered"
     }
 
     static let empty = MarmotSnapshot(
@@ -139,7 +167,9 @@ struct MarmotSnapshot: Decodable, Equatable {
         pendingWelcomes: [],
         keyPackage: .empty,
         cachedKpPubkeys: [],
-        invitesChipLabel: nil)
+        invitesChipLabel: nil,
+        isRegistered: false
+    )
 }
 
 struct MarmotMessage: Decodable, Identifiable, Equatable {

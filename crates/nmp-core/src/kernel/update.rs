@@ -225,10 +225,10 @@ impl Kernel {
     /// projection key `"timeline"`.
     ///
     /// Built-in keys win on collision: a host that registers `"publish_queue"`,
-    /// `"publish_outbox"`, `"relay_edit_rows"`, `"accounts"`, `"active_account"`,
-    /// `"profile"`, `"timeline"`, `"author_view"`, `"thread_view"`,
-    /// `"inserted"`, `"updated"`, or `"removed"` is overwritten so the
-    /// kernel-owned value stays authoritative. A serialization failure degrades
+    /// `"publish_outbox"`, `"relay_edit_rows"`, `"settings_hub"`, `"accounts"`,
+    /// `"active_account"`, `"profile"`, `"timeline"`, `"author_view"`,
+    /// `"thread_view"`, `"inserted"`, `"updated"`, or `"removed"` is overwritten
+    /// so the kernel-owned value stays authoritative. A serialization failure degrades
     /// to a stable empty value (`[]` for the lists, `null` for the optional
     /// payloads) — D6: never a panic at the snapshot boundary — and the key is
     /// still present, mirroring the old always-emitted typed fields.
@@ -263,6 +263,18 @@ impl Kernel {
             "relay_edit_rows".to_string(),
             serde_json::to_value(self.relay_edit_rows_snapshot())
                 .unwrap_or(serde_json::Value::Null),
+        );
+        // Settings-hub view projection. Currently a single pre-formatted
+        // relays subtitle ("N relays" / "1 relay" / "No relays configured")
+        // — aim.md §6/AP1 forbids the iOS shell from owning that
+        // pluralization. Built locally next to `relay_edit_rows` so the two
+        // can never drift out of sync. A serialization failure degrades to
+        // `null` so the key is omitted, mirroring the publish-cluster pattern.
+        let settings_hub =
+            SettingsHubSummary::from_relay_edit_rows(self.relay_edit_rows_snapshot());
+        projections.insert(
+            "settings_hub".to_string(),
+            serde_json::to_value(&settings_hub).unwrap_or(serde_json::Value::Null),
         );
         // Direction review #29: drain EVERY terminal that settled since the
         // last emit into the `action_results` array. The host can clear a

@@ -708,6 +708,12 @@ struct KernelUpdate: Decodable {
     /// `.sorted` / `.reduce` / `Date(timeIntervalSince1970:)`.
     /// `nil` only on a legacy kernel that predates the projection (D1).
     var relayDiagnostics: RelayDiagnosticsSnapshot? { projections?.relayDiagnostics }
+
+    /// Settings-hub view payload — `projections["settings_hub"]`. Carries
+    /// pre-formatted subtitles (currently just the relays count) the iOS
+    /// Settings screen renders verbatim. `nil` only on a kernel older than
+    /// this projection.
+    var settingsHub: SettingsHubSummary? { projections?.settingsHub }
 }
 
 /// The kernel's host-extensible `projections` map. Each built-in app-noun
@@ -784,6 +790,12 @@ struct SnapshotProjections: Decodable, Equatable {
     /// `Kernel::mention_profiles_from_items` (kernel/update.rs). Optional
     /// so an older kernel that pre-dates the projection still decodes (D1).
     let mentionProfiles: [String: MentionProfileWire]?
+    // Settings-hub view payload — pre-formatted subtitles the iOS Settings
+    // screen renders verbatim (aim.md §6/AP1: pluralization belongs in Rust).
+    // Currently a single `relays_subtitle` field; further hub copy that
+    // depends on substrate state will fold in here without adding a new
+    // top-level projection key.
+    let settingsHub: SettingsHubSummary?
 
     /// Explicit coding keys.
     ///
@@ -825,6 +837,7 @@ struct SnapshotProjections: Decodable, Equatable {
         case dmInbox = "nip17.dmInbox"
         case relayDiagnostics
         case mentionProfiles
+        case settingsHub
     }
 }
 
@@ -861,6 +874,17 @@ extension MentionProfile {
             colorHex: wire.avatarColor
         )
     }
+}
+
+/// Settings-hub view projection — `projections["settings_hub"]`. The kernel
+/// pre-formats every subtitle the Settings screen renders so the iOS shell
+/// never owns the §6/AP1 pluralization / formatting copy. Decoded under
+/// `.convertFromSnakeCase`, so the Rust `relays_subtitle` JSON key matches
+/// the synthesized `relaysSubtitle` property name directly.
+struct SettingsHubSummary: Decodable, Equatable {
+    let relaysSubtitle: String
+
+    static let empty = SettingsHubSummary(relaysSubtitle: "")
 }
 
 // ─── NIP-29 group-chat read model ─────────────────────────────────────────

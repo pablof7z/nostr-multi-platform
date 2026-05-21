@@ -46,6 +46,10 @@ final class KernelModel: ObservableObject {
     @Published private(set) var outboxSummary: OutboxSummary = .empty
     @Published private(set) var lastErrorToast: String?
     @Published private(set) var relayEditRows: [RelayEditRow] = []
+    /// Pre-formatted Settings-hub subtitles — `projections["settings_hub"]`.
+    /// Empty until the first kernel tick lands; thereafter mirrors whatever
+    /// the kernel emitted for the current relay/account state.
+    @Published private(set) var settingsHub: SettingsHubSummary = .empty
     @Published private(set) var threadView: ThreadView?
     // NIP-47 wallet state
     @Published private(set) var walletStatus: WalletStatusData?
@@ -507,6 +511,7 @@ final class KernelModel: ObservableObject {
         outboxSummary = update.outboxSummary ?? .empty
         lastErrorToast = update.lastErrorToast
         if let r = update.relayEditRows { relayEditRows = r }
+        if let hub = update.settingsHub { settingsHub = hub }
         threadView = update.threadView
 
         // NIP-17 § 2 — publish the user's kind:10050 DM-relay list whenever

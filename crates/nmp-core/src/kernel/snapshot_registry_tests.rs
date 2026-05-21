@@ -118,6 +118,8 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
             "relay_edit_rows",
             // views cluster (D0)
             "removed",
+            // settings-hub view (relays subtitle pre-format)
+            "settings_hub",
             "thread_view",
             "timeline",
             "updated",
