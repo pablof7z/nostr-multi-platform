@@ -22,6 +22,14 @@ void nmp_app_stop(void *app);
 void nmp_app_lifecycle_foreground(void *app);
 void nmp_app_lifecycle_background(void *app);
 
+// --- Relay-edit (NIP-65 read/write) ---
+//
+// `role` is one of "read" | "write" | "both"; the kernel canonicalises the
+// URL and stores it in the `relay_edit_rows` projection that surfaces in the
+// `t=snapshot` envelope. Both are fire-and-forget (D6).
+void nmp_app_add_relay(void *app, const char *url, const char *role);
+void nmp_app_remove_relay(void *app, const char *url);
+
 // --- nmp-app-podcast per-app FFI ---
 //
 // `libnmp_app_podcast.a` is a separate Rust static library. D0 forbids

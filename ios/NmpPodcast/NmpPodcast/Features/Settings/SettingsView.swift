@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Environment(AppStateStore.self) private var store
+    @EnvironmentObject private var kernelModel: KernelModel
     @State private var storageSummary: String?
 
     var body: some View {
@@ -148,6 +149,7 @@ struct SettingsView: View {
         SettingsSystemSection(
             notificationsRowValue: notificationsRowValue,
             networkingRowValue: networkingRowValue,
+            relaysRowValue: relaysRowValue,
             dataStorageSummary: dataStorageSummary
         )
     }
@@ -266,6 +268,12 @@ struct SettingsView: View {
 
     private var networkingRowValue: String {
         NostrStack.shared.relaysConnected ? "Connected" : "Offline"
+    }
+
+    private var relaysRowValue: String? {
+        let count = kernelModel.relays.count
+        guard count > 0 else { return nil }
+        return "\(count)"
     }
 
     private var dataStorageSummary: String? {

@@ -54,6 +54,20 @@ final class KernelHandle {
         nmp_app_lifecycle_background(raw)
     }
 
+    // ── Relay-edit (NIP-65) ──────────────────────────────────────────────
+
+    func addRelay(url: String, role: String) {
+        url.withCString { uPtr in
+            role.withCString { rPtr in
+                nmp_app_add_relay(raw, uPtr, rPtr)
+            }
+        }
+    }
+
+    func removeRelay(url: String) {
+        url.withCString { nmp_app_remove_relay(raw, $0) }
+    }
+
     // ── Podcast projection ───────────────────────────────────────────────
 
     /// Snapshot the current podcast library as `LibrarySnapshot`.
@@ -120,6 +134,76 @@ struct LibrarySnapshot: Decodable, Equatable {
     let podcasts: [PodcastRowPayload]
 
     static var empty: LibrarySnapshot { LibrarySnapshot(podcasts: []) }
+}
+
+// MARK: - Kernel snapshot envelope (relay projections only)
+
+/// Lightweight decoder for the kernel-wide `{"t":"snapshot","v":{...}}`
+/// envelope emitted by `nmp_app_set_update_callback`. NmpPodcast only
+/// consumes the relay-edit and relay-status projections — the rest of the
+/// snapshot stays opaque so we don't tie this bridge to the full kernel
+/// schema (NmpHighlighter / Chirp own the rich decode paths).
+struct KernelRelaySnapshot: Decodable, Equatable {
+    let relayEditRows: [RelayEditRow]
+    let relayStatuses: [RelayKernelStatus]
+
+    private enum CodingKeys: String, CodingKey {
+        case relayEditRows
+        case relayStatuses
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        relayEditRows = (try? c.decode([RelayEditRow].self, forKey: .relayEditRows)) ?? []
+        relayStatuses = (try? c.decode([RelayKernelStatus].self, forKey: .relayStatuses)) ?? []
+    }
+
+    /// Try to decode the relay projections from a raw kernel envelope JSON.
+    /// Returns nil for non-snapshot frames (e.g. `t=update`) or malformed
+    /// payloads — callers should treat that as "no change this tick" (D6).
+    static func decode(envelope json: String) -> KernelRelaySnapshot? {
+        guard let data = json.data(using: .utf8),
+              let outer = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              (outer["t"] as? String) == "snapshot",
+              let inner = outer["v"]
+        else {
+            return nil
+        }
+        guard let innerData = try? JSONSerialization.data(withJSONObject: inner) else {
+            return nil
+        }
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return try? decoder.decode(KernelRelaySnapshot.self, from: innerData)
+    }
+}
+
+/// `RelayEditRow` projection from the kernel — the user's NIP-65 list.
+struct RelayEditRow: Decodable, Identifiable, Equatable {
+    let url: String
+    let role: String
+    var id: String { url }
+
+    var isRead: Bool { role == "read" || role == "both" }
+    var isWrite: Bool { role == "write" || role == "both" }
+}
+
+/// Live per-relay status from the kernel snapshot. We keep only the fields
+/// NmpPodcast actually surfaces — the kernel emits more (auth state,
+/// negentropy, reconnect counts, …) but they aren't useful in this app's
+/// settings screen yet. Optional so older / leaner kernels still decode.
+struct RelayKernelStatus: Decodable, Equatable, Identifiable {
+    let relayUrl: String
+    let connection: String
+    let lastError: String?
+    let bytesRx: UInt64?
+    let bytesTx: UInt64?
+    let lastConnectedAtMs: UInt64?
+    let lastEventAtMs: UInt64?
+    let reconnectCount: UInt32?
+
+    var id: String { relayUrl }
+    var isConnected: Bool { connection.lowercased() == "connected" }
 }
 
 // MARK: - Update callback plumbing

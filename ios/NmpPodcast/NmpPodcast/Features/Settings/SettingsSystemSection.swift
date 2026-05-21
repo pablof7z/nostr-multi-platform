@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsSystemSection: View {
     let notificationsRowValue: String?
     let networkingRowValue: String
+    let relaysRowValue: String?
     let dataStorageSummary: String?
 
     var body: some View {
@@ -26,6 +27,17 @@ struct SettingsSystemSection: View {
                     tint: .blue,
                     title: "Networking",
                     value: networkingRowValue
+                )
+            }
+
+            NavigationLink {
+                RelaysSettingsView()
+            } label: {
+                SettingsRow(
+                    icon: "antenna.radiowaves.left.and.right",
+                    tint: .indigo,
+                    title: "Read Relays",
+                    value: relaysRowValue
                 )
             }
 

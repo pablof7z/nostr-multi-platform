@@ -14,16 +14,23 @@ import SwiftUI
 final class KernelModel: ObservableObject {
     @Published private(set) var library: LibrarySnapshot = .empty
     @Published private(set) var lastErrorMessage: String?
+    @Published private(set) var relays: [RelayEditRow] = []
+    @Published private(set) var relayStatuses: [RelayKernelStatus] = []
 
     private let handle: KernelHandle
 
     init() {
         self.handle = KernelHandle()
-        self.handle.listen { [weak self] _json in
+        self.handle.listen { [weak self] json in
             // Update callback runs on the Rust listener thread; bounce to the
-            // main actor so the @Published mutation is correctly serialised.
+            // main actor so the @Published mutations are correctly serialised.
+            let snapshot = KernelRelaySnapshot.decode(envelope: json)
             Task { @MainActor [weak self] in
                 self?.refresh()
+                if let snapshot {
+                    self?.relays = snapshot.relayEditRows
+                    self?.relayStatuses = snapshot.relayStatuses
+                }
             }
         }
     }
@@ -63,5 +70,36 @@ final class KernelModel: ObservableObject {
 
     func lifecycleBackground() {
         handle.lifecycleBackground()
+    }
+
+    // MARK: - Relays
+
+    func addRelay(url: String, read: Bool, write: Bool) {
+        let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        handle.addRelay(url: trimmed, role: Self.roleString(read: read, write: write))
+    }
+
+    func setRelayRoles(url: String, read: Bool, write: Bool) {
+        // `add_relay` upserts on URL — re-adding with a new role updates the
+        // existing row in place (commands::add_relay handles the match).
+        handle.addRelay(url: url, role: Self.roleString(read: read, write: write))
+    }
+
+    func removeRelay(url: String) {
+        handle.removeRelay(url: url)
+    }
+
+    func status(for url: String) -> RelayKernelStatus? {
+        relayStatuses.first { $0.relayUrl == url }
+    }
+
+    private static func roleString(read: Bool, write: Bool) -> String {
+        switch (read, write) {
+        case (true, true):  return "both"
+        case (true, false): return "read"
+        case (false, true): return "write"
+        case (false, false): return "read" // never disable both — default to read
+        }
     }
 }
