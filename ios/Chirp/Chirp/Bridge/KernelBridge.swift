@@ -498,11 +498,15 @@ struct KernelUpdate: Decodable {
     /// call sites keep reading `update.activeAccount` unchanged.
     var activeAccount: String? { projections?.activeAccount }
 
+    /// Per-tick action terminals — `projections["action_results"]` (direction
+    /// review #29). `nil` in steady state; an array of every action that settled
+    /// this tick when any did. Prefer this over `lastActionResult` for spinner
+    /// management — the scalar drops terminals when two actions settle in one tick.
+    var actionResults: [LastActionResult]? { projections?.actionResults }
+
     /// Most recent terminal action result — `projections["last_action_result"]`
-    /// (direction review #24). `nil` when no dispatched action has settled yet;
-    /// otherwise the latest `published` / `failed` / `cancelled` verdict the
-    /// host uses to clear a per-action spinner. Computed so call sites read
-    /// `update.lastActionResult` directly.
+    /// (direction review #24). Prefer `actionResults` (array) — this scalar
+    /// silently drops terminals when two actions settle in the same kernel tick.
     var lastActionResult: LastActionResult? { projections?.lastActionResult }
 
     // ── D0 views cluster — projections-backed accessors ───────────────────
@@ -563,9 +567,12 @@ struct SnapshotProjections: Decodable, Equatable {
     // emits snake_case and the decoder uses `.convertFromSnakeCase`).
     let accounts: [AccountSummary]?
     let activeAccount: String?
-    // Direction review #24: the most recent terminal action result. Decodes
-    // from `projections["last_action_result"]` — JSON `null` (no action has
-    // settled yet) decodes to `nil`.
+    // Direction review #29: per-tick draining array of action terminals. Absent
+    // in steady state; `[{correlationId, status, error?}]` whenever any action
+    // settled this tick. Prefer this over the sticky scalar below.
+    let actionResults: [LastActionResult]?
+    // Direction review #24: sticky scalar — only the most recent terminal.
+    // Kept for backward compat; prefer `actionResults` for multi-action ticks.
     let lastActionResult: LastActionResult?
     // D0: views cluster. The active-account `profile` card, the visible
     // `timeline` (the kernel renamed the generic `items` key to the more
@@ -646,21 +653,17 @@ struct PublishQueueEntry: Decodable, Identifiable, Equatable {
     var id: String { eventId }
 }
 
-/// Direction review #24: the most recent terminal result of a dispatched
-/// action, projected from `projections["last_action_result"]`. A `nil`
-/// `SnapshotProjections.lastActionResult` means no action has settled yet
-/// (keep the spinner); a populated value means the host can clear the spinner
-/// for `correlationId`.
+/// One action terminal result. Used both in the per-tick `actionResults` array
+/// (preferred) and the sticky `lastActionResult` scalar (deprecated — drops
+/// terminals when two actions settle in the same kernel tick).
 ///
 /// `status` is one of `"published"`, `"failed"`, `"cancelled"`. `error` is
 /// `nil` for `published` / `cancelled` and carries a human-readable reason for
 /// `failed` (the publish engine joins per-relay reasons with `; `).
 ///
-/// This is a most-recent convenience signal, not an authoritative per-action
-/// store: if two actions settle in the same kernel tick this reports only the
-/// latest. The authoritative per-`correlationId` terminal status is in
-/// `SnapshotProjections.publishQueue` (`PublishQueueEntry.status`) — a host
-/// that needs exhaustive coverage correlates by `eventId` there.
+/// To clear spinners correctly: iterate `update.actionResults` each tick
+/// (direction review #29) — it drains every terminal that settled, not just
+/// the last one.
 struct LastActionResult: Decodable, Equatable {
     let correlationId: String
     let status: String
