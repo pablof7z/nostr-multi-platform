@@ -847,6 +847,15 @@ struct ThreadView: Decodable, Equatable {
     let items: [TimelineItem]
     let previousCount: Int
     let nextCount: Int
+    /// Pre-formatted "Show N earlier note(s)" string. Empty when `previousCount == 0`.
+    /// Rust owns pluralization — host renders verbatim (aim.md §6 anti-pattern #1).
+    /// Optional for forward-compatibility with older kernel builds that predate
+    /// the field; the host treats `nil` as the empty string (D1 — never branch on
+    /// missing protocol output, render placeholder instead).
+    let previousCountLabel: String?
+    /// Pre-formatted "N more repl{y,ies}" string. Empty when `nextCount == 0`.
+    /// Same rationale as `previousCountLabel`.
+    let nextCountLabel: String?
 }
 
 struct AccountSummary: Decodable, Identifiable, Equatable {

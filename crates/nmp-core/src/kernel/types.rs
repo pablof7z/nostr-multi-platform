@@ -150,6 +150,14 @@ pub(super) struct ThreadViewPayload {
     pub(super) items: Vec<TimelineItem>,
     pub(super) previous_count: usize,
     pub(super) next_count: usize,
+    /// Pre-formatted, ready-to-render label for the "Show N earlier" affordance.
+    /// Empty string when `previous_count == 0`. Kernel owns pluralization
+    /// (aim.md §6 anti-pattern #1: duplicated formatting belongs in Rust).
+    pub(super) previous_count_label: String,
+    /// Pre-formatted, ready-to-render label for the "N more replies" affordance.
+    /// Empty string when `next_count == 0`. Same rationale as
+    /// `previous_count_label`.
+    pub(super) next_count_label: String,
 }
 
 // ── Relay health and wire subscription state ──────────────────────────────────
