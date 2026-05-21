@@ -167,7 +167,12 @@ pub(crate) fn send_gift_wrapped_dm(
             );
             kernel.bootstrap_urls_for_role(crate::relay::RelayRole::Content)
         });
-        outbound.extend(super::publish::publish_signed_event(kernel, raw, &relays));
+        // NIP-17 gift-wrap is not a `dispatch_action` path — no host
+        // correlation_id to thread; the engine falls back to the publish
+        // handle (== gift-wrap envelope id) as before.
+        outbound.extend(super::publish::publish_signed_event(
+            kernel, raw, &relays, None,
+        ));
     }
 
     outbound

@@ -294,9 +294,22 @@ pub enum ActorCommand {
     /// `relays` selects the D3 routing mode: empty → `PublishTarget::Auto`
     /// (NIP-65 outbox, back-compat); non-empty → the named `Explicit` opt-out,
     /// dispatched to exactly those relays (e.g. kind:445 / kind:1059).
+    ///
+    /// `correlation_id` is the registry-minted action id when this publish
+    /// originates from `nmp_app_dispatch_action`'s `PublishAction::Publish`
+    /// path. Threading it makes the publish engine report THAT id in
+    /// `action_results` (via `correlation_id_override`) — explicit symmetry
+    /// with the `PublishNote` path. `None` for non-dispatch callers (the
+    /// `nmp_app_publish_signed_event*` C-ABI symbols, conformance tests); the
+    /// engine then falls back to the publish handle (== event id), preserving
+    /// prior behaviour. The pre-signed `Publish` round-trip already happened
+    /// to work by coincidence (`preferred_action_id` returns `event.id`, the
+    /// `None`-fallback also reports `event.id`); this field upgrades that
+    /// coincidence into an explicit guarantee a host can rely on.
     PublishSignedEvent {
         raw: crate::store::RawEvent,
         relays: Vec<crate::publish::RelayUrl>,
+        correlation_id: Option<String>,
     },
     /// Send a NIP-17 gift-wrapped DM. The actor constructs one kind:1059
     /// envelope per recipient and one self-copy, using the active signer's

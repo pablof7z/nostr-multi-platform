@@ -196,6 +196,60 @@ fn correlation_id_override_is_reported_in_pending_terminal_not_the_handle() {
     assert_eq!(terminal.status, "ok", "the all-OK publish settles ok");
 }
 
+/// PR-A: the symmetric round-trip guarantee for pre-signed `PublishAction::Publish`.
+///
+/// Today the dispatch return value happens to equal the event id (via
+/// `PublishModule::preferred_action_id`), and the engine's `None`-fallback also
+/// reports the handle (== event id) — so the round-trip closes by coincidence.
+/// The fix in PR-A threads the dispatch correlation_id through the executor →
+/// `ActorCommand::PublishSignedEvent` → `kernel.publish_signed_with_correlation`
+/// → `engine.start_publish(_, _, Some(id))`, so the engine reports the dispatch
+/// id explicitly even when it differs from the event id. This test simulates
+/// that path at the engine layer: a `Publish` action whose dispatch correlation_id
+/// is NOT the event id must still surface that correlation_id in the terminal —
+/// not the handle / event id.
+#[test]
+fn publish_action_threads_dispatch_correlation_id_through_to_terminal() {
+    let mut outbox = StaticOutbox::default();
+    outbox
+        .author_writes
+        .insert("alice".to_string(), vec!["wss://ok-a".to_string()]);
+    let dispatcher = Arc::new(ReplayDispatcher::new());
+    dispatcher.script("wss://ok-a", vec![RelayAck::ok("wss://ok-a")]);
+    let mut engine = engine_with(Arc::new(outbox), dispatcher);
+
+    // A 64-hex event id (NIP-01 shape) AND a distinct 32-hex dispatch id —
+    // structurally different strings so any code path that conflates them
+    // would surface as a mismatched assertion below.
+    let event_id = "fe".repeat(32);
+    let dispatch_correlation_id = "a1".repeat(16);
+    assert_ne!(event_id, dispatch_correlation_id);
+
+    engine
+        .start_publish(
+            PublishAction::Publish {
+                handle: event_id.clone(),
+                event: signed_event(&event_id, "alice", 1),
+                target: PublishTarget::Auto,
+            },
+            100,
+            Some(dispatch_correlation_id.clone()),
+        )
+        .unwrap();
+
+    let drained = engine.take_pending_terminals();
+    assert_eq!(drained.len(), 1, "the all-OK Publish settles one terminal");
+    assert_eq!(
+        drained[0].correlation_id, dispatch_correlation_id,
+        "Publish must report the dispatch correlation_id (round-trip key), not the event id"
+    );
+    assert_ne!(
+        drained[0].correlation_id, event_id,
+        "the event id MUST NOT leak as the terminal correlation_id when an override is set"
+    );
+    assert_eq!(drained[0].status, "ok");
+}
+
 #[test]
 fn no_correlation_id_override_falls_back_to_handle_in_pending_terminal() {
     // The pre-existing behaviour for every non-dispatch publish path

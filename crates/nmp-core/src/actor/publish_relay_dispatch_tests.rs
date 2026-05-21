@@ -58,7 +58,7 @@ fn route_state() -> (
 fn explicit_publish_target_spawns_worker_for_unseen_relay() {
     let (mut kernel, relay_tx, mut relay_controls, mut next_generation) = route_state();
     let raw = signed_raw_event("explicit relay dispatch");
-    let outbound = publish_signed_event(&mut kernel, raw, &[UNSEEN_RELAY.to_string()]);
+    let outbound = publish_signed_event(&mut kernel, raw, &[UNSEEN_RELAY.to_string()], None);
     let mut queued_publish_outbound = Vec::new();
 
     route_dispatch_outbound(

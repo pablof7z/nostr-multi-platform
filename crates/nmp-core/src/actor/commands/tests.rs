@@ -585,7 +585,7 @@ fn publish_signed_event_routes_and_dispatches_verbatim() {
     let (json, ev_id, ev_sig) = signed_nip01_json(&id, "# signed body");
 
     let raw: crate::store::RawEvent = serde_json::from_str(&json).unwrap();
-    let outbound = publish_signed_event(&mut kernel, raw, &[]);
+    let outbound = publish_signed_event(&mut kernel, raw, &[], None);
 
     assert!(!outbound.is_empty(), "valid signed event must route");
     assert_eq!(kernel.last_error_toast_snapshot(), None);
@@ -626,7 +626,7 @@ fn publish_signed_event_publishes_without_active_account() {
     kernel.seed_kind10002_for_test(&author, TEST_WRITE_RELAYS);
 
     let raw: crate::store::RawEvent = serde_json::from_str(&json).unwrap();
-    let outbound = publish_signed_event(&mut kernel, raw, &[]);
+    let outbound = publish_signed_event(&mut kernel, raw, &[], None);
 
     assert!(
         !outbound.is_empty(),
@@ -648,7 +648,7 @@ fn publish_signed_event_rejects_tampered_signature_with_toast() {
     assert_ne!(bad_json, json, "signature must actually have changed");
 
     let raw: crate::store::RawEvent = serde_json::from_str(&bad_json).unwrap();
-    let outbound = publish_signed_event(&mut kernel, raw, &[]);
+    let outbound = publish_signed_event(&mut kernel, raw, &[], None);
 
     assert!(
         outbound.is_empty(),
@@ -676,7 +676,7 @@ fn publish_signed_event_rejects_id_mismatch_with_toast() {
     // Mutate content without re-deriving the id → id-hash check must fail.
     let mut raw: crate::store::RawEvent = serde_json::from_str(&json).unwrap();
     raw.content = "tampered-after-signing".into();
-    let outbound = publish_signed_event(&mut kernel, raw, &[]);
+    let outbound = publish_signed_event(&mut kernel, raw, &[], None);
 
     assert!(outbound.is_empty(), "id-mismatch event must not publish");
     assert!(kernel
@@ -706,7 +706,7 @@ fn publish_signed_event_to_explicit_relays_routes_verbatim_to_exactly_those() {
 
     let relays: Vec<String> = TEST_GROUP_RELAYS.iter().map(|s| s.to_string()).collect();
     let raw: crate::store::RawEvent = serde_json::from_str(&json).unwrap();
-    let outbound = publish_signed_event(&mut kernel, raw, &relays);
+    let outbound = publish_signed_event(&mut kernel, raw, &relays, None);
 
     assert!(!outbound.is_empty(), "explicit-target publish must route");
     assert_eq!(kernel.last_error_toast_snapshot(), None);
@@ -743,7 +743,7 @@ fn publish_signed_event_to_empty_relays_falls_back_to_auto_outbox() {
     // Empty explicit set → behave exactly like the Auto path: route to the
     // author's kind:10002 write relays.
     let raw: crate::store::RawEvent = serde_json::from_str(&json).unwrap();
-    let outbound = publish_signed_event(&mut kernel, raw, &[]);
+    let outbound = publish_signed_event(&mut kernel, raw, &[], None);
 
     assert!(!outbound.is_empty(), "empty relays must fall back to Auto");
     assert_eq!(kernel.last_error_toast_snapshot(), None);
@@ -774,7 +774,7 @@ fn publish_signed_event_to_explicit_relays_works_with_no_active_account() {
 
     let relays: Vec<String> = TEST_GROUP_RELAYS.iter().map(|s| s.to_string()).collect();
     let raw: crate::store::RawEvent = serde_json::from_str(&json).unwrap();
-    let outbound = publish_signed_event(&mut kernel, raw, &relays);
+    let outbound = publish_signed_event(&mut kernel, raw, &relays, None);
 
     assert!(
         !outbound.is_empty(),
@@ -802,7 +802,7 @@ fn publish_signed_event_to_explicit_relays_still_rejects_tampered_sig() {
 
     let relays: Vec<String> = TEST_GROUP_RELAYS.iter().map(|s| s.to_string()).collect();
     let raw: crate::store::RawEvent = serde_json::from_str(&bad_json).unwrap();
-    let outbound = publish_signed_event(&mut kernel, raw, &relays);
+    let outbound = publish_signed_event(&mut kernel, raw, &relays, None);
 
     assert!(
         outbound.is_empty(),
