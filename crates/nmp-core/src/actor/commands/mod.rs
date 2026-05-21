@@ -60,6 +60,7 @@ mod lifecycle;
 mod publish;
 mod raw_event_observer;
 mod relays;
+mod remote_signer_for_seal;
 // D0: NIP-47 NWC is an app noun — the wallet command runtime (and its
 // `nmp-nwc` dependency) is gated behind the `wallet` Cargo feature.
 #[cfg(test)]
