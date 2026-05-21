@@ -887,7 +887,7 @@ fn relay_rows_from_create_account(relays: &[(String, String)]) -> Vec<RelayEditR
                 role
             };
             let role = canonical_relay_role(raw_role).unwrap_or_else(|| "both".to_string());
-            Some(RelayEditRow { url, role })
+            Some(RelayEditRow::new(url, role))
         })
         .collect()
 }

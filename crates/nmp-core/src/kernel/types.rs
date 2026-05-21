@@ -699,12 +699,12 @@ pub(super) struct KernelSnapshot {
     // projections: `make_update` inserts both keys directly after running the
     // host-registered projection closures.
     //
-    // D0: the publish cluster (`publish_queue`, `publish_outbox`,
-    // `relay_edit_rows`) is app-shaped relay/publish state — NOT a
-    // protocol-neutral kernel primitive. There are NO typed fields for them.
-    // All three are surfaced through the host-extensible `projections` map
-    // below under the built-in keys `"publish_queue"`, `"publish_outbox"`, and
-    // `"relay_edit_rows"`: a shell reads `projections.publish_queue` etc.
+    // D0: the publish/relay-settings cluster (`publish_queue`,
+    // `publish_outbox`, `relay_edit_rows`, `relay_role_options`) is app-shaped
+    // relay/publish state — NOT a protocol-neutral kernel primitive. There are
+    // NO typed fields for them. They are surfaced through the host-extensible
+    // `projections` map below under their built-in keys: a shell reads
+    // `projections.publish_queue` etc.
     // instead of a baked-in kernel field. Unlike the host-registered `"wallet"`
     // / `"bunker_handshake"` projections, these three are kernel-owned domain
     // state, so `make_update` inserts them into the map directly after running
@@ -736,9 +736,10 @@ pub(super) struct KernelSnapshot {
     /// `"todo.items"`).
     ///
     /// `make_update` also inserts the kernel-owned built-in projections after
-    /// running the host closures: `"publish_queue"`, `"publish_outbox"`, and
-    /// `"relay_edit_rows"` — the publish cluster (D0: relay/publish state is an
-    /// app noun, not a typed `KernelSnapshot` field); `"accounts"` /
+    /// running the host closures: `"publish_queue"`, `"publish_outbox"`,
+    /// `"relay_edit_rows"`, and `"relay_role_options"` — the publish /
+    /// relay-settings cluster (D0: relay/publish state is an app noun, not a
+    /// typed `KernelSnapshot` field); `"accounts"` /
     /// `"active_account"` — the identity pair; and `"profile"`, `"timeline"`,
     /// `"author_view"`, `"thread_view"`, `"inserted"`, `"updated"`,
     /// `"removed"` — the views cluster (D0: social view state is an app noun).

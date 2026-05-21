@@ -630,11 +630,11 @@ struct KernelUpdate: Decodable {
     // D0: NIP-47 NWC and NIP-46 remote signing are app nouns — neither is a
     // typed `KernelSnapshot` field anymore. Both are surfaced through the
     // kernel's host-extensible `projections` map: a built-in `"wallet"`
-    // projection and a built-in `"bunker_handshake"` projection. The publish
-    // cluster (`publish_queue`, `publish_outbox`, `relay_edit_rows`) is
-    // likewise app-shaped relay/publish state and lives in the same map under
-    // built-in keys. Optional so an older kernel that elides the map still
-    // decodes (D1).
+    // projection and a built-in `"bunker_handshake"` projection. The publish /
+    // relay-settings cluster (`publish_queue`, `publish_outbox`,
+    // `relay_edit_rows`, `relay_role_options`) is likewise app-shaped
+    // relay/publish state and lives in the same map under built-in keys.
+    // Optional so an older kernel that elides the map still decodes (D1).
     let projections: SnapshotProjections?
 
     /// NIP-47 wallet projection — `projections["wallet"]`. Computed so call
@@ -667,6 +667,10 @@ struct KernelUpdate: Decodable {
     /// Relay-edit rows projection — `projections["relay_edit_rows"]`. Computed
     /// so call sites keep reading `update.relayEditRows` unchanged.
     var relayEditRows: [RelayEditRow]? { projections?.relayEditRows }
+
+    /// Relay-role picker options — `projections["relay_role_options"]`. Rust owns
+    /// the canonical value list plus display labels/tint tokens.
+    var relayRoleOptions: [RelayRoleOption]? { projections?.relayRoleOptions }
 
     /// Account list projection — `projections["accounts"]`. D0: identity
     /// output is no longer a typed snapshot field. Computed so call sites
@@ -801,6 +805,7 @@ struct SnapshotProjections: Decodable, Equatable {
     /// older kernel that predates the projection still decodes (D1).
     let outboxSummary: OutboxSummary?
     let relayEditRows: [RelayEditRow]?
+    let relayRoleOptions: [RelayRoleOption]?
     // D0: identity output. `accounts` decodes from `projections["accounts"]`;
     // `activeAccount` decodes from `projections["active_account"]` (the kernel
     // emits snake_case and the decoder uses `.convertFromSnakeCase`).
@@ -896,6 +901,7 @@ struct SnapshotProjections: Decodable, Equatable {
         case publishOutbox
         case outboxSummary
         case relayEditRows
+        case relayRoleOptions
         case accounts
         case activeAccount
         case actionResults
@@ -1459,7 +1465,30 @@ struct OutboxSummary: Decodable, Equatable {
 struct RelayEditRow: Decodable, Identifiable, Equatable {
     let url: String
     let role: String
+    let roleLabel: String
+    let roleTint: String
     var id: String { url }
+
+    init(
+        url: String,
+        role: String,
+        roleLabel: String = "",
+        roleTint: String = "accent"
+    ) {
+        self.url = url
+        self.role = role
+        self.roleLabel = roleLabel
+        self.roleTint = roleTint
+    }
+}
+
+struct RelayRoleOption: Decodable, Identifiable, Equatable {
+    let value: String
+    let label: String
+    let tint: String
+    let isDefault: Bool
+
+    var id: String { value }
 }
 
 /// NIP-47 wallet connection status, projected from the kernel snapshot.

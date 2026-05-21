@@ -57,12 +57,9 @@ pub(crate) fn add_relay(kernel: &mut Kernel, url: &str, role: &str) -> Option<St
     };
     let mut rows = kernel.relay_edit_rows_snapshot().to_vec();
     if let Some(existing) = rows.iter_mut().find(|r| r.url == canonical) {
-        existing.role = role;
+        *existing = RelayEditRow::new(existing.url.clone(), role);
     } else {
-        rows.push(RelayEditRow {
-            url: canonical.clone(),
-            role,
-        });
+        rows.push(RelayEditRow::new(canonical.clone(), role));
     }
     kernel.set_relay_edit_rows(rows);
     kernel.set_last_error_toast(None);
@@ -169,6 +166,8 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].url, "wss://relay.example");
         assert_eq!(rows[0].role, "read");
+        assert_eq!(rows[0].role_label, "Read");
+        assert_eq!(rows[0].role_tint, "info");
         // Success clears any prior error toast.
         assert_eq!(kernel.last_error_toast_snapshot(), None);
     }
@@ -204,6 +203,8 @@ mod tests {
         let rows = kernel.relay_edit_rows_snapshot();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].role, "write");
+        assert_eq!(rows[0].role_label, "Write");
+        assert_eq!(rows[0].role_tint, "success");
     }
 
     #[test]

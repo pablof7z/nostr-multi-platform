@@ -7,10 +7,8 @@ struct RelaySettingsView: View {
 
     @State private var showSheet = false
     @State private var sheetURL = ""
-    @State private var sheetRole = "both"
+    @State private var sheetRole = ""
     @State private var isEditing = false
-
-    private let relayRoles = ["both,indexer", "both", "read", "write", "indexer"]
 
     var body: some View {
         List {
@@ -66,7 +64,7 @@ struct RelaySettingsView: View {
                 url: $sheetURL,
                 role: $sheetRole,
                 isEditing: isEditing,
-                relayRoles: relayRoles,
+                relayRoles: model.relayRoleOptions,
                 onSave: saveSheet
             )
         }
@@ -74,7 +72,7 @@ struct RelaySettingsView: View {
 
     private func openAdd() {
         sheetURL = ""
-        sheetRole = "both"
+        sheetRole = defaultRelayRole
         isEditing = false
         showSheet = true
     }
@@ -90,6 +88,12 @@ struct RelaySettingsView: View {
         let url = sheetURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !url.isEmpty else { return }
         model.addRelay(url: url, role: sheetRole)
+    }
+
+    private var defaultRelayRole: String {
+        model.relayRoleOptions.first(where: { $0.isDefault })?.value
+            ?? model.relayRoleOptions.first?.value
+            ?? ""
     }
 }
 
@@ -112,7 +116,7 @@ private struct RelayConfigRow: View {
 
             Spacer()
 
-            Text(roleTitle(relay.role))
+            Text(relay.roleLabel)
                 .font(.system(.caption2, design: .rounded).weight(.semibold))
                 .foregroundStyle(roleColor)
                 .padding(.horizontal, ChirpSpace.s)
@@ -123,17 +127,7 @@ private struct RelayConfigRow: View {
     }
 
     private var roleColor: Color {
-        switch relay.role {
-        case "read": return .cyan
-        case "write": return ChirpColor.positive
-        default: return ChirpColor.accent
-        }
-    }
-
-    private func roleTitle(_ role: String) -> String {
-        role.split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces).capitalized }
-            .joined(separator: " + ")
+        relayRoleTint(relay.roleTint)
     }
 }
 
@@ -141,7 +135,7 @@ private struct RelayEditSheet: View {
     @Binding var url: String
     @Binding var role: String
     let isEditing: Bool
-    let relayRoles: [String]
+    let relayRoles: [RelayRoleOption]
     let onSave: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -165,8 +159,8 @@ private struct RelayEditSheet: View {
 
                 Section("Role") {
                     Picker("Role", selection: $role) {
-                        ForEach(relayRoles, id: \.self) { relayRole in
-                            Text(roleTitle(relayRole)).tag(relayRole)
+                        ForEach(relayRoles) { relayRole in
+                            Text(relayRole.label).tag(relayRole.value)
                         }
                     }
                     .pickerStyle(.segmented)
@@ -182,7 +176,7 @@ private struct RelayEditSheet: View {
                             systemImage: isEditing ? "checkmark.circle" : "plus.circle"
                         )
                     }
-                    .disabled(trimmedURL.isEmpty)
+                    .disabled(trimmedURL.isEmpty || role.isEmpty)
                 }
             }
             .scrollContentBackground(.hidden)
@@ -201,10 +195,17 @@ private struct RelayEditSheet: View {
     private var trimmedURL: String {
         url.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+}
 
-    private func roleTitle(_ role: String) -> String {
-        role.split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces).capitalized }
-            .joined(separator: " + ")
+private func relayRoleTint(_ tint: String) -> Color {
+    switch tint {
+    case "info":
+        return .cyan
+    case "success":
+        return ChirpColor.positive
+    case "neutral":
+        return ChirpColor.textSecondary
+    default:
+        return ChirpColor.accent
     }
 }

@@ -100,6 +100,22 @@ pub(crate) struct RelayAckOutcome {
 pub(crate) struct RelayEditRow {
     pub(crate) url: String,
     pub(crate) role: String,
+    pub(crate) role_label: String,
+    pub(crate) role_tint: String,
+}
+
+impl RelayEditRow {
+    pub(crate) fn new(url: String, role: String) -> Self {
+        let role = crate::actor::canonical_relay_role(&role).unwrap_or(role);
+        let role_label = crate::actor::relay_role_label(&role);
+        let role_tint = crate::actor::relay_role_tint(&role);
+        Self {
+            url,
+            role,
+            role_label,
+            role_tint,
+        }
+    }
 }
 
 /// Pre-formatted subtitle strings for the iOS Settings hub. Folds the

@@ -65,6 +65,7 @@ final class KernelModel: ObservableObject {
     var publishOutbox: [PublishOutboxItem] { snapshot?.publishOutbox ?? [] }
     var outboxSummary: OutboxSummary { snapshot?.outboxSummary ?? .empty }
     var relayEditRows: [RelayEditRow] { snapshot?.relayEditRows ?? [] }
+    var relayRoleOptions: [RelayRoleOption] { snapshot?.relayRoleOptions ?? [] }
     var settingsHub: SettingsHubSummary { snapshot?.settingsHub ?? .empty }
     var threadView: ThreadView? { snapshot?.threadView }
     var walletStatus: WalletStatusData? { snapshot?.walletStatus }

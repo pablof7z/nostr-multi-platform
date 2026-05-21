@@ -614,10 +614,10 @@ mod tests {
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
         // Edit row stored canonical (lowercase host, no trailing slash) — the
         // exact form `add_relay` would persist.
-        kernel.set_relay_edit_rows(vec![RelayEditRow {
-            url: "wss://purplepag.es".to_string(),
-            role: "indexer".to_string(),
-        }]);
+        kernel.set_relay_edit_rows(vec![RelayEditRow::new(
+            "wss://purplepag.es".to_string(),
+            "indexer".to_string(),
+        )]);
 
         // A non-canonical caller input (mixed-case host + trailing slash) must
         // still resolve to the Indexer lane, not fall through to Content.

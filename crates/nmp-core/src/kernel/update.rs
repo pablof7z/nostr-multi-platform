@@ -147,11 +147,11 @@ impl Kernel {
             // host-registered snapshot projections (`"wallet"` /
             // `"bunker_handshake"`) collected in `projections` below.
             //
-            // D0: the publish cluster (`publish_queue`, `publish_outbox`,
-            // `relay_edit_rows`) is likewise app-shaped relay/publish state and
-            // is no longer a typed field set — `publish_cluster_projections`
-            // (below) inserts all three into the same `projections` map under
-            // built-in keys.
+            // D0: the publish / relay-settings cluster (`publish_queue`,
+            // `publish_outbox`, `relay_edit_rows`, `relay_role_options`) is
+            // likewise app-shaped relay/publish state and is no longer a typed
+            // field set — `snapshot_projections_with_publish_cluster` inserts
+            // them into the same `projections` map under built-in keys.
             //
             // Host-extensible snapshot output: run every host-registered
             // projection closure and append its namespaced JSON value, then
@@ -204,15 +204,15 @@ impl Kernel {
 
     /// Collect the snapshot `projections` map: every host-registered
     /// projection closure plus the kernel-owned built-in projections (the
-    /// publish cluster, the identity pair, and the views cluster).
+    /// publish / relay-settings cluster, the identity pair, and the views cluster).
     ///
-    /// D0: `publish_queue`, `publish_outbox`, and `relay_edit_rows` are
-    /// app-shaped relay/publish state; `accounts` / `active_account` are
-    /// identity output; and the views cluster (`profile`, `timeline`,
-    /// `author_view`, `thread_view`, `inserted`, `updated`, `removed`) is
-    /// app-shaped social view state — none are protocol-neutral kernel
-    /// primitives, so none carry a typed `KernelSnapshot` field. Unlike the
-    /// host-registered `"wallet"` / `"bunker_handshake"` projections (which
+    /// D0: `publish_queue`, `publish_outbox`, `relay_edit_rows`, and
+    /// `relay_role_options` are app-shaped relay/publish state; `accounts` /
+    /// `active_account` are identity output; and the views cluster (`profile`,
+    /// `timeline`, `author_view`, `thread_view`, `inserted`, `updated`,
+    /// `removed`) is app-shaped social view state — none are protocol-neutral
+    /// kernel primitives, so none carry a typed `KernelSnapshot` field. Unlike
+    /// the host-registered `"wallet"` / `"bunker_handshake"` projections (which
     /// read actor-runtime slots through a no-arg closure), these are
     /// kernel-owned, so they cannot be expressed as a `SnapshotRegistry`
     /// closure — they are inserted here directly after the host closures run.
@@ -225,11 +225,12 @@ impl Kernel {
     /// projection key `"timeline"`.
     ///
     /// Built-in keys win on collision: a host that registers `"publish_queue"`,
-    /// `"publish_outbox"`, `"relay_edit_rows"`, `"settings_hub"`, `"accounts"`,
-    /// `"active_account"`, `"profile"`, `"timeline"`, `"author_view"`,
-    /// `"thread_view"`, `"inserted"`, `"updated"`, or `"removed"` is overwritten
-    /// so the kernel-owned value stays authoritative. A serialization failure degrades
-    /// to a stable empty value (`[]` for the lists, `null` for the optional
+    /// `"publish_outbox"`, `"relay_edit_rows"`, `"relay_role_options"`,
+    /// `"settings_hub"`, `"accounts"`, `"active_account"`, `"profile"`,
+    /// `"timeline"`, `"author_view"`, `"thread_view"`, `"inserted"`,
+    /// `"updated"`, or `"removed"` is overwritten so the kernel-owned value
+    /// stays authoritative. A serialization failure degrades to a stable empty
+    /// value (`[]` for the lists, `null` for the optional
     /// payloads) — D6: never a panic at the snapshot boundary — and the key is
     /// still present, mirroring the old always-emitted typed fields.
     fn snapshot_projections_with_publish_cluster(
@@ -262,6 +263,11 @@ impl Kernel {
         projections.insert(
             "relay_edit_rows".to_string(),
             serde_json::to_value(self.relay_edit_rows_snapshot())
+                .unwrap_or(serde_json::Value::Null),
+        );
+        projections.insert(
+            "relay_role_options".to_string(),
+            serde_json::to_value(crate::actor::relay_role_options())
                 .unwrap_or(serde_json::Value::Null),
         );
         // Settings-hub view projection. Currently a single pre-formatted
