@@ -1,7 +1,7 @@
-//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10.
+//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10/D15.
 //!
 //! See `walker.rs` for the `#[cfg(test)]` module tracker, `allow.rs` for the
-//! per-line opt-out comment, and `rules/d{0,6,7,8,9,10}.rs` for individual
+//! per-line opt-out comment, and `rules/d{0,6,7,8,9,10,15}.rs` for individual
 //! rule definitions. Brainstorm item #8 in
 //! `docs/perf/parallel-work-brainstorm-2026-05-18.md`.
 //!
@@ -58,7 +58,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use rules::{d0, d10, d6, d7, d8, d9};
+use rules::{d0, d10, d15, d6, d7, d8, d9};
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
@@ -70,7 +70,7 @@ fn main() -> ExitCode {
             eprintln!(
                 "usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings] \
                  [--d8-extra-scope <fragment>] [--d9-extra-scope <fragment>] \
-                 [--d10-extra-scope <fragment>] \
+                 [--d10-extra-scope <fragment>] [--d15-extra-scope <fragment>] \
                  [--workspace-d8 [--workspace-d8-root <dir>]]"
             );
             return ExitCode::from(2);
@@ -100,6 +100,7 @@ fn main() -> ExitCode {
                 &cfg.d8_extra_scopes,
                 &cfg.d9_extra_scopes,
                 &cfg.d10_extra_scopes,
+                &cfg.d15_extra_scopes,
                 cfg.workspace_d8,
                 &mut all_findings,
             ) {
@@ -125,7 +126,7 @@ fn main() -> ExitCode {
         let rules = if cfg.workspace_d8 {
             "D8 no-polling"
         } else {
-            "D0/D6/D7/D8/D9/D10"
+            "D0/D6/D7/D8/D9/D10/D15"
         };
         eprintln!(
             "doctrine-lint: 0 findings across {} root(s) ({} clean).",
@@ -156,6 +157,7 @@ fn scan_one_file(
     d8_extra_scopes: &[String],
     d9_extra_scopes: &[String],
     d10_extra_scopes: &[String],
+    d15_extra_scopes: &[String],
     workspace_d8: bool,
     findings: &mut Vec<report::Finding>,
 ) -> std::io::Result<()> {
@@ -165,9 +167,11 @@ fn scan_one_file(
     let d8_in_scope = d8::file_in_scope(path, d8_extra_scopes);
     let d9_in_scope = d9_file_in_scope(path, d9_extra_scopes);
     let d10_in_scope = d10_file_in_scope(path, d10_extra_scopes);
+    let d15_in_scope = d15_file_in_scope(path, d15_extra_scopes);
     let mut d6_state = d6::State::default();
     let mut d8_tracker = d8::HotPathTracker::default();
     let mut d10_tracker = d10::PrivatePublishTracker::default();
+    let mut d15_state = d15::State::default();
 
     walker::scan_file(path, |sl| {
         // D8 tracker must observe every line even when out-of-scope so its
@@ -290,6 +294,30 @@ fn scan_one_file(
                 });
             }
         }
+        // D15 — host-supplied closure invocations MUST be wrapped in
+        // `catch_unwind` / `guard_ffi_callback`. Scope is `nmp-core/src/`
+        // (host-closure registration seams live in the substrate). The
+        // check is stateful (brace-depth + guard stack), so the state
+        // must observe every line of the in-scope file.
+        if !workspace_d8 && d15_in_scope {
+            for (col, msg, suggested) in
+                d15::check(&mut d15_state, path, sl.text, sl.is_comment)
+            {
+                if allow::line_allows(sl.text, d15::ID) {
+                    continue;
+                }
+                findings.push(report::Finding {
+                    rule: d15::ID,
+                    path: path.to_path_buf(),
+                    line: sl.line_no,
+                    col,
+                    message: msg,
+                    suggested,
+                });
+            }
+        } else if d15_in_scope {
+            let _ = d15::check(&mut d15_state, path, sl.text, sl.is_comment);
+        }
         // D8 — no polling (`thread::sleep`, `tokio::time::sleep`,
         // `tokio::time::sleep_until`). NOT path-scoped: the no-poll
         // doctrine applies to all non-test code under `nmp-core`. Reuses
@@ -344,6 +372,16 @@ fn d10_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
     extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
 }
 
+/// True iff D15 should scan `path` — either `nmp-core/src/` via
+/// `d15::file_in_scope`, or the caller opted-in via `--d15-extra-scope`.
+fn d15_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
+    if d15::file_in_scope(path) {
+        return true;
+    }
+    let s = path.to_string_lossy().replace('\\', "/");
+    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // CLI
 // ────────────────────────────────────────────────────────────────────────────
@@ -366,6 +404,8 @@ struct Config {
     /// rule at `bin/doctrine-lint/fixtures/d10/`, which otherwise falls
     /// outside the `nmp-{core,nip17,marmot}` scope.
     d10_extra_scopes: Vec<String>,
+    /// Extra path fragments treated as D15-in-scope.
+    d15_extra_scopes: Vec<String>,
     /// `--workspace-d8`: scan every production crate for D8 no-polling
     /// violations only. D0/D6/D7 (substrate-purity rules) stay nmp-core
     /// scoped — only the universally-applicable `thread::sleep` check runs.
@@ -393,7 +433,8 @@ fn parse_args(args: &[String]) -> Result<Config, String> {
             "--path" => {
                 i += 1;
                 cfg.explicit_paths.push(PathBuf::from(
-                    args.get(i).ok_or_else(|| "--path requires a path".to_string())?,
+                    args.get(i)
+                        .ok_or_else(|| "--path requires a path".to_string())?,
                 ));
             }
             "--allow-findings" => {
@@ -423,18 +464,26 @@ fn parse_args(args: &[String]) -> Result<Config, String> {
                         .clone(),
                 );
             }
+            "--d15-extra-scope" => {
+                i += 1;
+                cfg.d15_extra_scopes.push(
+                    args.get(i)
+                        .ok_or_else(|| "--d15-extra-scope requires a path fragment".to_string())?
+                        .clone(),
+                );
+            }
             "--workspace-d8" => {
                 cfg.workspace_d8 = true;
             }
             "--workspace-d8-root" => {
                 i += 1;
-                cfg.workspace_d8_root = Some(PathBuf::from(
-                    args.get(i)
-                        .ok_or_else(|| "--workspace-d8-root requires a path".to_string())?,
-                ));
+                cfg.workspace_d8_root =
+                    Some(PathBuf::from(args.get(i).ok_or_else(|| {
+                        "--workspace-d8-root requires a path".to_string()
+                    })?));
             }
             "-h" | "--help" => {
-                println!("usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings] [--d8-extra-scope <fragment>] [--d9-extra-scope <fragment>] [--d10-extra-scope <fragment>] [--workspace-d8 [--workspace-d8-root <dir>]]");
+                println!("usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings] [--d8-extra-scope <fragment>] [--d9-extra-scope <fragment>] [--d10-extra-scope <fragment>] [--d15-extra-scope <fragment>] [--workspace-d8 [--workspace-d8-root <dir>]]");
                 std::process::exit(0);
             }
             other => return Err(format!("unknown argument: {}", other)),
@@ -446,9 +495,7 @@ fn parse_args(args: &[String]) -> Result<Config, String> {
         // fall through to the `--crate nmp-core` default below, and mixing
         // it with `--crate` / `--path` would be ambiguous.
         if cfg.crate_name.is_some() || !cfg.explicit_paths.is_empty() {
-            return Err(
-                "--workspace-d8 cannot be combined with --crate or --path".to_string(),
-            );
+            return Err("--workspace-d8 cannot be combined with --crate or --path".to_string());
         }
     } else {
         if cfg.workspace_d8_root.is_some() {
@@ -539,8 +586,7 @@ fn workspace_crate_src_roots(workspace_root: &Path) -> Result<Vec<PathBuf>, Stri
         let app_entries = std::fs::read_dir(&apps_dir)
             .map_err(|e| format!("failed to read {}: {}", apps_dir.display(), e))?;
         for app_entry in app_entries {
-            let app_entry =
-                app_entry.map_err(|e| format!("failed to read apps/ entry: {}", e))?;
+            let app_entry = app_entry.map_err(|e| format!("failed to read apps/ entry: {}", e))?;
             if !app_entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
                 continue;
             }

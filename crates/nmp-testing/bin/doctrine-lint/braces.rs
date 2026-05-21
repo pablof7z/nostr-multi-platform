@@ -12,6 +12,19 @@
 //! Such failures show up loud-and-clear in the zero-FP sweep.
 
 pub fn count_braces_ignoring_strings(line: &str) -> (usize, usize) {
+    count_delims_ignoring_strings(line, b'{', b'}')
+}
+
+/// Count `(` / `)` in `line`, ignoring those inside string literals, char
+/// literals, and line comments. Same body as
+/// [`count_braces_ignoring_strings`], parameterised on the delimiter pair —
+/// extracted so the D15 lint can track paren-depth across lines without
+/// duplicating the string-skipping logic.
+pub fn count_parens_ignoring_strings(line: &str) -> (usize, usize) {
+    count_delims_ignoring_strings(line, b'(', b')')
+}
+
+fn count_delims_ignoring_strings(line: &str, open: u8, close: u8) -> (usize, usize) {
     let bytes = line.as_bytes();
     let mut opens = 0usize;
     let mut closes = 0usize;
@@ -53,14 +66,14 @@ pub fn count_braces_ignoring_strings(line: &str) -> (usize, usize) {
         if b == b'\'' {
             // Only treat as char-literal if a closing `'` lives within 4
             // bytes (otherwise it's a lifetime annotation; ignore).
-            if let Some(close) = find_char_close(&bytes[i + 1..]) {
-                i += close + 2;
+            if let Some(close_pos) = find_char_close(&bytes[i + 1..]) {
+                i += close_pos + 2;
                 continue;
             }
         }
-        if b == b'{' {
+        if b == open {
             opens += 1;
-        } else if b == b'}' {
+        } else if b == close {
             closes += 1;
         }
         i += 1;

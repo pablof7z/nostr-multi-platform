@@ -544,6 +544,72 @@ fn d10_scoped_crates_are_clean() {
     );
 }
 
+// ─── D15 (host-closure invocations must be panic-guarded) ────────────────────
+
+#[test]
+fn d15_positive_fixture_fires() {
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d15_pos");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let pos_src = workspace.join(fixture_path("d15/pos.rs"));
+    std::fs::copy(&pos_src, tmp.join("pos.rs")).expect("copy pos fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d15-extra-scope",
+        "doctrine_lint_d15_pos",
+    ]);
+    assert_eq!(
+        code, 1,
+        "d15 positive must exit 1; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[D15]"),
+        "d15 positive must emit >=1 D15 finding; stdout:\n{}",
+        stdout
+    );
+    for token in ["observer(", "(self.callback)(", "callback("] {
+        assert!(
+            stdout.contains(token),
+            "d15 positive must name `{}`; stdout:\n{}",
+            token,
+            stdout
+        );
+    }
+}
+
+#[test]
+fn d15_negative_fixture_clean() {
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d15_neg");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let neg_src = workspace.join(fixture_path("d15/neg.rs"));
+    std::fs::copy(&neg_src, tmp.join("neg.rs")).expect("copy neg fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d15-extra-scope",
+        "doctrine_lint_d15_neg",
+    ]);
+    assert_eq!(
+        code, 0,
+        "d15 negative must exit 0; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.contains("error[D15]"),
+        "d15 negative must produce zero D15 findings; stdout:\n{}",
+        stdout
+    );
+}
+
 // ─── --workspace-d8 (workspace-wide no-polling scan) ─────────────────────────
 
 /// Builds a throwaway `crates/<name>/src/<file>.rs` tree under `target/` and
@@ -573,8 +639,7 @@ fn workspace_d8_flags_production_sleep_in_any_crate() {
         )],
     );
     let root_str = root.to_string_lossy().into_owned();
-    let (code, stdout, stderr) =
-        run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
+    let (code, stdout, stderr) = run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
     assert_eq!(
         code, 1,
         "workspace-d8 must exit 1 on a production sleep; stdout:\n{}\nstderr:\n{}",
@@ -608,8 +673,7 @@ fn workspace_d8_flags_production_tokio_sleep_in_any_crate() {
         )],
     );
     let root_str = root.to_string_lossy().into_owned();
-    let (code, stdout, stderr) =
-        run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
+    let (code, stdout, stderr) = run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
     assert_eq!(
         code, 1,
         "workspace-d8 must exit 1 on a production tokio::time::sleep; stdout:\n{}\nstderr:\n{}",
@@ -641,8 +705,7 @@ fn workspace_d8_flags_production_tokio_sleep_until_in_any_crate() {
         )],
     );
     let root_str = root.to_string_lossy().into_owned();
-    let (code, stdout, stderr) =
-        run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
+    let (code, stdout, stderr) = run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
     assert_eq!(
         code, 1,
         "workspace-d8 must exit 1 on a production tokio::time::sleep_until; stdout:\n{}\nstderr:\n{}",
@@ -675,8 +738,7 @@ fn workspace_d8_exempts_cfg_test_tokio_sleep() {
         )],
     );
     let root_str = root.to_string_lossy().into_owned();
-    let (code, stdout, stderr) =
-        run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
+    let (code, stdout, stderr) = run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
     assert_eq!(
         code, 0,
         "workspace-d8 must exempt cfg(test) tokio sleeps; stdout:\n{}\nstderr:\n{}",
@@ -699,8 +761,7 @@ fn workspace_d8_runs_only_d8_not_d0_d6_d7() {
         )],
     );
     let root_str = root.to_string_lossy().into_owned();
-    let (code, stdout, stderr) =
-        run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
+    let (code, stdout, stderr) = run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
     assert_eq!(
         code, 0,
         "workspace-d8 must not flag a D6 .unwrap(); stdout:\n{}\nstderr:\n{}",
@@ -728,8 +789,7 @@ fn workspace_d8_exempts_cfg_test_sleeps() {
         )],
     );
     let root_str = root.to_string_lossy().into_owned();
-    let (code, stdout, stderr) =
-        run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
+    let (code, stdout, stderr) = run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
     assert_eq!(
         code, 0,
         "workspace-d8 must exempt cfg(test) sleeps; stdout:\n{}\nstderr:\n{}",
@@ -751,8 +811,7 @@ fn workspace_d8_skips_nmp_testing_crate() {
         )],
     );
     let root_str = root.to_string_lossy().into_owned();
-    let (code, stdout, stderr) =
-        run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
+    let (code, stdout, stderr) = run_lint(&["--workspace-d8", "--workspace-d8-root", &root_str]);
     assert_eq!(
         code, 0,
         "workspace-d8 must skip the nmp-testing crate; stdout:\n{}\nstderr:\n{}",

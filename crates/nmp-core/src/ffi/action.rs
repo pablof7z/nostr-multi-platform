@@ -341,7 +341,19 @@ pub extern "C" fn nmp_app_register_action_result_observer(
         // SAFETY: `observer` is a valid function pointer per this symbol's
         // safety contract; `cstr.as_ptr()` is a valid NUL-terminated C
         // string live for the duration of the call.
-        unsafe { observer(cstr.as_ptr()) };
+        //
+        // D6 — wrap the foreign callback in `guard_ffi_callback` for the
+        // same reason the kernel-event / raw-event observer fan-outs do:
+        // a Swift `fatalError` / Kotlin exception thrown from the host's
+        // observer would otherwise unwind across the C ABI (undefined
+        // behaviour). The outer `deliver_result` also wraps its closure
+        // in `catch_unwind`, so a Rust panic raised by serde / `CString`
+        // is already contained; this guard closes the foreign-throw half
+        // of the gap.
+        let _: Option<()> = crate::ffi_guard::guard_ffi_callback(
+            "action result observer",
+            || unsafe { observer(cstr.as_ptr()) },
+        );
     });
 }
 
