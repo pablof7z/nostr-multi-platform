@@ -28,8 +28,11 @@
 use std::ffi::{c_char, CStr, CString};
 use std::sync::Arc;
 
-use nmp_core::substrate::{ActionPlan, ActionRejection, ActionStatus};
+use nmp_core::substrate::{
+    ActionContext, ActionModule, ActionPlan, ActionRejection, ActionStatus,
+};
 use nmp_core::{ActorCommand, KernelEventObserverId, NmpApp};
+use nmp_nip29::action::{JoinRequestAction, JoinRequestInput};
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
 use nmp_threading::ModulePolicy;
@@ -109,6 +112,17 @@ pub extern "C" fn nmp_app_chirp_register(
     // No other reference aliases it at this point — the `&*app` borrow below
     // is taken only after this exclusive borrow is dropped.
     register_chirp_actions(unsafe { &mut *app });
+
+    // Register the NIP-29 `JoinRequestAction` module against the kernel.
+    // Unlike `register_chirp_actions` (Chirp's own social verbs), this wires
+    // an `ActionModule` impl that lives in the `nmp-nip29` protocol crate —
+    // proving the host-extensibility seam works for NIP-crate modules too,
+    // not just app-local verbs. Same `&mut NmpApp` / pre-`nmp_app_start`
+    // ordering rule as `register_chirp_actions` above.
+    //
+    // SAFETY: same exclusive-borrow rationale as `register_chirp_actions` —
+    // no other reference aliases `app` at this point.
+    register_nip29_actions(unsafe { &mut *app });
 
     // SAFETY: caller guarantees `app` is a valid pointer allocated by
     // `nmp_app_new` for the duration of this call. We do not hold the
@@ -287,6 +301,66 @@ fn register_chirp_actions(app: &mut NmpApp) {
     });
 }
 
+/// Register NIP-29 group action namespaces against `app`'s action registry.
+///
+/// This is the first wiring of an `ActionModule` impl that lives in a NIP
+/// protocol crate (`nmp-nip29`) rather than in this app crate. It proves the
+/// host-extensibility seam (`register_action_module` / `register_action_executor`)
+/// is not limited to Chirp's own social verbs — any NIP crate's typed
+/// `ActionModule` can be reached through the generic `dispatch_action` path.
+///
+/// Only `nip29.join_request` is wired here (the namespace constant comes from
+/// [`JoinRequestAction::NAMESPACE`], the single source of truth — the kernel
+/// `nmp-core` is NOT edited to hardcode it). The other 14 `nmp-nip29`
+/// `ActionModule` impls (`admin`, `content`, `composed`) follow the same
+/// pattern when their app surfaces need them.
+///
+/// JSON schema (the third arg to `nmp_app_dispatch_action`):
+/// * `nip29.join_request` —
+///   `{"group":{"host_relay_url":"wss://…","local_id":"…"},
+///     "invite_code":null,"referrer_event_id":null,"reason":null}`
+///
+/// The **module** validator delegates straight to the typed
+/// [`JoinRequestAction::start`] — so the crate's real validation logic
+/// (host-pin enforcement, tag construction, `validate_no_unpinned_h`) runs;
+/// it is not re-imitated here. The resulting `ActionPlan<MembershipStep>` is
+/// erased to `ActionPlan<serde_json::Value>` for the host seam.
+///
+/// The **executor** confirms acceptance (`Ok(())`) without enqueueing an
+/// `ActorCommand`: a NIP-29 join request must be host-pinned to the group's
+/// own relay, and there is no `ActorCommand` today that publishes an unsigned
+/// event to an explicit relay pin (`PublishUnsignedEvent` routes via the
+/// NIP-65 outbox — wrong target for a group event). Wiring that publish path
+/// is deliberately out of scope; this registration proves the dispatch seam.
+fn register_nip29_actions(app: &mut NmpApp) {
+    // Module (validator): delegate to the typed `nmp-nip29` `ActionModule`.
+    app.register_action_module(JoinRequestAction::NAMESPACE, |action_json| {
+        let action: JoinRequestInput = serde_json::from_str(action_json)
+            .map_err(|e| ActionRejection::Invalid(e.to_string()))?;
+        let mut ctx = ActionContext { now_ms: 0 };
+        let plan = JoinRequestAction::start(&mut ctx, action)?;
+        // Erase the typed `MembershipStep` to `serde_json::Value` for the
+        // host-seam `ActionPlan` shape. `MembershipStep` is a unit struct so
+        // this is infallible in practice; treat an encode error as invalid.
+        let initial_step = serde_json::to_value(&plan.initial_step)
+            .map_err(|e| ActionRejection::Invalid(e.to_string()))?;
+        Ok(ActionPlan {
+            initial_step,
+            initial_status: plan.initial_status,
+            deadline_ms: plan.deadline_ms,
+        })
+    });
+
+    // Executor: confirm acceptance. See the doc comment above for why no
+    // `ActorCommand` is enqueued (no host-pinned unsigned-publish path yet).
+    app.register_action_executor(JoinRequestAction::NAMESPACE, |action_json, _send| {
+        // Re-validate JSON shape so a malformed body fails the executor half
+        // too (defence in depth — the module validator already rejected it).
+        serde_json::from_str::<JoinRequestInput>(action_json).map_err(|e| e.to_string())?;
+        Ok(())
+    });
+}
+
 /// `chirp.react` action body: `{"target_event_id":"<hex>","reaction":"+"}`.
 /// `reaction` defaults to `"+"` (the standard kind:7 like) when absent —
 /// matching the old `nmp_app_react` FFI symbol's `unwrap_or("+")` behaviour.
@@ -399,6 +473,54 @@ mod tests {
         assert!(
             parsed.get("error").is_some(),
             "wrong-shape chirp.follow must be rejected: {parsed}"
+        );
+
+        nmp_app_chirp_unregister(handle);
+        nmp_app_free(app);
+    }
+
+    /// THE NIP-CRATE SEAM PROOF: after `nmp_app_chirp_register`, the NIP-29
+    /// `JoinRequestAction` — an `ActionModule` impl living in the `nmp-nip29`
+    /// protocol crate, NOT this app crate — is reachable through the generic
+    /// `dispatch_action` path. A well-formed `JoinRequestInput` yields a
+    /// 32-hex `correlation_id` (both the typed module validator and the
+    /// executor are wired); a malformed body is rejected with `error`.
+    ///
+    /// This proves the host-extensibility seam (`register_action_module` /
+    /// `register_action_executor`) works for NIP-crate modules, not just
+    /// Chirp's app-local social verbs — without `nmp-core` learning any
+    /// NIP-29 group nouns (D0).
+    #[test]
+    fn nip29_join_request_dispatches_through_action_registry() {
+        let app = nmp_app_new();
+        let handle = nmp_app_chirp_register(app, std::ptr::null());
+        assert!(!handle.is_null());
+
+        // Well-formed join request: a host-pinned group + optional fields.
+        // The typed `JoinRequestAction::start` builds the `["h", local_id]`
+        // tag and enforces the host pin — a missing pin would reject here.
+        let body = r#"{"group":{"host_relay_url":"wss://groups.example.com","local_id":"rust-nostr"},"invite_code":"abc123","referrer_event_id":null,"reason":"hello"}"#;
+        let parsed = dispatch(app, "nip29.join_request", body);
+        let id = parsed
+            .get("correlation_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("expected correlation_id, got {parsed}"));
+        assert_eq!(id.len(), 32, "correlation id should be 32 hex");
+
+        // Minimal body — only the required `group` field; the rest default.
+        let minimal = r#"{"group":{"host_relay_url":"wss://groups.example.com","local_id":"rust-nostr"}}"#;
+        let parsed = dispatch(app, "nip29.join_request", minimal);
+        assert!(
+            parsed.get("correlation_id").is_some(),
+            "minimal join request should succeed: {parsed}"
+        );
+
+        // Malformed shape (missing the required `group`) is rejected by the
+        // typed module validator surfaced through the host seam (D6).
+        let parsed = dispatch(app, "nip29.join_request", r#"{"reason":"no group"}"#);
+        assert!(
+            parsed.get("error").is_some(),
+            "join request without `group` must be rejected: {parsed}"
         );
 
         nmp_app_chirp_unregister(handle);
