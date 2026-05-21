@@ -11,6 +11,16 @@
 //! - `preimage` (optional).
 //! - `description` (the embedded kind:9734 zap request as JSON, used as
 //!   sender + fallback amount source).
+//!
+//! ## Security precondition (not yet enforced)
+//!
+//! NIP-57 Appendix F requires that SHA-256(description_tag_raw_bytes) equals
+//! the payment hash embedded in the bolt11 data part (type 1 field, 32 bytes).
+//! This decoder does NOT yet perform that check — doing so requires BOLT-11
+//! bech32 data-part decoding and a SHA-256 dependency (`sha2` crate). Until
+//! that check is added, a receipt with a mismatched description could surface a
+//! forged `sender_pubkey` or `amount_msats`. **Do not use decoded fields for
+//! authorization decisions until this check lands.**
 
 use nmp_core::store::StoredEvent;
 use nmp_core::substrate::KernelEvent;

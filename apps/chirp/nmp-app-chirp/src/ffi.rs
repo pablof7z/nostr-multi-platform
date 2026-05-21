@@ -48,6 +48,34 @@ use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
 use nmp_threading::ModulePolicy;
 
+/// Register one typed `ActionModule` against `$app`'s action registry.
+///
+/// The validator half calls `$Action::start` (typed, uses the same `build_plan`
+/// closure the executor uses); the executor half delegates to `$command`, a
+/// crate-level `fn(&str) -> Result<ActorCommand, String>` that builds the
+/// `UnsignedEvent` and returns a `PublishUnsignedEventToRelays` command.
+///
+/// Using the macro keeps the namespace string written once (`$Action::NAMESPACE`)
+/// so the validator and executor can never be mismatched.
+macro_rules! wire_action {
+    ($app:ident, $Action:ident, $Input:ident, $command:ident) => {{
+        $app.register_action_module($Action::NAMESPACE, |action_json| {
+            let action: $Input = serde_json::from_str(action_json)
+                .map_err(|e| ActionRejection::Invalid(e.to_string()))?;
+            let mut ctx = ActionContext { now_ms: 0 };
+            $Action::start(&mut ctx, action)
+        });
+        $app.register_action_executor(
+            $Action::NAMESPACE,
+            |action_json, _correlation_id, send| {
+                let cmd = $command(action_json)?;
+                send(cmd);
+                Ok(())
+            },
+        );
+    }};
+}
+
 /// Opaque handle returned by [`nmp_app_chirp_register`]. Boxed on the heap
 /// so the address is stable; the Swift consumer holds the raw pointer until
 /// it calls [`nmp_app_chirp_unregister`].
@@ -334,61 +362,31 @@ fn register_chirp_actions(app: &mut NmpApp) {
 ///   outbox resolver — a group event must reach the group's host relay,
 ///   never the author's kind:10002 outbox.
 ///
-/// Previously only `nip29.join_request` was wired and its executor
-/// re-built the `UnsignedEvent` by hand in this file, duplicating the tag
-/// logic. The other 14 `ActionModule` impls each built a `PublishPlan` and
-/// then discarded it (`Ok(())`). `PublishPlan::into_actor_command` closes
-/// that gap: the plan the validator builds is now the same plan the executor
-/// publishes.
-///
 /// Namespaces come from each `<Action>::NAMESPACE` constant — the single
-/// source of truth — so `nmp-core` is never edited to hardcode them. All 15
-/// namespaces follow the same snake_case convention (`nip29.create_group`,
-/// `nip29.join_request`, …); the admin ones take an explicit snake_case
-/// literal in their `admin_action!` macro invocation rather than deriving the
-/// CamelCase module ident, so the wire format stays uniform.
+/// source of truth. All 15 namespaces use snake_case: `nip29.join_request`,
+/// `nip29.create_group`, `nip29.post_chat_message`, etc. The shared
+/// [`wire_action!`] macro ensures validator and executor are always registered
+/// against the same constant, preventing namespace mismatch.
 fn register_nip29_actions(app: &mut NmpApp) {
-    /// Register one NIP-29 action: a typed `<Action>::start` validator (the
-    /// `<Input>` type drives the JSON shape) plus an executor that delegates
-    /// to the typed `<command>` function from `nmp-nip29`.
-    macro_rules! wire {
-        ($Action:ident, $Input:ident, $command:ident) => {{
-            app.register_action_module($Action::NAMESPACE, |action_json| {
-                let action: $Input = serde_json::from_str(action_json)
-                    .map_err(|e| ActionRejection::Invalid(e.to_string()))?;
-                let mut ctx = ActionContext { now_ms: 0 };
-                $Action::start(&mut ctx, action)
-            });
-            app.register_action_executor(
-                $Action::NAMESPACE,
-                |action_json, _correlation_id, send| {
-                    let cmd = $command(action_json)?;
-                    send(cmd);
-                    Ok(())
-                },
-            );
-        }};
-    }
-
     // membership
-    wire!(JoinRequestAction, JoinRequestInput, join_request_command);
-    wire!(LeaveRequestAction, LeaveRequestInput, leave_request_command);
+    wire_action!(app, JoinRequestAction, JoinRequestInput, join_request_command);
+    wire_action!(app, LeaveRequestAction, LeaveRequestInput, leave_request_command);
     // content
-    wire!(PostChatMessageAction, PostChatMessageInput, post_chat_message_command);
-    wire!(PostDiscussionAction, PostDiscussionInput, post_discussion_command);
-    wire!(PostArtifactAction, PostArtifactInput, post_artifact_command);
+    wire_action!(app, PostChatMessageAction, PostChatMessageInput, post_chat_message_command);
+    wire_action!(app, PostDiscussionAction, PostDiscussionInput, post_discussion_command);
+    wire_action!(app, PostArtifactAction, PostArtifactInput, post_artifact_command);
     // composed
-    wire!(ShareEventIntoGroupAction, ShareEventIntoGroupInput, share_event_into_group_command);
-    wire!(ReactInGroupAction, ReactInGroupInput, react_in_group_command);
-    wire!(CommentInGroupAction, CommentInGroupInput, comment_in_group_command);
+    wire_action!(app, ShareEventIntoGroupAction, ShareEventIntoGroupInput, share_event_into_group_command);
+    wire_action!(app, ReactInGroupAction, ReactInGroupInput, react_in_group_command);
+    wire_action!(app, CommentInGroupAction, CommentInGroupInput, comment_in_group_command);
     // admin
-    wire!(CreateGroupAction, CreateGroupInput, create_group_command);
-    wire!(EditMetadataAction, EditMetadataInput, edit_metadata_command);
-    wire!(PutUserAction, PutUserInput, put_user_command);
-    wire!(RemoveUserAction, RemoveUserInput, remove_user_command);
-    wire!(CreateInviteAction, CreateInviteInput, create_invite_command);
-    wire!(DeleteEventAction, DeleteEventInput, delete_event_command);
-    wire!(DeleteGroupAction, DeleteGroupInput, delete_group_command);
+    wire_action!(app, CreateGroupAction, CreateGroupInput, create_group_command);
+    wire_action!(app, EditMetadataAction, EditMetadataInput, edit_metadata_command);
+    wire_action!(app, PutUserAction, PutUserInput, put_user_command);
+    wire_action!(app, RemoveUserAction, RemoveUserInput, remove_user_command);
+    wire_action!(app, CreateInviteAction, CreateInviteInput, create_invite_command);
+    wire_action!(app, DeleteEventAction, DeleteEventInput, delete_event_command);
+    wire_action!(app, DeleteGroupAction, DeleteGroupInput, delete_group_command);
 }
 
 /// Register the NIP-57 `ZapModule` action namespace against `app`'s action
@@ -420,26 +418,7 @@ fn register_nip29_actions(app: &mut NmpApp) {
 /// field is validated and carried; wiring the executor through `HttpCapability`
 /// is a follow-up (see `docs/decisions/0023-http-capability-synchronous-socket.md`).
 fn register_nip57_actions(app: &mut NmpApp) {
-    // Module (validator): delegate to the typed `nmp-nip57` `ActionModule`.
-    app.register_action_module(ZapModule::NAMESPACE, |action_json| {
-        let action: ZapAction = serde_json::from_str(action_json)
-            .map_err(|e| ActionRejection::Invalid(e.to_string()))?;
-        let mut ctx = ActionContext { now_ms: 0 };
-        ZapModule::start(&mut ctx, action)
-    });
-
-    // Executor: build the kind:9734 zap-request event and enqueue a
-    // relay-pinned publish. The closure is a thin shim over
-    // `zap_request_command` so the action→command mapping stays unit-testable
-    // in the `nmp-nip57` crate without the FFI / actor channel.
-    app.register_action_executor(
-        ZapModule::NAMESPACE,
-        |action_json, _correlation_id, send| {
-            let cmd = zap_request_command(action_json)?;
-            send(cmd);
-            Ok(())
-        },
-    );
+    wire_action!(app, ZapModule, ZapAction, zap_request_command);
 }
 
 /// `chirp.react` action body: `{"target_event_id":"<hex>","reaction":"+"}`.
