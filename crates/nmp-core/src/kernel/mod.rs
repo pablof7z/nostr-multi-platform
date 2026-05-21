@@ -109,6 +109,8 @@ mod t170_relay_scoped_keying_tests;
 #[cfg(test)]
 mod t171_planner_error_projection_tests;
 #[cfg(test)]
+mod nip17_dm_inbox_routing_tests;
+#[cfg(test)]
 mod timeline_perf_tests;
 #[cfg(test)]
 mod timeline_order_tests;

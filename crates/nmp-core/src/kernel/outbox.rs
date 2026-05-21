@@ -238,15 +238,16 @@ impl Kernel {
         by_relay
     }
 
-    /// T132 — borrow `author_relay_lists` as a planner-facing [`MailboxCache`].
+    /// T132 — borrow relay-list caches as a planner-facing [`MailboxCache`].
     ///
     /// The returned adapter is the single bridge between the kernel's
-    /// authoritative NIP-65 cache and the planner's compiler. Callers pass it
+    /// authoritative NIP-65 / NIP-17 relay caches and the planner's compiler.
+    /// Callers pass it
     /// into [`crate::subs::SubscriptionLifecycle::recompile_and_diff`] /
     /// [`crate::subs::SubscriptionLifecycle::drain_tick`].
     #[allow(dead_code)] // Used once the kernel wires the planner driver path
     pub(crate) fn mailbox_cache_view(&self) -> KernelMailboxes<'_> {
-        KernelMailboxes::new(&self.author_relay_lists)
+        KernelMailboxes::new(&self.author_relay_lists, &self.dm_relay_lists)
     }
 
     /// T142 — actor idle-loop bridge: drain one tick of the subscription
@@ -261,7 +262,7 @@ impl Kernel {
     /// Per D8: an empty trigger inbox is a zero-cost no-op (no allocation, no
     /// compile pass). This is the common case on a quiet idle tick.
     pub(crate) fn drain_lifecycle_tick(&mut self) -> Vec<crate::subs::WireFrame> {
-        let mailboxes = KernelMailboxes::new(&self.author_relay_lists);
+        let mailboxes = KernelMailboxes::new(&self.author_relay_lists, &self.dm_relay_lists);
         self.lifecycle.drain_tick(&mailboxes)
     }
 
@@ -327,14 +328,18 @@ impl Kernel {
 /// `recompile_and_diff` and dropped at the end of that call.
 pub(crate) struct KernelMailboxes<'a> {
     inner: &'a HashMap<String, AuthorRelayList>,
+    dm_relays: &'a HashMap<String, Vec<String>>,
 }
 
 impl<'a> KernelMailboxes<'a> {
     /// Constructor is kernel-private — outside callers obtain a view through
     /// [`Kernel::mailbox_cache_view`] so the underlying `AuthorRelayList` type
     /// stays kernel-encapsulated.
-    fn new(inner: &'a HashMap<String, AuthorRelayList>) -> Self {
-        Self { inner }
+    fn new(
+        inner: &'a HashMap<String, AuthorRelayList>,
+        dm_relays: &'a HashMap<String, Vec<String>>,
+    ) -> Self {
+        Self { inner, dm_relays }
     }
 }
 
@@ -345,6 +350,13 @@ impl<'a> MailboxCache for KernelMailboxes<'a> {
             read_relays: list.read_relays.clone(),
             both_relays: list.both_relays.clone(),
         })
+    }
+
+    fn dm_inbox_relays(&self, pubkey: &Pubkey) -> Option<Vec<String>> {
+        self.dm_relays
+            .get(pubkey)
+            .filter(|relays| !relays.is_empty())
+            .cloned()
     }
 
     fn snapshot_all(&self) -> Vec<(Pubkey, MailboxSnapshot)> {

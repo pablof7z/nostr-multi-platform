@@ -12,9 +12,12 @@
 //! parses a canonical kind:10050 event into `kernel.dm_relay_lists` keyed by the
 //! event author's pubkey. The read side is `Kernel::recipient_dm_relays`, which
 //! the NIP-17 DM send path (`actor::commands::dm`) consults to pin each
-//! kind:1059 envelope to its receiver's DM-inbox relays.
+//! kind:1059 envelope to its receiver's DM-inbox relays. The subscription
+//! compiler also reads the same cache for active gift-wrap inbox interests, so
+//! a kind:10050 change fans a recompile trigger.
 
 use super::super::*;
+use crate::subs::CompileTrigger;
 
 /// Parse the `["relay", <url>]` tags of a kind:10050 event into a deduped,
 /// canonicalized list of DM-inbox relay URLs.
@@ -68,10 +71,11 @@ impl Kernel {
     /// (with a `tracing::warn!`), exactly as for an author who never published
     /// a kind:10050.
     ///
-    /// Unlike `ingest_relay_list` (kind:10002), this handler enqueues no
-    /// recompile trigger: kind:10050 feeds only the `recipient_dm_relays` send
-    /// resolver, not the M2 follow-feed subscription planner — there is no plan
-    /// to re-route on a DM-relay-list change (D8: no work without a consumer).
+    /// Unlike kind:10002, kind:10050 never populates generic mailbox routing.
+    /// It does now feed the planner through the NIP-17 DM-specific p-tag
+    /// routing mode, so accepted changes enqueue a recompile trigger. A DM
+    /// gift-wrap inbox with no kind:10050 stays fail-closed rather than falling
+    /// back to public kind:10002 read relays.
     pub(in crate::kernel) fn ingest_dm_relay_list(&mut self, event: NostrEvent) {
         let relays = parse_dm_relay_list(&event.tags);
 
@@ -79,7 +83,13 @@ impl Kernel {
         // their kind:10050. Drop the stale cache entry so it does not outlive
         // the author's intent.
         if relays.is_empty() {
-            self.dm_relay_lists.remove(&event.pubkey);
+            if self.dm_relay_lists.remove(&event.pubkey).is_some() {
+                self.lifecycle
+                    .enqueue_trigger(CompileTrigger::DmRelayListChanged {
+                        pubkey: event.pubkey.clone(),
+                        created_at: event.created_at,
+                    });
+            }
             return;
         }
 
@@ -89,5 +99,10 @@ impl Kernel {
             relays.len()
         ));
         self.dm_relay_lists.insert(event.pubkey.clone(), relays);
+        self.lifecycle
+            .enqueue_trigger(CompileTrigger::DmRelayListChanged {
+                pubkey: event.pubkey.clone(),
+                created_at: event.created_at,
+            });
     }
 }

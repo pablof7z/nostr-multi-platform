@@ -202,7 +202,7 @@ mod tests {
     #[test]
     fn oneshot_shape_key_is_restart_stable() {
         let key = shape_key(&SubScope::Global, &profile_shape("alice"));
-        assert_eq!(key, SubKey(0x8de5_6fe9_d40d_41b4));
+        assert_eq!(key, SubKey(0x3ed4_bcb5_89bf_8034));
         assert_ne!(key, shape_key(&SubScope::Global, &profile_shape("bob")));
     }
 

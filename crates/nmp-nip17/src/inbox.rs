@@ -58,7 +58,9 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use nmp_core::planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
+use nmp_core::planner::{
+    InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting,
+};
 use nmp_core::substrate::ViewDependencies;
 use nmp_core::{KindFilter, RawEventObserver};
 use nostr::{Event, JsonUtil};
@@ -412,19 +414,23 @@ pub fn active_giftwrap_inbox_interest_id() -> InterestId {
 /// Scope is [`InterestScope::Account`] (pinned to the resolved `pubkey`)
 /// rather than `ActiveAccount`: the host resolves the concrete identity at
 /// registration time and the subscription must stay pinned to it. The kernel
-/// routes the `#p` filter to the account's mailbox relays; the raw-event tap
-/// then drives every accepted kind:1059 event into the projection.
+/// routes the `#p` filter to the account's kind:10050 DM relays; the raw-event
+/// tap then drives every accepted kind:1059 event into the projection. If the
+/// kind:10050 list is unknown or empty, the compiler emits no subscription
+/// instead of falling back to public NIP-65 read relays.
 pub fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
     let deps = ViewDependencies {
         kinds: vec![KIND_GIFT_WRAP],
         tag_refs: vec![("p".to_string(), pubkey.to_string())],
         ..Default::default()
     };
-    deps.into_logical_interest(
+    let mut interest = deps.into_logical_interest(
         giftwrap_interest_id(pubkey),
         InterestScope::Account(pubkey.to_string()),
         InterestLifecycle::Tailing,
-    )
+    );
+    interest.shape.p_tag_routing = PTagRouting::Nip17DmRelays;
+    interest
 }
 
 /// Active-account-owned variant of [`giftwrap_inbox_interest`].
@@ -439,11 +445,13 @@ pub fn active_giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
         tag_refs: vec![("p".to_string(), pubkey.to_string())],
         ..Default::default()
     };
-    deps.into_logical_interest(
+    let mut interest = deps.into_logical_interest(
         active_giftwrap_inbox_interest_id(),
         InterestScope::ActiveAccount,
         InterestLifecycle::Tailing,
-    )
+    );
+    interest.shape.p_tag_routing = PTagRouting::Nip17DmRelays;
+    interest
 }
 
 /// First `["p", <pubkey>]` tag value on a rumor, if any.
@@ -792,6 +800,7 @@ mod tests {
             .map(|s| s.contains("selfpubkey"))
             .unwrap_or(false));
         assert!(interest.shape.relay_pin.is_none());
+        assert_eq!(interest.shape.p_tag_routing, PTagRouting::Nip17DmRelays);
         assert!(matches!(interest.lifecycle, InterestLifecycle::Tailing));
         assert!(matches!(
             interest.scope,
@@ -820,6 +829,8 @@ mod tests {
         assert_eq!(alice.id, bob.id, "account switch replaces one slot");
         assert_eq!(alice.id, active_giftwrap_inbox_interest_id());
         assert!(matches!(alice.scope, InterestScope::ActiveAccount));
+        assert_eq!(alice.shape.p_tag_routing, PTagRouting::Nip17DmRelays);
+        assert_eq!(bob.shape.p_tag_routing, PTagRouting::Nip17DmRelays);
         assert!(alice
             .shape
             .tags

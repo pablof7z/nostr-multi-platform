@@ -53,6 +53,14 @@ impl MailboxSnapshot {
 /// Phase 2 implementation: `nmp-nip65::InMemoryMailboxCache`.
 pub trait MailboxCache: Send + Sync {
     fn get(&self, pubkey: &Pubkey) -> Option<MailboxSnapshot>;
+    /// NIP-17 kind:10050 DM inbox relays for `pubkey`.
+    ///
+    /// This is deliberately separate from [`Self::get`]. Generic `#p` inbox
+    /// routing consumes kind:10002 read relays; NIP-17 gift-wrap inbox routing
+    /// consumes kind:10050 relays and must fail closed when this returns `None`.
+    fn dm_inbox_relays(&self, _pubkey: &Pubkey) -> Option<Vec<RelayUrl>> {
+        None
+    }
     /// Snapshot of all known entries for plan-id hashing.
     fn snapshot_all(&self) -> Vec<(Pubkey, MailboxSnapshot)>;
     /// Monotonic generation counter — advances on every accepted `put`.
@@ -92,6 +100,7 @@ impl MailboxCache for EmptyMailboxCache {
 #[derive(Default)]
 pub struct InMemoryMailboxCache {
     data: HashMap<Pubkey, MailboxSnapshot>,
+    dm_data: HashMap<Pubkey, Vec<RelayUrl>>,
     generation: u64,
 }
 
@@ -104,11 +113,23 @@ impl InMemoryMailboxCache {
         self.data.insert(pubkey, snapshot);
         self.generation = self.generation.saturating_add(1);
     }
+
+    pub fn put_dm_relays(&mut self, pubkey: Pubkey, relays: Vec<RelayUrl>) {
+        if relays.is_empty() {
+            self.dm_data.remove(&pubkey);
+        } else {
+            self.dm_data.insert(pubkey, relays);
+        }
+        self.generation = self.generation.saturating_add(1);
+    }
 }
 
 impl MailboxCache for InMemoryMailboxCache {
     fn get(&self, pubkey: &Pubkey) -> Option<MailboxSnapshot> {
         self.data.get(pubkey).cloned()
+    }
+    fn dm_inbox_relays(&self, pubkey: &Pubkey) -> Option<Vec<RelayUrl>> {
+        self.dm_data.get(pubkey).filter(|relays| !relays.is_empty()).cloned()
     }
     fn snapshot_all(&self) -> Vec<(Pubkey, MailboxSnapshot)> {
         self.data.iter().map(|(k, v)| (k.clone(), v.clone())).collect()

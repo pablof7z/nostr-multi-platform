@@ -86,6 +86,7 @@ pub use interest::{
     InterestShape,
     LogicalInterest,
     NaddrCoord,
+    PTagRouting,
     Pubkey,
     RelayHint,
     RelayUrl,

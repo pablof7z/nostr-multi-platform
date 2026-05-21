@@ -1,5 +1,5 @@
-//! The filter-merge lattice: `merge()` implements Rules 1–9 from the compiler
-//! design. Only shapes that pass all nine rules are merged; otherwise the
+//! The filter-merge lattice: `merge()` implements Rules 1–10 from the compiler
+//! design. Only shapes that pass all ten rules are merged; otherwise the
 //! caller emits two distinct REQs.
 //!
 //! ## Module structure
@@ -23,6 +23,8 @@
 //! 9. `relay_pin` — host-relay-pin equality; `None` does NOT absorb `Some(_)`.
 //!    Generic third-routing-lane contract for any protocol that requires
 //!    addressing a single host relay.
+//! 10. `p_tag_routing` — equality; NIP-17 DM-relay inbox routing must not
+//!     merge with generic NIP-65 `#p` routing.
 
 mod rules;
 
@@ -80,6 +82,13 @@ pub fn merge(
         return MergeOutcome::Refused;
     }
 
+    // Rule 10 — p-tag routing mode. This is not a wire filter field, but it
+    // decides which relay set is used for Case C; keep merged shapes tied to
+    // one routing policy.
+    if a.p_tag_routing != b.p_tag_routing {
+        return MergeOutcome::Refused;
+    }
+
     // Rule 1 — kinds
     let merged_kinds = match rule1_kinds(a, b) {
         Some(k) => k,
@@ -132,6 +141,8 @@ pub fn merge(
         addresses: merged_addresses,
         // Rule 9 guaranteed equality above; either side carries the result.
         relay_pin: a.relay_pin.clone(),
+        // Rule 10 guaranteed equality above; either side carries the result.
+        p_tag_routing: a.p_tag_routing,
     })
 }
 

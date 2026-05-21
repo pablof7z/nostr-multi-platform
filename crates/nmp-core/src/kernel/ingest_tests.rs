@@ -213,12 +213,12 @@ fn ingest_dm_relay_list_stores_non_empty_list() {
         "every `relay` tag is a DM-inbox relay, in tag order",
     );
 
-    // Unlike kind:10002, kind:10050 drives only `recipient_dm_relays` — it
-    // must NOT enqueue an M2 follow-feed recompile trigger.
+    // kind:10050 also feeds NIP-17 receive routing, so it must enqueue a
+    // recompile trigger for active gift-wrap inbox interests.
     assert_eq!(
         kernel.lifecycle.pending_trigger_count(),
-        0,
-        "a kind:10050 ingest must not enqueue a recompile trigger",
+        1,
+        "a kind:10050 ingest must enqueue a recompile trigger",
     );
 }
 
@@ -308,6 +308,11 @@ fn ingest_dm_relay_list_empty_for_unknown_author_is_noop() {
         kernel.recipient_dm_relays(AUTHOR).is_none(),
         "an empty kind:10050 for an unknown author must NOT create a cache entry",
     );
+    assert_eq!(
+        kernel.lifecycle.pending_trigger_count(),
+        0,
+        "an empty kind:10050 for an unknown author has no stale DM inbox plan to re-route",
+    );
 }
 
 /// An empty kind:10050 for an author who DOES have a cached DM-relay list
@@ -343,6 +348,11 @@ fn ingest_dm_relay_list_empty_for_known_author_clears_entry() {
     assert!(
         kernel.recipient_dm_relays(AUTHOR).is_none(),
         "an empty kind:10050 for a known author must REMOVE the stale entry",
+    );
+    assert_eq!(
+        kernel.lifecycle.pending_trigger_count(),
+        2,
+        "seed and clear must each enqueue a DM-relay recompile trigger",
     );
 }
 
