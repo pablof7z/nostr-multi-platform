@@ -305,7 +305,13 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::PublishUnsignedEvent(unsigned) => {
+        ActorCommand::PublishUnsignedEvent(mut unsigned) => {
+            // D7: apply the same created_at=0 sentinel as PublishUnsignedEventToRelays.
+            // A host that builds an UnsignedEvent without setting created_at gets
+            // the kernel clock rather than epoch time.
+            if unsigned.created_at == 0 {
+                unsigned.created_at = ctx.kernel.now_secs();
+            }
             let outbound = commands::publish_unsigned_event(
                 ctx.identity,
                 ctx.kernel,
