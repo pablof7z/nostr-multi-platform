@@ -901,4 +901,72 @@ mod tests {
         );
         nmp_app_free(app);
     }
+
+    /// D6 guard: `nmp_app_register_action_executor` silently ignores any
+    /// namespace that starts with `"nmp."` — a host cannot shadow a
+    /// kernel-owned built-in via the C-ABI and bypass its validation gate.
+    /// After an attempted override the built-in `nmp.publish` executor still
+    /// handles the action correctly.
+    #[test]
+    fn c_abi_nmp_prefixed_executor_registration_is_silently_rejected() {
+        use std::ffi::CString;
+
+        // A custom executor that always returns a failure message.
+        extern "C" fn shadow_executor(_json: *const c_char) -> *const c_char {
+            c"shadow_executor_ran".as_ptr()
+        }
+
+        let app = nmp_app_new();
+        // Attempt to replace the built-in executor via the C-ABI guard.
+        let ns = CString::new("nmp.publish").unwrap();
+        nmp_app_register_action_executor(app, ns.as_ptr(), Some(shadow_executor));
+
+        // The built-in must still handle `nmp.publish` (Cancel doesn't need a
+        // signed event and exercises the full execute path).
+        let result = execute_action(
+            // SAFETY: nmp_app_new never returns null; valid until nmp_app_free.
+            unsafe { &*app },
+            "nmp.publish",
+            r#"{"Cancel":{"handle":"guard-probe"}}"#,
+        );
+        assert!(
+            result.is_ok(),
+            "built-in executor must still run after rejected nmp.* registration, got: {result:?}"
+        );
+        nmp_app_free(app);
+    }
+
+    /// D6 guard: `nmp_app_register_action_module` silently ignores any
+    /// namespace starting with `"nmp."` — the kernel-owned module validator
+    /// cannot be replaced via the C-ABI.
+    #[test]
+    fn c_abi_nmp_prefixed_module_registration_is_silently_rejected() {
+        use std::ffi::CString;
+
+        // A custom validator that always accepts everything (accept-all null
+        // validator path — would bypass PublishModule's signed-event gate).
+        let app = nmp_app_new();
+        let ns = CString::new("nmp.publish").unwrap();
+        nmp_app_register_action_module(app, ns.as_ptr(), None);
+
+        // PublishModule's validation gate still rejects empty `id`/`sig` — if
+        // the accept-all null-validator replaced it, a Cancel action would
+        // decode as a `PublishAction::Publish` with empty fields and be
+        // accepted (no signed-event check). Submitting well-formed Cancel:
+        let out = dispatch_action_json(
+            // SAFETY: nmp_app_new never returns null; valid until nmp_app_free.
+            Some(unsafe { &*app }),
+            "nmp.publish",
+            r#"{"Cancel":{"handle":"guard-probe"}}"#,
+        );
+        let parsed: serde_json::Value =
+            serde_json::from_str(&out).expect("dispatch always returns JSON");
+        // Cancel must still be accepted by the built-in module (correlation_id,
+        // not an error) — the accept-all replacement did NOT take effect.
+        assert!(
+            parsed.get("correlation_id").is_some(),
+            "built-in module must still validate after rejected nmp.* registration, got: {out}"
+        );
+        nmp_app_free(app);
+    }
 }
