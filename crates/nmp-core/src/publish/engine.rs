@@ -229,11 +229,11 @@ impl PublishEngine {
         for record in self.store.load_pending()? {
             let mut per_relay = BTreeMap::new();
             for (url, state) in record.per_relay {
-                per_relay.insert(url, state);
+                per_relay.insert(helpers::canonical_relay_identity(&url), state);
             }
             let mut pending_retries = BTreeMap::new();
             for (url, due_ms) in record.pending_retries {
-                pending_retries.insert(url, due_ms);
+                pending_retries.insert(helpers::canonical_relay_identity(&url), due_ms);
             }
             let in_flight = InFlight {
                 event: record.event,
@@ -314,6 +314,7 @@ impl PublishEngine {
             &target,
             event.unsigned.kind,
         );
+        let relays = helpers::canonicalize_relay_set(relays);
         if relays.is_empty() {
             self.emit_no_targets(&handle, &event, correlation_id_override.as_deref(), now_ms);
             return Err(PublishEngineError::NoTargets);
@@ -421,7 +422,7 @@ impl PublishEngine {
         relay_url: &str,
         _now_ms: u64,
     ) -> Result<(), PublishEngineError> {
-        let relay_url = relay_url.to_string();
+        let relay_url = helpers::canonical_relay_identity(relay_url);
         self.unavailable_relays.insert(relay_url.clone());
         let mut changed = Vec::new();
         for (handle, row) in &mut self.in_flight {
@@ -450,10 +451,11 @@ impl PublishEngine {
         relay_url: &str,
         now_ms: u64,
     ) -> Result<(), PublishEngineError> {
-        self.unavailable_relays.remove(relay_url);
+        let relay_url = helpers::canonical_relay_identity(relay_url);
+        self.unavailable_relays.remove(&relay_url);
         let handles: Vec<PublishHandle> = self.in_flight.keys().cloned().collect();
         for handle in handles {
-            self.dispatch_pending_for_relay(&handle, relay_url, now_ms);
+            self.dispatch_pending_for_relay(&handle, &relay_url, now_ms);
         }
         self.flush_view();
         Ok(())

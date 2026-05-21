@@ -312,11 +312,11 @@ fn publish_fans_out_to_author_write_relays_via_outbox() {
     let urls: std::collections::BTreeSet<String> =
         outbound.iter().map(|m| m.relay_url.clone()).collect();
     assert!(
-        urls.contains("wss://alice.primary/"),
+        urls.contains("wss://alice.primary"),
         "primary write relay must receive the EVENT"
     );
     assert!(
-        urls.contains("wss://alice.archive/"),
+        urls.contains("wss://alice.archive"),
         "archive write relay must receive the EVENT"
     );
     for m in &outbound {

@@ -10,10 +10,22 @@ use super::super::state::{PerRelayState, RelayAck, RetryPolicy, RetryVerdict};
 use super::super::traits::RelayDispatcher;
 use super::super::view::{PublishStatusState, RecentFailure, RecentSuccess};
 use super::{InFlight, TerminalOutcome};
+use crate::relay::CanonicalRelayUrl;
 use crate::substrate::SignedEvent;
 
+pub(super) fn canonical_relay_identity(raw: &str) -> RelayUrl {
+    CanonicalRelayUrl::parse_or_raw(raw).into_string()
+}
+
+pub(super) fn canonicalize_relay_set(relays: BTreeSet<RelayUrl>) -> BTreeSet<RelayUrl> {
+    relays
+        .into_iter()
+        .map(|relay| canonical_relay_identity(&relay))
+        .collect()
+}
+
 pub(super) fn relay_url_of(ack: &RelayAck) -> RelayUrl {
-    ack.relay_url.clone()
+    canonical_relay_identity(&ack.relay_url)
 }
 
 pub(super) fn dispatch_due(

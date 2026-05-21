@@ -66,6 +66,12 @@ fn engine_with_outbox(
 #[test]
 fn c7_publish_routes_outbox_and_private_fails_closed() {
     // --- 1. Public event: routed to author's write relays -------------------
+    // The outbox is seeded with NIP-65-style URLs that carry a trailing slash
+    // (the wire-realistic form authors publish in kind:10002). The engine
+    // canonicalizes relay identities at the dispatch boundary
+    // (`wss://r1/` → `wss://r1`), so the dispatcher sees the canonical form.
+    // See `crates/nmp-core/src/kernel/publish_relay_identity_tests.rs` and
+    // `crates/nmp-core/src/relay.rs::CanonicalRelayUrl` for the contract.
     let alice_writes: Vec<RelayUrl> = vec![
         "wss://r1/".to_string(),
         "wss://r2/".to_string(),
@@ -74,9 +80,10 @@ fn c7_publish_routes_outbox_and_private_fails_closed() {
     outbox.author_writes.insert(pubkey("alice"), alice_writes.clone());
 
     let dispatcher = Arc::new(ReplayDispatcher::new());
-    // Script OK acks for both relays so the engine can complete.
-    dispatcher.script("wss://r1/", vec![RelayAck::ok("wss://r1/")]);
-    dispatcher.script("wss://r2/", vec![RelayAck::ok("wss://r2/")]);
+    // Script OK acks under the *canonical* relay keys — that is the identity
+    // the engine uses when it calls `dispatcher.dispatch(...)`.
+    dispatcher.script("wss://r1", vec![RelayAck::ok("wss://r1")]);
+    dispatcher.script("wss://r2", vec![RelayAck::ok("wss://r2")]);
 
     let mut engine = engine_with_outbox(outbox, Arc::clone(&dispatcher));
 
@@ -98,12 +105,12 @@ fn c7_publish_routes_outbox_and_private_fails_closed() {
         .map(|(url, _)| url.as_str())
         .collect();
     assert!(
-        sent_relays.contains("wss://r1/"),
-        "public event must be dispatched to alice's write relay r1"
+        sent_relays.contains("wss://r1"),
+        "public event must be dispatched to alice's canonical write relay r1 (got: {sent_relays:?})"
     );
     assert!(
-        sent_relays.contains("wss://r2/"),
-        "public event must be dispatched to alice's write relay r2"
+        sent_relays.contains("wss://r2"),
+        "public event must be dispatched to alice's canonical write relay r2 (got: {sent_relays:?})"
     );
 
     // --- 2. Private event, recipient inbox unknown → fail closed -----------
