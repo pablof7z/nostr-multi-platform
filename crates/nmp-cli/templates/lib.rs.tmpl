@@ -178,6 +178,17 @@ impl ActionModule for EntryActionModule {
         }
         Ok(())
     }
+
+    fn execute(
+        _action: Self::Action,
+        _correlation_id: &str,
+        _send: &dyn Fn(nmp_core::ActorCommand),
+    ) -> Result<(), String> {
+        // Scaffold placeholder: send an ActorCommand here to drive the actor,
+        // or call into host-owned state via a captured closure registered with
+        // `NmpApp::register_action_executor` if host state mutation is needed.
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
