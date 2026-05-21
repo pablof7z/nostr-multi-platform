@@ -35,6 +35,26 @@ pub trait RemoteSignerHandle: Send + Sync + std::fmt::Debug {
     /// signers can resolve asynchronously without blocking the actor thread.
     fn sign(&self, unsigned: &UnsignedEvent) -> SignerOp<SignedEvent>;
 
+    /// NIP-44 encrypt `plaintext` to `recipient_pubkey`. Used to build the
+    /// kind:13 seal in a NIP-59 gift-wrap (ADR-0026). The ephemeral kind:1059
+    /// outer wrap is actor-local — the actor generates that ephemeral key
+    /// itself — so only the seal needs this method.
+    ///
+    /// `recipient_pubkey` is lowercase hex. `&str` (not `&PublicKey`) keeps
+    /// `nmp-core` free of a `nostr` type in the trait surface, matching
+    /// `sign()`, which takes the substrate `&UnsignedEvent`.
+    ///
+    /// Returns `SignerOp::Ready(Ok(ciphertext))` for in-memory signers;
+    /// `SignerOp::Pending(..)` for NIP-46 bunkers (asynchronous RPC).
+    fn nip44_encrypt(&self, recipient_pubkey: &str, plaintext: &str) -> SignerOp<String>;
+
+    /// NIP-44 decrypt `ciphertext` from `sender_pubkey`. Used for inbound
+    /// kind:13 seal decryption on the DM receive path (ADR-0026).
+    ///
+    /// `sender_pubkey` is lowercase hex. See [`Self::nip44_encrypt`] for the
+    /// `&str`-vs-`&PublicKey` and `SignerOp` rationale.
+    fn nip44_decrypt(&self, sender_pubkey: &str, ciphertext: &str) -> SignerOp<String>;
+
     /// Hand an inbound NIP-46 RPC response event to the signer. JSON is the
     /// already-decrypted RPC payload body (`{"id":"...","result":"..."}`).
     /// No-op for signers that don't have a relay-driven response path.
