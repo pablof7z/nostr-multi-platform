@@ -955,14 +955,36 @@ struct RelayDiagnosticsSnapshot: Decodable, Equatable {
 /// `"awaiting_pubkey"`, `"ready"`, `"failed"`, `"idle"`. `message` is a
 /// human-readable progress / error hint.
 ///
-/// **Prefer `Nip46Onboarding` for UI**: that projection carries the typed
-/// `stageKind` enum + pre-computed `isInFlight` / `isFailed` /
-/// `isTerminalSuccess` / `canCancel` flags, so views never string-compare
-/// `stage` themselves. This struct stays for the few diagnostic call sites
-/// that still want the raw broker output.
+/// **Prefer `Nip46Onboarding` for the onboarding UI**: that projection carries
+/// the typed `stageKind` enum + pre-computed `isInFlight` / `isFailed` /
+/// `isTerminalSuccess` / `canCancel` flags. For the `AccountsView` "Add
+/// account" sheet (and any other site that already reads
+/// `model.bunkerHandshake`), the same flags are now mirrored on this struct
+/// too: doctrine §6 anti-pattern #1 + RMP bible commandment #4 — shells
+/// render fields directly instead of switching on the raw `stage` string.
+///
+/// The flag / label fields are optional so an older kernel build that
+/// predates the doctrine fix still decodes (D1); call sites that fall back
+/// to `stage` are correct (but should migrate once the kernel rebuild lands).
 struct BunkerHandshake: Decodable, Equatable {
     let stage: String
     let message: String?
+    /// `stage == "idle"` (computed Rust-side; absent on legacy kernels).
+    let isIdle: Bool?
+    /// `stage` is one of `"connecting"` / `"awaiting_pubkey"`. Drives the
+    /// spinner vs. terminal-icon swap and input-disabled gates.
+    let isInFlight: Bool?
+    /// `stage == "failed"`. Drives the red triangle + "Retry" button label.
+    let isFailed: Bool?
+    /// `stage == "ready"`. Drives the green check on the progress row.
+    let isTerminalSuccess: Bool?
+    /// True when the handshake can be cancelled (i.e. mid-flight). Drives
+    /// the visibility of the "Cancel handshake" button.
+    let canCancel: Bool?
+    /// Pre-formatted English label (e.g. `"Connecting to bunker relays…"`).
+    /// Always non-empty when emitted by a current kernel; legacy kernels
+    /// (pre-projection) leave it `nil` — call sites fall back on `stage`.
+    let stageLabel: String?
 }
 
 /// NIP-46 onboarding read model — `projections["nip46_onboarding"]`.

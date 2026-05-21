@@ -179,8 +179,16 @@ private struct AddAccountSheet: View {
                     .disabled(isHandshakeInFlight)
             }
 
+            // Doctrine §6 anti-pattern #1: the visibility guard reads the
+            // pre-computed `isIdle` flag instead of `.lowercased() == "idle"`.
+            // The actor maps an `"idle"` stage to `None` (clearing the slot
+            // and `model.bunkerHandshake` to `nil`), so this branch defends
+            // against a future broker path that emits `"idle"` straight into
+            // the projection without going through `bunker_handshake_progress`.
+            // The `?? false` fallback covers legacy kernels (D1) that emit
+            // the projection without the new flags.
             if bunkerSubmitted, let handshake = model.bunkerHandshake,
-               handshake.stage.lowercased() != "idle" {
+               !(handshake.isIdle ?? false) {
                 BunkerHandshakeProgress(
                     handshake: handshake,
                     onCancel: cancelHandshake
@@ -207,8 +215,15 @@ private struct AddAccountSheet: View {
 
     private var isHandshakeInFlight: Bool {
         guard bunkerSubmitted else { return false }
-        guard let stage = model.bunkerHandshake?.stage.lowercased() else { return true }
-        return stage != "failed" && stage != "idle"
+        // Doctrine §6 anti-pattern #1: read the pre-computed `isInFlight` flag
+        // instead of reconstructing the rule from `stage` string comparisons.
+        // No handshake yet (nil) means we just submitted and are waiting on the
+        // first progress tick — treat it as in-flight so the button stays
+        // disabled. The `?? false` covers a legacy kernel that emits the
+        // projection without the new flag (D1: fall back to stage parsing
+        // would also work but the conservative default is harmless).
+        guard let handshake = model.bunkerHandshake else { return true }
+        return handshake.isInFlight ?? false
     }
 
     private var isConnectDisabled: Bool {
@@ -216,7 +231,9 @@ private struct AddAccountSheet: View {
     }
 
     private var connectButtonTitle: String {
-        if model.bunkerHandshake?.stage.lowercased() == "failed" {
+        // Doctrine §6 anti-pattern #1: read the pre-computed `isFailed` flag
+        // instead of `.lowercased() == "failed"`.
+        if model.bunkerHandshake?.isFailed ?? false {
             return "Retry"
         }
         return "Connect"
@@ -250,23 +267,27 @@ private struct BunkerHandshakeProgress: View {
     let handshake: BunkerHandshake
     let onCancel: () -> Void
 
+    // Doctrine §6 anti-pattern #1 / RMP bible commandment #4: every derived
+    // value below comes from Rust (`BunkerHandshakeDto::new`). The Swift
+    // helpers used to switch on `handshake.stage.lowercased()` — that ternary
+    // tree now lives in `crates/nmp-core/src/actor/commands/identity.rs`.
+
     private var isFailed: Bool {
-        handshake.stage.lowercased() == "failed"
+        handshake.isFailed ?? false
     }
 
     private var isTerminal: Bool {
-        let stage = handshake.stage.lowercased()
-        return stage == "ready" || stage == "failed"
+        // A handshake is "terminal" when it has either succeeded or failed.
+        // Rust pre-computes both flags; their disjunction is the visibility
+        // gate for the "cancel" button and the icon-swap.
+        (handshake.isTerminalSuccess ?? false) || (handshake.isFailed ?? false)
     }
 
     private var stageLabel: String {
-        switch handshake.stage.lowercased() {
-        case "connecting": return "Connecting to bunker relays…"
-        case "awaiting_pubkey": return "Awaiting bunker approval…"
-        case "ready": return "Connected"
-        case "failed": return "Bunker handshake failed"
-        default: return handshake.stage
-        }
+        // Fall back to `stage` only for legacy kernels (D1) that predate the
+        // pre-formatted label. A current kernel always supplies a non-empty
+        // `stageLabel`, so this fallback never fires in production today.
+        handshake.stageLabel ?? handshake.stage
     }
 
     var body: some View {

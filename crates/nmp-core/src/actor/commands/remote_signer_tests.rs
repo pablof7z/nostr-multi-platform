@@ -207,6 +207,67 @@ fn bunker_handshake_progress_writes_then_clears() {
     assert!(id.bunker_handshake_for_test().is_none());
 }
 
+/// Pins the doctrine §6 anti-pattern #1 fix: `BunkerHandshakeDto` carries
+/// pre-computed boolean flags + a pre-formatted English `stage_label` so
+/// `AccountsView.swift` can render fields directly instead of switching on
+/// the raw `stage` string. One assertion block per stage covers every flag
+/// transition the shell branches on (visibility guard, cancel-button gate,
+/// terminal-icon swap, retry-button label, English subtitle).
+#[test]
+fn bunker_handshake_dto_pre_computes_view_flags_and_label() {
+    let (id, mut kernel) = fresh();
+
+    // ── `"connecting"` — handshake in flight ──────────────────────────────
+    bunker_handshake_progress(
+        &id,
+        &mut kernel,
+        "connecting".to_string(),
+        Some("dialing wss://r.example".to_string()),
+    );
+    let dto = id.bunker_handshake_for_test().expect("connecting set");
+    assert!(!dto.is_idle, "connecting is not idle");
+    assert!(dto.is_in_flight, "connecting is in flight");
+    assert!(!dto.is_failed, "connecting has not failed");
+    assert!(!dto.is_terminal_success, "connecting is not terminal");
+    assert!(dto.can_cancel, "cancel is available while connecting");
+    assert_eq!(dto.stage_label, "Connecting to bunker relays…");
+
+    // ── `"awaiting_pubkey"` — also in flight ──────────────────────────────
+    bunker_handshake_progress(&id, &mut kernel, "awaiting_pubkey".to_string(), None);
+    let dto = id.bunker_handshake_for_test().expect("awaiting set");
+    assert!(!dto.is_idle);
+    assert!(dto.is_in_flight, "awaiting_pubkey is in flight");
+    assert!(!dto.is_failed);
+    assert!(!dto.is_terminal_success);
+    assert!(dto.can_cancel, "cancel still available awaiting pubkey");
+    assert_eq!(dto.stage_label, "Awaiting bunker approval…");
+
+    // ── `"ready"` — terminal success ──────────────────────────────────────
+    bunker_handshake_progress(&id, &mut kernel, "ready".to_string(), None);
+    let dto = id.bunker_handshake_for_test().expect("ready set");
+    assert!(!dto.is_idle);
+    assert!(!dto.is_in_flight, "ready is not in flight");
+    assert!(!dto.is_failed);
+    assert!(dto.is_terminal_success, "ready is the terminal-success flag");
+    assert!(!dto.can_cancel, "no cancel once terminal");
+    assert_eq!(dto.stage_label, "Connected");
+
+    // ── `"failed"` — terminal failure ─────────────────────────────────────
+    bunker_handshake_progress(
+        &id,
+        &mut kernel,
+        "failed".to_string(),
+        Some("relay handshake failed".to_string()),
+    );
+    let dto = id.bunker_handshake_for_test().expect("failed set");
+    assert!(!dto.is_idle);
+    assert!(!dto.is_in_flight, "failed is not in flight");
+    assert!(dto.is_failed, "failed flag tracks terminal failure");
+    assert!(!dto.is_terminal_success);
+    assert!(!dto.can_cancel, "no cancel once terminal");
+    assert_eq!(dto.stage_label, "Bunker handshake failed");
+}
+
 #[test]
 fn sign_active_routes_through_remote_signer_when_active() {
     let (mut id, mut kernel) = fresh();

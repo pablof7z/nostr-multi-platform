@@ -30,14 +30,93 @@ use crate::substrate::{SignedEvent, UnsignedEvent};
 /// `projections` map every tick (D0 — the kernel emits, never names an app
 /// noun).
 ///
+/// Doctrine §6 anti-pattern #1 (duplicated formatting logic across platforms) +
+/// RMP bible commandment #4 (no native business logic): the DTO carries
+/// pre-computed boolean flags (`is_idle`, `is_in_flight`, `is_failed`,
+/// `is_terminal_success`, `can_cancel`) and a pre-formatted English
+/// `stage_label` so shells render fields directly instead of string-matching
+/// on `stage`. The raw `stage` token stays on the wire as a stable diagnostic
+/// key but no shell switches on it.
+///
 /// `Deserialize` is retained so Swift codegen / round-trip tests can decode it.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct BunkerHandshakeDto {
     /// `"connecting"` | `"awaiting_pubkey"` | `"ready"` | `"failed"` | `"idle"`
-    /// (the wire never carries `"idle"`; the actor maps it to `None`).
+    /// (the wire never carries `"idle"` from the actor — `bunker_handshake_progress`
+    /// maps it to `None` — but a broker that emits `"idle"` directly through
+    /// the slot would still be classified correctly through `is_idle`).
     pub(crate) stage: String,
     /// Optional human-readable status (e.g. relay URL, error reason).
     pub(crate) message: Option<String>,
+    /// `stage == "idle"`. Defensive: the actor's `bunker_handshake_progress`
+    /// collapses an `"idle"` stage to `None` (clearing the slot), so this flag
+    /// is effectively always `false` on the wire today. Shells branch on it
+    /// instead of `stage.lowercased() == "idle"` so a future broker path that
+    /// emits `"idle"` straight into the slot stays correctly suppressed.
+    pub(crate) is_idle: bool,
+    /// `stage` is one of `"connecting"` or `"awaiting_pubkey"`. Shells use this
+    /// to disable inputs and show a spinner without switching on `stage`.
+    pub(crate) is_in_flight: bool,
+    /// `stage == "failed"`. Shells flip the "Connect" button to "Retry" and
+    /// swap the spinner for an error icon on this signal.
+    pub(crate) is_failed: bool,
+    /// `stage == "ready"` — the handshake has terminated successfully. Shells
+    /// pair this with the green-check icon (vs. the red triangle for `is_failed`).
+    pub(crate) is_terminal_success: bool,
+    /// True when a cancel action would do something — i.e. the handshake is
+    /// neither idle nor failed. Shells gate the visibility of a cancel button
+    /// on this without reconstructing the rule from `stage` checks.
+    pub(crate) can_cancel: bool,
+    /// Pre-formatted English label for `stage` (e.g. `"Connecting to bunker
+    /// relays…"`, `"Awaiting bunker approval…"`, `"Connected"`,
+    /// `"Bunker handshake failed"`). Always non-empty (D1); shells render this
+    /// directly instead of mapping `stage` tokens to display strings.
+    pub(crate) stage_label: String,
+}
+
+impl BunkerHandshakeDto {
+    /// Construct a [`BunkerHandshakeDto`] from a stage wire token + optional
+    /// message, pre-computing every derived field. Centralizing the derivation
+    /// here is doctrine §6 anti-pattern #1: a shell must never reconstruct
+    /// these flags / labels from `stage`.
+    pub(crate) fn new(stage: String, message: Option<String>) -> Self {
+        let kind = BunkerStageKind::from_wire(&stage);
+        let is_idle = matches!(kind, BunkerStageKind::Idle);
+        let is_in_flight = matches!(
+            kind,
+            BunkerStageKind::Connecting | BunkerStageKind::AwaitingPubkey
+        );
+        let is_failed = matches!(kind, BunkerStageKind::Failed);
+        let is_terminal_success = matches!(kind, BunkerStageKind::Ready);
+        let can_cancel = is_in_flight;
+        let stage_label = stage_label_for(kind, &stage);
+        Self {
+            stage,
+            message,
+            is_idle,
+            is_in_flight,
+            is_failed,
+            is_terminal_success,
+            can_cancel,
+            stage_label,
+        }
+    }
+}
+
+/// Pre-formatted English label for a handshake stage. `Unknown` falls back to
+/// the raw wire token so an unrecognized stage still renders something
+/// non-empty (D1) instead of an empty string. The known wire tokens use the
+/// same prose AccountsView.swift used to derive from a `switch` block — the
+/// strings move server-side once.
+fn stage_label_for(kind: BunkerStageKind, raw_stage: &str) -> String {
+    match kind {
+        BunkerStageKind::Idle => "Idle".to_string(),
+        BunkerStageKind::Connecting => "Connecting to bunker relays…".to_string(),
+        BunkerStageKind::AwaitingPubkey => "Awaiting bunker approval…".to_string(),
+        BunkerStageKind::Ready => "Connected".to_string(),
+        BunkerStageKind::Failed => "Bunker handshake failed".to_string(),
+        BunkerStageKind::Unknown => raw_stage.to_string(),
+    }
 }
 
 /// Shared bunker-handshake slot — the output side of the bunker projection.
@@ -978,7 +1057,7 @@ pub(crate) fn bunker_handshake_progress(
     let value = if stage == "idle" {
         None
     } else {
-        Some(BunkerHandshakeDto { stage, message })
+        Some(BunkerHandshakeDto::new(stage, message))
     };
     identity.set_bunker_handshake(value);
     kernel.mark_changed_since_emit();
@@ -1002,10 +1081,10 @@ pub(crate) fn sign_in_bunker(identity: &IdentityRuntime, kernel: &mut Kernel, ur
         ));
         return;
     }
-    identity.set_bunker_handshake(Some(BunkerHandshakeDto {
-        stage: "connecting".to_string(),
-        message: Some("Waiting for broker...".to_string()),
-    }));
+    identity.set_bunker_handshake(Some(BunkerHandshakeDto::new(
+        "connecting".to_string(),
+        Some("Waiting for broker...".to_string()),
+    )));
     kernel.mark_changed_since_emit();
     if !crate::bunker_hook::invoke_bunker_connect_hook(uri) {
         // Defence against init-order bugs: the broker should be registered
@@ -1024,10 +1103,10 @@ pub(crate) fn restore_bunker_session(
     kernel: &mut Kernel,
     payload_json: &str,
 ) {
-    identity.set_bunker_handshake(Some(BunkerHandshakeDto {
-        stage: "connecting".to_string(),
-        message: Some("Restoring broker session...".to_string()),
-    }));
+    identity.set_bunker_handshake(Some(BunkerHandshakeDto::new(
+        "connecting".to_string(),
+        Some("Restoring broker session...".to_string()),
+    )));
     kernel.mark_changed_since_emit();
     if !crate::bunker_hook::invoke_bunker_restore_hook(payload_json) {
         identity.set_bunker_handshake(None);
@@ -1072,10 +1151,10 @@ mod nip46_onboarding_tests {
     }
 
     fn set_stage(slot: &BunkerHandshakeSlot, stage: &str, message: Option<&str>) {
-        *slot.lock().unwrap() = Some(BunkerHandshakeDto {
-            stage: stage.to_string(),
-            message: message.map(str::to_string),
-        });
+        *slot.lock().unwrap() = Some(BunkerHandshakeDto::new(
+            stage.to_string(),
+            message.map(str::to_string),
+        ));
     }
 
     #[test]
