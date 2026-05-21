@@ -474,6 +474,12 @@ pub(super) fn dispatch_command(
             // forwarder thread and must NOT be replaced; the counter is
             // process-lifetime).
             let drops_handle = ctx.kernel.take_dispatch_drops_handle_for_reset();
+            // G-S4 — preserve the actor command-channel depth counter across
+            // Reset for the same reason: the `Arc<AtomicU64>` is shared with
+            // `NmpApp::send_cmd`; replacing it would orphan the counter so
+            // every subsequent send increments into a handle the kernel no
+            // longer reads.
+            let queue_depth_handle = ctx.kernel.take_queue_depth_handle_for_reset();
             // T146 — preserve the event observer slot across Reset for the
             // same reason: the `Arc<Mutex<…>>` is shared with the FFI
             // surface and per-app crates; replacing it would silently
@@ -506,6 +512,9 @@ pub(super) fn dispatch_command(
             *ctx.kernel = Kernel::new(ctx.kernel.visible_limit());
             if let Some(handle) = drops_handle {
                 ctx.kernel.set_dispatch_drops_handle(handle);
+            }
+            if let Some(handle) = queue_depth_handle {
+                ctx.kernel.set_queue_depth_handle(handle);
             }
             if let Some(handle) = event_observers_handle {
                 ctx.kernel.set_event_observers_handle(handle);
