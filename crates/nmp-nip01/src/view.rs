@@ -48,6 +48,12 @@ pub enum RepliesDelta {
 #[derive(Default)]
 pub struct RepliesState {
     target: EventId,
+    /// Replies in arrival order. Ordering is *not* maintained here — the
+    /// `created_at` sort happens once at `snapshot()` time (sort-on-read),
+    /// not on every insert/replace. Re-sorting the whole `Vec` on each
+    /// `on_event_inserted` is O(N log N) per event — a quadratic time-bomb
+    /// for a busy thread; deferring it to the read path keeps inserts O(N)
+    /// (the dedup scan) and pays the sort only when a snapshot is demanded.
     events: Vec<KernelEvent>,
 }
 
@@ -71,8 +77,8 @@ impl RepliesState {
         if self.events.iter().any(|e| e.id == event.id) {
             return None;
         }
+        // Append only — `snapshot()` sorts by `created_at` on read.
         self.events.push(event.clone());
-        self.events.sort_by_key(|e| e.created_at);
         Some(RepliesDelta::Inserted(event.id.clone()))
     }
 
@@ -91,8 +97,8 @@ impl RepliesState {
             return self.remove(old_id);
         }
         let pos = self.events.iter().position(|e| e.id == *old_id)?;
+        // In-place overwrite — `snapshot()` re-sorts by `created_at` on read.
         self.events[pos] = new_event.clone();
-        self.events.sort_by_key(|e| e.created_at);
         Some(RepliesDelta::Replaced {
             old_id: old_id.clone(),
             new_id: new_event.id.clone(),
@@ -157,9 +163,13 @@ impl RepliesView {
     }
 
     pub fn snapshot(_c: &ViewContext, state: &RepliesState) -> RepliesPayload {
+        // Sort-on-read: the chronological order is materialised here, once
+        // per snapshot, rather than re-sorted on every insert/replace.
+        let mut replies = state.events.clone();
+        replies.sort_by_key(|e| e.created_at);
         RepliesPayload {
             target_id: state.target.clone(),
-            replies: state.events.clone(),
+            replies,
         }
     }
 }
