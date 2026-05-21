@@ -92,6 +92,12 @@ pub(super) struct TimelineItem {
     pub(super) author_avatar_initials: String,
     pub(super) author_avatar_color: String,
     pub(super) author_avatar_source: String,
+    /// Nostr event kind (e.g. 1 = note, 6 = repost, 7 = reaction). Carried so
+    /// the shell can render kind-conditional UI (badges, navigation targets)
+    /// without re-parsing the raw event JSON in `content`. D1 / thin-shell:
+    /// the kind is the authoritative protocol signal — never inferred from
+    /// content shape in native code.
+    pub(super) kind: u32,
     pub(super) content: String,
     pub(super) content_preview: String,
     pub(super) created_at_display: String,

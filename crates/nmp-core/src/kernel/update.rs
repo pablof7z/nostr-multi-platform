@@ -365,6 +365,7 @@ impl Kernel {
             } else {
                 "placeholder".to_string()
             },
+            kind: event.kind,
             content: truncate(&event.content, 1_200),
             content_preview: if event.kind == 6 && event.content.trim().is_empty() {
                 "Repost".to_string()

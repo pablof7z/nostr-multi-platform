@@ -38,70 +38,115 @@ struct ThreadNoteRow: View {
                 }
                 .buttonStyle(.plain)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 4) {
-                        Text(item.authorDisplay)
-                            .font(isFocused ? .headline : .callout)
-                            .fontWeight(isFocused ? .semibold : .regular)
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                        Spacer()
-                        Text(item.createdAtDisplay)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    NoteContentView(
-                        content: item.content,
-                        contentTree: contentTree,
-                        mentionProfiles: mentionProfiles,
-                        eventCards: eventCards,
-                        timelineItems: timelineItems,
-                        font: isFocused ? .body : .callout
-                    )
-                    .foregroundStyle(.primary)
-                    .padding(.bottom, isFocused ? 4 : 0)
-
-                    // Action row
-                    HStack(spacing: 24) {
-                        Button {
-                            guard !likeTapped else { return }
-                            likeTapped = true
-                            onLike()
-                            UIImpactFeedbackGenerator(style: .soft).impactOccurred()
-                        } label: {
-                            Image(systemName: likeTapped ? "heart.fill" : "heart")
-                                .font(.caption)
-                                .foregroundStyle(likeTapped ? Color.red : Color.secondary)
-                                .scaleEffect(likeTapped ? 1.35 : 1.0)
-                                .animation(.spring(response: 0.25, dampingFraction: 0.4), value: likeTapped)
-                        }
-                        .buttonStyle(.plain)
-
-                        Button(action: onReply) {
-                            Label("Reply", systemImage: "arrowshape.turn.up.left")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .labelStyle(.iconOnly)
-                        }
-                        .buttonStyle(.plain)
-
-                        if item.relayCount > 0 {
-                            HStack(spacing: 4) {
-                                Image(systemName: "antenna.radiowaves.left.and.right")
-                                    .font(.caption)
-                                Text("\(item.relayCount)")
-                                    .font(.caption)
-                            }
-                            .foregroundStyle(.secondary)
-                        }
-                    }
-                    .padding(.top, 4)
-                }
+                noteBodyContent
             }
             .padding(.vertical, isFocused ? 12 : 8)
             .padding(.horizontal, 16)
         }
         .background(isFocused ? Color.accentColor.opacity(0.06) : Color.clear)
+    }
+
+    // ── Body column (header + content + actions) ──────────────────────────
+    //
+    // Extracted as a non-`@ViewBuilder` `some View` so the kind:6 repost
+    // branching can use `let` bindings instead of trying to mix declarations
+    // with view builders inside the parent `HStack`.
+
+    private var noteBodyContent: some View {
+        let isRepost = item.kind == 6
+        // For reposts, render the inner kind:1's content. When the embedded
+        // event JSON is absent or malformed, fall back to an empty string —
+        // the "Repost" badge alone is enough to communicate state (D1).
+        let displayContent: String = isRepost
+            ? (repostInnerText(item.content) ?? "")
+            : item.content
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Text(item.authorDisplay)
+                    .font(isFocused ? .headline : .callout)
+                    .fontWeight(isFocused ? .semibold : .regular)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Spacer()
+                Text(item.createdAtDisplay)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if isRepost {
+                HStack(spacing: 3) {
+                    Image(systemName: "arrow.2.squarepath")
+                        .font(.system(size: 11, weight: .medium))
+                    Text("Repost")
+                        .font(.caption)
+                }
+                .foregroundStyle(.secondary)
+            }
+
+            if !displayContent.isEmpty {
+                NoteContentView(
+                    content: displayContent,
+                    // contentTree was computed against the wrapper event;
+                    // it does not describe the inner note's text. Render
+                    // the inner content as plain text (D1 best-effort)
+                    // until the kernel emits a contentTree for the inner.
+                    contentTree: isRepost ? nil : contentTree,
+                    mentionProfiles: mentionProfiles,
+                    eventCards: eventCards,
+                    timelineItems: timelineItems,
+                    font: isFocused ? .body : .callout
+                )
+                .foregroundStyle(.primary)
+                .padding(.bottom, isFocused ? 4 : 0)
+            }
+
+            // Action row
+            HStack(spacing: 24) {
+                Button {
+                    guard !likeTapped else { return }
+                    likeTapped = true
+                    onLike()
+                    UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+                } label: {
+                    Image(systemName: likeTapped ? "heart.fill" : "heart")
+                        .font(.caption)
+                        .foregroundStyle(likeTapped ? Color.red : Color.secondary)
+                        .scaleEffect(likeTapped ? 1.35 : 1.0)
+                        .animation(.spring(response: 0.25, dampingFraction: 0.4), value: likeTapped)
+                }
+                .buttonStyle(.plain)
+
+                Button(action: onReply) {
+                    Label("Reply", systemImage: "arrowshape.turn.up.left")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.plain)
+
+                if item.relayCount > 0 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "antenna.radiowaves.left.and.right")
+                            .font(.caption)
+                        Text("\(item.relayCount)")
+                            .font(.caption)
+                    }
+                    .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    /// Kind:6 reposts (NIP-18) carry the full reposted-event JSON in their
+    /// `content` field. Return the inner event's content text, or nil if
+    /// `raw` is not a JSON object or the field is missing. Display-only.
+    private func repostInnerText(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("{"),
+              let data = trimmed.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let content = json["content"] as? String else { return nil }
+        return content
     }
 }

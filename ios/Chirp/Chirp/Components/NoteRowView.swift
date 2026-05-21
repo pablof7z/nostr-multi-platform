@@ -31,7 +31,15 @@ struct NoteRowView: View {
 
     var body: some View {
         Button {
-            router.push(.thread(eventID: item.id))
+            // For kind:6 reposts, the row represents the *inner* note (its
+            // content + author/timestamp are the inner event's), so tapping
+            // navigates to the inner note's thread, not the wrapper kind:6.
+            // Fall back to the repost's own id if the inner event JSON is
+            // missing or malformed (best-effort, D1).
+            let destID = item.kind == 6
+                ? (repostInnerEventId(item.content) ?? item.id)
+                : item.id
+            router.push(.thread(eventID: destID))
         } label: {
             VStack(alignment: .leading, spacing: 0) {
                 rowContent
@@ -112,7 +120,12 @@ struct NoteRowView: View {
     // ── Note content ──────────────────────────────────────────────────────
 
     private var noteContent: some View {
-        let (text, isRepost) = effectiveContent(item.content)
+        let isRepost = item.kind == 6
+        // For reposts, the visible text is the *inner* note's content (the
+        // raw `content` field carries the embedded kind:1 event JSON per
+        // NIP-18). When the inner JSON is missing or malformed, fall back to
+        // an empty string — the "Repost" badge alone communicates state (D1).
+        let text = isRepost ? (repostInnerText(item.content) ?? "") : item.content
         return VStack(alignment: .leading, spacing: 4) {
             if isRepost {
                 HStack(spacing: 3) {
@@ -126,6 +139,10 @@ struct NoteRowView: View {
             if !text.isEmpty {
                 NoteContentView(
                     content: text,
+                    // contentTree was computed against the wrapper event;
+                    // it does not describe the inner note's text. Render the
+                    // inner content as plain text (D1 best-effort) until the
+                    // kernel emits a contentTree for the inner event.
                     contentTree: isRepost ? nil : contentTree,
                     mentionProfiles: mentionProfiles,
                     eventCards: eventCards,
@@ -138,21 +155,37 @@ struct NoteRowView: View {
         .padding(.top, 4)
     }
 
-    // Kind:6 reposts carry the full reposted-event JSON as their content field.
-    // Extract the inner text; treat anything that doesn't parse as plain content.
-    private func effectiveContent(_ raw: String) -> (String, Bool) {
+    // ── Repost helpers (display-only JSON extraction) ─────────────────────
+    //
+    // Kind:6 reposts (NIP-18) carry the *full* reposted-event JSON in their
+    // `content` field. These helpers pull the two fields the row needs for
+    // rendering — they do not decide *what to do*, only *what to show* — so
+    // they live in the view layer alongside the row that uses them. The
+    // protocol-shaped signal (`item.kind`) comes from Rust; the helpers only
+    // peek inside an already-validated kind:6 envelope.
+
+    /// Returns the inner note's text content, or nil when the embedded event
+    /// JSON is missing/malformed (some reposts ship an empty content field).
+    private func repostInnerText(_ raw: String) -> String? {
+        innerEventField(raw, field: "content")
+    }
+
+    /// Returns the inner note's event id (for thread navigation), or nil
+    /// when the embedded JSON is missing/malformed.
+    private func repostInnerEventId(_ raw: String) -> String? {
+        innerEventField(raw, field: "id")
+    }
+
+    /// Generic helper: extract a top-level string field from an embedded
+    /// Nostr event JSON object. Returns nil if `raw` is not a JSON object or
+    /// the field is absent / not a string.
+    private func innerEventField(_ raw: String, field: String) -> String? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix("{"),
               let data = trimmed.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              json["id"] is String,
-              json["pubkey"] is String,
-              json["kind"] != nil,
-              json["sig"] is String,
-              let content = json["content"] as? String else {
-            return (raw, false)
-        }
-        return (content, true)
+              let value = json[field] as? String else { return nil }
+        return value
     }
 
     // ── Relay-count chip ──────────────────────────────────────────────────
