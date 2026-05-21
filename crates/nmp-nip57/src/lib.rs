@@ -13,13 +13,23 @@
 //!   zapped event id.
 //! - **ZapsDomain** — `(zapped_event_id → receipt_ids)` reverse-index.
 
+pub mod action;
 pub mod bolt11;
 pub mod build;
 pub mod decode;
 pub mod domain;
 pub mod kinds;
 pub mod view;
+// LNURL-pay HTTP leg of the NIP-57 zap dance — feature-gated so the default
+// build stays HTTP-free (no `ureq` dep, no socket egress in CI). The host
+// wiring (`nmp-app-chirp`) enables the `lnurl` feature when it wants the
+// live executor; protocol-only consumers stay on the no-feature defaults.
+#[cfg(feature = "lnurl")]
+pub mod lnurl;
 
+pub use action::{zap_request_command, ZapAction, ZapModule};
+#[cfg(feature = "lnurl")]
+pub use lnurl::{fetch_invoice, LnurlError, LnurlInvoice};
 pub use build::{ZapRequest, ZapRequestBuildError, ZapRequestBuilder};
 pub use decode::{try_from_event, try_from_kernel_event, ZapReceiptRecord};
 pub use domain::{decode_and_route, list_by_target, ZapsDomain, NAMESPACE};

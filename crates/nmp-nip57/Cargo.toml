@@ -5,10 +5,22 @@ edition = { workspace = true }
 license = { workspace = true }
 description = "NIP-57 lightning zaps as an NMP protocol crate — ZapReceiptRecord decoder (kind:9735) + ZapRequestBuilder (kind:9734) + DomainModule + ZapsView per docs/design/kind-wrappers.md §3. Zap receipts are LN-minted: decode-only."
 
+[features]
+# In-process LNURL-pay round-trip (leg 2 of NIP-57). Off by default so the
+# crate's default build pulls no HTTP dep and no socket egress lands in CI
+# without explicit opt-in. The host (`nmp-app-chirp`) enables this feature to
+# wire the live LNURL executor; the protocol-only consumers
+# (`ZapRequestBuilder`, `ZapsView`, `decode`) stay feature-free.
+lnurl = ["dep:ureq"]
+
 [dependencies]
 nmp-core = { path = "../nmp-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# Blocking HTTP client for the LNURL round-trip. Gated behind `lnurl` so the
+# default build stays HTTP-free. Matches the workspace's existing `ureq` use
+# (`nmp-repl`): rustls-only, no native-tls / no OpenSSL pull-in.
+ureq = { version = "2", default-features = false, features = ["tls", "json"], optional = true }
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
