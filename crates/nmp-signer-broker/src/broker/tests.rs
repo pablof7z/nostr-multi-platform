@@ -153,8 +153,8 @@ fn start_nostrconnect_handshake_returns_well_formed_uri() {
         "session secret must be alphanumeric: {secret:?}"
     );
     assert!(
-        query.contains("name=Chirp"),
-        "uri must name the app: {query:?}"
+        query.contains("name=nmp"),
+        "uri must carry a protocol-neutral client name (D0): {query:?}"
     );
     assert!(
         query.contains("perms="),
