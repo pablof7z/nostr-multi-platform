@@ -97,6 +97,24 @@ impl Kernel {
         if let Some(driver) = self.nip42_drivers.get_mut(&role) {
             driver.reset_on_disconnect();
         }
+        // Profile batch REQs for the legacy profile-requests pipeline are NOT
+        // tracked by the M2 SubscriptionLifecycle replay system, so they are
+        // NOT replayed on reconnect. Move `requested` pubkeys back to `pending`
+        // so `pending_profile_claim_requests` re-batches them on the next
+        // relay_connected → pending_view_requests call.
+        if role == RelayRole::Indexer {
+            let to_re_queue: Vec<String> = self
+                .profile_requests
+                .requested
+                .iter()
+                .filter(|pk| !self.profiles.contains_key(*pk))
+                .cloned()
+                .collect();
+            for pk in to_re_queue {
+                self.profile_requests.requested.remove(&pk);
+                self.profile_requests.pending.insert(pk);
+            }
+        }
     }
 
     /// Global socket teardown for `role` (Stop / Reset / Shutdown): unlike the
