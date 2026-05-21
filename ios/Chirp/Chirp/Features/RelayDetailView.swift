@@ -1,31 +1,36 @@
 import SwiftUI
 
+// Relay detail screen. THIN SHELL — every aggregate (active / EOSE'd /
+// total sub counts, total events_rx), every display string (relative-time
+// labels, role / connection / auth labels + tones, byte counters) is
+// pre-computed by the Rust `relay_diagnostics` projection. The view
+// renders fields directly.
+//
+// NO `.filter` / `.sorted` / `.reduce`, NO `Date(timeIntervalSince1970:)`,
+// NO `switch` on protocol semantics (aim.md §4.5 / §6 anti-pattern #1 /
+// §"Where do views live?"). The only Swift-side mapping is
+// `DiagnosticsColor.color(forTone:)` — a tone string (decided by Rust) →
+// a SwiftUI Color (rendering, not policy).
+
 struct RelayDetailView: View {
-    let relay: RelayStatus
-    let wireSubscriptions: [WireSubscriptionStatus]
-    let logicalInterests: [LogicalInterestStatus]
+    let row: RelayDiagnosticsRow
 
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
                 statusSection
-                if !wireSubscriptions.isEmpty {
+                if !row.wireSubs.isEmpty {
                     subsOverviewSection
                     wireSubsSection
-                }
-                if !logicalInterests.isEmpty {
-                    logicalInterestsSection
                 }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 24)
         }
         .chirpScreenBackground()
-        .navigationTitle(shortURL(relay.relayUrl))
+        .navigationTitle(row.shortUrl)
         .navigationBarTitleDisplayMode(.inline)
     }
-
-    // ── Connection status ─────────────────────────────────────────────────
 
     private var statusSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -34,7 +39,7 @@ struct RelayDetailView: View {
                 .foregroundStyle(.primary)
             VStack(spacing: 0) {
                 RelayDetailRow(label: "URL") {
-                    Text(relay.relayUrl)
+                    Text(row.relayUrl)
                         .font(.body.monospaced())
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -42,74 +47,74 @@ struct RelayDetailView: View {
                 }
                 RelayDetailDivider()
                 RelayDetailRow(label: "Role") {
-                    Text(relay.role.capitalized)
+                    Text(row.roleLabel)
                         .font(.callout.weight(.semibold))
-                        .foregroundStyle(roleColor)
+                        .foregroundStyle(DiagnosticsColor.color(forTone: row.roleTone))
                 }
                 RelayDetailDivider()
                 RelayDetailRow(label: "Connection") {
                     HStack(spacing: 4) {
                         Circle()
-                            .fill(connectionColor)
+                            .fill(DiagnosticsColor.color(forTone: row.connectionTone))
                             .frame(width: 8, height: 8)
-                        Text(relay.connection.capitalized)
+                        Text(row.connectionLabel)
                             .font(.callout.weight(.medium))
-                            .foregroundStyle(connectionColor)
+                            .foregroundStyle(DiagnosticsColor.color(forTone: row.connectionTone))
                     }
                 }
                 RelayDetailDivider()
                 RelayDetailRow(label: "Auth") {
-                    Text(relay.auth)
+                    Text(row.authLabel)
                         .font(.body.monospaced())
-                        .foregroundStyle(authColor)
+                        .foregroundStyle(DiagnosticsColor.color(forTone: row.authTone))
                 }
                 RelayDetailDivider()
                 RelayDetailRow(label: "Active Subs") {
-                    Text("\(relay.activeWireSubscriptions)")
+                    Text("\(row.activeSubCount)")
                         .font(.body.monospaced())
-                        .foregroundStyle(relay.activeWireSubscriptions > 10 ? .red : .primary)
+                        .foregroundStyle(row.activeSubCount > 10 ? .red : .primary)
                         .monospacedDigit()
                 }
                 RelayDetailDivider()
                 RelayDetailRow(label: "Reconnects") {
-                    Text("\(relay.reconnectCount)")
+                    Text("\(row.reconnectCount)")
                         .font(.body.monospaced())
-                        .foregroundStyle(relay.reconnectCount > 0 ? .orange : .secondary)
+                        .foregroundStyle(row.reconnectCount > 0 ? .orange : .secondary)
                         .monospacedDigit()
                 }
-                if let rx = relay.bytesRx, rx > 0 {
+                if let bytesRx = row.bytesRxDisplay {
                     RelayDetailDivider()
                     RelayDetailRow(label: "Bytes Rx") {
-                        Text(formatBytes(rx))
+                        Text(bytesRx)
                             .font(.body.monospaced())
                             .foregroundStyle(.secondary)
                     }
                 }
-                if let tx = relay.bytesTx, tx > 0 {
+                if let bytesTx = row.bytesTxDisplay {
                     RelayDetailDivider()
                     RelayDetailRow(label: "Bytes Tx") {
-                        Text(formatBytes(tx))
+                        Text(bytesTx)
                             .font(.body.monospaced())
                             .foregroundStyle(.secondary)
                     }
                 }
-                if let ms = relay.lastConnectedAtMs {
+                if let connected = row.lastConnectedDisplay {
                     RelayDetailDivider()
                     RelayDetailRow(label: "Last Connected") {
-                        Text(msToRelative(ms))
+                        Text(connected)
                             .font(.body.monospaced())
                             .foregroundStyle(.secondary)
                     }
                 }
-                if let ms = relay.lastEventAtMs {
+                if let lastEvent = row.lastEventDisplay {
                     RelayDetailDivider()
                     RelayDetailRow(label: "Last Event") {
-                        Text(msToRelative(ms))
+                        Text(lastEvent)
                             .font(.body.monospaced())
                             .foregroundStyle(.secondary)
                     }
                 }
-                if let notice = relay.lastNotice {
+                if let notice = row.lastNotice {
                     RelayDetailDivider()
                     RelayDetailRow(label: "Last Notice") {
                         Text(notice)
@@ -118,7 +123,7 @@ struct RelayDetailView: View {
                             .multilineTextAlignment(.trailing)
                     }
                 }
-                if let error = relay.lastError {
+                if let error = row.lastError {
                     RelayDetailDivider()
                     RelayDetailRow(label: "Last Error") {
                         Text(error)
@@ -132,40 +137,35 @@ struct RelayDetailView: View {
         }
     }
 
-    // ── Subscription overview tiles ───────────────────────────────────────
-
     private var subsOverviewSection: some View {
-        let activeSubs = wireSubscriptions.filter { ["open", "live", "active"].contains($0.state) }
-        let eosedSubs = wireSubscriptions.filter { $0.eoseAtMs != nil }
-        let totalEvents = wireSubscriptions.compactMap(\.eventsRx).reduce(0, +)
-        return VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 12) {
             Text("Subscription Overview")
                 .font(.headline)
                 .foregroundStyle(.primary)
             HStack(spacing: 12) {
                 RelayMetricTile(
                     label: "Total",
-                    value: "\(wireSubscriptions.count)",
+                    value: "\(row.totalSubCount)",
                     icon: "dot.radiowaves.left.and.right",
                     color: .accentColor
                 )
                 RelayMetricTile(
                     label: "Active",
-                    value: "\(activeSubs.count)",
+                    value: "\(row.activeSubCount)",
                     icon: "bolt.fill",
-                    color: activeSubs.isEmpty ? .secondary : .green
+                    color: row.activeSubCount == 0 ? .secondary : .green
                 )
             }
             HStack(spacing: 12) {
                 RelayMetricTile(
                     label: "Events Rx",
-                    value: totalEvents.formatted(.number.notation(.compactName)),
+                    value: row.totalEventsDisplay,
                     icon: "arrow.down.circle",
                     color: .green
                 )
                 RelayMetricTile(
                     label: "EOSE'd",
-                    value: "\(eosedSubs.count)",
+                    value: "\(row.eosedSubCount)",
                     icon: "checkmark.circle",
                     color: .secondary
                 )
@@ -173,93 +173,26 @@ struct RelayDetailView: View {
         }
     }
 
-    // ── Wire subscriptions ────────────────────────────────────────────────
-
     private var wireSubsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Wire Subscriptions (\(wireSubscriptions.count))")
+            Text("Wire Subscriptions (\(row.wireSubs.count))")
                 .font(.headline)
                 .foregroundStyle(.primary)
             VStack(spacing: 0) {
-                ForEach(Array(wireSubscriptions.enumerated()), id: \.element.id) { index, sub in
+                ForEach(Array(row.wireSubs.enumerated()), id: \.element.id) { index, sub in
                     NavigationLink(destination: WireSubscriptionDetailView(sub: sub)) {
                         WireSubRow(sub: sub)
                     }
                     .buttonStyle(.plain)
-                    if index < wireSubscriptions.count - 1 {
+                    if index < row.wireSubs.count - 1 {
                         Divider()
                     }
                 }
             }
             .padding(.horizontal, 12)
         }
-    }
-
-    // ── Logical interests ─────────────────────────────────────────────────
-
-    private var logicalInterestsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Logical Interests (\(logicalInterests.count))")
-                .font(.headline)
-                .foregroundStyle(.primary)
-            VStack(spacing: 0) {
-                ForEach(Array(logicalInterests.enumerated()), id: \.element.id) { index, interest in
-                    LogicalInterestRow(interest: interest)
-                    if index < logicalInterests.count - 1 {
-                        Divider()
-                    }
-                }
-            }
-            .padding(.horizontal, 12)
-        }
-    }
-
-    // ── Helpers ───────────────────────────────────────────────────────────
-
-    private var connectionColor: Color {
-        let s = relay.connection.lowercased()
-        if s == "connected" { return .green }
-        if s.contains("connect") { return .orange }
-        return .red
-    }
-
-    private var authColor: Color {
-        let s = relay.auth.lowercased()
-        if s == "ok" || s == "authenticated" { return .green }
-        if s == "pending" { return .orange }
-        return .secondary
-    }
-
-    private var roleColor: Color {
-        switch relay.role {
-        case "read": return .accentColor
-        case "write": return .green
-        default: return .accentColor
-        }
-    }
-
-    private func shortURL(_ url: String) -> String {
-        url.replacingOccurrences(of: "wss://", with: "")
-            .replacingOccurrences(of: "ws://", with: "")
-            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-    }
-
-    private func formatBytes(_ bytes: UInt64) -> String {
-        let kb = Double(bytes) / 1024
-        if kb < 1024 { return String(format: "%.1f KB", kb) }
-        return String(format: "%.1f MB", kb / 1024)
-    }
-
-    private func msToRelative(_ ms: UInt64) -> String {
-        let date = Date(timeIntervalSince1970: Double(ms) / 1000)
-        let diff = Date().timeIntervalSince(date)
-        if diff < 60 { return "\(Int(diff))s ago" }
-        if diff < 3600 { return "\(Int(diff / 60))m ago" }
-        return "\(Int(diff / 3600))h ago"
     }
 }
-
-// ── Metric tile ───────────────────────────────────────────────────────────
 
 private struct RelayMetricTile: View {
     let label: String
@@ -285,36 +218,42 @@ private struct RelayMetricTile: View {
     }
 }
 
-// ── Wire subscription row ──────────────────────────────────────────────────
-
 private struct WireSubRow: View {
-    let sub: WireSubscriptionStatus
+    let sub: RelayDiagnosticsWireSub
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .center, spacing: 8) {
-                Text(shortID(sub.wireId))
+                Text(sub.shortWireId)
                     .font(.body.monospaced())
                     .foregroundStyle(.primary)
                 Spacer(minLength: 0)
-                stateChip
+                Text(sub.stateLabel)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(DiagnosticsColor.color(forTone: sub.stateTone))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        DiagnosticsColor.color(forTone: sub.stateTone).opacity(0.15),
+                        in: Capsule()
+                    )
             }
             Text(sub.filterSummary)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
             HStack(spacing: 8) {
-                if sub.logicalConsumerCount > 0 {
-                    Label("\(sub.logicalConsumerCount) consumer\(sub.logicalConsumerCount == 1 ? "" : "s")", systemImage: "person.2")
+                if !sub.consumerCountLabel.isEmpty {
+                    Label(sub.consumerCountLabel, systemImage: "person.2")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-                if let rx = sub.eventsRx, rx > 0 {
-                    Label("\(rx.formatted(.number.notation(.compactName))) events", systemImage: "arrow.down.circle")
+                if let rx = sub.eventsRxDisplay {
+                    Label("\(rx) events", systemImage: "arrow.down.circle")
                         .font(.caption)
                         .foregroundStyle(.green)
                 }
-                if sub.eoseAtMs != nil {
+                if sub.eoseObserved {
                     Label("EOSE", systemImage: "checkmark.circle")
                         .font(.caption)
                         .foregroundStyle(.green)
@@ -329,80 +268,7 @@ private struct WireSubRow: View {
         }
         .padding(.vertical, 8)
     }
-
-    private var stateChip: some View {
-        let color = stateColor(sub.state)
-        return Text(sub.state.capitalized)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(color)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.15), in: Capsule())
-    }
-
-    private func shortID(_ id: String) -> String {
-        guard id.count > 12 else { return id }
-        return "\(id.prefix(8))…"
-    }
-
-    private func stateColor(_ s: String) -> Color {
-        switch s.lowercased() {
-        case "open", "active", "live": return .green
-        case "pending", "warming", "opening", "auth_paused": return .orange
-        case "closed", "done": return .secondary
-        default: return .secondary
-        }
-    }
 }
-
-// ── Logical interest row ───────────────────────────────────────────────────
-
-private struct LogicalInterestRow: View {
-    let interest: LogicalInterestStatus
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(alignment: .center, spacing: 8) {
-                Text(interest.key)
-                    .font(.caption)
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Spacer(minLength: 0)
-                stateChip
-            }
-            HStack(spacing: 12) {
-                Label("×\(interest.refcount)", systemImage: "link")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(interest.cacheCoverage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, 8)
-    }
-
-    private var stateChip: some View {
-        let color = stateColor(interest.state)
-        return Text(interest.state.capitalized)
-            .font(.caption2.weight(.semibold))
-            .foregroundStyle(color)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.15), in: Capsule())
-    }
-
-    private func stateColor(_ s: String) -> Color {
-        switch s.lowercased() {
-        case "satisfied", "active": return .green
-        case "warming", "pending": return .orange
-        default: return .secondary
-        }
-    }
-}
-
-// ── Shared helpers ─────────────────────────────────────────────────────────
 
 private struct RelayDetailRow<Value: View>: View {
     let label: String
