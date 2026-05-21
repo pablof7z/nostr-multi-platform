@@ -21,7 +21,8 @@ pub(crate) struct TokenPattern {
 /// `tokenizer.rs` uses this to route a match to the right `Segment` variant.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum PatternKind {
-    /// `nostr:<bech32>` URI — classified later via `nmp_core::nip21`.
+    /// `nostr:<bech32>` URI or social shorthand `@<bech32>` / bare `<bech32>`.
+    /// Classified later via `nmp_core::nip21`.
     NostrUri,
     /// `:shortcode:` NIP-30 emoji.
     EmojiShortcode,
@@ -43,7 +44,7 @@ fn nostr_uri() -> &'static Regex {
         // bech32 alphabet is [a-z0-9] (lowercased post-match by NIP-19); also
         // accept uppercase for tolerance — the decoder normalizes. Anchored
         // on common HRPs only; unknown HRPs fall through as plain text.
-        Regex::new(r"(?i)nostr:(npub1|nprofile1|note1|nevent1|naddr1)[ac-hj-np-z02-9]+")
+        Regex::new(r"(?i)(nostr:|@)?(npub1|nprofile1|note1|nevent1|naddr1)[ac-hj-np-z02-9]+")
             .expect("nostr URI regex compiles") // doctrine-allow: D6 — compile-time-constant regex literal; a malformed pattern is a programmer error caught on first call, not an operational FFI failure
     })
 }
@@ -114,6 +115,14 @@ mod tests {
             .find("hello nostr:npub1qqsx0nqrh2asdf rest")
             .expect("matches");
         assert!(m.as_str().starts_with("nostr:npub1"));
+    }
+
+    #[test]
+    fn nostr_uri_pattern_matches_social_shorthand() {
+        let m = nostr_uri()
+            .find("hello @npub1qqsx0nqrh2asdf rest")
+            .expect("matches");
+        assert!(m.as_str().starts_with("@npub1"));
     }
 
     #[test]

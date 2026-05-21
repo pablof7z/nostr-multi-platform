@@ -18,6 +18,8 @@ struct NoteRowView: View {
     let item: TimelineItem
     var contentTree: ContentTreeWire?
     var mentionProfiles: [String: MentionProfile] = [:]
+    var eventCards: [String: ChirpEventCard] = [:]
+    var timelineItems: [String: TimelineItem] = [:]
     let onLike: (String) -> Void
 
     @EnvironmentObject private var router: ChirpRouter
@@ -126,6 +128,8 @@ struct NoteRowView: View {
                     content: text,
                     contentTree: isRepost ? nil : contentTree,
                     mentionProfiles: mentionProfiles,
+                    eventCards: eventCards,
+                    timelineItems: timelineItems,
                     font: .body
                 )
                     .foregroundStyle(.primary)

@@ -14,6 +14,25 @@ struct ThreadScreen: View {
     @State private var replyTargetID: ReplyTarget? = nil
 
     private var thread: ThreadView? { model.threadView }
+    private var cardLookup: [String: ChirpEventCard] {
+        Dictionary(uniqueKeysWithValues: model.modularTimeline.cards.map { ($0.id, $0) })
+    }
+    private var itemLookup: [String: TimelineItem] {
+        Dictionary(uniqueKeysWithValues: (thread?.items ?? model.items).map { ($0.id, $0) })
+    }
+    private var mentionProfiles: [String: MentionProfile] {
+        Dictionary(
+            (thread?.items ?? model.items).map {
+                ($0.authorPubkey, MentionProfile(
+                    display: $0.authorDisplay,
+                    pictureUrl: $0.authorPictureUrl,
+                    initials: $0.authorAvatarInitials,
+                    colorHex: $0.authorAvatarColor
+                ))
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
 
     var body: some View {
         Group {
@@ -72,6 +91,10 @@ struct ThreadScreen: View {
                     ThreadNoteRow(
                         item: item,
                         isFocused: isFocused,
+                        contentTree: cardLookup[item.id]?.contentTree,
+                        mentionProfiles: mentionProfiles,
+                        eventCards: cardLookup,
+                        timelineItems: itemLookup,
                         onAvatarTap: {
                             router.push(.profile(pubkey: item.authorPubkey))
                         },

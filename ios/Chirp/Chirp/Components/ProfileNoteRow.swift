@@ -4,6 +4,10 @@ import SwiftUI
 /// Avatar tap → profile, row tap → thread.
 struct ProfileNoteRow: View {
     let item: TimelineItem
+    let contentTree: ContentTreeWire?
+    let mentionProfiles: [String: MentionProfile]
+    let eventCards: [String: ChirpEventCard]
+    let timelineItems: [String: TimelineItem]
     let onAvatarTap: () -> Void
     let onRowTap: () -> Void
     let onLike: () -> Void
@@ -33,7 +37,14 @@ struct ProfileNoteRow: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    NoteContentView(content: item.content, font: .body)
+                    NoteContentView(
+                        content: item.content,
+                        contentTree: contentTree,
+                        mentionProfiles: mentionProfiles,
+                        eventCards: eventCards,
+                        timelineItems: timelineItems,
+                        font: .body
+                    )
                         .foregroundStyle(.primary)
 
                     // Like action row

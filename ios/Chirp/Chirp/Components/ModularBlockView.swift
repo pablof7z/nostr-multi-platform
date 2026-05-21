@@ -67,11 +67,13 @@ struct ModularBlockView: View {
     private func standaloneRow(id: String) -> some View {
         if let item = items[id] {
             NoteRowView(
-                item: item,
-                contentTree: cards[id]?.contentTree,
-                mentionProfiles: mentionProfiles,
-                onLike: onLike
-            )
+                    item: item,
+                    contentTree: cards[id]?.contentTree,
+                    mentionProfiles: mentionProfiles,
+                    eventCards: cards,
+                    timelineItems: items,
+                    onLike: onLike
+                )
         } else if let card = cards[id] {
             // Card without a TimelineItem: build a synthetic item so the
             // standalone path stays consistent. This happens when an
@@ -81,6 +83,8 @@ struct ModularBlockView: View {
                 item: syntheticItem(card: card, item: nil),
                 contentTree: card.contentTree,
                 mentionProfiles: mentionProfiles,
+                eventCards: cards,
+                timelineItems: items,
                 onLike: onLike
             )
         } else {
@@ -136,6 +140,8 @@ struct ModularBlockView: View {
                             content: truncate(content, 1_200),
                             contentTree: card?.contentTree,
                             mentionProfiles: mentionProfiles,
+                            eventCards: cards,
+                            timelineItems: items,
                             font: .body
                         )
                             .foregroundStyle(.primary)
