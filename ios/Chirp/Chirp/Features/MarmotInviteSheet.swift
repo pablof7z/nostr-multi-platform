@@ -92,9 +92,7 @@ struct MarmotInviteSheet: View {
         if result.ok {
             dismiss()
         } else if let needs = result.needs, !needs.isEmpty {
-            // Key packages are being fetched in the background (invite() triggered it).
-            // Instruct the user to retry momentarily.
-            errorMessage = "Fetching key packages for \(needs.map(shortNpub).joined(separator: ", "))… tap Send again in a moment."
+            errorMessage = "Waiting for key packages from \(needs.map(shortNpub).joined(separator: ", "))."
         } else {
             errorMessage = result.error ?? "Could not send invites"
         }

@@ -103,6 +103,34 @@ fn create_account_generates_fresh_active_key() {
 }
 
 #[test]
+fn create_account_empty_relays_uses_rust_owned_onboarding_defaults() {
+    let (mut id, mut kernel) = fresh();
+    let profile = std::collections::HashMap::new();
+    let relays: Vec<(String, String)> = vec![];
+    create_account(&mut id, &mut kernel, false, &profile, &relays, false);
+
+    let rows = kernel.relay_edit_rows_snapshot();
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].url, "wss://relay.primal.net");
+    assert_eq!(rows[0].role, "both,indexer");
+    assert_eq!(rows[1].url, "wss://purplepag.es");
+    assert_eq!(rows[1].role, "indexer");
+}
+
+#[test]
+fn create_account_launch_override_relay_gets_rust_owned_default_role() {
+    let (mut id, mut kernel) = fresh();
+    let profile = std::collections::HashMap::new();
+    let relays = vec![("wss://maestro.test/".to_string(), String::new())];
+    create_account(&mut id, &mut kernel, false, &profile, &relays, false);
+
+    let rows = kernel.relay_edit_rows_snapshot();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].url, "wss://maestro.test");
+    assert_eq!(rows[0].role, "both,indexer");
+}
+
+#[test]
 fn create_account_publishes_bootstrap_events_and_persists_relay_rows() {
     let (mut id, mut kernel, publish_store) = fresh_with_publish_store();
     let mut profile = std::collections::HashMap::new();
@@ -314,7 +342,14 @@ fn publish_note_signs_and_routes_via_nip65() {
     // NIP-65 write relays and produces non-empty outbound frames.
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
-    let outbound = publish_note(&id, &mut kernel, "hello pulse e2e", None, None, &mut Vec::new());
+    let outbound = publish_note(
+        &id,
+        &mut kernel,
+        "hello pulse e2e",
+        None,
+        None,
+        &mut Vec::new(),
+    );
     assert!(!outbound.is_empty());
     assert!(outbound[0].text.starts_with("[\"EVENT\""));
     let q = kernel.publish_queue_snapshot();
@@ -1397,7 +1432,11 @@ fn sign_in_bunker_seeds_handshake_progress() {
 
     let (id, mut kernel) = fresh();
     let pk = "c".repeat(64);
-    sign_in_bunker(&id, &mut kernel, &format!("bunker://{pk}?relay=wss://r.example"));
+    sign_in_bunker(
+        &id,
+        &mut kernel,
+        &format!("bunker://{pk}?relay=wss://r.example"),
+    );
     // D0: handshake state is an app noun — it is written to the identity
     // runtime's shared slot (read by the `"bunker_handshake"` projection),
     // not a typed kernel field.
@@ -1444,7 +1483,11 @@ fn sign_in_bunker_without_broker_clears_progress_and_toasts() {
 
     let (id, mut kernel) = fresh();
     let pk = "d".repeat(64);
-    sign_in_bunker(&id, &mut kernel, &format!("bunker://{pk}?relay=wss://r.example"));
+    sign_in_bunker(
+        &id,
+        &mut kernel,
+        &format!("bunker://{pk}?relay=wss://r.example"),
+    );
     // Either the broker hook ran (and we left "connecting" seeded) OR the
     // broker isn't registered (and we cleared the slot + toasted). Both are
     // valid post-conditions for this end-to-end path; the only unacceptable
@@ -1457,7 +1500,14 @@ fn sign_in_bunker_without_broker_clears_progress_and_toasts() {
 fn snapshot_json_carries_new_projections() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
-    publish_note(&id, &mut kernel, "json shape check", None, None, &mut Vec::new());
+    publish_note(
+        &id,
+        &mut kernel,
+        "json shape check",
+        None,
+        None,
+        &mut Vec::new(),
+    );
     add_relay(&mut kernel, "wss://relay.damus.io", "both");
     let json = kernel.make_update(true);
     assert!(json.contains("\"accounts\""));

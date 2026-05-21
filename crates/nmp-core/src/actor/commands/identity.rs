@@ -454,6 +454,11 @@ pub(super) const DEFAULT_FOLLOWS: &[&str] = &[
     // fiatjaf
     "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
 ];
+const DEFAULT_ONBOARDING_RELAYS: &[(&str, &str)] = &[
+    ("wss://relay.primal.net", "both,indexer"),
+    ("wss://purplepag.es", "indexer"),
+];
+const DEFAULT_ONBOARDING_OVERRIDE_ROLE: &str = "both,indexer";
 
 pub(crate) fn create_account(
     identity: &mut IdentityRuntime,
@@ -577,6 +582,12 @@ pub(crate) fn create_account(
     outbound
 }
 
+pub(crate) fn ensure_default_onboarding_relays(kernel: &mut Kernel) {
+    if kernel.relay_edit_rows_snapshot().is_empty() {
+        kernel.set_relay_edit_rows(relay_rows_from_create_account(&[]));
+    }
+}
+
 /// Resolve the explicit relay set every *initial* event a brand-new account
 /// emits — kind:0 (profile metadata), kind:3 (contacts) and kind:10002 (relay
 /// list) — is published to on account creation (cold-start).
@@ -612,11 +623,24 @@ fn cold_start_publish_targets(kernel: &Kernel, relay_rows: &[RelayEditRow]) -> V
 }
 
 fn relay_rows_from_create_account(relays: &[(String, String)]) -> Vec<RelayEditRow> {
-    relays
+    let source = if relays.is_empty() {
+        DEFAULT_ONBOARDING_RELAYS
+            .iter()
+            .map(|(url, role)| ((*url).to_string(), (*role).to_string()))
+            .collect::<Vec<_>>()
+    } else {
+        relays.to_vec()
+    };
+    source
         .iter()
         .filter_map(|(url, role)| {
             let url = canonical_relay_url(url)?;
-            let role = canonical_relay_role(role).unwrap_or_else(|| "both".to_string());
+            let raw_role = if role.trim().is_empty() {
+                DEFAULT_ONBOARDING_OVERRIDE_ROLE
+            } else {
+                role
+            };
+            let role = canonical_relay_role(raw_role).unwrap_or_else(|| "both".to_string());
             Some(RelayEditRow { url, role })
         })
         .collect()

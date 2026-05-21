@@ -74,8 +74,9 @@ mod tests;
 mod wallet;
 
 pub(super) use identity::{
-    add_remote_signer, bunker_handshake_progress, create_account, remove_account,
-    restore_bunker_session, sign_in_bunker, sign_in_nsec, switch_active, IdentityRuntime,
+    add_remote_signer, bunker_handshake_progress, create_account, ensure_default_onboarding_relays,
+    remove_account, restore_bunker_session, sign_in_bunker, sign_in_nsec, switch_active,
+    IdentityRuntime,
 };
 // D0: NIP-46 remote signing is an app noun — the bunker-handshake slot + its
 // constructor are re-exported (crate-wide) so the `ffi` module can build the
