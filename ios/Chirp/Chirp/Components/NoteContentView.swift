@@ -128,6 +128,7 @@ struct NoteContentView: View {
                     .scaledToFit()
                     .frame(maxWidth: .infinity, maxHeight: 300)
                     .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .fadeIn()
             case .empty:
                 RoundedRectangle(cornerRadius: 10)
                     .fill(Color.secondary.opacity(0.12))

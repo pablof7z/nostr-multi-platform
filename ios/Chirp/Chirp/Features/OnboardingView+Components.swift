@@ -9,6 +9,9 @@ extension OnboardingView {
             Spacer()
 
             logoBrand
+                .opacity(appeared ? 1 : 0)
+                .offset(y: appeared ? 0 : 24)
+                .animation(.smooth(duration: 0.55), value: appeared)
 
             Spacer()
 
@@ -35,6 +38,9 @@ extension OnboardingView {
                 .buttonStyle(.bordered)
             }
             .padding(.horizontal, ChirpSpace.l)
+            .opacity(appeared ? 1 : 0)
+            .offset(y: appeared ? 0 : 16)
+            .animation(.smooth(duration: 0.5).delay(0.15), value: appeared)
 
             Spacer().frame(height: 48)
         }

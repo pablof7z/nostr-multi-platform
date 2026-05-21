@@ -185,3 +185,23 @@ struct ComposeProgressRing: View {
         .frame(width: 24, height: 24)
     }
 }
+
+/// Fades a view in from opacity 0 to 1 on first appear.
+/// Apply with `.fadeIn()` on any view that should animate into existence.
+private struct FadeInModifier: ViewModifier {
+    @State private var opacity: Double = 0
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(opacity)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.3)) { opacity = 1 }
+            }
+    }
+}
+
+extension View {
+    func fadeIn() -> some View {
+        modifier(FadeInModifier())
+    }
+}
