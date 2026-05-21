@@ -11,8 +11,6 @@ private let kmLog = Logger(subsystem: "com.example.Chirp", category: "KernelMode
 final class KernelModel: ObservableObject {
     @Published private(set) var isRunning = false
     @Published private(set) var rev: UInt64 = 0
-    @Published private(set) var relayUrl: String = ""
-    @Published private(set) var testNpub: String = ""
     @Published private(set) var profile: ProfileCard?
     @Published private(set) var authorView: AuthorProfileSnapshot?
     @Published private(set) var items: [TimelineItem] = []
@@ -298,8 +296,6 @@ final class KernelModel: ObservableObject {
         }
         rev = update.rev
         isRunning = update.running
-        relayUrl = update.relayUrl
-        testNpub = update.testNpub
         profile = update.profile
         authorView = update.authorView
         let timelineItemsChanged = update.items != items

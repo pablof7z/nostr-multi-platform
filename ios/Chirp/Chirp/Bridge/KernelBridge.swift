@@ -437,8 +437,6 @@ struct KernelUpdate: Decodable {
     let rev: UInt64
     let updateKind: String?
     let running: Bool
-    let relayUrl: String
-    let testNpub: String
     let profile: ProfileCard
     let authorView: AuthorProfileSnapshot?
     let items: [TimelineItem]

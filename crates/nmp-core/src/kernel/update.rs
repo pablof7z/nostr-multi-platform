@@ -56,8 +56,6 @@ impl Kernel {
             last_tick_ms,
             update_kind: "ViewBatch",
             running,
-            relay_url: "",
-            test_npub: "",
             profile: self.profile_card(),
             items,
             author_view: self.author_view(),
