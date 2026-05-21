@@ -25,12 +25,6 @@ struct ComposeView: View {
         guard let activeID = model.activeAccount else { return nil }
         return model.accounts.first { $0.id == activeID }
     }
-    private var counterColor: Color {
-        if isOverLimit { return .red }
-        if charRemaining <= 20 { return .orange }
-        return .secondary
-    }
-
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -114,9 +108,7 @@ struct ComposeView: View {
     private var composeFooter: some View {
         HStack {
             Spacer()
-            Text("\(charRemaining)")
-                .font(.caption)
-                .foregroundStyle(counterColor)
+            ComposeProgressRing(used: charCount, limit: characterLimit)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

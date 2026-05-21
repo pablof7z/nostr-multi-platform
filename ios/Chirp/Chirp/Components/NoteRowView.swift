@@ -238,6 +238,8 @@ struct NoteActionsRow: View {
                 Image(systemName: likeTapped ? "heart.fill" : "heart")
                     .font(.system(size: 15, weight: .regular))
                     .foregroundStyle(likeTapped ? ChirpColor.like : .secondary)
+                    .scaleEffect(likeTapped ? 1.35 : 1.0)
+                    .animation(.spring(response: 0.25, dampingFraction: 0.4), value: likeTapped)
             }
             .frame(minWidth: 44, minHeight: 32, alignment: .center)
         }

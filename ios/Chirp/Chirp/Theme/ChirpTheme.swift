@@ -148,3 +148,40 @@ extension Color {
             blue: Double(v & 0xFF) / 255)
     }
 }
+
+/// Circular character-count progress ring for the compose sheet.
+/// Mimics Twitter/X: ring fills as limit approaches; turns red over limit.
+struct ComposeProgressRing: View {
+    let used: Int
+    let limit: Int
+
+    private var fraction: Double { min(Double(used) / Double(limit), 1.0) }
+    private var isOver: Bool { used > limit }
+    private var remaining: Int { limit - used }
+    private var showNumber: Bool { remaining <= 20 }
+
+    private var ringColor: Color {
+        if isOver { return .red }
+        if remaining <= 20 { return .orange }
+        return .accentColor
+    }
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color(.systemFill), lineWidth: 2.5)
+            Circle()
+                .trim(from: 0, to: fraction)
+                .stroke(ringColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(.easeInOut(duration: 0.15), value: fraction)
+            if showNumber {
+                Text("\(remaining)")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(isOver ? .red : .secondary)
+                    .minimumScaleFactor(0.7)
+            }
+        }
+        .frame(width: 24, height: 24)
+    }
+}
