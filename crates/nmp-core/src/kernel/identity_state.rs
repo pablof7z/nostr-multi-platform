@@ -333,10 +333,7 @@ mod tests {
     use super::*;
 
     fn row(url: &str, role: &str) -> RelayEditRow {
-        RelayEditRow {
-            url: url.to_string(),
-            role: role.to_string(),
-        }
+        RelayEditRow::new(url.to_string(), role.to_string())
     }
 
     #[test]
