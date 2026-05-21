@@ -43,6 +43,7 @@
 //! and freezes the host's update stream.
 
 use std::collections::HashMap;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Mutex};
 
 use super::Kernel;
@@ -91,10 +92,32 @@ impl SnapshotRegistry {
     /// D8: this is called on the actor thread inside `make_update`; each
     /// closure must be non-blocking. Empty when nothing is registered — the
     /// snapshot then `skip_serializing_if`s the `projections` key entirely.
+    ///
+    /// D6: each host closure is invoked inside [`catch_unwind`] — a host
+    /// projection is untrusted plugin code, and this runs on the actor
+    /// thread *inside* the snapshot tick. An unguarded panic would unwind
+    /// the actor thread; the actor's outer `catch_unwind` would then catch a
+    /// terminal `Panic` frame and the kernel would be permanently dead. A
+    /// panicking projection MUST never be able to kill the kernel: its key
+    /// is omitted from the map (the same shape as an unregistered
+    /// namespace), and every sibling projection in the same tick still
+    /// produces its value.
     pub fn run(&self) -> HashMap<String, serde_json::Value> {
         let mut out = HashMap::with_capacity(self.projections.len());
         for (key, projection) in &self.projections {
-            out.insert(key.clone(), projection());
+            // `AssertUnwindSafe`: a boxed `Fn` closure is not `UnwindSafe`,
+            // but a panic here is fully contained — nothing the closure
+            // touched is observed again after it unwinds, so there is no
+            // broken-invariant hazard.
+            match catch_unwind(AssertUnwindSafe(projection)) {
+                Ok(value) => {
+                    out.insert(key.clone(), value);
+                }
+                // The panic is swallowed: the namespace is omitted, exactly
+                // as if the host had never registered it. The default panic
+                // hook still prints the payload, so the bug stays visible.
+                Err(_) => continue,
+            }
         }
         out
     }
