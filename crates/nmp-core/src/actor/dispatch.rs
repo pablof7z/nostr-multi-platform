@@ -192,7 +192,7 @@ pub(super) fn dispatch_command(
             Some(outbound)
         }
         ActorCommand::SignInBunker { uri } => {
-            commands::sign_in_bunker(ctx.kernel, &uri);
+            commands::sign_in_bunker(ctx.identity, ctx.kernel, &uri);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
@@ -271,7 +271,7 @@ pub(super) fn dispatch_command(
             Some(outbound)
         }
         ActorCommand::BunkerHandshakeProgress { stage, message } => {
-            commands::bunker_handshake_progress(ctx.kernel, stage, message);
+            commands::bunker_handshake_progress(ctx.identity, ctx.kernel, stage, message);
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }

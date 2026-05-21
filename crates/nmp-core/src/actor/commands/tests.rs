@@ -22,7 +22,10 @@ const SECOND_HEX: &str = "000000000000000000000000000000000000000000000000000000
 const TEST_WRITE_RELAYS: &[&str] = &["wss://test-write-r1.test", "wss://test-write-r2.test"];
 
 fn fresh() -> (IdentityRuntime, Kernel) {
-    (IdentityRuntime::new(), Kernel::new(DEFAULT_VISIBLE_LIMIT))
+    (
+        IdentityRuntime::new(new_bunker_handshake_slot()),
+        Kernel::new(DEFAULT_VISIBLE_LIMIT),
+    )
 }
 
 fn fresh_with_publish_store() -> (IdentityRuntime, Kernel, Arc<InMemoryPublishStore>) {
@@ -31,7 +34,11 @@ fn fresh_with_publish_store() -> (IdentityRuntime, Kernel, Arc<InMemoryPublishSt
         DEFAULT_VISIBLE_LIMIT,
         Arc::clone(&publish_store) as Arc<dyn PublishStore>,
     );
-    (IdentityRuntime::new(), kernel, publish_store)
+    (
+        IdentityRuntime::new(new_bunker_handshake_slot()),
+        kernel,
+        publish_store,
+    )
 }
 
 /// Sign in with TEST_NSEC and seed kind:10002 write relays for the active
@@ -1264,12 +1271,13 @@ fn sign_in_bunker_seeds_handshake_progress() {
     use std::sync::Arc;
     crate::bunker_hook::register_bunker_hook(Arc::new(|_uri| {}));
 
-    let (_id, mut kernel) = fresh();
+    let (id, mut kernel) = fresh();
     let pk = "c".repeat(64);
-    sign_in_bunker(&mut kernel, &format!("bunker://{pk}?relay=wss://r.example"));
-    let handshake = kernel
-        .bunker_handshake_snapshot()
-        .expect("handshake seeded");
+    sign_in_bunker(&id, &mut kernel, &format!("bunker://{pk}?relay=wss://r.example"));
+    // D0: handshake state is an app noun — it is written to the identity
+    // runtime's shared slot (read by the `"bunker_handshake"` projection),
+    // not a typed kernel field.
+    let handshake = id.bunker_handshake_for_test().expect("handshake seeded");
     assert_eq!(handshake.stage, "connecting");
     assert!(handshake.message.is_some());
     // No toast on the happy path — the seeded progress is the UX signal.
@@ -1278,8 +1286,8 @@ fn sign_in_bunker_seeds_handshake_progress() {
 
 #[test]
 fn sign_in_bunker_rejects_malformed_uri() {
-    let (_id, mut kernel) = fresh();
-    sign_in_bunker(&mut kernel, "bunker://nope");
+    let (id, mut kernel) = fresh();
+    sign_in_bunker(&id, &mut kernel, "bunker://nope");
     assert!(kernel
         .last_error_toast_snapshot()
         .is_some_and(|t| t.contains("invalid bunker")));
@@ -1310,14 +1318,14 @@ fn sign_in_bunker_without_broker_clears_progress_and_toasts() {
     use std::sync::Arc;
     crate::bunker_hook::register_bunker_hook(Arc::new(|_uri| {}));
 
-    let (_id, mut kernel) = fresh();
+    let (id, mut kernel) = fresh();
     let pk = "d".repeat(64);
-    sign_in_bunker(&mut kernel, &format!("bunker://{pk}?relay=wss://r.example"));
+    sign_in_bunker(&id, &mut kernel, &format!("bunker://{pk}?relay=wss://r.example"));
     // Either the broker hook ran (and we left "connecting" seeded) OR the
-    // broker isn't registered (and we cleared the snapshot + toasted). Both
-    // are valid post-conditions for this end-to-end path; the only
-    // unacceptable outcome is a panic.
-    let _ = kernel.bunker_handshake_snapshot();
+    // broker isn't registered (and we cleared the slot + toasted). Both are
+    // valid post-conditions for this end-to-end path; the only unacceptable
+    // outcome is a panic.
+    let _ = id.bunker_handshake_for_test();
     let _ = kernel.last_error_toast_snapshot();
 }
 
@@ -1333,8 +1341,12 @@ fn snapshot_json_carries_new_projections() {
     assert!(json.contains("\"publish_queue\""));
     assert!(json.contains("\"last_error_toast\""));
     assert!(json.contains("\"relay_edit_rows\""));
-    // Stage 3 of NIP-46 wiring — new snapshot field, `null` when no handshake.
-    assert!(json.contains("\"bunker_handshake\""));
+    // D0: NIP-46 bunker handshake is no longer a typed `KernelSnapshot` field
+    // — it is surfaced through the built-in `"bunker_handshake"` snapshot
+    // projection registered in `nmp_app_new`. A bare `make_update` (no
+    // projection registered) therefore does NOT carry the key; the projection
+    // path is covered by `snapshot_carries_bunker_handshake_value` in
+    // `remote_signer_tests.rs`.
 }
 
 // ── T144 — full NIP-10 reply construction via `nmp_core::tags` primitives ──

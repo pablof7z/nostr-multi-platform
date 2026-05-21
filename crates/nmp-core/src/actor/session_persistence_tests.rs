@@ -83,7 +83,10 @@ fn registered_slot() -> CapabilityCallbackSlot {
 }
 
 fn fresh() -> (IdentityRuntime, Kernel) {
-    (IdentityRuntime::new(), Kernel::new(DEFAULT_VISIBLE_LIMIT))
+    (
+        IdentityRuntime::new(commands::new_bunker_handshake_slot()),
+        Kernel::new(DEFAULT_VISIBLE_LIMIT),
+    )
 }
 
 #[test]
@@ -159,6 +162,9 @@ fn restores_nip46_from_persisted_remote_payload() {
         calls.lock().unwrap().as_slice(),
         &[BunkerHookRequest::Restore { payload_json }]
     );
-    let progress = kernel.bunker_handshake_snapshot().expect("progress");
+    // D0: handshake state is an app noun — `restore_bunker_session` seeds it
+    // into the identity runtime's shared slot (read by the
+    // `"bunker_handshake"` projection), not a typed kernel field.
+    let progress = identity.bunker_handshake_for_test().expect("progress");
     assert_eq!(progress.stage, "connecting");
 }

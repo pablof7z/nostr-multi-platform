@@ -64,7 +64,7 @@ pub(super) fn restore_active_session(
         );
     }
     if kind == "nip46" {
-        return restore_remote_bunker(kernel, capability_callback, &identity_id);
+        return restore_remote_bunker(identity, kernel, capability_callback, &identity_id);
     }
     forget_active_pointer(capability_callback);
     Vec::new()
@@ -105,6 +105,7 @@ fn restore_local(
 }
 
 fn restore_remote_bunker(
+    identity: &IdentityRuntime,
     kernel: &mut Kernel,
     capability_callback: &CapabilityCallbackSlot,
     identity_id: &str,
@@ -125,7 +126,7 @@ fn restore_remote_bunker(
         forget_active_pointer(capability_callback);
         return Vec::new();
     };
-    commands::restore_bunker_session(kernel, &payload);
+    commands::restore_bunker_session(identity, kernel, &payload);
     Vec::new()
 }
 

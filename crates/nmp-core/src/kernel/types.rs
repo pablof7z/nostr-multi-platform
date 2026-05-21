@@ -557,10 +557,13 @@ pub(super) struct KernelSnapshot {
     // D0: NIP-47 NWC is an app noun — there is NO typed `wallet_status` field.
     // Wallet state is surfaced through the host-registered `"wallet"` snapshot
     // projection (see `projections` below): a shell reads `projections.wallet`
-    // instead of a baked-in kernel field. This is the first internal consumer
+    // instead of a baked-in kernel field. This was the first internal consumer
     // of the snapshot-projection seam.
-    // ── NIP-46 bunker handshake projection ─────────────────────────────────
-    pub(super) bunker_handshake: Option<super::BunkerHandshakeDto>,
+    //
+    // D0: NIP-46 remote signing is an app noun — there is likewise NO typed
+    // `bunker_handshake` field. Handshake state is surfaced through the
+    // built-in `"bunker_handshake"` snapshot projection: a shell reads
+    // `projections.bunker_handshake` instead of a baked-in kernel field.
     /// Host-registered projection data. Each registered projection closure
     /// runs on every tick and appends a namespaced JSON value under its key.
     /// Keys are host-chosen (e.g. `"market.listings"`, `"todo.items"`).

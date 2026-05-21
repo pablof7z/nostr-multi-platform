@@ -144,7 +144,7 @@ use clock::{Clock, SystemClock};
 // `nmp_app_dispatch_action` entry point.
 pub(crate) use action_registry::{default_registry, ActionRegistry};
 pub(crate) use identity_state::{
-    AccountSummary, BunkerHandshakeDto, PublishQueueEntry, RelayAckOutcome, RelayEditRow,
+    AccountSummary, PublishQueueEntry, RelayAckOutcome, RelayEditRow,
 };
 // Host-extensible snapshot output — reachable from the `ffi` module for the
 // `nmp_app_register_snapshot_projection` C-ABI entry point.
@@ -356,10 +356,11 @@ pub(crate) struct Kernel {
     // D0: NIP-47 NWC is an app noun. Wallet state is no longer a kernel field
     // — the actor's wallet runtime owns it and the `projections["wallet"]`
     // snapshot projection surfaces it. The kernel holds no NWC state.
-    /// Stage 3 of NIP-46 wiring: the broker pushes handshake progress through
-    /// `ActorCommand::BunkerHandshakeProgress`; the actor stores the latest
-    /// into this projection. `None` means no handshake is in flight.
-    bunker_handshake: Option<BunkerHandshakeDto>,
+    //
+    // D0: NIP-46 remote signing is likewise an app noun. Bunker handshake
+    // state is no longer a kernel field — the actor's identity runtime owns it
+    // and the `projections["bunker_handshake"]` snapshot projection surfaces
+    // it. The kernel holds no NIP-46 handshake state.
     /// T117 — the publish engine drives the per-(event, relay) retry FSM
     /// (`publish/state.rs`). Mandatory on every Kernel; previously the
     /// kernel one-shotted a single EVENT frame and the engine was dead code
@@ -724,7 +725,6 @@ impl Kernel {
             last_error_toast: None,
             last_error_category: None,
             relay_edit_rows: Vec::new(),
-            bunker_handshake: None,
             publish_engine,
             publish_dispatcher,
             publish_store,
@@ -1025,11 +1025,13 @@ impl Kernel {
     /// kind:23195 balance response (which the kernel itself drops as an
     /// unknown kind) still drives a timely projection refresh.
     ///
-    /// D0: gated behind the `wallet` feature — the wallet runtime is currently
-    /// its only caller (the protocol-neutral kernel has no off-kernel state to
-    /// signal). New off-kernel projections that need this should widen the
-    /// gate at that point.
-    #[cfg(feature = "wallet")]
+    /// D0: callers are off-kernel app-noun projections that write their state
+    /// to a shared slot instead of a typed `KernelSnapshot` field — the
+    /// wallet runtime (`projections["wallet"]`, `feature = "wallet"`) and the
+    /// identity runtime's NIP-46 bunker handshake
+    /// (`projections["bunker_handshake"]`). A slot write does not flip
+    /// `changed_since_emit` on its own, so each calls this to drive a timely
+    /// projection refresh on the next due tick.
     pub(crate) fn mark_changed_since_emit(&mut self) {
         self.changed_since_emit = true;
     }

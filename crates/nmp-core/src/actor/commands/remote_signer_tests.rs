@@ -97,7 +97,10 @@ impl RemoteSignerHandle for StubRemoteSigner {
 }
 
 fn fresh() -> (IdentityRuntime, Kernel) {
-    (IdentityRuntime::new(), Kernel::new(DEFAULT_VISIBLE_LIMIT))
+    (
+        IdentityRuntime::new(new_bunker_handshake_slot()),
+        Kernel::new(DEFAULT_VISIBLE_LIMIT),
+    )
 }
 
 fn stub_signer() -> (Box<StubRemoteSigner>, Arc<AtomicU32>) {
@@ -153,19 +156,23 @@ fn remove_remote_signer_drops_account_from_snapshot() {
 
 #[test]
 fn bunker_handshake_progress_writes_then_clears() {
-    let (_id, mut kernel) = fresh();
+    let (id, mut kernel) = fresh();
     bunker_handshake_progress(
+        &id,
         &mut kernel,
         "awaiting_pubkey".to_string(),
         Some("connected, waiting for get_public_key".to_string()),
     );
-    let progress = kernel.bunker_handshake_snapshot().expect("set");
+    // D0: handshake state is an app noun — it is written to the identity
+    // runtime's shared slot (read by the `"bunker_handshake"` projection),
+    // not a typed kernel field.
+    let progress = id.bunker_handshake_for_test().expect("set");
     assert_eq!(progress.stage, "awaiting_pubkey");
     assert!(progress.message.is_some());
 
     // `"idle"` collapses to `None`.
-    bunker_handshake_progress(&mut kernel, "idle".to_string(), None);
-    assert!(kernel.bunker_handshake_snapshot().is_none());
+    bunker_handshake_progress(&id, &mut kernel, "idle".to_string(), None);
+    assert!(id.bunker_handshake_for_test().is_none());
 }
 
 #[test]
@@ -234,14 +241,47 @@ fn publish_unsigned_event_with_active_remote_uses_stub_signer() {
 
 #[test]
 fn snapshot_carries_bunker_handshake_value() {
-    let (_id, mut kernel) = fresh();
+    // D0: NIP-46 bunker handshake is an app noun surfaced via the built-in
+    // `"bunker_handshake"` snapshot projection (registered in `nmp_app_new`),
+    // NOT a typed `KernelSnapshot` field. This test reproduces that wiring at
+    // the kernel level: a projection closure reads the identity runtime's
+    // shared slot and the kernel collects it into `projections` on emit.
+    let bunker_slot = new_bunker_handshake_slot();
+    let id = IdentityRuntime::new(Arc::clone(&bunker_slot));
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+
+    // Register the `"bunker_handshake"` projection exactly as `nmp_app_new`
+    // does — a closure reading the shared slot — and bind it onto the kernel.
+    let projections = crate::kernel::new_snapshot_projection_slot();
+    {
+        let projection_slot = Arc::clone(&bunker_slot);
+        projections
+            .lock()
+            .expect("registry lock")
+            .register("bunker_handshake", move || {
+                let slot = projection_slot
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner());
+                slot.as_ref()
+                    .map(|dto| {
+                        serde_json::to_value(dto).unwrap_or(serde_json::Value::Null)
+                    })
+                    .unwrap_or(serde_json::Value::Null)
+            });
+    }
+    kernel.set_snapshot_projection_handle(projections);
+
     bunker_handshake_progress(
+        &id,
         &mut kernel,
         "connecting".to_string(),
         Some("dialing wss://r.example".to_string()),
     );
     let json = kernel.make_update(true);
-    assert!(json.contains("\"bunker_handshake\""));
+    assert!(
+        json.contains("\"bunker_handshake\""),
+        "snapshot must carry the bunker_handshake projection key: {json}"
+    );
     assert!(json.contains("\"stage\":\"connecting\""));
 }
 

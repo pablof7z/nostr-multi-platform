@@ -5,7 +5,9 @@
 //! must either spawn a worker immediately or retain publish frames until the
 //! actor is running again.
 
-use super::commands::{create_account, publish_signed_event, IdentityRuntime};
+use super::commands::{
+    create_account, new_bunker_handshake_slot, publish_signed_event, IdentityRuntime,
+};
 use super::relay_mgmt::{close_relays, route_dispatch_outbound};
 use super::RelayControl;
 use crate::kernel::Kernel;
@@ -80,7 +82,7 @@ fn explicit_publish_target_spawns_worker_for_unseen_relay() {
 #[test]
 fn create_account_publish_targets_spawn_workers_for_unseen_relays() {
     let (mut kernel, relay_tx, mut relay_controls, mut next_generation) = route_state();
-    let mut identity = IdentityRuntime::new();
+    let mut identity = IdentityRuntime::new(new_bunker_handshake_slot());
     let relays = vec![(UNSEEN_RELAY.to_string(), "write".to_string())];
     let outbound = create_account(&mut identity, &mut kernel, true, &HashMap::new(), &relays, false);
     let mut queued_publish_outbound = Vec::new();
