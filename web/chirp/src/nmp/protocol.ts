@@ -39,6 +39,20 @@ export type WorkerEvent =
     }
   | { type: "error"; code: string; message: string; correlation_id?: string };
 
+export const protocolVersion = 1;
+
+export function eventCorrelationId(event: WorkerEvent): string | undefined {
+  switch (event.type) {
+    case "runtime_status":
+    case "capability_failure":
+    case "error":
+      return event.correlation_id;
+    case "hello_accepted":
+    case "update":
+      return undefined;
+  }
+}
+
 export function labelRuntimeStatus(status: RuntimeStatus): string {
   if (typeof status === "string") {
     return status.replace("_", " ");

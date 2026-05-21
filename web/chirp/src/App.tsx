@@ -1,4 +1,4 @@
-import { For, Show, createSignal } from "solid-js";
+import { For, Show, createSignal, onCleanup } from "solid-js";
 import {
   Bell,
   CheckCircle2,
@@ -33,6 +33,9 @@ const initialFeed = [
 export default function App() {
   const [snapshot, setSnapshot] = createSignal<RuntimeSnapshot>(client.snapshot());
   const [starting, setStarting] = createSignal(false);
+  const unsubscribe = client.subscribe(setSnapshot);
+
+  onCleanup(unsubscribe);
 
   const start = async () => {
     setStarting(true);
