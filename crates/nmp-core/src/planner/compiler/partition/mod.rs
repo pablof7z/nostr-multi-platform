@@ -120,6 +120,7 @@ pub(super) fn partition_interest(
         event_ids: interest.shape.event_ids.clone(),
         addresses: BTreeSet::new(),
         relay_pin: interest.shape.relay_pin.clone(),
+        p_tag_routing: interest.shape.p_tag_routing,
     };
 
     // Case E (relay-pinned interest): hard-pin short-circuits the four-lane

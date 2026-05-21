@@ -9,7 +9,9 @@
 //! Doctrine: D8 (plan-id stability avoids redundant recompilation).
 
 use std::collections::BTreeSet;
-use crate::planner::interest::{InterestLifecycle, InterestScope, LogicalInterest, Pubkey};
+use crate::planner::interest::{
+    InterestLifecycle, InterestScope, LogicalInterest, PTagRouting, Pubkey,
+};
 use super::mailbox::MailboxCache;
 
 // ─── CompileContext ───────────────────────────────────────────────────────────
@@ -87,9 +89,11 @@ pub(super) fn referenced_pubkeys(interests: &[LogicalInterest]) -> BTreeSet<Pubk
 /// Compute a stable, deterministic plan-id string.
 ///
 /// Hash inputs (all sorted for determinism):
-/// 1. Sorted interests: id + shape (JSON) + scope + lifecycle.
+/// 1. Sorted interests: id + shape (wire JSON) + p-tag routing + scope + lifecycle.
 /// 2. Mailbox snapshot for ONLY referenced pubkeys (§3.4 stability rule).
-///    Relay vectors within each snapshot are sorted before hashing.
+///    Relay vectors within each snapshot are sorted before hashing. kind:10050
+///    DM relays are included only for pubkeys referenced by NIP-17 DM-routed
+///    `#p` interests.
 /// 3. Compile context: `indexer_set_version` + `user_config_version`.
 /// 4. Merge lattice version.
 ///
@@ -111,6 +115,7 @@ pub(super) fn compute_plan_id(
         if let Ok(shape_json) = serde_json::to_vec(&interest.shape) {
             h.feed_bytes(&shape_json);
         }
+        h.feed_bytes(&[interest.shape.p_tag_routing.plan_hash_tag()]);
         let scope_tag: u8 = match &interest.scope {
             InterestScope::ActiveAccount => 0,
             InterestScope::Account(acct) => {
@@ -129,6 +134,7 @@ pub(super) fn compute_plan_id(
 
     // ── 2. Mailbox snapshot — referenced pubkeys only ─────────────────────────
     let ref_pks = referenced_pubkeys(interests);
+    let dm_ref_pks = dm_relay_referenced_pubkeys(interests);
     for pk in &ref_pks {
         if let Some(mb) = cache.get(pk) {
             h.feed_bytes(pk.as_bytes());
@@ -142,6 +148,13 @@ pub(super) fn compute_plan_id(
             both_sorted.sort();
             for r in &both_sorted { h.feed_bytes(r.as_bytes()); }
         }
+        if dm_ref_pks.contains(pk) {
+            if let Some(mut dm_sorted) = cache.dm_inbox_relays(pk) {
+                h.feed_bytes(b"dm-relays");
+                dm_sorted.sort();
+                for r in &dm_sorted { h.feed_bytes(r.as_bytes()); }
+            }
+        }
     }
 
     // ── 3. Compile context ────────────────────────────────────────────────────
@@ -152,6 +165,19 @@ pub(super) fn compute_plan_id(
     h.feed_bytes(&[lattice_version]);
 
     format!("{:016x}", h.finish())
+}
+
+fn dm_relay_referenced_pubkeys(interests: &[LogicalInterest]) -> BTreeSet<Pubkey> {
+    let mut pks = BTreeSet::new();
+    for interest in interests {
+        if interest.shape.p_tag_routing != PTagRouting::Nip17DmRelays {
+            continue;
+        }
+        if let Some(p_values) = interest.shape.tags.get("p") {
+            pks.extend(p_values.iter().cloned());
+        }
+    }
+    pks
 }
 
 // ─── tests ───────────────────────────────────────────────────────────────────

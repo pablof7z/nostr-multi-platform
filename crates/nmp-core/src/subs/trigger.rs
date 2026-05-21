@@ -65,6 +65,15 @@ pub enum CompileTrigger {
         pubkey: String,
         created_at: u64,
     },
+    /// A1-DM — kind:10050 just replaced an author's NIP-17 DM-relay list.
+    ///
+    /// This re-routes only interests whose `#p` routing mode explicitly asks
+    /// for kind:10050 DM relays. Generic `#p` interests continue to use
+    /// kind:10002 read relays.
+    DmRelayListChanged {
+        pubkey: String,
+        created_at: u64,
+    },
     /// A2 — view registered one or more interests.
     ViewOpened {
         interest_ids: Vec<InterestId>,

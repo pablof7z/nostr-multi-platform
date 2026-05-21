@@ -6,7 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::planner::{
-    interest::{InterestId, InterestLifecycle, InterestShape, Pubkey, RelayUrl},
+    interest::{InterestId, InterestLifecycle, InterestShape, PTagRouting, Pubkey, RelayUrl},
     plan::RoutingSource,
 };
 use super::{MailboxCache, RelayEntry};
@@ -43,28 +43,39 @@ pub(super) fn route_p_tags_to_inbox(
     relay_entries: &mut BTreeMap<RelayUrl, Vec<RelayEntry>>,
 ) {
     for tagged_pk in p_tag_values {
-        match mailbox_cache.get(tagged_pk) {
-            Some(ref snapshot) if snapshot.has_inbox_relays() => {
-                // Narrow `#p` to the singleton `{tagged_pk}` for this relay.
-                let mut per_pk_shape = base_shape.clone();
-                per_pk_shape.tags.insert(
-                    "p".to_string(),
-                    std::iter::once(tagged_pk.clone()).collect(),
-                );
-                for relay in snapshot.inbox_relays() {
-                    relay_entries.entry(relay.clone()).or_default().push(RelayEntry {
-                        base_shape: per_pk_shape.clone(),
-                        authors_for_relay: authors_for_inbox.clone(),
-                        addresses_for_relay: BTreeSet::new(),
-                        lifecycle: lifecycle.clone(),
-                        sources: BTreeSet::from([RoutingSource::Nip65]),
-                        interest_id: interest_id.clone(),
-                    });
+        let relays_and_source = match base_shape.p_tag_routing {
+            PTagRouting::Nip65ReadRelays => match mailbox_cache.get(tagged_pk) {
+                Some(ref snapshot) if snapshot.has_inbox_relays() => {
+                    Some((snapshot.inbox_relays().cloned().collect(), RoutingSource::Nip65))
                 }
-            }
-            // Inbox unknown or empty: fail-closed. Probe and emit nothing.
-            _ => {
-                mailbox_cache.request_probe(tagged_pk);
+                // Inbox unknown or empty: fail-closed. Probe and emit nothing.
+                _ => {
+                    mailbox_cache.request_probe(tagged_pk);
+                    None
+                }
+            },
+            PTagRouting::Nip17DmRelays => mailbox_cache
+                .dm_inbox_relays(tagged_pk)
+                .filter(|relays| !relays.is_empty())
+                .map(|relays| (relays, RoutingSource::Nip17DmRelay)),
+        };
+
+        if let Some((relays, source)) = relays_and_source {
+            // Narrow `#p` to the singleton `{tagged_pk}` for this relay.
+            let mut per_pk_shape = base_shape.clone();
+            per_pk_shape.tags.insert(
+                "p".to_string(),
+                std::iter::once(tagged_pk.clone()).collect(),
+            );
+            for relay in relays {
+                relay_entries.entry(relay).or_default().push(RelayEntry {
+                    base_shape: per_pk_shape.clone(),
+                    authors_for_relay: authors_for_inbox.clone(),
+                    addresses_for_relay: BTreeSet::new(),
+                    lifecycle: lifecycle.clone(),
+                    sources: BTreeSet::from([source.clone()]),
+                    interest_id: interest_id.clone(),
+                });
             }
         }
     }

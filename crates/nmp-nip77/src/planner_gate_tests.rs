@@ -22,6 +22,7 @@ fn make_plan(relay: &str, since: Option<u64>) -> CompiledPlan {
         event_ids: BTreeSet::new(),
         addresses: BTreeSet::new(),
         relay_pin: None,
+        p_tag_routing: Default::default(),
     };
     let sub = SubShape {
         shape,

@@ -75,6 +75,12 @@ pub enum UserConfiguredCategory {
 pub enum RoutingSource {
     /// Resolved from the author's published kind:10002 relay list (lane 1).
     Nip65,
+    /// Resolved from the recipient's NIP-17 kind:10050 DM-relay list.
+    ///
+    /// This is intentionally not folded into [`RoutingSource::Nip65`]:
+    /// kind:10050 is a separate private-message relay list, and diagnostics
+    /// must not make a gift-wrap inbox look like it rode the public mailbox.
+    Nip17DmRelay,
     /// Resolved from a routing hint embedded in an event tag (lane 2).
     Hint,
     /// Observed as the provenance relay for a prior event (lane 3).

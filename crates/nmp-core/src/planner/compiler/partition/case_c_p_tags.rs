@@ -1,13 +1,13 @@
-//! Case C: `#p` tag values → Inbox (tagged pubkey's read relays).
+//! Case C: `#p` tag values → Inbox.
 //!
-//! Structural ban: `#p` interests MUST route to inbox relays only. We never
-//! route to the author's write relays, and we do not fall back to the indexer
-//! set — that would route DM-relevant queries through a public relay without
-//! the recipient's explicit read-relay declaration (§3.1 / §3.2).
+//! Structural ban: `#p` interests MUST route to the inbox relay set selected
+//! by the interest. Generic `#p` interests use NIP-65 read relays; NIP-17
+//! gift-wrap inbox interests use kind:10050 DM relays. We never route to the
+//! author's write relays, and we do not fall back to the indexer set.
 //!
 //! When inbox relays are unknown, we emit NO relay entries (fail-closed) and
 //! emit a probe so the next recompile has data. The plan will have an empty
-//! per_relay map for this interest until kind:10002 arrives.
+//! per_relay map for this interest until kind:10002 or kind:10050 arrives.
 //!
 //! Design: `docs/design/subscription-compilation/compiler.md` §3.1 / §3.2
 //! Doctrine: D3 (outbox routing automatic).

@@ -29,6 +29,30 @@ pub type UnixSeconds = u64;
 /// A Nostr tag key (e.g. "e", "p", "t", "a").
 pub type TagKey = String;
 
+// ─── P-tag routing ──────────────────────────────────────────────────────────
+
+/// Which relay set the compiler must use for `#p`-tag inbox routing.
+///
+/// The default is the generic NIP-65 read mailbox used by notifications and
+/// public inbox-style queries. NIP-17 gift-wrap inboxes deliberately opt into
+/// kind:10050 DM relays instead, because those relays are separate from the
+/// public kind:10002 read list.
+#[derive(Clone, Copy, Debug, Default, Hash, Eq, PartialEq)]
+pub enum PTagRouting {
+    #[default]
+    Nip65ReadRelays,
+    Nip17DmRelays,
+}
+
+impl PTagRouting {
+    pub(crate) fn plan_hash_tag(self) -> u8 {
+        match self {
+            Self::Nip65ReadRelays => 0,
+            Self::Nip17DmRelays => 1,
+        }
+    }
+}
+
 // ─── InterestId ──────────────────────────────────────────────────────────────
 
 /// Stable identity assigned by the planner registry on first insertion.
@@ -140,6 +164,15 @@ pub struct InterestShape {
     /// Example use case: NIP-29 relay-based groups (each group is bound to its
     /// host relay; cross-host merging is forbidden).
     pub relay_pin: Option<RelayUrl>,
+
+    /// Routing mode for `#p`-tag inbox interests.
+    ///
+    /// This is client-side routing metadata, not a Nostr filter field. It is
+    /// skipped by serde so `filter_json_for` / `canonical_filter_hash` remain
+    /// wire-filter-only. `compute_plan_id` hashes it explicitly because it
+    /// affects relay selection.
+    #[serde(skip)]
+    pub p_tag_routing: PTagRouting,
 }
 
 impl InterestShape {
@@ -414,6 +447,7 @@ mod tests {
             event_ids: [hex("ee")].into_iter().collect(),
             addresses: [addr.clone()].into_iter().collect(),
             relay_pin: Some("wss://relay.example.com".to_string()),
+            p_tag_routing: PTagRouting::Nip65ReadRelays,
         };
 
         assert_eq!(shape.authors.len(), 1);
