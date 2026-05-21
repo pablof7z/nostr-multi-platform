@@ -1,14 +1,17 @@
 //! Path-A raw C FFI surface. `mod.rs` carries the lifecycle wrappers + shared
-//! argument helpers; `identity` carries the T66a identity / publish /
-//! multi-account / relay-edit wrappers; `timeline` carries the open/close +
-//! profile claim/release wrappers; `testing` carries the cfg-gated injectors
-//! (split to keep each file under the 300-LOC soft cap).
+//! argument helpers; `identity` carries the T66a identity / multi-account /
+//! relay-edit wrappers; `publish` carries the publish-handle entry points
+//! (signed/unsigned event publish, retry, cancel) — split out of `identity`
+//! per AGENTS.md "co-locate by owner, not by role"; `timeline` carries the
+//! open/close + profile claim/release wrappers; `testing` carries the
+//! cfg-gated injectors (split to keep each file under the 300-LOC soft cap).
 
 mod action;
 mod capability;
 mod event_observer;
 mod identity;
 mod lifecycle;
+mod publish;
 mod raw_event_tap;
 mod snapshot;
 mod timeline;
@@ -102,16 +105,25 @@ pub use timeline::{
     nmp_app_open_firehose_tag, nmp_app_open_thread, nmp_app_open_uri, nmp_app_release_profile,
 };
 
-// test-support: expose identity / publish / relay-edit FFI entry-points so
+// test-support: expose identity / relay-edit FFI entry-points so
 // integration tests (and chirp-repl, which depends on nmp-core with the
 // test-support feature) can call them through the rlib without extern "C"
 // blocks. The symbols remain `#[no_mangle] extern "C"` in `identity`; this
 // `pub use` is only consumed under the test/test-support gate.
 #[cfg(any(test, feature = "test-support"))]
 pub use identity::{
-    nmp_app_add_relay, nmp_app_cancel_publish, nmp_app_create_new_account, nmp_app_open_timeline,
-    nmp_app_publish_signed_event, nmp_app_publish_signed_event_to, nmp_app_publish_unsigned_event,
-    nmp_app_remove_relay, nmp_app_retry_publish, nmp_app_signin_nsec,
+    nmp_app_add_relay, nmp_app_create_new_account, nmp_app_open_timeline, nmp_app_remove_relay,
+    nmp_app_signin_nsec,
+};
+
+// test-support: expose the publish-handle FFI entry-points (extracted from
+// `identity` into the sibling `publish` module per AGENTS.md "co-locate by
+// owner"). Same `#[no_mangle] extern "C"` symbols, same byte-stable ABI —
+// only the Rust-side `pub use` path changed.
+#[cfg(any(test, feature = "test-support"))]
+pub use publish::{
+    nmp_app_cancel_publish, nmp_app_publish_signed_event, nmp_app_publish_signed_event_to,
+    nmp_app_publish_unsigned_event, nmp_app_retry_publish,
 };
 
 // android-ffi: expose all FFI entry-points via Rust paths so nmp-android-ffi
@@ -119,11 +131,16 @@ pub use identity::{
 // makes rustc include the symbol bodies in CGU files for the cdylib.
 #[cfg(feature = "android-ffi")]
 pub use identity::{
-    nmp_app_add_relay, nmp_app_cancel_publish, nmp_app_create_new_account,
-    nmp_app_open_timeline, nmp_app_publish_signed_event,
-    nmp_app_publish_signed_event_to, nmp_app_publish_unsigned_event,
-    nmp_app_remove_account, nmp_app_remove_relay, nmp_app_retry_publish, nmp_app_signin_bunker,
-    nmp_app_signin_nsec, nmp_app_switch_active,
+    nmp_app_add_relay, nmp_app_create_new_account, nmp_app_open_timeline, nmp_app_remove_account,
+    nmp_app_remove_relay, nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_switch_active,
+};
+// android-ffi: publish-handle FFI extracted from `identity` into `publish`.
+// Same byte-stable `#[no_mangle] extern "C"` symbols — the JNI shim links
+// them by name and is unaffected.
+#[cfg(feature = "android-ffi")]
+pub use publish::{
+    nmp_app_cancel_publish, nmp_app_publish_signed_event, nmp_app_publish_signed_event_to,
+    nmp_app_publish_unsigned_event, nmp_app_retry_publish,
 };
 // T118 / G3 — android-ffi must also reach the lifecycle symbols; without this
 // re-export rustc doesn't pull the symbol bodies into the cdylib CGU and the
