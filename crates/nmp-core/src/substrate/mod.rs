@@ -41,8 +41,8 @@ pub mod placeholder;
 mod view;
 
 pub use action::{
-    ActionContext, ActionId, ActionInput, ActionModule, ActionPlan, ActionRejection, ActionResult,
-    ActionStatus, ActionTransition,
+    ActionContext, ActionId, ActionModule, ActionPlan, ActionRejection, ActionResult,
+    ActionStatus,
 };
 pub use capability::{CapabilityEnvelope, CapabilityModule, CapabilityRequest};
 pub use domain::{DomainIndex, DomainMigration, DomainModule, MigrationTx};

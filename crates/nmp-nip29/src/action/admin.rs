@@ -2,8 +2,7 @@
 //! which has no admin check per `kinds.md` §2.3). All emit host-pinned plans.
 
 use nmp_core::substrate::{
-    ActionContext, ActionId, ActionInput, ActionModule, ActionPlan, ActionRejection, ActionStatus,
-    ActionTransition,
+    ActionContext, ActionModule, ActionPlan, ActionRejection, ActionStatus,
 };
 use serde::{Deserialize, Serialize};
 
@@ -32,7 +31,6 @@ macro_rules! admin_action {
             const NAMESPACE: &'static str = concat!("nip29.", stringify!($Module));
             type Action = $Input;
             type Step = AdminStep;
-            type Output = PublishPlan;
             fn start(
                 _ctx: &mut ActionContext,
                 action: Self::Action,
@@ -49,18 +47,6 @@ macro_rules! admin_action {
                     initial_status: ActionStatus::Pending,
                     deadline_ms: None,
                 })
-            }
-            fn reduce(
-                _ctx: &mut ActionContext,
-                _id: ActionId,
-                _input: ActionInput<Self::Step>,
-            ) -> ActionTransition<Self::Step, Self::Output> {
-                // Step 0 deliverable: signer-bridge wiring (Steps 5/M6) flips
-                // this to AwaitCapability → Complete with the signed PublishPlan.
-                ActionTransition::Continue {
-                    step: AdminStep,
-                    status: ActionStatus::Pending,
-                }
             }
         }
     };

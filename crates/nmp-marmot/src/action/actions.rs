@@ -15,8 +15,7 @@
 //! [`PublishPlan`] carrier and never derives routing from raw tags.
 
 use nmp_core::substrate::{
-    ActionContext, ActionId, ActionInput, ActionModule, ActionPlan, ActionRejection, ActionStatus,
-    ActionTransition,
+    ActionContext, ActionModule, ActionPlan, ActionRejection, ActionStatus,
 };
 use serde::{Deserialize, Serialize};
 
@@ -53,7 +52,6 @@ macro_rules! pinned_group_action {
             const NAMESPACE: &'static str = $ns;
             type Action = GroupActionInput;
             type Step = MarmotStep;
-            type Output = PublishPlan;
             fn start(
                 _ctx: &mut ActionContext,
                 action: Self::Action,
@@ -85,18 +83,6 @@ macro_rules! pinned_group_action {
                     deadline_ms: None,
                 })
             }
-            fn reduce(
-                _ctx: &mut ActionContext,
-                _id: ActionId,
-                _input: ActionInput<Self::Step>,
-            ) -> ActionTransition<Self::Step, Self::Output> {
-                // Service + signer-bridge wiring (actor layer) flips this to
-                // AwaitCapability → Complete with the signed PublishPlan.
-                ActionTransition::Continue {
-                    step: MarmotStep,
-                    status: ActionStatus::Pending,
-                }
-            }
         }
     };
 }
@@ -122,7 +108,6 @@ impl ActionModule for PublishKeyPackageAction {
     const NAMESPACE: &'static str = "marmot.publish_key_package";
     type Action = PublishKeyPackageInput;
     type Step = MarmotStep;
-    type Output = PublishPlan;
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,
@@ -141,15 +126,5 @@ impl ActionModule for PublishKeyPackageAction {
             initial_status: ActionStatus::Pending,
             deadline_ms: None,
         })
-    }
-    fn reduce(
-        _ctx: &mut ActionContext,
-        _id: ActionId,
-        _input: ActionInput<Self::Step>,
-    ) -> ActionTransition<Self::Step, Self::Output> {
-        ActionTransition::Continue {
-            step: MarmotStep,
-            status: ActionStatus::Pending,
-        }
     }
 }

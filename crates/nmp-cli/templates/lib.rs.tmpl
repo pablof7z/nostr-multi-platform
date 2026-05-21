@@ -164,11 +164,6 @@ pub enum EntryStep {
     ApplyLocalWrite,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum ActionOutput {
-    Accepted,
-}
-
 pub struct EntryActionModule;
 
 impl ActionModule for EntryActionModule {
@@ -176,7 +171,6 @@ impl ActionModule for EntryActionModule {
 
     type Action = Action;
     type Step = EntryStep;
-    type Output = ActionOutput;
 
     fn start(
         _ctx: &mut ActionContext,
@@ -190,16 +184,6 @@ impl ActionModule for EntryActionModule {
             initial_status: ActionStatus::Running,
             deadline_ms: None,
         })
-    }
-
-    fn reduce(
-        _ctx: &mut ActionContext,
-        _id: ActionId,
-        _input: ActionInput<Self::Step>,
-    ) -> ActionTransition<Self::Step, Self::Output> {
-        ActionTransition::Complete {
-            output: ActionOutput::Accepted,
-        }
     }
 }
 
