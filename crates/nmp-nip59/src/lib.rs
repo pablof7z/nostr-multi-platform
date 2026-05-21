@@ -13,31 +13,21 @@
 //! full kernel signer-bridge wiring (where the actor fetches keys via the
 //! `KeyringCapability` surface) is deferred to the post-v1 Marmot milestone.
 //!
-//! # Substrate modules
-//!
-//! - [`WelcomeUnwrapModule`]: DomainModule that ingests kind:1059 gift-wrap
-//!   events (`ingest_kinds = &[1059]`).
+//! # D0: no app/protocol nouns
 //!
 //! NIP-59 is a generic gift-wrap protocol crate — it deliberately carries no
-//! app/protocol nouns (D0). The Marmot Welcome-delivery path consumes the
-//! free functions [`gift_wrap`] / [`unwrap_gift_wrap`] directly from
-//! `nmp-marmot::service`; there is no Marmot-specific ActionModule here.
+//! app/protocol nouns. The Marmot Welcome-delivery path consumes the free
+//! functions [`gift_wrap`] / [`unwrap_gift_wrap`] directly from
+//! `nmp-marmot::service`, which owns its own kind:1059 ingest (`MarmotWelcomeModule`)
+//! and record shape (`MarmotWelcomeRecord`). There is no MLS/Welcome-aware
+//! `DomainModule` here.
 //!
 //! # Spec
 //!
 //! <https://github.com/nostr-protocol/nips/blob/master/59.md>
 
-pub mod domain;
-
-pub use domain::WelcomeUnwrapModule;
 pub use error::Nip59Error;
 pub use wrap::{gift_wrap, unwrap_gift_wrap, UnwrappedGift};
 
 mod error;
 mod wrap;
-
-// NOTE: `nmp-nip59` exposes its `DomainModule` impl (`WelcomeUnwrapModule`)
-// as a public type. The former `register(&mut ModuleRegistry)` entry point
-// was deleted: `ModuleRegistry` only collected name strings and the kernel
-// never read them. The live extension path is `KernelEventObserver` — see
-// `nmp_core::substrate` docs.
