@@ -1230,6 +1230,7 @@ pub(crate) fn app_ref<'a>(app: *mut NmpApp) -> Option<&'a NmpApp> {
 /// this MUST be a registration-time-only call — invoked during host init,
 /// before `nmp_app_start` and before any `nmp_app_dispatch_action`, so no
 /// shared `&NmpApp` is live on another thread.
+#[allow(dead_code)] // retained for future host-init FFI symbols; ADR-0027 removed the action seam consumers
 pub(crate) fn app_ref_mut<'a>(app: *mut NmpApp) -> Option<&'a mut NmpApp> {
     if app.is_null() {
         None

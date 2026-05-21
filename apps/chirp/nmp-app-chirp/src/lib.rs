@@ -33,6 +33,7 @@
 //!   poisoning, or serialization failure.
 
 mod dm_runtime;
+pub mod action;
 pub mod ffi;
 pub mod follow_list;
 #[cfg(feature = "marmot")]

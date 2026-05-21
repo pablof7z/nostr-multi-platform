@@ -37,58 +37,21 @@
 use std::ffi::{c_char, CStr, CString};
 use std::sync::{Arc, Mutex};
 
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
+use nmp_core::substrate::ActionModule;
 use nmp_core::{ActorCommand, KernelEventObserver, KernelEventObserverId, NmpApp};
 use nmp_nip29::group_id::GroupId;
 use nmp_nip29::projection::{DiscoveredGroupsProjection, GroupChatProjection};
 use nmp_nip29::action::{
-    comment_in_group_command, discover_groups_command, join_group_command,
-    post_chat_message_command, react_in_group_command, CommentInGroupAction, CommentInGroupInput,
-    DiscoverGroupsAction, DiscoverGroupsInput, JoinGroupAction, JoinGroupInput,
-    PostChatMessageAction, PostChatMessageInput, ReactInGroupAction, ReactInGroupInput,
+    CommentInGroupAction, DiscoverGroupsAction, JoinGroupAction, PostChatMessageAction,
+    ReactInGroupAction,
 };
-use nmp_nip17::{
-    publish_dm_relay_list_command, send_dm_command, PublishDmRelayListAction,
-    PublishDmRelayListInput, SendDmAction, SendDmInput,
-};
+use nmp_nip17::{PublishDmRelayListAction, SendDmAction};
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
 use nmp_threading::ModulePolicy;
 
 use crate::dm_runtime::register_dm_runtime;
 use crate::follow_list::FollowListProjection;
-
-/// Register one typed `ActionModule` against `$app`'s action registry.
-///
-/// The validator half calls `$Action::start` (typed, uses the same `build_plan`
-/// closure the executor uses); the executor half delegates to `$command`, a
-/// crate-level `fn(&str) -> Result<ActorCommand, String>` that builds the
-/// `UnsignedEvent` and returns a `PublishUnsignedEventToRelays` command.
-///
-/// Using the macro keeps the namespace string written once (`$Action::NAMESPACE`)
-/// so the validator and executor can never be mismatched.
-macro_rules! wire_action {
-    ($app:ident, $Action:ident, $Input:ident, $command:ident) => {{
-        $app.register_action_module($Action::NAMESPACE, |action_json| {
-            let action: $Input = serde_json::from_str(action_json)
-                .map_err(|e| ActionRejection::Invalid(e.to_string()))?;
-            let now_ms = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_millis() as u64)
-                .unwrap_or(0);
-            let mut ctx = ActionContext { now_ms };
-            $Action::start(&mut ctx, action)
-        });
-        $app.register_action_executor(
-            $Action::NAMESPACE,
-            |action_json, _correlation_id, send| {
-                let cmd = $command(action_json)?;
-                send(cmd);
-                Ok(())
-            },
-        );
-    }};
-}
 
 /// Opaque handle returned by [`nmp_app_chirp_register`]. Boxed on the heap
 /// so the address is stable; the Swift consumer holds the raw pointer until
@@ -531,75 +494,31 @@ fn c_string_opt(ptr: *const c_char) -> Option<String> {
 }
 
 /// Register Chirp's social-verb action namespaces against `app`'s action
-/// registry. Each namespace gets BOTH a module (shape validator, consumed by
-/// `ActionRegistry::start`) AND an executor (the `ActorCommand` enqueue,
-/// consumed by `ActionRegistry::execute`) — `nmp_app_dispatch_action`
-/// requires both halves.
+/// registry.
 ///
-/// This is the D0-clean replacement for the deleted per-verb C symbols
-/// (`nmp_app_react`, `nmp_app_follow`, `nmp_app_unfollow`): the social verbs
-/// now live in this app crate and reach the kernel through the generic
-/// `dispatch_action` path, not through bespoke `nmp-core` FFI symbols.
+/// ADR-0027 — each namespace is a typed `ActionModule` impl in
+/// `crate::action`. The validator half (`M::start`) checks the JSON shape;
+/// the executor half (`M::execute`) enqueues the matching `ActorCommand`.
+/// Compared to the deleted closure seam, a partial registration is a
+/// compile-time error.
 ///
 /// JSON schemas (the third arg the host passes to `nmp_app_dispatch_action`):
-/// * `chirp.react`   — `{"target_event_id":"<hex>","reaction":"+"}`
-/// * `chirp.follow`  — `{"pubkey":"<hex>"}`
-/// * `chirp.unfollow`— `{"pubkey":"<hex>"}`
+/// * `chirp.react`    — `{"target_event_id":"<hex>","reaction":"+"}`
+/// * `chirp.follow`   — `{"pubkey":"<hex>"}`
+/// * `chirp.unfollow` — `{"pubkey":"<hex>"}`
 ///
 /// Hex-shape validation deliberately stays in the actor's command handlers
-/// (which own the user-facing toasts) — the module validators here only check
-/// JSON shape, mirroring the comment the deleted FFI symbols carried (D6).
-/// Namespace constants for Chirp-specific action verbs. Written once here so
-/// the `register_action_module` and `register_action_executor` calls in
-/// `register_chirp_actions` stay in sync — a mismatch would register a
-/// validator under one name and an executor under another, silently breaking
-/// dispatch. Mirrors the `$Action::NAMESPACE` convention from `wire_action!`.
-const NS_REACT: &str = "chirp.react";
-const NS_FOLLOW: &str = "chirp.follow";
-const NS_UNFOLLOW: &str = "chirp.unfollow";
+/// (which own the user-facing toasts) — the module validators here only
+/// check JSON shape (D6).
 
 fn register_chirp_actions(app: &mut NmpApp) {
-    // chirp.react — kind:7 reaction.
-    app.register_action_module(NS_REACT, |action_json| {
-        serde_json::from_str::<ReactAction>(action_json)
-            .map(|_| ())
-            .map_err(|e| ActionRejection::Invalid(e.to_string()))
-    });
-    app.register_action_executor(NS_REACT, |action_json, _correlation_id, send| {
-        let a: ReactAction =
-            serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-        send(ActorCommand::React {
-            target_event_id: a.target_event_id,
-            reaction: a.reaction,
-        });
-        Ok(())
-    });
-
-    // chirp.follow — append `pubkey` to the active account's kind:3 set.
-    app.register_action_module(NS_FOLLOW, |action_json| {
-        serde_json::from_str::<PubkeyAction>(action_json)
-            .map(|_| ())
-            .map_err(|e| ActionRejection::Invalid(e.to_string()))
-    });
-    app.register_action_executor(NS_FOLLOW, |action_json, _correlation_id, send| {
-        let a: PubkeyAction =
-            serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-        send(ActorCommand::Follow { pubkey: a.pubkey });
-        Ok(())
-    });
-
-    // chirp.unfollow — remove `pubkey` from the kind:3 set.
-    app.register_action_module(NS_UNFOLLOW, |action_json| {
-        serde_json::from_str::<PubkeyAction>(action_json)
-            .map(|_| ())
-            .map_err(|e| ActionRejection::Invalid(e.to_string()))
-    });
-    app.register_action_executor(NS_UNFOLLOW, |action_json, _correlation_id, send| {
-        let a: PubkeyAction =
-            serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-        send(ActorCommand::Unfollow { pubkey: a.pubkey });
-        Ok(())
-    });
+    // ADR-0027 — one typed `ActionModule` per Chirp social verb. The
+    // module's `start` validates JSON shape; its `execute` enqueues the
+    // matching `ActorCommand`. Compared to the deleted closure seam, a
+    // partial registration (only one half) is now a compile error.
+    app.register_action_module::<crate::action::ChirpReactModule>();
+    app.register_action_module::<crate::action::ChirpFollowModule>();
+    app.register_action_module::<crate::action::ChirpUnfollowModule>();
 }
 
 /// Register the 3 NIP-29 group-chat action namespaces against `app`'s action
@@ -646,11 +565,14 @@ fn register_chirp_actions(app: &mut NmpApp) {
 /// [`nmp_app_chirp_register_group_discovery`] below — a
 /// [`DiscoveredGroupsProjection`] scoped to the same relay.
 fn register_nip29_actions(app: &mut NmpApp) {
-    wire_action!(app, PostChatMessageAction, PostChatMessageInput, post_chat_message_command);
-    wire_action!(app, ReactInGroupAction, ReactInGroupInput, react_in_group_command);
-    wire_action!(app, CommentInGroupAction, CommentInGroupInput, comment_in_group_command);
-    wire_action!(app, DiscoverGroupsAction, DiscoverGroupsInput, discover_groups_command);
-    wire_action!(app, JoinGroupAction, JoinGroupInput, join_group_command);
+    // ADR-0027 — typed registration. Each `ActionModule` impl in `nmp-nip29`
+    // owns both validator (`start`) and executor (`execute`) halves; one
+    // call per namespace.
+    app.register_action_module::<PostChatMessageAction>();
+    app.register_action_module::<ReactInGroupAction>();
+    app.register_action_module::<CommentInGroupAction>();
+    app.register_action_module::<DiscoverGroupsAction>();
+    app.register_action_module::<JoinGroupAction>();
 }
 
 /// Register the NIP-17 direct-message `ActionModule` (`nmp.nip17.send`) against
@@ -675,33 +597,9 @@ fn register_nip29_actions(app: &mut NmpApp) {
 /// kind:10050 is a NIP-65 replaceable event and the actor routes empty-relay
 /// publishes through the NIP-65 outbox (the author's kind:10002 write relays).
 fn register_nip17_actions(app: &mut NmpApp) {
-    wire_action!(app, SendDmAction, SendDmInput, send_dm_command);
-    wire_action!(
-        app,
-        PublishDmRelayListAction,
-        PublishDmRelayListInput,
-        publish_dm_relay_list_command
-    );
-}
-
-/// `chirp.react` action body: `{"target_event_id":"<hex>","reaction":"+"}`.
-/// `reaction` defaults to `"+"` (the standard kind:7 like) when absent —
-/// matching the old `nmp_app_react` FFI symbol's `unwrap_or("+")` behaviour.
-#[derive(serde::Deserialize)]
-struct ReactAction {
-    target_event_id: String,
-    #[serde(default = "default_reaction")]
-    reaction: String,
-}
-
-fn default_reaction() -> String {
-    "+".to_string()
-}
-
-/// `chirp.follow` / `chirp.unfollow` action body: `{"pubkey":"<hex>"}`.
-#[derive(serde::Deserialize)]
-struct PubkeyAction {
-    pubkey: String,
+    // ADR-0027 — typed registration for both NIP-17 action namespaces.
+    app.register_action_module::<SendDmAction>();
+    app.register_action_module::<PublishDmRelayListAction>();
 }
 
 #[cfg(test)]

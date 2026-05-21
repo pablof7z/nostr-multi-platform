@@ -89,12 +89,8 @@ pub fn project_todo_items(items: &[TodoRecord]) -> serde_json::Value {
 /// This is the fixture's proof of NMP's host-extensibility thesis — it
 /// registers, against a vanilla `NmpApp`, WITHOUT editing `nmp-core`:
 ///
-/// * an **action module** for [`ACTION_NAMESPACE`] — the `start()`
-///   validator, delegating to [`TodoActionModule::start`] (the existing
-///   empty-title rejection is reused, never reimplemented);
-/// * an **action executor** for the same namespace — applies the validated
-///   action to the returned store via [`apply_todo_action`]. The todo flow is
-///   local-only, so the actor-command `send` bridge is intentionally unused;
+/// * a typed [`TodoActionModule`] under [`ACTION_NAMESPACE`] (ADR-0027 — one
+///   call binds validator + executor halves);
 /// * a **snapshot projection** under [`TODO_SNAPSHOT_KEY`] — projects the
 ///   store into JSON via [`project_todo_items`] on every snapshot tick.
 ///
@@ -103,33 +99,20 @@ pub fn project_todo_items(items: &[TodoRecord]) -> serde_json::Value {
 /// the store, and the next snapshot carries the projected list.
 ///
 /// MUST be called during host init — before `nmp_app_start` and before any
-/// `nmp_app_dispatch_action` — because [`NmpApp::register_action_module`] /
-/// [`NmpApp::register_action_executor`] take `&mut NmpApp`.
+/// `nmp_app_dispatch_action` — because [`NmpApp::register_action_module`]
+/// takes `&mut NmpApp`.
 pub fn register(app: &mut NmpApp) -> TodoStore {
     let store: TodoStore = Arc::new(Mutex::new(Vec::new()));
 
-    // Module half — `start()` validation. Decode the action JSON into the
-    // typed `Action`, then delegate to the existing `TodoActionModule::start`
-    // so the empty-title rejection rule has exactly one home.
-    app.register_action_module(ACTION_NAMESPACE, |action_json| {
-        let action: Action = serde_json::from_str(action_json)
-            .map_err(|e| ActionRejection::Invalid(e.to_string()))?;
-        let mut ctx = ActionContext::default();
-        TodoActionModule::start(&mut ctx, action)
-    });
-
-    // Executor half — `execute()`. Decode the (already-validated) action and
-    // apply it to the host-owned store. The todo flow is local-only: no
-    // `ActorCommand` is needed, so the `send` bridge is deliberately unused.
-    let executor_store = Arc::clone(&store);
-    app.register_action_executor(ACTION_NAMESPACE, move |action_json, _correlation_id, _send| {
-        let action: Action = serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-        let mut guard = executor_store
-            .lock()
-            .map_err(|_| "todo store mutex poisoned".to_string())?;
-        apply_todo_action(&mut guard, action);
-        Ok(())
-    });
+    // ADR-0027 — typed module registration binds both validator and
+    // executor halves from one trait impl. The executor needs to mutate the
+    // host-owned store; static trait methods cannot capture, so the store
+    // lives in `FIXTURE_TODO_STORE` (a `OnceLock`) and `TodoActionModule::execute`
+    // reads it back. A second `register` call against the same process is a
+    // no-op for the slot (`set` rejects), so the first installed store wins —
+    // acceptable for a fixture with one active store per process.
+    let _ = FIXTURE_TODO_STORE.set(Arc::clone(&store));
+    app.register_action_module::<TodoActionModule>();
 
     // Snapshot-output half — projects the store under `TODO_SNAPSHOT_KEY` on
     // every snapshot tick. D8: cheap, non-blocking (one lock + clone).
@@ -196,6 +179,15 @@ pub enum Action {
 
 pub struct TodoActionModule;
 
+/// Process-global slot holding the host's todo store, set by [`register`]
+/// before any action dispatch. [`TodoActionModule::execute`] reads it to
+/// reach the store from the static trait body. ADR-0027 — the typed
+/// `execute` is a static method and cannot capture closure state, so a
+/// `OnceLock` mediates between `register`'s setup-time mutation and the
+/// per-dispatch read. The fixture has at most one active store per process;
+/// a multi-store host would model this differently.
+static FIXTURE_TODO_STORE: std::sync::OnceLock<TodoStore> = std::sync::OnceLock::new();
+
 impl ActionModule for TodoActionModule {
     const NAMESPACE: &'static str = "fixture.todo.action";
 
@@ -208,6 +200,29 @@ impl ActionModule for TodoActionModule {
         if matches!(&action, Action::Add { title, .. } if title.trim().is_empty()) {
             return Err(ActionRejection::Invalid("todo title is empty".to_string()));
         }
+        Ok(())
+    }
+
+    /// ADR-0027 — apply the validated [`Action`] to the host-owned store
+    /// the registration step installed in [`FIXTURE_TODO_STORE`].
+    ///
+    /// The todo flow is local-only — no `ActorCommand` is enqueued — so the
+    /// `send` callback is unused. A store that was never installed
+    /// (`register` was not called) is a no-op: `OnceLock::get` returns
+    /// `None` and the executor degrades silently rather than panicking
+    /// inside an FFI call (D6).
+    fn execute(
+        action: Self::Action,
+        _correlation_id: &str,
+        _send: &dyn Fn(nmp_core::ActorCommand),
+    ) -> Result<(), String> {
+        let Some(store) = FIXTURE_TODO_STORE.get() else {
+            return Err("fixture todo store not initialized (call register first)".to_string());
+        };
+        let mut guard = store
+            .lock()
+            .map_err(|_| "todo store mutex poisoned".to_string())?;
+        apply_todo_action(&mut guard, action);
         Ok(())
     }
 }

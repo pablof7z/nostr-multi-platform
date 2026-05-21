@@ -52,7 +52,9 @@
 //! * **D8** — the FFI thread never blocks. Dispatch is a non-blocking
 //!   channel send.
 
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::{c_char, CString};
+#[cfg(test)]
+use std::ffi::CStr;
 
 use super::{app_ref, c_string_argument, NmpApp};
 use crate::substrate::{ActionContext, ActionRejection, ActionResult};
