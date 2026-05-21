@@ -60,6 +60,11 @@ mod publish_engine_wire;
 mod publish_outbox;
 #[cfg(test)]
 mod publish_terminal_status_tests;
+// Diagnostics-screen projection — pre-rolled relay/wire-sub roll-ups +
+// pre-formatted display strings. Replaces the §4.5 / §6 anti-pattern #1
+// derivations the three iOS diagnostics views used to do client-side. See
+// the module doc for the bible references.
+mod relay_diagnostics;
 mod raw_event_observer;
 #[cfg(test)]
 mod raw_event_observer_tests;

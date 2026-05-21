@@ -1,8 +1,17 @@
 import SwiftUI
 
+// Diagnostics screen. THIN SHELL — fields are rendered directly from the
+// kernel's `relay_diagnostics` projection plus the existing scalar metrics.
+// NO `.filter` / `.sorted` / `.reduce` / `.first(where:)`, NO
+// `Date(timeIntervalSince1970:)`, NO `switch` on protocol semantics: the
+// Rust projection owns role / connection / auth labels + tones, the relay-
+// row + wire-sub roll-ups, and every relative-time string (aim.md §4.5 /
+// §6 anti-pattern #1 / §"Where do views live?").
+
 struct DiagnosticsView: View {
     @EnvironmentObject private var model: KernelModel
     @State private var copiedNpub = false
+
     var body: some View {
         List {
             kernelSection
@@ -18,6 +27,7 @@ struct DiagnosticsView: View {
         .navigationTitle("Diagnostics")
         .navigationBarTitleDisplayMode(.large)
     }
+
     private var kernelSection: some View {
         Section("Kernel") {
             HStack {
@@ -72,6 +82,7 @@ struct DiagnosticsView: View {
             }
         }
     }
+
     private var perfSection: some View {
         Section("Performance") {
             HStack {
@@ -139,6 +150,7 @@ struct DiagnosticsView: View {
             }
         }
     }
+
     private var metricsSection: some View {
         Section("Metrics") {
             if let m = model.metrics {
@@ -187,59 +199,32 @@ struct DiagnosticsView: View {
             }
         }
     }
-    private var allRelayURLs: [String] {
-        var seen = Set<String>()
-        var urls: [String] = []
-        for url in model.relayStatuses.map(\.relayUrl) + model.wireSubscriptions.map(\.relayUrl) {
-            if seen.insert(url).inserted { urls.append(url) }
-        }
-        return urls
-    }
-    private func syntheticRelayStatus(url: String, subs: [WireSubscriptionStatus]) -> RelayStatus {
-        let activeSubs = subs.filter { ["open", "live", "active", "opening"].contains($0.state) }.count
-        return RelayStatus(
-            role: "outbox",
-            relayUrl: url,
-            connection: activeSubs > 0 ? "connected" : "unknown",
-            auth: "—",
-            nip77Negentropy: nil,
-            activeWireSubscriptions: activeSubs,
-            reconnectCount: 0,
-            lastConnectedAtMs: nil,
-            lastEventAtMs: subs.compactMap(\.lastEventAtMs).max(),
-            lastNotice: nil,
-            lastError: nil,
-            bytesRx: nil,
-            bytesTx: nil
-        )
-    }
+
+    /// Relay list. Rendered directly from `model.relayDiagnostics.relays` —
+    /// the Rust projection owns merging typed lanes + outbox-only URLs,
+    /// computing roll-up counters, and pre-formatting every label.
     private var relaySection: some View {
-        let urls = allRelayURLs
-        return Section("Relays (\(urls.count))") {
-            if urls.isEmpty {
+        let rows = model.relayDiagnostics.relays
+        return Section("Relays (\(rows.count))") {
+            if rows.isEmpty {
                 Text("No relays yet")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(urls, id: \.self) { url in
-                    let status = model.relayStatuses.first(where: { $0.relayUrl == url })
-                    let subs = model.wireSubscriptions.filter { $0.relayUrl == url }
-                    let interests = model.logicalInterests.filter { $0.relayUrls.contains(url) }
-                    NavigationLink(destination: RelayDetailView(
-                        relay: status ?? syntheticRelayStatus(url: url, subs: subs),
-                        wireSubscriptions: subs,
-                        logicalInterests: interests
-                    )) {
-                        DiagRelayRow(relay: status ?? syntheticRelayStatus(url: url, subs: subs))
+                ForEach(rows) { row in
+                    NavigationLink(destination: RelayDetailView(row: row)) {
+                        DiagRelayRow(row: row)
                     }
                 }
             }
         }
     }
+
     @ViewBuilder
     private var logicalInterestsSection: some View {
-        if !model.logicalInterests.isEmpty {
-            Section("Logical Interests (\(model.logicalInterests.count))") {
-                ForEach(model.logicalInterests) { interest in
+        let interests = model.relayDiagnostics.interests
+        if !interests.isEmpty {
+            Section("Logical Interests (\(interests.count))") {
+                ForEach(interests) { interest in
                     VStack(alignment: .leading, spacing: 4) {
                         Text(interest.key)
                             .font(.body.monospaced())
@@ -247,7 +232,7 @@ struct DiagnosticsView: View {
                         HStack(spacing: 12) {
                             Text(interest.state)
                                 .font(.caption)
-                                .foregroundStyle(interestStateColor(interest.state))
+                                .foregroundStyle(DiagnosticsColor.color(forTone: interest.stateTone))
                             Text("ref \(interest.refcount)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -261,13 +246,7 @@ struct DiagnosticsView: View {
             }
         }
     }
-    private func interestStateColor(_ state: String) -> Color {
-        switch state {
-        case "active", "warming": return .green
-        case "idle": return .secondary
-        default: return .orange
-        }
-    }
+
     @ViewBuilder
     private var publishQueueSection: some View {
         if !model.publishQueue.isEmpty {
@@ -278,10 +257,10 @@ struct DiagnosticsView: View {
             }
         }
     }
+
     private var accountSection: some View {
         Section("Active Account") {
-            if let activeID = model.activeAccount,
-               let account = model.accounts.first(where: { $0.id == activeID }) {
+            if let account = model.activeAccountSummary {
                 HStack {
                     Text("Display")
                     Spacer()
@@ -339,11 +318,12 @@ struct DiagnosticsView: View {
             }
         }
     }
+
     @ViewBuilder
     private var runtimeLogSection: some View {
         if !model.logs.isEmpty {
             Section("Runtime Log (\(model.logs.count))") {
-                ForEach(model.logs.reversed().prefix(50), id: \.self) { entry in
+                ForEach(Array(model.logs.reversed().prefix(50).enumerated()), id: \.offset) { _, entry in
                     Text(entry)
                         .font(.body.monospaced())
                         .foregroundStyle(.secondary)
@@ -353,10 +333,12 @@ struct DiagnosticsView: View {
             }
         }
     }
+
     private func formatBytes(_ bytes: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .binary)
     }
 }
+
 private struct MetricTile: View {
     let label: String
     let value: String
@@ -378,46 +360,50 @@ private struct MetricTile: View {
         .padding(.vertical, 8)
     }
 }
-private struct DiagRelayRow: View {
-    let relay: RelayStatus
+
+/// One relay row. Renders fields verbatim from the projection — no
+/// derivations, no protocol-keyword switches.
+struct DiagRelayRow: View {
+    let row: RelayDiagnosticsRow
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .center, spacing: 8) {
                 Circle()
-                    .fill(connectionColor)
+                    .fill(DiagnosticsColor.color(forTone: row.connectionTone))
                     .frame(width: 8, height: 8)
-                Text(relay.relayUrl)
+                Text(row.relayUrl)
                     .font(.body.monospaced())
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 0)
-                Text(relay.role.capitalized)
+                Text(row.roleLabel)
                     .font(.caption2.weight(.bold))
-                    .foregroundStyle(roleColor)
+                    .foregroundStyle(DiagnosticsColor.color(forTone: row.roleTone))
             }
             HStack(spacing: 12) {
-                Text(relay.connection.capitalized)
+                Text(row.connectionLabel)
                     .font(.caption)
-                    .foregroundStyle(connectionColor)
-                Text("Auth: \(relay.auth)")
+                    .foregroundStyle(DiagnosticsColor.color(forTone: row.connectionTone))
+                Text("Auth: \(row.authLabel)")
                     .font(.caption)
-                    .foregroundStyle(authColor)
-                Text("\(relay.activeWireSubscriptions) subs")
+                    .foregroundStyle(DiagnosticsColor.color(forTone: row.authTone))
+                Text("\(row.activeSubCount) subs")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                if relay.reconnectCount > 0 {
-                    Text("↩ \(relay.reconnectCount)")
+                if row.reconnectCount > 0 {
+                    Text("↩ \(row.reconnectCount)")
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }
             }
-            if let notice = relay.lastNotice {
+            if let notice = row.lastNotice {
                 Text(notice)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
-            if let error = relay.lastError {
+            if let error = row.lastError {
                 Text(error)
                     .font(.caption)
                     .foregroundStyle(.red)
@@ -426,26 +412,8 @@ private struct DiagRelayRow: View {
         }
         .padding(.vertical, 4)
     }
-    private var connectionColor: Color {
-        let s = relay.connection.lowercased()
-        if s == "connected" { return .green }
-        if s.contains("connect") { return .orange }
-        return .red
-    }
-    private var authColor: Color {
-        let s = relay.auth.lowercased()
-        if s == "ok" || s == "authenticated" { return .green }
-        if s == "pending" { return .orange }
-        return .secondary
-    }
-    private var roleColor: Color {
-        switch relay.role {
-        case "read": return .accentColor
-        case "write": return .green
-        default: return .accentColor
-        }
-    }
 }
+
 private struct DiagPublishRow: View {
     let entry: PublishQueueEntry
     var body: some View {
@@ -473,11 +441,33 @@ private struct DiagPublishRow: View {
         guard id.count >= 12 else { return id }
         return "\(id.prefix(8))…"
     }
+    /// Publish-queue status colors. The publish queue is a SEPARATE
+    /// projection from `relay_diagnostics` and was NOT in scope for this
+    /// cleanup; left as-is.
     private func statusColor(_ s: String) -> Color {
         switch s.lowercased() {
         case "published", "ok", "sent": return .green
         case "pending", "queued": return .orange
         case "failed", "error": return .red
+        default: return .secondary
+        }
+    }
+}
+
+/// Single Swift-side helper: map a SEMANTIC tone string (decided by the
+/// Rust projection) to a SwiftUI Color. This is rendering, not policy —
+/// the kernel decides which class a row is in; the shell decides how to
+/// paint each class.
+enum DiagnosticsColor {
+    static func color(forTone tone: String) -> Color {
+        switch tone {
+        case "ok": return .green
+        case "warn": return .orange
+        case "error": return .red
+        case "write": return .green
+        case "accent": return .accentColor
+        case "primary": return .accentColor
+        case "muted", "secondary": return .secondary
         default: return .secondary
         }
     }

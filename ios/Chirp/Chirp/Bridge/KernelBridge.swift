@@ -639,6 +639,17 @@ struct KernelUpdate: Decodable {
     /// gift-wrap envelopes have arrived. Computed so the `DmInboxStore`
     /// consumer keeps reading `update.dmInbox` unchanged.
     var dmInbox: DmInboxSnapshot? { projections?.dmInbox }
+
+    /// Diagnostics-screen read model — `projections["relay_diagnostics"]`
+    /// (aim.md §4.5 / §6 anti-pattern #1 / §"Where do views live?" cleanup).
+    /// One pre-rolled row per known relay URL with every aggregate (active /
+    /// EOSE'd / total sub counts, total events_rx, byte counters) and every
+    /// display string (relative-time labels, role / connection / auth
+    /// labels + semantic tones) computed by `Kernel::relay_diagnostics_snapshot`.
+    /// The three diagnostics views render fields directly — no `.filter` /
+    /// `.sorted` / `.reduce` / `Date(timeIntervalSince1970:)`.
+    /// `nil` only on a legacy kernel that predates the projection (D1).
+    var relayDiagnostics: RelayDiagnosticsSnapshot? { projections?.relayDiagnostics }
 }
 
 /// The kernel's host-extensible `projections` map. Each built-in app-noun
@@ -697,6 +708,13 @@ struct SnapshotProjections: Decodable, Equatable {
     // string `"nip17.dm_inbox"` — same `.convertFromSnakeCase` caveat as
     // `groupChat`, handled by the explicit `CodingKeys` case below.
     let dmInbox: DmInboxSnapshot?
+    // Diagnostics roll-up — `projections["relay_diagnostics"]`. Built-in
+    // kernel-owned projection (§4.5 / §6 anti-pattern #1 cleanup): replaces
+    // the §"Where do views live?" violations the three diagnostics screens
+    // committed (client-side filter / sorted / reduce / date math /
+    // protocol-keyword switches). Always emitted by a current kernel build;
+    // optional so a stale kernel still decodes.
+    let relayDiagnostics: RelayDiagnosticsSnapshot?
 
     /// Explicit coding keys.
     ///
@@ -735,6 +753,7 @@ struct SnapshotProjections: Decodable, Equatable {
         case removed
         case groupChat = "nip29.groupChat"
         case dmInbox = "nip17.dmInbox"
+        case relayDiagnostics
     }
 }
 
@@ -818,6 +837,84 @@ struct DmInboxSnapshot: Decodable, Equatable {
     let conversations: [DmConversation]
 
     static let empty = DmInboxSnapshot(conversations: [])
+}
+
+// ─── Diagnostics read model (relay_diagnostics projection) ────────────────
+//
+// Mirror of `nmp-core::kernel::relay_diagnostics::RelayDiagnosticsSnapshot` —
+// the shape the `relay_diagnostics` built-in projection emits under the
+// snapshot key `"relay_diagnostics"`. The Rust projection pre-rolls every
+// aggregate (active / EOSE'd / total sub counts, total events_rx) and pre-
+// formats every display string (relative-time labels, role / connection /
+// auth labels + semantic tones).
+//
+// Thin-shell rule: these are pure DTOs. The shell renders fields directly —
+// it does NOT filter / sort / reduce wireSubscriptions, does NOT compute
+// `Date(timeIntervalSince1970:)` from `lastEventAtMs`, does NOT switch on
+// `state == "open"` to pick a color. All of that is in the Rust projection
+// (aim.md §4.5 / §6 anti-pattern #1 / §"Where do views live?" — line 241).
+
+/// Per-wire-subscription enriched row.
+struct RelayDiagnosticsWireSub: Decodable, Identifiable, Equatable {
+    let wireId: String
+    let shortWireId: String
+    let relayUrl: String
+    let filterSummary: String
+    let stateLabel: String
+    let stateTone: String
+    let consumerCountLabel: String
+    let eventsRxDisplay: String?
+    let eoseObserved: Bool
+    let openedDisplay: String
+    let lastEventDisplay: String?
+    let eoseDisplay: String?
+    let closeReason: String?
+    var id: String { wireId }
+}
+
+/// One rolled-up relay row.
+struct RelayDiagnosticsRow: Decodable, Identifiable, Equatable {
+    let relayUrl: String
+    let shortUrl: String
+    let roleLabel: String
+    let roleTone: String
+    let connectionLabel: String
+    let connectionTone: String
+    let authLabel: String
+    let authTone: String
+    let totalSubCount: UInt32
+    let activeSubCount: UInt32
+    let eosedSubCount: UInt32
+    let totalEventsRx: UInt64
+    let totalEventsDisplay: String
+    let reconnectCount: UInt32
+    let bytesRxDisplay: String?
+    let bytesTxDisplay: String?
+    let lastConnectedDisplay: String?
+    let lastEventDisplay: String?
+    let lastNotice: String?
+    let lastError: String?
+    let wireSubs: [RelayDiagnosticsWireSub]
+    var id: String { relayUrl }
+}
+
+/// Logical interest with semantic tone pre-classified.
+struct RelayDiagnosticsInterest: Decodable, Identifiable, Equatable {
+    let key: String
+    let state: String
+    let stateTone: String
+    let refcount: UInt32
+    let cacheCoverage: String
+    let relayUrls: [String]
+    var id: String { key }
+}
+
+/// Top-level diagnostics snapshot.
+struct RelayDiagnosticsSnapshot: Decodable, Equatable {
+    let relays: [RelayDiagnosticsRow]
+    let interests: [RelayDiagnosticsInterest]
+
+    static let empty = RelayDiagnosticsSnapshot(relays: [], interests: [])
 }
 
 /// NIP-46 (`bunker://`) handshake progress, projected from the kernel snapshot

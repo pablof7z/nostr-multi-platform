@@ -330,6 +330,21 @@ impl Kernel {
             serde_json::to_value(removed)
                 .unwrap_or_else(|_| serde_json::Value::Array(Vec::new())),
         );
+        // Diagnostics-screen projection. Pre-rolls the relay + wire-sub
+        // arrays into one struct with every aggregate (active / EOSE'd /
+        // total sub counts, total events_rx) and every display string
+        // (relative-time labels, connection / auth / role labels) already
+        // computed. Replaces the §4.5 "no derived state" + §6 anti-
+        // pattern #1 + §"Where do views live?" violations the three iOS
+        // diagnostics views used to commit. See the
+        // `kernel/relay_diagnostics.rs` module doc for the exact bible
+        // references. Serialization failure degrades to JSON null so the
+        // key still appears (mirrors the publish cluster's contract).
+        projections.insert(
+            "relay_diagnostics".to_string(),
+            serde_json::to_value(self.relay_diagnostics_snapshot())
+                .unwrap_or(serde_json::Value::Null),
+        );
         projections
     }
 

@@ -110,6 +110,8 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
             // publish cluster
             "publish_outbox",
             "publish_queue",
+            // diagnostics roll-up (aim.md §4.5 / §6 anti-pattern #1 cleanup)
+            "relay_diagnostics",
             "relay_edit_rows",
             // views cluster (D0)
             "removed",

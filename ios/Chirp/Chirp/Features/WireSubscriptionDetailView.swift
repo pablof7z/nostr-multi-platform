@@ -1,7 +1,16 @@
 import SwiftUI
 
+// Wire-subscription detail screen. THIN SHELL — every display string
+// (relative-time labels, state label + tone, consumer-count prose,
+// compact events_rx) is pre-formatted by the Rust `relay_diagnostics`
+// projection (`RelayDiagnosticsWireSub`). The view renders fields
+// directly.
+//
+// NO `Date(timeIntervalSince1970:)`, NO `switch` on protocol semantics
+// (aim.md §4.5 / §6 anti-pattern #1 / §"Where do views live?").
+
 struct WireSubscriptionDetailView: View {
-    let sub: WireSubscriptionStatus
+    let sub: RelayDiagnosticsWireSub
 
     var body: some View {
         ScrollView {
@@ -21,8 +30,6 @@ struct WireSubscriptionDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    // ── Stats tiles ───────────────────────────────────────────────────────
-
     private var statsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Stats")
@@ -31,27 +38,25 @@ struct WireSubscriptionDetailView: View {
             HStack(spacing: 12) {
                 WireMetricTile(
                     label: "Events Rx",
-                    value: sub.eventsRx.map { $0.formatted(.number.notation(.compactName)) } ?? "—",
+                    value: sub.eventsRxDisplay ?? "—",
                     icon: "arrow.down.circle",
                     color: .green
                 )
                 WireMetricTile(
                     label: "Consumers",
-                    value: "\(sub.logicalConsumerCount)",
+                    value: sub.consumerCountLabel.isEmpty ? "0" : sub.consumerCountLabel,
                     icon: "person.2",
                     color: .accentColor
                 )
                 WireMetricTile(
                     label: "EOSE",
-                    value: sub.eoseAtMs != nil ? "Done" : "Pending",
-                    icon: sub.eoseAtMs != nil ? "checkmark.circle.fill" : "clock",
-                    color: sub.eoseAtMs != nil ? .green : .secondary
+                    value: sub.eoseObserved ? "Done" : "Pending",
+                    icon: sub.eoseObserved ? "checkmark.circle.fill" : "clock",
+                    color: sub.eoseObserved ? .green : .secondary
                 )
             }
         }
     }
-
-    // ── Subscription details ──────────────────────────────────────────────
 
     private var detailsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -69,9 +74,9 @@ struct WireSubscriptionDetailView: View {
                 }
                 SubDetailDivider()
                 SubDetailRow(label: "State") {
-                    Text(sub.state.capitalized)
+                    Text(sub.stateLabel)
                         .font(.callout.weight(.semibold))
-                        .foregroundStyle(stateColor(sub.state))
+                        .foregroundStyle(DiagnosticsColor.color(forTone: sub.stateTone))
                 }
                 SubDetailDivider()
                 SubDetailRow(label: "Relay") {
@@ -93,8 +98,6 @@ struct WireSubscriptionDetailView: View {
         }
     }
 
-    // ── Timing ────────────────────────────────────────────────────────────
-
     private var timingSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Timing")
@@ -102,22 +105,22 @@ struct WireSubscriptionDetailView: View {
                 .foregroundStyle(.primary)
             VStack(spacing: 0) {
                 SubDetailRow(label: "Opened") {
-                    Text(msToRelative(sub.openedAtMs))
+                    Text(sub.openedDisplay)
                         .font(.body.monospaced())
                         .foregroundStyle(.secondary)
                 }
-                if let ms = sub.lastEventAtMs {
+                if let last = sub.lastEventDisplay {
                     SubDetailDivider()
                     SubDetailRow(label: "Last Event") {
-                        Text(msToRelative(ms))
+                        Text(last)
                             .font(.body.monospaced())
                             .foregroundStyle(.secondary)
                     }
                 }
-                if let ms = sub.eoseAtMs {
+                if let eose = sub.eoseDisplay {
                     SubDetailDivider()
                     SubDetailRow(label: "EOSE At") {
-                        Text(msToRelative(ms))
+                        Text(eose)
                             .font(.body.monospaced())
                             .foregroundStyle(.green)
                     }
@@ -126,8 +129,6 @@ struct WireSubscriptionDetailView: View {
             .padding(.horizontal, 12)
         }
     }
-
-    // ── Close reason ──────────────────────────────────────────────────────
 
     @ViewBuilder
     private func closeReasonSection(_ reason: String) -> some View {
@@ -144,28 +145,7 @@ struct WireSubscriptionDetailView: View {
                 .textSelection(.enabled)
         }
     }
-
-    // ── Helpers ───────────────────────────────────────────────────────────
-
-    private func stateColor(_ s: String) -> Color {
-        switch s.lowercased() {
-        case "open", "active", "live": return .green
-        case "pending", "warming", "opening", "auth_paused": return .orange
-        default: return .secondary
-        }
-    }
-
-    private func msToRelative(_ ms: UInt64) -> String {
-        guard ms > 0 else { return "—" }
-        let date = Date(timeIntervalSince1970: Double(ms) / 1000)
-        let diff = Date().timeIntervalSince(date)
-        if diff < 60 { return "\(Int(diff))s ago" }
-        if diff < 3600 { return "\(Int(diff / 60))m ago" }
-        return "\(Int(diff / 3600))h ago"
-    }
 }
-
-// ── Sub-components ────────────────────────────────────────────────────────
 
 private struct WireMetricTile: View {
     let label: String

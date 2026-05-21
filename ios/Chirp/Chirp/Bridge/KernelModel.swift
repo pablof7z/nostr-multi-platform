@@ -44,6 +44,10 @@ final class KernelModel: ObservableObject {
     // Perf diagnostics (ported from NmpStress goals).
     @Published private(set) var logicalInterests: [LogicalInterestStatus] = []
     @Published private(set) var wireSubscriptions: [WireSubscriptionStatus] = []
+    /// Pre-rolled diagnostics projection (aim.md §4.5 / §6 anti-pattern #1
+    /// cleanup). The three diagnostics screens read this directly — no
+    /// `.filter` / `.sorted` / `Date(timeIntervalSince1970:)` in Swift.
+    @Published private(set) var relayDiagnostics: RelayDiagnosticsSnapshot = .empty
     @Published private(set) var logs: [String] = []
     @Published private(set) var appMetrics = AppRuntimeMetrics()
     @Published var visibleLimit: UInt32 = 80
@@ -69,6 +73,19 @@ final class KernelModel: ObservableObject {
     @Published private(set) var lastDispatchError: String?
 
     var hasActiveAccount: Bool { activeAccount != nil }
+
+    /// O(N) stable lookup of the currently-active `AccountSummary`. Surfaced
+    /// on the model so views never write `.first(where:)` — keeps the
+    /// diagnostics screens free of `Sequence` algorithms (aim.md §4.5).
+    /// `activeAccount` is the kernel-emitted identity handle (a substrate
+    /// projection field); pairing it with the matching row in `accounts`
+    /// is rendering, not derivation. Migrating this to a dedicated kernel
+    /// projection is a separate cleanup tracked outside this PR.
+    var activeAccountSummary: AccountSummary? {
+        guard let id = activeAccount else { return nil }
+        for account in accounts where account.id == id { return account }
+        return nil
+    }
 
     private let kernel = KernelHandle()
     private var lastLogicalInterestSummary = ""
@@ -199,6 +216,7 @@ final class KernelModel: ObservableObject {
         relayStatuses = []
         logicalInterests = []
         wireSubscriptions = []
+        relayDiagnostics = .empty
         logs = []
         appMetrics = AppRuntimeMetrics()
         lastLogicalInterestSummary = ""
@@ -476,6 +494,7 @@ final class KernelModel: ObservableObject {
         // Perf diagnostics.
         if let li = update.logicalInterests { logicalInterests = li }
         if let ws = update.wireSubscriptions { wireSubscriptions = ws }
+        if let diag = update.relayDiagnostics { relayDiagnostics = diag }
         if let lg = update.logs { logs = lg }
 
         let logicalInterestSummary = logicalInterests
