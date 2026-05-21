@@ -28,10 +28,21 @@
 use std::ffi::{c_char, CStr, CString};
 use std::sync::Arc;
 
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection, UnsignedEvent};
+use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use nmp_core::{ActorCommand, KernelEventObserverId, NmpApp};
-use nmp_nip29::action::{JoinRequestAction, JoinRequestInput};
-use nmp_nip29::kinds::KIND_JOIN_REQUEST;
+use nmp_nip29::action::{
+    comment_in_group_command, create_group_command, create_invite_command, delete_event_command,
+    delete_group_command, edit_metadata_command, join_request_command, leave_request_command,
+    post_artifact_command, post_chat_message_command, post_discussion_command, put_user_command,
+    react_in_group_command, remove_user_command, share_event_into_group_command, CommentInGroupAction,
+    CommentInGroupInput, CreateGroupAction, CreateGroupInput, CreateInviteAction, CreateInviteInput,
+    DeleteEventAction, DeleteEventInput, DeleteGroupAction, DeleteGroupInput, EditMetadataAction,
+    EditMetadataInput, JoinRequestAction, JoinRequestInput, LeaveRequestAction, LeaveRequestInput,
+    PostArtifactAction, PostArtifactInput, PostChatMessageAction, PostChatMessageInput,
+    PostDiscussionAction, PostDiscussionInput, PutUserAction, PutUserInput, ReactInGroupAction,
+    ReactInGroupInput, RemoveUserAction, RemoveUserInput, ShareEventIntoGroupAction,
+    ShareEventIntoGroupInput,
+};
 use nmp_nip57::action::{zap_request_command, ZapAction, ZapModule};
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
@@ -297,113 +308,86 @@ fn register_chirp_actions(app: &mut NmpApp) {
     });
 }
 
-/// Register NIP-29 group action namespaces against `app`'s action registry.
+/// Register all 15 NIP-29 group action namespaces against `app`'s action
+/// registry.
 ///
-/// This is the first wiring of an `ActionModule` impl that lives in a NIP
-/// protocol crate (`nmp-nip29`) rather than in this app crate. It proves the
-/// host-extensibility seam (`register_action_module` / `register_action_executor`)
-/// is not limited to Chirp's own social verbs — any NIP crate's typed
-/// `ActionModule` can be reached through the generic `dispatch_action` path.
+/// This wires `ActionModule` impls that live in the `nmp-nip29` protocol
+/// crate rather than in this app crate, proving the host-extensibility seam
+/// (`register_action_module` / `register_action_executor`) is not limited to
+/// Chirp's own social verbs — any NIP crate's typed `ActionModule` can be
+/// reached through the generic `dispatch_action` path, without `nmp-core`
+/// learning any NIP-29 group nouns (D0).
 ///
-/// Only `nip29.join_request` is wired here (the namespace constant comes from
-/// [`JoinRequestAction::NAMESPACE`], the single source of truth — the kernel
-/// `nmp-core` is NOT edited to hardcode it). The other 14 `nmp-nip29`
-/// `ActionModule` impls (`admin`, `content`, `composed`) follow the same
-/// pattern when their app surfaces need them.
+/// Every namespace gets BOTH halves `nmp_app_dispatch_action` requires:
 ///
-/// JSON schema (the third arg to `nmp_app_dispatch_action`):
-/// * `nip29.join_request` —
-///   `{"group":{"host_relay_url":"wss://…","local_id":"…"},
-///     "invite_code":null,"referrer_event_id":null,"reason":null}`
+/// * the **module** validator delegates straight to the typed
+///   `<Action>::start` — the crate's real validation (host-pin enforcement,
+///   tag construction, `validate_no_unpinned_h`) runs; it is not re-imitated
+///   here;
+/// * the **executor** delegates to the typed `<name>_command` function from
+///   `nmp-nip29`. That function consults the SAME `build_plan` closure the
+///   validator uses, so the wire shape can never drift between validate and
+///   execute. It builds the action's `UnsignedEvent` and enqueues
+///   [`ActorCommand::PublishUnsignedEventToRelays`], host-pinned to the
+///   group's own relay (`PublishPlan::pin_to`). The actor signs with the
+///   active account and routes to exactly that relay, bypassing the NIP-65
+///   outbox resolver — a group event must reach the group's host relay,
+///   never the author's kind:10002 outbox.
 ///
-/// The **module** validator delegates straight to the typed
-/// [`JoinRequestAction::start`] — so the crate's real validation logic
-/// (host-pin enforcement, tag construction, `validate_no_unpinned_h`) runs;
-/// it is not re-imitated here.
+/// Previously only `nip29.join_request` was wired and its executor
+/// re-built the `UnsignedEvent` by hand in this file, duplicating the tag
+/// logic. The other 14 `ActionModule` impls each built a `PublishPlan` and
+/// then discarded it (`Ok(())`). `PublishPlan::into_actor_command` closes
+/// that gap: the plan the validator builds is now the same plan the executor
+/// publishes.
 ///
-/// The **executor** builds the kind:9021 join-request `UnsignedEvent` from the
-/// typed `JoinRequestInput` and enqueues
-/// [`ActorCommand::PublishUnsignedEventToRelays`], pinned to the group's own
-/// host relay (`input.group.host_relay_url`). The actor signs with the active
-/// account and routes to exactly that relay, bypassing the NIP-65 outbox
-/// resolver — a group event must reach the group's host relay, never the
-/// author's kind:10002 outbox. This is the first executor to drive a real
-/// `ActorCommand` from a NIP-crate `ActionModule`.
+/// Namespaces come from each `<Action>::NAMESPACE` constant — the single
+/// source of truth — so `nmp-core` is never edited to hardcode them. The
+/// admin namespaces are macro-generated as `nip29.<ModuleIdent>` (e.g.
+/// `nip29.CreateGroupAction`); registering against the constant keeps this
+/// correct regardless of that naming.
 fn register_nip29_actions(app: &mut NmpApp) {
-    // Module (validator): delegate to the typed `nmp-nip29` `ActionModule`.
-    app.register_action_module(JoinRequestAction::NAMESPACE, |action_json| {
-        let action: JoinRequestInput = serde_json::from_str(action_json)
-            .map_err(|e| ActionRejection::Invalid(e.to_string()))?;
-        let mut ctx = ActionContext { now_ms: 0 };
-        JoinRequestAction::start(&mut ctx, action)
-    });
-
-    // Executor: build the kind:9021 join-request event and enqueue a
-    // host-pinned publish. The actor signs with the active account and routes
-    // to the group's own host relay (D3 Explicit opt-out). The closure is a
-    // thin shim over `nip29_join_request_command` so the action→command
-    // mapping is unit-testable without the FFI / actor channel.
-    app.register_action_executor(
-        JoinRequestAction::NAMESPACE,
-        |action_json, _correlation_id, send| {
-            let cmd = nip29_join_request_command(action_json)?;
-            send(cmd);
-            Ok(())
-        },
-    );
-}
-
-/// Map a validated `nip29.join_request` action JSON to the
-/// [`ActorCommand::PublishUnsignedEventToRelays`] that publishes the kind:9021
-/// join-request event, pinned to the group's own host relay.
-///
-/// Split out of the `register_action_executor` closure so the action→command
-/// mapping is directly unit-testable (the closure half only adds the `send`
-/// call). Returns `Err` on a malformed body — defence in depth, even though
-/// the module validator already rejected it.
-fn nip29_join_request_command(action_json: &str) -> Result<ActorCommand, String> {
-    // Re-decode the typed input — the executor owns its own parse so it never
-    // trusts an upstream shape it did not verify.
-    let input: JoinRequestInput =
-        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-
-    // Build the kind:9021 tags. This mirrors `JoinRequestAction::start`
-    // (`nmp-nip29/src/action/membership.rs`): an `["h", local_id]` group tag,
-    // plus optional `["code", …]` and `["e", referrer]` rows. The tag layout
-    // is the protocol crate's contract; until `ActionModule` exposes a
-    // `PublishPlan`-returning executor hook this is a local re-build, not a
-    // re-imagining of the validation logic.
-    let mut tags: Vec<Vec<String>> =
-        vec![vec!["h".to_string(), input.group.local_id.clone()]];
-    if let Some(code) = input.invite_code.clone() {
-        tags.push(vec!["code".to_string(), code]);
+    /// Register one NIP-29 action: a typed `<Action>::start` validator (the
+    /// `<Input>` type drives the JSON shape) plus an executor that delegates
+    /// to the typed `<command>` function from `nmp-nip29`.
+    macro_rules! wire {
+        ($Action:ident, $Input:ident, $command:ident) => {{
+            app.register_action_module($Action::NAMESPACE, |action_json| {
+                let action: $Input = serde_json::from_str(action_json)
+                    .map_err(|e| ActionRejection::Invalid(e.to_string()))?;
+                let mut ctx = ActionContext { now_ms: 0 };
+                $Action::start(&mut ctx, action)
+            });
+            app.register_action_executor(
+                $Action::NAMESPACE,
+                |action_json, _correlation_id, send| {
+                    let cmd = $command(action_json)?;
+                    send(cmd);
+                    Ok(())
+                },
+            );
+        }};
     }
-    if let Some(evt) = input.referrer_event_id.clone() {
-        tags.push(vec!["e".to_string(), evt]);
-    }
-    let content = input.reason.clone().unwrap_or_default();
 
-    // `pubkey` is a placeholder — the actor derives it from the active
-    // identity at sign time and overwrites this field (see
-    // `ActorCommand::PublishUnsignedEventToRelays` / `publish_unsigned_*`).
-    let created_at = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let unsigned = UnsignedEvent {
-        pubkey: String::new(),
-        kind: KIND_JOIN_REQUEST,
-        tags,
-        content,
-        created_at,
-    };
-
-    // Pin to the group's own host relay — a NIP-29 group event must NOT route
-    // via the author's NIP-65 outbox.
-    Ok(ActorCommand::PublishUnsignedEventToRelays {
-        event: unsigned,
-        relays: vec![input.group.host_relay_url.clone()],
-    })
+    // membership
+    wire!(JoinRequestAction, JoinRequestInput, join_request_command);
+    wire!(LeaveRequestAction, LeaveRequestInput, leave_request_command);
+    // content
+    wire!(PostChatMessageAction, PostChatMessageInput, post_chat_message_command);
+    wire!(PostDiscussionAction, PostDiscussionInput, post_discussion_command);
+    wire!(PostArtifactAction, PostArtifactInput, post_artifact_command);
+    // composed
+    wire!(ShareEventIntoGroupAction, ShareEventIntoGroupInput, share_event_into_group_command);
+    wire!(ReactInGroupAction, ReactInGroupInput, react_in_group_command);
+    wire!(CommentInGroupAction, CommentInGroupInput, comment_in_group_command);
+    // admin
+    wire!(CreateGroupAction, CreateGroupInput, create_group_command);
+    wire!(EditMetadataAction, EditMetadataInput, edit_metadata_command);
+    wire!(PutUserAction, PutUserInput, put_user_command);
+    wire!(RemoveUserAction, RemoveUserInput, remove_user_command);
+    wire!(CreateInviteAction, CreateInviteInput, create_invite_command);
+    wire!(DeleteEventAction, DeleteEventInput, delete_event_command);
+    wire!(DeleteGroupAction, DeleteGroupInput, delete_group_command);
 }
 
 /// Register the NIP-57 `ZapModule` action namespace against `app`'s action
@@ -479,6 +463,7 @@ mod tests {
     use super::*;
     use nmp_core::nmp_app_free;
     use nmp_core::nmp_app_new;
+    use nmp_nip29::kinds::KIND_JOIN_REQUEST;
 
     #[test]
     fn register_snapshot_unregister_round_trip() {
@@ -630,7 +615,7 @@ mod tests {
     #[test]
     fn nip29_join_request_executor_emits_host_pinned_publish_command() {
         let body = r#"{"group":{"host_relay_url":"wss://groups.example.com","local_id":"rust-nostr"},"invite_code":"abc123","referrer_event_id":"deadbeef","reason":"hello"}"#;
-        let cmd = nip29_join_request_command(body).expect("well-formed join request");
+        let cmd = join_request_command(body).expect("well-formed join request");
 
         match cmd {
             ActorCommand::PublishUnsignedEventToRelays { event, relays } => {
@@ -669,7 +654,7 @@ mod tests {
     #[test]
     fn nip29_join_request_executor_handles_minimal_body() {
         let minimal = r#"{"group":{"host_relay_url":"wss://groups.example.com","local_id":"rust-nostr"}}"#;
-        let cmd = nip29_join_request_command(minimal).expect("minimal join request");
+        let cmd = join_request_command(minimal).expect("minimal join request");
         match cmd {
             ActorCommand::PublishUnsignedEventToRelays { event, relays } => {
                 assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
@@ -686,8 +671,76 @@ mod tests {
     #[test]
     fn nip29_join_request_executor_rejects_malformed_body() {
         assert!(
-            nip29_join_request_command(r#"{"reason":"no group"}"#).is_err(),
+            join_request_command(r#"{"reason":"no group"}"#).is_err(),
             "join request without `group` must be rejected"
         );
+    }
+
+    /// THE FULL-CATALOG WIRING PROOF: every one of the 15 NIP-29 namespaces
+    /// `register_nip29_actions` wires is reachable through the generic
+    /// `dispatch_action` path — one representative per submodule
+    /// (`membership` / `content` / `composed` / `admin`).
+    ///
+    /// `join_request` already had its own proof; this covers the 14 that were
+    /// dormant until `PublishPlan::into_actor_command` closed the
+    /// validator→executor gap. A well-formed body yields a 32-hex
+    /// `correlation_id` (BOTH the typed module validator AND the executor are
+    /// bound under that namespace); a malformed body is rejected with `error`.
+    ///
+    /// Namespaces come from each `<Action>::NAMESPACE` constant — the admin
+    /// ones are the macro-generated `nip29.<ModuleIdent>` form (CamelCase,
+    /// e.g. `nip29.CreateGroupAction`), which is exactly why this asserts via
+    /// the constant rather than a hardcoded string.
+    #[test]
+    fn nip29_all_namespaces_dispatch_through_action_registry() {
+        let app = nmp_app_new();
+        let handle = nmp_app_chirp_register(app, std::ptr::null());
+        assert!(!handle.is_null());
+
+        let group = r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#;
+        // One representative namespace per `nmp-nip29` submodule, each with a
+        // well-formed body for its typed `<Input>`.
+        let cases: [(&str, String); 4] = [
+            // membership
+            (
+                LeaveRequestAction::NAMESPACE,
+                format!(r#"{{"group":{group}}}"#),
+            ),
+            // content
+            (
+                PostChatMessageAction::NAMESPACE,
+                format!(r#"{{"group":{group},"content":"hi"}}"#),
+            ),
+            // composed
+            (
+                ReactInGroupAction::NAMESPACE,
+                format!(r#"{{"group":{group},"target_event_id":"deadbeef","content":"+"}}"#),
+            ),
+            // admin (macro-generated `nip29.CreateGroupAction` namespace)
+            (
+                CreateGroupAction::NAMESPACE,
+                format!(r#"{{"group":{group}}}"#),
+            ),
+        ];
+
+        for (namespace, body) in &cases {
+            let parsed = dispatch(app, namespace, body);
+            let id = parsed
+                .get("correlation_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or_else(|| panic!("{namespace}: expected correlation_id, got {parsed}"));
+            assert_eq!(id.len(), 32, "{namespace}: correlation id should be 32 hex");
+
+            // Malformed shape (no `group`) is rejected by the typed module
+            // validator surfaced through the host seam (D6).
+            let parsed = dispatch(app, namespace, r#"{"bad":"shape"}"#);
+            assert!(
+                parsed.get("error").is_some(),
+                "{namespace}: malformed body must be rejected, got {parsed}"
+            );
+        }
+
+        nmp_app_chirp_unregister(handle);
+        nmp_app_free(app);
     }
 }

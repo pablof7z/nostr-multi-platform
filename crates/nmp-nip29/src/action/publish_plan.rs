@@ -67,6 +67,50 @@ impl PublishPlan {
         }
         Ok(())
     }
+
+    /// Consume the plan into the [`ActorCommand`] that publishes its event,
+    /// host-pinned to the plan's relay.
+    ///
+    /// This is the bridge that closes the long-standing gap between the typed
+    /// `ActionModule` validators (which built a `PublishPlan` and then *discarded*
+    /// it, returning `Ok(())`) and the actor: instead of the executor in
+    /// `ffi.rs` hand-rebuilding the `UnsignedEvent` (and duplicating every
+    /// action's tag logic), the action's own `build_plan()` is the single
+    /// source of truth and this method turns it into a dispatchable command.
+    ///
+    /// The built `UnsignedEvent` carries an empty `pubkey` placeholder — the
+    /// actor derives it from the active identity at sign time and overwrites
+    /// the field (see `ActorCommand::PublishUnsignedEventToRelays`).
+    /// `created_at` is stamped here; the actor does not re-stamp.
+    ///
+    /// Routes via [`ActorCommand::PublishUnsignedEventToRelays`] pinned to
+    /// exactly the plan's host relay — a NIP-29 group event must reach the
+    /// group's own host relay, never the author's NIP-65 outbox. Returns `Err`
+    /// when `pin_to` is `None`; every NIP-29 action builds its plan with
+    /// [`PublishPlan::pinned`] (always `Some(_)`), so this is a defensive
+    /// guard the current callers never trip.
+    pub fn into_actor_command(self) -> Result<nmp_core::ActorCommand, String> {
+        use nmp_core::substrate::UnsignedEvent;
+        use nmp_core::ActorCommand;
+        let relay = self
+            .pin_to
+            .ok_or_else(|| "publish plan has no relay pin".to_string())?
+            .relay_url;
+        let created_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        Ok(ActorCommand::PublishUnsignedEventToRelays {
+            event: UnsignedEvent {
+                pubkey: String::new(),
+                kind: self.kind,
+                tags: self.tags,
+                content: self.content,
+                created_at,
+            },
+            relays: vec![relay],
+        })
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -113,5 +157,39 @@ mod tests {
             pin_to: None,
         };
         assert!(p.validate_no_unpinned_h().is_ok());
+    }
+
+    #[test]
+    fn into_actor_command_publishes_host_pinned_unsigned_event() {
+        use nmp_core::ActorCommand;
+        let p = PublishPlan::pinned(&g(), 9, "hi", vec![vec!["h".into(), "room".into()]]);
+        match p.into_actor_command().expect("pinned plan converts") {
+            ActorCommand::PublishUnsignedEventToRelays { event, relays } => {
+                // Pinned to EXACTLY the group's host relay — never the
+                // author's NIP-65 outbox.
+                assert_eq!(relays, vec!["wss://h.example.com".to_string()]);
+                assert_eq!(event.kind, 9);
+                assert_eq!(event.content, "hi");
+                assert_eq!(event.tags, vec![vec!["h".to_string(), "room".to_string()]]);
+                // `pubkey` is a placeholder — the actor fills it at sign time.
+                assert!(event.pubkey.is_empty());
+            }
+            other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn into_actor_command_rejects_unpinned_plan() {
+        // Defensive guard: every NIP-29 action builds its plan with
+        // `PublishPlan::pinned` (always `Some(_)`), so this branch is
+        // unreachable from real callers — but the conversion must still fail
+        // closed rather than route a group event through the NIP-65 outbox.
+        let p = PublishPlan {
+            kind: 1,
+            content: "x".into(),
+            tags: vec![],
+            pin_to: None,
+        };
+        assert!(p.into_actor_command().is_err());
     }
 }
