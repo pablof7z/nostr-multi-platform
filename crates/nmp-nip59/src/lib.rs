@@ -27,7 +27,9 @@
 //! <https://github.com/nostr-protocol/nips/blob/master/59.md>
 
 pub use error::Nip59Error;
+pub use signer_seal::{gift_wrap_with_signer, SignerForSeal, DRIVER_STEP_TIMEOUT};
 pub use wrap::{gift_wrap, unwrap_gift_wrap, UnwrappedGift};
 
 mod error;
+mod signer_seal;
 mod wrap;

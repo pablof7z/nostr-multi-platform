@@ -439,6 +439,39 @@ impl IdentityRuntime {
         }
         self.active_keys().map(|_| "local")
     }
+
+    /// Resolve a [`SignerForSeal`][nmp_nip59::SignerForSeal] for the active
+    /// account — the ADR-0026 seal-step seam every gift-wrap producer (NIP-17
+    /// DMs today; NIP-57 zaps and raw NIP-44 future) consumes via
+    /// `nmp_nip59::gift_wrap_with_signer`.
+    ///
+    /// Returns:
+    /// - `Some(Arc<dyn SignerForSeal>)` for a **local** account — the trait
+    ///   is satisfied by `nostr::Keys`'s blanket impl, so we hand back an
+    ///   `Arc<Keys>` (a cheap clone of the active `Keys`).
+    /// - `None` for a **remote (NIP-46 / NIP-07 / hardware)** account.
+    ///   Wiring a remote `SignerForSeal` adapter (which translates
+    ///   `RemoteSignerHandle::nip44_encrypt` + `sign` into the trait's
+    ///   per-step `SignerOp` shape, and bridges the substrate
+    ///   `SignedEvent` ↔ `nostr::Event` conversion) is the Phase 2
+    ///   follow-up to this seam. The DM path uses this `None` return as
+    ///   the explicit graceful-degrade signal (D6: surface a toast, never
+    ///   silently fail). See `commands/dm.rs` and ADR-0026.
+    /// - `None` when no account is active.
+    ///
+    /// Centralising the raw-key access here keeps `commands/dm.rs`
+    /// D13-clean (Part A bans `IdentityRuntime::active_local_keys` and
+    /// `.secret_key()` on that path); identity.rs itself is the
+    /// legitimate raw-key owner.
+    pub(crate) fn active_signer_for_seal(
+        &self,
+    ) -> Option<std::sync::Arc<dyn nmp_nip59::SignerForSeal>> {
+        if let Some(keys) = self.active_keys() {
+            return Some(std::sync::Arc::new(keys.clone()));
+        }
+        // Active account is remote — Phase 2 plugs an adapter here.
+        None
+    }
 }
 
 /// Build an `AuthSignerFn`-shaped closure over a fixed `Keys`. Mirrors the
