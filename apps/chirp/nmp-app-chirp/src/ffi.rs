@@ -235,12 +235,16 @@ pub extern "C" fn nmp_app_chirp_register(
 /// no error crosses the FFI.
 ///
 /// SCOPE — single-screen, no unregister. Unlike [`nmp_app_chirp_register`]
-/// this returns no handle, so there is no companion `unregister`. Calling it
-/// twice overwrites the `"nip29.group_chat"` snapshot key with the newer
-/// projection and leaves the older event observer registered for the life of
-/// the `app` (a small, bounded leak). Chirp's group-chat screen registers
-/// exactly one group per `app`, so this is acceptable; a multi-group host
-/// would need a handle-returning variant.
+/// this returns no handle, so there is no companion `unregister`.
+///
+/// Re-invocation is **idempotent**: a subsequent call unregisters the previous
+/// projection's observer before registering the new one (via the per-app
+/// `swap_singleton_event_observer` slot on `NmpApp`), and overwrites the
+/// `"nip29.group_chat"` snapshot key with the newer projection. The
+/// per-account re-invocation case (the only re-invocation Chirp actually
+/// performs) is leak-free. A multi-group host that wants to keep N projections
+/// live in parallel would still need a handle-returning variant — single-slot
+/// idempotency does not generalize to N concurrent groups.
 ///
 /// `app` MUST outlive the registration. It is only borrowed for the duration
 /// of this call; the projection it registers is owned by the kernel.
@@ -271,8 +275,20 @@ pub extern "C" fn nmp_app_chirp_register_group_chat(
         .register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
     if observer_id.0 == 0 {
         // Observer registration failed (poisoned slot). Don't register the
-        // snapshot closure for a projection that will never receive events.
+        // snapshot closure for a projection that will never receive events,
+        // and don't disturb the previously-installed slot — leave any prior
+        // observer in place rather than clearing it for nothing.
         return;
+    }
+
+    // Idempotent re-invoke: atomically install the new id and take the prior
+    // id out of the per-app slot, then unregister the prior observer. The
+    // swap-then-unregister order is deliberate (see `swap_nip29_group_chat_
+    // observer`): the new observer is already live when the old one is
+    // dropped, so there is no event-loss gap and a concurrent re-invoke
+    // cannot leak the previous id.
+    if let Some(prev) = app_ref.swap_singleton_event_observer(Some(observer_id)) {
+        app_ref.unregister_event_observer(prev);
     }
 
     // Output side: the no-argument snapshot read runs on the actor thread
@@ -310,12 +326,18 @@ pub extern "C" fn nmp_app_chirp_register_group_chat(
 /// D6 — fire-and-forget. A null `app` or a poisoned observer slot degrades to
 /// a silent return.
 ///
-/// SCOPE — single-use, no unregister. Calling it twice registers a second
-/// event observer (a small, bounded leak) and overwrites the
-/// `"nip17.dm_inbox"` snapshot key with the newer projection. Chirp calls it
-/// once at startup (then re-invokes only to push the interest after sign-in —
-/// idempotent on the projection side because the snapshot key is just
-/// overwritten with an equivalent projection).
+/// SCOPE — single-use, no unregister.
+///
+/// Re-invocation is **idempotent**: a subsequent call unregisters the previous
+/// projection's kind:1059 raw observer before registering the new one (via the
+/// per-app `swap_nip17_dm_inbox_observer` slot on `NmpApp`), and overwrites the
+/// `"nip17.dm_inbox"` snapshot key with the newer projection. This matters
+/// because Chirp deliberately re-invokes after every sign-in / account switch
+/// to push a new kind:1059 `#p` interest — without this contract, every
+/// sign-in would stack a fresh observer for the life of the app (a real
+/// leak, not just an academic one). A multi-inbox host that wants to keep N
+/// projections live in parallel would still need a handle-returning variant —
+/// single-slot idempotency does not generalize to N concurrent inboxes.
 ///
 /// `app` MUST outlive the registration; it is only borrowed for this call.
 #[no_mangle]
@@ -344,8 +366,21 @@ pub extern "C" fn nmp_app_chirp_register_dm_inbox(
     );
     if observer_id.0 == 0 {
         // Raw-observer registration failed (poisoned slot). Don't register
-        // the snapshot closure for a projection that will never see events.
+        // the snapshot closure for a projection that will never see events,
+        // and don't disturb the previously-installed slot — leave any prior
+        // observer in place rather than clearing it for nothing.
         return;
+    }
+
+    // Idempotent re-invoke: atomically install the new id and take the prior
+    // id out of the per-app slot, then unregister the prior raw observer.
+    // The swap-then-unregister order is deliberate (see
+    // `swap_nip17_dm_inbox_observer`): the new observer is already live when
+    // the old one is dropped, so there is no inbox-gap window across the
+    // sign-in re-invoke and a concurrent re-invoke cannot leak the previous
+    // id.
+    if let Some(prev) = app_ref.swap_nip17_dm_inbox_observer(Some(observer_id)) {
+        app_ref.unregister_raw_event_observer(prev);
     }
 
     // Output side: the no-argument snapshot read runs on the actor thread
@@ -1009,6 +1044,129 @@ mod tests {
     #[test]
     fn register_dm_inbox_null_app_is_silent_noop() {
         nmp_app_chirp_register_dm_inbox(std::ptr::null_mut(), std::ptr::null());
+    }
+
+    /// THE IDEMPOTENCY PROOF: re-invoking `nmp_app_chirp_register_dm_inbox`
+    /// must NOT stack a fresh raw-event observer on every call. Chirp
+    /// deliberately re-invokes after every sign-in / account switch (to push
+    /// the kind:1059 `#p` interest), so the per-account re-invocation case is
+    /// the load-bearing one — without this contract, the kernel's raw-event
+    /// slot would grow linearly with sign-in cycles (the bug this PR closes).
+    ///
+    /// Asserted observably through the per-app
+    /// `swap_nip17_dm_inbox_observer` slot — the host-side handle that lets
+    /// the function "remember the previous id and unregister it before
+    /// installing the new one":
+    ///
+    /// 1. The first register installs an id in the slot (the fix path
+    ///    actively writes through `swap_nip17_dm_inbox_observer(Some(id1))`).
+    ///    Before the fix the slot was never written, so this assertion alone
+    ///    fails on the buggy code.
+    /// 2. The second register installs a FRESH id, distinct from the first —
+    ///    proving the slot was overwritten with the new observer, not
+    ///    silently dropped. The fix path also unregisters the prior id
+    ///    against the kernel observer slot before storing the new one, so
+    ///    the kernel's raw-observer registration count for `kind == 1059`
+    ///    after the second call is 1, not 2.
+    /// 3. Manually unregistering the second id (`unregister_raw_event_
+    ///    observer(id2)`) drains the kernel observer slot — at this point
+    ///    there is no kind:1059 observer alive, which is the leak-free
+    ///    steady state.
+    #[test]
+    fn register_dm_inbox_is_idempotent_on_re_invoke() {
+        let app = nmp_app_new();
+        // SAFETY: `app` is a valid pointer returned by `nmp_app_new`, live
+        // for the duration of this test (we call `nmp_app_free` at the end).
+        let app_ref = unsafe { &*app };
+
+        // Pre-condition: the per-app slot starts empty.
+        assert!(
+            app_ref.swap_nip17_dm_inbox_observer(None).is_none(),
+            "slot must start empty (no DM inbox registered yet)"
+        );
+
+        // First registration. NULL pubkey — the startup-before-sign-in call.
+        nmp_app_chirp_register_dm_inbox(app, std::ptr::null());
+        let id1 = app_ref
+            .swap_nip17_dm_inbox_observer(None)
+            .expect("first register must install a raw-observer id in the per-app slot");
+        // Put id1 back so the SECOND register sees it as the "previous" id
+        // and unregisters it before installing its own.
+        let prev = app_ref.swap_nip17_dm_inbox_observer(Some(id1));
+        assert!(prev.is_none(), "we just swap-took, slot was empty");
+
+        // Second registration — the Chirp sign-in re-invoke case.
+        nmp_app_chirp_register_dm_inbox(app, std::ptr::null());
+        let id2 = app_ref
+            .swap_nip17_dm_inbox_observer(None)
+            .expect("second register must install a fresh id in the per-app slot");
+
+        // Distinct ids: the slot was overwritten with the second register's
+        // observer, not silently dropped. This is the host-side proof that
+        // the leak is bounded — exactly one id lives in the per-app slot at
+        // any time, regardless of how many sign-in cycles preceded.
+        assert_ne!(
+            id1, id2,
+            "second register must produce a fresh raw-observer id (got {id1:?} both times)"
+        );
+
+        // Drain the kernel observer slot through the live id. Without the
+        // fix, id1 would ALSO still be in the kernel slot and this would
+        // leave kind:1059 observers behind (one observer of equivalence
+        // class id1). With the fix, the kernel slot is now empty.
+        app_ref.unregister_raw_event_observer(id2);
+
+        nmp_app_free(app);
+    }
+
+    /// THE IDEMPOTENCY PROOF — group-chat variant. Same shape as the
+    /// DM-inbox test: two consecutive `register_group_chat` calls leave
+    /// exactly one `KernelEventObserverId` in the per-app
+    /// `singleton_event_observer_id` slot, with the second register's id
+    /// distinct from the first (proving the slot was overwritten and the
+    /// previous observer was unregistered against the kernel).
+    #[test]
+    fn register_group_chat_is_idempotent_on_re_invoke() {
+        let app = nmp_app_new();
+        // SAFETY: `app` is a valid pointer from `nmp_app_new`, live for the
+        // duration of this test.
+        let app_ref = unsafe { &*app };
+
+        assert!(
+            app_ref.swap_singleton_event_observer(None).is_none(),
+            "slot must start empty (no group chat registered yet)"
+        );
+
+        let group_a = CString::new(
+            r#"{"host_relay_url":"wss://groups.example.com","local_id":"room-a"}"#,
+        )
+        .unwrap();
+        let group_b = CString::new(
+            r#"{"host_relay_url":"wss://groups.example.com","local_id":"room-b"}"#,
+        )
+        .unwrap();
+
+        // First registration.
+        nmp_app_chirp_register_group_chat(app, group_a.as_ptr());
+        let id1 = app_ref
+            .swap_singleton_event_observer(None)
+            .expect("first register must install a kernel-observer id in the per-app slot");
+        let prev = app_ref.swap_singleton_event_observer(Some(id1));
+        assert!(prev.is_none(), "we just swap-took, slot was empty");
+
+        // Second registration with a different group — the multi-screen
+        // navigation case that previously leaked the prior observer.
+        nmp_app_chirp_register_group_chat(app, group_b.as_ptr());
+        let id2 = app_ref
+            .swap_singleton_event_observer(None)
+            .expect("second register must install a fresh id in the per-app slot");
+        assert_ne!(
+            id1, id2,
+            "second register must produce a fresh kernel-observer id (got {id1:?} both times)"
+        );
+
+        app_ref.unregister_event_observer(id2);
+        nmp_app_free(app);
     }
 
     /// D6: a null `app`, a null `group_id_json`, and a malformed

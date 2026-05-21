@@ -240,6 +240,35 @@ pub struct NmpApp {
     /// Both paths mutate the same `Mutex<…>` the actor reads. Delivers the
     /// verbatim flat NIP-01 signed event (`sig` included), kind-filtered.
     raw_event_observers: RawEventObserverSlot,
+    /// Previously-installed NIP-17 DM-inbox raw-event observer id, for the
+    /// idempotent re-invoke contract on the per-app crate's
+    /// `register_dm_inbox` entry point. The per-app crate (e.g. `nmp-app-chirp`)
+    /// swaps the slot atomically via [`Self::swap_nip17_dm_inbox_observer`]:
+    /// the previous id is taken out, the new observer is registered, and the
+    /// new id is stored back — so a re-invoke unregisters the prior observer
+    /// before installing the new one, instead of stacking a fresh observer on
+    /// every sign-in / account-switch cycle.
+    ///
+    /// Protocol-named (not chirp-named) because it tracks a NIP-17 surface;
+    /// any host wiring a single DM-inbox per app shares this contract. A
+    /// multi-inbox host would need a handle-returning variant instead.
+    nip17_dm_inbox_observer_id: Arc<Mutex<Option<RawEventObserverId>>>,
+    /// Singleton kernel-event observer-id slot used by per-app crates that
+    /// register exactly one auxiliary `KernelEventObserver` per app and want
+    /// the registration to be idempotent across re-invokes — see
+    /// [`Self::swap_singleton_event_observer`]. The per-app crate swaps the
+    /// slot atomically: the previous id is taken out, the new observer is
+    /// registered, and the new id is stored back — so a re-invoke
+    /// unregisters the prior observer before installing the new one,
+    /// instead of stacking a fresh observer on every re-entry.
+    ///
+    /// Substrate-generic (kernel-level): the slot holds a bare
+    /// [`KernelEventObserverId`]; the per-app crate decides what protocol
+    /// surface uses it (D0 — the kernel never names the app noun). The
+    /// first internal consumer is `nmp-app-chirp`'s per-app group-chat
+    /// registration. A host that wants to keep N projections live in
+    /// parallel still needs a handle-returning variant.
+    singleton_event_observer_id: Arc<Mutex<Option<KernelEventObserverId>>>,
     /// Shared relay-edit rows handle. Cloned to the actor thread and bound
     /// onto the kernel so external Rust callers (e.g. per-app crates) can read
     /// the user's current relay list without crossing FFI.
@@ -381,6 +410,17 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // (`set_raw_event_observers_handle`).
     let raw_event_observers = new_raw_event_observer_slot();
     let actor_raw_event_observers = Arc::clone(&raw_event_observers);
+    // Per-app idempotency slots — track the previously-installed observer id
+    // for single-instance auxiliary observer registrations a per-app crate
+    // (e.g. `nmp-app-chirp`) wires through `swap_nip17_dm_inbox_observer` /
+    // `swap_singleton_event_observer`. NOT shared with the actor thread —
+    // the actor never reads these; only the FFI side calls the swap
+    // accessors. Owned by `NmpApp`, dropped with it (so the slot dies with
+    // the app — no global aliasing across `nmp_app_free`).
+    let nip17_dm_inbox_observer_id: Arc<Mutex<Option<RawEventObserverId>>> =
+        Arc::new(Mutex::new(None));
+    let singleton_event_observer_id: Arc<Mutex<Option<KernelEventObserverId>>> =
+        Arc::new(Mutex::new(None));
     // Host-extensible snapshot output slot. Same shared-`Arc` pattern: the
     // `NmpApp` keeps one clone (Rust + C-ABI registration entry points), the
     // actor thread carries another and binds it onto the kernel
@@ -528,6 +568,8 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         lifecycle_observer,
         event_observers,
         raw_event_observers,
+        nip17_dm_inbox_observer_id,
+        singleton_event_observer_id,
         relay_edit_rows,
         marmot_local_nsec,
         nip17_local_keys,
@@ -894,6 +936,59 @@ impl NmpApp {
     /// [`Self::unregister_raw_event_observer`].
     pub(crate) fn raw_event_observers_slot(&self) -> RawEventObserverSlot {
         Arc::clone(&self.raw_event_observers)
+    }
+
+    /// Atomically swap the per-app's NIP-17 DM-inbox raw-observer id slot:
+    /// store `new` and return whatever was previously installed there.
+    ///
+    /// Used by per-app crates (e.g. `nmp-app-chirp`) to make their
+    /// `register_dm_inbox` entry point idempotent across re-invokes (sign-in,
+    /// account switch). Recipe:
+    ///
+    /// ```ignore
+    /// let new_id = app.register_raw_event_observer(filter, projection);
+    /// if new_id.0 == 0 { return; }
+    /// if let Some(prev) = app.swap_nip17_dm_inbox_observer(Some(new_id)) {
+    ///     app.unregister_raw_event_observer(prev);
+    /// }
+    /// ```
+    ///
+    /// The swap-then-unregister order is deliberate: storing the new id first
+    /// means a host that aborts between register and unregister still has the
+    /// new observer live (no inbox-gap window), and the take-and-set under a
+    /// single lock acquisition makes the previous id impossible to lose to a
+    /// concurrent re-invoke. A poisoned mutex degrades to `None` (D6).
+    pub fn swap_nip17_dm_inbox_observer(
+        &self,
+        new: Option<RawEventObserverId>,
+    ) -> Option<RawEventObserverId> {
+        let mut guard = self.nip17_dm_inbox_observer_id.lock().ok()?;
+        let prev = guard.take();
+        *guard = new;
+        prev
+    }
+
+    /// Atomically swap the per-app's singleton kernel-event observer-id slot:
+    /// store `new` and return whatever was previously installed there.
+    ///
+    /// Mirrors [`Self::swap_nip17_dm_inbox_observer`] for the typed
+    /// [`KernelEventObserver`] fan-out (in contrast to the raw signed-event
+    /// tap). Same idempotent-re-invoke contract: a per-app crate that wires
+    /// exactly one auxiliary `KernelEventObserver` per app uses this slot
+    /// to ensure a second registration unregisters the first one before
+    /// installing itself. A poisoned mutex degrades to `None` (D6).
+    ///
+    /// The slot is substrate-generic (D0 — the kernel never names the app
+    /// noun); the per-app crate decides what protocol surface the singleton
+    /// observer projects.
+    pub fn swap_singleton_event_observer(
+        &self,
+        new: Option<KernelEventObserverId>,
+    ) -> Option<KernelEventObserverId> {
+        let mut guard = self.singleton_event_observer_id.lock().ok()?;
+        let prev = guard.take();
+        *guard = new;
+        prev
     }
 
     /// Push a `LogicalInterest` into the subscription registry and schedule a
