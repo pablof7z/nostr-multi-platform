@@ -8,6 +8,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::actor::ActorCommand;
 use crate::substrate::{ActionContext, ActionModule, ActionRejection, SignedEvent};
 
 /// Stable handle returned to the caller of `Publish`. Used to key snapshot
@@ -207,5 +208,86 @@ impl ActionModule for PublishModule {
                     .to_string(),
             )),
         }
+    }
+
+    /// ADR-0027 — dispatch a validated `PublishAction` to the actor.
+    ///
+    /// Each arm threads the registry-minted `correlation_id` onto the
+    /// matching `ActorCommand` so the publish engine's `action_results`
+    /// entry uses the same identifier the host received from
+    /// `dispatch_action` — required because the actor signs `PublishNote` /
+    /// `PublishProfile` and the event id is unknown at dispatch time. For
+    /// the pre-signed `Publish` variant the threaded id equals `event.id`
+    /// (via `preferred_action_id`), matching the engine's `PublishHandle`
+    /// explicitly rather than by coincidence.
+    fn execute(
+        action: Self::Action,
+        correlation_id: &str,
+        send: &dyn Fn(ActorCommand),
+    ) -> Result<(), String> {
+        match action {
+            PublishAction::Publish { event, target, .. } => {
+                // D8 — non-blocking channel send only; the actor loop owns
+                // signing/publishing (D4). The event is already signed; the
+                // actor re-verifies it before publishing.
+                send(ActorCommand::PublishSignedEvent {
+                    raw: signed_event_to_raw(event),
+                    relays: relays_for_target(&target),
+                    correlation_id: Some(correlation_id.to_string()),
+                });
+                Ok(())
+            }
+            // D8 — non-blocking channel send only; the actor loop signs the
+            // kind:1 with the active account (D4). The `ActionModule`-native
+            // replacement for the deleted per-verb `nmp_app_publish_note` FFI
+            // symbol.
+            PublishAction::PublishNote { content, reply_to_id, .. } => {
+                send(ActorCommand::PublishNote {
+                    content,
+                    reply_to_id,
+                    correlation_id: Some(correlation_id.to_string()),
+                });
+                Ok(())
+            }
+            // D8 — non-blocking channel send only; the actor loop builds the
+            // kind:0 event, stamps `created_at`, and signs with the active
+            // account (D4/D7).
+            PublishAction::PublishProfile { fields } => {
+                send(ActorCommand::PublishProfile {
+                    fields,
+                    correlation_id: Some(correlation_id.to_string()),
+                });
+                Ok(())
+            }
+            // Unreachable in practice: `PublishModule::start` rejects
+            // `Cancel` before the registry ever runs `execute`. The arm
+            // exists for match exhaustiveness — D6 forbids `unreachable!()`
+            // on a production path, hence a bare `Ok(())`.
+            PublishAction::Cancel { .. } => Ok(()),
+        }
+    }
+}
+
+/// Convert a [`SignedEvent`] into a flat NIP-01 [`crate::store::RawEvent`].
+/// Pure field move — `id` and `sig` are carried verbatim, no re-signing.
+fn signed_event_to_raw(event: SignedEvent) -> crate::store::RawEvent {
+    crate::store::RawEvent {
+        id: event.id,
+        pubkey: event.unsigned.pubkey,
+        created_at: event.unsigned.created_at,
+        kind: event.unsigned.kind,
+        tags: event.unsigned.tags,
+        content: event.unsigned.content,
+        sig: event.sig,
+    }
+}
+
+/// Resolve a [`PublishTarget`] into the relay slice
+/// [`ActorCommand::PublishSignedEvent`] expects: `Auto` → empty (NIP-65
+/// outbox resolver), `Explicit` → the named opt-out relays.
+fn relays_for_target(target: &PublishTarget) -> Vec<RelayUrl> {
+    match target {
+        PublishTarget::Auto => Vec::new(),
+        PublishTarget::Explicit { relays } => relays.clone(),
     }
 }
