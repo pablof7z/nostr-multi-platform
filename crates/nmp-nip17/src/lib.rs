@@ -52,6 +52,7 @@
 use nmp_core::substrate::UnsignedEvent;
 
 pub mod action;
+pub mod display;
 pub mod dm_relay_list;
 pub mod inbox;
 
