@@ -64,9 +64,16 @@ use super::identity_state::RelayEditRow;
 /// wrapper is invisible on the wire — consumers decode the projection value
 /// as a plain JSON array of strings, exactly as the bare `Vec<String>` would
 /// have serialized pre-PR-I.
+///
+/// PR-I2: the tuple field is **private** (not `pub(crate)`) so even modules
+/// inside `nmp-core` cannot mutate the inner `Vec` directly through `.0`.
+/// All access must go through the typed accessors (`replace()` / `as_slice()`)
+/// — that keeps the sole-writer (D4) and "never re-hand the inner `Vec`
+/// across an `await`" invariants enforceable at the type level instead of by
+/// code review.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
-pub struct RelayUrls(pub(crate) Vec<String>);
+pub struct RelayUrls(Vec<String>);
 
 impl RelayUrls {
     /// Construct a fresh, empty slot value.
@@ -92,9 +99,14 @@ impl RelayUrls {
 /// actor pushes a clone into the shared slot every time the kernel reducer
 /// settles a new value, so external readers (FFI, per-app crates) observe a
 /// consistent snapshot without crossing the kernel boundary.
+///
+/// PR-I2: same private-field discipline as [`RelayUrls`] — readers must go
+/// through `as_slice()` (`pub` so out-of-crate callers like
+/// `apps/chirp/nmp-app-chirp/src/dm_runtime.rs` can use it), writers through
+/// `replace()`. The inner `Vec<RelayEditRow>` is never reachable via `.0`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
-pub struct RelayEditRowList(pub(crate) Vec<RelayEditRow>);
+pub struct RelayEditRowList(Vec<RelayEditRow>);
 
 impl RelayEditRowList {
     /// Construct a fresh, empty slot value.

@@ -9,15 +9,14 @@
 //!
 //! ## What this catches
 //!
-//! `name: Arc<Mutex<Vec<...>>>` (or `Option<Arc<Mutex<Vec<...>>>>`) as a
-//! **field declaration** inside a struct named `NmpApp`, `Kernel`, or one
-//! starting with `Actor` — under `crates/nmp-core/src/`.
+//! `name: Arc<Mutex<Vec<...>>>` (or `Option<…>`) as a **field declaration**
+//! inside a struct named `NmpApp`, `Kernel`, `Nip65OutboxResolver` (PR-I2),
+//! or one starting with `Actor` — under `crates/nmp-core/src/`.
 //!
 //! ## Escape hatches
 //!
 //! - Promote to a typed slot wrapper (preferred — see `relay_projection.rs`).
-//! - Out-of-scope structs (`PublishEngine`, NIP-crate types, …) are
-//!   tolerated; D14 disciplines only the substrate identity-owners.
+//! - Out-of-scope structs (`PublishEngine`, NIP-crate types, …) tolerated.
 //! - Tests / fixtures / `#[cfg(test)]` blocks (walker exemptions).
 //! - Per-line `// doctrine-allow: D14 — reason`.
 
@@ -89,12 +88,16 @@ pub fn check(
     )]
 }
 
-/// True iff `name` is `NmpApp`, `Kernel`, or starts with `Actor`. The match
-/// is deliberately narrow: it disciplines exactly the three identity owners
-/// the PR-I review identified (the FFI handle, the kernel reducer, the actor
-/// runtime). A future expansion would add more discriminants here.
+/// True iff `name` is `NmpApp`, `Kernel`, `Nip65OutboxResolver`, or starts
+/// with `Actor`. Explicit name-list (PR-I2 added the resolver since the
+/// original bare slots originated there). Add future actor-owned
+/// publish/relay structs to the list explicitly; a wildcard like
+/// `ends_with("Resolver")` would catch unrelated types.
 fn is_in_scope_struct(name: &str) -> bool {
-    name == "NmpApp" || name == "Kernel" || name.starts_with("Actor")
+    name == "NmpApp"
+        || name == "Kernel"
+        || name == "Nip65OutboxResolver"
+        || name.starts_with("Actor")
 }
 
 /// Parse a struct-field-declaration line. Returns the (column-1-indexed,
