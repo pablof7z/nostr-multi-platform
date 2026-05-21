@@ -962,6 +962,12 @@ struct TimelineItem: Decodable, Identifiable, Equatable, Hashable {
     let authorPictureUrl: String?
     let authorAvatarInitials: String
     let authorAvatarColor: String
+    /// Nostr event kind (1 = note, 6 = repost, 7 = reaction, …). The kernel
+    /// supplies this so the shell can render kind-conditional UI (e.g. a
+    /// "Repost" badge or alternate navigation target) without re-parsing the
+    /// raw event JSON in `content`. Thin-shell rule: the kind is the
+    /// authoritative protocol signal — never inferred from content shape.
+    let kind: UInt32
     let content: String
     let contentPreview: String
     let createdAtDisplay: String

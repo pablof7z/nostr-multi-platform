@@ -272,6 +272,7 @@ struct ModularBlockView: View {
             authorPictureUrl: item?.authorPictureUrl,
             authorAvatarInitials: item?.authorAvatarInitials ?? defaultInitials(pubkey: card.authorPubkey),
             authorAvatarColor: item?.authorAvatarColor ?? defaultColor(pubkey: card.authorPubkey),
+            kind: card.kind,
             content: card.content,
             contentPreview: String(card.content.prefix(180)),
             createdAtDisplay: relativeTime(card: card),
