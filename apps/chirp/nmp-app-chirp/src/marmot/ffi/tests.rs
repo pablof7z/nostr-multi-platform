@@ -261,6 +261,102 @@ fn create_group_without_key_packages_reports_seam() {
     assert_eq!(r["ok"], json!(false));
     assert_eq!(r["error"], json!("key_package_unavailable"));
     assert_eq!(r["needs"], json!(["abc"]));
+    assert_eq!(r["fetch_requested"], json!(0));
+    assert_eq!(
+        r["hint"],
+        json!("key package lookup was requested; results arrive via the kernel tap")
+    );
+}
+
+#[test]
+fn create_group_partial_key_package_set_reports_only_missing_invitees() {
+    let bob_keys = Keys::generate();
+    let carol_keys = Keys::generate();
+    let bob = in_memory(bob_keys.clone());
+    let bob_kp_json = bob
+        .publish_key_package(vec![nostr::RelayUrl::parse("wss://t.relay").unwrap()])
+        .expect("bob key package")
+        .event_30443
+        .as_json();
+
+    let proj = MarmotProjection::new(in_memory(Keys::generate()));
+    let r = proj
+        .with_inner(|h| {
+            ops::dispatch(
+                h,
+                &json!({
+                    "op": "create_group",
+                    "name": "g",
+                    "relays": ["wss://t.relay"],
+                    "invitee_npubs": [
+                        bob_keys.public_key().to_hex(),
+                        carol_keys.public_key().to_hex()
+                    ],
+                    "signed_key_package_events_json": [bob_kp_json],
+                }),
+                1,
+            )
+        })
+        .unwrap();
+
+    assert_eq!(r["ok"], json!(false));
+    assert_eq!(r["error"], json!("key_package_unavailable"));
+    assert_eq!(r["needs"], json!([carol_keys.public_key().to_hex()]));
+    assert_eq!(r["fetch_requested"], json!(0));
+}
+
+#[test]
+fn invite_partial_key_package_set_reports_only_missing_invitees() {
+    let alice_keys = Keys::generate();
+    let bob_keys = Keys::generate();
+    let carol_keys = Keys::generate();
+    let bob = in_memory(bob_keys.clone());
+    let bob_kp_json = bob
+        .publish_key_package(vec![nostr::RelayUrl::parse("wss://t.relay").unwrap()])
+        .expect("bob key package")
+        .event_30443
+        .as_json();
+
+    let proj = MarmotProjection::new(in_memory(alice_keys));
+    let group_id_hex = proj
+        .with_inner(|h| {
+            ops::dispatch(
+                h,
+                &json!({
+                    "op": "create_group",
+                    "name": "g",
+                    "relays": ["wss://t.relay"],
+                }),
+                1,
+            )
+        })
+        .unwrap()["group_id_hex"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let r = proj
+        .with_inner(|h| {
+            ops::dispatch(
+                h,
+                &json!({
+                    "op": "invite",
+                    "group_id_hex": group_id_hex,
+                    "invitee_npubs": [
+                        bob_keys.public_key().to_hex(),
+                        carol_keys.public_key().to_hex()
+                    ],
+                    "signed_key_package_events_json": [bob_kp_json],
+                }),
+                2,
+            )
+        })
+        .unwrap();
+
+    assert_eq!(r["ok"], json!(false));
+    assert_eq!(r["error"], json!("key_package_unavailable"));
+    assert_eq!(r["needs"], json!([carol_keys.public_key().to_hex()]));
+    assert_eq!(r["fetch_requested"], json!(0));
 }
 
 #[test]
