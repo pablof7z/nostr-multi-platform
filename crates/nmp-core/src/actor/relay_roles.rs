@@ -4,6 +4,81 @@
 /// when the user has no configured write relay.
 pub const NOSTRCONNECT_DEFAULT_RELAY_URL: &str = "wss://relay.damus.io";
 
+#[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
+pub(crate) struct RelayRoleOption {
+    pub(crate) value: String,
+    pub(crate) label: String,
+    pub(crate) tint: String,
+    pub(crate) is_default: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct RelayRoleMetadata {
+    value: &'static str,
+    label: &'static str,
+    tint: &'static str,
+    is_default: bool,
+}
+
+const RELAY_ROLE_METADATA: &[RelayRoleMetadata] = &[
+    RelayRoleMetadata {
+        value: "both,indexer",
+        label: "Both + Index",
+        tint: "accent",
+        is_default: false,
+    },
+    RelayRoleMetadata {
+        value: "both",
+        label: "Both",
+        tint: "accent",
+        is_default: true,
+    },
+    RelayRoleMetadata {
+        value: "read",
+        label: "Read",
+        tint: "info",
+        is_default: false,
+    },
+    RelayRoleMetadata {
+        value: "write",
+        label: "Write",
+        tint: "success",
+        is_default: false,
+    },
+    RelayRoleMetadata {
+        value: "indexer",
+        label: "Index",
+        tint: "neutral",
+        is_default: false,
+    },
+];
+
+pub(crate) fn relay_role_options() -> Vec<RelayRoleOption> {
+    RELAY_ROLE_METADATA
+        .iter()
+        .map(|metadata| RelayRoleOption {
+            value: metadata.value.to_string(),
+            label: metadata.label.to_string(),
+            tint: metadata.tint.to_string(),
+            is_default: metadata.is_default,
+        })
+        .collect()
+}
+
+pub(crate) fn relay_role_label(role: &str) -> String {
+    role_metadata(role)
+        .map(|metadata| metadata.label)
+        .unwrap_or(role)
+        .to_string()
+}
+
+pub(crate) fn relay_role_tint(role: &str) -> String {
+    role_metadata(role)
+        .map(|metadata| metadata.tint)
+        .unwrap_or("accent")
+        .to_string()
+}
+
 /// True when `role` semantically includes `needle`.
 ///
 /// `both` means read+write only; it does not imply indexer. Composite role
@@ -61,9 +136,6 @@ fn role_tokens(role: &str) -> impl Iterator<Item = String> + '_ {
 }
 
 /// Choose the relay for a client-initiated NIP-46 `nostrconnect://` flow.
-///
-/// The relay is the first configured relay whose canonical role includes
-/// write semantics. If none exists, use the substrate-owned fallback.
 pub(crate) fn nostrconnect_relay_url<'a, I>(rows: I) -> String
 where
     I: IntoIterator<Item = (&'a str, &'a str)>,
@@ -72,6 +144,13 @@ where
         .find(|(_, role)| has_role(role, "write"))
         .map(|(url, _)| url.to_string())
         .unwrap_or_else(|| NOSTRCONNECT_DEFAULT_RELAY_URL.to_string())
+}
+
+fn role_metadata(role: &str) -> Option<&'static RelayRoleMetadata> {
+    let canonical = canonical_relay_role(role)?;
+    RELAY_ROLE_METADATA
+        .iter()
+        .find(|metadata| metadata.value == canonical)
 }
 
 #[cfg(test)]
@@ -115,5 +194,33 @@ mod tests {
         ];
 
         assert_eq!(nostrconnect_relay_url(rows), NOSTRCONNECT_DEFAULT_RELAY_URL);
+    }
+
+    #[test]
+    fn role_options_are_projection_ready() {
+        let options = relay_role_options();
+        let values = options
+            .iter()
+            .map(|option| option.value.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(values, ["both,indexer", "both", "read", "write", "indexer"]);
+        assert_eq!(
+            options
+                .iter()
+                .filter(|option| option.is_default)
+                .map(|option| option.value.as_str())
+                .collect::<Vec<_>>(),
+            ["both"]
+        );
+        assert_eq!(options[0].label, "Both + Index");
+        assert_eq!(options[0].tint, "accent");
+    }
+
+    #[test]
+    fn role_display_metadata_uses_canonical_roles() {
+        assert_eq!(relay_role_label("write read indexer"), "Both + Index");
+        assert_eq!(relay_role_tint("READ"), "info");
+        assert_eq!(relay_role_tint("write"), "success");
+        assert_eq!(relay_role_label("indexer"), "Index");
     }
 }

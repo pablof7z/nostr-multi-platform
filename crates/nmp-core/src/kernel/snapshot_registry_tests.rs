@@ -75,9 +75,10 @@ fn multiple_projections_each_get_their_namespace() {
 /// With no *host* projection registered, the `projections` map carries only
 /// the kernel-owned built-in projections — and no host namespace.
 ///
-/// D0: `make_update` always inserts the publish cluster (`publish_queue` /
-/// `publish_outbox` / `relay_edit_rows`), the identity pair (`accounts` /
-/// `active_account`), and the views cluster — all kernel-owned domain state,
+/// D0: `make_update` always inserts the publish / relay-settings cluster
+/// (`publish_queue` / `publish_outbox` / `relay_edit_rows` /
+/// `relay_role_options`), the identity pair (`accounts` / `active_account`),
+/// and the views cluster — all kernel-owned domain state,
 /// not host registrations — so the map is never empty and `skip_serializing_if`
 /// no longer drops it. A host that registers nothing simply contributes no
 /// extra keys: the social shell still sees only the built-ins it expects.
@@ -116,6 +117,7 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
             // diagnostics roll-up (aim.md §4.5 / §6 anti-pattern #1 cleanup)
             "relay_diagnostics",
             "relay_edit_rows",
+            "relay_role_options",
             // views cluster (D0)
             "removed",
             // settings-hub view (relays subtitle pre-format)

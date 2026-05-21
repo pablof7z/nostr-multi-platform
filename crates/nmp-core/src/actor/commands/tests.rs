@@ -1544,6 +1544,19 @@ fn snapshot_json_carries_new_projections() {
     assert!(projections.get("publish_outbox").is_some());
     assert!(projections.get("outbox_summary").is_some());
     assert!(projections.get("relay_edit_rows").is_some());
+    let role_options = projections["relay_role_options"]
+        .as_array()
+        .expect("relay_role_options must be a projection array");
+    assert_eq!(role_options[0]["value"].as_str(), Some("both,indexer"));
+    assert_eq!(role_options[0]["label"].as_str(), Some("Both + Index"));
+    assert_eq!(role_options[0]["tint"].as_str(), Some("accent"));
+    assert_eq!(role_options[1]["value"].as_str(), Some("both"));
+    assert_eq!(role_options[1]["is_default"].as_bool(), Some(true));
+    let relay_rows = projections["relay_edit_rows"]
+        .as_array()
+        .expect("relay_edit_rows must be a projection array");
+    assert_eq!(relay_rows[0]["role_label"].as_str(), Some("Both"));
+    assert_eq!(relay_rows[0]["role_tint"].as_str(), Some("accent"));
     // D0: the views cluster (`profile`, `timeline`, `author_view`,
     // `thread_view`, `inserted`, `updated`, `removed`) is likewise no longer a
     // typed `KernelSnapshot` field set — all seven are kernel-owned built-in
