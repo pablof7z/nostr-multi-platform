@@ -11,7 +11,7 @@
 //! - [`mode::RenderMode`] — `Plain | Markdown | Auto` (Auto sniffs by kind)
 //! - [`context::RenderContext`] — depth + visited-set recursion guard
 //! - [`embed_registry::EmbedClaimRegistry`] — per-id refcounted claim/release
-//!   (ViewModule per ADR-0009, namespace `nmp.content.embed_registry`)
+//!   (namespace `nmp.content.embed_registry`)
 //!
 //! # Design constraints (load-bearing)
 //! - **One entry point** (`tokenize`) with a `mode` flag — never the three
@@ -21,8 +21,8 @@
 //!   tokenization (`content-rendering.md` §10 #3).
 //! - **FFI-stable public types** — pulse-builder agent (#66) consumes these
 //!   shapes via FFI; do not break.
-//! - **D0-clean** — no UI nouns; `EmbedClaimRegistry` stays behind the
-//!   `ViewModule` boundary.
+//! - **D0-clean** — no UI nouns; `EmbedClaimRegistry` exposes only generic
+//!   claim/release + event-ingest methods.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]

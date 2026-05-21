@@ -116,7 +116,7 @@ pub enum CompileTrigger {
     },
     /// A11 — active account's kind:3 contact list replaced with a fresher
     /// event. Emitted by the kind:3 ingest fan after `Inserted | Replaced`
-    /// from the event store (D4). The compiler re-runs every ViewModule whose
+    /// from the event store (D4). The compiler re-runs every view whose
     /// `dependencies()` declares `kind 3` or whose `interests()` consumes the
     /// active account's follow-set as a filter shape input.
     ///

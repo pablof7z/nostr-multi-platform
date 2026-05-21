@@ -1,4 +1,4 @@
-//! Shared types used across the 7 ViewModule impls.
+//! Shared types used across the 7 NIP-29 reactive views.
 //!
 //! Each view's `State` is a thin accumulator of ingested `KernelEvent`s; the
 //! `Payload` is the snapshot ordered by `created_at` ascending; the `Delta`

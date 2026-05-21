@@ -26,8 +26,10 @@ pub use domain::{decode_and_route, list_by_target, ZapsDomain, NAMESPACE};
 pub use kinds::{KIND_ZAP_RECEIPT, KIND_ZAP_REQUEST};
 pub use view::{ZapEntry, ZapsDelta, ZapsPayload, ZapsSpec, ZapsState, ZapsView};
 
-// NOTE: `nmp-nip57` exposes its `DomainModule` / `ViewModule` impls
-// (`ZapsDomain`, `ZapsView`) as public types. The former
-// `register(&mut ModuleRegistry)` entry point was deleted: `ModuleRegistry`
-// only collected name strings and the kernel never read them. The live
-// extension path is `KernelEventObserver` — see `nmp_core::substrate` docs.
+// NOTE: `nmp-nip57` exposes its `DomainModule` impl and `ZapsView` type
+// (`ZapsDomain`, `ZapsView`) as public types. `ZapsView` is a plain type
+// whose `open` / `on_event_*` / `snapshot` inherent methods are reached via
+// static dispatch — the `ViewModule` trait and the former
+// `register(&mut ModuleRegistry)` entry point were both deleted because no
+// kernel-side registry ever drove them. The live extension path is
+// `KernelEventObserver` — see `nmp_core::substrate` docs.

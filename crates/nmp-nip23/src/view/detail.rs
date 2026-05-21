@@ -2,10 +2,7 @@
 //! coordinate (the structured form of an `naddr1…` bech32).
 
 use nmp_core::planner::NaddrCoord;
-use nmp_core::substrate::{
-    EventId, KernelEvent, Placeholder, ProjectionChange, ViewContext, ViewDependencies,
-    ViewModule,
-};
+use nmp_core::substrate::{EventId, KernelEvent, Placeholder, ViewContext, ViewDependencies};
 use serde::{Deserialize, Serialize};
 
 use crate::decode::ArticleRecord;
@@ -81,19 +78,14 @@ fn placeholder_article(coord: &NaddrCoord) -> ArticleRecord {
 }
 
 pub struct ArticleDetailView;
-impl ViewModule for ArticleDetailView {
-    const NAMESPACE: &'static str = "nmp.nip23.article_detail";
-    type Spec = ArticleDetailSpec;
-    type Payload = ArticleDetailPayload;
-    type Delta = ArticleViewDelta;
-    type Key = NaddrCoord;
-    type State = DetailState;
+impl ArticleDetailView {
+    pub const NAMESPACE: &'static str = "nmp.nip23.article_detail";
 
-    fn key(spec: &Self::Spec) -> Self::Key {
+    pub fn key(spec: &ArticleDetailSpec) -> NaddrCoord {
         spec.coord.clone()
     }
 
-    fn dependencies(spec: &Self::Spec) -> ViewDependencies {
+    pub fn dependencies(spec: &ArticleDetailSpec) -> ViewDependencies {
         // Address-pointer hydration: declare the full triple. The compiler's
         // Rule 8 (address-pointer) and the store's `idx_kind_dtag` then do the
         // routing + lookup work — this view stays a pure consumer.
@@ -105,7 +97,10 @@ impl ViewModule for ArticleDetailView {
         }
     }
 
-    fn open(_ctx: &ViewContext, spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(
+        _ctx: &ViewContext,
+        spec: ArticleDetailSpec,
+    ) -> (DetailState, ArticleDetailPayload) {
         let payload = ArticleDetailPayload {
             article: Placeholder(placeholder_article(&spec.coord)),
             source: "placeholder".into(),
@@ -117,31 +112,31 @@ impl ViewModule for ArticleDetailView {
         (state, payload)
     }
 
-    fn on_event_inserted(
+    pub fn on_event_inserted(
         _ctx: &ViewContext,
-        state: &mut Self::State,
+        state: &mut DetailState,
         event: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<ArticleViewDelta> {
         if !state.event_matches_coord(event) {
             return None;
         }
         state.inner.insert(event)
     }
 
-    fn on_event_removed(
+    pub fn on_event_removed(
         _ctx: &ViewContext,
-        state: &mut Self::State,
+        state: &mut DetailState,
         id: &EventId,
-    ) -> Option<Self::Delta> {
+    ) -> Option<ArticleViewDelta> {
         state.inner.remove(id)
     }
 
-    fn on_event_replaced(
+    pub fn on_event_replaced(
         _ctx: &ViewContext,
-        state: &mut Self::State,
+        state: &mut DetailState,
         old_id: &EventId,
         new_event: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<ArticleViewDelta> {
         if !state.event_matches_coord(new_event) {
             // The replacement is off-coord; only honour the removal so a stale
             // off-coord id can never linger, but never admit the new event.
@@ -150,15 +145,7 @@ impl ViewModule for ArticleDetailView {
         state.inner.replace(old_id, new_event)
     }
 
-    fn on_projection_changed(
-        _ctx: &ViewContext,
-        _state: &mut Self::State,
-        _change: &ProjectionChange,
-    ) -> Option<Self::Delta> {
-        None
-    }
-
-    fn snapshot(_ctx: &ViewContext, state: &Self::State) -> Self::Payload {
+    pub fn snapshot(_ctx: &ViewContext, state: &DetailState) -> ArticleDetailPayload {
         // Every record in `inner` already passed the coord filter on insert,
         // so `snapshot_sorted()[0]` is the current (NIP-33 newest) instance of
         // exactly the requested article. Absent an authoritative event we fall

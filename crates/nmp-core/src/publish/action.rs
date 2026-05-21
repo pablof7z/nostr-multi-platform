@@ -34,9 +34,9 @@ pub enum PublishTarget {
 /// The single public publish action.
 ///
 /// The signed event is included pre-signed because the kernel ledger (M6) will
-/// sign once via the active `IdentityModule` and then enqueue the publish — we
-/// never re-sign on retry (per the M6 exit gate "re-publish of an event
-/// preserves `id` and `sig`").
+/// sign once via the active signer and then enqueue the publish — we never
+/// re-sign on retry (per the M6 exit gate "re-publish of an event preserves
+/// `id` and `sig`").
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum PublishAction {
     Publish {
@@ -46,10 +46,10 @@ pub enum PublishAction {
     },
     /// Sign-and-publish a kind:1 note (optionally a reply) with the active
     /// account. Unlike `Publish`, the event is *not* pre-signed — the actor
-    /// signs it via the active `IdentityModule`. This is the
-    /// `ActionModule`-native replacement for the deleted per-verb
-    /// `nmp_app_publish_note` FFI symbol; the executor routes it to the
-    /// existing `ActorCommand::PublishNote` handler.
+    /// signs it via the active signer. This is the `ActionModule`-native
+    /// replacement for the deleted per-verb `nmp_app_publish_note` FFI symbol;
+    /// the executor routes it to the existing `ActorCommand::PublishNote`
+    /// handler.
     PublishNote {
         content: String,
         reply_to_id: Option<String>,

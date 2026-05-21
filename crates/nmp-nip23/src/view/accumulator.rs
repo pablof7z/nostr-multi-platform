@@ -12,9 +12,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::decode::{try_from_kernel_event, ArticleRecord};
 
-/// In-memory state for the two `ViewModule` impls. Public so each view can
-/// declare it as its `State` associated type; the inner map is intentionally
-/// private so external mutation goes through the `insert` / `remove` /
+/// In-memory state for the two NIP-23 views. Public so each view can use it
+/// as its state type; the inner map is intentionally private so external
+/// mutation goes through the `insert` / `remove` /
 /// `replace` API that enforces NIP-33 replaceability.
 #[derive(Default)]
 pub struct ArticleAccumulator {

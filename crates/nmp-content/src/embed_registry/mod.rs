@@ -7,31 +7,31 @@
 //! ([`is_claimed`] / [`refcount`] / [`claim_count`]). `claim` returns an
 //! opaque [`ClaimHandle`]; the last matching `release` decays the entry.
 //!
-//! Implemented as a [`ViewModule`] per PD-013 — D0-clean (no kernel
-//! coupling beyond `ViewContext` + `KernelEvent`), debug-inspectable via
-//! standard snapshot machinery, namespace `nmp.content.embed_registry`.
+//! D0-clean per PD-013 — no kernel coupling beyond `ViewContext` +
+//! `KernelEvent`, debug-inspectable via standard snapshot machinery,
+//! namespace `nmp.content.embed_registry`.
 //!
 //! # Scope today vs. Phase 2 (no overclaim)
 //! This module is the **claim-dedupe primitive only**. It does *not* open
 //! or close upstream subscriptions, and it does not by itself guarantee
 //! that a claimed embed becomes resolved — resolution happens only when
 //! the kernel independently ingests the event and calls
-//! [`on_event_inserted`]. The `ViewModule` dependency contract is
-//! spec-driven and static (`dependencies(&Spec)`); the spec here is
-//! unit-shaped, so the registry declares no dependencies and the kernel
-//! does not subscribe on its behalf.
+//! [`on_event_inserted`]. The dependency contract is spec-driven and static
+//! (`dependencies(&EmbedClaimSpec)`); the spec here is unit-shaped, so the
+//! registry declares no dependencies and the kernel does not subscribe on
+//! its behalf.
 //!
 //! Wiring claims to actually drive subscription open/close (so a claim
 //! *guarantees* resolution + grace-period teardown) is a Phase-2 seam
-//! requiring a claim-driven dependency channel the `ViewModule` trait
-//! does not yet expose (`content-rendering.md` §9 Phase 2). Apps get the
-//! dedupe + refcount primitive now; the kernel fetch cycle lands later.
+//! requiring a claim-driven dependency channel this module does not yet
+//! expose (`content-rendering.md` §9 Phase 2). Apps get the dedupe +
+//! refcount primitive now; the kernel fetch cycle lands later.
 //!
 //! [`Entry`]: state::Entry
 //! [`is_claimed`]: EmbedClaimRegistry::is_claimed
 //! [`refcount`]: EmbedClaimRegistry::refcount
 //! [`claim_count`]: EmbedClaimRegistry::claim_count
-//! [`on_event_inserted`]: nmp_core::substrate::ViewModule::on_event_inserted
+//! [`on_event_inserted`]: EmbedClaimRegistry::on_event_inserted
 
 mod state;
 mod target;
@@ -44,19 +44,19 @@ pub use state::EmbedClaimState;
 pub use target::{ClaimHandle, EmbedTarget, ResolvedEvent};
 pub use view::{EmbedClaimDelta, EmbedClaimSpec, EmbedRegistrySnapshot};
 
-/// The registry type — methods are inherent (not on the trait) because the
-/// `ViewModule` shape is callback-driven. The free `claim` / `release`
-/// methods are the API apps actually call from FFI bindings.
+/// The registry type — its `open` / `on_event_*` / `snapshot` methods are
+/// plain inherent methods (see `view.rs`), reached via static dispatch. The
+/// free `claim` / `release` methods are the API apps actually call from FFI
+/// bindings.
 pub struct EmbedClaimRegistry;
 
 impl EmbedClaimRegistry {
     /// Module namespace (matches the brief — `nmp.content.embed_registry`).
-    /// Kept in lockstep with `<Self as ViewModule>::NAMESPACE` in `view.rs`.
     pub const NAMESPACE: &'static str = "nmp.content.embed_registry";
 
-    /// Initialise a fresh state — apps that don't run the full
-    /// `ViewModule::open` machinery can hold an [`EmbedClaimState`]
-    /// directly and call the inherent methods.
+    /// Initialise a fresh state — apps that don't run the full `open`
+    /// machinery can hold an [`EmbedClaimState`] directly and call the
+    /// inherent methods.
     pub fn state() -> EmbedClaimState {
         EmbedClaimState::new()
     }

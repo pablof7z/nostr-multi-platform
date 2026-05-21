@@ -9,9 +9,7 @@
 
 use std::collections::BTreeSet;
 
-use nmp_core::substrate::{
-    EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies, ViewModule,
-};
+use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
 use nmp_threading::{
     GroupDelta, Grouper, ModulePolicy, ParentResolver, ThreadPointer, TimelineBlock,
 };
@@ -112,15 +110,10 @@ impl ModularTimelineState {
 
 pub struct Nip22ModularTimelineView;
 
-impl ViewModule for Nip22ModularTimelineView {
-    const NAMESPACE: &'static str = "nmp.nip22.modular_timeline";
-    type Spec = ModularTimelineSpec;
-    type Payload = ModularTimelinePayload;
-    type Delta = ModularTimelineDelta;
-    type Key = String;
-    type State = ModularTimelineState;
+impl Nip22ModularTimelineView {
+    pub const NAMESPACE: &'static str = "nmp.nip22.modular_timeline";
 
-    fn key(spec: &Self::Spec) -> Self::Key {
+    pub fn key(spec: &ModularTimelineSpec) -> String {
         let mut k = format!("{}|", spec.viewer);
         let mut kinds = spec.effective_kinds();
         kinds.sort_unstable();
@@ -140,7 +133,7 @@ impl ViewModule for Nip22ModularTimelineView {
         k
     }
 
-    fn dependencies(spec: &Self::Spec) -> ViewDependencies {
+    pub fn dependencies(spec: &ModularTimelineSpec) -> ViewDependencies {
         ViewDependencies {
             kinds: spec.effective_kinds(),
             tag_refs: spec.tag_refs.clone(),
@@ -148,7 +141,10 @@ impl ViewModule for Nip22ModularTimelineView {
         }
     }
 
-    fn open(_ctx: &ViewContext, spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(
+        _ctx: &ViewContext,
+        spec: ModularTimelineSpec,
+    ) -> (ModularTimelineState, ModularTimelinePayload) {
         let accepted_kinds: BTreeSet<u32> = spec.effective_kinds().into_iter().collect();
         let state = ModularTimelineState {
             grouper: Grouper::new(Nip22Resolver, spec.policy.clone()),
@@ -157,46 +153,41 @@ impl ViewModule for Nip22ModularTimelineView {
         (state, ModularTimelinePayload { blocks: Vec::new() })
     }
 
-    fn on_event_inserted(
+    pub fn on_event_inserted(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut ModularTimelineState,
         e: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<ModularTimelineDelta> {
         if !s.admits(e) {
             return None;
         }
         s.grouper.on_insert(e).map(Into::into)
     }
 
-    fn on_event_removed(
+    pub fn on_event_removed(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut ModularTimelineState,
         id: &EventId,
-    ) -> Option<Self::Delta> {
+    ) -> Option<ModularTimelineDelta> {
         s.grouper.on_remove(id).map(Into::into)
     }
 
-    fn on_event_replaced(
+    pub fn on_event_replaced(
         _c: &ViewContext,
-        s: &mut Self::State,
+        s: &mut ModularTimelineState,
         old: &EventId,
         e: &KernelEvent,
-    ) -> Option<Self::Delta> {
+    ) -> Option<ModularTimelineDelta> {
         if !s.admits(e) {
             return s.grouper.on_remove(old).map(Into::into);
         }
         s.grouper.on_replace(old, e).map(Into::into)
     }
 
-    fn on_projection_changed(
+    pub fn snapshot(
         _c: &ViewContext,
-        _s: &mut Self::State,
-        _ch: &ProjectionChange,
-    ) -> Option<Self::Delta> {
-        None
-    }
-
-    fn snapshot(_c: &ViewContext, state: &Self::State) -> Self::Payload {
+        state: &ModularTimelineState,
+    ) -> ModularTimelinePayload {
         ModularTimelinePayload {
             blocks: state.grouper.blocks().to_vec(),
         }

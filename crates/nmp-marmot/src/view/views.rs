@@ -1,4 +1,4 @@
-//! `GroupList`, `GroupMessages`, `MemberList` ViewModule impls per
+//! `GroupList`, `GroupMessages`, `MemberList` reactive views per
 //! `docs/plan/marmot-mls.md` §Step 1 + mdk-api.md §6.
 //!
 //! `GroupMessages` is relay-pinned to the group relay (kind:445) via
@@ -9,9 +9,7 @@
 //! decrypted payload is filled by the service/actor layer (same scope-cut
 //! as nmp-nip29's Step 0 views).
 
-use nmp_core::substrate::{
-    EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies, ViewModule,
-};
+use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
 use serde::{Deserialize, Serialize};
 
 use super::shared::{EventAccumulator, EventAccumulatorDelta};

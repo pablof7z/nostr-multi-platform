@@ -16,7 +16,7 @@
 //!   is `KeyringResult { status: "error", .. }` data inside the envelope.
 //! * **D7** — the capability reports and executes; it never decides policy.
 //!   *Which* account is active and *when* a secret is forgotten are
-//!   `IdentityModule` decisions (see [`KeyringIdentityWiring`]).
+//!   identity-layer decisions (see [`KeyringIdentityWiring`]).
 
 use serde::{Deserialize, Serialize};
 
@@ -125,11 +125,11 @@ pub enum KeyringStatus {
     Error,
 }
 
-/// `IdentityModule`-side wiring: builds the keyring `CapabilityRequest`
-/// envelopes an identity module issues to persist/recall/forget the active
-/// account secret. The module *decides* (policy, D7) which account is active
-/// and when to forget it; the capability merely *executes* (D7) the resulting
-/// store/retrieve/delete and *reports* the result.
+/// Identity-layer wiring: builds the keyring `CapabilityRequest`
+/// envelopes the identity layer issues to persist/recall/forget the active
+/// account secret. The identity layer *decides* (policy, D7) which account is
+/// active and when to forget it; the capability merely *executes* (D7) the
+/// resulting store/retrieve/delete and *reports* the result.
 ///
 /// `correlation_id`s are caller-supplied so the issuing module can match the
 /// returned [`CapabilityEnvelope`] to its in-flight request.

@@ -13,9 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use super::action::{PublishHandle, RelayUrl};
 use super::state::PerRelayState;
-use crate::substrate::{
-    EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies, ViewModule,
-};
+use crate::substrate::{ProjectionChange, ViewContext, ViewDependencies};
 
 const DEFAULT_RECENT_OK_CAP: usize = 32;
 const DEFAULT_RECENT_ERR_CAP: usize = 32;
@@ -119,23 +117,21 @@ impl PublishStatusState {
     }
 }
 
+/// The reactive projection of the publish engine. Once an `impl ViewModule`,
+/// now a plain type whose inherent methods are reached via static dispatch
+/// (`PublishStatusView::open(...)`). No kernel-side `ViewRegistry` ever drove
+/// the trait.
 pub struct PublishStatusView;
 
-impl ViewModule for PublishStatusView {
-    const NAMESPACE: &'static str = "nmp.publish.status";
+impl PublishStatusView {
+    pub const NAMESPACE: &'static str = "nmp.publish.status";
 
-    type Spec = PublishStatusSpec;
-    type Payload = PublishStatusSnapshot;
-    type Delta = PublishStatusSnapshot;
-    type Key = String;
-    type State = PublishStatusState;
-
-    fn key(_spec: &Self::Spec) -> Self::Key {
+    pub fn key(_spec: &PublishStatusSpec) -> String {
         // Single global publish status view per app session.
         "nmp.publish.status:global".to_string()
     }
 
-    fn dependencies(_spec: &Self::Spec) -> ViewDependencies {
+    pub fn dependencies(_spec: &PublishStatusSpec) -> ViewDependencies {
         // Publish status is driven by the engine via projection changes, not
         // by kernel-event subscription. The dependency surface is therefore
         // a single projection key.
@@ -145,42 +141,20 @@ impl ViewModule for PublishStatusView {
         }
     }
 
-    fn open(_ctx: &ViewContext, spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(
+        _ctx: &ViewContext,
+        spec: PublishStatusSpec,
+    ) -> (PublishStatusState, PublishStatusSnapshot) {
         let state = PublishStatusState::new(&spec);
         let payload = state.snapshot.clone();
         (state, payload)
     }
 
-    fn on_event_inserted(
+    pub fn on_projection_changed(
         _ctx: &ViewContext,
-        _state: &mut Self::State,
-        _event: &KernelEvent,
-    ) -> Option<Self::Delta> {
-        None
-    }
-
-    fn on_event_removed(
-        _ctx: &ViewContext,
-        _state: &mut Self::State,
-        _id: &EventId,
-    ) -> Option<Self::Delta> {
-        None
-    }
-
-    fn on_event_replaced(
-        _ctx: &ViewContext,
-        _state: &mut Self::State,
-        _old_id: &EventId,
-        _new_event: &KernelEvent,
-    ) -> Option<Self::Delta> {
-        None
-    }
-
-    fn on_projection_changed(
-        _ctx: &ViewContext,
-        state: &mut Self::State,
+        state: &mut PublishStatusState,
         change: &ProjectionChange,
-    ) -> Option<Self::Delta> {
+    ) -> Option<PublishStatusSnapshot> {
         if change.namespace != Self::NAMESPACE {
             return None;
         }
@@ -194,7 +168,7 @@ impl ViewModule for PublishStatusView {
         }
     }
 
-    fn snapshot(_ctx: &ViewContext, state: &Self::State) -> Self::Payload {
+    pub fn snapshot(_ctx: &ViewContext, state: &PublishStatusState) -> PublishStatusSnapshot {
         state.snapshot.clone()
     }
 }

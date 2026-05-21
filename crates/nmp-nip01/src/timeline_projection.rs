@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use nmp_content::{tokenize_with_kind, ContentTreeWire, RenderMode};
-use nmp_core::substrate::{KernelEvent, ViewContext, ViewModule};
+use nmp_core::substrate::{KernelEvent, ViewContext};
 use nmp_core::KernelEventObserver;
 use nmp_threading::TimelineBlock;
 use serde::{Deserialize, Serialize};

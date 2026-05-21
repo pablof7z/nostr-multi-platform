@@ -1,9 +1,7 @@
 //! `GroupChatView`, `GroupDiscussionsView`, `GroupArtifactsView` — single-group
 //! event-list projections, all host-pinned via the same `relay_pin` mechanism.
 
-use nmp_core::substrate::{
-    EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies, ViewModule,
-};
+use nmp_core::substrate::{EventId, KernelEvent, ViewContext, ViewDependencies};
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
@@ -23,16 +21,11 @@ pub struct ChatPayload {
 }
 
 pub struct GroupChatView;
-impl ViewModule for GroupChatView {
-    const NAMESPACE: &'static str = "nip29.group_chat";
-    type Spec = ChatSpec;
-    type Payload = ChatPayload;
-    type Delta = EventAccumulatorDelta;
-    type Key = GroupId;
-    type State = EventAccumulator;
+impl GroupChatView {
+    pub const NAMESPACE: &'static str = "nip29.group_chat";
 
-    fn key(spec: &Self::Spec) -> Self::Key { spec.group.clone() }
-    fn dependencies(spec: &Self::Spec) -> ViewDependencies {
+    pub fn key(spec: &ChatSpec) -> GroupId { spec.group.clone() }
+    pub fn dependencies(spec: &ChatSpec) -> ViewDependencies {
         ViewDependencies {
             kinds: vec![KIND_CHAT_MESSAGE],
             tag_refs: vec![("h".into(), spec.group.local_id.clone())],
@@ -40,14 +33,13 @@ impl ViewModule for GroupChatView {
             ..Default::default()
         }
     }
-    fn open(_ctx: &ViewContext, _spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(_ctx: &ViewContext, _spec: ChatSpec) -> (EventAccumulator, ChatPayload) {
         (EventAccumulator::default(), ChatPayload { events: Vec::new() })
     }
-    fn on_event_inserted(_c: &ViewContext, s: &mut Self::State, e: &KernelEvent) -> Option<Self::Delta> { s.insert(e) }
-    fn on_event_removed(_c: &ViewContext, s: &mut Self::State, id: &EventId) -> Option<Self::Delta> { s.remove(id) }
-    fn on_event_replaced(_c: &ViewContext, s: &mut Self::State, old: &EventId, e: &KernelEvent) -> Option<Self::Delta> { s.replace(old, e) }
-    fn on_projection_changed(_c: &ViewContext, _s: &mut Self::State, _ch: &ProjectionChange) -> Option<Self::Delta> { None }
-    fn snapshot(_c: &ViewContext, state: &Self::State) -> Self::Payload {
+    pub fn on_event_inserted(_c: &ViewContext, s: &mut EventAccumulator, e: &KernelEvent) -> Option<EventAccumulatorDelta> { s.insert(e) }
+    pub fn on_event_removed(_c: &ViewContext, s: &mut EventAccumulator, id: &EventId) -> Option<EventAccumulatorDelta> { s.remove(id) }
+    pub fn on_event_replaced(_c: &ViewContext, s: &mut EventAccumulator, old: &EventId, e: &KernelEvent) -> Option<EventAccumulatorDelta> { s.replace(old, e) }
+    pub fn snapshot(_c: &ViewContext, state: &EventAccumulator) -> ChatPayload {
         ChatPayload { events: state.events.clone() }
     }
 }
@@ -60,16 +52,11 @@ pub struct DiscussionsSpec { pub group: GroupId }
 pub struct DiscussionsPayload { pub events: Vec<KernelEvent> }
 
 pub struct GroupDiscussionsView;
-impl ViewModule for GroupDiscussionsView {
-    const NAMESPACE: &'static str = "nip29.group_discussions";
-    type Spec = DiscussionsSpec;
-    type Payload = DiscussionsPayload;
-    type Delta = EventAccumulatorDelta;
-    type Key = GroupId;
-    type State = EventAccumulator;
+impl GroupDiscussionsView {
+    pub const NAMESPACE: &'static str = "nip29.group_discussions";
 
-    fn key(spec: &Self::Spec) -> Self::Key { spec.group.clone() }
-    fn dependencies(spec: &Self::Spec) -> ViewDependencies {
+    pub fn key(spec: &DiscussionsSpec) -> GroupId { spec.group.clone() }
+    pub fn dependencies(spec: &DiscussionsSpec) -> ViewDependencies {
         ViewDependencies {
             kinds: vec![KIND_DISCUSSION_OR_ARTIFACT],
             tag_refs: vec![
@@ -80,20 +67,19 @@ impl ViewModule for GroupDiscussionsView {
             ..Default::default()
         }
     }
-    fn open(_c: &ViewContext, _spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(_c: &ViewContext, _spec: DiscussionsSpec) -> (EventAccumulator, DiscussionsPayload) {
         (EventAccumulator::default(), DiscussionsPayload { events: Vec::new() })
     }
-    fn on_event_inserted(_c: &ViewContext, s: &mut Self::State, e: &KernelEvent) -> Option<Self::Delta> {
+    pub fn on_event_inserted(_c: &ViewContext, s: &mut EventAccumulator, e: &KernelEvent) -> Option<EventAccumulatorDelta> {
         // Only accept events carrying t=discussion (artifact shares share kind:11
         // but live in GroupArtifactsView).
         let has_marker = e.tags.iter().any(|t| t.len() >= 2 && t[0] == "t" && t[1] == "discussion");
         if !has_marker { return None; }
         s.insert(e)
     }
-    fn on_event_removed(_c: &ViewContext, s: &mut Self::State, id: &EventId) -> Option<Self::Delta> { s.remove(id) }
-    fn on_event_replaced(_c: &ViewContext, s: &mut Self::State, old: &EventId, e: &KernelEvent) -> Option<Self::Delta> { s.replace(old, e) }
-    fn on_projection_changed(_c: &ViewContext, _s: &mut Self::State, _ch: &ProjectionChange) -> Option<Self::Delta> { None }
-    fn snapshot(_c: &ViewContext, state: &Self::State) -> Self::Payload {
+    pub fn on_event_removed(_c: &ViewContext, s: &mut EventAccumulator, id: &EventId) -> Option<EventAccumulatorDelta> { s.remove(id) }
+    pub fn on_event_replaced(_c: &ViewContext, s: &mut EventAccumulator, old: &EventId, e: &KernelEvent) -> Option<EventAccumulatorDelta> { s.replace(old, e) }
+    pub fn snapshot(_c: &ViewContext, state: &EventAccumulator) -> DiscussionsPayload {
         DiscussionsPayload { events: state.events.clone() }
     }
 }
@@ -106,18 +92,13 @@ pub struct ArtifactsSpec { pub group: GroupId }
 pub struct ArtifactsPayload { pub events: Vec<KernelEvent> }
 
 pub struct GroupArtifactsView;
-impl ViewModule for GroupArtifactsView {
-    const NAMESPACE: &'static str = "nip29.group_artifacts";
-    type Spec = ArtifactsSpec;
-    type Payload = ArtifactsPayload;
-    type Delta = EventAccumulatorDelta;
-    type Key = GroupId;
-    type State = EventAccumulator;
+impl GroupArtifactsView {
+    pub const NAMESPACE: &'static str = "nip29.group_artifacts";
 
-    fn key(spec: &Self::Spec) -> Self::Key { spec.group.clone() }
-    fn dependencies(spec: &Self::Spec) -> ViewDependencies {
+    pub fn key(spec: &ArtifactsSpec) -> GroupId { spec.group.clone() }
+    pub fn dependencies(spec: &ArtifactsSpec) -> ViewDependencies {
         // kind:11 (without t=discussion, filtered post-ingest) + kind:16 +
-        // kind:9802 with the group's h tag — see GroupArtifacts ViewModule
+        // kind:9802 with the group's h tag — see the GroupArtifacts view
         // entry in nip29-crate.md §3.2.
         ViewDependencies {
             kinds: vec![KIND_DISCUSSION_OR_ARTIFACT, KIND_REPOST, KIND_HIGHLIGHT],
@@ -126,10 +107,10 @@ impl ViewModule for GroupArtifactsView {
             ..Default::default()
         }
     }
-    fn open(_c: &ViewContext, _spec: Self::Spec) -> (Self::State, Self::Payload) {
+    pub fn open(_c: &ViewContext, _spec: ArtifactsSpec) -> (EventAccumulator, ArtifactsPayload) {
         (EventAccumulator::default(), ArtifactsPayload { events: Vec::new() })
     }
-    fn on_event_inserted(_c: &ViewContext, s: &mut Self::State, e: &KernelEvent) -> Option<Self::Delta> {
+    pub fn on_event_inserted(_c: &ViewContext, s: &mut EventAccumulator, e: &KernelEvent) -> Option<EventAccumulatorDelta> {
         // kind:11 events with t=discussion belong in GroupDiscussionsView, not here.
         if e.kind == KIND_DISCUSSION_OR_ARTIFACT {
             let is_discussion = e.tags.iter().any(|t| t.len() >= 2 && t[0] == "t" && t[1] == "discussion");
@@ -137,10 +118,9 @@ impl ViewModule for GroupArtifactsView {
         }
         s.insert(e)
     }
-    fn on_event_removed(_c: &ViewContext, s: &mut Self::State, id: &EventId) -> Option<Self::Delta> { s.remove(id) }
-    fn on_event_replaced(_c: &ViewContext, s: &mut Self::State, old: &EventId, e: &KernelEvent) -> Option<Self::Delta> { s.replace(old, e) }
-    fn on_projection_changed(_c: &ViewContext, _s: &mut Self::State, _ch: &ProjectionChange) -> Option<Self::Delta> { None }
-    fn snapshot(_c: &ViewContext, state: &Self::State) -> Self::Payload {
+    pub fn on_event_removed(_c: &ViewContext, s: &mut EventAccumulator, id: &EventId) -> Option<EventAccumulatorDelta> { s.remove(id) }
+    pub fn on_event_replaced(_c: &ViewContext, s: &mut EventAccumulator, old: &EventId, e: &KernelEvent) -> Option<EventAccumulatorDelta> { s.replace(old, e) }
+    pub fn snapshot(_c: &ViewContext, state: &EventAccumulator) -> ArtifactsPayload {
         ArtifactsPayload { events: state.events.clone() }
     }
 }

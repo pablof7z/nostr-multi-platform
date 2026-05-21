@@ -7,7 +7,7 @@
 //! hands off: `(pubkey, kind, d_tag) → ArticleRecord`.
 
 use nmp_core::planner::NaddrCoord;
-use nmp_core::substrate::{KernelEvent, ViewContext, ViewModule};
+use nmp_core::substrate::{KernelEvent, ViewContext};
 use nmp_nip23::{ArticleDetailSpec, ArticleDetailView, KIND_LONG_FORM_ARTICLE};
 
 const ALICE: &str = "alice-pubkey-0000000000000000000000000000000000000000000000000000000";

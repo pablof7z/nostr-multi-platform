@@ -3,7 +3,7 @@ name = "nmp-nip23"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
-description = "NIP-23 long-form articles (kind:30023) as an NMP protocol crate — pure decoder (try_from_event) + builder (UnsignedEvent) + DomainModule + ViewModule per docs/design/kind-wrappers.md §3."
+description = "NIP-23 long-form articles (kind:30023) as an NMP protocol crate — pure decoder (try_from_event) + builder (UnsignedEvent) + DomainModule + reactive views per docs/design/kind-wrappers.md §3."
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }

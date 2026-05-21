@@ -1,4 +1,4 @@
-//! `ViewModule` impls for NIP-23 articles.
+//! Reactive views for NIP-23 articles.
 //!
 //! Two views per the task brief:
 //! - [`ArticleListView`] — list articles, optionally filtered by author,
@@ -29,7 +29,7 @@ mod tests {
     use super::*;
     use crate::kinds::KIND_LONG_FORM_ARTICLE;
     use nmp_core::planner::NaddrCoord;
-    use nmp_core::substrate::{KernelEvent, ViewContext, ViewModule};
+    use nmp_core::substrate::{KernelEvent, ViewContext};
 
     fn ke(id: &str, kind: u32, author: &str, created_at: u64, tags: Vec<Vec<String>>) -> KernelEvent {
         KernelEvent {
