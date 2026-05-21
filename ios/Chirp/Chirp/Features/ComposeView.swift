@@ -72,7 +72,7 @@ struct ComposeView: View {
     private var currentAvatar: some View {
         if let account = currentAccount {
             ChirpAvatar(
-                url: nil,
+                url: account.pictureUrl,
                 initials: account.avatarInitials,
                 colorHex: account.avatarColorHex,
                 size: 42

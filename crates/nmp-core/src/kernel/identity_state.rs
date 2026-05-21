@@ -46,6 +46,11 @@ pub(crate) struct AccountSummary {
     pub(crate) signer_is_remote: bool,
     /// Pre-derived `status == "active"`. Native binds this directly.
     pub(crate) is_active: bool,
+    /// Profile picture URL from kind:0 metadata. `None` when no kind:0 has
+    /// been received yet; enriched by `Kernel::accounts_enriched()` in
+    /// the snapshot builder so the toolbar avatar shows the user's real picture.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) picture_url: Option<String>,
 }
 
 /// One in-flight / recently-completed publish. Per D1 (best-effort

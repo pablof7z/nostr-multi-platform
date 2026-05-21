@@ -114,7 +114,7 @@ struct HomeFeedView: View {
                     router.push(.profile(pubkey: account.id))
                 } label: {
                     ChirpAvatar(
-                        url: nil,
+                        url: account.pictureUrl,
                         initials: account.avatarInitials,
                         colorHex: account.avatarColorHex,
                         size: 32

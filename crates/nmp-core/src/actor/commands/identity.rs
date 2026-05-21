@@ -545,6 +545,7 @@ pub(super) fn sync_kernel(identity: &IdentityRuntime, kernel: &mut Kernel) {
                 signer_is_remote,
                 status: if is_active { "active" } else { "idle" }.to_string(),
                 is_active,
+                picture_url: None,
             })
         })
         .collect::<Vec<_>>();

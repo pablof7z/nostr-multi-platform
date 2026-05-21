@@ -1,9 +1,9 @@
 import SwiftUI
 
 // ── AccountAvatar ─────────────────────────────────────────────────────────
-// Derives `initials` and `colorHex` from `AccountSummary` (view-layer only —
-// kernel does not supply avatar metadata for accounts at D1). This is pure
-// display formatting, not business logic.
+// Derives `initials` and `colorHex` from `AccountSummary`. These are
+// display-layer derivations; `pictureUrl` is now kernel-supplied directly
+// via `AccountSummary.pictureUrl` (kind:0 enrichment in update.rs).
 
 extension AccountSummary {
     /// Two-character initials: first char of each word in displayName,

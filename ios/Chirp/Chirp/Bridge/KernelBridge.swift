@@ -1072,6 +1072,8 @@ struct AccountSummary: Decodable, Identifiable, Equatable {
     let signerIsRemote: Bool
     /// Pre-derived `status == "active"`. Native binds this directly.
     let isActive: Bool
+    /// Profile picture URL from kind:0 metadata; nil when not yet loaded.
+    let pictureUrl: String?
 }
 
 struct PublishQueueEntry: Decodable, Identifiable, Equatable {
