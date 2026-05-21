@@ -55,9 +55,9 @@ fn tailing_interest(id: u64, authors: &[&str]) -> LogicalInterest {
 /// `FollowListChanged` (A11) is now live in the trigger enum — this test uses
 /// it directly instead of the `InvalidateCompile` placeholder. The registry
 /// push that expands the author set to include bob is still synthetic: in
-/// production a ViewModule rebuilds its authors set from the follow-set; that
-/// wiring lands in M11 when ViewModules migrate onto `LogicalInterest`. What
-/// IS real here: the trigger variant, the ingest fan from `ingest_contacts`,
+/// production a view rebuilds its authors set from the follow-set; that
+/// wiring lands in M11 when views migrate onto `LogicalInterest`. What IS
+/// real here: the trigger variant, the ingest fan from `ingest_contacts`,
 /// and `drain_tick` routing into the compiler.
 ///
 /// Design: `docs/design/framework-magic/kind3.md`
@@ -97,8 +97,8 @@ fn c5_kind3_change_recompiles_follow_dependent_subs() {
     put_mailbox(&mut mailboxes, "bob", &["wss://r2/"]);
 
     // Expand the follow-list interest to include bob (synthetic stand-in for
-    // the M11 ViewModule rebuild; the trigger does not rewrite registry
-    // entries — that is the ViewModule's responsibility).
+    // the M11 view rebuild; the trigger does not rewrite registry entries —
+    // that is the view's responsibility).
     lc.registry_mut().push(tailing_interest(1, &["alice", "bob"]));
 
     // Fire the real A11 FollowListChanged trigger (replaces the old A6

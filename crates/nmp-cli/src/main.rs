@@ -3,8 +3,8 @@
 //! Two commands make NMP adoptable instead of hand-wired:
 //!
 //! * `nmp init <app-name>` — scaffold a new app (an `nmp.toml` manifest plus
-//!   an `<app>-core` crate skeleton with one DomainModule / ViewModule /
-//!   ActionModule and a minimal headless shell stub).
+//!   an `<app>-core` crate skeleton with a DomainModule, a reactive view, an
+//!   ActionModule, and a minimal headless shell stub).
 //! * `nmp gen modules` — invoke the existing `nmp-codegen` pipeline to emit
 //!   the per-app `nmp-app-<name>` FFI crate.
 //!
@@ -45,8 +45,8 @@ fn help() -> String {
         "  nmp init <app-name> [--path DIR]",
         "      Scaffold a new NMP app. Creates a workspace at DIR (default",
         "      ./<app-name>) with an nmp.toml manifest and an <app-name>-core",
-        "      crate skeleton (one DomainModule / ViewModule / ActionModule",
-        "      plus a headless shell stub). The skeleton compiles as-is.",
+        "      crate skeleton (a DomainModule, a reactive view, an",
+        "      ActionModule, plus a headless shell stub). It compiles as-is.",
         "",
         "  nmp gen modules [--manifest nmp.toml] [--out DIR] [--check]",
         "      Generate the per-app nmp-app-<name> FFI crate from a manifest",

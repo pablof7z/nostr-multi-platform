@@ -12,8 +12,7 @@
 //!
 //! See `docs/decisions/0009-app-extension-kernel-boundary.md` (sibling-crate
 //! packaging rule) and `docs/decisions/0010-generated-app-enum-vs-type-
-//! erased-registry.md` (codegen picks up new `ViewModule`s via each protocol
-//! crate's `register()` automatically).
+//! erased-registry.md`.
 
 pub mod block;
 pub mod grouper;

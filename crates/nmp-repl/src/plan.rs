@@ -48,8 +48,8 @@ pub fn needs_follows(filter: &FilterAst) -> bool {
 /// and the already-resolved `$follows` set. Pure: no I/O. The lifecycle
 /// resolves mailboxes / relays itself — this only assembles the *interest*.
 ///
-/// `lifecycle: Tailing` mirrors what a real following-feed ViewModule
-/// registers: a tailing subscription kept alive past EOSE. (The REPL's
+/// `lifecycle: Tailing` mirrors what a real following-feed view registers:
+/// a tailing subscription kept alive past EOSE. (The REPL's
 /// fanout still terminates on EOSE or wall — that is a transport-side
 /// decision, independent of the interest's declared lifecycle.)
 pub fn build_interest(

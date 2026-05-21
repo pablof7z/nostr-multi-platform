@@ -1,16 +1,16 @@
 //! `RepliesView` (flat direct replies) and `ThreadView` (parent/child tree).
 //!
-//! Both `ViewModule` impls accept kind-1 events whose [`Nip10Refs`] chain
-//! them into the target / root the spec names. The planner is responsible
-//! for surfacing the kind-1 stream — `ViewDependencies` declares
-//! `kinds: vec![1]` plus a single `("e", target)` tag-ref hint so the
-//! subscription compiler can route efficiently.
+//! Both views accept kind-1 events whose [`Nip10Refs`] chain them into the
+//! target / root the spec names. The planner is responsible for surfacing
+//! the kind-1 stream — `ViewDependencies` declares `kinds: vec![1]` plus a
+//! single `("e", target)` tag-ref hint so the subscription compiler can
+//! route efficiently.
 //!
 //! ## Lazy `#e` expansion (ThreadView)
 //!
 //! `view-catalog.md §5` calls for replies-of-replies to expand the `#e` set
-//! lazily as nested replies arrive. The current [`ViewModule::dependencies`]
-//! is a static snapshot — there is no API to mutate dependencies post-open.
+//! lazily as nested replies arrive. The current `dependencies` method is a
+//! static snapshot — there is no API to mutate dependencies post-open.
 //! This crate therefore relies on the planner also surfacing nested replies
 //! (e.g. via a separate `RepliesView` per intermediate node). When a child
 //! reply that points at an as-yet-unseen parent arrives, it is buffered in

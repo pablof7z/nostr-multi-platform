@@ -3,7 +3,7 @@
 //! Every test here exercises the path:
 //!   Action dispatch → subscription planner → relay manager opens REQ →
 //!   MockRelay emits EVENT → ingest verifies + persists → reverse-index
-//!   updates → ViewModule snapshot reflects → app sees rev: u64 bump.
+//!   updates → view snapshot reflects → app sees rev: u64 bump.
 //!
 //! # Milestone gate legend
 //!
@@ -252,8 +252,8 @@ fn auth_required_for_read_flow() {
 //
 // Scenario:
 //   1. Spawn 100 concurrent Action dispatches against the kernel.
-//   2. Collect all ViewModule snapshots across the burst.
-//   3. Assert every ViewModule's rev sequence is strictly monotonic (D8).
+//   2. Collect all view snapshots across the burst.
+//   3. Assert every view's rev sequence is strictly monotonic (D8).
 //   4. Assert snapshot reads at rev N never contain partial state from rev N+1.
 //
 // This is the D8 reactivity contract stress-test:
