@@ -3,7 +3,7 @@ import SwiftUI
 // ─────────────────────────────────────────────────────────────────────────
 // JoinGroupView — discover and join NIP-29 public groups on a relay.
 //
-// Read side: `projections["nip29.discovered_groups"]` mirrored by
+// Read side: `projections["nmp.nip29.discovered_groups"]` mirrored by
 // `DiscoveredGroupsStore` (registered on first search via
 // `nmp_app_chirp_register_group_discovery`).
 //

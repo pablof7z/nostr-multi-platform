@@ -8,11 +8,11 @@
 //!   observer id) for later snapshots / unregister.
 //! - [`nmp_app_chirp_register_group_chat`] — wire a NIP-29
 //!   `GroupChatProjection` for one group into the kernel: an event observer
-//!   (ingest) plus a `"nip29.group_chat"` snapshot projection (output). Pure
+//!   (ingest) plus a `"nmp.nip29.group_chat"` snapshot projection (output). Pure
 //!   consumption — no handle, no actions, no unregister.
 //! - [`nmp_app_chirp_register_dm_inbox`] — compatibility entry point for the
 //!   NIP-17 DM runtime. `nmp_app_chirp_register` wires it eagerly: a kind:1059
-//!   raw-event observer, a `"nip17.dm_inbox"` snapshot projection, and a
+//!   raw-event observer, a `"nmp.nip17.dm_inbox"` snapshot projection, and a
 //!   Rust-owned controller for the active gift-wrap interest + kind:10050
 //!   relay-list publish.
 //! - [`nmp_app_chirp_snapshot`] — serialize the current `ChirpTimelineSnapshot`
@@ -186,7 +186,7 @@ pub extern "C" fn nmp_app_chirp_register(
 /// [`GroupChatProjection`] scoped to the supplied group, plugs it into the
 /// kernel as a [`KernelEventObserver`] (ingest), and registers its
 /// [`GroupChatProjection::snapshot_json`] read under the snapshot key
-/// `"nip29.group_chat"` (output). The group's chat messages then surface in
+/// `"nmp.nip29.group_chat"` (output). The group's chat messages then surface in
 /// every snapshot tick under that key.
 ///
 /// `group_id_json` is a JSON object naming the target group:
@@ -206,7 +206,7 @@ pub extern "C" fn nmp_app_chirp_register(
 /// Re-invocation is **idempotent**: a subsequent call unregisters the previous
 /// projection's observer before registering the new one (via the per-app
 /// `swap_singleton_event_observer` slot on `NmpApp`), and overwrites the
-/// `"nip29.group_chat"` snapshot key with the newer projection. The
+/// `"nmp.nip29.group_chat"` snapshot key with the newer projection. The
 /// per-account re-invocation case (the only re-invocation Chirp actually
 /// performs) is leak-free. A multi-group host that wants to keep N projections
 /// live in parallel would still need a handle-returning variant — single-slot
@@ -259,7 +259,7 @@ pub extern "C" fn nmp_app_chirp_register_group_chat(
 
     // Output side: the no-argument snapshot read runs on the actor thread
     // inside each snapshot tick. The `move` consumes this last `Arc`.
-    app_ref.register_snapshot_projection("nip29.group_chat", move || projection.snapshot_json());
+    app_ref.register_snapshot_projection("nmp.nip29.group_chat", move || projection.snapshot_json());
 }
 
 /// Wire a NIP-29 [`DiscoveredGroupsProjection`] for one host relay into `app`.
@@ -268,7 +268,7 @@ pub extern "C" fn nmp_app_chirp_register_group_chat(
 /// constructs a projection scoped to the supplied relay URL, plugs it in
 /// as a [`KernelEventObserver`] (ingest), and registers its
 /// [`DiscoveredGroupsProjection::snapshot_json`] read under the snapshot key
-/// `"nip29.discovered_groups"` (output). Kind:39000/39001/39002 events for
+/// `"nmp.nip29.discovered_groups"` (output). Kind:39000/39001/39002 events for
 /// that host relay then surface on every snapshot tick under that key.
 ///
 /// The companion publish side is the `nmp.nip29.discover` action — its
@@ -291,7 +291,7 @@ pub extern "C" fn nmp_app_chirp_register_group_chat(
 /// SCOPE — single-screen, no unregister. Like
 /// [`nmp_app_chirp_register_group_chat`], this returns no handle and has no
 /// companion unregister. Calling it twice overwrites the
-/// `"nip29.discovered_groups"` snapshot key with the newer projection and
+/// `"nmp.nip29.discovered_groups"` snapshot key with the newer projection and
 /// leaves the older event observer registered for the life of the `app`
 /// (a small, bounded leak). The Swift `JoinGroupView` drives one relay at
 /// a time, so this is acceptable for v1; a multi-relay discovery screen
@@ -329,7 +329,7 @@ pub extern "C" fn nmp_app_chirp_register_group_discovery(
 
     // Output side: the no-argument snapshot read runs on the actor thread
     // inside each snapshot tick. The `move` consumes this last `Arc`.
-    app_ref.register_snapshot_projection("nip29.discovered_groups", move || {
+    app_ref.register_snapshot_projection("nmp.nip29.discovered_groups", move || {
         projection.snapshot_json()
     });
 }
@@ -339,7 +339,7 @@ pub extern "C" fn nmp_app_chirp_register_group_discovery(
 /// The `viewer_pubkey` argument is retained for C-ABI compatibility but is no
 /// longer read. Rust observes the active local-key slot and relay-edit rows on
 /// snapshot ticks, then owns the active-account kind:1059 gift-wrap interest,
-/// kind:10050 relay-list publish, and `"nip17.dm_inbox"` projection.
+/// kind:10050 relay-list publish, and `"nmp.nip17.dm_inbox"` projection.
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn nmp_app_chirp_register_dm_inbox(
@@ -1026,7 +1026,7 @@ mod tests {
     /// registers a `DiscoveredGroupsProjection` against `app` for a well-formed
     /// relay URL — it runs to completion (event-observer + snapshot-projection
     /// registration) without panicking. The snapshot closure surfacing under
-    /// `"nip29.discovered_groups"` is proven end-to-end by the generic seam
+    /// `"nmp.nip29.discovered_groups"` is proven end-to-end by the generic seam
     /// tests in `nmp-core` and the projection's own tests in `nmp-nip29`.
     #[test]
     fn register_group_discovery_runs_for_well_formed_relay_url() {
@@ -1081,7 +1081,7 @@ mod tests {
     /// registers a `GroupChatProjection` against `app` for a well-formed
     /// group id — it runs to completion (event-observer + snapshot-projection
     /// registration) without panicking. The snapshot closure surfacing under
-    /// `"nip29.group_chat"` is proven end-to-end by the generic seam tests in
+    /// `"nmp.nip29.group_chat"` is proven end-to-end by the generic seam tests in
     /// `nmp-core` (`snapshot_registry_tests.rs`) and the projection's own
     /// tests in `nmp-nip29`; this asserts the Chirp-side wiring call is sound.
     #[test]

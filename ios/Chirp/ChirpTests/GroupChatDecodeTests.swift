@@ -5,12 +5,12 @@ import XCTest
 ///
 /// These need no kernel, no FFI, and no simulator wiring — they validate
 /// the one subtle thing that the type checker cannot: that the dotted
-/// projection key `"nip29.group_chat"` survives the `JSONDecoder`'s
+/// projection key `"nmp.nip29.group_chat"` survives the `JSONDecoder`'s
 /// `.convertFromSnakeCase` strategy and lands on `SnapshotProjections.groupChat`.
 ///
 /// `.convertFromSnakeCase` transforms each JSON key BEFORE matching it
 /// against a `CodingKey.stringValue`. It splits on `_` only, so
-/// `"nip29.group_chat"` → `"nip29.groupChat"` — which is exactly the raw
+/// `"nmp.nip29.group_chat"` → `"nmp.nip29.groupChat"` — which is exactly the raw
 /// value `SnapshotProjections.CodingKeys.groupChat` declares. If that ever
 /// drifts, `SnapshotProjections` would silently decode `groupChat` as `nil`
 /// (or, worse, drop the whole snapshot — see `KernelHandle.decode`), so it
@@ -25,7 +25,7 @@ final class GroupChatDecodeTests: XCTestCase {
         return decoder
     }
 
-    /// `"nip29.group_chat"` decodes onto `SnapshotProjections.groupChat`
+    /// `"nmp.nip29.group_chat"` decodes onto `SnapshotProjections.groupChat`
     /// despite the dotted key + `.convertFromSnakeCase`.
     ///
     /// LOAD-BEARING: if `SnapshotProjections` ever throws on this payload,
@@ -38,7 +38,7 @@ final class GroupChatDecodeTests: XCTestCase {
     func testGroupChatProjectionKeyDecodes() throws {
         let json = """
         {
-          "nip29.group_chat": {
+          "nmp.nip29.group_chat": {
             "messages": [
               { "id": "e1", "pubkey": "ab12", "content": "hello",
                 "created_at": 200, "kind": 9 },
@@ -52,7 +52,7 @@ final class GroupChatDecodeTests: XCTestCase {
             SnapshotProjections.self, from: Data(json.utf8))
 
         let chat = try XCTUnwrap(projections.groupChat,
-            "nip29.group_chat must decode onto SnapshotProjections.groupChat")
+            "nmp.nip29.group_chat must decode onto SnapshotProjections.groupChat")
         XCTAssertEqual(chat.messages.count, 2)
         // Order is preserved verbatim from the JSON — the Rust projection
         // already emits newest-first; Swift does not re-sort.
@@ -81,7 +81,7 @@ final class GroupChatDecodeTests: XCTestCase {
     /// not nil — the state a freshly-wired group reports before any event.
     func testEmptyGroupChatProjectionDecodes() throws {
         let json = """
-        { "nip29.group_chat": { "messages": [] } }
+        { "nmp.nip29.group_chat": { "messages": [] } }
         """
         let projections = try snapshotDecoder().decode(
             SnapshotProjections.self, from: Data(json.utf8))

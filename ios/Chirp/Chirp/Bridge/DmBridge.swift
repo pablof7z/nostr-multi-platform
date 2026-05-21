@@ -19,7 +19,7 @@ import os.log
 //
 //   • `nmp_app_chirp_register` wires the Rust DM runtime eagerly. Decrypted
 //     conversations surface on every kernel snapshot under the `projections`
-//     key `"nip17.dm_inbox"` (decoded by `SnapshotProjections.dmInbox`).
+//     key `"nmp.nip17.dm_inbox"` (decoded by `SnapshotProjections.dmInbox`).
 //   • Rust owns the active account's kind:1059 `#p` gift-wrap interest and
 //     kind:10050 DM-relay-list publish policy. The Swift store only mirrors
 //     snapshots.

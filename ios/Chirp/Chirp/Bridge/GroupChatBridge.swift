@@ -20,7 +20,7 @@ import os.log
 //   • `registerGroupChat(groupId:)` wires a `GroupChatProjection` for one
 //     group into the kernel. It registers no handle and exports no
 //     `unregister` — the group's messages surface on every kernel snapshot
-//     under the `projections` key `"nip29.group_chat"` (decoded by
+//     under the `projections` key `"nmp.nip29.group_chat"` (decoded by
 //     `SnapshotProjections.groupChat` in `KernelBridge.swift`).
 //   • Single-screen scope: per the FFI contract, calling it twice
 //     overwrites the snapshot key and leaks the older event observer for
@@ -65,7 +65,7 @@ extension KernelHandle {
     ///
     /// Pure consumption — registers no handle. The group's chat messages
     /// then surface on every kernel snapshot under the `projections` key
-    /// `"nip29.group_chat"`. D6: a JSON-encode failure degrades to a
+    /// `"nmp.nip29.group_chat"`. D6: a JSON-encode failure degrades to a
     /// logged no-op; the Rust side likewise no-ops on a null / malformed
     /// argument.
     ///
