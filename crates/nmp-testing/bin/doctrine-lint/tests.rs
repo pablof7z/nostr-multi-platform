@@ -470,11 +470,14 @@ fn d10_positive_fixture_fires() {
         stdout
     );
     // Every banned Auto-routing token in pos.rs must surface so a regression
-    // that silently swallows one cannot pass this test.
+    // that silently swallows one cannot pass this test. PR-K3 added a new
+    // positive fixture exercising the `publish_signed_event(` token inside
+    // a marked dispatcher (see `pos.rs::dispatch_kind1059_via_empty_relays`).
     for token in [
         "PublishTarget::Auto",
         "publish_signed(",
         "publish_unsigned_event(",
+        "publish_signed_event(",
     ] {
         assert!(
             stdout.contains(token),
