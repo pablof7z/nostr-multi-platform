@@ -39,11 +39,12 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Chirp/Chirp.entitlements
         GENERATE_INFOPLIST_FILE: NO
         SWIFT_OBJC_BRIDGING_HEADER: Chirp/Bridge/NmpCore.h
-        LIBRARY_SEARCH_PATHS:
-          - $(SRCROOT)/../../target/aarch64-apple-ios-sim/debug
-          - $(SRCROOT)/../../target/aarch64-apple-ios-sim/release
+        "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]":
           - $(SRCROOT)/../../target/aarch64-apple-ios/debug
           - $(SRCROOT)/../../target/aarch64-apple-ios/release
+        "LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]":
+          - $(SRCROOT)/../../target/aarch64-apple-ios-sim/debug
+          - $(SRCROOT)/../../target/aarch64-apple-ios-sim/release
         # Chirp links one aggregate Rust archive. It contains nmp-core,
         # the NIP-46 signer broker, and the Chirp projection, keeping
         # process-global Rust state such as the bunker hook single-copy.
