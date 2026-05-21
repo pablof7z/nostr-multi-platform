@@ -740,16 +740,43 @@ struct SnapshotProjections: Decodable, Equatable {
 /// author (hex); `kind` is one of 9 (chat) / 11 (discussion) / 1111
 /// (comment). `id` is the event id (hex) and the stable list identity.
 ///
+/// `createdAtDisplay` / `senderShort` / `senderInitials` / `senderColorSeed`
+/// are pre-rendered display strings owned by the Rust `GroupChatProjection`.
+/// Per aim.md doctrine #9 ("no business logic in native code") and §6
+/// anti-pattern "duplicated formatting logic across platforms", a Swift
+/// shell renders these verbatim — it does NOT call
+/// `RelativeDateTimeFormatter`, slice the pubkey, uppercase initials, or
+/// seed an avatar color. `createdAtDisplay` is recomputed against
+/// `SystemTime::now()` on every snapshot tick so the "2m" / "3h" labels
+/// advance with wall-clock time without any Swift-side timer.
+///
 /// No explicit `CodingKeys`: the top-level `.convertFromSnakeCase` strategy
-/// (inherited by every nested type) maps the kernel's `"created_at"` to
-/// `createdAt` automatically. An explicit enum would have to spell the
-/// post-transform name and is pure surface area — omitted deliberately.
+/// (inherited by every nested type) maps the kernel's `"created_at"` /
+/// `"created_at_display"` / `"sender_short"` / `"sender_initials"` /
+/// `"sender_color_seed"` to `createdAt` / `createdAtDisplay` / `senderShort`
+/// / `senderInitials` / `senderColorSeed` automatically. An explicit enum
+/// would have to spell the post-transform name and is pure surface area —
+/// omitted deliberately.
 struct GroupChatMessage: Decodable, Identifiable, Equatable {
     let id: String
     let pubkey: String
     let content: String
     let createdAt: UInt64
     let kind: UInt32
+    /// Abbreviated relative-time label ("now", "5s", "2m", "3h", "1d",
+    /// "2w", "5mo", "3y") computed per snapshot tick by
+    /// `GroupChatProjection`. Replaces the in-view
+    /// `RelativeDateTimeFormatter` call site.
+    let createdAtDisplay: String
+    /// Truncated pubkey for display (`aabbccdd…11223344`). Replaces the
+    /// in-view `shortPubkey(_:)` helper.
+    let senderShort: String
+    /// Two-character uppercased avatar label. Replaces the in-view
+    /// `initials` computed property on `GroupChatMessageRow`.
+    let senderInitials: String
+    /// Avatar color seed (first 6 hex chars of the pubkey). Replaces the
+    /// in-view `String(message.pubkey.prefix(6))` slice.
+    let senderColorSeed: String
 }
 
 /// The serialised read-model a group-chat screen consumes. `messages` is

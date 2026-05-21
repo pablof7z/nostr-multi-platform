@@ -12,9 +12,14 @@ import SwiftUI
 // from the Rust `GroupChatProjection`; this view only renders them and
 // hands raw draft text to `GroupChatStore.sendMessage`.
 //
-// Functional-first styling — message rows reuse the abbreviated-hex +
-// content + relative-time idiom from `MarmotGroupChatView`; the composer
-// reuses its inline-TextEditor idiom.
+// aim.md §6 / doctrine #9: every display-derived string a row renders
+// (`createdAtDisplay`, `senderShort`, `senderInitials`, `senderColorSeed`)
+// is owned by the Rust projection. There is NO `RelativeDateTimeFormatter`,
+// no `Date(timeIntervalSince1970:)`, no pubkey slicing, no `.uppercased()`
+// of derived initials, and no `String(pubkey.prefix(_:))` in this view —
+// those moved into `crates/nmp-nip29/src/projection/`. Relative-time labels
+// advance per snapshot tick on the actor thread; the view re-renders on
+// each `@Published` update.
 // ─────────────────────────────────────────────────────────────────────────
 
 struct GroupChatView: View {
@@ -99,7 +104,9 @@ struct GroupChatView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Replying to \(shortPubkey(replyTarget.pubkey))")
+                    // `senderShort` is Rust-owned (`GroupChatProjection`):
+                    // pubkey truncation lives in the projection, not here.
+                    Text("Replying to \(replyTarget.senderShort)")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.primary)
                     Text(replyTarget.content)
@@ -178,13 +185,6 @@ struct GroupChatView: View {
     }
 }
 
-/// Truncated hex pubkey: `abcdef01…23456789`. Shared by `GroupChatMessageRow`
-/// and the reply banner; no npub decoding (thin-shell: no protocol logic).
-private func shortPubkey(_ hex: String) -> String {
-    guard hex.count >= 16 else { return hex }
-    return "\(hex.prefix(8))…\(hex.suffix(8))"
-}
-
 // ── Message row ───────────────────────────────────────────────────────────
 
 private struct GroupChatMessageRow: View {
@@ -197,20 +197,27 @@ private struct GroupChatMessageRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
+            // Avatar fields are all Rust-owned: `senderInitials` is the
+            // uppercased two-char hex label, `senderColorSeed` is the hex
+            // tint seed. The view never derives these from `pubkey`.
             ChirpAvatar(
                 url: nil,
-                initials: initials,
-                colorHex: String(message.pubkey.prefix(6)),
+                initials: message.senderInitials,
+                colorHex: message.senderColorSeed,
                 size: 36
             )
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
-                    Text(shortPubkey(message.pubkey))
+                    // `senderShort` (truncated pubkey) and `createdAtDisplay`
+                    // ("now", "5s", "2m", …) come from the projection — see
+                    // `GroupChatMessage` in `KernelBridge.swift` and
+                    // `format_relative_seconds` in `nmp-nip29`.
+                    Text(message.senderShort)
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
-                    Text(relativeTime(message.createdAt))
+                    Text(message.createdAtDisplay)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -246,18 +253,5 @@ private struct GroupChatMessageRow: View {
             }
             .accessibilityIdentifier("group-chat-reply-button")
         }
-    }
-
-    /// First two hex chars of the author pubkey — a cheap deterministic
-    /// avatar label. No npub decoding (thin-shell: no protocol logic).
-    private var initials: String {
-        String(message.pubkey.prefix(2)).uppercased()
-    }
-
-    private func relativeTime(_ unixSecs: UInt64) -> String {
-        let date = Date(timeIntervalSince1970: TimeInterval(unixSecs))
-        let fmt = RelativeDateTimeFormatter()
-        fmt.unitsStyle = .abbreviated
-        return fmt.localizedString(for: date, relativeTo: Date())
     }
 }
