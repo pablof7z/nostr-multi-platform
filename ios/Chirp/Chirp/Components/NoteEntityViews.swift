@@ -102,13 +102,13 @@ struct EmbeddedNostrEventCard: View {
 
     var body: some View {
         if context.embedDepth > 0 {
-            collapsedCard(title: "Quoted event", detail: uri.primaryId, systemImage: "arrow.up.left.and.arrow.down.right")
+            tappableCollapsedCard(title: "Quoted post", detail: uri.primaryId, systemImage: "arrow.up.left.and.arrow.down.right")
         } else if let card = context.eventCards[uri.primaryId] {
             embeddedCard(card)
         } else if let item = context.timelineItems[uri.primaryId] {
             itemCard(item)
         } else {
-            collapsedCard(title: "Quoted event unavailable", detail: uri.primaryId, systemImage: "quote.bubble")
+            tappableCollapsedCard(title: "Quoted post", detail: uri.primaryId, systemImage: "quote.bubble")
         }
     }
 
@@ -189,6 +189,34 @@ struct EmbeddedNostrEventCard: View {
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(.tertiary)
         }
+    }
+
+    private func tappableCollapsedCard(title: String, detail: String, systemImage: String) -> some View {
+        Button {
+            router.push(.thread(eventID: detail))
+        } label: {
+            HStack(alignment: .center, spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 24, height: 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(shortEntity(detail))
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .embeddedCardStyle()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open quoted post")
     }
 
     private func collapsedCard(title: String, detail: String, systemImage: String) -> some View {
