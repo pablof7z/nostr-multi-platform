@@ -229,6 +229,28 @@ pub enum ActorCommand {
     /// Stepping stone toward per-protocol-crate `ActionModule` impls
     /// (`kind-wrappers.md` §8 Phase 1); deprecates kind-by-kind as those land.
     PublishUnsignedEvent(crate::substrate::UnsignedEvent),
+    /// Publish an unsigned event to an explicit relay set, bypassing the
+    /// NIP-65 outbox resolver. Used by action executors that target a
+    /// specific relay pin (e.g. NIP-29 group relays). D4: only the actor
+    /// signs and publishes. D8: no blocking — relay dispatch is async.
+    ///
+    /// Sibling to [`ActorCommand::PublishUnsignedEvent`] (which routes via the
+    /// NIP-65 outbox) and [`ActorCommand::PublishSignedEvent`] (which carries
+    /// an already-signed event). This variant SIGNS with the active account
+    /// like the unsigned sibling, but ROUTES to exactly `relays` like the
+    /// signed sibling's `Explicit` mode — the combination a host-pinned group
+    /// action needs. A NIP-29 join request must reach the group's own host
+    /// relay, never the author's kind:10002 outbox.
+    ///
+    /// Like the unsigned sibling, the event's `pubkey` is derived from the
+    /// active identity at sign time; the caller's `event.pubkey` is ignored.
+    /// An empty `relays` falls back to `PublishTarget::Auto` (NIP-65 outbox)
+    /// — a defensive degrade, but callers should always supply the pin.
+    #[allow(dead_code)]
+    PublishUnsignedEventToRelays {
+        event: crate::substrate::UnsignedEvent,
+        relays: Vec<crate::publish::RelayUrl>,
+    },
     /// Generic publish of an **already-signed** event. The kernel verifies
     /// the Schnorr signature + event-id hash, then routes the event verbatim
     /// through the same planner / NIP-65 outbox / relay-pin path the unsigned
@@ -854,7 +876,16 @@ pub fn run_actor_with_observers(
                         }
                     }
                     Some(Ok(signed)) => {
-                        let outbound = kernel.publish_signed(&signed, &ps.p_tags);
+                        // Route via the target the op was parked with —
+                        // `Auto` (NIP-65 outbox) for kind:1/3/7, `Explicit`
+                        // for host-pinned action executors (NIP-29 group
+                        // events). Without the parked target a bunker user's
+                        // group event would silently revert to the outbox.
+                        let outbound = kernel.publish_signed_to(
+                            &signed,
+                            &ps.p_tags,
+                            ps.target.clone(),
+                        );
                         route_dispatch_outbound(
                             running,
                             &mut queued_publish_outbound,

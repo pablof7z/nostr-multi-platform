@@ -299,6 +299,17 @@ pub(super) fn dispatch_command(
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
+        ActorCommand::PublishUnsignedEventToRelays { event, relays } => {
+            let outbound = commands::publish_unsigned_event_to_relays(
+                ctx.identity,
+                ctx.kernel,
+                event,
+                relays,
+                ctx.pending_signs,
+            );
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(outbound)
+        }
         ActorCommand::PublishSignedEvent { raw, relays } => {
             let outbound = commands::publish_signed_event(ctx.kernel, raw, &relays);
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);

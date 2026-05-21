@@ -75,6 +75,76 @@ pub(crate) fn publish_unsigned_event(
     }
 }
 
+/// Sign an unsigned event with the active account and publish it to an
+/// EXPLICIT relay set, bypassing the NIP-65 outbox resolver.
+///
+/// This is the host-pinned twin of [`publish_unsigned_event`]: it shares the
+/// "build → sign with the active account" half but replaces the routing half.
+/// Where `publish_unsigned_event` routes through `Kernel::publish_signed`
+/// (`PublishTarget::Auto`, the NIP-65 outbox), this routes through
+/// `Kernel::publish_signed_to` with `PublishTarget::Explicit { relays }`.
+///
+/// The driving consumer is the NIP-29 group-action executor: a join request
+/// (`kind:9021`) MUST land on the group's own host relay — the author's
+/// kind:10002 outbox is the wrong target. The caller supplies that relay pin;
+/// the kernel never inspects the event's `h` tag to derive it (routing.md §5
+/// — typed pin, not tag-sniffing).
+///
+/// **Pubkey provenance.** Identical to `publish_unsigned_event`: the caller's
+/// `unsigned.pubkey` is ignored; signing derives the pubkey from the active
+/// identity and writes it onto the `SignedEvent`.
+///
+/// **Empty `relays`.** A defensive degrade: falls back to
+/// `PublishTarget::Auto` so the publish is not silently dropped. Callers that
+/// reach this path always supply the pin; an empty set is a caller bug, not a
+/// supported mode.
+///
+/// **Remote (NIP-46) signers.** The explicit target is carried through the
+/// remote-sign park via [`PendingSign::with_target`] — without it a bunker
+/// user's group event would resolve through the NIP-65 outbox once the broker
+/// responds, defeating the pin (D8: the actor still never blocks).
+pub(crate) fn publish_unsigned_event_to_relays(
+    identity: &IdentityRuntime,
+    kernel: &mut Kernel,
+    unsigned: UnsignedEvent,
+    relays: Vec<crate::publish::RelayUrl>,
+    pending_signs: &mut Vec<PendingSign>,
+) -> Vec<OutboundMessage> {
+    if identity.active_pubkey().is_none() {
+        return toast_no_account(kernel, "publish");
+    }
+    // Empty `relays` → Auto (NIP-65 outbox, defensive degrade); non-empty →
+    // the named D3 Explicit opt-out routed to exactly those relays.
+    let target = if relays.is_empty() {
+        crate::publish::PublishTarget::Auto
+    } else {
+        crate::publish::PublishTarget::Explicit { relays }
+    };
+    // Non-blocking sign: a local key resolves now; a remote (NIP-46) signer
+    // returns a `Pending` op parked in `pending_signs` with the explicit
+    // target attached — the actor thread never blocks (D8).
+    let mut op = match sign_active_nonblocking(identity, &unsigned) {
+        Ok(op) => op,
+        Err(reason) => {
+            kernel.set_last_error_toast(Some(reason));
+            return Vec::new();
+        }
+    };
+    match op.poll() {
+        Some(Ok(signed)) => kernel.publish_signed_to(&signed, &[], target),
+        Some(Err(e)) => {
+            kernel.set_last_error_toast(Some(format!("sign failed: {e}")));
+            Vec::new()
+        }
+        None => {
+            // Remote signer not yet responded — park the op WITH its target
+            // so the pinned routing survives the broker round-trip.
+            pending_signs.push(PendingSign::with_target(op, Vec::new(), target));
+            Vec::new()
+        }
+    }
+}
+
 /// Generic, kind-agnostic publish of an **already-signed** event.
 ///
 /// Sibling to [`publish_unsigned_event`], with one decisive difference: the

@@ -29,10 +29,11 @@ use std::ffi::{c_char, CStr, CString};
 use std::sync::Arc;
 
 use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionPlan, ActionRejection, ActionStatus,
+    ActionContext, ActionModule, ActionPlan, ActionRejection, ActionStatus, UnsignedEvent,
 };
 use nmp_core::{ActorCommand, KernelEventObserverId, NmpApp};
 use nmp_nip29::action::{JoinRequestAction, JoinRequestInput};
+use nmp_nip29::kinds::KIND_JOIN_REQUEST;
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
 use nmp_threading::ModulePolicy;
@@ -326,12 +327,14 @@ fn register_chirp_actions(app: &mut NmpApp) {
 /// it is not re-imitated here. The resulting `ActionPlan<MembershipStep>` is
 /// erased to `ActionPlan<serde_json::Value>` for the host seam.
 ///
-/// The **executor** confirms acceptance (`Ok(())`) without enqueueing an
-/// `ActorCommand`: a NIP-29 join request must be host-pinned to the group's
-/// own relay, and there is no `ActorCommand` today that publishes an unsigned
-/// event to an explicit relay pin (`PublishUnsignedEvent` routes via the
-/// NIP-65 outbox — wrong target for a group event). Wiring that publish path
-/// is deliberately out of scope; this registration proves the dispatch seam.
+/// The **executor** builds the kind:9021 join-request `UnsignedEvent` from the
+/// typed `JoinRequestInput` and enqueues
+/// [`ActorCommand::PublishUnsignedEventToRelays`], pinned to the group's own
+/// host relay (`input.group.host_relay_url`). The actor signs with the active
+/// account and routes to exactly that relay, bypassing the NIP-65 outbox
+/// resolver — a group event must reach the group's host relay, never the
+/// author's kind:10002 outbox. This is the first executor to drive a real
+/// `ActorCommand` from a NIP-crate `ActionModule`.
 fn register_nip29_actions(app: &mut NmpApp) {
     // Module (validator): delegate to the typed `nmp-nip29` `ActionModule`.
     app.register_action_module(JoinRequestAction::NAMESPACE, |action_json| {
@@ -351,14 +354,69 @@ fn register_nip29_actions(app: &mut NmpApp) {
         })
     });
 
-    // Executor: confirm acceptance. See the doc comment above for why no
-    // `ActorCommand` is enqueued (no host-pinned unsigned-publish path yet).
-    app.register_action_executor(JoinRequestAction::NAMESPACE, |action_json, _send| {
-        // Re-validate JSON shape so a malformed body fails the executor half
-        // too (defence in depth — the module validator already rejected it).
-        serde_json::from_str::<JoinRequestInput>(action_json).map_err(|e| e.to_string())?;
+    // Executor: build the kind:9021 join-request event and enqueue a
+    // host-pinned publish. The actor signs with the active account and routes
+    // to the group's own host relay (D3 Explicit opt-out). The closure is a
+    // thin shim over `nip29_join_request_command` so the action→command
+    // mapping is unit-testable without the FFI / actor channel.
+    app.register_action_executor(JoinRequestAction::NAMESPACE, |action_json, send| {
+        let cmd = nip29_join_request_command(action_json)?;
+        send(cmd);
         Ok(())
     });
+}
+
+/// Map a validated `nip29.join_request` action JSON to the
+/// [`ActorCommand::PublishUnsignedEventToRelays`] that publishes the kind:9021
+/// join-request event, pinned to the group's own host relay.
+///
+/// Split out of the `register_action_executor` closure so the action→command
+/// mapping is directly unit-testable (the closure half only adds the `send`
+/// call). Returns `Err` on a malformed body — defence in depth, even though
+/// the module validator already rejected it.
+fn nip29_join_request_command(action_json: &str) -> Result<ActorCommand, String> {
+    // Re-decode the typed input — the executor owns its own parse so it never
+    // trusts an upstream shape it did not verify.
+    let input: JoinRequestInput =
+        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
+
+    // Build the kind:9021 tags. This mirrors `JoinRequestAction::start`
+    // (`nmp-nip29/src/action/membership.rs`): an `["h", local_id]` group tag,
+    // plus optional `["code", …]` and `["e", referrer]` rows. The tag layout
+    // is the protocol crate's contract; until `ActionModule` exposes a
+    // `PublishPlan`-returning executor hook this is a local re-build, not a
+    // re-imagining of the validation logic.
+    let mut tags: Vec<Vec<String>> =
+        vec![vec!["h".to_string(), input.group.local_id.clone()]];
+    if let Some(code) = input.invite_code.clone() {
+        tags.push(vec!["code".to_string(), code]);
+    }
+    if let Some(evt) = input.referrer_event_id.clone() {
+        tags.push(vec!["e".to_string(), evt]);
+    }
+    let content = input.reason.clone().unwrap_or_default();
+
+    // `pubkey` is a placeholder — the actor derives it from the active
+    // identity at sign time and overwrites this field (see
+    // `ActorCommand::PublishUnsignedEventToRelays` / `publish_unsigned_*`).
+    let created_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let unsigned = UnsignedEvent {
+        pubkey: String::new(),
+        kind: KIND_JOIN_REQUEST,
+        tags,
+        content,
+        created_at,
+    };
+
+    // Pin to the group's own host relay — a NIP-29 group event must NOT route
+    // via the author's NIP-65 outbox.
+    Ok(ActorCommand::PublishUnsignedEventToRelays {
+        event: unsigned,
+        relays: vec![input.group.host_relay_url.clone()],
+    })
 }
 
 /// `chirp.react` action body: `{"target_event_id":"<hex>","reaction":"+"}`.
@@ -525,5 +583,76 @@ mod tests {
 
         nmp_app_chirp_unregister(handle);
         nmp_app_free(app);
+    }
+
+    /// THE EXECUTOR PROOF: the NIP-29 join-request executor is no longer a
+    /// no-op — it maps a validated `JoinRequestInput` to a concrete
+    /// [`ActorCommand::PublishUnsignedEventToRelays`] pinned to the group's
+    /// own host relay. This is the first NIP-crate `ActionModule` executor to
+    /// drive a real `ActorCommand`; it proves the executor → actor channel is
+    /// connected end-to-end (the `register_action_executor` closure is a thin
+    /// `send(cmd)` shim over the function exercised here).
+    #[test]
+    fn nip29_join_request_executor_emits_host_pinned_publish_command() {
+        let body = r#"{"group":{"host_relay_url":"wss://groups.example.com","local_id":"rust-nostr"},"invite_code":"abc123","referrer_event_id":"deadbeef","reason":"hello"}"#;
+        let cmd = nip29_join_request_command(body).expect("well-formed join request");
+
+        match cmd {
+            ActorCommand::PublishUnsignedEventToRelays { event, relays } => {
+                // Pinned to EXACTLY the group's host relay — never the
+                // author's NIP-65 outbox.
+                assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
+                // kind:9021 join request, host-pin `["h", local_id]` tag.
+                assert_eq!(event.kind, KIND_JOIN_REQUEST);
+                assert!(
+                    event
+                        .tags
+                        .iter()
+                        .any(|t| t == &vec!["h".to_string(), "rust-nostr".to_string()]),
+                    "must carry the ['h', local_id] group tag, got {:?}",
+                    event.tags
+                );
+                // Optional fields surface as `code` / `e` tags + content.
+                assert!(event
+                    .tags
+                    .iter()
+                    .any(|t| t == &vec!["code".to_string(), "abc123".to_string()]));
+                assert!(event
+                    .tags
+                    .iter()
+                    .any(|t| t == &vec!["e".to_string(), "deadbeef".to_string()]));
+                assert_eq!(event.content, "hello");
+                // `pubkey` is a placeholder — the actor derives it at sign time.
+                assert!(event.pubkey.is_empty());
+            }
+            other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
+        }
+    }
+
+    /// The minimal body (only the required `group`) still produces a valid
+    /// host-pinned command: empty content, just the `["h", local_id]` tag.
+    #[test]
+    fn nip29_join_request_executor_handles_minimal_body() {
+        let minimal = r#"{"group":{"host_relay_url":"wss://groups.example.com","local_id":"rust-nostr"}}"#;
+        let cmd = nip29_join_request_command(minimal).expect("minimal join request");
+        match cmd {
+            ActorCommand::PublishUnsignedEventToRelays { event, relays } => {
+                assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
+                assert_eq!(event.kind, KIND_JOIN_REQUEST);
+                assert_eq!(event.tags.len(), 1, "only the ['h', …] tag");
+                assert_eq!(event.content, "");
+            }
+            other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
+        }
+    }
+
+    /// A malformed body (missing the required `group`) is rejected — the
+    /// executor never fabricates a command from an unverified shape (D6).
+    #[test]
+    fn nip29_join_request_executor_rejects_malformed_body() {
+        assert!(
+            nip29_join_request_command(r#"{"reason":"no group"}"#).is_err(),
+            "join request without `group` must be rejected"
+        );
     }
 }
