@@ -62,7 +62,7 @@ impl Kernel {
     /// else (retry / ack / reauth lifecycle, D6 toast contract) is identical
     /// to [`Kernel::publish_signed`]. `PublishTarget::Auto` callers reach the
     /// resolver unchanged via [`Kernel::publish_signed`]; this sibling exists
-    /// so Marmot can pin kind:445 group messages / kind:1059 gift-wraps to
+    /// so callers can pin kind:445 group messages / kind:1059 gift-wraps to
     /// relays the author's own kind:10002 outbox does not cover.
     pub(crate) fn publish_signed_to(
         &mut self,

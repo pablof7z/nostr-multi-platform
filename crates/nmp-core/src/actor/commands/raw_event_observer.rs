@@ -27,7 +27,7 @@
 //! ## Doctrine
 //!
 //! * **D0** — generic capability. The kernel never names a NIP / protocol;
-//!   the symbol set is `RawEvent*`, no Marmot / MLS / group / welcome
+//!   the symbol set is `RawEvent*`, no app or higher-protocol
 //!   nouns. Any consumer can register a raw tap.
 //! * **D6** — observers fire best-effort. A poisoned mutex, missing C
 //!   string (CString conversion failure), or panicking observer are silent

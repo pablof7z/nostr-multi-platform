@@ -150,7 +150,7 @@ pub(crate) fn publish_unsigned_event_to_relays(
 /// Sibling to [`publish_unsigned_event`], with one decisive difference: the
 /// signer is **never** consulted. The caller supplies a fully-formed Nostr
 /// event (`id`, `pubkey`, `created_at`, `kind`, `tags`, `content`, `sig`)
-/// that was signed elsewhere — by an MDK/Marmot group-message signer, a
+/// that was signed elsewhere — by an external group-message signer, a
 /// hardware signer, a relayed NIP-46 broker, anything. The kernel verifies
 /// the Schnorr signature + event-id hash (forged/garbled events are rejected,
 /// never published) and then routes the event verbatim through the **same**
@@ -162,8 +162,8 @@ pub(crate) fn publish_unsigned_event_to_relays(
 /// the signature already exists, and routing keys off the event's *own*
 /// `pubkey` (its kind:10002 outbox), not the active account. Publishing a
 /// signed event with no active account signed in is therefore valid and
-/// supported. Marmot is the first consumer; the capability is generic (D0 —
-/// no MLS/Marmot nouns in the kernel).
+/// supported. The capability is generic (D0 —
+/// no app-layer nouns in the kernel).
 ///
 /// **Relay targeting.** `relays` selects the D3 routing mode:
 /// - empty slice → `PublishTarget::Auto`: route via the author's NIP-65
@@ -171,8 +171,8 @@ pub(crate) fn publish_unsigned_event_to_relays(
 ///   key-packages take this path).
 /// - non-empty → `PublishTarget::Explicit { relays }`: the named D3 opt-out.
 ///   The verbatim signed event is dispatched to **exactly** these relays,
-///   bypassing the outbox resolver. Marmot uses this for kind:445 group
-///   messages (pinned GROUP relay) and kind:1059 gift-wraps (recipient inbox
+///   bypassing the outbox resolver. Consumers use this for group messages
+///   (pinned GROUP relay) and kind:1059 gift-wraps (recipient inbox
 ///   relays) — relays the author's own kind:10002 does not cover.
 ///
 /// D6 — a signature/id verification failure is surfaced as a toast (error

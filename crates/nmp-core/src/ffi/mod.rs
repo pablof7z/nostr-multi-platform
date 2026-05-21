@@ -208,7 +208,7 @@ pub struct NmpApp {
     /// T146 — kernel event observer slot. Shared `Arc` with the actor
     /// thread (and thus the kernel, which `crate::actor::run_actor_with_
     /// observers` binds onto the kernel via `set_event_observers_handle`).
-    /// Per-app crates (e.g. `nmp-app-chirp`) reach this slot through
+    /// Per-app crates (e.g. a per-app crate) reach this slot through
     /// [`NmpApp::register_event_observer`] /
     /// [`NmpApp::unregister_event_observer`]; the C-ABI variant goes
     /// through `ffi::event_observer::nmp_app_register_event_observer`. Both
@@ -224,8 +224,8 @@ pub struct NmpApp {
     /// verbatim flat NIP-01 signed event (`sig` included), kind-filtered.
     raw_event_observers: RawEventObserverSlot,
     /// Shared relay-edit rows handle. Cloned to the actor thread and bound
-    /// onto the kernel so external Rust callers (e.g. `nmp-app-chirp` Marmot
-    /// dispatch) can read the user's current relay list without crossing FFI.
+    /// onto the kernel so external Rust callers (e.g. per-app crates) can read
+    /// the user's current relay list without crossing FFI.
     relay_edit_rows: Arc<Mutex<Vec<crate::kernel::RelayEditRow>>>,
     /// Active local (nsec-backed) secret key in bech32 form (`nsec1…`). The
     /// actor thread writes this after every identity mutation that changes
@@ -250,7 +250,7 @@ pub struct NmpApp {
     /// need the in-process keypair to seal / unseal gift-wraps (NIP-17 DM
     /// inbox decryption). It is DISTINCT from `marmot_local_nsec`: that field
     /// is the ADR-0025 bounded exception for MLS, and the ADR explicitly
-    /// scopes the exception to Marmot. A consumer that is not Marmot reads
+    /// scopes the exception. A consumer without this exception reads
     /// THIS slot instead.
     ///
     /// `nostr::Keys` is `Clone` and zeroizes its own secret on drop, so no
@@ -403,7 +403,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // identity mutation; per-app crates read via NmpApp::marmot_local_nsec.
     let marmot_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>> = Arc::new(Mutex::new(None));
     let actor_marmot_local_nsec = Arc::clone(&marmot_local_nsec);
-    // Active local `nostr::Keys` slot — the NIP-44 key seam for non-Marmot
+    // Active local `nostr::Keys` slot — the NIP-44 key seam for non-ADR-0025
     // protocol consumers (NIP-17 DM inbox decryption). Same shared-`Arc`
     // pattern as `marmot_local_nsec`: the actor updates it on every identity
     // mutation; per-app crates read via `NmpApp::nip17_local_keys`.
@@ -913,14 +913,15 @@ impl NmpApp {
     /// account). The actor writes this slot synchronously before emitting
     /// each identity-change snapshot, so callers inside `apply()` callbacks
     /// always see the up-to-date value. Used by per-app crates (e.g.
-    /// `nmp-app-chirp` Marmot registration) so the key stays Rust-owned
+    /// per-app crate registration) so the key stays Rust-owned
     /// (D0 — Swift never sees it for the `createAccount` path).
     pub fn marmot_local_nsec(&self) -> Option<Zeroizing<String>> {
         self.marmot_local_nsec.lock().ok()?.clone()
     }
 
     /// Clone of the active-local-`nostr::Keys` slot — the NIP-44 key seam
-    /// for non-Marmot protocol consumers (NIP-17 DM inbox decryption).
+    /// for protocol consumers without the raw-key exception (e.g. NIP-17 DM
+    /// inbox decryption).
     ///
     /// Returns a clone of the shared `Arc` so the caller (e.g. a
     /// `DmInboxProjection`) holds its own handle and reads the current keys
@@ -936,8 +937,7 @@ impl NmpApp {
 
     /// Return the user's current write-relay URLs, read from the shared kernel relay-edit
     /// projection. Empty when the user has not configured any write relays.
-    /// Used by per-app crates (e.g. `nmp-app-chirp` Marmot dispatch) so
-    /// relay resolution stays Rust-owned (D0).
+    /// Used by per-app crates so relay resolution stays Rust-owned (D0).
     pub fn write_relay_urls(&self) -> Vec<String> {
         let Ok(guard) = self.relay_edit_rows.lock() else {
             return Vec::new();

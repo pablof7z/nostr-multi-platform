@@ -288,12 +288,12 @@ pub enum ActorCommand {
     /// command uses — the signer is never consulted (no re-signing). Unlike
     /// [`ActorCommand::PublishUnsignedEvent`], this does not require an active
     /// account: the signature already exists and routing keys off the event's
-    /// own pubkey. Generic capability (D0); Marmot/MDK group events are the
-    /// first consumer but the kernel has no protocol nouns.
+    /// own pubkey. Generic capability (D0); externally-signed group events are
+    /// the first consumer but the kernel has no protocol nouns.
     ///
     /// `relays` selects the D3 routing mode: empty → `PublishTarget::Auto`
     /// (NIP-65 outbox, back-compat); non-empty → the named `Explicit` opt-out,
-    /// dispatched to exactly those relays (Marmot kind:445 / kind:1059).
+    /// dispatched to exactly those relays (e.g. kind:445 / kind:1059).
     PublishSignedEvent {
         raw: crate::store::RawEvent,
         relays: Vec<crate::publish::RelayUrl>,
@@ -443,7 +443,7 @@ pub enum ActorCommand {
     /// live for the session without Swift/Kotlin involvement (D0). The kernel
     /// will emit the appropriate `REQ` frames to connected relays on the next
     /// compile pass; matching inbound events then flow through the raw-event
-    /// tap into `MarmotService` automatically (D4 / event-driven delivery).
+    /// tap into the host-app service automatically (D4 / event-driven delivery).
     PushInterest(crate::planner::LogicalInterest),
 }
 
@@ -685,7 +685,7 @@ pub fn run_actor_with_observers(
         }
     }
     // Bind the shared relay-edit rows handle so external Rust callers
-    // (e.g. `nmp-app-chirp` Marmot dispatch) can read the user's current
+    // (e.g. a per-app dispatch crate) can read the user's current
     // relay list without crossing FFI. Survives `Reset` the same way as
     // the other shared handles.
     kernel.set_relay_edit_rows_handle(Arc::clone(&relay_edit_rows));
