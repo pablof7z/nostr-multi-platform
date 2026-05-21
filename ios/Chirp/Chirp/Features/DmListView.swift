@@ -88,14 +88,12 @@ private struct DmConversationRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            ZStack {
-                Circle().fill(.quaternary)
-                Text(dmInitials(conversation.peerPubkey))
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.primary)
-            }
-            .frame(width: 40, height: 40)
-            .overlay(Circle().stroke(Color(.separator), lineWidth: 1))
+            ChirpAvatar(
+                url: nil,
+                initials: dmInitials(conversation.peerPubkey),
+                colorHex: String(conversation.peerPubkey.prefix(6)),
+                size: 40
+            )
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
