@@ -180,19 +180,17 @@ final class KernelHandle {
         }
     }
 
+    /// Publish a kind:0 profile metadata event for the active account through
+    /// the kernel's `ActionModule` family. Routes via the single
+    /// namespace-keyed `nmp_app_dispatch_action` entry point (`"nmp.publish"`
+    /// namespace, `PublishAction::PublishProfile` JSON) — the kind:0 event,
+    /// its `created_at` stamp, and signing are all owned by Rust (thin-shell
+    /// rule: zero protocol logic in Swift). Fire-and-forget: matches the
+    /// `publishNote` / `react` / `follow` pattern.
     func publishProfile(profile: [String: String]) {
-        let profileJson = try! JSONSerialization.data(withJSONObject: profile, options: [])
-        let content = String(data: profileJson, encoding: .utf8)!
-        let unsigned: [String: Any] = [
-            "pubkey": "",
-            "kind": 0,
-            "tags": [],
-            "content": content,
-            "created_at": UInt64(Date().timeIntervalSince1970)
-        ]
-        let data = try! JSONSerialization.data(withJSONObject: unsigned, options: [])
-        let json = String(data: data, encoding: .utf8)!
-        json.withCString { nmp_app_publish_unsigned_event(raw, $0) }
+        dispatchAction(
+            namespace: "nmp.publish",
+            body: ["PublishProfile": ["fields": profile]])
     }
 
     func switchActive(identityID: String) {

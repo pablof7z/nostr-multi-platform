@@ -291,6 +291,20 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
+        ActorCommand::PublishProfile {
+            fields,
+            correlation_id,
+        } => {
+            let outbound = commands::publish_profile(
+                ctx.identity,
+                ctx.kernel,
+                fields,
+                correlation_id,
+                ctx.pending_signs,
+            );
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(outbound)
+        }
         ActorCommand::PublishUnsignedEvent(unsigned) => {
             let outbound = commands::publish_unsigned_event(
                 ctx.identity,

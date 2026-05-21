@@ -297,6 +297,14 @@ impl PublishEngine {
             PublishAction::PublishNote { .. } => Err(PublishEngineError::UnsupportedAction(
                 "PublishNote is published via ActorCommand::PublishNote, not the publish engine",
             )),
+            // `PublishProfile` is signed-and-published by the actor's
+            // `ActorCommand::PublishProfile` handler — same rationale as
+            // `PublishNote`: the engine only services pre-signed `Publish`
+            // (and `Cancel`). Reaching here is a wiring bug returned as an
+            // `Err`, never a panic (D6).
+            PublishAction::PublishProfile { .. } => Err(PublishEngineError::UnsupportedAction(
+                "PublishProfile is published via ActorCommand::PublishProfile, not the publish engine",
+            )),
         }
     }
 

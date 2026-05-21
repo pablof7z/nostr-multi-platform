@@ -336,6 +336,77 @@ pub(crate) fn publish_note(
     outbound
 }
 
+/// Sign and publish a kind:0 profile metadata event for the active account.
+///
+/// `fields` is the flat string map the host supplied via
+/// `PublishAction::PublishProfile`; this serializes it into the kind:0
+/// `content`, stamps `created_at` from `kernel.now_secs()` (the host never
+/// hand-rolls the timestamp — D7: the kernel owns the wall clock), signs with
+/// the active account, and routes through the NIP-65 outbox (D3).
+///
+/// Sibling of [`publish_note`] — same non-blocking sign + correlation_id
+/// threading, kind:0 instead of kind:1. `correlation_id` is the
+/// registry-minted action id; threading it through makes the publish engine
+/// report it in `last_action_result` so the host spinner keyed on the dispatch
+/// return value can be cleared. `None` for non-dispatch callers.
+pub(crate) fn publish_profile(
+    identity: &IdentityRuntime,
+    kernel: &mut Kernel,
+    fields: serde_json::Map<String, serde_json::Value>,
+    correlation_id: Option<String>,
+    pending_signs: &mut Vec<PendingSign>,
+) -> Vec<OutboundMessage> {
+    let Some(pubkey) = identity.active_pubkey() else {
+        return toast_no_account(kernel, "publish profile");
+    };
+
+    // kind:0 `content` is the JSON-serialized metadata object (NIP-01).
+    let content = match serde_json::to_string(&fields) {
+        Ok(json) => json,
+        Err(e) => {
+            kernel.set_last_error_toast(Some(format!("profile serialisation: {e}")));
+            return Vec::new();
+        }
+    };
+
+    let unsigned = UnsignedEvent {
+        pubkey,
+        kind: 0,
+        tags: Vec::new(),
+        content,
+        created_at: kernel.now_secs(),
+    };
+    // Non-blocking sign: remote (NIP-46) signers return a `Pending` op parked
+    // for the actor's idle-tick poll loop instead of blocking here.
+    let mut op = match sign_active_nonblocking(identity, &unsigned) {
+        Ok(op) => op,
+        Err(reason) => {
+            kernel.set_last_error_toast(Some(reason));
+            return Vec::new();
+        }
+    };
+    match op.poll() {
+        // Local key resolved on the spot — publish through the engine with the
+        // dispatch correlation_id so the terminal verdict reports it.
+        Some(Ok(signed)) => kernel.publish_signed_with_correlation(&signed, &[], correlation_id),
+        Some(Err(e)) => {
+            kernel.set_last_error_toast(Some(format!("sign failed: {e}")));
+            Vec::new()
+        }
+        None => {
+            // Remote signer pending — park the op WITH its correlation_id so
+            // the dispatched profile still settles under the id the host is
+            // waiting on once the broker turns the sign request around.
+            pending_signs.push(PendingSign::with_correlation_id(
+                op,
+                Vec::new(),
+                correlation_id,
+            ));
+            Vec::new()
+        }
+    }
+}
+
 pub(crate) fn react(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,

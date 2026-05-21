@@ -111,8 +111,8 @@ pub use event_observer::{
 // up the actor chain so `ffi/raw_event_tap.rs` and the per-app crate
 // registration path reach the same `Arc<Mutex<…>>` the kernel taps.
 pub(super) use publish::{
-    follow, open_timeline, publish_note, publish_signed_event, publish_unsigned_event,
-    publish_unsigned_event_to_relays, react,
+    follow, open_timeline, publish_note, publish_profile, publish_signed_event,
+    publish_unsigned_event, publish_unsigned_event_to_relays, react,
 };
 pub(crate) use raw_event_observer::{
     new_raw_event_observer_slot, notify_raw_observers, raw_observers_idle_for_kind,

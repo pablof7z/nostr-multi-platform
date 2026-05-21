@@ -57,6 +57,17 @@ pub enum PublishAction {
         reply_to_id: Option<String>,
         target: PublishTarget,
     },
+    /// Publish a kind:0 profile metadata event for the active account.
+    /// `fields` is a flat JSON object with string-valued keys such as
+    /// `"name"`, `"about"`, `"picture"` — the actor serializes it into the
+    /// kind:0 `content` field, signs with the active `IdentityModule`, and
+    /// routes through the NIP-65 outbox. Like `PublishNote`, the event is
+    /// *not* pre-signed: the actor stamps `created_at` and signs. This is the
+    /// `ActionModule`-native replacement for hosts hand-rolling a kind:0
+    /// event dict and calling `nmp_app_publish_unsigned_event` directly.
+    PublishProfile {
+        fields: serde_json::Map<String, serde_json::Value>,
+    },
     Cancel {
         handle: PublishHandle,
     },
@@ -143,6 +154,23 @@ impl ActionModule for PublishModule {
                     return Err(ActionRejection::Invalid(
                         "publish note requires non-empty content".to_string(),
                     ));
+                }
+                Ok(ActionPlan {
+                    initial_step: PublishStep::Planning,
+                    initial_status: ActionStatus::Pending,
+                    deadline_ms: None,
+                })
+            }
+            PublishAction::PublishProfile { fields } => {
+                // A kind:0 `content` is a flat JSON object of string values
+                // (NIP-01 metadata). Reject any non-string field up front so a
+                // malformed profile never reaches the actor.
+                for (key, value) in &fields {
+                    if !value.is_string() {
+                        return Err(ActionRejection::Invalid(format!(
+                            "profile field '{key}' must be a string value"
+                        )));
+                    }
                 }
                 Ok(ActionPlan {
                     initial_step: PublishStep::Planning,

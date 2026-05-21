@@ -231,6 +231,24 @@ pub enum ActorCommand {
         reply_to_id: Option<String>,
         correlation_id: Option<String>,
     },
+    /// T66a publish — sign a kind:0 profile metadata event with the active
+    /// account and emit it to the NIP-65 outbox-resolved write relays (D3).
+    ///
+    /// `fields` is the flat string map the host supplied; the actor serializes
+    /// it into the kind:0 `content`, stamps `created_at` from `kernel.now_secs()`
+    /// (the host never hand-rolls the timestamp), and signs. Sibling of
+    /// [`ActorCommand::PublishNote`] — same sign-and-publish path, kind:0 instead
+    /// of kind:1.
+    ///
+    /// `correlation_id` is the registry-minted action id when this command
+    /// originates from `nmp_app_dispatch_action` (`PublishAction::PublishProfile`).
+    /// Threading it through makes the publish engine report it in
+    /// `last_action_result` so the host spinner keyed on the dispatch return
+    /// value can be cleared. `None` for non-dispatch callers.
+    PublishProfile {
+        fields: serde_json::Map<String, serde_json::Value>,
+        correlation_id: Option<String>,
+    },
     /// Generic, kind-agnostic publish — take an `UnsignedEvent` already built
     /// by any protocol-crate builder (`nmp_nip23::Article`, `nmp_nip01::Note`,
     /// `nmp_relations::Reaction`, …), sign with the active account's keys,
