@@ -18,7 +18,6 @@
 //! | [`planner_gate`] | Applies the coverage strategy in-place to a `CompiledPlan`. |
 //! | [`triggers`] | Foreground / view-open-gap / relay-reconnect trigger fan-out. |
 //! | [`metrics`] | Per-(filter, relay) `bytes_on_wire_via_neg` + `bytes_saved_vs_req` counters. |
-//! | [`run_sync`] | `RunSync` `ActionModule` for manual reconciliation. |
 //!
 //! ## Doctrine
 //!
@@ -27,8 +26,8 @@
 //!   [`SyncStrategy::NegThenReq`] when the relay supports NIP-77 and the gap is
 //!   large, and [`SyncStrategy::ReqSince`] only as the explicit fallback path.
 //! * **D6** — errors never cross FFI.  All public errors here are internal
-//!   `Result` returns; mapping to `toast`/`busy` state happens at the actor /
-//!   `RunSync` action boundary, not in the engine.
+//!   `Result` returns; mapping to `toast`/`busy` state happens at the actor
+//!   boundary, not in the engine.
 //! * **D8** — reconciliation is working-set-bounded.  The reconciler's frame
 //!   budget is capped at `64 KiB` per step and the trigger engine deduplicates
 //!   redundant work-items per `(filter_hash, relay_url)` before dispatching.
@@ -39,7 +38,6 @@ pub mod coverage_gate;
 pub mod metrics;
 pub mod planner_gate;
 pub mod reconciler;
-pub mod run_sync;
 pub mod triggers;
 pub mod wire;
 
@@ -61,9 +59,6 @@ pub use metrics::{MetricsSnapshot, RelayFilterKey, SyncMetrics};
 pub use planner_gate::{apply_coverage_filter, CoverageReport, GateDecision};
 pub use reconciler::{
     Reconciler, ReconcilerError, ReconcilerOutcome, ReconcilerRole, SyncedItem,
-};
-pub use run_sync::{
-    RunSync, RunSyncAction, RunSyncOutput, ACTION_NAMESPACE as RUN_SYNC_NAMESPACE,
 };
 pub use triggers::{ReconcileWork, TriggerEngine, TriggerEvent};
 pub use wire::{ClientFrame, RelayFrame, WireError};

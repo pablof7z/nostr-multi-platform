@@ -21,7 +21,7 @@
 //!
 //! `Supported` and `Unsupported` are terminal in normal operation.  A relay
 //! that downgrades or revokes support requires an explicit reset (e.g. a
-//! manual `RunSync` invocation) — same policy as `nostr-sdk`'s capability
+//! manual reconcile invocation) — same policy as `nostr-sdk`'s capability
 //! tracking.
 
 use std::collections::HashMap;
