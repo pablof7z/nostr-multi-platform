@@ -21,6 +21,8 @@ pub fn help() {
     println!("  read:         sync-follows, home, profile <npub>, thread <note>, search #tag");
     println!("  write:        compose <text>, reply <note> <text>, react <note> [reaction]");
     println!("  social graph: follow <npub>, unfollow <npub>");
+    println!("  mls:          mls-init, mls-status, mls-create, mls-invite");
+    println!("                mls-accept, mls-send, mls-messages");
     println!("  diagnostics:  diagnostics, parity");
 }
 
@@ -36,6 +38,7 @@ pub fn parity() {
     println!("  {YELLOW}Notifications{RESET}:   not exposed by Chirp runtime yet");
     println!("  {GREEN}Relays/settings{RESET}: set-relays, set-indexers, diagnostics");
     println!("  {GREEN}Accounts{RESET}:        create-account, load-key");
+    println!("  {GREEN}MLS groups{RESET}:      mls-* via Chirp Marmot projection");
     println!(
         "  {YELLOW}Contract{RESET}: new Chirp app surfaces should add chirp-repl coverage too."
     );
@@ -89,6 +92,74 @@ pub fn chirp_snapshot(snapshot: &Value, blocks: usize, cards: usize) {
         for item in items.iter().take(20) {
             event(item);
         }
+    }
+}
+
+pub fn marmot_snapshot(snapshot: &Value) {
+    let groups = snapshot
+        .get("groups")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    let welcomes = snapshot
+        .get("pending_welcomes")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    println!("{BLUE}marmot snapshot{RESET} groups:{groups} pending_welcomes:{welcomes}");
+    if let Some(items) = snapshot.get("groups").and_then(Value::as_array) {
+        for group in items {
+            let id = short(group.get("id_hex").and_then(Value::as_str).unwrap_or("?"));
+            let name = group.get("name").and_then(Value::as_str).unwrap_or("");
+            let members = group
+                .get("members")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len);
+            println!("  {DIM}{id}{RESET} {name} members:{members}");
+        }
+    }
+}
+
+pub fn marmot_result(label: &str, value: &Value) {
+    println!("{BLUE}{label}{RESET}");
+    if let Some(group_id) = value.get("group_id_hex").and_then(Value::as_str) {
+        println!("  group_id: {}", short(group_id));
+    }
+    if let Some(event_id) = value.get("event_id").and_then(Value::as_str) {
+        println!("  event_id: {}", short(event_id));
+    }
+    if let Some(needs) = value.get("needs").and_then(Value::as_array) {
+        let needs = needs
+            .iter()
+            .filter_map(Value::as_str)
+            .map(short)
+            .collect::<Vec<_>>();
+        println!("  needs:    {}", needs.join(", "));
+    }
+    if let Some(events) = value.get("events").and_then(Value::as_array) {
+        println!("  events:   {}", events.len());
+    }
+    if let Some(welcomes) = value.get("welcome_rumors").and_then(Value::as_array) {
+        println!("  welcomes: {}", welcomes.len());
+    }
+    println!(
+        "  ok:       {}",
+        value.get("ok").and_then(Value::as_bool).unwrap_or(true)
+    );
+}
+
+pub fn marmot_messages(rows: &Value) {
+    let Some(items) = rows.as_array() else {
+        println!("{BLUE}marmot messages{RESET} <invalid>");
+        return;
+    };
+    println!("{BLUE}marmot messages{RESET} count:{}", items.len());
+    for row in items.iter().take(20) {
+        let sender = short(
+            row.get("sender_npub")
+                .and_then(Value::as_str)
+                .unwrap_or("?"),
+        );
+        let content = row.get("content").and_then(Value::as_str).unwrap_or("");
+        println!("  {DIM}{sender}{RESET} {}", compact(content));
     }
 }
 

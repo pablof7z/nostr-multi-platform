@@ -73,9 +73,6 @@ use std::ffi::{c_char, CStr, CString};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use apple_native_keyring_store::protected::Store as AppleStore;
-use keyring_core::set_default_store;
-
 use nmp_core::{KernelEventObserverId, NmpApp, RawEventObserver, RawEventObserverId};
 use nostr::Keys;
 use serde_json::{json, Value};
@@ -161,36 +158,9 @@ fn publish_key_package_on_register(handle: *mut MarmotHandle) {
 /// Inner registration logic shared by `nmp_app_chirp_marmot_register` and
 /// `nmp_app_chirp_marmot_register_active`. `app` must be non-null and valid.
 pub(super) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) -> *mut MarmotHandle {
-    // Initialize a credential store for `MdkSqliteStorage`. Try the Apple
-    // protected store first (required on device); fall back to the in-memory
-    // mock store on the simulator where entitlements are missing (-34018).
-    //
-    // TODO(D7): this multi-step credential-store fallback strategy (Apple
-    // protected store → mock store on simulator → retry loop deleting a stale
-    // DB) is policy, not glue — it should move into `nmp-marmot` as a
-    // `pub fn initialize_credential_store(...)` so every NMP app gets the same
-    // behavior. It stays inline here for now ONLY because the obvious home is
-    // a protocol crate and the policy is genuinely Apple-platform-coupled
-    // (`apple-native-keyring-store`); pushing that crate into `nmp-marmot`
-    // (which lib.rs declares the SOLE importer of mdk-core/openmls and is
-    // otherwise platform-agnostic) needs a deliberate dependency-graph
-    // decision. Once `MarmotService::new` accepts a store-init strategy (or a
-    // pre-built `Box<dyn keyring_core::Store>`), this whole block collapses to
-    // one `nmp-marmot` call + `return null_mut()` on error.
-    let mut use_mock = false;
-    if let Ok(store) = AppleStore::new() {
-        set_default_store(store);
-    } else {
-        // D6: mock store construction can fail — never `unwrap()` across the
-        // FFI. Degrade to a null handle so Swift sees a clean failure.
-        match keyring_core::mock::Store::new() {
-            Ok(store) => {
-                use_mock = true;
-                set_default_store(store);
-            }
-            Err(_) => return std::ptr::null_mut(),
-        }
-    }
+    let Some(use_mock) = super::credential_store::initialize() else {
+        return std::ptr::null_mut();
+    };
 
     let service =
         match MarmotService::new(db_path, KEYRING_SERVICE_ID, KEYRING_DB_KEY_ID, keys.clone()) {
@@ -216,9 +186,8 @@ pub(super) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
                         if !use_mock {
                             // D6: mock store construction can fail — never
                             // `unwrap()` across the FFI; degrade to a null handle.
-                            match keyring_core::mock::Store::new() {
-                                Ok(store) => set_default_store(store),
-                                Err(_) => return std::ptr::null_mut(),
+                            if super::credential_store::install_mock_store().is_none() {
+                                return std::ptr::null_mut();
                             }
                             match MarmotService::new(
                                 db_path,

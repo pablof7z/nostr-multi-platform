@@ -3,6 +3,7 @@
 pub mod actions;
 pub mod app;
 pub mod command;
+pub mod marmot;
 pub mod render;
 pub mod session;
 
