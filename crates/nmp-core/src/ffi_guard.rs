@@ -27,17 +27,20 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 /// inside a [`catch_unwind`] so a panic / foreign exception cannot unwind
 /// across the C ABI boundary (undefined behaviour).
 ///
-/// `site` is a short human label for the log line on the panic path
-/// (e.g. `"event observer"`). `body` is the closure that performs the
-/// actual `(registration.callback)(...)` invocation and returns its
-/// result.
+/// `site` is a short human label for the call site (e.g. `"event
+/// observer"`); it keeps the call sites self-describing — the panic arm
+/// itself emits no output (see the return-value note below). `body` is the
+/// closure that performs the actual `(registration.callback)(...)`
+/// invocation and returns its result.
 ///
 /// Returns `Some(value)` when the callback completed normally, or `None`
-/// when it panicked / threw — in which case a diagnostic has already been
-/// written to stderr. Callers that fan out to multiple callbacks should
-/// invoke this once per callback so one panicking observer does not abort
-/// the others; callers with a return value treat `None` as "callback
-/// failed" and fall through to their existing degraded path.
+/// when it panicked / threw — callers that need diagnostics can observe the
+/// `None` return and log it (library code never writes to stderr itself —
+/// doctrine **D6**: failures are data, not host-visible side effects).
+/// Callers that fan out to multiple callbacks should invoke this once per
+/// callback so one panicking observer does not abort the others; callers
+/// with a return value treat `None` as "callback failed" and fall through
+/// to their existing degraded path.
 ///
 /// [`AssertUnwindSafe`] is required because a raw `fn` pointer plus a
 /// `*mut c_void` context are `!UnwindSafe` by default. Asserting is sound
@@ -45,19 +48,17 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 /// observed again — the caller either returns `None` or moves to the next
 /// registration with a fresh snapshot.
 pub(crate) fn guard_ffi_callback<R>(site: &str, body: impl FnOnce() -> R) -> Option<R> {
+    // `site` is retained as a documented call-site label even though the
+    // panic arm no longer logs: it keeps the call sites self-describing and
+    // leaves a single edit point should a host-observable diagnostic seam
+    // (D6-conforming — data, not stderr) ever be wired in.
+    let _ = site;
     match catch_unwind(AssertUnwindSafe(body)) {
         Ok(value) => Some(value),
-        Err(payload) => {
-            let cause = if let Some(s) = payload.downcast_ref::<&str>() {
-                (*s).to_string()
-            } else if let Some(s) = payload.downcast_ref::<String>() {
-                s.clone()
-            } else {
-                "unknown cause".to_string()
-            };
-            eprintln!("[nmp-core] {site} callback panicked: {cause}");
-            None
-        }
+        // D6: the `None` return IS the failure signal. Library code must
+        // never write to stderr — that side effect belongs to the host.
+        // Callers that need diagnostics observe `None` and log it themselves.
+        Err(_payload) => None,
     }
 }
 
