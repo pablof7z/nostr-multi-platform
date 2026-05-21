@@ -1088,7 +1088,7 @@ impl Kernel {
         self.relay_edit_rows.clear();
         if let Some(handle) = self.relay_edit_rows_handle.as_ref() {
             if let Ok(mut guard) = handle.lock() {
-                guard.clear();
+                guard.replace(Vec::new());
             }
         }
     }

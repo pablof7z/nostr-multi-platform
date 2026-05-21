@@ -109,6 +109,22 @@ pub trait ActionModule: Send + Sync + 'static {
     fn is_async_completing() -> bool {
         false
     }
+
+    /// ADR-0027 typed-executor seam: enqueue the `ActorCommand` that the
+    /// validated `action` should drive. Called via `ActionModuleAdapter<M>`
+    /// (see `kernel::action_registry`) when the module is registered through
+    /// `ActionRegistry::register::<M>()` and `has_typed_executor` returns
+    /// `true`. The pre-ADR-0027 closure path (`register_executor`) remains
+    /// available for hosts that haven't migrated yet; the typed path takes
+    /// precedence when both are present.
+    ///
+    /// Thread `correlation_id` onto any `ActorCommand` whose terminal verdict
+    /// must report the dispatched id (the spinner round-trip — see PR-A).
+    fn execute(
+        action: Self::Action,
+        correlation_id: &str,
+        send: &dyn Fn(crate::actor::ActorCommand),
+    ) -> Result<(), String>;
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

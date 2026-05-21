@@ -65,6 +65,23 @@ trait ErasedActionModule: Send + Sync {
         ctx: &mut ActionContext,
         action_json: &str,
     ) -> Result<Option<ActionId>, ActionRejection>;
+
+    /// Whether this module carries a typed executor in `execute()`.
+    ///
+    /// `ActionModuleAdapter<M>` returns `true` — `execute()` calls
+    /// `M::execute` directly. `ClosureModule` returns `false` — the caller
+    /// must fall back to the `executors` HashMap for execution (the pre-
+    /// ADR-0027 path kept for compatibility during migration).
+    fn has_typed_executor(&self) -> bool;
+
+    /// Execute the validated action. Called by [`ActionRegistry::execute`]
+    /// only when [`Self::has_typed_executor`] returns `true`.
+    fn execute(
+        &self,
+        action_json: &str,
+        correlation_id: &str,
+        send: &dyn Fn(crate::actor::ActorCommand),
+    ) -> Result<(), String>;
 }
 
 /// Zero-sized adapter binding a concrete [`ActionModule`] `M` to the
@@ -90,6 +107,21 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
         let preferred_id = M::preferred_action_id(&action);
         M::start(ctx, action)?;
         Ok(preferred_id)
+    }
+
+    fn has_typed_executor(&self) -> bool {
+        true
+    }
+
+    fn execute(
+        &self,
+        action_json: &str,
+        correlation_id: &str,
+        send: &dyn Fn(crate::actor::ActorCommand),
+    ) -> Result<(), String> {
+        let action: M::Action = serde_json::from_str(action_json)
+            .map_err(|e| e.to_string())?;
+        M::execute(action, correlation_id, send)
     }
 }
 
@@ -165,6 +197,21 @@ impl ErasedActionModule for ClosureModule {
                 "action validator panicked".into(),
             )),
         }
+    }
+
+    fn has_typed_executor(&self) -> bool {
+        false
+    }
+
+    fn execute(
+        &self,
+        _action_json: &str,
+        _correlation_id: &str,
+        _send: &dyn Fn(crate::actor::ActorCommand),
+    ) -> Result<(), String> {
+        // ClosureModule has no typed executor — ActionRegistry::execute falls
+        // through to the executors HashMap for this module type.
+        Err("ClosureModule: use executors fallback".into())
     }
 }
 
@@ -278,22 +325,18 @@ impl ActionRegistry {
         Ok(preferred_id.unwrap_or_else(new_action_id))
     }
 
-    /// Execute the validated action by invoking the registered executor for
-    /// `namespace`. The `send` callback routes the resulting
-    /// [`ActorCommand`] to the actor (D8: non-blocking channel send only).
+    /// Execute the validated action. Tries the typed [`ActionModule::execute`]
+    /// path first (ADR-0027), then falls back to the closure-based `executors`
+    /// HashMap for namespaces registered via [`Self::register_executor`].
     ///
-    /// Returns `Err` when no executor is registered — the caller surfaces
+    /// Returns `Err` when neither path has an executor — the caller surfaces
     /// this as `{"error":…}` (D6: a missing executor is never silently
-    /// swallowed). This eliminates the `match namespace { "nmp.publish" => …
-    /// _ => Err }` that was the only execution path and blocked all other
-    /// modules from running without editing `nmp-core`.
+    /// swallowed).
     ///
-    /// D6: the executor is untrusted host plugin code registered via
-    /// `nmp_app_register_action_executor`, and this runs on the call path of
-    /// `nmp_app_dispatch_action` — an `extern "C"` function. An unguarded
-    /// panic would unwind across the FFI boundary (undefined behaviour), so
-    /// the closure is invoked inside [`catch_unwind`]; a caught panic becomes
-    /// a plain `Err(String)`, the same shape as any other dispatch failure.
+    /// D6: both paths invoke untrusted host-plugin code that runs on the
+    /// `nmp_app_dispatch_action` call path (an `extern "C"` function). Each
+    /// is wrapped in [`catch_unwind`]; a caught panic returns `Err(String)`
+    /// rather than unwinding across the FFI boundary.
     pub(crate) fn execute(
         &self,
         namespace: &str,
@@ -301,12 +344,19 @@ impl ActionRegistry {
         correlation_id: &str,
         send: &dyn Fn(crate::actor::ActorCommand),
     ) -> Result<(), String> {
+        // ADR-0027 typed path: if the module has a built-in executor, use it.
+        if let Some(module) = self.modules.get(namespace) {
+            if module.has_typed_executor() {
+                return match catch_unwind(AssertUnwindSafe(|| {
+                    module.execute(action_json, correlation_id, send)
+                })) {
+                    Ok(result) => result,
+                    Err(_) => Err("action executor panicked".to_string()),
+                };
+            }
+        }
+        // Pre-ADR-0027 fallback: closure registered via register_executor.
         match self.executors.get(namespace) {
-            // `AssertUnwindSafe`: a boxed `Fn` and the `send` callback are
-            // not `UnwindSafe`, but a panic here is fully contained — the
-            // executor's effects (a non-blocking channel send) are observed
-            // only through the actor, never re-read here. `catch_unwind`
-            // nests the inner `Result`; flatten it.
             Some(exec) => {
                 match catch_unwind(AssertUnwindSafe(|| {
                     exec(action_json, correlation_id, send)
