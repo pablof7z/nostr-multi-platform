@@ -151,11 +151,7 @@ impl ActionModule for PublishModule {
                         )));
                     }
                 }
-                Ok(ActionPlan {
-                    initial_step: PublishStep::Planning,
-                    initial_status: ActionStatus::Pending,
-                    deadline_ms: None,
-                })
+                Ok(())
             }
             PublishAction::Cancel { handle } => {
                 if handle.is_empty() {
