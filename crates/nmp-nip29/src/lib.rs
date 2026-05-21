@@ -26,6 +26,8 @@
 //!   `TofuSignerCache` (metadata-signer trust).
 //! - [`interest`] — helpers for constructing pinned `LogicalInterest`s.
 //! - [`moderation`] — audit-record materialisation; canonical-state separation.
+//! - [`projection`] — `GroupChatProjection`: the read-side of a group-chat
+//!   screen (a `KernelEventObserver` projecting kind 9/11/1111 events).
 //!
 //! All inputs to actions carry a typed `GroupId` so the publish planner gets a
 //! typed `PublishPlan::pin_to: Some(host)` carrier and never derives routing
@@ -37,12 +39,14 @@ pub mod group_id;
 pub mod interest;
 pub mod kinds;
 pub mod moderation;
+pub mod projection;
 pub mod view;
 
 pub mod action;
 
 pub use group_id::GroupId;
 pub use kinds::{event_is_group_event, group_id_from_tags, GroupEventClass, KindClass};
+pub use projection::{GroupChatMessage, GroupChatProjection, GroupChatSnapshot};
 
 // NOTE: `nmp-nip29` exposes its 13 `DomainModule` / 15 `ActionModule` impls
 // and its 7 view types as public types under `domain`, `action`, and `view`.
