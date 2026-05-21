@@ -3,10 +3,10 @@ import SwiftUI
 // ─────────────────────────────────────────────────────────────────────────
 // MarmotInviteSheet — invite one or more npubs into an existing MLS group.
 //
-// Presented from MarmotGroupChatView's overflow menu. Mirrors the
-// create-group sheet's composer idiom (TextEditor). Calls `invite`;
-// surfaces `key_package_unavailable` (`needs`) inline so the user knows
-// which invitees haven't published a key package yet.
+// Presented from MarmotGroupChatView's overflow menu. Calls `invite`;
+// surfaces `key_package_unavailable` (`needsDisplay`) inline so the user
+// knows which invitees haven't published a key package yet. Rust supplies
+// the abbreviated form — Swift only joins the strings.
 // ─────────────────────────────────────────────────────────────────────────
 
 struct MarmotInviteSheet: View {
@@ -19,18 +19,17 @@ struct MarmotInviteSheet: View {
     @State private var errorMessage: String?
     @State private var busy = false
 
-    private var invitees: [String] {
-        inviteeText
-            .split(whereSeparator: { $0 == "," || $0 == "\n" || $0 == " " })
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
+    /// `true` when the user has typed at least one non-whitespace
+    /// character. Tokenisation + validation happen Rust-side on dispatch.
+    private var hasInviteeText: Bool {
+        !inviteeText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    Text("Inviting to \(group.name.isEmpty ? "this group" : group.name)")
+                    Text("Inviting to \(group.displayName)")
                         .font(.callout)
                         .foregroundStyle(.secondary)
 
@@ -69,7 +68,7 @@ struct MarmotInviteSheet: View {
                     } label: {
                         Label("Send invites", systemImage: "person.badge.plus")
                     }
-                    .disabled(invitees.isEmpty || busy)
+                    .disabled(!hasInviteeText || busy)
                 }
             }
             .scrollContentBackground(.hidden)
@@ -87,19 +86,14 @@ struct MarmotInviteSheet: View {
     private func sendInvites() {
         busy = true
         errorMessage = nil
-        let result = model.marmot.invite(groupIDHex: group.idHex, inviteeNpubs: invitees)
+        let result = model.marmot.invite(groupIDHex: group.idHex, inviteeText: inviteeText)
         busy = false
         if result.ok {
             dismiss()
-        } else if let needs = result.needs, !needs.isEmpty {
-            errorMessage = "Waiting for key packages from \(needs.map(shortNpub).joined(separator: ", "))."
+        } else if let needsDisplay = result.needsDisplay, !needsDisplay.isEmpty {
+            errorMessage = "Waiting for key packages from \(needsDisplay.joined(separator: ", "))."
         } else {
             errorMessage = result.error ?? "Could not send invites"
         }
-    }
-
-    private func shortNpub(_ npub: String) -> String {
-        guard npub.count >= 16 else { return npub }
-        return "\(npub.prefix(8))…\(npub.suffix(4))"
     }
 }

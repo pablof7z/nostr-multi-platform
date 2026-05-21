@@ -111,6 +111,7 @@ use nostr::{Event, JsonUtil, PublicKey, RelayUrl};
 
 use crate::service::MarmotService;
 
+use crate::projection::display;
 use crate::projection::payload::{
     KeyPackageStatus, MarmotGroupRow, MarmotSnapshot, PendingWelcomeRow,
 };
@@ -232,7 +233,7 @@ impl MarmotProjection {
             return MarmotSnapshot::empty();
         };
 
-        let groups = match inner.service.get_groups() {
+        let groups: Vec<MarmotGroupRow> = match inner.service.get_groups() {
             Ok(gs) => gs
                 .into_iter()
                 .map(|g| {
@@ -248,11 +249,20 @@ impl MarmotProjection {
                         .get_messages(&g.mls_group_id)
                         .map(|m| m.len() as u64)
                         .unwrap_or(0);
+                    let display_name = display::group_display_name(&g.name);
+                    let initials = display::initials(&display_name);
+                    let member_count_display =
+                        display::member_count_display(members.len());
+                    let unread_display = display::unread_display(unread);
                     MarmotGroupRow {
                         id_hex,
                         name: g.name.clone(),
+                        display_name,
+                        initials,
                         members,
+                        member_count_display,
                         unread,
+                        unread_display,
                         last_msg_at: g.last_message_at.map(|t| t.as_secs()),
                     }
                 })
@@ -260,15 +270,18 @@ impl MarmotProjection {
             Err(_) => Vec::new(),
         };
 
-        let pending_welcomes = inner
+        let pending_welcomes: Vec<PendingWelcomeRow> = inner
             .pending_welcomes
             .iter()
             .map(|(id_hex, c)| PendingWelcomeRow {
                 id_hex: id_hex.clone(),
                 group_name: c.group_name.clone(),
+                display_name: display::welcome_display_name(&c.group_name),
                 inviter_npub: c.inviter_npub.clone(),
+                inviter_short: display::short_npub(&c.inviter_npub),
             })
             .collect();
+        let invites_chip_label = display::invites_chip_label(pending_welcomes.len());
 
         let key_package = match inner.key_package_published_at {
             Some(ts) => {
@@ -289,6 +302,7 @@ impl MarmotProjection {
             pending_welcomes,
             key_package,
             cached_kp_pubkeys,
+            invites_chip_label,
         }
     }
 }
