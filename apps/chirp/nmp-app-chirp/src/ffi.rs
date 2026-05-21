@@ -428,9 +428,12 @@ fn nip29_join_request_command(action_json: &str) -> Result<ActorCommand, String>
 ///
 /// SCOPE: NIP-57 has a second leg — the signed kind:9734 must be POSTed to
 /// the recipient's `lnurl` callback over HTTP to obtain a bolt11 invoice the
-/// wallet then pays. The kernel has no LNURL HTTP capability yet, so that
-/// leg is unwired: the `lnurl` field is validated and carried for the future
-/// HTTP executor, but the executor here only handles the Nostr-event leg.
+/// wallet then pays. The kernel now has an LNURL HTTP capability —
+/// `nmp_core::substrate::HttpCapability` — so the transport is unblocked, but
+/// the executor here does NOT yet route through it: the action-registry
+/// executor closure has no access to the kernel's capability slot. The `lnurl`
+/// field is validated and carried; wiring the executor through `HttpCapability`
+/// is a follow-up (see `docs/decisions/0023-http-capability-synchronous-socket.md`).
 fn register_nip57_actions(app: &mut NmpApp) {
     // Module (validator): delegate to the typed `nmp-nip57` `ActionModule`.
     app.register_action_module(ZapModule::NAMESPACE, |action_json| {

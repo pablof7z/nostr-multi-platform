@@ -19,14 +19,23 @@
 //!    bolt11 invoice; the wallet then pays that invoice and the LN provider
 //!    publishes the kind:9735 receipt.
 //!
-//! Leg 2 (the LNURL HTTP round-trip) has **no kernel capability yet** — the
-//! actor only knows how to publish events to Nostr relays, not how to make
-//! HTTP calls to an LNURL endpoint. Until that capability lands, this module
-//! is a *scaffold*: the [`ZapAction::Zap`] carries the `lnurl` field through
-//! validation so a future HTTP executor can consume it, and the executor
-//! publishes the kind:9734 to Nostr relays (the `relays` tag's relays). The
-//! `lnurl` field is validated but not yet dispatched anywhere — see the PR
-//! description for the wiring plan.
+//! Leg 2 (the LNURL HTTP round-trip) now has a kernel capability —
+//! [`nmp_core::substrate::HttpCapability`] (`nmp.http.capability`), the second
+//! `CapabilityModule` after `KeyringCapability`. The transport itself is
+//! therefore **unblocked**: a host (iOS `URLSession`, desktop `reqwest`)
+//! supplies the HTTP leg through the FFI capability socket.
+//!
+//! What is **not** yet wired is the ZapModule *executor* through that
+//! capability. The action-registry executor closure
+//! (`Fn(&str, &str, &dyn Fn(ActorCommand))`) is intentionally given no path
+//! to the kernel's capability slot — reaching it would mean widening the
+//! action-registry machinery, a larger change than this seam warrants. So this
+//! module remains a *scaffold* for the LNURL leg: [`ZapAction::Zap`] carries
+//! the `lnurl` field through validation, and [`zap_request_command`] publishes
+//! the kind:9734 to Nostr relays (the `relays` tag's relays). Issuing the
+//! `HttpCapabilityWiring::get`/`post` round-trip to the `lnurl` endpoint is a
+//! follow-up — see `docs/decisions/0023-http-capability-synchronous-socket.md`
+//! for how that multi-step execution would work and why it is deferred.
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use nmp_core::ActorCommand;
@@ -51,9 +60,10 @@ pub enum ZapAction {
         /// tag (`amount_sats * 1000`).
         amount_sats: u64,
         /// LNURL-pay callback endpoint from the recipient's kind:0
-        /// `lud16`/`lud06`. Carried through validation for the future HTTP
-        /// executor that POSTs the signed kind:9734 here — see the module
-        /// docs: the LNURL HTTP leg is not wired yet.
+        /// `lud16`/`lud06`. Carried through validation for the HTTP executor
+        /// that POSTs the signed kind:9734 here — see the module docs: the
+        /// `HttpCapability` transport exists, but ZapModule's executor wiring
+        /// through it is a follow-up.
         lnurl: String,
         /// Relays the recipient should watch for the kind:9735 receipt. The
         /// kind:9734 `relays` tag is mandatory per NIP-57; it is ALSO the
