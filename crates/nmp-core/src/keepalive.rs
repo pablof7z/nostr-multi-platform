@@ -103,6 +103,16 @@ impl KeepaliveState {
         KeepaliveAction::Idle
     }
 
+    /// Next wall-clock instant at which [`step`] can change state without an
+    /// inbound frame. Callers use this as a blocking deadline, not a poll rate.
+    pub(crate) fn next_deadline(&self) -> Instant {
+        if let Some(sent_at) = self.ping_sent_at {
+            sent_at + self.pong_timeout
+        } else {
+            self.last_inbound_at + self.idle_threshold
+        }
+    }
+
     /// Whether a ping is currently outstanding. Diagnostic-only.
     #[cfg(test)]
     pub(crate) fn ping_in_flight(&self) -> bool {

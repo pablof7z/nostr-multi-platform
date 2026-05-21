@@ -2,15 +2,21 @@ use crate::keepalive::{KeepaliveAction, KeepaliveState};
 use crate::relay::RelayRole;
 use std::collections::VecDeque;
 use std::net::TcpStream;
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::Once;
 use std::thread;
 use std::time::{Duration, Instant};
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{connect, Message, WebSocket};
 
+mod io_ready;
+#[cfg(test)]
+mod no_polling_tests;
+mod socket_io;
 #[cfg(test)]
 mod tests;
+
+use socket_io::{drain_relay_reads, flush_relay_writes, flush_socket_message, FlushResult};
 
 /// One physical relay-worker event.
 ///
@@ -86,7 +92,6 @@ enum RelayWorkerResult {
 }
 
 type RelaySocket = WebSocket<MaybeTlsStream<TcpStream>>;
-const RELAY_READ_TIMEOUT: Duration = Duration::from_millis(50);
 /// Initial mid-session reconnect delay. Doubled on each consecutive failure
 /// up to [`RELAY_RECONNECT_DELAY_MAX`]; reset to this value on a successful
 /// connect.
@@ -184,6 +189,7 @@ fn run_relay_worker(
 ) {
     let mut pending = VecDeque::new();
     let mut backoff = RELAY_RECONNECT_DELAY_INITIAL;
+    let control = io_ready::spawn_control_inbox(control_rx);
     loop {
         match open_relay_socket(&relay_url) {
             Ok(mut socket) => {
@@ -207,7 +213,7 @@ fn run_relay_worker(
                     &relay_url,
                     generation,
                     &relay_tx,
-                    &control_rx,
+                    &control,
                     &mut pending,
                     &mut socket,
                     &mut keepalive,
@@ -220,7 +226,7 @@ fn run_relay_worker(
                         // T116c / G12: jitter spreads simultaneous reconnects
                         // across a [0, 5s] window to avoid global thundering-herd.
                         if !wait_before_reconnect(
-                            &control_rx,
+                            &control,
                             &mut pending,
                             jittered_backoff(backoff, &relay_url),
                         ) {
@@ -250,7 +256,7 @@ fn run_relay_worker(
                 // T116c / G12: jitter spreads simultaneous reconnects
                 // across a [0, 5s] window to avoid global thundering-herd.
                 if !wait_before_reconnect(
-                    &control_rx,
+                    &control,
                     &mut pending,
                     jittered_backoff(backoff, &relay_url),
                 ) {
@@ -268,50 +274,72 @@ fn run_connected_relay(
     relay_url: &str,
     generation: u64,
     relay_tx: &Sender<RelayEvent>,
-    control_rx: &Receiver<RelayCommand>,
+    control: &io_ready::ControlInbox,
     pending: &mut VecDeque<String>,
     socket: &mut RelaySocket,
     keepalive: &mut KeepaliveState,
 ) -> RelayWorkerResult {
-    loop {
-        let mut shutdown = false;
-        loop {
-            match control_rx.try_recv() {
-                Ok(RelayCommand::Send(text)) => pending.push_back(text),
-                Ok(RelayCommand::Shutdown) => shutdown = true,
-                Err(TryRecvError::Empty) => break,
-                Err(TryRecvError::Disconnected) => return RelayWorkerResult::Shutdown,
-            }
-        }
-
-        if !flush_relay_writes(role, relay_url, generation, relay_tx, pending, socket) {
-            return RelayWorkerResult::Reconnect;
-        }
-        if shutdown {
-            let _ = socket.close(None);
-            let _ = relay_tx.send(RelayEvent::Closed {
+    let (mut poller, _wake_guard) = match io_ready::RelayPoller::new(socket, control) {
+        Ok(poller) => poller,
+        Err(error) => {
+            let _ = relay_tx.send(RelayEvent::Failed {
                 role,
                 relay_url: relay_url.to_string(),
                 generation,
+                error: format!("relay readiness setup failed: {error}"),
             });
-            return RelayWorkerResult::Shutdown;
+            return RelayWorkerResult::Reconnect;
+        }
+    };
+    loop {
+        match control.drain_pending(pending) {
+            io_ready::ControlDrain::Continue => {}
+            io_ready::ControlDrain::Shutdown => {
+                let _ = socket.close(None);
+                let _ = relay_tx.send(RelayEvent::Closed {
+                    role,
+                    relay_url: relay_url.to_string(),
+                    generation,
+                });
+                return RelayWorkerResult::Shutdown;
+            }
+            io_ready::ControlDrain::Disconnected => return RelayWorkerResult::Shutdown,
         }
 
-        // T120b — drive the keepalive FSM each iteration. The read loop polls
-        // at ~20 Hz (50ms timeout), so a Ping fires within one tick of the
-        // 30s idle threshold and Dead is observed within one tick of the
-        // 30s pong window. No additional timer needed.
+        let mut wants_write =
+            match flush_relay_writes(role, relay_url, generation, relay_tx, pending, socket) {
+                FlushResult::Flushed => false,
+                FlushResult::Blocked => true,
+                FlushResult::Reconnect => return RelayWorkerResult::Reconnect,
+            };
+        if let Err(error) = poller.set_wants_write(socket, wants_write) {
+            let _ = relay_tx.send(RelayEvent::Failed {
+                role,
+                relay_url: relay_url.to_string(),
+                generation,
+                error: format!("relay readiness update failed: {error}"),
+            });
+            return RelayWorkerResult::Reconnect;
+        }
+
+        // T120b — drive keepalive from explicit readiness deadlines. The
+        // worker blocks until the socket is ready, a control command wakes it,
+        // or the keepalive FSM's next deadline arrives.
         match keepalive.step(Instant::now()) {
             KeepaliveAction::Idle => {}
             KeepaliveAction::EmitPing => {
-                if let Err(error) = socket.send(Message::Ping(Vec::new())) {
-                    let _ = relay_tx.send(RelayEvent::Failed {
-                        role,
-                        relay_url: relay_url.to_string(),
-                        generation,
-                        error: format!("ping write failed: {error}"),
-                    });
-                    return RelayWorkerResult::Reconnect;
+                match flush_socket_message(socket, Message::Ping(Vec::new())) {
+                    FlushResult::Flushed => wants_write = false,
+                    FlushResult::Blocked => wants_write = true,
+                    FlushResult::Reconnect => {
+                        let _ = relay_tx.send(RelayEvent::Failed {
+                            role,
+                            relay_url: relay_url.to_string(),
+                            generation,
+                            error: "ping write failed".to_string(),
+                        });
+                        return RelayWorkerResult::Reconnect;
+                    }
                 }
             }
             KeepaliveAction::Dead => {
@@ -325,82 +353,46 @@ fn run_connected_relay(
             }
         }
 
-        match socket.read() {
-            Ok(message) => {
-                // T120b — any inbound frame counts as a keepalive signal,
-                // including Pong replies. Pong frames are swallowed here
-                // (they're transport-layer artifacts; ingest already ignores
-                // them, but skipping the send avoids the round-trip + log
-                // noise). Ping frames from the relay must be replied to;
-                // tungstenite buffers an automatic Pong response that goes
-                // out on the next write. We pass Ping through too so any
-                // pending automatic Pong gets flushed via the write path.
-                keepalive.on_inbound(Instant::now());
-                if matches!(message, Message::Pong(_)) {
-                    continue;
-                }
-                if relay_tx
-                    .send(RelayEvent::Message {
-                        role,
-                        relay_url: relay_url.to_string(),
-                        generation,
-                        message,
-                    })
-                    .is_err()
-                {
-                    return RelayWorkerResult::Shutdown;
-                }
-            }
-            Err(tungstenite::Error::Io(error))
-                if matches!(
-                    error.kind(),
-                    std::io::ErrorKind::WouldBlock
-                        | std::io::ErrorKind::TimedOut
-                        | std::io::ErrorKind::Interrupted
-                ) => {}
-            Err(error) => {
-                let error_str = error.to_string();
-                let permanent = is_permanent_error(&error_str);
-                let _ = relay_tx.send(RelayEvent::Failed {
-                    role,
-                    relay_url: relay_url.to_string(),
-                    generation,
-                    error: error_str,
-                });
-                if permanent {
-                    return RelayWorkerResult::PermanentFailure;
-                }
-                return RelayWorkerResult::Reconnect;
-            }
-        }
-    }
-}
-
-fn flush_relay_writes(
-    role: RelayRole,
-    relay_url: &str,
-    generation: u64,
-    relay_tx: &Sender<RelayEvent>,
-    pending: &mut VecDeque<String>,
-    socket: &mut RelaySocket,
-) -> bool {
-    while let Some(text) = pending.pop_front() {
-        if let Err(error) = socket.send(Message::Text(text.clone())) {
-            pending.push_front(text);
+        if let Err(error) = poller.set_wants_write(socket, wants_write) {
             let _ = relay_tx.send(RelayEvent::Failed {
                 role,
                 relay_url: relay_url.to_string(),
                 generation,
-                error: error.to_string(),
+                error: format!("relay readiness update failed: {error}"),
             });
-            return false;
+            return RelayWorkerResult::Reconnect;
+        }
+
+        let timeout = keepalive
+            .next_deadline()
+            .saturating_duration_since(Instant::now());
+        let ready = match poller.wait(timeout) {
+            Ok(ready) => ready,
+            Err(error) => {
+                let _ = relay_tx.send(RelayEvent::Failed {
+                    role,
+                    relay_url: relay_url.to_string(),
+                    generation,
+                    error: format!("relay readiness wait failed: {error}"),
+                });
+                return RelayWorkerResult::Reconnect;
+            }
+        };
+        if ready.control || ready.writable {
+            continue;
+        }
+        if ready.readable {
+            if let Some(result) =
+                drain_relay_reads(role, relay_url, generation, relay_tx, socket, keepalive)
+            {
+                return result;
+            }
         }
     }
-    true
 }
 
 fn wait_before_reconnect(
-    control_rx: &Receiver<RelayCommand>,
+    control: &io_ready::ControlInbox,
     pending: &mut VecDeque<String>,
     delay: Duration,
 ) -> bool {
@@ -412,8 +404,7 @@ fn wait_before_reconnect(
         if remaining.is_zero() {
             return true;
         }
-        let wait = remaining.min(Duration::from_millis(100));
-        match control_rx.recv_timeout(wait) {
+        match control.recv_timeout(remaining) {
             Ok(RelayCommand::Send(text)) => pending.push_back(text),
             Ok(RelayCommand::Shutdown) => return false,
             Err(RecvTimeoutError::Timeout) => {}
@@ -424,8 +415,7 @@ fn wait_before_reconnect(
 
 fn open_relay_socket(relay_url: &str) -> Result<RelaySocket, String> {
     install_rustls_provider();
-    let (mut socket, _response) = connect(relay_url).map_err(|error| error.to_string())?;
-    set_read_timeout(&mut socket, RELAY_READ_TIMEOUT);
+    let (socket, _response) = connect(relay_url).map_err(|error| error.to_string())?;
     Ok(socket)
 }
 
@@ -434,19 +424,4 @@ fn install_rustls_provider() {
     INSTALL.call_once(|| {
         let _ = rustls::crypto::ring::default_provider().install_default();
     });
-}
-
-fn set_read_timeout(socket: &mut RelaySocket, duration: Duration) {
-    match socket.get_mut() {
-        MaybeTlsStream::Plain(stream) => {
-            let _ = stream.set_read_timeout(Some(duration));
-        }
-        MaybeTlsStream::Rustls(stream) => {
-            let tcp = stream.get_ref();
-            let _ = tcp.set_read_timeout(Some(duration));
-        }
-        // Stream type may have additional TLS variants in future tungstenite versions.
-        #[allow(unreachable_patterns)]
-        _ => {}
-    }
 }
