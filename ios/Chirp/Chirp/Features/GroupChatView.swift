@@ -21,6 +21,9 @@ struct GroupChatView: View {
     @ObservedObject var store: GroupChatStore
 
     @State private var draft = ""
+    /// The message currently being replied to, or `nil` for a plain post.
+    /// Set by a context-menu "Reply" tap; cleared on send or banner dismiss.
+    @State private var replyTarget: GroupChatMessage?
     @FocusState private var composerFocused: Bool
 
     private var trimmedDraft: String {
@@ -56,7 +59,17 @@ struct GroupChatView: View {
                     // The projection emits newest-first; render in that
                     // order — no Swift-side re-sort (thin-shell rule).
                     ForEach(store.messages) { message in
-                        GroupChatMessageRow(message: message)
+                        GroupChatMessageRow(
+                            message: message,
+                            onReact: {
+                                store.reactToMessage(
+                                    eventId: message.id,
+                                    eventAuthorPubkey: message.pubkey)
+                            },
+                            onReply: {
+                                replyTarget = message
+                                composerFocused = true
+                            })
                     }
                 }
                 .padding(.vertical, 4)
@@ -67,6 +80,54 @@ struct GroupChatView: View {
     // ── Composer ──────────────────────────────────────────────────────────
 
     private var composer: some View {
+        VStack(spacing: 0) {
+            replyBanner
+            composerInput
+        }
+        .background(ChirpColor.bg)
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    /// "Replying to…" banner shown above the composer when a reply target is
+    /// set. Tapping the dismiss chip clears the target — the next send reverts
+    /// to a plain kind:9 chat message.
+    @ViewBuilder
+    private var replyBanner: some View {
+        if let replyTarget {
+            HStack(spacing: 8) {
+                Image(systemName: "arrowshape.turn.up.left.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Replying to \(shortPubkey(replyTarget.pubkey))")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    Text(replyTarget.content)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                Button {
+                    self.replyTarget = nil
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Cancel reply")
+                .accessibilityIdentifier("group-chat-cancel-reply-button")
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(.quaternary)
+            .accessibilityIdentifier("group-chat-reply-banner")
+            .overlay(alignment: .bottom) { Divider() }
+        }
+    }
+
+    private var composerInput: some View {
         HStack(alignment: .bottom, spacing: 8) {
             TextEditor(text: $draft)
                 .focused($composerFocused)
@@ -100,8 +161,6 @@ struct GroupChatView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(ChirpColor.bg)
-        .overlay(alignment: .top) { Divider() }
     }
 
     private func sendDraft() {
@@ -109,16 +168,31 @@ struct GroupChatView: View {
         guard !text.isEmpty else { return }
         // Fire-and-forget: the sent message reappears via the next snapshot
         // tick. Clearing the draft optimistically matches `ComposeView` /
-        // `MarmotGroupChatView`.
-        store.sendMessage(text)
+        // `MarmotGroupChatView`. A non-nil `replyTarget` routes the send to
+        // `nip29.comment_in_group` (a kind:1111 reply); the verb choice is
+        // the store's, not the view's (thin-shell rule).
+        store.sendMessage(text, replyToEventId: replyTarget?.id)
         draft = ""
+        replyTarget = nil
     }
+}
+
+/// Truncated hex pubkey: `abcdef01…23456789`. Shared by `GroupChatMessageRow`
+/// and the reply banner; no npub decoding (thin-shell: no protocol logic).
+private func shortPubkey(_ hex: String) -> String {
+    guard hex.count >= 16 else { return hex }
+    return "\(hex.prefix(8))…\(hex.suffix(8))"
 }
 
 // ── Message row ───────────────────────────────────────────────────────────
 
 private struct GroupChatMessageRow: View {
     let message: GroupChatMessage
+    /// Long-press → "React ❤️": dispatches `nip29.react_in_group`.
+    let onReact: () -> Void
+    /// Long-press → "Reply": arms the composer's reply target so the next
+    /// send dispatches `nip29.comment_in_group`.
+    let onReply: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -150,22 +224,35 @@ private struct GroupChatMessageRow: View {
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 14)
+        .contentShape(Rectangle())
         .overlay(alignment: .bottom) {
             Divider().padding(.leading, 44)
         }
         .accessibilityIdentifier("group-chat-message-\(message.id)")
+        // Long-press context menu — the only entry point for the two NIP-29
+        // composed actions. The menu items only marshal intent; the kind:7 /
+        // kind:1111 event shapes are Rust-owned (thin-shell rule).
+        .contextMenu {
+            Button {
+                onReact()
+            } label: {
+                Label("React ❤️", systemImage: "heart")
+            }
+            .accessibilityIdentifier("group-chat-react-button")
+
+            Button {
+                onReply()
+            } label: {
+                Label("Reply", systemImage: "arrowshape.turn.up.left")
+            }
+            .accessibilityIdentifier("group-chat-reply-button")
+        }
     }
 
     /// First two hex chars of the author pubkey — a cheap deterministic
     /// avatar label. No npub decoding (thin-shell: no protocol logic).
     private var initials: String {
         String(message.pubkey.prefix(2)).uppercased()
-    }
-
-    /// Truncated hex pubkey: `abcdef01…23456789`.
-    private func shortPubkey(_ hex: String) -> String {
-        guard hex.count >= 16 else { return hex }
-        return "\(hex.prefix(8))…\(hex.suffix(8))"
     }
 
     private func relativeTime(_ unixSecs: UInt64) -> String {
