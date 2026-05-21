@@ -330,6 +330,15 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     let wallet_status = crate::actor::new_wallet_status_slot();
     #[cfg(feature = "wallet")]
     let actor_wallet_status = Arc::clone(&wallet_status);
+    // D0: NIP-46 remote signing is an app noun. The shared bunker-handshake
+    // slot is handed to the actor: `run_actor_with_observers` both gives one
+    // `Arc` clone to the actor's `IdentityRuntime` (the sole writer, D4) and
+    // registers the built-in `"bunker_handshake"` snapshot-projection closure
+    // that reads the other clone. Handshake state therefore reaches the host
+    // through `projections["bunker_handshake"]` instead of a baked-in
+    // `KernelSnapshot` field — and every actor consumer (FFI or test) gets the
+    // projection without a separate FFI registration step.
+    let actor_bunker_handshake = crate::actor::new_bunker_handshake_slot();
     // Shared relay-edit rows handle. Cloned to the actor thread and bound
     // onto the kernel so external Rust callers can read the user's current
     // relay list without crossing FFI.
@@ -378,6 +387,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
                 // (registered below) reads the matching clone.
                 #[cfg(feature = "wallet")]
                 actor_wallet_status,
+                // D0: NIP-46 remote signing is an app noun — the
+                // bunker-handshake slot the actor's `IdentityRuntime` writes;
+                // the `"bunker_handshake"` projection (registered below) reads
+                // the matching clone.
+                actor_bunker_handshake,
                 actor_relay_edit_rows,
                 actor_active_local_nsec,
                 actor_capability_callback,
@@ -463,6 +477,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             Err(_) => serde_json::Value::Null,
         }
     });
+
+    // D0 — the built-in `"bunker_handshake"` projection is registered inside
+    // `run_actor_with_observers` (at the actor wiring site), not here: it
+    // reads the actor-owned bunker-handshake slot, so every actor consumer
+    // (FFI or test) gets the projection without a separate FFI step.
 
     Box::into_raw(Box::new(app))
 }

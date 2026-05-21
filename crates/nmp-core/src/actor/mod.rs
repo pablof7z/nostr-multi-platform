@@ -51,6 +51,11 @@ pub(crate) use commands::{
     register_c_observer, register_rust_observer, unregister_observer, KernelEventObserverSlot,
     LifecycleObserverRegistration, LifecycleObserverSlot,
 };
+// D0: NIP-46 remote signing is an app noun — the bunker-handshake slot is
+// re-exported so the `ffi` module can build it, hand one clone to the actor's
+// `IdentityRuntime`, and capture the other in the built-in
+// `"bunker_handshake"` snapshot-projection closure.
+pub(crate) use commands::{new_bunker_handshake_slot, BunkerHandshakeSlot};
 // `pub` (not `pub(crate)`) so the `lib.rs` test-support re-export reaches
 // integration tests outside the crate. The `actor` module itself is
 // crate-private (`mod actor;` in `lib.rs`), so external Rust callers still
@@ -394,6 +399,10 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
         // the slot is a private throwaway (no host reads it).
         #[cfg(feature = "wallet")]
         new_wallet_status_slot(),
+        // D0: NIP-46 remote signing is an app noun — likewise a private
+        // throwaway bunker-handshake slot (no FFI surface to register the
+        // `"bunker_handshake"` projection here).
+        new_bunker_handshake_slot(),
         Arc::new(Mutex::new(Vec::new())),
         Arc::new(Mutex::new(None)),
         new_capability_callback_slot(),
@@ -423,6 +432,9 @@ pub fn run_actor_with_lifecycle_observer(
         // `"wallet"` projection, so the slot is a private throwaway.
         #[cfg(feature = "wallet")]
         new_wallet_status_slot(),
+        // D0: NIP-46 remote signing is an app noun — private throwaway
+        // bunker-handshake slot (no FFI surface here).
+        new_bunker_handshake_slot(),
         Arc::new(Mutex::new(Vec::new())),
         Arc::new(Mutex::new(None)),
         new_capability_callback_slot(),
@@ -460,6 +472,11 @@ pub fn run_actor_with_observers(
     // sole writer (D4). Gated behind the `wallet` feature so the
     // protocol-neutral build carries no NWC plumbing.
     #[cfg(feature = "wallet")] wallet_status: WalletStatusSlot,
+    // D0: NIP-46 remote signing is an app noun — the shared bunker-handshake
+    // slot. One `Arc` clone is captured by the built-in `"bunker_handshake"`
+    // snapshot-projection closure on the `NmpApp`; this one is handed to the
+    // actor's `IdentityRuntime`, which is the sole writer (D4).
+    bunker_handshake: BunkerHandshakeSlot,
     relay_edit_rows: Arc<Mutex<Vec<crate::kernel::RelayEditRow>>>,
     active_local_nsec: Arc<Mutex<Option<zeroize::Zeroizing<String>>>>,
     capability_callback: CapabilityCallbackSlot,
@@ -527,12 +544,42 @@ pub fn run_actor_with_observers(
     // shared handles do so host projections stay live across a kernel
     // rebuild.
     kernel.set_snapshot_projection_handle(Arc::clone(&snapshot_projections));
+    // D0 — register the built-in `"bunker_handshake"` snapshot projection.
+    // NIP-46 remote signing is an app noun, so handshake state is NOT a typed
+    // `KernelSnapshot` field — it is projected under
+    // `projections["bunker_handshake"]` exactly like a host-registered
+    // namespace. The closure reads the shared bunker-handshake slot the
+    // actor's `IdentityRuntime` writes; it runs on every snapshot tick (D8:
+    // cheap, non-blocking — a single lock-and-clone). When no handshake is in
+    // flight the slot holds `None` and the closure contributes JSON `null`,
+    // preserving the "key present, value null when idle" semantic the SwiftUI
+    // sign-in flow decodes. Registered here (the actor wiring site) rather than
+    // on the FFI surface so every actor consumer — FFI or test — gets it.
+    {
+        let projection_slot = Arc::clone(&bunker_handshake);
+        if let Ok(mut registry) = snapshot_projections.lock() {
+            registry.register("bunker_handshake", move || {
+                // D6: a poisoned bunker-handshake mutex recovers via
+                // `into_inner` rather than panicking inside the snapshot tick.
+                let slot = projection_slot.lock().unwrap_or_else(|e| e.into_inner());
+                slot.as_ref()
+                    .map(|dto| {
+                        serde_json::to_value(dto).unwrap_or(serde_json::Value::Null)
+                    })
+                    .unwrap_or(serde_json::Value::Null)
+            });
+        }
+    }
     // Bind the shared relay-edit rows handle so external Rust callers
     // (e.g. `nmp-app-chirp` Marmot dispatch) can read the user's current
     // relay list without crossing FFI. Survives `Reset` the same way as
     // the other shared handles.
     kernel.set_relay_edit_rows_handle(Arc::clone(&relay_edit_rows));
-    let mut identity = IdentityRuntime::new();
+    // D4: the identity runtime is the sole writer of the shared
+    // bunker-handshake slot. The built-in `"bunker_handshake"` snapshot
+    // projection registered above reads the same `Arc<Mutex<…>>` clone on
+    // every tick.
+    let mut identity = IdentityRuntime::new(bunker_handshake);
     // D4: the wallet runtime is the sole writer of the shared wallet-status
     // slot. The `"wallet"` snapshot projection (registered on `NmpApp`) reads
     // the same `Arc<Mutex<…>>` clone on every tick.

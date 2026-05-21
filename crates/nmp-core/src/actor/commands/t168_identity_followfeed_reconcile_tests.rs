@@ -20,7 +20,10 @@ const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9l
 const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 fn fresh() -> (IdentityRuntime, Kernel) {
-    (IdentityRuntime::new(), Kernel::new(DEFAULT_VISIBLE_LIMIT))
+    (
+        IdentityRuntime::new(new_bunker_handshake_slot()),
+        Kernel::new(DEFAULT_VISIBLE_LIMIT),
+    )
 }
 
 /// Sign in account A, register A's kind:3 follow set (follows ALICE), and

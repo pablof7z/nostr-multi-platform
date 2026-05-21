@@ -6,18 +6,58 @@
 //! mutation, then emitted.
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use nmp_signer_iface::SignerOp;
 use nostr::nips::nip19::{FromBech32, ToBech32};
 use nostr::{EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
+use serde::{Deserialize, Serialize};
 
 use crate::actor::{canonical_relay_role, has_role};
-use crate::kernel::{AccountSummary, BunkerHandshakeDto, Kernel, RelayEditRow};
+use crate::kernel::{AccountSummary, Kernel, RelayEditRow};
 use crate::relay::{canonical_relay_url, OutboundMessage};
 use crate::remote_signer::RemoteSignerHandle;
 use crate::substrate::{SignedEvent, UnsignedEvent};
+
+/// NIP-46 bunker handshake progress — the app noun projected onto the snapshot
+/// under `projections["bunker_handshake"]`.
+///
+/// D0: NIP-46 remote signing is an app noun, not a kernel primitive. This type
+/// lives in the identity command runtime (the actor layer), NOT in
+/// `KernelSnapshot`. The actor writes it to a [`BunkerHandshakeSlot`]; a
+/// built-in snapshot projection serializes it into the snapshot's
+/// `projections` map every tick (D0 — the kernel emits, never names an app
+/// noun).
+///
+/// `Deserialize` is retained so Swift codegen / round-trip tests can decode it.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub(crate) struct BunkerHandshakeDto {
+    /// `"connecting"` | `"awaiting_pubkey"` | `"ready"` | `"failed"` | `"idle"`
+    /// (the wire never carries `"idle"`; the actor maps it to `None`).
+    pub(crate) stage: String,
+    /// Optional human-readable status (e.g. relay URL, error reason).
+    pub(crate) message: Option<String>,
+}
+
+/// Shared bunker-handshake slot — the output side of the bunker projection.
+///
+/// One `Arc` clone lives on the actor's [`IdentityRuntime`] (the sole writer,
+/// D4); another is captured by the built-in `"bunker_handshake"`
+/// snapshot-projection closure registered on `NmpApp`. The projection reads
+/// this slot on every snapshot tick and serializes its contents into
+/// `KernelSnapshot::projections`.
+///
+/// `None` (the default) means no handshake is in flight — the projection then
+/// contributes JSON `null` under the `"bunker_handshake"` key, preserving the
+/// "key present, value null when idle" semantic the SwiftUI sign-in flow
+/// already decodes (an explicit `"idle"` stage from the broker maps to `None`).
+pub(crate) type BunkerHandshakeSlot = Arc<Mutex<Option<BunkerHandshakeDto>>>;
+
+/// Construct a fresh, empty [`BunkerHandshakeSlot`].
+pub(crate) fn new_bunker_handshake_slot() -> BunkerHandshakeSlot {
+    Arc::new(Mutex::new(None))
+}
 
 /// `SignerOp::wait` timeout for remote-signer signs.
 ///
@@ -51,16 +91,54 @@ pub(crate) struct IdentityRuntime {
     remote_signers: HashMap<IdentityId, Box<dyn RemoteSignerHandle>>,
     order: Vec<IdentityId>,
     active: Option<IdentityId>,
+    /// Shared output slot for the bunker-handshake projection. The actor (this
+    /// runtime) is the sole writer (D4); the built-in `"bunker_handshake"`
+    /// snapshot projection reads it. D0: NIP-46 remote signing is an app noun,
+    /// so handshake state is NOT a typed `KernelSnapshot` field.
+    bunker_handshake: BunkerHandshakeSlot,
 }
 
 impl IdentityRuntime {
-    pub(crate) fn new() -> Self {
+    /// Construct an identity runtime bound to a shared bunker-handshake slot.
+    ///
+    /// `bunker_handshake` is the `Arc<Mutex<…>>` the actor writes handshake
+    /// progress into and the built-in `"bunker_handshake"` snapshot projection
+    /// reads from. The two `Arc` clones share one inner `Mutex`, so an actor
+    /// write is visible to the projection closure on the next tick without
+    /// crossing the FFI boundary.
+    pub(crate) fn new(bunker_handshake: BunkerHandshakeSlot) -> Self {
         Self {
             keys: HashMap::new(),
             remote_signers: HashMap::new(),
             order: Vec::new(),
             active: None,
+            bunker_handshake,
         }
+    }
+
+    /// Write the latest bunker-handshake state into the shared projection slot
+    /// (D4: actor is sole writer). A poisoned mutex recovers via
+    /// `into_inner` rather than panicking the actor thread (D6).
+    fn set_bunker_handshake(&self, value: Option<BunkerHandshakeDto>) {
+        let mut slot = self
+            .bunker_handshake
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        *slot = value;
+    }
+
+    /// Test-only read of the current bunker-handshake projection state.
+    ///
+    /// Production code never reads this slot through the runtime — the
+    /// `"bunker_handshake"` snapshot projection holds the other `Arc` clone and
+    /// reads it directly. This accessor exists purely so the command-path unit
+    /// tests can assert on the handshake state the actor wrote.
+    #[cfg(test)]
+    pub(crate) fn bunker_handshake_for_test(&self) -> Option<BunkerHandshakeDto> {
+        self.bunker_handshake
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     fn add(&mut self, keys: Keys) -> IdentityId {
@@ -715,9 +793,16 @@ pub(crate) fn remove_remote_signer(
 }
 
 /// Broker → actor: latest NIP-46 handshake progress. Stage `"idle"` clears
-/// the projection; everything else replaces it (snapshot diff handled by the
-/// setter — no emit if unchanged).
+/// the projection; everything else replaces it.
+///
+/// D0: the handshake state is an app noun, so it is written to the shared
+/// [`BunkerHandshakeSlot`] (read by the `"bunker_handshake"` snapshot
+/// projection) instead of a typed `KernelSnapshot` field. The slot write does
+/// NOT flip `changed_since_emit`, so the kernel is marked dirty explicitly —
+/// otherwise the refreshed projection could sit unemitted until an unrelated
+/// kernel mutation triggered a tick.
 pub(crate) fn bunker_handshake_progress(
+    identity: &IdentityRuntime,
     kernel: &mut Kernel,
     stage: String,
     message: Option<String>,
@@ -727,10 +812,11 @@ pub(crate) fn bunker_handshake_progress(
     } else {
         Some(BunkerHandshakeDto { stage, message })
     };
-    kernel.set_bunker_handshake(value);
+    identity.set_bunker_handshake(value);
+    kernel.mark_changed_since_emit();
 }
 
-pub(crate) fn sign_in_bunker(kernel: &mut Kernel, uri: &str) {
+pub(crate) fn sign_in_bunker(identity: &IdentityRuntime, kernel: &mut Kernel, uri: &str) {
     // Stage 3 of NIP-46 wiring: actor exposes handshake-progress snapshot.
     // Stage 4 of NIP-46 wiring: actor delegates the handshake to a broker
     // registered via `crate::bunker_hook::register_bunker_hook`.
@@ -748,29 +834,35 @@ pub(crate) fn sign_in_bunker(kernel: &mut Kernel, uri: &str) {
         ));
         return;
     }
-    kernel.set_bunker_handshake(Some(BunkerHandshakeDto {
+    identity.set_bunker_handshake(Some(BunkerHandshakeDto {
         stage: "connecting".to_string(),
         message: Some("Waiting for broker...".to_string()),
     }));
+    kernel.mark_changed_since_emit();
     if !crate::bunker_hook::invoke_bunker_connect_hook(uri) {
         // Defence against init-order bugs: the broker should be registered
         // before any URI can reach the actor. If it isn't, surface a clear
         // toast and clear the progress projection (D6 — error becomes state,
         // never panic across FFI).
-        kernel.set_bunker_handshake(None);
+        identity.set_bunker_handshake(None);
         kernel.set_last_error_toast(Some(
             "NIP-46 broker not initialised — call nmp_signer_broker_init".to_string(),
         ));
     }
 }
 
-pub(crate) fn restore_bunker_session(kernel: &mut Kernel, payload_json: &str) {
-    kernel.set_bunker_handshake(Some(BunkerHandshakeDto {
+pub(crate) fn restore_bunker_session(
+    identity: &IdentityRuntime,
+    kernel: &mut Kernel,
+    payload_json: &str,
+) {
+    identity.set_bunker_handshake(Some(BunkerHandshakeDto {
         stage: "connecting".to_string(),
         message: Some("Restoring broker session...".to_string()),
     }));
+    kernel.mark_changed_since_emit();
     if !crate::bunker_hook::invoke_bunker_restore_hook(payload_json) {
-        kernel.set_bunker_handshake(None);
+        identity.set_bunker_handshake(None);
         kernel.set_last_error_toast(Some(
             "NIP-46 broker not initialised — call nmp_signer_broker_init".to_string(),
         ));

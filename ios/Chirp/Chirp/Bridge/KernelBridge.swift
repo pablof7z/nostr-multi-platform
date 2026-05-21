@@ -463,16 +463,37 @@ struct KernelUpdate: Decodable {
     let publishOutbox: [PublishOutboxItem]?
     let lastErrorToast: String?
     let relayEditRows: [RelayEditRow]?
-    // NIP-47 wallet projection. Optional so older kernels still decode (D1).
-    let walletStatus: WalletStatusData?
-    // NIP-46 bunker handshake progress (Stage 3 backend emits this).
-    // Optional so older kernels still decode (D1).
+    // D0: NIP-47 NWC and NIP-46 remote signing are app nouns — neither is a
+    // typed `KernelSnapshot` field anymore. Both are surfaced through the
+    // kernel's host-extensible `projections` map: a built-in `"wallet"`
+    // projection and a built-in `"bunker_handshake"` projection. Optional so
+    // an older kernel that elides the map still decodes (D1).
+    let projections: SnapshotProjections?
+
+    /// NIP-47 wallet projection — `projections["wallet"]`. Computed so call
+    /// sites (`KernelModel`) keep reading `update.walletStatus` unchanged.
+    var walletStatus: WalletStatusData? { projections?.wallet }
+
+    /// NIP-46 bunker handshake progress — `projections["bunker_handshake"]`.
+    /// Computed so call sites keep reading `update.bunkerHandshake` unchanged.
+    var bunkerHandshake: BunkerHandshake? { projections?.bunkerHandshake }
+}
+
+/// The kernel's host-extensible `projections` map. Each built-in app-noun
+/// projection (NWC wallet, NIP-46 bunker handshake) appears here under its own
+/// namespaced key instead of a typed `KernelSnapshot` field (D0 — the
+/// protocol-neutral kernel emits app nouns only through this map). Every member
+/// is optional: a projection contributes JSON `null` when its feature is idle,
+/// and the whole map is absent on an older kernel build.
+struct SnapshotProjections: Decodable, Equatable {
+    let wallet: WalletStatusData?
     let bunkerHandshake: BunkerHandshake?
 }
 
-/// NIP-46 (`bunker://`) handshake progress, projected from the kernel snapshot.
-/// Stage values: `"connecting"`, `"awaiting_pubkey"`, `"ready"`, `"failed"`,
-/// `"idle"`. `message` is a human-readable progress / error hint.
+/// NIP-46 (`bunker://`) handshake progress, projected from the kernel snapshot
+/// under `projections["bunker_handshake"]`. Stage values: `"connecting"`,
+/// `"awaiting_pubkey"`, `"ready"`, `"failed"`, `"idle"`. `message` is a
+/// human-readable progress / error hint.
 struct BunkerHandshake: Decodable, Equatable {
     let stage: String
     let message: String?

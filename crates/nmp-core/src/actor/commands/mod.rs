@@ -25,11 +25,15 @@
 //! RemoteSignerHandle>` once the broker has completed the handshake:
 //!
 //! - `ActorCommand::SignInBunker { uri }` — actor shape-validates the URI
-//!   and seeds `kernel.bunker_handshake` with `"connecting"`. The broker
-//!   then drives the real handshake on its own relay client.
+//!   and seeds the identity runtime's bunker-handshake slot with
+//!   `"connecting"`. The broker then drives the real handshake on its own
+//!   relay client. D0: NIP-46 remote signing is an app noun, so handshake
+//!   state is NOT a typed `KernelSnapshot` field — it is surfaced through the
+//!   built-in `"bunker_handshake"` snapshot projection.
 //! - `ActorCommand::BunkerHandshakeProgress { stage, message }` — broker
 //!   pushes progress (`"connecting"` → `"awaiting_pubkey"` → `"ready"` /
-//!   `"failed"`); the actor reflects it on the snapshot.
+//!   `"failed"`); the actor reflects it into the bunker-handshake slot the
+//!   `"bunker_handshake"` projection reads.
 //! - `ActorCommand::AddRemoteSigner { handle }` — once the handshake
 //!   completes (the broker has the user's pubkey from `get_public_key`),
 //!   it hands the fully-initialized handle to the actor. The actor
@@ -75,6 +79,12 @@ pub(super) use identity::{
     remove_remote_signer, restore_bunker_session, sign_in_bunker, sign_in_nsec, switch_active,
     IdentityRuntime,
 };
+// D0: NIP-46 remote signing is an app noun — the bunker-handshake slot + its
+// constructor are re-exported (crate-wide) so the `ffi` module can build the
+// shared slot and register the built-in `"bunker_handshake"` snapshot
+// projection. `BunkerHandshakeDto` stays `identity`-private — callers drive it
+// only through `bunker_handshake_progress` / `sign_in_bunker`.
+pub(crate) use identity::{new_bunker_handshake_slot, BunkerHandshakeSlot};
 pub(super) use lifecycle::handle_lifecycle_event;
 pub(crate) use lifecycle::{
     new_observer_slot, LifecycleObserverRegistration, LifecycleObserverSlot,

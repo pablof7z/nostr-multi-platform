@@ -19,7 +19,10 @@ const SEED_NPUB_HEX: &str = "fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0
 const FIATJAF_HEX: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 
 fn fresh() -> (IdentityRuntime, Kernel) {
-    (IdentityRuntime::new(), Kernel::new(DEFAULT_VISIBLE_LIMIT))
+    (
+        IdentityRuntime::new(new_bunker_handshake_slot()),
+        Kernel::new(DEFAULT_VISIBLE_LIMIT),
+    )
 }
 
 fn onboarding_relays() -> Vec<(String, String)> {
