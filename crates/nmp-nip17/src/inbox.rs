@@ -24,7 +24,7 @@
 //! The kernel's `KernelEventObserver` delivers a sig-stripped, projection-
 //! stable `KernelEvent`. NIP-44 decryption needs the *whole* signed event
 //! verbatim (`sig` included), so the inbox plugs into the parallel raw tap —
-//! the same seam `nmp-marmot`'s `MarmotIngestTap` uses for kind:1059.
+//! the same seam other kind:1059 consumers use for the raw event tap.
 //!
 //! # Key seam (ADR-0026 boundary)
 //!
@@ -35,8 +35,8 @@
 //! decrypt support is gated on ADR-0026 Phase 2 — a remote signer cannot
 //! currently unseal a gift-wrap because `unwrap_gift_wrap` needs raw `Keys`.
 //!
-//! This is the NIP-17 key seam and is DELIBERATELY distinct from the Marmot
-//! `marmot_local_nsec` slot (ADR-0025's exception is Marmot-only).
+//! This is the NIP-17 key seam and is DELIBERATELY distinct from any
+//! other crate's key slots — each consumer owns its own slot.
 //!
 //! # D-doctrine
 //!
@@ -242,15 +242,15 @@ impl DmInboxProjection {
         let local_pubkey = keys.public_key().to_hex();
 
         // Unseal the gift-wrap. An `Err` means the envelope was not addressed
-        // to us (or is another protocol's kind:1059 traffic, e.g. a Marmot
-        // Welcome) — a silent no-op, never a panic (D6). `gift` is `mut` so
+        // to us (or is another protocol's kind:1059 traffic) — a silent no-op,
+        // never a panic (D6). `gift` is `mut` so
         // the canonical rumor id can be computed below if absent.
         let Ok(mut gift) = nmp_nip59::unwrap_gift_wrap(&keys, &event) else {
             return false;
         };
 
-        // Only kind:14 chat-message rumors belong in the DM inbox. A Marmot
-        // Welcome rumor (kind:444) that happened to unwrap is discarded here.
+        // Only kind:14 chat-message rumors belong in the DM inbox. Rumors
+        // of any other kind that happen to unwrap are discarded here.
         if gift.rumor.kind.as_u16() != KIND_CHAT_MESSAGE {
             return false;
         }
@@ -310,16 +310,12 @@ impl RawEventObserver for DmInboxProjection {
 
 /// Stable, deterministic [`InterestId`] for a pubkey's NIP-17 gift-wrap
 /// inbox subscription. The `"nip17.giftwrap"` namespace discriminant keeps it
-/// distinct from any other kind:1059 interest (e.g. Marmot's own gift-wrap
-/// inbox) — the kernel de-dupes the REQ by filter hash, so two interests for
+/// distinct from any other kind:1059 interest — the kernel de-dupes the REQ
+/// by filter hash, so two interests for
 /// the same `#p` filter coalesce on the wire, but the ids stay separate so
 /// each consumer owns its own registration.
 fn giftwrap_interest_id(pubkey: &str) -> InterestId {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    "nip17.giftwrap".hash(&mut h);
-    pubkey.hash(&mut h);
-    InterestId(h.finish())
+    InterestId(nmp_core::stable_hash::stable_hash64(("nip17.giftwrap", pubkey)))
 }
 
 /// Tailing [`LogicalInterest`] for kind:1059 `#p <pubkey>` gift-wraps — the
@@ -328,8 +324,8 @@ fn giftwrap_interest_id(pubkey: &str) -> InterestId {
 ///
 /// Without this interest the kernel opens no REQ for kind:1059 `#p self` and
 /// the [`DmInboxProjection`] sits empty regardless of how cleanly it is wired
-/// — the "registered but inert" failure mode. A user who has NOT onboarded
-/// MLS has no Marmot gift-wrap interest, so NIP-17 must push its own.
+/// — the "registered but inert" failure mode.
+/// NIP-17 must push its own interest so envelopes are routed to this inbox.
 ///
 /// Scope is [`InterestScope::Account`] (pinned to the resolved `pubkey`)
 /// rather than `ActiveAccount`: the host resolves the concrete identity at
@@ -642,7 +638,7 @@ mod tests {
     #[test]
     fn drives_through_raw_observer_trait_object() {
         // The projection must be usable as `Arc<dyn RawEventObserver>` — that
-        // is exactly how the Chirp FFI registers it.
+        // is exactly how a host FFI registers it.
         let alice = Keys::generate();
         let bob = Keys::generate();
         let proj = Arc::new(inbox_for(&bob));
