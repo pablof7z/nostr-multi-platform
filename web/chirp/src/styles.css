@@ -33,7 +33,7 @@ textarea {
 .brand,
 .sidebar a,
 .card-heading,
-.status-row,
+.status-line,
 .post-meta {
   display: flex;
   align-items: center;
@@ -126,7 +126,28 @@ textarea {
   resize: vertical;
   border: 1px solid #cbd5dc;
   border-radius: 8px;
+  background: #fbfcfd;
+  color: #172027;
   padding: 12px;
+  line-height: 1.45;
+}
+
+textarea:focus {
+  border-color: #12685f;
+  outline: 3px solid #d2ebe7;
+}
+
+.composer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.composer-actions span {
+  color: #60707d;
+  font-size: 13px;
+  font-weight: 650;
 }
 
 button {
@@ -181,53 +202,6 @@ button:disabled {
   line-height: 1.45;
 }
 
-.inspector {
-  display: grid;
-  align-content: start;
-  gap: 14px;
-  background: #eef2f5;
-  padding: 18px;
-}
-
-.runtime-card {
-  border: 1px solid #d5dde3;
-  border-radius: 8px;
-  background: #ffffff;
-  padding: 16px;
-}
-
-.card-heading,
-.status-row {
-  gap: 9px;
-}
-
-.status-row {
-  min-height: 38px;
-  margin-bottom: 12px;
-  color: #12685f;
-  font-weight: 760;
-}
-
-.relay-row {
-  overflow: hidden;
-  border-top: 1px solid #edf0f2;
-  padding: 10px 0;
-  color: #45525d;
-  text-overflow: ellipsis;
-}
-
-.events pre {
-  overflow: auto;
-  max-height: 180px;
-  border-radius: 8px;
-  background: #151a1f;
-  color: #e8f0f2;
-  padding: 12px;
-  font-size: 12px;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
 @media (max-width: 920px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -240,5 +214,28 @@ button:disabled {
 
   .sidebar nav {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .sidebar a {
+    justify-content: center;
+  }
+
+}
+
+@media (max-width: 560px) {
+  .sidebar nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .topbar,
+  .composer,
+  .post {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .composer-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 }
