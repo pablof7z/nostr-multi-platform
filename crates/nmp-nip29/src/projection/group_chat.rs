@@ -26,7 +26,7 @@
 //! let projection = Arc::new(GroupChatProjection::new(group_id));
 //! let observer_id = app.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
 //! let snap = Arc::clone(&projection);
-//! app.register_snapshot_projection("nip29.group_chat", move || snap.snapshot_json());
+//! app.register_snapshot_projection("nmp.nip29.group_chat", move || snap.snapshot_json());
 //! ```
 //!
 //! Wiring that closure is the host app composition crate's job (a separate

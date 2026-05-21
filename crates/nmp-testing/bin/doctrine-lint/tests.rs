@@ -744,6 +744,92 @@ fn d12_negative_fixture_clean() {
     );
 }
 
+// ─── D14 (snapshot-projection key prefix — apps/chirp/) ─────────────────────
+
+#[test]
+fn d14_positive_fixture_fires() {
+    // Stage pos.rs in isolation so neg.rs cannot pollute the assertion.
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d14_pos");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let pos_src = workspace.join(fixture_path("d14/pos.rs"));
+    std::fs::copy(&pos_src, tmp.join("pos.rs")).expect("copy pos fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    // D14 is path-scoped to `apps/chirp/` — the staged fixture under
+    // `target/` falls outside that scope, so `--d14-extra-scope` opts it in.
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d14-extra-scope",
+        "doctrine_lint_d14_pos",
+    ]);
+    assert_eq!(
+        code, 1,
+        "d14 positive must exit 1; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[D14]"),
+        "d14 positive must emit ≥1 D14 finding; stdout:\n{}",
+        stdout
+    );
+    // Both banned bare-prefix literals in the fixture must surface so a
+    // regression that silently swallows one cannot pass this test.
+    for token in ["nip29.group_chat", "nip17.dm_inbox"] {
+        assert!(
+            stdout.contains(token),
+            "d14 positive must name `{}`; stdout:\n{}",
+            token,
+            stdout
+        );
+    }
+}
+
+#[test]
+fn d14_negative_fixture_clean() {
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d14_neg");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let neg_src = workspace.join(fixture_path("d14/neg.rs"));
+    std::fs::copy(&neg_src, tmp.join("neg.rs")).expect("copy neg fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d14-extra-scope",
+        "doctrine_lint_d14_neg",
+    ]);
+    assert_eq!(
+        code, 0,
+        "d14 negative must exit 0; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.contains("error[D14]"),
+        "d14 negative must produce zero D14 findings; stdout:\n{}",
+        stdout
+    );
+}
+
+/// The live `apps/chirp/` tree MUST be D14-clean after the rename.
+/// This test confirms no bare `nip17.` / `nip29.` projection keys remain.
+#[test]
+fn chirp_app_crate_is_d14_clean() {
+    let (code, stdout, stderr) = run_lint(&["--path", "apps/chirp/nmp-app-chirp/src"]);
+    assert!(
+        !stdout.contains("error[D14]"),
+        "apps/chirp/nmp-app-chirp/src must be D14 clean after rename; \
+         stdout:\n{}\nstderr:\n{}",
+        stdout,
+        stderr
+    );
+    let _ = (code, stderr); // exit code may be non-zero if other rules fire; D14 is the load-bearing check
+}
+
 // ─── --workspace-d8 (workspace-wide no-polling scan) ─────────────────────────
 
 /// Builds a throwaway `crates/<name>/src/<file>.rs` tree under `target/` and

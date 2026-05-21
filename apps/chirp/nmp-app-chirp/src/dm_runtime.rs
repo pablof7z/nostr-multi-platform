@@ -26,7 +26,7 @@ pub(crate) fn register_dm_runtime(app: &NmpApp) {
         tx: app.actor_sender(),
         state: Mutex::new(DmRuntimeState::default()),
     });
-    app.register_snapshot_projection("nip17.dm_relay_list", move || controller.snapshot_value());
+    app.register_snapshot_projection("nmp.nip17.dm_relay_list", move || controller.snapshot_value());
 }
 
 fn register_inbox_projection(app: &NmpApp) {
@@ -41,7 +41,7 @@ fn register_inbox_projection(app: &NmpApp) {
     if let Some(prev) = app.swap_nip17_dm_inbox_observer(Some(observer_id)) {
         app.unregister_raw_event_observer(prev);
     }
-    app.register_snapshot_projection("nip17.dm_inbox", move || projection.snapshot_json());
+    app.register_snapshot_projection("nmp.nip17.dm_inbox", move || projection.snapshot_json());
 }
 
 struct DmRuntimeController {

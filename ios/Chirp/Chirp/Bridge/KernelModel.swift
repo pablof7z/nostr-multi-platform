@@ -415,7 +415,7 @@ final class KernelModel: ObservableObject {
         followList.apply(snapshot: update.followList, activePubkey: update.activeAccount)
 
         // NIP-29 group-discovery projection mirror. Push every tick so the
-        // store tracks `projections["nip29.discovered_groups"]`. The store
+        // store tracks `projections["nmp.nip29.discovered_groups"]`. The store
         // is unwired until the user enters a relay and taps Search
         // (`searchGroups`); the snapshot key is `nil` until then, and the
         // store ignores stale snapshots from a previously-registered

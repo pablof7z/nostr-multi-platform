@@ -21,7 +21,7 @@ import os.log
 //     `DiscoveredGroupsProjection` for one host relay into the kernel. It
 //     registers no handle and exports no `unregister` — the relay's group
 //     catalog surfaces on every kernel snapshot under the `projections`
-//     key `"nip29.discovered_groups"` (decoded by
+//     key `"nmp.nip29.discovered_groups"` (decoded by
 //     `SnapshotProjections.discoveredGroups` in `KernelBridge.swift`).
 //   • Single-screen scope: per the FFI contract, calling it twice
 //     overwrites the snapshot key and leaks the older event observer for
@@ -52,7 +52,7 @@ extension KernelHandle {
     ///
     /// Pure consumption — registers no handle. The relay's group catalog
     /// surfaces on every kernel snapshot under the `projections` key
-    /// `"nip29.discovered_groups"`.
+    /// `"nmp.nip29.discovered_groups"`.
     ///
     /// Single-screen scope: per the FFI contract, a second call overwrites
     /// the snapshot key and leaks the prior observer. `DiscoveredGroupsStore`
@@ -66,7 +66,7 @@ extension KernelHandle {
     /// Dispatch a `nmp.nip29.discover` action — push the relay-pinned
     /// `LogicalInterest` for kinds 39000/39001/39002 so the kernel opens a
     /// REQ for that relay's group catalog. Fire-and-forget; the catalog
-    /// surfaces through the next `nip29.discovered_groups` snapshot tick.
+    /// surfaces through the next `nmp.nip29.discovered_groups` snapshot tick.
     /// Without a successful prior `registerGroupDiscovery` the projection
     /// is missing and the snapshot key stays nil (the executor still
     /// pushes the interest, but no Swift consumer mirrors it).
