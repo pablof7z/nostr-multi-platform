@@ -155,8 +155,9 @@ use clock::{Clock, SystemClock};
 // `nmp_app_dispatch_action` entry point.
 pub(crate) use action_registry::{default_registry, ActionRegistry};
 pub(crate) use identity_state::{
-    AccountSummary, PublishQueueEntry, RelayAckOutcome, RelayEditRow, SettingsHubSummary,
+    AccountSummary, PublishQueueEntry, RelayAckOutcome, SettingsHubSummary,
 };
+pub use identity_state::{read_eligible_relay_urls, RelayEditRow};
 // Host-extensible snapshot output — reachable from the `ffi` module for the
 // `nmp_app_register_snapshot_projection` C-ABI entry point.
 pub(crate) use snapshot_registry::{new_snapshot_projection_slot, SnapshotProjectionSlot};

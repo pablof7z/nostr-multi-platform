@@ -62,7 +62,8 @@ pub use dm_relay_list::{
     PublishDmRelayListInput,
 };
 pub use inbox::{
-    giftwrap_inbox_interest, DmConversation, DmInboxProjection, DmInboxSnapshot, DmMessage,
+    active_giftwrap_inbox_interest, active_giftwrap_inbox_interest_id, giftwrap_inbox_interest,
+    DmConversation, DmInboxProjection, DmInboxSnapshot, DmMessage,
 };
 
 /// NIP-17 kind: a "chat message" rumor.

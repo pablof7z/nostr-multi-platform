@@ -205,7 +205,7 @@ private struct DmComposeSheet: View {
                                     Spacer()
                                     if recipient == follow.pubkey {
                                         Image(systemName: "checkmark")
-                                            .foregroundStyle(.accent)
+                                            .foregroundStyle(ChirpColor.accent)
                                     }
                                 }
                             }

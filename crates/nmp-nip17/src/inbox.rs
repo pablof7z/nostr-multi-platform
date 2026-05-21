@@ -371,6 +371,17 @@ fn giftwrap_interest_id(pubkey: &str) -> InterestId {
     InterestId(nmp_core::stable_hash::stable_hash64(("nip17.giftwrap", pubkey)))
 }
 
+/// Stable id for the active-account-owned gift-wrap inbox interest.
+///
+/// Unlike [`giftwrap_inbox_interest`], this id is intentionally independent
+/// of the pubkey so an account switch replaces the prior `#p` filter instead
+/// of accumulating one long-lived subscription per account.
+pub fn active_giftwrap_inbox_interest_id() -> InterestId {
+    InterestId(nmp_core::stable_hash::stable_hash64(
+        "nip17.giftwrap.active",
+    ))
+}
+
 /// Tailing [`LogicalInterest`] for kind:1059 `#p <pubkey>` gift-wraps — the
 /// subscription a host pushes (via `NmpApp::push_interest`) so the DM inbox
 /// actually receives envelopes.
@@ -394,6 +405,25 @@ pub fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
     deps.into_logical_interest(
         giftwrap_interest_id(pubkey),
         InterestScope::Account(pubkey.to_string()),
+        InterestLifecycle::Tailing,
+    )
+}
+
+/// Active-account-owned variant of [`giftwrap_inbox_interest`].
+///
+/// The filter still targets a concrete `#p <pubkey>` because NIP-17 gift-wraps
+/// are addressed to a real account. The stable id + `ActiveAccount` scope makes
+/// the registration lifecycle single-slot: re-pushing for a new active account
+/// replaces the old filter, and logout can withdraw one known id.
+pub fn active_giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
+    let deps = ViewDependencies {
+        kinds: vec![KIND_GIFT_WRAP],
+        tag_refs: vec![("p".to_string(), pubkey.to_string())],
+        ..Default::default()
+    };
+    deps.into_logical_interest(
+        active_giftwrap_inbox_interest_id(),
+        InterestScope::ActiveAccount,
         InterestLifecycle::Tailing,
     )
 }
@@ -749,6 +779,27 @@ mod tests {
             giftwrap_interest_id("def"),
             "different pubkeys → different ids"
         );
+    }
+
+    #[test]
+    fn active_giftwrap_interest_reuses_one_id_across_accounts() {
+        let alice = active_giftwrap_inbox_interest("alice");
+        let bob = active_giftwrap_inbox_interest("bob");
+        assert_eq!(alice.id, bob.id, "account switch replaces one slot");
+        assert_eq!(alice.id, active_giftwrap_inbox_interest_id());
+        assert!(matches!(alice.scope, InterestScope::ActiveAccount));
+        assert!(alice
+            .shape
+            .tags
+            .get("p")
+            .map(|s| s.contains("alice"))
+            .unwrap_or(false));
+        assert!(bob
+            .shape
+            .tags
+            .get("p")
+            .map(|s| s.contains("bob"))
+            .unwrap_or(false));
     }
 
     #[test]

@@ -102,12 +102,11 @@ final class KernelModel: ObservableObject {
     private var startedKernel = false
     private var lastLogicalInterestSummary = ""
     private var marmotRegistrationRequested = false
-    /// Last `(activeAccount, read-eligible-relay-set)` pair published as a
-    /// kind:10050 NIP-17 DM-relay list. Prevents re-publish every tick.
-    private var lastPublishedDmRelaySet: (account: String, urls: Set<String>)?
 
     private(set) lazy var marmot = MarmotStore(kernel: kernel)
     private(set) lazy var groupChat = GroupChatStore(groupId: Self.demoGroupId, kernel: kernel)
+    /// Rust owns the NIP-17 kind:1059 active-account interest and kind:10050
+    /// DM-relay-list publish lifecycle; this store only mirrors snapshots.
     private(set) lazy var dmInbox = DmInboxStore(kernel: kernel)
 
     /// NIP-02 follow list mirror — the active account's kind:3 contact list.
@@ -404,10 +403,9 @@ final class KernelModel: ObservableObject {
         marmot.apply(snapshot: kernel.marmotSnapshot(), isRegistered: kernel.isMarmotRegistered)
         // NIP-29 + NIP-17 stores — pushed every tick so their lazy init fires
         // on the first snapshot (registering the read projections in the
-        // process). DM inbox forwards the active pubkey so the kind:1059
-        // gift-wrap interest is pushed once a user is signed in.
+        // process). Rust owns the DM inbox interest lifecycle.
         groupChat.apply(snapshot: update.groupChat)
-        dmInbox.apply(snapshot: update.dmInbox, activePubkey: update.activeAccount)
+        dmInbox.apply(snapshot: update.dmInbox)
         // NIP-02 follow list projection mirror. Push every tick so the store
         // tracks `projections["chirp.follow_list"]`. Touching `followList`
         // here forces the lazy `FollowListStore` init on the first snapshot,
@@ -423,10 +421,6 @@ final class KernelModel: ObservableObject {
         // store ignores stale snapshots from a previously-registered
         // relay during a switch.
         discoveredGroups.apply(snapshot: update.discoveredGroups)
-
-        // NIP-17 § 2 — auto-publish kind:10050 when relay set / account changes.
-        if activeAccountChanged { lastPublishedDmRelaySet = nil }
-        maybePublishDmRelayList()
 
         // PR-A: drain `pendingActions` by every terminal verdict on this tick.
         if let results = update.actionResults, !results.isEmpty {
@@ -465,40 +459,6 @@ final class KernelModel: ObservableObject {
         lastSnapshotAt = Date()
     }
 
-    // ── NIP-17 kind:10050 DM-relay list publish ──────────────────────────
-
-    /// Snapshot-driven kind:10050 publish: fires on relay-set / account
-    /// change. No-ops when there's no active account or no read-eligible
-    /// relays (the Rust action rejects empty input — kind:10050 with zero
-    /// `relay` tags would clear the cache on every peer).
-    private func maybePublishDmRelayList() {
-        guard let account = activeAccount, !account.isEmpty else { return }
-        let readUrls = Self.readEligibleRelayUrls(rows: relayEditRows)
-        guard !readUrls.isEmpty else { return }
-        let readSet = Set(readUrls)
-        if let last = lastPublishedDmRelaySet,
-           last.account == account,
-           last.urls == readSet
-        {
-            return
-        }
-        lastPublishedDmRelaySet = (account, readSet)
-        kernel.publishDmRelayList(relays: readUrls)
-    }
-
-    /// Return the URLs of relays whose `role` includes `read` or `both`.
-    /// Mirrors `nmp_core::actor::relay_roles::has_role` — tokens split on
-    /// `,`, `+`, or whitespace, lowercased, and `both` implies both `read`
-    /// and `write`.
-    nonisolated static func readEligibleRelayUrls(rows: [RelayEditRow]) -> [String] {
-        rows.compactMap { row in
-            let tokens = row.role
-                .lowercased()
-                .split(whereSeparator: { $0 == "," || $0 == "+" || $0.isWhitespace })
-                .map(String.init)
-            return tokens.contains("read") || tokens.contains("both") ? row.url : nil
-        }
-    }
 }
 
 // ─── Swift-side timing accumulator ───────────────────────────────────────
