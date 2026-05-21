@@ -60,7 +60,7 @@ impl DetailState {
 }
 
 /// Synthesise the D1 placeholder article for a coord that has not yet resolved
-/// to an authoritative event. Deterministic in the coord so SwiftUI diffing
+/// to an authoritative event. Deterministic in the coord so downstream diffing
 /// sees no spurious churn before the real event lands.
 fn placeholder_article(coord: &NaddrCoord) -> ArticleRecord {
     ArticleRecord {
