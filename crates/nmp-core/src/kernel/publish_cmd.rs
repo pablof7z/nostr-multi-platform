@@ -89,6 +89,31 @@ impl Kernel {
         self.run_publish_engine(signed, p_tags, target, correlation_id_override)
     }
 
+    /// Record a terminal `"failed"` verdict for a dispatched action whose
+    /// publish never reached the engine — the *sign* step failed first.
+    ///
+    /// The `nmp_app_dispatch_action` `PublishNote` / `PublishProfile` paths
+    /// hand the host a registry-minted `correlation_id` and the host waits to
+    /// see its outcome in the `action_results` snapshot projection. Every
+    /// other terminal verdict (a queued publish that settles / fails per
+    /// relay) reaches `action_results` via the publish engine. A sign-step
+    /// failure (no active account, malformed reply id, local-key sign error,
+    /// remote-signer timeout / rejection) bypasses the engine entirely — so
+    /// without this call the host's spinner keyed on that `correlation_id`
+    /// would hang forever (a broken promise: a correlation_id was returned but
+    /// its outcome is never observable).
+    ///
+    /// Callers pass `Some(id)` only on a dispatched action that carried a
+    /// correlation_id; a `react` / `follow` / conformance-harness publish
+    /// carries `None` and is a no-op here (nothing is waiting on an id).
+    pub(crate) fn record_action_failure(&mut self, correlation_id: String, error: String) {
+        self.publish_engine
+            .record_action_terminal_failure(correlation_id, error);
+        // A terminal verdict is always snapshot-worthy: the next emit drains
+        // it into `action_results` via `take_action_results_projection`.
+        self.changed_since_emit = true;
+    }
+
     /// Hex pubkey of the author of `event_id_hex`, or `None` if that event is
     /// not in the kernel's read-cache.
     ///

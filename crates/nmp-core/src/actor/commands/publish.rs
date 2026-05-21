@@ -252,6 +252,13 @@ pub(crate) fn publish_note(
     pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
     let Some(pubkey) = identity.active_pubkey() else {
+        // Broken-promise fix: a dispatched `PublishNote` handed the host a
+        // `correlation_id`; if the publish aborts before the engine ever sees
+        // it, the failure must still reach `action_results` so the host
+        // spinner clears. `record_action_failure` is a no-op for `None`.
+        if let Some(id) = correlation_id.clone() {
+            kernel.record_action_failure(id, "no active account".to_string());
+        }
         return toast_no_account(kernel, "publish");
     };
 
@@ -271,7 +278,13 @@ pub(crate) fn publish_note(
         // feedback. Mirrors the explicit id/pubkey validation in `react` and
         // `follow`: refuse the publish and surface a toast.
         if !crate::kernel::is_hex_id(reply) {
-            kernel.set_last_error_toast(Some("reply: malformed target event id".to_string()));
+            let reason = "reply: malformed target event id".to_string();
+            kernel.set_last_error_toast(Some(reason.clone()));
+            // Broken-promise fix: surface the rejection under the dispatch
+            // correlation_id so the host spinner does not hang.
+            if let Some(id) = correlation_id.clone() {
+                kernel.record_action_failure(id, reason);
+            }
             return Vec::new();
         }
         match kernel.reply_tags_for_parent(reply) {
@@ -300,7 +313,12 @@ pub(crate) fn publish_note(
     let mut op = match sign_active_nonblocking(identity, &unsigned) {
         Ok(op) => op,
         Err(reason) => {
-            kernel.set_last_error_toast(Some(reason));
+            kernel.set_last_error_toast(Some(reason.clone()));
+            // Broken-promise fix: a dispatched note must report its failure
+            // under the correlation_id the host is waiting on.
+            if let Some(id) = correlation_id.clone() {
+                kernel.record_action_failure(id, reason);
+            }
             return Vec::new();
         }
     };
@@ -311,7 +329,14 @@ pub(crate) fn publish_note(
             kernel.publish_signed_with_correlation(&signed, &[], correlation_id)
         }
         Some(Err(e)) => {
-            kernel.set_last_error_toast(Some(format!("sign failed: {e}")));
+            let reason = format!("sign failed: {e}");
+            kernel.set_last_error_toast(Some(reason.clone()));
+            // Broken-promise fix: a local-key sign error happens on the actor
+            // thread AFTER `dispatch_action` already returned the
+            // correlation_id — the host is waiting; record the failure.
+            if let Some(id) = correlation_id.clone() {
+                kernel.record_action_failure(id, reason);
+            }
             return Vec::new();
         }
         None => {
@@ -357,6 +382,11 @@ pub(crate) fn publish_profile(
     pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
     let Some(pubkey) = identity.active_pubkey() else {
+        // Broken-promise fix: report the failure under the dispatch
+        // correlation_id so the host spinner clears (no-op for `None`).
+        if let Some(id) = correlation_id.clone() {
+            kernel.record_action_failure(id, "no active account".to_string());
+        }
         return toast_no_account(kernel, "publish profile");
     };
 
@@ -364,7 +394,13 @@ pub(crate) fn publish_profile(
     let content = match serde_json::to_string(&fields) {
         Ok(json) => json,
         Err(e) => {
-            kernel.set_last_error_toast(Some(format!("profile serialisation: {e}")));
+            let reason = format!("profile serialisation: {e}");
+            kernel.set_last_error_toast(Some(reason.clone()));
+            // Broken-promise fix: surface the rejection under the dispatch
+            // correlation_id.
+            if let Some(id) = correlation_id.clone() {
+                kernel.record_action_failure(id, reason);
+            }
             return Vec::new();
         }
     };
@@ -381,7 +417,12 @@ pub(crate) fn publish_profile(
     let mut op = match sign_active_nonblocking(identity, &unsigned) {
         Ok(op) => op,
         Err(reason) => {
-            kernel.set_last_error_toast(Some(reason));
+            kernel.set_last_error_toast(Some(reason.clone()));
+            // Broken-promise fix: report the failure under the dispatch
+            // correlation_id so the host spinner clears.
+            if let Some(id) = correlation_id.clone() {
+                kernel.record_action_failure(id, reason);
+            }
             return Vec::new();
         }
     };
@@ -390,7 +431,13 @@ pub(crate) fn publish_profile(
         // dispatch correlation_id so the terminal verdict reports it.
         Some(Ok(signed)) => kernel.publish_signed_with_correlation(&signed, &[], correlation_id),
         Some(Err(e)) => {
-            kernel.set_last_error_toast(Some(format!("sign failed: {e}")));
+            let reason = format!("sign failed: {e}");
+            kernel.set_last_error_toast(Some(reason.clone()));
+            // Broken-promise fix: a local-key sign error happens after
+            // `dispatch_action` returned the correlation_id — record it.
+            if let Some(id) = correlation_id.clone() {
+                kernel.record_action_failure(id, reason);
+            }
             Vec::new()
         }
         None => {

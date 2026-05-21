@@ -924,6 +924,22 @@ pub fn run_actor_with_observers(
                     None => {
                         if ps.timed_out() {
                             kernel.set_last_error_toast(Some("remote sign timed out".to_string()));
+                            // Broken-promise fix: a dispatched `PublishNote` /
+                            // `PublishProfile` carries the registry-minted
+                            // `correlation_id` the host is waiting on. The
+                            // broker never responded, so the publish never
+                            // happens — record a terminal `"failed"` verdict so
+                            // `action_results` clears the host spinner instead
+                            // of leaving it to hang. Recorded BEFORE `emit_now`
+                            // so this tick's snapshot drains it. `None` (a
+                            // `react` / `follow` park) is a no-op — nothing is
+                            // waiting on an id.
+                            if let Some(id) = ps.correlation_id_override.clone() {
+                                kernel.record_action_failure(
+                                    id,
+                                    "remote sign timed out".to_string(),
+                                );
+                            }
                             // Surface the toast immediately rather than
                             // waiting up to one periodic flush tick —
                             // matches the success-path `emit_now` below.
@@ -968,7 +984,18 @@ pub fn run_actor_with_observers(
                         false // Done — remove.
                     }
                     Some(Err(e)) => {
-                        kernel.set_last_error_toast(Some(format!("remote sign failed: {e}")));
+                        let reason = format!("remote sign failed: {e}");
+                        kernel.set_last_error_toast(Some(reason.clone()));
+                        // Broken-promise fix: same as the timeout branch — a
+                        // dispatched action's `correlation_id` must reach
+                        // `action_results` as a terminal `"failed"` verdict so
+                        // the host spinner clears. The broker rejected the sign
+                        // (or its channel dropped), so the publish never
+                        // happens. Recorded BEFORE `emit_now` so this tick's
+                        // snapshot drains it; `None` is a no-op.
+                        if let Some(id) = ps.correlation_id_override.clone() {
+                            kernel.record_action_failure(id, reason);
+                        }
                         // Surface the toast immediately rather than waiting
                         // up to one periodic flush tick — matches the
                         // success-path `emit_now` above.

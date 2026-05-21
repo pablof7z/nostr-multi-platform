@@ -380,3 +380,69 @@ fn inflight_timeout_sweep_transitions_stuck_relay_through_retry_to_failure() {
         "no relay accepted the event"
     );
 }
+
+/// Broken-promise fix: a dispatched action whose *sign* step fails never
+/// reaches the engine's in-flight set — there is no `PublishHandle`, no
+/// `TerminalOutcome`. `record_action_terminal_failure` lets the kernel still
+/// push a terminal `"failed"` verdict for the host's `correlation_id` so the
+/// `action_results` snapshot resolves the spinner instead of hanging it.
+#[test]
+fn record_action_terminal_failure_pushes_failed_pending_terminal() {
+    let mut engine = engine_with(
+        Arc::new(StaticOutbox::default()),
+        Arc::new(ReplayDispatcher::new()),
+    );
+
+    // No publish was ever started — `take_pending_terminals` is empty.
+    assert!(
+        engine.take_pending_terminals().is_empty(),
+        "a fresh engine has no pending terminals"
+    );
+
+    engine.record_action_terminal_failure(
+        "corr-sign-failed".to_string(),
+        "remote sign timed out".to_string(),
+    );
+
+    let terminals = engine.take_pending_terminals();
+    assert_eq!(terminals.len(), 1, "exactly one terminal recorded");
+    assert_eq!(terminals[0].correlation_id, "corr-sign-failed");
+    assert_eq!(terminals[0].status, "failed");
+    assert_eq!(
+        terminals[0].error.as_deref(),
+        Some("remote sign timed out"),
+        "the failure reason is carried verbatim for the host to display"
+    );
+
+    // Pure drain — a second call yields nothing.
+    assert!(
+        engine.take_pending_terminals().is_empty(),
+        "take_pending_terminals is a pure drain"
+    );
+}
+
+/// Two sign-step failures recorded between snapshot emits both survive the
+/// drain — the per-tick `Vec` accumulates, so no host spinner is stranded
+/// when two dispatched actions fail in the same tick.
+#[test]
+fn record_action_terminal_failure_accumulates_until_drained() {
+    let mut engine = engine_with(
+        Arc::new(StaticOutbox::default()),
+        Arc::new(ReplayDispatcher::new()),
+    );
+
+    engine.record_action_terminal_failure("corr-a".to_string(), "no active account".to_string());
+    engine.record_action_terminal_failure("corr-b".to_string(), "sign failed: rejected".to_string());
+
+    let mut ids: Vec<String> = engine
+        .take_pending_terminals()
+        .into_iter()
+        .map(|t| t.correlation_id)
+        .collect();
+    ids.sort();
+    assert_eq!(
+        ids,
+        vec!["corr-a".to_string(), "corr-b".to_string()],
+        "both failures survive a single drain"
+    );
+}

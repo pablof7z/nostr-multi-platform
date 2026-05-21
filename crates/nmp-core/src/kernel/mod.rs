@@ -15,6 +15,8 @@
 // `ActionRegistry` / `default_registry` for the `nmp_app_dispatch_action`
 // entry point.
 pub(crate) mod action_registry;
+#[cfg(test)]
+mod action_failure_tests;
 mod auth;
 mod clock;
 #[cfg(test)]

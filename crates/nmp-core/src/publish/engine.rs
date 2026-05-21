@@ -727,6 +727,36 @@ impl PublishEngine {
         self.pending_terminals.push(terminal);
     }
 
+    /// Record a terminal `"failed"` verdict for a dispatched action that never
+    /// reached the publish engine's in-flight set — the event was never signed,
+    /// so there is no `PublishHandle` and no `TerminalOutcome`.
+    ///
+    /// This closes a broken-promise gap: a host that dispatched a
+    /// `PublishNote` / `PublishProfile` through `nmp_app_dispatch_action`
+    /// received a registry-minted `correlation_id` and is waiting to see its
+    /// outcome in the `action_results` snapshot projection. When the *sign*
+    /// step fails (no active account, a malformed reply id, a local-key sign
+    /// error, or a remote-signer timeout / rejection) the publish never
+    /// happens — without this entry the host's spinner keyed on that
+    /// `correlation_id` would hang forever.
+    ///
+    /// Unlike [`Self::record_engine_error`] this does **not** push a
+    /// `RecentFailure` row: no event/handle exists to anchor one, and the
+    /// caller already surfaces a `set_last_error_toast`. This records *only*
+    /// the `action_results` terminal so the dispatched action's promise is
+    /// honoured.
+    pub(crate) fn record_action_terminal_failure(
+        &mut self,
+        correlation_id: String,
+        error: String,
+    ) {
+        self.record_terminal(LastTerminal {
+            correlation_id,
+            status: "failed",
+            error: Some(error),
+        });
+    }
+
     /// Direction review #29: drain every terminal verdict recorded since the
     /// last call. The kernel calls this from the snapshot path
     /// (`make_update` → `take_action_results_projection`) so each tick surfaces
