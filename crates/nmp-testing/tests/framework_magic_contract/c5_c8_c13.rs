@@ -267,9 +267,8 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
                             panic!("every channel frame must decode as UpdateEnvelope (ADR-0001 / T103) — got error {e} on frame: {frame}")
                         });
                     if let UpdateEnvelope::Snapshot(snapshot) = envelope {
-                        let items = snapshot
-                            .get("items")
-                            .and_then(|value| value.as_array());
+                        let items = snapshot["projections"]["timeline"]
+                            .as_array();
                         if let Some(items) = items {
                             if items
                                 .iter()
@@ -285,16 +284,16 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
             }
         }
         found.expect(
-            "actor must emit a `snapshot` envelope whose `items` contains our event within 5 s",
+            "actor must emit a `snapshot` envelope whose `projections.timeline` contains our event within 5 s",
         )
     };
 
-    // The snapshot's `items` field is the projection of the kernel's visible
-    // timeline — required by the view payload contract (see ADR-0001 §"Periodic
-    // snapshot" and `Kernel::make_update`).
-    let items = snapshot["items"]
+    // The snapshot's `projections.timeline` field is the projection of the
+    // kernel's visible timeline — D0: timeline is in the projections map, not
+    // a typed KernelSnapshot field.
+    let items = snapshot["projections"]["timeline"]
         .as_array()
-        .expect("snapshot must have an items array (Kernel::make_update contract)");
+        .expect("snapshot must have a projections.timeline array (Kernel::make_update contract)");
     let our_item = items
         .iter()
         .find(|item| item["id"].as_str() == Some(event_id))
