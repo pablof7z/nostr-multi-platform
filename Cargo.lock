@@ -3294,6 +3294,7 @@ dependencies = [
  "chrono",
  "heed",
  "nmp-nip42-types",
+ "nmp-nip59",
  "nmp-nostr-lmdb",
  "nmp-nwc",
  "nmp-signer-iface",
@@ -3345,6 +3346,13 @@ dependencies = [
  "nmp-threading",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "nmp-nip17"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
 ]
 
 [[package]]

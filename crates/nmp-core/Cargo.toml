@@ -37,7 +37,13 @@ android-ffi = []
 bech32 = "0.11"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 nmp-nip42-types = { path = "../nmp-nip42-types" }
-nostr = { workspace = true, features = ["nip44"] }
+# NIP-59 gift-wrap free functions (`gift_wrap` / `unwrap_gift_wrap`). Consumed
+# by the `ActorCommand::SendGiftWrappedDm` arm to seal+wrap NIP-17 DM rumors on
+# the actor thread. Kernel → protocol-module direction (ADR-0009 precedent:
+# `nmp-nwc`); `nmp-nip59` is substrate-grade (carries no app/protocol nouns per
+# its own crate docs) and stays kernel-agnostic — the dependency is one-way.
+nmp-nip59 = { path = "../nmp-nip59" }
+nostr = { workspace = true, features = ["nip44", "nip59"] }
 # NIP-47 NWC protocol crate. Optional + feature-gated (`wallet`): D0 says the
 # kernel never owns app nouns, so `nmp-core` must compile without it.
 nmp-nwc = { path = "../nmp-nwc", optional = true }
