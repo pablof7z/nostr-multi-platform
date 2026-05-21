@@ -81,7 +81,7 @@
    └───┘      └─────┘    └────────┘    └──────────┘
 ```
 
-**Single source of truth, four delivery paths.** The kernel is compiled as `cdylib + staticlib + rlib`. Desktop and CLI consumers link the rlib directly (no FFI). iOS links the staticlib via xcframework. Android links the cdylib via cargo-ndk. Web compiles to wasm32-unknown-unknown via the wasm crate.
+**Single source of truth, multiple delivery paths.** The kernel is compiled as `cdylib + staticlib + rlib`. Desktop and CLI consumers link the rlib directly (no FFI). iOS links the staticlib via xcframework. Android links the cdylib via cargo-ndk. Web (wasm32 via wasm-bindgen) is an aspirational target — no `wasm_bindgen` surface exists yet.
 
 ## Execution mode
 
