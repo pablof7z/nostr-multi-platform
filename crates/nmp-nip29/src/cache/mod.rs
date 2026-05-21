@@ -11,7 +11,7 @@
 //!
 //! These caches are best-effort in-memory shells. M3 LMDB persistence wires
 //! them through `nmp-core::store::EventStore` once the M11.5 milestone
-//! reaches Step 5 (Swift wiring); for the M11.5 Step 0 deliverable here they
+//! reaches Step 5; for the M11.5 Step 0 deliverable here they
 //! support the routing/moderation contract tests in-memory.
 
 mod hosts;

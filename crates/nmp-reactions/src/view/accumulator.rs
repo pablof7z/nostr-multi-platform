@@ -57,7 +57,7 @@ impl ReactionAccumulator {
     }
 
     /// All records newest-first (by `created_at` desc, then `event_id` for
-    /// determinism). Deterministic so SwiftUI diffing is stable (D8).
+    /// determinism). Deterministic so diffing-based renderers see a stable order (D8).
     pub fn snapshot_records(&self) -> Vec<ReactionRecord> {
         let mut out: Vec<ReactionRecord> = self.records.values().cloned().collect();
         out.sort_by(|a, b| {
