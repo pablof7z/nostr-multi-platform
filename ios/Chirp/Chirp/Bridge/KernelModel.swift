@@ -56,6 +56,23 @@ final class KernelModel: ObservableObject {
     /// snapshots and dispatches user intents.
     private(set) lazy var marmot = MarmotStore(kernel: kernel)
 
+    /// NIP-29 group-chat projection mirror — the first real consumer of the
+    /// NIP-29 seam. The store registers its read projection
+    /// (`nmp_app_chirp_register_group_chat`) in its initializer; that
+    /// initializer runs on the first snapshot tick because `apply` below
+    /// touches `groupChat` every tick. The group is the single demo room —
+    /// multi-group support needs a handle-returning FFI variant (see
+    /// `GroupChatBridge.swift`).
+    private(set) lazy var groupChat = GroupChatStore(
+        groupId: Self.demoGroupId, kernel: kernel)
+
+    /// The NIP-29 group the group-chat screen reads and posts to. A single
+    /// fixed room for the first-consumer proof; a real multi-group app
+    /// would thread a chosen `GroupId` through navigation.
+    static let demoGroupId = GroupId(
+        hostRelayUrl: "wss://relay.groups.nip29.com",
+        localId: "chirp-demo")
+
     /// Platform capability implementations injected for the kernel to use.
     let capabilities: ChirpCapabilities
 
@@ -323,6 +340,13 @@ final class KernelModel: ObservableObject {
             kernel.registerActiveMarmotIfAvailable()
         }
         marmot.apply(snapshot: kernel.marmotSnapshot(), isRegistered: kernel.isMarmotRegistered)
+        // NIP-29 group-chat projection mirror. Push every tick so the store
+        // tracks `projections["nip29.group_chat"]`. Touching `groupChat`
+        // here forces the lazy `GroupChatStore` init on the first snapshot,
+        // which registers the read projection (`nmp_app_chirp_register_group_chat`)
+        // — eager, before the screen opens. A registered observer with no UI
+        // simply accumulates messages; opening `GroupChatView` then shows them.
+        groupChat.apply(snapshot: update.groupChat)
         metrics = update.metrics
         relayStatuses = update.relayStatuses
         // T66a projections — mirror only; never derive (D8).

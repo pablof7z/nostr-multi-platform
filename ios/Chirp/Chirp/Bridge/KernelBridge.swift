@@ -551,6 +551,13 @@ struct KernelUpdate: Decodable {
 
     /// Per-tick timeline delta — removed item ids (`projections["removed"]`).
     var removed: [String]? { projections?.removed }
+
+    /// NIP-29 group-chat read model — `projections["nip29.group_chat"]`.
+    /// `nil` until `nmp_app_chirp_register_group_chat` has wired a group's
+    /// projection; an empty `messages` array once registered but no chat
+    /// events have arrived. Computed so the `GroupChatStore` consumer keeps
+    /// reading `update.groupChat` unchanged.
+    var groupChat: GroupChatSnapshot? { projections?.groupChat }
 }
 
 /// The kernel's host-extensible `projections` map. Each built-in app-noun
@@ -593,6 +600,81 @@ struct SnapshotProjections: Decodable, Equatable {
     let inserted: [TimelineItem]?
     let updated: [TimelineItem]?
     let removed: [String]?
+    // NIP-29: the group-chat read projection registered by
+    // `nmp_app_chirp_register_group_chat`. Its snapshot key is the dotted
+    // string `"nip29.group_chat"`, which `.convertFromSnakeCase` cannot
+    // derive from a Swift property name — hence the explicit `CodingKeys`
+    // below (an explicit enum is all-or-nothing, so every other member is
+    // re-listed there with its snake_case raw value).
+    let groupChat: GroupChatSnapshot?
+
+    /// Explicit coding keys.
+    ///
+    /// The decoder runs with `.convertFromSnakeCase`, which transforms each
+    /// JSON key BEFORE it is matched against a `CodingKey.stringValue`. So
+    /// every case here must carry the *post-transform* (camelCase) name —
+    /// which is exactly the synthesized default — EXCEPT `groupChat`.
+    ///
+    /// The kernel's key is the dotted string `"nip29.group_chat"`.
+    /// `.convertFromSnakeCase` splits on `_` only (`.` is opaque), so it
+    /// maps `"nip29.group_chat"` → `"nip29.groupChat"`. That post-transform
+    /// string is the raw value `groupChat` must declare; the synthesized
+    /// default (`"groupChat"`) would never match.
+    ///
+    /// Declaring a `CodingKeys` enum overrides synthesis entirely, so every
+    /// member is re-listed; all but `groupChat` simply restate the default.
+    enum CodingKeys: String, CodingKey {
+        case wallet
+        case bunkerHandshake
+        case publishQueue
+        case publishOutbox
+        case relayEditRows
+        case accounts
+        case activeAccount
+        case actionResults
+        case lastActionResult
+        case profile
+        case timeline
+        case authorView
+        case threadView
+        case inserted
+        case updated
+        case removed
+        case groupChat = "nip29.groupChat"
+    }
+}
+
+// ─── NIP-29 group-chat read model ─────────────────────────────────────────
+//
+// Mirror of `nmp-nip29`'s `GroupChatSnapshot` / `GroupChatMessage` — the
+// shape the `GroupChatProjection` serialises under the snapshot key
+// `"nip29.group_chat"`. Thin-shell rule: these are pure DTOs; no Swift
+// owns the ordering (the projection emits newest-first) or the membership
+// filter (the projection matches kind + `h`-tag).
+
+/// One rendered NIP-29 group-chat message. `pubkey` carries the event
+/// author (hex); `kind` is one of 9 (chat) / 11 (discussion) / 1111
+/// (comment). `id` is the event id (hex) and the stable list identity.
+///
+/// No explicit `CodingKeys`: the top-level `.convertFromSnakeCase` strategy
+/// (inherited by every nested type) maps the kernel's `"created_at"` to
+/// `createdAt` automatically. An explicit enum would have to spell the
+/// post-transform name and is pure surface area — omitted deliberately.
+struct GroupChatMessage: Decodable, Identifiable, Equatable {
+    let id: String
+    let pubkey: String
+    let content: String
+    let createdAt: UInt64
+    let kind: UInt32
+}
+
+/// The serialised read-model a group-chat screen consumes. `messages` is
+/// ordered newest-first (`created_at` descending, ties broken by id) by the
+/// Rust projection — Swift does not re-sort.
+struct GroupChatSnapshot: Decodable, Equatable {
+    let messages: [GroupChatMessage]
+
+    static let empty = GroupChatSnapshot(messages: [])
 }
 
 /// NIP-46 (`bunker://`) handshake progress, projected from the kernel snapshot

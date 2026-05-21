@@ -288,6 +288,29 @@ char *nmp_app_chirp_snapshot(void *handle);
 void nmp_app_chirp_snapshot_free(char *ptr);
 void nmp_app_chirp_unregister(void *handle);
 
+// ── NIP-29 group-chat read projection ────────────────────────────────────
+//
+// Wires a single NIP-29 group's chat-message read model into the kernel.
+// Pure consumption — the read side of a group-chat screen.
+//
+//   • `group_id_json` is a JSON object naming the target group:
+//       {"host_relay_url":"wss://groups.example.com","local_id":"room"}
+//   • Returns void — registers no handle and exports no companion
+//     `unregister`. The group's chat messages surface on every kernel
+//     snapshot tick under the `projections` key `"nip29.group_chat"`,
+//     shaped `{ "messages": [ { id, pubkey, content, created_at, kind } ] }`
+//     ordered newest-first.
+//   • Single-screen scope: calling it twice overwrites the snapshot key
+//     with the newer projection and leaves the older event observer
+//     registered for the life of `app` (a small, bounded leak). A
+//     multi-group host would need a handle-returning variant.
+//   • Fire-and-forget (D6): a null `app`, null / invalid-UTF-8
+//     `group_id_json`, or a JSON shape that does not deserialize to a
+//     `GroupId` all degrade to a silent no-op.
+//   • `app` MUST outlive the registration; it is borrowed only for the
+//     duration of this call.
+void nmp_app_chirp_register_group_chat(void *app, const char *group_id_json);
+
 // ── Marmot (MLS encrypted groups) per-app FFI ────────────────────────────
 //
 // Six symbols exported from the same `libnmp_app_chirp.a` archive (the

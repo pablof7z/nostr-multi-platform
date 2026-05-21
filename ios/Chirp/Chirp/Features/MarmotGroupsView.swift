@@ -8,6 +8,11 @@ import SwiftUI
 // surfaces inbound welcomes with Accept / Decline. Toolbar "+" opens a
 // create-group sheet (name / description / invitee npubs).
 //
+// A "NIP-29 Groups" section carries the (unencrypted, relay-managed)
+// NIP-29 demo group — the first real consumer of the NIP-29 seam. Tapping
+// it pushes `GroupChatView`. This section is ALWAYS present so the NIP-29
+// screen is reachable regardless of Marmot (MLS) state.
+//
 // D6: any nil / decode failure surfaces as the empty state, never a crash —
 // the store already collapses every failure to `.empty`.
 //
@@ -23,33 +28,27 @@ struct MarmotGroupsView: View {
     private var store: MarmotStore { model.marmot }
 
     var body: some View {
-        ZStack {
-            if isEmpty {
-                emptyState
-            } else {
-                groupList
+        // The list always renders — the NIP-29 demo section must stay
+        // reachable even when the user has no MLS groups / invites.
+        groupList
+            .chirpScreenBackground()
+            .navigationTitle("Groups")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                createButton
             }
-        }
-        .chirpScreenBackground()
-        .navigationTitle("Groups")
-        .navigationBarTitleDisplayMode(.large)
-        .toolbar {
-            createButton
-        }
-        .sheet(isPresented: $showCreate) {
-            MarmotCreateGroupSheet()
-                .environmentObject(model)
-        }
-    }
-
-    private var isEmpty: Bool {
-        store.groups.isEmpty && store.pendingWelcomes.isEmpty
+            .sheet(isPresented: $showCreate) {
+                MarmotCreateGroupSheet()
+                    .environmentObject(model)
+            }
     }
 
     // ── Group + pending-invite list ───────────────────────────────────────
 
     private var groupList: some View {
         List {
+            nip29Section
+
             if !store.pendingWelcomes.isEmpty {
                 Section {
                     ForEach(store.pendingWelcomes) { welcome in
@@ -86,21 +85,26 @@ struct MarmotGroupsView: View {
         .scrollContentBackground(.hidden)
     }
 
-    // ── Empty / not-registered state ──────────────────────────────────────
+    // ── NIP-29 demo group ─────────────────────────────────────────────────
+    //
+    // First real consumer of the NIP-29 seam: a `NavigationLink` to
+    // `GroupChatView`, backed by `model.groupChat` (a `GroupChatStore`
+    // registered via `nmp_app_chirp_register_group_chat`). One fixed demo
+    // room — a multi-group app would thread a chosen `GroupId` here.
 
-    private var emptyState: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                ChirpPlaceholder(
-                    systemImage: "lock.shield.fill",
-                    title: "Encrypted Groups",
-                    subtitle: store.isRegistered
-                        ? "No groups yet. Tap + to create an MLS-encrypted group."
-                        : "Sign in with an nsec to enable Marmot encrypted groups."
-                )
+    private var nip29Section: some View {
+        Section {
+            NavigationLink {
+                GroupChatView(store: model.groupChat)
+            } label: {
+                NIP29GroupRow(groupId: model.groupChat.groupId)
             }
-            .frame(minHeight: 500)
-            .padding(.horizontal, ChirpSpace.l)
+            .accessibilityIdentifier("nip29-group-row")
+            .accessibilityValue(model.groupChat.groupId.localId)
+        } header: {
+            Text("NIP-29 Groups")
+        } footer: {
+            Text("Relay-managed group chat (NIP-29). Unencrypted — distinct from the MLS-encrypted groups below.")
         }
     }
 
@@ -159,6 +163,40 @@ private struct GroupRow: View {
                     .background(.quaternary, in: Capsule())
                     .accessibilityLabel("\(group.unread) unread")
             }
+        }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+    }
+}
+
+// ── NIP-29 group row ──────────────────────────────────────────────────────
+
+private struct NIP29GroupRow: View {
+    let groupId: GroupId
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(.quaternary)
+                    .frame(width: 40, height: 40)
+                Image(systemName: "bubble.left.and.bubble.right.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.tint)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(groupId.localId)
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(groupId.hostRelayUrl)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
