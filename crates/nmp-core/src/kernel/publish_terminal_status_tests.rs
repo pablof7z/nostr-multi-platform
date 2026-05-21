@@ -356,8 +356,9 @@ fn t128_terminal_status_survives_snapshot_round_trip_to_wire_json() {
     // End-to-end contract: drive a publish to terminal, take the snapshot
     // JSON, and assert the wire format carries the new `status` + the
     // `relay_outcomes` array. iOS Pulse `ComposeView` decodes off this exact
-    // JSON (`KernelUpdate.publishQueue[…]`), so this test is the contract
-    // line between the kernel and the Swift side.
+    // JSON (`KernelUpdate.publishQueue[…]`, computed from
+    // `projections.publish_queue`), so this test is the contract line between
+    // the kernel and the Swift side.
     let author = "aa".repeat(32);
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
@@ -374,10 +375,14 @@ fn t128_terminal_status_survives_snapshot_round_trip_to_wire_json() {
     let snapshot_json = kernel.make_update(true);
     let parsed: serde_json::Value =
         serde_json::from_str(&snapshot_json).expect("snapshot must be valid JSON");
+    // D0: the publish cluster is no longer a typed `KernelSnapshot` field —
+    // `publish_queue` is a built-in entry in the host-extensible `projections`
+    // map.
     let queue = parsed
-        .get("publish_queue")
+        .get("projections")
+        .and_then(|v| v.get("publish_queue"))
         .and_then(|v| v.as_array())
-        .expect("publish_queue must be present and an array");
+        .expect("projections.publish_queue must be present and an array");
     let entry = queue
         .iter()
         .find(|e| e.get("event_id").and_then(|v| v.as_str()) == Some(signed.id.as_str()))

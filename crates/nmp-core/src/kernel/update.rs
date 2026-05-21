@@ -132,26 +132,33 @@ impl Kernel {
             logs: self.logs.iter().cloned().collect(),
             accounts: self.account_snapshot().0.to_vec(),
             active_account: self.account_snapshot().1.cloned(),
-            publish_queue: self.publish_queue_snapshot().to_vec(),
-            publish_outbox: self.publish_outbox_items(),
             last_error_toast: self.last_error_toast_snapshot().cloned(),
             last_error_category: self.last_error_category_snapshot().cloned(),
             // #171 (D6): project the recorded planner error so the host can
             // observe a genuine structural compile failure instead of silent
             // empty frames. `None` (→ JSON null) in steady state.
             last_planner_error: self.lifecycle.last_planner_error().map(str::to_owned),
-            relay_edit_rows: self.relay_edit_rows_snapshot().to_vec(),
             // D0: NIP-47 NWC wallet state and NIP-46 bunker handshake state are
             // no longer kernel fields — both are app nouns surfaced via
-            // built-in snapshot projections (`"wallet"` / `"bunker_handshake"`)
-            // collected in `projections` below.
+            // host-registered snapshot projections (`"wallet"` /
+            // `"bunker_handshake"`) collected in `projections` below.
+            //
+            // D0: the publish cluster (`publish_queue`, `publish_outbox`,
+            // `relay_edit_rows`) is likewise app-shaped relay/publish state and
+            // is no longer a typed field set — `publish_cluster_projections`
+            // (below) inserts all three into the same `projections` map under
+            // built-in keys.
+            //
             // Host-extensible snapshot output: run every host-registered
-            // projection closure and append its namespaced JSON value. Empty
-            // (and `skip_serializing_if`'d off the wire) when no host has
-            // registered one — backwards compatible with social-only shells.
-            // D8: the closures run on this actor thread inside the tick;
+            // projection closure and append its namespaced JSON value, then
+            // add the kernel-owned publish cluster. Empty (and
+            // `skip_serializing_if`'d off the wire) only when no host
+            // registered a projection AND the publish cluster contributes no
+            // keys — in practice the publish keys are always present, matching
+            // the old typed fields' always-emitted shape.
+            // D8: the host closures run on this actor thread inside the tick;
             // `run_snapshot_projections` documents the non-blocking contract.
-            projections: self.run_snapshot_projections(),
+            projections: self.snapshot_projections_with_publish_cluster(),
         };
 
         // Serialize the snapshot exactly once. The on-wire `payload_bytes`
@@ -180,6 +187,44 @@ impl Kernel {
         // can be set without a throwaway serialize.
         self.last_payload_bytes = serialized.len();
         serialized
+    }
+
+    /// Collect the snapshot `projections` map: every host-registered
+    /// projection closure plus the kernel-owned built-in publish cluster.
+    ///
+    /// D0: `publish_queue`, `publish_outbox`, and `relay_edit_rows` are
+    /// app-shaped relay/publish state, not protocol-neutral kernel primitives —
+    /// they carry NO typed `KernelSnapshot` field. Unlike the host-registered
+    /// `"wallet"` / `"bunker_handshake"` projections (which read actor-runtime
+    /// slots through a no-arg closure), the publish cluster is kernel-owned, so
+    /// it cannot be expressed as a `SnapshotRegistry` closure — it is inserted
+    /// here directly after the host closures run.
+    ///
+    /// Built-in keys win on collision: a host that registers `"publish_queue"`,
+    /// `"publish_outbox"`, or `"relay_edit_rows"` is overwritten so the publish
+    /// cluster stays authoritative. A serialization failure on any of the three
+    /// degrades to JSON `null` (D6: never a panic at the snapshot boundary) —
+    /// the key is still present, mirroring the old always-emitted typed field.
+    fn snapshot_projections_with_publish_cluster(
+        &self,
+    ) -> std::collections::HashMap<String, serde_json::Value> {
+        let mut projections = self.run_snapshot_projections();
+        projections.insert(
+            "publish_queue".to_string(),
+            serde_json::to_value(self.publish_queue_snapshot())
+                .unwrap_or(serde_json::Value::Null),
+        );
+        projections.insert(
+            "publish_outbox".to_string(),
+            serde_json::to_value(self.publish_outbox_items())
+                .unwrap_or(serde_json::Value::Null),
+        );
+        projections.insert(
+            "relay_edit_rows".to_string(),
+            serde_json::to_value(self.relay_edit_rows_snapshot())
+                .unwrap_or(serde_json::Value::Null),
+        );
+        projections
     }
 
     pub(super) fn visible_items(&self) -> Vec<TimelineItem> {

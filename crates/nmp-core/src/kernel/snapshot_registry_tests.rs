@@ -72,17 +72,31 @@ fn multiple_projections_each_get_their_namespace() {
     );
 }
 
-/// Backwards compatibility: with no projection registered, the `projections`
-/// key is `skip_serializing_if`'d entirely off the wire — a social-only shell
-/// that predates this field decodes the snapshot unchanged.
+/// With no *host* projection registered, the `projections` map carries only
+/// the kernel-owned built-in publish cluster — and no host namespace.
+///
+/// D0: `make_update` always inserts `publish_queue` / `publish_outbox` /
+/// `relay_edit_rows` (the publish cluster is kernel-owned domain state, not a
+/// host registration), so the map is never empty and `skip_serializing_if` no
+/// longer drops it. A host that registers nothing simply contributes no extra
+/// keys — the social shell still sees only the three built-ins it expects.
 #[test]
-fn no_projection_omits_the_key_from_the_wire() {
+fn no_host_projection_leaves_only_the_publish_cluster() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let parsed: serde_json::Value =
         serde_json::from_str(&kernel.make_update(true)).expect("snapshot json");
-    assert!(
-        parsed.get("projections").is_none(),
-        "an empty projections map must not appear on the wire"
+    let projections = parsed
+        .get("projections")
+        .expect("the built-in publish cluster keeps the projections map on the wire");
+    let map = projections
+        .as_object()
+        .expect("projections must serialize as a JSON object");
+    let mut keys: Vec<&str> = map.keys().map(String::as_str).collect();
+    keys.sort_unstable();
+    assert_eq!(
+        keys,
+        ["publish_outbox", "publish_queue", "relay_edit_rows"],
+        "with no host projection the map carries only the built-in publish cluster"
     );
 }
 
@@ -97,10 +111,17 @@ fn projection_registered_after_binding_still_fires() {
     let slot = new_snapshot_projection_slot();
     kernel.set_snapshot_projection_handle(Arc::clone(&slot));
 
-    // First tick: nothing registered yet.
+    // First tick: no host projection registered yet — the map carries only
+    // the kernel-owned built-in publish cluster, never the `late.value` key.
     let first: serde_json::Value =
         serde_json::from_str(&kernel.make_update(true)).expect("snapshot json");
-    assert!(first.get("projections").is_none());
+    assert!(
+        first
+            .get("projections")
+            .and_then(|p| p.get("late.value"))
+            .is_none(),
+        "a host projection must not appear before it is registered"
+    );
 
     // Register through the still-held `Arc` clone — as the FFI path does.
     slot.lock()

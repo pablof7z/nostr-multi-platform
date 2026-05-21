@@ -1338,9 +1338,21 @@ fn snapshot_json_carries_new_projections() {
     let json = kernel.make_update(true);
     assert!(json.contains("\"accounts\""));
     assert!(json.contains("\"active_account\""));
-    assert!(json.contains("\"publish_queue\""));
     assert!(json.contains("\"last_error_toast\""));
-    assert!(json.contains("\"relay_edit_rows\""));
+    // D0: the publish cluster (`publish_queue`, `publish_outbox`,
+    // `relay_edit_rows`) is no longer a set of typed `KernelSnapshot` fields —
+    // all three are kernel-owned built-in entries in the host-extensible
+    // `projections` map. They are always present (kernel-owned data, no host
+    // registration step), unlike the host-registered `"bunker_handshake"`
+    // projection. Decode the map and assert the keys nest under it.
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json).expect("snapshot must be valid JSON");
+    let projections = parsed
+        .get("projections")
+        .expect("snapshot must carry the projections map once the publish cluster is populated");
+    assert!(projections.get("publish_queue").is_some());
+    assert!(projections.get("publish_outbox").is_some());
+    assert!(projections.get("relay_edit_rows").is_some());
     // D0: NIP-46 bunker handshake is no longer a typed `KernelSnapshot` field
     // — it is surfaced through the built-in `"bunker_handshake"` snapshot
     // projection registered in `nmp_app_new`. A bare `make_update` (no
