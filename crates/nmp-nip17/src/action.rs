@@ -69,6 +69,23 @@ impl ActionModule for SendDmAction {
         }
         Ok(())
     }
+    fn execute(
+        action: Self::Action,
+        _correlation_id: &str,
+        send: &dyn Fn(ActorCommand),
+    ) -> Result<(), String> {
+        let dm_input = DmInput {
+            recipient_pubkey: action.recipient_pubkey.clone(),
+            content: action.content,
+            reply_to: action.reply_to,
+        };
+        let rumor = build_dm_rumor(&dm_input, "");
+        send(ActorCommand::SendGiftWrappedDm {
+            rumor,
+            recipient_pubkey: action.recipient_pubkey,
+        });
+        Ok(())
+    }
 }
 
 /// Executor: map a validated `nmp.nip17.send` action JSON to the

@@ -83,6 +83,14 @@ impl ActionModule for JoinGroupAction {
             .map_err(|_| ActionRejection::Invalid("missing host pin for join request".into()))?;
         Ok(())
     }
+    fn execute(
+        action: Self::Action,
+        _correlation_id: &str,
+        send: &dyn Fn(ActorCommand),
+    ) -> Result<(), String> {
+        send(join_group_plan(&action).into_actor_command()?);
+        Ok(())
+    }
 }
 
 #[cfg(test)]

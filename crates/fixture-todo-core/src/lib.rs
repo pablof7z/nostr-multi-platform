@@ -210,6 +210,13 @@ impl ActionModule for TodoActionModule {
         }
         Ok(())
     }
+    fn execute(
+        _action: Self::Action,
+        _correlation_id: &str,
+        _send: &dyn Fn(nmp_core::ActorCommand),
+    ) -> Result<(), String> {
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]

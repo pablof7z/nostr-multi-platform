@@ -706,6 +706,20 @@ impl NmpApp {
             .register_with_validator(namespace, validate);
     }
 
+    /// Register a typed [`crate::substrate::ActionModule`] `M` against the
+    /// app's action registry via a single call — the ADR-0027 replacement for
+    /// the split `register_action_module` + `register_action_executor` pair.
+    ///
+    /// Unlike the closure-based halves, this path never has a partial-registration
+    /// gap: `M::start` handles validation AND `M::execute` handles execution,
+    /// both under the same typed namespace (`M::NAMESPACE`).
+    ///
+    /// Registration MUST happen during host init — before `nmp_app_start`
+    /// and before any [`action::nmp_app_dispatch_action`] call.
+    pub fn register_action<M: crate::substrate::ActionModule + 'static>(&mut self) {
+        self.action_registry.register::<M>();
+    }
+
     /// Register a host-supplied snapshot projection — the output-side
     /// counterpart to [`Self::register_action_executor`].
     ///

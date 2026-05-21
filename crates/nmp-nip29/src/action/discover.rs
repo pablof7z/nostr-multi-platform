@@ -71,6 +71,16 @@ impl ActionModule for DiscoverGroupsAction {
             .map_err(ActionRejection::Invalid)?;
         Ok(())
     }
+    fn execute(
+        action: Self::Action,
+        _correlation_id: &str,
+        send: &dyn Fn(ActorCommand),
+    ) -> Result<(), String> {
+        validate_relay_url(&action.relay_url)?;
+        let interest = relay_discovery_interest(&action.relay_url);
+        send(ActorCommand::PushInterest(interest));
+        Ok(())
+    }
 }
 
 #[cfg(test)]

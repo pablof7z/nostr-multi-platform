@@ -190,6 +190,18 @@ impl ActionModule for PublishDmRelayListAction {
         }
         Ok(())
     }
+    fn execute(
+        action: Self::Action,
+        _correlation_id: &str,
+        send: &dyn Fn(ActorCommand),
+    ) -> Result<(), String> {
+        let event = build_dm_relay_list_event(&action.relays);
+        send(ActorCommand::PublishUnsignedEventToRelays {
+            event,
+            relays: Vec::new(),
+        });
+        Ok(())
+    }
 }
 
 /// Executor: build the kind:10050 unsigned event and dispatch

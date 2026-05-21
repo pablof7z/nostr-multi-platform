@@ -58,6 +58,14 @@ impl ActionModule for ReactInGroupAction {
             .map_err(|_| ActionRejection::Invalid("missing host pin for in-group reaction".into()))?;
         Ok(())
     }
+    fn execute(
+        action: Self::Action,
+        _correlation_id: &str,
+        send: &dyn Fn(ActorCommand),
+    ) -> Result<(), String> {
+        send(react_in_group_plan(&action).into_actor_command()?);
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -102,6 +110,14 @@ impl ActionModule for CommentInGroupAction {
         comment_in_group_plan(&action)
             .validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for in-group comment".into()))?;
+        Ok(())
+    }
+    fn execute(
+        action: Self::Action,
+        _correlation_id: &str,
+        send: &dyn Fn(ActorCommand),
+    ) -> Result<(), String> {
+        send(comment_in_group_plan(&action).into_actor_command()?);
         Ok(())
     }
 }
