@@ -39,7 +39,7 @@ pub struct FfiApp {
 // SAFETY: the auto-derived `!Send`/`!Sync` comes solely from the
 // `app: *mut NmpApp` field. The generated host shell is created, dispatched
 // against, and dropped from one isolation context (the same caller convention
-// `nmp-app-chirp`'s `ChirpHandle` documents). The pointer is only ever read
+// the consuming host crate documents). The pointer is only ever read
 // (passed to `nmp_app_dispatch_action`) and freed once in `Drop`.
 unsafe impl Send for FfiApp {}
 unsafe impl Sync for FfiApp {}
@@ -146,7 +146,7 @@ impl FfiApp {
 
     /// Call the C-ABI [`nmp_app_dispatch_action`] and return its JSON result
     /// as an owned `String`, freeing the returned C string. The generated host
-    /// calls the seam through the same `extern "C"` symbol a Swift host would.
+    /// calls the seam through the same `extern "C"` symbol a host consumer would.
     fn dispatch_action_json(&self, namespace: &str, action_json: &str) -> String {
         // An interior NUL cannot cross to C — collapse it to an error JSON so
         // the caller still gets well-formed data (D6).
