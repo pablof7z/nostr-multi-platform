@@ -46,6 +46,22 @@ final class KernelModel: ObservableObject {
     // Live data once Stage 3 lands; see snapshot field `bunker_handshake`.
     @Published private(set) var bunkerHandshake: BunkerHandshake?
 
+    /// PR-A: correlation ids of dispatched actions whose terminal verdict has
+    /// not yet arrived in `projections["action_results"]`. Add on accept,
+    /// remove when the snapshot's `actionResults` tick carries the same id.
+    /// Views key per-button spinners on `isActionPending(_:)`. Failed
+    /// dispatches (the `{"error":...}` envelope) never enter the set — they
+    /// are surfaced through `lastDispatchError` instead.
+    @Published private(set) var pendingActions: Set<String> = []
+
+    /// PR-A: most recent synchronous dispatch error (the `{"error":"..."}`
+    /// envelope from `nmp_app_dispatch_action`). Views consume this as a
+    /// toast; clear via `clearDispatchError()`. Distinct from
+    /// `lastErrorToast` (which mirrors the kernel snapshot's actor-level
+    /// toast and is overwritten every tick) so a dispatch-time rejection is
+    /// not silently wiped by the next snapshot emit.
+    @Published private(set) var lastDispatchError: String?
+
     var hasActiveAccount: Bool { activeAccount != nil }
 
     private let kernel = KernelHandle()
@@ -169,6 +185,10 @@ final class KernelModel: ObservableObject {
         logs = []
         appMetrics = AppRuntimeMetrics()
         lastLogicalInterestSummary = ""
+        // PR-A: a kernel reset abandons every in-flight action — drop the
+        // pending set so stale spinners never persist across a session reset.
+        pendingActions = []
+        lastDispatchError = nil
         capabilities.start()
         kernel.start(visibleLimit: visibleLimit, emitHz: emitHz)
         isRunning = true
@@ -247,11 +267,12 @@ final class KernelModel: ObservableObject {
         marmotRegistrationRequested = mls
         kernel.createAccount(profile: profile, relays: relayFacts, mls: mls)
     }
-    func publishProfile(name: String, about: String, picture: String) {
+    @discardableResult
+    func publishProfile(name: String, about: String, picture: String) -> DispatchResult {
         var profile: [String: String] = ["name": name]
         if !about.isEmpty { profile["about"] = about }
         if !picture.isEmpty { profile["picture"] = picture }
-        kernel.publishProfile(profile: profile)
+        return track(kernel.publishProfile(profile: profile))
     }
     func switchActive(_ identityID: String) {
         marmotRegistrationRequested = true
@@ -260,16 +281,55 @@ final class KernelModel: ObservableObject {
     func removeAccount(_ identityID: String) {
         kernel.removeAccountAndForgetSecret(identityID: identityID)
     }
-    func publishNote(_ content: String, replyToID: String? = nil) {
-        kernel.publishNote(content: content, replyToID: replyToID)
+    @discardableResult
+    func publishNote(_ content: String, replyToID: String? = nil) -> DispatchResult {
+        track(kernel.publishNote(content: content, replyToID: replyToID))
     }
     func retryPublish(handle: String) { kernel.retryPublish(handle: handle) }
     func cancelPublish(handle: String) { kernel.cancelPublish(handle: handle) }
-    func react(targetEventID: String, reaction: String = "❤") {
-        kernel.react(targetEventID: targetEventID, reaction: reaction)
+    @discardableResult
+    func react(targetEventID: String, reaction: String = "❤") -> DispatchResult {
+        track(kernel.react(targetEventID: targetEventID, reaction: reaction))
     }
-    func follow(_ pubkey: String) { kernel.follow(pubkey: pubkey) }
-    func unfollow(_ pubkey: String) { kernel.unfollow(pubkey: pubkey) }
+    @discardableResult
+    func follow(_ pubkey: String) -> DispatchResult {
+        track(kernel.follow(pubkey: pubkey))
+    }
+    @discardableResult
+    func unfollow(_ pubkey: String) -> DispatchResult {
+        track(kernel.unfollow(pubkey: pubkey))
+    }
+
+    /// PR-A: returns true while `correlationId` is still in the pending set —
+    /// the dispatch was accepted but no terminal verdict has arrived in
+    /// `projections["action_results"]` yet. Views key spinners on this.
+    func isActionPending(_ correlationId: String) -> Bool {
+        pendingActions.contains(correlationId)
+    }
+
+    /// PR-A: clear the synchronous dispatch error toast after the user has
+    /// seen it. Distinct from `clearErrorToast()` which clears the
+    /// snapshot-driven actor toast.
+    func clearDispatchError() { lastDispatchError = nil }
+
+    /// PR-A: route a `DispatchResult` from `KernelHandle` through the
+    /// `pendingActions` / `lastDispatchError` state machine. On accept the
+    /// correlation_id enters the pending set; on failure the message becomes
+    /// the dispatch-error toast and nothing enters the set (no spinner can
+    /// hang). The result is returned verbatim so call sites can also read it
+    /// (e.g. a publish-button view that wants to flash a local "queued"
+    /// indicator on accept).
+    @discardableResult
+    private func track(_ result: DispatchResult) -> DispatchResult {
+        switch result {
+        case let .accepted(id):
+            pendingActions.insert(id)
+        case let .failure(message):
+            kmLog.error("dispatch_action rejected: \(message, privacy: .public)")
+            lastDispatchError = message
+        }
+        return result
+    }
     func addRelay(url: String, role: String) { kernel.addRelay(url: url, role: role) }
     func removeRelay(url: String) { kernel.removeRelay(url: url) }
     func openTimeline() { kernel.openTimeline() }
@@ -367,6 +427,18 @@ final class KernelModel: ObservableObject {
         threadView = update.threadView
         walletStatus = update.walletStatus
         bunkerHandshake = update.bunkerHandshake
+
+        // PR-A: drain `pendingActions` by every terminal verdict surfaced on
+        // this tick. Direction review #29 prefers the per-tick `actionResults`
+        // array over the sticky scalar — when two actions settle in one tick
+        // both correlation_ids arrive together, so neither host spinner is
+        // stranded. Removing from a `Set` is O(1) per id and idempotent if a
+        // terminal for an id we never tracked happens to arrive.
+        if let results = update.actionResults, !results.isEmpty {
+            for terminal in results {
+                pendingActions.remove(terminal.correlationId)
+            }
+        }
         // Perf diagnostics.
         if let li = update.logicalInterests { logicalInterests = li }
         if let ws = update.wireSubscriptions { wireSubscriptions = ws }

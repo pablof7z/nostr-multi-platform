@@ -195,10 +195,14 @@ pub extern "C" fn nmp_app_publish_signed_event(app: *mut NmpApp, event_json: *co
         Ok(raw) => {
             // Auto target (NIP-65 outbox) — empty `relays`. Back-compat:
             // this symbol's behavior is byte-identical to before the
-            // explicit-target variant landed.
+            // explicit-target variant landed. `correlation_id: None` —
+            // this C-ABI symbol is not the `dispatch_action` path; the
+            // engine falls back to the publish handle (== event id),
+            // preserving the prior behaviour.
             app.send_cmd(ActorCommand::PublishSignedEvent {
                 raw,
                 relays: Vec::new(),
+                correlation_id: None,
             });
         }
         Err(_) => {
@@ -288,8 +292,13 @@ pub extern "C" fn nmp_app_publish_signed_event_to(
     match serde_json::from_str::<crate::store::RawEvent>(&json) {
         Ok(raw) => {
             // Route through `send_cmd` so the G-S4 queue-depth counter stays
-            // consistent with every other FFI command send.
-            app.send_cmd(ActorCommand::PublishSignedEvent { raw, relays });
+            // consistent with every other FFI command send. `correlation_id:
+            // None` — this C-ABI symbol is not the `dispatch_action` path.
+            app.send_cmd(ActorCommand::PublishSignedEvent {
+                raw,
+                relays,
+                correlation_id: None,
+            });
         }
         Err(_) => {
             app.send_cmd(ActorCommand::ShowToast {

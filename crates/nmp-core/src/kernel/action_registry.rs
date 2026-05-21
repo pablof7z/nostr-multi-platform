@@ -407,14 +407,20 @@ pub fn default_registry() -> ActionRegistry {
                 // owns signing/publishing (D4). The event is already
                 // signed; the actor re-verifies it before publishing.
                 //
-                // No `correlation_id` thread-through is needed here: the
-                // event is pre-signed, so its `id` is known at dispatch
-                // time and `PublishModule::preferred_action_id()` already
-                // makes the host's correlation_id == `event.id` == the
-                // engine's `PublishHandle` (PR #86).
+                // Thread the registry-minted `correlation_id` onto the
+                // command (PR-A — explicit symmetry with `PublishNote`).
+                // For pre-signed `Publish`, `PublishModule::preferred_action_id()`
+                // returns the event's `id`, so the minted id passed here is
+                // == `event.id` == the engine's `PublishHandle`; threading
+                // it makes the publish engine's `correlation_id_override`
+                // do the same work explicitly instead of falling back to
+                // the handle by coincidence. Defends the round-trip against
+                // future changes that would decouple the dispatch return
+                // value from the publish handle.
                 send(ActorCommand::PublishSignedEvent {
                     raw: signed_event_to_raw(event),
                     relays: relays_for_target(&target),
+                    correlation_id: Some(correlation_id.to_string()),
                 });
                 Ok(())
             }
@@ -691,11 +697,14 @@ mod tests {
         }
     }
 
-    /// The pre-signed `Publish` path does NOT need a correlation_id thread:
-    /// the event id is known at dispatch time and `preferred_action_id()`
-    /// already binds the host's correlation_id to it (PR #86). The executor
-    /// sends `ActorCommand::PublishSignedEvent`, which carries no
-    /// correlation_id field — guard that this stays the case.
+    /// PR-A: the pre-signed `Publish` executor now threads the registry-minted
+    /// `correlation_id` onto `ActorCommand::PublishSignedEvent` — explicit
+    /// symmetry with the `PublishNote` path. The round-trip used to work by
+    /// coincidence (`preferred_action_id` returns `event.id`, the engine's
+    /// `None`-fallback also reports `event.id`); the explicit thread upgrades
+    /// that coincidence into a guarantee the publish engine surfaces the
+    /// dispatch-returned id even if future changes ever decouple the dispatch
+    /// return value from the publish handle.
     #[test]
     fn publish_signed_executor_sends_publish_signed_event_command() {
         use crate::actor::ActorCommand;
@@ -711,17 +720,29 @@ mod tests {
             target: crate::publish::PublishTarget::Auto,
         };
         let action_json = serde_json::to_string(&action).unwrap();
+        let minted_correlation_id = "ae".repeat(16);
         registry
-            .execute("nmp.publish", &action_json, "minted-id", &|cmd| {
+            .execute("nmp.publish", &action_json, &minted_correlation_id, &|cmd| {
                 *captured_in_send.lock().unwrap() = Some(cmd);
             })
             .expect("publish execution should succeed");
 
         let cmd = captured.lock().unwrap().take().expect("an ActorCommand must be sent");
-        assert!(
-            matches!(cmd, ActorCommand::PublishSignedEvent { .. }),
-            "a pre-signed Publish routes to PublishSignedEvent, got {cmd:?}"
-        );
+        match cmd {
+            ActorCommand::PublishSignedEvent {
+                correlation_id,
+                ..
+            } => {
+                assert_eq!(
+                    correlation_id,
+                    Some(minted_correlation_id),
+                    "the executor must thread the minted correlation_id onto the command"
+                );
+            }
+            other => panic!(
+                "a pre-signed Publish must route to PublishSignedEvent, got {other:?}"
+            ),
+        }
     }
 
     #[test]

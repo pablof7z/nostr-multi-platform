@@ -185,9 +185,11 @@ final class KernelHandle {
     /// namespace-keyed `nmp_app_dispatch_action` entry point (`"nmp.publish"`
     /// namespace, `PublishAction::PublishProfile` JSON) — the kind:0 event,
     /// its `created_at` stamp, and signing are all owned by Rust (thin-shell
-    /// rule: zero protocol logic in Swift). Fire-and-forget: matches the
-    /// `publishNote` / `react` / `follow` pattern.
-    func publishProfile(profile: [String: String]) {
+    /// rule: zero protocol logic in Swift). PR-A: returns the synchronous
+    /// dispatch result so the caller can drive a spinner keyed on the
+    /// correlation_id (or surface the error envelope to the user).
+    @discardableResult
+    func publishProfile(profile: [String: String]) -> DispatchResult {
         dispatchAction(
             namespace: "nmp.publish",
             body: ["PublishProfile": ["fields": profile]])
@@ -205,25 +207,19 @@ final class KernelHandle {
     /// `ActionModule` family. Routes via the single namespace-keyed
     /// `nmp_app_dispatch_action` entry point (`"nmp.publish"` namespace,
     /// `PublishAction::PublishNote` JSON) — the per-verb `nmp_app_publish_note`
-    /// C symbol has been deleted. Fire-and-forget: the returned correlation
-    /// JSON is freed and ignored.
-    func publishNote(content: String, replyToID: String?) {
+    /// C symbol has been deleted. PR-A: returns the synchronous dispatch
+    /// result so the caller can drive a spinner keyed on the correlation_id
+    /// (or surface the error envelope to the user). The terminal verdict
+    /// arrives through `projections["action_results"]` on a later snapshot
+    /// tick — match by `correlation_id` to clear the spinner.
+    @discardableResult
+    func publishNote(content: String, replyToID: String?) -> DispatchResult {
         let inner: [String: Any] = [
             "content": content,
             "reply_to_id": replyToID ?? NSNull(),
-            "target": "Auto"
+            "target": "Auto",
         ]
-        guard let data = try? JSONSerialization.data(withJSONObject: ["PublishNote": inner]),
-              let jsonStr = String(data: data, encoding: .utf8) else {
-            return
-        }
-        jsonStr.withCString { jsonPtr in
-            "nmp.publish".withCString { nsPtr in
-                if let ptr = nmp_app_dispatch_action(raw, nsPtr, jsonPtr) {
-                    nmp_app_free_string(ptr)
-                }
-            }
-        }
+        return dispatchAction(namespace: "nmp.publish", body: ["PublishNote": inner])
     }
 
     func retryPublish(handle: String) {
@@ -238,34 +234,52 @@ final class KernelHandle {
     /// `nmp_app_dispatch_action` path. `namespace` is one of `chirp.react` /
     /// `chirp.follow` / `chirp.unfollow` — registered by `nmp-app-chirp` at
     /// `nmp_app_chirp_register` time. `body` is the action JSON object.
-    /// Fire-and-forget: the returned correlation JSON is freed and ignored;
-    /// the outcome surfaces through the next kernel snapshot (matches the
-    /// `publishNote` pattern — the per-verb C symbols have been deleted).
-    private func dispatchAction(namespace: String, body: [String: Any]) {
+    ///
+    /// PR-A: returns a `DispatchResult` parsed from the Rust-supplied JSON
+    /// envelope so a host can drive a spinner keyed on the synchronous
+    /// `correlation_id` (or surface the dispatch-rejection error). The
+    /// terminal verdict — `"published"` / `"failed"` / `"cancelled"` — arrives
+    /// asynchronously through `projections["action_results"]` on a later
+    /// snapshot tick (match the `correlation_id` to clear the spinner).
+    /// Before this change the Rust pointer was freed unread, leaving the host
+    /// to race the next snapshot tick to discover the dispatch outcome.
+    @discardableResult
+    private func dispatchAction(namespace: String, body: [String: Any]) -> DispatchResult {
         guard let data = try? JSONSerialization.data(withJSONObject: body),
               let jsonStr = String(data: data, encoding: .utf8) else {
-            return
+            return .failure("failed to serialize action body")
         }
-        jsonStr.withCString { jsonPtr in
+        let envelope: String? = jsonStr.withCString { jsonPtr in
             namespace.withCString { nsPtr in
-                if let ptr = nmp_app_dispatch_action(raw, nsPtr, jsonPtr) {
-                    nmp_app_free_string(ptr)
+                guard let ptr = nmp_app_dispatch_action(raw, nsPtr, jsonPtr) else {
+                    return nil
                 }
+                defer { nmp_app_free_string(ptr) }
+                return String(cString: ptr)
             }
         }
+        guard let envelope else {
+            // D6: a non-null `app` never yields NULL — but the bridge is
+            // defensive (a null KernelHandle would surface as nil here).
+            return .failure("dispatch returned a null envelope")
+        }
+        return DispatchResult.parse(envelope: envelope)
     }
 
-    func react(targetEventID: String, reaction: String) {
+    @discardableResult
+    func react(targetEventID: String, reaction: String) -> DispatchResult {
         dispatchAction(
             namespace: "chirp.react",
             body: ["target_event_id": targetEventID, "reaction": reaction])
     }
 
-    func follow(pubkey: String) {
+    @discardableResult
+    func follow(pubkey: String) -> DispatchResult {
         dispatchAction(namespace: "chirp.follow", body: ["pubkey": pubkey])
     }
 
-    func unfollow(pubkey: String) {
+    @discardableResult
+    func unfollow(pubkey: String) -> DispatchResult {
         dispatchAction(namespace: "chirp.unfollow", body: ["pubkey": pubkey])
     }
 
@@ -432,6 +446,61 @@ struct KernelUpdateResult {
     let payloadBytes: Int
     let callbackReceivedAt: ContinuousClock.Instant
     let decodeMicros: Int
+}
+
+// ─── dispatch_action return envelope (PR-A) ───────────────────────────────
+
+/// Synchronous outcome of `nmp_app_dispatch_action`. The Rust kernel returns
+/// `{"correlation_id":"<id>"}` on accept (the action was validated, minted a
+/// correlation id, and routed to its executor), or `{"error":"<message>"}` on
+/// reject (null app, unknown namespace, malformed JSON, module validator
+/// rejection). PR-A: the Swift bridge parses this envelope so a caller can
+/// drive a spinner keyed on the correlation_id and surface the error message
+/// as a toast on the reject path.
+///
+/// The terminal verdict ("published" / "failed" / "cancelled") is a SEPARATE
+/// async signal — match the `correlation_id` against
+/// `projections["action_results"]` on subsequent snapshot ticks.
+enum DispatchResult: Equatable {
+    /// The action was accepted and enqueued. Carries the `correlation_id`
+    /// minted by `ActionRegistry::start` — the host should add this to its
+    /// `pendingActions` set and clear it when `action_results` reports the
+    /// terminal verdict.
+    case accepted(correlationId: String)
+    /// The action was rejected synchronously. Carries the human-readable
+    /// error from the Rust kernel — show it as a toast.
+    case failure(_ message: String)
+
+    var correlationId: String? {
+        if case let .accepted(id) = self { return id }
+        return nil
+    }
+
+    var errorMessage: String? {
+        if case let .failure(msg) = self { return msg }
+        return nil
+    }
+
+    /// Parse the JSON envelope returned by `nmp_app_dispatch_action`.
+    ///
+    /// The kernel's contract (`ffi/action.rs`): every non-null app returns
+    /// either `{"correlation_id":"<32-hex or event-id>"}` or
+    /// `{"error":"<reason>"}`. Anything else (malformed JSON, missing fields)
+    /// degrades to `.failure` so the caller never silently loses an action.
+    static func parse(envelope: String) -> DispatchResult {
+        guard let data = envelope.data(using: .utf8),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return .failure("dispatch envelope was not a JSON object: \(envelope.prefix(120))")
+        }
+        if let correlationId = object["correlation_id"] as? String, !correlationId.isEmpty {
+            return .accepted(correlationId: correlationId)
+        }
+        if let message = object["error"] as? String {
+            return .failure(message)
+        }
+        return .failure("dispatch envelope missing both correlation_id and error: \(envelope.prefix(120))")
+    }
 }
 
 // ─── Decoded snapshot shape ───────────────────────────────────────────────

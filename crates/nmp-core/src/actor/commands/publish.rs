@@ -178,10 +178,20 @@ pub(crate) fn publish_unsigned_event_to_relays(
 /// D6 — a signature/id verification failure is surfaced as a toast (error
 /// becomes kernel state, never a silent no-op) and produces no outbound
 /// frames and no publish-queue entry. The forged event is dropped.
+///
+/// `correlation_id` is the registry-minted action id when this publish
+/// originates from `nmp_app_dispatch_action`'s pre-signed `PublishAction::Publish`
+/// path. Threading it makes the publish engine report THAT id in
+/// `action_results` via `correlation_id_override` — explicit symmetry with
+/// `publish_note`. `None` for non-dispatch callers (the
+/// `nmp_app_publish_signed_event*` C-ABI symbols, conformance tests); the
+/// engine then falls back to the publish handle (== event id), preserving the
+/// prior behaviour.
 pub(crate) fn publish_signed_event(
     kernel: &mut Kernel,
     raw: crate::store::RawEvent,
     relays: &[crate::publish::RelayUrl],
+    correlation_id: Option<String>,
 ) -> Vec<OutboundMessage> {
     // Reuse the store's verification gate: serializes to NIP-01 canonical
     // JSON, parses with the `nostr` crate, and checks BOTH the event-id hash
@@ -220,15 +230,20 @@ pub(crate) fn publish_signed_event(
     };
     // Empty `relays` → Auto (NIP-65 outbox, the back-compat path). Non-empty
     // → the named D3 Explicit opt-out, routed to exactly those relays.
+    //
+    // `correlation_id` threads through to the publish engine's
+    // `correlation_id_override` — `None` preserves the prior fallback to the
+    // publish handle (== event id) for every non-dispatch caller.
     if relays.is_empty() {
-        kernel.publish_signed(&signed, &[])
+        kernel.publish_signed_with_correlation(&signed, &[], correlation_id)
     } else {
-        kernel.publish_signed_to(
+        kernel.publish_signed_to_with_correlation(
             &signed,
             &[],
             crate::publish::PublishTarget::Explicit {
                 relays: relays.to_vec(),
             },
+            correlation_id,
         )
     }
 }
