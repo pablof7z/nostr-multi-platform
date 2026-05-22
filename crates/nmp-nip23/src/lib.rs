@@ -14,20 +14,12 @@
 //! - [`build`] — `Article::new(d).title(…)…build(author, ts)` →
 //!   `UnsignedEvent`. Validates required fields per D6 with typed
 //!   `ArticleBuildError`.
-//! - [`domain`] — composite-key reverse indexes for kind:30023 under the
-//!   `nmp.nip23.articles` namespace (`by_author` /
-//!   `by_d_tag(author, d_tag)`), used by the view layer. Exposes
-//!   `decode_and_route` for the kernel ingest dispatch
-//!   (Phase 1 — see §6 in the design doc).
-//! - [`view`] — `ArticleListView` + `ArticleDetailView`.
 //!
-//! ## Ingest dispatch
-//!
-//! Per `docs/design/kind-wrappers.md` §6 + §8 + PD-008, decoded records are
-//! cached in the domain store **at ingest time**. Callers (apps or
-//! `KernelEventObserver` impls) dispatch kind:30023 events to
-//! `decode_and_route`, which writes the decoded `ArticleRecord` under the
-//! composite reverse indexes (`by_author` / `by_d_tag(author, d_tag)`).
+//! Prior `domain` (composite-key reverse indexes) and `view`
+//! (`ArticleListView` / `ArticleDetailView`) modules were deleted: both had
+//! zero external callers — no `ActionModule`, no `KernelEventObserver`, no
+//! subscription filter, no app dispatch. The live extension path is
+//! `KernelEventObserver` — see `nmp_core::substrate` module docs.
 
 // NIP-23 surface is feature-gated behind `long-form`. The crate has zero
 // app callers (no ActionModule, no KernelEventObserver, no subscription
@@ -39,30 +31,11 @@ pub mod build;
 #[cfg(feature = "long-form")]
 pub mod decode;
 #[cfg(feature = "long-form")]
-pub mod domain;
-#[cfg(feature = "long-form")]
 pub mod kinds;
-#[cfg(feature = "long-form")]
-pub mod view;
 
 #[cfg(feature = "long-form")]
 pub use build::{Article, ArticleBuildError, ArticleBuilder};
 #[cfg(feature = "long-form")]
 pub use decode::{try_from_event, ArticleRecord};
 #[cfg(feature = "long-form")]
-pub use domain::{decode_and_route, get, list_all, list_by_author, NAMESPACE};
-#[cfg(feature = "long-form")]
 pub use kinds::KIND_LONG_FORM_ARTICLE;
-#[cfg(feature = "long-form")]
-pub use view::{
-    ArticleAccumulator, ArticleDetailPayload, ArticleDetailSpec, ArticleDetailView,
-    ArticleListPayload, ArticleListSpec, ArticleListView, ArticleViewDelta, PublicKey,
-};
-
-// NOTE: `nmp-nip23` exposes its view types (`ArticleListView`,
-// `ArticleDetailView`) as plain public types whose `open` / `on_event_*` /
-// `snapshot` inherent methods are reached via static dispatch — the
-// `ViewModule` trait and the former `register(&mut ModuleRegistry)` entry
-// point were both deleted because no kernel-side registry ever drove them.
-// The live extension path is `KernelEventObserver` — see
-// `nmp_core::substrate` module docs.
