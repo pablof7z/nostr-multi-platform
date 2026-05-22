@@ -224,16 +224,19 @@ mod tests {
                 assert_eq!(guard.len(), 1);
                 // Backdate the entry so the sweep on the next call removes
                 // it. `Instant::checked_sub` returns `None` if the result
-                // would be before the platform's Instant epoch — unwrap is
-                // safe here because the test process has been alive for at
-                // least the TTL by the time it runs (CI cold-starts are
-                // longer than 60s; local runs are still safely past it on
-                // every platform `nmp-core` targets). On the off chance
-                // that fails, fall back to "now" — which would make the
-                // test fail loudly rather than silently pass.
+                // would be before the platform's `Instant` epoch — but on
+                // every platform `nmp-core` targets, the monotonic clock
+                // counts from boot (not process start), so subtracting 61s
+                // from `Instant::now()` is always representable. Use
+                // `.expect()` so a future hypothetical platform whose
+                // `Instant` epoch sits inside the TTL window fails this
+                // test loudly instead of silently passing for the wrong
+                // reason (a fall-back to "now" would leave the entry fresh,
+                // the sweep would skip it, and the second call would
+                // short-circuit on the still-present key).
                 let backdated = Instant::now()
                     .checked_sub(INFLIGHT_BOLT11_TTL + Duration::from_secs(1))
-                    .unwrap_or_else(Instant::now);
+                    .expect("Instant::checked_sub(61s) must succeed on every supported platform");
                 if let Some(v) = guard.get_mut("lnbc500n1p0cccccccc") {
                     *v = backdated;
                 }
