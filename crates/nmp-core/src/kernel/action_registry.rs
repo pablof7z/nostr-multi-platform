@@ -36,7 +36,6 @@
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::substrate::{ActionContext, ActionId, ActionModule, ActionRejection, ActionResult};
 
@@ -181,9 +180,14 @@ impl ActionRegistry {
     /// Using the preferred id makes `dispatch_action`'s JSON return and the
     /// matching `action_results` entry use the same identifier — a requirement
     /// for hosts that key UI spinners on the returned `correlation_id`.
+    ///
+    /// `now_ms` is the caller-supplied wall-clock millisecond stamp. The FFI
+    /// dispatch path reads it at the system boundary (not inside the reducer)
+    /// so tests can inject a deterministic value.
     pub fn start(
         &self,
         ctx: &mut ActionContext,
+        now_ms: u64,
         namespace: &str,
         action_json: &str,
     ) -> Result<ActionId, ActionRejection> {
@@ -203,7 +207,7 @@ impl ActionRegistry {
                 ));
             }
         };
-        Ok(preferred_id.unwrap_or_else(new_action_id))
+        Ok(preferred_id.unwrap_or_else(|| new_action_id(now_ms)))
     }
 
     /// Execute the validated action via [`ActionModule::execute`] on the
@@ -300,21 +304,20 @@ impl ActionRegistry {
 
 /// Generate a unique 32-hex-char action correlation id.
 ///
-/// Combines a wall-clock nanosecond stamp with a process-lifetime atomic
-/// counter so two ids minted in the same nanosecond still differ. This is a
-/// correlation handle, not a security token — no cryptographic randomness is
-/// required (the M6 ledger may swap in a UUID later without touching
-/// callers).
-fn new_action_id() -> ActionId {
+/// Combines the caller-supplied wall-clock millisecond stamp (`now_ms`, read
+/// at the FFI system boundary by `ffi/action.rs`) with a process-lifetime
+/// atomic counter so two ids minted at the same instant still differ. This is
+/// a correlation handle, not a security token — no cryptographic randomness
+/// is required (the M6 ledger may swap in a UUID later without touching
+/// callers). The clock is injected rather than read here so tests can pin the
+/// leading hex word for deterministic id assertions.
+fn new_action_id(now_ms: u64) -> ActionId {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
     let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
-    // 96-bit nanos truncated to the low 64 bits + a 64-bit sequence → 32 hex.
-    format!("{:016x}{:016x}", nanos as u64, seq)
+    // 64-bit now_ms + 64-bit sequence → 32 hex. The sequence guarantees
+    // uniqueness within a single millisecond.
+    format!("{:016x}{:016x}", now_ms, seq)
 }
 
 /// Build the registry the kernel ships with.
@@ -379,7 +382,7 @@ mod tests {
         let action_json =
             r#"{"PublishNote":{"content":"hello","reply_to_id":null,"target":"Auto"}}"#;
         let id = registry
-            .start(&mut ctx(), "nmp.publish", action_json)
+            .start(&mut ctx(), 1_700_000_000_000, "nmp.publish", action_json)
             .expect("publish note action should be accepted");
         assert_eq!(id.len(), 32, "correlation id should be 32 hex chars");
         assert!(
@@ -397,7 +400,7 @@ mod tests {
         let registry = default_registry();
         let action_json = r#"{"Cancel":{"handle":"smoke-test"}}"#;
         let err = registry
-            .start(&mut ctx(), "nmp.publish", action_json)
+            .start(&mut ctx(), 1_700_000_000_000, "nmp.publish", action_json)
             .expect_err("cancel must not be dispatchable via dispatch_action");
         match err {
             ActionRejection::Invalid(msg) => {
@@ -429,7 +432,7 @@ mod tests {
         };
         let action_json = serde_json::to_string(&action).unwrap();
         let id = registry
-            .start(&mut ctx(), "nmp.publish", &action_json)
+            .start(&mut ctx(), 1_700_000_000_000, "nmp.publish", &action_json)
             .expect("publish action with id+sig should be accepted");
         assert_eq!(
             id, expected_id,
@@ -441,7 +444,7 @@ mod tests {
     fn unknown_namespace_is_rejected() {
         let registry = default_registry();
         let err = registry
-            .start(&mut ctx(), "nmp.does-not-exist", "{}")
+            .start(&mut ctx(), 1_700_000_000_000, "nmp.does-not-exist", "{}")
             .expect_err("unknown namespace must be rejected");
         match err {
             ActionRejection::Invalid(msg) => {
@@ -455,7 +458,7 @@ mod tests {
     fn malformed_json_is_rejected_as_invalid() {
         let registry = default_registry();
         let err = registry
-            .start(&mut ctx(), "nmp.publish", "{not valid json")
+            .start(&mut ctx(), 1_700_000_000_000, "nmp.publish", "{not valid json")
             .expect_err("malformed JSON must be rejected");
         assert!(
             matches!(err, ActionRejection::Invalid(_)),
@@ -470,7 +473,7 @@ mod tests {
         // `{"t":"PublishNote"}` matches no variant and is rejected.
         let registry = default_registry();
         let err = registry
-            .start(&mut ctx(), "nmp.publish", r#"{"t":"PublishNote"}"#)
+            .start(&mut ctx(), 1_700_000_000_000, "nmp.publish", r#"{"t":"PublishNote"}"#)
             .expect_err("wrong-shape JSON must be rejected");
         assert!(matches!(err, ActionRejection::Invalid(_)));
     }
@@ -484,7 +487,7 @@ mod tests {
         let action_json =
             r#"{"PublishNote":{"content":"hello","reply_to_id":null,"target":"Auto"}}"#;
         let id = registry
-            .start(&mut ctx(), "nmp.publish", action_json)
+            .start(&mut ctx(), 1_700_000_000_000, "nmp.publish", action_json)
             .expect("publish-note action with content should be accepted");
         assert_eq!(id.len(), 32);
     }
@@ -611,7 +614,7 @@ mod tests {
         let registry = default_registry();
         let action_json = r#"{"PublishProfile":{"fields":{"name":"Alice","about":"hello"}}}"#;
         let id = registry
-            .start(&mut ctx(), "nmp.publish", action_json)
+            .start(&mut ctx(), 1_700_000_000_000, "nmp.publish", action_json)
             .expect("publish-profile action with string fields should be accepted");
         assert_eq!(id.len(), 32, "correlation id should be 32 hex chars");
         assert!(
@@ -627,7 +630,7 @@ mod tests {
         let registry = default_registry();
         let action_json = r#"{"PublishProfile":{"fields":{"name":"Alice","age":42}}}"#;
         let err = registry
-            .start(&mut ctx(), "nmp.publish", action_json)
+            .start(&mut ctx(), 1_700_000_000_000, "nmp.publish", action_json)
             .expect_err("non-string profile field must be rejected");
         match err {
             ActionRejection::Invalid(msg) => {
@@ -695,7 +698,7 @@ mod tests {
         let registry = default_registry();
         let action_json = r#"{"PublishNote":{"content":"","reply_to_id":null,"target":"Auto"}}"#;
         let err = registry
-            .start(&mut ctx(), "nmp.publish", action_json)
+            .start(&mut ctx(), 1_700_000_000_000, "nmp.publish", action_json)
             .expect_err("empty-content publish note must be rejected");
         match err {
             ActionRejection::Invalid(msg) => {
@@ -785,7 +788,7 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         for _ in 0..256 {
             let id = registry
-                .start(&mut ctx(), "nmp.publish", action_json)
+                .start(&mut ctx(), 1_700_000_000_000, "nmp.publish", action_json)
                 .unwrap();
             assert!(seen.insert(id.clone()), "duplicate correlation id: {id}");
         }
@@ -818,7 +821,7 @@ mod tests {
         let mut registry = ActionRegistry::new();
         registry.register::<PanickingStartModule>();
         let err = registry
-            .start(&mut ctx(), "host.boom_start", "null")
+            .start(&mut ctx(), 1_700_000_000_000, "host.boom_start", "null")
             .expect_err("a panicking validator must be rejected, not unwound");
         match err {
             ActionRejection::Invalid(msg) => {
