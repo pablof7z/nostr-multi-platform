@@ -86,13 +86,12 @@ Work currently on a branch. Agents must not duplicate these tasks.
 
 | ID | Description | Branch | Commits ahead of master |
 |----|-------------|--------|------------------------|
-| B-1 | fix(nip17): fail-closed DM relay routing | `wt-nip17-fix` | 1 |
-| B-2 | feat(chirp-web): parity shell | `codex/chirp-web-parity-polish` | Multiple |
-| B-3 | WASM plan doc + label cleanup | `.claude/worktrees/agent-a69e36db1d66908af` | 3 |
+| B-2 | feat(chirp-web): parity shell | `codex/chirp-web-parity-polish` | 1 |
 
-> WIP.md entries for PR-G (action_stages), PR-I (relay slots), chirp-tui-spec, and
-> chirp-repl-author-names show zero commits ahead of master — those branches have been
-> merged or abandoned. WIP.md is now superseded by this file.
+> B-1 (`wt-nip17-fix`) and B-3 (agent worktree) no longer exist on remote — merged or
+> abandoned. WIP.md entries for PR-G (action_stages), PR-I (relay slots), chirp-tui-spec,
+> and chirp-repl-author-names show zero commits ahead of master — merged or abandoned.
+> WIP.md is now superseded by this file.
 
 ---
 
@@ -143,7 +142,22 @@ must receive DMs before NIP-17 can be called done.
 **Acceptance test:** fresh account → receive a gift-wrapped kind:1059 from a second account →
 message appears in the `nmp.nip17.dm_inbox` snapshot projection.
 
-### F-03 · First-launch defaults — empty timeline [V1 BLOCKER]
+### F-03a · NIP-65 kind:10002 publish coverage — verify auto-trigger fires on sign-in [V1 QUALITY]
+
+`PublishRelayListAction` (`nmp.nip65.publish_relay_list`) is registered in the chirp app FFI.
+The actor auto-publishes kind:10002 via `maybe_publish_relay_list_after_edit`
+(`actor/dispatch.rs:117`) whenever `AddRelay` / `RemoveRelay` are dispatched. This covers
+the relay-settings-change path.
+
+**Gap to verify:** on first sign-in with an existing account (kind:10002 fetched from relay,
+NOT added via `AddRelay`), the auto-trigger never fires — only explicit `AddRelay` calls do.
+A returning user may have correct relays but never re-advertise them.
+
+**Verification test:** sign in with a pre-existing account that has a kind:10002 on relay →
+confirm the actor does NOT re-publish kind:10002 (correct; the relays came from the wire, not
+from an AddRelay call). Then add/remove a relay in settings → confirm kind:10002 is published.
+
+### F-03b · First-launch defaults — empty timeline [V1 BLOCKER]
 
 A new account sees an empty timeline with no discovery surface. No default kind:3 follow list
 is seeded on first sign-in.
@@ -153,6 +167,7 @@ a curated default follow list or present a discovery/onboarding surface before t
 timeline.
 
 ### F-04 · Zap E2E round-trip verification [V1 BLOCKER]
+
 
 `ZapAction` is implemented and registered. `ZapsAggregateProjection` is registered. The full
 round-trip — dispatch zap → `FetchLnurlInvoice` → bolt11 toast → `WalletPayInvoice` → NWC
@@ -172,18 +187,11 @@ snapshot field change.
 from the `nmp.toml` manifest; delete the handwritten counterparts in `KernelBridge.swift`.
 Proves the loop before extending to the full bridge.
 
-### F-06 · CI lint: freeze C-ABI surface [V1 QUALITY]
-
-177 `#[no_mangle] extern "C"` symbols currently (134 in `nmp-core/src/ffi/`, 43 in
-`nmp-app-chirp/src/`). A CI lint that fails the build when a new `#[no_mangle]` is added
-without an allowlist entry prevents the dispatch_action seam from eroding further.
-
-**Fix:** add a `cargo xtask` or shell step in CI that counts `#[no_mangle]` symbols and fails
-if the count increases without a matching allowlist update.
+### F-06 · ~~CI lint: freeze C-ABI surface~~ CLOSED — see Appendix
 
 ### F-07 · Fix V-02 — move nmp-marmot to apps/ [CLEANUP]
 
-See V-02 fix path. Can be done in parallel with F-05/F-06.
+See V-02 fix path. Can be done in parallel with F-05.
 
 ---
 
@@ -217,3 +225,4 @@ Recorded so Opus reviews do not re-flag these as violations.
 | `bootstrap_urls_for_role` test-only fallback | `FALLBACK_CONTENT_RELAY` / `FALLBACK_INDEXER_RELAY` are unconditional in production |
 | V-03 `wallet_status` app noun in `Kernel` struct | Fixed: no typed field in `KernelSnapshot`; surfaced via host-registered `"wallet"` snapshot projection (`kernel/types.rs:741`) |
 | D0 `chirp.follow`/`chirp.unfollow` hardcoded in `nmp-core` | Confirmed removed: zero occurrences in `crates/nmp-core/` (verified 2026-05-23) |
+| F-06 CI lint: freeze C-ABI surface | Already shipped: `ci/check-ffi-surface-freeze.sh` + `.github/workflows/ffi-surface-freeze.yml`; ADR-override process live |
