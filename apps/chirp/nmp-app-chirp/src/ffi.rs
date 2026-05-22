@@ -10,8 +10,8 @@
 //!   `GroupChatProjection` for one group into the kernel: an event observer
 //!   (ingest) plus a `"nmp.nip29.group_chat"` snapshot projection (output). Pure
 //!   consumption — no handle, no actions, no unregister.
-//! - [`nmp_app_chirp_register_dm_inbox`] — compatibility entry point for the
-//!   NIP-17 DM runtime. `nmp_app_chirp_register` wires it eagerly: a kind:1059
+//! - [`nmp_app_chirp_register_dm_inbox`] — host entry point for the NIP-17 DM
+//!   runtime. `nmp_app_chirp_register` wires it eagerly: a kind:1059
 //!   raw-event observer, a `"nmp.nip17.dm_inbox"` snapshot projection, and a
 //!   Rust-owned controller for the active gift-wrap interest + kind:10050
 //!   relay-list publish.
@@ -350,14 +350,13 @@ pub extern "C" fn nmp_app_chirp_register_group_discovery(
 
 /// Wire the NIP-17 DM runtime into `app`.
 ///
-/// The `viewer_pubkey` argument is retained for C-ABI compatibility but is no
-/// longer read. Rust observes the active local-key slot and relay-edit rows on
-/// snapshot ticks, then owns the active-account kind:1059 gift-wrap interest,
-/// kind:10050 relay-list publish, and `"nmp.nip17.dm_inbox"` projection.
+/// Rust observes the active local-key slot and relay-edit rows on snapshot
+/// ticks, then owns the active-account kind:1059 gift-wrap interest,
+/// kind:10050 relay-list publish, and `"nmp.nip17.dm_inbox"` projection — no
+/// viewer pubkey is required at the FFI boundary.
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_app_chirp_register_dm_inbox(app: *mut NmpApp, viewer_pubkey: *const c_char) {
-    let _ = viewer_pubkey;
+pub extern "C" fn nmp_app_chirp_register_dm_inbox(app: *mut NmpApp) {
     if app.is_null() {
         return;
     }
@@ -1308,18 +1307,12 @@ mod tests {
     /// THE DM-INBOX WIRING PROOF: `nmp_app_chirp_register_dm_inbox` registers
     /// a `DmInboxProjection` against `app` — it runs to completion (raw-event
     /// observer + snapshot-projection/controller registration) without
-    /// panicking across the FFI boundary. The legacy viewer-pubkey argument is
-    /// ignored; active-account interest ownership is Rust-side now.
+    /// panicking across the FFI boundary. Active-account interest ownership is
+    /// Rust-side — the FFI takes no viewer pubkey.
     #[test]
     fn register_dm_inbox_runs_for_app() {
         let app = nmp_app_new();
-        // NULL viewer pubkey — accepted for ABI compatibility.
-        nmp_app_chirp_register_dm_inbox(app, std::ptr::null());
-        // Concrete viewer pubkey — ignored by the Rust-owned controller.
-        let pubkey =
-            CString::new("aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee")
-                .unwrap();
-        nmp_app_chirp_register_dm_inbox(app, pubkey.as_ptr());
+        nmp_app_chirp_register_dm_inbox(app);
         nmp_app_free(app);
     }
 
@@ -1327,13 +1320,13 @@ mod tests {
     /// dereference a null pointer or panic across the FFI boundary.
     #[test]
     fn register_dm_inbox_null_app_is_silent_noop() {
-        nmp_app_chirp_register_dm_inbox(std::ptr::null_mut(), std::ptr::null());
+        nmp_app_chirp_register_dm_inbox(std::ptr::null_mut());
     }
 
     /// THE IDEMPOTENCY PROOF: re-invoking `nmp_app_chirp_register_dm_inbox`
     /// must NOT stack a fresh raw-event observer on every call. The function
-    /// can still be reached via the retained C-ABI compatibility door, while
-    /// `nmp_app_chirp_register` also wires the runtime eagerly.
+    /// remains directly callable from the host, while `nmp_app_chirp_register`
+    /// also wires the runtime eagerly.
     ///
     /// Asserted observably through the per-app
     /// `swap_nip17_dm_inbox_observer` slot — the host-side handle that lets
@@ -1368,7 +1361,7 @@ mod tests {
         );
 
         // First registration.
-        nmp_app_chirp_register_dm_inbox(app, std::ptr::null());
+        nmp_app_chirp_register_dm_inbox(app);
         let id1 = app_ref
             .swap_nip17_dm_inbox_observer(None)
             .expect("first register must install a raw-observer id in the per-app slot");
@@ -1378,7 +1371,7 @@ mod tests {
         assert!(prev.is_none(), "we just swap-took, slot was empty");
 
         // Second registration — compatibility re-invoke case.
-        nmp_app_chirp_register_dm_inbox(app, std::ptr::null());
+        nmp_app_chirp_register_dm_inbox(app);
         let id2 = app_ref
             .swap_nip17_dm_inbox_observer(None)
             .expect("second register must install a fresh id in the per-app slot");
