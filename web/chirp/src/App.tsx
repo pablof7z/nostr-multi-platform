@@ -1,6 +1,5 @@
-import { For, Show, createSignal, onCleanup, type JSX } from "solid-js";
+import { For, Show, createMemo, createSignal, onCleanup, type JSX } from "solid-js";
 import {
-  Bell,
   CheckCircle2,
   Database,
   HardDrive,
@@ -8,60 +7,55 @@ import {
   Radio,
   RefreshCw,
   Send,
-  Server,
   Settings,
   Signal,
   UserRound,
 } from "lucide-solid";
+import { publishNoteAction } from "./nmp/actions";
 import { createNmpClient, runtimeConnection, type RuntimeSnapshot } from "./nmp/client";
 import { labelRuntimeStatus, protocolVersion, type WorkerEvent } from "./nmp/protocol";
+import {
+  chirpTimelineFromEnvelope,
+  displayRows,
+  kernelSnapshotFromEnvelope,
+  type TimelineItem,
+} from "./nmp/snapshot";
 
 const client = createNmpClient();
-
-const initialFeed = [
-  {
-    author: "alice@nostr",
-    text: "Chirp Web is now exercising the NMP worker contract.",
-    time: "now",
-  },
-  {
-    author: "relay monitor",
-    text: "Live relay transport is the next runtime slice.",
-    time: "next",
-  },
-];
 
 export default function App() {
   const [snapshot, setSnapshot] = createSignal<RuntimeSnapshot>(client.snapshot());
   const [starting, setStarting] = createSignal(false);
   const [draft, setDraft] = createSignal("");
   const unsubscribe = client.subscribe(setSnapshot);
+  const kernel = createMemo(() => kernelSnapshotFromEnvelope(snapshot().latestUpdate));
+  const chirp = createMemo(() => chirpTimelineFromEnvelope(snapshot().latestUpdate));
+  const rows = createMemo(() => displayRows(kernel(), chirp()));
 
   onCleanup(unsubscribe);
 
   const start = async () => {
     setStarting(true);
-    const next = await client.start();
-    setSnapshot(next);
+    setSnapshot(await client.start());
     setStarting(false);
   };
 
-  const dispatch = async () => {
-    const text = draft().trim();
-    if (!text) {
-      return;
-    }
-    setSnapshot(await client.dispatch("chirp.compose.submit", { text }));
-  };
-
-  const refresh = async () => {
-    setSnapshot(await client.dispatch("chirp.timeline.refresh", {}));
+  const publish = async () => {
+    setSnapshot(await client.dispatchChirp(publishNoteAction(draft())));
+    setDraft("");
   };
 
   return (
     <main class="app-shell">
       <Sidebar />
-      <FeedPanel draft={draft()} onDraft={setDraft} onPublish={dispatch} onRefresh={refresh} />
+      <FeedPanel
+        draft={draft()}
+        rows={rows()}
+        revision={kernel()?.rev}
+        onDraft={setDraft}
+        onPublish={publish}
+        onStart={start}
+      />
       <ConnectionPanel snapshot={snapshot()} starting={starting()} onStart={start} />
     </main>
   );
@@ -79,11 +73,7 @@ function Sidebar() {
           <MessageSquare size={18} />
           Feed
         </a>
-        <a href="#settings">
-          <Bell size={18} />
-          Mentions
-        </a>
-        <a href="#settings">
+        <a href="#profile">
           <UserRound size={18} />
           Profile
         </a>
@@ -98,24 +88,20 @@ function Sidebar() {
 
 function FeedPanel(props: {
   draft: string;
+  rows: TimelineItem[];
+  revision?: number;
   onDraft: (value: string) => void;
   onPublish: () => void;
-  onRefresh: () => void;
+  onStart: () => void;
 }) {
   return (
     <section class="feed-panel" id="feed">
       <header class="topbar">
         <div>
-          <p class="eyebrow">NMP web proof</p>
+          <p class="eyebrow">NMP snapshot {props.revision === undefined ? "pending" : `rev ${props.revision}`}</p>
           <h1>Home timeline</h1>
         </div>
-        <button
-          class="icon-button"
-          type="button"
-          aria-label="Refresh timeline"
-          title="Refresh timeline"
-          onClick={props.onRefresh}
-        >
+        <button class="icon-button" type="button" aria-label="Start runtime" title="Start runtime" onClick={props.onStart}>
           <RefreshCw size={18} />
         </button>
       </header>
@@ -128,29 +114,42 @@ function FeedPanel(props: {
           onInput={(event) => props.onDraft(event.currentTarget.value)}
         />
         <div class="composer-actions">
-          <span>{props.draft.trim().length}/280</span>
-          <button type="button" onClick={props.onPublish} disabled={props.draft.trim().length === 0}>
+          <button type="button" onClick={props.onPublish}>
             <Send size={17} />
             Publish
           </button>
         </div>
       </div>
 
-      <For each={initialFeed}>
-        {(item) => (
-          <article class="post">
-            <div class="avatar">{item.author.slice(0, 1).toUpperCase()}</div>
-            <div>
-              <div class="post-meta">
-                <strong>{item.author}</strong>
-                <span>{item.time}</span>
-              </div>
-              <p>{item.text}</p>
-            </div>
-          </article>
-        )}
-      </For>
+      <Show when={props.rows.length > 0} fallback={<EmptyTimeline />}>
+        <For each={props.rows}>{(item) => <Post item={item} />}</For>
+      </Show>
     </section>
+  );
+}
+
+function EmptyTimeline() {
+  return (
+    <div class="empty-state">
+      <MessageSquare size={22} />
+      <p>No Rust snapshot has produced timeline rows yet.</p>
+    </div>
+  );
+}
+
+function Post(props: { item: TimelineItem }) {
+  const author = () => props.item.displayName ?? props.item.handle ?? shortKey(props.item.authorPubkey ?? props.item.pubkey);
+  return (
+    <article class="post">
+      <div class="avatar">{author().slice(0, 1).toUpperCase()}</div>
+      <div>
+        <div class="post-meta">
+          <strong>{author()}</strong>
+          <span>{props.item.relativeTime ?? labelTime(props.item.createdAt)}</span>
+        </div>
+        <p>{props.item.content ?? ""}</p>
+      </div>
+    </article>
   );
 }
 
@@ -168,26 +167,12 @@ function ConnectionPanel(props: {
         </div>
         <StatusLine icon={<Signal size={17} />} label="Runtime" value={labelRuntimeStatus(props.snapshot.status)} />
         <StatusLine icon={<Database size={17} />} label="Database" value={runtimeConnection.databaseName} />
+        <StatusLine icon={<Radio size={17} />} label="Relays" value="Rust defaults" />
         <StatusLine icon={<HardDrive size={17} />} label="Protocol" value={`worker v${protocolVersion}`} />
         <button type="button" onClick={props.onStart} disabled={props.starting}>
           <CheckCircle2 size={18} />
           {props.starting ? "Starting" : "Start worker"}
         </button>
-      </section>
-
-      <section class="runtime-card">
-        <div class="card-heading">
-          <Server size={18} />
-          <h2>Relays</h2>
-        </div>
-        <For each={runtimeConnection.relays}>
-          {(relay) => (
-            <div class="relay-row">
-              <span>{relay}</span>
-              <small>configured</small>
-            </div>
-          )}
-        </For>
       </section>
 
       <EventLog events={props.snapshot.events} />
@@ -214,4 +199,18 @@ function EventLog(props: { events: WorkerEvent[] }) {
       </Show>
     </section>
   );
+}
+
+function shortKey(value?: string): string {
+  if (!value) {
+    return "unknown";
+  }
+  return value.length > 12 ? `${value.slice(0, 8)}..${value.slice(-4)}` : value;
+}
+
+function labelTime(epochSeconds?: number): string {
+  if (!epochSeconds) {
+    return "";
+  }
+  return new Date(epochSeconds * 1000).toLocaleString();
 }

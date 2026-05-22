@@ -3,7 +3,7 @@ export type WorkerRequest =
   | {
       type: "start";
       app_id: string;
-      relays: string[];
+      relays?: string[];
       database_name: string;
       correlation_id: string;
     }
@@ -11,6 +11,11 @@ export type WorkerRequest =
       type: "dispatch";
       action_type: string;
       payload: unknown;
+      correlation_id: string;
+    }
+  | {
+      type: "chirp_action";
+      action: ChirpAction;
       correlation_id: string;
     }
   | {
@@ -36,6 +41,7 @@ export type RuntimeStatus =
 export type WorkerEvent =
   | { type: "hello_accepted"; protocol_version: number; status: RuntimeStatus }
   | { type: "runtime_status"; status: RuntimeStatus; correlation_id?: string }
+  | { type: "action_accepted"; action_type: string; correlation_id: string }
   | { type: "update"; envelope: unknown }
   | {
       type: "capability_failure";
@@ -45,11 +51,18 @@ export type WorkerEvent =
     }
   | { type: "error"; code: string; message: string; correlation_id?: string };
 
+export type ChirpAction =
+  | { action: "publish_note"; content: string; reply_to_id?: string | null }
+  | { action: "react"; target_event_id: string; reaction?: string }
+  | { action: "follow"; pubkey: string }
+  | { action: "unfollow"; pubkey: string };
+
 export const protocolVersion = 1;
 
 export function eventCorrelationId(event: WorkerEvent): string | undefined {
   switch (event.type) {
     case "runtime_status":
+    case "action_accepted":
     case "capability_failure":
     case "error":
       return event.correlation_id;

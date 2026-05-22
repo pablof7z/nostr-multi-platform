@@ -25,7 +25,7 @@ export class WasmBridge {
 
   handle(request: WorkerRequest): WorkerEvent[] {
     try {
-      return [decodeWorkerEvent(this.runtime.handle_json(JSON.stringify(request)))];
+      return decodeWorkerEvents(this.runtime.handle_json(JSON.stringify(request)));
     } catch (error) {
       return [
         {
@@ -87,12 +87,15 @@ function isJavaScriptModule(contentType: string): boolean {
   );
 }
 
-function decodeWorkerEvent(value: unknown): WorkerEvent {
+function decodeWorkerEvents(value: unknown): WorkerEvent[] {
   const event = typeof value === "string" ? (JSON.parse(value) as unknown) : value;
-  if (!isWorkerEvent(event)) {
-    throw new Error("nmp-wasm returned an invalid worker event");
+  const events = Array.isArray(event) ? event : [event];
+  for (const item of events) {
+    if (!isWorkerEvent(item)) {
+      throw new Error("nmp-wasm returned an invalid worker event");
+    }
   }
-  return event;
+  return events;
 }
 
 function isWorkerEvent(event: unknown): event is WorkerEvent {

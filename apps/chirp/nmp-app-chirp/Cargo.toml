@@ -84,6 +84,7 @@ apple-native-keyring-store = { version = "1.0", features = ["protected"], option
 # the slot. Matches the pattern in the other protocol crates (`nmp-nip01`,
 # `nmp-nip22`, `nmp-relations`).
 nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
+nmp-wasm = { path = "../../../crates/nmp-wasm" }
 # `test-utils` gates `MdkSqliteStorage::new_in_memory` so the Marmot FFI
 # smoke tests can spin up a real `MarmotService` without a keyring /
 # on-disk SQLite file (mirrors `crates/nmp-marmot/src/tests.rs`).

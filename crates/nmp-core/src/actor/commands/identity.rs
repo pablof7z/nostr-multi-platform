@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::actor::{canonical_relay_role, has_role};
 use crate::kernel::{AccountSummary, Kernel, RelayEditRow};
-use crate::relay::{canonical_relay_url, OutboundMessage};
+use crate::relay::{canonical_relay_url, chirp_default_relay_bootstrap, OutboundMessage};
 use crate::remote_signer::RemoteSignerHandle;
 use crate::substrate::{SignedEvent, UnsignedEvent};
 use crate::util::sort_dedup;
@@ -763,10 +763,6 @@ pub(super) const DEFAULT_FOLLOWS: &[&str] = &[
     // fiatjaf
     "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
 ];
-const DEFAULT_ONBOARDING_RELAYS: &[(&str, &str)] = &[
-    ("wss://relay.primal.net", "both,indexer"),
-    ("wss://purplepag.es", "indexer"),
-];
 const DEFAULT_ONBOARDING_OVERRIDE_ROLE: &str = "both,indexer";
 
 pub(crate) fn create_account(
@@ -932,9 +928,9 @@ fn cold_start_publish_targets(kernel: &Kernel, relay_rows: &[RelayEditRow]) -> V
 
 fn relay_rows_from_create_account(relays: &[(String, String)]) -> Vec<RelayEditRow> {
     let source = if relays.is_empty() {
-        DEFAULT_ONBOARDING_RELAYS
+        chirp_default_relay_bootstrap()
             .iter()
-            .map(|(url, role)| ((*url).to_string(), (*role).to_string()))
+            .map(|entry| (entry.url.to_string(), entry.role.to_string()))
             .collect::<Vec<_>>()
     } else {
         relays.to_vec()

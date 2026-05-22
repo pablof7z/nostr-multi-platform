@@ -1,7 +1,10 @@
 use serde_json::Value;
 
 use crate::bridge::NmpEvent;
+use crate::feature_snapshot::FeatureSnapshot;
+use crate::features::FeatureTab;
 pub use crate::runtime::AppRuntime;
+use crate::snapshot::{ActionResult, ActionStageRow, InterestRow, RelayRow, RuntimeMetrics};
 use crate::timeline::TimelineRow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,6 +18,7 @@ pub enum Pane {
 pub enum Mode {
     Normal,
     Compose,
+    Command,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,14 +27,22 @@ pub struct AppState {
     pub mode: Mode,
     pub basic: bool,
     pub show_help: bool,
-    pub tab: &'static str,
+    pub tab: FeatureTab,
     pub update_count: u64,
     pub blocks: usize,
     pub cards: usize,
     pub rows: Vec<TimelineRow>,
+    pub metrics: RuntimeMetrics,
+    pub relays: Vec<RelayRow>,
+    pub interests: Vec<InterestRow>,
+    pub pending_actions: Vec<String>,
+    pub action_stages: Vec<ActionStageRow>,
+    pub last_action_result: Option<ActionResult>,
+    pub features: FeatureSnapshot,
     pub selected: usize,
     pub compose: String,
     pub reply_to: Option<String>,
+    pub command: String,
     pub status: String,
 }
 
@@ -41,14 +53,22 @@ impl Default for AppState {
             mode: Mode::Normal,
             basic: false,
             show_help: false,
-            tab: "home",
+            tab: FeatureTab::Home,
             update_count: 0,
             blocks: 0,
             cards: 0,
             rows: Vec::new(),
+            metrics: RuntimeMetrics::default(),
+            relays: Vec::new(),
+            interests: Vec::new(),
+            pending_actions: Vec::new(),
+            action_stages: Vec::new(),
+            last_action_result: None,
+            features: FeatureSnapshot::default(),
             selected: 0,
             compose: String::new(),
             reply_to: None,
+            command: String::new(),
             status: "starting NMP runtime".to_string(),
         }
     }
@@ -57,6 +77,13 @@ impl Default for AppState {
 impl AppState {
     pub fn apply_nmp_event(&mut self, runtime: &AppRuntime, event: NmpEvent) {
         self.update_count += 1;
+        let shared = crate::snapshot::SharedSnapshot::from_payload(&event.payload);
+        self.metrics = shared.metrics;
+        self.relays = shared.relays;
+        self.interests = shared.interests;
+        self.action_stages = shared.action_stages;
+        self.features = FeatureSnapshot::from_payload(&event.payload);
+        let applied_action_result = self.apply_action_results(runtime, shared.action_results);
         if let Some(snapshot) = runtime.chirp_snapshot() {
             self.blocks = snapshot
                 .get("blocks")
@@ -71,11 +98,13 @@ impl AppState {
                 self.selected = self.rows.len().saturating_sub(1);
             }
         }
-        self.status = format!(
-            "received NMP update #{} ({} bytes)",
-            self.update_count,
-            event.payload.len()
-        );
+        if !applied_action_result {
+            self.status = format!(
+                "received NMP update #{} ({} bytes)",
+                self.update_count,
+                event.payload.len()
+            );
+        }
     }
 
     pub fn focus(&mut self, pane: Pane) {
@@ -96,6 +125,19 @@ impl AppState {
         let was_open = self.show_help;
         self.show_help = false;
         was_open
+    }
+
+    pub fn set_tab(&mut self, tab: FeatureTab) {
+        self.tab = tab;
+        self.status = format!("tab {}", tab.label());
+    }
+
+    pub fn next_tab(&mut self) {
+        self.set_tab(self.tab.next());
+    }
+
+    pub fn previous_tab(&mut self) {
+        self.set_tab(self.tab.previous());
     }
 
     pub fn select_next(&mut self) {
@@ -154,6 +196,37 @@ impl AppState {
         self.status = "compose canceled".to_string();
     }
 
+    pub fn start_command(&mut self) {
+        self.mode = Mode::Command;
+        self.command.clear();
+        self.status = "command mode: type help for Chirp iOS parity commands".to_string();
+    }
+
+    pub fn cancel_command(&mut self) {
+        self.mode = Mode::Normal;
+        self.command.clear();
+        self.status = "command canceled".to_string();
+    }
+
+    pub fn push_command_char(&mut self, ch: char) {
+        self.command.push(ch);
+    }
+
+    pub fn backspace_command(&mut self) {
+        self.command.pop();
+    }
+
+    pub fn take_command(&mut self) -> Option<String> {
+        let input = self.command.trim().to_string();
+        if input.is_empty() {
+            self.status = "command is empty".to_string();
+            return None;
+        }
+        self.command.clear();
+        self.mode = Mode::Normal;
+        Some(input)
+    }
+
     pub fn push_compose_char(&mut self, ch: char) {
         self.compose.push(ch);
     }
@@ -176,6 +249,41 @@ impl AppState {
         self.compose.clear();
         self.mode = Mode::Normal;
         Some((content, reply_to))
+    }
+
+    pub fn track_action(&mut self, correlation_id: String, label: &str) {
+        if !self.pending_actions.contains(&correlation_id) {
+            self.pending_actions.push(correlation_id.clone());
+        }
+        self.status = format!("{label} accepted ({})", short_id(&correlation_id));
+    }
+
+    fn apply_action_results(&mut self, runtime: &AppRuntime, results: Vec<ActionResult>) -> bool {
+        if results.is_empty() {
+            return false;
+        }
+
+        for result in results {
+            self.pending_actions
+                .retain(|id| id != &result.correlation_id);
+            let _ = runtime.ack_action_stage(&result.correlation_id);
+            let message = match result.error.as_deref() {
+                Some(error) if !error.is_empty() => format!(
+                    "action {} {}: {}",
+                    short_id(&result.correlation_id),
+                    result.status,
+                    error
+                ),
+                _ => format!(
+                    "action {} {}",
+                    short_id(&result.correlation_id),
+                    result.status
+                ),
+            };
+            self.status = message;
+            self.last_action_result = Some(result);
+        }
+        true
     }
 }
 

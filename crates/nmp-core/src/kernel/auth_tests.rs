@@ -479,14 +479,14 @@ fn nip42_kernel_view_open_reqs_routed_through_auth_gate() {
 // challenge: the `["relay", <url>]` tag is the canonical anti-replay
 // surface, and relays validate it against the socket the AUTH arrived on.
 // Pre-T125 the kernel stamped `role.url()` (i.e. the lane's bootstrap host
-// — `wss://relay.damus.io` for the Content lane) regardless of which
+// — the shared content bootstrap URL for the Content lane) regardless of which
 // resolved relay sent the CHALLENGE. After T105's URL-keyed transport pool
 // (`fada22b`), that ALSO routed the AUTH response to the wrong socket.
 //
 // Two distinct relays issue distinct challenges; each AUTH response must
 // carry the matching delivering URL on BOTH the `relay` tag AND the
 // outbound `relay_url` routing field. We parse the wire frames rather than
-// substring-match, because the bootstrap URL ("wss://relay.damus.io") and
+// substring-match, because the bootstrap URL and
 // our test URLs ("wss://a.example", "wss://b.example") would otherwise
 // require fragile contains/disjointness checks.
 #[test]
