@@ -23,10 +23,9 @@ mod join;
 mod publish_plan;
 
 pub use composed::{
-    comment_in_group_command, react_in_group_command, CommentInGroupAction, CommentInGroupInput,
-    ReactInGroupAction, ReactInGroupInput,
+    CommentInGroupAction, CommentInGroupInput, ReactInGroupAction, ReactInGroupInput,
 };
-pub use content::{post_chat_message_command, PostChatMessageAction, PostChatMessageInput};
-pub use discover::{discover_groups_command, DiscoverGroupsAction, DiscoverGroupsInput};
-pub use join::{join_group_command, JoinGroupAction, JoinGroupInput};
+pub use content::{PostChatMessageAction, PostChatMessageInput};
+pub use discover::{DiscoverGroupsAction, DiscoverGroupsInput};
+pub use join::{JoinGroupAction, JoinGroupInput};
 pub use publish_plan::{PublishPlan, PublishPlanError, RelayPin};
