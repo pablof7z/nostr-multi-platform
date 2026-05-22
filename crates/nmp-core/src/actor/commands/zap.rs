@@ -127,6 +127,18 @@ pub(crate) fn handle_fetch_lnurl_invoice(
         unsigned.created_at = kernel.now_secs();
     }
 
+    // V-07 — relay selection is kernel policy, never shell policy. The
+    // kind:9734 `relays` tag tells the LN provider where to publish the
+    // kind:9735 receipt (NIP-57 § "Appendix F"): the correct answer is the
+    // RECIPIENT's NIP-65 write list, which only the kernel knows.
+    //
+    // When the executor produced no `relays` tag (the caller passed an
+    // empty list — the D0-correct shape) we inject from
+    // `kernel.author_write_relays(recipient)`. That helper falls back to
+    // the cold-start bootstrap discovery seed when no kind:10002 is cached
+    // yet, so the tag is never empty for a well-formed recipient.
+    inject_recipient_relays(kernel, &mut unsigned);
+
     // ADR-0026 Phase 1 — local keys only. Bunker accounts have no local
     // secret material so the kind:9734 signature cannot be minted on this
     // path. Fail closed with a clear toast + `RecordActionFailure` so the
@@ -219,6 +231,46 @@ pub(crate) fn handle_fetch_lnurl_invoice(
             }
         }
     });
+}
+
+/// V-07 — inject the kind:9734 `relays` tag from the recipient's NIP-65
+/// (kind:10002) write list when the caller produced no tag. Relay
+/// selection is kernel policy: shells (Swift, web) MUST NOT decide where
+/// the LN provider should publish the kind:9735 receipt.
+///
+/// Semantics:
+/// - If a non-empty `relays` tag is already present (length > 1 — the key
+///   plus at least one URL), do nothing. The caller chose explicitly.
+/// - Otherwise extract the recipient pubkey from the `p` tag and inject
+///   `["relays", <write-relay-urls…>]`. `Kernel::author_write_relays`
+///   falls back to `bootstrap_discovery_relays` on cold-start, so the
+///   tag is never empty for a well-formed recipient. A missing `p` tag
+///   is a builder bug — we still inject the bootstrap seed so the
+///   kind:9734 carries a valid `relays` tag rather than crashing later
+///   in the signed-JSON path.
+fn inject_recipient_relays(kernel: &Kernel, unsigned: &mut UnsignedEvent) {
+    let relays_present = unsigned.tags.iter().any(|t| {
+        t.first().map(|k| k == "relays").unwrap_or(false) && t.len() > 1
+    });
+    if relays_present {
+        return;
+    }
+    let recipient: String = unsigned
+        .tags
+        .iter()
+        .find(|t| t.first().map(|k| k == "p").unwrap_or(false))
+        .and_then(|t| t.get(1))
+        .cloned()
+        .unwrap_or_default();
+    let relays = if recipient.is_empty() {
+        kernel.bootstrap_discovery_relays()
+    } else {
+        kernel.author_write_relays(&recipient)
+    };
+    let mut relays_tag = Vec::with_capacity(1 + relays.len());
+    relays_tag.push("relays".to_string());
+    relays_tag.extend(relays);
+    unsigned.tags.push(relays_tag);
 }
 
 /// Sign `unsigned` with `keys` and emit the flat NIP-01 JSON object the
@@ -375,7 +427,130 @@ fn http_get_json(url: &str) -> Result<serde_json::Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::relay::DEFAULT_VISIBLE_LIMIT;
     use nostr::Keys;
+
+    // ────────────────────────────────────────────────────────────────────
+    // V-07 — recipient relay injection.
+    //
+    // The kind:9734 `relays` tag tells the LN provider where to publish the
+    // kind:9735 receipt (NIP-57). Relay selection is kernel policy: shells
+    // MUST NOT decide where the receipt goes. The actor injects from
+    // `kernel.author_write_relays(recipient)` before signing whenever the
+    // executor produced no `relays` tag. The tests below pin the three
+    // observable contracts of that injection:
+    //   1. A pre-existing non-empty `relays` tag is left untouched.
+    //   2. No `relays` tag → one is injected, falling back to the bootstrap
+    //      discovery seed on cold-start.
+    //   3. A bare `["relays"]` tag (key only, no URLs) is treated as
+    //      absent — the injection fills it.
+    // ────────────────────────────────────────────────────────────────────
+
+    const RECIPIENT_HEX: &str =
+        "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
+
+    fn unsigned_for(tags: Vec<Vec<String>>) -> UnsignedEvent {
+        UnsignedEvent {
+            pubkey: String::new(),
+            kind: 9734,
+            tags,
+            content: String::new(),
+            created_at: 0,
+        }
+    }
+
+    #[test]
+    fn inject_recipient_relays_preserves_existing_relays_tag() {
+        let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let mut unsigned = unsigned_for(vec![
+            vec!["relays".to_string(), "wss://chosen.example".to_string()],
+            vec!["p".to_string(), RECIPIENT_HEX.to_string()],
+        ]);
+        inject_recipient_relays(&kernel, &mut unsigned);
+        let relays_tag = unsigned
+            .tags
+            .iter()
+            .find(|t| t.first().map(String::as_str) == Some("relays"))
+            .expect("relays tag must be present");
+        assert_eq!(
+            relays_tag,
+            &vec!["relays".to_string(), "wss://chosen.example".to_string()],
+            "an explicit non-empty relays tag must be left untouched"
+        );
+        // Exactly one relays tag — we didn't append a second.
+        let relays_count = unsigned
+            .tags
+            .iter()
+            .filter(|t| t.first().map(String::as_str) == Some("relays"))
+            .count();
+        assert_eq!(relays_count, 1, "must not duplicate the relays tag");
+    }
+
+    #[test]
+    fn inject_recipient_relays_injects_when_tag_absent() {
+        let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let mut unsigned = unsigned_for(vec![
+            vec!["p".to_string(), RECIPIENT_HEX.to_string()],
+        ]);
+        inject_recipient_relays(&kernel, &mut unsigned);
+        let relays_tag = unsigned
+            .tags
+            .iter()
+            .find(|t| t.first().map(String::as_str) == Some("relays"))
+            .expect("V-07: actor must inject a relays tag when caller omitted it");
+        // `author_write_relays` falls back to the bootstrap discovery seed on
+        // cold-start (no kind:10002 cached for this recipient).
+        let expected_urls = kernel.author_write_relays(RECIPIENT_HEX);
+        let mut got_urls: Vec<String> = relays_tag[1..].to_vec();
+        let mut want_urls = expected_urls.clone();
+        got_urls.sort();
+        want_urls.sort();
+        assert_eq!(got_urls, want_urls, "injected URLs must match kernel write list");
+    }
+
+    #[test]
+    fn inject_recipient_relays_treats_bare_relays_key_as_absent() {
+        // A `["relays"]` row with no URLs is malformed — treat as absent so
+        // the actor still injects a valid tag rather than passing the
+        // malformed row through to the LNURL provider.
+        let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let mut unsigned = unsigned_for(vec![
+            vec!["relays".to_string()],
+            vec!["p".to_string(), RECIPIENT_HEX.to_string()],
+        ]);
+        inject_recipient_relays(&kernel, &mut unsigned);
+        // The injected tag is appended; the original `["relays"]` row
+        // remains a no-op (not removed) but a valid filled row is present.
+        let filled_count = unsigned
+            .tags
+            .iter()
+            .filter(|t| t.first().map(String::as_str) == Some("relays") && t.len() > 1)
+            .count();
+        assert_eq!(
+            filled_count, 1,
+            "must inject exactly one filled relays tag when the existing one is bare"
+        );
+    }
+
+    #[test]
+    fn inject_recipient_relays_falls_back_to_bootstrap_when_p_tag_missing() {
+        // Defensive — a builder bug that drops the `p` tag must NOT produce
+        // a zap with an empty relays tag. The bootstrap seed is the
+        // safe fallback (the LNURL HTTP layer will still verify the
+        // recipient resolves later).
+        let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let mut unsigned = unsigned_for(Vec::new());
+        inject_recipient_relays(&kernel, &mut unsigned);
+        let relays_tag = unsigned
+            .tags
+            .iter()
+            .find(|t| t.first().map(String::as_str) == Some("relays"))
+            .expect("must inject a relays tag even when p tag is absent");
+        assert!(
+            relays_tag.len() > 1 || kernel.bootstrap_discovery_relays().is_empty(),
+            "fallback bootstrap relays must be present unless seed itself is empty"
+        );
+    }
 
     #[test]
     fn sign_zap_request_round_trips_through_event_builder() {
