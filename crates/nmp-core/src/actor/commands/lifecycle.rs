@@ -3,21 +3,21 @@
 //! Folds an [`ActorCommand::LifecycleEvent`] into the kernel's phase state
 //! and, on a meaningful transition (per `LifecyclePhase::transition_from`'s
 //! debounce rules), invokes the registered [`LifecycleObserver`] so a
-//! consumer can fan the transition out to its own machinery (e.g.
-//! `nmp_nip77::TriggerEngine` for `TriggerEvent::Foreground`).
+//! consumer can fan the transition out to its own machinery (typically a
+//! shell-side sync-trigger engine on a foreground transition).
 //!
 //! ## Doctrine
 //!
-//! * **D0** — the kernel never names `nmp-nip77` types; the observer
-//!   callback decouples the trigger fan-out. nmp-core stays free of
-//!   `nmp-nip77` deps (would be a cycle — nip77 consumes nmp-core's
-//!   substrate via `apply_coverage_filter`).
+//! * **D0** — the kernel never names any shell-side trigger-engine types;
+//!   the observer callback decouples the trigger fan-out. nmp-core stays
+//!   free of policy-crate deps (would be a cycle — any such crate consumes
+//!   nmp-core's substrate).
 //! * **D6** — the observer is invoked best-effort. A poisoned mutex or
 //!   absent registration is a silent no-op; nothing crosses the FFI as an
 //!   exception.
 //! * **D7** — the iOS shell reports the *fact* of a scenePhase change; the
-//!   kernel decides what it *means*. The shell never calls into nip77
-//!   directly; every consequence threads through here.
+//!   kernel decides what it *means*. The shell never calls into the
+//!   trigger engine directly; every consequence threads through here.
 //! * **Idempotence** — `kernel.set_lifecycle_phase` returns `None` for
 //!   no-op transitions (rapid scene oscillation, `Foreground→Foreground`);
 //!   the observer fires only on meaningful state changes.

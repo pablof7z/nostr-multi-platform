@@ -138,10 +138,10 @@ impl SubscriptionLifecycle {
 
     /// Install (or replace) the post-compile [`PlanCoverageHook`].
     ///
-    /// The actor calls this once at startup with
-    /// `Arc::new(|plan| { nmp_nip77::apply_coverage_filter(plan, …); })`
-    /// — `nmp-core` itself never knows the hook's identity. C10 is the
-    /// `nmp-testing` contract test that exercises this seam end-to-end.
+    /// The actor calls this once at startup with the shell's coverage-filter
+    /// closure (e.g. `Arc::new(|plan| { apply_coverage_filter(plan, …); })`)
+    /// — `nmp-core` itself never knows the hook's identity. The seam itself
+    /// is covered by `subs::coverage_hook_tests`.
     pub fn set_coverage_hook(&mut self, hook: PlanCoverageHook) {
         self.coverage_hook = Some(hook);
     }

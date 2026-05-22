@@ -3702,12 +3702,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "negentropy"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0efe882e02d206d8d279c20eb40e03baf7cb5136a1476dc084a324fbc3ec42d"
-
-[[package]]
 name = "nibble_vec"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3952,16 +3946,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nmp-nip77"
-version = "0.1.0"
-dependencies = [
- "negentropy",
- "nmp-core",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "nmp-nostr-lmdb"
 version = "0.1.0"
 dependencies = [
@@ -4067,7 +4051,6 @@ dependencies = [
  "nmp-nip23",
  "nmp-nip42",
  "nmp-nip57",
- "nmp-nip77",
  "nmp-relations",
  "nmp-signer-broker",
  "nmp-signer-iface",
