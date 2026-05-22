@@ -57,13 +57,13 @@ const KIND_DM_RELAY_LIST: u32 = 10050;
 /// `relay` marker, NOT `r` (that is kind:10002, NIP-65). There is no role
 /// marker; every entry is a DM-inbox relay.
 ///
-/// URLs are canonicalized (lowercase scheme+host, trailing-`/` stripped on
-/// empty path) and deduplicated in first-seen order. URLs that do not parse
-/// as `ws://` or `wss://` are dropped — this matches the ingest parser's
-/// `wss://` gate so a build → ingest round-trip is stable. NIP-17 § 2
-/// recommends `wss://` for DM relays; an explicit `ws://` URL is accepted by
-/// the canonicalizer here but will be SKIPPED by `parse_dm_relay_list` on
-/// ingest, so callers should configure `wss://`.
+/// URLs are canonicalized via [`nmp_core::canonical_relay_url`] (lowercase
+/// scheme+host, trailing-`/` stripped on empty path) and deduplicated in
+/// first-seen order. URLs that do not parse as `ws://` or `wss://` are dropped
+/// — this matches the ingest parser's `wss://` gate so a build → ingest
+/// round-trip is stable. NIP-17 § 2 recommends `wss://` for DM relays; an
+/// explicit `ws://` URL is accepted by the canonicalizer but will be SKIPPED by
+/// `parse_dm_relay_list` on ingest, so callers should configure `wss://`.
 ///
 /// The returned event:
 /// - has `kind = 10050`,

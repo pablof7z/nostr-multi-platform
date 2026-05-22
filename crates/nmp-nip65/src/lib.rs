@@ -114,12 +114,13 @@ pub struct RelayListEntry {
 /// `.unwrap_or("both")` branch); the explicit `"read"` / `"write"` markers
 /// emit the marker verbatim.
 ///
-/// URLs are canonicalised (lowercase scheme+host, trailing-`/` stripped on
-/// empty path) and deduplicated by canonical URL in first-seen order. URLs
-/// that do not parse as `ws://` or `wss://` are dropped — this matches the
-/// ingest parser's `wss://` gate so a build → ingest round-trip is stable.
-/// (`ws://` is accepted by the canonicaliser but will be SKIPPED by the
-/// kernel parser, which requires `wss://`; callers should configure `wss://`.)
+/// URLs are canonicalised via [`nmp_core::canonical_relay_url`] (lowercase
+/// scheme+host, trailing-`/` stripped on empty path) and deduplicated by
+/// canonical URL in first-seen order. URLs that do not parse as `ws://` or
+/// `wss://` are dropped — this matches the ingest parser's `wss://` gate so a
+/// build → ingest round-trip is stable. (`ws://` is accepted by the
+/// canonicaliser but will be SKIPPED by the kernel parser, which requires
+/// `wss://`; callers should configure `wss://`.)
 ///
 /// Dedup is by canonical URL only — two entries for the same host with
 /// different markers collapse to the *first* marker seen. Callers that
