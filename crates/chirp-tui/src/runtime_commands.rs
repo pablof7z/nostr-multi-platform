@@ -160,7 +160,7 @@ impl AppRuntime {
     }
 
     pub fn register_dm_inbox(&self) {
-        nmp_app_chirp_register_dm_inbox(self.app_ptr(), ptr::null());
+        nmp_app_chirp_register_dm_inbox(self.app_ptr());
     }
 
     pub fn register_follow_list(&self, active_pubkey: Option<&str>) -> Result<()> {

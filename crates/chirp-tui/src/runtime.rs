@@ -46,7 +46,7 @@ impl AppRuntime {
 
         let (mut bridge, rx) = NmpUpdateBridge::channel();
         NmpUpdateBridge::register(app, &mut bridge);
-        nmp_app_chirp_register_dm_inbox(app, ptr::null());
+        nmp_app_chirp_register_dm_inbox(app);
         nmp_app_chirp_register_follow_list(app, ptr::null());
         nmp_app_start(app, 0, 200, 10);
         nmp_app_open_timeline(app);
