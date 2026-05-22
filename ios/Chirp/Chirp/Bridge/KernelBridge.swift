@@ -305,7 +305,7 @@ final class KernelHandle {
 
     /// Dispatch a Chirp social-verb action through the generic
     /// `nmp_app_dispatch_action` path. `namespace` is one of `chirp.react` /
-    /// `chirp.follow` / `chirp.unfollow` — registered by `nmp-app-chirp` at
+    /// `nmp.follow` / `nmp.unfollow` — registered by `nmp-app-chirp` at
     /// `nmp_app_chirp_register` time. `body` is the action JSON object.
     ///
     /// PR-A: returns a `DispatchResult` parsed from the Rust-supplied JSON
@@ -348,12 +348,12 @@ final class KernelHandle {
 
     @discardableResult
     func follow(pubkey: String) -> DispatchResult {
-        dispatchAction(namespace: "chirp.follow", body: ["pubkey": pubkey])
+        dispatchAction(namespace: "nmp.follow", body: ["pubkey": pubkey])
     }
 
     @discardableResult
     func unfollow(pubkey: String) -> DispatchResult {
-        dispatchAction(namespace: "chirp.unfollow", body: ["pubkey": pubkey])
+        dispatchAction(namespace: "nmp.unfollow", body: ["pubkey": pubkey])
     }
 
     /// Dispatch a NIP-57 zap through the `nmp.nip57.zap` ActionModule.

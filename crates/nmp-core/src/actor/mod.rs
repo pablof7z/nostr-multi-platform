@@ -430,7 +430,7 @@ pub enum ActorCommand {
     Follow {
         pubkey: String,
         /// Registry-minted action id when this Follow originates from
-        /// `nmp_app_dispatch_action` (`chirp.follow`). See `React` for the
+        /// `nmp_app_dispatch_action` (`nmp.follow`). See `React` for the
         /// spinner round-trip contract.
         correlation_id: Option<String>,
     },
@@ -438,7 +438,7 @@ pub enum ActorCommand {
     Unfollow {
         pubkey: String,
         /// Registry-minted action id when this Unfollow originates from
-        /// `nmp_app_dispatch_action` (`chirp.unfollow`). See `React` for the
+        /// `nmp_app_dispatch_action` (`nmp.unfollow`). See `React` for the
         /// spinner round-trip contract.
         correlation_id: Option<String>,
     },

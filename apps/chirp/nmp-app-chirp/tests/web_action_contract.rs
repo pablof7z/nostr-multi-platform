@@ -32,13 +32,13 @@ fn web_chirp_action_contract_dispatches_against_registered_app_actions() {
             ChirpAction::Follow {
                 pubkey: "deadbeef".to_string(),
             },
-            "chirp.follow",
+            "nmp.follow",
         ),
         (
             ChirpAction::Unfollow {
                 pubkey: "deadbeef".to_string(),
             },
-            "chirp.unfollow",
+            "nmp.unfollow",
         ),
     ] {
         let action = ChirpActionDispatch {

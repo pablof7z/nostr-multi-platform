@@ -614,10 +614,10 @@ impl Kernel {
                 "unfollow",
                 "Unfollow",
                 "person.badge.minus",
-                "chirp.unfollow",
+                "nmp.unfollow",
             )
         } else {
-            ("follow", "Follow", "person.badge.plus", "chirp.follow")
+            ("follow", "Follow", "person.badge.plus", "nmp.follow")
         };
         // Pre-serialize the action body so the shell sends the same bytes
         // the executor validates: `{"pubkey":"<hex>"}` per

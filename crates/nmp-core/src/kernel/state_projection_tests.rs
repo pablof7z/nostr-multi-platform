@@ -495,7 +495,7 @@ fn author_view_projects_unfollow_when_active_contacts_include_author() {
 /// straight into `nmp_app_dispatch_action`. Mirrors aim.md §4.4 — writes flow
 /// through registered actions, never through a Swift `switch action.kind`.
 #[test]
-fn profile_action_follow_carries_chirp_follow_dispatch_spec() {
+fn profile_action_follow_carries_nmp_follow_dispatch_spec() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(ACCOUNT.to_string());
     kernel.open_author(FOLLOW_A.to_string(), false);
@@ -506,7 +506,7 @@ fn profile_action_follow_carries_chirp_follow_dispatch_spec() {
     assert_eq!(action["icon_name"].as_str(), Some("person.badge.plus"));
     let dispatch = &action["dispatch"];
     assert!(!dispatch.is_null(), "follow action must carry a dispatch spec");
-    assert_eq!(dispatch["namespace"].as_str(), Some("chirp.follow"));
+    assert_eq!(dispatch["namespace"].as_str(), Some("nmp.follow"));
     let body_json = dispatch["body_json"]
         .as_str()
         .expect("body_json must be a string");
@@ -515,7 +515,7 @@ fn profile_action_follow_carries_chirp_follow_dispatch_spec() {
 }
 
 #[test]
-fn profile_action_unfollow_carries_chirp_unfollow_dispatch_spec() {
+fn profile_action_unfollow_carries_nmp_unfollow_dispatch_spec() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(ACCOUNT.to_string());
     kernel.prepopulate_seed_contacts(ACCOUNT.to_string(), vec![FOLLOW_A.to_string()]);
@@ -526,7 +526,7 @@ fn profile_action_unfollow_carries_chirp_unfollow_dispatch_spec() {
     assert_eq!(action["kind"].as_str(), Some("unfollow"));
     assert_eq!(action["icon_name"].as_str(), Some("person.badge.minus"));
     let dispatch = &action["dispatch"];
-    assert_eq!(dispatch["namespace"].as_str(), Some("chirp.unfollow"));
+    assert_eq!(dispatch["namespace"].as_str(), Some("nmp.unfollow"));
     let body_json = dispatch["body_json"]
         .as_str()
         .expect("body_json must be a string");

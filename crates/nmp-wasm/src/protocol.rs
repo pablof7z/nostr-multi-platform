@@ -124,11 +124,11 @@ impl ChirpAction {
                 }),
             ),
             Self::Follow { pubkey } => (
-                "chirp.follow".to_string(),
+                "nmp.follow".to_string(),
                 serde_json::json!({ "pubkey": pubkey }),
             ),
             Self::Unfollow { pubkey } => (
-                "chirp.unfollow".to_string(),
+                "nmp.unfollow".to_string(),
                 serde_json::json!({ "pubkey": pubkey }),
             ),
         }
