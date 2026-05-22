@@ -36,9 +36,6 @@ fn react_in_group_plan(action: &ReactInGroupInput) -> PublishPlan {
 
 pub struct ReactInGroupAction;
 impl ActionModule for ReactInGroupAction {
-    /// Wire-schema note: was `nip29.react_in_group` before the namespace-prefix
-    /// rename (PR-B). Every protocol crate now uses the `nmp.<nip>.<verb>`
-    /// shape — enforced by doctrine-lint rule D9.
     const NAMESPACE: &'static str = "nmp.nip29.react_in_group";
     type Action = ReactInGroupInput;
     fn start(
@@ -90,9 +87,6 @@ fn comment_in_group_plan(action: &CommentInGroupInput) -> PublishPlan {
 
 pub struct CommentInGroupAction;
 impl ActionModule for CommentInGroupAction {
-    /// Wire-schema note: was `nip29.comment_in_group` before the namespace-prefix
-    /// rename (PR-B). Every protocol crate now uses the `nmp.<nip>.<verb>`
-    /// shape — enforced by doctrine-lint rule D9.
     const NAMESPACE: &'static str = "nmp.nip29.comment_in_group";
     type Action = CommentInGroupInput;
     fn start(

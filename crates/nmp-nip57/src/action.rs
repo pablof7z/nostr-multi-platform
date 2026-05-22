@@ -122,24 +122,10 @@ impl ActionModule for ZapAction {
         Ok(())
     }
 
-    /// PR-G — this action settles asynchronously: `execute` enqueues
-    /// `FetchLnurlInvoice` and returns immediately; the actor's HTTP worker
-    /// surfaces the bolt11 (or a failure) via a follow-up `ShowToast` /
-    /// `RecordActionFailure`. Hosts that subscribe to `action_stages` will
-    /// see `Requested` (set in the dispatch arm) and a terminal `Failed`
-    /// for any pre-payment error.
-    ///
-    /// # Recording sites are cross-file
-    ///
-    /// The `record_action_stage` and `record_action_failure` calls that
-    /// satisfy the D12 contract live in
-    /// `crates/nmp-core/src/actor/dispatch.rs` (the `FetchLnurlInvoice`
-    /// arm sets `Requested`) and
-    /// `crates/nmp-core/src/actor/commands/zap.rs` (the LNURL handler's
-    /// failure paths set `Failed`). D12 is a per-file grep gate; the
-    /// `doctrine-allow` opt-out below mirrors `PublishModule`'s pattern
-    /// for the same shape (declared in the protocol crate, recorded in
-    /// the actor + engine in `nmp-core`).
+    /// Settles asynchronously: `execute` enqueues `FetchLnurlInvoice` and
+    /// returns immediately; the actor's HTTP worker surfaces the bolt11 (or
+    /// failure) via `ShowToast`/`RecordActionFailure`. Recording sites:
+    /// `actor/dispatch.rs` (Requested), `actor/commands/zap.rs` (Failed).
     fn is_async_completing() -> bool { // doctrine-allow: D12 — recording sites are cross-file (actor/dispatch.rs FetchLnurlInvoice arm sets Requested; actor/commands/zap.rs sets Failed on pre-payment errors)
         true
     }

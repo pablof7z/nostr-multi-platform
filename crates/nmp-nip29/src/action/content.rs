@@ -39,9 +39,6 @@ fn post_chat_message_plan(action: &PostChatMessageInput) -> PublishPlan {
 
 pub struct PostChatMessageAction;
 impl ActionModule for PostChatMessageAction {
-    /// Wire-schema note: was `nip29.post_chat_message` before the namespace-prefix
-    /// rename (PR-B). Every protocol crate now uses the `nmp.<nip>.<verb>`
-    /// shape — enforced by doctrine-lint rule D9.
     const NAMESPACE: &'static str = "nmp.nip29.post_chat_message";
     type Action = PostChatMessageInput;
     fn start(
