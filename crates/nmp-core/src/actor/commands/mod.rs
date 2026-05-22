@@ -43,9 +43,9 @@
 //!
 //! The actor never imports `nmp-signers`; it only touches the trait. NIP-42
 //! is currently cleared while a remote signer is active (the broker's
-//! ephemeral key cannot sign NIP-42 challenges as the user); routing NIP-42
-//! through the remote signer is a documented follow-up
-//! (TODO(nip46-nip42) in `identity.rs:sync_kernel`).
+//! ephemeral key cannot sign NIP-42 challenges as the user); the limitation
+//! is surfaced to the user via a toast (V-06 Stage 1). Routing NIP-42
+//! through the remote signer is tracked as V-06 Stages 2-3 in BACKLOG.
 
 // Test-support facade for the NIP golden-tag conformance suite. Gated so it is
 // never compiled into a production build. Exposed up the actor module chain to
