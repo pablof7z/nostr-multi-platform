@@ -255,7 +255,7 @@ impl ActionModule for PublishModule {
                 }
                 if kind == 3 {
                     return Err(ActionRejection::Invalid(
-                        "kind:3 contact-list must be modified via chirp.follow / chirp.unfollow, \
+                        "kind:3 contact-list must be modified via nmp.follow / nmp.unfollow, \
                          not PublishRaw (the actor owns the follow-list state)".to_string(),
                     ));
                 }
