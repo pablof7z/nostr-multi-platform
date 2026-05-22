@@ -754,17 +754,22 @@ mod tests {
     use nmp_nip29::kinds::KIND_CHAT_MESSAGE;
     use std::cell::RefCell;
 
-    /// Run an `ActionModule`'s typed executor once and capture the single
-    /// `ActorCommand` it sends. Mirrors `nmp_nip17::dm_relay_list`'s test
-    /// pattern — the canonical post-ADR-0027 executor probe.
-    fn run_module_execute<M: ActionModule>(input: M::Action) -> Result<ActorCommand, String> {
-        let captured: RefCell<Option<ActorCommand>> = RefCell::new(None);
+    /// Run an `ActionModule`'s typed executor once and capture **every**
+    /// `ActorCommand` it sends, in order. Mirrors `nmp_nip17::dm_relay_list`'s
+    /// test pattern — the canonical post-ADR-0027 executor probe.
+    ///
+    /// Returns `Ok(vec![])` for an executor that returns `Ok(())` without
+    /// sending any command (a valid no-op); returns `Err(...)` only when the
+    /// executor itself returns `Err(...)`. Earlier this helper kept only the
+    /// last `send()` call in a `RefCell<Option<_>>`, silently dropping
+    /// multi-command executors (e.g. `PushInterest` followed by
+    /// `RecordActionSuccess`).
+    fn run_module_execute<M: ActionModule>(input: M::Action) -> Result<Vec<ActorCommand>, String> {
+        let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
         M::execute(input, "test-cid", &|cmd| {
-            *captured.borrow_mut() = Some(cmd);
+            captured.borrow_mut().push(cmd);
         })?;
-        captured
-            .into_inner()
-            .ok_or_else(|| "executor sent no command".to_string())
+        Ok(captured.into_inner())
     }
 
     #[test]
@@ -915,8 +920,12 @@ mod tests {
             previous_event_id_prefixes: vec![],
             reply_to_event_id: None,
         };
-        let cmd = run_module_execute::<PostChatMessageAction>(input)
+        let cmds = run_module_execute::<PostChatMessageAction>(input)
             .expect("well-formed chat message");
+        let cmd = cmds
+            .into_iter()
+            .next()
+            .expect("post-chat-message executor must send at least one command");
 
         match cmd {
             ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id } => {
@@ -1053,18 +1062,8 @@ mod tests {
         let input = DiscoverGroupsInput {
             relay_url: "wss://groups.example.com".to_string(),
         };
-
-        // PD-036 — `DiscoverGroupsAction::execute` sends *two* commands
-        // (`PushInterest` then `RecordActionSuccess`); the canonical
-        // `run_module_execute` helper above only captures one, so we inline
-        // the multi-command `RefCell<Vec<_>>` capture (same pattern as
-        // `discover.rs::run_execute`).
-        let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-        DiscoverGroupsAction::execute(input, "test-cid", &|cmd| {
-            captured.borrow_mut().push(cmd);
-        })
-        .expect("well-formed discover input");
-        let cmds = captured.into_inner();
+        let cmds = run_module_execute::<DiscoverGroupsAction>(input)
+            .expect("well-formed discover input");
 
         assert_eq!(
             cmds.len(),
@@ -1159,7 +1158,11 @@ mod tests {
             invite_code: Some("abc".to_string()),
             reason: Some("please".to_string()),
         };
-        let cmd = run_module_execute::<JoinGroupAction>(input).expect("well-formed join input");
+        let cmds = run_module_execute::<JoinGroupAction>(input).expect("well-formed join input");
+        let cmd = cmds
+            .into_iter()
+            .next()
+            .expect("join executor must send at least one command");
         match cmd {
             ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id } => {
                 assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
