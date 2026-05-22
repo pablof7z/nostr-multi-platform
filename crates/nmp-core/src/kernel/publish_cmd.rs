@@ -149,15 +149,12 @@ impl Kernel {
     /// yet — the iOS shell calls `nmp_app_wallet_pay_invoice` directly today)
     /// carries `None` and the wallet runtime simply skips this call (nothing
     /// is waiting on an id).
-    // `#[allow(dead_code)]`: the only live caller today is `handle_nwc_text` in
-    // the wallet runtime, which is gated behind the `wallet` Cargo feature. A
-    // plain `cargo check -p nmp-core` (default features) carries no consumer
-    // and so the per-crate dead-code lint fires — the cross-crate truth (that
-    // every wallet-feature build wires it) is invisible to rustc here. Future
-    // off-band success paths (NIP-57 `zap` settlement, NIP-29 admin acks) are
-    // expected callers; suppressing the lint keeps the API ready without
-    // forcing every new consumer to add its own gate.
-    #[allow(dead_code)]
+    //
+    // PD-036 — `#[allow(dead_code)]` was lifted when the
+    // `ActorCommand::RecordActionSuccess` dispatch arm landed (the NIP-57 zap
+    // LNURL-pay worker's success branch routes through it). The wallet-feature
+    // caller (`handle_nwc_text`) is no longer the only live caller, so the
+    // default-features build now sees a real consumer through `dispatch.rs`.
     pub(crate) fn record_action_success(&mut self, correlation_id: String) {
         // Mirror `record_action_failure`'s dual write: an `Accepted` stage in
         // the `action_stages` mirror so a host listening only on the stage

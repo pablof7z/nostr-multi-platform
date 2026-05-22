@@ -561,6 +561,31 @@ pub enum ActorCommand {
         correlation_id: String,
         reason: String,
     },
+    /// PD-036 — record a terminal `Accepted` stage for `correlation_id` on
+    /// behalf of an off-thread worker whose success outcome is observed
+    /// outside the publish engine. The symmetric counterpart to
+    /// [`ActorCommand::RecordActionFailure`]: same routing through
+    /// [`Kernel::record_action_success`], which writes both the
+    /// `action_stages` mirror (so the host's stage observer sees the
+    /// terminal) and the `action_results` per-tick drain (so a spinner
+    /// keyed on the `correlation_id` clears).
+    ///
+    /// The motivating consumer is the NIP-57 zap LNURL-pay worker
+    /// (`actor/commands/zap.rs`): after the HTTP round-trip returns a
+    /// bolt11 invoice, the spawned worker has no `&mut Kernel` reference
+    /// and must round-trip through the actor channel to record the
+    /// terminal. Without this command the `dispatch_action`
+    /// (`nmp.nip57.zap`) spinner hangs forever — `ShowToast` is a
+    /// human-readable surface, NOT the spinner-closing one
+    /// (`action_results` is the closing surface).
+    ///
+    /// Idempotent w.r.t. a buggy worker that re-sends — `record_action_success`
+    /// records a second `Accepted` stage, which is a benign no-op for the
+    /// host (it sees the same terminal twice; the second ACK is a silent
+    /// no-op).
+    RecordActionSuccess {
+        correlation_id: String,
+    },
     Stop,
     Reset,
     Shutdown,
