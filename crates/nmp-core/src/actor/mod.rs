@@ -401,8 +401,7 @@ pub enum ActorCommand {
         /// engine's `correlation_id_override`, so the kind:1059 terminal
         /// verdict (or any pre-publish early-exit failure) lands in
         /// `action_results` and the host spinner resolves. Non-dispatch
-        /// callers (the `send_dm_command` helper, conformance harnesses)
-        /// pass `None`.
+        /// callers (conformance harnesses) pass `None`.
         correlation_id: Option<String>,
     },
     /// User intent from the outbox UI: retry a still-pending publish now.

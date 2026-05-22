@@ -95,38 +95,6 @@ impl ActionModule for SendDmAction {
     }
 }
 
-/// Executor: map a validated `nmp.nip17.send` action JSON to the
-/// [`ActorCommand::SendGiftWrappedDm`] that drives the actor's DM handler.
-///
-/// The carried rumor is built with an empty `sender_pubkey` placeholder — the
-/// actor re-derives the real pubkey from the signing key (see the module
-/// docs). `created_at` is the D7 `0` sentinel; the actor re-stamps it from the
-/// kernel clock before wrapping.
-pub fn send_dm_command(action_json: &str) -> Result<ActorCommand, String> {
-    let input: SendDmInput =
-        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-
-    let dm_input = DmInput {
-        recipient_pubkey: input.recipient_pubkey.clone(),
-        content: input.content,
-        reply_to: input.reply_to,
-    };
-    // Empty sender pubkey — the actor overrides it at sign time (the rumor's
-    // `pubkey` field is never used by `dm.rs::build_nostr_rumor`).
-    let rumor = build_dm_rumor(&dm_input, "");
-
-    // `send_dm_command` is the JSON → ActorCommand helper used by
-    // conformance harnesses; it has no host-minted correlation_id (the
-    // dispatch path runs through `SendDmAction::execute` instead, which
-    // threads its `correlation_id` argument). Non-dispatch sends report
-    // their terminal verdict against the gift-wrap envelope id as before.
-    Ok(ActorCommand::SendGiftWrappedDm {
-        rumor,
-        recipient_pubkey: input.recipient_pubkey,
-        correlation_id: None,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -179,77 +147,4 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn send_dm_command_builds_a_send_gift_wrapped_dm() {
-        let body = format!(
-            r#"{{"recipient_pubkey":"{RECIPIENT}","content":"hello there"}}"#
-        );
-        let cmd = send_dm_command(&body).expect("well-formed body");
-        match cmd {
-            ActorCommand::SendGiftWrappedDm {
-                rumor,
-                recipient_pubkey,
-                correlation_id,
-            } => {
-                assert_eq!(rumor.kind, 14, "the carried rumor is kind:14");
-                assert_eq!(rumor.content, "hello there");
-                assert_eq!(recipient_pubkey, RECIPIENT);
-                // D7: the rumor carries the `0` sentinel — the actor re-stamps.
-                assert_eq!(rumor.created_at, 0);
-                // The rumor's pubkey is the empty placeholder — the actor
-                // re-derives it from the signing key.
-                assert!(rumor.pubkey.is_empty());
-                // The recipient `p` tag is on the rumor.
-                assert!(rumor
-                    .tags
-                    .iter()
-                    .any(|t| t == &vec!["p".to_string(), RECIPIENT.to_string()]));
-                // The standalone helper carries no host-minted correlation_id
-                // (the dispatch path threads its own through
-                // `SendDmAction::execute`); confirm the variant defaults to
-                // `None` so a conformance-harness send keeps reporting under
-                // the gift-wrap envelope id, as it did before.
-                assert!(
-                    correlation_id.is_none(),
-                    "send_dm_command JSON helper must not invent a correlation_id"
-                );
-            }
-            other => panic!("expected SendGiftWrappedDm, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn send_dm_command_carries_the_reply_marker() {
-        let parent =
-            "cc11223344556677889900aabbccddeeff00112233445566778899aabbccdd00";
-        let body = format!(
-            r#"{{"recipient_pubkey":"{RECIPIENT}","content":"re","reply_to":"{parent}"}}"#
-        );
-        let cmd = send_dm_command(&body).expect("well-formed reply body");
-        match cmd {
-            ActorCommand::SendGiftWrappedDm { rumor, .. } => {
-                assert!(
-                    rumor.tags.iter().any(|t| t
-                        == &vec![
-                            "e".to_string(),
-                            parent.to_string(),
-                            String::new(),
-                            "reply".to_string(),
-                        ]),
-                    "a reply DM carries the NIP-10 reply e-tag, got {:?}",
-                    rumor.tags
-                );
-            }
-            other => panic!("expected SendGiftWrappedDm, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn send_dm_command_rejects_malformed_json() {
-        assert!(send_dm_command("not json").is_err());
-        assert!(
-            send_dm_command(r#"{"content":"no recipient"}"#).is_err(),
-            "missing recipient_pubkey must fail deserialization"
-        );
-    }
 }

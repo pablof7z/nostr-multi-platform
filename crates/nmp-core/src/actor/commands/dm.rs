@@ -149,8 +149,8 @@ pub(crate) fn send_gift_wrapped_dm(
         // record `Failed` or the host's spinner hangs forever. The
         // `record_action_failure` helper writes BOTH the action_results
         // terminal AND the `action_stages` `Failed` mirror entry. No-op
-        // for `None` (non-dispatch callers — `send_dm_command` helper,
-        // conformance harnesses — have nothing waiting on an id).
+        // for `None` (non-dispatch callers — conformance harnesses have
+        // nothing waiting on an id).
         if let Some(id) = correlation_id.clone() {
             kernel.record_action_failure(id, reason);
         }
