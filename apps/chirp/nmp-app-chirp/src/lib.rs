@@ -64,13 +64,13 @@ pub use nmp_signer_broker::{
 // post-v1. Chirp opts in via its default feature set; a no-default-features
 // build excludes the whole projection (dependency, module, and FFI symbols).
 #[cfg(feature = "marmot")]
-pub use marmot::fetch::nmp_app_chirp_marmot_fetch_key_packages;
+pub use marmot::fetch::nmp_marmot_fetch_key_packages;
 #[cfg(feature = "marmot")]
 pub use marmot::ffi::{
-    nmp_app_chirp_marmot_dispatch, nmp_app_chirp_marmot_group_messages,
-    nmp_app_chirp_marmot_register, nmp_app_chirp_marmot_register_active,
-    nmp_app_chirp_marmot_snapshot, nmp_app_chirp_marmot_string_free,
-    nmp_app_chirp_marmot_unregister, MarmotHandle,
+    nmp_marmot_dispatch, nmp_marmot_group_messages,
+    nmp_marmot_register, nmp_marmot_register_active,
+    nmp_marmot_snapshot, nmp_marmot_string_free,
+    nmp_marmot_unregister, MarmotHandle,
 };
 #[cfg(feature = "marmot")]
 pub use marmot::identity::{

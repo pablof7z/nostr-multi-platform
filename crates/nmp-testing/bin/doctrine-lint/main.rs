@@ -1,7 +1,7 @@
-//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15.
+//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16.
 //!
 //! See `walker.rs` for the `#[cfg(test)]` module tracker, `allow.rs` for the
-//! per-line opt-out comment, and `rules/d{0,6,7,8,9,10,11,12,13,14,15}.rs` for
+//! per-line opt-out comment, and `rules/d{0,6,7,8,9,10,11,12,13,14,15,16}.rs` for
 //! individual rule definitions. Brainstorm item #8 in
 //! `docs/perf/parallel-work-brainstorm-2026-05-18.md`.
 //!
@@ -58,7 +58,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use rules::{d0, d10, d11, d12, d13, d14, d15, d6, d7, d8, d9};
+use rules::{d0, d10, d11, d12, d13, d14, d15, d16, d6, d7, d8, d9};
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
@@ -72,7 +72,7 @@ fn main() -> ExitCode {
                  [--d8-extra-scope <fragment>] [--d9-extra-scope <fragment>] \
                  [--d10-extra-scope <fragment>] [--d12-extra-scope <fragment>] \
                  [--d13-extra-scope <fragment>] [--d14-extra-scope <fragment>] \
-                 [--d15-extra-scope <fragment>] \
+                 [--d15-extra-scope <fragment>] [--d16-extra-scope <fragment>] \
                  [--workspace-d8 [--workspace-d8-root <dir>]]"
             );
             return ExitCode::from(2);
@@ -106,6 +106,7 @@ fn main() -> ExitCode {
                 &cfg.d13_extra_scopes,
                 &cfg.d14_extra_scopes,
                 &cfg.d15_extra_scopes,
+                &cfg.d16_extra_scopes,
                 cfg.workspace_d8,
                 &mut all_findings,
             ) {
@@ -131,7 +132,7 @@ fn main() -> ExitCode {
         let rules = if cfg.workspace_d8 {
             "D8 no-polling"
         } else {
-            "D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15"
+            "D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16"
         };
         eprintln!(
             "doctrine-lint: 0 findings across {} root(s) ({} clean).",
@@ -166,6 +167,7 @@ fn scan_one_file(
     d13_extra_scopes: &[String],
     d14_extra_scopes: &[String],
     d15_extra_scopes: &[String],
+    d16_extra_scopes: &[String],
     workspace_d8: bool,
     findings: &mut Vec<report::Finding>,
 ) -> std::io::Result<()> {
@@ -194,6 +196,7 @@ fn scan_one_file(
     let d13_part_b_in_scope = d13::file_in_part_b_scope(path);
     let d14_in_scope = d14_file_in_scope(path, d14_extra_scopes);
     let d15_in_scope = d15_file_in_scope(path, d15_extra_scopes);
+    let d16_in_scope = d16_file_in_scope(path, d16_extra_scopes);
     let mut d6_state = d6::State::default();
     let mut d8_tracker = d8::HotPathTracker::default();
     let mut d10_tracker = d10::PrivatePublishTracker::default();
@@ -467,6 +470,28 @@ fn scan_one_file(
             // file — important if a future driver pass interleaves modes.
             let _ = d15::check(&mut d15_state, path, sl.text, sl.is_comment);
         }
+        // D16 — snapshot-projection keys in `apps/chirp/` must use the `nmp.`
+        // prefix. Bare `"nip17.*"` / `"nip29.*"` literals are banned. Scope is
+        // `apps/chirp/` Rust source. The explicitly whitelisted paths
+        // (`nmp-nip29/src/interest.rs`, `nmp-nip17/src/inbox.rs`) carry stable
+        // hash seeds that share the bare-prefix shape but are NOT projection
+        // keys — they bypass the scope check via `d16::file_is_allowlisted`.
+        // Skipped in --workspace-d8 (no-polling sweep only).
+        if !workspace_d8 && d16_in_scope && !d16::file_is_allowlisted(path) {
+            for (col, msg, suggested) in d16::check(sl.text, sl.is_comment) {
+                if allow::line_allows(sl.text, d16::ID) {
+                    continue;
+                }
+                findings.push(report::Finding {
+                    rule: d16::ID,
+                    path: path.to_path_buf(),
+                    line: sl.line_no,
+                    col,
+                    message: msg,
+                    suggested,
+                });
+            }
+        }
         // D8 — no polling (`thread::sleep`, `tokio::time::sleep`,
         // `tokio::time::sleep_until`). NOT path-scoped: the no-poll
         // doctrine applies to all non-test code under `nmp-core`. Reuses
@@ -583,6 +608,20 @@ fn d15_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
     extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
 }
 
+/// True iff D16 should scan `path` — either the file is inside `apps/chirp/`
+/// via `d16::file_in_scope`, or the caller opted-in via `--d16-extra-scope`
+/// (used by the fixture smoke test to stage a positive fixture under
+/// `target/` outside the apps/chirp/ path tree). The allowlist check
+/// (`d16::file_is_allowlisted`) is separate and applied at the per-line
+/// invocation site so whitelisted files are correctly excluded.
+fn d16_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
+    if d16::file_in_scope(path) {
+        return true;
+    }
+    let s = path.to_string_lossy().replace('\\', "/");
+    extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
+}
+
 /// True iff `--d13-extra-scope` opts `path` into D13 Part A scope. Mirrors
 /// `--d9-extra-scope` etc: the fixture smoke test stages a positive D13
 /// fixture under `target/<label>/` (outside `crates/nmp-core/src/actor/
@@ -635,6 +674,10 @@ struct Config {
     /// [`Self::d8_extra_scopes`] / [`Self::d9_extra_scopes`]: opts a
     /// fixture path under `target/<label>/` into the D15 scan.
     d15_extra_scopes: Vec<String>,
+    /// Extra path fragments treated as D16-in-scope. Same role as
+    /// [`Self::d9_extra_scopes`]: opts a fixture path under `target/<label>/`
+    /// into the D16 scan (projection-key prefix check for `apps/chirp/`).
+    d16_extra_scopes: Vec<String>,
     /// `--workspace-d8`: scan every production crate for D8 no-polling
     /// violations only. D0/D6/D7 (substrate-purity rules) stay nmp-core
     /// scoped — only the universally-applicable `thread::sleep` check runs.
@@ -725,6 +768,14 @@ fn parse_args(args: &[String]) -> Result<Config, String> {
                         .clone(),
                 );
             }
+            "--d16-extra-scope" => {
+                i += 1;
+                cfg.d16_extra_scopes.push(
+                    args.get(i)
+                        .ok_or_else(|| "--d16-extra-scope requires a path fragment".to_string())?
+                        .clone(),
+                );
+            }
             "--workspace-d8" => {
                 cfg.workspace_d8 = true;
             }
@@ -736,7 +787,7 @@ fn parse_args(args: &[String]) -> Result<Config, String> {
                     })?));
             }
             "-h" | "--help" => {
-                println!("usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings] [--d8-extra-scope <fragment>] [--d9-extra-scope <fragment>] [--d10-extra-scope <fragment>] [--d12-extra-scope <fragment>] [--d13-extra-scope <fragment>] [--d14-extra-scope <fragment>] [--d15-extra-scope <fragment>] [--workspace-d8 [--workspace-d8-root <dir>]]");
+                println!("usage: doctrine-lint [--crate <name>] [--path <dir>] [--allow-findings] [--d8-extra-scope <fragment>] [--d9-extra-scope <fragment>] [--d10-extra-scope <fragment>] [--d12-extra-scope <fragment>] [--d13-extra-scope <fragment>] [--d14-extra-scope <fragment>] [--d15-extra-scope <fragment>] [--d16-extra-scope <fragment>] [--workspace-d8 [--workspace-d8-root <dir>]]");
                 std::process::exit(0);
             }
             other => return Err(format!("unknown argument: {}", other)),

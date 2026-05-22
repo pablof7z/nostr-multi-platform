@@ -14,42 +14,28 @@
 //! - [`build`] — `Article::new(d).title(…)…build(author, ts)` →
 //!   `UnsignedEvent`. Validates required fields per D6 with typed
 //!   `ArticleBuildError`.
-//! - [`domain`] — `ArticlesDomain: DomainModule` for the
-//!   `nmp.nip23.articles` namespace. Owns the `by_author` /
-//!   `by_d_tag(author, d_tag)` composite-key reverse indexes used by the
-//!   view layer. Exposes `decode_and_route` for the kernel ingest dispatch
-//!   (Phase 1 — see §6 in the design doc).
-//! - [`view`] — `ArticleListView` + `ArticleDetailView`.
 //!
-//! ## Phase-1 ingest dispatch gap
-//!
-//! Per `docs/design/kind-wrappers.md` §6 + §8 + PD-008, decoded records are
-//! cached in the domain store **at ingest time** — `ArticlesDomain` declares
-//! `ingest_kinds() = &[30023]` and the kernel dispatch table calls
-//! `decode_and_route` per insert. The kernel-side dispatch table itself is a
-//! separate Phase 1 deliverable; `decode_and_route` is callable directly today
-//! and is exercised by the integration tests, so apps can wire ingest manually
-//! until the kernel routing lands.
+//! Prior `domain` (composite-key reverse indexes) and `view`
+//! (`ArticleListView` / `ArticleDetailView`) modules were deleted: both had
+//! zero external callers — no `ActionModule`, no `KernelEventObserver`, no
+//! subscription filter, no app dispatch. The live extension path is
+//! `KernelEventObserver` — see `nmp_core::substrate` module docs.
 
+// NIP-23 surface is feature-gated behind `long-form`. The crate has zero
+// app callers (no ActionModule, no KernelEventObserver, no subscription
+// filter) and is referenced only from test/fixture crates. Gating prevents
+// the inert surface from misleading future contributors while preserving
+// the kind:30023 integration-test path via `--features long-form`.
+#[cfg(feature = "long-form")]
 pub mod build;
+#[cfg(feature = "long-form")]
 pub mod decode;
-pub mod domain;
+#[cfg(feature = "long-form")]
 pub mod kinds;
-pub mod view;
 
+#[cfg(feature = "long-form")]
 pub use build::{Article, ArticleBuildError, ArticleBuilder};
+#[cfg(feature = "long-form")]
 pub use decode::{try_from_event, ArticleRecord};
-pub use domain::{decode_and_route, get, list_all, list_by_author, ArticlesDomain, NAMESPACE};
+#[cfg(feature = "long-form")]
 pub use kinds::KIND_LONG_FORM_ARTICLE;
-pub use view::{
-    ArticleAccumulator, ArticleDetailPayload, ArticleDetailSpec, ArticleDetailView,
-    ArticleListPayload, ArticleListSpec, ArticleListView, ArticleViewDelta, PublicKey,
-};
-
-// NOTE: `nmp-nip23` exposes its `DomainModule` impl and its view types
-// (`ArticlesDomain`, `ArticleListView`, `ArticleDetailView`) as public types.
-// The view types are plain types whose `open` / `on_event_*` / `snapshot`
-// inherent methods are reached via static dispatch — the `ViewModule` trait
-// and the former `register(&mut ModuleRegistry)` entry point were both
-// deleted because no kernel-side registry ever drove them. The live extension
-// path is `KernelEventObserver` — see `nmp_core::substrate` module docs.

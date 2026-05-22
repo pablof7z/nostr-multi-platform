@@ -37,6 +37,7 @@ use super::types::AuthorRelayList;
 use super::Kernel;
 use crate::planner::{MailboxCache, MailboxSnapshot, Pubkey};
 use crate::relay::RelayRole;
+use crate::util::sort_dedup;
 
 impl Kernel {
     /// Partition `authors` by their NIP-65 **write** relays (outbox direction).
@@ -69,8 +70,7 @@ impl Kernel {
         }
         // Stable author order within each relay slice (plan-id stability / D8).
         for authors in by_relay.values_mut() {
-            authors.sort();
-            authors.dedup();
+            sort_dedup(authors);
         }
         by_relay
     }
@@ -88,8 +88,7 @@ impl Kernel {
                     .chain(list.both_relays.iter())
                     .cloned()
                     .collect();
-                out.sort();
-                out.dedup();
+                sort_dedup(&mut out);
                 out
             }
             _ => self.bootstrap_discovery_relays(),
@@ -98,9 +97,9 @@ impl Kernel {
 
     /// Resolve a single author's relays for **discovery** fetches (kind:0/3/10002).
     ///
-    /// Cold-start: no cached kind:10002 ⇒ ONLY [`crate::relay::INDEXER_RELAY_URL`]
-    /// (purplepag.es). Unlike `author_write_relays`, the content relay (damus.io)
-    /// is never included — profile-claim REQs must not go there.
+    /// Cold-start: no cached kind:10002 ⇒ ONLY [`crate::relay::INDEXER_RELAY_URL`].
+    /// Unlike `author_write_relays`, the shared content relay is never included
+    /// — profile-claim REQs must not go there.
     /// NIP-65 known: returns the author's declared write relays (they published
     /// kind:0 there, so that is the right place to read it back).
     pub(crate) fn author_indexer_relays(&self, author: &str) -> Vec<String> {
@@ -112,8 +111,7 @@ impl Kernel {
                     .chain(list.both_relays.iter())
                     .cloned()
                     .collect();
-                out.sort();
-                out.dedup();
+                sort_dedup(&mut out);
                 out
             }
             _ => self.bootstrap_urls_for_role(RelayRole::Indexer),
@@ -137,8 +135,7 @@ impl Kernel {
                     .chain(list.both_relays.iter())
                     .cloned()
                     .collect();
-                out.sort();
-                out.dedup();
+                sort_dedup(&mut out);
                 out
             }
             _ => self.bootstrap_discovery_relays(),
@@ -230,8 +227,7 @@ impl Kernel {
         }
         // Stable id order within each relay slice (plan-id stability / D8).
         for ids in by_relay.values_mut() {
-            ids.sort();
-            ids.dedup();
+            sort_dedup(ids);
         }
         by_relay
     }
@@ -538,8 +534,7 @@ mod tests {
         let view = kernel.mailbox_cache_view();
         let snap = view.get(&"alice".to_string()).expect("alice cached");
         let mut planner_path: Vec<String> = snap.outbox_relays().cloned().collect();
-        planner_path.sort();
-        planner_path.dedup();
+        sort_dedup(&mut planner_path);
         assert_eq!(planner_path, publish_path);
     }
 

@@ -35,10 +35,13 @@ pub use ffi::NmpApp;
 // both types need to be reachable from the crate root.
 pub use kernel::{read_eligible_relay_urls, RelayEditRow, RelayEditRowList, RelayEditRowsSlot};
 pub use kernel_reducer::KernelReducer;
+pub use relay::{
+    chirp_default_relay_bootstrap, chirp_default_relay_urls, ChirpRelayBootstrapEntry,
+};
 pub use remote_signer::RemoteSignerHandle;
 pub use update_envelope::{
-    panic_message, wrap_panic, wrap_snapshot, wrap_update, DeltaEnvelope, PanicFrame,
-    UpdateEnvelope, WireDelta, WireEnvelope, DELTA_SCHEMA_VERSION, SNAPSHOT_SCHEMA_VERSION,
+    panic_message, wrap_panic, wrap_snapshot, PanicFrame, UpdateEnvelope, WireEnvelope,
+    SNAPSHOT_SCHEMA_VERSION,
 };
 
 // Stage 4 of NIP-46 wiring: `nmp-signer-broker` (the crate that bridges
@@ -62,9 +65,9 @@ pub use actor::NOSTRCONNECT_DEFAULT_RELAY_URL;
 // whitelists them).
 #[cfg(any(test, feature = "test-support"))]
 pub use ffi::{
-    nmp_app_add_relay, nmp_app_cancel_publish, nmp_app_claim_profile, nmp_app_close_author,
-    nmp_app_close_thread, nmp_app_configure, nmp_app_create_new_account, nmp_app_dispatch_action,
-    nmp_app_dispatch_capability, nmp_app_free, nmp_app_free_string,
+    nmp_app_ack_action_stage, nmp_app_add_relay, nmp_app_cancel_publish, nmp_app_claim_profile,
+    nmp_app_close_author, nmp_app_close_thread, nmp_app_configure, nmp_app_create_new_account,
+    nmp_app_dispatch_action, nmp_app_dispatch_capability, nmp_app_free, nmp_app_free_string,
     nmp_app_inject_pre_verified_events, nmp_app_inject_signed_events, nmp_app_lifecycle_background,
     nmp_app_lifecycle_foreground, nmp_app_new, nmp_app_open_author, nmp_app_open_firehose_tag,
     nmp_app_open_thread, nmp_app_open_timeline, nmp_app_open_uri,
@@ -192,7 +195,13 @@ pub mod testing {
     pub fn spawn_actor() -> (mpsc::Sender<ActorCommand>, mpsc::Receiver<String>) {
         let (command_tx, command_rx) = mpsc::channel();
         let (update_tx, update_rx) = mpsc::channel();
-        thread::spawn(move || run_actor(command_rx, update_tx));
+        // Hand the actor a clone of the command sender so dispatch arms
+        // that spawn workers (currently the LNURL-pay round-trip) can
+        // send follow-up `ActorCommand`s back into the loop. The outer
+        // returned `command_tx` is the host's primary handle; this clone
+        // serves only the actor's internal self-feedback path.
+        let actor_command_tx_self = command_tx.clone();
+        thread::spawn(move || run_actor(command_rx, actor_command_tx_self, update_tx));
         (command_tx, update_rx)
     }
 

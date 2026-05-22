@@ -127,6 +127,20 @@ void nmp_app_lifecycle_background(void *app);
 typedef void (*NmpLifecycleCallback)(void *context, uint32_t phase);
 void nmp_app_set_lifecycle_callback(void *app, void *context, NmpLifecycleCallback callback);
 
+// Actor-liveness probe (D7 pull-side sibling of the push-side panic frame
+// the update channel emits on actor-thread death). Returns `1` when the
+// kernel's actor thread is still running, `0` when it has terminated —
+// panic, clean Shutdown, or "never started" all collapse to `0`. A null
+// `app` is `0` (no kernel to be alive). Pairs with the `{"t":"panic",...}`
+// update frame the channel emits on death: the panic frame is the push
+// signal Swift sees on `nmp_app_set_update_callback`; this probe is the
+// pull sibling, queryable on `applicationWillEnterForeground` so a host
+// that was backgrounded across the panic frame's arrival (and never saw
+// it) still learns the kernel is gone. The host treats every non-`1`
+// response as "kernel dead — surface a fatal error". Observability only;
+// the kernel is not influenced by this call.
+uint8_t nmp_app_is_alive(void *app);
+
 // ── T151 — capability socket, generic publish, URI routing ───────────────
 //
 // `nmp_app_set_capability_callback` registers the native handler that the
@@ -165,33 +179,16 @@ void nmp_app_set_lifecycle_callback(void *app, void *context, NmpLifecycleCallba
 // means the action was *accepted*, not *published*; execution wiring and the
 // durable action ledger are an M6 follow-up.
 //
-// `nmp_app_register_action_executor` and `nmp_app_register_action_module` are
-// the host registration seam: together they wire an action namespace into the
-// registry *without editing nmp-core*.  `dispatch_action` has two phases —
-// `start()` validates the action JSON against a registered *module*, then
-// `execute()` dispatches it via a registered *executor*.
-//
-// `nmp_app_register_action_executor` wires the *executor* half: the `executor`
-// callback receives the action JSON (NUL-terminated) and returns NULL on
-// success or a NUL-terminated error string on failure.
-//
-// `nmp_app_register_action_module` wires the *module* (validation) half: the
-// `validator` callback receives the action JSON (NUL-terminated) and returns
-// NULL to accept (the action gets a default Pending plan + correlation id) or
-// a NUL-terminated error string to reject.  A NULL `validator` registers an
-// accept-all module — every action under that namespace is accepted.
-//
-// Registering BOTH for a namespace makes it fully reachable via
-// `nmp_app_dispatch_action`: a host can dispatch any custom namespace without
-// editing nmp-core.  Both MUST be called during host init — before
-// `nmp_app_start` and before any `nmp_app_dispatch_action` — because they
-// mutate the app's registry.  A null `app`/`namespace` is a silent no-op (D6);
-// a null `executor` is a no-op, but a null `validator` selects accept-all.
-//
-// A Rust host such as nmp-app-chirp registers both halves through the Rust
-// API (`NmpApp::register_action_module` / `register_action_executor`) — see
-// `nmp_app_chirp_register`, which wires `chirp.react`/`chirp.follow`/
-// `chirp.unfollow`.
+// Host action-namespace registration (ADR-0027) is Rust-only: a host calls
+// `NmpApp::register_action::<M>()` with a typed `ActionModule` impl whose
+// `M::start` validates and `M::execute` enqueues an `ActorCommand`. The
+// previous C-ABI dual seam (`nmp_app_register_action_executor`,
+// `nmp_app_register_action_module`) was deleted — `M::Action` and
+// `ActorCommand` have no stable C representation, so any non-Rust host that
+// wants a custom action namespace stages it through a Rust shim crate it
+// controls. The Rust composition root in `apps/chirp/nmp-app-chirp` wires
+// `chirp.react`/`chirp.follow`/`chirp.unfollow` and the NIP-29/NIP-17
+// `ActionModule` impls this way.
 //
 // `nmp_app_register_snapshot_projection` is the OUTPUT-side counterpart to
 // the action registration seam.  `KernelSnapshot` is a sealed social wire
@@ -228,10 +225,6 @@ typedef char *(*NmpCapabilityCallback)(void *context, const char *request_json);
 void nmp_app_set_capability_callback(void *app, void *context, NmpCapabilityCallback callback);
 char *nmp_app_dispatch_capability(void *app, const char *request_json);
 char *nmp_app_dispatch_action(void *app, const char *namespace, const char *action_json);
-typedef const char *(*NmpActionExecutor)(const char *action_json);
-void nmp_app_register_action_executor(void *app, const char *namespace, NmpActionExecutor executor);
-typedef const char *(*NmpActionValidator)(const char *action_json);
-void nmp_app_register_action_module(void *app, const char *namespace, NmpActionValidator validator);
 typedef void (*NmpActionResultObserver)(const char *result_json);
 void nmp_app_register_action_result_observer(void *app, NmpActionResultObserver observer);
 // PR-G: ack a `correlation_id` in the `action_stages` snapshot mirror so the
@@ -298,7 +291,7 @@ void nmp_broker_free_string(char *ptr);
 // poisoned mutexes, or serialization failure (D6).
 void *nmp_app_chirp_register(void *app, const char *viewer_pubkey_or_null);
 void nmp_app_chirp_register_group_chat(void *app, const char *group_id_json);
-void nmp_app_chirp_register_dm_inbox(void *app, const char *viewer_pubkey_or_null);
+void nmp_app_chirp_register_dm_inbox(void *app);
 char *nmp_app_chirp_snapshot(void *handle);
 void nmp_app_chirp_snapshot_free(char *ptr);
 void nmp_app_chirp_unregister(void *handle);
@@ -363,9 +356,9 @@ void nmp_app_chirp_register_group_discovery(void *app, const char *host_relay_ur
 // private direct messages. Unlike the NIP-29 group chat there is no group id:
 // the inbox is global (every conversation the local account participates in).
 //
-//   • `viewer_pubkey_or_null` is retained for ABI compatibility and ignored.
-//     Rust derives the active account from the local NIP-17 key slot and owns
-//     the kind:1059 `#p` gift-wrap interest lifecycle itself.
+//   • Takes no viewer pubkey. Rust derives the active account from the local
+//     NIP-17 key slot and owns the kind:1059 `#p` gift-wrap interest
+//     lifecycle itself.
 //   • Returns void — registers no handle, no companion `unregister`. The
 //     decrypted conversations surface on every kernel snapshot tick under
 //     the `projections` key `"nip17.dm_inbox"`, shaped
@@ -375,7 +368,7 @@ void nmp_app_chirp_register_group_discovery(void *app, const char *host_relay_ur
 //   • Fire-and-forget (D6): a null `app` degrades to a silent no-op.
 //   • `app` MUST outlive the registration; it is borrowed only for the
 //     duration of this call.
-void nmp_app_chirp_register_dm_inbox(void *app, const char *viewer_pubkey_or_null);
+void nmp_app_chirp_register_dm_inbox(void *app);
 
 // ── NIP-02 follow list read projection ───────────────────────────────────
 //
@@ -403,27 +396,27 @@ void nmp_app_chirp_register_follow_list(void *app, const char *active_pubkey_or_
 // symbols above.
 //
 // Flow:
-// 1. `nmp_app_chirp_marmot_register(app, secret_key_hex, db_dir)` once the
+// 1. `nmp_marmot_register(app, secret_key_hex, db_dir)` once the
 //    local identity secret is known. `secret_key_hex` is hex OR `nsec…`;
 //    the encrypted MLS SQLite DB is created at
 //    `<db_dir>/marmot-mls-state.sqlite`. Returns an opaque handle, or NULL
 //    on any failure (D6).
-// 2. `nmp_app_chirp_marmot_snapshot(handle)` each render tick → JSON
+// 2. `nmp_marmot_snapshot(handle)` each render tick → JSON
 //    `{ groups, pending_welcomes, key_package }`.
-// 3. `nmp_app_chirp_marmot_group_messages(handle, group_id_hex)` → newest
+// 3. `nmp_marmot_group_messages(handle, group_id_hex)` → newest
 //    200 decrypted messages for one group (JSON array).
-// 4. `nmp_app_chirp_marmot_dispatch(handle, action_json)` → one mutating
+// 4. `nmp_marmot_dispatch(handle, action_json)` → one mutating
 //    op; returns `{"ok":true,…}` / `{"ok":false,"error":"…"}`.
-// 5. Free EVERY returned string via `nmp_app_chirp_marmot_string_free`.
-// 6. `nmp_app_chirp_marmot_unregister(handle)` BEFORE `nmp_app_free(app)`.
+// 5. Free EVERY returned string via `nmp_marmot_string_free`.
+// 6. `nmp_marmot_unregister(handle)` BEFORE `nmp_app_free(app)`.
 //
 // Fire-and-forget: every entry point degrades silently on null pointers,
 // poisoned mutexes, or (de)serialization failure (D6).
-void *nmp_app_chirp_marmot_register(void *app, const char *secret_key_hex, const char *db_dir);
+void *nmp_marmot_register(void *app, const char *secret_key_hex, const char *db_dir);
 /// Register using the actor-owned key — Swift never sees the nsec. Reads
 /// the active local key from the slot the actor writes after identity
 /// mutations. Returns NULL if no local account is active (D6).
-void *nmp_app_chirp_marmot_register_active(void *app, const char *db_dir);
+void *nmp_marmot_register_active(void *app, const char *db_dir);
 /// Rust-owned Chirp identity bootstrap: restore a persisted local secret
 /// through the native keyring capability, sign in through the kernel actor,
 /// and register Marmot. `test_nsec` may be NULL; when non-NULL it overrides
@@ -435,16 +428,16 @@ void *nmp_app_chirp_identity_sign_in_nsec(void *app, const char *secret, const c
 /// Rust-owned removal policy: forget Chirp's persisted local secret and
 /// remove the identity through the kernel actor.
 void nmp_app_chirp_identity_remove_account(void *app, const char *identity_id);
-char *nmp_app_chirp_marmot_snapshot(void *handle);
-char *nmp_app_chirp_marmot_group_messages(void *handle, const char *group_id_hex);
-char *nmp_app_chirp_marmot_dispatch(void *handle, const char *action_json);
-void nmp_app_chirp_marmot_string_free(char *ptr);
-void nmp_app_chirp_marmot_unregister(void *handle);
+char *nmp_marmot_snapshot(void *handle);
+char *nmp_marmot_group_messages(void *handle, const char *group_id_hex);
+char *nmp_marmot_dispatch(void *handle, const char *action_json);
+void nmp_marmot_string_free(char *ptr);
+void nmp_marmot_unregister(void *handle);
 
 /// Trigger the kernel to fetch KeyPackage events (kind:30443/443) for the named
 /// pubkeys from relays. `pubkeys_json` is a JSON array of pubkey strings (hex
 /// or npub). Fire-and-forget; results arrive asynchronously through the Marmot
 /// raw-event tap and appear in `cached_kp_pubkeys`.
-void nmp_app_chirp_marmot_fetch_key_packages(void *handle, const char *pubkeys_json);
+void nmp_marmot_fetch_key_packages(void *handle, const char *pubkeys_json);
 
 #endif

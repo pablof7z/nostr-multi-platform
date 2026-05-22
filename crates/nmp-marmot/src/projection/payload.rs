@@ -174,7 +174,7 @@ impl KeyPackageStatus {
     }
 }
 
-/// Complete snapshot Swift consumes via `nmp_app_chirp_marmot_snapshot`.
+/// Complete snapshot Swift consumes via `nmp_marmot_snapshot`.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct MarmotSnapshot {
     pub groups: Vec<MarmotGroupRow>,
@@ -218,7 +218,7 @@ impl MarmotSnapshot {
     }
 }
 
-/// One decrypted message row from `nmp_app_chirp_marmot_group_messages`.
+/// One decrypted message row from `nmp_marmot_group_messages`.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct MarmotMessageRow {
     /// The message (rumor) event id, hex.

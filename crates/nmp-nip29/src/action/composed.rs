@@ -34,14 +34,6 @@ fn react_in_group_plan(action: &ReactInGroupInput) -> PublishPlan {
     PublishPlan::pinned(&action.group, KIND_REACTION, action.content.clone(), tags)
 }
 
-/// Map a validated `nmp.nip29.react_in_group` action JSON to the [`ActorCommand`]
-/// that publishes the kind:7 in-group reaction.
-pub fn react_in_group_command(action_json: &str) -> Result<ActorCommand, String> {
-    let input: ReactInGroupInput =
-        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-    react_in_group_plan(&input).into_actor_command()
-}
-
 pub struct ReactInGroupAction;
 impl ActionModule for ReactInGroupAction {
     /// Wire-schema note: was `nip29.react_in_group` before the namespace-prefix
@@ -53,6 +45,13 @@ impl ActionModule for ReactInGroupAction {
         _ctx: &mut ActionContext,
         action: Self::Action,
     ) -> Result<(), ActionRejection> {
+        action.group.require_routable().map_err(ActionRejection::Invalid)?;
+        if action.target_event_id.is_empty() {
+            return Err(ActionRejection::Invalid("target_event_id is empty".into()));
+        }
+        if action.content.is_empty() {
+            return Err(ActionRejection::Invalid("reaction content is empty".into()));
+        }
         react_in_group_plan(&action)
             .validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for in-group reaction".into()))?;
@@ -60,10 +59,11 @@ impl ActionModule for ReactInGroupAction {
     }
     fn execute(
         action: Self::Action,
-        _correlation_id: &str,
+        correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        send(react_in_group_plan(&action).into_actor_command()?);
+        send(react_in_group_plan(&action)
+            .into_actor_command(Some(correlation_id.to_string()))?);
         Ok(())
     }
 }
@@ -88,14 +88,6 @@ fn comment_in_group_plan(action: &CommentInGroupInput) -> PublishPlan {
     PublishPlan::pinned(&action.group, KIND_COMMENT, action.content.clone(), tags)
 }
 
-/// Map a validated `nmp.nip29.comment_in_group` action JSON to the [`ActorCommand`]
-/// that publishes the kind:1111 in-group comment.
-pub fn comment_in_group_command(action_json: &str) -> Result<ActorCommand, String> {
-    let input: CommentInGroupInput =
-        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-    comment_in_group_plan(&input).into_actor_command()
-}
-
 pub struct CommentInGroupAction;
 impl ActionModule for CommentInGroupAction {
     /// Wire-schema note: was `nip29.comment_in_group` before the namespace-prefix
@@ -107,6 +99,7 @@ impl ActionModule for CommentInGroupAction {
         _ctx: &mut ActionContext,
         action: Self::Action,
     ) -> Result<(), ActionRejection> {
+        action.group.require_routable().map_err(ActionRejection::Invalid)?;
         comment_in_group_plan(&action)
             .validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for in-group comment".into()))?;
@@ -114,10 +107,124 @@ impl ActionModule for CommentInGroupAction {
     }
     fn execute(
         action: Self::Action,
-        _correlation_id: &str,
+        correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        send(comment_in_group_plan(&action).into_actor_command()?);
+        send(comment_in_group_plan(&action)
+            .into_actor_command(Some(correlation_id.to_string()))?);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn react_input() -> ReactInGroupInput {
+        ReactInGroupInput {
+            group: GroupId::new("wss://groups.example.com", "room"),
+            target_event_id: "deadbeef".to_string(),
+            target_author_pubkey: None,
+            content: "+".to_string(),
+        }
+    }
+
+    fn comment_input() -> CommentInGroupInput {
+        CommentInGroupInput {
+            group: GroupId::new("wss://groups.example.com", "room"),
+            root_event_id: None,
+            parent_event_id: None,
+            content: "nice".to_string(),
+        }
+    }
+
+    #[test]
+    fn react_well_formed_passes_validator() {
+        let mut ctx = ActionContext::default();
+        assert!(ReactInGroupAction::start(&mut ctx, react_input()).is_ok());
+    }
+
+    #[test]
+    fn react_empty_host_relay_url_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        let action = ReactInGroupInput {
+            group: GroupId::new("", "room"),
+            ..react_input()
+        };
+        assert!(matches!(
+            ReactInGroupAction::start(&mut ctx, action),
+            Err(ActionRejection::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn react_empty_local_id_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        let action = ReactInGroupInput {
+            group: GroupId::new("wss://h", ""),
+            ..react_input()
+        };
+        assert!(matches!(
+            ReactInGroupAction::start(&mut ctx, action),
+            Err(ActionRejection::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn react_empty_target_event_id_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        let action = ReactInGroupInput {
+            target_event_id: String::new(),
+            ..react_input()
+        };
+        assert!(matches!(
+            ReactInGroupAction::start(&mut ctx, action),
+            Err(ActionRejection::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn react_empty_content_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        let action = ReactInGroupInput {
+            content: String::new(),
+            ..react_input()
+        };
+        assert!(matches!(
+            ReactInGroupAction::start(&mut ctx, action),
+            Err(ActionRejection::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn comment_well_formed_passes_validator() {
+        let mut ctx = ActionContext::default();
+        assert!(CommentInGroupAction::start(&mut ctx, comment_input()).is_ok());
+    }
+
+    #[test]
+    fn comment_empty_host_relay_url_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        let action = CommentInGroupInput {
+            group: GroupId::new("", "room"),
+            ..comment_input()
+        };
+        assert!(matches!(
+            CommentInGroupAction::start(&mut ctx, action),
+            Err(ActionRejection::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn comment_empty_local_id_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        let action = CommentInGroupInput {
+            group: GroupId::new("wss://h", ""),
+            ..comment_input()
+        };
+        assert!(matches!(
+            CommentInGroupAction::start(&mut ctx, action),
+            Err(ActionRejection::Invalid(_))
+        ));
     }
 }

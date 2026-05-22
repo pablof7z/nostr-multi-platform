@@ -25,7 +25,7 @@ use serde_json::Value;
 use super::identity::{create_account, sign_in_nsec, IdentityRuntime};
 use super::publish::{follow, publish_note, publish_unsigned_event, react};
 use crate::kernel::Kernel;
-use crate::publish::{InMemoryPublishStore, PublishStore};
+use crate::publish::{InMemoryPublishStore, PublishStore, PublishTarget};
 use crate::relay::{OutboundMessage, DEFAULT_VISIBLE_LIMIT};
 use crate::substrate::UnsignedEvent;
 
@@ -133,6 +133,7 @@ impl ConformanceHarness {
             &mut self.kernel,
             content,
             reply_to,
+            PublishTarget::Auto,
             None,
             &mut Vec::new(),
         );
@@ -146,6 +147,7 @@ impl ConformanceHarness {
             &mut self.kernel,
             target_event_id,
             reaction,
+            None,
             &mut Vec::new(),
         );
         last_event_json(&outbound)
@@ -158,6 +160,7 @@ impl ConformanceHarness {
             &mut self.kernel,
             pubkey,
             add,
+            None,
             &mut Vec::new(),
         );
         last_event_json(&outbound)
@@ -174,8 +177,16 @@ impl ConformanceHarness {
             content: content.to_string(),
             created_at: 1_700_000_000,
         };
-        let outbound =
-            publish_unsigned_event(&self.identity, &mut self.kernel, unsigned, &mut Vec::new());
+        // Conformance harness is non-dispatch — `None` keeps the engine's
+        // `correlation_id_override` `None`-fallback (the publish handle == event
+        // id is reported in `action_results`), preserving prior behaviour.
+        let outbound = publish_unsigned_event(
+            &self.identity,
+            &mut self.kernel,
+            unsigned,
+            None,
+            &mut Vec::new(),
+        );
         last_event_json(&outbound)
     }
 

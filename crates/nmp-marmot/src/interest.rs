@@ -11,11 +11,7 @@
 //!
 //! The raw-event tap then drives accepted signed events into `MarmotService`.
 
-use std::collections::BTreeSet;
-
-use nmp_core::planner::{
-    InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
-};
+use nmp_core::planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
 use nmp_core::stable_hash::stable_hash64;
 
 /// Marmot KeyPackage event kind (NIP-33 addressable). CURRENT spec.
@@ -80,27 +76,18 @@ pub fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
 /// author's outbox relays. The kernel planner owns that NIP-65 routing; the
 /// app only declares the peer pubkey and the event kinds it needs.
 ///
-// TODO(bridge): add `limit` to `ViewDependencies` so this can route through
-// `ViewDependencies::into_logical_interest` like `giftwrap_inbox_interest`.
-// `ViewDependencies` has no `limit` field today, so this interest is
-// hand-built to set `shape.limit`.
 pub fn key_package_lookup_interest(pubkey: &str) -> LogicalInterest {
-    let mut authors = BTreeSet::new();
-    authors.insert(pubkey.to_string());
-    LogicalInterest {
-        id: key_package_lookup_interest_id(pubkey),
-        scope: InterestScope::Global,
-        shape: InterestShape {
-            authors,
-            kinds: [KIND_KEY_PACKAGE, KIND_KEY_PACKAGE_LEGACY]
-                .into_iter()
-                .collect(),
-            limit: Some(4),
-            ..Default::default()
-        },
-        hints: Vec::new(),
-        lifecycle: InterestLifecycle::Tailing,
+    nmp_core::substrate::ViewDependencies {
+        kinds: vec![KIND_KEY_PACKAGE, KIND_KEY_PACKAGE_LEGACY],
+        authors: vec![pubkey.to_string()],
+        limit: Some(4),
+        ..Default::default()
     }
+    .into_logical_interest(
+        key_package_lookup_interest_id(pubkey),
+        InterestScope::Global,
+        InterestLifecycle::Tailing,
+    )
 }
 
 /// Relay-pinned tailing interests for group kind:445 traffic.
@@ -109,27 +96,24 @@ pub fn key_package_lookup_interest(pubkey: &str) -> LogicalInterest {
 /// relay gets its own hard-pinned interest so the kernel keeps the corresponding
 /// REQ open and the raw-event tap receives messages without an inbox sweep.
 ///
-// TODO(bridge): add `limit` to `ViewDependencies` so this can route through
-// `ViewDependencies::into_logical_interest`. `ViewDependencies` carries
-// `relay_pin` but no `limit`, so these interests are hand-built to set
-// `shape.limit`.
 pub fn group_message_interests(
     group_id_hex: &str,
     relays: impl IntoIterator<Item = String>,
 ) -> Vec<LogicalInterest> {
     relays
         .into_iter()
-        .map(|relay_url| LogicalInterest {
-            id: group_message_interest_id(group_id_hex, &relay_url),
-            scope: InterestScope::Global,
-            shape: InterestShape {
-                kinds: [KIND_GROUP_MESSAGE].into_iter().collect(),
-                limit: Some(200),
+        .map(|relay_url| {
+            nmp_core::substrate::ViewDependencies {
+                kinds: vec![KIND_GROUP_MESSAGE],
                 relay_pin: Some(relay_url.clone()),
+                limit: Some(200),
                 ..Default::default()
-            },
-            hints: Vec::new(),
-            lifecycle: InterestLifecycle::Tailing,
+            }
+            .into_logical_interest(
+                group_message_interest_id(group_id_hex, &relay_url),
+                InterestScope::Global,
+                InterestLifecycle::Tailing,
+            )
         })
         .collect()
 }

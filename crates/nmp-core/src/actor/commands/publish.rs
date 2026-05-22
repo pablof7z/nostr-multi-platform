@@ -9,6 +9,7 @@
 use crate::actor::commands::identity::{sign_active_nonblocking, IdentityRuntime};
 use crate::actor::pending_sign::PendingSign;
 use crate::kernel::Kernel;
+use crate::publish::{validate_explicit_relays, validate_publish_target, PublishTarget};
 use crate::relay::OutboundMessage;
 use crate::substrate::UnsignedEvent;
 
@@ -19,10 +20,68 @@ use crate::substrate::UnsignedEvent;
 /// The single source-of-truth for the wire kind is the NIP-59 spec itself.
 const KIND_GIFT_WRAP: u32 = 1059;
 
-fn toast_no_account(kernel: &mut Kernel, action: &str) -> Vec<OutboundMessage> {
+/// Set a "no active account" toast and — when a dispatched action is waiting
+/// on a `correlation_id` — record the matching `Failed` terminal so the host
+/// spinner clears.
+///
+/// Every publish handler in this module guards on `identity.active_pubkey()`
+/// and exits early when no account is signed in. Threading the `correlation_id`
+/// through that exit is the broken-promise fix the per-handler arms already
+/// honour ad-hoc; centralising it here keeps the pattern uniform and removes
+/// the risk of a new handler forgetting the second leg.
+///
+/// The `action_failure` reason is the bare `"no active account"` string the
+/// per-handler sites used historically — matching across handlers so the host
+/// can pattern-match consistently regardless of which verb dispatched.
+fn toast_no_account(
+    kernel: &mut Kernel,
+    action: &str,
+    correlation_id: Option<String>,
+) -> Vec<OutboundMessage> {
     kernel.set_last_error_toast(Some(format!(
         "cannot {action}: no active account — sign in first"
     )));
+    if let Some(id) = correlation_id {
+        kernel.record_action_failure(id, "no active account".to_string());
+    }
+    Vec::new()
+}
+
+/// Set `reason` as the last-error toast and — when a dispatched action is
+/// waiting on a `correlation_id` — record the matching `Failed` terminal so
+/// the host spinner clears. Returns an empty outbound vec so call sites stay
+/// `return fail_publish(...);` one-liners.
+///
+/// This is the generic twin of [`fail_invalid_target`] — same dual-write
+/// contract, but the toast text is supplied verbatim by the caller rather
+/// than templated with the `"explicit publish target rejected:"` prefix.
+/// Used by sign-setup and sign-error branches across every publish handler;
+/// previously these were ~3-line `set_last_error_toast` + `if let Some(id)`
+/// copy-pastes (with one branch in `publish_unsigned_event_to_relays`
+/// silently DROPPING the correlation_id, which orphaned the host spinner on
+/// a dispatched NIP-29 group-message sign failure — fixed by this consolidation).
+fn fail_publish(
+    kernel: &mut Kernel,
+    reason: String,
+    correlation_id: Option<String>,
+) -> Vec<OutboundMessage> {
+    kernel.set_last_error_toast(Some(reason.clone()));
+    if let Some(id) = correlation_id {
+        kernel.record_action_failure(id, reason);
+    }
+    Vec::new()
+}
+
+fn fail_invalid_target(
+    kernel: &mut Kernel,
+    reason: String,
+    correlation_id: Option<String>,
+) -> Vec<OutboundMessage> {
+    let toast = format!("explicit publish target rejected: {reason}");
+    kernel.set_last_error_toast(Some(toast.clone()));
+    if let Some(id) = correlation_id {
+        kernel.record_action_failure(id, toast);
+    }
     Vec::new()
 }
 
@@ -53,10 +112,14 @@ pub(crate) fn publish_unsigned_event(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
     unsigned: UnsignedEvent,
+    correlation_id: Option<String>,
     pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
     if identity.active_pubkey().is_none() {
-        return toast_no_account(kernel, "publish");
+        // Broken-promise fix: a dispatched action handed the host a
+        // `correlation_id`; `toast_no_account` records the matching
+        // `Failed` terminal so the spinner clears, and is a no-op for `None`.
+        return toast_no_account(kernel, "publish", correlation_id);
     }
     // Non-blocking sign: a local key resolves now; a remote (NIP-46) signer
     // returns a `Pending` op that is parked in `pending_signs` and `poll()`ed
@@ -64,19 +127,43 @@ pub(crate) fn publish_unsigned_event(
     let mut op = match sign_active_nonblocking(identity, &unsigned) {
         Ok(op) => op,
         Err(reason) => {
-            kernel.set_last_error_toast(Some(reason));
-            return Vec::new();
+            // Broken-promise fix: a sign-setup failure happens on the actor
+            // thread AFTER `dispatch_action` already returned the
+            // correlation_id — `fail_publish` records the terminal failure.
+            return fail_publish(kernel, reason, correlation_id);
         }
     };
     match op.poll() {
-        Some(Ok(signed)) => kernel.publish_signed(&signed, &[]),
+        // Local key resolved on the spot. When the publish was action-dispatched
+        // (`correlation_id.is_some()`) the engine must report THAT id in
+        // `action_results` — route through `publish_signed_with_correlation`.
+        // Non-dispatch callers (`correlation_id == None` — `NmpApp::` Rust API,
+        // tests) keep the prior `publish_signed` shape: the engine reports the
+        // event id (== publish handle), which is the documented `None` fallback.
+        // The two paths are run_publish_engine-equivalent (both `PublishTarget::Auto`,
+        // identical p_tags); preserving the named entrypoints documents intent
+        // and keeps `publish_signed` from drifting into dead-code in this lib.
+        Some(Ok(signed)) => match correlation_id {
+            Some(cid) => kernel.publish_signed_with_correlation(&signed, &[], Some(cid)),
+            None => kernel.publish_signed(&signed, &[]),
+        },
         Some(Err(e)) => {
-            kernel.set_last_error_toast(Some(format!("sign failed: {e}")));
-            Vec::new()
+            // Broken-promise fix: a local-key sign error happens after
+            // `dispatch_action` returned the correlation_id — `fail_publish`
+            // records the terminal failure under that id.
+            fail_publish(kernel, format!("sign failed: {e}"), correlation_id)
         }
         None => {
-            // Remote signer not yet responded — park the op for polling.
-            pending_signs.push(PendingSign::new(op, Vec::new()));
+            // Remote signer pending. Action-dispatched calls park WITH their
+            // correlation_id so the broker turn-around settles under the id
+            // the host is waiting on; non-dispatch calls park plain (matching
+            // the prior `PendingSign::new` shape and keeping that constructor
+            // live in the lib build).
+            let pending = match correlation_id {
+                Some(_) => PendingSign::with_correlation_id(op, Vec::new(), correlation_id),
+                None => PendingSign::new(op, Vec::new()),
+            };
+            pending_signs.push(pending);
             Vec::new()
         }
     }
@@ -101,10 +188,9 @@ pub(crate) fn publish_unsigned_event(
 /// `unsigned.pubkey` is ignored; signing derives the pubkey from the active
 /// identity and writes it onto the `SignedEvent`.
 ///
-/// **Empty `relays`.** A defensive degrade: falls back to
-/// `PublishTarget::Auto` so the publish is not silently dropped. Callers that
-/// reach this path always supply the pin; an empty set is a caller bug, not a
-/// supported mode.
+/// **Empty / invalid `relays`.** Fail closed. Callers that want NIP-65 outbox
+/// routing must use [`publish_unsigned_event`] / `ActorCommand::PublishUnsignedEvent`;
+/// an empty explicit target is a caller bug, not a request to widen to `Auto`.
 ///
 /// **Remote (NIP-46) signers.** The explicit target is carried through the
 /// remote-sign park via [`PendingSign::with_target`] — without it a bunker
@@ -115,38 +201,53 @@ pub(crate) fn publish_unsigned_event_to_relays(
     kernel: &mut Kernel,
     unsigned: UnsignedEvent,
     relays: Vec<crate::publish::RelayUrl>,
+    correlation_id: Option<String>,
     pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
     if identity.active_pubkey().is_none() {
-        return toast_no_account(kernel, "publish");
+        // Broken-promise fix: dispatched callers (NIP-29 group-message
+        // executor — the only live consumer today) receive a correlation_id
+        // from `nmp_app_dispatch_action`; without recording the terminal
+        // failure here the host's spinner hangs forever. `toast_no_account`
+        // is a no-op for `None` callers.
+        return toast_no_account(kernel, "publish", correlation_id);
     }
-    // Empty `relays` → Auto (NIP-65 outbox, defensive degrade); non-empty →
-    // the named D3 Explicit opt-out routed to exactly those relays.
-    let target = if relays.is_empty() {
-        crate::publish::PublishTarget::Auto
-    } else {
-        crate::publish::PublishTarget::Explicit { relays }
-    };
+    if let Err(reason) = validate_explicit_relays(&relays) {
+        return fail_invalid_target(kernel, reason, correlation_id);
+    }
+    let target = PublishTarget::Explicit { relays };
     // Non-blocking sign: a local key resolves now; a remote (NIP-46) signer
     // returns a `Pending` op parked in `pending_signs` with the explicit
-    // target attached — the actor thread never blocks (D8).
+    // target + correlation_id attached — the actor thread never blocks (D8).
     let mut op = match sign_active_nonblocking(identity, &unsigned) {
         Ok(op) => op,
         Err(reason) => {
-            kernel.set_last_error_toast(Some(reason));
-            return Vec::new();
+            // Broken-promise fix: dispatched callers are waiting on
+            // `action_results`; `fail_publish` records the terminal failure
+            // under the correlation_id so the spinner clears.
+            return fail_publish(kernel, reason, correlation_id);
         }
     };
     match op.poll() {
-        Some(Ok(signed)) => kernel.publish_signed_to(&signed, &[], target),
+        Some(Ok(signed)) => {
+            kernel.publish_signed_to_with_correlation(&signed, &[], target, correlation_id)
+        }
         Some(Err(e)) => {
-            kernel.set_last_error_toast(Some(format!("sign failed: {e}")));
-            Vec::new()
+            // Broken-promise fix: a local-key sign error happens after
+            // `dispatch_action` returned the correlation_id — `fail_publish`
+            // records the terminal failure under that id.
+            fail_publish(kernel, format!("sign failed: {e}"), correlation_id)
         }
         None => {
             // Remote signer not yet responded — park the op WITH its target
-            // so the pinned routing survives the broker round-trip.
-            pending_signs.push(PendingSign::with_target(op, Vec::new(), target));
+            // and correlation_id so pinned routing + spinner round-trip both
+            // survive the broker round-trip.
+            pending_signs.push(PendingSign::with_target_and_correlation_id(
+                op,
+                Vec::new(),
+                target,
+                correlation_id,
+            ));
             Vec::new()
         }
     }
@@ -172,15 +273,11 @@ pub(crate) fn publish_unsigned_event_to_relays(
 /// supported. The capability is generic (D0 —
 /// no app-layer nouns in the kernel).
 ///
-/// **Relay targeting.** `relays` selects the D3 routing mode:
-/// - empty slice → `PublishTarget::Auto`: route via the author's NIP-65
-///   kind:10002 outbox (the existing back-compat behavior — `kind:30443/443`
-///   key-packages take this path).
-/// - non-empty → `PublishTarget::Explicit { relays }`: the named D3 opt-out.
-///   The verbatim signed event is dispatched to **exactly** these relays,
-///   bypassing the outbox resolver. Consumers use this for group messages
-///   (pinned GROUP relay) and kind:1059 gift-wraps (recipient inbox
-///   relays) — relays the author's own kind:10002 does not cover.
+/// **Relay targeting.** `target` preserves the caller's intent:
+/// - `PublishTarget::Auto` routes via the author's NIP-65 kind:10002 outbox.
+/// - `PublishTarget::Explicit { relays }` dispatches to exactly those relays,
+///   bypassing the outbox resolver. Empty or malformed explicit relay sets
+///   fail closed rather than degrading to Auto.
 ///
 /// D6 — a signature/id verification failure is surfaced as a toast (error
 /// becomes kernel state, never a silent no-op) and produces no outbound
@@ -209,9 +306,12 @@ pub(crate) fn publish_unsigned_event_to_relays(
 pub(crate) fn publish_signed_event(
     kernel: &mut Kernel,
     raw: crate::store::RawEvent,
-    relays: &[crate::publish::RelayUrl],
+    target: PublishTarget,
     correlation_id: Option<String>,
 ) -> Vec<OutboundMessage> {
+    if let Err(reason) = validate_publish_target(&target) {
+        return fail_invalid_target(kernel, reason, correlation_id);
+    }
     // Reuse the store's verification gate: serializes to NIP-01 canonical
     // JSON, parses with the `nostr` crate, and checks BOTH the event-id hash
     // and the Schnorr signature. This is the exact primitive `kernel::ingest`
@@ -223,11 +323,22 @@ pub(crate) fn publish_signed_event(
             // Typed FFI error contract: a verification failure (bad id hash
             // or Schnorr sig) means the caller handed us a structurally
             // malformed event — iOS branches on `malformed_event` rather
-            // than substring-matching the English reason.
+            // than substring-matching the English reason. The categorized
+            // toast surface is deliberately preserved here (NOT
+            // `fail_publish`'s uncategorized path), because the FFI error
+            // contract pins the `ERR_MALFORMED_EVENT` discriminant.
+            let toast = format!("signed event rejected: {reason}");
             kernel.set_error_toast_with_category(
-                format!("signed event rejected: {reason}"),
+                toast.clone(),
                 crate::kernel::closed_reason::ERR_MALFORMED_EVENT,
             );
+            // Broken-promise fix: dispatched callers (the generic
+            // `dispatch_action("nmp.publish")` → `PublishAction::Publish`
+            // path) carry a correlation_id; record the terminal failure
+            // under it so the host's spinner clears. No-op for `None`.
+            if let Some(id) = correlation_id {
+                kernel.record_action_failure(id, toast);
+            }
             return Vec::new();
         }
     };
@@ -241,34 +352,36 @@ pub(crate) fn publish_signed_event(
     // path that reaches `publish_signed_event`. In particular:
     //
     //   1. The generic `dispatch_action("nmp.publish")` → `PublishAction::Publish`
-    //      arm: `relays_for_target(&PublishTarget::Auto) = Vec::new()` is
-    //      routed verbatim into `ActorCommand::PublishSignedEvent { relays }`,
+    //      arm: a `PublishTarget::Auto` carries no relays and is routed
+    //      verbatim into `ActorCommand::PublishSignedEvent { target: Auto }`,
     //      which lands here. Without this guard a host that dispatches a
     //      kind:1059 envelope with `target: Auto` would silently leak through
-    //      the empty-relays → Auto branch below.
+    //      the Auto branch below.
     //
     //   2. The `NmpApp::publish_signed_explicit` workspace-internal seam (used
-    //      by `nmp-marmot::MarmotProjection`). If a future caller passes an
-    //      empty `relays` slice for a kind:1059 envelope the same leak would
-    //      open. The Marmot runtime guard in
-    //      `nmp-marmot::projection::publish::publish_to` covers the FFI symbol
-    //      path; this covers the Rust-typed sibling.
+    //      by `nmp-marmot::MarmotProjection`) always builds
+    //      `PublishTarget::Explicit { relays }` (the branch's fail-closed
+    //      `validate_publish_target` already rejects an empty `Explicit`
+    //      relay set at the top of this function), so this Auto-leg of the
+    //      guard is unreachable from Marmot today. The Marmot runtime guard
+    //      in `nmp-marmot::projection::publish::publish_to` covers the
+    //      C-ABI symbol path; this covers the typed Rust sibling.
     //
-    // Structural invariant: kind:1059 + empty `relays` is NEVER routed to
-    // Auto. The refusal mirrors the dm.rs precedent — D6 toast set, no
+    // Structural invariant: kind:1059 + `Auto` is NEVER routed to the NIP-65
+    // outbox. The refusal mirrors the dm.rs precedent — D6 toast set, no
     // outbound frames, no publish-queue entry, plus a `tracing::warn!` so
     // the leak attempt is visible in logs. This is policy, not malformed
     // data — `set_last_error_toast` (the legacy uncategorized path) is the
     // right surface (kind:1059 routing leak is not in the closed
     // `error_category` key set defined by `kernel::closed_reason`).
-    if raw.kind == KIND_GIFT_WRAP && relays.is_empty() {
+    if raw.kind == KIND_GIFT_WRAP && matches!(target, PublishTarget::Auto) {
         let reason = "cannot publish kind:1059 gift-wrap: no explicit relay pin \
              (D10 would leak the encrypted envelope to the author's public relays)"
             .to_string();
         tracing::warn!(
             kind = raw.kind,
-            "publish_signed_event refused: kind:1059 envelope with empty relays \
-             would Auto-route through the author's NIP-65 outbox, leaking the \
+            "publish_signed_event refused: kind:1059 envelope with PublishTarget::Auto \
+             would route through the author's NIP-65 outbox, leaking the \
              existence of the encrypted gift-wrap (D10 violation). Caller must \
              pin recipient kind:10050 DM-inbox relays (NIP-17) or another \
              explicit set.",
@@ -303,24 +416,10 @@ pub(crate) fn publish_signed_event(
             created_at: raw.created_at,
         },
     };
-    // Empty `relays` → Auto (NIP-65 outbox, the back-compat path). Non-empty
-    // → the named D3 Explicit opt-out, routed to exactly those relays.
-    //
     // `correlation_id` threads through to the publish engine's
     // `correlation_id_override` — `None` preserves the prior fallback to the
     // publish handle (== event id) for every non-dispatch caller.
-    if relays.is_empty() {
-        kernel.publish_signed_with_correlation(&signed, &[], correlation_id)
-    } else {
-        kernel.publish_signed_to_with_correlation(
-            &signed,
-            &[],
-            crate::publish::PublishTarget::Explicit {
-                relays: relays.to_vec(),
-            },
-            correlation_id,
-        )
-    }
+    kernel.publish_signed_to_with_correlation(&signed, &[], target, correlation_id)
 }
 
 /// Sign and publish a kind:1 note (optionally a NIP-10 reply).
@@ -338,19 +437,18 @@ pub(crate) fn publish_note(
     kernel: &mut Kernel,
     content: &str,
     reply_to_id: Option<&str>,
+    target: PublishTarget,
     correlation_id: Option<String>,
     pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
     let Some(pubkey) = identity.active_pubkey() else {
-        // Broken-promise fix: a dispatched `PublishNote` handed the host a
-        // `correlation_id`; if the publish aborts before the engine ever sees
-        // it, the failure must still reach `action_results` so the host
-        // spinner clears. `record_action_failure` is a no-op for `None`.
-        if let Some(id) = correlation_id.clone() {
-            kernel.record_action_failure(id, "no active account".to_string());
-        }
-        return toast_no_account(kernel, "publish");
+        // Broken-promise fix: `toast_no_account` records `Failed` against the
+        // dispatch correlation_id (no-op for `None` callers).
+        return toast_no_account(kernel, "publish", correlation_id);
     };
+    if let Err(reason) = validate_publish_target(&target) {
+        return fail_invalid_target(kernel, reason, correlation_id);
+    }
 
     // T144: a kind:1 reply needs full NIP-10 structure (root forwarding,
     // parent-author re-notification, dedup) not just a minimal reply marker.
@@ -368,14 +466,13 @@ pub(crate) fn publish_note(
         // feedback. Mirrors the explicit id/pubkey validation in `react` and
         // `follow`: refuse the publish and surface a toast.
         if !crate::kernel::is_hex_id(reply) {
-            let reason = "reply: malformed target event id".to_string();
-            kernel.set_last_error_toast(Some(reason.clone()));
             // Broken-promise fix: surface the rejection under the dispatch
             // correlation_id so the host spinner does not hang.
-            if let Some(id) = correlation_id.clone() {
-                kernel.record_action_failure(id, reason);
-            }
-            return Vec::new();
+            return fail_publish(
+                kernel,
+                "reply: malformed target event id".to_string(),
+                correlation_id,
+            );
         }
         match kernel.reply_tags_for_parent(reply) {
             Some(reply_tags) => tags = reply_tags,
@@ -403,31 +500,22 @@ pub(crate) fn publish_note(
     let mut op = match sign_active_nonblocking(identity, &unsigned) {
         Ok(op) => op,
         Err(reason) => {
-            kernel.set_last_error_toast(Some(reason.clone()));
             // Broken-promise fix: a dispatched note must report its failure
             // under the correlation_id the host is waiting on.
-            if let Some(id) = correlation_id.clone() {
-                kernel.record_action_failure(id, reason);
-            }
-            return Vec::new();
+            return fail_publish(kernel, reason, correlation_id);
         }
     };
     let mut outbound = match op.poll() {
         // Local key resolved on the spot — publish through the engine with the
         // dispatch correlation_id so the terminal verdict reports it.
         Some(Ok(signed)) => {
-            kernel.publish_signed_with_correlation(&signed, &[], correlation_id)
+            kernel.publish_signed_to_with_correlation(&signed, &[], target, correlation_id)
         }
         Some(Err(e)) => {
-            let reason = format!("sign failed: {e}");
-            kernel.set_last_error_toast(Some(reason.clone()));
             // Broken-promise fix: a local-key sign error happens on the actor
             // thread AFTER `dispatch_action` already returned the
-            // correlation_id — the host is waiting; record the failure.
-            if let Some(id) = correlation_id.clone() {
-                kernel.record_action_failure(id, reason);
-            }
-            return Vec::new();
+            // correlation_id — `fail_publish` records the terminal failure.
+            return fail_publish(kernel, format!("sign failed: {e}"), correlation_id);
         }
         None => {
             // Remote signer pending — park the op WITH its correlation_id so
@@ -435,9 +523,10 @@ pub(crate) fn publish_note(
             // waiting on once the broker turns the sign request around. The
             // hydration kick (independent of the reply event) still fires
             // below so the parent can be fetched.
-            pending_signs.push(PendingSign::with_correlation_id(
+            pending_signs.push(PendingSign::with_target_and_correlation_id(
                 op,
                 Vec::new(),
+                target,
                 correlation_id,
             ));
             Vec::new()
@@ -472,26 +561,22 @@ pub(crate) fn publish_profile(
     pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
     let Some(pubkey) = identity.active_pubkey() else {
-        // Broken-promise fix: report the failure under the dispatch
-        // correlation_id so the host spinner clears (no-op for `None`).
-        if let Some(id) = correlation_id.clone() {
-            kernel.record_action_failure(id, "no active account".to_string());
-        }
-        return toast_no_account(kernel, "publish profile");
+        // Broken-promise fix: `toast_no_account` records `Failed` against the
+        // dispatch correlation_id (no-op for `None` callers).
+        return toast_no_account(kernel, "publish profile", correlation_id);
     };
 
     // kind:0 `content` is the JSON-serialized metadata object (NIP-01).
     let content = match serde_json::to_string(&fields) {
         Ok(json) => json,
         Err(e) => {
-            let reason = format!("profile serialisation: {e}");
-            kernel.set_last_error_toast(Some(reason.clone()));
             // Broken-promise fix: surface the rejection under the dispatch
             // correlation_id.
-            if let Some(id) = correlation_id.clone() {
-                kernel.record_action_failure(id, reason);
-            }
-            return Vec::new();
+            return fail_publish(
+                kernel,
+                format!("profile serialisation: {e}"),
+                correlation_id,
+            );
         }
     };
 
@@ -507,13 +592,9 @@ pub(crate) fn publish_profile(
     let mut op = match sign_active_nonblocking(identity, &unsigned) {
         Ok(op) => op,
         Err(reason) => {
-            kernel.set_last_error_toast(Some(reason.clone()));
             // Broken-promise fix: report the failure under the dispatch
             // correlation_id so the host spinner clears.
-            if let Some(id) = correlation_id.clone() {
-                kernel.record_action_failure(id, reason);
-            }
-            return Vec::new();
+            return fail_publish(kernel, reason, correlation_id);
         }
     };
     match op.poll() {
@@ -521,14 +602,9 @@ pub(crate) fn publish_profile(
         // dispatch correlation_id so the terminal verdict reports it.
         Some(Ok(signed)) => kernel.publish_signed_with_correlation(&signed, &[], correlation_id),
         Some(Err(e)) => {
-            let reason = format!("sign failed: {e}");
-            kernel.set_last_error_toast(Some(reason.clone()));
             // Broken-promise fix: a local-key sign error happens after
             // `dispatch_action` returned the correlation_id — record it.
-            if let Some(id) = correlation_id.clone() {
-                kernel.record_action_failure(id, reason);
-            }
-            Vec::new()
+            fail_publish(kernel, format!("sign failed: {e}"), correlation_id)
         }
         None => {
             // Remote signer pending — park the op WITH its correlation_id so
@@ -549,14 +625,22 @@ pub(crate) fn react(
     kernel: &mut Kernel,
     target_event_id: &str,
     reaction: &str,
+    correlation_id: Option<String>,
     pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
     let Some(pubkey) = identity.active_pubkey() else {
-        return toast_no_account(kernel, "react");
+        // Broken-promise fix: `toast_no_account` records `Failed` against the
+        // dispatch correlation_id (no-op for `None` callers).
+        return toast_no_account(kernel, "react", correlation_id);
     };
     if !crate::kernel::is_hex_id(target_event_id) {
-        kernel.set_last_error_toast(Some("react: malformed target event id".to_string()));
-        return Vec::new();
+        // Broken-promise fix: surface the rejection under the dispatch
+        // correlation_id so the host spinner does not hang.
+        return fail_publish(
+            kernel,
+            "react: malformed target event id".to_string(),
+            correlation_id,
+        );
     }
     let content = if reaction.trim().is_empty() {
         "+".to_string()
@@ -588,18 +672,30 @@ pub(crate) fn react(
     let mut op = match sign_active_nonblocking(identity, &unsigned) {
         Ok(op) => op,
         Err(reason) => {
-            kernel.set_last_error_toast(Some(reason));
-            return Vec::new();
+            // Broken-promise fix: a sign-setup failure happens on the actor
+            // thread AFTER `dispatch_action` already returned the
+            // correlation_id — `fail_publish` records the terminal failure.
+            return fail_publish(kernel, reason, correlation_id);
         }
     };
     match op.poll() {
-        Some(Ok(signed)) => kernel.publish_signed(&signed, &[]),
+        // Local key resolved on the spot — publish through the engine with the
+        // dispatch correlation_id so the terminal verdict reports it.
+        Some(Ok(signed)) => kernel.publish_signed_with_correlation(&signed, &[], correlation_id),
         Some(Err(e)) => {
-            kernel.set_last_error_toast(Some(format!("sign failed: {e}")));
-            Vec::new()
+            // Broken-promise fix: a local-key sign error happens after
+            // `dispatch_action` returned the correlation_id — record it.
+            fail_publish(kernel, format!("sign failed: {e}"), correlation_id)
         }
         None => {
-            pending_signs.push(PendingSign::new(op, Vec::new()));
+            // Remote signer pending — park the op WITH its correlation_id so
+            // the dispatched reaction still settles under the id the host is
+            // waiting on once the broker turns the sign request around.
+            pending_signs.push(PendingSign::with_correlation_id(
+                op,
+                Vec::new(),
+                correlation_id,
+            ));
             Vec::new()
         }
     }
@@ -612,14 +708,26 @@ pub(crate) fn follow(
     kernel: &mut Kernel,
     pubkey: &str,
     add: bool,
+    correlation_id: Option<String>,
     pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
     let Some(author) = identity.active_pubkey() else {
-        return toast_no_account(kernel, if add { "follow" } else { "unfollow" });
+        // Broken-promise fix: `toast_no_account` records `Failed` against the
+        // dispatch correlation_id (no-op for `None` callers).
+        return toast_no_account(
+            kernel,
+            if add { "follow" } else { "unfollow" },
+            correlation_id,
+        );
     };
     if !crate::kernel::is_hex_pubkey(pubkey) {
-        kernel.set_last_error_toast(Some("follow: expected 64-hex pubkey".to_string()));
-        return Vec::new();
+        // Broken-promise fix: surface the rejection under the dispatch
+        // correlation_id so the host spinner does not hang.
+        return fail_publish(
+            kernel,
+            "follow: expected 64-hex pubkey".to_string(),
+            correlation_id,
+        );
     }
     let mut follows = kernel.current_follows(&author);
     if add {
@@ -645,18 +753,30 @@ pub(crate) fn follow(
     let mut op = match sign_active_nonblocking(identity, &unsigned) {
         Ok(op) => op,
         Err(reason) => {
-            kernel.set_last_error_toast(Some(reason));
-            return Vec::new();
+            // Broken-promise fix: a sign-setup failure happens on the actor
+            // thread AFTER `dispatch_action` already returned the
+            // correlation_id — record it.
+            return fail_publish(kernel, reason, correlation_id);
         }
     };
     match op.poll() {
-        Some(Ok(signed)) => kernel.publish_signed(&signed, &[]),
+        // Local key resolved on the spot — publish through the engine with the
+        // dispatch correlation_id so the terminal verdict reports it.
+        Some(Ok(signed)) => kernel.publish_signed_with_correlation(&signed, &[], correlation_id),
         Some(Err(e)) => {
-            kernel.set_last_error_toast(Some(format!("sign failed: {e}")));
-            Vec::new()
+            // Broken-promise fix: a local-key sign error happens after
+            // `dispatch_action` returned the correlation_id — record it.
+            fail_publish(kernel, format!("sign failed: {e}"), correlation_id)
         }
         None => {
-            pending_signs.push(PendingSign::new(op, Vec::new()));
+            // Remote signer pending — park the op WITH its correlation_id so
+            // the dispatched follow/unfollow still settles under the id the
+            // host is waiting on once the broker turns the sign request around.
+            pending_signs.push(PendingSign::with_correlation_id(
+                op,
+                Vec::new(),
+                correlation_id,
+            ));
             Vec::new()
         }
     }
@@ -681,6 +801,6 @@ pub(crate) fn open_timeline(
             // post-M2 or can be removed.
             kernel.open_author(pk, relays_ready)
         }
-        None => toast_no_account(kernel, "open timeline"),
+        None => toast_no_account(kernel, "open timeline", None),
     }
 }

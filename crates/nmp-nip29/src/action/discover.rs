@@ -28,24 +28,6 @@ pub struct DiscoverGroupsInput {
     pub relay_url: String,
 }
 
-/// Build the discover-groups [`ActorCommand`] from a typed input. Validates
-/// the relay URL is a non-empty `ws://` / `wss://` shape before constructing
-/// the interest — the kernel's planner is more lenient than NIP-29 routing
-/// requires, so we gate here.
-fn discover_groups_command_inner(action: &DiscoverGroupsInput) -> Result<ActorCommand, String> {
-    validate_relay_url(&action.relay_url)?;
-    let interest = relay_discovery_interest(&action.relay_url);
-    Ok(ActorCommand::PushInterest(interest))
-}
-
-/// Map a validated `nmp.nip29.discover` action JSON to the [`ActorCommand`]
-/// that pushes the relay-pinned metadata interest.
-pub fn discover_groups_command(action_json: &str) -> Result<ActorCommand, String> {
-    let input: DiscoverGroupsInput =
-        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-    discover_groups_command_inner(&input)
-}
-
 /// Reject empty or non-websocket-scheme URLs. The kernel's relay planner
 /// will tolerate weird shapes (it just opens whatever it's handed), so the
 /// gate lives here.
@@ -73,12 +55,20 @@ impl ActionModule for DiscoverGroupsAction {
     }
     fn execute(
         action: Self::Action,
-        _correlation_id: &str,
+        correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        validate_relay_url(&action.relay_url)?;
         let interest = relay_discovery_interest(&action.relay_url);
         send(ActorCommand::PushInterest(interest));
+        // PD-036 — `discover_groups` is a subscription-only action: there is
+        // no event published and no async worker, so the "success" surface
+        // is instantaneous (the interest has been pushed to the lifecycle).
+        // Without a terminal `RecordActionSuccess` the host's `dispatch_action`
+        // spinner waits forever on `action_results`. Mirror the NIP-57 zap
+        // worker's success leg (see `crates/nmp-core/src/actor/commands/zap.rs`).
+        send(ActorCommand::RecordActionSuccess {
+            correlation_id: correlation_id.to_string(),
+        });
         Ok(())
     }
 }
@@ -86,12 +76,29 @@ impl ActionModule for DiscoverGroupsAction {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
+
+    /// Run the typed executor and capture every `ActorCommand` it sends.
+    fn run_execute(input: DiscoverGroupsInput) -> Result<Vec<ActorCommand>, String> {
+        let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+        DiscoverGroupsAction::execute(input, "test-cid", &|cmd| {
+            captured.borrow_mut().push(cmd);
+        })?;
+        Ok(captured.into_inner())
+    }
 
     #[test]
-    fn well_formed_input_yields_push_interest_command() {
-        let body =
-            r#"{"relay_url":"wss://groups.example.com"}"#;
-        match discover_groups_command(body).expect("well-formed body parses") {
+    fn well_formed_input_yields_push_interest_then_record_success() {
+        let input = DiscoverGroupsInput {
+            relay_url: "wss://groups.example.com".to_string(),
+        };
+        let cmds = run_execute(input).expect("well-formed input executes");
+        assert_eq!(
+            cmds.len(),
+            2,
+            "expected PushInterest followed by RecordActionSuccess, got {cmds:?}"
+        );
+        match &cmds[0] {
             ActorCommand::PushInterest(interest) => {
                 assert_eq!(
                     interest.shape.relay_pin.as_deref(),
@@ -104,22 +111,38 @@ mod tests {
             }
             other => panic!("expected PushInterest, got {other:?}"),
         }
+        // PD-036 — terminal `Accepted` stage is what closes the host spinner.
+        match &cmds[1] {
+            ActorCommand::RecordActionSuccess { correlation_id } => {
+                assert_eq!(correlation_id, "test-cid");
+            }
+            other => panic!("expected RecordActionSuccess, got {other:?}"),
+        }
     }
 
     #[test]
-    fn empty_relay_url_is_rejected() {
-        assert!(discover_groups_command(r#"{"relay_url":""}"#).is_err());
+    fn empty_relay_url_is_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        assert!(matches!(
+            DiscoverGroupsAction::start(
+                &mut ctx,
+                DiscoverGroupsInput { relay_url: String::new() },
+            ),
+            Err(ActionRejection::Invalid(_))
+        ));
     }
 
     #[test]
-    fn non_websocket_scheme_is_rejected() {
-        assert!(
-            discover_groups_command(r#"{"relay_url":"https://groups.example.com"}"#).is_err()
-        );
-    }
-
-    #[test]
-    fn malformed_json_is_rejected() {
-        assert!(discover_groups_command(r#"{"not":"a relay url"}"#).is_err());
+    fn non_websocket_scheme_is_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        assert!(matches!(
+            DiscoverGroupsAction::start(
+                &mut ctx,
+                DiscoverGroupsInput {
+                    relay_url: "https://groups.example.com".to_string(),
+                },
+            ),
+            Err(ActionRejection::Invalid(_))
+        ));
     }
 }

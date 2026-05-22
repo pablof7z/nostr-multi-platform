@@ -1,3 +1,4 @@
+#![cfg(feature = "long-form")]
 //! `try_from_event` on a fully-populated kind:30023 — every NIP-23 tag set.
 
 mod common;

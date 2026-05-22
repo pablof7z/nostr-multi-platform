@@ -39,7 +39,7 @@ pub use capability::{
 // extern "C"` in `action`; the `pub use` is only consumed under the
 // test-support gate.
 #[cfg(any(test, feature = "test-support"))]
-pub use action::nmp_app_dispatch_action;
+pub use action::{nmp_app_ack_action_stage, nmp_app_dispatch_action};
 
 // Action-result observer registration — the push-side output seam. Re-exported
 // through the test-support facade so integration tests can register an observer
@@ -68,8 +68,15 @@ pub use snapshot::nmp_app_register_snapshot_projection;
 // shell consumes the same `#[no_mangle] extern "C"` symbols directly via
 // the static lib — the `pub use` only affects Rust-side reach.
 #[cfg(any(test, feature = "test-support"))]
+// `nmp_app_is_alive` is reached by the in-crate `ffi::lifecycle::tests`
+// module by its `super::` path, so the facade re-export is only consumed by
+// out-of-crate integration tests / test-support clients — same pattern as
+// `nmp_app_register_action_result_observer` above. The `allow(unused)` keeps
+// `cargo test -p nmp-core --lib` clean.
+#[allow(unused_imports)]
 pub use lifecycle::{
-    nmp_app_lifecycle_background, nmp_app_lifecycle_foreground, nmp_app_set_lifecycle_callback,
+    nmp_app_is_alive, nmp_app_lifecycle_background, nmp_app_lifecycle_foreground,
+    nmp_app_set_lifecycle_callback,
 };
 
 // T146 — kernel event observer FFI exposed through the test-support facade
@@ -146,30 +153,33 @@ pub use publish::{nmp_app_cancel_publish, nmp_app_retry_publish};
 pub use capability::{
     nmp_app_dispatch_capability, nmp_app_free_string, nmp_app_set_capability_callback,
 };
-// M6 — action-dispatch entry point + the host-extensible action-executor
-// registration seam, reachable via the Rust path so the Android JNI shim
-// pulls the symbol bodies into the cdylib CGU. `nmp_app_register_action_executor`
-// is `#[no_mangle] extern "C"` in `action` like its `dispatch` sibling; without
-// this re-export rustc omits its body from the cdylib CGU and an Android link
-// step against it fails (the `cargo check (android-ffi)` CI job never links, so
-// it does not catch this). `allow(unused_imports)`: the re-export exists only
-// to force the symbol body into the cdylib CGU — no Rust caller names it by
-// this path.
+// M6 — action-dispatch entry point + the action-result observer registration
+// seam, reachable via the Rust path so the Android JNI shim pulls the symbol
+// bodies into the cdylib CGU. Each symbol is `#[no_mangle] extern "C"` in
+// `action`; without this re-export rustc omits its body from the cdylib CGU
+// and an Android link step against it fails (the `cargo check (android-ffi)`
+// CI job never links, so it does not catch this). `allow(unused_imports)`:
+// the re-export exists only to force the symbol body into the cdylib CGU —
+// no Rust caller names it by this path.
+//
+// ADR-0027 final stage: the closure-based dual seam
+// (`nmp_app_register_action_executor` / `nmp_app_register_action_module`) was
+// deleted; the typed `register_action::<M>()` Rust seam is the sole host
+// registration path. There is no useful C-ABI shape for the typed seam —
+// `M::Action` and `ActorCommand` have no stable C representation.
 #[cfg(feature = "android-ffi")]
 #[allow(unused_imports)]
-pub use action::{
-    nmp_app_dispatch_action, nmp_app_register_action_executor, nmp_app_register_action_module,
-    nmp_app_register_action_result_observer,
-};
+pub use action::{nmp_app_dispatch_action, nmp_app_register_action_result_observer};
 // Host-extensible snapshot output — registration entry point reachable via
 // the Rust path so the Android JNI shim pulls the symbol body into the
 // cdylib CGU.
 #[cfg(feature = "android-ffi")]
-pub use snapshot::nmp_app_register_snapshot_projection;
-#[cfg(feature = "android-ffi")]
 pub use lifecycle::{
-    nmp_app_lifecycle_background, nmp_app_lifecycle_foreground, nmp_app_set_lifecycle_callback,
+    nmp_app_is_alive, nmp_app_lifecycle_background, nmp_app_lifecycle_foreground,
+    nmp_app_set_lifecycle_callback,
 };
+#[cfg(feature = "android-ffi")]
+pub use snapshot::nmp_app_register_snapshot_projection;
 // T146 — kernel event observer FFI symbols reachable via Rust paths so the
 // Android JNI shim can pull the symbol bodies into the cdylib CGU.
 #[cfg(feature = "android-ffi")]
@@ -363,6 +373,59 @@ pub struct NmpApp {
     /// lower bound when a broker is wired. That is acceptable for the
     /// backpressure gate, which watches for *buildup*, not exact occupancy.
     queue_depth: Arc<AtomicU64>,
+    /// NIP-47 wallet double-tap guard: bolt11 strings the FFI surface has
+    /// already accepted for `pay_invoice` but for which the kind:23195
+    /// response (or a timeout) has not yet cleared. Keyed by the full bolt11
+    /// string — a same-invoice retap maps to the same key, and the FFI
+    /// short-circuits before constructing a second
+    /// `ActorCommand::WalletPayInvoice`.
+    ///
+    /// Lives entirely in the FFI layer (no actor coupling): expiry is wall-
+    /// clock based — entries older than [`wallet::INFLIGHT_BOLT11_TTL`] are
+    /// swept at every `nmp_app_wallet_pay_invoice` call, so a legitimate retry
+    /// after the TTL passes through. The TTL is sized for "the NWC response
+    /// is in flight" — long enough to absorb relay round-trip jitter, short
+    /// enough that a wallet that never responds does not block the user
+    /// forever.
+    ///
+    /// D14: `Mutex<HashMap<…>>` is NOT the banned `Arc<Mutex<Vec<…>>>` shape
+    /// the rule disciplines (a `HashMap` is not a `Vec`, and the slot is not
+    /// shared with the actor — no `Arc`). The simpler primitive is correct
+    /// here: nothing on the actor side reads or writes this slot, so the
+    /// `Arc` clone would be dead shared ownership.
+    #[cfg(feature = "wallet")]
+    inflight_bolt11: Mutex<std::collections::HashMap<String, std::time::Instant>>,
+    /// Generic dispatch idempotency guard: dedup-keys for
+    /// [`action::nmp_app_dispatch_action`] calls accepted by the registry but
+    /// whose action-result has not yet cleared. Keyed by a stable 64-bit
+    /// FNV-1a hash of `(namespace, action_json)` (see
+    /// [`crate::stable_hash::stable_hash64`]) — a same-action retap inside
+    /// the TTL window maps to the same key, and the FFI short-circuits before
+    /// the second `start()` + executor pass enqueues a duplicate
+    /// `ActorCommand`. The stored value is `(when_first_seen,
+    /// original_correlation_id)`: a dedup hit returns the original id in the
+    /// `{"correlation_id":...}` envelope so the host's spinner stays bound to
+    /// the first dispatch (mirrors the "id stays bound" semantic of the
+    /// PR-G2 `executor_failure_returns_correlation_id_and_enqueues_
+    /// failed_terminal` test).
+    ///
+    /// Mirrors the [`inflight_bolt11`] pattern but for ALL action namespaces,
+    /// not just `pay_invoice`. The primary motivator is the NIP-17 DM send
+    /// path: a rapid re-tap on Send before the gift-wrap fan-out completes
+    /// would otherwise mint a second batch of kind:1059 envelopes that are
+    /// indistinguishable to recipients (no on-the-wire dedup is possible).
+    /// The guard is generic by intent — every namespace the host dispatches
+    /// shares the same 30-second wall-clock window.
+    ///
+    /// Lives entirely in the FFI layer (no actor coupling): expiry is
+    /// wall-clock based — entries older than
+    /// [`action::INFLIGHT_DISPATCH_TTL`] are swept at every
+    /// `dispatch_action_json` call, so a legitimate retry after the TTL
+    /// passes through.
+    ///
+    /// D14: `Mutex<HashMap<…>>` is NOT the banned `Arc<Mutex<Vec<…>>>` shape
+    /// — same reasoning as `inflight_bolt11` above.
+    inflight_dispatches: Mutex<std::collections::HashMap<u64, (std::time::Instant, String)>>,
 }
 
 impl Drop for NmpApp {
@@ -497,6 +560,18 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // dropped — it MUST outlive the inner closure so the panic frame can
     // still be delivered after the actor's own sender is gone.
     let update_tx_panic = update_tx.clone();
+    // Self-feedback sender for the actor — a clone of the command sender
+    // that the host also keeps (`command_tx` above). Background workers
+    // spawned from dispatch arms (currently the LNURL-pay round-trip the
+    // `FetchLnurlInvoice` arm starts) use this clone to send follow-up
+    // `ActorCommand`s back into the loop without crossing FFI.
+    //
+    // G-S4 caveat: sends through this clone bypass the `queue_depth`
+    // straddle counter (the only incrementing path is `NmpApp::send_cmd`).
+    // The `actor_queue_depth` snapshot metric is therefore a lower bound
+    // for self-feedback traffic — acceptable for a backpressure gate that
+    // watches for buildup, matches the existing `actor_sender()` caveat.
+    let actor_command_tx_self = command_tx.clone();
     let actor = thread::spawn(move || {
         // D7 (actor-death visibility): the actor thread owns the kernel loop.
         // If it panics, `send_cmd` would otherwise silently drop every
@@ -507,6 +582,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             run_actor_with_observers(
                 command_rx,
+                actor_command_tx_self,
                 update_tx,
                 actor_lifecycle_observer,
                 actor_event_observers,
@@ -593,6 +669,15 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // G-S4 — the `NmpApp`'s clone of the command-channel depth counter,
         // incremented by `send_cmd`. The actor holds the matching clone.
         queue_depth,
+        // NIP-47 wallet `pay_invoice` double-tap guard. Empty at construction;
+        // populated by `ffi::wallet::nmp_app_wallet_pay_invoice` on each
+        // accepted invoice, swept on TTL expiry (no cross-thread coupling).
+        #[cfg(feature = "wallet")]
+        inflight_bolt11: Mutex::new(std::collections::HashMap::new()),
+        // Generic dispatch idempotency guard. Empty at construction; populated
+        // by `ffi::action::dispatch_action_json` on each accepted dispatch,
+        // swept on TTL expiry (no cross-thread coupling).
+        inflight_dispatches: Mutex::new(std::collections::HashMap::new()),
     };
 
     // D0 — first internal consumer of the snapshot-projection seam: register
@@ -609,9 +694,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         match wallet_status.lock() {
             Ok(slot) => slot
                 .as_ref()
-                .map(|status| {
-                    serde_json::to_value(status).unwrap_or(serde_json::Value::Null)
-                })
+                .map(|status| serde_json::to_value(status).unwrap_or(serde_json::Value::Null))
                 .unwrap_or(serde_json::Value::Null),
             // D6: a poisoned wallet-status mutex collapses to `null` rather
             // than panicking inside the snapshot tick.
@@ -653,69 +736,18 @@ impl NmpApp {
         let _ = self.tx.send(cmd);
     }
 
-    /// Register a host-supplied executor against the app's action registry.
-    ///
-    /// This is the post-construction registration seam: a host can wire an
-    /// action namespace into the registry *without editing `nmp-core`*. The
-    /// closure receives the validated action JSON, the registry-minted
-    /// `correlation_id`, and a `send` callback that routes an [`ActorCommand`]
-    /// to the actor; it returns `Ok(())` on success or `Err(msg)` on a
-    /// decode/dispatch failure. The `correlation_id` lets an executor thread
-    /// the action's correlation handle onto an `ActorCommand` whose terminal
-    /// verdict must report that id (see `ActorCommand::PublishNote`).
-    ///
-    /// Registration MUST happen during host init — before `nmp_app_start`
-    /// and before any [`action::nmp_app_dispatch_action`] call — because it
-    /// requires `&mut self`. See [`app_ref_mut`] for the aliasing contract.
-    pub fn register_action_executor(
-        &mut self,
-        namespace: impl Into<String>,
-        f: impl Fn(&str, &str, &dyn Fn(ActorCommand)) -> Result<(), String> + Send + Sync + 'static,
-    ) {
-        self.action_registry.register_executor(namespace, f);
-    }
-
-    /// Register a host-supplied *module validator* against the app's action
-    /// registry — the complement to [`Self::register_action_executor`].
-    ///
-    /// `register_action_executor` wires the `execute()` half of a namespace;
-    /// this wires the `start()` validation half. A namespace registered
-    /// through *both* is fully reachable via
-    /// [`action::nmp_app_dispatch_action`]: `start()` validates the action
-    /// JSON against `validate`, then `execute()` runs the registered executor.
-    /// Registering only one half leaves the namespace partially wired — an
-    /// executor-only namespace is rejected by `start()` ("unknown action
-    /// namespace"); a validator-only one is rejected by `execute()` ("no
-    /// executor registered").
-    ///
-    /// `validate` receives the raw action JSON and returns `Ok(())` on accept
-    /// or an [`crate::substrate::ActionRejection`] on reject.
-    ///
-    /// Registration MUST happen during host init — before `nmp_app_start`
-    /// and before any [`action::nmp_app_dispatch_action`] call — because it
-    /// requires `&mut self`. See [`app_ref_mut`] for the aliasing contract.
-    pub fn register_action_module(
-        &mut self,
-        namespace: impl Into<String>,
-        validate: impl Fn(&str) -> Result<(), crate::substrate::ActionRejection>
-            + Send
-            + Sync
-            + 'static,
-    ) {
-        self.action_registry
-            .register_with_validator(namespace, validate);
-    }
-
     /// Register a typed [`crate::substrate::ActionModule`] `M` against the
-    /// app's action registry via a single call — the ADR-0027 replacement for
-    /// the split `register_action_module` + `register_action_executor` pair.
+    /// app's action registry — ADR-0027's single-call typed seam, and the
+    /// sole host action-registration path on master.
     ///
-    /// Unlike the closure-based halves, this path never has a partial-registration
-    /// gap: `M::start` handles validation AND `M::execute` handles execution,
-    /// both under the same typed namespace (`M::NAMESPACE`).
+    /// `M::start` handles validation AND `M::execute` handles execution, both
+    /// under the same typed namespace (`M::NAMESPACE`): there is no possible
+    /// partial-registration gap (the pre-ADR-0027 dual `register_action_module`
+    /// / `register_action_executor` closure seam has been deleted).
     ///
     /// Registration MUST happen during host init — before `nmp_app_start`
-    /// and before any [`action::nmp_app_dispatch_action`] call.
+    /// and before any [`action::nmp_app_dispatch_action`] call — because it
+    /// requires `&mut self`.
     pub fn register_action<M: crate::substrate::ActionModule + 'static>(&mut self) {
         self.action_registry.register::<M>();
     }
@@ -1101,8 +1133,10 @@ impl NmpApp {
     }
 
     /// Workspace-internal kernel publish API — verbatim publish of an
-    /// already-signed `nostr::Event` to an EXPLICIT relay set, with `Auto`
-    /// (NIP-65 outbox) fallback when `relays` is empty.
+    /// already-signed `nostr::Event` to an EXPLICIT relay set. Empty or
+    /// malformed relay sets fail closed in the actor publish handler; callers
+    /// that want `Auto` routing must use the typed `nmp.publish` action path
+    /// with `PublishTarget::Auto`.
     ///
     /// PR-F (one door per capability) — this is the Rust-typed replacement for
     /// the deleted `nmp_app_publish_signed_event*` `extern "C"` symbols. App
@@ -1114,26 +1148,24 @@ impl NmpApp {
     /// symbols used to land on); forged or garbled events are dropped with a
     /// kernel toast.
     ///
-    /// Routing mode:
-    /// - empty `relays` → `PublishTarget::Auto` (author's NIP-65 outbox)
-    ///   for every kind EXCEPT kind:1059 (gift-wrap), which is REFUSED by
-    ///   the kernel-side D10 defensive guard added in PR-K3.
-    /// - non-empty → `PublishTarget::Explicit { relays }`, bypassing the
-    ///   outbox resolver. Marmot uses this for relay-pinned kind:445 commits
-    ///   / messages and for kind:1059 inbox-routing (recipient kind:10050).
+    /// Routing is fail-closed: this entrypoint always builds a
+    /// `PublishTarget::Explicit { relays }`, bypassing the outbox resolver.
+    /// Marmot uses this for relay-pinned kind:445 commits / messages and as
+    /// the documented kind:1059 inbox-routing approximation. Callers that
+    /// want NIP-65 outbox (`PublishTarget::Auto`) must use the typed
+    /// `nmp.publish` action path through `dispatch_action` so `Auto` and
+    /// `Explicit` never share the same empty-vector encoding.
     ///
-    /// **kind:1059 callers MUST supply an explicit pin.** Earlier revisions
-    /// of this docstring described the empty-relays → Auto fallback as the
-    /// "documented kind:1059 inbox-routing approximation"; that allowance
-    /// is gone. `crates/nmp-core/src/actor/commands/publish.rs::publish_signed_event`
-    /// now refuses any kind:1059 envelope whose `relays` slice is empty,
-    /// sets a D6 toast on the kernel, and drops the envelope — the same
-    /// behaviour the call-site guard in `commands::dm::send_gift_wrapped_dm`
-    /// (PR #229) gives the NIP-17 send path. The Marmot bridge's own runtime
-    /// guard in `nmp-marmot::projection::publish::publish_to` is the
-    /// matching guard for the C-ABI symbol path; together they make a
-    /// kind:1059 Auto-route structurally impossible regardless of which
-    /// entry point a caller reaches the kernel through.
+    /// kind:1059 envelopes additionally hit the kernel-side D10 defensive
+    /// guard added in PR-K3: `commands::publish::publish_signed_event`
+    /// refuses any kind:1059 envelope whose `relays` slice is empty, sets a
+    /// D6 toast on the kernel, and drops the envelope — the same behaviour
+    /// the call-site guard in `commands::dm::send_gift_wrapped_dm` (PR #229)
+    /// gives the NIP-17 send path. The Marmot bridge's own runtime guard in
+    /// `nmp-marmot::projection::publish::publish_to` is the matching guard
+    /// for the C-ABI symbol path; together they make a kind:1059 Auto-route
+    /// structurally impossible regardless of which entry point a caller
+    /// reaches the kernel through.
     ///
     /// Theme A discriminator (see `substrate/action.rs`): this is the
     /// system-authored / lifecycle exception to "every event-producing
@@ -1160,19 +1192,14 @@ impl NmpApp {
             pubkey: event.pubkey.to_hex(),
             created_at: event.created_at.as_secs(),
             kind: event.kind.as_u16() as u32,
-            tags: event
-                .tags
-                .iter()
-                .map(|t| t.as_slice().to_vec())
-                .collect(),
+            tags: event.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
             content: event.content.clone(),
             sig: event.sig.to_string(),
         };
-        let relays: Vec<crate::publish::RelayUrl> =
-            relays.iter().map(|r| r.to_string()).collect();
+        let relays: Vec<crate::publish::RelayUrl> = relays.iter().map(|r| r.to_string()).collect();
         self.send_cmd(ActorCommand::PublishSignedEvent {
             raw,
-            relays,
+            target: crate::publish::PublishTarget::Explicit { relays },
             correlation_id: None,
         });
     }
@@ -1326,23 +1353,13 @@ pub(crate) fn app_ref<'a>(app: *mut NmpApp) -> Option<&'a NmpApp> {
     }
 }
 
-/// Mutable counterpart to [`app_ref`]. Yields a `&mut NmpApp` for FFI entry
-/// points that mutate app-owned state (e.g. action-registry registration).
-///
-/// SAFETY CONTRACT for callers: the resulting `&mut NmpApp` aliases the same
-/// allocation any concurrent `app_ref` would hand out. A C-ABI symbol using
-/// this MUST be a registration-time-only call — invoked during host init,
-/// before `nmp_app_start` and before any `nmp_app_dispatch_action`, so no
-/// shared `&NmpApp` is live on another thread.
-pub(crate) fn app_ref_mut<'a>(app: *mut NmpApp) -> Option<&'a mut NmpApp> {
-    if app.is_null() {
-        None
-    } else {
-        // SAFETY: caller guarantees non-null app is a valid NmpApp pointer
-        // and (per the doc contract above) no aliasing `&NmpApp` is live.
-        Some(unsafe { &mut *app })
-    }
-}
+// ADR-0027 deleted `app_ref_mut`. Its only callers were the C-ABI
+// `nmp_app_register_action_executor` / `nmp_app_register_action_module`
+// registration symbols, which were themselves deleted as part of collapsing
+// the dual-seam closure path. The typed registration seam
+// (`NmpApp::register_action::<M>`) is Rust-only and takes `&mut self`
+// directly; no C-ABI counterpart exists, so no `*mut NmpApp` → `&mut NmpApp`
+// helper is needed.
 
 pub(crate) fn c_string_argument(ptr: *const c_char) -> Option<String> {
     if ptr.is_null() {

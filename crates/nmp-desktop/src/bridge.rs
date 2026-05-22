@@ -34,13 +34,16 @@ impl KernelBridge {
         let reader_latest = Arc::clone(&latest);
         thread::spawn(move || {
             // Actor emits tagged envelopes: {"t":"snapshot","v":{...}} or
-            // {"t":"update","v":{...}}. We only care about snapshot frames.
+            // {"t":"panic","v":{"msg":...}}. We only care about snapshot frames;
+            // panic frames are terminal (D7) and surface elsewhere.
             for line in rx {
                 let env: UpdateEnvelope = match serde_json::from_str(&line) {
                     Ok(e) => e,
                     Err(_) => continue,
                 };
-                let UpdateEnvelope::Snapshot(v) = env else { continue };
+                let UpdateEnvelope::Snapshot(v) = env else {
+                    continue;
+                };
                 let snap: Snapshot = match serde_json::from_value(v) {
                     Ok(s) => s,
                     Err(_) => continue,
@@ -74,6 +77,7 @@ impl KernelBridge {
         let _ = self.tx.send(ActorCommand::PublishNote {
             content,
             reply_to_id: None,
+            target: nmp_core::publish::PublishTarget::Auto,
             // Direct actor-command path (not `dispatch_action`) — no
             // registry-minted correlation_id to thread; the engine reports
             // the event id, as it always did for this path.

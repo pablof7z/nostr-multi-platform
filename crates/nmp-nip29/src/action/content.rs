@@ -37,14 +37,6 @@ fn post_chat_message_plan(action: &PostChatMessageInput) -> PublishPlan {
     PublishPlan::pinned(&action.group, KIND_CHAT_MESSAGE, action.content.clone(), tags)
 }
 
-/// Map a validated `nmp.nip29.post_chat_message` action JSON to the [`ActorCommand`]
-/// that publishes the kind:9 group chat message.
-pub fn post_chat_message_command(action_json: &str) -> Result<ActorCommand, String> {
-    let input: PostChatMessageInput =
-        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-    post_chat_message_plan(&input).into_actor_command()
-}
-
 pub struct PostChatMessageAction;
 impl ActionModule for PostChatMessageAction {
     /// Wire-schema note: was `nip29.post_chat_message` before the namespace-prefix
@@ -56,6 +48,7 @@ impl ActionModule for PostChatMessageAction {
         _ctx: &mut ActionContext,
         action: Self::Action,
     ) -> Result<(), ActionRejection> {
+        action.group.require_routable().map_err(ActionRejection::Invalid)?;
         if action.content.is_empty() {
             return Err(ActionRejection::Invalid("empty chat message".into()));
         }
@@ -66,10 +59,70 @@ impl ActionModule for PostChatMessageAction {
     }
     fn execute(
         action: Self::Action,
-        _correlation_id: &str,
+        correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        send(post_chat_message_plan(&action).into_actor_command()?);
+        send(post_chat_message_plan(&action)
+            .into_actor_command(Some(correlation_id.to_string()))?);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn input() -> PostChatMessageInput {
+        PostChatMessageInput {
+            group: GroupId::new("wss://groups.example.com", "room"),
+            content: "hello".to_string(),
+            previous_event_id_prefixes: Vec::new(),
+            reply_to_event_id: None,
+        }
+    }
+
+    #[test]
+    fn well_formed_passes_validator() {
+        let mut ctx = ActionContext::default();
+        assert!(PostChatMessageAction::start(&mut ctx, input()).is_ok());
+    }
+
+    #[test]
+    fn empty_host_relay_url_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        let action = PostChatMessageInput {
+            group: GroupId::new("", "room"),
+            ..input()
+        };
+        assert!(matches!(
+            PostChatMessageAction::start(&mut ctx, action),
+            Err(ActionRejection::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn empty_local_id_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        let action = PostChatMessageInput {
+            group: GroupId::new("wss://h", ""),
+            ..input()
+        };
+        assert!(matches!(
+            PostChatMessageAction::start(&mut ctx, action),
+            Err(ActionRejection::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn empty_content_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        let action = PostChatMessageInput {
+            content: String::new(),
+            ..input()
+        };
+        assert!(matches!(
+            PostChatMessageAction::start(&mut ctx, action),
+            Err(ActionRejection::Invalid(_))
+        ));
     }
 }

@@ -1,3 +1,4 @@
+#![cfg(feature = "long-form")]
 //! `try_from_event` must reject any kind other than 30023.
 
 mod common;

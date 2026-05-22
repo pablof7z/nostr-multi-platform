@@ -129,6 +129,52 @@ impl Kernel {
         self.changed_since_emit = true;
     }
 
+    /// Record a terminal `"ok"` verdict for a dispatched action whose terminal
+    /// outcome is observed **off-band** from the publish engine — the
+    /// action_results-and-action_stages dual surface that
+    /// [`Self::record_action_failure`] writes, but for the success leg.
+    ///
+    /// The motivating consumer is NIP-47 NWC `pay_invoice`: the kind:23194
+    /// payment request reaches the publish engine and settles like any other
+    /// signed event, but the **payment outcome** arrives separately as the
+    /// wallet's kind:23195 response (carrying a `preimage` on success or an
+    /// `error` object on failure). The NWC response handler decodes it on the
+    /// actor thread and routes here to close the dispatched action's promise
+    /// — without this call a host that dispatched `nmp.zap` would see its
+    /// spinner hang forever, exactly the broken-promise gap
+    /// `record_action_failure` closes on the failure leg.
+    ///
+    /// Callers pass `Some(id)` only on a dispatched action that carried a
+    /// correlation_id; a C-ABI-direct `pay_invoice` (no ActionModule executor
+    /// yet — the iOS shell calls `nmp_app_wallet_pay_invoice` directly today)
+    /// carries `None` and the wallet runtime simply skips this call (nothing
+    /// is waiting on an id).
+    //
+    // PD-036 — `#[allow(dead_code)]` was lifted when the
+    // `ActorCommand::RecordActionSuccess` dispatch arm landed (the NIP-57 zap
+    // LNURL-pay worker's success branch routes through it). The wallet-feature
+    // caller (`handle_nwc_text`) is no longer the only live caller, so the
+    // default-features build now sees a real consumer through `dispatch.rs`.
+    pub(crate) fn record_action_success(&mut self, correlation_id: String) {
+        // Mirror `record_action_failure`'s dual write: an `Accepted` stage in
+        // the `action_stages` mirror so a host listening only on the stage
+        // seam sees the terminal, and the per-tick `action_results` drain so
+        // the spinner-keyed host clears on the next emit. Same join-key
+        // contract — the host's stage observer and its action_results
+        // observer match on the same `correlation_id`.
+        self.action_stages.record(
+            &correlation_id,
+            super::action_stages::ActionStage::Accepted,
+            None,
+            self.now_ms(),
+        );
+        self.publish_engine
+            .record_action_terminal_success(correlation_id);
+        // A terminal verdict is always snapshot-worthy: the next emit drains
+        // it into `action_results` via `take_action_results_projection`.
+        self.changed_since_emit = true;
+    }
+
     /// PR-G — append a lifecycle stage for `correlation_id` to the
     /// `action_stages` projection. Persists until the host acks via
     /// [`Kernel::ack_action_stage`].

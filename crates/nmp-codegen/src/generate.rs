@@ -107,22 +107,14 @@ fn update_rs(manifest: &AppManifest) -> String {
 /// The canonical update-channel envelope, projected for the host crate.
 ///
 /// Every frame on the single update channel is one tagged outer object —
-/// `{"t":"update","v":<KernelUpdate>}`, `{"t":"snapshot","v":<snapshot>}`, or
-/// `{"t":"panic","v":{"msg":<message>}}` — so the host decodes exactly **one**
-/// discriminated type. This MUST stay byte-identical to
-/// `nmp_core::UpdateEnvelope`'s serde contract (tag `t`, content `v`,
-/// snake_case variants); see
+/// `{"t":"snapshot","v":<snapshot>}` or `{"t":"panic","v":{"msg":<message>}}` —
+/// so the host decodes exactly **one** discriminated type. This MUST stay
+/// byte-identical to `nmp_core::UpdateEnvelope`'s serde contract (tag `t`,
+/// content `v`, snake_case variants); see
 /// `docs/design/0001-ffi-update-channel-envelope.md`.
 ///
-/// The discrete arm wraps `nmp_core::DeltaEnvelope` — the `KernelUpdate`
-/// stamped with `schema_version` (the delta-arm counterpart to the snapshot's
-/// `schema_version`). Only `Kernel(_)` discrete updates ever flow on the
-/// streaming channel — module-projected `AppUpdate` variants return through
-/// `FfiApp::dispatch`, not `update_tx`. Carrying module updates here later is
-/// purely **additive** (a new snake_case variant on the same `t`
-/// discriminator). The snapshot interior is intentionally opaque
-/// (`serde_json::Value`) — this type models the discriminator, not the
-/// snapshot's ~30 internal fields.
+/// The snapshot interior is intentionally opaque (`serde_json::Value`) — this
+/// type models the discriminator, not the snapshot's ~30 internal fields.
 ///
 /// The `Panic` arm (D7) is the actor-death signal: the kernel loop panicked
 /// or exited and the host must surface a fatal error rather than keep sending
@@ -135,8 +127,6 @@ fn envelope_rs() -> String {
         "#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]",
         "#[serde(tag = \"t\", content = \"v\", rename_all = \"snake_case\")]",
         "pub enum UpdateEnvelope {",
-        "    /// A discrete update — apply as a delta. Carries `schema_version`.",
-        "    Update(nmp_core::DeltaEnvelope),",
         "    /// A full snapshot — replace rendered state.",
         "    Snapshot(serde_json::Value),",
         "    /// Actor-thread death (D7) — terminal; surface a fatal error.",
@@ -164,9 +154,9 @@ fn view_spec_rs(manifest: &AppManifest) -> String {
 /// `<crate>::Update`, or `<crate>::ViewSpec` (per `module_type`) — so a module
 /// crate must export those exact names at its crate root for the generated
 /// app crate to compile. `fixture-todo-core` honors this; the real NIP crates
-/// (`nmp-nip01` → `RepliesDomain`, `nmp-nip22` → `CommentsSpec`, …) do not, so
-/// codegen has no live NIP-module consumer. Conforming those crates, or
-/// declaring per-module type paths in `nmp.toml`, is the open seam (NMP-145).
+/// (`nmp-nip01`, `nmp-nip22`, …) do not, so codegen has no live NIP-module
+/// consumer. Conforming those crates, or declaring per-module type paths in
+/// `nmp.toml`, is the open seam (NMP-145).
 fn enum_file(
     enum_name: &str,
     kernel_type: &str,
@@ -406,12 +396,19 @@ mod tests {
     #[test]
     fn envelope_rs_pins_the_tagged_union_wire_contract() {
         // The host update-channel envelope must use the canonical t/v
-        // snake_case tagging and carry both the discrete-update and snapshot
-        // arms. This mirrors `tests/determinism.rs` but at the pure-formatter
-        // level, so a refactor of `envelope_rs` is caught without disk I/O.
+        // snake_case tagging and carry the snapshot + panic arms. This mirrors
+        // `tests/determinism.rs` but at the pure-formatter level, so a refactor
+        // of `envelope_rs` is caught without disk I/O.
         let out = envelope_rs();
         assert!(out.contains(r#"#[serde(tag = "t", content = "v", rename_all = "snake_case")]"#));
-        assert!(out.contains("Update(nmp_core::DeltaEnvelope),"));
         assert!(out.contains("Snapshot(serde_json::Value),"));
+        assert!(out.contains("Panic(nmp_core::PanicFrame),"));
+        // The discrete-update arm (`Update(nmp_core::DeltaEnvelope)`) was
+        // deleted as shipped-but-inert — every host bridge only consumed
+        // snapshots, and the kernel no longer emits a discrete frame.
+        assert!(
+            !out.contains("DeltaEnvelope"),
+            "envelope must NOT carry the deleted Update arm: {out}"
+        );
     }
 }

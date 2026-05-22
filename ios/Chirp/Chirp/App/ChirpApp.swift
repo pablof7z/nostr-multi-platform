@@ -33,6 +33,17 @@ struct ChirpApp: App {
             // retries on Fg→Bg, etc.). No policy lives here.
             switch newPhase {
             case .active:
+                // ADR-0028: pull-side actor-liveness probe. If the app was
+                // backgrounded across an actor panic, the push-side panic
+                // frame may have arrived and the Swift listener thread may
+                // have already exited (the update channel closed) before
+                // the host had a chance to react. Probing here on every
+                // foreground transition catches the missed signal and
+                // surfaces the red banner so the user sees a fatal-error
+                // state instead of a frozen UI. Probe BEFORE
+                // `lifecycleForeground` so a dead kernel does not also
+                // get hit with a doomed lifecycle command.
+                model.checkAlive()
                 model.lifecycleForeground()
             case .background:
                 model.lifecycleBackground()

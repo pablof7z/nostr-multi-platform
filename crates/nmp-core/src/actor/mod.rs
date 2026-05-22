@@ -128,8 +128,8 @@ use std::time::{Duration, Instant};
 
 pub use relay_roles::NOSTRCONNECT_DEFAULT_RELAY_URL;
 pub(crate) use relay_roles::{
-    canonical_relay_role, has_role, nostrconnect_relay_url, relay_role_label,
-    relay_role_options, relay_role_tint,
+    canonical_relay_role, has_role, nostrconnect_relay_url, relay_role_label, relay_role_options,
+    relay_role_tint,
 };
 
 /// Actor command variants.  The `actor` module is private (`mod actor`, not
@@ -206,7 +206,8 @@ pub enum ActorCommand {
     /// (`BunkerBroker::spawn_handshake` in `nmp-signer-broker/src/broker.rs`);
     /// `#[allow(dead_code)]` only suppresses rustc's *per-crate* dead-code
     /// lint, which cannot see the cross-crate constructor.
-    #[allow(dead_code)] // live cross-crate caller in nmp-signer-broker — per-crate lint false positive
+    #[allow(dead_code)]
+    // live cross-crate caller in nmp-signer-broker — per-crate lint false positive
     AddRemoteSigner {
         handle: Box<dyn crate::RemoteSignerHandle>,
     },
@@ -216,7 +217,8 @@ pub enum ActorCommand {
     /// production caller (`BunkerBroker::emit_progress` in
     /// `nmp-signer-broker/src/broker.rs`); `#[allow(dead_code)]` only
     /// suppresses rustc's per-crate lint, which cannot see it.
-    #[allow(dead_code)] // live cross-crate caller in nmp-signer-broker — per-crate lint false positive
+    #[allow(dead_code)]
+    // live cross-crate caller in nmp-signer-broker — per-crate lint false positive
     BunkerHandshakeProgress {
         /// `"connecting"` | `"awaiting_pubkey"` | `"ready"` | `"failed"` | `"idle"`.
         stage: String,
@@ -238,6 +240,23 @@ pub enum ActorCommand {
     PublishNote {
         content: String,
         reply_to_id: Option<String>,
+        target: crate::publish::PublishTarget,
+        correlation_id: Option<String>,
+    },
+    /// Sign-and-publish an arbitrary event kind for the active account.
+    /// The actor fills `pubkey` from the active signer, stamps `created_at`
+    /// (D7), signs, and routes through the NIP-65 outbox per `target`.
+    /// Dispatched by `PublishAction::PublishRaw` via `dispatch_action`.
+    ///
+    /// Both local-keys and remote (NIP-46) signer accounts are supported —
+    /// the dispatch arm delegates to the existing `publish_unsigned_event` /
+    /// `publish_unsigned_event_to_relays` helpers, which already park bunker
+    /// signs in `PendingSign` (D8 — actor never blocks).
+    PublishRawEvent {
+        kind: u32,
+        tags: Vec<Vec<String>>,
+        content: String,
+        target: crate::publish::PublishTarget,
         correlation_id: Option<String>,
     },
     /// T66a publish — sign a kind:0 profile metadata event with the active
@@ -266,7 +285,18 @@ pub enum ActorCommand {
     ///
     /// Stepping stone toward per-protocol-crate `ActionModule` impls
     /// (`kind-wrappers.md` §8 Phase 1); deprecates kind-by-kind as those land.
-    PublishUnsignedEvent(crate::substrate::UnsignedEvent),
+    ///
+    /// `correlation_id` is the registry-minted action id when this command
+    /// originates from an `ActionModule::execute` call. Threading it lets the
+    /// publish engine report THAT id in `action_results` (via
+    /// `correlation_id_override`) so the host spinner closes on the id it
+    /// received from `dispatch_action`, not on the signed event's id.
+    /// `None` for callers that are not action-dispatched (e.g. direct
+    /// `NmpApp::` Rust API calls, conformance tests).
+    PublishUnsignedEvent {
+        event: crate::substrate::UnsignedEvent,
+        correlation_id: Option<String>,
+    },
     /// Publish an unsigned event to an explicit relay set, bypassing the
     /// NIP-65 outbox resolver. Used by action executors that target a
     /// specific relay pin (e.g. NIP-29 group relays). D4: only the actor
@@ -282,11 +312,20 @@ pub enum ActorCommand {
     ///
     /// Like the unsigned sibling, the event's `pubkey` is derived from the
     /// active identity at sign time; the caller's `event.pubkey` is ignored.
-    /// An empty `relays` falls back to `PublishTarget::Auto` (NIP-65 outbox)
-    /// — a defensive degrade, but callers should always supply the pin.
+    /// Empty or malformed `relays` fail closed in the publish handler. Callers
+    /// that want NIP-65 outbox routing must use [`ActorCommand::PublishUnsignedEvent`]
+    /// so `Auto` and `Explicit` never share the same empty-vector encoding.
     PublishUnsignedEventToRelays {
         event: crate::substrate::UnsignedEvent,
         relays: Vec<crate::publish::RelayUrl>,
+        /// Registry-minted `correlation_id` from `dispatch_action`, when this
+        /// command originates from an `ActionModule::execute` call. Threading
+        /// it lets the publish engine report THAT id in `action_results`
+        /// (via `correlation_id_override`) so the host spinner closes on the
+        /// id it received from `dispatch_action`, not on the signed event's id.
+        /// `None` for callers that are not action-dispatched (e.g. direct
+        /// `NmpApp::` Rust API calls).
+        correlation_id: Option<String>,
     },
     /// Generic publish of an **already-signed** event. The kernel verifies
     /// the Schnorr signature + event-id hash, then routes the event verbatim
@@ -297,9 +336,10 @@ pub enum ActorCommand {
     /// own pubkey. Generic capability (D0); externally-signed group events are
     /// the first consumer but the kernel has no protocol nouns.
     ///
-    /// `relays` selects the D3 routing mode: empty → `PublishTarget::Auto`
-    /// (NIP-65 outbox, back-compat); non-empty → the named `Explicit` opt-out,
-    /// dispatched to exactly those relays (e.g. kind:445 / kind:1059).
+    /// `target` selects the D3 routing mode without erasing intent:
+    /// `Auto` asks the kernel to resolve via NIP-65, while
+    /// `Explicit { relays }` dispatches to exactly those relays and fails
+    /// closed when the set is empty or malformed.
     ///
     /// `correlation_id` is the registry-minted action id when this publish
     /// originates from `nmp_app_dispatch_action`'s `PublishAction::Publish`
@@ -316,7 +356,7 @@ pub enum ActorCommand {
     /// coincidence into an explicit guarantee a host can rely on.
     PublishSignedEvent {
         raw: crate::store::RawEvent,
-        relays: Vec<crate::publish::RelayUrl>,
+        target: crate::publish::PublishTarget,
         correlation_id: Option<String>,
     },
     /// Send a NIP-17 gift-wrapped DM. The actor constructs one kind:1059
@@ -354,6 +394,15 @@ pub enum ActorCommand {
     SendGiftWrappedDm {
         rumor: crate::substrate::UnsignedEvent,
         recipient_pubkey: String,
+        /// Registry-minted action id when this send originates from
+        /// `nmp_app_dispatch_action` (`nmp.nip17.send`). The actor records
+        /// `ActionStage::Requested` against this id and the per-envelope
+        /// `publish_signed_event` calls thread it through to the publish
+        /// engine's `correlation_id_override`, so the kind:1059 terminal
+        /// verdict (or any pre-publish early-exit failure) lands in
+        /// `action_results` and the host spinner resolves. Non-dispatch
+        /// callers (conformance harnesses) pass `None`.
+        correlation_id: Option<String>,
     },
     /// User intent from the outbox UI: retry a still-pending publish now.
     RetryPublish {
@@ -367,15 +416,31 @@ pub enum ActorCommand {
     React {
         target_event_id: String,
         reaction: String,
+        /// Registry-minted action id when this React originates from
+        /// `nmp_app_dispatch_action` (`chirp.react`). The publish engine
+        /// reports the verdict under this id (via
+        /// `publish_signed_with_correlation`) so the host spinner keyed on
+        /// the dispatch return value can be cleared. Sign-step early exits
+        /// also use it to record a `Failed` terminal via
+        /// `record_action_failure`. Non-dispatch callers pass `None`.
+        correlation_id: Option<String>,
     },
     /// T66a publish — append `pubkey` to the active account's kind:3 follow
     /// set and re-publish it.
     Follow {
         pubkey: String,
+        /// Registry-minted action id when this Follow originates from
+        /// `nmp_app_dispatch_action` (`chirp.follow`). See `React` for the
+        /// spinner round-trip contract.
+        correlation_id: Option<String>,
     },
     /// T66a publish — remove `pubkey` from the kind:3 follow set.
     Unfollow {
         pubkey: String,
+        /// Registry-minted action id when this Unfollow originates from
+        /// `nmp_app_dispatch_action` (`chirp.unfollow`). See `React` for the
+        /// spinner round-trip contract.
+        correlation_id: Option<String>,
     },
     /// T66a relay edit — add a relay row (role: `read` | `write` | `both`).
     AddRelay {
@@ -415,20 +480,76 @@ pub enum ActorCommand {
     WalletDisconnect,
     /// NIP-47 pay invoice — sign and send a `pay_invoice` kind:23194 request.
     /// D0: gated behind the `wallet` feature — NIP-47 NWC is an app noun.
+    ///
+    /// `correlation_id` is the registry-minted action id when this command
+    /// originates from `nmp_app_dispatch_action` (a future `nmp.zap`
+    /// ActionModule executor — the C-ABI `nmp_app_wallet_pay_invoice` symbol
+    /// that the iOS shell calls today passes `None`). The wallet runtime
+    /// stores `event_id → correlation_id` in its per-connection
+    /// `pending_payments` map when the kind:23194 request is built, then
+    /// drains it in `handle_nwc_text` on the matching kind:23195 response
+    /// and routes the outcome to [`Kernel::record_action_success`] (preimage
+    /// returned) or [`Kernel::record_action_failure`] (`error` object) so
+    /// the host spinner keyed on the dispatch return value can be cleared.
+    /// `None` is a no-op on the response side — nothing is waiting on an id.
     #[cfg(feature = "wallet")]
     WalletPayInvoice {
         bolt11: String,
         amount_msats: Option<u64>,
+        correlation_id: Option<String>,
+    },
+    /// NIP-57 LNURL-pay round-trip. The actor signs `unsigned` (the kind:9734
+    /// zap request) with the active local identity, then spawns a worker
+    /// thread that completes the two-leg LNURL-pay HTTP round-trip
+    /// (well-known fetch → callback fetch) and surfaces the resulting bolt11
+    /// invoice as a [`ActorCommand::ShowToast`] follow-up.
+    ///
+    /// `lnurl_or_address` may be a lightning address (`user@domain`), a
+    /// bech32 `lnurl1…`, or a bare `https://` URL — `commands::zap` decodes
+    /// all three shapes into the LNURL-pay well-known URL per LUD-01/06/16.
+    ///
+    /// # NIP-57 wire-routing — kind:9734 NEVER reaches relays
+    ///
+    /// The signed zap request is delivered to the LNURL callback as a
+    /// `nostr=<urlencoded>` query parameter (NIP-57 § "Appendix C"). It is
+    /// NOT broadcast to Nostr relays — the receipt (kind:9735) is, and the
+    /// LN provider mints it after the invoice settles. This arm therefore
+    /// emits NO `PublishUnsignedEventToRelays` follow-up; any caller that
+    /// expects relay traffic from a zap intent has misunderstood NIP-57.
+    ///
+    /// # ADR-0026 Phase 1 — local keys only
+    ///
+    /// Bunker (NIP-46 remote-signer) accounts fail closed with a clear
+    /// toast and a `RecordActionFailure` (when a `correlation_id` was
+    /// supplied) — kind:9734 signing through a remote signer is the
+    /// follow-up parallel to the NIP-17 DM Phase-2 work.
+    ///
+    /// # ADR-0024 minimum-viable observable surface
+    ///
+    /// The bolt11 invoice is surfaced via `ShowToast`. A snapshot-projection
+    /// surface (`last_action_outcomes` per memory note #57) is the designed
+    /// follow-up; the toast is the minimum-viable observable so a host can
+    /// substring-match the `lnbc…` prefix and drive its NWC pay flow.
+    /// `correlation_id` is the registry-minted action id when this arm
+    /// originates from `dispatch_action` (`nmp.nip57.zap`); a `Failed`
+    /// terminal is recorded against it on any pre-payment failure so the
+    /// host spinner clears.
+    FetchLnurlInvoice {
+        unsigned: crate::substrate::UnsignedEvent,
+        lnurl_or_address: String,
+        amount_msats: u64,
+        correlation_id: Option<String>,
     },
     /// T118 / G3 — app lifecycle phase transition reported by the host shell
     /// (or any conforming consumer). The actor folds the phase into the
     /// kernel's [`crate::kernel::LifecyclePhase`] state and, on a
     /// meaningful transition (`Background → Foreground`, `Foreground →
     /// Background`, or first phase after boot), fires the registered
-    /// lifecycle observer. The observer is what fans the trigger out to
-    /// `nmp_nip77::TriggerEngine` for `TriggerEvent::Foreground`; nmp-core
-    /// itself does not name nip77 (D0). Idempotent: rapid scene oscillation
-    /// debounces to a single observer call per transition.
+    /// lifecycle observer. The observer is what fans the transition out to
+    /// the shell's sync-trigger engine (typically on a foreground
+    /// transition); nmp-core itself does not name any shell vocabulary (D0).
+    /// Idempotent: rapid scene oscillation debounces to a single observer
+    /// call per transition.
     LifecycleEvent(LifecyclePhase),
     /// PR-G — host acknowledgement of a `correlation_id` in the
     /// `action_stages` snapshot mirror. The actor folds the ack into the
@@ -465,6 +586,31 @@ pub enum ActorCommand {
     RecordActionFailure {
         correlation_id: String,
         reason: String,
+    },
+    /// PD-036 — record a terminal `Accepted` stage for `correlation_id` on
+    /// behalf of an off-thread worker whose success outcome is observed
+    /// outside the publish engine. The symmetric counterpart to
+    /// [`ActorCommand::RecordActionFailure`]: same routing through
+    /// [`Kernel::record_action_success`], which writes both the
+    /// `action_stages` mirror (so the host's stage observer sees the
+    /// terminal) and the `action_results` per-tick drain (so a spinner
+    /// keyed on the `correlation_id` clears).
+    ///
+    /// The motivating consumer is the NIP-57 zap LNURL-pay worker
+    /// (`actor/commands/zap.rs`): after the HTTP round-trip returns a
+    /// bolt11 invoice, the spawned worker has no `&mut Kernel` reference
+    /// and must round-trip through the actor channel to record the
+    /// terminal. Without this command the `dispatch_action`
+    /// (`nmp.nip57.zap`) spinner hangs forever — `ShowToast` is a
+    /// human-readable surface, NOT the spinner-closing one
+    /// (`action_results` is the closing surface).
+    ///
+    /// Idempotent w.r.t. a buggy worker that re-sends — `record_action_success`
+    /// records a second `Accepted` stage, which is a benign no-op for the
+    /// host (it sees the same terminal twice; the second ACK is a silent
+    /// no-op).
+    RecordActionSuccess {
+        correlation_id: String,
     },
     Stop,
     Reset,
@@ -535,9 +681,18 @@ use outbound::wire_frames_to_outbound;
 /// `lib.rs` and `actor::tick`'s test module). A plain `cargo build` without
 /// `--tests` or the `test-support` feature would otherwise warn.
 #[allow(dead_code)]
-pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) {
+pub fn run_actor(
+    command_rx: Receiver<ActorCommand>,
+    // Self-feedback sender — see `run_actor_with_observers` for the
+    // contract. The backwards-compat shim threads it through unchanged.
+    // Callers (tests + `lib.rs::spawn_actor`) hand in a clone of the
+    // `Sender` they kept after constructing the channel.
+    command_tx_self: Sender<ActorCommand>,
+    update_tx: Sender<String>,
+) {
     run_actor_with_observers(
         command_rx,
+        command_tx_self,
         update_tx,
         new_lifecycle_observer_slot(),
         new_event_observer_slot(),
@@ -575,11 +730,14 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
 #[allow(dead_code)]
 pub fn run_actor_with_lifecycle_observer(
     command_rx: Receiver<ActorCommand>,
+    // Self-feedback sender — see `run_actor_with_observers`.
+    command_tx_self: Sender<ActorCommand>,
     update_tx: Sender<String>,
     lifecycle_observer: LifecycleObserverSlot,
 ) {
     run_actor_with_observers(
         command_rx,
+        command_tx_self,
         update_tx,
         lifecycle_observer,
         new_event_observer_slot(),
@@ -621,6 +779,14 @@ pub fn run_actor_with_lifecycle_observer(
 #[allow(clippy::too_many_arguments)]
 pub fn run_actor_with_observers(
     command_rx: Receiver<ActorCommand>,
+    // Self-feedback sender — a clone of `command_rx`'s upstream `Sender`,
+    // handed to dispatch arms that spawn background workers (currently the
+    // `FetchLnurlInvoice` LNURL-pay HTTP round-trip). The worker uses it to
+    // send a follow-up `ActorCommand` (e.g. `ShowToast` with the bolt11)
+    // back into this loop without needing access to the `NmpApp`. The actor
+    // itself never `recv`s on this sender — it only hands clones out via
+    // `ActorContext::command_tx_self`.
+    command_tx_self: Sender<ActorCommand>,
     update_tx: Sender<String>,
     lifecycle_observer: LifecycleObserverSlot,
     event_observers: KernelEventObserverSlot,
@@ -865,6 +1031,7 @@ pub fn run_actor_with_observers(
                         nip17_local_keys: &nip17_local_keys,
                         capability_callback: &capability_callback,
                         pending_signs: &mut pending_signs,
+                        command_tx_self: &command_tx_self,
                     };
                     let outbound = dispatch_command(command, &mut ctx);
                     let Some(outbound) = outbound else {
@@ -1075,10 +1242,8 @@ pub fn run_actor_with_observers(
                             // `react` / `follow` park) is a no-op — nothing is
                             // waiting on an id.
                             if let Some(id) = ps.correlation_id_override.clone() {
-                                kernel.record_action_failure(
-                                    id,
-                                    "remote sign timed out".to_string(),
-                                );
+                                kernel
+                                    .record_action_failure(id, "remote sign timed out".to_string());
                             }
                             // Surface the toast immediately rather than
                             // waiting up to one periodic flush tick —

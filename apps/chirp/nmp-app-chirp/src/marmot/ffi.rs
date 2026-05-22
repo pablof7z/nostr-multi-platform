@@ -5,21 +5,21 @@
 //! (`nmp_app_chirp_register` / `_snapshot` / `_snapshot_free` /
 //! `_unregister`):
 //!
-//! - [`nmp_app_chirp_marmot_register`] — build a [`MarmotService`]
+//! - [`nmp_marmot_register`] — build a [`MarmotService`]
 //!   (signer seam: secret key hex/nsec passed directly; DB at
 //!   `<app_support>/marmot-mls-state.sqlite`), register the lossy
 //!   `KernelEvent` metadata observer AND the raw signed-event inbound
 //!   tap (kinds `[444, 445, 1059]`), return an opaque `*mut MarmotHandle`.
-//! - [`nmp_app_chirp_marmot_snapshot`] — JSON snapshot
+//! - [`nmp_marmot_snapshot`] — JSON snapshot
 //!   (`groups` / `pending_welcomes` / `key_package`).
-//! - [`nmp_app_chirp_marmot_group_messages`] — newest-N decrypted messages
+//! - [`nmp_marmot_group_messages`] — newest-N decrypted messages
 //!   for one group (hex id), JSON array.
-//! - [`nmp_app_chirp_marmot_dispatch`] — perform one mutating op
+//! - [`nmp_marmot_dispatch`] — perform one mutating op
 //!   (`publish_key_package` / `create_group` / `invite` / `send` /
 //!   `leave` / `remove` / `accept_welcome` / `decline_welcome` /
 //!   `ingest_signed_event`). Returns `{"ok":true,…}` / `{"ok":false,…}`.
-//! - [`nmp_app_chirp_marmot_string_free`] — companion deallocator.
-//! - [`nmp_app_chirp_marmot_unregister`] — drop both kernel
+//! - [`nmp_marmot_string_free`] — companion deallocator.
+//! - [`nmp_marmot_unregister`] — drop both kernel
 //!   registrations (lossy observer + raw tap) + free the handle.
 //!   Idempotent.
 //!
@@ -59,7 +59,7 @@
 //!
 //! ## Inbound ingest seam — CLOSED
 //!
-//! `nmp_app_chirp_marmot_register` also registers a raw signed-event tap
+//! `nmp_marmot_register` also registers a raw signed-event tap
 //! (`nmp-core` `RawEventObserver`, Rust-trait API) for kinds
 //! `[444, 445, 1059]`. The kernel delivers every accepted inbound signed
 //! event of those kinds to [`nmp_marmot::projection::tap`], which drives them
@@ -67,7 +67,7 @@
 //! `{"op":"ingest_signed_event"}` dispatch op uses — so welcomes /
 //! messages received from relays surface in the next snapshot with no
 //! Swift involvement (the existing snapshot read is unchanged).
-//! `nmp_app_chirp_marmot_unregister` tears down BOTH kernel
+//! `nmp_marmot_unregister` tears down BOTH kernel
 //! registrations (the lossy `KernelEvent` metadata observer AND the raw
 //! tap; distinct slots / ids). This was the last open seam.
 
@@ -84,7 +84,7 @@ use nmp_marmot::service::MarmotService;
 use nmp_marmot::projection::state::MarmotProjection;
 use nmp_marmot::projection::tap::MarmotIngestTap;
 
-/// Default page size for [`nmp_app_chirp_marmot_group_messages`].
+/// Default page size for [`nmp_marmot_group_messages`].
 const DEFAULT_MESSAGE_PAGE: usize = 200;
 
 /// Keyring coordinates for the production encrypted SQLite DB. Stable
@@ -92,9 +92,9 @@ const DEFAULT_MESSAGE_PAGE: usize = 200;
 const KEYRING_SERVICE_ID: &str = "nmp.chirp.marmot";
 const KEYRING_DB_KEY_ID: &str = "marmot-mls-db-key";
 
-/// Opaque handle returned by [`nmp_app_chirp_marmot_register`]. Boxed so the
+/// Opaque handle returned by [`nmp_marmot_register`]. Boxed so the
 /// address is stable; Swift holds the raw pointer until
-/// [`nmp_app_chirp_marmot_unregister`].
+/// [`nmp_marmot_unregister`].
 pub struct MarmotHandle {
     projection: Arc<MarmotProjection>,
     /// Lossy `KernelEvent` observer (key-package metadata tracker — see
@@ -135,7 +135,7 @@ pub struct MarmotHandle {
 // reaches this projection is still executing. The in-process Rust-trait
 // registration path used here (`register_event_observer` /
 // `register_raw_event_observer`) gets that fence from the actor join.
-// Calling `nmp_app_chirp_marmot_unregister` before `nmp_app_free` is the
+// Calling `nmp_marmot_unregister` before `nmp_app_free` is the
 // documented hygiene step; the actor join is the actual fence.
 unsafe impl Send for MarmotHandle {}
 unsafe impl Sync for MarmotHandle {}
@@ -157,8 +157,8 @@ fn publish_key_package_on_register(handle: *mut MarmotHandle) {
         .with_inner(|h| nmp_marmot::projection::ops::dispatch(h, &action, now_secs()));
 }
 
-/// Inner registration logic shared by `nmp_app_chirp_marmot_register` and
-/// `nmp_app_chirp_marmot_register_active`. `app` must be non-null and valid.
+/// Inner registration logic shared by `nmp_marmot_register` and
+/// `nmp_marmot_register_active`. `app` must be non-null and valid.
 pub(super) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) -> *mut MarmotHandle {
     let Some(use_mock) = super::credential_store::initialize() else {
         return std::ptr::null_mut();
@@ -258,7 +258,7 @@ pub(super) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
 /// failure (D6).
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_app_chirp_marmot_register(
+pub extern "C" fn nmp_marmot_register(
     app: *mut NmpApp,
     secret_key_hex: *const c_char,
     db_dir: *const c_char,
@@ -282,7 +282,7 @@ pub extern "C" fn nmp_app_chirp_marmot_register(
 /// success; `null` if no local account is active or `db_dir` is NULL (D6).
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_app_chirp_marmot_register_active(
+pub extern "C" fn nmp_marmot_register_active(
     app: *mut NmpApp,
     db_dir: *const c_char,
 ) -> *mut MarmotHandle {
@@ -312,10 +312,10 @@ pub extern "C" fn nmp_app_chirp_marmot_register_active(
 }
 
 /// JSON snapshot. Null handle / serialize failure → null (D6). Caller owns
-/// the returned pointer until [`nmp_app_chirp_marmot_string_free`].
+/// the returned pointer until [`nmp_marmot_string_free`].
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_app_chirp_marmot_snapshot(handle: *mut MarmotHandle) -> *mut c_char {
+pub extern "C" fn nmp_marmot_snapshot(handle: *mut MarmotHandle) -> *mut c_char {
     let Some(handle) = (unsafe { handle.as_ref() }) else {
         return std::ptr::null_mut();
     };
@@ -328,7 +328,7 @@ pub extern "C" fn nmp_app_chirp_marmot_snapshot(handle: *mut MarmotHandle) -> *m
 /// poisoned mutex, parse error). Null handle / serialize failure → null.
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_app_chirp_marmot_group_messages(
+pub extern "C" fn nmp_marmot_group_messages(
     handle: *mut MarmotHandle,
     group_id_hex: *const c_char,
 ) -> *mut c_char {
@@ -356,7 +356,7 @@ pub extern "C" fn nmp_app_chirp_marmot_group_messages(
 /// Null handle / serialize failure → null (D6).
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_app_chirp_marmot_dispatch(
+pub extern "C" fn nmp_marmot_dispatch(
     handle: *mut MarmotHandle,
     action_json: *const c_char,
 ) -> *mut c_char {
@@ -380,7 +380,7 @@ pub extern "C" fn nmp_app_chirp_marmot_dispatch(
 /// dispatch. Null is a silent no-op.
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_app_chirp_marmot_string_free(ptr: *mut c_char) {
+pub extern "C" fn nmp_marmot_string_free(ptr: *mut c_char) {
     if ptr.is_null() {
         return;
     }
@@ -395,12 +395,12 @@ pub extern "C" fn nmp_app_chirp_marmot_string_free(ptr: *mut c_char) {
 /// a silent no-op. The handle MUST NOT be used after this call.
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_app_chirp_marmot_unregister(handle: *mut MarmotHandle) {
+pub extern "C" fn nmp_marmot_unregister(handle: *mut MarmotHandle) {
     if handle.is_null() {
         return;
     }
     // SAFETY: caller guarantees `handle` came from
-    // `nmp_app_chirp_marmot_register` and has not already been freed.
+    // `nmp_marmot_register` and has not already been freed.
     let boxed = unsafe { Box::from_raw(handle) };
     if !boxed.app.is_null() {
         // SAFETY: same `app` validity rule as register.

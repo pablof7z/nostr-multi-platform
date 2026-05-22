@@ -917,6 +917,7 @@ name = "chirp-repl"
 version = "0.1.0"
 dependencies = [
  "nmp-app-chirp",
+ "nmp-chirp-config",
  "nmp-core",
  "nostr",
  "serde_json",
@@ -931,9 +932,12 @@ dependencies = [
  "crossterm 0.29.0",
  "insta",
  "nmp-app-chirp",
+ "nmp-chirp-config",
  "nmp-core",
  "ratatui",
+ "rexpect",
  "serde_json",
+ "vt100",
 ]
 
 [[package]]
@@ -1105,6 +1109,12 @@ dependencies = [
  "bytes",
  "memchr",
 ]
+
+[[package]]
+name = "comma"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "55b672471b4e9f9e95499ea597ff64941a309b2cdbffcc46f2cc5e2d971fd335"
 
 [[package]]
 name = "compact_str"
@@ -3702,12 +3712,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "negentropy"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f0efe882e02d206d8d279c20eb40e03baf7cb5136a1476dc084a324fbc3ec42d"
-
-[[package]]
 name = "nibble_vec"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3742,6 +3746,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "nix"
+version = "0.31.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d"
+dependencies = [
+ "bitflags 2.11.1",
+ "cfg-if",
+ "cfg_aliases 0.2.1",
+ "libc",
+]
+
+[[package]]
 name = "nmp-app-chirp"
 version = "0.1.0"
 dependencies = [
@@ -3756,8 +3772,10 @@ dependencies = [
  "nmp-nip29",
  "nmp-nip57",
  "nmp-nip59",
+ "nmp-nip65",
  "nmp-signer-broker",
  "nmp-threading",
+ "nmp-wasm",
  "nostr",
  "serde",
  "serde_json",
@@ -3773,6 +3791,10 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "nmp-chirp-config"
+version = "0.1.0"
 
 [[package]]
 name = "nmp-cli"
@@ -3819,7 +3841,9 @@ dependencies = [
  "bech32",
  "chrono",
  "heed",
+ "indexmap",
  "mio",
+ "nmp-chirp-config",
  "nmp-nip42-types",
  "nmp-nip59",
  "nmp-nostr-lmdb",
@@ -3834,6 +3858,7 @@ dependencies = [
  "tempfile",
  "tracing",
  "tungstenite",
+ "ureq",
  "zeroize",
 ]
 
@@ -3859,10 +3884,8 @@ dependencies = [
  "nmp-core",
  "nmp-nip59",
  "nostr",
- "rustls",
  "serde",
  "serde_json",
- "tungstenite",
 ]
 
 [[package]]
@@ -3952,13 +3975,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "nmp-nip77"
+name = "nmp-nip65"
 version = "0.1.0"
 dependencies = [
- "negentropy",
  "nmp-core",
  "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -4067,7 +4088,6 @@ dependencies = [
  "nmp-nip23",
  "nmp-nip42",
  "nmp-nip57",
- "nmp-nip77",
  "nmp-relations",
  "nmp-signer-broker",
  "nmp-signer-iface",
@@ -4095,6 +4115,7 @@ name = "nmp-wasm"
 version = "0.1.0"
 dependencies = [
  "js-sys",
+ "nmp-chirp-config",
  "serde",
  "serde_json",
  "wasm-bindgen",
@@ -5493,6 +5514,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
+name = "rexpect"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26529f2062f5635acde6f6c1b682945af1529e635726990764cfce7c9b0fdd79"
+dependencies = [
+ "comma",
+ "nix 0.31.3",
+ "regex",
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "rfc6979"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6783,6 +6817,27 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "vt100"
+version = "0.16.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "054ff75fb8fa83e609e685106df4faeffdf3a735d3c74ebce97ec557d5d36fd9"
+dependencies = [
+ "itoa",
+ "unicode-width 0.2.2",
+ "vte",
+]
+
+[[package]]
+name = "vte"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5924018406ce0063cd67f8e008104968b74b563ee1b85dde3ed1f7cb87d3dbd"
+dependencies = [
+ "arrayvec",
+ "memchr",
+]
 
 [[package]]
 name = "vtparse"

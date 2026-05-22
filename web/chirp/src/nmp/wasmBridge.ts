@@ -25,7 +25,7 @@ export class WasmBridge {
 
   handle(request: WorkerRequest): WorkerEvent[] {
     try {
-      return [decodeWorkerEvent(this.runtime.handle_json(JSON.stringify(request)))];
+      return decodeWorkerEvents(this.runtime.handle_json(JSON.stringify(request)));
     } catch (error) {
       return [
         {
@@ -44,6 +44,9 @@ export async function loadWasmBridge(
 ): Promise<WasmBridgeLoadResult> {
   try {
     const moduleUrl = new URL(modulePath, workerOrigin()).toString();
+    if (!(await moduleAssetAvailable(moduleUrl))) {
+      return unavailable(`nmp-wasm module is not available at ${modulePath}`);
+    }
     const wasmModule = (await import(/* @vite-ignore */ moduleUrl)) as NmpWasmModule;
     if (typeof wasmModule.default === "function") {
       await wasmModule.default();
@@ -57,12 +60,42 @@ export async function loadWasmBridge(
   }
 }
 
-function decodeWorkerEvent(value: unknown): WorkerEvent {
-  const event = typeof value === "string" ? (JSON.parse(value) as unknown) : value;
-  if (!isWorkerEvent(event)) {
-    throw new Error("nmp-wasm returned an invalid worker event");
+async function moduleAssetAvailable(moduleUrl: string): Promise<boolean> {
+  const workerSelf =
+    typeof self === "undefined" ? undefined : (self as unknown as { fetch?: typeof fetch });
+  const fetcher = workerSelf?.fetch ?? globalThis.fetch;
+  if (typeof fetcher !== "function") {
+    return true;
   }
-  return event;
+  try {
+    const response = await fetcher(moduleUrl, { method: "HEAD", cache: "no-store" });
+    if (!response.ok) {
+      return false;
+    }
+    return isJavaScriptModule(response.headers.get("content-type") ?? "");
+  } catch {
+    return false;
+  }
+}
+
+function isJavaScriptModule(contentType: string): boolean {
+  const normalized = contentType.toLowerCase();
+  return (
+    normalized.length === 0 ||
+    normalized.includes("javascript") ||
+    normalized.includes("ecmascript")
+  );
+}
+
+function decodeWorkerEvents(value: unknown): WorkerEvent[] {
+  const event = typeof value === "string" ? (JSON.parse(value) as unknown) : value;
+  const events = Array.isArray(event) ? event : [event];
+  for (const item of events) {
+    if (!isWorkerEvent(item)) {
+      throw new Error("nmp-wasm returned an invalid worker event");
+    }
+  }
+  return events;
 }
 
 function isWorkerEvent(event: unknown): event is WorkerEvent {

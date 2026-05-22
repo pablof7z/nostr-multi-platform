@@ -1,3 +1,4 @@
+#![cfg(feature = "long-form")]
 //! `Article::new(...).title(...).build() → fake-stored → try_from_event` round
 //! trip. Confirms the encode/decode pair preserves every field with no loss.
 //!

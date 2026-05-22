@@ -61,7 +61,7 @@ use std::sync::{Arc, Mutex};
 use nmp_core::planner::{
     InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting,
 };
-use nmp_core::substrate::ViewDependencies;
+use nmp_core::substrate::{BoundedMessageMap, ViewDependencies, MAX_PROJECTION_MESSAGES};
 use nmp_core::{KindFilter, RawEventObserver};
 use nostr::{Event, JsonUtil};
 use serde::{Deserialize, Serialize};
@@ -168,10 +168,12 @@ pub struct DmInboxProjection {
     /// signer → every envelope is a silent no-op.
     local_keys: Arc<Mutex<Option<nostr::Keys>>>,
     /// Accepted decrypted messages keyed by inner-rumor event id. The value
-    /// pairs the conversation peer with the message. A `BTreeMap` keyed on id
-    /// makes ingest idempotent — a re-delivered envelope replaces rather than
-    /// duplicates.
-    messages: Mutex<BTreeMap<String, (String, DmMessage)>>,
+    /// pairs the conversation peer with the message. Idempotent — a
+    /// re-delivered envelope replaces rather than duplicates. Bounded by
+    /// [`MAX_PROJECTION_MESSAGES`] so a long-running inbox cannot grow
+    /// unboundedly across a session; once full, the oldest-by-insertion
+    /// rumor is evicted, keeping per-tick snapshot serialisation O(cap).
+    messages: Mutex<BoundedMessageMap<String, (String, DmMessage)>>,
 }
 
 impl DmInboxProjection {
@@ -180,7 +182,7 @@ impl DmInboxProjection {
     pub fn new(local_keys: Arc<Mutex<Option<nostr::Keys>>>) -> Self {
         Self {
             local_keys,
-            messages: Mutex::new(BTreeMap::new()),
+            messages: Mutex::new(BoundedMessageMap::new(MAX_PROJECTION_MESSAGES)),
         }
     }
 
@@ -378,24 +380,11 @@ impl RawEventObserver for DmInboxProjection {
     }
 }
 
-/// Stable, deterministic [`InterestId`] for a pubkey's NIP-17 gift-wrap
-/// inbox subscription. The `"nip17.giftwrap"` namespace discriminant keeps it
-/// distinct from any other kind:1059 interest — the kernel de-dupes the REQ
-/// by filter hash, so two interests for
-/// the same `#p` filter coalesce on the wire, but the ids stay separate so
-/// each consumer owns its own registration.
-fn giftwrap_interest_id(pubkey: &str) -> InterestId {
-    InterestId(nmp_core::stable_hash::stable_hash64((
-        "nip17.giftwrap",
-        pubkey,
-    )))
-}
-
 /// Stable id for the active-account-owned gift-wrap inbox interest.
 ///
-/// Unlike [`giftwrap_inbox_interest`], this id is intentionally independent
-/// of the pubkey so an account switch replaces the prior `#p` filter instead
-/// of accumulating one long-lived subscription per account.
+/// The id is intentionally independent of the pubkey so an account switch
+/// replaces the prior `#p` filter instead of accumulating one long-lived
+/// subscription per account.
 pub fn active_giftwrap_inbox_interest_id() -> InterestId {
     InterestId(nmp_core::stable_hash::stable_hash64(
         "nip17.giftwrap.active",
@@ -406,39 +395,14 @@ pub fn active_giftwrap_inbox_interest_id() -> InterestId {
 /// subscription a host pushes (via `NmpApp::push_interest`) so the DM inbox
 /// actually receives envelopes.
 ///
-/// Without this interest the kernel opens no REQ for kind:1059 `#p self` and
-/// the [`DmInboxProjection`] sits empty regardless of how cleanly it is wired
-/// — the "registered but inert" failure mode.
-/// NIP-17 must push its own interest so envelopes are routed to this inbox.
-///
-/// Scope is [`InterestScope::Account`] (pinned to the resolved `pubkey`)
-/// rather than `ActiveAccount`: the host resolves the concrete identity at
-/// registration time and the subscription must stay pinned to it. The kernel
-/// routes the `#p` filter to the account's kind:10050 DM relays; the raw-event
-/// tap then drives every accepted kind:1059 event into the projection. If the
-/// kind:10050 list is unknown or empty, the compiler emits no subscription
-/// instead of falling back to public NIP-65 read relays.
-pub fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
-    let deps = ViewDependencies {
-        kinds: vec![KIND_GIFT_WRAP],
-        tag_refs: vec![("p".to_string(), pubkey.to_string())],
-        ..Default::default()
-    };
-    let mut interest = deps.into_logical_interest(
-        giftwrap_interest_id(pubkey),
-        InterestScope::Account(pubkey.to_string()),
-        InterestLifecycle::Tailing,
-    );
-    interest.shape.p_tag_routing = PTagRouting::Nip17DmRelays;
-    interest
-}
-
-/// Active-account-owned variant of [`giftwrap_inbox_interest`].
-///
-/// The filter still targets a concrete `#p <pubkey>` because NIP-17 gift-wraps
-/// are addressed to a real account. The stable id + `ActiveAccount` scope makes
-/// the registration lifecycle single-slot: re-pushing for a new active account
-/// replaces the old filter, and logout can withdraw one known id.
+/// The filter targets a concrete `#p <pubkey>` because NIP-17 gift-wraps are
+/// addressed to a real account. The stable id + [`InterestScope::ActiveAccount`]
+/// scope makes the registration lifecycle single-slot: re-pushing for a new
+/// active account replaces the old filter, and logout withdraws one known id.
+/// The kernel routes the `#p` filter to the account's kind:10050 DM relays via
+/// [`PTagRouting::Nip17DmRelays`]; if the kind:10050 list is unknown or empty,
+/// the compiler emits no subscription instead of falling back to public NIP-65
+/// read relays.
 pub fn active_giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
     let deps = ViewDependencies {
         kinds: vec![KIND_GIFT_WRAP],
@@ -787,39 +751,6 @@ mod tests {
         let envelope = gift_wrapped_dm(&alice, &bob.public_key(), "via trait", 100, None);
         observer.on_raw_event(1059, &envelope.as_json());
         assert_eq!(proj.snapshot().conversations.len(), 1);
-    }
-
-    #[test]
-    fn giftwrap_inbox_interest_is_account_scoped_and_p_filtered() {
-        let interest = giftwrap_inbox_interest("selfpubkey");
-        assert!(interest.shape.kinds.contains(&KIND_GIFT_WRAP));
-        assert!(interest
-            .shape
-            .tags
-            .get("p")
-            .map(|s| s.contains("selfpubkey"))
-            .unwrap_or(false));
-        assert!(interest.shape.relay_pin.is_none());
-        assert_eq!(interest.shape.p_tag_routing, PTagRouting::Nip17DmRelays);
-        assert!(matches!(interest.lifecycle, InterestLifecycle::Tailing));
-        assert!(matches!(
-            interest.scope,
-            InterestScope::Account(ref pk) if pk == "selfpubkey"
-        ));
-    }
-
-    #[test]
-    fn giftwrap_interest_id_is_deterministic_per_pubkey() {
-        assert_eq!(
-            giftwrap_interest_id("abc"),
-            giftwrap_interest_id("abc"),
-            "same pubkey → same id (idempotent re-registration)"
-        );
-        assert_ne!(
-            giftwrap_interest_id("abc"),
-            giftwrap_interest_id("def"),
-            "different pubkeys → different ids"
-        );
     }
 
     #[test]

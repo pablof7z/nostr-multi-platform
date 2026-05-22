@@ -16,6 +16,12 @@ fn help_panel() -> Paragraph<'static> {
         Line::from(vec![hotkey("PgUp/PgDn"), text(" page feed")]),
         Line::from(vec![hotkey("Home/End"), text(" jump to top/bottom")]),
         Line::from(vec![hotkey("1 2 3"), text(" focus feed/detail/profile")]),
+        Line::from(vec![hotkey("h c g w s"), text(" switch Chirp tabs")]),
+        Line::from(vec![hotkey("Tab"), text(" cycle tabs")]),
+        Line::from(vec![
+            hotkey(":"),
+            text(" run account/profile/relay/dm/group/wallet commands"),
+        ]),
         Line::from(vec![hotkey("Enter"), text(" open selected thread")]),
         Line::from(vec![hotkey("p"), text(" open selected author")]),
         Line::from(vec![hotkey("i"), text(" compose note")]),

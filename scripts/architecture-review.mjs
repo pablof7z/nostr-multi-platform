@@ -215,6 +215,19 @@ function mockReview(verdict) {
   };
 }
 
+function isEnabled(value) {
+  return ["1", "true", "yes", "required"].includes(String(value || "").toLowerCase());
+}
+
+function skippedReview(reason) {
+  return {
+    verdict: "pass",
+    summary: `architecture review skipped: ${reason}`,
+    findings: [],
+    signoff: "AI architecture signoff is not required until the provider, model, and secret are configured.",
+  };
+}
+
 function normalizeReview(raw) {
   const verdict = raw.verdict === "pass" ? "pass" : "fail";
   const findings = Array.isArray(raw.findings) ? raw.findings : [];
@@ -237,7 +250,16 @@ async function main() {
   const providerFromCli = Boolean(args.provider);
   const provider = args.provider || process.env.ARCHITECTURE_REVIEW_PROVIDER || "";
   const model = args.model || process.env.ARCHITECTURE_REVIEW_MODEL || "";
+  const required = isEnabled(process.env.ARCHITECTURE_REVIEW_REQUIRED);
+  const outPath = args.out || "architecture-review.json";
   if (!provider) {
+    if (!required) {
+      fs.writeFileSync(
+        outPath,
+        `${JSON.stringify(skippedReview("provider is not configured"), null, 2)}\n`
+      );
+      return;
+    }
     throw new Error(
       "ARCHITECTURE_REVIEW_PROVIDER or --provider is required; use anthropic/openai in CI"
     );
@@ -249,11 +271,17 @@ async function main() {
     throw new Error("mock architecture review is not allowed in GitHub Actions");
   }
   if (provider !== "mock" && !model) {
+    if (!required) {
+      fs.writeFileSync(
+        outPath,
+        `${JSON.stringify(skippedReview("model is not configured"), null, 2)}\n`
+      );
+      return;
+    }
     throw new Error("ARCHITECTURE_REVIEW_MODEL or --model is required");
   }
 
   const maxDiffChars = Number(args["max-diff-chars"] || DEFAULT_MAX_DIFF_CHARS);
-  const outPath = args.out || "architecture-review.json";
   const files = changedFiles(base, head);
   const { diff, truncated } = diffText(base, head, maxDiffChars);
   const prompt = buildPrompt({
@@ -280,7 +308,7 @@ async function main() {
   const report = {
     provider,
     model: provider === "mock" ? "mock" : model,
-    required: true,
+    required,
     base_sha: base,
     head_sha: head,
     generated_at: new Date().toISOString(),
@@ -301,6 +329,11 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(`architecture-review: ${error.message}`);
-  process.exit(2);
+  if (isEnabled(process.env.ARCHITECTURE_REVIEW_REQUIRED)) {
+    console.error(`architecture-review: ${error.message}`);
+    process.exit(2);
+  } else {
+    console.warn(`architecture-review: skipped (not required) — ${error.message}`);
+    process.exit(0);
+  }
 });

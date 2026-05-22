@@ -20,7 +20,7 @@ fn main() {
             "live",
             vec![
                 "Live mode exercises cold_start and profile_thrashing against real relays (M1 scope).".to_string(),
-                "Scenarios requiring LMDB, NIP-65 outbox, NIP-77, NIP-42 auth, multi-account, NSE, or soak are not implemented for M1.".to_string(),
+                "Scenarios requiring LMDB, NIP-65 outbox, NIP-42 auth, multi-account, NSE, or soak are not implemented for M1.".to_string(),
             ],
         )
     } else {

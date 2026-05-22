@@ -11,6 +11,7 @@ use super::commands::{
 use super::relay_mgmt::{close_relays, route_dispatch_outbound};
 use super::RelayControl;
 use crate::kernel::Kernel;
+use crate::publish::PublishTarget;
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole, DEFAULT_VISIBLE_LIMIT};
 use crate::relay_worker::RelayEvent;
 use serde_json::json;
@@ -58,7 +59,14 @@ fn route_state() -> (
 fn explicit_publish_target_spawns_worker_for_unseen_relay() {
     let (mut kernel, relay_tx, mut relay_controls, mut next_generation) = route_state();
     let raw = signed_raw_event("explicit relay dispatch");
-    let outbound = publish_signed_event(&mut kernel, raw, &[UNSEEN_RELAY.to_string()], None);
+    let outbound = publish_signed_event(
+        &mut kernel,
+        raw,
+        PublishTarget::Explicit {
+            relays: vec![UNSEEN_RELAY.to_string()],
+        },
+        None,
+    );
     let mut queued_publish_outbound = Vec::new();
 
     route_dispatch_outbound(
@@ -84,7 +92,14 @@ fn create_account_publish_targets_spawn_workers_for_unseen_relays() {
     let (mut kernel, relay_tx, mut relay_controls, mut next_generation) = route_state();
     let mut identity = IdentityRuntime::new(new_bunker_handshake_slot());
     let relays = vec![(UNSEEN_RELAY.to_string(), "write".to_string())];
-    let outbound = create_account(&mut identity, &mut kernel, true, &HashMap::new(), &relays, false);
+    let outbound = create_account(
+        &mut identity,
+        &mut kernel,
+        true,
+        &HashMap::new(),
+        &relays,
+        false,
+    );
     let mut queued_publish_outbound = Vec::new();
 
     route_dispatch_outbound(

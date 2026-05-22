@@ -1,3 +1,4 @@
+#![cfg(feature = "long-form")]
 //! Coverage for NIP-23 tag semantics the existing suite leaves implicit:
 //!
 //! - **Multiple `t` hashtag tags** — NIP-12 allows an article to carry several

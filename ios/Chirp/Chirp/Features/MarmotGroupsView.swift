@@ -321,18 +321,20 @@ struct NewGroupSheet: View {
     private func create() {
         busy = true
         errorMessage = nil
-        let result = model.marmot.createGroup(
-            name: trimmedName,
-            description: groupDescription.trimmingCharacters(in: .whitespacesAndNewlines),
-            inviteeText: inviteeText)
-        busy = false
-        if result.ok {
-            dismiss()
-        } else if let needsDisplay = result.needsDisplay, !needsDisplay.isEmpty {
-            // Rust pre-abbreviated each npub; Swift only joins them.
-            errorMessage = "Waiting for key packages from \(needsDisplay.joined(separator: ", "))."
-        } else {
-            errorMessage = result.error ?? "Could not create group"
+        Task {
+            let result = await model.marmot.createGroup(
+                name: trimmedName,
+                description: groupDescription.trimmingCharacters(in: .whitespacesAndNewlines),
+                inviteeText: inviteeText)
+            busy = false
+            if result.ok {
+                dismiss()
+            } else if let needsDisplay = result.needsDisplay, !needsDisplay.isEmpty {
+                // Rust pre-abbreviated each npub; Swift only joins them.
+                errorMessage = "Waiting for key packages from \(needsDisplay.joined(separator: ", "))."
+            } else {
+                errorMessage = result.error ?? "Could not create group"
+            }
         }
     }
 

@@ -294,6 +294,14 @@ impl PublishEngine {
             PublishAction::PublishProfile { .. } => Err(PublishEngineError::UnsupportedAction(
                 "PublishProfile is published via ActorCommand::PublishProfile, not the publish engine",
             )),
+            // `PublishRaw` is signed-and-published by the actor's
+            // `ActorCommand::PublishRawEvent` handler (which delegates to the
+            // existing `publish_unsigned_event{,_to_relays}` helpers) — same
+            // rationale as `PublishNote`/`PublishProfile`. Reaching here is a
+            // wiring bug returned as an `Err`, never a panic (D6).
+            PublishAction::PublishRaw { .. } => Err(PublishEngineError::UnsupportedAction(
+                "PublishRaw is published via ActorCommand::PublishRawEvent, not the publish engine",
+            )),
         }
     }
 
@@ -756,6 +764,41 @@ impl PublishEngine {
             correlation_id,
             status: "failed",
             error: Some(error),
+        });
+    }
+
+    /// Record a terminal `"ok"` verdict for a dispatched action that completed
+    /// **without** going through the publish-engine in-flight set — i.e. the
+    /// outcome is observed off-band, not via a relay OK on a signed event.
+    ///
+    /// The motivating consumer is NIP-47 NWC `pay_invoice`: the action's
+    /// terminal outcome is the **wallet's** kind:23195 response carrying a
+    /// `preimage`. That response never reaches the publish engine (the
+    /// kind:23194 request itself settles separately as a normal publish; the
+    /// *payment* outcome lives in the NWC response channel), so a host that
+    /// dispatched the payment through `nmp_app_dispatch_action` would
+    /// otherwise have no `action_results` entry to drain its spinner — the
+    /// same broken-promise gap [`Self::record_action_terminal_failure`] closes
+    /// for sign-step failures.
+    ///
+    /// Mirrors [`Self::record_action_terminal_failure`]: pushes a single
+    /// `LastTerminal { status: "ok", error: None }` onto `pending_terminals`
+    /// for the next snapshot drain. No `RecentFailure` row is written (success
+    /// paths don't anchor failure rows); the caller is responsible for any
+    /// projection-level state (e.g. wallet balance refresh) it needs.
+    // `#[allow(dead_code)]`: the sole live caller today is
+    // `Kernel::record_action_success` (publish_cmd.rs), which is in turn only
+    // invoked by `handle_nwc_text` in the wallet runtime — itself gated behind
+    // the `wallet` Cargo feature. A plain `cargo check -p nmp-core` (default
+    // features) sees no consumer of either method, and the per-crate dead-code
+    // lint fires; the cross-feature truth (every `--features wallet` build
+    // wires both) is invisible to rustc here.
+    #[allow(dead_code)]
+    pub(crate) fn record_action_terminal_success(&mut self, correlation_id: String) {
+        self.record_terminal(LastTerminal {
+            correlation_id,
+            status: "ok",
+            error: None,
         });
     }
 

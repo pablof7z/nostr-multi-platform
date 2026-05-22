@@ -6,7 +6,7 @@
 
 use super::*;
 use crate::kernel::Kernel;
-use crate::publish::{InMemoryPublishStore, PublishRecord, PublishStore};
+use crate::publish::{InMemoryPublishStore, PublishRecord, PublishStore, PublishTarget};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use std::sync::Arc;
 
@@ -270,6 +270,7 @@ fn create_account_next_note_routes_via_local_relay_rows_before_relay_echo() {
         &mut kernel,
         "first note after signup",
         None,
+        PublishTarget::Auto,
         None,
         &mut Vec::new(),
     );
@@ -344,7 +345,15 @@ fn remove_active_account_clears_active_slot() {
 #[test]
 fn publish_note_without_account_toasts_and_no_outbound() {
     let (id, mut kernel) = fresh();
-    let outbound = publish_note(&id, &mut kernel, "hello pulse", None, None, &mut Vec::new());
+    let outbound = publish_note(
+        &id,
+        &mut kernel,
+        "hello pulse",
+        None,
+        PublishTarget::Auto,
+        None,
+        &mut Vec::new(),
+    );
     assert!(outbound.is_empty());
     assert!(kernel
         .last_error_toast_snapshot()
@@ -363,6 +372,7 @@ fn publish_note_signs_and_routes_via_nip65() {
         &mut kernel,
         "hello pulse e2e",
         None,
+        PublishTarget::Auto,
         None,
         &mut Vec::new(),
     );
@@ -385,7 +395,7 @@ fn publish_unsigned_event_without_account_toasts_and_no_outbound() {
         content: "body".into(),
         created_at: 0,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
     assert!(outbound.is_empty());
     assert!(kernel
         .last_error_toast_snapshot()
@@ -409,7 +419,7 @@ fn publish_unsigned_event_signs_and_publishes_arbitrary_kind() {
         content: "# body".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
     assert!(!outbound.is_empty());
     assert!(outbound[0].text.contains("\"kind\":30023"));
     assert!(outbound[0]
@@ -446,7 +456,7 @@ fn publish_unsigned_event_rejects_oversized_kind_with_toast() {
         content: "should not publish".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
     assert!(
         outbound.is_empty(),
         "oversized kind must produce no outbound frames"
@@ -477,7 +487,7 @@ fn publish_unsigned_event_valid_kind_publishes_normally() {
         content: "valid kind".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
     assert!(
         !outbound.is_empty(),
         "valid kind:1 must produce outbound frames"
@@ -500,7 +510,7 @@ fn publish_unsigned_event_rejects_malformed_tag_with_toast() {
         content: "tag test".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
     assert!(
         outbound.is_empty(),
         "malformed tag must produce no outbound frames"
@@ -534,7 +544,7 @@ fn publish_unsigned_event_valid_tags_pass_through() {
         content: "body".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
     assert!(!outbound.is_empty());
     assert_eq!(kernel.last_error_toast_snapshot(), None);
     assert!(outbound[0].text.contains("\"d\""));
@@ -601,7 +611,7 @@ fn publish_signed_event_routes_and_dispatches_verbatim() {
     let (json, ev_id, ev_sig) = signed_nip01_json(&id, "# signed body");
 
     let raw: crate::store::RawEvent = serde_json::from_str(&json).unwrap();
-    let outbound = publish_signed_event(&mut kernel, raw, &[], None);
+    let outbound = publish_signed_event(&mut kernel, raw, PublishTarget::Auto, None);
 
     assert!(!outbound.is_empty(), "valid signed event must route");
     assert_eq!(kernel.last_error_toast_snapshot(), None);
@@ -642,7 +652,7 @@ fn publish_signed_event_publishes_without_active_account() {
     kernel.seed_kind10002_for_test(&author, TEST_WRITE_RELAYS);
 
     let raw: crate::store::RawEvent = serde_json::from_str(&json).unwrap();
-    let outbound = publish_signed_event(&mut kernel, raw, &[], None);
+    let outbound = publish_signed_event(&mut kernel, raw, PublishTarget::Auto, None);
 
     assert!(
         !outbound.is_empty(),
@@ -664,7 +674,7 @@ fn publish_signed_event_rejects_tampered_signature_with_toast() {
     assert_ne!(bad_json, json, "signature must actually have changed");
 
     let raw: crate::store::RawEvent = serde_json::from_str(&bad_json).unwrap();
-    let outbound = publish_signed_event(&mut kernel, raw, &[], None);
+    let outbound = publish_signed_event(&mut kernel, raw, PublishTarget::Auto, None);
 
     assert!(
         outbound.is_empty(),
@@ -692,7 +702,7 @@ fn publish_signed_event_rejects_id_mismatch_with_toast() {
     // Mutate content without re-deriving the id → id-hash check must fail.
     let mut raw: crate::store::RawEvent = serde_json::from_str(&json).unwrap();
     raw.content = "tampered-after-signing".into();
-    let outbound = publish_signed_event(&mut kernel, raw, &[], None);
+    let outbound = publish_signed_event(&mut kernel, raw, PublishTarget::Auto, None);
 
     assert!(outbound.is_empty(), "id-mismatch event must not publish");
     assert!(kernel
@@ -722,7 +732,14 @@ fn publish_signed_event_to_explicit_relays_routes_verbatim_to_exactly_those() {
 
     let relays: Vec<String> = TEST_GROUP_RELAYS.iter().map(|s| s.to_string()).collect();
     let raw: crate::store::RawEvent = serde_json::from_str(&json).unwrap();
-    let outbound = publish_signed_event(&mut kernel, raw, &relays, None);
+    let outbound = publish_signed_event(
+        &mut kernel,
+        raw,
+        PublishTarget::Explicit {
+            relays: relays.clone(),
+        },
+        None,
+    );
 
     assert!(!outbound.is_empty(), "explicit-target publish must route");
     assert_eq!(kernel.last_error_toast_snapshot(), None);
@@ -751,26 +768,31 @@ fn publish_signed_event_to_explicit_relays_routes_verbatim_to_exactly_those() {
 }
 
 #[test]
-fn publish_signed_event_to_empty_relays_falls_back_to_auto_outbox() {
+fn publish_signed_event_to_empty_explicit_relays_fails_closed() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
-    let (json, ev_id, _sig) = signed_nip01_json(&id, "auto fallback body");
+    let (json, _ev_id, _sig) = signed_nip01_json(&id, "empty explicit body");
 
-    // Empty explicit set → behave exactly like the Auto path: route to the
-    // author's kind:10002 write relays.
     let raw: crate::store::RawEvent = serde_json::from_str(&json).unwrap();
-    let outbound = publish_signed_event(&mut kernel, raw, &[], None);
+    let outbound = publish_signed_event(
+        &mut kernel,
+        raw,
+        PublishTarget::Explicit { relays: Vec::new() },
+        None,
+    );
 
-    assert!(!outbound.is_empty(), "empty relays must fall back to Auto");
-    assert_eq!(kernel.last_error_toast_snapshot(), None);
-    let got: Vec<String> = outbound.iter().map(|m| m.relay_url.clone()).collect();
-    for url in TEST_WRITE_RELAYS {
-        assert!(
-            got.iter().any(|g| g == url),
-            "Auto fallback must resolve the kind:10002 outbox relay {url}"
-        );
-    }
-    assert!(outbound[0].text.contains(&format!("\"id\":\"{ev_id}\"")));
+    assert!(
+        outbound.is_empty(),
+        "empty explicit relays must not publish"
+    );
+    assert!(
+        kernel
+            .last_error_toast_snapshot()
+            .is_some_and(|t| t.contains("explicit publish target rejected")),
+        "expected explicit-target rejection toast, got: {:?}",
+        kernel.last_error_toast_snapshot()
+    );
+    assert!(kernel.publish_queue_snapshot().is_empty());
 }
 
 #[test]
@@ -790,7 +812,14 @@ fn publish_signed_event_to_explicit_relays_works_with_no_active_account() {
 
     let relays: Vec<String> = TEST_GROUP_RELAYS.iter().map(|s| s.to_string()).collect();
     let raw: crate::store::RawEvent = serde_json::from_str(&json).unwrap();
-    let outbound = publish_signed_event(&mut kernel, raw, &relays, None);
+    let outbound = publish_signed_event(
+        &mut kernel,
+        raw,
+        PublishTarget::Explicit {
+            relays: relays.clone(),
+        },
+        None,
+    );
 
     assert!(
         !outbound.is_empty(),
@@ -869,11 +898,11 @@ fn publish_signed_event_refuses_kind_1059_with_empty_relays() {
     kernel.clear_relay_edit_rows_for_test();
     let raw = signed_kind_1059_raw(&id);
 
-    let outbound = publish_signed_event(&mut kernel, raw, &[], None);
+    let outbound = publish_signed_event(&mut kernel, raw, PublishTarget::Auto, None);
 
     assert!(
         outbound.is_empty(),
-        "kind:1059 with empty relays MUST produce no outbound frames \
+        "kind:1059 with PublishTarget::Auto MUST produce no outbound frames \
          (D10: envelope existence would leak through the NIP-65 outbox)"
     );
     assert!(
@@ -900,12 +929,13 @@ fn publish_signed_event_refuses_kind_1059_with_empty_vec_relays() {
     kernel.clear_relay_edit_rows_for_test();
     let raw = signed_kind_1059_raw(&id);
 
-    // Exact shape `actor::dispatch::PublishSignedEvent` calls with after
-    // `relays_for_target(&Auto)` returns `Vec::new()`.
-    let relays: Vec<crate::publish::RelayUrl> = Vec::new();
-    let outbound = publish_signed_event(&mut kernel, raw, &relays, None);
+    // Exact shape `actor::dispatch::PublishSignedEvent` calls with when the
+    // dispatch path routes `PublishAction::Publish { target: Auto }`. The
+    // guard must fire on the Auto variant regardless of how the target was
+    // constructed.
+    let outbound = publish_signed_event(&mut kernel, raw, PublishTarget::Auto, None);
 
-    assert!(outbound.is_empty(), "empty Vec must trigger the guard");
+    assert!(outbound.is_empty(), "PublishTarget::Auto must trigger the guard");
     assert!(
         kernel.last_error_toast_snapshot().is_some(),
         "the guard must set a toast for the empty Vec case too"
@@ -924,11 +954,11 @@ fn publish_signed_event_does_not_refuse_other_kinds_with_empty_relays() {
     let (json, _ev_id, _sig) = signed_nip01_json(&id, "kind 30023 still routes");
 
     let raw: crate::store::RawEvent = serde_json::from_str(&json).unwrap();
-    let outbound = publish_signed_event(&mut kernel, raw, &[], None);
+    let outbound = publish_signed_event(&mut kernel, raw, PublishTarget::Auto, None);
 
     assert!(
         !outbound.is_empty(),
-        "non-1059 kinds must continue to Auto-route on empty relays — the \
+        "non-1059 kinds must continue to route under PublishTarget::Auto — the \
          PR-K3 guard is targeted strictly at kind:1059"
     );
     assert_eq!(
@@ -954,7 +984,7 @@ fn publish_signed_event_kind_1059_guard_records_action_failure_for_correlation()
     let outbound = publish_signed_event(
         &mut kernel,
         raw,
-        &[],
+        PublishTarget::Auto,
         Some("corr-1059-leak".to_string()),
     );
     assert!(outbound.is_empty());
@@ -999,11 +1029,18 @@ fn publish_signed_event_publishes_kind_1059_with_explicit_pin() {
     let raw = signed_kind_1059_raw(&id);
 
     let pin: Vec<String> = TEST_GROUP_RELAYS.iter().map(|s| s.to_string()).collect();
-    let outbound = publish_signed_event(&mut kernel, raw, &pin, None);
+    let outbound = publish_signed_event(
+        &mut kernel,
+        raw,
+        PublishTarget::Explicit {
+            relays: pin.clone(),
+        },
+        None,
+    );
 
     assert!(
         !outbound.is_empty(),
-        "kind:1059 + explicit pin must publish (guard is empty-relays only)"
+        "kind:1059 + explicit pin must publish (guard is PublishTarget::Auto only)"
     );
     assert_eq!(
         kernel.last_error_toast_snapshot(),
@@ -1034,7 +1071,7 @@ fn publish_signed_event_to_explicit_relays_still_rejects_tampered_sig() {
 
     let relays: Vec<String> = TEST_GROUP_RELAYS.iter().map(|s| s.to_string()).collect();
     let raw: crate::store::RawEvent = serde_json::from_str(&bad_json).unwrap();
-    let outbound = publish_signed_event(&mut kernel, raw, &relays, None);
+    let outbound = publish_signed_event(&mut kernel, raw, PublishTarget::Explicit { relays }, None);
 
     assert!(
         outbound.is_empty(),
@@ -1079,6 +1116,7 @@ fn publish_unsigned_event_to_relays_signs_and_routes_to_exactly_those() {
         &mut kernel,
         unsigned,
         relays.clone(),
+        None,
         &mut Vec::new(),
     );
 
@@ -1126,7 +1164,7 @@ fn publish_unsigned_event_to_relays_without_account_toasts() {
     };
     let relays: Vec<String> = TEST_GROUP_RELAYS.iter().map(|s| s.to_string()).collect();
     let outbound =
-        publish_unsigned_event_to_relays(&id, &mut kernel, unsigned, relays, &mut Vec::new());
+        publish_unsigned_event_to_relays(&id, &mut kernel, unsigned, relays, None, &mut Vec::new());
 
     assert!(
         outbound.is_empty(),
@@ -1142,10 +1180,7 @@ fn publish_unsigned_event_to_relays_without_account_toasts() {
 }
 
 #[test]
-fn publish_unsigned_event_to_relays_empty_relays_falls_back_to_auto_outbox() {
-    // Defensive degrade: an empty relay set must not silently drop the
-    // publish — it falls back to the NIP-65 outbox (Auto) like the unsigned
-    // sibling. Callers should always supply the pin; this guards the bug.
+fn publish_unsigned_event_to_relays_empty_relays_fails_closed() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
 
@@ -1157,17 +1192,54 @@ fn publish_unsigned_event_to_relays_empty_relays_falls_back_to_auto_outbox() {
         created_at: 1_700_000_000,
     };
     let outbound =
-        publish_unsigned_event_to_relays(&id, &mut kernel, unsigned, Vec::new(), &mut Vec::new());
+        publish_unsigned_event_to_relays(&id, &mut kernel, unsigned, Vec::new(), None, &mut Vec::new());
 
-    assert!(!outbound.is_empty(), "empty relays must fall back to Auto");
-    assert_eq!(kernel.last_error_toast_snapshot(), None);
-    let got: Vec<String> = outbound.iter().map(|m| m.relay_url.clone()).collect();
-    for url in TEST_WRITE_RELAYS {
-        assert!(
-            got.iter().any(|g| g == url),
-            "Auto fallback must resolve the kind:10002 outbox relay {url}"
-        );
-    }
+    assert!(
+        outbound.is_empty(),
+        "empty explicit relays must not publish"
+    );
+    assert!(
+        kernel
+            .last_error_toast_snapshot()
+            .is_some_and(|t| t.contains("explicit publish target rejected")),
+        "expected explicit-target rejection toast, got: {:?}",
+        kernel.last_error_toast_snapshot()
+    );
+    assert!(kernel.publish_queue_snapshot().is_empty());
+}
+
+#[test]
+fn publish_unsigned_event_to_relays_invalid_relay_fails_closed() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_with_nip65(&mut id, &mut kernel);
+
+    let unsigned = crate::substrate::UnsignedEvent {
+        pubkey: String::new(),
+        kind: 9021,
+        tags: vec![vec!["h".into(), "rust-nostr".into()]],
+        content: String::new(),
+        created_at: 1_700_000_000,
+    };
+    let outbound = publish_unsigned_event_to_relays(
+        &id,
+        &mut kernel,
+        unsigned,
+        vec!["https://not-a-nostr-relay.example".to_string()],
+        None,
+        &mut Vec::new(),
+    );
+
+    assert!(
+        outbound.is_empty(),
+        "invalid explicit relay must not publish"
+    );
+    assert!(
+        kernel
+            .last_error_toast_snapshot()
+            .is_some_and(|t| t.contains("ws:// or wss://")),
+        "expected malformed relay rejection toast, got: {:?}",
+        kernel.last_error_toast_snapshot()
+    );
 }
 
 #[test]
@@ -1183,7 +1255,7 @@ fn react_builds_kind7_with_e_and_p_tags() {
     let target_author = "cccc000000000000000000000000000000000000000000000000000000000000";
     kernel.seed_kind1_for_reply_test(&target, target_author, 100, vec![], "reacted-to note");
 
-    let outbound = react(&id, &mut kernel, &target, "❤", &mut Vec::new());
+    let outbound = react(&id, &mut kernel, &target, "❤", None, &mut Vec::new());
     assert!(!outbound.is_empty());
     assert!(outbound[0].text.contains("\"kind\":7"));
     assert!(outbound[0].text.contains(&target));
@@ -1206,7 +1278,7 @@ fn follow_publishes_kind3_with_p_tag() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
     let target = "b".repeat(64);
-    let outbound = follow(&id, &mut kernel, &target, true, &mut Vec::new());
+    let outbound = follow(&id, &mut kernel, &target, true, None, &mut Vec::new());
     assert!(!outbound.is_empty());
     assert!(outbound[0].text.contains("\"kind\":3"));
     assert!(outbound[0].text.contains(&target));
@@ -1225,7 +1297,7 @@ fn react_without_account_toasts_and_no_outbound() {
     // an exception. No EVENT frame, no publish-queue entry.
     let (id, mut kernel) = fresh();
     let target = "a".repeat(64);
-    let outbound = react(&id, &mut kernel, &target, "+", &mut Vec::new());
+    let outbound = react(&id, &mut kernel, &target, "+", None, &mut Vec::new());
     assert!(
         outbound.is_empty(),
         "react with no active account must produce no outbound frames"
@@ -1250,6 +1322,7 @@ fn react_to_malformed_event_id_toasts_and_refuses() {
         &mut kernel,
         "not-a-real-event-id",
         "+",
+        None,
         &mut Vec::new(),
     );
     assert!(
@@ -1276,7 +1349,7 @@ fn react_with_empty_reaction_defaults_to_plus() {
     let target_author = "cccc000000000000000000000000000000000000000000000000000000000000";
     kernel.seed_kind1_for_reply_test(&target, target_author, 100, vec![], "reacted-to note");
 
-    let outbound = react(&id, &mut kernel, &target, "   ", &mut Vec::new());
+    let outbound = react(&id, &mut kernel, &target, "   ", None, &mut Vec::new());
     assert!(!outbound.is_empty(), "react must produce an EVENT frame");
     let event = last_published_event_json(&outbound);
     assert_eq!(event["kind"], 7, "reaction must be kind:7");
@@ -1308,7 +1381,7 @@ fn react_to_uncached_event_omits_p_tag_gracefully() {
     sign_in_with_nip65(&mut id, &mut kernel);
     let target = "d".repeat(64);
 
-    let outbound = react(&id, &mut kernel, &target, "❤", &mut Vec::new());
+    let outbound = react(&id, &mut kernel, &target, "❤", None, &mut Vec::new());
     assert!(
         !outbound.is_empty(),
         "react to an uncached event must still publish a kind:7"
@@ -1364,7 +1437,7 @@ fn react_routes_to_reacted_to_author_inbox_relay() {
         1_700_000_000_000,
     );
 
-    let outbound = react(&id, &mut kernel, &target, "❤", &mut Vec::new());
+    let outbound = react(&id, &mut kernel, &target, "❤", None, &mut Vec::new());
 
     // The reaction must carry the `p` tag (NIP-25 §1) so the engine has a
     // recipient to resolve at all.
@@ -1412,7 +1485,7 @@ fn react_to_uncached_author_skips_inbox_routing_gracefully() {
     sign_in_with_nip65(&mut id, &mut kernel);
     let target = "d".repeat(64); // well-formed id, never seeded → author uncached
 
-    let outbound = react(&id, &mut kernel, &target, "❤", &mut Vec::new());
+    let outbound = react(&id, &mut kernel, &target, "❤", None, &mut Vec::new());
 
     assert!(
         !outbound.is_empty(),
@@ -1464,7 +1537,7 @@ fn unfollow_removes_pubkey_from_contact_list() {
     let drop = "d".repeat(64);
     seed_contact_list(&mut kernel, &author, &[&keep, &drop]);
 
-    let outbound = follow(&id, &mut kernel, &drop, false, &mut Vec::new());
+    let outbound = follow(&id, &mut kernel, &drop, false, None, &mut Vec::new());
     assert!(!outbound.is_empty(), "unfollow must re-publish the kind:3");
     let event = last_published_event_json(&outbound);
     assert_eq!(event["kind"], 3);
@@ -1494,7 +1567,7 @@ fn follow_already_followed_is_idempotent_no_duplicate() {
     let already = "e".repeat(64);
     seed_contact_list(&mut kernel, &author, &[&already]);
 
-    let outbound = follow(&id, &mut kernel, &already, true, &mut Vec::new());
+    let outbound = follow(&id, &mut kernel, &already, true, None, &mut Vec::new());
     assert!(!outbound.is_empty(), "follow must re-publish the kind:3");
     let event = last_published_event_json(&outbound);
     let p_pubkeys: Vec<String> = tags_of(&event)
@@ -1514,7 +1587,7 @@ fn follow_without_account_toasts_and_no_outbound() {
     // D6: follow with no active account → toast naming the `follow` action.
     let (id, mut kernel) = fresh();
     let target = "f".repeat(64);
-    let outbound = follow(&id, &mut kernel, &target, true, &mut Vec::new());
+    let outbound = follow(&id, &mut kernel, &target, true, None, &mut Vec::new());
     assert!(
         outbound.is_empty(),
         "follow with no active account must produce no outbound frames"
@@ -1530,7 +1603,7 @@ fn unfollow_without_account_toasts_with_unfollow_action() {
     // (`unfollow`) — publish.rs:301 picks the action string off `add`.
     let (id, mut kernel) = fresh();
     let target = "f".repeat(64);
-    let outbound = follow(&id, &mut kernel, &target, false, &mut Vec::new());
+    let outbound = follow(&id, &mut kernel, &target, false, None, &mut Vec::new());
     assert!(outbound.is_empty());
     assert!(kernel
         .last_error_toast_snapshot()
@@ -1543,7 +1616,7 @@ fn follow_malformed_pubkey_toasts_and_refuses() {
     // user-visible error (D6 toast), not a silent no-op — and must not panic.
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
-    let outbound = follow(&id, &mut kernel, "xyz", true, &mut Vec::new());
+    let outbound = follow(&id, &mut kernel, "xyz", true, None, &mut Vec::new());
     assert!(
         outbound.is_empty(),
         "follow with a malformed pubkey must produce no outbound frames"
@@ -1580,7 +1653,7 @@ fn profile_update_publishes_kind0_metadata_event() {
         content: r#"{"name":"marcus","display_name":"Marcus Webb"}"#.into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
     assert!(
         !outbound.is_empty(),
         "kind:0 update must produce an EVENT frame"
@@ -1612,7 +1685,7 @@ fn profile_update_without_account_toasts_and_no_outbound() {
         content: r#"{"display_name":"Nobody"}"#.into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
     assert!(
         outbound.is_empty(),
         "profile update with no active account must produce no outbound frames"
@@ -1737,6 +1810,7 @@ fn snapshot_json_carries_new_projections() {
         &mut kernel,
         "json shape check",
         None,
+        PublishTarget::Auto,
         None,
         &mut Vec::new(),
     );
@@ -1880,6 +1954,7 @@ fn publish_note_reply_to_mid_thread_forwards_root_and_carries_p_tags() {
         &mut kernel,
         "nested reply",
         Some(REPLY_B_ID),
+        PublishTarget::Auto,
         None,
         &mut Vec::new(),
     );
@@ -1929,6 +2004,7 @@ fn publish_note_reply_to_root_promotes_parent_to_root_and_emits_both_markers() {
         &mut kernel,
         "first reply",
         Some(ROOT_A_ID),
+        PublishTarget::Auto,
         None,
         &mut Vec::new(),
     );
@@ -1970,6 +2046,7 @@ fn publish_note_reply_to_unknown_parent_falls_back_and_kicks_hydration() {
         &mut kernel,
         "cold reply",
         Some(COLD_PARENT_ID),
+        PublishTarget::Auto,
         None,
         &mut Vec::new(),
     );
@@ -2011,6 +2088,7 @@ fn publish_note_reply_to_malformed_id_toasts_and_refuses() {
         &mut kernel,
         "reply with bad parent id",
         Some("not-a-hex-event-id"),
+        PublishTarget::Auto,
         None,
         &mut Vec::new(),
     );

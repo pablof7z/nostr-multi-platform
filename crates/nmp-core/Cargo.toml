@@ -36,6 +36,14 @@ android-ffi = []
 [dependencies]
 bech32 = "0.11"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# Insertion-ordered hash map. Powers `substrate::bounded::BoundedMessageMap` —
+# the cap-and-evict-oldest primitive every long-lived per-projection message
+# store now backs onto so memory and per-tick snapshot serialisation are
+# bounded regardless of session length. Version pinned to match the
+# transitively-resolved `indexmap 2.14` already in the lockfile (no new
+# dependency tree branch).
+indexmap = "2.14"
+nmp-chirp-config = { path = "../nmp-chirp-config" }
 nmp-nip42-types = { path = "../nmp-nip42-types" }
 # NIP-59 gift-wrap free functions (`gift_wrap` / `unwrap_gift_wrap`). Consumed
 # by the `ActorCommand::SendGiftWrappedDm` arm to seal+wrap NIP-17 DM rumors on
@@ -53,6 +61,15 @@ rustls = { workspace = true, default-features = false, features = ["ring"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["raw_value"] }
 tungstenite = { workspace = true, default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+# Sync HTTP client used by the LNURL fetcher worker spawned from the
+# `ActorCommand::FetchLnurlInvoice` arm (NIP-57 zaps, ADR-0024 minimum-viable
+# path). `tls` rides the same rustls graph the rest of nmp-core uses
+# (rustls + webpki-roots, ring crypto provider). `json` enables `Response::into_json`
+# for the LNURL-pay endpoint responses. No async runtime is introduced — the
+# worker runs on `std::thread::spawn` and sends a follow-up `ActorCommand`
+# back to the actor through a cloned `Sender<ActorCommand>` (D8: no blocking
+# on the actor thread).
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
 # Lightweight logging facade. Used by the NIP-17 DM send path to emit a
 # diagnostic `warn!` when the recipient's kind:10050 DM-relay list is not yet
 # cached and the send falls back to the configured Content relays — making the

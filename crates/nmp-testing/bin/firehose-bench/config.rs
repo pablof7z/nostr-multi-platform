@@ -7,7 +7,6 @@ pub(crate) const VIEW_BATCH_HZ_GATE: f64 = 60.0;
 pub(crate) const DELTAS_PER_VIEW_SEC_GATE: f64 = 60.0;
 pub(crate) const DISCONNECT_DETECT_GATE_MS: f64 = 10_000.0;
 pub(crate) const RECONNECT_GATE_MS: f64 = 30_000.0;
-pub(crate) const NIP77_BYTES_RATIO_GATE: f64 = 0.05;
 pub(crate) const NSE_DECRYPT_GATE_MS: f64 = 200.0;
 pub(crate) const NSE_MEMORY_GATE_MB: f64 = 24.0;
 pub(crate) const SOAK_MEMORY_GATE_MB: f64 = 100.0;
@@ -125,7 +124,6 @@ pub(crate) fn selected_scenarios(selected: Option<&str>) -> Vec<&'static str> {
         "profile_thrashing",
         "relay_disconnect_storm",
         "multi_account",
-        "negentropy_efficiency",
         "background_decryption",
         "soak",
     ];

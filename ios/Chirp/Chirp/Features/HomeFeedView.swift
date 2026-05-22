@@ -69,7 +69,14 @@ struct HomeFeedView: View {
             cards: model.modularTimeline.cards,
             items: model.items,
             onRefresh: { model.openTimeline() },
-            onLike: { model.react(targetEventID: $0, reaction: "❤") }
+            onLike: { model.react(targetEventID: $0, reaction: "❤") },
+            // NIP-57 — 21 sats default until an amount picker lands.
+            // `lnurl` is the pre-extracted `authorLnurl` from the timeline
+            // item (Rust decides zapability; the row only surfaces this
+            // closure when the field is non-nil — see `NoteActionsRow`).
+            onZap: { eventID, pubkey, lnurl in
+                model.zap(targetEventID: eventID, authorPubkey: pubkey, lnurl: lnurl)
+            }
         )
         .equatable()
     }
@@ -164,6 +171,11 @@ private struct TimelineListView: View, Equatable {
     let items: [TimelineItem]
     let onRefresh: () -> Void
     let onLike: (String) -> Void
+    /// NIP-57 — (eventID, authorPubkey, lnurl) → dispatch the zap. The row
+    /// only surfaces the button when `authorLnurl != nil`, so this closure
+    /// is always called with a non-empty `lnurl`. Threaded through alongside
+    /// `onLike` to avoid coupling the row to `KernelModel` directly.
+    let onZap: (String, String, String) -> Void
 
     nonisolated static func == (lhs: TimelineListView, rhs: TimelineListView) -> Bool {
         lhs.blocks == rhs.blocks && lhs.cards == rhs.cards && lhs.items == rhs.items
@@ -191,7 +203,8 @@ private struct TimelineListView: View, Equatable {
                     cards: cardLookup,
                     items: itemLookup,
                     mentionProfiles: profileLookup,
-                    onLike: onLike
+                    onLike: onLike,
+                    onZap: onZap
                 )
                     .listRowInsets(EdgeInsets())
                     .listRowSeparator(.hidden)

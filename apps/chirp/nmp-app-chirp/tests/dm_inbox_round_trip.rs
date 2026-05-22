@@ -2,7 +2,7 @@
 //!
 //! These three tests collectively prove the wiring `nmp_app_chirp_register_dm_inbox`
 //! sets up — covering as much of the `kind:1059 → DmInboxProjection →
-//! projections["nip17.dm_inbox"]` round-trip as the public crate surface
+//! projections["nmp.nip17.dm_inbox"]` round-trip as the public crate surface
 //! currently permits.
 //!
 //! Lifted out of `src/ffi.rs` to keep the FFI module under the AGENTS.md
@@ -15,7 +15,7 @@
 //!      slot the actor writes on every identity mutation.
 //!   2. Constructs a `DmInboxProjection::new(local_keys)` bound to that slot.
 //!   3. Registers the projection as a `RawEventObserver` for kind:1059.
-//!   4. Registers a snapshot-projection closure under `"nip17.dm_inbox"`
+//!   4. Registers a snapshot-projection closure under `"nmp.nip17.dm_inbox"`
 //!      that calls `projection.snapshot_json()` on every tick.
 //!   5. Pushes the kind:1059 `#p` gift-wrap interest when a viewer pubkey
 //!      is supplied so the kernel actually opens a REQ.
@@ -25,8 +25,6 @@
 //! the FFI captures, then proving the gift-wrap unseal works through it.
 //! The third test documents the gap that prevents a *single* FFI-driven
 //! round-trip from running end-to-end inside this crate today.
-
-use std::ffi::CString;
 
 use nmp_app_chirp::ffi::nmp_app_chirp_register_dm_inbox;
 use nmp_core::{nmp_app_free, nmp_app_new, NmpApp, RawEventObserver};
@@ -80,14 +78,12 @@ fn dm_inbox_decrypts_through_the_shared_local_keys_slot() {
     // Generate Alice (sender) and Bob (recipient / viewer) keys.
     let alice = Keys::generate();
     let bob = Keys::generate();
-    let bob_pubkey_hex = bob.public_key().to_hex();
 
     // Register the DM inbox through the FFI symbol exactly as Swift does
     // at startup. This is the load-bearing call: it captures
     // `app.nip17_local_keys()` into the projection it stores in the
     // raw-event-observer slot AND the snapshot registry.
-    let viewer = CString::new(bob_pubkey_hex.as_str()).unwrap();
-    nmp_app_chirp_register_dm_inbox(app, viewer.as_ptr());
+    nmp_app_chirp_register_dm_inbox(app);
 
     // Write Bob's keys into the SAME shared slot the FFI registration
     // captured. In production the actor mutates this slot on every
@@ -151,7 +147,7 @@ fn dm_inbox_decrypts_through_the_shared_local_keys_slot() {
 }
 
 /// THE FFI SNAPSHOT-JSON SHAPE CONTRACT: the JSON the FFI registration
-/// surfaces under `projections["nip17.dm_inbox"]` is exactly the shape
+/// surfaces under `projections["nmp.nip17.dm_inbox"]` is exactly the shape
 /// `DmInboxSnapshot` serdes to. The Swift consumer decodes this off the
 /// kernel update channel; a wire-shape drift here breaks every existing
 /// DM screen.
@@ -169,7 +165,7 @@ fn dm_inbox_snapshot_json_round_trips_through_dm_inbox_snapshot() {
     let bob = Keys::generate();
 
     // Register through the FFI path (same as Swift does at startup).
-    nmp_app_chirp_register_dm_inbox(app, std::ptr::null());
+    nmp_app_chirp_register_dm_inbox(app);
 
     // Same slot the FFI registration captured.
     // SAFETY: app came from nmp_app_new() and is live for this call.
@@ -185,8 +181,8 @@ fn dm_inbox_snapshot_json_round_trips_through_dm_inbox_snapshot() {
     );
 
     // The snapshot JSON the snapshot-projection closure registered under
-    // `"nip17.dm_inbox"` returns on every tick — exactly what surfaces
-    // in `KernelSnapshot.projections["nip17.dm_inbox"]`.
+    // `"nmp.nip17.dm_inbox"` returns on every tick — exactly what surfaces
+    // in `KernelSnapshot.projections["nmp.nip17.dm_inbox"]`.
     let snapshot_value = projection.snapshot_json();
     // Round-trip through the typed `DmInboxSnapshot`: the projection's
     // wire shape MUST be decodable by the typed wire schema a host
@@ -227,13 +223,13 @@ fn dm_inbox_snapshot_json_round_trips_through_dm_inbox_snapshot() {
 /// 1. Build `nmp_app` via `nmp_app_new()`.
 /// 2. Generate Alice's and Bob's keys; write Bob's into
 ///    `app.nip17_local_keys()` (or sign Bob in via the actor).
-/// 3. Call `nmp_app_chirp_register_dm_inbox(app, bob_pubkey_cstr)`.
+/// 3. Call `nmp_app_chirp_register_dm_inbox(app)`.
 /// 4. Construct a kind:1059 gift-wrap from Alice to Bob via
 ///    `nmp_nip59::gift_wrap` and inject it through a public test-support
 ///    path that drives `kernel.handle_event` (the ONLY path that fans out
 ///    to registered `RawEventObserver`s — see kernel/ingest/mod.rs:365).
 /// 5. Read the snapshot JSON via the update callback path and assert
-///    `projections["nip17.dm_inbox"]["conversations"]` contains an entry
+///    `projections["nmp.nip17.dm_inbox"]["conversations"]` contains an entry
 ///    with Alice's content.
 ///
 /// The gap: step 4 has no public path from `nmp-app-chirp`. Concretely:
@@ -284,8 +280,7 @@ fn dm_inbox_full_round_trip_through_ffi() {
     // SAFETY: app came from nmp_app_new() and is live for this call.
     *unsafe { (*app).nip17_local_keys() }.lock().unwrap() = Some(bob.clone());
 
-    let bob_pubkey = CString::new(bob.public_key().to_hex()).unwrap();
-    nmp_app_chirp_register_dm_inbox(app, bob_pubkey.as_ptr());
+    nmp_app_chirp_register_dm_inbox(app);
 
     let _envelope = gift_wrapped_dm(&alice, &bob.public_key(), "round-trip", 100);
     // FIXME(nip17-e2e-test-seam): inject `_envelope` through a path that
@@ -295,7 +290,7 @@ fn dm_inbox_full_round_trip_through_ffi() {
     //   1. inject the envelope via the new test-support symbol;
     //   2. read the snapshot JSON via `nmp_app_set_update_callback`
     //      (the same path Swift consumes);
-    //   3. parse and assert `projections["nip17.dm_inbox"]
+    //   3. parse and assert `projections["nmp.nip17.dm_inbox"]
     //      ["conversations"][0]["messages"][0]["content"] == "round-trip"`.
 
     nmp_app_free(app);

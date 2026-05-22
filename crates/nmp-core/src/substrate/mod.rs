@@ -1,5 +1,5 @@
 //! Substrate — the per-protocol extension contracts (`ActionModule`,
-//! `DomainModule`, `CapabilityModule`).
+//! `CapabilityModule`).
 //!
 //! # Extension mechanism: v1 vs v2
 //!
@@ -39,6 +39,7 @@
 //! - a per-app crate registering an observer: `nmp-app-chirp/src/ffi.rs`
 
 mod action;
+mod bounded;
 mod capability;
 mod domain;
 mod identity;
@@ -49,8 +50,9 @@ mod view;
 pub use action::{
     ActionContext, ActionId, ActionModule, ActionRejection, ActionResult,
 };
+pub use bounded::{BoundedMessageMap, MAX_PROJECTION_MESSAGES};
 pub use capability::{CapabilityEnvelope, CapabilityModule, CapabilityRequest};
-pub use domain::{DomainIndex, DomainMigration, DomainModule, MigrationTx};
+pub use domain::{DomainMigration, MigrationTx};
 pub use identity::{SignedEvent, SigningError, UnsignedEvent};
 pub use keyring::{
     KeyringCapability, KeyringIdentityWiring, KeyringRequest, KeyringResult, KeyringStatus,

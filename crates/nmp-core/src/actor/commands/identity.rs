@@ -16,9 +16,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::actor::{canonical_relay_role, has_role};
 use crate::kernel::{AccountSummary, Kernel, RelayEditRow};
-use crate::relay::{canonical_relay_url, OutboundMessage};
+use crate::relay::{canonical_relay_url, chirp_default_relay_bootstrap, OutboundMessage};
 use crate::remote_signer::RemoteSignerHandle;
 use crate::substrate::{SignedEvent, UnsignedEvent};
+use crate::util::sort_dedup;
 
 /// NIP-46 bunker handshake progress — the app noun projected onto the snapshot
 /// under `projections["bunker_handshake"]`.
@@ -314,7 +315,13 @@ pub(crate) type IdentityId = String;
 /// user explicitly added a remote handle, so route through it.
 pub(crate) struct IdentityRuntime {
     keys: HashMap<IdentityId, Keys>,
-    remote_signers: HashMap<IdentityId, Box<dyn RemoteSignerHandle>>,
+    // ADR-0026 Phase 2: stored as `Arc<dyn>` (not `Box<dyn>`) so the
+    // active handle can be cloned into the `SignerForSeal` adapter
+    // returned by `active_signer_for_seal` — gift-wrap (NIP-17 DMs;
+    // future NIP-57 zaps) drives the seal step through the trait object
+    // and the trait requires `'static + Send + Sync`, which only an
+    // owned `Arc` clone satisfies.
+    remote_signers: HashMap<IdentityId, std::sync::Arc<dyn RemoteSignerHandle>>,
     order: Vec<IdentityId>,
     active: Option<IdentityId>,
     /// Shared output slot for the bunker-handshake projection. The actor (this
@@ -384,7 +391,13 @@ impl IdentityRuntime {
         if !self.keys.contains_key(&id) && !self.remote_signers.contains_key(&id) {
             self.order.push(id.clone());
         }
-        self.remote_signers.insert(id.clone(), handle);
+        // `Box<dyn T>` → `Arc<dyn T>` via `Arc::from(box)`. The actor's
+        // boundary (`ActorCommand::AddRemoteSigner`) still takes `Box<dyn>`
+        // so the broker / nmp-signers contract is unchanged; the actor
+        // converts on insertion (ADR-0026 Phase 2 — see the
+        // `remote_signers` field doc on [`IdentityRuntime`]).
+        self.remote_signers
+            .insert(id.clone(), std::sync::Arc::from(handle));
         if self.active.is_none() {
             self.active = Some(id.clone());
         }
@@ -414,7 +427,17 @@ impl IdentityRuntime {
         self.active
             .as_ref()
             .and_then(|id| self.remote_signers.get(id))
-            .map(|b| b.as_ref())
+            .map(|arc| arc.as_ref())
+    }
+
+    /// Like [`active_remote`] but returns a cloned `Arc` so the caller can
+    /// take owned shared access. Used by [`active_signer_for_seal`] to
+    /// hand the `SignerForSeal` adapter a `'static` handle.
+    fn active_remote_arc(&self) -> Option<std::sync::Arc<dyn RemoteSignerHandle>> {
+        self.active
+            .as_ref()
+            .and_then(|id| self.remote_signers.get(id))
+            .cloned()
     }
 
     pub(crate) fn active_pubkey(&self) -> Option<String> {
@@ -449,14 +472,16 @@ impl IdentityRuntime {
     /// - `Some(Arc<dyn SignerForSeal>)` for a **local** account — the trait
     ///   is satisfied by `nostr::Keys`'s blanket impl, so we hand back an
     ///   `Arc<Keys>` (a cheap clone of the active `Keys`).
-    /// - `None` for a **remote (NIP-46 / NIP-07 / hardware)** account.
-    ///   Wiring a remote `SignerForSeal` adapter (which translates
-    ///   `RemoteSignerHandle::nip44_encrypt` + `sign` into the trait's
-    ///   per-step `SignerOp` shape, and bridges the substrate
-    ///   `SignedEvent` ↔ `nostr::Event` conversion) is the Phase 2
-    ///   follow-up to this seam. The DM path uses this `None` return as
-    ///   the explicit graceful-degrade signal (D6: surface a toast, never
-    ///   silently fail). See `commands/dm.rs` and ADR-0026.
+    /// - `Some(Arc<dyn SignerForSeal>)` for a **remote (NIP-46 / NIP-07 /
+    ///   hardware)** account — ADR-0026 Phase 2. The wrapper
+    ///   [`RemoteSignerForSeal`][super::remote_signer_for_seal::
+    ///   RemoteSignerForSeal] translates between the substrate event
+    ///   shape (`RemoteSignerHandle::sign` returns
+    ///   `SignerOp<SignedEvent>`) and the seam shape
+    ///   (`SignerForSeal::sign_seal` returns `SignerOp<nostr::Event>`),
+    ///   and forwards `nip44_encrypt` directly. A bunker that publishes a
+    ///   malformed pubkey produces `None` (graceful-degrade — `dm.rs`
+    ///   surfaces a toast).
     /// - `None` when no account is active.
     ///
     /// Centralising the raw-key access here keeps `commands/dm.rs`
@@ -466,10 +491,15 @@ impl IdentityRuntime {
     pub(crate) fn active_signer_for_seal(
         &self,
     ) -> Option<std::sync::Arc<dyn nmp_nip59::SignerForSeal>> {
+        if let Some(remote) = self.active_remote_arc() {
+            return super::remote_signer_for_seal::RemoteSignerForSeal::new(remote)
+                .map(|adapter| {
+                    std::sync::Arc::new(adapter) as std::sync::Arc<dyn nmp_nip59::SignerForSeal>
+                });
+        }
         if let Some(keys) = self.active_keys() {
             return Some(std::sync::Arc::new(keys.clone()));
         }
-        // Active account is remote — Phase 2 plugs an adapter here.
         None
     }
 }
@@ -733,10 +763,6 @@ pub(super) const DEFAULT_FOLLOWS: &[&str] = &[
     // fiatjaf
     "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
 ];
-const DEFAULT_ONBOARDING_RELAYS: &[(&str, &str)] = &[
-    ("wss://relay.primal.net", "both,indexer"),
-    ("wss://purplepag.es", "indexer"),
-];
 const DEFAULT_ONBOARDING_OVERRIDE_ROLE: &str = "both,indexer";
 
 pub(crate) fn create_account(
@@ -896,16 +922,15 @@ fn cold_start_publish_targets(kernel: &Kernel, relay_rows: &[RelayEditRow]) -> V
         .map(|row| row.url.clone())
         .chain(kernel.bootstrap_discovery_relays())
         .collect();
-    targets.sort();
-    targets.dedup();
+    sort_dedup(&mut targets);
     targets
 }
 
 fn relay_rows_from_create_account(relays: &[(String, String)]) -> Vec<RelayEditRow> {
     let source = if relays.is_empty() {
-        DEFAULT_ONBOARDING_RELAYS
+        chirp_default_relay_bootstrap()
             .iter()
-            .map(|(url, role)| ((*url).to_string(), (*role).to_string()))
+            .map(|entry| (entry.url.to_string(), entry.role.to_string()))
             .collect::<Vec<_>>()
     } else {
         relays.to_vec()

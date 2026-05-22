@@ -18,25 +18,25 @@
 //!   (parent/child tree with out-of-order arrival buffering).
 //! - [`meta_timeline`] — `Nip10ModularTimelineView` (Twitter-style
 //!   stacked-modules timeline; wraps `nmp_threading::Grouper`).
-//! - [`domain`] — `RepliesDomain: DomainModule` for the `nmp.nip01.replies`
-//!   namespace; a parent-id-keyed reverse index of reply event ids.
 
 pub mod build;
 pub mod decode;
-pub mod domain;
 pub mod kinds;
 pub mod meta_timeline;
+mod note_relations;
+mod profile_display;
 pub mod timeline_projection;
 pub mod view;
 
 pub use build::{Note, NoteBuildError, NoteBuilder};
 pub use decode::{try_from_event, try_from_kernel_event, NoteRecord};
-pub use domain::{decode_and_route, list_by_parent, RepliesDomain, NAMESPACE};
 pub use kinds::KIND_SHORT_NOTE;
 pub use meta_timeline::{
     ModularTimelineDelta, ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState,
     Nip10ModularTimelineView, Nip10Resolver,
 };
+pub use note_relations::{NoteRelationCounts, RelationCount, RelationCountInterest};
+pub use profile_display::{AuthorDisplay, AuthorDisplaySource};
 pub use timeline_projection::{
     ModularTimelineProjection, ModularTimelineSnapshot, TimelineEventCard,
 };
@@ -45,11 +45,10 @@ pub use view::{
     ThreadPayload, ThreadSpec, ThreadState, ThreadView,
 };
 
-// NOTE: `nmp-nip01` exposes its `DomainModule` impl and its view types
-// (`RepliesDomain`, `RepliesView`, `ThreadView`, `Nip10ModularTimelineView`)
-// as public types. The view types are plain types whose `open` / `on_event_*`
-// / `snapshot` inherent methods are reached via static dispatch — the
-// `ViewModule` trait and the former `register(&mut ModuleRegistry)` entry
-// point were both deleted because no kernel-side registry ever drove them.
-// The live extension path is `KernelEventObserver` — see `nmp_core::substrate`
-// module docs.
+// NOTE: `nmp-nip01` exposes its view types (`RepliesView`, `ThreadView`,
+// `Nip10ModularTimelineView`) as plain public types whose `open` /
+// `on_event_*` / `snapshot` inherent methods are reached via static
+// dispatch — the `ViewModule` trait and the former
+// `register(&mut ModuleRegistry)` entry point were both deleted because no
+// kernel-side registry ever drove them. The live extension path is
+// `KernelEventObserver` — see `nmp_core::substrate` module docs.

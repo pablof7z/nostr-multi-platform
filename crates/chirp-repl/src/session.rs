@@ -21,17 +21,20 @@ pub struct Session {
 
 impl Default for Session {
     fn default() -> Self {
-        let relays: Vec<String> = vec![
-            "wss://relay.primal.net".to_string(),
-            "wss://purplepag.es".to_string(),
-        ];
-        let indexers: Vec<String> = vec!["wss://purplepag.es".to_string()];
+        let bootstrap = nmp_chirp_config::chirp_default_relay_bootstrap();
+        let relays: Vec<String> = bootstrap
+            .iter()
+            .filter(|entry| entry.role.contains("both"))
+            .map(|entry| entry.url.to_string())
+            .collect();
+        let indexers: Vec<String> = bootstrap
+            .iter()
+            .filter(|entry| entry.role.contains("indexer"))
+            .map(|entry| entry.url.to_string())
+            .collect();
         let app = AppRuntime::new();
-        for relay in &relays {
-            let _ = app.add_relay(relay, "both");
-        }
-        for relay in &indexers {
-            let _ = app.add_relay(relay, "indexer");
+        for entry in bootstrap {
+            let _ = app.add_relay(entry.url, entry.role);
         }
         Self {
             pubkey_hex: None,

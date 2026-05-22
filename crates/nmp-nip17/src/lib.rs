@@ -54,16 +54,17 @@ use nmp_core::substrate::UnsignedEvent;
 pub mod action;
 pub mod display;
 pub mod dm_relay_list;
+pub mod dm_runtime;
 pub mod inbox;
 
-pub use action::{send_dm_command, SendDmAction, SendDmInput};
+pub use action::{SendDmAction, SendDmInput};
 pub use dm_relay_list::{
-    build_dm_relay_list_event, publish_dm_relay_list_command, PublishDmRelayListAction,
-    PublishDmRelayListInput,
+    build_dm_relay_list_event, PublishDmRelayListAction, PublishDmRelayListInput,
 };
+pub use dm_runtime::{DmRuntimeEffect, DmRuntimeState};
 pub use inbox::{
-    active_giftwrap_inbox_interest, active_giftwrap_inbox_interest_id, giftwrap_inbox_interest,
-    DmConversation, DmInboxProjection, DmInboxSnapshot, DmMessage,
+    active_giftwrap_inbox_interest, active_giftwrap_inbox_interest_id, DmConversation,
+    DmInboxProjection, DmInboxSnapshot, DmMessage,
 };
 
 /// NIP-17 kind: a "chat message" rumor.

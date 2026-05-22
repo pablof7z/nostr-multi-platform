@@ -51,9 +51,7 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 pub type ActionId = String;
 
 #[derive(Clone, Debug, Default)]
-pub struct ActionContext {
-    pub now_ms: u64,
-}
+pub struct ActionContext {}
 
 pub trait ActionModule: Send + Sync + 'static {
     const NAMESPACE: &'static str;

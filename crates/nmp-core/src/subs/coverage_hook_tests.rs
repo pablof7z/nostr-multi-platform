@@ -2,14 +2,15 @@
 //!
 //! D2 doctrine: "negentropy reconciliation before REQ subscriptions". The
 //! kernel-side enabler for that is the [`crate::subs::PlanCoverageHook`] seam:
-//! `nmp-nip77`'s `apply_coverage_filter` is installed via
+//! a host-supplied coverage-filter closure is installed via
 //! [`SubscriptionLifecycle::set_coverage_hook`] so it can rewrite the
 //! `CompiledPlan` (drop authoritative pairs, bump `since`) **after** the M2
 //! compiler produces the plan but **before** `plan_diff` emits the wire
 //! frames.
 //!
-//! These tests pin that seam *independently of `nmp-nip77`*. They install a
-//! stub closure (no NIP-77 dependency, no D0 violation) and assert:
+//! These tests pin that seam independently of any specific policy. They
+//! install a stub closure (no app-noun dependency, no D0 violation) and
+//! assert:
 //!
 //! 1. The hook fires exactly once per `recompile_and_diff`.
 //! 2. The hook fires AT a position where it sees a fully-compiled plan
@@ -17,13 +18,10 @@
 //! 3. A mutation the hook performs reaches the wire diff — i.e. the hook runs
 //!    *before* `plan_diff`.
 //! 4. With no hook installed the plan flows through unchanged (the kernel-only
-//!    path must link and behave cleanly without any NIP-77 dependency).
+//!    path must link and behave cleanly without any external policy).
 //!
-//! Why a kernel-internal pin when `nmp-testing/tests/framework_magic_c10.rs`
-//! already exercises the seam end-to-end? That integration test wires the
-//! *real* `apply_coverage_filter` and would silently lapse the moment the
-//! seam's position drifts but `nmp-nip77` is still present. This pin has zero
-//! `nmp-nip77` coupling, so it survives independently and fails loudly if the
+//! This pin has zero coupling to any specific policy crate, so it survives
+//! independently and fails loudly if the
 //! `compile → coverage_hook → plan_diff` ordering in `recompile.rs` regresses.
 //!
 //! NOTE (D2 audit, 2026-05-20): the seam itself is sound, but the *production*
@@ -202,7 +200,7 @@ fn coverage_hook_drop_closes_prior_req() {
 /// The default (kernel-only) path: with no coverage hook installed the plan
 /// flows through `recompile_and_diff` unchanged. This guards the
 /// `coverage_hook: None` default that lets `nmp-core` link without any
-/// `nmp-nip77` dependency (D0).
+/// external coverage-policy dependency (D0).
 #[test]
 fn no_coverage_hook_leaves_plan_unchanged() {
     let (mut l, mailboxes) = lifecycle_with_mailbox("d", &["wss://r4"]);
@@ -223,8 +221,7 @@ fn no_coverage_hook_leaves_plan_unchanged() {
 ///
 /// The `PlanCoverageHook` seam (pinned by the tests above) is mechanically
 /// sound, but the *production* kernel — `actor::run_actor` and the
-/// `nmp-core/src/ffi` app surface — never calls `set_coverage_hook`. The only
-/// real wiring lives in `nmp-testing/tests/framework_magic_c10.rs`. The
+/// `nmp-core/src/ffi` app surface — never calls `set_coverage_hook`. The
 /// shipping kernel therefore does NOT enforce D2's "negentropy before REQ":
 /// every plan flows straight to raw REQ.
 ///
@@ -233,20 +230,20 @@ fn no_coverage_hook_leaves_plan_unchanged() {
 /// `since_rewrite_tests.rs`). Both are kernel seams awaiting an app-layer
 /// assembly step that installs them at startup.
 ///
-/// The wiring cannot land here: `nmp-core` must not depend on `nmp-nip77`
-/// (D0 — kernel grows no app nouns; would also be a dependency cycle). It
-/// belongs in whatever crate assembles the kernel for the shell. This test is
-/// `#[ignore]`d on purpose: un-ignore it (and replace the body with a real
-/// assertion that the assembled kernel has a coverage hook installed) once
-/// that assembly step exists. See `TODO(D2)` in `subs/mod.rs`.
+/// The wiring cannot land here: `nmp-core` must not depend on any external
+/// coverage-policy crate (D0 — kernel grows no app nouns; would also be a
+/// dependency cycle). It belongs in whatever crate assembles the kernel for
+/// the shell. This test is `#[ignore]`d on purpose: un-ignore it (and replace
+/// the body with a real assertion that the assembled kernel has a coverage
+/// hook installed) once that assembly step exists. See `TODO(D2)` in
+/// `subs/mod.rs`.
 #[test]
 #[ignore = "D2 gap: production kernel does not install a coverage hook yet — \
             see TODO(D2) in subs/mod.rs. Un-ignore when the app-layer kernel \
-            assembly installs nmp_nip77::apply_coverage_filter at startup."]
+            assembly installs a coverage-filter closure at startup."]
 fn d2_production_kernel_installs_coverage_hook() {
     panic!(
         "D2 not enforced in production: no set_coverage_hook call exists in \
-         actor::run_actor or the nmp-core FFI surface. apply_coverage_filter \
-         is only wired in nmp-testing's framework_magic_c10 integration test."
+         actor::run_actor or the nmp-core FFI surface."
     );
 }

@@ -8,7 +8,7 @@ use super::ffi::{c_str_opt, MarmotHandle};
 
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_app_chirp_marmot_fetch_key_packages(
+pub extern "C" fn nmp_marmot_fetch_key_packages(
     handle: *mut MarmotHandle,
     pubkeys_json: *const c_char,
 ) {

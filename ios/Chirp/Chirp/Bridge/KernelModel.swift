@@ -61,6 +61,23 @@ final class KernelModel: ObservableObject {
     @Published var visibleLimit: UInt32 = 80
     @Published var emitHz: UInt32 = 4
 
+    /// D7 actor-death surface — flips to `true` exactly once when the Rust
+    /// supervisor emits an `{"t":"panic",...}` update frame (the actor thread
+    /// died inside `catch_unwind`) OR when the foreground-resume probe
+    /// (`nmp_app_is_alive`, ADR-0028) reports the actor as not running. The
+    /// kernel is terminally dead for this process from that point: every
+    /// FFI command is a silent no-op, no further snapshots will arrive, and
+    /// the only recovery is a process restart. `RootShell` reads this flag
+    /// and overlays the red "Background service stopped — please relaunch"
+    /// banner unconditionally on top of every other view.
+    ///
+    /// Set once, never cleared in-process. A future restart-actor path (if
+    /// any) would clear it, but the current disposition is "tell the user
+    /// to relaunch" — restart-in-process is unsafe because the kernel's
+    /// event store / MLS DB / NIP-77 watermarks are in an unknown state
+    /// after a panic.
+    @Published private(set) var kernelIsDead: Bool = false
+
     // ── Computed projections — read through `snapshot` ────────────────────
 
     var isRunning: Bool { snapshot?.running ?? false }
@@ -158,15 +175,53 @@ final class KernelModel: ObservableObject {
         if let v = ProcessInfo.processInfo.environment["NMP_EMIT_HZ"].flatMap(UInt32.init) {
             emitHz = v
         }
-        kernel.listen { [weak self] result in
+        kernel.listen({ [weak self] result in
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 MainActor.assumeIsolated { self.apply(result: result) }
             }
-        }
+        }, onPanic: { [weak self] in
+            // D7 actor-death — the C callback runs on the Rust listener
+            // thread; bounce onto the main runloop so the @Published flip
+            // happens on the actor (@MainActor). The Rust supervisor only
+            // emits the panic frame once, but `markKernelDead` is idempotent
+            // (a stuck-at-true latch) so a stray re-invoke is safe.
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                MainActor.assumeIsolated { self.markKernelDead() }
+            }
+        })
         // Register the keychain capability handler before start() so the
         // kernel can route capability requests from the first tick.
         kernel.registerCapabilityHandler(capabilities)
+    }
+
+    /// Set the actor-death flag. Idempotent: a second call is a no-op so the
+    /// foreground-resume probe and the push-side panic frame cannot
+    /// double-flip (or flicker on / off, which would be worse — the banner
+    /// must stay up once raised).
+    private func markKernelDead() {
+        if kernelIsDead { return }
+        kmLog.fault("kernelIsDead set — actor thread terminated")
+        kernelIsDead = true
+    }
+
+    /// Probe the actor liveness through the FFI (`nmp_app_is_alive`,
+    /// ADR-0028) and flip `kernelIsDead` if the actor is gone. Pulled by the
+    /// `ChirpApp` scenePhase observer on every `.active` transition: if the
+    /// app was backgrounded across an actor panic, the Swift listener thread
+    /// may have already exited (the channel closed) and the push-side panic
+    /// frame is unreachable. The probe lets the host learn the same fact
+    /// on resume so the red banner still shows.
+    func checkAlive() {
+        // If we already know the kernel is dead, the FFI call is unnecessary
+        // (and the `nmp_app_is_alive` symbol on a freshly-`nmp_app_free`'d
+        // pointer would be UB — though the current `KernelHandle` keeps the
+        // pointer alive for its lifetime, so this is belt + braces).
+        if kernelIsDead { return }
+        if !kernel.isAlive() {
+            markKernelDead()
+        }
     }
 
     var onboardingRelayOverride: String? {
@@ -331,6 +386,50 @@ final class KernelModel: ObservableObject {
         track(kernel.unfollow(pubkey: pubkey))
     }
 
+    /// Dispatch a NIP-57 zap through the `nmp.nip57.zap` ActionModule.
+    /// The recipient's `lnurl` is sourced from `TimelineItem.authorLnurl`
+    /// (pre-extracted from kind:0 by Rust — the shell never parses metadata).
+    /// `amountMsats` defaults to 21,000 msats (21 sats) until an amount
+    /// picker lands; the receiver-relays list is derived from the active
+    /// account's `relayEditRows` and falls back to a hard-coded pair when
+    /// the snapshot has none — NIP-57 requires at least one relay in the
+    /// kind:9734 `relays` tag.
+    @discardableResult
+    func zap(
+        targetEventID: String,
+        authorPubkey: String,
+        lnurl: String,
+        amountMsats: UInt64 = 21_000,
+        comment: String? = nil
+    ) -> DispatchResult {
+        // The kind:9734 `relays` tag tells the LN provider where to publish
+        // the kind:9735 receipt. Use the active account's configured read /
+        // both relays (the surfaces the user actually listens to). Empty
+        // list → fall back to two well-known public relays so the dispatch
+        // doesn't fail validation; ZapAction::start rejects an empty list.
+        // TODO: source the recipient's preferred relays from their kind:10002
+        // (NIP-65) once the snapshot exposes them.
+        let configured: [String] = relayEditRows
+            .filter { row in
+                let role = row.role.lowercased()
+                return role == "read" || role == "both" || role == "primary"
+            }
+            .map(\.url)
+        let relays = configured.isEmpty
+            ? ["wss://relay.damus.io", "wss://nos.lol"]
+            : configured
+        return track(
+            kernel.zap(
+                targetEventID: targetEventID,
+                authorPubkey: authorPubkey,
+                lnurl: lnurl,
+                amountMsats: amountMsats,
+                relays: relays,
+                comment: comment
+            )
+        )
+    }
+
     /// Fire a write action authored by Rust through the namespace-keyed
     /// dispatch seam. Rust composes both `namespace` and `bodyJson` (aim.md §4.4).
     @discardableResult
@@ -375,6 +474,10 @@ final class KernelModel: ObservableObject {
 
     func addRelay(url: String, role: String) { kernel.addRelay(url: url, role: role) }
     func removeRelay(url: String) { kernel.removeRelay(url: url) }
+    @discardableResult
+    func publishDmRelayList(relays: [String]) -> DispatchResult {
+        track(kernel.publishDmRelayList(relays: relays))
+    }
     func openTimeline() { kernel.openTimeline() }
     func clearErrorToast() { lastErrorToast = nil }
 
@@ -444,7 +547,7 @@ final class KernelModel: ObservableObject {
         followList.apply(snapshot: update.followList, activePubkey: update.activeAccount)
 
         // NIP-29 group-discovery projection mirror. Push every tick so the
-        // store tracks `projections["nip29.discovered_groups"]`. The store
+        // store tracks `projections["nmp.nip29.discovered_groups"]`. The store
         // is unwired until the user enters a relay and taps Search
         // (`searchGroups`); the snapshot key is `nil` until then, and the
         // store ignores stale snapshots from a previously-registered

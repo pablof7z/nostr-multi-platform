@@ -1,0 +1,17 @@
+{
+  "name": "nmp-wasm",
+  "type": "module",
+  "description": "Browser-facing NMP worker protocol and wasm runtime facade.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "files": [
+    "nmp_wasm_bg.wasm",
+    "nmp_wasm.js",
+    "nmp_wasm.d.ts"
+  ],
+  "main": "nmp_wasm.js",
+  "types": "nmp_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

@@ -149,7 +149,7 @@ struct Inner {
     key_package_d_tag: Option<String>,
     /// `group_id_hex` → the group's configured (relay-pinned) relay list,
     /// seeded from the `create_group` envelope + `Welcome::group_relays`.
-    /// A MISS → publish falls back to `Auto` (documented limitation).
+    /// A MISS → explicit publish fails closed (documented limitation).
     group_relays: HashMap<String, Vec<RelayUrl>>,
     /// The live `*mut NmpApp` the owning host Marmot handle retains. `null`
     /// for the in-memory test projection (publish degrades to a silent
@@ -256,8 +256,7 @@ impl MarmotProjection {
                         .unwrap_or(0);
                     let display_name = display::group_display_name(&g.name);
                     let initials = display::initials(&display_name);
-                    let member_count_display =
-                        display::member_count_display(members.len());
+                    let member_count_display = display::member_count_display(members.len());
                     let unread_display = display::unread_display(unread);
                     MarmotGroupRow {
                         id_hex,
@@ -396,7 +395,7 @@ impl<'a> InnerHandle<'a> {
     }
 
     /// The cached relay-pinned relays for a group, or `&[]` on a miss
-    /// (caller falls back to `Auto` — documented limitation).
+    /// (caller fails closed on the explicit publish boundary).
     pub(crate) fn group_relays(&self, group_id_hex: &str) -> Vec<RelayUrl> {
         self.inner
             .group_relays
@@ -406,8 +405,8 @@ impl<'a> InnerHandle<'a> {
     }
 
     /// Publish a signed event to the group's relay-pinned relays
-    /// (`Explicit`); a cache miss → `Auto` (empty relay set falls through
-    /// to the author outbox — the kernel API's documented behaviour).
+    /// (`Explicit`); a cache miss now fails closed instead of falling
+    /// through to the author outbox.
     /// Used for kind:445 (group message / commit) and the kind:1059
     /// gift-wrap inbox-routing approximation.
     ///
@@ -423,7 +422,7 @@ impl<'a> InnerHandle<'a> {
     }
 
     /// Publish a signed event to an EXPLICIT relay set (`Explicit`; empty
-    /// → `Auto`). Used by `create_group` / `invite` while a borrowed
+    /// → fail closed). Used by `create_group` / `invite` while a borrowed
     /// `PendingGroupChange` is still live (the relay-pinned cache is keyed
     /// by group and the relays are already known from the envelope, so we
     /// route directly without a `&mut self` cache read/write).

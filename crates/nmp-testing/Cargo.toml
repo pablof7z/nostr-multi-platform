@@ -10,7 +10,6 @@ lmdb-backend = ["nmp-core/lmdb-backend"]
 
 [dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
-nmp-nip77 = { path = "../nmp-nip77" }
 paste = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -19,7 +18,7 @@ serde_json = "1.0"
 nmp-core = { path = "../nmp-core" }
 nmp-nip01 = { path = "../nmp-nip01" }
 nmp-nip22 = { path = "../nmp-nip22" }
-nmp-nip23 = { path = "../nmp-nip23" }
+nmp-nip23 = { path = "../nmp-nip23", features = ["long-form"] }
 nmp-nip42 = { path = "../nmp-nip42" }
 nmp-nip57 = { path = "../nmp-nip57" }
 nmp-relations = { path = "../nmp-reactions" }

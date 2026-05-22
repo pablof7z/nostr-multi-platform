@@ -317,7 +317,7 @@ fn publish_unsigned_event_with_active_remote_uses_stub_signer() {
         content: "# hello bunker".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
     assert_eq!(
         count.load(Ordering::Relaxed),
         1,
@@ -330,6 +330,57 @@ fn publish_unsigned_event_with_active_remote_uses_stub_signer() {
         .contains(&format!("\"pubkey\":\"{expected_pk}\"")));
     let q = kernel.publish_queue_snapshot();
     assert_eq!(q.last().unwrap().status, "accepted_locally");
+}
+
+#[test]
+fn send_gift_wrapped_dm_routes_through_remote_signer_adapter() {
+    // ADR-0026 Phase 2 end-to-end: with an active bunker (StubRemoteSigner),
+    // `send_gift_wrapped_dm` must successfully gift-wrap the rumor TWICE
+    // (recipient + self-copy) by routing the seal step through
+    // `RemoteSignerForSeal`. Pre-Phase-2 behaviour was a toast naming
+    // "ADR-0026 Phase 2"; this test pins the regression.
+    let (mut id, mut kernel) = fresh();
+    let (handle, sign_count) = stub_signer();
+    let sender_pk = handle.pubkey_hex();
+    add_remote_signer(&mut id, &mut kernel, handle, false);
+
+    // Recipient must be a real secp256k1 point because NIP-44 ECDH happens
+    // against it; a hand-typed hex string would fail at PublicKey::parse.
+    let recipient_pk = Keys::generate().public_key().to_hex();
+    // Seed kind:10050 for BOTH the recipient AND the sender so the explicit
+    // routing path resolves on both envelopes — without these the handler
+    // takes the Content-relays fallback, which is correct behaviour but
+    // muddies the assertion about which seam was exercised.
+    kernel.seed_kind10050_for_test(&recipient_pk, &["wss://recipient-dm.test"]);
+    kernel.seed_kind10050_for_test(&sender_pk, &["wss://sender-dm.test"]);
+
+    let rumor = crate::substrate::UnsignedEvent {
+        pubkey: sender_pk.clone(),
+        kind: 14,
+        tags: vec![vec!["p".to_string(), recipient_pk.clone()]],
+        content: "hello from a bunker".into(),
+        created_at: 0,
+    };
+    let outbound = super::dm::send_gift_wrapped_dm(&id, &mut kernel, rumor, &recipient_pk, None);
+
+    assert!(
+        kernel.last_error_toast_snapshot().is_none(),
+        "bunker DM must NOT toast — Phase 2 closes the seam; got toast: {:?}",
+        kernel.last_error_toast_snapshot()
+    );
+    assert!(
+        !outbound.is_empty(),
+        "both gift-wrap envelopes should produce outbound frames"
+    );
+    // The stub signed the kind:13 seal TWICE (once per envelope). If the
+    // sign count is 0 we would have silently fallen back to a local-key
+    // path that does not exist for this account — the seam is the only
+    // way to produce a signed envelope here.
+    assert_eq!(
+        sign_count.load(Ordering::Relaxed),
+        2,
+        "the remote signer should have signed BOTH seals (recipient + self)"
+    );
 }
 
 #[test]
@@ -429,9 +480,11 @@ fn snapshot_carries_nip46_onboarding_projection() {
             });
     }
 
+    let actor_self_tx = cmd_tx.clone();
     thread::spawn(move || {
         run_actor_with_observers(
             cmd_rx,
+            actor_self_tx,
             upd_tx,
             crate::actor::new_lifecycle_observer_slot(),
             crate::actor::new_event_observer_slot(),
@@ -502,7 +555,8 @@ fn dispatch_add_remote_signer_then_progress_surfaces_on_snapshot() {
 
     let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
     let (upd_tx, upd_rx) = mpsc::channel::<String>();
-    thread::spawn(move || run_actor(cmd_rx, upd_tx));
+    let actor_self_tx = cmd_tx.clone();
+    thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
 
     cmd_tx
         .send(ActorCommand::Start {

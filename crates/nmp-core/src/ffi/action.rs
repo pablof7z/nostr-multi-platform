@@ -21,7 +21,7 @@
 //!   [`crate::NmpApp::publish_signed_explicit`] Marmot seam. The actor
 //!   re-verifies the Schnorr signature + id hash (D4 — only the actor loop
 //!   signs/publishes; a forged event is rejected, never published) and
-//!   routes it through the NIP-65 outbox resolver.
+//!   routes it through the typed `PublishTarget` carried by the action.
 //! * [`PublishAction::Cancel`] is engine-internal — `PublishModule::start`
 //!   rejects it, so it is NOT dispatchable through `dispatch_action`. The
 //!   publish lifecycle's control plane (cancel / retry) stays on the dedicated
@@ -52,10 +52,27 @@
 //! * **D8** — the FFI thread never blocks. Dispatch is a non-blocking
 //!   channel send.
 
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::{c_char, CString};
+use std::time::{Duration, Instant};
 
-use super::{app_ref, app_ref_mut, c_string_argument, NmpApp};
+use super::{app_ref, c_string_argument, NmpApp};
+use crate::stable_hash::stable_hash64;
 use crate::substrate::{ActionContext, ActionRejection, ActionResult};
+
+/// Time-to-live for an `inflight_dispatches` entry — the wall-clock window
+/// during which a same-`(namespace, action_json)` retap collapses to the
+/// original dispatch's `correlation_id` instead of enqueueing a second
+/// `ActorCommand`.
+///
+/// 30s is sized to cover "slow relay round-trip" without locking the user out
+/// of a legitimate retry after a genuine failure. The wallet guard
+/// (`INFLIGHT_BOLT11_TTL = 60s`) uses a longer window because NIP-47
+/// `pay_invoice` typically takes longer to settle and the cost of a
+/// double-pay (real funds moved) is higher than the cost of a duplicated DM
+/// (visible to recipients) — 30s for the dispatch guard hits the median
+/// "the response is in flight" case and the host can drive a real retry
+/// after that.
+pub(crate) const INFLIGHT_DISPATCH_TTL: Duration = Duration::from_secs(30);
 
 /// Dispatch a named action through the action registry.
 ///
@@ -136,188 +153,6 @@ pub extern "C" fn nmp_app_ack_action_stage(
     app.send_cmd(crate::actor::ActorCommand::AckActionStage(cid));
 }
 
-/// Host-supplied action executor callback.
-///
-/// Receives the already-validated `action_json` as a NUL-terminated C string.
-/// Returns `NULL` on success, or a NUL-terminated C string describing the
-/// failure. The returned error string is read immediately and copied into an
-/// owned Rust `String`; the host owns its lifetime and may free or reuse it
-/// after the callback returns.
-pub type NmpActionExecutor = unsafe extern "C" fn(*const c_char) -> *const c_char;
-
-/// Register a host-supplied executor for `namespace` against the app's
-/// action registry — the post-construction registration seam.
-///
-/// This is the C-ABI counterpart to [`NmpApp::register_action_executor`]: a
-/// host can wire an action namespace into the registry **without editing
-/// `nmp-core`**. The bridge closure copies the action JSON into a
-/// NUL-terminated C string, invokes `executor`, and maps its return value
-/// (`NULL` → `Ok(())`, non-NULL → `Err(message)`).
-///
-/// SCOPE: this C symbol exposes *executor* registration only. The full
-/// [`nmp_app_dispatch_action`] path also requires a registered *module*
-/// (`ActionRegistry::start` validates the JSON shape against it), so a
-/// namespace wired through THIS C symbol alone is reachable by the registry's
-/// internal `execute` path but not by `nmp_app_dispatch_action`. The
-/// module-side seam is [`nmp_app_register_action_module`] (and its Rust
-/// counterpart [`NmpApp::register_action_module`]); a host registers BOTH
-/// halves to make a namespace fully reachable via `nmp_app_dispatch_action`.
-/// A Rust host such as `nmp-app-chirp` uses the Rust methods directly.
-///
-/// THREADING: this call takes `&mut NmpApp`. It MUST be invoked during host
-/// init — before `nmp_app_start` and before any `nmp_app_dispatch_action` —
-/// so no shared `&NmpApp` is live on another thread. See [`app_ref_mut`].
-///
-/// A null `app`, a null/empty/invalid `namespace`, or a null `executor` is a
-/// silent no-op (D6: a bad registration argument never crashes the host).
-///
-/// # Safety
-/// `app` must be a valid pointer from [`super::nmp_app_new`] (or null).
-/// `namespace` must be a valid UTF-8 NUL-terminated C string (or null).
-/// `executor`, when `Some`, must be a valid function pointer for the
-/// remaining lifetime of `app` — the registry retains it.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-#[no_mangle]
-pub extern "C" fn nmp_app_register_action_executor(
-    app: *mut NmpApp,
-    namespace: *const c_char,
-    executor: Option<NmpActionExecutor>,
-) {
-    let Some(app) = app_ref_mut(app) else {
-        return;
-    };
-    let Some(ns) = c_string_argument(namespace) else {
-        return;
-    };
-    let Some(exec) = executor else {
-        return;
-    };
-    // D6 guard: `nmp.*` namespaces are kernel-owned built-ins. A host
-    // overwriting them via FFI would bypass the validated built-in logic
-    // (e.g. silently replacing PublishModule's signed-event gate). Rust-level
-    // callers are trusted and may call `ActionRegistry::register_executor`
-    // directly; the C-ABI path is where the guard lives.
-    if ns.starts_with("nmp.") {
-        return;
-    }
-    app.register_action_executor(ns, move |action_json, _correlation_id, _send| {
-        // The host executor speaks JSON only. The `_send` actor-command
-        // bridge and `_correlation_id` are intentionally unused in v1: a host
-        // executor that needs to enqueue an `ActorCommand` (or thread the
-        // correlation id onto one) uses a separate mechanism; the seam here
-        // proves post-construction registration works.
-        let cstr = CString::new(action_json).map_err(|e| e.to_string())?;
-        // SAFETY: `exec` is a valid function pointer per this symbol's
-        // safety contract; `cstr.as_ptr()` is a valid NUL-terminated C
-        // string live for the duration of the call.
-        let result_ptr = unsafe { exec(cstr.as_ptr()) };
-        if result_ptr.is_null() {
-            Ok(())
-        } else {
-            // SAFETY: a non-null return is, per the callback contract, a
-            // valid NUL-terminated C string. Copied immediately into an
-            // owned `String`; the host retains ownership of the pointer.
-            let msg = unsafe { CStr::from_ptr(result_ptr) }
-                .to_string_lossy()
-                .into_owned();
-            Err(msg)
-        }
-    });
-}
-
-/// Host-supplied action *validator* callback.
-///
-/// Receives the raw `action_json` as a NUL-terminated C string. Returns
-/// `NULL` to **accept** the action (the registry mints a correlation id), or
-/// a NUL-terminated C string describing the **rejection** reason. The
-/// returned error string is read immediately and copied into an owned Rust
-/// `String`; the host owns its lifetime and may free or reuse it after the
-/// callback returns.
-pub type NmpActionValidator = unsafe extern "C" fn(*const c_char) -> *const c_char;
-
-/// Register a host-supplied *module validator* for `namespace` against the
-/// app's action registry — the complement to
-/// [`nmp_app_register_action_executor`].
-///
-/// `nmp_app_dispatch_action` has two phases: `start()` validates the action
-/// JSON against a registered **module**, then `execute()` dispatches it via a
-/// registered **executor**. `nmp_app_register_action_executor` wires the
-/// executor half; this symbol wires the module half. Registering **both** for
-/// a namespace makes it fully reachable through `nmp_app_dispatch_action`
-/// **without editing `nmp-core`** — a host can dispatch any custom namespace.
-///
-/// The `validator` callback receives the action JSON and returns `NULL` to
-/// accept the action or a NUL-terminated error string to reject. Passing a
-/// `NULL` `validator` registers an **accept-all** module: every action under
-/// `namespace` is accepted — useful when shape validation lives entirely in
-/// the host's executor.
-///
-/// THREADING: this call takes `&mut NmpApp`. It MUST be invoked during host
-/// init — before `nmp_app_start` and before any `nmp_app_dispatch_action` —
-/// so no shared `&NmpApp` is live on another thread. See [`app_ref_mut`].
-///
-/// A null `app` or a null/empty/invalid `namespace` is a silent no-op (D6: a
-/// bad registration argument never crashes the host). A null `validator` is
-/// NOT a no-op — it deliberately selects the accept-all module above.
-///
-/// # Safety
-/// `app` must be a valid pointer from [`super::nmp_app_new`] (or null).
-/// `namespace` must be a valid UTF-8 NUL-terminated C string (or null).
-/// `validator`, when `Some`, must be a valid function pointer for the
-/// remaining lifetime of `app` — the registry retains it.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-#[no_mangle]
-pub extern "C" fn nmp_app_register_action_module(
-    app: *mut NmpApp,
-    namespace: *const c_char,
-    validator: Option<NmpActionValidator>,
-) {
-    let Some(app) = app_ref_mut(app) else {
-        return;
-    };
-    let Some(ns) = c_string_argument(namespace) else {
-        return;
-    };
-    // D6 guard: `nmp.*` namespaces are kernel-owned built-ins. A host
-    // overwriting them via FFI would bypass the validated built-in logic
-    // (e.g. silently replacing PublishModule's signed-event gate). Rust-level
-    // callers are trusted and may call `ActionRegistry::register_with_validator`
-    // directly; the C-ABI path is where the guard lives.
-    if ns.starts_with("nmp.") {
-        return;
-    }
-    let Some(validate) = validator else {
-        // No validator → accept-all: every action is accepted. Shape
-        // validation is then the host executor's job.
-        app.register_action_module(ns, |_action_json| Ok(()));
-        return;
-    };
-    app.register_action_module(ns, move |action_json| {
-        use crate::substrate::ActionRejection;
-        // The host validator speaks JSON only. An interior NUL in the action
-        // JSON cannot cross to C — surface it as a rejection (D6: failures
-        // are data, never a panic).
-        let cstr = CString::new(action_json)
-            .map_err(|_| ActionRejection::Invalid("action_json contains NUL byte".into()))?;
-        // SAFETY: `validate` is a valid function pointer per this symbol's
-        // safety contract; `cstr.as_ptr()` is a valid NUL-terminated C string
-        // live for the duration of the call.
-        let result_ptr = unsafe { validate(cstr.as_ptr()) };
-        if result_ptr.is_null() {
-            // NULL return = accept.
-            Ok(())
-        } else {
-            // SAFETY: a non-null return is, per the callback contract, a
-            // valid NUL-terminated C string. Copied immediately into an owned
-            // `String`; the host retains ownership of the pointer.
-            let msg = unsafe { CStr::from_ptr(result_ptr) }
-                .to_string_lossy()
-                .into_owned();
-            Err(ActionRejection::Invalid(msg))
-        }
-    });
-}
-
 /// Host-supplied action result observer callback.
 ///
 /// Invoked after a dispatched action has been accepted by the registry and
@@ -345,8 +180,8 @@ pub type NmpActionResultObserver = unsafe extern "C" fn(*const c_char);
 /// publishing.
 ///
 /// THREADING: this call takes `&NmpApp` (the observer lives behind an
-/// `Arc<Mutex<…>>` slot), so — unlike `nmp_app_register_action_executor` —
-/// it may be invoked before *or after* `nmp_app_start`. A second
+/// `Arc<Mutex<…>>` slot), so — unlike the typed `register_action::<M>()`
+/// Rust seam — it may be invoked before *or after* `nmp_app_start`. A second
 /// registration replaces the first.
 ///
 /// A null `app` or a null `observer` is a silent no-op (D6: a bad
@@ -392,10 +227,10 @@ pub extern "C" fn nmp_app_register_action_result_observer(
         // in `catch_unwind`, so a Rust panic raised by serde / `CString`
         // is already contained; this guard closes the foreign-throw half
         // of the gap.
-        let _: Option<()> = crate::ffi_guard::guard_ffi_callback(
-            "action result observer",
-            || unsafe { observer(cstr.as_ptr()) },
-        );
+        let _: Option<()> =
+            crate::ffi_guard::guard_ffi_callback("action result observer", || unsafe {
+                observer(cstr.as_ptr())
+            });
     });
 }
 
@@ -403,14 +238,56 @@ pub extern "C" fn nmp_app_register_action_result_observer(
 /// against the registry, drive its execution through the actor, and return
 /// the JSON result string. Split out so the unit tests can exercise the
 /// dispatch logic without raw pointers.
+///
+/// # Idempotency guard
+///
+/// Before validating the action, the dispatcher computes a stable 64-bit
+/// FNV-1a hash of `(namespace, action_json)` and consults the app's
+/// [`NmpApp::inflight_dispatches`] map. A same-key entry younger than
+/// [`INFLIGHT_DISPATCH_TTL`] short-circuits the call: no `start()`, no
+/// executor, no `ActorCommand` enqueued — the call returns
+/// `{"correlation_id":"<original>"}` carrying the FIRST dispatch's
+/// correlation_id so the host's spinner stays bound to the in-flight action.
+/// This collapses rapid re-taps (the classic DM double-send pathology) into a
+/// single wire-side request without changing the host's accepted-action
+/// contract.
+///
+/// Insertion happens AFTER successful executor dispatch, so a malformed dup
+/// (or a registry-rejected action) does not poison the map — the host can
+/// fix and re-submit immediately. Expired entries are swept lazily on every
+/// call by wall-clock.
 fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str) -> String {
     let Some(app) = app else {
         return error_json("null app");
     };
-    let mut ctx = ActionContext {
-        now_ms: now_ms(),
+    // Idempotency guard: compute the dedup key and check (under one lock
+    // acquisition) whether a same-key entry is still inside the TTL window.
+    // The check happens BEFORE `start()` so a re-tap inside the window does
+    // not even pay the validation cost. The lock is acquired ONLY for the
+    // check (it is released before `start()`), so a poisoned guard (D6)
+    // degrades to "let the dispatch through" — same posture as the wallet
+    // bolt11 guard.
+    let dedup_key = stable_hash64((namespace, action_json));
+    if let Ok(mut guard) = app.inflight_dispatches.lock() {
+        let now = Instant::now();
+        guard.retain(|_, (started, _)| now.duration_since(*started) < INFLIGHT_DISPATCH_TTL);
+        if let Some((_, original_id)) = guard.get(&dedup_key) {
+            // Re-tap inside the TTL window — return the original
+            // correlation_id so the host's spinner stays bound to the first
+            // dispatch. No `RecordActionFailure` is enqueued and no second
+            // `ActorCommand` is sent.
+            return format!(r#"{{"correlation_id":{}}}"#, json_string(original_id));
+        }
+    }
+    let dispatch_now_ms = {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0)
     };
-    match app.action_registry.start(&mut ctx, namespace, action_json) {
+    let mut ctx = ActionContext {};
+    match app.action_registry.start(&mut ctx, dispatch_now_ms, namespace, action_json) {
         Ok(correlation_id) => {
             // `start()` is a pure validator and the correlation id is the
             // handle the caller acts on.
@@ -430,6 +307,19 @@ fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str
             // (preferred_action_id already bound it to the event id).
             match execute_action(app, namespace, action_json, &correlation_id) {
                 Ok(()) => {
+                    // Record the inflight entry NOW so a rapid re-tap inside
+                    // the TTL window short-circuits. We insert here (post-
+                    // execute success) rather than after `start()` so a
+                    // dispatch that the executor rejected does not poison the
+                    // map — the host can fix the action and re-submit
+                    // immediately. A poisoned mutex (D6) is a silent skip —
+                    // the dedup gap is acceptable degradation for an
+                    // already-broken process; the alternative of returning an
+                    // error after a successfully-enqueued ActorCommand would
+                    // be a worse correctness story.
+                    if let Ok(mut guard) = app.inflight_dispatches.lock() {
+                        guard.insert(dedup_key, (Instant::now(), correlation_id.clone()));
+                    }
                     // Push the "action accepted and enqueued" signal to the
                     // host's result observer, if one is registered. Built-in
                     // executors are fire-and-forget, so `result_json` is
@@ -440,10 +330,7 @@ fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str
                         correlation_id: correlation_id.clone(),
                         result_json: serde_json::Value::Null,
                     });
-                    format!(
-                        r#"{{"correlation_id":{}}}"#,
-                        json_string(&correlation_id)
-                    )
+                    format!(r#"{{"correlation_id":{}}}"#, json_string(&correlation_id))
                 }
                 Err(msg) => {
                     // PR-G2 — codex MEDIUM finding: an executor that panicked
@@ -536,21 +423,13 @@ fn json_string(s: &str) -> String {
     serde_json::to_string(s).unwrap_or_else(|_| "\"\"".to_string())
 }
 
-/// Current wall-clock time in milliseconds since the Unix epoch, for
-/// [`ActionContext::now_ms`]. A clock before the epoch collapses to `0`.
-fn now_ms() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
-
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::ffi::CStr;
+
     use super::super::{nmp_app_free, nmp_app_new};
+    use super::*;
 
     /// Run `body` against a fresh `NmpApp`, freeing it afterwards. The raw
     /// pointer from `nmp_app_new` is non-null and valid for the closure's
@@ -600,7 +479,10 @@ mod tests {
         with_app(|app| {
             let out = dispatch_action_json(Some(app), "nmp.publish", "{bad json");
             let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
-            assert!(parsed.get("error").is_some(), "expected error object: {out}");
+            assert!(
+                parsed.get("error").is_some(),
+                "expected error object: {out}"
+            );
         });
     }
 
@@ -763,8 +645,7 @@ mod tests {
     #[test]
     fn execute_action_publish_note_is_ok_without_actor() {
         with_app(|app| {
-            let json =
-                r#"{"PublishNote":{"content":"h3","reply_to_id":null,"target":"Auto"}}"#;
+            let json = r#"{"PublishNote":{"content":"h3","reply_to_id":null,"target":"Auto"}}"#;
             assert!(execute_action(app, "nmp.publish", json, "corr-id").is_ok());
         });
     }
@@ -789,50 +670,168 @@ mod tests {
         Arc,
     };
 
-    /// THE SEAM PROOF (review #14): a host registers an action executor for a
-    /// namespace `nmp-core` has never heard of (`test.greeting`) *after*
+    // ─── Typed test ActionModule structs shared across the seam-proof
+    // tests. ADR-0027 collapsed the dual-seam closure path; every host
+    // registration is now `app.register_action::<M>()` against a typed module.
+
+    /// Greeting test module — succeeds and records that `execute` ran. The
+    /// `flag` lives in a `static` `OnceLock` because `ActionModule::execute`
+    /// is a static method with no `&self` (the codegen contract); the test
+    /// reads the flag back after `register_action::<TestGreetingModule>()`.
+    static GREETING_CALLED: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
+
+    /// Reset and return the shared "called" flag for the greeting module.
+    fn greeting_flag() -> Arc<AtomicBool> {
+        GREETING_CALLED
+            .get_or_init(|| Arc::new(AtomicBool::new(false)))
+            .clone()
+    }
+
+    struct TestGreetingModule;
+    impl crate::substrate::ActionModule for TestGreetingModule {
+        const NAMESPACE: &'static str = "test.greeting"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+        type Action = serde_json::Value;
+        fn start(
+            _ctx: &mut ActionContext,
+            _action: Self::Action,
+        ) -> Result<(), ActionRejection> {
+            Ok(())
+        }
+        fn execute(
+            _action: Self::Action,
+            _correlation_id: &str,
+            _send: &dyn Fn(crate::actor::ActorCommand),
+        ) -> Result<(), String> {
+            greeting_flag().store(true, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    /// Failing test module — always returns `Err` from `execute`.
+    struct TestFailingModule;
+    impl crate::substrate::ActionModule for TestFailingModule {
+        const NAMESPACE: &'static str = "test.failing"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+        type Action = serde_json::Value;
+        fn start(
+            _ctx: &mut ActionContext,
+            _action: Self::Action,
+        ) -> Result<(), ActionRejection> {
+            Ok(())
+        }
+        fn execute(
+            _action: Self::Action,
+            _correlation_id: &str,
+            _send: &dyn Fn(crate::actor::ActorCommand),
+        ) -> Result<(), String> {
+            Err("host rejected the action".to_string())
+        }
+    }
+
+    /// Accept-everything test module under `test.todo`. Used by the
+    /// dispatch-action end-to-end tests below.
+    struct TestTodoModule;
+    impl crate::substrate::ActionModule for TestTodoModule {
+        const NAMESPACE: &'static str = "test.todo"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+        type Action = serde_json::Value;
+        fn start(
+            _ctx: &mut ActionContext,
+            _action: Self::Action,
+        ) -> Result<(), ActionRejection> {
+            Ok(())
+        }
+        fn execute(
+            _action: Self::Action,
+            _correlation_id: &str,
+            _send: &dyn Fn(crate::actor::ActorCommand),
+        ) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    /// Rejecting test module under `test.todo_reject` — `start()` always
+    /// returns `ActionRejection::Invalid`.
+    struct TestTodoRejectModule;
+    impl crate::substrate::ActionModule for TestTodoRejectModule {
+        const NAMESPACE: &'static str = "test.todo_reject"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+        type Action = serde_json::Value;
+        fn start(
+            _ctx: &mut ActionContext,
+            _action: Self::Action,
+        ) -> Result<(), ActionRejection> {
+            Err(ActionRejection::Invalid(
+                "host rejected: title required".into(),
+            ))
+        }
+        fn execute(
+            _action: Self::Action,
+            _correlation_id: &str,
+            _send: &dyn Fn(crate::actor::ActorCommand),
+        ) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    /// Panicking test module under `test.panic` — `execute()` panics. Used by
+    /// `executor_failure_returns_correlation_id_and_enqueues_failed_terminal`.
+    struct TestPanicModule;
+    impl crate::substrate::ActionModule for TestPanicModule {
+        const NAMESPACE: &'static str = "test.panic"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+        type Action = serde_json::Value;
+        fn start(
+            _ctx: &mut ActionContext,
+            _action: Self::Action,
+        ) -> Result<(), ActionRejection> {
+            Ok(())
+        }
+        fn execute(
+            _action: Self::Action,
+            _correlation_id: &str,
+            _send: &dyn Fn(crate::actor::ActorCommand),
+        ) -> Result<(), String> {
+            panic!("buggy executor")
+        }
+    }
+
+    /// THE SEAM PROOF (ADR-0027): a host registers a typed `ActionModule` for
+    /// a namespace `nmp-core` has never heard of (`test.greeting`) *after*
     /// `NmpApp` construction, and dispatching that namespace runs the
-    /// host-supplied closure. This is the post-construction registration the
-    /// project lacked: no edit to `default_registry()`, no per-verb C symbol.
+    /// module's `execute()` body. This is the typed post-construction
+    /// registration: no edit to `default_registry()`, no per-verb C symbol,
+    /// no closure-based seam.
     #[test]
     fn host_registered_executor_dispatches_successfully() {
-        let called = Arc::new(AtomicBool::new(false));
-        let called_in_closure = Arc::clone(&called);
+        greeting_flag().store(false, Ordering::SeqCst);
 
         let app = nmp_app_new();
         // SAFETY: `nmp_app_new` never returns null; the pointer is valid
         // until `nmp_app_free` below, and no other reference aliases it here.
         let app_mut = unsafe { &mut *app };
-        app_mut.register_action_executor("test.greeting", move |action_json, _correlation_id, _send| {
-            assert_eq!(action_json, r#"{"hello":"world"}"#);
-            called_in_closure.store(true, Ordering::SeqCst);
-            Ok(())
-        });
+        app_mut.register_action::<TestGreetingModule>();
 
         // `test_execute_action` drives the registry's `execute` path
-        // directly — the v1 seam exposes executor (not module) registration,
-        // so `nmp_app_dispatch_action`'s `start()` validation is bypassed.
+        // directly — `dispatch_action`'s `start()` validation runs through
+        // the same typed module, but `test_execute_action` skips the
+        // correlation-id minting and just exercises the executor body.
         app_mut
             .test_execute_action("test.greeting", r#"{"hello":"world"}"#)
             .expect("host-registered executor should run");
 
         assert!(
-            called.load(Ordering::SeqCst),
+            greeting_flag().load(Ordering::SeqCst),
             "host-registered executor was never invoked"
         );
         nmp_app_free(app);
     }
 
-    /// A host executor that returns `Err` propagates the failure message
-    /// back through the registry — the host is never handed a false success.
+    /// A typed `ActionModule` whose `execute()` returns `Err` propagates the
+    /// failure message back through the registry — the host is never handed
+    /// a false success.
     #[test]
     fn host_registered_executor_propagates_error() {
         let app = nmp_app_new();
         // SAFETY: see `host_registered_executor_dispatches_successfully`.
         let app_mut = unsafe { &mut *app };
-        app_mut.register_action_executor("test.failing", |_action_json, _correlation_id, _send| {
-            Err("host rejected the action".to_string())
-        });
+        app_mut.register_action::<TestFailingModule>();
 
         let err = app_mut
             .test_execute_action("test.failing", "{}")
@@ -841,7 +840,7 @@ mod tests {
         nmp_app_free(app);
     }
 
-    /// A namespace with no registered executor still returns the registry's
+    /// A namespace with no registered module still returns the registry's
     /// `Err` — registering one namespace does not accidentally answer for
     /// another (D6: a missing executor is never silently swallowed).
     #[test]
@@ -849,7 +848,7 @@ mod tests {
         let app = nmp_app_new();
         // SAFETY: see `host_registered_executor_dispatches_successfully`.
         let app_mut = unsafe { &mut *app };
-        app_mut.register_action_executor("test.greeting", |_json, _correlation_id, _send| Ok(()));
+        app_mut.register_action::<TestGreetingModule>();
 
         let err = app_mut
             .test_execute_action("test.unregistered", "{}")
@@ -861,23 +860,20 @@ mod tests {
         nmp_app_free(app);
     }
 
-    /// THE SEAM PROOF: a host registers BOTH a module validator and an
-    /// executor for a namespace `nmp-core` has never heard of (`test.todo`)
-    /// *after* `NmpApp` construction, and `nmp_app_dispatch_action` then
-    /// drives that namespace end-to-end — `start()` validation succeeds
-    /// against the host module, `execute()` runs the host executor, and a
-    /// `correlation_id` comes back. This is what PR #60 alone could NOT do:
-    /// an executor-only namespace is rejected by `start()`. Together the two
-    /// PRs give a host complete post-construction `dispatch_action` wiring.
+    /// THE SEAM PROOF (ADR-0027): a host registers a typed `ActionModule` for
+    /// a namespace `nmp-core` has never heard of (`test.todo`) *after*
+    /// `NmpApp` construction, and `nmp_app_dispatch_action` then drives that
+    /// namespace end-to-end — `M::start` validates, `M::execute` runs, and a
+    /// `correlation_id` comes back. The unified trait means a single
+    /// registration call wires BOTH halves; there is no possible
+    /// partial-registration gap.
     #[test]
     fn host_registered_module_and_executor_enables_dispatch_action() {
         let app = nmp_app_new();
         // SAFETY: `nmp_app_new` never returns null; the pointer is valid
         // until `nmp_app_free` below, and no other reference aliases it here.
         let app_mut = unsafe { &mut *app };
-        // Register both halves for "test.todo".
-        app_mut.register_action_module("test.todo", |_action_json| Ok(()));
-        app_mut.register_action_executor("test.todo", |_action_json, _correlation_id, _send| Ok(()));
+        app_mut.register_action::<TestTodoModule>();
 
         // Now `dispatch_action` should succeed end-to-end.
         let out = dispatch_action_json(
@@ -893,21 +889,18 @@ mod tests {
         nmp_app_free(app);
     }
 
-    /// A host module validator that returns `Err` rejects the action at the
-    /// `start()` phase — `dispatch_action` returns `{"error":…}` carrying the
-    /// host's message, and the executor is never reached.
+    /// A typed `ActionModule` whose `start()` returns `Err` rejects the
+    /// action at the validation phase — `dispatch_action` returns
+    /// `{"error":…}` carrying the host's message, and `execute()` is never
+    /// reached.
     #[test]
     fn host_registered_module_can_reject_action() {
-        use crate::substrate::ActionRejection;
         let app = nmp_app_new();
         // SAFETY: see `host_registered_module_and_executor_enables_dispatch_action`.
         let app_mut = unsafe { &mut *app };
-        app_mut.register_action_module("test.todo", |_action_json| {
-            Err(ActionRejection::Invalid("host rejected: title required".into()))
-        });
-        app_mut.register_action_executor("test.todo", |_action_json, _correlation_id, _send| Ok(()));
+        app_mut.register_action::<TestTodoRejectModule>();
 
-        let out = dispatch_action_json(Some(&*app_mut), "test.todo", "{}");
+        let out = dispatch_action_json(Some(&*app_mut), "test.todo_reject", "{}");
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
         let err = parsed
             .get("error")
@@ -1025,15 +1018,18 @@ mod tests {
 
         let observed = OBSERVED.lock().unwrap().clone();
         let observed = observed.expect("the C observer callback should have fired");
-        let parsed: serde_json::Value = serde_json::from_str(&observed)
-            .expect("the observer payload should be valid JSON");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&observed).expect("the observer payload should be valid JSON");
         assert_eq!(
             parsed.get("correlation_id").and_then(|v| v.as_str()),
             Some(returned_id),
             "C observer payload must carry the dispatch correlation_id"
         );
         assert!(
-            parsed.get("result_json").map(|v| v.is_null()).unwrap_or(false),
+            parsed
+                .get("result_json")
+                .map(|v| v.is_null())
+                .unwrap_or(false),
             "C observer payload must carry a result_json field (null here)"
         );
         nmp_app_free(app);
@@ -1079,16 +1075,12 @@ mod tests {
         // SAFETY: `nmp_app_new` never returns null; valid until `nmp_app_free` below.
         let app_mut = unsafe { &mut *app };
 
-        // Register a panicking executor under a non-`nmp.*` namespace. The
-        // registry's `catch_unwind` converts the panic into
-        // `Err("action executor panicked")`. The new dispatch path must then
-        // (a) still include the minted correlation_id in the envelope and
-        // (b) enqueue a `RecordActionFailure` on the actor channel.
-        app_mut.register_action_module("test.panic", |_action_json| Ok(()));
-        app_mut.register_action_executor(
-            "test.panic",
-            |_action_json, _correlation_id, _send| panic!("buggy executor"),
-        );
+        // Register a typed module whose `execute()` panics. The registry's
+        // `catch_unwind` converts the panic into `Err("action executor
+        // panicked")`. The new dispatch path must then (a) still include the
+        // minted correlation_id in the envelope and (b) enqueue a
+        // `RecordActionFailure` on the actor channel.
+        app_mut.register_action::<TestPanicModule>();
 
         let depth_before = app_mut
             .queue_depth
@@ -1136,97 +1128,243 @@ mod tests {
         nmp_app_free(app);
     }
 
-    /// An executor-only namespace (no module registered) is still rejected by
-    /// `dispatch_action`'s `start()` phase — proving the module half is
-    /// genuinely required and that PR #60's executor seam alone is not enough
-    /// for `dispatch_action`.
+    // ──────────────────────────────────────────────────────────────────
+    //                  Generic dispatch idempotency guard
+    // ──────────────────────────────────────────────────────────────────
+    //
+    // The DM double-send pathology: a user re-taps Send before the gift-wrap
+    // fan-out completes, two batches of kind:1059 envelopes go to the wire,
+    // and recipients see the message twice — there is no on-the-wire dedup
+    // for gift-wraps because each batch is sealed with a fresh ephemeral key.
+    //
+    // The guard mirrors the wallet `inflight_bolt11` pattern but is generic
+    // over (namespace, action_json): a same-action retap inside
+    // `INFLIGHT_DISPATCH_TTL` returns the FIRST dispatch's correlation_id
+    // without enqueueing a second `ActorCommand`. The witnesses below are
+    // (a) the FFI return envelope shape — `correlation_id` MUST match the
+    // first call — and (b) the queue-depth straddle counter — exactly one
+    // `ActorCommand` MUST have been enqueued across two same-action calls.
+
+    /// Two consecutive `dispatch_action_json` calls with the SAME
+    /// `(namespace, action_json)` pair must collapse to a single
+    /// `ActorCommand` enqueue AND return the same `correlation_id` on both
+    /// calls. The second call is the UI double-tap and must be silently
+    /// coalesced into the first.
+    ///
+    /// The `PublishNote` action is used because it mints a fresh
+    /// registry-side correlation_id (a `Publish` action would return the
+    /// event id, which is the same on both calls regardless of dedup — and
+    /// would not prove the guard). A fresh id means a non-deduped second
+    /// call would return a DIFFERENT id; the guard makes them match.
     #[test]
-    fn executor_only_namespace_is_rejected_by_dispatch_action() {
+    fn duplicate_dispatch_returns_same_correlation_id() {
+        with_app(|app| {
+            let ns = "nmp.publish";
+            let payload =
+                r#"{"PublishNote":{"content":"dedup-test","reply_to_id":null,"target":"Auto"}}"#;
+
+            let out_first = dispatch_action_json(Some(app), ns, payload);
+            let parsed_first: serde_json::Value = serde_json::from_str(&out_first).unwrap();
+            let id_first = parsed_first
+                .get("correlation_id")
+                .and_then(|v| v.as_str())
+                .expect("first dispatch should return correlation_id")
+                .to_string();
+
+            let out_second = dispatch_action_json(Some(app), ns, payload);
+            let parsed_second: serde_json::Value = serde_json::from_str(&out_second).unwrap();
+            let id_second = parsed_second
+                .get("correlation_id")
+                .and_then(|v| v.as_str())
+                .expect("second dispatch should also return correlation_id");
+
+            assert_eq!(
+                id_first, id_second,
+                "a same-action retap inside the TTL window must return the FIRST \
+                 dispatch's correlation_id so the host's spinner stays bound to the \
+                 in-flight action"
+            );
+
+            // The robust witness for "second call short-circuited before
+            // reaching the executor" is the inflight set itself: a rejected
+            // re-tap inserts nothing extra (the key is already present), so
+            // the set size after two same-action calls is exactly one. The
+            // wallet bolt11 test uses this same pattern (the actor thread
+            // runs concurrently and may dequeue between reads, so a depth
+            // delta is not a robust witness).
+            let guard = app.inflight_dispatches.lock().unwrap();
+            assert_eq!(
+                guard.len(),
+                1,
+                "exactly one inflight entry expected after a same-action double-tap; \
+                 a non-deduped second call would have inserted a second key"
+            );
+        });
+    }
+
+    /// Two `dispatch_action_json` calls with DIFFERENT `(namespace,
+    /// action_json)` pairs must both pass through the guard — they are
+    /// independent actions, not a double-tap. Witness: the inflight set
+    /// holds exactly two entries after the second call.
+    #[test]
+    fn distinct_dispatches_both_enqueue() {
+        with_app(|app| {
+            let ns = "nmp.publish";
+            let payload_a =
+                r#"{"PublishNote":{"content":"alpha","reply_to_id":null,"target":"Auto"}}"#;
+            let payload_b =
+                r#"{"PublishNote":{"content":"bravo","reply_to_id":null,"target":"Auto"}}"#;
+
+            let _ = dispatch_action_json(Some(app), ns, payload_a);
+            let _ = dispatch_action_json(Some(app), ns, payload_b);
+
+            let guard = app.inflight_dispatches.lock().unwrap();
+            assert_eq!(
+                guard.len(),
+                2,
+                "two distinct actions must both be tracked inflight; a guard that \
+                 collapsed them would mute legitimate independent sends"
+            );
+        });
+    }
+
+    /// The same `action_json` under a DIFFERENT namespace must NOT be
+    /// considered a duplicate — the dedup key includes the namespace, so a
+    /// host that dispatches the same JSON shape to two different action
+    /// namespaces gets two distinct inflight entries. This guards against a
+    /// hypothetical hash-collision-by-namespace-overlap.
+    #[test]
+    fn same_action_json_under_different_namespace_does_not_dedup() {
+        // Register a permissive test module under a non-`nmp.*` namespace
+        // that accepts any JSON. The shared static `OnceLock` flag is unused
+        // here — we just need the registration to succeed.
         let app = nmp_app_new();
-        // SAFETY: see `host_registered_module_and_executor_enables_dispatch_action`.
+        // SAFETY: `nmp_app_new` never returns null.
         let app_mut = unsafe { &mut *app };
-        app_mut.register_action_executor("test.todo", |_action_json, _correlation_id, _send| Ok(()));
+        app_mut.register_action::<TestTodoModule>();
 
-        let out = dispatch_action_json(Some(&*app_mut), "test.todo", "{}");
-        let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
-        let err = parsed
-            .get("error")
-            .and_then(|v| v.as_str())
-            .unwrap_or_else(|| panic!("expected error object, got: {out}"));
-        assert!(
-            err.contains("unknown action namespace"),
-            "executor-only namespace must fail start() validation, got: {err}"
+        // Identical JSON payload under TWO different namespaces — the dedup
+        // key bakes in the namespace via the FNV tuple hash, so these MUST
+        // be tracked independently.
+        let payload = r#"{"create":{"title":"hash-collision-guard"}}"#;
+        let _ = dispatch_action_json(Some(&*app_mut), "test.todo", payload);
+
+        // For the second call to succeed under a different namespace, that
+        // namespace must also be registered. Use `nmp.publish` with a real
+        // PublishNote payload so we exercise the cross-namespace independence
+        // without inventing a second mock module.
+        let pub_payload =
+            r#"{"PublishNote":{"content":"hash-collision-guard","reply_to_id":null,"target":"Auto"}}"#;
+        let _ = dispatch_action_json(Some(&*app_mut), "nmp.publish", pub_payload);
+
+        let guard = app_mut.inflight_dispatches.lock().unwrap();
+        assert_eq!(
+            guard.len(),
+            2,
+            "different namespaces must produce different dedup keys; an entry-count \
+             of 1 would mean the namespace was not part of the key (or the test \
+             actions happened to collide, which the tuple hash makes statistically \
+             impossible)"
         );
+        drop(guard);
         nmp_app_free(app);
     }
 
-    /// D6 guard: `nmp_app_register_action_executor` silently ignores any
-    /// namespace that starts with `"nmp."` — a host cannot shadow a
-    /// kernel-owned built-in via the C-ABI and bypass its validation gate.
-    /// After an attempted override the built-in `nmp.publish` executor still
-    /// handles the action correctly.
+    /// An inflight entry older than [`INFLIGHT_DISPATCH_TTL`] must be swept
+    /// before the contains-check, so a legitimate retry after the TTL passes
+    /// through the guard. Same pattern as the wallet test
+    /// `expired_inflight_entry_is_swept_and_retry_passes`: backdate the
+    /// `Instant` directly rather than sleeping for 30s.
     #[test]
-    fn c_abi_nmp_prefixed_executor_registration_is_silently_rejected() {
-        use std::ffi::CString;
+    fn expired_dispatch_entry_is_swept_and_retry_passes() {
+        with_app(|app| {
+            let ns = "nmp.publish";
+            let payload =
+                r#"{"PublishNote":{"content":"expiry-test","reply_to_id":null,"target":"Auto"}}"#;
 
-        // A custom executor that always returns a failure message.
-        extern "C" fn shadow_executor(_json: *const c_char) -> *const c_char {
-            c"shadow_executor_ran".as_ptr()
-        }
+            // Seed the inflight set.
+            let out_first = dispatch_action_json(Some(app), ns, payload);
+            let id_first = serde_json::from_str::<serde_json::Value>(&out_first)
+                .unwrap()
+                .get("correlation_id")
+                .and_then(|v| v.as_str())
+                .unwrap()
+                .to_string();
 
-        let app = nmp_app_new();
-        // Attempt to replace the built-in executor via the C-ABI guard.
-        let ns = CString::new("nmp.publish").unwrap();
-        nmp_app_register_action_executor(app, ns.as_ptr(), Some(shadow_executor));
+            // Backdate the entry so the sweep on the next call removes it.
+            // Mirror the wallet test's `.expect()` so a hypothetical platform
+            // whose `Instant` epoch sits inside the TTL window fails loudly
+            // instead of silently passing for the wrong reason.
+            {
+                let mut guard = app.inflight_dispatches.lock().unwrap();
+                assert_eq!(guard.len(), 1);
+                let backdated = Instant::now()
+                    .checked_sub(INFLIGHT_DISPATCH_TTL + Duration::from_secs(1))
+                    .expect("Instant::checked_sub(31s) must succeed on every supported platform");
+                for (_, (ts, _)) in guard.iter_mut() {
+                    *ts = backdated;
+                }
+            }
 
-        // The built-in must still handle `nmp.publish` (`PublishNote` needs no
-        // signed event and exercises the full execute path).
-        let result = execute_action(
-            // SAFETY: nmp_app_new never returns null; valid until nmp_app_free.
-            unsafe { &*app },
-            "nmp.publish",
-            r#"{"PublishNote":{"content":"guard-probe","reply_to_id":null,"target":"Auto"}}"#,
-            "corr-id",
-        );
-        assert!(
-            result.is_ok(),
-            "built-in executor must still run after rejected nmp.* registration, got: {result:?}"
-        );
-        nmp_app_free(app);
+            // Second call: the sweep must drop the expired entry, then the
+            // executor enqueues a fresh dispatch with a NEW correlation_id.
+            // The set still has exactly one entry after — but its
+            // correlation_id is the second dispatch's id, not the first's.
+            let out_second = dispatch_action_json(Some(app), ns, payload);
+            let id_second = serde_json::from_str::<serde_json::Value>(&out_second)
+                .unwrap()
+                .get("correlation_id")
+                .and_then(|v| v.as_str())
+                .unwrap()
+                .to_string();
+
+            assert_ne!(
+                id_first, id_second,
+                "after the TTL elapses, the retry must mint a FRESH correlation_id; \
+                 a match would mean the sweep missed the expired entry"
+            );
+
+            let guard = app.inflight_dispatches.lock().unwrap();
+            assert_eq!(
+                guard.len(),
+                1,
+                "retry after TTL must pass the guard and re-insert exactly one entry"
+            );
+        });
     }
 
-    /// D6 guard: `nmp_app_register_action_module` silently ignores any
-    /// namespace starting with `"nmp."` — the kernel-owned module validator
-    /// cannot be replaced via the C-ABI.
+    /// A dispatch that is REJECTED by the registry (unknown namespace,
+    /// malformed JSON, validation rejection) must NOT pollute the inflight
+    /// set — the host can fix and re-submit immediately. The guard only
+    /// records successfully-enqueued dispatches.
     #[test]
-    fn c_abi_nmp_prefixed_module_registration_is_silently_rejected() {
-        use std::ffi::CString;
-
-        // A custom validator that always accepts everything (accept-all null
-        // validator path — would bypass PublishModule's signed-event gate).
-        let app = nmp_app_new();
-        let ns = CString::new("nmp.publish").unwrap();
-        nmp_app_register_action_module(app, ns.as_ptr(), None);
-
-        // PublishModule's validation gate is still in force — the C-ABI
-        // registration with a `None` validator was silently rejected, so the
-        // built-in `PublishModule::start` (not an accept-all replacement) runs.
-        // A well-formed `PublishNote` exercises that gate and is accepted:
-        let out = dispatch_action_json(
-            // SAFETY: nmp_app_new never returns null; valid until nmp_app_free.
-            Some(unsafe { &*app }),
-            "nmp.publish",
-            r#"{"PublishNote":{"content":"guard-probe","reply_to_id":null,"target":"Auto"}}"#,
-        );
-        let parsed: serde_json::Value =
-            serde_json::from_str(&out).expect("dispatch always returns JSON");
-        // `PublishNote` must still be accepted by the built-in module
-        // (correlation_id, not an error) — the accept-all replacement did NOT
-        // take effect.
-        assert!(
-            parsed.get("correlation_id").is_some(),
-            "built-in module must still validate after rejected nmp.* registration, got: {out}"
-        );
-        nmp_app_free(app);
+    fn rejected_dispatch_does_not_pollute_inflight_set() {
+        with_app(|app| {
+            // Unknown namespace — rejected at `start()`.
+            let _ = dispatch_action_json(Some(app), "nmp.unknown", "{}");
+            // Malformed JSON — rejected at action-shape parsing.
+            let _ = dispatch_action_json(Some(app), "nmp.publish", "{bad json");
+            let guard = app.inflight_dispatches.lock().unwrap();
+            assert!(
+                guard.is_empty(),
+                "rejected dispatches must not be tracked inflight; the host has to \
+                 fix and re-submit, and that re-submission must not be confused for \
+                 a UI double-tap"
+            );
+        });
     }
+
+    // ADR-0027 deleted three tests that no longer have a way to be
+    // expressed:
+    //
+    // * `executor_only_namespace_is_rejected_by_dispatch_action` — the unified
+    //   trait registers `start()` and `execute()` together; an "executor-only
+    //   namespace" is structurally impossible.
+    // * `c_abi_nmp_prefixed_executor_registration_is_silently_rejected` —
+    //   `nmp_app_register_action_executor` was deleted along with the
+    //   `nmp.*`-namespace D6 guard that lived on it. The same protection now
+    //   lives in the registry: replacing a built-in module requires editing
+    //   `default_registry`, which is by definition trusted Rust code.
+    // * `c_abi_nmp_prefixed_module_registration_is_silently_rejected` —
+    //   same reasoning for `nmp_app_register_action_module`.
 }

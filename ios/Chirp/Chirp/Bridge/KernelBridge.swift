@@ -16,7 +16,7 @@ final class KernelHandle {
     /// modular-timeline bridge extension manages its lifetime; see
     /// `Bridge/ModularTimelineBridge.swift`.
     var chirpHandle: UnsafeMutableRawPointer?
-    /// Opaque handle returned by `nmp_app_chirp_marmot_register`. The
+    /// Opaque handle returned by `nmp_marmot_register`. The
     /// Marmot bridge extension manages its lifetime; see
     /// `Bridge/MarmotBridge.swift`. Registered lazily once a secret key is
     /// known (nsec sign-in); nil until then (and for bunker sign-in).
@@ -75,10 +75,32 @@ final class KernelHandle {
             nmpCapabilityCallback)
     }
 
-    func listen(_ handler: @escaping (KernelUpdateResult) -> Void) {
-        let sink = KernelUpdateSink(handler: handler)
+    /// Wire the Rust update callback. `handler` runs on every snapshot frame;
+    /// `onPanic` runs exactly once if/when the actor thread dies and the Rust
+    /// supervisor emits an `{"t":"panic",...}` envelope on the update channel
+    /// (D7 actor-death contract — see `crates/nmp-core/src/update_envelope.rs`).
+    /// After `onPanic` fires the kernel is terminally dead for this process:
+    /// no further snapshots will arrive and every subsequent FFI command is a
+    /// silent no-op. The host (`KernelModel`) flips its `kernelIsDead`
+    /// `@Published` flag and shows the red banner from `RootShell`.
+    func listen(
+        _ handler: @escaping (KernelUpdateResult) -> Void,
+        onPanic: @escaping () -> Void = {}
+    ) {
+        let sink = KernelUpdateSink(handler: handler, onPanic: onPanic)
         updateSink = sink
         nmp_app_set_update_callback(raw, Unmanaged.passUnretained(sink).toOpaque(), nmpUpdateCallback)
+    }
+
+    /// Actor-liveness probe (D7 pull-side, ADR-0028). Returns `true` when the
+    /// Rust actor thread is still running, `false` when it has terminated
+    /// (panic, clean Shutdown, or null app). Pairs with the panic envelope
+    /// signal `listen(_:onPanic:)` subscribes to: the host calls this on
+    /// scenePhase = .active to catch the case where the push-side panic
+    /// frame was missed (the app was backgrounded long enough for the Swift
+    /// listener thread to exit before the host had a chance to react).
+    func isAlive() -> Bool {
+        nmp_app_is_alive(raw) == 1
     }
 
     func start(visibleLimit: UInt32 = 80, emitHz: UInt32 = 4) {
@@ -334,6 +356,41 @@ final class KernelHandle {
         dispatchAction(namespace: "chirp.unfollow", body: ["pubkey": pubkey])
     }
 
+    /// Dispatch a NIP-57 zap through the `nmp.nip57.zap` ActionModule.
+    /// Rust signs the kind:9734 zap request, completes the two-leg LNURL-pay
+    /// round-trip, and (when the `wallet` feature is active) auto-dispatches
+    /// `ActorCommand::WalletPayInvoice` so the bolt11 → NWC pay loop closes
+    /// without a second host round-trip. The shell never sees the bolt11
+    /// or parses LNURL/kind:9734 — thin-shell rule (aim.md §6.9).
+    ///
+    /// `lnurl` is the pre-extracted `authorLnurl` from the timeline item;
+    /// `relays` is the receiver's preferred-relay set (today: the active
+    /// account's read relays, falling back to `relay.damus.io` + `nos.lol`
+    /// when the snapshot's relay list is empty). PR-A: returns the
+    /// synchronous dispatch envelope so the host can drive a spinner keyed
+    /// on the minted correlation_id.
+    @discardableResult
+    func zap(
+        targetEventID: String,
+        authorPubkey: String,
+        lnurl: String,
+        amountMsats: UInt64,
+        relays: [String],
+        comment: String? = nil
+    ) -> DispatchResult {
+        var body: [String: Any] = [
+            "recipient_pubkey": authorPubkey,
+            "amount_msats": amountMsats,
+            "lnurl": lnurl,
+            "relays": relays,
+            "target_event_id": targetEventID,
+        ]
+        if let comment, !comment.isEmpty {
+            body["comment"] = comment
+        }
+        return dispatchAction(namespace: "nmp.nip57.zap", body: body)
+    }
+
     /// Generic dispatch entry-point keyed on a kernel-supplied
     /// `ProfileDispatchSpec`. The shell does NOT pick the namespace or build
     /// the body — Rust authored both inside `profile_action_for` (aim.md
@@ -377,6 +434,11 @@ final class KernelHandle {
 
     func removeRelay(url: String) {
         url.withCString { nmp_app_remove_relay(raw, $0) }
+    }
+
+    @discardableResult
+    func publishDmRelayList(relays: [String]) -> DispatchResult {
+        dispatchAction(namespace: "nmp.nip17.publish_relay_list", body: ["relays": relays])
     }
 
     func openTimeline() {
@@ -439,14 +501,10 @@ final class KernelHandle {
         }
         let frameTag = outer["t"] as? String
         guard frameTag == "snapshot" else {
-            // Discrete update frames (t=update) are intentionally ignored — the
-            // snapshot already carries full projected UI state. Log at debug so
-            // a flood of unhandled frame types is diagnosable without noise.
-            if frameTag == "update" {
-                kbLog.debug("discrete update frame received (not applied by snapshot bridge)")
-            } else {
-                kbLog.error("unknown envelope tag=\(frameTag ?? "<nil>") bytes=\(data.count)")
-            }
+            // Panic frames (t=panic) are intercepted earlier in
+            // `nmpUpdateCallback` and never reach this decoder. Anything else
+            // is a wire-format regression — log loudly so it surfaces in CI.
+            kbLog.error("unknown envelope tag=\(frameTag ?? "<nil>") bytes=\(data.count)")
             return nil
         }
         guard let inner = outer["v"] else {
@@ -478,8 +536,21 @@ final class KernelHandle {
 
 private final class KernelUpdateSink {
     let handler: (KernelUpdateResult) -> Void
-    init(handler: @escaping (KernelUpdateResult) -> Void) {
+    /// D7 actor-death hook. Runs exactly once when the Rust supervisor closure
+    /// emits the `{"t":"panic",...}` envelope on the update channel before
+    /// the actor thread (and the channel itself) drops. The host uses this to
+    /// flip a `@Published` flag and show a fatal-error banner; the closure is
+    /// the only Swift-side path that learns about an actor-thread panic from
+    /// the update callback (since `nmpUpdateCallback` is a C `let` and cannot
+    /// capture `self`).
+    let onPanic: () -> Void
+
+    init(
+        handler: @escaping (KernelUpdateResult) -> Void,
+        onPanic: @escaping () -> Void
+    ) {
         self.handler = handler
+        self.onPanic = onPanic
     }
 }
 
@@ -504,12 +575,18 @@ private let nmpCapabilityCallback: NmpCapabilityCallback = { context, requestJSO
 private let nmpUpdateCallback: NmpUpdateCallback = { context, pointer in
     guard let context, let pointer else { return }
     let payload = String(cString: pointer)
+    let sink = Unmanaged<KernelUpdateSink>.fromOpaque(context).takeUnretainedValue()
+    // D7 actor-death contract: the Rust supervisor emits exactly one
+    // `{"t":"panic","v":{"msg":...}}` envelope before the channel closes.
+    // The substring scan matches the wire shape pinned by the kernel test
+    // `panic_frame_contains_panic_tag_substring` — that test is the source
+    // of truth and is the contract this branch consumes.
     if payload.contains("\"t\":\"panic\"") {
         kbLog.fault("NMP_ACTOR_PANIC detected bytes=\(payload.utf8.count)")
+        sink.onPanic()
         return
     }
     guard let result = KernelHandle.decode(pointer: pointer) else { return }
-    let sink = Unmanaged<KernelUpdateSink>.fromOpaque(context).takeUnretainedValue()
     sink.handler(result)
 }
 
@@ -747,14 +824,14 @@ struct KernelUpdate: Decodable {
     /// the consumer keeps reading `update.mentionProfiles` unchanged.
     var mentionProfiles: [String: MentionProfileWire]? { projections?.mentionProfiles }
 
-    /// NIP-29 group-chat read model — `projections["nip29.group_chat"]`.
+    /// NIP-29 group-chat read model — `projections["nmp.nip29.group_chat"]`.
     /// `nil` until `nmp_app_chirp_register_group_chat` has wired a group's
     /// projection; an empty `messages` array once registered but no chat
     /// events have arrived. Computed so the `GroupChatStore` consumer keeps
     /// reading `update.groupChat` unchanged.
     var groupChat: GroupChatSnapshot? { projections?.groupChat }
 
-    /// NIP-17 DM inbox read model — `projections["nip17.dm_inbox"]`.
+    /// NIP-17 DM inbox read model — `projections["nmp.nip17.dm_inbox"]`.
     /// `nil` until `nmp_app_chirp_register_dm_inbox` has wired the inbox
     /// projection; an empty `conversations` array once registered but no
     /// gift-wrap envelopes have arrived. Computed so the `DmInboxStore`
@@ -764,13 +841,23 @@ struct KernelUpdate: Decodable {
     var followList: FollowListSnapshot? { projections?.followList }
 
     /// NIP-29 group-discovery read model —
-    /// `projections["nip29.discovered_groups"]`. `nil` until
+    /// `projections["nmp.nip29.discovered_groups"]`. `nil` until
     /// `nmp_app_chirp_register_group_discovery` has wired a relay's
     /// projection; an empty `groups` array once registered but no
     /// kind:39000/39001/39002 events have arrived. Computed so the
     /// `DiscoveredGroupsStore` consumer keeps reading
     /// `update.discoveredGroups` unchanged.
     var discoveredGroups: DiscoveredGroupsSnapshot? { projections?.discoveredGroups }
+
+    /// NIP-57 zap aggregate read model — `projections["nmp.nip57.zaps"]`.
+    /// Wired by `nmp_app_chirp_register` (PR #288), which constructs a
+    /// `ZapsAggregateProjection` and binds it as both a `KernelEventObserver`
+    /// (ingest of kind:9735 receipts) and the snapshot-projection closure for
+    /// this key. `nil` on a kernel build that predates the registration; an
+    /// empty `totals` map once registered but no receipts have arrived.
+    /// Computed so a future zap-count view binds to `update.zaps?.totals` the
+    /// same way the chat / DM consumers bind to their snapshots.
+    var zaps: ZapsAggregateSnapshot? { projections?.zaps }
 
     /// Diagnostics-screen read model — `projections["relay_diagnostics"]`
     /// (aim.md §4.5 / §6 anti-pattern #1 / §"Where do views live?" cleanup).
@@ -847,14 +934,14 @@ struct SnapshotProjections: Decodable, Equatable {
     let removed: [String]?
     // NIP-29: the group-chat read projection registered by
     // `nmp_app_chirp_register_group_chat`. Its snapshot key is the dotted
-    // string `"nip29.group_chat"`, which `.convertFromSnakeCase` cannot
+    // string `"nmp.nip29.group_chat"`, which `.convertFromSnakeCase` cannot
     // derive from a Swift property name — hence the explicit `CodingKeys`
     // below (an explicit enum is all-or-nothing, so every other member is
     // re-listed there with its snake_case raw value).
     let groupChat: GroupChatSnapshot?
     // NIP-17: the DM inbox read projection registered by
     // `nmp_app_chirp_register_dm_inbox`. Its snapshot key is the dotted
-    // string `"nip17.dm_inbox"` — same `.convertFromSnakeCase` caveat as
+    // string `"nmp.nip17.dm_inbox"` — same `.convertFromSnakeCase` caveat as
     // `groupChat`, handled by the explicit `CodingKeys` case below.
     let dmInbox: DmInboxSnapshot?
     // Chirp follow list — `projections["chirp.follow_list"]`. Registered by
@@ -865,10 +952,23 @@ struct SnapshotProjections: Decodable, Equatable {
 
     // NIP-29: the group-discovery read projection registered by
     // `nmp_app_chirp_register_group_discovery`. Its snapshot key is the
-    // dotted string `"nip29.discovered_groups"` — same `.convertFromSnakeCase`
+    // dotted string `"nmp.nip29.discovered_groups"` — same `.convertFromSnakeCase`
     // caveat as `groupChat` / `dmInbox`, handled by the explicit
     // `CodingKeys` case below.
     let discoveredGroups: DiscoveredGroupsSnapshot?
+    // NIP-57: the zap-aggregate read projection registered by
+    // `nmp_app_chirp_register` (PR #288). Its snapshot key is the dotted
+    // string `"nmp.nip57.zaps"`. `.convertFromSnakeCase` only splits on `_`,
+    // and this key has none — the post-transform string is identical
+    // (`"nmp.nip57.zaps"`), but the synthesized default for a Swift property
+    // named `zaps` would be the bare string `"zaps"`. The explicit
+    // `CodingKeys` case below is therefore mandatory.
+    let zaps: ZapsAggregateSnapshot?
+    // NIP-17: the DM relay-list projection registered by `register_dm_runtime`.
+    // Its snapshot key is `"nmp.nip17.dm_relay_list"` — `.convertFromSnakeCase`
+    // maps this to `"nmp.nip17.dmRelayList"`, handled by the explicit
+    // `CodingKeys` case below.
+    let dmRelayList: DmRelayListSnapshot?
     // Diagnostics roll-up — `projections["relay_diagnostics"]`. Built-in
     // kernel-owned projection (§4.5 / §6 anti-pattern #1 cleanup): replaces
     // the §"Where do views live?" violations the three diagnostics screens
@@ -896,10 +996,10 @@ struct SnapshotProjections: Decodable, Equatable {
     /// every case here must carry the *post-transform* (camelCase) name —
     /// which is exactly the synthesized default — EXCEPT `groupChat`.
     ///
-    /// The kernel's keys are dotted strings — `"nip29.group_chat"` and
-    /// `"nip17.dm_inbox"`. `.convertFromSnakeCase` splits on `_` only (`.`
-    /// is opaque), so it maps `"nip29.group_chat"` → `"nip29.groupChat"`
-    /// and `"nip17.dm_inbox"` → `"nip17.dmInbox"`. Those post-transform
+    /// The kernel's keys are dotted strings — `"nmp.nip29.group_chat"` and
+    /// `"nmp.nip17.dm_inbox"`. `.convertFromSnakeCase` splits on `_` only (`.`
+    /// is opaque), so it maps `"nmp.nip29.group_chat"` → `"nmp.nip29.groupChat"`
+    /// and `"nmp.nip17.dm_inbox"` → `"nmp.nip17.dmInbox"`. Those post-transform
     /// strings are the raw values `groupChat` / `dmInbox` must declare; the
     /// synthesized defaults would never match.
     ///
@@ -927,13 +1027,21 @@ struct SnapshotProjections: Decodable, Equatable {
         case inserted
         case updated
         case removed
-        case groupChat = "nip29.groupChat"
-        case dmInbox = "nip17.dmInbox"
+        case groupChat = "nmp.nip29.groupChat"
+        case dmInbox = "nmp.nip17.dmInbox"
         case followList = "chirp.followList"
-        // `.convertFromSnakeCase` maps `"nip29.discovered_groups"` →
-        // `"nip29.discoveredGroups"` (split on `_` only, `.` opaque) — that
+        // `.convertFromSnakeCase` maps `"nmp.nip29.discovered_groups"` →
+        // `"nmp.nip29.discoveredGroups"` (split on `_` only, `.` opaque) — that
         // is the post-transform string this case must declare.
-        case discoveredGroups = "nip29.discoveredGroups"
+        case discoveredGroups = "nmp.nip29.discoveredGroups"
+        // `.convertFromSnakeCase` leaves `"nmp.nip57.zaps"` untouched (no `_`),
+        // but declaring `CodingKeys` overrides synthesis entirely, so the raw
+        // value must be the literal dotted kernel key — the synthesized default
+        // would be the bare property name `"zaps"` and never match.
+        case zaps = "nmp.nip57.zaps"
+        // `.convertFromSnakeCase` maps `"nmp.nip17.dm_relay_list"` →
+        // `"nmp.nip17.dmRelayList"` (split on `_` only, `.` opaque).
+        case dmRelayList = "nmp.nip17.dmRelayList"
         case relayDiagnostics
         case mentionProfiles
         case settingsHub
@@ -990,7 +1098,7 @@ struct SettingsHubSummary: Decodable, Equatable {
 //
 // Mirror of `nmp-nip29`'s `GroupChatSnapshot` / `GroupChatMessage` — the
 // shape the `GroupChatProjection` serialises under the snapshot key
-// `"nip29.group_chat"`. Thin-shell rule: these are pure DTOs; no Swift
+// `"nmp.nip29.group_chat"`. Thin-shell rule: these are pure DTOs; no Swift
 // owns the ordering (the projection emits newest-first) or the membership
 // filter (the projection matches kind + `h`-tag).
 
@@ -1023,7 +1131,7 @@ struct GroupChatSnapshot: Decodable, Equatable {
 //
 // Mirror of `nmp-nip29`'s `DiscoveredGroupsSnapshot` / `DiscoveredGroup` —
 // the shape the `DiscoveredGroupsProjection` serialises under the snapshot
-// key `"nip29.discovered_groups"`. Thin-shell rule: pure DTOs; no Swift
+// key `"nmp.nip29.discovered_groups"`. Thin-shell rule: pure DTOs; no Swift
 // owns the ordering (the projection emits alphabetical by `groupId`) or the
 // member-count math (the projection counts `["p", _]` tags).
 
@@ -1063,11 +1171,64 @@ struct DiscoveredGroupsSnapshot: Decodable, Equatable {
     static let empty = DiscoveredGroupsSnapshot(hostRelayUrl: "", groups: [])
 }
 
+// ─── NIP-57 zap aggregate read model ──────────────────────────────────────
+//
+// Mirror of `nmp-nip57`'s `ZapsAggregateSnapshot` / `ZapCount` — the shape
+// the `ZapsAggregateProjection` serialises under the snapshot key
+// `"nmp.nip57.zaps"`. Thin-shell rule: these are pure DTOs. The Rust
+// projection owns ALL protocol logic — kind:9735 receipt decoding, bolt11
+// amount parsing, per-target grouping, and per-receipt dedupe. Swift never
+// re-derives `count` or `totalMsats` from raw events.
+
+/// Aggregate zap totals for a single target event. `totalMsats` sums the
+/// authoritative bolt11 amount of every distinct receipt indexed under the
+/// target; `count` is the number of distinct receipts. A receipt whose
+/// amount could not be parsed contributes `0` msats but still increments
+/// `count` — the zap *happened*, the amount is just unknown.
+///
+/// No explicit `CodingKeys`: the top-level `.convertFromSnakeCase` strategy
+/// (inherited by every nested type) maps the kernel's `"total_msats"` to
+/// `totalMsats` automatically.
+struct ZapCount: Decodable, Equatable {
+    let totalMsats: UInt64
+    let count: UInt32
+}
+
+/// The serialised read-model a timeline-zap-count surface consumes.
+/// `totals` maps a zapped event id (hex) to its running `ZapCount`. The
+/// wrapper struct (rather than a bare map at the top level) mirrors the
+/// Rust shape and leaves room for sibling fields without a breaking
+/// re-shape.
+struct ZapsAggregateSnapshot: Decodable, Equatable {
+    /// `target_event_id (hex) → ZapCount`. Empty when the projection has
+    /// been registered but no kind:9735 receipts have arrived yet.
+    let totals: [String: ZapCount]
+
+    static let empty = ZapsAggregateSnapshot(totals: [:])
+}
+
+// ─── NIP-17 DM relay-list read model ─────────────────────────────────────
+//
+// Mirror of the `DmRelayListSnapshot` the `DmRuntimeController` serialises
+// under the snapshot key `"nmp.nip17.dm_relay_list"`. Thin-shell rule: pure
+// DTO — the Rust side owns all kind:10050 reconciliation logic.
+
+/// The active account's DM relay list state. `activePubkey` is the active
+/// account's hex pubkey (nil when no account is loaded). `readRelayUrls`
+/// is the subset of configured relay URLs eligible for DM reads.
+///
+/// No explicit `CodingKeys`: `.convertFromSnakeCase` maps `"active_pubkey"` →
+/// `activePubkey` and `"read_relay_urls"` → `readRelayUrls` automatically.
+struct DmRelayListSnapshot: Decodable, Equatable {
+    let activePubkey: String?
+    let readRelayUrls: [String]
+}
+
 // ─── NIP-17 DM inbox read model ───────────────────────────────────────────
 //
 // Mirror of `nmp-nip17`'s `DmInboxSnapshot` / `DmConversation` / `DmMessage`
 // — the shape the `DmInboxProjection` serialises under the snapshot key
-// `"nip17.dm_inbox"`. Thin-shell rule: these are pure DTOs. The Rust
+// `"nmp.nip17.dm_inbox"`. Thin-shell rule: these are pure DTOs. The Rust
 // projection owns ALL protocol logic — NIP-44 decryption, kind:14 filtering,
 // per-peer grouping, and newest-first ordering. Swift never re-sorts or
 // re-groups.
@@ -1619,6 +1780,11 @@ struct ProfileCard: Decodable, Equatable {
     let avatarColor: String
     let source: String
     let hasProfile: Bool
+    /// NIP-57 lightning address (`lud16`) / LNURL (`lud06`) pre-extracted
+    /// from kind:0. `nil` when the user has no lightning address or their
+    /// kind:0 hasn't arrived. The zap button is shown only when this is
+    /// non-nil — Rust decides zapability, Swift renders (thin-shell rule).
+    let lnurl: String?
 }
 
 /// Dispatch spec for a `ProfileAction` that fires a write through
@@ -1663,6 +1829,12 @@ struct TimelineItem: Decodable, Identifiable, Equatable, Hashable {
     let authorPictureUrl: String?
     let authorAvatarInitials: String
     let authorAvatarColor: String
+    /// NIP-57 lightning address (`lud16`) / LNURL (`lud06`) pre-extracted
+    /// from the author's kind:0 metadata. `nil` when the author has no
+    /// lightning address or their kind:0 hasn't arrived yet. The shell
+    /// zap button toggles its enabled/disabled state on this value;
+    /// Swift never parses raw metadata (thin-shell rule, aim.md §6.9).
+    let authorLnurl: String?
     /// Nostr event kind (1 = note, 6 = repost, 7 = reaction, …). The kernel
     /// supplies this so the shell can render kind-conditional UI (e.g. a
     /// "Repost" badge or alternate navigation target) without re-parsing the
@@ -1714,7 +1886,7 @@ extension TimelineItem {
     // would suppress it.
     private enum CodingKeys: String, CodingKey {
         case id, authorPubkey, authorDisplay, authorPictureUrl
-        case authorAvatarInitials, authorAvatarColor
+        case authorAvatarInitials, authorAvatarColor, authorLnurl
         case kind, content, contentPreview, createdAtDisplay, relayCount
         case isRepost, navTargetId, repostInnerContent
     }
@@ -1729,6 +1901,10 @@ extension TimelineItem {
             authorPictureUrl: try c.decodeIfPresent(String.self, forKey: .authorPictureUrl),
             authorAvatarInitials: try c.decode(String.self, forKey: .authorAvatarInitials),
             authorAvatarColor: try c.decode(String.self, forKey: .authorAvatarColor),
+            // NIP-57 — `nil` when the author has no lud16/lud06 OR an older
+            // kernel snapshot pre-dates the field. Mirrors the
+            // forward/backward-compat pattern below (isRepost et al.).
+            authorLnurl: try c.decodeIfPresent(String.self, forKey: .authorLnurl),
             kind: try c.decode(UInt32.self, forKey: .kind),
             content: try c.decode(String.self, forKey: .content),
             contentPreview: try c.decode(String.self, forKey: .contentPreview),

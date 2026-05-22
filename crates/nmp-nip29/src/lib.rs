@@ -31,10 +31,10 @@
 //! typed `PublishPlan::pin_to: Some(host)` carrier and never derives routing
 //! from raw tag strings.
 //!
-//! The former `domain` (13 `DomainModule` impls) and `view` (7 reactive views)
-//! modules were deleted: they had zero non-test consumers. The live read-side
-//! extension path is `projection::GroupChatProjection` via `KernelEventObserver`
-//! — see `nmp_core::substrate` module docs.
+//! The former `domain` (13 per-kind domain modules) and `view` (7 reactive
+//! views) modules were deleted: they had zero non-test consumers. The live
+//! read-side extension path is `projection::GroupChatProjection` via
+//! `KernelEventObserver` — see `nmp_core::substrate` module docs.
 
 pub mod action;
 pub mod cache;
@@ -42,6 +42,7 @@ pub mod group_id;
 pub mod interest;
 pub mod kinds;
 pub mod projection;
+pub mod register;
 
 pub use group_id::GroupId;
 pub use kinds::{event_is_group_event, group_id_from_tags, GroupEventClass, KindClass};

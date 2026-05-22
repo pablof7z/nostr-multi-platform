@@ -24,10 +24,13 @@ pub struct ViewDependencies {
     pub projection_keys: Vec<String>,
     /// Host-relay this view's interest must be pinned to (e.g. single-group
     /// views pinned to a specific relay). `None` means the standard outbox/inbox
-    /// routing applies. The kernel does not yet act on this field — it is
-    /// declared here so host-pinned views express their relay affinity in the
-    /// data model rather than via discarded side-channel helpers.
+    /// routing applies.
     pub relay_pin: Option<String>,
+    /// Maximum number of historical events to fetch per REQ subscription.
+    /// Maps directly to [`InterestShape::limit`]. `None` means no client-side
+    /// limit (relay applies its own default). Use for bounded lookups such as
+    /// KeyPackage fetch (`limit: Some(4)`) or chat history (`limit: Some(200)`).
+    pub limit: Option<u32>,
 }
 
 impl ViewDependencies {
@@ -65,6 +68,7 @@ impl ViewDependencies {
                 event_ids: self.ids.iter().cloned().collect(),
                 tags,
                 relay_pin: self.relay_pin.clone(),
+                limit: self.limit,
                 ..Default::default()
             },
             hints: Vec::new(),
@@ -81,9 +85,7 @@ pub struct ProjectionChange {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct ViewContext {
-    pub now_ms: u64,
-}
+pub struct ViewContext {}
 
 // NOTE: there was once a `ViewModule` trait here — a substrate extension
 // contract for reactive views. It has been removed. No `ViewRegistry` ever
@@ -152,5 +154,35 @@ mod tests {
         assert!(interest.shape.authors.contains("author_pubkey"));
         assert!(interest.shape.kinds.contains(&30443));
         assert!(interest.shape.kinds.contains(&443));
+    }
+
+    #[test]
+    fn bridge_threads_limit_into_interest_shape() {
+        let deps = ViewDependencies {
+            kinds: vec![30443],
+            authors: vec!["peer_pk".to_string()],
+            limit: Some(4),
+            ..Default::default()
+        };
+        let interest = deps.into_logical_interest(
+            InterestId(42),
+            InterestScope::Global,
+            InterestLifecycle::Tailing,
+        );
+        assert_eq!(interest.shape.limit, Some(4));
+    }
+
+    #[test]
+    fn bridge_omits_limit_when_none() {
+        let deps = ViewDependencies {
+            kinds: vec![1],
+            ..Default::default()
+        };
+        let interest = deps.into_logical_interest(
+            InterestId(1),
+            InterestScope::Global,
+            InterestLifecycle::Tailing,
+        );
+        assert_eq!(interest.shape.limit, None);
     }
 }

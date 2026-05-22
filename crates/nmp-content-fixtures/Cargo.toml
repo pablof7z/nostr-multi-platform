@@ -15,7 +15,7 @@ path = "src/bin/build-bundle.rs"
 [dependencies]
 nmp-content = { path = "../nmp-content" }
 nmp-core = { path = "../nmp-core" }
-nmp-nip23 = { path = "../nmp-nip23" }
+nmp-nip23 = { path = "../nmp-nip23", features = ["long-form"] }
 nmp-signers = { path = "../nmp-signers" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

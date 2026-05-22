@@ -8,11 +8,11 @@
 //!   observer id) for later snapshots / unregister.
 //! - [`nmp_app_chirp_register_group_chat`] — wire a NIP-29
 //!   `GroupChatProjection` for one group into the kernel: an event observer
-//!   (ingest) plus a `"nip29.group_chat"` snapshot projection (output). Pure
+//!   (ingest) plus a `"nmp.nip29.group_chat"` snapshot projection (output). Pure
 //!   consumption — no handle, no actions, no unregister.
-//! - [`nmp_app_chirp_register_dm_inbox`] — compatibility entry point for the
-//!   NIP-17 DM runtime. `nmp_app_chirp_register` wires it eagerly: a kind:1059
-//!   raw-event observer, a `"nip17.dm_inbox"` snapshot projection, and a
+//! - [`nmp_app_chirp_register_dm_inbox`] — host entry point for the NIP-17 DM
+//!   runtime. `nmp_app_chirp_register` wires it eagerly: a kind:1059
+//!   raw-event observer, a `"nmp.nip17.dm_inbox"` snapshot projection, and a
 //!   Rust-owned controller for the active gift-wrap interest + kind:10050
 //!   relay-list publish.
 //! - [`nmp_app_chirp_snapshot`] — serialize the current `ChirpTimelineSnapshot`
@@ -40,12 +40,10 @@ use std::sync::{Arc, Mutex};
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use nmp_core::{ActorCommand, KernelEventObserver, KernelEventObserverId, NmpApp};
 use nmp_nip29::group_id::GroupId;
-use nmp_nip29::projection::{DiscoveredGroupsProjection, GroupChatProjection};
-use nmp_nip29::action::{
-    CommentInGroupAction, DiscoverGroupsAction, JoinGroupAction,
-    PostChatMessageAction, ReactInGroupAction,
-};
+use nmp_nip29::register::{wire_group_chat, wire_group_discovery};
 use nmp_nip17::{PublishDmRelayListAction, SendDmAction};
+use nmp_nip57::ZapAction;
+use nmp_nip65::PublishRelayListAction;
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
 use nmp_threading::ModulePolicy;
@@ -149,11 +147,54 @@ pub extern "C" fn nmp_app_chirp_register(
     // SAFETY: same exclusive-borrow rationale as `register_chirp_actions`.
     register_nip17_actions(unsafe { &mut *app });
 
+    // Register the NIP-57 lightning-zap `ActionModule` (`nmp.nip57.zap`).
+    // The executor builds the unsigned kind:9734 via `ZapRequestBuilder`
+    // and enqueues `ActorCommand::FetchLnurlInvoice`; the actor signs the
+    // request on-thread (D7) and spawns a worker for the LNURL-pay HTTP
+    // round-trip (D8). The resulting bolt11 invoice surfaces as a
+    // `ShowToast` follow-up (ADR-0024 minimum-viable observable surface).
+    //
+    // NWC payment (`ActorCommand::WalletPayInvoice`) is the next milestone —
+    // until then the host substring-matches `lnbc…` from the toast.
+    //
+    // SAFETY: same exclusive-borrow rationale as `register_chirp_actions`.
+    register_nip57_actions(unsafe { &mut *app });
+
+    // Register the NIP-65 relay-list `ActionModule`
+    // (`nmp.nip65.publish_relay_list`). Companion to the AddRelay/RemoveRelay
+    // auto-trigger inside the actor — the dispatched action is the host-facing
+    // door, the auto-trigger keeps the actor-internal mutation path symmetric.
+    //
+    // SAFETY: same exclusive-borrow rationale as `register_chirp_actions`.
+    register_nip65_actions(unsafe { &mut *app });
+
     // SAFETY: caller guarantees `app` is a valid pointer allocated by
     // `nmp_app_new` for the duration of this call. We do not hold the
     // borrow past this function.
     let app_ref = unsafe { &*app };
     register_dm_runtime(app_ref);
+
+    // Wire the NIP-57 `ZapsAggregateProjection` — a `KernelEventObserver`
+    // that indexes incoming kind:9735 zap receipts by their `["e", target]`
+    // tag so a timeline surface can show per-row zap counts + total msats
+    // without opening a per-target `ZapsView` for every visible note.
+    //
+    // Pure consumption — registers as an event observer (ingest) and exposes
+    // its `snapshot_json` read under `"nmp.nip57.zaps"` (output). No
+    // action, no handle, no swap slot: `nmp_app_chirp_register` is called
+    // once at app init, so a fire-and-forget registration is sufficient.
+    // Mirrors `register_inbox_projection` in `dm_runtime.rs`.
+    //
+    // D6 — silent skip on a poisoned observer slot. Zap counts are a
+    // non-essential feed affordance; their absence must not fail the whole
+    // Chirp registration. The `ModularTimelineProjection` below remains the
+    // single fatal-on-failure observer (its absence breaks the timeline).
+    let zaps_proj = Arc::new(nmp_nip57::ZapsAggregateProjection::new());
+    let zaps_observer_id = app_ref
+        .register_event_observer(Arc::clone(&zaps_proj) as Arc<dyn KernelEventObserver>);
+    if zaps_observer_id.0 != 0 {
+        app_ref.register_snapshot_projection("nmp.nip57.zaps", move || zaps_proj.snapshot_json());
+    }
 
     let viewer: Pubkey = c_string_opt(viewer_pubkey).unwrap_or_default();
     let spec = ModularTimelineSpec {
@@ -186,7 +227,7 @@ pub extern "C" fn nmp_app_chirp_register(
 /// [`GroupChatProjection`] scoped to the supplied group, plugs it into the
 /// kernel as a [`KernelEventObserver`] (ingest), and registers its
 /// [`GroupChatProjection::snapshot_json`] read under the snapshot key
-/// `"nip29.group_chat"` (output). The group's chat messages then surface in
+/// `"nmp.nip29.group_chat"` (output). The group's chat messages then surface in
 /// every snapshot tick under that key.
 ///
 /// `group_id_json` is a JSON object naming the target group:
@@ -206,7 +247,7 @@ pub extern "C" fn nmp_app_chirp_register(
 /// Re-invocation is **idempotent**: a subsequent call unregisters the previous
 /// projection's observer before registering the new one (via the per-app
 /// `swap_singleton_event_observer` slot on `NmpApp`), and overwrites the
-/// `"nip29.group_chat"` snapshot key with the newer projection. The
+/// `"nmp.nip29.group_chat"` snapshot key with the newer projection. The
 /// per-account re-invocation case (the only re-invocation Chirp actually
 /// performs) is leak-free. A multi-group host that wants to keep N projections
 /// live in parallel would still need a handle-returning variant — single-slot
@@ -236,30 +277,11 @@ pub extern "C" fn nmp_app_chirp_register_group_chat(
         return;
     };
 
-    let projection = Arc::new(GroupChatProjection::new(group_id));
-    let observer_id = app_ref
-        .register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
-    if observer_id.0 == 0 {
-        // Observer registration failed (poisoned slot). Don't register the
-        // snapshot closure for a projection that will never receive events,
-        // and don't disturb the previously-installed slot — leave any prior
-        // observer in place rather than clearing it for nothing.
-        return;
-    }
-
-    // Idempotent re-invoke: atomically install the new id and take the prior
-    // id out of the per-app slot, then unregister the prior observer. The
-    // swap-then-unregister order is deliberate (see `swap_nip29_group_chat_
-    // observer`): the new observer is already live when the old one is
-    // dropped, so there is no event-loss gap and a concurrent re-invoke
-    // cannot leak the previous id.
-    if let Some(prev) = app_ref.swap_singleton_event_observer(Some(observer_id)) {
-        app_ref.unregister_event_observer(prev);
-    }
-
-    // Output side: the no-argument snapshot read runs on the actor thread
-    // inside each snapshot tick. The `move` consumes this last `Arc`.
-    app_ref.register_snapshot_projection("nip29.group_chat", move || projection.snapshot_json());
+    // Delegate the observer + snapshot-projection wiring (and the
+    // singleton-slot idempotency dance) to `nmp_nip29::register::wire_group_chat`.
+    // Thin-shell rule: this FFI symbol only parses C strings and calls the
+    // typed host-wiring helper that lives in the protocol crate.
+    wire_group_chat(app_ref, group_id);
 }
 
 /// Wire a NIP-29 [`DiscoveredGroupsProjection`] for one host relay into `app`.
@@ -268,7 +290,7 @@ pub extern "C" fn nmp_app_chirp_register_group_chat(
 /// constructs a projection scoped to the supplied relay URL, plugs it in
 /// as a [`KernelEventObserver`] (ingest), and registers its
 /// [`DiscoveredGroupsProjection::snapshot_json`] read under the snapshot key
-/// `"nip29.discovered_groups"` (output). Kind:39000/39001/39002 events for
+/// `"nmp.nip29.discovered_groups"` (output). Kind:39000/39001/39002 events for
 /// that host relay then surface on every snapshot tick under that key.
 ///
 /// The companion publish side is the `nmp.nip29.discover` action — its
@@ -291,7 +313,7 @@ pub extern "C" fn nmp_app_chirp_register_group_chat(
 /// SCOPE — single-screen, no unregister. Like
 /// [`nmp_app_chirp_register_group_chat`], this returns no handle and has no
 /// companion unregister. Calling it twice overwrites the
-/// `"nip29.discovered_groups"` snapshot key with the newer projection and
+/// `"nmp.nip29.discovered_groups"` snapshot key with the newer projection and
 /// leaves the older event observer registered for the life of the `app`
 /// (a small, bounded leak). The Swift `JoinGroupView` drives one relay at
 /// a time, so this is acceptable for v1; a multi-relay discovery screen
@@ -318,35 +340,21 @@ pub extern "C" fn nmp_app_chirp_register_group_discovery(
         return;
     };
 
-    let projection = Arc::new(DiscoveredGroupsProjection::new(relay_url));
-    let observer_id = app_ref
-        .register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
-    if observer_id.0 == 0 {
-        // Observer registration failed (poisoned slot). Don't register a
-        // snapshot closure for a projection that will never see events.
-        return;
-    }
-
-    // Output side: the no-argument snapshot read runs on the actor thread
-    // inside each snapshot tick. The `move` consumes this last `Arc`.
-    app_ref.register_snapshot_projection("nip29.discovered_groups", move || {
-        projection.snapshot_json()
-    });
+    // Delegate observer + snapshot-projection wiring to the typed host-wiring
+    // helper in the protocol crate. Thin-shell rule: this FFI symbol only
+    // parses the C string and calls `nmp_nip29::register::wire_group_discovery`.
+    wire_group_discovery(app_ref, relay_url);
 }
 
 /// Wire the NIP-17 DM runtime into `app`.
 ///
-/// The `viewer_pubkey` argument is retained for C-ABI compatibility but is no
-/// longer read. Rust observes the active local-key slot and relay-edit rows on
-/// snapshot ticks, then owns the active-account kind:1059 gift-wrap interest,
-/// kind:10050 relay-list publish, and `"nip17.dm_inbox"` projection.
+/// Rust observes the active local-key slot and relay-edit rows on snapshot
+/// ticks, then owns the active-account kind:1059 gift-wrap interest,
+/// kind:10050 relay-list publish, and `"nmp.nip17.dm_inbox"` projection — no
+/// viewer pubkey is required at the FFI boundary.
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_app_chirp_register_dm_inbox(
-    app: *mut NmpApp,
-    viewer_pubkey: *const c_char,
-) {
-    let _ = viewer_pubkey;
+pub extern "C" fn nmp_app_chirp_register_dm_inbox(app: *mut NmpApp) {
     if app.is_null() {
         return;
     }
@@ -402,13 +410,12 @@ pub extern "C" fn nmp_app_chirp_register_follow_list(
 
     // The shared slot the projection and the FFI both hold: the projection
     // reads it at snapshot time, the caller updates it on account switch.
-    let active_pubkey_slot: Arc<Mutex<Option<String>>> =
-        Arc::new(Mutex::new(pubkey_opt));
+    let active_pubkey_slot: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(pubkey_opt));
 
     let projection = Arc::new(FollowListProjection::new(Arc::clone(&active_pubkey_slot)));
 
-    let observer_id = app_ref
-        .register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
+    let observer_id =
+        app_ref.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
     if observer_id.0 == 0 {
         // Observer registration failed (poisoned slot). Don't register the
         // snapshot closure for a projection that will never receive events.
@@ -417,9 +424,7 @@ pub extern "C" fn nmp_app_chirp_register_follow_list(
 
     // Output side: the no-argument snapshot read runs on the actor thread
     // inside each snapshot tick. The `move` consumes this last `Arc`.
-    app_ref.register_snapshot_projection("chirp.follow_list", move || {
-        projection.snapshot_json()
-    });
+    app_ref.register_snapshot_projection("chirp.follow_list", move || projection.snapshot_json());
 }
 
 /// Serialize the current `ChirpTimelineSnapshot` into a JSON C string.
@@ -521,8 +526,16 @@ impl ActionModule for ChirpReactModule {
     fn start(_ctx: &mut ActionContext, _action: Self::Action) -> Result<(), ActionRejection> {
         Ok(())
     }
-    fn execute(action: Self::Action, _correlation_id: &str, send: &dyn Fn(ActorCommand)) -> Result<(), String> {
-        send(ActorCommand::React { target_event_id: action.target_event_id, reaction: action.reaction });
+    fn execute(action: Self::Action, correlation_id: &str, send: &dyn Fn(ActorCommand)) -> Result<(), String> {
+        // Thread the registry-minted correlation_id through to the actor so
+        // the publish engine reports the terminal verdict under THIS id (not
+        // the kind:7 event id); the host spinner keyed on the dispatch
+        // return value can then be cleared.
+        send(ActorCommand::React {
+            target_event_id: action.target_event_id,
+            reaction: action.reaction,
+            correlation_id: Some(correlation_id.to_string()),
+        });
         Ok(())
     }
 }
@@ -534,8 +547,13 @@ impl ActionModule for ChirpFollowModule {
     fn start(_ctx: &mut ActionContext, _action: Self::Action) -> Result<(), ActionRejection> {
         Ok(())
     }
-    fn execute(action: Self::Action, _correlation_id: &str, send: &dyn Fn(ActorCommand)) -> Result<(), String> {
-        send(ActorCommand::Follow { pubkey: action.pubkey });
+    fn execute(action: Self::Action, correlation_id: &str, send: &dyn Fn(ActorCommand)) -> Result<(), String> {
+        // Thread the registry-minted correlation_id through so the kind:3
+        // publish terminal verdict reports it; see `ChirpReactModule`.
+        send(ActorCommand::Follow {
+            pubkey: action.pubkey,
+            correlation_id: Some(correlation_id.to_string()),
+        });
         Ok(())
     }
 }
@@ -547,8 +565,13 @@ impl ActionModule for ChirpUnfollowModule {
     fn start(_ctx: &mut ActionContext, _action: Self::Action) -> Result<(), ActionRejection> {
         Ok(())
     }
-    fn execute(action: Self::Action, _correlation_id: &str, send: &dyn Fn(ActorCommand)) -> Result<(), String> {
-        send(ActorCommand::Unfollow { pubkey: action.pubkey });
+    fn execute(action: Self::Action, correlation_id: &str, send: &dyn Fn(ActorCommand)) -> Result<(), String> {
+        // Thread the registry-minted correlation_id through so the kind:3
+        // publish terminal verdict reports it; see `ChirpReactModule`.
+        send(ActorCommand::Unfollow {
+            pubkey: action.pubkey,
+            correlation_id: Some(correlation_id.to_string()),
+        });
         Ok(())
     }
 }
@@ -588,11 +611,7 @@ fn register_chirp_actions(app: &mut NmpApp) {
 /// [`nmp_app_chirp_register_group_discovery`] below — a
 /// [`DiscoveredGroupsProjection`] scoped to the same relay.
 fn register_nip29_actions(app: &mut NmpApp) {
-    app.register_action::<PostChatMessageAction>();
-    app.register_action::<ReactInGroupAction>();
-    app.register_action::<CommentInGroupAction>();
-    app.register_action::<DiscoverGroupsAction>();
-    app.register_action::<JoinGroupAction>();
+    nmp_nip29::register::register_actions(app);
 }
 
 /// Register the NIP-17 direct-message `ActionModule` (`nmp.nip17.send`) against
@@ -613,12 +632,109 @@ fn register_nip29_actions(app: &mut NmpApp) {
 /// without a publish path every NMP user is invisible to other clients
 /// trying to send them gift-wrapped DMs. The executor builds the kind:10050
 /// unsigned event with `["relay", <url>]` tags and enqueues
-/// `ActorCommand::PublishUnsignedEventToRelays` with an EMPTY relay set —
-/// kind:10050 is a NIP-65 replaceable event and the actor routes empty-relay
-/// publishes through the NIP-65 outbox (the author's kind:10002 write relays).
+/// `ActorCommand::PublishUnsignedEvent` — kind:10050 is a NIP-65 replaceable
+/// event and routes through the author's kind:10002 write relays.
 fn register_nip17_actions(app: &mut NmpApp) {
     app.register_action::<SendDmAction>();
     app.register_action::<PublishDmRelayListAction>();
+}
+
+/// Register the NIP-57 lightning-zap [`ActionModule`] (`nmp.nip57.zap`)
+/// against `app`'s action registry.
+///
+/// Wires the typed [`ZapAction`] from the `nmp-nip57` protocol crate
+/// through the same host-extensibility seam the NIP-17 / NIP-29 actions
+/// use. The executor builds the unsigned kind:9734 zap request via
+/// [`nmp_nip57::ZapRequestBuilder`] and enqueues
+/// [`nmp_core::ActorCommand::FetchLnurlInvoice`] — the actor signs the
+/// kind:9734 on-thread (D7), then spawns a worker thread for the
+/// LNURL-pay HTTP round-trip (D8 — no blocking on the actor thread).
+///
+/// JSON schema (the third arg the host passes to
+/// `nmp_app_dispatch_action`):
+///
+/// ```json
+/// {
+///   "recipient_pubkey": "<hex>",
+///   "amount_msats": 21000,
+///   "lnurl": "alice@walletofsatoshi.com",
+///   "relays": ["wss://relay.damus.io"],
+///   "target_event_id": "<hex>",   // optional
+///   "comment": "🤙"              // optional
+/// }
+/// ```
+///
+/// `lnurl` accepts any of the three LNURL-pay input shapes: a
+/// lightning address (`user@domain` per LUD-16), a bech32 LNURL
+/// (`lnurl1…` per LUD-01), or a bare `https://` URL.
+///
+/// # Observable surface
+///
+/// The actor's `FetchLnurlInvoice` handler surfaces results through
+/// two channels:
+///
+/// 1. [`ActorCommand::ShowToast`] — the bolt11 invoice on success
+///    (`Zap invoice: lnbc…`) or a human-readable reason on failure
+///    (`Zap failed: …`). This is the ADR-0024 minimum-viable
+///    observable; a `last_action_outcomes` snapshot projection is the
+///    designed follow-up.
+/// 2. The `action_stages` mirror — `Requested` is set when the
+///    dispatch arm fires; `Failed { reason }` is recorded on any
+///    pre-payment failure so a host spinner keyed on the
+///    `dispatch_action` correlation_id clears on the next tick.
+///
+/// # Out-of-scope
+///
+/// * **NWC payment**. The handler returns the bolt11 invoice but does
+///   not pay it; the wallet handoff
+///   ([`ActorCommand::WalletPayInvoice`], gated by the `wallet` feature)
+///   is the next milestone.
+/// * **Bunker (NIP-46) signing of kind:9734**. The actor reads
+///   `IdentityRuntime::active_local_keys`; bunker accounts fail closed
+///   with a clear toast (ADR-0026 Phase 2 follow-up, parallel to the
+///   NIP-17 DM bunker-send path).
+fn register_nip57_actions(app: &mut NmpApp) {
+    app.register_action::<ZapAction>();
+}
+
+/// Register the NIP-65 relay-list `ActionModule` (`nmp.nip65.publish_relay_list`)
+/// against `app`'s action registry.
+///
+/// Wires the typed [`PublishRelayListAction`] from the `nmp-nip65` protocol
+/// crate through the same host-extensibility seam the NIP-17 / NIP-29 / NIP-57
+/// actions use. The executor builds the kind:10002 unsigned event with
+/// `["r", <url>]` / `["r", <url>, "read"]` / `["r", <url>, "write"]` tags and
+/// enqueues [`ActorCommand::PublishUnsignedEvent`] — kind:10002 is a NIP-65
+/// replaceable event and routes through the kernel's Auto path so the very
+/// first kind:10002 for a freshly-created account hits the bootstrap
+/// discovery relays (no chicken-and-egg) and later updates land on the
+/// author's own write set.
+///
+/// JSON schema (the third arg the host passes to `nmp_app_dispatch_action`):
+///
+/// ```json
+/// {
+///   "relays": [
+///     { "url": "wss://relay.example" },                         // both
+///     { "url": "wss://outbox.example", "marker": "write" },     // write-only
+///     { "url": "wss://inbox.example",  "marker": "read"  }      // read-only
+///   ]
+/// }
+/// ```
+///
+/// # Why register this alongside the AddRelay/RemoveRelay auto-trigger?
+///
+/// `actor::dispatch` already piggybacks a kind:10002 re-publish onto every
+/// `AddRelay` / `RemoveRelay` mutation (see `maybe_publish_relay_list_after_edit`
+/// in `crates/nmp-core/src/actor/dispatch.rs`). The dispatched action seam
+/// here is the host-facing twin: a host that wants to advertise a relay set
+/// it derived in app land (e.g. on first login, before any AddRelay edits)
+/// can call `nmp_app_dispatch_action("nmp.nip65.publish_relay_list", json)`
+/// and get a `correlation_id` + lifecycle entries it can spinner on. Both
+/// paths converge on the same on-wire kind:10002 — the auto-trigger reads
+/// `RelayEditRow`, the action takes explicit input.
+fn register_nip65_actions(app: &mut NmpApp) {
+    app.register_action::<PublishRelayListAction>();
 }
 
 /// `chirp.react` action body: `{"target_event_id":"<hex>","reaction":"+"}`.
@@ -646,8 +762,34 @@ mod tests {
     use super::*;
     use nmp_core::nmp_app_free;
     use nmp_core::nmp_app_new;
-    use nmp_nip29::action::{discover_groups_command, join_group_command, post_chat_message_command};
+    // The action types are referenced only by the tests below (via
+    // `<Action>::NAMESPACE` constants and the executor probes). Production code
+    // delegates to `nmp_nip29::register::register_actions`, so this import lives
+    // inside `mod tests` rather than at the file top.
+    use nmp_nip29::action::{
+        CommentInGroupAction, DiscoverGroupsAction, DiscoverGroupsInput, JoinGroupAction,
+        JoinGroupInput, PostChatMessageAction, PostChatMessageInput, ReactInGroupAction,
+    };
     use nmp_nip29::kinds::KIND_CHAT_MESSAGE;
+    use std::cell::RefCell;
+
+    /// Run an `ActionModule`'s typed executor once and capture **every**
+    /// `ActorCommand` it sends, in order. Mirrors `nmp_nip17::dm_relay_list`'s
+    /// test pattern — the canonical post-ADR-0027 executor probe.
+    ///
+    /// Returns `Ok(vec![])` for an executor that returns `Ok(())` without
+    /// sending any command (a valid no-op); returns `Err(...)` only when the
+    /// executor itself returns `Err(...)`. Earlier this helper kept only the
+    /// last `send()` call in a `RefCell<Option<_>>`, silently dropping
+    /// multi-command executors (e.g. `PushInterest` followed by
+    /// `RecordActionSuccess`).
+    fn run_module_execute<M: ActionModule>(input: M::Action) -> Result<Vec<ActorCommand>, String> {
+        let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+        M::execute(input, "test-cid", &|cmd| {
+            captured.borrow_mut().push(cmd);
+        })?;
+        Ok(captured.into_inner())
+    }
 
     #[test]
     fn register_snapshot_unregister_round_trip() {
@@ -748,10 +890,9 @@ mod tests {
     /// yields a 32-hex `correlation_id` (both the typed module validator and
     /// the executor are wired); a malformed body is rejected with `error`.
     ///
-    /// This proves the host-extensibility seam (`register_action_module` /
-    /// `register_action_executor`) works for NIP-crate modules, not just
-    /// Chirp's app-local social verbs — without `nmp-core` learning any
-    /// NIP-29 group nouns (D0).
+    /// This proves the ADR-0027 typed-registration seam (`register_action::<M>()`)
+    /// works for NIP-crate modules, not just Chirp's app-local social verbs —
+    /// without `nmp-core` learning any NIP-29 group nouns (D0).
     #[test]
     fn nip29_post_chat_message_dispatches_through_action_registry() {
         let app = nmp_app_new();
@@ -771,7 +912,11 @@ mod tests {
 
         // Malformed shape (missing the required `group`) is rejected by the
         // typed module validator surfaced through the host seam (D6).
-        let parsed = dispatch(app, "nmp.nip29.post_chat_message", r#"{"content":"no group"}"#);
+        let parsed = dispatch(
+            app,
+            "nmp.nip29.post_chat_message",
+            r#"{"content":"no group"}"#,
+        );
         assert!(
             parsed.get("error").is_some(),
             "chat message without `group` must be rejected: {parsed}"
@@ -788,11 +933,21 @@ mod tests {
     /// path (ADR-0027) produces the right command end-to-end.
     #[test]
     fn nip29_post_chat_message_executor_emits_host_pinned_publish_command() {
-        let body = r#"{"group":{"host_relay_url":"wss://groups.example.com","local_id":"rust-nostr"},"content":"hello"}"#;
-        let cmd = post_chat_message_command(body).expect("well-formed chat message");
+        let input = PostChatMessageInput {
+            group: GroupId::new("wss://groups.example.com", "rust-nostr"),
+            content: "hello".to_string(),
+            previous_event_id_prefixes: vec![],
+            reply_to_event_id: None,
+        };
+        let cmds = run_module_execute::<PostChatMessageAction>(input)
+            .expect("well-formed chat message");
+        let cmd = cmds
+            .into_iter()
+            .next()
+            .expect("post-chat-message executor must send at least one command");
 
         match cmd {
-            ActorCommand::PublishUnsignedEventToRelays { event, relays } => {
+            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id } => {
                 // Pinned to EXACTLY the group's host relay — never the
                 // author's NIP-65 outbox.
                 assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
@@ -809,19 +964,11 @@ mod tests {
                 assert_eq!(event.content, "hello");
                 // `pubkey` is a placeholder — the actor derives it at sign time.
                 assert!(event.pubkey.is_empty());
+                // correlation_id threads through from the executor.
+                assert!(correlation_id.is_some(), "correlation_id must be threaded through");
             }
             other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
         }
-    }
-
-    /// A malformed body (missing the required `group`) is rejected — the
-    /// executor never fabricates a command from an unverified shape (D6).
-    #[test]
-    fn nip29_post_chat_message_executor_rejects_malformed_body() {
-        assert!(
-            post_chat_message_command(r#"{"content":"no group"}"#).is_err(),
-            "chat message without `group` must be rejected"
-        );
     }
 
     /// THE GROUP-CHAT CATALOG WIRING PROOF: each of the 3 NIP-29 group-chat
@@ -900,11 +1047,7 @@ mod tests {
         assert_eq!(id.len(), 32, "discover correlation id should be 32 hex");
 
         // Empty relay_url is rejected by the typed validator (D6).
-        let parsed = dispatch(
-            app,
-            DiscoverGroupsAction::NAMESPACE,
-            r#"{"relay_url":""}"#,
-        );
+        let parsed = dispatch(app, DiscoverGroupsAction::NAMESPACE, r#"{"relay_url":""}"#);
         assert!(
             parsed.get("error").is_some(),
             "empty relay_url must be rejected: {parsed}"
@@ -927,14 +1070,27 @@ mod tests {
 
     /// THE DISCOVERY EXECUTOR PROOF: the `nmp.nip29.discover` executor maps
     /// a validated `DiscoverGroupsInput` to a concrete
-    /// [`ActorCommand::PushInterest`] pinned to the supplied relay — the
-    /// subscribe-side seam end-to-end.
+    /// [`ActorCommand::PushInterest`] pinned to the supplied relay, followed
+    /// by an [`ActorCommand::RecordActionSuccess`] terminal (PD-036 — a
+    /// subscription-only action has no async publish, so the success surface
+    /// is instantaneous and must be recorded inline or the host spinner waits
+    /// forever on `action_results`). Mirrors the in-crate shape proof at
+    /// `crates/nmp-nip29/src/action/discover.rs::well_formed_input_yields_push_interest_then_record_success`.
     #[test]
     fn nip29_discover_executor_emits_host_pinned_push_interest_command() {
-        let body = r#"{"relay_url":"wss://groups.example.com"}"#;
-        let cmd = discover_groups_command(body).expect("well-formed discover body");
+        let input = DiscoverGroupsInput {
+            relay_url: "wss://groups.example.com".to_string(),
+        };
+        let cmds = run_module_execute::<DiscoverGroupsAction>(input)
+            .expect("well-formed discover input");
 
-        match cmd {
+        assert_eq!(
+            cmds.len(),
+            2,
+            "expected PushInterest then RecordActionSuccess, got {cmds:?}"
+        );
+
+        match &cmds[0] {
             ActorCommand::PushInterest(interest) => {
                 // Pinned to the relay — Case E (the third routing lane).
                 assert_eq!(
@@ -956,6 +1112,15 @@ mod tests {
             }
             other => panic!("expected PushInterest, got {other:?}"),
         }
+
+        // PD-036 — terminal `RecordActionSuccess` is what closes the host
+        // spinner for this subscription-only action.
+        match &cmds[1] {
+            ActorCommand::RecordActionSuccess { correlation_id } => {
+                assert_eq!(correlation_id, "test-cid");
+            }
+            other => panic!("expected RecordActionSuccess, got {other:?}"),
+        }
     }
 
     /// THE JOIN DISPATCH PROOF: `nmp.nip29.join` is reachable through the
@@ -969,8 +1134,7 @@ mod tests {
         let handle = nmp_app_chirp_register(app, std::ptr::null());
         assert!(!handle.is_null());
 
-        let group =
-            r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#;
+        let group = r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#;
         let body = format!(r#"{{"group":{group}}}"#);
         let parsed = dispatch(app, JoinGroupAction::NAMESPACE, &body);
         let id = parsed
@@ -1008,15 +1172,31 @@ mod tests {
     /// optional reason carried as the event content.
     #[test]
     fn nip29_join_executor_emits_kind_9021_with_host_pin() {
-        let body = r#"{"group":{"host_relay_url":"wss://groups.example.com","local_id":"room"},"invite_code":"abc","reason":"please"}"#;
-        let cmd = join_group_command(body).expect("well-formed join body");
+        let input = JoinGroupInput {
+            group: GroupId::new("wss://groups.example.com", "room"),
+            invite_code: Some("abc".to_string()),
+            reason: Some("please".to_string()),
+        };
+        let cmds = run_module_execute::<JoinGroupAction>(input).expect("well-formed join input");
+        let cmd = cmds
+            .into_iter()
+            .next()
+            .expect("join executor must send at least one command");
         match cmd {
-            ActorCommand::PublishUnsignedEventToRelays { event, relays } => {
+            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id } => {
                 assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
                 assert_eq!(event.kind, 9021);
-                assert!(event.tags.iter().any(|t| t == &vec!["h".to_string(), "room".to_string()]));
-                assert!(event.tags.iter().any(|t| t == &vec!["code".to_string(), "abc".to_string()]));
+                assert!(event
+                    .tags
+                    .iter()
+                    .any(|t| t == &vec!["h".to_string(), "room".to_string()]));
+                assert!(event
+                    .tags
+                    .iter()
+                    .any(|t| t == &vec!["code".to_string(), "abc".to_string()]));
                 assert_eq!(event.content, "please");
+                // correlation_id threads through from the executor.
+                assert!(correlation_id.is_some(), "correlation_id must be threaded through");
             }
             other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
         }
@@ -1026,7 +1206,7 @@ mod tests {
     /// registers a `DiscoveredGroupsProjection` against `app` for a well-formed
     /// relay URL — it runs to completion (event-observer + snapshot-projection
     /// registration) without panicking. The snapshot closure surfacing under
-    /// `"nip29.discovered_groups"` is proven end-to-end by the generic seam
+    /// `"nmp.nip29.discovered_groups"` is proven end-to-end by the generic seam
     /// tests in `nmp-core` and the projection's own tests in `nmp-nip29`.
     #[test]
     fn register_group_discovery_runs_for_well_formed_relay_url() {
@@ -1081,16 +1261,15 @@ mod tests {
     /// registers a `GroupChatProjection` against `app` for a well-formed
     /// group id — it runs to completion (event-observer + snapshot-projection
     /// registration) without panicking. The snapshot closure surfacing under
-    /// `"nip29.group_chat"` is proven end-to-end by the generic seam tests in
+    /// `"nmp.nip29.group_chat"` is proven end-to-end by the generic seam tests in
     /// `nmp-core` (`snapshot_registry_tests.rs`) and the projection's own
     /// tests in `nmp-nip29`; this asserts the Chirp-side wiring call is sound.
     #[test]
     fn register_group_chat_runs_for_well_formed_group() {
         let app = nmp_app_new();
-        let group = CString::new(
-            r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#,
-        )
-        .unwrap();
+        let group =
+            CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#)
+                .unwrap();
         // Must register both halves (observer + snapshot projection) without
         // panicking across the FFI boundary.
         nmp_app_chirp_register_group_chat(app, group.as_ptr());
@@ -1109,11 +1288,8 @@ mod tests {
         let handle = nmp_app_chirp_register(app, std::ptr::null());
         assert!(!handle.is_null());
 
-        let recipient =
-            "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
-        let body = format!(
-            r#"{{"recipient_pubkey":"{recipient}","content":"hello over NIP-17"}}"#
-        );
+        let recipient = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
+        let body = format!(r#"{{"recipient_pubkey":"{recipient}","content":"hello over NIP-17"}}"#);
         let parsed = dispatch(app, "nmp.nip17.send", &body);
         let id = parsed
             .get("correlation_id")
@@ -1137,22 +1313,79 @@ mod tests {
         nmp_app_free(app);
     }
 
+    /// `nmp.nip57.zap` action — `ZapAction`, an `ActionModule` living in the
+    /// `nmp-nip57` protocol crate — is reachable through the generic
+    /// `dispatch_action` path. A well-formed `ZapInput` yields a 32-hex
+    /// `correlation_id` (both the typed module validator AND the executor are
+    /// wired); a malformed body is rejected with `error`.
+    ///
+    /// This is the migration proof that ADR-0024's minimum-viable LNURL path
+    /// (no `HttpCapability` substrate) is live end-to-end: dispatch reaches
+    /// `ZapAction::execute`, which builds the unsigned kind:9734 and enqueues
+    /// `ActorCommand::FetchLnurlInvoice` for the actor's spawned worker to
+    /// complete. The test asserts only the dispatch half (correlation_id
+    /// minted, executor returned `Ok`); the HTTP round-trip itself requires
+    /// a live LN provider and is exercised end-to-end through the iOS shell.
+    #[test]
+    fn nip57_zap_dispatches_through_action_registry() {
+        let app = nmp_app_new();
+        let handle = nmp_app_chirp_register(app, std::ptr::null());
+        assert!(!handle.is_null());
+
+        let recipient = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
+        let body = format!(
+            r#"{{"recipient_pubkey":"{recipient}","amount_msats":21000,"lnurl":"alice@walletofsatoshi.com","relays":["wss://relay.damus.io"]}}"#
+        );
+        let parsed = dispatch(app, "nmp.nip57.zap", &body);
+        let id = parsed
+            .get("correlation_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("expected correlation_id, got {parsed}"));
+        assert_eq!(id.len(), 32, "correlation id should be 32 hex");
+
+        // A zap to a profile (no target_event_id) is well-formed.
+        let body_profile = format!(
+            r#"{{"recipient_pubkey":"{recipient}","amount_msats":1000,"lnurl":"https://example.com/.well-known/lnurlp/bob","relays":["wss://relay.damus.io"]}}"#
+        );
+        let parsed = dispatch(app, "nmp.nip57.zap", &body_profile);
+        assert!(
+            parsed.get("correlation_id").is_some(),
+            "profile-zap (no target) must dispatch cleanly: {parsed}"
+        );
+
+        // Zero amount is rejected by the typed validator (D6).
+        let bad = format!(
+            r#"{{"recipient_pubkey":"{recipient}","amount_msats":0,"lnurl":"alice@walletofsatoshi.com","relays":["wss://relay.damus.io"]}}"#
+        );
+        let parsed = dispatch(app, "nmp.nip57.zap", &bad);
+        assert!(
+            parsed.get("error").is_some(),
+            "zero-amount zap must be rejected: {parsed}"
+        );
+
+        // Empty lnurl is rejected — NIP-57 has no destination without it.
+        let no_lnurl = format!(
+            r#"{{"recipient_pubkey":"{recipient}","amount_msats":21000,"lnurl":"","relays":["wss://relay.damus.io"]}}"#
+        );
+        let parsed = dispatch(app, "nmp.nip57.zap", &no_lnurl);
+        assert!(
+            parsed.get("error").is_some(),
+            "empty-lnurl zap must be rejected: {parsed}"
+        );
+
+        nmp_app_chirp_unregister(handle);
+        nmp_app_free(app);
+    }
+
     /// THE DM-INBOX WIRING PROOF: `nmp_app_chirp_register_dm_inbox` registers
     /// a `DmInboxProjection` against `app` — it runs to completion (raw-event
     /// observer + snapshot-projection/controller registration) without
-    /// panicking across the FFI boundary. The legacy viewer-pubkey argument is
-    /// ignored; active-account interest ownership is Rust-side now.
+    /// panicking across the FFI boundary. Active-account interest ownership is
+    /// Rust-side — the FFI takes no viewer pubkey.
     #[test]
     fn register_dm_inbox_runs_for_app() {
         let app = nmp_app_new();
-        // NULL viewer pubkey — accepted for ABI compatibility.
-        nmp_app_chirp_register_dm_inbox(app, std::ptr::null());
-        // Concrete viewer pubkey — ignored by the Rust-owned controller.
-        let pubkey = CString::new(
-            "aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee",
-        )
-        .unwrap();
-        nmp_app_chirp_register_dm_inbox(app, pubkey.as_ptr());
+        nmp_app_chirp_register_dm_inbox(app);
         nmp_app_free(app);
     }
 
@@ -1160,13 +1393,13 @@ mod tests {
     /// dereference a null pointer or panic across the FFI boundary.
     #[test]
     fn register_dm_inbox_null_app_is_silent_noop() {
-        nmp_app_chirp_register_dm_inbox(std::ptr::null_mut(), std::ptr::null());
+        nmp_app_chirp_register_dm_inbox(std::ptr::null_mut());
     }
 
     /// THE IDEMPOTENCY PROOF: re-invoking `nmp_app_chirp_register_dm_inbox`
     /// must NOT stack a fresh raw-event observer on every call. The function
-    /// can still be reached via the retained C-ABI compatibility door, while
-    /// `nmp_app_chirp_register` also wires the runtime eagerly.
+    /// remains directly callable from the host, while `nmp_app_chirp_register`
+    /// also wires the runtime eagerly.
     ///
     /// Asserted observably through the per-app
     /// `swap_nip17_dm_inbox_observer` slot — the host-side handle that lets
@@ -1201,7 +1434,7 @@ mod tests {
         );
 
         // First registration.
-        nmp_app_chirp_register_dm_inbox(app, std::ptr::null());
+        nmp_app_chirp_register_dm_inbox(app);
         let id1 = app_ref
             .swap_nip17_dm_inbox_observer(None)
             .expect("first register must install a raw-observer id in the per-app slot");
@@ -1211,7 +1444,7 @@ mod tests {
         assert!(prev.is_none(), "we just swap-took, slot was empty");
 
         // Second registration — compatibility re-invoke case.
-        nmp_app_chirp_register_dm_inbox(app, std::ptr::null());
+        nmp_app_chirp_register_dm_inbox(app);
         let id2 = app_ref
             .swap_nip17_dm_inbox_observer(None)
             .expect("second register must install a fresh id in the per-app slot");
@@ -1252,14 +1485,12 @@ mod tests {
             "slot must start empty (no group chat registered yet)"
         );
 
-        let group_a = CString::new(
-            r#"{"host_relay_url":"wss://groups.example.com","local_id":"room-a"}"#,
-        )
-        .unwrap();
-        let group_b = CString::new(
-            r#"{"host_relay_url":"wss://groups.example.com","local_id":"room-b"}"#,
-        )
-        .unwrap();
+        let group_a =
+            CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"room-a"}"#)
+                .unwrap();
+        let group_b =
+            CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"room-b"}"#)
+                .unwrap();
 
         // First registration.
         nmp_app_chirp_register_group_chat(app, group_a.as_ptr());
@@ -1289,10 +1520,9 @@ mod tests {
     /// no-op — the function must never panic across the FFI boundary.
     #[test]
     fn register_group_chat_null_and_malformed_input_are_silent_noops() {
-        let group = CString::new(
-            r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#,
-        )
-        .unwrap();
+        let group =
+            CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#)
+                .unwrap();
         // Null app — must not dereference.
         nmp_app_chirp_register_group_chat(std::ptr::null_mut(), group.as_ptr());
 
@@ -1307,5 +1537,4 @@ mod tests {
         nmp_app_chirp_register_group_chat(app, garbage.as_ptr());
         nmp_app_free(app);
     }
-
 }

@@ -3,7 +3,16 @@ name = "nmp-nip23"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
-description = "NIP-23 long-form articles (kind:30023) as an NMP protocol crate — pure decoder (try_from_event) + builder (UnsignedEvent) + DomainModule + reactive views per docs/design/kind-wrappers.md §3."
+description = "NIP-23 long-form articles (kind:30023) as an NMP protocol crate — pure decoder (try_from_event) + builder (UnsignedEvent) per docs/design/kind-wrappers.md §3."
+
+[features]
+# Gates the public NIP-23 surface (`Article`, `try_from_event`).
+# Default-off: nmp-nip23 has zero app callers — no ActionModule, no
+# KernelEventObserver, no subscription filter — and is only referenced
+# from test/fixture crates. Enable when wiring kind:30023 (long-form
+# articles) into a host app.
+default = []
+long-form = []
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }

@@ -24,9 +24,116 @@
 
 use crate::kernel::{Kernel, RelayEditRow};
 use crate::relay::canonical_relay_url;
+use crate::substrate::UnsignedEvent;
+
+/// NIP-65 kind: the relay list. Duplicated here (instead of imported from
+/// `nmp-nip65`) because `nmp-core` is the D0 floor — it does not depend on
+/// any protocol crate. Keeping the magic number local keeps the crate
+/// dependency arrow pointing in the right direction; the wire-shape contract
+/// with `nmp-nip65` is held by an `assert_eq!` in `crates/nmp-nip65/src/lib.rs`.
+const KIND_RELAY_LIST: u32 = 10002;
 
 fn normalize_role(role: &str) -> Option<String> {
     crate::actor::canonical_relay_role(role)
+}
+
+/// Build the NIP-65 third-element marker — if any — for a `RelayEditRow.role`
+/// string.
+///
+/// * `Some(None)`              — emit `["r", url]` (the "both" / default case).
+/// * `Some(Some("read"))`      — emit `["r", url, "read"]`.
+/// * `Some(Some("write"))`     — emit `["r", url, "write"]`.
+/// * `None`                    — the row has no NIP-65 representation (e.g.
+///   pure indexer); the caller drops it.
+///
+/// Role semantics mirror `nmp-core::actor::relay_roles`:
+/// * `read`                     → read-only
+/// * `write`                    → write-only
+/// * `both` / `""` (empty)      → both (default marker omitted)
+/// * `both,indexer`             → both (indexer has no NIP-65 marker; dropped)
+/// * `read,indexer`             → read-only
+/// * `write,indexer`            → write-only
+/// * `indexer` (alone)          → no NIP-65 representation; row is dropped
+/// * unrecognised role          → row is dropped (D6 — degrade gracefully)
+fn nip65_marker_for_role(role: &str) -> Option<Option<&'static str>> {
+    let canonical = crate::actor::canonical_relay_role(role)?;
+    // `canonical_relay_role` returns one of:
+    //   "both" | "read" | "write" | "indexer" | "both,indexer"
+    //   | "read,indexer" | "write,indexer"
+    // (the role tokens are sorted in a fixed order by that function).
+    match canonical.as_str() {
+        "both" | "both,indexer" => Some(None),
+        "read" | "read,indexer" => Some(Some("read")),
+        "write" | "write,indexer" => Some(Some("write")),
+        // Pure-indexer rows have no NIP-65 read/write semantics — they are
+        // a NMP-internal lane (discovery probes). Don't advertise them.
+        "indexer" => None,
+        _ => None,
+    }
+}
+
+/// Build a NIP-65 kind:10002 **unsigned** event from the current
+/// `RelayEditRow` projection — the active account's intended outbox/inbox
+/// set.
+///
+/// Used by the `AddRelay` / `RemoveRelay` dispatch arms to re-publish the
+/// user's NIP-65 metadata whenever the local relay set changes, so other
+/// clients reading the relay graph see the same set the user just edited.
+///
+/// Row → tag mapping is the [`nip65_marker_for_role`] table. Pure-indexer
+/// rows are dropped (NIP-65 has no indexer concept); the indexer suffix on
+/// composite roles is also dropped. URLs are NOT re-canonicalised here —
+/// `RelayEditRow.url` is already the canonical form (every `add_relay`
+/// caller routes through `canonical_relay_url`).
+///
+/// The returned event:
+/// * has `kind = 10002`,
+/// * has `created_at = 0` — the D7 sentinel; the actor re-stamps it,
+/// * has an empty `pubkey` — the active signer fills it at sign time.
+///
+/// Returns `None` when the projection would produce zero `r` tags — the
+/// caller MUST NOT publish in that case, because an empty kind:10002 is
+/// the "clear my NIP-65 metadata" signal (see
+/// `kernel::ingest::relay_list::ingest_relay_list`), and we never want a
+/// `RemoveRelay` that leaves indexer-only rows behind to accidentally wipe
+/// the cache for the user. Concretely the caller (`AddRelay` / `RemoveRelay`
+/// arms) skips the publish-piggyback step in that branch — the local
+/// projection mutation still stands.
+pub(crate) fn build_relay_list_event_from_edit_rows(
+    rows: &[RelayEditRow],
+) -> Option<UnsignedEvent> {
+    let mut tags: Vec<Vec<String>> = Vec::with_capacity(rows.len());
+    let mut seen = std::collections::HashSet::new();
+    for row in rows {
+        let Some(marker_opt) = nip65_marker_for_role(&row.role) else {
+            continue;
+        };
+        // Defensive dedup: the projection should already be url-unique
+        // (add_relay updates rather than appending), but a guard here means
+        // a future projection change can't silently emit a kind:10002 with
+        // duplicate `r` tags.
+        if !seen.insert(row.url.clone()) {
+            continue;
+        }
+        let tag = match marker_opt {
+            None => vec!["r".to_string(), row.url.clone()],
+            Some(marker) => vec!["r".to_string(), row.url.clone(), marker.to_string()],
+        };
+        tags.push(tag);
+    }
+    if tags.is_empty() {
+        return None;
+    }
+    Some(UnsignedEvent {
+        // Empty placeholder — the actor re-derives the pubkey from the
+        // signing key at sign time (see `publish_unsigned_event`).
+        pubkey: String::new(),
+        kind: KIND_RELAY_LIST,
+        tags,
+        content: String::new(),
+        // D7 sentinel — the actor re-stamps from `kernel.now_secs()`.
+        created_at: 0,
+    })
 }
 
 /// Validate `url` and `role`, update the relay-edit projection, and return
@@ -249,5 +356,144 @@ mod tests {
         let rows = kernel.relay_edit_rows_snapshot();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].url, "wss://relay.example");
+    }
+
+    // --- build_relay_list_event_from_edit_rows ----------------------------
+    //
+    // These tests pin the wire-shape contract for the AddRelay/RemoveRelay
+    // auto-trigger path. They cover the four `RelayEditRow.role` shapes
+    // that show up in production projections plus the empty/indexer-only
+    // degenerate cases.
+
+    fn row(url: &str, role: &str) -> RelayEditRow {
+        RelayEditRow::new(url.to_string(), role.to_string())
+    }
+
+    #[test]
+    fn t_build_relay_list_event_kind_is_10002() {
+        let rows = [row("wss://relay.example", "both")];
+        let event = build_relay_list_event_from_edit_rows(&rows).expect("non-empty rows");
+        assert_eq!(event.kind, 10002);
+    }
+
+    #[test]
+    fn t_build_relay_list_event_uses_d7_created_at_sentinel() {
+        let rows = [row("wss://relay.example", "both")];
+        let event = build_relay_list_event_from_edit_rows(&rows).expect("non-empty rows");
+        assert_eq!(
+            event.created_at, 0,
+            "D7: created_at is the 0 sentinel — the actor re-stamps it"
+        );
+    }
+
+    #[test]
+    fn t_build_relay_list_event_leaves_pubkey_empty() {
+        let rows = [row("wss://relay.example", "both")];
+        let event = build_relay_list_event_from_edit_rows(&rows).expect("non-empty rows");
+        assert!(
+            event.pubkey.is_empty(),
+            "pubkey is filled by the actor from the active signer at sign time"
+        );
+    }
+
+    #[test]
+    fn t_build_relay_list_event_both_omits_marker() {
+        // NIP-65: `["r", url]` (no third element) is the canonical
+        // read+write shape.
+        let rows = [row("wss://relay.example", "both")];
+        let event = build_relay_list_event_from_edit_rows(&rows).expect("non-empty rows");
+        assert_eq!(
+            event.tags,
+            vec![vec!["r".to_string(), "wss://relay.example".to_string()]]
+        );
+    }
+
+    #[test]
+    fn t_build_relay_list_event_read_emits_read_marker() {
+        let rows = [row("wss://relay.example", "read")];
+        let event = build_relay_list_event_from_edit_rows(&rows).expect("non-empty rows");
+        assert_eq!(
+            event.tags,
+            vec![vec![
+                "r".to_string(),
+                "wss://relay.example".to_string(),
+                "read".to_string(),
+            ]]
+        );
+    }
+
+    #[test]
+    fn t_build_relay_list_event_write_emits_write_marker() {
+        let rows = [row("wss://relay.example", "write")];
+        let event = build_relay_list_event_from_edit_rows(&rows).expect("non-empty rows");
+        assert_eq!(
+            event.tags,
+            vec![vec![
+                "r".to_string(),
+                "wss://relay.example".to_string(),
+                "write".to_string(),
+            ]]
+        );
+    }
+
+    #[test]
+    fn t_build_relay_list_event_skips_pure_indexer_rows() {
+        // Pure-indexer rows are an NMP-internal lane (discovery probes).
+        // They have no NIP-65 representation; the row is dropped entirely.
+        let rows = [
+            row("wss://indexer.example", "indexer"),
+            row("wss://relay.example", "both"),
+        ];
+        let event = build_relay_list_event_from_edit_rows(&rows).expect("non-empty rows");
+        assert_eq!(event.tags.len(), 1);
+        assert_eq!(event.tags[0][1], "wss://relay.example");
+    }
+
+    #[test]
+    fn t_build_relay_list_event_strips_indexer_suffix_on_composite_roles() {
+        // `both,indexer` rolls up to NIP-65 "both" (no marker). The indexer
+        // half is NMP-internal and has no NIP-65 expression.
+        let rows = [row("wss://relay.example", "both,indexer")];
+        let event = build_relay_list_event_from_edit_rows(&rows).expect("non-empty rows");
+        assert_eq!(
+            event.tags,
+            vec![vec!["r".to_string(), "wss://relay.example".to_string()]]
+        );
+    }
+
+    #[test]
+    fn t_build_relay_list_event_preserves_input_order() {
+        let rows = [
+            row("wss://b.example", "both"),
+            row("wss://a.example", "read"),
+            row("wss://c.example", "write"),
+        ];
+        let event = build_relay_list_event_from_edit_rows(&rows).expect("non-empty rows");
+        let urls: Vec<&String> = event.tags.iter().map(|t| &t[1]).collect();
+        assert_eq!(urls, vec!["wss://b.example", "wss://a.example", "wss://c.example"]);
+    }
+
+    #[test]
+    fn t_build_relay_list_event_returns_none_for_empty_rows() {
+        let event = build_relay_list_event_from_edit_rows(&[]);
+        assert!(
+            event.is_none(),
+            "an empty projection MUST NOT produce a kind:10002 — that would \
+             clear the author_relay_lists cache on ingest"
+        );
+    }
+
+    #[test]
+    fn t_build_relay_list_event_returns_none_for_indexer_only_projection() {
+        // Indexer-only rows produce zero NIP-65 entries — the builder must
+        // signal `None` so the caller skips the publish piggyback and does
+        // NOT emit a destructive empty kind:10002.
+        let rows = [row("wss://indexer.example", "indexer")];
+        let event = build_relay_list_event_from_edit_rows(&rows);
+        assert!(
+            event.is_none(),
+            "an indexer-only projection has no NIP-65 expression — must \
+             return None so the dispatch arm skips re-publishing"
+        );
     }
 }

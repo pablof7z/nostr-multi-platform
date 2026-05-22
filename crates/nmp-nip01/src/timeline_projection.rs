@@ -4,11 +4,10 @@
 //! shells also need the per-event render metadata in the same pushed snapshot,
 //! so this projection owns the generic card cache beside the view state.
 
-use std::collections::HashMap;
 use std::sync::Mutex;
 
 use nmp_content::{tokenize_with_kind, ContentTreeWire, RenderMode};
-use nmp_core::substrate::{KernelEvent, ViewContext};
+use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES, ViewContext};
 use nmp_core::KernelEventObserver;
 use nmp_threading::TimelineBlock;
 use serde::{Deserialize, Serialize};
@@ -16,28 +15,39 @@ use serde::{Deserialize, Serialize};
 use crate::meta_timeline::{
     ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState, Nip10ModularTimelineView,
 };
+use crate::note_relations::{NoteRelationCounts, NoteRelationIndex};
+use crate::profile_display::{profile_from_event, should_replace, AuthorDisplay, ProfileDisplay};
+use crate::try_from_kernel_event;
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct TimelineEventCard {
     pub id: String,
     pub author_pubkey: String,
+    pub author_display: AuthorDisplay,
     pub kind: u32,
     pub created_at: u64,
     pub content: String,
     pub content_tree: ContentTreeWire,
+    pub relation_counts: NoteRelationCounts,
 }
 
-impl From<&KernelEvent> for TimelineEventCard {
-    fn from(event: &KernelEvent) -> Self {
+impl TimelineEventCard {
+    fn from_event(
+        event: &KernelEvent,
+        profile: Option<&ProfileDisplay>,
+        relation_counts: NoteRelationCounts,
+    ) -> Self {
         let content_tree =
             tokenize_with_kind(&event.content, &event.tags, RenderMode::Auto, event.kind).to_wire();
         Self {
             id: event.id.clone(),
             author_pubkey: event.author.clone(),
+            author_display: AuthorDisplay::from_profile(&event.author, profile),
             kind: event.kind,
             created_at: event.created_at,
             content: event.content.clone(),
             content_tree,
+            relation_counts,
         }
     }
 }
@@ -63,7 +73,9 @@ pub struct ModularTimelineProjection {
 
 struct Inner {
     state: ModularTimelineState,
-    cards: HashMap<String, TimelineEventCard>,
+    cards: BoundedMessageMap<String, TimelineEventCard>,
+    profiles: BoundedMessageMap<String, ProfileDisplay>,
+    relations: NoteRelationIndex,
 }
 
 impl ModularTimelineProjection {
@@ -73,7 +85,9 @@ impl ModularTimelineProjection {
         Self {
             inner: Mutex::new(Inner {
                 state,
-                cards: HashMap::new(),
+                cards: BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
+                profiles: BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
+                relations: NoteRelationIndex::default(),
             }),
         }
     }
@@ -98,10 +112,43 @@ impl KernelEventObserver for ModularTimelineProjection {
             return;
         };
         let ctx = ViewContext::default();
-        inner
-            .cards
-            .insert(event.id.clone(), TimelineEventCard::from(event));
+        if let Some(profile) = profile_from_event(event) {
+            if should_replace(inner.profiles.get(&event.author), &profile) {
+                inner.profiles.insert(event.author.clone(), profile);
+                inner.refresh_author_cards(&event.author);
+            }
+            return;
+        }
+        let changed_relation_targets = inner.relations.ingest(event);
+        for target in changed_relation_targets {
+            inner.refresh_relation_counts(&target);
+        }
+        if try_from_kernel_event(event).is_some() {
+            let profile = inner.profiles.get(&event.author).cloned();
+            let relation_counts = inner.relations.counts_for(&event.id);
+            inner.cards.insert(
+                event.id.clone(),
+                TimelineEventCard::from_event(event, profile.as_ref(), relation_counts),
+            );
+        }
         Nip10ModularTimelineView::on_event_inserted(&ctx, &mut inner.state, event);
+    }
+}
+
+impl Inner {
+    fn refresh_author_cards(&mut self, author: &str) {
+        let profile = self.profiles.get(author);
+        for card in self.cards.values_mut() {
+            if card.author_pubkey == author {
+                card.author_display = AuthorDisplay::from_profile(author, profile);
+            }
+        }
+    }
+
+    fn refresh_relation_counts(&mut self, event_id: &str) {
+        if let Some(card) = self.cards.get_mut(event_id) {
+            card.relation_counts = self.relations.counts_for(event_id);
+        }
     }
 }
 
@@ -126,12 +173,7 @@ mod tests {
         note_with_content(id, ts, tags, id)
     }
 
-    fn note_with_content(
-        id: &str,
-        ts: u64,
-        tags: Vec<Vec<String>>,
-        content: &str,
-    ) -> KernelEvent {
+    fn note_with_content(id: &str, ts: u64, tags: Vec<Vec<String>>, content: &str) -> KernelEvent {
         KernelEvent {
             id: id.into(),
             author: "auth".into(),
@@ -199,7 +241,11 @@ mod tests {
         ));
 
         let snap = proj.snapshot();
-        let card = snap.cards.iter().find(|c| c.id == "S").expect("card exists");
+        let card = snap
+            .cards
+            .iter()
+            .find(|c| c.id == "S")
+            .expect("card exists");
         assert!(card.content_tree.nodes.iter().any(|node| {
             matches!(
                 node,

@@ -168,7 +168,8 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
 
     let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
     let (upd_tx, upd_rx) = mpsc::channel::<String>();
-    let actor_handle = std::thread::spawn(move || run_actor(cmd_rx, upd_tx));
+    let actor_self_tx = cmd_tx.clone();
+    let actor_handle = std::thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
 
     cmd_tx
         .send(ActorCommand::Start {
@@ -202,7 +203,10 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
         created_at: 1_700_001_000,
     };
     cmd_tx
-        .send(ActorCommand::PublishUnsignedEvent(unsigned))
+        .send(ActorCommand::PublishUnsignedEvent {
+            event: unsigned,
+            correlation_id: None,
+        })
         .expect("send PublishUnsignedEvent");
 
     // Wait for a snapshot whose publish_queue has a kind:1 entry.

@@ -25,6 +25,7 @@
 use nmp_core::substrate::SignedEvent;
 
 use super::builder::{build_auth_event, validate_signed_for, wire_frame_for};
+use super::error::Nip42Error;
 use super::frame::{AuthChallenge, AuthOk};
 use super::state::RelayAuthState;
 
@@ -64,28 +65,6 @@ impl HandshakeOutcome {
             new_state: Some(RelayAuthState::Failed),
             failure_reason: Some(reason.into()),
             ..Self::default()
-        }
-    }
-}
-
-/// Errors the driver returns for its internal `Result`s. Never crosses
-/// FFI per D6 — converts to `RelayAuthState::Failed` plus a reason in
-/// [`HandshakeOutcome`].
-#[derive(Clone, Debug)]
-pub enum Nip42Error {
-    /// The signer was invoked but reported failure or unavailability.
-    SignerFailed(String),
-    /// The signer returned a structurally invalid event (wrong kind,
-    /// missing challenge echo, malformed id, etc.). Catches buggy or
-    /// malicious signers.
-    SignerReturnedInvalid(String),
-}
-
-impl std::fmt::Display for Nip42Error {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::SignerFailed(m) => write!(f, "signer failed: {m}"),
-            Self::SignerReturnedInvalid(m) => write!(f, "signer returned invalid event: {m}"),
         }
     }
 }
@@ -218,7 +197,7 @@ impl Nip42Driver {
                 }
                 Err(why) => {
                     self.state = RelayAuthState::Failed;
-                    HandshakeOutcome::failure(format!("{}", Nip42Error::SignerReturnedInvalid(why)))
+                    HandshakeOutcome::failure(why.to_string())
                 }
             },
             Err(err) => {

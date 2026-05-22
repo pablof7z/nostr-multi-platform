@@ -9,6 +9,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::actor::ActorCommand;
+use crate::relay::CanonicalRelayUrl;
 use crate::substrate::{ActionContext, ActionModule, ActionRejection, SignedEvent};
 
 /// Stable handle returned to the caller of `Publish`. Used to key snapshot
@@ -30,6 +31,43 @@ pub use crate::relay::RelayUrl;
 pub enum PublishTarget {
     Auto,
     Explicit { relays: Vec<RelayUrl> },
+}
+
+/// `Auto` is the unambiguous default — the kernel resolves via NIP-65 (D3).
+/// `Explicit` requires deliberate caller intent (a relay set), so it would
+/// never make sense as a default. Needed by `#[serde(default)]` on
+/// `PublishAction::PublishRaw::target` so a host JSON payload that omits
+/// the field gets outbox routing rather than a deserialize error.
+impl Default for PublishTarget {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
+/// Validate a publish target before it can cross the action/actor boundary.
+///
+/// `Auto` is always valid: it deliberately asks the kernel to resolve via
+/// NIP-65. `Explicit` is fail-closed: an empty or malformed relay set is a
+/// caller bug, not a request to silently widen to `Auto`.
+pub(crate) fn validate_publish_target(target: &PublishTarget) -> Result<(), String> {
+    match target {
+        PublishTarget::Auto => Ok(()),
+        PublishTarget::Explicit { relays } => validate_explicit_relays(relays),
+    }
+}
+
+pub(crate) fn validate_explicit_relays(relays: &[RelayUrl]) -> Result<(), String> {
+    if relays.is_empty() {
+        return Err("explicit publish target requires at least one relay".to_string());
+    }
+    for relay in relays {
+        if CanonicalRelayUrl::parse(relay).is_none() {
+            return Err(format!(
+                "explicit publish target relay '{relay}' must be a ws:// or wss:// relay URL"
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// The single public publish action.
@@ -70,6 +108,37 @@ pub enum PublishAction {
     PublishProfile {
         fields: serde_json::Map<String, serde_json::Value>,
     },
+    /// Sign-and-publish an arbitrary event kind for the active account.
+    ///
+    /// `kind`, `tags`, and `content` map directly to Nostr event fields.
+    /// The actor fills `pubkey` from the active signer, stamps `created_at`
+    /// (D7 — kernel owns the wall clock), signs, and routes through the
+    /// NIP-65 outbox per `target`. This is the generic publish path for
+    /// second apps and custom event kinds that don't warrant a dedicated
+    /// `ActionModule`.
+    ///
+    /// # Why this exists
+    ///
+    /// `nmp_app_publish_unsigned_event` was deleted (PR-F) to enforce the
+    /// dispatch_action seam. Without `PublishRaw`, every new event kind
+    /// requires a Rust `ActionModule` impl — a 2-week barrier for app
+    /// developers. `PublishRaw` restores the generic publish capability
+    /// while keeping it routed through the action lifecycle (correlation_id,
+    /// action_stages, NIP-65 outbox).
+    ///
+    /// # Restrictions
+    ///
+    /// kind:0 (profile) and kind:3 (contacts) have dedicated variants that
+    /// apply protocol-specific processing (kind:0: field validation, kind:3:
+    /// follow-list merge). `PublishRaw` rejects these kinds to prevent
+    /// accidental data loss from bypassing that processing.
+    PublishRaw {
+        kind: u32,
+        tags: Vec<Vec<String>>,
+        content: String,
+        #[serde(default)]
+        target: PublishTarget,
+    },
     /// Cancel an in-flight publish, addressed by its [`PublishHandle`].
     ///
     /// This variant is the publish *engine's* internal command shape — it is
@@ -79,9 +148,7 @@ pub enum PublishAction {
     /// dispatchable through `dispatch_action`: `PublishModule::start` rejects
     /// it so the publish lifecycle's control plane (cancel / retry) stays on
     /// the dedicated FFI symbols rather than the generic action seam.
-    Cancel {
-        handle: PublishHandle,
-    },
+    Cancel { handle: PublishHandle },
 }
 
 /// Final outcome reported to the action ledger when the engine finishes.
@@ -126,9 +193,7 @@ impl ActionModule for PublishModule {
     /// function; it falls into the `_` arm and returns `None`.
     fn preferred_action_id(action: &Self::Action) -> Option<crate::substrate::ActionId> {
         match action {
-            PublishAction::Publish { event, .. } if !event.id.is_empty() => {
-                Some(event.id.clone())
-            }
+            PublishAction::Publish { event, .. } if !event.id.is_empty() => Some(event.id.clone()),
             _ => None,
         }
     }
@@ -169,20 +234,24 @@ impl ActionModule for PublishModule {
         action: Self::Action,
     ) -> Result<(), ActionRejection> {
         match action {
-            PublishAction::Publish { event, .. } => {
+            PublishAction::Publish { event, target, .. } => {
                 if event.id.is_empty() || event.sig.is_empty() {
                     return Err(ActionRejection::Invalid(
                         "publish action requires a signed event with id+sig".to_string(),
                     ));
                 }
+                validate_publish_target(&target).map_err(ActionRejection::Invalid)?;
                 Ok(())
             }
-            PublishAction::PublishNote { content, .. } => {
+            PublishAction::PublishNote {
+                content, target, ..
+            } => {
                 if content.is_empty() {
                     return Err(ActionRejection::Invalid(
                         "publish note requires non-empty content".to_string(),
                     ));
                 }
+                validate_publish_target(&target).map_err(ActionRejection::Invalid)?;
                 Ok(())
             }
             PublishAction::PublishProfile { fields } => {
@@ -196,6 +265,22 @@ impl ActionModule for PublishModule {
                         )));
                     }
                 }
+                Ok(())
+            }
+            PublishAction::PublishRaw { kind, target, .. } => {
+                // Guard the reserved kinds that have dedicated variants with
+                // protocol-specific processing.
+                if kind == 0 {
+                    return Err(ActionRejection::Invalid(
+                        "use PublishProfile (not PublishRaw) for kind:0 profile updates".to_string(),
+                    ));
+                }
+                if kind == 3 {
+                    return Err(ActionRejection::Invalid(
+                        "kind:3 contact-list publish is not yet supported via PublishRaw".to_string(),
+                    ));
+                }
+                validate_publish_target(&target).map_err(ActionRejection::Invalid)?;
                 Ok(())
             }
             // Cancel is engine-internal — it is constructed by
@@ -223,15 +308,16 @@ impl ActionModule for PublishModule {
             PublishAction::Publish { event, target, .. } => {
                 send(ActorCommand::PublishSignedEvent {
                     raw: publish_signed_event_to_raw(event),
-                    relays: relays_for_publish_target(&target),
+                    target,
                     correlation_id: Some(correlation_id.to_string()),
                 });
                 Ok(())
             }
-            PublishAction::PublishNote { content, reply_to_id, .. } => {
+            PublishAction::PublishNote { content, reply_to_id, target } => {
                 send(ActorCommand::PublishNote {
                     content,
                     reply_to_id,
+                    target,
                     correlation_id: Some(correlation_id.to_string()),
                 });
                 Ok(())
@@ -239,6 +325,16 @@ impl ActionModule for PublishModule {
             PublishAction::PublishProfile { fields } => {
                 send(ActorCommand::PublishProfile {
                     fields,
+                    correlation_id: Some(correlation_id.to_string()),
+                });
+                Ok(())
+            }
+            PublishAction::PublishRaw { kind, tags, content, target } => {
+                send(ActorCommand::PublishRawEvent {
+                    kind,
+                    tags,
+                    content,
+                    target,
                     correlation_id: Some(correlation_id.to_string()),
                 });
                 Ok(())
@@ -265,12 +361,138 @@ fn publish_signed_event_to_raw(event: SignedEvent) -> crate::store::RawEvent {
     }
 }
 
-/// Resolve a [`PublishTarget`] into the relay list
-/// [`ActorCommand::PublishSignedEvent`] expects: `Auto` → empty (NIP-65
-/// outbox resolver, D3 default), `Explicit` → the named opt-out relays.
-fn relays_for_publish_target(target: &PublishTarget) -> Vec<RelayUrl> {
-    match target {
-        PublishTarget::Auto => Vec::new(),
-        PublishTarget::Explicit { relays } => relays.clone(),
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::substrate::UnsignedEvent;
+
+    fn ctx() -> ActionContext {
+        ActionContext::default()
+    }
+
+    fn signed_event() -> SignedEvent {
+        SignedEvent {
+            id: "a".repeat(64),
+            sig: "b".repeat(128),
+            unsigned: UnsignedEvent {
+                pubkey: "c".repeat(64),
+                kind: 1,
+                tags: Vec::new(),
+                content: "hello".to_string(),
+                created_at: 1_700_000_000,
+            },
+        }
+    }
+
+    #[test]
+    fn explicit_publish_target_requires_non_empty_relays() {
+        let action = PublishAction::PublishNote {
+            content: "hello".to_string(),
+            reply_to_id: None,
+            target: PublishTarget::Explicit { relays: Vec::new() },
+        };
+        let err = PublishModule::start(&mut ctx(), action)
+            .expect_err("empty explicit target must fail closed");
+        assert!(matches!(err, ActionRejection::Invalid(msg) if msg.contains("at least one relay")));
+    }
+
+    #[test]
+    fn explicit_publish_target_rejects_malformed_relay_url() {
+        let action = PublishAction::Publish {
+            handle: "h".to_string(),
+            event: signed_event(),
+            target: PublishTarget::Explicit {
+                relays: vec!["https://relay.example".to_string()],
+            },
+        };
+        let err = PublishModule::start(&mut ctx(), action)
+            .expect_err("malformed explicit relay must be rejected");
+        assert!(matches!(err, ActionRejection::Invalid(msg) if msg.contains("ws:// or wss://")));
+    }
+
+    #[test]
+    fn explicit_publish_target_accepts_valid_relay_url() {
+        let action = PublishAction::PublishNote {
+            content: "hello".to_string(),
+            reply_to_id: None,
+            target: PublishTarget::Explicit {
+                relays: vec!["wss://relay.example".to_string()],
+            },
+        };
+        PublishModule::start(&mut ctx(), action)
+            .expect("valid explicit target should pass validation");
+    }
+
+    #[test]
+    fn publish_raw_rejects_kind_0_to_protect_profile_path() {
+        // kind:0 has dedicated `PublishProfile` handling (field validation +
+        // string-typed-content guarantee). Routing it through `PublishRaw`
+        // would bypass that, so the guard fails closed at `start`.
+        let action = PublishAction::PublishRaw {
+            kind: 0,
+            tags: Vec::new(),
+            content: "{}".to_string(),
+            target: PublishTarget::Auto,
+        };
+        let err = PublishModule::start(&mut ctx(), action)
+            .expect_err("PublishRaw must reject kind:0");
+        assert!(matches!(err, ActionRejection::Invalid(msg) if msg.contains("PublishProfile")));
+    }
+
+    #[test]
+    fn publish_raw_rejects_kind_3_pending_dedicated_path() {
+        // kind:3 (contact list) needs a follow-list-merge step; PublishRaw
+        // would publish the raw payload verbatim, silently overwriting the
+        // user's existing follow set. Fail closed until a dedicated variant
+        // (or contacts-aware PublishRaw branch) lands.
+        let action = PublishAction::PublishRaw {
+            kind: 3,
+            tags: Vec::new(),
+            content: String::new(),
+            target: PublishTarget::Auto,
+        };
+        let err = PublishModule::start(&mut ctx(), action)
+            .expect_err("PublishRaw must reject kind:3");
+        assert!(matches!(err, ActionRejection::Invalid(msg) if msg.contains("kind:3")));
+    }
+
+    #[test]
+    fn publish_raw_accepts_arbitrary_event_kind_with_auto_target() {
+        // A kind:30023 (long-form article) is the canonical second-app
+        // motivation. `Auto` target must pass validation — `#[serde(default)]`
+        // + `Default::default() == Auto` is the host-omits-the-field path,
+        // so it has to be a valid input.
+        let action = PublishAction::PublishRaw {
+            kind: 30023,
+            tags: vec![vec!["d".to_string(), "my-article".to_string()]],
+            content: "# Hello, second app".to_string(),
+            target: PublishTarget::Auto,
+        };
+        PublishModule::start(&mut ctx(), action)
+            .expect("valid PublishRaw with Auto target should pass validation");
+    }
+
+    #[test]
+    fn publish_raw_propagates_explicit_target_validation_failure() {
+        // The kind guard runs first, but past it the existing
+        // `validate_publish_target` must still apply — an explicit empty
+        // relay set fails closed exactly as for `PublishNote`.
+        let action = PublishAction::PublishRaw {
+            kind: 30023,
+            tags: Vec::new(),
+            content: "body".to_string(),
+            target: PublishTarget::Explicit { relays: Vec::new() },
+        };
+        let err = PublishModule::start(&mut ctx(), action)
+            .expect_err("empty explicit target must fail closed for PublishRaw too");
+        assert!(matches!(err, ActionRejection::Invalid(msg) if msg.contains("at least one relay")));
+    }
+
+    #[test]
+    fn publish_target_default_is_auto_for_serde_omitted_field() {
+        // `#[serde(default)] target: PublishTarget` on PublishRaw relies
+        // on Default returning Auto. Lock that in so a future contributor
+        // can't quietly flip it to Explicit and silently widen routing.
+        assert_eq!(PublishTarget::default(), PublishTarget::Auto);
     }
 }

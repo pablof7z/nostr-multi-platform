@@ -17,12 +17,12 @@ name = "nmp_app_chirp"
 crate-type = ["staticlib", "rlib"]
 
 [features]
-# Default feature set keeps the current iOS Chirp shell build unchanged: the
-# `justfile` builds `cargo build -p nmp-app-chirp` with NO `--features` flag, so
-# defaults are load-bearing. `marmot` and `wallet` were formally deferred to
-# post-v1; they remain compiled-in for Chirp (which opts in here) while the
-# default kernel build (`nmp-core` defaults) excludes them.
-default = ["marmot", "wallet", "lmdb-backend"]
+# Default feature set for non-iOS builds (tests, CI, `cargo check`).
+# `marmot` is intentionally absent: 5,400 LOC of MLS-over-Nostr is not on the
+# v1 critical path and excluded from the default build to keep CI fast.
+# The `justfile` iOS build targets pass `--features marmot` explicitly so the
+# Chirp iOS shell still links all `nmp_marmot_*` symbols.
+default = ["wallet", "lmdb-backend"]
 # Marmot (MLS-over-Nostr) projection. Gates the `nmp-marmot` dependency, the
 # `src/marmot/` C-ABI shell module, and the `nmp_app_chirp_marmot_*` FFI
 # symbols. Deferred post-v1; off in a no-default-features build.
@@ -43,18 +43,25 @@ nmp-nip01 = { path = "../../../crates/nmp-nip01" }
 # proving the host-extensibility seam works for NIP-crate modules, not just
 # Chirp's own social verbs. D0-clean: `nmp-core` gains no group nouns.
 nmp-nip29 = { path = "../../../crates/nmp-nip29" }
-# NIP-57 lightning zaps. Chirp pulls in this crate for the kind:9734
-# `ZapRequest` builder, kind:9735 `ZapReceiptRecord` decoder, and the
-# `nmp.nip57.zaps` `DomainModule` / `ZapsView`. The `ActionModule` surface
-# for `nmp.zap` was deleted as a dormant shipped-but-inert seam: a real LNURL
-# round-trip needs the async-capability protocol in ADR-0024, and until that
-# lands no host wires a zap executor. D0-clean: `nmp-core` gains no zap nouns.
-nmp-nip57 = { path = "../../../crates/nmp-nip57" }
 # NIP-17 private direct messages. Chirp wires the crate's `DmInboxProjection`
 # (kind:1059 raw-event observer + `nip17.dm_inbox` snapshot projection) and
 # registers its `SendDmAction` `ActionModule` for the `nmp.nip17.send` verb.
 # D0-clean: `nmp-core` gains no DM nouns.
 nmp-nip17 = { path = "../../../crates/nmp-nip17" }
+# NIP-65 relay-list publish. Chirp registers `PublishRelayListAction` for the
+# `nmp.nip65.publish_relay_list` verb so a host can re-broadcast the user's
+# kind:10002 outbox on demand. The companion auto-trigger lives inside
+# `nmp-core::actor::dispatch` (AddRelay / RemoveRelay arms) and uses a
+# duplicate-of-the-builder helper in `nmp-core` itself to stay D0-clean.
+nmp-nip65 = { path = "../../../crates/nmp-nip65" }
+# NIP-57 lightning zaps. Chirp registers the crate's `ZapAction`
+# `ActionModule` for the `nmp.nip57.zap` verb — the executor builds the
+# kind:9734 zap request and enqueues `ActorCommand::FetchLnurlInvoice`,
+# which the actor handles by signing the request on-thread and spawning a
+# worker for the LNURL-pay HTTP round-trip (ADR-0024 minimum-viable path).
+# D0-clean: `nmp-core` gains no zap nouns — `nmp-nip57` types stay in the
+# protocol crate; only the generic `FetchLnurlInvoice` arm lives in core.
+nmp-nip57 = { path = "../../../crates/nmp-nip57" }
 nmp-threading = { path = "../../../crates/nmp-threading" }
 # Marmot (MLS-over-Nostr). This crate's `src/marmot/` module consumes the
 # typed `MarmotService` translation layer; no MLS type crosses its C-ABI
@@ -83,6 +90,7 @@ apple-native-keyring-store = { version = "1.0", features = ["protected"], option
 # the slot. Matches the pattern in the other protocol crates (`nmp-nip01`,
 # `nmp-nip22`, `nmp-relations`).
 nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
+nmp-wasm = { path = "../../../crates/nmp-wasm" }
 # `test-utils` gates `MdkSqliteStorage::new_in_memory` so the Marmot FFI
 # smoke tests can spin up a real `MarmotService` without a keyring /
 # on-disk SQLite file (mirrors `crates/nmp-marmot/src/tests.rs`).

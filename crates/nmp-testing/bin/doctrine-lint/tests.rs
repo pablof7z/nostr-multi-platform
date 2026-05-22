@@ -413,7 +413,6 @@ fn protocol_crates_are_doctrine_clean() {
         "nmp-nip42",
         "nmp-nip57",
         "nmp-nip59",
-        "nmp-nip77",
     ];
     let mut args: Vec<String> = vec!["--crate".into(), "nmp-core".into()];
     for c in &nip_crates {
@@ -1025,6 +1024,92 @@ fn d12_negative_fixture_clean() {
         "d12 negative must produce zero D12 findings; stdout:\n{}",
         stdout
     );
+}
+
+// ─── D16 (snapshot-projection key prefix — apps/chirp/) ─────────────────────
+
+#[test]
+fn d16_positive_fixture_fires() {
+    // Stage pos.rs in isolation so neg.rs cannot pollute the assertion.
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d16_pos");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let pos_src = workspace.join(fixture_path("d16/pos.rs"));
+    std::fs::copy(&pos_src, tmp.join("pos.rs")).expect("copy pos fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    // D16 is path-scoped to `apps/chirp/` — the staged fixture under
+    // `target/` falls outside that scope, so `--d16-extra-scope` opts it in.
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d16-extra-scope",
+        "doctrine_lint_d16_pos",
+    ]);
+    assert_eq!(
+        code, 1,
+        "d16 positive must exit 1; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[D16]"),
+        "d16 positive must emit ≥1 D16 finding; stdout:\n{}",
+        stdout
+    );
+    // Both banned bare-prefix literals in the fixture must surface so a
+    // regression that silently swallows one cannot pass this test.
+    for token in ["nip29.group_chat", "nip17.dm_inbox"] {
+        assert!(
+            stdout.contains(token),
+            "d16 positive must name `{}`; stdout:\n{}",
+            token,
+            stdout
+        );
+    }
+}
+
+#[test]
+fn d16_negative_fixture_clean() {
+    let workspace = workspace_root();
+    let tmp = workspace.join("target").join("doctrine_lint_d16_neg");
+    let _ = std::fs::remove_dir_all(&tmp);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let neg_src = workspace.join(fixture_path("d16/neg.rs"));
+    std::fs::copy(&neg_src, tmp.join("neg.rs")).expect("copy neg fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&[
+        "--path",
+        &tmp_str,
+        "--d16-extra-scope",
+        "doctrine_lint_d16_neg",
+    ]);
+    assert_eq!(
+        code, 0,
+        "d16 negative must exit 0; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.contains("error[D16]"),
+        "d16 negative must produce zero D16 findings; stdout:\n{}",
+        stdout
+    );
+}
+
+/// The live `apps/chirp/` tree MUST be D16-clean after the rename.
+/// This test confirms no bare `nip17.` / `nip29.` projection keys remain.
+#[test]
+fn chirp_app_crate_is_d16_clean() {
+    let (code, stdout, stderr) = run_lint(&["--path", "apps/chirp/nmp-app-chirp/src"]);
+    assert!(
+        !stdout.contains("error[D16]"),
+        "apps/chirp/nmp-app-chirp/src must be D16 clean after rename; \
+         stdout:\n{}\nstderr:\n{}",
+        stdout,
+        stderr
+    );
+    let _ = (code, stderr); // exit code may be non-zero if other rules fire; D16 is the load-bearing check
 }
 
 // ─── --workspace-d8 (workspace-wide no-polling scan) ─────────────────────────

@@ -1,8 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  discoverGroupsCommand,
+  publishNoteAction,
+  reactGroupMessageCommand,
+  replyGroupMessageCommand,
+  sendDmCommand,
+  walletCommand,
+} from "./actions";
 import { createNmpClient } from "./client";
 import { DegradedRuntime } from "./degradedRuntime";
 import type { WorkerEvent, WorkerRequest } from "./protocol";
 import { protocolVersion } from "./protocol";
+import { chirpTimelineFromEnvelope, displayRows, featureSnapshotFromEnvelope, kernelSnapshotFromEnvelope } from "./snapshot";
 
 type WorkerHarness = {
   onmessage: ((message: MessageEvent<WorkerRequest>) => void) | null;
@@ -31,7 +40,6 @@ describe("DegradedRuntime protocol flow", () => {
       runtime.handle({
         type: "start",
         app_id: "chirp",
-        relays: ["wss://relay.example"],
         database_name: "chirp-test",
         correlation_id: "start-1",
       }),
@@ -46,14 +54,14 @@ describe("DegradedRuntime protocol flow", () => {
     expect(
       runtime.handle({
         type: "dispatch",
-        action_type: "chirp.compose",
-        payload: { content: "hello" },
+        action_type: "nmp.publish",
+        payload: { PublishNote: { content: "hello", reply_to_id: null, target: "Auto" } },
         correlation_id: "dispatch-1",
       }),
     ).toEqual([
       {
         type: "capability_failure",
-        capability: "chirp.compose",
+        capability: "nmp.publish",
         correlation_id: "dispatch-1",
         reason: "nmp-wasm actor driver is not linked into the web worker yet",
       },
@@ -89,7 +97,7 @@ describe("createNmpClient fallback", () => {
 
     const unsubscribe = client.subscribe((snapshot) => snapshots.push(snapshot));
     const started = await client.start();
-    const dispatched = await client.dispatch("chirp.compose", { content: "hello" });
+    const dispatched = await client.dispatchChirp(publishNoteAction("hello"));
     unsubscribe();
 
     expect(snapshots[0].events[0]).toMatchObject({ type: "hello_accepted" });
@@ -100,9 +108,120 @@ describe("createNmpClient fallback", () => {
     });
     expect(dispatched.events[0]).toMatchObject({
       type: "capability_failure",
-      capability: "chirp.compose",
+      capability: "chirp_action",
       reason: "Web Worker support is unavailable, so the nmp-wasm bridge cannot start",
     });
+  });
+});
+
+describe("shared Chirp web semantics", () => {
+  it("sends a Chirp intent and lets Rust map it to the kernel publish action", () => {
+    expect(publishNoteAction("hello web")).toEqual({
+      action: "publish_note",
+      content: "hello web",
+      reply_to_id: null,
+    });
+  });
+
+  it("uses the shared action namespaces for non-home Chirp features", () => {
+    expect(sendDmCommand("pk", "hello")).toEqual({
+      actionType: "nmp.nip17.send",
+      payload: { recipient_pubkey: "pk", content: "hello" },
+    });
+    expect(discoverGroupsCommand("wss://groups.example")).toEqual({
+      actionType: "nmp.nip29.discover",
+      payload: { relay_url: "wss://groups.example" },
+    });
+    expect(walletCommand("pay_invoice", { bolt11: "lnbc1..." })).toEqual({
+      actionType: "nmp.wallet.pay_invoice",
+      payload: { bolt11: "lnbc1..." },
+    });
+    expect(reactGroupMessageCommand("wss://groups.example", "general", "event1")).toEqual({
+      actionType: "nmp.nip29.react_in_group",
+      payload: {
+        group: { host_relay_url: "wss://groups.example", local_id: "general" },
+        target_event_id: "event1",
+        content: "+",
+      },
+    });
+    expect(replyGroupMessageCommand("wss://groups.example", "general", "event1", "reply")).toMatchObject({
+      actionType: "nmp.nip29.comment_in_group",
+      payload: { parent_event_id: "event1", content: "reply" },
+    });
+  });
+
+  it("renders rows from Rust snapshot envelopes instead of local feed fixtures", () => {
+    const kernel = kernelSnapshotFromEnvelope({
+      t: "snapshot",
+      v: {
+        rev: 7,
+        projections: {
+          timeline: [
+            {
+              id: "note-a",
+              displayName: "alice",
+              content: "from shared timeline",
+            },
+          ],
+        },
+      },
+    });
+
+    expect(kernel?.rev).toBe(7);
+    expect(displayRows(kernel, undefined)).toEqual([
+      {
+        id: "note-a",
+        displayName: "alice",
+        content: "from shared timeline",
+      },
+    ]);
+  });
+
+  it("can fall back to the Chirp modular snapshot card shape", () => {
+    const chirp = chirpTimelineFromEnvelope({
+      chirpTimeline: {
+        blocks: [{ Standalone: "note-a" }],
+        cards: [{ id: "note-a", author_pubkey: "abc", content: "from chirp cards" }],
+      },
+    });
+
+    expect(displayRows(undefined, chirp)).toEqual([
+      {
+        id: "note-a",
+        authorPubkey: "abc",
+        content: "from chirp cards",
+        createdAt: undefined,
+      },
+    ]);
+  });
+
+  it("projects iOS/TUI parity feature snapshots from shared Rust projections", () => {
+    const feature = featureSnapshotFromEnvelope({
+      t: "snapshot",
+      v: {
+        projections: {
+          accounts: [{ id: "alice", display_name: "Alice", npub: "npub1alice", is_active: true }],
+          active_account: "alice",
+          relay_edit_rows: [{ url: "wss://relay.example", role_label: "both" }],
+          relay_diagnostics: [{ url: "wss://relay.example", role: "both,indexer", status: "configured" }],
+          wallet: { status: "ready", balance_msats: 21000 },
+          "nmp.nip17.dm_inbox": {
+            conversations: [{ peer_pubkey: "bob", messages: [{ id: "dm1", content: "hi", is_outgoing: false }] }],
+          },
+          "nmp.nip29.discovered_groups": {
+            groups: [{ host_relay_url: "wss://groups.example", group_id: "general", member_count: 3 }],
+          },
+          publish_outbox: [{ handle: "pub1", status_label: "pending", can_retry: true }],
+        },
+      },
+    });
+
+    expect(feature.accounts[0]).toMatchObject({ id: "alice", display: "Alice", active: true });
+    expect(feature.dmConversations[0].latest).toBe("hi");
+    expect(feature.discoveredGroups[0]).toMatchObject({ groupId: "general", memberCount: 3 });
+    expect(feature.relayDiagnostics[0].status).toBe("configured");
+    expect(feature.wallet.balanceMsats).toBe(21000);
+    expect(feature.outbox[0].canRetry).toBe(true);
   });
 });
 
@@ -127,14 +246,12 @@ describe("worker runtime bridge", () => {
     await sendWorkerRequest(harness, {
       type: "start",
       app_id: "chirp",
-      relays: ["wss://relay.example"],
       database_name: "chirp-test",
       correlation_id: "start-1",
     });
     await sendWorkerRequest(harness, {
-      type: "dispatch",
-      action_type: "chirp.compose",
-      payload: { content: "hello" },
+      type: "chirp_action",
+      action: publishNoteAction("hello"),
       correlation_id: "dispatch-1",
     });
 
@@ -151,7 +268,7 @@ describe("worker runtime bridge", () => {
       },
       {
         type: "capability_failure",
-        capability: "chirp.compose",
+        capability: "chirp_action",
         correlation_id: "dispatch-1",
         reason: events[0].type === "error" ? events[0].message : "",
       },

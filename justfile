@@ -15,7 +15,7 @@ rust-ios-sim:
     cargo build -p nmp-core --features lmdb-backend --target aarch64-apple-ios-sim
     # Chirp links one aggregate archive so nmp-core static state is not
     # duplicated across app, projection, and NIP-46 broker crates.
-    cargo build -p nmp-app-chirp --target aarch64-apple-ios-sim
+    cargo build -p nmp-app-chirp --features marmot --target aarch64-apple-ios-sim
 
 gen-ios:
     xcodegen generate --spec ios/Chirp/project.yml

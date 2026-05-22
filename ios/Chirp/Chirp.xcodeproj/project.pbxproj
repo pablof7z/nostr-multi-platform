@@ -30,6 +30,7 @@
 		68007D368B2D3F09A8EF77D0 /* NotificationsView+OutboxRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = A5D0C52F394D2EB8C433FE58 /* NotificationsView+OutboxRow.swift */; };
 		683374BB2BBCDF65807EEFC8 /* DiagnosticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C88FE40DE954EED68068786 /* DiagnosticsView.swift */; };
 		68379E6C144BFF7F0D9395CE /* KernelBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B303905AEF1833128E7C6BC /* KernelBridge.swift */; };
+		68AC65797FD219DC0B752949 /* FollowListBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E62432F6B248D62C781D547 /* FollowListBridge.swift */; };
 		6BE96583DDB7BC3A89DA1D79 /* ModularTimelineBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CE028B856FE7D32538CE605 /* ModularTimelineBridge.swift */; };
 		72E6C28DE61F97428F972267 /* RootShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31F55FC6A139DA43D434DBF9 /* RootShell.swift */; };
 		82CC2009FF54F2B7DAD35B06 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D32D744B5446C909E7AEEB8F /* OnboardingView.swift */; };
@@ -47,11 +48,11 @@
 		B70D9AE10FD8CB75144CE7CB /* DmConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C726DE3D022225C5DCDF2A68 /* DmConversationView.swift */; };
 		BA5D10F42934B36256492BCC /* NotificationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C79DFA56568C01E3AE76955E /* NotificationsView.swift */; };
 		C5A3FCE92DF36AD33D083F83 /* SettingsHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BA43E598F11A1CE9FEC7D6F /* SettingsHubView.swift */; };
+		CE1B964565DBF18BDAC36EF6 /* SnapshotProjectionsConformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FB756A0788160E169618B43 /* SnapshotProjectionsConformanceTests.swift */; };
 		D08889E779C6991EF8540EAC /* ThreadNoteRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF4D140423145993963B8F23 /* ThreadNoteRow.swift */; };
 		D81055E50F7F365F57F3FD35 /* InvitesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E09352C7C1CC9D7C5BB6156 /* InvitesView.swift */; };
 		D93F87FAB4BDD5BB307789C0 /* KernelModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3808C5C6482C44109C442925 /* KernelModel.swift */; };
 		DC6FF9F50A594B0F3F0B84F8 /* DmBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDF6A637F032F16E09D2F6AC /* DmBridge.swift */; };
-		EC64CF76EA294066BFFBC763 /* FollowListBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79C93CBA91C746EC9150E62D /* FollowListBridge.swift */; };
 		E6AF81962D62F30FDB2F4F35 /* NoteRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D6ADE8B08D5ABD0EA510EDC /* NoteRowView.swift */; };
 		EA0318372F152947A645ADC8 /* ProfileNoteRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C170D9BAEF17D256061902E9 /* ProfileNoteRow.swift */; };
 		EADA12AFFA8D08461F19DFA7 /* NoteContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1ED689DD9659151162F819BC /* NoteContentView.swift */; };
@@ -84,6 +85,7 @@
 		0F7C6ADBA250165B0FFE7338 /* MarmotGroupsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarmotGroupsView.swift; sourceTree = "<group>"; };
 		18F55EDA0CB6D234B934C44A /* NoteEntityViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteEntityViews.swift; sourceTree = "<group>"; };
 		1B303905AEF1833128E7C6BC /* KernelBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KernelBridge.swift; sourceTree = "<group>"; };
+		1E62432F6B248D62C781D547 /* FollowListBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FollowListBridge.swift; sourceTree = "<group>"; };
 		1ED689DD9659151162F819BC /* NoteContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteContentView.swift; sourceTree = "<group>"; };
 		22815F76AA03DAE183DBA656 /* GroupChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupChatView.swift; sourceTree = "<group>"; };
 		23D004DA6D1AFB36F6FBBAE0 /* OnboardingView+NIP46.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "OnboardingView+NIP46.swift"; sourceTree = "<group>"; };
@@ -106,6 +108,7 @@
 		80CA160BF8239675560E695A /* GroupChatDecodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupChatDecodeTests.swift; sourceTree = "<group>"; };
 		886A82F866183EB8C3674AD1 /* NmpCore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NmpCore.h; sourceTree = "<group>"; };
 		8C88FE40DE954EED68068786 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
+		8FB756A0788160E169618B43 /* SnapshotProjectionsConformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotProjectionsConformanceTests.swift; sourceTree = "<group>"; };
 		900229FDEE3330B7264E8A33 /* WalletView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletView.swift; sourceTree = "<group>"; };
 		985298ED1B842E892A6FA759 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		9CD04CA5EB5E534F616BC342 /* RelayDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayDetailView.swift; sourceTree = "<group>"; };
@@ -136,7 +139,6 @@
 		F4B102E18AA406E26FBF1957 /* JoinGroupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JoinGroupView.swift; sourceTree = "<group>"; };
 		F4FC09F936C21E0D65E03D7B /* GroupChatBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GroupChatBridge.swift; sourceTree = "<group>"; };
 		FDF6A637F032F16E09D2F6AC /* DmBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DmBridge.swift; sourceTree = "<group>"; };
-		79C93CBA91C746EC9150E62D /* FollowListBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FollowListBridge.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXGroup section */
@@ -221,6 +223,7 @@
 				80CA160BF8239675560E695A /* GroupChatDecodeTests.swift */,
 				672D6715F6F793C4B032B8D0 /* NoteContentRenderingTests.swift */,
 				31B7447F6D5C5E1571BF6A03 /* SmokeScenariosTests.swift */,
+				8FB756A0788160E169618B43 /* SnapshotProjectionsConformanceTests.swift */,
 			);
 			path = ChirpTests;
 			sourceTree = "<group>";
@@ -261,7 +264,7 @@
 			isa = PBXGroup;
 			children = (
 				FDF6A637F032F16E09D2F6AC /* DmBridge.swift */,
-				79C93CBA91C746EC9150E62D /* FollowListBridge.swift */,
+				1E62432F6B248D62C781D547 /* FollowListBridge.swift */,
 				F4FC09F936C21E0D65E03D7B /* GroupChatBridge.swift */,
 				A7D480A8BF704C4F5C1F80AE /* GroupDiscoveryBridge.swift */,
 				1B303905AEF1833128E7C6BC /* KernelBridge.swift */,
@@ -393,6 +396,7 @@
 				39AD0535EF5E1619F46F3FFE /* GroupChatDecodeTests.swift in Sources */,
 				624A97B1D2CACA922E697753 /* NoteContentRenderingTests.swift in Sources */,
 				2355CCF12E5CA31216977162 /* SmokeScenariosTests.swift in Sources */,
+				CE1B964565DBF18BDAC36EF6 /* SnapshotProjectionsConformanceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -417,9 +421,9 @@
 				159A0AB673722908A2785D5C /* ComposeView.swift in Sources */,
 				683374BB2BBCDF65807EEFC8 /* DiagnosticsView.swift in Sources */,
 				DC6FF9F50A594B0F3F0B84F8 /* DmBridge.swift in Sources */,
-				EC64CF76EA294066BFFBC763 /* FollowListBridge.swift in Sources */,
 				B70D9AE10FD8CB75144CE7CB /* DmConversationView.swift in Sources */,
 				657C5ADC60FA028341CF8BD0 /* DmListView.swift in Sources */,
+				68AC65797FD219DC0B752949 /* FollowListBridge.swift in Sources */,
 				5F05576A5E81E79E0B4C9DE6 /* GroupChatBridge.swift in Sources */,
 				EEDE116FC91062BBFA1DA249 /* GroupChatView.swift in Sources */,
 				0248D621EC2123D7B7E13C0A /* GroupDiscoveryBridge.swift in Sources */,

@@ -322,9 +322,9 @@ impl Kernel {
         }
         self.profile_requests.req_seq = self.profile_requests.req_seq.saturating_add(1);
         let seq = self.profile_requests.req_seq;
-        // T105: kind:0 is a discovery fetch. Cold-start → INDEXER relay only
-        // (purplepag.es). NIP-65 known → declared write relays (the author
-        // published kind:0 there). Never send to the content relay (damus.io).
+        // T105: kind:0 is a discovery fetch. Cold-start → INDEXER relay only.
+        // NIP-65 known → declared write relays (the author published kind:0
+        // there). Never send cold-start profile claims to the content relay.
         let mut requests = Vec::new();
         for relay_url in self.author_indexer_relays(&pubkey) {
             let tag = relay_tag(&relay_url);

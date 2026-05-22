@@ -5,22 +5,23 @@ import {
   type RuntimeStatus,
   type WorkerEvent,
   type WorkerRequest,
+  type ChirpAction,
 } from "./protocol";
+import type { RuntimeCommand } from "./actions";
 
 export type RuntimeSnapshot = {
   status: RuntimeStatus;
   events: WorkerEvent[];
+  latestUpdate?: unknown;
 };
 
 export type RuntimeConnection = {
   appId: string;
-  relays: string[];
   databaseName: string;
 };
 
 export const runtimeConnection: RuntimeConnection = {
   appId: "chirp",
-  relays: ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net"],
   databaseName: "chirp-web",
 };
 
@@ -29,6 +30,8 @@ export type NmpClient = {
   subscribe(listener: (snapshot: RuntimeSnapshot) => void): () => void;
   start(): Promise<RuntimeSnapshot>;
   dispatch(actionType: string, payload: unknown): Promise<RuntimeSnapshot>;
+  dispatchCommand(command: RuntimeCommand): Promise<RuntimeSnapshot>;
+  dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot>;
 };
 
 export function createNmpClient(): NmpClient {
@@ -44,11 +47,12 @@ export function createNmpClient(): NmpClient {
 
 abstract class BaseClient implements NmpClient {
   private events: WorkerEvent[] = [];
+  private latestUpdate: unknown;
   private status: RuntimeStatus = "ready";
   private listeners = new Set<(snapshot: RuntimeSnapshot) => void>();
 
   snapshot(): RuntimeSnapshot {
-    return { status: this.status, events: [...this.events] };
+    return { status: this.status, events: [...this.events], latestUpdate: this.latestUpdate };
   }
 
   subscribe(listener: (snapshot: RuntimeSnapshot) => void): () => void {
@@ -61,6 +65,9 @@ abstract class BaseClient implements NmpClient {
     if (event.type === "runtime_status" || event.type === "hello_accepted") {
       this.status = event.status;
     }
+    if (event.type === "update") {
+      this.latestUpdate = event.envelope;
+    }
     this.events = [event, ...this.events].slice(0, 8);
     const snapshot = this.snapshot();
     for (const listener of this.listeners) {
@@ -71,6 +78,10 @@ abstract class BaseClient implements NmpClient {
 
   abstract start(): Promise<RuntimeSnapshot>;
   abstract dispatch(actionType: string, payload: unknown): Promise<RuntimeSnapshot>;
+  dispatchCommand(command: RuntimeCommand): Promise<RuntimeSnapshot> {
+    return this.dispatch(command.actionType, command.payload);
+  }
+  abstract dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot>;
 }
 
 class WorkerNmpClient extends BaseClient {
@@ -102,7 +113,6 @@ class WorkerNmpClient extends BaseClient {
     return this.request({
       type: "start",
       app_id: runtimeConnection.appId,
-      relays: runtimeConnection.relays,
       database_name: runtimeConnection.databaseName,
       correlation_id: "web-start",
     });
@@ -114,6 +124,15 @@ class WorkerNmpClient extends BaseClient {
       type: "dispatch",
       action_type: actionType,
       payload,
+      correlation_id: `web-${Date.now()}`,
+    });
+  }
+
+  async dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot> {
+    await this.helloReady;
+    return this.request({
+      type: "chirp_action",
+      action,
       correlation_id: `web-${Date.now()}`,
     });
   }
@@ -167,7 +186,6 @@ class InProcessNmpClient extends BaseClient {
     return this.send({
       type: "start",
       app_id: runtimeConnection.appId,
-      relays: runtimeConnection.relays,
       database_name: runtimeConnection.databaseName,
       correlation_id: "web-start",
     });
@@ -178,6 +196,14 @@ class InProcessNmpClient extends BaseClient {
       type: "dispatch",
       action_type: actionType,
       payload,
+      correlation_id: `web-${Date.now()}`,
+    });
+  }
+
+  async dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot> {
+    return this.send({
+      type: "chirp_action",
+      action,
       correlation_id: `web-${Date.now()}`,
     });
   }

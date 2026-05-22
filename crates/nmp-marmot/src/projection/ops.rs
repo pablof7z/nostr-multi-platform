@@ -43,11 +43,11 @@
 //! `group_id→relays` cache from `Welcome::group_relays`). It now has TWO
 //! callers sharing that one path: the automatic
 //! [`crate::projection::tap`] raw-event observer (registered against the
-//! retained `*mut NmpApp` in `nmp_app_chirp_marmot_register`; the kernel
+//! retained `*mut NmpApp` in `nmp_marmot_register`; the kernel
 //! delivers every accepted inbound signed kind:1059/445 to it) and the
 //! back-compat `{"op":"ingest_signed_event"}` dispatch op. The tap makes
 //! welcomes / messages received from relays surface in the next
-//! `nmp_app_chirp_marmot_snapshot` with no Swift involvement. This was
+//! `nmp_marmot_snapshot` with no Swift involvement. This was
 //! the last open seam.
 //!
 //! ## Pending-commit discipline (mdk-api.md §7.7)
@@ -337,35 +337,21 @@ fn publish_key_package(
         .service()
         .publish_key_package(relays.clone())
         .map_err(|e| e.to_string())?;
-    // kind:30443 + legacy kind:443 — dual publish path:
-    //   1. kernel fire-and-forget through the shared publish pipeline
-    //   2. direct WebSocket EVENT submit so the simulator path can verify OKs
+    // kind:30443 + legacy kind:443 — both go through the kernel publish
+    // pipeline (fire-and-forget, async). The historical synchronous
+    // tungstenite "direct EVENT submit" path used to live here as a
+    // simulator-path verification fallback but it was a D8 violation: it
+    // blocked the calling thread (kernel actor / Swift worker) on
+    // synchronous TCP + TLS + per-relay 6 s wall-clock waits. The kernel
+    // publish pipeline is the canonical path; no consumer reads the
+    // former `direct_ok` / `send_errors` fields (verified across
+    // ios/, apps/, crates/).
     use nostr::JsonUtil as _;
-    use std::time::Duration as D;
-    const SEND_WALL: D = D::from_secs(6);
     h.publish_explicit(&pubn.event_30443, &relays);
     h.publish_explicit(&pubn.event_443, &relays);
-    let mut ok_count = 0u32;
-    let mut send_errors: Vec<String> = Vec::new();
-    for url in &urls {
-        let j443 = pubn.event_443.as_json();
-        let j30443 = pubn.event_30443.as_json();
-        match crate::projection::fetch::send_event(url, &j30443, SEND_WALL) {
-            Ok(true) => ok_count += 1,
-            Ok(false) => {}
-            Err(e) => send_errors.push(format!("30443 {e}")),
-        }
-        if let Err(e) = crate::projection::fetch::send_event(url, &j443, SEND_WALL) {
-            send_errors.push(format!("443 {e}"));
-        }
-    }
     h.record_key_package(pubn.d_tag.clone(), now_secs);
     Ok(json!({
         "d_tag": pubn.d_tag,
-        "direct_ok": ok_count,
-        // Connection / send failures (D6 — distinct from a relay that was
-        // reached but did not confirm). Empty on a fully clean publish.
-        "send_errors": send_errors,
         "events": [
             pubn.event_30443.as_json(),
             pubn.event_443.as_json(),
@@ -425,7 +411,7 @@ fn wrap_and_publish_welcomes(
             .map_err(|e| e.to_string())?;
         // kind:1059 is ALREADY signed (NIP-59 ephemeral key) — publish
         // verbatim, never re-sign. Inbox approximation → group relays
-        // (empty → kernel Auto-fallback).
+        // (empty → kernel explicit-target fail-closed).
         h.publish_explicit(&wrapped, group_relays);
         out.push(wrapped.as_json());
     }
@@ -467,7 +453,7 @@ fn create_group(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
     let group_id_hex = hex_encode(group.mls_group_id.as_slice());
     let rumors = pending.welcome_rumors.clone();
     // NIP-59 gift-wrap + internally publish each kind:444 welcome to the
-    // group relays (inbox-routing approximation; empty → Auto).
+    // group relays (inbox-routing approximation; empty → fail closed).
     let welcomes = wrap_and_publish_welcomes(h, &relays, &kp_events, &rumors)?;
     // Events produced + submitted → commit eagerly so the group is not
     // wedged (pending-commit discipline, see module rustdoc). This drops
@@ -499,7 +485,7 @@ fn invite(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
     }
     let group_id_hex = hex_encode(gid.as_slice());
     // Resolve the relay-pinned relays BEFORE creating the borrowed
-    // `pending` (cache read is `&self`; a miss → empty → Auto-fallback).
+    // `pending` (cache read is `&self`; a miss → explicit target fails closed).
     let group_relays = h.group_relays(&group_id_hex);
     let pending = h
         .service()
@@ -507,7 +493,7 @@ fn invite(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
         .map_err(|e| e.to_string())?;
     let evolution = pending.evolution_event.as_json();
     // kind:445 commit → group relay-pinned relays (Explicit; cache miss
-    // → Auto). MUST go to the group relay(s), not the author outbox.
+    // → fail closed). MUST go to the group relay(s), not the author outbox.
     h.publish_explicit(&pending.evolution_event, &group_relays);
     let rumors = pending.welcome_rumors.clone();
     // kind:444 rumors → NIP-59 gift-wrap + internal publish.
@@ -531,7 +517,7 @@ fn send(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
         .create_message(&gid, rumor)
         .map_err(|e| e.to_string())?;
     // Signed kind:445 (MDK signs with the MLS credential). Relay-pinned →
-    // the group's configured relays (Explicit; cache miss → Auto).
+    // the group's configured relays (Explicit; cache miss → fail closed).
     let group_id_hex = hex_encode(gid.as_slice());
     h.publish_group_pinned(&group_id_hex, &msg);
     Ok(json!({
@@ -564,7 +550,7 @@ fn remove(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
         .map_err(|e| e.to_string())?;
     let evolution = pending.evolution_event.as_json();
     // kind:445 remove commit → group relay-pinned relays (Explicit;
-    // cache miss → Auto).
+    // cache miss → fail closed).
     h.publish_group_pinned(&group_id_hex, &pending.evolution_event);
     pending.commit().map_err(|e| e.to_string())?;
     Ok(json!({ "evolution_event": evolution }))
@@ -660,7 +646,7 @@ fn decline_welcome(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> 
 /// `Ok(Some(Value))` carries the per-kind informational payload the
 /// dispatch op echoes. The projection mutation (pending-welcome row,
 /// relay cache, MDK state) is the load-bearing effect — the next
-/// `nmp_app_chirp_marmot_snapshot` reflects it for BOTH callers.
+/// `nmp_marmot_snapshot` reflects it for BOTH callers.
 pub(crate) fn ingest_signed_event_core(
     h: &mut InnerHandle<'_>,
     event: &nostr::Event,

@@ -19,7 +19,6 @@
 //!   `ops::ingest_signed_event_core`).
 
 pub mod display;
-pub mod fetch;
 pub mod ops;
 pub mod payload;
 pub mod publish;

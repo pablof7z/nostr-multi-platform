@@ -60,6 +60,7 @@ pub mod ffi;
 pub mod handshake;
 pub mod relay_client;
 pub mod transport;
+pub(crate) mod uri_encode;
 
 pub use broker::BunkerBroker;
 pub use ffi::{

@@ -60,6 +60,12 @@ mod lifecycle;
 mod publish;
 mod raw_event_observer;
 mod relays;
+mod remote_signer_for_seal;
+mod zap;
+// LNURL-pay decode + URL-encode helpers split out of `zap` so the
+// orchestrator file stays under the 500-LOC file-size gate. Pure
+// functions; no I/O, no mutable state.
+mod zap_lnurl;
 // D0: NIP-47 NWC is an app noun — the wallet command runtime (and its
 // `nmp-nwc` dependency) is gated behind the `wallet` Cargo feature.
 #[cfg(test)]
@@ -116,6 +122,10 @@ pub(super) use publish::{
     follow, open_timeline, publish_note, publish_profile, publish_signed_event,
     publish_unsigned_event, publish_unsigned_event_to_relays, react,
 };
+// NIP-57 LNURL-pay handler. The dispatch arm in `actor/dispatch.rs` calls
+// this; the handler signs the kind:9734 on the actor thread and spawns a
+// worker for the HTTP round-trip (D8 — no blocking on the actor).
+pub(super) use zap::handle_fetch_lnurl_invoice;
 pub(crate) use raw_event_observer::{
     new_raw_event_observer_slot, notify_raw_observers, raw_observers_idle_for_kind,
     register_c_raw_observer, register_rust_raw_observer, unregister_raw_observer,
@@ -131,7 +141,7 @@ pub use raw_event_observer::{
 // this through `lib.rs::testing` when `feature = "test-support"` is on.
 #[cfg(any(test, feature = "test-support"))]
 pub use conformance_support::ConformanceHarness;
-pub(super) use relays::{add_relay, remove_relay};
+pub(super) use relays::{add_relay, build_relay_list_event_from_edit_rows, remove_relay};
 #[cfg(feature = "wallet")]
 pub(super) use wallet::{
     handle_nwc_text, wallet_connect, wallet_disconnect, wallet_pay_invoice, WalletRuntime,

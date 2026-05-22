@@ -28,7 +28,7 @@ use super::relay_mgmt::{
     shutdown_relay_worker, spawn_missing_relays,
 };
 use super::session_persistence;
-use super::tick::{emit_kernel_update, emit_now, maybe_emit_after_dispatch};
+use super::tick::{emit_now, maybe_emit_after_dispatch};
 use super::{ActorCommand, RelayControl};
 use crate::capability_socket::CapabilityCallbackSlot;
 
@@ -63,6 +63,77 @@ fn update_local_key_slots(
     if let Ok(mut guard) = nip17_keys_slot.lock() {
         *guard = identity.active_local_keys().cloned();
     }
+}
+
+/// Re-publish the active account's NIP-65 kind:10002 relay list after an
+/// `AddRelay` / `RemoveRelay` mutation, so other clients reading the relay
+/// graph see the same set the user just edited.
+///
+/// # Why
+///
+/// Before this hook, the actor's `AddRelay` / `RemoveRelay` arms mutated
+/// the local `RelayEditRow` projection and dialed / dropped sockets, but
+/// never re-published the user's NIP-65 outbox. The asymmetric leak:
+/// removing a defunct relay never told other clients to stop fanning out
+/// to it; adding a new relay never told contacts to read/write there. The
+/// `nmp.nip65.publish_relay_list` action (`nmp-nip65` crate) closes the
+/// host-dispatched half of the loop; this helper closes the actor-internal
+/// half so the FFI `nmp_app_add_relay` / `nmp_app_remove_relay` paths and
+/// any non-action caller of those `ActorCommand`s also keep NIP-65 in
+/// sync.
+///
+/// # Skip semantics — three guards
+///
+/// 1. **No active account.** A relay edit while signed out is a local
+///    settings change; there is no identity to sign under. `publish_unsigned_event`
+///    would otherwise set an error toast via `toast_no_account`, which is
+///    the wrong observable for a config edit.
+/// 2. **Projection unchanged.** Re-adding an already-present URL with the
+///    same role, or removing a URL that was never present, leaves the
+///    projection identical to its prior state. Republishing kind:10002
+///    in that case would waste a write and bump the timestamp for no
+///    behavioural change. `projection_before` is the snapshot the caller
+///    took *before* the local mutation; equality means "no semantic change".
+/// 3. **No NIP-65-eligible rows.** A projection containing only pure-indexer
+///    rows (or one that becomes empty after the edit) cannot produce a
+///    kind:10002 with `r` tags. `build_relay_list_event_from_edit_rows`
+///    returns `None` in that case, and the function bails before any
+///    publish — an empty kind:10002 is the destructive "clear my NIP-65
+///    metadata" signal in `ingest_relay_list`, and we must never emit
+///    that as a side effect of a relay edit.
+///
+/// # `correlation_id`
+///
+/// `None` — these are actor-internal publishes piggybacked onto a local
+/// mutation, not action-dispatched. Hosts that *want* an observable
+/// terminal verdict dispatch `nmp.nip65.publish_relay_list` directly,
+/// which threads a registry-minted id through `PublishUnsignedEvent`.
+///
+/// # `created_at`
+///
+/// D7 sentinel: the builder sets `created_at = 0`; the actor's
+/// `PublishUnsignedEvent` arm re-stamps it from the kernel clock. This
+/// function never reads the system clock.
+fn maybe_publish_relay_list_after_edit(
+    identity: &mut commands::IdentityRuntime,
+    kernel: &mut Kernel,
+    projection_before: &[crate::kernel::RelayEditRow],
+    pending_signs: &mut Vec<super::pending_sign::PendingSign>,
+) -> Vec<OutboundMessage> {
+    // Guard 1: must have an active signer.
+    if identity.active_pubkey().is_none() {
+        return Vec::new();
+    }
+    // Guard 2: skip on no-op projection change.
+    let projection_after = kernel.relay_edit_rows_snapshot();
+    if projection_after == projection_before {
+        return Vec::new();
+    }
+    // Guard 3: skip when the projection has no NIP-65 expression.
+    let Some(unsigned) = commands::build_relay_list_event_from_edit_rows(projection_after) else {
+        return Vec::new();
+    };
+    commands::publish_unsigned_event(identity, kernel, unsigned, None, pending_signs)
 }
 
 /// Borrowed bundle of the actor loop's mutable runtime state.
@@ -103,6 +174,19 @@ pub(super) struct ActorContext<'a> {
     pub(super) nip17_local_keys: &'a Arc<Mutex<Option<nostr::Keys>>>,
     pub(super) capability_callback: &'a CapabilityCallbackSlot,
     pub(super) pending_signs: &'a mut Vec<PendingSign>,
+    /// Self-feedback `Sender<ActorCommand>` — the actor's own command channel
+    /// from the perspective of code running on the actor thread.
+    /// `dispatch.rs` arms that spawn background workers (currently only the
+    /// `FetchLnurlInvoice` LNURL-pay HTTP round-trip) clone this and hand
+    /// the clone to the worker; the worker then sends a follow-up
+    /// `ActorCommand` (e.g. `ShowToast` with the bolt11 invoice) back into
+    /// the actor loop without needing access to the `NmpApp`.
+    ///
+    /// D8 — the actor never `recv`s on this sender; it only hands clones
+    /// out. The matching receiver is `command_rx` in `run_actor_with_observers`.
+    /// A disconnected sender (post-Shutdown) is a benign send-failure on
+    /// the worker side; the worker swallows it as a no-op (D6).
+    pub(super) command_tx_self: &'a Sender<crate::actor::ActorCommand>,
 }
 
 pub(super) fn dispatch_command(
@@ -203,12 +287,8 @@ pub(super) fn dispatch_command(
         ActorCommand::SignInNsec { secret } => {
             // `secret` is `Zeroizing<String>`; pass the borrowed `&str` and let
             // the wrapper wipe the plaintext when it drops at end of scope.
-            let outbound = commands::sign_in_nsec(
-                ctx.identity,
-                ctx.kernel,
-                secret.as_str(),
-                ctx.relays_ready,
-            );
+            let outbound =
+                commands::sign_in_nsec(ctx.identity, ctx.kernel, secret.as_str(), ctx.relays_ready);
             update_local_key_slots(ctx.identity, ctx.marmot_local_nsec, ctx.nip17_local_keys);
             session_persistence::persist_current_active_session(
                 ctx.identity,
@@ -293,6 +373,7 @@ pub(super) fn dispatch_command(
         ActorCommand::PublishNote {
             content,
             reply_to_id,
+            target,
             correlation_id,
         } => {
             // PR-G: record the `Requested` stage the moment the actor
@@ -314,9 +395,75 @@ pub(super) fn dispatch_command(
                 ctx.kernel,
                 &content,
                 reply_to_id.as_deref(),
+                target,
                 correlation_id,
                 ctx.pending_signs,
             );
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(outbound)
+        }
+        ActorCommand::PublishRawEvent {
+            kind,
+            tags,
+            content,
+            target,
+            correlation_id,
+        } => {
+            // D7: kernel owns the wall clock. Unlike `PublishUnsignedEvent`
+            // below — whose callers (NIP-crate executors) set the sentinel
+            // `created_at: 0` and rely on the dispatch arm to stamp — this
+            // arm builds the `UnsignedEvent` itself, so we stamp inline
+            // from `kernel.now_secs()` directly. Same effect, no sentinel
+            // round-trip required. The FixedClock test hook plugs into
+            // `kernel.now_secs()`, so end-to-end behaviour is preserved.
+            //
+            // `pubkey` is intentionally left empty: both
+            // `publish_unsigned_event` and `publish_unsigned_event_to_relays`
+            // ignore the caller's `unsigned.pubkey` and write the active
+            // identity's pubkey onto the SignedEvent at sign time. Setting
+            // it here would be dead work.
+            let unsigned = crate::substrate::UnsignedEvent {
+                pubkey: String::new(),
+                kind,
+                tags,
+                content,
+                created_at: ctx.kernel.now_secs(),
+            };
+            // PR-G — see PublishNote arm above. Same entry-point seam:
+            // record `Requested` against the registry-minted correlation_id
+            // the moment the actor dequeues the dispatched action so the
+            // host spinner has a lifecycle entry from t=0.
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
+            // Route on `target`: `Auto` resolves via NIP-65 outbox (D3);
+            // `Explicit { relays }` pins to exactly those relays. Both
+            // helpers handle local-keys (sync sign) and bunker (parked
+            // PendingSign) paths internally — `PublishRaw` inherits the
+            // same identity-kind support as `PublishNote`/`PublishProfile`.
+            let outbound = match target {
+                crate::publish::PublishTarget::Auto => commands::publish_unsigned_event(
+                    ctx.identity,
+                    ctx.kernel,
+                    unsigned,
+                    correlation_id,
+                    ctx.pending_signs,
+                ),
+                crate::publish::PublishTarget::Explicit { relays } => {
+                    commands::publish_unsigned_event_to_relays(
+                        ctx.identity,
+                        ctx.kernel,
+                        unsigned,
+                        relays,
+                        correlation_id,
+                        ctx.pending_signs,
+                    )
+                }
+            };
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
@@ -342,23 +489,43 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::PublishUnsignedEvent(mut unsigned) => {
+        ActorCommand::PublishUnsignedEvent {
+            event: mut unsigned,
+            correlation_id,
+        } => {
             // D7: apply the same created_at=0 sentinel as PublishUnsignedEventToRelays.
             // A host that builds an UnsignedEvent without setting created_at gets
             // the kernel clock rather than epoch time.
             if unsigned.created_at == 0 {
                 unsigned.created_at = ctx.kernel.now_secs();
             }
+            // PR-G: record Requested lifecycle when dispatched via an action.
+            // Mirrors the `PublishUnsignedEventToRelays` arm below — without this
+            // an action like `nmp.nip17.publish_relay_list` would hand the host
+            // a correlation_id, never record a terminal stage, and the host
+            // spinner would hang forever.
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
             let outbound = commands::publish_unsigned_event(
                 ctx.identity,
                 ctx.kernel,
                 unsigned,
+                correlation_id,
                 ctx.pending_signs,
             );
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::PublishUnsignedEventToRelays { mut event, relays } => {
+        ActorCommand::PublishUnsignedEventToRelays {
+            mut event,
+            relays,
+            correlation_id,
+        } => {
             // D7: kernel owns the wall clock. Executors in NIP crates set
             // created_at = 0 as a sentinel; we re-stamp here so they never
             // call SystemTime::now() and the FixedClock test hook stays
@@ -366,11 +533,20 @@ pub(super) fn dispatch_command(
             if event.created_at == 0 {
                 event.created_at = ctx.kernel.now_secs();
             }
+            // PR-G: record Requested lifecycle when dispatched via an action.
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
             let outbound = commands::publish_unsigned_event_to_relays(
                 ctx.identity,
                 ctx.kernel,
                 event,
                 relays,
+                correlation_id,
                 ctx.pending_signs,
             );
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
@@ -378,7 +554,7 @@ pub(super) fn dispatch_command(
         }
         ActorCommand::PublishSignedEvent {
             raw,
-            relays,
+            target,
             correlation_id,
         } => {
             // PR-G — see PublishNote arm above. The pre-signed dispatch
@@ -390,21 +566,45 @@ pub(super) fn dispatch_command(
                     None,
                 );
             }
-            let outbound =
-                commands::publish_signed_event(ctx.kernel, raw, &relays, correlation_id);
+            let outbound = commands::publish_signed_event(ctx.kernel, raw, target, correlation_id);
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
         ActorCommand::SendGiftWrappedDm {
             rumor,
             recipient_pubkey,
+            correlation_id,
         } => {
             // NIP-17: seal + gift-wrap the kind:14 rumor into two kind:1059
             // envelopes (recipient + self-copy) and publish them. The gift-wrap
             // crypto runs here on the actor thread (D7). `created_at == 0` is
             // re-stamped from the kernel clock inside the handler.
-            let outbound =
-                commands::send_gift_wrapped_dm(ctx.identity, ctx.kernel, rumor, &recipient_pubkey);
+            //
+            // PR-G — when the send originates from `dispatch_action`
+            // (`nmp.nip17.send`), the host received a registry-minted
+            // correlation_id and is waiting on `action_results` / the
+            // action_stages mirror to see the verdict. Record `Requested`
+            // here (mirroring the `PublishSignedEvent` precedent above) so
+            // the lifecycle history starts at dispatch time; the handler's
+            // early-exit failure branches record terminal `Failed` entries
+            // and the per-envelope `publish_signed_event` calls thread the
+            // id into the publish engine's `correlation_id_override` so the
+            // kind:1059 terminal verdict reaches `action_results` under the
+            // dispatched id (not the gift-wrap envelope's event id).
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
+            let outbound = commands::send_gift_wrapped_dm(
+                ctx.identity,
+                ctx.kernel,
+                rumor,
+                &recipient_pubkey,
+                correlation_id,
+            );
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
@@ -421,26 +621,67 @@ pub(super) fn dispatch_command(
         ActorCommand::React {
             target_event_id,
             reaction,
+            correlation_id,
         } => {
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
             let outbound = commands::react(
                 ctx.identity,
                 ctx.kernel,
                 &target_event_id,
                 &reaction,
+                correlation_id,
                 ctx.pending_signs,
             );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::Follow { pubkey } => {
-            let outbound =
-                commands::follow(ctx.identity, ctx.kernel, &pubkey, true, ctx.pending_signs);
+        ActorCommand::Follow {
+            pubkey,
+            correlation_id,
+        } => {
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
+            let outbound = commands::follow(
+                ctx.identity,
+                ctx.kernel,
+                &pubkey,
+                true,
+                correlation_id,
+                ctx.pending_signs,
+            );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::Unfollow { pubkey } => {
-            let outbound =
-                commands::follow(ctx.identity, ctx.kernel, &pubkey, false, ctx.pending_signs);
+        ActorCommand::Unfollow {
+            pubkey,
+            correlation_id,
+        } => {
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
+            let outbound = commands::follow(
+                ctx.identity,
+                ctx.kernel,
+                &pubkey,
+                false,
+                correlation_id,
+                ctx.pending_signs,
+            );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
@@ -451,6 +692,14 @@ pub(super) fn dispatch_command(
             // the NIP-65 read/write distinction lives in RelayEditRow, not in
             // the transport pool key (T105). ensure_relay_worker is idempotent —
             // a role-edit for an already-connected URL is a harmless no-op.
+            //
+            // T-nip65-auto-publish: snapshot the projection BEFORE the mutation
+            // so we can compare-and-skip the re-publish when the call was a
+            // pure no-op (re-adding the same URL with the same role). Without
+            // this every harmless re-add re-published kind:10002 and burned a
+            // relay write.
+            let projection_before = ctx.kernel.relay_edit_rows_snapshot().to_vec();
+            let mut outbound = Vec::new();
             if let Some(canonical_url) = commands::add_relay(ctx.kernel, &url, &role) {
                 ensure_relay_worker(
                     ctx.relay_controls,
@@ -460,9 +709,15 @@ pub(super) fn dispatch_command(
                     crate::relay::RelayRole::Content,
                     canonical_url,
                 );
+                outbound.extend(maybe_publish_relay_list_after_edit(
+                    ctx.identity,
+                    ctx.kernel,
+                    &projection_before,
+                    ctx.pending_signs,
+                ));
             }
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(Vec::new())
+            Some(outbound)
         }
         ActorCommand::RemoveRelay { url } => {
             // T162 + T-relay-url-normalize: both shutdown_relay_worker and
@@ -473,10 +728,21 @@ pub(super) fn dispatch_command(
             // before the projection row is removed. Idempotent: if no worker exists
             // for the URL, shutdown_relay_worker returns false and the projection
             // mutation still proceeds normally (D6: no silent drops).
+            //
+            // T-nip65-auto-publish: same compare-and-skip as `AddRelay` above.
+            // Removing a URL that was never present is a no-op and must NOT
+            // re-publish kind:10002.
+            let projection_before = ctx.kernel.relay_edit_rows_snapshot().to_vec();
             shutdown_relay_worker(ctx.relay_controls, &url);
             commands::remove_relay(ctx.kernel, &url);
+            let outbound = maybe_publish_relay_list_after_edit(
+                ctx.identity,
+                ctx.kernel,
+                &projection_before,
+                ctx.pending_signs,
+            );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(Vec::new())
+            Some(outbound)
         }
         ActorCommand::OpenTimeline => {
             let outbound = commands::open_timeline(ctx.identity, ctx.kernel, ctx.relays_ready);
@@ -499,11 +765,70 @@ pub(super) fn dispatch_command(
         ActorCommand::WalletPayInvoice {
             bolt11,
             amount_msats,
+            correlation_id,
         } => {
-            let outbound =
-                commands::wallet_pay_invoice(ctx.wallet, ctx.kernel, &bolt11, amount_msats);
+            // PR-G: record the `Requested` stage the moment the actor dequeues
+            // the dispatched action — mirrors the PublishNote arm above. The
+            // terminal `Accepted` / `Failed` lands later in `handle_nwc_text`
+            // when the wallet's kind:23195 response settles, via
+            // `Kernel::record_action_success` / `record_action_failure`.
+            // Skipped for non-dispatch callers (`correlation_id == None`,
+            // which is what the C-ABI `nmp_app_wallet_pay_invoice` path
+            // passes today — no host spinner to inform).
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
+            let outbound = commands::wallet_pay_invoice(
+                ctx.wallet,
+                ctx.kernel,
+                &bolt11,
+                amount_msats,
+                correlation_id,
+            );
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
+        }
+        ActorCommand::FetchLnurlInvoice {
+            unsigned,
+            lnurl_or_address,
+            amount_msats,
+            correlation_id,
+        } => {
+            // PR-G — record Requested lifecycle when dispatched via an
+            // action (the `nmp.nip57.zap` namespace). Mirrors the existing
+            // `PublishUnsignedEventToRelays` arm.
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
+            // The handler signs synchronously on this thread (D7) and
+            // spawns a worker for the HTTP round-trip (D8). It never
+            // returns relay outbound frames — kind:9734 goes to the
+            // LNURL callback over HTTP, not to relays (NIP-57 § Appendix C).
+            commands::handle_fetch_lnurl_invoice(
+                ctx.identity,
+                ctx.kernel,
+                ctx.command_tx_self.clone(),
+                unsigned,
+                lnurl_or_address,
+                amount_msats,
+                correlation_id,
+            );
+            // Emit promptly so a synchronous failure (no active local keys,
+            // sign failure) lands in the next snapshot tick — matches the
+            // `PublishUnsignedEventToRelays` post-dispatch emit. A success
+            // path's `ShowToast` follow-up arrives later from the worker
+            // thread and will trigger its own emit through the regular
+            // dispatch path.
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
         }
         ActorCommand::RecordActionFailure {
             correlation_id,
@@ -527,6 +852,30 @@ pub(super) fn dispatch_command(
             // emit fires promptly via `maybe_emit_after_dispatch` so the
             // host sees the terminal on its very next tick.
             ctx.kernel.record_action_failure(correlation_id, reason);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
+        }
+        ActorCommand::RecordActionSuccess { correlation_id } => {
+            // PD-036 — off-thread worker success fan-in (symmetric counterpart
+            // to `RecordActionFailure` above). The NIP-57 zap LNURL-pay worker
+            // is the motivating consumer: after the HTTP round-trip returns a
+            // bolt11 invoice the spawned worker has no `&mut Kernel` and must
+            // round-trip through the actor channel to record the terminal.
+            //
+            // `record_action_success` writes BOTH surfaces — same dual-write
+            // contract `record_action_failure` honours on the failure leg:
+            //
+            //   * `action_stages` → `Accepted` terminal — the mirror entry
+            //     the host's stage observer ACKs.
+            //   * `action_results` → terminal verdict — the per-tick drain
+            //     that closes the spinner.
+            //
+            // Without this command the `nmp.nip57.zap` spinner hangs forever:
+            // `ShowToast` (the human-readable surface the worker already
+            // sends) is NOT the spinner-closing surface — `action_results` is.
+            // The next emit fires promptly via `maybe_emit_after_dispatch`
+            // so the host sees the terminal on its very next tick.
+            ctx.kernel.record_action_success(correlation_id);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
@@ -554,11 +903,11 @@ pub(super) fn dispatch_command(
             Some(Vec::new())
         }
         ActorCommand::Kernel(action) => {
-            let update = dispatch_kernel_action(ctx.kernel, action);
-            // Discrete FFI update: emit as the tagged `{"t":"update","v":…}`
-            // envelope so consumers decode the single `UpdateEnvelope` type
-            // (D6 — the tag is the discriminant, no key sniffing).
-            emit_kernel_update(&update, ctx.update_tx);
+            // The kernel action mutates state; the next periodic snapshot
+            // emission carries any visible effect (e.g. registered interests).
+            // The discrete `{"t":"update","v":…}` frame channel was deleted as
+            // shipped-but-inert — every host bridge only consumed snapshots.
+            let _ = dispatch_kernel_action(ctx.kernel, action);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
@@ -834,5 +1183,271 @@ pub(super) fn handle_relay_event(
             );
         }
         RelayEvent::Message { .. } => {}
+    }
+}
+
+#[cfg(test)]
+mod nip65_auto_publish_tests {
+    //! End-to-end tests for the NIP-65 auto-publish piggyback on
+    //! `AddRelay` / `RemoveRelay`.
+    //!
+    //! Builder unit tests live next to the builder
+    //! (`actor::commands::relays::tests`). These tests pin the wiring —
+    //! that the dispatch arms actually invoke the builder, gate on the
+    //! active signer, skip no-op edits, and route through
+    //! `publish_unsigned_event` (i.e. the kind:10002 frame lands in the
+    //! outbound `EVENT` stream the same way every other publish does).
+    //!
+    //! Closing the gap the PR title makes load-bearing: without these
+    //! tests, a future refactor that drops the `maybe_publish_relay_list_after_edit`
+    //! call would pass every other unit test silently.
+    //!
+    //! These tests use a known dev nsec — never wired to any real
+    //! relay — to drive `IdentityRuntime` so `active_pubkey()` is `Some`.
+    use super::*;
+    use crate::actor::commands::{
+        add_relay, new_bunker_handshake_slot, remove_relay, sign_in_nsec, IdentityRuntime,
+    };
+    use crate::kernel::Kernel;
+    use crate::relay::DEFAULT_VISIBLE_LIMIT;
+
+    /// Throwaway nsec — generated for tests only, never on the network.
+    /// Same dev key the conformance harness round-trip tests
+    /// (`tests/nip_tag_conformance.rs`) and the remote-signer tests
+    /// (`actor/commands/remote_signer_tests.rs`) use. Reusing it here
+    /// keeps the test fixture surface small.
+    const TEST_NSEC: &str =
+        "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
+
+    fn fresh_kernel() -> Kernel {
+        Kernel::new(DEFAULT_VISIBLE_LIMIT)
+    }
+
+    fn fresh_identity() -> IdentityRuntime {
+        IdentityRuntime::new(new_bunker_handshake_slot())
+    }
+
+    fn signed_in_identity(kernel: &mut Kernel) -> IdentityRuntime {
+        let mut identity = fresh_identity();
+        sign_in_nsec(&mut identity, kernel, TEST_NSEC, false);
+        assert!(
+            identity.active_pubkey().is_some(),
+            "sign_in_nsec must produce an active account",
+        );
+        identity
+    }
+
+    /// Helper: count `["EVENT", { "kind": 10002, ... }]` frames in an
+    /// outbound batch. Mirrors the conformance harness shape check —
+    /// outbound text is a raw wire frame, so we string-search for the
+    /// outer `["EVENT"` and a kind:10002 marker.
+    fn count_kind_10002_frames(outbound: &[crate::relay::OutboundMessage]) -> usize {
+        outbound
+            .iter()
+            .filter(|m| m.text.starts_with("[\"EVENT\""))
+            .filter(|m| {
+                // The wire shape is `["EVENT", {"kind":10002,...}]` (no
+                // SUBSCRIPTION-ID prefix variant — kind:10002 routes
+                // through the Auto outbox, not a REQ).
+                let parsed: serde_json::Value = match serde_json::from_str(&m.text) {
+                    Ok(v) => v,
+                    Err(_) => return false,
+                };
+                parsed
+                    .as_array()
+                    .and_then(|arr| arr.get(1))
+                    .and_then(|ev| ev.get("kind"))
+                    .and_then(serde_json::Value::as_u64)
+                    == Some(10002)
+            })
+            .count()
+    }
+
+    #[test]
+    fn add_relay_with_active_signer_publishes_kind_10002() {
+        // Headline assertion the PR title makes: a real AddRelay edit by a
+        // signed-in user produces a kind:10002 frame.
+        let mut kernel = fresh_kernel();
+        let mut identity = signed_in_identity(&mut kernel);
+        let mut pending = Vec::new();
+
+        // Capture the projection BEFORE the mutation, as the dispatch arm
+        // does, then mutate and call the helper directly.
+        let before = kernel.relay_edit_rows_snapshot().to_vec();
+        let added = add_relay(&mut kernel, "wss://relay.example", "both");
+        assert!(added.is_some(), "add_relay must accept a valid wss:// URL");
+
+        let outbound = maybe_publish_relay_list_after_edit(
+            &mut identity,
+            &mut kernel,
+            &before,
+            &mut pending,
+        );
+        assert!(
+            count_kind_10002_frames(&outbound) >= 1,
+            "AddRelay with an active signer must re-publish kind:10002. \
+             Outbound frames were: {:?}",
+            outbound.iter().map(|m| &m.text).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn add_relay_without_active_signer_does_not_publish() {
+        // Guard 1: a relay edit while signed out must NOT try to publish
+        // (and must NOT set the no-account error toast).
+        let mut kernel = fresh_kernel();
+        let mut identity = fresh_identity();
+        let mut pending = Vec::new();
+
+        let before = kernel.relay_edit_rows_snapshot().to_vec();
+        add_relay(&mut kernel, "wss://relay.example", "both");
+
+        let outbound = maybe_publish_relay_list_after_edit(
+            &mut identity,
+            &mut kernel,
+            &before,
+            &mut pending,
+        );
+        assert_eq!(
+            count_kind_10002_frames(&outbound),
+            0,
+            "without an active signer, no kind:10002 must be published",
+        );
+        assert!(
+            kernel.last_error_toast_snapshot().is_none(),
+            "signed-out relay edits MUST NOT poison the toast slot \
+             (toast_no_account would be wrong observable here)",
+        );
+    }
+
+    #[test]
+    fn add_relay_no_op_does_not_republish() {
+        // Guard 2: re-adding the same URL with the same role is a no-op on
+        // the projection. The dispatch arm MUST skip the re-publish in
+        // that case — otherwise every duplicate FFI call burns a relay
+        // write and bumps the kind:10002 timestamp for nothing.
+        let mut kernel = fresh_kernel();
+        let mut identity = signed_in_identity(&mut kernel);
+        let mut pending = Vec::new();
+
+        // First add — projection changes; this would publish.
+        add_relay(&mut kernel, "wss://relay.example", "both");
+
+        // Second add — identical role, no projection change.
+        let before = kernel.relay_edit_rows_snapshot().to_vec();
+        add_relay(&mut kernel, "wss://relay.example", "both");
+
+        let outbound = maybe_publish_relay_list_after_edit(
+            &mut identity,
+            &mut kernel,
+            &before,
+            &mut pending,
+        );
+        assert_eq!(
+            count_kind_10002_frames(&outbound),
+            0,
+            "re-adding the same URL+role MUST NOT re-publish kind:10002 \
+             (projection unchanged → no semantic change)",
+        );
+    }
+
+    #[test]
+    fn remove_relay_nonexistent_does_not_republish() {
+        // Guard 2 (mirror): removing a URL that was never present is a
+        // no-op on the projection. The dispatch arm MUST skip the
+        // re-publish.
+        let mut kernel = fresh_kernel();
+        let mut identity = signed_in_identity(&mut kernel);
+        let mut pending = Vec::new();
+
+        // Seed one row so the projection is non-empty (otherwise guard 3
+        // would also trip and we couldn't distinguish guard-2 from guard-3).
+        add_relay(&mut kernel, "wss://relay.example", "both");
+
+        let before = kernel.relay_edit_rows_snapshot().to_vec();
+        remove_relay(&mut kernel, "wss://other.example");
+
+        let outbound = maybe_publish_relay_list_after_edit(
+            &mut identity,
+            &mut kernel,
+            &before,
+            &mut pending,
+        );
+        assert_eq!(
+            count_kind_10002_frames(&outbound),
+            0,
+            "removing an absent URL MUST NOT re-publish kind:10002",
+        );
+    }
+
+    #[test]
+    fn remove_relay_existing_does_republish() {
+        // Symmetric to `add_relay_with_active_signer_publishes_kind_10002`:
+        // a real removal that mutates the projection must produce a
+        // kind:10002 reflecting the new (smaller) set. This is the half
+        // the PR is named for — clients reading the relay graph see the
+        // removed relay leave the user's outbox without needing a manual
+        // dispatch.
+        let mut kernel = fresh_kernel();
+        let mut identity = signed_in_identity(&mut kernel);
+        let mut pending = Vec::new();
+
+        // Seed two rows so the post-removal projection still has at least
+        // one NIP-65-eligible row — otherwise guard 3 (don't publish
+        // empty kind:10002) would correctly skip the publish.
+        add_relay(&mut kernel, "wss://keep.example", "both");
+        add_relay(&mut kernel, "wss://drop.example", "both");
+
+        let before = kernel.relay_edit_rows_snapshot().to_vec();
+        remove_relay(&mut kernel, "wss://drop.example");
+
+        let outbound = maybe_publish_relay_list_after_edit(
+            &mut identity,
+            &mut kernel,
+            &before,
+            &mut pending,
+        );
+        assert!(
+            count_kind_10002_frames(&outbound) >= 1,
+            "removing an existing URL must re-publish kind:10002 with \
+             the remaining set. Outbound frames were: {:?}",
+            outbound.iter().map(|m| &m.text).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn empty_projection_after_remove_does_not_republish() {
+        // Guard 3: removing the user's last NIP-65-eligible row leaves
+        // the projection empty. We must NOT publish an empty kind:10002
+        // because `ingest_relay_list` treats that as "clear my NIP-65
+        // metadata" (destructive — see kernel/ingest/relay_list.rs:31).
+        // The user explicitly removing a relay is NOT the same intent as
+        // "wipe my NIP-65 outbox"; that needs its own explicit verb.
+        let mut kernel = fresh_kernel();
+        let mut identity = signed_in_identity(&mut kernel);
+        let mut pending = Vec::new();
+
+        add_relay(&mut kernel, "wss://only.example", "both");
+
+        let before = kernel.relay_edit_rows_snapshot().to_vec();
+        remove_relay(&mut kernel, "wss://only.example");
+        assert!(
+            kernel.relay_edit_rows_snapshot().is_empty(),
+            "test precondition: projection must be empty after removing the only row"
+        );
+
+        let outbound = maybe_publish_relay_list_after_edit(
+            &mut identity,
+            &mut kernel,
+            &before,
+            &mut pending,
+        );
+        assert_eq!(
+            count_kind_10002_frames(&outbound),
+            0,
+            "removing the user's last NIP-65-eligible row MUST NOT \
+             publish an empty kind:10002 (that would clear the \
+             author_relay_lists cache on ingest — destructive)",
+        );
     }
 }

@@ -90,7 +90,13 @@ impl PublishPlan {
     /// when `pin_to` is `None`; every NIP-29 action builds its plan with
     /// [`PublishPlan::pinned`] (always `Some(_)`), so this is a defensive
     /// guard the current callers never trip.
-    pub fn into_actor_command(self) -> Result<nmp_core::ActorCommand, String> {
+    ///
+    /// `correlation_id` is the registry-minted action id from
+    /// `ActionModule::execute`'s second parameter. Passing it through ensures
+    /// the publish engine reports THAT id in `projections["action_results"]`
+    /// so the host spinner closes on the id it received from `dispatch_action`,
+    /// not on the signed event's id. Pass `None` for non-dispatch callers.
+    pub fn into_actor_command(self, correlation_id: Option<String>) -> Result<nmp_core::ActorCommand, String> {
         use nmp_core::substrate::UnsignedEvent;
         use nmp_core::ActorCommand;
         let relay = self
@@ -106,6 +112,7 @@ impl PublishPlan {
                 created_at: 0, // kernel re-stamps via now_secs() (D7)
             },
             relays: vec![relay],
+            correlation_id,
         })
     }
 }
@@ -172,8 +179,8 @@ mod tests {
     fn into_actor_command_publishes_host_pinned_unsigned_event() {
         use nmp_core::ActorCommand;
         let p = PublishPlan::pinned(&g(), 9, "hi", vec![vec!["h".into(), "room".into()]]);
-        match p.into_actor_command().expect("pinned plan converts") {
-            ActorCommand::PublishUnsignedEventToRelays { event, relays } => {
+        match p.into_actor_command(None).expect("pinned plan converts") {
+            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id } => {
                 // Pinned to EXACTLY the group's host relay — never the
                 // author's NIP-65 outbox.
                 assert_eq!(relays, vec!["wss://h.example.com".to_string()]);
@@ -182,6 +189,22 @@ mod tests {
                 assert_eq!(event.tags, vec![vec!["h".to_string(), "room".to_string()]]);
                 // `pubkey` is a placeholder — the actor fills it at sign time.
                 assert!(event.pubkey.is_empty());
+                assert!(correlation_id.is_none());
+            }
+            other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn into_actor_command_threads_correlation_id() {
+        use nmp_core::ActorCommand;
+        let p = PublishPlan::pinned(&g(), 9, "hi", vec![vec!["h".into(), "room".into()]]);
+        match p
+            .into_actor_command(Some("test-correlation-id".to_string()))
+            .expect("pinned plan converts")
+        {
+            ActorCommand::PublishUnsignedEventToRelays { correlation_id, .. } => {
+                assert_eq!(correlation_id.as_deref(), Some("test-correlation-id"));
             }
             other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
         }
@@ -199,6 +222,6 @@ mod tests {
             tags: vec![],
             pin_to: None,
         };
-        assert!(p.into_actor_command().is_err());
+        assert!(p.into_actor_command(None).is_err());
     }
 }

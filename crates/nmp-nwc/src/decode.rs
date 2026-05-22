@@ -68,6 +68,63 @@ pub fn try_decode_relay_message_with_id(
     Some((event_id, response))
 }
 
+/// Decode a kind:23195 relay frame and return the **request** event id (the
+/// kind:23194 the response is replying to) alongside the decoded response.
+///
+/// Per NIP-47 §3.2, the wallet service includes an `e` tag on the kind:23195
+/// reply whose value is the id of the original kind:23194 request. That id —
+/// not the response wrapper's own id — is the key a client uses to correlate
+/// an inflight request to its response. [`try_decode_relay_message_with_id`]
+/// returns the wrapper id, which is fine for log-style traceability but does
+/// NOT close a per-request promise (the client never saw the wrapper id at
+/// send time).
+///
+/// Returns `None` when the frame isn't a valid kind:23195 from
+/// `wallet_pubkey_hex`, when the content fails to decrypt, when the
+/// decrypted payload isn't a valid `NwcResponse`, or when the response is
+/// missing an `e` tag — the last case is itself a violation of NIP-47 and
+/// would leave the client unable to match the reply to any request, so we
+/// fail closed (D6 — silent on unknown, never panic).
+pub fn try_decode_response_for_request(
+    relay_text: &str,
+    wallet_pubkey_hex: &str,
+    client_secret_hex: &str,
+) -> Option<(String, NwcResponse)> {
+    let outer: serde_json::Value = serde_json::from_str(relay_text).ok()?;
+    let arr = outer.as_array()?;
+    if arr.first()?.as_str()? != "EVENT" || arr.len() < 3 {
+        return None;
+    }
+    let event = arr.get(2)?;
+    let kind = event.get("kind")?.as_u64()?;
+    if kind != 23195 {
+        return None;
+    }
+    let event_pubkey = event.get("pubkey")?.as_str()?;
+    if !event_pubkey.eq_ignore_ascii_case(wallet_pubkey_hex) {
+        return None;
+    }
+    // Find the first `e` tag — NIP-47 §3.2 mandates exactly one referencing
+    // the request id. `["e", "<request_id>"]` (additional positional fields
+    // like a relay hint are tolerated but ignored).
+    let request_event_id = event
+        .get("tags")?
+        .as_array()?
+        .iter()
+        .find_map(|t| {
+            let tag = t.as_array()?;
+            let name = tag.first()?.as_str()?;
+            if name != "e" {
+                return None;
+            }
+            tag.get(1)?.as_str().map(str::to_string)
+        })?;
+    let content = event.get("content")?.as_str()?;
+    let plaintext = crypto::decrypt(client_secret_hex, wallet_pubkey_hex, content).ok()?;
+    let response = serde_json::from_str::<NwcResponse>(&plaintext).ok()?;
+    Some((request_event_id, response))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -235,5 +292,145 @@ mod tests {
         let response = json!({ "unexpected": "payload" });
         let frame = relay_event(23195, &wallet_pk, "evt", &response);
         assert!(try_decode_relay_message(&frame, &wallet_pk, CLIENT_SECRET).is_none());
+    }
+
+    // ── try_decode_response_for_request — `e` tag extraction ────────────────
+
+    /// Build a kind:23195 frame WITH a NIP-47 §3.2 `e` tag pointing to
+    /// `request_event_id`. The new `try_decode_response_for_request` decoder
+    /// keys off this tag, not the wrapper's own id.
+    fn relay_event_with_e_tag(
+        kind: u64,
+        pubkey: &str,
+        wrapper_id: &str,
+        request_event_id: &str,
+        response_json: &serde_json::Value,
+    ) -> String {
+        let client_pk = crypto::client_pubkey_hex(CLIENT_SECRET).unwrap();
+        let plaintext = serde_json::to_string(response_json).unwrap();
+        let content = crypto::encrypt(WALLET_SECRET, &client_pk, &plaintext).unwrap();
+        let frame = json!([
+            "EVENT",
+            "sub-1",
+            {
+                "id": wrapper_id,
+                "kind": kind,
+                "pubkey": pubkey,
+                "content": content,
+                "tags": [["e", request_event_id]],
+            }
+        ]);
+        serde_json::to_string(&frame).unwrap()
+    }
+
+    /// The decoder returns the **request** id from the `e` tag, not the
+    /// wrapper id. That distinction is what closes the dispatched-payment
+    /// promise — the client never saw the wrapper id at send time.
+    #[test]
+    fn decode_response_for_request_returns_e_tag_value() {
+        let wallet_pk = wallet_pk();
+        let response = json!({
+            "result_type": "pay_invoice",
+            "error": null,
+            "result": { "preimage": "feed" }
+        });
+        let frame = relay_event_with_e_tag(
+            23195,
+            &wallet_pk,
+            "wrapper-id",
+            "the-request-id",
+            &response,
+        );
+        let (req_id, decoded) =
+            try_decode_response_for_request(&frame, &wallet_pk, CLIENT_SECRET).unwrap();
+        assert_eq!(
+            req_id, "the-request-id",
+            "the returned id must come from the `e` tag, not the wrapper id",
+        );
+        assert_eq!(decoded.result_type, "pay_invoice");
+    }
+
+    /// A kind:23195 frame missing its NIP-47 §3.2 `e` tag is malformed —
+    /// without it the client cannot correlate the reply to any request, and
+    /// the decoder must fail closed.
+    #[test]
+    fn decode_response_for_request_without_e_tag_returns_none() {
+        let wallet_pk = wallet_pk();
+        let response = json!({
+            "result_type": "pay_invoice",
+            "error": null,
+            "result": { "preimage": "feed" }
+        });
+        // The existing `relay_event` helper deliberately omits `tags` — a
+        // response with no `e` tag must NOT decode through the new function
+        // even though `try_decode_relay_message_with_id` accepts it.
+        let frame = relay_event(23195, &wallet_pk, "wrapper-id", &response);
+        assert!(
+            try_decode_response_for_request(&frame, &wallet_pk, CLIENT_SECRET).is_none(),
+            "a kind:23195 missing its `e` tag is unmatchable — must decode to None",
+        );
+    }
+
+    /// The decoder ignores positional fields beyond the `e` tag value (e.g.
+    /// a relay-hint third element) — the spec allows them and the matcher
+    /// must tolerate them.
+    #[test]
+    fn decode_response_for_request_tolerates_extra_tag_fields() {
+        let wallet_pk = wallet_pk();
+        let client_pk = crypto::client_pubkey_hex(CLIENT_SECRET).unwrap();
+        let response = json!({
+            "result_type": "pay_invoice",
+            "error": null,
+            "result": { "preimage": "feed" }
+        });
+        let plaintext = serde_json::to_string(&response).unwrap();
+        let content = crypto::encrypt(WALLET_SECRET, &client_pk, &plaintext).unwrap();
+        let frame = json!([
+            "EVENT",
+            "sub-1",
+            {
+                "id": "wrapper",
+                "kind": 23195u64,
+                "pubkey": &wallet_pk,
+                "content": content,
+                "tags": [
+                    ["p", "ignored-pubkey"],
+                    ["e", "the-request-id", "wss://relay.hint"],
+                ],
+            }
+        ])
+        .to_string();
+        let (req_id, _) =
+            try_decode_response_for_request(&frame, &wallet_pk, CLIENT_SECRET).unwrap();
+        assert_eq!(
+            req_id, "the-request-id",
+            "the matcher must accept a 3+ element `e` tag and read element 1",
+        );
+    }
+
+    /// An error response with an `e` tag still decodes through the new
+    /// function — the response handler needs to see both the request id and
+    /// the typed `error` object to record the dispatched action as `Failed`.
+    #[test]
+    fn decode_response_for_request_returns_error_payload() {
+        let wallet_pk = wallet_pk();
+        let response = json!({
+            "result_type": "pay_invoice",
+            "error": { "code": "PAYMENT_FAILED", "message": "no route" },
+            "result": null
+        });
+        let frame = relay_event_with_e_tag(
+            23195,
+            &wallet_pk,
+            "wrapper",
+            "req-fail",
+            &response,
+        );
+        let (req_id, decoded) =
+            try_decode_response_for_request(&frame, &wallet_pk, CLIENT_SECRET).unwrap();
+        assert_eq!(req_id, "req-fail");
+        let err = decoded.error.expect("error must round-trip");
+        assert_eq!(err.code, "PAYMENT_FAILED");
+        assert_eq!(err.message, "no route");
     }
 }

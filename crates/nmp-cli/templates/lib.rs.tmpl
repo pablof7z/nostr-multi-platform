@@ -4,13 +4,11 @@
 //! This crate owns your app's nouns. Per cardinal doctrine **D0**, app nouns
 //! never live in `nmp-core` — `EntryRecord` and friends are defined *here*,
 //! and the kernel stays generic. This skeleton demonstrates the kernel
-//! boundary with a domain store, a reactive view, and an action:
+//! boundary with a reactive view and an action:
 //!
-//! * [`EntryDomainModule`] — a `DomainModule` store materialised from
-//!   app-local writes (no Nostr ingest).
-//! * [`EntryViewModule`] — a reactive view over it. Its `open` / `on_event_*`
-//!   / `snapshot` methods are plain inherent methods reached via static
-//!   dispatch; there is no `ViewModule` trait.
+//! * [`EntryViewModule`] — a reactive view over your records. Its `open` /
+//!   `on_event_*` / `snapshot` methods are plain inherent methods reached via
+//!   static dispatch; there is no `ViewModule` trait.
 //! * [`EntryActionModule`] — an `ActionModule` that validates and accepts
 //!   input.
 //!
@@ -30,32 +28,6 @@ pub struct EntryRecord {
     pub id: String,
     pub label: String,
     pub archived: bool,
-}
-
-// ---------------------------------------------------------------------------
-// Domain
-// ---------------------------------------------------------------------------
-
-pub struct EntryDomainModule;
-
-impl DomainModule for EntryDomainModule {
-    const NAMESPACE: &'static str = "{{name}}.entries.domain";
-    const SCHEMA_VERSION: u32 = 1;
-
-    fn migrations() -> Vec<DomainMigration> {
-        Vec::new()
-    }
-
-    fn indexes() -> Vec<DomainIndex> {
-        vec![DomainIndex {
-            name: "by_archived",
-            key_fn: |bytes| {
-                serde_json::from_slice::<EntryRecord>(bytes)
-                    .ok()
-                    .map(|entry| entry.archived.to_string().into_bytes())
-            },
-        }]
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -178,6 +150,17 @@ impl ActionModule for EntryActionModule {
         }
         Ok(())
     }
+
+    fn execute(
+        _action: Self::Action,
+        _correlation_id: &str,
+        _send: &dyn Fn(nmp_core::ActorCommand),
+    ) -> Result<(), String> {
+        // Scaffold placeholder: send an ActorCommand here to drive the actor,
+        // or call into host-owned state via a captured closure registered with
+        // `NmpApp::register_action_executor` if host state mutation is needed.
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -185,9 +168,8 @@ impl ActionModule for EntryActionModule {
 // ---------------------------------------------------------------------------
 
 /// Module namespaces this app contributes.
-pub fn module_namespaces() -> [&'static str; 3] {
+pub fn module_namespaces() -> [&'static str; 2] {
     [
-        EntryDomainModule::NAMESPACE,
         EntryViewModule::NAMESPACE,
         EntryActionModule::NAMESPACE,
     ]
@@ -198,13 +180,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn declares_three_distinct_module_namespaces() {
+    fn declares_two_distinct_module_namespaces() {
         let mut namespaces = module_namespaces().to_vec();
         namespaces.sort_unstable();
         namespaces.dedup();
 
-        assert_eq!(namespaces.len(), 3);
-        assert!(namespaces.iter().any(|ns| ns.ends_with(".domain")));
+        assert_eq!(namespaces.len(), 2);
         assert!(namespaces.iter().any(|ns| ns.ends_with(".view")));
         assert!(namespaces.iter().any(|ns| ns.ends_with(".action")));
     }

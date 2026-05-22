@@ -8,7 +8,6 @@
 //! no app nouns.
 //!
 //! - `nmp-nip01::Nip10ModularTimelineView` wraps this for NIP-10 kind:1.
-//! - `nmp-nip22::Nip22ModularTimelineView` wraps this for NIP-22 kind:1111.
 //!
 //! See `docs/decisions/0009-app-extension-kernel-boundary.md` (sibling-crate
 //! packaging rule) and `docs/decisions/0010-generated-app-enum-vs-type-

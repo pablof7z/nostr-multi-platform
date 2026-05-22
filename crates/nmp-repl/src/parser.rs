@@ -51,13 +51,21 @@ pub fn parse_line(line: &str) -> Result<Command, String> {
         "help" => Ok(Command::Help(args.first().map(|s| s.to_string()))),
         "create-account" => parse_create_account(args),
         "load-key" => parse_load_key(args),
+        #[cfg(feature = "mls")]
         "mls-init" => parse_nullary(args, "mls-init").map(|_| Command::MlsInit),
+        #[cfg(feature = "mls")]
         "mls-status" => parse_nullary(args, "mls-status").map(|_| Command::MlsStatus),
+        #[cfg(feature = "mls")]
         "mls-create" => parse_single_arg(args, "mls-create", "<group-name>").map(Command::MlsCreate),
+        #[cfg(feature = "mls")]
         "mls-fetch-kp" => parse_single_arg(args, "mls-fetch-kp", "<npub>").map(Command::MlsFetchKp),
+        #[cfg(feature = "mls")]
         "mls-invite" => parse_mls_invite(args),
+        #[cfg(feature = "mls")]
         "mls-accept" => Ok(Command::MlsAccept(args.first().map(|s| s.to_string()))),
+        #[cfg(feature = "mls")]
         "mls-send" => parse_mls_send(args),
+        #[cfg(feature = "mls")]
         "mls-messages" => parse_single_arg(args, "mls-messages", "<group_hex>").map(Command::MlsMessages),
         "quit" | "exit" => Ok(Command::Quit),
         other => Err(format!(
@@ -414,6 +422,7 @@ fn parse_expand(args: &[&str]) -> Result<Command, String> {
 
 // ── MLS / Marmot verbs ──────────────────────────────────────────────────────
 
+#[cfg(feature = "mls")]
 fn parse_nullary(args: &[&str], verb: &'static str) -> Result<(), String> {
     if !args.is_empty() {
         return Err(format!("parse error: {verb} takes no arguments"));
@@ -421,6 +430,7 @@ fn parse_nullary(args: &[&str], verb: &'static str) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(feature = "mls")]
 fn parse_single_arg(
     args: &[&str],
     verb: &'static str,
@@ -457,6 +467,7 @@ fn parse_load_key(args: &[&str]) -> Result<Command, String> {
     Ok(Command::LoadKey(args[0].to_string()))
 }
 
+#[cfg(feature = "mls")]
 fn parse_mls_invite(args: &[&str]) -> Result<Command, String> {
     if args.len() != 2 {
         return Err(
@@ -466,6 +477,7 @@ fn parse_mls_invite(args: &[&str]) -> Result<Command, String> {
     Ok(Command::MlsInvite(args[0].to_string(), args[1].to_string()))
 }
 
+#[cfg(feature = "mls")]
 fn parse_mls_send(args: &[&str]) -> Result<Command, String> {
     if args.len() < 2 {
         return Err(
@@ -750,6 +762,7 @@ mod tests {
         assert!(parse_line("load-key").is_err());
     }
 
+    #[cfg(feature = "mls")]
     #[test]
     fn mls_nullary_verbs() {
         assert_eq!(parse_line("mls-init").unwrap(), Command::MlsInit);
@@ -757,6 +770,7 @@ mod tests {
         assert!(parse_line("mls-init foo").is_err());
     }
 
+    #[cfg(feature = "mls")]
     #[test]
     fn mls_create_requires_name() {
         assert_eq!(
@@ -766,6 +780,7 @@ mod tests {
         assert!(parse_line("mls-create").is_err());
     }
 
+    #[cfg(feature = "mls")]
     #[test]
     fn mls_invite_two_args() {
         assert_eq!(
@@ -776,6 +791,7 @@ mod tests {
         assert!(parse_line("mls-invite").is_err());
     }
 
+    #[cfg(feature = "mls")]
     #[test]
     fn mls_accept_optional() {
         assert_eq!(parse_line("mls-accept").unwrap(), Command::MlsAccept(None));
@@ -785,6 +801,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "mls")]
     #[test]
     fn mls_send_joins_message_text() {
         assert_eq!(
@@ -799,6 +816,7 @@ mod tests {
         assert!(parse_line("mls-send").is_err());
     }
 
+    #[cfg(feature = "mls")]
     #[test]
     fn mls_messages_requires_group() {
         assert_eq!(
@@ -808,6 +826,7 @@ mod tests {
         assert!(parse_line("mls-messages").is_err());
     }
 
+    #[cfg(feature = "mls")]
     #[test]
     fn mls_fetch_kp_requires_npub() {
         assert_eq!(
@@ -815,5 +834,29 @@ mod tests {
             Command::MlsFetchKp("npub1xyz".to_string())
         );
         assert!(parse_line("mls-fetch-kp").is_err());
+    }
+
+    /// Without `--features mls`, the `mls-*` verbs should fall through to the
+    /// unknown-verb error from `parse_line`. (When the feature IS on, this
+    /// test is skipped — the dedicated tests above cover that path.)
+    #[cfg(not(feature = "mls"))]
+    #[test]
+    fn mls_verbs_unknown_without_feature() {
+        for verb in [
+            "mls-init",
+            "mls-status",
+            "mls-create",
+            "mls-fetch-kp",
+            "mls-invite",
+            "mls-accept",
+            "mls-send",
+            "mls-messages",
+        ] {
+            let err = parse_line(verb).unwrap_err();
+            assert!(
+                err.contains("unknown verb"),
+                "expected 'unknown verb' for '{verb}', got: {err}"
+            );
+        }
     }
 }
