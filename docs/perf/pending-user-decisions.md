@@ -37,6 +37,28 @@ PR shipped: title is `fix(chirp-ios): drive DM-inbox publish UI from action_resu
 
 ---
 
+### PD-036 INFORMATIONAL (2026-05-22) — `nmp.nip57.zap` success path does NOT record an `Accepted` ActionStage; follow-up needed before zap UI lands
+
+PR #274 declares `ZapAction::is_async_completing() = true` and records:
+
+- `Requested` from the `FetchLnurlInvoice` dispatch arm (`actor/dispatch.rs`)
+- `Failed { reason }` from `actor/commands/zap.rs` failure paths (no local keys, sign error, LNURL pre-payment errors propagated from the worker)
+
+The HTTP **success** path does not record a terminal `Accepted` stage — the worker sends `ActorCommand::ShowToast { message: "Zap invoice: lnbc…" }` and returns. `action_stages[correlation_id]` therefore stays in `Requested` indefinitely on every successful invoice fetch.
+
+This is benign **today** because no host UI subscribes to `action_stages` for the `nmp.nip57.zap` namespace (Chirp's zap UI is the next milestone). It will become a hung-spinner bug the moment that UI lands. The `// doctrine-allow: D12` comment on `is_async_completing` is technically honest (Failed and Requested are recorded cross-file in `nmp-core`) but semantically incomplete versus `PublishModule`, which records `Accepted` from `kernel/publish_engine.rs`.
+
+**Two fix options** for the follow-up PR (USER PICKS ONE):
+
+1. **Add `ActorCommand::RecordActionAccepted { correlation_id }`** and have the worker send it alongside `ShowToast` on success. Cleanest — keeps `is_async_completing = true` honest and matches the publish-path pattern. The `kernel.record_action_stage(cid, ActionStage::Accepted, None)` already exists; the new variant is a thin wrapper.
+2. **Flip `is_async_completing` to `false`** and treat the zap dispatch as fire-and-forget. The toast becomes the sole signal. Simpler but inconsistent with the kind of async settlement zap actually has (LNURL fetch + eventual receipt ingest).
+
+Option 1 is the direction the codebase will move toward when NWC payment lands (`WalletPayInvoice` also async-settles); pre-wiring `Accepted` recording now would be free.
+
+USER ACTION: pick a fix path before the iOS zap UI work begins, or accept that the follow-up will arrive at the same time as the UI.
+
+---
+
 ### PD-035 INFORMATIONAL (2026-05-22) — NIP-57 zap action does NOT publish kind:9734 to relays; user spec deviation documented
 
 The brief for ADR-0024 minimum-viable `FetchLnurlInvoice` asked the executor (step 5) to "send `ActorCommand::PublishUnsignedEventToRelays` for the zap-request event" after fetching the LNURL invoice. I did NOT do that — the deviation is intentional and forced by NIP-57.
