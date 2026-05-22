@@ -43,6 +43,7 @@ use nmp_nip29::group_id::GroupId;
 use nmp_nip29::register::{wire_group_chat, wire_group_discovery};
 use nmp_nip17::{PublishDmRelayListAction, SendDmAction};
 use nmp_nip57::ZapAction;
+use nmp_nip65::PublishRelayListAction;
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
 use nmp_threading::ModulePolicy;
@@ -158,6 +159,14 @@ pub extern "C" fn nmp_app_chirp_register(
     //
     // SAFETY: same exclusive-borrow rationale as `register_chirp_actions`.
     register_nip57_actions(unsafe { &mut *app });
+
+    // Register the NIP-65 relay-list `ActionModule`
+    // (`nmp.nip65.publish_relay_list`). Companion to the AddRelay/RemoveRelay
+    // auto-trigger inside the actor — the dispatched action is the host-facing
+    // door, the auto-trigger keeps the actor-internal mutation path symmetric.
+    //
+    // SAFETY: same exclusive-borrow rationale as `register_chirp_actions`.
+    register_nip65_actions(unsafe { &mut *app });
 
     // SAFETY: caller guarantees `app` is a valid pointer allocated by
     // `nmp_app_new` for the duration of this call. We do not hold the
@@ -686,6 +695,46 @@ fn register_nip17_actions(app: &mut NmpApp) {
 ///   NIP-17 DM bunker-send path).
 fn register_nip57_actions(app: &mut NmpApp) {
     app.register_action::<ZapAction>();
+}
+
+/// Register the NIP-65 relay-list `ActionModule` (`nmp.nip65.publish_relay_list`)
+/// against `app`'s action registry.
+///
+/// Wires the typed [`PublishRelayListAction`] from the `nmp-nip65` protocol
+/// crate through the same host-extensibility seam the NIP-17 / NIP-29 / NIP-57
+/// actions use. The executor builds the kind:10002 unsigned event with
+/// `["r", <url>]` / `["r", <url>, "read"]` / `["r", <url>, "write"]` tags and
+/// enqueues [`ActorCommand::PublishUnsignedEvent`] — kind:10002 is a NIP-65
+/// replaceable event and routes through the kernel's Auto path so the very
+/// first kind:10002 for a freshly-created account hits the bootstrap
+/// discovery relays (no chicken-and-egg) and later updates land on the
+/// author's own write set.
+///
+/// JSON schema (the third arg the host passes to `nmp_app_dispatch_action`):
+///
+/// ```json
+/// {
+///   "relays": [
+///     { "url": "wss://relay.example" },                         // both
+///     { "url": "wss://outbox.example", "marker": "write" },     // write-only
+///     { "url": "wss://inbox.example",  "marker": "read"  }      // read-only
+///   ]
+/// }
+/// ```
+///
+/// # Why register this alongside the AddRelay/RemoveRelay auto-trigger?
+///
+/// `actor::dispatch` already piggybacks a kind:10002 re-publish onto every
+/// `AddRelay` / `RemoveRelay` mutation (see `maybe_publish_relay_list_after_edit`
+/// in `crates/nmp-core/src/actor/dispatch.rs`). The dispatched action seam
+/// here is the host-facing twin: a host that wants to advertise a relay set
+/// it derived in app land (e.g. on first login, before any AddRelay edits)
+/// can call `nmp_app_dispatch_action("nmp.nip65.publish_relay_list", json)`
+/// and get a `correlation_id` + lifecycle entries it can spinner on. Both
+/// paths converge on the same on-wire kind:10002 — the auto-trigger reads
+/// `RelayEditRow`, the action takes explicit input.
+fn register_nip65_actions(app: &mut NmpApp) {
+    app.register_action::<PublishRelayListAction>();
 }
 
 /// `chirp.react` action body: `{"target_event_id":"<hex>","reaction":"+"}`.

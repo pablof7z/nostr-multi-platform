@@ -48,6 +48,12 @@ nmp-nip29 = { path = "../../../crates/nmp-nip29" }
 # registers its `SendDmAction` `ActionModule` for the `nmp.nip17.send` verb.
 # D0-clean: `nmp-core` gains no DM nouns.
 nmp-nip17 = { path = "../../../crates/nmp-nip17" }
+# NIP-65 relay-list publish. Chirp registers `PublishRelayListAction` for the
+# `nmp.nip65.publish_relay_list` verb so a host can re-broadcast the user's
+# kind:10002 outbox on demand. The companion auto-trigger lives inside
+# `nmp-core::actor::dispatch` (AddRelay / RemoveRelay arms) and uses a
+# duplicate-of-the-builder helper in `nmp-core` itself to stay D0-clean.
+nmp-nip65 = { path = "../../../crates/nmp-nip65" }
 # NIP-57 lightning zaps. Chirp registers the crate's `ZapAction`
 # `ActionModule` for the `nmp.nip57.zap` verb — the executor builds the
 # kind:9734 zap request and enqueues `ActorCommand::FetchLnurlInvoice`,
