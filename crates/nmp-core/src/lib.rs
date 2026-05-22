@@ -28,11 +28,6 @@ pub use app::{
 };
 pub use bunker_hook::{register_bunker_hook, BunkerHookFn, BunkerHookRequest};
 pub use ffi::NmpApp;
-// PR-I: `RelayEditRowList` / `RelayEditRowsSlot` are the typed-wrapper
-// counterparts to the bare `Vec<RelayEditRow>` / `Arc<Mutex<Vec<RelayEditRow>>>`
-// they replaced. Per-app crates (e.g. `nmp-app-chirp`) consume the slot via
-// `NmpApp::relay_edit_rows_handle()` and iterate via `guard.as_slice()`, so
-// both types need to be reachable from the crate root.
 pub use kernel::{read_eligible_relay_urls, RelayEditRow, RelayEditRowList, RelayEditRowsSlot};
 pub use kernel_reducer::KernelReducer;
 pub use relay::canonical_relay_url;
