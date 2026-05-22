@@ -15,7 +15,7 @@
 // `ActionRegistry` / `default_registry` for the `nmp_app_dispatch_action`
 // entry point.
 pub(crate) mod action_registry;
-// PR-G — actor-owned per-correlation_id stage tracker. `pub(crate)` so the
+// Actor-owned per-correlation_id stage tracker. `pub(crate)` so the
 // FFI ack symbol (`crate::ffi::action::nmp_app_ack_action_stage`) and the
 // dispatch handler (`actor::dispatch`) can reach the type aliases; the
 // `Kernel`-attached API itself lives on `impl Kernel` (see `mod.rs` below).
@@ -74,10 +74,10 @@ mod publish_terminal_status_tests;
 // derivations the three iOS diagnostics views used to do client-side. See
 // the module doc for the bible references.
 mod relay_diagnostics;
-// PR-I — typed slot wrappers for relay-shaped actor-owned caches. The bare
+// Typed slot wrappers for relay-shaped actor-owned caches. The bare
 // `Arc<Mutex<Vec<String>>>` / `Arc<Mutex<Vec<RelayEditRow>>>` slots from the
-// publish resolver and `NmpApp` move behind named types here so D14 (the
-// lint added in this PR) can flag future regressions on the field shape.
+// publish resolver and `NmpApp` move behind named types here so D14 can flag
+// future regressions on the field shape.
 mod relay_projection;
 mod raw_event_observer;
 #[cfg(test)]
@@ -177,7 +177,7 @@ pub use identity_state::{read_eligible_relay_urls, RelayEditRow};
 // Host-extensible snapshot output — reachable from the `ffi` module for the
 // `nmp_app_register_snapshot_projection` C-ABI entry point.
 pub(crate) use snapshot_registry::{new_snapshot_projection_slot, SnapshotProjectionSlot};
-// PR-I — typed slot wrappers + constructors. `RelayEditRowsSlot` /
+// Typed slot wrappers + constructors. `RelayEditRowsSlot` /
 // `RelayEditRowList` are re-exported below at `pub use` because per-app
 // crates (e.g. `nmp-app-chirp`) consume the slot via
 // `NmpApp::relay_edit_rows_handle()` and iterate via `guard.as_slice()`;
@@ -418,7 +418,7 @@ pub(crate) struct Kernel {
     /// `PublishAction::Publish`, drives the engine, and drains the queue
     /// dispatcher into outbound frames. Per-relay OKs are folded back via
     /// `Kernel::handle_publish_ok` (called from `ingest::handle_text`).
-    /// PR-G — actor-owned tracker for the snapshot-mirror `action_stages`
+    /// Actor-owned tracker for the snapshot-mirror `action_stages`
     /// projection. Records lifecycle transitions per dispatched correlation_id
     /// and retains them until the host acks via `nmp_app_ack_action_stage`.
     /// Caps and drop-oldest semantics live in [`action_stages`].
@@ -494,23 +494,22 @@ pub(crate) struct Kernel {
     /// importing kernel internals. Synced by `set_relay_edit_rows` in
     /// `identity_state.rs`.
     ///
-    /// PR-I: the slot type is now [`RelayEditRowsSlot`]
-    /// (`Arc<Mutex<RelayEditRowList>>`) — D14 forbids new bare
-    /// `Arc<Mutex<Vec<…>>>` fields on `Kernel` and the typed wrapper makes
-    /// the slot's purpose visible at the declaration site.
+    /// Slot type is [`RelayEditRowsSlot`] (`Arc<Mutex<RelayEditRowList>>`);
+    /// D14 forbids bare `Arc<Mutex<Vec<…>>>` fields on `Kernel` and the
+    /// typed wrapper makes the slot's purpose visible at the declaration site.
     relay_edit_rows_handle: Option<RelayEditRowsSlot>,
     /// Shared list of indexer relay URLs, kept in sync with `relay_edit_rows`
     /// by `set_relay_edit_rows`. The `Nip65OutboxResolver` holds a clone of
     /// this Arc and reads it on every discovery-kind publish.
     ///
-    /// PR-I: typed slot ([`IndexerRelaysSlot`]) so the bare-`Vec` shape
+    /// Typed slot ([`IndexerRelaysSlot`]) so the bare-`Vec` shape
     /// disappears from the field declaration (D14).
     indexer_relays_handle: IndexerRelaysSlot,
     /// Shared list of local write relays for the active account. This bridges
     /// onboarding relay rows into publish routing before the user's freshly
     /// published kind:10002 has round-tripped from a relay.
     ///
-    /// PR-I: typed slot ([`LocalWriteRelaysSlot`]) — see relay_projection.rs.
+    /// Typed slot ([`LocalWriteRelaysSlot`]) — see relay_projection.rs.
     local_write_relays_handle: LocalWriteRelaysSlot,
     /// Shared active-account pubkey used by the publish resolver to scope the
     /// local relay-row fallback to the viewer's own events only.
@@ -686,7 +685,7 @@ impl Kernel {
             .unwrap_or_else(|| resolve_publish_store(storage_path, &store));
         let local_profile_intents = load_profile_intents(&publish_store);
         let publish_dispatcher = Arc::new(crate::publish::QueueDispatcher::new());
-        // PR-I — typed-slot constructors so the slot's purpose is visible at
+        // Typed-slot constructors so the slot's purpose is visible at
         // the call site and D14 does not fire on the field declaration.
         let indexer_relays_handle: IndexerRelaysSlot = new_indexer_relays_slot();
         let local_write_relays_handle: LocalWriteRelaysSlot = new_local_write_relays_slot();
@@ -852,7 +851,7 @@ impl Kernel {
 
     /// Current wall-clock time as milliseconds since the Unix epoch, read
     /// through the injected [`Clock`]. Used by the `action_stages` mirror
-    /// (PR-G) so per-stage timestamps survive `FixedClock` injection and
+    /// so per-stage timestamps survive `FixedClock` injection and
     /// stay deterministic in tests/replay. A pre-epoch clock collapses to
     /// `0` (D6 — never panics).
     pub(crate) fn now_ms(&self) -> u64 {
@@ -1055,8 +1054,7 @@ impl Kernel {
     /// Bind the shared relay-edit rows slot so the FFI layer can read
     /// relay-edit rows without reaching into kernel internals.
     ///
-    /// PR-I: the slot is now a typed [`RelayEditRowsSlot`]
-    /// (`Arc<Mutex<RelayEditRowList>>`).
+    /// The slot is a typed [`RelayEditRowsSlot`] (`Arc<Mutex<RelayEditRowList>>`).
     pub(crate) fn set_relay_edit_rows_handle(&mut self, handle: RelayEditRowsSlot) {
         self.relay_edit_rows_handle = Some(handle);
     }
@@ -1077,7 +1075,7 @@ impl Kernel {
     /// default Content/Indexer relay when `relay_edit_rows` is empty (see
     /// `kernel/mod.rs::bootstrap_urls_for_role`'s `#[cfg(test)] if urls.is_empty()`
     /// block). That fallback exists so the vast majority of unit tests don't
-    /// need to hand-roll a relay seed for every fresh kernel. The PR-K3 D10
+    /// need to hand-roll a relay seed for every fresh kernel. The D10
     /// defensive-guard test wants the OPPOSITE — a kernel whose
     /// `relay_edit_rows` is empty AND whose `bootstrap_urls_for_role`
     /// returns empty, so the dispatch path that lands a kind:1059 envelope

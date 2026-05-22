@@ -835,18 +835,16 @@ fn publish_signed_event_to_explicit_relays_works_with_no_active_account() {
     assert!(outbound[0].text.contains(&format!("\"sig\":\"{ev_sig}\"")));
 }
 
-// ── PR-K3 D10 defensive guard — kind:1059 + empty relays NEVER Auto-routes ─
+// ── D10 defensive guard — kind:1059 + empty relays NEVER Auto-routes ────────
 //
-// Codex review of PR #229 flagged that closing the call-site (NIP-17) guard
-// in `commands::dm` did NOT close the generic dispatch path: a
-// `dispatch_action("nmp.publish", PublishAction::Publish { target: Auto })`
+// A `dispatch_action("nmp.publish", PublishAction::Publish { target: Auto })`
 // for a kind:1059 envelope lands in `actor::dispatch::PublishSignedEvent` with
 // `relays: vec![]`, which calls `publish_signed_event(kernel, raw, &[], cid)`
 // and falls through the `relays.is_empty()` branch → `publish_signed_with_correlation`
 // → `PublishTarget::Auto` → leak. The same hole exists at the
 // `NmpApp::publish_signed_explicit` workspace-internal seam.
 //
-// The PR-K3 defensive guard at the top of `publish_signed_event` refuses any
+// The D10 defensive guard at the top of `publish_signed_event` refuses any
 // kind:1059 publish whose `relays` slice is empty — the encrypted envelope is
 // dropped, a D6 toast names the refusal, and no outbound frames / publish
 // queue entries are produced. These tests pin the guard's shape from every
@@ -959,7 +957,7 @@ fn publish_signed_event_does_not_refuse_other_kinds_with_empty_relays() {
     assert!(
         !outbound.is_empty(),
         "non-1059 kinds must continue to route under PublishTarget::Auto — the \
-         PR-K3 guard is targeted strictly at kind:1059"
+         D10 guard is targeted strictly at kind:1059"
     );
     assert_eq!(
         kernel.last_error_toast_snapshot(),

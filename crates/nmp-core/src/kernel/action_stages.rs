@@ -532,7 +532,7 @@ mod tests {
     /// `per_correlation_terminal_evictions` counter increments and the
     /// oldest *non-terminal* entry is evicted to make room. A host that
     /// keys its spinner cleanup on the terminal stage now sees it even
-    /// under a pathological retry storm — codex's PR-G HIGH finding.
+    /// under a pathological retry storm.
     #[test]
     fn per_correlation_cap_evicts_non_terminal_to_seat_terminal() {
         let mut t = ActionStageTracker::new();

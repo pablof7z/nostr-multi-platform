@@ -186,7 +186,7 @@ impl Kernel {
         self.oneshot.complete(token);
         // `drain_completed` keeps the idempotent-drain contract; we release
         // immediately because the kernel reads results from the store/cache,
-        // not from a buffered oneshot payload (PD-021 poll model).
+        // not from a buffered oneshot payload (idempotent poll model).
         let _ = self.oneshot.drain_completed();
         let registry = self.lifecycle.registry_mut();
         self.oneshot.release(registry, token);

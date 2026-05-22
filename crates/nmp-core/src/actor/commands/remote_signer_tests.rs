@@ -493,7 +493,7 @@ fn snapshot_carries_nip46_onboarding_projection() {
             #[cfg(feature = "wallet")]
             crate::actor::new_wallet_status_slot(),
             bunker_slot,
-            // PR-I: typed slot constructor (was `Arc::new(Mutex::new(Vec::new()))`).
+            // Typed slot constructor.
             crate::kernel::new_relay_edit_rows_slot(),
             Arc::new(std::sync::Mutex::new(None)),
             Arc::new(std::sync::Mutex::new(None)),

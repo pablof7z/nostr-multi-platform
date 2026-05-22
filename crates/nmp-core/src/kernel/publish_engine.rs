@@ -41,11 +41,9 @@ use super::{IndexerRelaysSlot, Kernel, LocalWriteRelaysSlot};
 /// keeps in sync with its relay config; the resolver reads it on every publish
 /// so discovery-kind fan-out always uses current URLs.
 ///
-/// PR-I: the `indexer_relays` / `local_write_relays` handles are now typed
-/// slots ([`IndexerRelaysSlot`] / [`LocalWriteRelaysSlot`]). The previous
-/// bare `Arc<Mutex<Vec<String>>>` shape would trip the new D14 lint on any
-/// future field declaration; threading the typed alias through the
-/// constructor keeps the call-site shape uniform with the kernel field.
+/// The `indexer_relays` / `local_write_relays` handles are typed slots
+/// ([`IndexerRelaysSlot`] / [`LocalWriteRelaysSlot`]) so D14 flags any
+/// future regression to bare `Arc<Mutex<Vec<String>>>` field shapes.
 pub(super) fn build_engine(
     event_store: Arc<dyn EventStore>,
     dispatcher: Arc<QueueDispatcher>,
@@ -148,11 +146,10 @@ impl Kernel {
             .start_publish(action, now_ms, correlation_id_override.clone())
         {
             Ok(()) => {
-                // PR-G: a `correlation_id`-bearing publish reached the
-                // engine's accept path — record `Publishing` so the host's
-                // stage mirror reflects the lifecycle transition. The
-                // detail payload carries the event id so a host that
-                // displays a per-publish progress label has the data.
+                // A `correlation_id`-bearing publish reached the engine's
+                // accept path — record `Publishing` so the host's stage
+                // mirror reflects the lifecycle transition. The detail
+                // payload carries the event id for per-publish progress UI.
                 // Non-dispatch publishes (the `None` branch) skip this:
                 // there is no host spinner to inform.
                 if let Some(cid) = correlation_id_override.as_ref() {
@@ -462,7 +459,7 @@ impl Kernel {
     /// most recent. The host uses this to resolve any spinner whose
     /// `correlation_id` appears here.
     ///
-    /// PR-G — as a sibling effect, every terminal also records an `Accepted`
+    /// As a sibling effect, every terminal also records an `Accepted`
     /// / `Failed` stage into the `action_stages` snapshot mirror so a host
     /// that listens through the stage seam (a richer lifecycle than the
     /// boolean `action_results` drain) observes the terminal exactly once.
@@ -473,7 +470,7 @@ impl Kernel {
         if terminals.is_empty() {
             return serde_json::Value::Null;
         }
-        // PR-G: record the terminal into the stage mirror *before* serializing
+        // Record the terminal into the stage mirror *before* serializing
         // the action_results array. The mirror's `at_ms` is sourced from
         // `now_ms()` so a `FixedClock` keeps the timestamp deterministic.
         let now_ms = self.now_ms();

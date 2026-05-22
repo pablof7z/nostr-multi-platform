@@ -1,14 +1,13 @@
-//! Typed projection slots for relay-shaped actor-owned state (PR-I).
+//! Typed projection slots for relay-shaped actor-owned state.
 //!
-//! Pre-PR-I three relay-shaped fact caches sat behind bare
-//! `Arc<Mutex<Vec<...>>>` slots — `Nip65OutboxResolver::indexer_relays`,
-//! `Nip65OutboxResolver::local_write_relays`, and `NmpApp::relay_edit_rows`.
-//! All three are actor-owned (the actor thread is the sole writer via
-//! `IdentityState::set_relay_edit_rows`) but the bare-`Vec` shape gave away
-//! no type-level cue that the slot's purpose was a snapshot projection.
+//! Three relay-shaped fact caches sit behind typed slot wrappers:
+//! `Nip65OutboxResolver::indexer_relays`, `Nip65OutboxResolver::local_write_relays`,
+//! and `NmpApp::relay_edit_rows`. All three are actor-owned (the actor thread
+//! is the sole writer via `IdentityState::set_relay_edit_rows`). The typed
+//! wrappers make the slot's purpose visible at the declaration site.
 //!
-//! D14 (this PR): every actor-owned relay-shaped cache crosses thread
-//! boundaries through a **named** typed slot. The lint
+//! D14: every actor-owned relay-shaped cache crosses thread boundaries through
+//! a **named** typed slot. The lint
 //! (`crates/nmp-testing/bin/doctrine-lint/rules/d14.rs`) flags any new
 //! `Arc<Mutex<Vec<...>>>` field on `NmpApp` / `Kernel` / `Actor*` structs in
 //! `crates/nmp-core/src/`. The escape hatch is to introduce a typed slot
@@ -63,9 +62,9 @@ use super::identity_state::RelayEditRow;
 /// without an intermediate `Vec<String>` copy. `#[serde(transparent)]` so the
 /// wrapper is invisible on the wire — consumers decode the projection value
 /// as a plain JSON array of strings, exactly as the bare `Vec<String>` would
-/// have serialized pre-PR-I.
+/// have serialized before the typed-slot refactor.
 ///
-/// PR-I2: the tuple field is **private** (not `pub(crate)`) so even modules
+/// The tuple field is **private** (not `pub(crate)`) so even modules
 /// inside `nmp-core` cannot mutate the inner `Vec` directly through `.0`.
 /// All access must go through the typed accessors (`replace()` / `as_slice()`)
 /// — that keeps the sole-writer (D4) and "never re-hand the inner `Vec`
@@ -100,7 +99,7 @@ impl RelayUrls {
 /// settles a new value, so external readers (FFI, per-app crates) observe a
 /// consistent snapshot without crossing the kernel boundary.
 ///
-/// PR-I2: same private-field discipline as [`RelayUrls`] — readers must go
+/// Same private-field discipline as [`RelayUrls`] — readers must go
 /// through `as_slice()` (`pub` so out-of-crate callers like
 /// `apps/chirp/nmp-app-chirp/src/dm_runtime.rs` can use it), writers through
 /// `replace()`. The inner `Vec<RelayEditRow>` is never reachable via `.0`.
@@ -199,10 +198,9 @@ mod tests {
     fn relay_edit_row_list_replace_overwrites_inner() {
         // Same sole-writer semantics as `RelayUrls::replace`, but holding
         // typed `RelayEditRow` records instead of bare URL strings.
-        // PR-I update: `RelayEditRow` is built via `::new(url, role)` —
-        // the constructor canonicalizes the role and derives `role_label`
-        // / `role_tint` (post-PR-#213 fields), so the test never names
-        // those derived fields directly.
+        // `RelayEditRow` is built via `::new(url, role)` — the constructor
+        // canonicalizes the role and derives `role_label` / `role_tint`,
+        // so the test never names those derived fields directly.
         let mut rows = RelayEditRowList::new();
         rows.replace(vec![RelayEditRow::new(
             "wss://r.example".to_string(),

@@ -118,10 +118,10 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
             "relay_diagnostics",
             "relay_edit_rows",
             "relay_role_options",
-            // PR-I — typed relay projections. `relays.edit_rows` mirrors
-            // the existing `relay_edit_rows` key under the `relays.*`
-            // family; `relays.indexer_set` / `relays.write_set` are
-            // role-filtered URL views of the same source-of-truth rows.
+            // Typed relay projections. `relays.edit_rows` mirrors the
+            // existing `relay_edit_rows` key under the `relays.*` family;
+            // `relays.indexer_set` / `relays.write_set` are role-filtered
+            // URL views of the same source-of-truth rows.
             "relays.edit_rows",
             "relays.indexer_set",
             "relays.write_set",

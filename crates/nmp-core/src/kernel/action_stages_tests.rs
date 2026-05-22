@@ -1,4 +1,4 @@
-//! Kernel-level integration tests for the PR-G `action_stages` projection.
+//! Kernel-level integration tests for the `action_stages` projection.
 //!
 //! Covers the contract the FFI seam relies on:
 //!
@@ -154,7 +154,7 @@ fn at_ms_routes_through_clock_seam() {
 
 #[test]
 fn record_action_failure_records_failed_stage_in_mirror() {
-    // The first internal consumer wired in PR-G: a sign-step failure (no
+    // A sign-step failure (no
     // active account, malformed reply id, …) records a `Failed` stage into
     // `action_stages` *and* a terminal verdict into `action_results`. The
     // host listening on the stage seam sees the failure without subscribing

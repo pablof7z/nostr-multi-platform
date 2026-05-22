@@ -196,12 +196,12 @@ fn correlation_id_override_is_reported_in_pending_terminal_not_the_handle() {
     assert_eq!(terminal.status, "ok", "the all-OK publish settles ok");
 }
 
-/// PR-A: the symmetric round-trip guarantee for pre-signed `PublishAction::Publish`.
+/// Symmetric round-trip guarantee for pre-signed `PublishAction::Publish`.
 ///
 /// Today the dispatch return value happens to equal the event id (via
 /// `PublishModule::preferred_action_id`), and the engine's `None`-fallback also
 /// reports the handle (== event id) — so the round-trip closes by coincidence.
-/// The fix in PR-A threads the dispatch correlation_id through the executor →
+/// The correlation_id is threaded through the executor →
 /// `ActorCommand::PublishSignedEvent` → `kernel.publish_signed_with_correlation`
 /// → `engine.start_publish(_, _, Some(id))`, so the engine reports the dispatch
 /// id explicitly even when it differs from the event id. This test simulates

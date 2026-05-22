@@ -20,10 +20,9 @@ use crate::kernel::{
 use crate::publish::traits::OutboxResolver;
 use crate::store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 
-/// PR-I test helper — typed [`IndexerRelaysSlot`] pre-populated with `urls`.
-/// Pre-PR-I the tests built `Arc::new(Mutex::new(vec![...]))` inline; this
-/// helper centralizes the typed-slot construction so the production type
-/// change does not ripple into every test that needs a non-empty indexer set.
+/// Test helper — typed [`IndexerRelaysSlot`] pre-populated with `urls`.
+/// Centralizes typed-slot construction so tests that need a non-empty
+/// indexer set don't each spell `Arc::new(Mutex::new(...))` inline.
 fn indexer_slot_with(urls: Vec<String>) -> IndexerRelaysSlot {
     let slot = new_indexer_relays_slot();
     if let Ok(mut guard) = slot.lock() {
@@ -32,7 +31,7 @@ fn indexer_slot_with(urls: Vec<String>) -> IndexerRelaysSlot {
     slot
 }
 
-/// PR-I test helper — typed [`LocalWriteRelaysSlot`] pre-populated with
+/// Test helper — typed [`LocalWriteRelaysSlot`] pre-populated with
 /// `urls`. Same rationale as [`indexer_slot_with`].
 fn local_write_slot_with(urls: Vec<String>) -> LocalWriteRelaysSlot {
     let slot = new_local_write_relays_slot();

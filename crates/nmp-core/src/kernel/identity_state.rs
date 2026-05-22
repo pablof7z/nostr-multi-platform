@@ -260,7 +260,7 @@ impl super::Kernel {
         }
         if let Some(handle) = self.relay_edit_rows_handle.as_ref() {
             if let Ok(mut guard) = handle.lock() {
-                // PR-I: typed slot — `.replace()` is the sole-writer
+                // Typed slot — `.replace()` is the sole-writer
                 // affordance defined on `RelayEditRowList`.
                 guard.replace(rows.clone());
             }
@@ -272,7 +272,7 @@ impl super::Kernel {
             .collect::<Vec<_>>();
         self.lifecycle.set_indexer_relays(indexer_urls.clone());
         if let Ok(mut guard) = self.indexer_relays_handle.lock() {
-            // PR-I: typed slot — `.replace()` overwrites the underlying
+            // Typed slot — `.replace()` overwrites the underlying
             // `RelayUrls(Vec<String>)` newtype.
             guard.replace(indexer_urls);
         }
@@ -285,7 +285,7 @@ impl super::Kernel {
             .map(|r| r.url.clone())
             .collect::<Vec<_>>();
         if let Ok(mut guard) = self.local_write_relays_handle.lock() {
-            // PR-I: typed slot — see indexer_relays_handle above.
+            // Typed slot — see indexer_relays_handle above.
             guard.replace(write_urls);
         }
         if changed {
@@ -332,7 +332,7 @@ impl super::Kernel {
         &self.relay_edit_rows
     }
 
-    /// PR-I — typed getter for the indexer-relay URL set. Derived from the
+    /// Typed getter for the indexer-relay URL set. Derived from the
     /// kernel-owned `relay_edit_rows` source-of-truth on each call (cold
     /// path — only the snapshot builder reads this once per tick).
     ///
@@ -347,7 +347,7 @@ impl super::Kernel {
             .collect()
     }
 
-    /// PR-I — typed getter for the local write-relay URL set. Same shape as
+    /// Typed getter for the local write-relay URL set. Same shape as
     /// [`Self::indexer_relays`] above: derived from `relay_edit_rows` and
     /// returned owned. The publish resolver reads this through the shared
     /// `local_write_relays_handle` slot rather than via this getter (the
