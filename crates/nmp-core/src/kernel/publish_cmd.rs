@@ -107,7 +107,7 @@ impl Kernel {
     /// correlation_id; a `react` / `follow` / conformance-harness publish
     /// carries `None` and is a no-op here (nothing is waiting on an id).
     pub(crate) fn record_action_failure(&mut self, correlation_id: String, error: String) {
-        // PR-G: a sign-step failure also lifts into the `action_stages`
+        // A sign-step failure also lifts into the `action_stages`
         // mirror so a host listening only on the stage seam (not the
         // per-tick action_results drain) still sees the `Failed`
         // terminal. The mirror also drives the lifecycle history a
@@ -150,7 +150,7 @@ impl Kernel {
     /// carries `None` and the wallet runtime simply skips this call (nothing
     /// is waiting on an id).
     //
-    // PD-036 — `#[allow(dead_code)]` was lifted when the
+    // `#[allow(dead_code)]` was lifted when the
     // `ActorCommand::RecordActionSuccess` dispatch arm landed (the NIP-57 zap
     // LNURL-pay worker's success branch routes through it). The wallet-feature
     // caller (`handle_nwc_text`) is no longer the only live caller, so the
@@ -175,7 +175,7 @@ impl Kernel {
         self.changed_since_emit = true;
     }
 
-    /// PR-G — append a lifecycle stage for `correlation_id` to the
+    /// Append a lifecycle stage for `correlation_id` to the
     /// `action_stages` projection. Persists until the host acks via
     /// [`Kernel::ack_action_stage`].
     ///
@@ -200,7 +200,7 @@ impl Kernel {
         self.changed_since_emit = true;
     }
 
-    /// PR-G — drop the entry for `correlation_id` from the `action_stages`
+    /// Drop the entry for `correlation_id` from the `action_stages`
     /// mirror. Idempotent — an unknown id is a silent no-op (D6).
     /// `changed_since_emit` is set so the next tick re-serialises the now-
     /// reduced mirror.
@@ -210,7 +210,7 @@ impl Kernel {
         }
     }
 
-    /// PR-G — read accessor for [`update`]'s projection emit site. Returns
+    /// Read accessor for [`update`]'s projection emit site. Returns
     /// the full JSON mirror as a copy (NOT a drain): the same correlation_id
     /// stays in the snapshot across every tick until the host acks. Returns
     /// `serde_json::Value::Null` when nothing is tracked so the helper can

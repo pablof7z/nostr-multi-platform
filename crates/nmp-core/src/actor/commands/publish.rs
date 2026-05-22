@@ -287,19 +287,19 @@ pub(crate) fn publish_unsigned_event_to_relays(
 /// originates from `nmp_app_dispatch_action`'s pre-signed `PublishAction::Publish`
 /// path. Threading it makes the publish engine report THAT id in
 /// `action_results` via `correlation_id_override` — explicit symmetry with
-/// `publish_note`. `None` for non-dispatch callers (PR-F left the
-/// kernel-internal `NmpApp::publish_signed_explicit` Marmot seam +
-/// conformance harnesses on this `None` path; the deleted
-/// `nmp_app_publish_signed_event*` C-ABI symbols used to land here too,
-/// always with `None`); the engine then falls back to the publish handle
-/// (== event id), preserving the prior behaviour.
+/// `publish_note`. `None` for non-dispatch callers (the kernel-internal
+/// `NmpApp::publish_signed_explicit` Marmot seam + conformance harnesses
+/// land on this `None` path; the deleted `nmp_app_publish_signed_event*`
+/// C-ABI symbols used to land here too, always with `None`); the engine
+/// then falls back to the publish handle (== event id), preserving the
+/// prior behaviour.
 ///
-/// **D10 defensive guard (PR-K3).** A kind:1059 (NIP-59 gift-wrap) envelope
+/// **D10 defensive guard.** A kind:1059 (NIP-59 gift-wrap) envelope
 /// with `relays.is_empty()` is REFUSED — the empty-relays → `PublishTarget::Auto`
 /// branch below would otherwise leak the encrypted envelope through the
 /// author's NIP-65 outbox. The refusal sets a D6 toast and emits a
 /// `tracing::warn!`. This is the kernel-level twin of the call-site guard
-/// in `commands::dm::send_gift_wrapped_dm` (PR #229) — defense in depth at
+/// in `commands::dm::send_gift_wrapped_dm` — defense in depth at
 /// every entry into the verified-publish path. Callers of kind:1059 MUST
 /// supply an explicit pin (recipient kind:10050 DM-inbox relays for NIP-17,
 /// or the group's relays for the Marmot bridge).
@@ -343,12 +343,12 @@ pub(crate) fn publish_signed_event(
         }
     };
     let raw = verified.into_raw();
-    // ── D10 defensive guard (PR-K3) ─────────────────────────────────────────
+    // ── D10 defensive guard ─────────────────────────────────────────────────
     //
     // Belt-and-suspenders for kind:1059 gift-wraps: refuse to publish the
     // envelope when the caller did not supply an explicit relay pin. The
-    // call-site guard in `commands::dm::send_gift_wrapped_dm` (PR #229) closes
-    // the NIP-17 send path; this is the kernel-level twin that closes EVERY
+    // call-site guard in `commands::dm::send_gift_wrapped_dm` closes the
+    // NIP-17 send path; this is the kernel-level twin that closes EVERY
     // path that reaches `publish_signed_event`. In particular:
     //
     //   1. The generic `dispatch_action("nmp.publish")` → `PublishAction::Publish`
@@ -456,7 +456,7 @@ pub(crate) fn publish_note(
     // edge would cycle), but we *can* use the same `crate::tags` primitives
     // its `Note::reply_to` builder is composed of — byte-identical output.
     //
-    // See PD-024 (`docs/perf/pending-user-decisions.md`) for the rationale.
+    // See `docs/perf/pending-user-decisions.md` for the rationale.
     let mut tags: Vec<Vec<String>> = Vec::new();
     let mut hydration_kick: Option<String> = None;
     if let Some(reply) = reply_to_id {

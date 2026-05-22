@@ -543,7 +543,7 @@ mod tests {
         }
     }
 
-    /// PR-A: the pre-signed `Publish` executor now threads the registry-minted
+    /// The pre-signed `Publish` executor threads the registry-minted
     /// `correlation_id` onto `ActorCommand::PublishSignedEvent` — explicit
     /// symmetry with the `PublishNote` path. The round-trip used to work by
     /// coincidence (`preferred_action_id` returns `event.id`, the engine's
@@ -600,9 +600,10 @@ mod tests {
     fn start_publish_profile_action_with_string_fields_is_accepted() {
         // `PublishAction::PublishProfile` with a flat string-valued `fields`
         // map passes `PublishModule::start`'s validation gate — the
-        // `ActionModule`-native path for kind:0 metadata publish. PR-F
-        // deleted the prior `nmp_app_publish_unsigned_event` FFI symbol;
-        // this `nmp.publish` dispatch is the sole entrypoint for it.
+        // `ActionModule`-native path for kind:0 metadata publish. The
+        // one-door-per-capability rule deleted the prior
+        // `nmp_app_publish_unsigned_event` FFI symbol; this `nmp.publish`
+        // dispatch is the sole entrypoint for it.
         let registry = default_registry();
         let action_json = r#"{"PublishProfile":{"fields":{"name":"Alice","about":"hello"}}}"#;
         let id = registry

@@ -3,8 +3,8 @@
 //!
 //! # Theme A discriminator — one door per publish capability
 //!
-//! PR-F (one door per capability) codified the rule that already governed
-//! the FFI surface after the bespoke `nmp_app_publish_signed_event{,_to}` /
+//! The one-door-per-capability rule codifies the governance that emerged
+//! when the bespoke `nmp_app_publish_signed_event{,_to}` /
 //! `nmp_app_publish_unsigned_event` symbols were deleted:
 //!
 //! - **Generic user/app-authored publish-engine events go through
@@ -103,7 +103,7 @@ pub trait ActionModule: Send + Sync + 'static {
     /// Called via `ActionModuleAdapter<M>` (see `kernel::action_registry`)
     /// after `start` returns `Ok`. Thread `correlation_id` onto any
     /// `ActorCommand` whose terminal verdict must report the dispatched id
-    /// (the spinner round-trip — see PR-A).
+    /// (the spinner round-trip).
     ///
     /// The pre-ADR-0027 dual-registration path (`register_action_module` /
     /// `register_action_executor`) was deleted; `execute` is now the sole

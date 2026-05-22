@@ -36,7 +36,7 @@
 //!    on success a [`ActorCommand::ShowToast`] (carrying the bolt11) AND
 //!    — when a `correlation_id` was supplied — a
 //!    [`ActorCommand::RecordActionSuccess`] so the host's `dispatch_action`
-//!    spinner closes (PD-036); on failure a `ShowToast` and a
+//!    spinner closes; on failure a `ShowToast` and a
 //!    [`ActorCommand::RecordActionFailure`] (same correlation_id guard).
 //!
 //! # ADR-0026 / bunker accounts — out of scope
@@ -96,7 +96,7 @@ const LNURL_MAX_RESPONSE_BYTES: usize = 64 * 1024;
 ///    that don't subscribe to `action_stages`).
 /// 2. When `correlation_id` is `Some`, a `RecordActionFailure` so the
 ///    `dispatch_action` spinner the host keyed on the returned id clears
-///    on the next tick (mirrors the existing PR-G2 / NIP-17 send pattern).
+///    on the next tick (mirrors the existing NIP-17 send pattern).
 ///
 /// On success the bolt11 invoice is surfaced as a `ShowToast` whose
 /// `message` starts with `Zap invoice: lnbc…`. A host can substring-match
@@ -105,7 +105,7 @@ const LNURL_MAX_RESPONSE_BYTES: usize = 64 * 1024;
 /// designed follow-up (per memory note #57 — `last_action_outcomes`); the
 /// toast is the minimum-viable observable per ADR-0024.
 ///
-/// PD-036 — the worker ALSO sends [`ActorCommand::RecordActionSuccess`]
+/// The worker ALSO sends [`ActorCommand::RecordActionSuccess`]
 /// when a `correlation_id` was supplied, so the dispatched-action spinner
 /// keyed on that id clears on the next snapshot tick. Without this the
 /// `nmp.nip57.zap` spinner hangs forever: `ShowToast` is a human-readable
@@ -129,8 +129,8 @@ pub(crate) fn handle_fetch_lnurl_invoice(
 
     // ADR-0026 Phase 1 — local keys only. Bunker accounts have no local
     // secret material so the kind:9734 signature cannot be minted on this
-    // path. Fail closed with a clear toast + `RecordActionFailure` (PR-G2
-    // mirror) so the host spinner resolves.
+    // path. Fail closed with a clear toast + `RecordActionFailure` so the
+    // host spinner resolves.
     let Some(keys) = identity.active_local_keys().cloned() else {
         let reason = "zap requires a local-keys account; bunker signing for kind:9734 \
                       is not yet implemented (ADR-0026 Phase 2 follow-up)";
@@ -192,8 +192,8 @@ pub(crate) fn handle_fetch_lnurl_invoice(
                     amount_msats: Some(amount_msats),
                     correlation_id: None,
                 });
-                // PD-036 — when the zap originated from `dispatch_action`
-                // the registry minted a correlation_id and the host is
+                // When the zap originated from `dispatch_action` the
+                // registry minted a correlation_id and the host is
                 // waiting on `action_results` to close its spinner.
                 // `ShowToast` is the human-readable signal, NOT the
                 // spinner-closing surface; without `RecordActionSuccess`
@@ -424,7 +424,7 @@ mod tests {
     }
 
     // ────────────────────────────────────────────────────────────────────
-    // PD-036 — terminal success-stage recording.
+    // Terminal success-stage recording.
     //
     // The zap worker's success branch sends `ActorCommand::RecordActionSuccess`
     // back through the actor channel when a `correlation_id` was supplied.
@@ -438,7 +438,7 @@ mod tests {
 
     /// `Kernel::record_action_success` MUST write an `Accepted` stage into
     /// `action_stages` (terminal mirror) keyed on the supplied correlation_id.
-    /// Without this the dispatch arm wired in PD-036 would silently no-op:
+    /// Without this the dispatch arm would silently no-op:
     /// the host's stage observer needs the `Accepted` row to ACK and the
     /// `action_results` drain needs a terminal verdict to close the spinner.
     #[test]
@@ -478,7 +478,7 @@ mod tests {
         );
     }
 
-    /// PD-036 — the success branch's `RecordActionSuccess` send MUST be
+    /// The success branch's `RecordActionSuccess` send MUST be
     /// gated on `correlation_id.is_some()`. Direct C-ABI callers (or any
     /// future caller) that pass `None` get the `ShowToast` only — there is
     /// no spinner to close. This pins the symmetric guard the failure leg

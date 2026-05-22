@@ -347,7 +347,7 @@ pub enum ActorCommand {
     /// `action_results` (via `correlation_id_override`) — explicit symmetry
     /// with the `PublishNote` path. `None` for non-dispatch callers
     /// (`NmpApp::publish_signed_explicit` — Marmot's MLS / gift-wrap seam,
-    /// PR-F replaced the deleted `nmp_app_publish_signed_event*` symbols
+    /// which replaced the deleted `nmp_app_publish_signed_event*` symbols
     /// with this typed Rust API — and conformance harnesses); the engine
     /// then falls back to the publish handle (== event id), preserving
     /// prior behaviour. The pre-signed `Publish` round-trip already happened
@@ -551,7 +551,7 @@ pub enum ActorCommand {
     /// Idempotent: rapid scene oscillation debounces to a single observer
     /// call per transition.
     LifecycleEvent(LifecyclePhase),
-    /// PR-G — host acknowledgement of a `correlation_id` in the
+    /// Host acknowledgement of a `correlation_id` in the
     /// `action_stages` snapshot mirror. The actor folds the ack into the
     /// kernel's `ActionStageTracker`, dropping the entry's stage history
     /// so the next tick's snapshot no longer carries it. Idempotent: an
@@ -563,7 +563,7 @@ pub enum ActorCommand {
     /// stays in the snapshot, so a tick the host missed cannot strand
     /// the action's state machine.
     AckActionStage(String),
-    /// PR-G2 — record a terminal `Failed` stage for `correlation_id` on
+    /// Record a terminal `Failed` stage for `correlation_id` on
     /// behalf of an executor that panicked (or otherwise failed *after*
     /// the registry minted the correlation id and before any
     /// `ActorCommand` carrying it could be enqueued).
@@ -587,7 +587,7 @@ pub enum ActorCommand {
         correlation_id: String,
         reason: String,
     },
-    /// PD-036 — record a terminal `Accepted` stage for `correlation_id` on
+    /// Record a terminal `Accepted` stage for `correlation_id` on
     /// behalf of an off-thread worker whose success outcome is observed
     /// outside the publish engine. The symmetric counterpart to
     /// [`ActorCommand::RecordActionFailure`]: same routing through
@@ -707,7 +707,7 @@ pub fn run_actor(
         // throwaway bunker-handshake slot (no FFI surface to register the
         // `"bunker_handshake"` projection here).
         new_bunker_handshake_slot(),
-        // PR-I: typed slot constructor; the backwards-compatible entry
+        // Typed slot constructor; the backwards-compatible entry
         // point has no FFI surface to read the slot, so it's a throwaway.
         crate::kernel::new_relay_edit_rows_slot(),
         Arc::new(Mutex::new(None)),
@@ -750,7 +750,7 @@ pub fn run_actor_with_lifecycle_observer(
         // D0: NIP-46 remote signing is an app noun — private throwaway
         // bunker-handshake slot (no FFI surface here).
         new_bunker_handshake_slot(),
-        // PR-I: typed slot constructor; private throwaway here.
+        // Typed slot constructor; private throwaway here.
         crate::kernel::new_relay_edit_rows_slot(),
         Arc::new(Mutex::new(None)),
         // NIP-17 DM-inbox key slot — private throwaway: no FFI surface here.
@@ -808,7 +808,7 @@ pub fn run_actor_with_observers(
     // snapshot-projection closure on the `NmpApp`; this one is handed to the
     // actor's `IdentityRuntime`, which is the sole writer (D4).
     bunker_handshake: BunkerHandshakeSlot,
-    // PR-I: typed slot ([`crate::kernel::RelayEditRowsSlot`]) so the actor
+    // Typed slot ([`crate::kernel::RelayEditRowsSlot`]) so the actor
     // parameter type signals the slot's purpose; D14 forbids new bare
     // `Arc<Mutex<Vec<…>>>` parameters here.
     relay_edit_rows: crate::kernel::RelayEditRowsSlot,

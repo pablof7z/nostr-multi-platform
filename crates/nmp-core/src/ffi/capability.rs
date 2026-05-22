@@ -3,7 +3,7 @@
 //! Routes a kernel `CapabilityRequest` JSON to a registered native handler
 //! and returns the resulting `CapabilityEnvelope` JSON. This is the seam the
 //! Swift `KeychainCapability.handleJSON(_:)` plugs into for the keyring
-//! capability (PD-019 / T96).
+//! capability.
 //!
 //! Doctrine (`docs/product-spec/doctrine.md`):
 //! * **D6** — nothing ever crosses this boundary as an exception. A missing
