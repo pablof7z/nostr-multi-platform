@@ -143,6 +143,17 @@ pub struct DmConversation {
 pub struct DmInboxSnapshot {
     /// Conversations, ordered by most-recent message (newest thread first).
     pub conversations: Vec<DmConversation>,
+    /// Set to `true` when the active account uses a remote signer (NIP-46
+    /// bunker) that cannot unseal gift-wraps — the inbox will always be empty
+    /// in this case, and the host should surface a "DM inbox unavailable for
+    /// bunker accounts" message instead of an empty list.
+    ///
+    /// `false` when signed in with local keys (normal) or when not signed in
+    /// (the host should hide the DM screen entirely in that case). Additive
+    /// field: decoders that pre-date this field read `false` via
+    /// `#[serde(default)]`.
+    #[serde(default)]
+    pub remote_signer_unsupported: bool,
 }
 
 impl DmInboxSnapshot {
@@ -151,6 +162,7 @@ impl DmInboxSnapshot {
     pub fn empty() -> Self {
         Self {
             conversations: Vec::new(),
+            remote_signer_unsupported: false,
         }
     }
 }
@@ -202,20 +214,28 @@ impl DmInboxProjection {
     /// D6: a poisoned mutex degrades to [`DmInboxSnapshot::empty`] rather than
     /// panicking — this runs on the actor thread inside a snapshot tick.
     ///
-    /// TODO(bunker-inbox): when the `local_keys` slot is `None` the snapshot is
-    /// always empty, but a host cannot distinguish "no signer yet" from "a
-    /// remote-signer (bunker) account that cannot unseal gift-wraps"
-    /// (ADR-0026 Phase 2 — `unwrap_gift_wrap` needs raw `Keys`). A future change
-    /// should surface this via a snapshot-level flag (e.g. a
-    /// `remote_signer_unsupported: bool` on [`DmInboxSnapshot`]) so the host can
-    /// show "DM inbox unavailable for bunker accounts" instead of an empty
-    /// list. Deliberately not added here: [`DmInboxSnapshot`] is a serde-stable
-    /// wire type already consumed by hosts, and widening it is a breaking
-    /// schema change out of scope for the kind:10050 ingest work.
+    /// When `local_keys` is `None` (bunker / not yet signed in), sets
+    /// `DmInboxSnapshot::remote_signer_unsupported` so the host can surface
+    /// a meaningful message instead of a misleading empty list (V-08 Stage 1).
+    /// ADR-0026 Phase 2 (Stage 3) removes the flag by wiring gift-wrap
+    /// unsealing through the remote signer RPC.
     pub fn snapshot(&self) -> DmInboxSnapshot {
         let Ok(messages) = self.messages.lock() else {
             return DmInboxSnapshot::empty();
         };
+
+        // V-08 Stage 1: detect whether decryption is impossible because the
+        // local-keys slot is absent (bunker / not signed in). A host can use
+        // this flag to show "DM inbox unavailable for bunker accounts" instead
+        // of a misleading empty-list UX. When the slot lock is poisoned we
+        // fall through to an empty-conversations snapshot (D6 degradation) and
+        // leave the flag false — a poisoned mutex is a process-internal error,
+        // not a user-visible signer constraint.
+        let remote_signer_unsupported = self
+            .local_keys
+            .lock()
+            .map(|guard| guard.is_none())
+            .unwrap_or(false);
 
         // Group messages by conversation peer.
         let mut by_peer: BTreeMap<String, Vec<DmMessage>> = BTreeMap::new();
@@ -259,7 +279,7 @@ impl DmInboxProjection {
                 .then_with(|| b.peer_pubkey.cmp(&a.peer_pubkey))
         });
 
-        DmInboxSnapshot { conversations }
+        DmInboxSnapshot { conversations, remote_signer_unsupported }
     }
 
     /// Snapshot as a `serde_json::Value` — the exact shape a host
@@ -269,7 +289,7 @@ impl DmInboxProjection {
     /// collapses to `{"conversations": []}` rather than propagating.
     pub fn snapshot_json(&self) -> serde_json::Value {
         serde_json::to_value(self.snapshot())
-            .unwrap_or_else(|_| serde_json::json!({ "conversations": [] }))
+            .unwrap_or_else(|_| serde_json::json!({ "conversations": [], "remote_signer_unsupported": false }))
     }
 
     /// Decrypt and store one accepted kind:1059 envelope. Returns `true` when
@@ -499,11 +519,15 @@ mod tests {
 
     #[test]
     fn fresh_inbox_yields_empty_snapshot() {
+        // With no local keys, the snapshot is empty AND marks remote_signer_unsupported
+        // (V-08 Stage 1: the host can distinguish "no signer" from "has DMs").
         let inbox = DmInboxProjection::new(Arc::new(Mutex::new(None)));
-        assert_eq!(inbox.snapshot(), DmInboxSnapshot::empty());
+        let snap = inbox.snapshot();
+        assert!(snap.conversations.is_empty());
+        assert!(snap.remote_signer_unsupported, "no-keys slot must set the flag");
         assert_eq!(
             inbox.snapshot_json(),
-            serde_json::json!({ "conversations": [] })
+            serde_json::json!({ "conversations": [], "remote_signer_unsupported": true })
         );
     }
 
