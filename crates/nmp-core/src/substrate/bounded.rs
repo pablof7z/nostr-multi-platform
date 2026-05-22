@@ -232,6 +232,39 @@ where
     {
         self.entry_or_insert_with(key, V::default)
     }
+
+    /// Borrow the oldest-by-insertion-order `(key, value)` pair, or `None`
+    /// when the map is empty. Useful when callers need to react to eviction:
+    /// peek at the oldest entry *before* calling [`Self::insert`] at capacity.
+    pub fn first(&self) -> Option<(&K, &V)> {
+        self.map.first()
+    }
+
+    /// Insert `(key, value)`, returning both the displaced prior value for
+    /// `key` and the evicted `(key, value)` pair if the map was at capacity
+    /// and a new key was added. The second element is `None` when the key was
+    /// already present (update-in-place, no eviction) or when the map was
+    /// below capacity.
+    pub fn insert_returning_evicted(&mut self, key: K, value: V) -> (Option<V>, Option<(K, V)>)
+    where
+        K: Clone,
+    {
+        if self.map.contains_key(&key) {
+            return (self.map.insert(key, value), None);
+        }
+        let evicted = if self.map.len() >= self.capacity {
+            if let Some((ek, _)) = self.map.get_index(0) {
+                let ek = ek.clone();
+                let ev = self.map.shift_remove(&ek);
+                ev.map(|v| (ek, v))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+        (self.map.insert(key, value), evicted)
+    }
 }
 
 #[cfg(test)]
@@ -490,6 +523,58 @@ mod tests {
         assert_eq!(map.get(&"b".to_string()), Some(&2));
         assert_eq!(map.get(&"c".to_string()), Some(&3));
         assert_eq!(map.get(&"d".to_string()), Some(&4));
+    }
+
+    #[test]
+    fn first_returns_oldest_entry_or_none_when_empty() {
+        let mut map: BoundedMessageMap<String, u32> = BoundedMessageMap::new(2);
+        assert!(map.first().is_none());
+        map.insert("a".to_string(), 1);
+        map.insert("b".to_string(), 2);
+        assert_eq!(map.first(), Some((&"a".to_string(), &1)));
+        map.insert("c".to_string(), 3); // at capacity — "a" evicted, "b" is now oldest
+        assert_eq!(map.first(), Some((&"b".to_string(), &2)));
+    }
+
+    #[test]
+    fn insert_returning_evicted_reports_evicted_pair() {
+        let mut map = BoundedMessageMap::new(2);
+        map.insert("a".to_string(), 10u32);
+        map.insert("b".to_string(), 20u32);
+
+        // At capacity — inserting a new key evicts "a".
+        let (prev, evicted) = map.insert_returning_evicted("c".to_string(), 30u32);
+        assert!(prev.is_none(), "new key has no prior value");
+        assert_eq!(evicted, Some(("a".to_string(), 10u32)));
+        assert_eq!(map.len(), 2);
+        assert!(map.get(&"a".to_string()).is_none());
+        assert_eq!(map.get(&"b".to_string()), Some(&20));
+        assert_eq!(map.get(&"c".to_string()), Some(&30));
+    }
+
+    #[test]
+    fn insert_returning_evicted_update_in_place_yields_no_eviction() {
+        let mut map = BoundedMessageMap::new(2);
+        map.insert("a".to_string(), 1u32);
+        map.insert("b".to_string(), 2u32);
+
+        // Re-inserting an existing key updates in place — no eviction.
+        let (prev, evicted) = map.insert_returning_evicted("a".to_string(), 99u32);
+        assert_eq!(prev, Some(1u32));
+        assert!(evicted.is_none());
+        assert_eq!(map.len(), 2);
+        assert_eq!(map.get(&"a".to_string()), Some(&99));
+    }
+
+    #[test]
+    fn insert_returning_evicted_below_capacity_yields_no_eviction() {
+        let mut map = BoundedMessageMap::new(3);
+        map.insert("a".to_string(), 1u32);
+
+        let (prev, evicted) = map.insert_returning_evicted("b".to_string(), 2u32);
+        assert!(prev.is_none());
+        assert!(evicted.is_none(), "below capacity, no eviction occurs");
+        assert_eq!(map.len(), 2);
     }
 
     #[test]
