@@ -66,16 +66,7 @@ Protocol crates live in `crates/`; application feature bundles belong in `apps/`
 2. Move `crates/nmp-marmot/src/` → `apps/marmot/nmp-app-marmot/src/`
 3. Update workspace `Cargo.toml` and all dependents
 
-### V-03 · wallet_status app noun in nmp-core [MEDIUM · pending user decision]
-
-**Verified:** `crates/nmp-core/src/kernel/mod.rs` has `#[cfg(feature = "wallet")]
-wallet_status: Option<WalletStatus>` directly in the `Kernel` struct. D0 forbids app nouns
-in nmp-core, including feature-gated ones.
-
-**Correct fix:** extract to an `nmp-nwc` snapshot projection registered via
-`register_snapshot_projection` (same pattern as `ZapsAggregateProjection`). This is the
-right time since `ZapsAggregateProjection` provides a proven template. See PD-033-B for the
-user decision that gates this.
+### V-03 · ~~wallet_status app noun in nmp-core~~ CLOSED — see Appendix
 
 ### V-04 · Two subscription systems coexist — D4 single-writer violation [MEDIUM · pending user decision]
 
@@ -118,12 +109,6 @@ projections (no new C-ABI symbols, no new projection crate) would validate or fa
 framework claim in one sprint.
 
 **Decision needed:** next sprint priority, or continue adding Chirp features first?
-
-### PD-033-B · wallet_status D0 (gates V-03 fix)
-
-`wallet_status` is a feature-gated app noun in the `Kernel` struct (V-03 above). Fixing it
-requires an iOS-side registration call change in the same PR. Schedule now, or wait until
-after NWC wallet UX is stable?
 
 ### PD-033-C · Two subscription systems (gates V-04 fix)
 
@@ -230,3 +215,5 @@ Recorded so Opus reviews do not re-flag these as violations.
 | NIP-29 dormant admin executors (11 stubs) | Removed; 5 live action modules remain |
 | correlation_id discarded in KernelBridge.swift | Fully handled via `@discardableResult` intent chain |
 | `bootstrap_urls_for_role` test-only fallback | `FALLBACK_CONTENT_RELAY` / `FALLBACK_INDEXER_RELAY` are unconditional in production |
+| V-03 `wallet_status` app noun in `Kernel` struct | Fixed: no typed field in `KernelSnapshot`; surfaced via host-registered `"wallet"` snapshot projection (`kernel/types.rs:741`) |
+| D0 `chirp.follow`/`chirp.unfollow` hardcoded in `nmp-core` | Confirmed removed: zero occurrences in `crates/nmp-core/` (verified 2026-05-23) |
