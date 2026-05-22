@@ -181,6 +181,25 @@ correct answer is the RECIPIENT's write/both relays from their kind:10002 (so th
 receipt lands where the recipient listens). Using the sender's own relays is the
 wrong set and produces an under-informed zap flow.
 
+### V-09 · `nmp-app-chirp/src/ffi.rs` exceeds 500-LOC hard ceiling [MEDIUM · split required]
+
+**Verified:** `apps/chirp/nmp-app-chirp/src/ffi.rs` is 1,540 LOC — 3× the AGENTS.md hard
+ceiling of 500 LOC for hand-authored files.
+
+**Contents that can be split:**
+- `ChirpHandle` struct + `Send+Sync` impl + helpers (lines 55–110) → `ffi/handle.rs`
+- `nmp_app_chirp_register*` entry points (lines 112–435) → `ffi/register.rs`
+- `nmp_app_chirp_snapshot*` + `nmp_app_chirp_unregister` (lines 436–488) → `ffi/snapshot.rs`
+- `ChirpReactModule`, `ChirpFollowModule`, `ChirpUnfollowModule`, `register_chirp_actions`,
+  `register_nip*_actions` (lines 522–742) → `ffi/actions.rs`
+- `c_string_opt`, `ReactAction`, `PubkeyAction`, `default_reaction` → `ffi/helpers.rs`
+
+**Fix:** convert `ffi.rs` to a `ffi/mod.rs` façade that `pub use`s its sub-modules; each
+sub-module stays within the 300-LOC soft limit. Tests stay in `ffi/tests.rs`.
+
+**Constraint:** all `pub extern "C"` symbols must remain in the top-level namespace so
+the C-ABI export name is unchanged. The split is purely organizational — no logic moves.
+
 ---
 
 ## Section 2 — In Flight
@@ -190,6 +209,7 @@ Work currently on a branch. Agents must not duplicate these tasks.
 | ID | Description | Branch | Commits ahead of master |
 |----|-------------|--------|------------------------|
 | B-2 | feat(chirp-web): parity shell | `codex/chirp-web-parity-polish` | 1 |
+| B-3 | fix(zap): auto-select recipient relays V-07 | `worktree-agent-a0dcdab25a3d4995c` | PR #331 open |
 
 > B-1 (`wt-nip17-fix`) and B-3 (agent worktree) no longer exist on remote — merged or
 > abandoned. WIP.md entries for PR-G (action_stages), PR-I (relay slots), chirp-tui-spec,
