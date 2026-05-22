@@ -25,20 +25,28 @@ pub enum Command {
     /// `load-key <nsec|hex>` — adopt an existing identity.
     LoadKey(String),
     /// `mls-init` — build the in-memory MarmotService, publish KeyPackages.
+    #[cfg(feature = "mls")]
     MlsInit,
     /// `mls-status` — snapshot groups / welcomes / key-package cache.
+    #[cfg(feature = "mls")]
     MlsStatus,
     /// `mls-create <name>` — create a solo MLS group.
+    #[cfg(feature = "mls")]
     MlsCreate(String),
     /// `mls-fetch-kp <npub>` — fetch + cache a peer's KeyPackage.
+    #[cfg(feature = "mls")]
     MlsFetchKp(String),
     /// `mls-invite <group_hex> <npub>` — add a member + send the Welcome.
+    #[cfg(feature = "mls")]
     MlsInvite(String, String),
     /// `mls-accept [welcome_hex]` — accept a pending Welcome (or list them).
+    #[cfg(feature = "mls")]
     MlsAccept(Option<String>),
     /// `mls-send <group_hex> <text...>` — encrypt + publish a group message.
+    #[cfg(feature = "mls")]
     MlsSend(String, String),
     /// `mls-messages <group_hex>` — print decrypted message history.
+    #[cfg(feature = "mls")]
     MlsMessages(String),
 
     Quit,

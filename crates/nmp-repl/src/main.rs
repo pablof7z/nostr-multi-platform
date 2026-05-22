@@ -32,13 +32,21 @@ const VERBS: &[&str] = &[
     // MLS / Marmot
     "create-account",
     "load-key",
+    #[cfg(feature = "mls")]
     "mls-init",
+    #[cfg(feature = "mls")]
     "mls-status",
+    #[cfg(feature = "mls")]
     "mls-create",
+    #[cfg(feature = "mls")]
     "mls-fetch-kp",
+    #[cfg(feature = "mls")]
     "mls-invite",
+    #[cfg(feature = "mls")]
     "mls-accept",
+    #[cfg(feature = "mls")]
     "mls-send",
+    #[cfg(feature = "mls")]
     "mls-messages",
     "quit",
     "exit",
@@ -188,27 +196,35 @@ fn dispatch(session: &mut Session, cmd: Command) -> Result<bool, String> {
         Command::LoadKey(input) => commands::load_key::run(session, input)
             .map(|_| false)
             .map_err(|e| e.to_string()),
+        #[cfg(feature = "mls")]
         Command::MlsInit => commands::mls_init::run(session)
             .map(|_| false)
             .map_err(|e| e.to_string()),
+        #[cfg(feature = "mls")]
         Command::MlsStatus => commands::mls_status::run(session)
             .map(|_| false)
             .map_err(|e| e.to_string()),
+        #[cfg(feature = "mls")]
         Command::MlsCreate(name) => commands::mls_create::run(session, name)
             .map(|_| false)
             .map_err(|e| e.to_string()),
+        #[cfg(feature = "mls")]
         Command::MlsFetchKp(npub) => commands::mls_fetch_kp::run(session, npub)
             .map(|_| false)
             .map_err(|e| e.to_string()),
+        #[cfg(feature = "mls")]
         Command::MlsInvite(gid, npub) => commands::mls_invite::run(session, gid, npub)
             .map(|_| false)
             .map_err(|e| e.to_string()),
+        #[cfg(feature = "mls")]
         Command::MlsAccept(arg) => commands::mls_accept::run(session, arg)
             .map(|_| false)
             .map_err(|e| e.to_string()),
+        #[cfg(feature = "mls")]
         Command::MlsSend(gid, text) => commands::mls_send::run(session, gid, text)
             .map(|_| false)
             .map_err(|e| e.to_string()),
+        #[cfg(feature = "mls")]
         Command::MlsMessages(gid) => commands::mls_messages::run(session, gid)
             .map(|_| false)
             .map_err(|e| e.to_string()),
