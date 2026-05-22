@@ -499,6 +499,18 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // dropped — it MUST outlive the inner closure so the panic frame can
     // still be delivered after the actor's own sender is gone.
     let update_tx_panic = update_tx.clone();
+    // Self-feedback sender for the actor — a clone of the command sender
+    // that the host also keeps (`command_tx` above). Background workers
+    // spawned from dispatch arms (currently the LNURL-pay round-trip the
+    // `FetchLnurlInvoice` arm starts) use this clone to send follow-up
+    // `ActorCommand`s back into the loop without crossing FFI.
+    //
+    // G-S4 caveat: sends through this clone bypass the `queue_depth`
+    // straddle counter (the only incrementing path is `NmpApp::send_cmd`).
+    // The `actor_queue_depth` snapshot metric is therefore a lower bound
+    // for self-feedback traffic — acceptable for a backpressure gate that
+    // watches for buildup, matches the existing `actor_sender()` caveat.
+    let actor_command_tx_self = command_tx.clone();
     let actor = thread::spawn(move || {
         // D7 (actor-death visibility): the actor thread owns the kernel loop.
         // If it panics, `send_cmd` would otherwise silently drop every
@@ -509,6 +521,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             run_actor_with_observers(
                 command_rx,
+                actor_command_tx_self,
                 update_tx,
                 actor_lifecycle_observer,
                 actor_event_observers,

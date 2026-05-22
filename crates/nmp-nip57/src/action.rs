@@ -1,45 +1,51 @@
-//! `ZapAction` — INTENTIONALLY NOT REGISTERED in production.
-//! The executor stubs with ShowToast (no real HTTP/LNURL round-trip).
-//! Re-register when ADR-0024 (HttpCapability) lands and the executor
-//! can actually complete payment. See: pending_zaps queue design.
-//!
 //! `nmp.nip57.zap` — the NIP-57 lightning zap [`ActionModule`].
 //!
 //! # What this PR does
 //!
-//! Wires the `nmp.nip57.zap` action namespace into the kernel's generic
-//! `dispatch_action` seam so a host (Chirp, or any future NMP host) can express
-//! a zap intent through the single-door action path without adding any NIP-57
-//! nouns to `nmp-core` (D0).
+//! Wires `nmp.nip57.zap` into the kernel's generic `dispatch_action` seam
+//! end-to-end: validation in [`ZapAction::start`], unsigned kind:9734 build
+//! via [`ZapRequestBuilder`] (`crate::build`), and dispatch to
+//! [`ActorCommand::FetchLnurlInvoice`] (the ADR-0024 minimum-viable
+//! LNURL-pay round-trip). The actor signs the request, fetches the
+//! receiver's LNURL well-known + callback endpoints over HTTP, and surfaces
+//! the resulting bolt11 invoice through a `ShowToast` follow-up.
 //!
-//! [`ZapAction`] is a pure **validator + intent recorder**. Its `start` method
-//! rejects obviously-malformed inputs (missing recipient, zero amount, no
-//! relays). Its `execute` method records the validated zap intent as a
-//! `ShowToast` so it is observable in the snapshot — this is an intentional,
-//! documented stub while the LNURL HTTP fetch infrastructure (ADR-0024
-//! `HttpCapability`) is built.
+//! # NIP-57 wire-routing — kind:9734 NEVER reaches relays
 //!
-//! # What this PR does NOT do (explicit scope boundary)
+//! NIP-57 § "Appendix C" routes the signed kind:9734 to the LN provider's
+//! LNURL **callback URL** as a `nostr=<urlencoded>` query parameter — NOT
+//! to Nostr relays. The kind:9735 receipt is what relays see; the LN
+//! provider mints it after the invoice settles. Earlier drafts of this
+//! module documented the relays-routing path as a future option; that
+//! documentation was wrong (the spec is unambiguous) and has been
+//! removed.
 //!
-//! * It does NOT call any HTTP endpoint (LNURL fetch, bolt11 decode, LN pay).
-//!   D8 — the actor thread is single-actor; blocking it drops all incoming
-//!   events. The LNURL fetch path requires `HttpCapability` (ADR-0024), which
-//!   is not yet implemented.
-//! * It does NOT publish the kind:9734 zap request to relays. Zap requests are
-//!   sent to the **LNURL endpoint** over HTTP, not broadcast to Nostr relays.
-//!   Publishing kind:9734 to relays would be semantically wrong per NIP-57.
+//! # ADR-0024 minimum-viable observable surface
 //!
-//! # Upgrade path
+//! The actor surfaces the bolt11 invoice as a [`ActorCommand::ShowToast`]
+//! whose `message` starts with `Zap invoice: lnbc…`. A host can substring
+//! the `lnbc`/`lntb`/`lnbcrt`/`lntbs` prefix and drive its NWC `pay_invoice`
+//! flow (NIP-47, `ActorCommand::WalletPayInvoice`, gated behind the
+//! `wallet` Cargo feature). A snapshot-projection surface
+//! (`last_action_outcomes` per the open-roadmap follow-up) will replace
+//! the toast once it lands; until then the toast is the observable seam.
 //!
-//! Once `HttpCapability` (ADR-0024) lands:
+//! # ADR-0026 Phase 1 — local-keys only
 //!
-//! 1. Add an `ActorCommand::InitiateLnurlZap { ... }` variant that carries the
-//!    validated zap parameters.
-//! 2. Replace the `ShowToast` stub in `execute` with that `ActorCommand`.
-//! 3. The actor's LNURL handler: fetches the recipient's LN address or
-//!    kind:0/9734-compatible LNURL, calls the LNURL `callback` URL, receives
-//!    the bolt11 invoice, and routes the payment through `ActorCommand::WalletPayInvoice`
-//!    (NIP-47 NWC) or a future LN wallet capability.
+//! The actor reads `IdentityRuntime::active_local_keys` to sign the
+//! kind:9734. Bunker (NIP-46 remote-signer) accounts return `None`; the
+//! actor fails closed with a clear toast and a `RecordActionFailure`
+//! against the correlation_id. Remote-signer kind:9734 signing is the
+//! ADR-0026 Phase 2 follow-up, parallel to the NIP-17 DM bunker-send
+//! work documented in `nmp-core/src/actor/commands/dm.rs`.
+//!
+//! # NWC payment — out of scope
+//!
+//! This module dispatches the LNURL fetch and surfaces the bolt11
+//! invoice. It does NOT pay it. Wiring the toast → `WalletPayInvoice`
+//! handoff is the next milestone (the wallet feature is already gated
+//! and wired in `nmp-core`); the seam this PR proves is the LNURL
+//! request half.
 //!
 //! # Namespace
 //!
@@ -50,6 +56,8 @@ use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
+use crate::build::ZapRequest;
+
 /// Wire shape for `nmp.nip57.zap` — the JSON body a host passes to
 /// `nmp_app_dispatch_action`.
 ///
@@ -57,11 +65,17 @@ use serde::{Deserialize, Serialize};
 /// {
 ///   "recipient_pubkey": "<hex>",
 ///   "amount_msats": 21000,
+///   "lnurl": "alice@walletofsatoshi.com",
 ///   "relays": ["wss://relay.damus.io"],
 ///   "target_event_id": "<hex>",
 ///   "comment": "🤙"
 /// }
 /// ```
+///
+/// `lnurl` carries the receiver's LNURL-pay endpoint in any of three
+/// shapes: a lightning address (`user@domain`), a bech32 LNURL
+/// (`lnurl1…`), or a bare `https://` URL — `nmp-core::actor::commands::zap`
+/// decodes all three per LUD-01/06/16.
 ///
 /// `target_event_id` and `comment` are optional. A zap to a profile (no
 /// target event) omits `target_event_id`. `relays` must have at least one
@@ -73,6 +87,10 @@ pub struct ZapInput {
     pub recipient_pubkey: String,
     /// Amount in millisatoshis. Must be > 0.
     pub amount_msats: u64,
+    /// Receiver's LNURL-pay endpoint — lightning address, bech32 LNURL, or
+    /// bare https URL. Required by NIP-57: a zap intent without the LN
+    /// destination cannot fetch the bolt11.
+    pub lnurl: String,
     /// Relay URLs included in the kind:9734 `relays` tag. At least one required
     /// per NIP-57.
     pub relays: Vec<String>,
@@ -87,9 +105,11 @@ pub struct ZapInput {
 
 /// The `nmp.nip57.zap` [`ActionModule`].
 ///
-/// `start` validates the zap input. `execute` records the intent as a
-/// `ShowToast` stub — the LNURL HTTP fetch and bolt11 payment are deferred
-/// to `HttpCapability` (ADR-0024). See module-level docs for the upgrade path.
+/// `start` validates the zap input. `execute` builds the unsigned
+/// kind:9734 zap request via [`ZapRequestBuilder`] and enqueues
+/// [`ActorCommand::FetchLnurlInvoice`] — the actor handles signing
+/// (D7 — kernel owns key access) and the off-thread LNURL-pay HTTP
+/// round-trip (D8 — no blocking on the actor thread).
 pub struct ZapAction;
 
 impl ActionModule for ZapAction {
@@ -99,6 +119,7 @@ impl ActionModule for ZapAction {
     /// Validate a zap request. Rejects:
     /// - empty `recipient_pubkey`
     /// - `amount_msats == 0`
+    /// - empty `lnurl` (receiver LN destination is required)
     /// - empty `relays` list (NIP-57 requires at least one relay for receipt
     ///   discovery; after filtering whitespace-only entries)
     fn start(
@@ -115,6 +136,11 @@ impl ActionModule for ZapAction {
                 "zap amount must be greater than 0 msats".into(),
             ));
         }
+        if action.lnurl.trim().is_empty() {
+            return Err(ActionRejection::Invalid(
+                "zap requires the receiver's LNURL-pay endpoint (lightning address, bech32 LNURL, or https URL)".into(),
+            ));
+        }
         let non_empty_relays: Vec<_> = action
             .relays
             .iter()
@@ -128,47 +154,79 @@ impl ActionModule for ZapAction {
         Ok(())
     }
 
-    /// Record the validated zap intent.
+    /// PR-G — this action settles asynchronously: `execute` enqueues
+    /// `FetchLnurlInvoice` and returns immediately; the actor's HTTP worker
+    /// surfaces the bolt11 (or a failure) via a follow-up `ShowToast` /
+    /// `RecordActionFailure`. Hosts that subscribe to `action_stages` will
+    /// see `Requested` (set in the dispatch arm) and a terminal `Failed`
+    /// for any pre-payment error.
     ///
-    /// # D8 — no sync I/O
+    /// # Recording sites are cross-file
     ///
-    /// This executor MUST NOT call any sync HTTP (LNURL fetch, bolt11 pay).
-    /// The actor thread is single-actor; blocking it drops all incoming events.
+    /// The `record_action_stage` and `record_action_failure` calls that
+    /// satisfy the D12 contract live in
+    /// `crates/nmp-core/src/actor/dispatch.rs` (the `FetchLnurlInvoice`
+    /// arm sets `Requested`) and
+    /// `crates/nmp-core/src/actor/commands/zap.rs` (the LNURL handler's
+    /// failure paths set `Failed`). D12 is a per-file grep gate; the
+    /// `doctrine-allow` opt-out below mirrors `PublishModule`'s pattern
+    /// for the same shape (declared in the protocol crate, recorded in
+    /// the actor + engine in `nmp-core`).
+    fn is_async_completing() -> bool { // doctrine-allow: D12 — recording sites are cross-file (actor/dispatch.rs FetchLnurlInvoice arm sets Requested; actor/commands/zap.rs sets Failed on pre-payment errors)
+        true
+    }
+
+    /// Build the unsigned kind:9734 and enqueue
+    /// [`ActorCommand::FetchLnurlInvoice`].
     ///
-    /// # Current behaviour (stub)
+    /// # D7 — kernel owns the wall clock
     ///
-    /// Emits a `ShowToast` carrying the zap parameters so the intent is
-    /// observable in the snapshot. This is intentionally a stub — the LNURL
-    /// HTTP fetch path requires `HttpCapability` (ADR-0024), which is not yet
-    /// implemented. Replace with `ActorCommand::InitiateLnurlZap { ... }` when
-    /// that infrastructure lands.
+    /// `created_at` is passed as `0`; the actor re-stamps from
+    /// `kernel.now_secs()` before signing. Matches the
+    /// `PublishUnsignedEventToRelays` precedent.
+    ///
+    /// # D8 — no blocking
+    ///
+    /// The closure neither HTTPs nor signs; the actor's
+    /// `FetchLnurlInvoice` arm does both off-thread.
     fn execute(
         action: Self::Action,
-        _correlation_id: &str,
+        correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        // TODO(ADR-0024): replace with ActorCommand::InitiateLnurlZap once
-        // HttpCapability is implemented. The LNURL fetch (recipient's LN address
-        // → callback URL → bolt11 invoice) must happen off the actor thread.
-        let sats = action.amount_msats / 1000;
-        let msats_rem = action.amount_msats % 1000;
-        let amount_str = if msats_rem == 0 {
-            format!("{sats} sats")
-        } else {
-            format!("{} msats", action.amount_msats)
-        };
-        let target_str = action
-            .target_event_id
-            .as_deref()
-            .map(|id| format!(" on note {}", &id[..id.len().min(8)]))
-            .unwrap_or_default();
-        let message = format!(
-            "Zap intent recorded: {} for {}{} — LNURL HTTP fetch not yet wired (ADR-0024)",
-            amount_str,
-            &action.recipient_pubkey[..action.recipient_pubkey.len().min(8)],
-            target_str,
-        );
-        send(ActorCommand::ShowToast { message });
+        // Filter empty/whitespace relays (already partially done in start;
+        // re-filter so the builder gets the cleaned set without re-running
+        // the validator).
+        let relays: Vec<String> = action
+            .relays
+            .iter()
+            .filter(|r| !r.trim().is_empty())
+            .cloned()
+            .collect();
+        let mut builder = ZapRequest::to_pubkey(&action.recipient_pubkey)
+            .amount_msats(action.amount_msats)
+            .relays(relays);
+        if let Some(ref id) = action.target_event_id {
+            builder = builder.zapped_event(id);
+        }
+        if let Some(ref comment) = action.comment {
+            builder = builder.comment(comment);
+        }
+        // `author` is the kernel-resolved active account at sign time —
+        // the actor overrides this when it builds the signed event. Pass an
+        // empty placeholder; the substrate `UnsignedEvent` carries it
+        // through unchanged but the actor's `sign_zap_request` resigns from
+        // the active `Keys` (its pubkey is what `EventBuilder` stamps).
+        // `created_at = 0` is the D7 sentinel — re-stamped on the actor.
+        let unsigned = builder
+            .build(String::new(), 0)
+            .map_err(|e| format!("build kind:9734 zap request: {e}"))?;
+        send(ActorCommand::FetchLnurlInvoice {
+            unsigned,
+            lnurl_or_address: action.lnurl,
+            amount_msats: action.amount_msats,
+            correlation_id: Some(correlation_id.to_string()),
+        });
         Ok(())
     }
 }
@@ -182,6 +240,7 @@ mod tests {
     const RECIPIENT: &str =
         "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
     const RELAY: &str = "wss://relay.damus.io";
+    const LNURL: &str = "alice@walletofsatoshi.com";
 
     fn ctx() -> ActionContext {
         ActionContext::default()
@@ -191,6 +250,7 @@ mod tests {
         ZapInput {
             recipient_pubkey: RECIPIENT.to_string(),
             amount_msats: 21_000,
+            lnurl: LNURL.to_string(),
             relays: vec![RELAY.to_string()],
             target_event_id: None,
             comment: None,
@@ -200,6 +260,12 @@ mod tests {
     #[test]
     fn namespace_is_nmp_nip57_zap() {
         assert_eq!(ZapAction::NAMESPACE, "nmp.nip57.zap");
+    }
+
+    #[test]
+    fn is_async_completing_is_true() {
+        // Zap settles asynchronously — host should subscribe to action_stages.
+        assert!(ZapAction::is_async_completing());
     }
 
     #[test]
@@ -244,6 +310,18 @@ mod tests {
     }
 
     #[test]
+    fn start_rejects_empty_lnurl() {
+        let input = ZapInput {
+            lnurl: "   ".to_string(),
+            ..well_formed_input()
+        };
+        assert!(matches!(
+            ZapAction::start(&mut ctx(), input),
+            Err(ActionRejection::Invalid(_))
+        ));
+    }
+
+    #[test]
     fn start_rejects_empty_relays() {
         let input = ZapInput {
             relays: vec![],
@@ -267,44 +345,91 @@ mod tests {
         ));
     }
 
+    /// The executor must emit a `FetchLnurlInvoice` carrying the full
+    /// validated zap intent — NOT the previous `ShowToast` stub. This pins
+    /// the post-ADR-0024 contract: the LNURL fetch runs off-thread in the
+    /// actor's spawned worker, not as a fabricated "intent recorded" toast.
     #[test]
-    fn execute_emits_show_toast_stub() {
+    fn execute_emits_fetch_lnurl_invoice_with_zap_request() {
         let captured: RefCell<Option<ActorCommand>> = RefCell::new(None);
-        ZapAction::execute(well_formed_input(), "test-cid", &|cmd| {
+        ZapAction::execute(well_formed_input(), "cid-deadbeef", &|cmd| {
             *captured.borrow_mut() = Some(cmd);
         })
         .expect("execute must succeed for well-formed input");
-        match captured.into_inner().expect("executor must emit a command") {
-            ActorCommand::ShowToast { message } => {
-                assert!(
-                    message.contains("ADR-0024"),
-                    "toast must document the ADR-0024 gap, got: {message}"
-                );
-                assert!(
-                    message.contains("21 sats"),
-                    "toast must include the amount, got: {message}"
+        let cmd = captured.into_inner().expect("executor must emit a command");
+        match cmd {
+            ActorCommand::FetchLnurlInvoice {
+                unsigned,
+                lnurl_or_address,
+                amount_msats,
+                correlation_id,
+            } => {
+                assert_eq!(lnurl_or_address, LNURL);
+                assert_eq!(amount_msats, 21_000);
+                assert_eq!(correlation_id.as_deref(), Some("cid-deadbeef"));
+                // kind:9734 zap-request — the builder must have produced
+                // a NIP-57-shaped unsigned event with `relays`, `amount`,
+                // and `p` tags.
+                assert_eq!(unsigned.kind, 9734);
+                let keys: Vec<&str> = unsigned
+                    .tags
+                    .iter()
+                    .filter_map(|t| t.first())
+                    .map(String::as_str)
+                    .collect();
+                assert!(keys.contains(&"relays"), "missing relays tag: {keys:?}");
+                assert!(keys.contains(&"amount"), "missing amount tag: {keys:?}");
+                assert!(keys.contains(&"p"), "missing p tag: {keys:?}");
+                // The kernel re-stamps `created_at` from `now_secs()` —
+                // the executor passes the D7 sentinel `0`.
+                assert_eq!(
+                    unsigned.created_at, 0,
+                    "executor must pass created_at=0 sentinel; actor re-stamps"
                 );
             }
-            other => panic!("expected ShowToast, got {other:?}"),
+            other => panic!("expected FetchLnurlInvoice, got {other:?}"),
         }
     }
 
+    /// `e` tag must surface when `target_event_id` is set — a zap to a
+    /// specific note vs. a zap to a profile.
     #[test]
-    fn execute_formats_msats_when_not_whole_sats() {
+    fn execute_includes_e_tag_when_target_event_id_set() {
         let input = ZapInput {
-            amount_msats: 1_500,
+            target_event_id: Some(
+                "aabb1122334455660011223344556677889900112233445566778899aabbccdd".into(),
+            ),
             ..well_formed_input()
         };
         let captured: RefCell<Option<ActorCommand>> = RefCell::new(None);
-        ZapAction::execute(input, "test-cid", &|cmd| {
+        ZapAction::execute(input, "cid", &|cmd| {
             *captured.borrow_mut() = Some(cmd);
         })
         .unwrap();
-        match captured.into_inner().unwrap() {
-            ActorCommand::ShowToast { message } => {
-                assert!(message.contains("1500 msats"), "got: {message}");
-            }
-            other => panic!("expected ShowToast, got {other:?}"),
-        }
+        let ActorCommand::FetchLnurlInvoice { unsigned, .. } = captured.into_inner().unwrap()
+        else {
+            panic!("expected FetchLnurlInvoice");
+        };
+        let has_e = unsigned.tags.iter().any(|t| t.first().map(String::as_str) == Some("e"));
+        assert!(has_e, "expected `e` tag for targeted zap: {:?}", unsigned.tags);
+    }
+
+    /// Comment lands in the kind:9734 `content` per NIP-57.
+    #[test]
+    fn execute_routes_comment_into_zap_request_content() {
+        let input = ZapInput {
+            comment: Some("nice post 🤙".to_string()),
+            ..well_formed_input()
+        };
+        let captured: RefCell<Option<ActorCommand>> = RefCell::new(None);
+        ZapAction::execute(input, "cid", &|cmd| {
+            *captured.borrow_mut() = Some(cmd);
+        })
+        .unwrap();
+        let ActorCommand::FetchLnurlInvoice { unsigned, .. } = captured.into_inner().unwrap()
+        else {
+            panic!("expected FetchLnurlInvoice");
+        };
+        assert_eq!(unsigned.content, "nice post 🤙");
     }
 }

@@ -46,6 +46,7 @@ use nmp_nip29::action::{
     PostChatMessageAction, ReactInGroupAction,
 };
 use nmp_nip17::{PublishDmRelayListAction, SendDmAction};
+use nmp_nip57::ZapAction;
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
 use nmp_threading::ModulePolicy;
@@ -148,6 +149,19 @@ pub extern "C" fn nmp_app_chirp_register(
     //
     // SAFETY: same exclusive-borrow rationale as `register_chirp_actions`.
     register_nip17_actions(unsafe { &mut *app });
+
+    // Register the NIP-57 lightning-zap `ActionModule` (`nmp.nip57.zap`).
+    // The executor builds the unsigned kind:9734 via `ZapRequestBuilder`
+    // and enqueues `ActorCommand::FetchLnurlInvoice`; the actor signs the
+    // request on-thread (D7) and spawns a worker for the LNURL-pay HTTP
+    // round-trip (D8). The resulting bolt11 invoice surfaces as a
+    // `ShowToast` follow-up (ADR-0024 minimum-viable observable surface).
+    //
+    // NWC payment (`ActorCommand::WalletPayInvoice`) is the next milestone —
+    // until then the host substring-matches `lnbc…` from the toast.
+    //
+    // SAFETY: same exclusive-borrow rationale as `register_chirp_actions`.
+    register_nip57_actions(unsafe { &mut *app });
 
     // SAFETY: caller guarantees `app` is a valid pointer allocated by
     // `nmp_app_new` for the duration of this call. We do not hold the
@@ -612,6 +626,64 @@ fn register_nip29_actions(app: &mut NmpApp) {
 fn register_nip17_actions(app: &mut NmpApp) {
     app.register_action::<SendDmAction>();
     app.register_action::<PublishDmRelayListAction>();
+}
+
+/// Register the NIP-57 lightning-zap [`ActionModule`] (`nmp.nip57.zap`)
+/// against `app`'s action registry.
+///
+/// Wires the typed [`ZapAction`] from the `nmp-nip57` protocol crate
+/// through the same host-extensibility seam the NIP-17 / NIP-29 actions
+/// use. The executor builds the unsigned kind:9734 zap request via
+/// [`nmp_nip57::ZapRequestBuilder`] and enqueues
+/// [`nmp_core::ActorCommand::FetchLnurlInvoice`] — the actor signs the
+/// kind:9734 on-thread (D7), then spawns a worker thread for the
+/// LNURL-pay HTTP round-trip (D8 — no blocking on the actor thread).
+///
+/// JSON schema (the third arg the host passes to
+/// `nmp_app_dispatch_action`):
+///
+/// ```json
+/// {
+///   "recipient_pubkey": "<hex>",
+///   "amount_msats": 21000,
+///   "lnurl": "alice@walletofsatoshi.com",
+///   "relays": ["wss://relay.damus.io"],
+///   "target_event_id": "<hex>",   // optional
+///   "comment": "🤙"              // optional
+/// }
+/// ```
+///
+/// `lnurl` accepts any of the three LNURL-pay input shapes: a
+/// lightning address (`user@domain` per LUD-16), a bech32 LNURL
+/// (`lnurl1…` per LUD-01), or a bare `https://` URL.
+///
+/// # Observable surface
+///
+/// The actor's `FetchLnurlInvoice` handler surfaces results through
+/// two channels:
+///
+/// 1. [`ActorCommand::ShowToast`] — the bolt11 invoice on success
+///    (`Zap invoice: lnbc…`) or a human-readable reason on failure
+///    (`Zap failed: …`). This is the ADR-0024 minimum-viable
+///    observable; a `last_action_outcomes` snapshot projection is the
+///    designed follow-up.
+/// 2. The `action_stages` mirror — `Requested` is set when the
+///    dispatch arm fires; `Failed { reason }` is recorded on any
+///    pre-payment failure so a host spinner keyed on the
+///    `dispatch_action` correlation_id clears on the next tick.
+///
+/// # Out-of-scope
+///
+/// * **NWC payment**. The handler returns the bolt11 invoice but does
+///   not pay it; the wallet handoff
+///   ([`ActorCommand::WalletPayInvoice`], gated by the `wallet` feature)
+///   is the next milestone.
+/// * **Bunker (NIP-46) signing of kind:9734**. The actor reads
+///   `IdentityRuntime::active_local_keys`; bunker accounts fail closed
+///   with a clear toast (ADR-0026 Phase 2 follow-up, parallel to the
+///   NIP-17 DM bunker-send path).
+fn register_nip57_actions(app: &mut NmpApp) {
+    app.register_action::<ZapAction>();
 }
 
 /// `chirp.react` action body: `{"target_event_id":"<hex>","reaction":"+"}`.
@@ -1145,6 +1217,70 @@ mod tests {
         assert!(
             parsed.get("error").is_some(),
             "an empty-content DM must be rejected: {parsed}"
+        );
+
+        nmp_app_chirp_unregister(handle);
+        nmp_app_free(app);
+    }
+
+    /// `nmp.nip57.zap` action — `ZapAction`, an `ActionModule` living in the
+    /// `nmp-nip57` protocol crate — is reachable through the generic
+    /// `dispatch_action` path. A well-formed `ZapInput` yields a 32-hex
+    /// `correlation_id` (both the typed module validator AND the executor are
+    /// wired); a malformed body is rejected with `error`.
+    ///
+    /// This is the migration proof that ADR-0024's minimum-viable LNURL path
+    /// (no `HttpCapability` substrate) is live end-to-end: dispatch reaches
+    /// `ZapAction::execute`, which builds the unsigned kind:9734 and enqueues
+    /// `ActorCommand::FetchLnurlInvoice` for the actor's spawned worker to
+    /// complete. The test asserts only the dispatch half (correlation_id
+    /// minted, executor returned `Ok`); the HTTP round-trip itself requires
+    /// a live LN provider and is exercised end-to-end through the iOS shell.
+    #[test]
+    fn nip57_zap_dispatches_through_action_registry() {
+        let app = nmp_app_new();
+        let handle = nmp_app_chirp_register(app, std::ptr::null());
+        assert!(!handle.is_null());
+
+        let recipient = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
+        let body = format!(
+            r#"{{"recipient_pubkey":"{recipient}","amount_msats":21000,"lnurl":"alice@walletofsatoshi.com","relays":["wss://relay.damus.io"]}}"#
+        );
+        let parsed = dispatch(app, "nmp.nip57.zap", &body);
+        let id = parsed
+            .get("correlation_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("expected correlation_id, got {parsed}"));
+        assert_eq!(id.len(), 32, "correlation id should be 32 hex");
+
+        // A zap to a profile (no target_event_id) is well-formed.
+        let body_profile = format!(
+            r#"{{"recipient_pubkey":"{recipient}","amount_msats":1000,"lnurl":"https://example.com/.well-known/lnurlp/bob","relays":["wss://relay.damus.io"]}}"#
+        );
+        let parsed = dispatch(app, "nmp.nip57.zap", &body_profile);
+        assert!(
+            parsed.get("correlation_id").is_some(),
+            "profile-zap (no target) must dispatch cleanly: {parsed}"
+        );
+
+        // Zero amount is rejected by the typed validator (D6).
+        let bad = format!(
+            r#"{{"recipient_pubkey":"{recipient}","amount_msats":0,"lnurl":"alice@walletofsatoshi.com","relays":["wss://relay.damus.io"]}}"#
+        );
+        let parsed = dispatch(app, "nmp.nip57.zap", &bad);
+        assert!(
+            parsed.get("error").is_some(),
+            "zero-amount zap must be rejected: {parsed}"
+        );
+
+        // Empty lnurl is rejected — NIP-57 has no destination without it.
+        let no_lnurl = format!(
+            r#"{{"recipient_pubkey":"{recipient}","amount_msats":21000,"lnurl":"","relays":["wss://relay.damus.io"]}}"#
+        );
+        let parsed = dispatch(app, "nmp.nip57.zap", &no_lnurl);
+        assert!(
+            parsed.get("error").is_some(),
+            "empty-lnurl zap must be rejected: {parsed}"
         );
 
         nmp_app_chirp_unregister(handle);

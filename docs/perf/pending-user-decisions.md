@@ -37,6 +37,22 @@ PR shipped: title is `fix(chirp-ios): drive DM-inbox publish UI from action_resu
 
 ---
 
+### PD-035 INFORMATIONAL (2026-05-22) — NIP-57 zap action does NOT publish kind:9734 to relays; user spec deviation documented
+
+The brief for ADR-0024 minimum-viable `FetchLnurlInvoice` asked the executor (step 5) to "send `ActorCommand::PublishUnsignedEventToRelays` for the zap-request event" after fetching the LNURL invoice. I did NOT do that — the deviation is intentional and forced by NIP-57.
+
+**Why**: NIP-57 § "Appendix C" specifies that the signed kind:9734 zap request is delivered to the LN provider's LNURL **callback URL** as a `nostr=<urlencoded JSON>` query parameter — it is **never** broadcast to Nostr relays. The kind:9735 receipt is what relays see; the LN provider mints it after the invoice settles. The existing `crates/nmp-nip57/src/action.rs` module-level docs (pre-rewrite, lines 27-30) already documented this with the exact phrasing: *"Publishing kind:9734 to relays would be semantically wrong per NIP-57."*
+
+Publishing the kind:9734 to relays would (a) violate NIP-57, (b) leak the signed zap-request event metadata to relays that have no use for it, and (c) be observably wrong for any client that decodes the kind on the receiving side.
+
+**What I shipped instead**: the worker's success path surfaces the bolt11 invoice as `ActorCommand::ShowToast { message: "Zap invoice: lnbc…" }`. NIP-47 NWC payment (`ActorCommand::WalletPayInvoice`, gated by the `wallet` feature) is the next milestone — until then a host can substring-match the `lnbc`/`lntb`/`lnbcrt`/`lntbs` prefix from the toast and drive the wallet pay manually.
+
+**Reference**: NIP-57 specification at https://github.com/nostr-protocol/nips/blob/master/57.md (the "Appendix C — Zap Request Event" section is the dispositive cite).
+
+USER ACTION (informational only — no decision required): acknowledge the deviation, or re-spec the executor if a different routing path is desired.
+
+---
+
 ### PD-033 NEEDS USER ACTION (2026-05-21) — `pending_mls_autopublish` cannot be routed through `ActorCommand` as briefed; Fix 2 deferred
 
 A polish brief asked for two `nmp-core` fixes: (1) remove an `eprintln!` from `ffi_guard.rs`, (2) replace the `pending_mls_autopublish: Arc<Mutex<bool>>` field on `NmpApp` with an `ActorCommand::SetPendingMlsAutopublish(bool)` variant, on the stated rationale that the flag "is never read by the actor thread — it's FFI-thread-only mutable state shared via a Mutex as a workaround for ownership, not because it's genuinely shared."

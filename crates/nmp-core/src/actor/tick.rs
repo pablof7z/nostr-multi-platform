@@ -123,7 +123,8 @@ mod tests {
     fn idle_ticks_do_not_emit_snapshots_when_state_unchanged() {
         let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
         let (upd_tx, upd_rx) = mpsc::channel::<String>();
-        thread::spawn(move || run_actor(cmd_rx, upd_tx));
+        let actor_self_tx = cmd_tx.clone();
+        thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
 
         // Wait long enough for several idle-poll cycles without any commands.
         thread::sleep(Duration::from_millis(1_000));
@@ -150,7 +151,8 @@ mod tests {
     fn live_actor_frames_are_all_decodable_envelopes() {
         let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
         let (upd_tx, upd_rx) = mpsc::channel::<String>();
-        thread::spawn(move || run_actor(cmd_rx, upd_tx));
+        let actor_self_tx = cmd_tx.clone();
+        thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
 
         cmd_tx
             .send(ActorCommand::Start {
@@ -218,7 +220,8 @@ mod tests {
     fn view_dispatches_do_not_emit_snapshots_when_not_running() {
         let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
         let (upd_tx, upd_rx) = mpsc::channel::<String>();
-        thread::spawn(move || run_actor(cmd_rx, upd_tx));
+        let actor_self_tx = cmd_tx.clone();
+        thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
 
         // Configure (NOT Start) — running stays false. Then fire a flurry of
         // view commands. None of these should produce a snapshot frame; the
@@ -308,7 +311,8 @@ mod tests {
     fn create_account_emits_snapshot_with_active_account() {
         let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
         let (upd_tx, upd_rx) = mpsc::channel::<String>();
-        thread::spawn(move || run_actor(cmd_rx, upd_tx));
+        let actor_self_tx = cmd_tx.clone();
+        thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
 
         cmd_tx
             .send(ActorCommand::Start {

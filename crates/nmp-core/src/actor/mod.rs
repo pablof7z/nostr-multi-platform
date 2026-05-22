@@ -456,6 +456,48 @@ pub enum ActorCommand {
         amount_msats: Option<u64>,
         correlation_id: Option<String>,
     },
+    /// NIP-57 LNURL-pay round-trip. The actor signs `unsigned` (the kind:9734
+    /// zap request) with the active local identity, then spawns a worker
+    /// thread that completes the two-leg LNURL-pay HTTP round-trip
+    /// (well-known fetch → callback fetch) and surfaces the resulting bolt11
+    /// invoice as a [`ActorCommand::ShowToast`] follow-up.
+    ///
+    /// `lnurl_or_address` may be a lightning address (`user@domain`), a
+    /// bech32 `lnurl1…`, or a bare `https://` URL — `commands::zap` decodes
+    /// all three shapes into the LNURL-pay well-known URL per LUD-01/06/16.
+    ///
+    /// # NIP-57 wire-routing — kind:9734 NEVER reaches relays
+    ///
+    /// The signed zap request is delivered to the LNURL callback as a
+    /// `nostr=<urlencoded>` query parameter (NIP-57 § "Appendix C"). It is
+    /// NOT broadcast to Nostr relays — the receipt (kind:9735) is, and the
+    /// LN provider mints it after the invoice settles. This arm therefore
+    /// emits NO `PublishUnsignedEventToRelays` follow-up; any caller that
+    /// expects relay traffic from a zap intent has misunderstood NIP-57.
+    ///
+    /// # ADR-0026 Phase 1 — local keys only
+    ///
+    /// Bunker (NIP-46 remote-signer) accounts fail closed with a clear
+    /// toast and a `RecordActionFailure` (when a `correlation_id` was
+    /// supplied) — kind:9734 signing through a remote signer is the
+    /// follow-up parallel to the NIP-17 DM Phase-2 work.
+    ///
+    /// # ADR-0024 minimum-viable observable surface
+    ///
+    /// The bolt11 invoice is surfaced via `ShowToast`. A snapshot-projection
+    /// surface (`last_action_outcomes` per memory note #57) is the designed
+    /// follow-up; the toast is the minimum-viable observable so a host can
+    /// substring-match the `lnbc…` prefix and drive its NWC pay flow.
+    /// `correlation_id` is the registry-minted action id when this arm
+    /// originates from `dispatch_action` (`nmp.nip57.zap`); a `Failed`
+    /// terminal is recorded against it on any pre-payment failure so the
+    /// host spinner clears.
+    FetchLnurlInvoice {
+        unsigned: crate::substrate::UnsignedEvent,
+        lnurl_or_address: String,
+        amount_msats: u64,
+        correlation_id: Option<String>,
+    },
     /// T118 / G3 — app lifecycle phase transition reported by the host shell
     /// (or any conforming consumer). The actor folds the phase into the
     /// kernel's [`crate::kernel::LifecyclePhase`] state and, on a
@@ -572,9 +614,18 @@ use outbound::wire_frames_to_outbound;
 /// `lib.rs` and `actor::tick`'s test module). A plain `cargo build` without
 /// `--tests` or the `test-support` feature would otherwise warn.
 #[allow(dead_code)]
-pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) {
+pub fn run_actor(
+    command_rx: Receiver<ActorCommand>,
+    // Self-feedback sender — see `run_actor_with_observers` for the
+    // contract. The backwards-compat shim threads it through unchanged.
+    // Callers (tests + `lib.rs::spawn_actor`) hand in a clone of the
+    // `Sender` they kept after constructing the channel.
+    command_tx_self: Sender<ActorCommand>,
+    update_tx: Sender<String>,
+) {
     run_actor_with_observers(
         command_rx,
+        command_tx_self,
         update_tx,
         new_lifecycle_observer_slot(),
         new_event_observer_slot(),
@@ -612,11 +663,14 @@ pub fn run_actor(command_rx: Receiver<ActorCommand>, update_tx: Sender<String>) 
 #[allow(dead_code)]
 pub fn run_actor_with_lifecycle_observer(
     command_rx: Receiver<ActorCommand>,
+    // Self-feedback sender — see `run_actor_with_observers`.
+    command_tx_self: Sender<ActorCommand>,
     update_tx: Sender<String>,
     lifecycle_observer: LifecycleObserverSlot,
 ) {
     run_actor_with_observers(
         command_rx,
+        command_tx_self,
         update_tx,
         lifecycle_observer,
         new_event_observer_slot(),
@@ -658,6 +712,14 @@ pub fn run_actor_with_lifecycle_observer(
 #[allow(clippy::too_many_arguments)]
 pub fn run_actor_with_observers(
     command_rx: Receiver<ActorCommand>,
+    // Self-feedback sender — a clone of `command_rx`'s upstream `Sender`,
+    // handed to dispatch arms that spawn background workers (currently the
+    // `FetchLnurlInvoice` LNURL-pay HTTP round-trip). The worker uses it to
+    // send a follow-up `ActorCommand` (e.g. `ShowToast` with the bolt11)
+    // back into this loop without needing access to the `NmpApp`. The actor
+    // itself never `recv`s on this sender — it only hands clones out via
+    // `ActorContext::command_tx_self`.
+    command_tx_self: Sender<ActorCommand>,
     update_tx: Sender<String>,
     lifecycle_observer: LifecycleObserverSlot,
     event_observers: KernelEventObserverSlot,
@@ -902,6 +964,7 @@ pub fn run_actor_with_observers(
                         nip17_local_keys: &nip17_local_keys,
                         capability_callback: &capability_callback,
                         pending_signs: &mut pending_signs,
+                        command_tx_self: &command_tx_self,
                     };
                     let outbound = dispatch_command(command, &mut ctx);
                     let Some(outbound) = outbound else {

@@ -103,6 +103,19 @@ pub(super) struct ActorContext<'a> {
     pub(super) nip17_local_keys: &'a Arc<Mutex<Option<nostr::Keys>>>,
     pub(super) capability_callback: &'a CapabilityCallbackSlot,
     pub(super) pending_signs: &'a mut Vec<PendingSign>,
+    /// Self-feedback `Sender<ActorCommand>` — the actor's own command channel
+    /// from the perspective of code running on the actor thread.
+    /// `dispatch.rs` arms that spawn background workers (currently only the
+    /// `FetchLnurlInvoice` LNURL-pay HTTP round-trip) clone this and hand
+    /// the clone to the worker; the worker then sends a follow-up
+    /// `ActorCommand` (e.g. `ShowToast` with the bolt11 invoice) back into
+    /// the actor loop without needing access to the `NmpApp`.
+    ///
+    /// D8 — the actor never `recv`s on this sender; it only hands clones
+    /// out. The matching receiver is `command_rx` in `run_actor_with_observers`.
+    /// A disconnected sender (post-Shutdown) is a benign send-failure on
+    /// the worker side; the worker swallows it as a no-op (D6).
+    pub(super) command_tx_self: &'a Sender<crate::actor::ActorCommand>,
 }
 
 pub(super) fn dispatch_command(
@@ -560,6 +573,44 @@ pub(super) fn dispatch_command(
             );
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
+        }
+        ActorCommand::FetchLnurlInvoice {
+            unsigned,
+            lnurl_or_address,
+            amount_msats,
+            correlation_id,
+        } => {
+            // PR-G — record Requested lifecycle when dispatched via an
+            // action (the `nmp.nip57.zap` namespace). Mirrors the existing
+            // `PublishUnsignedEventToRelays` arm.
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
+            // The handler signs synchronously on this thread (D7) and
+            // spawns a worker for the HTTP round-trip (D8). It never
+            // returns relay outbound frames — kind:9734 goes to the
+            // LNURL callback over HTTP, not to relays (NIP-57 § Appendix C).
+            commands::handle_fetch_lnurl_invoice(
+                ctx.identity,
+                ctx.kernel,
+                ctx.command_tx_self.clone(),
+                unsigned,
+                lnurl_or_address,
+                amount_msats,
+                correlation_id,
+            );
+            // Emit promptly so a synchronous failure (no active local keys,
+            // sign failure) lands in the next snapshot tick — matches the
+            // `PublishUnsignedEventToRelays` post-dispatch emit. A success
+            // path's `ShowToast` follow-up arrives later from the worker
+            // thread and will trigger its own emit through the regular
+            // dispatch path.
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
         }
         ActorCommand::RecordActionFailure {
             correlation_id,
