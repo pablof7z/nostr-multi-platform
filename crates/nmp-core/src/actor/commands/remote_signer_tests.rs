@@ -361,7 +361,7 @@ fn send_gift_wrapped_dm_routes_through_remote_signer_adapter() {
         content: "hello from a bunker".into(),
         created_at: 0,
     };
-    let outbound = super::dm::send_gift_wrapped_dm(&id, &mut kernel, rumor, &recipient_pk);
+    let outbound = super::dm::send_gift_wrapped_dm(&id, &mut kernel, rumor, &recipient_pk, None);
 
     assert!(
         kernel.last_error_toast_snapshot().is_none(),

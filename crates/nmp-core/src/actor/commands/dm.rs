@@ -109,6 +109,7 @@ pub(crate) fn send_gift_wrapped_dm(
     kernel: &mut Kernel,
     mut rumor: UnsignedEvent,
     recipient_pubkey: &str,
+    correlation_id: Option<String>,
 ) -> Vec<OutboundMessage> {
     // D10: private-kind publish
     // Every publish call below MUST route via an Explicit pin (the receiver's
@@ -142,7 +143,17 @@ pub(crate) fn send_gift_wrapped_dm(
             ),
             None => "cannot send DM: no active account".to_string(),
         };
-        kernel.set_last_error_toast(Some(reason));
+        kernel.set_last_error_toast(Some(reason.clone()));
+        // Broken-promise fix: if the dispatch arm already recorded
+        // `Requested` against this correlation_id, an early-exit must
+        // record `Failed` or the host's spinner hangs forever. The
+        // `record_action_failure` helper writes BOTH the action_results
+        // terminal AND the `action_stages` `Failed` mirror entry. No-op
+        // for `None` (non-dispatch callers — `send_dm_command` helper,
+        // conformance harnesses — have nothing waiting on an id).
+        if let Some(id) = correlation_id.clone() {
+            kernel.record_action_failure(id, reason);
+        }
         return Vec::new();
     };
 
@@ -163,7 +174,12 @@ pub(crate) fn send_gift_wrapped_dm(
     let nostr_rumor = match build_nostr_rumor(&rumor, sender) {
         Ok(r) => r,
         Err(reason) => {
-            kernel.set_last_error_toast(Some(format!("cannot send DM: {reason}")));
+            let toast = format!("cannot send DM: {reason}");
+            kernel.set_last_error_toast(Some(toast.clone()));
+            // Broken-promise fix (see signer branch above).
+            if let Some(id) = correlation_id.clone() {
+                kernel.record_action_failure(id, toast);
+            }
             return Vec::new();
         }
     };
@@ -173,9 +189,12 @@ pub(crate) fn send_gift_wrapped_dm(
     let recipient = match PublicKey::parse(recipient_pubkey) {
         Ok(pk) => pk,
         Err(e) => {
-            kernel.set_last_error_toast(Some(format!(
-                "cannot send DM: malformed recipient pubkey: {e}"
-            )));
+            let toast = format!("cannot send DM: malformed recipient pubkey: {e}");
+            kernel.set_last_error_toast(Some(toast.clone()));
+            // Broken-promise fix (see signer branch above).
+            if let Some(id) = correlation_id.clone() {
+                kernel.record_action_failure(id, toast);
+            }
             return Vec::new();
         }
     };
@@ -218,7 +237,13 @@ pub(crate) fn send_gift_wrapped_dm(
                 "NIP-17 DM send blocked: missing or empty kind:10050 \
                  DM-relay list; refusing Content relay fallback"
             );
-            kernel.set_last_error_toast(Some(err.toast()));
+            let toast = err.toast();
+            kernel.set_last_error_toast(Some(toast.clone()));
+            // Broken-promise fix (see signer branch above): the dispatch
+            // arm already recorded `Requested`; close it with `Failed`.
+            if let Some(id) = correlation_id.clone() {
+                kernel.record_action_failure(id, toast);
+            }
             return Vec::new();
         }
     };
@@ -231,7 +256,12 @@ pub(crate) fn send_gift_wrapped_dm(
                 "NIP-17 DM send blocked: missing or empty kind:10050 \
                  DM-relay list; refusing Content relay fallback"
             );
-            kernel.set_last_error_toast(Some(err.toast()));
+            let toast = err.toast();
+            kernel.set_last_error_toast(Some(toast.clone()));
+            // Broken-promise fix (see signer branch above).
+            if let Some(id) = correlation_id.clone() {
+                kernel.record_action_failure(id, toast);
+            }
             return Vec::new();
         }
     };
@@ -267,9 +297,15 @@ pub(crate) fn send_gift_wrapped_dm(
         let envelope = match op.wait(nmp_nip59::GIFT_WRAP_TOTAL_TIMEOUT) {
             Ok(ev) => ev,
             Err(e) => {
-                kernel.set_last_error_toast(Some(format!(
-                    "cannot send DM: gift-wrap ({label}) failed: {e}"
-                )));
+                let toast = format!("cannot send DM: gift-wrap ({label}) failed: {e}");
+                kernel.set_last_error_toast(Some(toast.clone()));
+                // Broken-promise fix (see signer branch above). A gift-wrap
+                // timeout / sign error is the most likely failure path on the
+                // ADR-0026 remote-signer route (bunker RPC stall) — the host
+                // spinner MUST clear.
+                if let Some(id) = correlation_id.clone() {
+                    kernel.record_action_failure(id, toast);
+                }
                 return Vec::new();
             }
         };
@@ -286,9 +322,21 @@ pub(crate) fn send_gift_wrapped_dm(
         // makes the `relays.is_empty()` → `PublishTarget::Auto` fall-through
         // in `publish_signed_event` structurally unreachable for kind:1059 —
         // the D10 leak the PR-K Marmot guard exists to prevent cannot fire
-        // here. NIP-17 gift-wrap is not a `dispatch_action` path — no host
-        // correlation_id to thread; the engine falls back to the publish
-        // handle (== gift-wrap envelope id) as before.
+        // here.
+        //
+        // `correlation_id` (when the send originated from `dispatch_action`)
+        // is threaded into the publish engine's `correlation_id_override` for
+        // BOTH envelopes (recipient + self-copy). Each kind:1059 envelope has
+        // its own ephemeral key and therefore a distinct `event_id` /
+        // `PublishHandle`, so `start_publish` cannot collide on
+        // `DuplicateHandle`. Both publishes ultimately record terminal
+        // verdicts against the same correlation_id — the host's spinner
+        // resolves on the first terminal (`action_results` is drained as a
+        // `Vec` per tick, so the second verdict is a benign duplicate the UI
+        // can treat as idempotent). This is consistent with the doctrine
+        // tradeoff: a DM send is "delivered" only when at least one of the
+        // two envelopes lands; threading the id into both is the
+        // narrowest-blast-radius wiring that closes the spinner round-trip.
         //
         // The `doctrine-allow: D10 — …` annotation MUST be a trailing comment
         // on the offending line itself (the lint parser is line-scoped); the
@@ -304,7 +352,7 @@ pub(crate) fn send_gift_wrapped_dm(
             kernel,
             raw,
             crate::publish::PublishTarget::Explicit { relays },
-            None,
+            correlation_id.clone(),
         ));
     }
 
@@ -442,7 +490,7 @@ mod tests {
         let (identity, mut kernel) = fresh();
         let rumor =
             sample_rumor("aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee");
-        let outbound = send_gift_wrapped_dm(&identity, &mut kernel, rumor, RECIPIENT);
+        let outbound = send_gift_wrapped_dm(&identity, &mut kernel, rumor, RECIPIENT, None);
         assert!(
             outbound.is_empty(),
             "no active account → no envelopes published"
@@ -459,7 +507,7 @@ mod tests {
         sign_in_nsec(&mut identity, &mut kernel, TEST_NSEC, false);
         let sender = identity.active_pubkey().expect("signed in");
         let rumor = sample_rumor(&sender);
-        let outbound = send_gift_wrapped_dm(&identity, &mut kernel, rumor, "not-a-pubkey");
+        let outbound = send_gift_wrapped_dm(&identity, &mut kernel, rumor, "not-a-pubkey", None);
         assert!(
             outbound.is_empty(),
             "malformed recipient → nothing published"
@@ -489,7 +537,7 @@ mod tests {
         kernel.seed_kind10050_for_test(&recipient_pk, &["wss://recipient-dm.relay"]);
 
         let rumor = sample_rumor(&sender);
-        let outbound = send_gift_wrapped_dm(&identity, &mut kernel, rumor, &recipient_pk);
+        let outbound = send_gift_wrapped_dm(&identity, &mut kernel, rumor, &recipient_pk, None);
 
         assert!(
             kernel.last_error_toast_snapshot().is_none(),
@@ -532,7 +580,7 @@ mod tests {
 
             let content_relays = kernel.bootstrap_urls_for_role(crate::relay::RelayRole::Content);
             let rumor = sample_rumor(&sender);
-            let outbound = send_gift_wrapped_dm(&identity, &mut kernel, rumor, &recipient_pk);
+            let outbound = send_gift_wrapped_dm(&identity, &mut kernel, rumor, &recipient_pk, None);
 
             assert!(outbound.is_empty(), "missing/empty kind:10050 must not publish");
             assert!(outbound.iter().all(|m| !content_relays.contains(&m.relay_url)));
@@ -565,7 +613,7 @@ mod tests {
         kernel.seed_kind10050_for_test(&recipient_pk, &["wss://recipient-dm.relay"]);
 
         let rumor = sample_rumor(&sender);
-        let outbound = send_gift_wrapped_dm(&identity, &mut kernel, rumor, &recipient_pk);
+        let outbound = send_gift_wrapped_dm(&identity, &mut kernel, rumor, &recipient_pk, None);
 
         assert!(
             kernel.last_error_toast_snapshot().is_none(),
@@ -605,18 +653,29 @@ mod tests {
         // Compile-time guard: the `ActorCommand::SendGiftWrappedDm` variant
         // exists with the documented shape and constructs cleanly. The actual
         // dispatch arm is exercised end-to-end by the actor loop tests; this
-        // pins the variant signature so a rename breaks the build here.
+        // pins the variant signature so a rename (or a missing
+        // `correlation_id` field, which would silently break the
+        // dispatch-action spinner round-trip) breaks the build here.
         let cmd = ActorCommand::SendGiftWrappedDm {
             rumor: sample_rumor("aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee"),
             recipient_pubkey: RECIPIENT.to_string(),
+            correlation_id: Some("cid-abc".to_string()),
         };
         match cmd {
             ActorCommand::SendGiftWrappedDm {
                 rumor,
                 recipient_pubkey,
+                correlation_id,
             } => {
                 assert_eq!(rumor.kind, 14, "the carried rumor is a kind:14");
                 assert_eq!(recipient_pubkey, RECIPIENT);
+                assert_eq!(
+                    correlation_id.as_deref(),
+                    Some("cid-abc"),
+                    "the variant carries the dispatched correlation_id so the \
+                     actor can record `Requested` and the publish engine can \
+                     report the terminal verdict against it"
+                );
             }
             _ => panic!("expected SendGiftWrappedDm variant"),
         }

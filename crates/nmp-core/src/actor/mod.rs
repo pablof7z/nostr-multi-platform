@@ -359,6 +359,16 @@ pub enum ActorCommand {
     SendGiftWrappedDm {
         rumor: crate::substrate::UnsignedEvent,
         recipient_pubkey: String,
+        /// Registry-minted action id when this send originates from
+        /// `nmp_app_dispatch_action` (`nmp.nip17.send`). The actor records
+        /// `ActionStage::Requested` against this id and the per-envelope
+        /// `publish_signed_event` calls thread it through to the publish
+        /// engine's `correlation_id_override`, so the kind:1059 terminal
+        /// verdict (or any pre-publish early-exit failure) lands in
+        /// `action_results` and the host spinner resolves. Non-dispatch
+        /// callers (the `send_dm_command` helper, conformance harnesses)
+        /// pass `None`.
+        correlation_id: Option<String>,
     },
     /// User intent from the outbox UI: retry a still-pending publish now.
     RetryPublish {
