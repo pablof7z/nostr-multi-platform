@@ -149,4 +149,35 @@ mod tests {
              so the host spinner closes on action completion"
         );
     }
+
+    #[test]
+    fn execute_emits_host_pinned_kind9_publish_command() {
+        use nmp_core::ActorCommand;
+        use std::cell::RefCell;
+
+        let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+        PostChatMessageAction::execute(input(), "cid", &|cmd| {
+            captured.borrow_mut().push(cmd);
+        })
+        .expect("well-formed input executes");
+        let cmds = captured.into_inner();
+        assert_eq!(cmds.len(), 1, "executor must send exactly one command, got {cmds:?}");
+        match cmds.into_iter().next().unwrap() {
+            ActorCommand::PublishUnsignedEventToRelays { event, relays, .. } => {
+                assert_eq!(event.kind, KIND_CHAT_MESSAGE, "must emit kind:9");
+                assert_eq!(
+                    relays,
+                    vec!["wss://groups.example.com".to_string()],
+                    "must be pinned to the group's host relay"
+                );
+                assert!(
+                    event.tags.iter().any(|t| t == &["h".to_string(), "room".to_string()]),
+                    "must carry the ['h', local_id] group tag, got {:?}",
+                    event.tags
+                );
+                assert_eq!(event.content, "hello");
+            }
+            other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
+        }
+    }
 }
