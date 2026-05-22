@@ -165,33 +165,16 @@ void nmp_app_set_lifecycle_callback(void *app, void *context, NmpLifecycleCallba
 // means the action was *accepted*, not *published*; execution wiring and the
 // durable action ledger are an M6 follow-up.
 //
-// `nmp_app_register_action_executor` and `nmp_app_register_action_module` are
-// the host registration seam: together they wire an action namespace into the
-// registry *without editing nmp-core*.  `dispatch_action` has two phases —
-// `start()` validates the action JSON against a registered *module*, then
-// `execute()` dispatches it via a registered *executor*.
-//
-// `nmp_app_register_action_executor` wires the *executor* half: the `executor`
-// callback receives the action JSON (NUL-terminated) and returns NULL on
-// success or a NUL-terminated error string on failure.
-//
-// `nmp_app_register_action_module` wires the *module* (validation) half: the
-// `validator` callback receives the action JSON (NUL-terminated) and returns
-// NULL to accept (the action gets a default Pending plan + correlation id) or
-// a NUL-terminated error string to reject.  A NULL `validator` registers an
-// accept-all module — every action under that namespace is accepted.
-//
-// Registering BOTH for a namespace makes it fully reachable via
-// `nmp_app_dispatch_action`: a host can dispatch any custom namespace without
-// editing nmp-core.  Both MUST be called during host init — before
-// `nmp_app_start` and before any `nmp_app_dispatch_action` — because they
-// mutate the app's registry.  A null `app`/`namespace` is a silent no-op (D6);
-// a null `executor` is a no-op, but a null `validator` selects accept-all.
-//
-// A Rust host such as nmp-app-chirp registers both halves through the Rust
-// API (`NmpApp::register_action_module` / `register_action_executor`) — see
-// `nmp_app_chirp_register`, which wires `chirp.react`/`chirp.follow`/
-// `chirp.unfollow`.
+// Host action-namespace registration (ADR-0027) is Rust-only: a host calls
+// `NmpApp::register_action::<M>()` with a typed `ActionModule` impl whose
+// `M::start` validates and `M::execute` enqueues an `ActorCommand`. The
+// previous C-ABI dual seam (`nmp_app_register_action_executor`,
+// `nmp_app_register_action_module`) was deleted — `M::Action` and
+// `ActorCommand` have no stable C representation, so any non-Rust host that
+// wants a custom action namespace stages it through a Rust shim crate it
+// controls. The Rust composition root in `apps/chirp/nmp-app-chirp` wires
+// `chirp.react`/`chirp.follow`/`chirp.unfollow` and the NIP-29/NIP-17
+// `ActionModule` impls this way.
 //
 // `nmp_app_register_snapshot_projection` is the OUTPUT-side counterpart to
 // the action registration seam.  `KernelSnapshot` is a sealed social wire
@@ -228,10 +211,6 @@ typedef char *(*NmpCapabilityCallback)(void *context, const char *request_json);
 void nmp_app_set_capability_callback(void *app, void *context, NmpCapabilityCallback callback);
 char *nmp_app_dispatch_capability(void *app, const char *request_json);
 char *nmp_app_dispatch_action(void *app, const char *namespace, const char *action_json);
-typedef const char *(*NmpActionExecutor)(const char *action_json);
-void nmp_app_register_action_executor(void *app, const char *namespace, NmpActionExecutor executor);
-typedef const char *(*NmpActionValidator)(const char *action_json);
-void nmp_app_register_action_module(void *app, const char *namespace, NmpActionValidator validator);
 typedef void (*NmpActionResultObserver)(const char *result_json);
 void nmp_app_register_action_result_observer(void *app, NmpActionResultObserver observer);
 // PR-G: ack a `correlation_id` in the `action_stages` snapshot mirror so the

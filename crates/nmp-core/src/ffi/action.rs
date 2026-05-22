@@ -52,9 +52,9 @@
 //! * **D8** — the FFI thread never blocks. Dispatch is a non-blocking
 //!   channel send.
 
-use std::ffi::{c_char, CStr, CString};
+use std::ffi::{c_char, CString};
 
-use super::{app_ref, app_ref_mut, c_string_argument, NmpApp};
+use super::{app_ref, c_string_argument, NmpApp};
 use crate::substrate::{ActionContext, ActionRejection, ActionResult};
 
 /// Dispatch a named action through the action registry.
@@ -136,188 +136,6 @@ pub extern "C" fn nmp_app_ack_action_stage(
     app.send_cmd(crate::actor::ActorCommand::AckActionStage(cid));
 }
 
-/// Host-supplied action executor callback.
-///
-/// Receives the already-validated `action_json` as a NUL-terminated C string.
-/// Returns `NULL` on success, or a NUL-terminated C string describing the
-/// failure. The returned error string is read immediately and copied into an
-/// owned Rust `String`; the host owns its lifetime and may free or reuse it
-/// after the callback returns.
-pub type NmpActionExecutor = unsafe extern "C" fn(*const c_char) -> *const c_char;
-
-/// Register a host-supplied executor for `namespace` against the app's
-/// action registry — the post-construction registration seam.
-///
-/// This is the C-ABI counterpart to [`NmpApp::register_action_executor`]: a
-/// host can wire an action namespace into the registry **without editing
-/// `nmp-core`**. The bridge closure copies the action JSON into a
-/// NUL-terminated C string, invokes `executor`, and maps its return value
-/// (`NULL` → `Ok(())`, non-NULL → `Err(message)`).
-///
-/// SCOPE: this C symbol exposes *executor* registration only. The full
-/// [`nmp_app_dispatch_action`] path also requires a registered *module*
-/// (`ActionRegistry::start` validates the JSON shape against it), so a
-/// namespace wired through THIS C symbol alone is reachable by the registry's
-/// internal `execute` path but not by `nmp_app_dispatch_action`. The
-/// module-side seam is [`nmp_app_register_action_module`] (and its Rust
-/// counterpart [`NmpApp::register_action_module`]); a host registers BOTH
-/// halves to make a namespace fully reachable via `nmp_app_dispatch_action`.
-/// A Rust host such as `nmp-app-chirp` uses the Rust methods directly.
-///
-/// THREADING: this call takes `&mut NmpApp`. It MUST be invoked during host
-/// init — before `nmp_app_start` and before any `nmp_app_dispatch_action` —
-/// so no shared `&NmpApp` is live on another thread. See [`app_ref_mut`].
-///
-/// A null `app`, a null/empty/invalid `namespace`, or a null `executor` is a
-/// silent no-op (D6: a bad registration argument never crashes the host).
-///
-/// # Safety
-/// `app` must be a valid pointer from [`super::nmp_app_new`] (or null).
-/// `namespace` must be a valid UTF-8 NUL-terminated C string (or null).
-/// `executor`, when `Some`, must be a valid function pointer for the
-/// remaining lifetime of `app` — the registry retains it.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-#[no_mangle]
-pub extern "C" fn nmp_app_register_action_executor(
-    app: *mut NmpApp,
-    namespace: *const c_char,
-    executor: Option<NmpActionExecutor>,
-) {
-    let Some(app) = app_ref_mut(app) else {
-        return;
-    };
-    let Some(ns) = c_string_argument(namespace) else {
-        return;
-    };
-    let Some(exec) = executor else {
-        return;
-    };
-    // D6 guard: `nmp.*` namespaces are kernel-owned built-ins. A host
-    // overwriting them via FFI would bypass the validated built-in logic
-    // (e.g. silently replacing PublishModule's signed-event gate). Rust-level
-    // callers are trusted and may call `ActionRegistry::register_executor`
-    // directly; the C-ABI path is where the guard lives.
-    if ns.starts_with("nmp.") {
-        return;
-    }
-    app.register_action_executor(ns, move |action_json, _correlation_id, _send| {
-        // The host executor speaks JSON only. The `_send` actor-command
-        // bridge and `_correlation_id` are intentionally unused in v1: a host
-        // executor that needs to enqueue an `ActorCommand` (or thread the
-        // correlation id onto one) uses a separate mechanism; the seam here
-        // proves post-construction registration works.
-        let cstr = CString::new(action_json).map_err(|e| e.to_string())?;
-        // SAFETY: `exec` is a valid function pointer per this symbol's
-        // safety contract; `cstr.as_ptr()` is a valid NUL-terminated C
-        // string live for the duration of the call.
-        let result_ptr = unsafe { exec(cstr.as_ptr()) };
-        if result_ptr.is_null() {
-            Ok(())
-        } else {
-            // SAFETY: a non-null return is, per the callback contract, a
-            // valid NUL-terminated C string. Copied immediately into an
-            // owned `String`; the host retains ownership of the pointer.
-            let msg = unsafe { CStr::from_ptr(result_ptr) }
-                .to_string_lossy()
-                .into_owned();
-            Err(msg)
-        }
-    });
-}
-
-/// Host-supplied action *validator* callback.
-///
-/// Receives the raw `action_json` as a NUL-terminated C string. Returns
-/// `NULL` to **accept** the action (the registry mints a correlation id), or
-/// a NUL-terminated C string describing the **rejection** reason. The
-/// returned error string is read immediately and copied into an owned Rust
-/// `String`; the host owns its lifetime and may free or reuse it after the
-/// callback returns.
-pub type NmpActionValidator = unsafe extern "C" fn(*const c_char) -> *const c_char;
-
-/// Register a host-supplied *module validator* for `namespace` against the
-/// app's action registry — the complement to
-/// [`nmp_app_register_action_executor`].
-///
-/// `nmp_app_dispatch_action` has two phases: `start()` validates the action
-/// JSON against a registered **module**, then `execute()` dispatches it via a
-/// registered **executor**. `nmp_app_register_action_executor` wires the
-/// executor half; this symbol wires the module half. Registering **both** for
-/// a namespace makes it fully reachable through `nmp_app_dispatch_action`
-/// **without editing `nmp-core`** — a host can dispatch any custom namespace.
-///
-/// The `validator` callback receives the action JSON and returns `NULL` to
-/// accept the action or a NUL-terminated error string to reject. Passing a
-/// `NULL` `validator` registers an **accept-all** module: every action under
-/// `namespace` is accepted — useful when shape validation lives entirely in
-/// the host's executor.
-///
-/// THREADING: this call takes `&mut NmpApp`. It MUST be invoked during host
-/// init — before `nmp_app_start` and before any `nmp_app_dispatch_action` —
-/// so no shared `&NmpApp` is live on another thread. See [`app_ref_mut`].
-///
-/// A null `app` or a null/empty/invalid `namespace` is a silent no-op (D6: a
-/// bad registration argument never crashes the host). A null `validator` is
-/// NOT a no-op — it deliberately selects the accept-all module above.
-///
-/// # Safety
-/// `app` must be a valid pointer from [`super::nmp_app_new`] (or null).
-/// `namespace` must be a valid UTF-8 NUL-terminated C string (or null).
-/// `validator`, when `Some`, must be a valid function pointer for the
-/// remaining lifetime of `app` — the registry retains it.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-#[no_mangle]
-pub extern "C" fn nmp_app_register_action_module(
-    app: *mut NmpApp,
-    namespace: *const c_char,
-    validator: Option<NmpActionValidator>,
-) {
-    let Some(app) = app_ref_mut(app) else {
-        return;
-    };
-    let Some(ns) = c_string_argument(namespace) else {
-        return;
-    };
-    // D6 guard: `nmp.*` namespaces are kernel-owned built-ins. A host
-    // overwriting them via FFI would bypass the validated built-in logic
-    // (e.g. silently replacing PublishModule's signed-event gate). Rust-level
-    // callers are trusted and may call `ActionRegistry::register_with_validator`
-    // directly; the C-ABI path is where the guard lives.
-    if ns.starts_with("nmp.") {
-        return;
-    }
-    let Some(validate) = validator else {
-        // No validator → accept-all: every action is accepted. Shape
-        // validation is then the host executor's job.
-        app.register_action_module(ns, |_action_json| Ok(()));
-        return;
-    };
-    app.register_action_module(ns, move |action_json| {
-        use crate::substrate::ActionRejection;
-        // The host validator speaks JSON only. An interior NUL in the action
-        // JSON cannot cross to C — surface it as a rejection (D6: failures
-        // are data, never a panic).
-        let cstr = CString::new(action_json)
-            .map_err(|_| ActionRejection::Invalid("action_json contains NUL byte".into()))?;
-        // SAFETY: `validate` is a valid function pointer per this symbol's
-        // safety contract; `cstr.as_ptr()` is a valid NUL-terminated C string
-        // live for the duration of the call.
-        let result_ptr = unsafe { validate(cstr.as_ptr()) };
-        if result_ptr.is_null() {
-            // NULL return = accept.
-            Ok(())
-        } else {
-            // SAFETY: a non-null return is, per the callback contract, a
-            // valid NUL-terminated C string. Copied immediately into an owned
-            // `String`; the host retains ownership of the pointer.
-            let msg = unsafe { CStr::from_ptr(result_ptr) }
-                .to_string_lossy()
-                .into_owned();
-            Err(ActionRejection::Invalid(msg))
-        }
-    });
-}
-
 /// Host-supplied action result observer callback.
 ///
 /// Invoked after a dispatched action has been accepted by the registry and
@@ -345,8 +163,8 @@ pub type NmpActionResultObserver = unsafe extern "C" fn(*const c_char);
 /// publishing.
 ///
 /// THREADING: this call takes `&NmpApp` (the observer lives behind an
-/// `Arc<Mutex<…>>` slot), so — unlike `nmp_app_register_action_executor` —
-/// it may be invoked before *or after* `nmp_app_start`. A second
+/// `Arc<Mutex<…>>` slot), so — unlike the typed `register_action::<M>()`
+/// Rust seam — it may be invoked before *or after* `nmp_app_start`. A second
 /// registration replaces the first.
 ///
 /// A null `app` or a null `observer` is a silent no-op (D6: a bad
@@ -543,6 +361,8 @@ fn now_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::CStr;
+
     use super::super::{nmp_app_free, nmp_app_new};
     use super::*;
 
@@ -785,53 +605,168 @@ mod tests {
         Arc,
     };
 
-    /// THE SEAM PROOF (review #14): a host registers an action executor for a
-    /// namespace `nmp-core` has never heard of (`test.greeting`) *after*
+    // ─── Typed test ActionModule structs shared across the seam-proof
+    // tests. ADR-0027 collapsed the dual-seam closure path; every host
+    // registration is now `app.register_action::<M>()` against a typed module.
+
+    /// Greeting test module — succeeds and records that `execute` ran. The
+    /// `flag` lives in a `static` `OnceLock` because `ActionModule::execute`
+    /// is a static method with no `&self` (the codegen contract); the test
+    /// reads the flag back after `register_action::<TestGreetingModule>()`.
+    static GREETING_CALLED: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
+
+    /// Reset and return the shared "called" flag for the greeting module.
+    fn greeting_flag() -> Arc<AtomicBool> {
+        GREETING_CALLED
+            .get_or_init(|| Arc::new(AtomicBool::new(false)))
+            .clone()
+    }
+
+    struct TestGreetingModule;
+    impl crate::substrate::ActionModule for TestGreetingModule {
+        const NAMESPACE: &'static str = "test.greeting"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+        type Action = serde_json::Value;
+        fn start(
+            _ctx: &mut ActionContext,
+            _action: Self::Action,
+        ) -> Result<(), ActionRejection> {
+            Ok(())
+        }
+        fn execute(
+            _action: Self::Action,
+            _correlation_id: &str,
+            _send: &dyn Fn(crate::actor::ActorCommand),
+        ) -> Result<(), String> {
+            greeting_flag().store(true, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    /// Failing test module — always returns `Err` from `execute`.
+    struct TestFailingModule;
+    impl crate::substrate::ActionModule for TestFailingModule {
+        const NAMESPACE: &'static str = "test.failing"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+        type Action = serde_json::Value;
+        fn start(
+            _ctx: &mut ActionContext,
+            _action: Self::Action,
+        ) -> Result<(), ActionRejection> {
+            Ok(())
+        }
+        fn execute(
+            _action: Self::Action,
+            _correlation_id: &str,
+            _send: &dyn Fn(crate::actor::ActorCommand),
+        ) -> Result<(), String> {
+            Err("host rejected the action".to_string())
+        }
+    }
+
+    /// Accept-everything test module under `test.todo`. Used by the
+    /// dispatch-action end-to-end tests below.
+    struct TestTodoModule;
+    impl crate::substrate::ActionModule for TestTodoModule {
+        const NAMESPACE: &'static str = "test.todo"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+        type Action = serde_json::Value;
+        fn start(
+            _ctx: &mut ActionContext,
+            _action: Self::Action,
+        ) -> Result<(), ActionRejection> {
+            Ok(())
+        }
+        fn execute(
+            _action: Self::Action,
+            _correlation_id: &str,
+            _send: &dyn Fn(crate::actor::ActorCommand),
+        ) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    /// Rejecting test module under `test.todo_reject` — `start()` always
+    /// returns `ActionRejection::Invalid`.
+    struct TestTodoRejectModule;
+    impl crate::substrate::ActionModule for TestTodoRejectModule {
+        const NAMESPACE: &'static str = "test.todo_reject"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+        type Action = serde_json::Value;
+        fn start(
+            _ctx: &mut ActionContext,
+            _action: Self::Action,
+        ) -> Result<(), ActionRejection> {
+            Err(ActionRejection::Invalid(
+                "host rejected: title required".into(),
+            ))
+        }
+        fn execute(
+            _action: Self::Action,
+            _correlation_id: &str,
+            _send: &dyn Fn(crate::actor::ActorCommand),
+        ) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    /// Panicking test module under `test.panic` — `execute()` panics. Used by
+    /// `executor_failure_returns_correlation_id_and_enqueues_failed_terminal`.
+    struct TestPanicModule;
+    impl crate::substrate::ActionModule for TestPanicModule {
+        const NAMESPACE: &'static str = "test.panic"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+        type Action = serde_json::Value;
+        fn start(
+            _ctx: &mut ActionContext,
+            _action: Self::Action,
+        ) -> Result<(), ActionRejection> {
+            Ok(())
+        }
+        fn execute(
+            _action: Self::Action,
+            _correlation_id: &str,
+            _send: &dyn Fn(crate::actor::ActorCommand),
+        ) -> Result<(), String> {
+            panic!("buggy executor")
+        }
+    }
+
+    /// THE SEAM PROOF (ADR-0027): a host registers a typed `ActionModule` for
+    /// a namespace `nmp-core` has never heard of (`test.greeting`) *after*
     /// `NmpApp` construction, and dispatching that namespace runs the
-    /// host-supplied closure. This is the post-construction registration the
-    /// project lacked: no edit to `default_registry()`, no per-verb C symbol.
+    /// module's `execute()` body. This is the typed post-construction
+    /// registration: no edit to `default_registry()`, no per-verb C symbol,
+    /// no closure-based seam.
     #[test]
     fn host_registered_executor_dispatches_successfully() {
-        let called = Arc::new(AtomicBool::new(false));
-        let called_in_closure = Arc::clone(&called);
+        greeting_flag().store(false, Ordering::SeqCst);
 
         let app = nmp_app_new();
         // SAFETY: `nmp_app_new` never returns null; the pointer is valid
         // until `nmp_app_free` below, and no other reference aliases it here.
         let app_mut = unsafe { &mut *app };
-        app_mut.register_action_executor(
-            "test.greeting",
-            move |action_json, _correlation_id, _send| {
-                assert_eq!(action_json, r#"{"hello":"world"}"#);
-                called_in_closure.store(true, Ordering::SeqCst);
-                Ok(())
-            },
-        );
+        app_mut.register_action::<TestGreetingModule>();
 
         // `test_execute_action` drives the registry's `execute` path
-        // directly — the v1 seam exposes executor (not module) registration,
-        // so `nmp_app_dispatch_action`'s `start()` validation is bypassed.
+        // directly — `dispatch_action`'s `start()` validation runs through
+        // the same typed module, but `test_execute_action` skips the
+        // correlation-id minting and just exercises the executor body.
         app_mut
             .test_execute_action("test.greeting", r#"{"hello":"world"}"#)
             .expect("host-registered executor should run");
 
         assert!(
-            called.load(Ordering::SeqCst),
+            greeting_flag().load(Ordering::SeqCst),
             "host-registered executor was never invoked"
         );
         nmp_app_free(app);
     }
 
-    /// A host executor that returns `Err` propagates the failure message
-    /// back through the registry — the host is never handed a false success.
+    /// A typed `ActionModule` whose `execute()` returns `Err` propagates the
+    /// failure message back through the registry — the host is never handed
+    /// a false success.
     #[test]
     fn host_registered_executor_propagates_error() {
         let app = nmp_app_new();
         // SAFETY: see `host_registered_executor_dispatches_successfully`.
         let app_mut = unsafe { &mut *app };
-        app_mut.register_action_executor("test.failing", |_action_json, _correlation_id, _send| {
-            Err("host rejected the action".to_string())
-        });
+        app_mut.register_action::<TestFailingModule>();
 
         let err = app_mut
             .test_execute_action("test.failing", "{}")
@@ -840,7 +775,7 @@ mod tests {
         nmp_app_free(app);
     }
 
-    /// A namespace with no registered executor still returns the registry's
+    /// A namespace with no registered module still returns the registry's
     /// `Err` — registering one namespace does not accidentally answer for
     /// another (D6: a missing executor is never silently swallowed).
     #[test]
@@ -848,7 +783,7 @@ mod tests {
         let app = nmp_app_new();
         // SAFETY: see `host_registered_executor_dispatches_successfully`.
         let app_mut = unsafe { &mut *app };
-        app_mut.register_action_executor("test.greeting", |_json, _correlation_id, _send| Ok(()));
+        app_mut.register_action::<TestGreetingModule>();
 
         let err = app_mut
             .test_execute_action("test.unregistered", "{}")
@@ -860,24 +795,20 @@ mod tests {
         nmp_app_free(app);
     }
 
-    /// THE SEAM PROOF: a host registers BOTH a module validator and an
-    /// executor for a namespace `nmp-core` has never heard of (`test.todo`)
-    /// *after* `NmpApp` construction, and `nmp_app_dispatch_action` then
-    /// drives that namespace end-to-end — `start()` validation succeeds
-    /// against the host module, `execute()` runs the host executor, and a
-    /// `correlation_id` comes back. This is what PR #60 alone could NOT do:
-    /// an executor-only namespace is rejected by `start()`. Together the two
-    /// PRs give a host complete post-construction `dispatch_action` wiring.
+    /// THE SEAM PROOF (ADR-0027): a host registers a typed `ActionModule` for
+    /// a namespace `nmp-core` has never heard of (`test.todo`) *after*
+    /// `NmpApp` construction, and `nmp_app_dispatch_action` then drives that
+    /// namespace end-to-end — `M::start` validates, `M::execute` runs, and a
+    /// `correlation_id` comes back. The unified trait means a single
+    /// registration call wires BOTH halves; there is no possible
+    /// partial-registration gap.
     #[test]
     fn host_registered_module_and_executor_enables_dispatch_action() {
         let app = nmp_app_new();
         // SAFETY: `nmp_app_new` never returns null; the pointer is valid
         // until `nmp_app_free` below, and no other reference aliases it here.
         let app_mut = unsafe { &mut *app };
-        // Register both halves for "test.todo".
-        app_mut.register_action_module("test.todo", |_action_json| Ok(()));
-        app_mut
-            .register_action_executor("test.todo", |_action_json, _correlation_id, _send| Ok(()));
+        app_mut.register_action::<TestTodoModule>();
 
         // Now `dispatch_action` should succeed end-to-end.
         let out = dispatch_action_json(
@@ -893,24 +824,18 @@ mod tests {
         nmp_app_free(app);
     }
 
-    /// A host module validator that returns `Err` rejects the action at the
-    /// `start()` phase — `dispatch_action` returns `{"error":…}` carrying the
-    /// host's message, and the executor is never reached.
+    /// A typed `ActionModule` whose `start()` returns `Err` rejects the
+    /// action at the validation phase — `dispatch_action` returns
+    /// `{"error":…}` carrying the host's message, and `execute()` is never
+    /// reached.
     #[test]
     fn host_registered_module_can_reject_action() {
-        use crate::substrate::ActionRejection;
         let app = nmp_app_new();
         // SAFETY: see `host_registered_module_and_executor_enables_dispatch_action`.
         let app_mut = unsafe { &mut *app };
-        app_mut.register_action_module("test.todo", |_action_json| {
-            Err(ActionRejection::Invalid(
-                "host rejected: title required".into(),
-            ))
-        });
-        app_mut
-            .register_action_executor("test.todo", |_action_json, _correlation_id, _send| Ok(()));
+        app_mut.register_action::<TestTodoRejectModule>();
 
-        let out = dispatch_action_json(Some(&*app_mut), "test.todo", "{}");
+        let out = dispatch_action_json(Some(&*app_mut), "test.todo_reject", "{}");
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
         let err = parsed
             .get("error")
@@ -1085,16 +1010,12 @@ mod tests {
         // SAFETY: `nmp_app_new` never returns null; valid until `nmp_app_free` below.
         let app_mut = unsafe { &mut *app };
 
-        // Register a panicking executor under a non-`nmp.*` namespace. The
-        // registry's `catch_unwind` converts the panic into
-        // `Err("action executor panicked")`. The new dispatch path must then
-        // (a) still include the minted correlation_id in the envelope and
-        // (b) enqueue a `RecordActionFailure` on the actor channel.
-        app_mut.register_action_module("test.panic", |_action_json| Ok(()));
-        app_mut.register_action_executor(
-            "test.panic",
-            |_action_json, _correlation_id, _send| panic!("buggy executor"),
-        );
+        // Register a typed module whose `execute()` panics. The registry's
+        // `catch_unwind` converts the panic into `Err("action executor
+        // panicked")`. The new dispatch path must then (a) still include the
+        // minted correlation_id in the envelope and (b) enqueue a
+        // `RecordActionFailure` on the actor channel.
+        app_mut.register_action::<TestPanicModule>();
 
         let depth_before = app_mut
             .queue_depth
@@ -1142,98 +1063,17 @@ mod tests {
         nmp_app_free(app);
     }
 
-    /// An executor-only namespace (no module registered) is still rejected by
-    /// `dispatch_action`'s `start()` phase — proving the module half is
-    /// genuinely required and that PR #60's executor seam alone is not enough
-    /// for `dispatch_action`.
-    #[test]
-    fn executor_only_namespace_is_rejected_by_dispatch_action() {
-        let app = nmp_app_new();
-        // SAFETY: see `host_registered_module_and_executor_enables_dispatch_action`.
-        let app_mut = unsafe { &mut *app };
-        app_mut
-            .register_action_executor("test.todo", |_action_json, _correlation_id, _send| Ok(()));
-
-        let out = dispatch_action_json(Some(&*app_mut), "test.todo", "{}");
-        let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
-        let err = parsed
-            .get("error")
-            .and_then(|v| v.as_str())
-            .unwrap_or_else(|| panic!("expected error object, got: {out}"));
-        assert!(
-            err.contains("unknown action namespace"),
-            "executor-only namespace must fail start() validation, got: {err}"
-        );
-        nmp_app_free(app);
-    }
-
-    /// D6 guard: `nmp_app_register_action_executor` silently ignores any
-    /// namespace that starts with `"nmp."` — a host cannot shadow a
-    /// kernel-owned built-in via the C-ABI and bypass its validation gate.
-    /// After an attempted override the built-in `nmp.publish` executor still
-    /// handles the action correctly.
-    #[test]
-    fn c_abi_nmp_prefixed_executor_registration_is_silently_rejected() {
-        use std::ffi::CString;
-
-        // A custom executor that always returns a failure message.
-        extern "C" fn shadow_executor(_json: *const c_char) -> *const c_char {
-            c"shadow_executor_ran".as_ptr()
-        }
-
-        let app = nmp_app_new();
-        // Attempt to replace the built-in executor via the C-ABI guard.
-        let ns = CString::new("nmp.publish").unwrap();
-        nmp_app_register_action_executor(app, ns.as_ptr(), Some(shadow_executor));
-
-        // The built-in must still handle `nmp.publish` (`PublishNote` needs no
-        // signed event and exercises the full execute path).
-        let result = execute_action(
-            // SAFETY: nmp_app_new never returns null; valid until nmp_app_free.
-            unsafe { &*app },
-            "nmp.publish",
-            r#"{"PublishNote":{"content":"guard-probe","reply_to_id":null,"target":"Auto"}}"#,
-            "corr-id",
-        );
-        assert!(
-            result.is_ok(),
-            "built-in executor must still run after rejected nmp.* registration, got: {result:?}"
-        );
-        nmp_app_free(app);
-    }
-
-    /// D6 guard: `nmp_app_register_action_module` silently ignores any
-    /// namespace starting with `"nmp."` — the kernel-owned module validator
-    /// cannot be replaced via the C-ABI.
-    #[test]
-    fn c_abi_nmp_prefixed_module_registration_is_silently_rejected() {
-        use std::ffi::CString;
-
-        // A custom validator that always accepts everything (accept-all null
-        // validator path — would bypass PublishModule's signed-event gate).
-        let app = nmp_app_new();
-        let ns = CString::new("nmp.publish").unwrap();
-        nmp_app_register_action_module(app, ns.as_ptr(), None);
-
-        // PublishModule's validation gate is still in force — the C-ABI
-        // registration with a `None` validator was silently rejected, so the
-        // built-in `PublishModule::start` (not an accept-all replacement) runs.
-        // A well-formed `PublishNote` exercises that gate and is accepted:
-        let out = dispatch_action_json(
-            // SAFETY: nmp_app_new never returns null; valid until nmp_app_free.
-            Some(unsafe { &*app }),
-            "nmp.publish",
-            r#"{"PublishNote":{"content":"guard-probe","reply_to_id":null,"target":"Auto"}}"#,
-        );
-        let parsed: serde_json::Value =
-            serde_json::from_str(&out).expect("dispatch always returns JSON");
-        // `PublishNote` must still be accepted by the built-in module
-        // (correlation_id, not an error) — the accept-all replacement did NOT
-        // take effect.
-        assert!(
-            parsed.get("correlation_id").is_some(),
-            "built-in module must still validate after rejected nmp.* registration, got: {out}"
-        );
-        nmp_app_free(app);
-    }
+    // ADR-0027 deleted three tests that no longer have a way to be
+    // expressed:
+    //
+    // * `executor_only_namespace_is_rejected_by_dispatch_action` — the unified
+    //   trait registers `start()` and `execute()` together; an "executor-only
+    //   namespace" is structurally impossible.
+    // * `c_abi_nmp_prefixed_executor_registration_is_silently_rejected` —
+    //   `nmp_app_register_action_executor` was deleted along with the
+    //   `nmp.*`-namespace D6 guard that lived on it. The same protection now
+    //   lives in the registry: replacing a built-in module requires editing
+    //   `default_registry`, which is by definition trusted Rust code.
+    // * `c_abi_nmp_prefixed_module_registration_is_silently_rejected` —
+    //   same reasoning for `nmp_app_register_action_module`.
 }

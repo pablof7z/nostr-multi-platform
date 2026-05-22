@@ -146,21 +146,23 @@ pub use publish::{nmp_app_cancel_publish, nmp_app_retry_publish};
 pub use capability::{
     nmp_app_dispatch_capability, nmp_app_free_string, nmp_app_set_capability_callback,
 };
-// M6 — action-dispatch entry point + the host-extensible action-executor
-// registration seam, reachable via the Rust path so the Android JNI shim
-// pulls the symbol bodies into the cdylib CGU. `nmp_app_register_action_executor`
-// is `#[no_mangle] extern "C"` in `action` like its `dispatch` sibling; without
-// this re-export rustc omits its body from the cdylib CGU and an Android link
-// step against it fails (the `cargo check (android-ffi)` CI job never links, so
-// it does not catch this). `allow(unused_imports)`: the re-export exists only
-// to force the symbol body into the cdylib CGU — no Rust caller names it by
-// this path.
+// M6 — action-dispatch entry point + the action-result observer registration
+// seam, reachable via the Rust path so the Android JNI shim pulls the symbol
+// bodies into the cdylib CGU. Each symbol is `#[no_mangle] extern "C"` in
+// `action`; without this re-export rustc omits its body from the cdylib CGU
+// and an Android link step against it fails (the `cargo check (android-ffi)`
+// CI job never links, so it does not catch this). `allow(unused_imports)`:
+// the re-export exists only to force the symbol body into the cdylib CGU —
+// no Rust caller names it by this path.
+//
+// ADR-0027 final stage: the closure-based dual seam
+// (`nmp_app_register_action_executor` / `nmp_app_register_action_module`) was
+// deleted; the typed `register_action::<M>()` Rust seam is the sole host
+// registration path. There is no useful C-ABI shape for the typed seam —
+// `M::Action` and `ActorCommand` have no stable C representation.
 #[cfg(feature = "android-ffi")]
 #[allow(unused_imports)]
-pub use action::{
-    nmp_app_dispatch_action, nmp_app_register_action_executor, nmp_app_register_action_module,
-    nmp_app_register_action_result_observer,
-};
+pub use action::{nmp_app_dispatch_action, nmp_app_register_action_result_observer};
 // Host-extensible snapshot output — registration entry point reachable via
 // the Rust path so the Android JNI shim pulls the symbol body into the
 // cdylib CGU.
@@ -651,66 +653,18 @@ impl NmpApp {
         let _ = self.tx.send(cmd);
     }
 
-    /// Register a host-supplied executor against the app's action registry.
-    ///
-    /// This is the post-construction registration seam: a host can wire an
-    /// action namespace into the registry *without editing `nmp-core`*. The
-    /// closure receives the validated action JSON, the registry-minted
-    /// `correlation_id`, and a `send` callback that routes an [`ActorCommand`]
-    /// to the actor; it returns `Ok(())` on success or `Err(msg)` on a
-    /// decode/dispatch failure. The `correlation_id` lets an executor thread
-    /// the action's correlation handle onto an `ActorCommand` whose terminal
-    /// verdict must report that id (see `ActorCommand::PublishNote`).
-    ///
-    /// Registration MUST happen during host init — before `nmp_app_start`
-    /// and before any [`action::nmp_app_dispatch_action`] call — because it
-    /// requires `&mut self`. See [`app_ref_mut`] for the aliasing contract.
-    pub fn register_action_executor(
-        &mut self,
-        namespace: impl Into<String>,
-        f: impl Fn(&str, &str, &dyn Fn(ActorCommand)) -> Result<(), String> + Send + Sync + 'static,
-    ) {
-        self.action_registry.register_executor(namespace, f);
-    }
-
-    /// Register a host-supplied *module validator* against the app's action
-    /// registry — the complement to [`Self::register_action_executor`].
-    ///
-    /// `register_action_executor` wires the `execute()` half of a namespace;
-    /// this wires the `start()` validation half. A namespace registered
-    /// through *both* is fully reachable via
-    /// [`action::nmp_app_dispatch_action`]: `start()` validates the action
-    /// JSON against `validate`, then `execute()` runs the registered executor.
-    /// Registering only one half leaves the namespace partially wired — an
-    /// executor-only namespace is rejected by `start()` ("unknown action
-    /// namespace"); a validator-only one is rejected by `execute()` ("no
-    /// executor registered").
-    ///
-    /// `validate` receives the raw action JSON and returns `Ok(())` on accept
-    /// or an [`crate::substrate::ActionRejection`] on reject.
-    ///
-    /// Registration MUST happen during host init — before `nmp_app_start`
-    /// and before any [`action::nmp_app_dispatch_action`] call — because it
-    /// requires `&mut self`. See [`app_ref_mut`] for the aliasing contract.
-    pub fn register_action_module(
-        &mut self,
-        namespace: impl Into<String>,
-        validate: impl Fn(&str) -> Result<(), crate::substrate::ActionRejection> + Send + Sync + 'static,
-    ) {
-        self.action_registry
-            .register_with_validator(namespace, validate);
-    }
-
     /// Register a typed [`crate::substrate::ActionModule`] `M` against the
-    /// app's action registry via a single call — the ADR-0027 replacement for
-    /// the split `register_action_module` + `register_action_executor` pair.
+    /// app's action registry — ADR-0027's single-call typed seam, and the
+    /// sole host action-registration path on master.
     ///
-    /// Unlike the closure-based halves, this path never has a partial-registration
-    /// gap: `M::start` handles validation AND `M::execute` handles execution,
-    /// both under the same typed namespace (`M::NAMESPACE`).
+    /// `M::start` handles validation AND `M::execute` handles execution, both
+    /// under the same typed namespace (`M::NAMESPACE`): there is no possible
+    /// partial-registration gap (the pre-ADR-0027 dual `register_action_module`
+    /// / `register_action_executor` closure seam has been deleted).
     ///
     /// Registration MUST happen during host init — before `nmp_app_start`
-    /// and before any [`action::nmp_app_dispatch_action`] call.
+    /// and before any [`action::nmp_app_dispatch_action`] call — because it
+    /// requires `&mut self`.
     pub fn register_action<M: crate::substrate::ActionModule + 'static>(&mut self) {
         self.action_registry.register::<M>();
     }
@@ -1316,23 +1270,13 @@ pub(crate) fn app_ref<'a>(app: *mut NmpApp) -> Option<&'a NmpApp> {
     }
 }
 
-/// Mutable counterpart to [`app_ref`]. Yields a `&mut NmpApp` for FFI entry
-/// points that mutate app-owned state (e.g. action-registry registration).
-///
-/// SAFETY CONTRACT for callers: the resulting `&mut NmpApp` aliases the same
-/// allocation any concurrent `app_ref` would hand out. A C-ABI symbol using
-/// this MUST be a registration-time-only call — invoked during host init,
-/// before `nmp_app_start` and before any `nmp_app_dispatch_action`, so no
-/// shared `&NmpApp` is live on another thread.
-pub(crate) fn app_ref_mut<'a>(app: *mut NmpApp) -> Option<&'a mut NmpApp> {
-    if app.is_null() {
-        None
-    } else {
-        // SAFETY: caller guarantees non-null app is a valid NmpApp pointer
-        // and (per the doc contract above) no aliasing `&NmpApp` is live.
-        Some(unsafe { &mut *app })
-    }
-}
+// ADR-0027 deleted `app_ref_mut`. Its only callers were the C-ABI
+// `nmp_app_register_action_executor` / `nmp_app_register_action_module`
+// registration symbols, which were themselves deleted as part of collapsing
+// the dual-seam closure path. The typed registration seam
+// (`NmpApp::register_action::<M>`) is Rust-only and takes `&mut self`
+// directly; no C-ABI counterpart exists, so no `*mut NmpApp` → `&mut NmpApp`
+// helper is needed.
 
 pub(crate) fn c_string_argument(ptr: *const c_char) -> Option<String> {
     if ptr.is_null() {

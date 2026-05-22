@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use nmp_core::substrate::*;
 use nmp_core::NmpApp;
@@ -79,6 +79,22 @@ pub fn project_todo_items(items: &[TodoRecord]) -> serde_json::Value {
     })
 }
 
+/// Process-wide handle to the todo store the typed [`TodoActionModule::execute`]
+/// reads. ADR-0027's `ActionModule::execute(action, correlation_id, send)` is a
+/// static method — no `&self`, no instance state — so the host-owned `TodoStore`
+/// has to live in a place the static body can reach. A `OnceLock<TodoStore>` is
+/// the minimum-viable shape: `register()` initializes it (returning the same
+/// `Arc` to the host), and `execute()` upgrades to a clone of that `Arc` on
+/// every dispatch.
+///
+/// The codegen contract is "one `FfiApp` per process" — `register()` is called
+/// once per FFI instance — so the `OnceLock` is the correct cardinality. A
+/// re-`register()` call returns the previously-initialized store rather than
+/// installing a fresh one; this keeps the snapshot projection coherent across
+/// re-init (test-only scenario; the production codegen path runs it once in
+/// `FfiApp::new`).
+static TODO_STORE: OnceLock<TodoStore> = OnceLock::new();
+
 /// Wire the fixture's todo namespace into `app`'s live extensibility seams and
 /// return the shared [`TodoStore`] the host retains.
 ///
@@ -89,12 +105,10 @@ pub fn project_todo_items(items: &[TodoRecord]) -> serde_json::Value {
 /// This is the fixture's proof of NMP's host-extensibility thesis — it
 /// registers, against a vanilla `NmpApp`, WITHOUT editing `nmp-core`:
 ///
-/// * an **action module** for [`ACTION_NAMESPACE`] — the `start()`
-///   validator, delegating to [`TodoActionModule::start`] (the existing
-///   empty-title rejection is reused, never reimplemented);
-/// * an **action executor** for the same namespace — applies the validated
-///   action to the returned store via [`apply_todo_action`]. The todo flow is
-///   local-only, so the actor-command `send` bridge is intentionally unused;
+/// * an **action module** via [`NmpApp::register_action::<TodoActionModule>`] —
+///   ADR-0027's single-call typed seam. `TodoActionModule::start` rejects an
+///   empty title; `TodoActionModule::execute` applies the validated action to
+///   the host-owned store reached through the `TODO_STORE` `OnceLock`;
 /// * a **snapshot projection** under [`TODO_SNAPSHOT_KEY`] — projects the
 ///   store into JSON via [`project_todo_items`] on every snapshot tick.
 ///
@@ -103,33 +117,18 @@ pub fn project_todo_items(items: &[TodoRecord]) -> serde_json::Value {
 /// the store, and the next snapshot carries the projected list.
 ///
 /// MUST be called during host init — before `nmp_app_start` and before any
-/// `nmp_app_dispatch_action` — because [`NmpApp::register_action_module`] /
-/// [`NmpApp::register_action_executor`] take `&mut NmpApp`.
+/// `nmp_app_dispatch_action` — because [`NmpApp::register_action`] takes
+/// `&mut NmpApp`.
 pub fn register(app: &mut NmpApp) -> TodoStore {
-    let store: TodoStore = Arc::new(Mutex::new(Vec::new()));
+    // First-init wins: a second `register()` call returns the existing store
+    // so the typed `execute()` and the snapshot projection share one `Arc`.
+    let store: TodoStore = TODO_STORE
+        .get_or_init(|| Arc::new(Mutex::new(Vec::new())))
+        .clone();
 
-    // Module half — `start()` validation. Decode the action JSON into the
-    // typed `Action`, then delegate to the existing `TodoActionModule::start`
-    // so the empty-title rejection rule has exactly one home.
-    app.register_action_module(ACTION_NAMESPACE, |action_json| {
-        let action: Action = serde_json::from_str(action_json)
-            .map_err(|e| ActionRejection::Invalid(e.to_string()))?;
-        let mut ctx = ActionContext::default();
-        TodoActionModule::start(&mut ctx, action)
-    });
-
-    // Executor half — `execute()`. Decode the (already-validated) action and
-    // apply it to the host-owned store. The todo flow is local-only: no
-    // `ActorCommand` is needed, so the `send` bridge is deliberately unused.
-    let executor_store = Arc::clone(&store);
-    app.register_action_executor(ACTION_NAMESPACE, move |action_json, _correlation_id, _send| {
-        let action: Action = serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-        let mut guard = executor_store
-            .lock()
-            .map_err(|_| "todo store mutex poisoned".to_string())?;
-        apply_todo_action(&mut guard, action);
-        Ok(())
-    });
+    // ADR-0027 typed seam — one call wires both `start()` validation and
+    // `execute()` against `TodoActionModule::NAMESPACE` (== `ACTION_NAMESPACE`).
+    app.register_action::<TodoActionModule>();
 
     // Snapshot-output half — projects the store under `TODO_SNAPSHOT_KEY` on
     // every snapshot tick. D8: cheap, non-blocking (one lock + clone).
@@ -210,11 +209,30 @@ impl ActionModule for TodoActionModule {
         }
         Ok(())
     }
+
+    /// Apply the validated action to the host-owned todo store reached through
+    /// the [`TODO_STORE`] `OnceLock`.
+    ///
+    /// `register()` initializes the lock — the typed `execute()` body is only
+    /// reachable AFTER `register::<TodoActionModule>()` ran (per the host-init
+    /// contract on `register_action`), so `TODO_STORE.get()` is always `Some`
+    /// here in practice. A `None` from a misordered host init is surfaced as
+    /// `Err` rather than panicking (D6).
+    ///
+    /// The todo flow is local-only: no [`nmp_core::ActorCommand`] is needed,
+    /// so the `send` bridge is deliberately unused.
     fn execute(
-        _action: Self::Action,
+        action: Self::Action,
         _correlation_id: &str,
         _send: &dyn Fn(nmp_core::ActorCommand),
     ) -> Result<(), String> {
+        let store = TODO_STORE
+            .get()
+            .ok_or_else(|| "fixture-todo-core: register() not called before execute()".to_string())?;
+        let mut guard = store
+            .lock()
+            .map_err(|_| "todo store mutex poisoned".to_string())?;
+        apply_todo_action(&mut guard, action);
         Ok(())
     }
 }
@@ -352,6 +370,29 @@ mod tests {
         serde_json::from_str(&out).unwrap()
     }
 
+    /// Serialize FFI tests that share the process-wide `TODO_STORE`. ADR-0027's
+    /// typed `execute()` is static, so `register()` writes into a `OnceLock`
+    /// shared across every test in this binary; cargo runs unit tests in
+    /// parallel by default, so two FFI tests dispatching against the same
+    /// store would race. Each FFI test takes this `Mutex` for its full body —
+    /// the lifetime of the `MutexGuard` IS the serialization fence.
+    fn ffi_test_guard() -> std::sync::MutexGuard<'static, ()> {
+        static GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        // A poisoned mutex still hands out a guard via `into_inner` — a prior
+        // panic in another test must not silently disable serialization here.
+        GUARD.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Reset the process-wide `TODO_STORE` so the calling FFI test sees an
+    /// empty store regardless of which other test ran before it.
+    fn clear_store_for_test() {
+        if let Some(store) = TODO_STORE.get() {
+            if let Ok(mut guard) = store.lock() {
+                guard.clear();
+            }
+        }
+    }
+
     /// THE MIGRATION PROOF: after `register`, a `todo.add`
     /// action dispatched through the generic `nmp_app_dispatch_action` path
     /// drives BOTH the host-registered module (`start()` validation) AND the
@@ -364,6 +405,8 @@ mod tests {
     /// produces the right JSON over the store the executor actually mutated.
     #[test]
     fn dispatch_todo_add_lands_in_snapshot_projection() {
+        let _guard = ffi_test_guard();
+        clear_store_for_test();
         let app = nmp_app_new();
         // SAFETY: `nmp_app_new` never returns null; the pointer is valid until
         // `nmp_app_free` below, and no aliasing `&NmpApp` is live during this
@@ -414,6 +457,8 @@ mod tests {
     /// executor never mutates the store (D6: failures are data, not a panic).
     #[test]
     fn dispatch_rejects_empty_title_todo_add() {
+        let _guard = ffi_test_guard();
+        clear_store_for_test();
         let app = nmp_app_new();
         // SAFETY: see `dispatch_todo_add_lands_in_snapshot_projection`.
         let store = register(unsafe { &mut *app });

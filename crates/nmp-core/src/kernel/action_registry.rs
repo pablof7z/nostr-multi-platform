@@ -20,12 +20,10 @@
 //! AND execution dispatch**:
 //!
 //! * [`ActionRegistry::start`] validates and assigns a correlation id.
-//! * [`ActionRegistry::execute`] drives the validated action to the actor.
-//!   Each module registers an executor closure via
-//!   [`ActionRegistry::register_executor`]; `ffi::action::execute_action`
-//!   is now a one-liner that calls `execute`. This eliminates the hardcoded
-//!   `match namespace { "nmp.publish" => … }` that prevented any
-//!   module from running without editing `nmp-core`.
+//! * [`ActionRegistry::execute`] drives the validated action to the actor by
+//!   calling `M::execute` through the dyn-safe [`ErasedActionModule`] facade.
+//!   Each module is registered once via [`ActionRegistry::register::<M>`];
+//!   no separate executor seam exists (ADR-0027).
 //!
 //! # Type erasure
 //!
@@ -47,8 +45,9 @@ use crate::substrate::{ActionContext, ActionId, ActionModule, ActionRejection, A
 /// `ActionModule` carries an associated `Action` type, so it cannot be stored
 /// as `Box<dyn ActionModule>` directly. This trait erases it to a JSON string
 /// at the boundary so the registry can hold a heterogeneous map of modules.
-/// [`ActionModuleAdapter`] is the only implementor; it round-trips each
-/// module's typed action shape through serde.
+/// [`ActionModuleAdapter`] is the sole implementor (ADR-0027 deleted the
+/// pre-existing `ClosureModule` half); it round-trips each module's typed
+/// action shape through serde.
 trait ErasedActionModule: Send + Sync {
     /// Validate `action_json` against the module's `Action` type and return
     /// an optional preferred correlation id. Mirrors [`ActionModule::start`] +
@@ -64,16 +63,8 @@ trait ErasedActionModule: Send + Sync {
         action_json: &str,
     ) -> Result<Option<ActionId>, ActionRejection>;
 
-    /// Whether this module carries a typed executor in `execute()`.
-    ///
-    /// `ActionModuleAdapter<M>` returns `true` — `execute()` calls
-    /// `M::execute` directly. `ClosureModule` returns `false` — the caller
-    /// must fall back to the `executors` HashMap for execution (the pre-
-    /// ADR-0027 path kept for compatibility during migration).
-    fn has_typed_executor(&self) -> bool;
-
     /// Execute the validated action. Called by [`ActionRegistry::execute`]
-    /// only when [`Self::has_typed_executor`] returns `true`.
+    /// after `start` returns `Ok`.
     fn execute(
         &self,
         action_json: &str,
@@ -107,10 +98,6 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
         Ok(preferred_id)
     }
 
-    fn has_typed_executor(&self) -> bool {
-        true
-    }
-
     fn execute(
         &self,
         action_json: &str,
@@ -123,27 +110,6 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
     }
 }
 
-/// Dyn-safe executor closure type. Receives the already-validated action
-/// JSON, the registry-minted `correlation_id`, and a `send` callback that
-/// routes an [`ActorCommand`] to the actor. Returns `Ok(())` when the actor
-/// command was queued, `Err(msg)` on decode or dispatch failure.
-///
-/// The `correlation_id` is the handle [`ActionRegistry::start`] minted and
-/// the host received from `nmp_app_dispatch_action`. An executor that builds
-/// an `ActorCommand` whose eventual terminal verdict must match that handle
-/// (e.g. `nmp.publish`'s `PublishNote` — the actor signs the event, so its
-/// `id` is unknown at dispatch time) threads this id onto the command so the
-/// publish engine reports it in `action_results` instead of the signed
-/// event's id.
-type ExecutorFn = Box<
-    dyn Fn(&str, &str, &dyn Fn(crate::actor::ActorCommand)) -> Result<(), String> + Send + Sync,
->;
-
-/// Dyn-safe host-validator closure type — the [`ErasedActionModule::start`]
-/// boundary minus the unused [`ActionContext`] (a host validator works from
-/// the action JSON alone). `Ok(())` accepts the action, `Err` rejects it.
-type ValidatorFn = Box<dyn Fn(&str) -> Result<(), ActionRejection> + Send + Sync>;
-
 /// Shared, mutable slot holding the optional host-registered action-result
 /// observer.
 ///
@@ -155,72 +121,17 @@ type ValidatorFn = Box<dyn Fn(&str) -> Result<(), ActionRejection> + Send + Sync
 pub(crate) type ResultObserverSlot =
     Arc<Mutex<Option<Box<dyn Fn(ActionResult) + Send + Sync + 'static>>>>;
 
-/// [`ErasedActionModule`] implementor backed by a host-supplied validator
-/// closure rather than a compile-time [`ActionModule`] type — the *module*
-/// counterpart to the host-registered *executor*. It wires the `start()`
-/// validation half of a namespace into the registry *without editing
-/// `nmp-core`*, slotting into the same `modules` map as [`ActionModuleAdapter`].
-struct ClosureModule {
-    validate: ValidatorFn,
-}
-
-impl ErasedActionModule for ClosureModule {
-    /// Delegate validation to the host closure. `ctx` is unused — a host
-    /// validator works from the action JSON alone (the typed
-    /// [`ActionModuleAdapter`] path is the one that threads `ctx` into
-    /// `ActionModule::start`).
-    ///
-    /// D6: the host validator is untrusted plugin code registered via
-    /// `nmp_app_register_action_module`, and this runs on the call path of
-    /// `nmp_app_dispatch_action` — an `extern "C"` function. An unguarded
-    /// panic would unwind across the FFI boundary, which is undefined
-    /// behaviour. The closure is therefore invoked inside [`catch_unwind`]; a
-    /// caught panic becomes a plain [`ActionRejection::Invalid`], exactly the
-    /// rejection a host would see for any other malformed action.
-    fn start(
-        &self,
-        _ctx: &mut ActionContext,
-        action_json: &str,
-    ) -> Result<Option<ActionId>, ActionRejection> {
-        // `AssertUnwindSafe`: a boxed `Fn` closure is not `UnwindSafe`, but a
-        // panic here is fully contained — nothing the closure touched is
-        // observed again after it unwinds, so there is no broken-invariant
-        // hazard. `catch_unwind` nests the inner `Result`; flatten it.
-        // Host-supplied validators have no natural correlation id to suggest,
-        // so the preferred id is always `None`.
-        match catch_unwind(AssertUnwindSafe(|| (self.validate)(action_json))) {
-            Ok(result) => result.map(|()| None),
-            Err(_) => Err(ActionRejection::Invalid("action validator panicked".into())),
-        }
-    }
-
-    fn has_typed_executor(&self) -> bool {
-        false
-    }
-
-    fn execute(
-        &self,
-        _action_json: &str,
-        _correlation_id: &str,
-        _send: &dyn Fn(crate::actor::ActorCommand),
-    ) -> Result<(), String> {
-        // ClosureModule has no typed executor — ActionRegistry::execute falls
-        // through to the executors HashMap for this module type.
-        Err("ClosureModule: use executors fallback".into())
-    }
-}
-
 /// Namespace-keyed registry of [`ActionModule`]s.
 ///
-/// Stateless apart from the module and executor tables: every registered
-/// module is a ZST adapter (cheap, `Send + Sync`). [`Self::start`] validates
-/// and assigns a correlation id; [`Self::execute`] drives the validated
-/// action to the actor. A module with no registered executor returns
-/// `Err("no executor registered for namespace '…'")` from `execute` — the
-/// caller surfaces this as `{"error":…}` (D6).
+/// Stateless apart from the modules table: every registered module is a ZST
+/// adapter (cheap, `Send + Sync`). [`Self::start`] validates and assigns a
+/// correlation id; [`Self::execute`] drives the validated action to the actor
+/// via the same module's `execute()`. A module with no entry in the table
+/// returns `Err("unknown action namespace …")` from `start` and `Err("no
+/// executor registered for namespace '…'")` from `execute` — the caller
+/// surfaces these as `{"error":…}` (D6).
 pub struct ActionRegistry {
     modules: HashMap<String, Box<dyn ErasedActionModule>>,
-    executors: HashMap<String, ExecutorFn>,
     /// Optional host-registered observer notified when an action is accepted
     /// and enqueued. See [`Self::set_result_observer`] /
     /// [`Self::deliver_result`]. `None` until a host registers one — an
@@ -235,61 +146,24 @@ impl Default for ActionRegistry {
 }
 
 impl ActionRegistry {
-    /// An empty registry. Call [`Self::register`] and
-    /// [`Self::register_executor`] for each module.
+    /// An empty registry. Call [`Self::register`] for each module.
     pub fn new() -> Self {
         Self {
             modules: HashMap::new(),
-            executors: HashMap::new(),
             result_observer: Arc::new(Mutex::new(None)),
         }
     }
 
     /// Register module `M` under its [`ActionModule::NAMESPACE`]. A second
     /// registration of the same namespace replaces the first.
+    ///
+    /// `M::start` handles validation and `M::execute` handles execution — both
+    /// under the same `M::NAMESPACE`, so namespace mismatch between validator
+    /// and executor is structurally impossible (ADR-0027).
     pub fn register<M: ActionModule + 'static>(&mut self) {
         self.modules.insert(
             M::NAMESPACE.to_string(),
             Box::new(ActionModuleAdapter::<M>::default()),
-        );
-    }
-
-    /// Register an executor closure for `namespace`. The closure receives the
-    /// validated action JSON, the registry-minted `correlation_id`, and a
-    /// `send` callback; it converts the action to an [`ActorCommand`] and calls
-    /// `send(cmd)`. A second registration replaces the first.
-    pub fn register_executor(
-        &mut self,
-        namespace: impl Into<String>,
-        f: impl Fn(&str, &str, &dyn Fn(crate::actor::ActorCommand)) -> Result<(), String>
-            + Send
-            + Sync
-            + 'static,
-    ) {
-        self.executors.insert(namespace.into(), Box::new(f));
-    }
-
-    /// Register a host-provided closure as the *module validator* for
-    /// `namespace`. The closure receives the raw action JSON and returns
-    /// `Ok(())` to accept it or an [`ActionRejection`] to reject it.
-    ///
-    /// This is the complement to [`Self::register_executor`]: that wires the
-    /// `execute()` half of a namespace, this wires the `start()` validation
-    /// half. Together they let a host make a custom namespace fully reachable
-    /// through `nmp_app_dispatch_action` — `start()` validates against this
-    /// closure, `execute()` runs the registered executor — without adding an
-    /// [`ActionModule`] type or editing [`default_registry`]. A second
-    /// registration of the same namespace replaces the first.
-    pub fn register_with_validator(
-        &mut self,
-        namespace: impl Into<String>,
-        validate: impl Fn(&str) -> Result<(), ActionRejection> + Send + Sync + 'static,
-    ) {
-        self.modules.insert(
-            namespace.into(),
-            Box::new(ClosureModule {
-                validate: Box::new(validate),
-            }),
         );
     }
 
@@ -316,22 +190,34 @@ impl ActionRegistry {
         let module = self.modules.get(namespace).ok_or_else(|| {
             ActionRejection::Invalid(format!("unknown action namespace: {namespace}"))
         })?;
-        let preferred_id = module.start(ctx, action_json)?;
+        // D6: the typed `M::start` body runs on the `nmp_app_dispatch_action`
+        // call path (an `extern "C"` function). An unguarded panic would
+        // unwind across the FFI boundary (undefined behaviour); a caught
+        // panic surfaces as `ActionRejection::Invalid("action validator
+        // panicked")` instead.
+        let preferred_id = match catch_unwind(AssertUnwindSafe(|| module.start(ctx, action_json))) {
+            Ok(result) => result?,
+            Err(_) => {
+                return Err(ActionRejection::Invalid(
+                    "action validator panicked".to_string(),
+                ));
+            }
+        };
         Ok(preferred_id.unwrap_or_else(new_action_id))
     }
 
-    /// Execute the validated action. Tries the typed [`ActionModule::execute`]
-    /// path first (ADR-0027), then falls back to the closure-based `executors`
-    /// HashMap for namespaces registered via [`Self::register_executor`].
+    /// Execute the validated action via [`ActionModule::execute`] on the
+    /// registered module (ADR-0027).
     ///
-    /// Returns `Err` when neither path has an executor — the caller surfaces
-    /// this as `{"error":…}` (D6: a missing executor is never silently
-    /// swallowed).
+    /// Returns `Err` when no module is registered under `namespace` — the
+    /// caller surfaces this as `{"error":…}` (D6: a missing executor is never
+    /// silently swallowed).
     ///
-    /// D6: both paths invoke untrusted host-plugin code that runs on the
-    /// `nmp_app_dispatch_action` call path (an `extern "C"` function). Each
-    /// is wrapped in [`catch_unwind`]; a caught panic returns `Err(String)`
-    /// rather than unwinding across the FFI boundary.
+    /// D6: the call is wrapped in [`catch_unwind`] because the typed
+    /// `M::execute` body runs on the `nmp_app_dispatch_action` call path (an
+    /// `extern "C"` function) and may include user-supplied (module-author)
+    /// code. A caught panic returns `Err(String)` rather than unwinding across
+    /// the FFI boundary.
     pub(crate) fn execute(
         &self,
         namespace: &str,
@@ -339,25 +225,13 @@ impl ActionRegistry {
         correlation_id: &str,
         send: &dyn Fn(crate::actor::ActorCommand),
     ) -> Result<(), String> {
-        // ADR-0027 typed path: if the module has a built-in executor, use it.
-        if let Some(module) = self.modules.get(namespace) {
-            if module.has_typed_executor() {
-                return match catch_unwind(AssertUnwindSafe(|| {
-                    module.execute(action_json, correlation_id, send)
-                })) {
-                    Ok(result) => result,
-                    Err(_) => Err("action executor panicked".to_string()),
-                };
-            }
-        }
-        // Pre-ADR-0027 fallback: closure registered via register_executor.
-        match self.executors.get(namespace) {
-            Some(exec) => {
-                match catch_unwind(AssertUnwindSafe(|| exec(action_json, correlation_id, send))) {
-                    Ok(result) => result,
-                    Err(_) => Err("action executor panicked".to_string()),
-                }
-            }
+        match self.modules.get(namespace) {
+            Some(module) => match catch_unwind(AssertUnwindSafe(|| {
+                module.execute(action_json, correlation_id, send)
+            })) {
+                Ok(result) => result,
+                Err(_) => Err("action executor panicked".to_string()),
+            },
             None => Err(format!(
                 "no executor registered for namespace '{namespace}'"
             )),
@@ -446,113 +320,19 @@ fn new_action_id() -> ActionId {
 /// Build the registry the kernel ships with.
 ///
 /// Only [`crate::publish::PublishModule`] is registered here. NIP-29 group
-/// actions and the NIP-59 welcome-wrap module are *app* nouns (D0 —
-/// `nmp-core` never names a protocol crate); the app host registers those
-/// against its own registry instance via [`ActionRegistry::register`] +
-/// [`ActionRegistry::register_executor`].
+/// actions, the NIP-17 DM actions, and the NIP-59 welcome-wrap module are *app*
+/// nouns (D0 — `nmp-core` never names a protocol crate); the app host registers
+/// those against its own registry instance via [`ActionRegistry::register`].
+///
+/// ADR-0027 collapsed the dual `register_action_module` + `register_action_executor`
+/// closure seam into a single typed `register::<M>()` call — every module's
+/// `start()` validator and `execute()` ActorCommand-builder live in its own
+/// trait impl. `PublishModule::execute` (see `publish/action.rs`) builds the
+/// `ActorCommand` for each `PublishAction` variant.
 pub fn default_registry() -> ActionRegistry {
-    use crate::actor::ActorCommand;
-    use crate::publish::PublishAction;
-
     let mut registry = ActionRegistry::new();
     registry.register::<crate::publish::PublishModule>();
-    registry.register_executor("nmp.publish", |action_json, correlation_id, send| {
-        let action: PublishAction = serde_json::from_str(action_json)
-            .map_err(|e| format!("publish action decode failed: {e}"))?;
-        match action {
-            PublishAction::Publish { event, target, .. } => {
-                // D8 — non-blocking channel send only; the actor loop
-                // owns signing/publishing (D4). The event is already
-                // signed; the actor re-verifies it before publishing.
-                //
-                // Thread the registry-minted `correlation_id` onto the
-                // command (PR-A — explicit symmetry with `PublishNote`).
-                // For pre-signed `Publish`, `PublishModule::preferred_action_id()`
-                // returns the event's `id`, so the minted id passed here is
-                // == `event.id` == the engine's `PublishHandle`; threading
-                // it makes the publish engine's `correlation_id_override`
-                // do the same work explicitly instead of falling back to
-                // the handle by coincidence. Defends the round-trip against
-                // future changes that would decouple the dispatch return
-                // value from the publish handle.
-                send(ActorCommand::PublishSignedEvent {
-                    raw: signed_event_to_raw(event),
-                    target,
-                    correlation_id: Some(correlation_id.to_string()),
-                });
-                Ok(())
-            }
-            // D8 — non-blocking channel send only; the actor loop signs
-            // the kind:1 with the active account (D4). This is the
-            // `ActionModule`-native replacement for the deleted per-verb
-            // `nmp_app_publish_note` FFI symbol — same `ActorCommand`,
-            // same runtime path.
-            //
-            // The event id is NOT known at dispatch time (the actor signs
-            // it), so `preferred_action_id()` returns `None` and the
-            // registry minted a random `correlation_id`. Thread that id
-            // onto the command so the publish engine reports it in
-            // `action_results` instead of the signed event's `id` —
-            // otherwise the host's spinner (keyed on the dispatch return
-            // value) could never be cleared.
-            PublishAction::PublishNote {
-                content,
-                reply_to_id,
-                target,
-            } => {
-                send(ActorCommand::PublishNote {
-                    content,
-                    reply_to_id,
-                    target,
-                    correlation_id: Some(correlation_id.to_string()),
-                });
-                Ok(())
-            }
-            // D8 — non-blocking channel send only; the actor loop builds the
-            // kind:0 event, stamps `created_at`, and signs with the active
-            // account (D4/D7). The `ActionModule`-native path for kind:0
-            // metadata publish; PR-F deleted the prior
-            // `nmp_app_publish_unsigned_event` FFI symbol, so this is the
-            // sole entrypoint for it.
-            //
-            // The event id is NOT known at dispatch time (the actor signs it),
-            // so `preferred_action_id()` returns `None` and the registry minted
-            // a random `correlation_id`. Thread that id onto the command so the
-            // publish engine reports it in `action_results`.
-            PublishAction::PublishProfile { fields } => {
-                send(ActorCommand::PublishProfile {
-                    fields,
-                    correlation_id: Some(correlation_id.to_string()),
-                });
-                Ok(())
-            }
-            // Unreachable in practice: `PublishModule::start` rejects `Cancel`
-            // before the registry ever runs this executor, so a `Cancel`
-            // action never gets here. The arm exists only for match
-            // exhaustiveness — D6 forbids `unreachable!()` on a production
-            // path, hence a bare `Ok(())`. Publish cancel is driven by the
-            // `nmp_app_cancel_publish` FFI symbol, not `dispatch_action`.
-            PublishAction::Cancel { .. } => Ok(()),
-        }
-    });
     registry
-}
-
-/// Convert a [`SignedEvent`] (the publish-action / engine input shape) into
-/// a flat NIP-01 [`crate::store::RawEvent`] (the actor command shape). Pure
-/// field move — `id` and `sig` are carried verbatim, no re-signing. This is
-/// the inverse of the `RawEvent → SignedEvent` conversion in
-/// `actor::commands::publish::publish_signed_event`.
-fn signed_event_to_raw(event: crate::substrate::SignedEvent) -> crate::store::RawEvent {
-    crate::store::RawEvent {
-        id: event.id,
-        pubkey: event.unsigned.pubkey,
-        created_at: event.unsigned.created_at,
-        kind: event.unsigned.kind,
-        tags: event.unsigned.tags,
-        content: event.unsigned.content,
-        sig: event.sig,
-    }
 }
 
 #[cfg(test)]
@@ -1013,23 +793,34 @@ mod tests {
         }
     }
 
-    /// D6 — a host validator closure that panics is contained: `start`
-    /// returns [`ActionRejection::Invalid`] instead of unwinding.
-    ///
-    /// The validator is untrusted host plugin code registered via
-    /// `register_with_validator` (the `nmp_app_register_action_module` seam).
-    /// `start` is reached from `nmp_app_dispatch_action`, an `extern "C"`
-    /// function — an unguarded panic would unwind across the FFI boundary
-    /// (undefined behaviour). Without the per-closure `catch_unwind` guard
-    /// this test panics out of `start` rather than returning a rejection.
+    /// D6 — a typed [`ActionModule::start`] that panics is contained:
+    /// `start` returns [`ActionRejection::Invalid`] instead of unwinding
+    /// across the FFI boundary.
     #[test]
     fn panicking_validator_is_rejected_not_unwound() {
+        struct PanickingStartModule;
+        impl ActionModule for PanickingStartModule {
+            const NAMESPACE: &'static str = "host.boom_start"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+            type Action = serde_json::Value;
+            fn start(
+                _ctx: &mut ActionContext,
+                _action: Self::Action,
+            ) -> Result<(), ActionRejection> {
+                panic!("buggy module validator");
+            }
+            fn execute(
+                _action: Self::Action,
+                _correlation_id: &str,
+                _send: &dyn Fn(crate::actor::ActorCommand),
+            ) -> Result<(), String> {
+                Ok(())
+            }
+        }
+
         let mut registry = ActionRegistry::new();
-        registry.register_with_validator("host.boom", |_action_json| {
-            panic!("buggy host validator");
-        });
+        registry.register::<PanickingStartModule>();
         let err = registry
-            .start(&mut ctx(), "host.boom", "{}")
+            .start(&mut ctx(), "host.boom_start", "null")
             .expect_err("a panicking validator must be rejected, not unwound");
         match err {
             ActionRejection::Invalid(msg) => {
@@ -1039,23 +830,42 @@ mod tests {
         }
     }
 
-    /// D6 — a host executor closure that panics is contained: `execute`
-    /// returns `Err` instead of unwinding.
+    /// D6 — a typed [`ActionModule::execute`] that panics is contained:
+    /// `execute` returns `Err` instead of unwinding.
     ///
-    /// The executor is untrusted host plugin code registered via
-    /// `register_executor` (the `nmp_app_register_action_executor` seam).
     /// `execute` is reached from `nmp_app_dispatch_action`, an `extern "C"`
     /// function — an unguarded panic would unwind across the FFI boundary
-    /// (undefined behaviour). Without the per-closure `catch_unwind` guard
-    /// this test panics out of `execute` rather than returning `Err`.
+    /// (undefined behaviour). The registry wraps every typed-module call in
+    /// [`catch_unwind`] (`ActionRegistry::execute`); without it this test
+    /// would panic out rather than returning `Err`.
     #[test]
     fn panicking_executor_returns_err_not_unwound() {
+        // A typed ActionModule whose execute() body panics. Its start() body
+        // accepts every action shape (the panic must reach the executor, not
+        // be caught at the validation gate).
+        struct PanickingExecuteModule;
+        impl ActionModule for PanickingExecuteModule {
+            const NAMESPACE: &'static str = "host.boom"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+            type Action = serde_json::Value;
+            fn start(
+                _ctx: &mut ActionContext,
+                _action: Self::Action,
+            ) -> Result<(), ActionRejection> {
+                Ok(())
+            }
+            fn execute(
+                _action: Self::Action,
+                _correlation_id: &str,
+                _send: &dyn Fn(crate::actor::ActorCommand),
+            ) -> Result<(), String> {
+                panic!("buggy module executor");
+            }
+        }
+
         let mut registry = ActionRegistry::new();
-        registry.register_executor("host.boom", |_action_json, _correlation_id, _send| {
-            panic!("buggy host executor");
-        });
+        registry.register::<PanickingExecuteModule>();
         let err = registry
-            .execute("host.boom", "{}", "corr-id", &|_cmd| {})
+            .execute("host.boom", "null", "corr-id", &|_cmd| {})
             .expect_err("a panicking executor must return Err, not unwind");
         assert_eq!(err, "action executor panicked", "got: {err}");
     }
