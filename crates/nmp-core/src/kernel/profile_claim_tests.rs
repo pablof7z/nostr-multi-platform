@@ -4,9 +4,8 @@
 //!
 //! 1. **Wrong relay**: `profile_claim_request` used `author_write_relays()` for
 //!    cold-start authors, which returns the full `BOOTSTRAP_DISCOVERY_RELAYS`
-//!    set (`[damus.io, purplepag.es]`). Profile lookups (kind:0) are discovery
-//!    fetches — they must go to the **indexer relay only** (`purplepag.es`), not
-//!    the content relay (`relay.damus.io`).
+//!    set. Profile lookups (kind:0) are discovery fetches — they must go to the
+//!    **indexer relay only** (`purplepag.es`), not the content relay.
 //!
 //! 2. **No batching**: each `claim_profile` fired a separate `profile-claim-N`
 //!    REQ per author. 37 follows → 37 × 2 = 74 REQs (one per relay in the
@@ -64,7 +63,7 @@ fn cold_start_profile_claims_are_batched_into_one_req() {
     );
 }
 
-/// Cold-start profile claims must NEVER go to the content relay (relay.damus.io).
+/// Cold-start profile claims must NEVER go to the content relay.
 /// They are discovery fetches — only the indexer relay is the right destination.
 #[test]
 fn cold_start_profile_claims_never_go_to_content_relay() {
@@ -79,7 +78,7 @@ fn cold_start_profile_claims_never_go_to_content_relay() {
 
     let content_relay_reqs: Vec<&OutboundMessage> = all_msgs
         .iter()
-        .filter(|m| m.text.starts_with("[\"REQ\"") && m.relay_url.contains("damus"))
+        .filter(|m| m.text.starts_with("[\"REQ\"") && m.relay_url == CONTENT_RELAY_URL)
         .collect();
 
     assert!(
@@ -160,7 +159,7 @@ fn known_nip65_profile_claims_use_declared_write_relays() {
         "known NIP-65 profile claim must go to declared write relay {alice_relay}; got {relay_urls:?}"
     );
     assert!(
-        !relay_urls.iter().any(|u| u.contains("damus")),
-        "known NIP-65 profile claim must NOT go to damus.io; got {relay_urls:?}"
+        !relay_urls.iter().any(|u| *u == CONTENT_RELAY_URL),
+        "known NIP-65 profile claim must NOT go to the content relay; got {relay_urls:?}"
     );
 }

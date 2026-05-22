@@ -91,7 +91,7 @@ impl AppRuntime {
         Err(RELATION_COUNT_CLAIMS_UNAVAILABLE.to_string())
     }
 
-    pub fn publish_note(&self, content: &str, reply_to: Option<&str>) -> Result<()> {
+    pub fn publish_note(&self, content: &str, reply_to: Option<&str>) -> Result<String> {
         let action = json!({
             "PublishNote": {
                 "content": content,
@@ -103,12 +103,12 @@ impl AppRuntime {
         self.dispatch_action("nmp.publish", &action)
     }
 
-    pub fn react(&self, event_id: &str, reaction: &str) -> Result<()> {
+    pub fn react(&self, event_id: &str, reaction: &str) -> Result<String> {
         let action = json!({ "target_event_id": event_id, "reaction": reaction }).to_string();
         self.dispatch_action("chirp.react", &action)
     }
 
-    pub fn follow(&self, pubkey: &str, add: bool) -> Result<()> {
+    pub fn follow(&self, pubkey: &str, add: bool) -> Result<String> {
         let action = json!({ "pubkey": pubkey }).to_string();
         let namespace = if add {
             "chirp.follow"
@@ -116,6 +116,12 @@ impl AppRuntime {
             "chirp.unfollow"
         };
         self.dispatch_action(namespace, &action)
+    }
+
+    pub fn ack_action_stage(&self, correlation_id: &str) -> Result<()> {
+        self.with_cstr(correlation_id, |c| {
+            nmp_core::nmp_app_ack_action_stage(self.app, c.as_ptr())
+        })
     }
 
     pub fn chirp_snapshot(&self) -> Option<Value> {
@@ -133,7 +139,7 @@ impl AppRuntime {
         serde_json::from_str(&text).ok()
     }
 
-    fn dispatch_action(&self, namespace: &str, action_json: &str) -> Result<()> {
+    fn dispatch_action(&self, namespace: &str, action_json: &str) -> Result<String> {
         let namespace = CString::new(namespace)
             .map_err(|_| "action namespace contains NUL byte".to_string())?;
         let action =
@@ -148,11 +154,7 @@ impl AppRuntime {
         nmp_app_free_string(ptr);
         let value: Value = serde_json::from_str(&text)
             .map_err(|e| format!("action dispatch returned invalid JSON: {e}"))?;
-        if let Some(error) = value.get("error").and_then(Value::as_str) {
-            Err(error.to_string())
-        } else {
-            Ok(())
-        }
+        parse_dispatch_envelope(&value)
     }
 
     fn with_cstr<T>(&self, value: &str, f: impl FnOnce(&CString) -> T) -> Result<T> {
@@ -175,6 +177,18 @@ impl AppRuntime {
         f(&pubkey, &consumer_id);
         Ok(())
     }
+}
+
+fn parse_dispatch_envelope(value: &Value) -> Result<String> {
+    if let Some(error) = value.get("error").and_then(Value::as_str) {
+        return Err(error.to_string());
+    }
+    value
+        .get("correlation_id")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| "action dispatch envelope missing correlation_id".to_string())
 }
 
 impl Drop for AppRuntime {
@@ -261,6 +275,22 @@ mod tests {
         assert_eq!(
             runtime.claim_visible_note_relation_counts("bad"),
             Err("event id must be 64 hex characters".to_string())
+        );
+    }
+
+    #[test]
+    fn dispatch_envelope_requires_correlation_id_or_error() {
+        assert_eq!(
+            parse_dispatch_envelope(&serde_json::json!({"correlation_id": "abc"})),
+            Ok("abc".to_string())
+        );
+        assert_eq!(
+            parse_dispatch_envelope(&serde_json::json!({"error": "bad action"})),
+            Err("bad action".to_string())
+        );
+        assert_eq!(
+            parse_dispatch_envelope(&serde_json::json!({"ok": true})),
+            Err("action dispatch envelope missing correlation_id".to_string())
         );
     }
 }

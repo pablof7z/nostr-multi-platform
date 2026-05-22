@@ -1,9 +1,9 @@
 # Chirp Web Proof
 
 This package is the browser proof for Chirp. It is a Solid/Vite shell that
-renders the NMP browser-worker contract and currently reports the explicit
-degraded runtime state described in
-[`docs/design/chirp-web-runtime.md`](../../docs/design/chirp-web-runtime.md).
+renders the NMP browser-worker contract. Product actions are sent as typed
+Chirp intents; the checked-in `nmp-wasm` package maps those intents and emits
+Rust-owned Chirp snapshots for the shell to render.
 
 ## Requirements
 
@@ -41,36 +41,40 @@ npm run dev
 
 ## Static Deploy
 
-Deploy from `web/chirp`, not the repository root.
+The repository root includes `vercel.json` so a Vercel project pointed at the
+repo root still installs and builds `web/chirp`.
 
 Use these settings for static hosts:
 
 | Setting | Value |
 | --- | --- |
-| Install command | `npm ci` |
-| Build command | `npm run build` |
-| Output directory | `dist` |
+| Install command | `cd web/chirp && npm ci` |
+| Build command | `cd web/chirp && npm run build` |
+| Output directory | `web/chirp/dist` |
 | Node version | `20` or newer |
 
-The current proof has no required environment variables. If the host needs an
-SPA fallback, route all paths to `index.html`.
+If the host needs an SPA fallback, route all paths to `index.html`.
 
-For Vercel, set the project root directory to `web/chirp`, keep the build
-command as `npm run build`, and set the output directory to `dist`.
+## Wasm Package
 
-## Optional Wasm Package
-
-The browser worker first tries to load a generated `nmp-wasm` package from:
+The browser worker loads a generated `nmp-wasm` package from:
 
 ```text
 public/nmp-wasm/nmp_wasm.js
 ```
 
-That file is optional for normal web builds. When it is absent, the worker emits
+Refresh it after changing `crates/nmp-wasm`:
+
+```sh
+wasm-pack build ../../crates/nmp-wasm --target web --out-dir ../../web/chirp/public/nmp-wasm
+```
+
+When that package is absent, the worker emits
 `wasm_bridge_unavailable` and falls back to `DegradedRuntime` with
 `browser_bridge_unavailable` status.
 
-If the generated module loads, the worker routes requests through
-`NmpWasmRuntime.handle_json()`. Any `browser_actor_driver_missing` status then
-comes from the real wasm runtime, which means the JS/wasm bridge is available
-but the browser actor driver is still not linked.
+The wasm facade is intentionally lightweight: it proves the browser uses the
+same Rust-owned action contract, relay defaults, and Chirp snapshot shape. Full
+live relay I/O still belongs to the shared actor driver; `nmp-core` does not
+yet compile to browser wasm on this toolchain because native crypto C
+dependencies fail for `wasm32-unknown-unknown`.

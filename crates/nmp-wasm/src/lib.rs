@@ -8,8 +8,9 @@ pub mod protocol;
 mod runtime;
 
 pub use protocol::{
-    ActionDispatch, CapabilityFailure, CapabilityResult, ClientHello, DegradedMode, RuntimeStatus,
-    StartConfig, WorkerEvent, WorkerRequest,
+    ActionDispatch, CapabilityFailure, CapabilityResult, ChirpAction, ChirpActionDispatch,
+    ClientHello, DegradedMode, RelayBootstrapEntry, RuntimeStatus, StartConfig, WorkerEvent,
+    WorkerRequest,
 };
 pub use runtime::{WasmRuntime, WasmRuntimeError};
 

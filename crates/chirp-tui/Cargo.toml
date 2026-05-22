@@ -15,6 +15,7 @@ path = "src/main.rs"
 
 [dependencies]
 nmp-app-chirp = { path = "../../apps/chirp/nmp-app-chirp", default-features = false }
+nmp-chirp-config = { path = "../nmp-chirp-config" }
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
 clap = { version = "4", features = ["derive"] }
 color-eyre = "0.6"

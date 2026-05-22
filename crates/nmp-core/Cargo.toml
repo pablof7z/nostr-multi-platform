@@ -36,6 +36,7 @@ android-ffi = []
 [dependencies]
 bech32 = "0.11"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+nmp-chirp-config = { path = "../nmp-chirp-config" }
 nmp-nip42-types = { path = "../nmp-nip42-types" }
 # NIP-59 gift-wrap free functions (`gift_wrap` / `unwrap_gift_wrap`). Consumed
 # by the `ActorCommand::SendGiftWrappedDm` arm to seal+wrap NIP-17 DM rumors on

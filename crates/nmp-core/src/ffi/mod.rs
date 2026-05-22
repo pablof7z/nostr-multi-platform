@@ -39,7 +39,7 @@ pub use capability::{
 // extern "C"` in `action`; the `pub use` is only consumed under the
 // test-support gate.
 #[cfg(any(test, feature = "test-support"))]
-pub use action::nmp_app_dispatch_action;
+pub use action::{nmp_app_ack_action_stage, nmp_app_dispatch_action};
 
 // Action-result observer registration — the push-side output seam. Re-exported
 // through the test-support facade so integration tests can register an observer

@@ -67,7 +67,7 @@ fn publish_compose(state: &mut AppState, runtime: &AppRuntime) {
         return;
     };
     match runtime.publish_note(&content, reply_to.as_deref()) {
-        Ok(()) => state.status = "queued note publish through NMP".to_string(),
+        Ok(correlation_id) => state.track_action(correlation_id, "note publish"),
         Err(error) => state.status = format!("publish failed: {error}"),
     }
 }
@@ -106,7 +106,10 @@ fn react_to_selected(state: &mut AppState, runtime: &AppRuntime) {
         return;
     };
     match runtime.react(&row.id, "+") {
-        Ok(()) => state.status = format!("queued + reaction for {}", short(&row.id)),
+        Ok(correlation_id) => state.track_action(
+            correlation_id,
+            &format!("+ reaction for {}", short(&row.id)),
+        ),
         Err(error) => state.status = format!("reaction failed: {error}"),
     }
 }
@@ -117,8 +120,12 @@ fn follow_selected(state: &mut AppState, runtime: &AppRuntime, add: bool) {
         return;
     };
     match runtime.follow(&row.author_pubkey, add) {
-        Ok(()) if add => state.status = format!("queued follow for {}", row.author),
-        Ok(()) => state.status = format!("queued unfollow for {}", row.author),
+        Ok(correlation_id) if add => {
+            state.track_action(correlation_id, &format!("follow {}", row.author))
+        }
+        Ok(correlation_id) => {
+            state.track_action(correlation_id, &format!("unfollow {}", row.author))
+        }
         Err(error) => state.status = format!("follow action failed: {error}"),
     }
 }

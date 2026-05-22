@@ -7,6 +7,7 @@ use ratatui::Frame;
 use crate::app::{AppState, Mode, Pane};
 use crate::timeline::TimelineRow;
 use crate::ui::help;
+use crate::ui::shared_snapshot_lines::{action_summary, relay_lines};
 
 pub fn render(frame: &mut Frame<'_>, state: &AppState) {
     let area = frame.area();
@@ -110,8 +111,8 @@ fn feed_lines(state: &AppState, height: usize) -> Vec<Line<'static>> {
         format!("{}/{}", state.selected + 1, item_count)
     };
     let mut lines = vec![Line::from(format!(
-        "items: {selected}  cards: {}  blocks: {}",
-        state.cards, state.blocks
+        "items: {selected}  cards: {}  blocks: {}  events_rx: {}",
+        state.cards, state.blocks, state.metrics.events_rx
     ))];
     if state.rows.is_empty() {
         lines.push(Line::from("Waiting for timeline events..."));
@@ -159,19 +160,29 @@ fn detail_lines(state: &AppState) -> Vec<Line<'static>> {
         Line::from(format!("event {}", short_id(&row.id))),
         Line::from(row.relation_counts.summary()),
         Line::from(row.content.clone()),
+        Line::from(format!(
+            "visible {}  queue {}  seq {}",
+            state.metrics.visible_items,
+            state.metrics.actor_queue_depth,
+            state.metrics.update_sequence
+        )),
+        Line::from(action_summary(state)),
         Line::from("Enter opens the full thread through NMP."),
     ]
 }
 
 fn profile_lines(state: &AppState) -> Vec<Line<'static>> {
     let Some(row) = state.selected_row() else {
-        return vec![Line::from("Profile / Detail")];
+        return relay_lines(state);
     };
-    vec![
+    let mut lines = vec![
         Line::from("Selected author"),
         Line::from(row.author.clone()),
         Line::from("p opens the full profile through NMP."),
-    ]
+        Line::from(""),
+    ];
+    lines.extend(relay_lines(state));
+    lines
 }
 
 fn short_id(value: &str) -> String {
@@ -206,8 +217,10 @@ fn render_compose(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
 
 fn render_status(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     let status = format!(
-        "{}  updates:{}  q quit  ? help  1/2/3 focus",
-        state.status, state.update_count
+        "{}  updates:{}  pending:{}  q quit  ? help  1/2/3 focus",
+        state.status,
+        state.update_count,
+        state.pending_actions.len()
     );
     frame.render_widget(Paragraph::new(fit_line(status, area.width as usize)), area);
 }

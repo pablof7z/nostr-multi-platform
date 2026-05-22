@@ -2,6 +2,7 @@ use serde_json::Value;
 
 use crate::bridge::NmpEvent;
 pub use crate::runtime::AppRuntime;
+use crate::snapshot::{ActionResult, ActionStageRow, InterestRow, RelayRow, RuntimeMetrics};
 use crate::timeline::TimelineRow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,6 +29,12 @@ pub struct AppState {
     pub blocks: usize,
     pub cards: usize,
     pub rows: Vec<TimelineRow>,
+    pub metrics: RuntimeMetrics,
+    pub relays: Vec<RelayRow>,
+    pub interests: Vec<InterestRow>,
+    pub pending_actions: Vec<String>,
+    pub action_stages: Vec<ActionStageRow>,
+    pub last_action_result: Option<ActionResult>,
     pub selected: usize,
     pub compose: String,
     pub reply_to: Option<String>,
@@ -46,6 +53,12 @@ impl Default for AppState {
             blocks: 0,
             cards: 0,
             rows: Vec::new(),
+            metrics: RuntimeMetrics::default(),
+            relays: Vec::new(),
+            interests: Vec::new(),
+            pending_actions: Vec::new(),
+            action_stages: Vec::new(),
+            last_action_result: None,
             selected: 0,
             compose: String::new(),
             reply_to: None,
@@ -57,6 +70,12 @@ impl Default for AppState {
 impl AppState {
     pub fn apply_nmp_event(&mut self, runtime: &AppRuntime, event: NmpEvent) {
         self.update_count += 1;
+        let shared = crate::snapshot::SharedSnapshot::from_payload(&event.payload);
+        self.metrics = shared.metrics;
+        self.relays = shared.relays;
+        self.interests = shared.interests;
+        self.action_stages = shared.action_stages;
+        let applied_action_result = self.apply_action_results(runtime, shared.action_results);
         if let Some(snapshot) = runtime.chirp_snapshot() {
             self.blocks = snapshot
                 .get("blocks")
@@ -71,11 +90,13 @@ impl AppState {
                 self.selected = self.rows.len().saturating_sub(1);
             }
         }
-        self.status = format!(
-            "received NMP update #{} ({} bytes)",
-            self.update_count,
-            event.payload.len()
-        );
+        if !applied_action_result {
+            self.status = format!(
+                "received NMP update #{} ({} bytes)",
+                self.update_count,
+                event.payload.len()
+            );
+        }
     }
 
     pub fn focus(&mut self, pane: Pane) {
@@ -176,6 +197,41 @@ impl AppState {
         self.compose.clear();
         self.mode = Mode::Normal;
         Some((content, reply_to))
+    }
+
+    pub fn track_action(&mut self, correlation_id: String, label: &str) {
+        if !self.pending_actions.contains(&correlation_id) {
+            self.pending_actions.push(correlation_id.clone());
+        }
+        self.status = format!("{label} accepted ({})", short_id(&correlation_id));
+    }
+
+    fn apply_action_results(&mut self, runtime: &AppRuntime, results: Vec<ActionResult>) -> bool {
+        if results.is_empty() {
+            return false;
+        }
+
+        for result in results {
+            self.pending_actions
+                .retain(|id| id != &result.correlation_id);
+            let _ = runtime.ack_action_stage(&result.correlation_id);
+            let message = match result.error.as_deref() {
+                Some(error) if !error.is_empty() => format!(
+                    "action {} {}: {}",
+                    short_id(&result.correlation_id),
+                    result.status,
+                    error
+                ),
+                _ => format!(
+                    "action {} {}",
+                    short_id(&result.correlation_id),
+                    result.status
+                ),
+            };
+            self.status = message;
+            self.last_action_result = Some(result);
+        }
+        true
     }
 }
 

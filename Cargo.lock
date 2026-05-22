@@ -917,6 +917,7 @@ name = "chirp-repl"
 version = "0.1.0"
 dependencies = [
  "nmp-app-chirp",
+ "nmp-chirp-config",
  "nmp-core",
  "nostr",
  "serde_json",
@@ -931,6 +932,7 @@ dependencies = [
  "crossterm 0.29.0",
  "insta",
  "nmp-app-chirp",
+ "nmp-chirp-config",
  "nmp-core",
  "ratatui",
  "serde_json",
@@ -3748,10 +3750,10 @@ dependencies = [
  "nmp-nip01",
  "nmp-nip17",
  "nmp-nip29",
- "nmp-nip57",
  "nmp-nip59",
  "nmp-signer-broker",
  "nmp-threading",
+ "nmp-wasm",
  "nostr",
  "serde",
  "serde_json",
@@ -3767,6 +3769,10 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "nmp-chirp-config"
+version = "0.1.0"
 
 [[package]]
 name = "nmp-cli"
@@ -3814,6 +3820,7 @@ dependencies = [
  "chrono",
  "heed",
  "mio",
+ "nmp-chirp-config",
  "nmp-nip42-types",
  "nmp-nip59",
  "nmp-nostr-lmdb",
@@ -4078,6 +4085,7 @@ name = "nmp-wasm"
 version = "0.1.0"
 dependencies = [
  "js-sys",
+ "nmp-chirp-config",
  "serde",
  "serde_json",
  "wasm-bindgen",

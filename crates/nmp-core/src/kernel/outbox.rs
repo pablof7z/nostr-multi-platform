@@ -98,9 +98,9 @@ impl Kernel {
 
     /// Resolve a single author's relays for **discovery** fetches (kind:0/3/10002).
     ///
-    /// Cold-start: no cached kind:10002 ⇒ ONLY [`crate::relay::INDEXER_RELAY_URL`]
-    /// (purplepag.es). Unlike `author_write_relays`, the content relay (damus.io)
-    /// is never included — profile-claim REQs must not go there.
+    /// Cold-start: no cached kind:10002 ⇒ ONLY [`crate::relay::INDEXER_RELAY_URL`].
+    /// Unlike `author_write_relays`, the shared content relay is never included
+    /// — profile-claim REQs must not go there.
     /// NIP-65 known: returns the author's declared write relays (they published
     /// kind:0 there, so that is the right place to read it back).
     pub(crate) fn author_indexer_relays(&self, author: &str) -> Vec<String> {
