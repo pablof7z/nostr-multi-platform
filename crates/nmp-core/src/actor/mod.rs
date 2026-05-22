@@ -243,6 +243,22 @@ pub enum ActorCommand {
         target: crate::publish::PublishTarget,
         correlation_id: Option<String>,
     },
+    /// Sign-and-publish an arbitrary event kind for the active account.
+    /// The actor fills `pubkey` from the active signer, stamps `created_at`
+    /// (D7), signs, and routes through the NIP-65 outbox per `target`.
+    /// Dispatched by `PublishAction::PublishRaw` via `dispatch_action`.
+    ///
+    /// Both local-keys and remote (NIP-46) signer accounts are supported —
+    /// the dispatch arm delegates to the existing `publish_unsigned_event` /
+    /// `publish_unsigned_event_to_relays` helpers, which already park bunker
+    /// signs in `PendingSign` (D8 — actor never blocks).
+    PublishRawEvent {
+        kind: u32,
+        tags: Vec<Vec<String>>,
+        content: String,
+        target: crate::publish::PublishTarget,
+        correlation_id: Option<String>,
+    },
     /// T66a publish — sign a kind:0 profile metadata event with the active
     /// account and emit it to the NIP-65 outbox-resolved write relays (D3).
     ///

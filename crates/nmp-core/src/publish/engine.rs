@@ -294,6 +294,14 @@ impl PublishEngine {
             PublishAction::PublishProfile { .. } => Err(PublishEngineError::UnsupportedAction(
                 "PublishProfile is published via ActorCommand::PublishProfile, not the publish engine",
             )),
+            // `PublishRaw` is signed-and-published by the actor's
+            // `ActorCommand::PublishRawEvent` handler (which delegates to the
+            // existing `publish_unsigned_event{,_to_relays}` helpers) — same
+            // rationale as `PublishNote`/`PublishProfile`. Reaching here is a
+            // wiring bug returned as an `Err`, never a panic (D6).
+            PublishAction::PublishRaw { .. } => Err(PublishEngineError::UnsupportedAction(
+                "PublishRaw is published via ActorCommand::PublishRawEvent, not the publish engine",
+            )),
         }
     }
 
