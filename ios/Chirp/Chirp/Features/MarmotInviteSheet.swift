@@ -86,14 +86,16 @@ struct MarmotInviteSheet: View {
     private func sendInvites() {
         busy = true
         errorMessage = nil
-        let result = model.marmot.invite(groupIDHex: group.idHex, inviteeText: inviteeText)
-        busy = false
-        if result.ok {
-            dismiss()
-        } else if let needsDisplay = result.needsDisplay, !needsDisplay.isEmpty {
-            errorMessage = "Waiting for key packages from \(needsDisplay.joined(separator: ", "))."
-        } else {
-            errorMessage = result.error ?? "Could not send invites"
+        Task {
+            let result = await model.marmot.invite(groupIDHex: group.idHex, inviteeText: inviteeText)
+            busy = false
+            if result.ok {
+                dismiss()
+            } else if let needsDisplay = result.needsDisplay, !needsDisplay.isEmpty {
+                errorMessage = "Waiting for key packages from \(needsDisplay.joined(separator: ", "))."
+            } else {
+                errorMessage = result.error ?? "Could not send invites"
+            }
         }
     }
 }

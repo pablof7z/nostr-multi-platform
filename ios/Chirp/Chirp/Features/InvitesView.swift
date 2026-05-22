@@ -31,8 +31,6 @@ struct PendingInviteRow: View {
     let welcome: MarmotPendingWelcome
     @EnvironmentObject private var model: KernelModel
 
-    @State private var busy = false
-
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
@@ -48,9 +46,7 @@ struct PendingInviteRow: View {
 
             HStack(spacing: 12) {
                 Button {
-                    busy = true
-                    _ = model.marmot.acceptWelcome(welcomeIDHex: welcome.idHex)
-                    busy = false
+                    model.marmot.acceptWelcome(welcomeIDHex: welcome.idHex)
                 } label: {
                     Text("Accept")
                         .font(.callout.weight(.semibold))
@@ -61,9 +57,7 @@ struct PendingInviteRow: View {
                 .accessibilityIdentifier("marmot-accept-invite-\(welcome.idHex)")
 
                 Button {
-                    busy = true
-                    _ = model.marmot.declineWelcome(welcomeIDHex: welcome.idHex)
-                    busy = false
+                    model.marmot.declineWelcome(welcomeIDHex: welcome.idHex)
                 } label: {
                     Text("Decline")
                         .font(.callout.weight(.semibold))
@@ -72,8 +66,6 @@ struct PendingInviteRow: View {
                 }
                 .buttonStyle(.bordered)
             }
-            .disabled(busy)
-            .opacity(busy ? 0.5 : 1.0)
         }
         .padding(.vertical, 4)
     }
