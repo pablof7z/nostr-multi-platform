@@ -375,6 +375,10 @@ final class KernelModel: ObservableObject {
 
     func addRelay(url: String, role: String) { kernel.addRelay(url: url, role: role) }
     func removeRelay(url: String) { kernel.removeRelay(url: url) }
+    @discardableResult
+    func publishDmRelayList(relays: [String]) -> DispatchResult {
+        track(kernel.publishDmRelayList(relays: relays))
+    }
     func openTimeline() { kernel.openTimeline() }
     func clearErrorToast() { lastErrorToast = nil }
 

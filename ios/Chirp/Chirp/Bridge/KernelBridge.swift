@@ -379,6 +379,11 @@ final class KernelHandle {
         url.withCString { nmp_app_remove_relay(raw, $0) }
     }
 
+    @discardableResult
+    func publishDmRelayList(relays: [String]) -> DispatchResult {
+        dispatchAction(namespace: "nmp.nip17.publish_relay_list", body: ["relays": relays])
+    }
+
     func openTimeline() {
         nmp_app_open_timeline(raw)
     }
