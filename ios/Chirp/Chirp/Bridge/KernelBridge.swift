@@ -933,6 +933,11 @@ struct SnapshotProjections: Decodable, Equatable {
     // named `zaps` would be the bare string `"zaps"`. The explicit
     // `CodingKeys` case below is therefore mandatory.
     let zaps: ZapsAggregateSnapshot?
+    // NIP-17: the DM relay-list projection registered by `register_dm_runtime`.
+    // Its snapshot key is `"nmp.nip17.dm_relay_list"` — `.convertFromSnakeCase`
+    // maps this to `"nmp.nip17.dmRelayList"`, handled by the explicit
+    // `CodingKeys` case below.
+    let dmRelayList: DmRelayListSnapshot?
     // Diagnostics roll-up — `projections["relay_diagnostics"]`. Built-in
     // kernel-owned projection (§4.5 / §6 anti-pattern #1 cleanup): replaces
     // the §"Where do views live?" violations the three diagnostics screens
@@ -1003,6 +1008,9 @@ struct SnapshotProjections: Decodable, Equatable {
         // value must be the literal dotted kernel key — the synthesized default
         // would be the bare property name `"zaps"` and never match.
         case zaps = "nmp.nip57.zaps"
+        // `.convertFromSnakeCase` maps `"nmp.nip17.dm_relay_list"` →
+        // `"nmp.nip17.dmRelayList"` (split on `_` only, `.` opaque).
+        case dmRelayList = "nmp.nip17.dmRelayList"
         case relayDiagnostics
         case mentionProfiles
         case settingsHub
@@ -1166,6 +1174,23 @@ struct ZapsAggregateSnapshot: Decodable, Equatable {
     let totals: [String: ZapCount]
 
     static let empty = ZapsAggregateSnapshot(totals: [:])
+}
+
+// ─── NIP-17 DM relay-list read model ─────────────────────────────────────
+//
+// Mirror of the `DmRelayListSnapshot` the `DmRuntimeController` serialises
+// under the snapshot key `"nmp.nip17.dm_relay_list"`. Thin-shell rule: pure
+// DTO — the Rust side owns all kind:10050 reconciliation logic.
+
+/// The active account's DM relay list state. `activePubkey` is the active
+/// account's hex pubkey (nil when no account is loaded). `readRelayUrls`
+/// is the subset of configured relay URLs eligible for DM reads.
+///
+/// No explicit `CodingKeys`: `.convertFromSnakeCase` maps `"active_pubkey"` →
+/// `activePubkey` and `"read_relay_urls"` → `readRelayUrls` automatically.
+struct DmRelayListSnapshot: Decodable, Equatable {
+    let activePubkey: String?
+    let readRelayUrls: [String]
 }
 
 // ─── NIP-17 DM inbox read model ───────────────────────────────────────────
