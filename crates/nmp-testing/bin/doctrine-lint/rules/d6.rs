@@ -71,7 +71,7 @@ pub fn file_is_test_only(path: &Path) -> bool {
         }
     }
     let s = path.to_string_lossy().replace('\\', "/");
-    s.contains("/tests/")
+    s.contains("/tests/") || s.contains("/examples/")
 }
 
 const BANNED_PATTERNS: &[(&str, &str)] = &[
@@ -295,6 +295,8 @@ mod tests {
         assert!(file_is_test_only(Path::new("foo/bar/tests_scenario.rs")));
         // `/tests/` directory.
         assert!(file_is_test_only(Path::new("crates/x/tests/integration.rs")));
+        // `/examples/` directory — standalone binary examples use `.expect()` by idiom.
+        assert!(file_is_test_only(Path::new("crates/nmp-core/examples/outbox_perf/main.rs")));
         // Negatives: production files must NOT be exempted.
         assert!(!file_is_test_only(Path::new(
             "crates/nmp-core/src/ffi/capability.rs"
