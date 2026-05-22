@@ -71,7 +71,22 @@ pub fn file_is_test_only(path: &Path) -> bool {
         }
     }
     let s = path.to_string_lossy().replace('\\', "/");
-    s.contains("/tests/") || s.contains("/examples/")
+    if s.contains("/tests/") || s.contains("/examples/") {
+        return true;
+    }
+    // Test-only crate source: `nmp-testing` (test harnesses, stress binaries)
+    // and `nmp-content-fixtures` (fixture builders) are never linked into
+    // production artifacts. Using `.expect()` there is appropriate.
+    // The doctrine-lint tool's own source contains banned patterns as string
+    // constants — exempt non-fixture paths to avoid meta-false-positives.
+    let in_test_infra = (s.contains("/nmp-testing/") || s.starts_with("crates/nmp-testing/"))
+        && !s.contains("/doctrine-lint/fixtures/");
+    if in_test_infra {
+        return true;
+    }
+    let in_content_fixtures = s.contains("/nmp-content-fixtures/")
+        || s.starts_with("crates/nmp-content-fixtures/");
+    in_content_fixtures
 }
 
 const BANNED_PATTERNS: &[(&str, &str)] = &[
@@ -311,6 +326,29 @@ mod tests {
         // `support.rs` with no `_` separator is not the `*_support.rs`
         // convention — left un-exempt (production code is the safe default).
         assert!(!file_is_test_only(Path::new("crates/x/src/support.rs")));
+    }
+
+    #[test]
+    fn exempts_test_infra_crates() {
+        // `nmp-testing` and `nmp-content-fixtures` are never linked into
+        // production artifacts — using `.expect()` in their source is fine.
+        assert!(file_is_test_only(Path::new(
+            "crates/nmp-testing/src/store_harness.rs"
+        )));
+        assert!(file_is_test_only(Path::new(
+            "crates/nmp-testing/bin/ffi-stress/s4_reconciler_backpressure.rs"
+        )));
+        assert!(file_is_test_only(Path::new(
+            "crates/nmp-testing/bin/doctrine-lint/rules/d6.rs"
+        )));
+        assert!(file_is_test_only(Path::new(
+            "crates/nmp-content-fixtures/src/identities.rs"
+        )));
+        // Fixtures in doctrine-lint ARE intentional negative examples and must
+        // NOT be exempted, otherwise the linter's own conformance tests break.
+        assert!(!file_is_test_only(Path::new(
+            "crates/nmp-testing/bin/doctrine-lint/fixtures/d6/violates_panic.rs"
+        )));
     }
 
     #[test]

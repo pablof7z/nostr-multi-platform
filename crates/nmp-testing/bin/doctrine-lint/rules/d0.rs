@@ -74,6 +74,16 @@ pub fn file_is_exempt(path: &Path) -> bool {
     if in_non_core_crate_src {
         return true;
     }
+    // The doctrine-lint tool's own rule source files contain banned tokens as
+    // string constants inside BANNED_TOKENS arrays — scanning them produces
+    // 100+ meta-false-positives on `--path crates/` broad sweeps. The fixture
+    // sub-tree (`/fixtures/`) is intentionally NOT exempted so the linter's
+    // own conformance tests remain effective.
+    let in_doctrine_lint_source = (s.contains("/doctrine-lint/") || s.starts_with("doctrine-lint/"))
+        && !s.contains("/fixtures/");
+    if in_doctrine_lint_source {
+        return true;
+    }
     EXEMPT_FILE_SUFFIXES.iter().any(|suf| s.ends_with(suf))
 }
 
@@ -198,6 +208,26 @@ mod tests {
         )));
         assert!(file_is_exempt(&std::path::PathBuf::from(
             "crates/chirp-repl/tests/actions_test.rs"
+        )));
+    }
+
+    #[test]
+    fn exempts_doctrine_lint_source_not_fixtures() {
+        // The doctrine-lint tool's own rule files contain banned tokens as
+        // string constants (the BANNED_TOKENS array itself). Exempting them
+        // prevents meta-false-positives on broad `--path crates/` sweeps.
+        assert!(file_is_exempt(&std::path::PathBuf::from(
+            "crates/nmp-testing/bin/doctrine-lint/rules/d0.rs"
+        )));
+        assert!(file_is_exempt(&std::path::PathBuf::from(
+            "crates/nmp-testing/bin/doctrine-lint/rules/d13.rs"
+        )));
+        assert!(file_is_exempt(&std::path::PathBuf::from(
+            "crates/nmp-testing/bin/doctrine-lint/tests.rs"
+        )));
+        // BUT fixtures are intentional negative test cases and must NOT be exempted.
+        assert!(!file_is_exempt(&std::path::PathBuf::from(
+            "crates/nmp-testing/bin/doctrine-lint/fixtures/d0/violates_group_id.rs"
         )));
     }
 

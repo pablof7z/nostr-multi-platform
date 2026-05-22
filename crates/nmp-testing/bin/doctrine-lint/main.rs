@@ -188,9 +188,14 @@ fn scan_one_file(
     let d13_part_a_in_scope = {
         let default = d13::file_in_part_a_default(path);
         let extra = d13_file_extra_in_scope(path, d13_extra_scopes);
-        let marker = std::fs::read_to_string(path)
-            .map(|s| s.contains(d13::PART_A_MARKER))
-            .unwrap_or(false);
+        // The marker-based opt-in reads the file body and fires when it
+        // contains `PART_A_MARKER`. Exempt doctrine-lint's own rule source
+        // (which contains the marker string in doc comments) to prevent
+        // meta-false-positives on broad `--path crates/` sweeps.
+        let marker = !is_doctrine_lint_source(path)
+            && std::fs::read_to_string(path)
+                .map(|s| s.contains(d13::PART_A_MARKER))
+                .unwrap_or(false);
         default || extra || marker
     };
     let d13_part_b_in_scope = d13::file_in_part_b_scope(path);
@@ -357,7 +362,9 @@ fn scan_one_file(
         // D11 — one door per publish capability. Every user/app-authored
         // publish-engine event goes through `nmp_app_dispatch_action`;
         // bespoke event-producing `nmp_app_*` FFI must stay deleted.
-        if !workspace_d8 {
+        // Exempt doctrine-lint's own rule source (contains banned patterns
+        // as string constants → meta-false-positives on broad sweeps).
+        if !workspace_d8 && !is_doctrine_lint_source(path) {
             for (col, msg, suggested) in d11::check(
                 sl.text,
                 sl.is_comment,
@@ -630,6 +637,17 @@ fn d16_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
 fn d13_file_extra_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
     extra_scopes.iter().any(|frag| s.contains(frag.as_str()))
+}
+
+/// True iff `path` is part of doctrine-lint's own source tree but NOT a
+/// fixture file (fixtures are intentional negative test cases that must
+/// remain scannable). Rule files in `bin/doctrine-lint/rules/` and the tool's
+/// `tests.rs` contain banned tokens as string constants; scanning them on
+/// `--path crates/` produces meta-false-positives that obscure real findings.
+fn is_doctrine_lint_source(path: &Path) -> bool {
+    let s = path.to_string_lossy().replace('\\', "/");
+    (s.contains("/doctrine-lint/") || s.starts_with("doctrine-lint/"))
+        && !s.contains("/fixtures/")
 }
 
 // ────────────────────────────────────────────────────────────────────────────
