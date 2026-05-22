@@ -7,8 +7,8 @@
 //!
 //! Implements the design recommendation in §3: pure decoder → immutable
 //! [`CommentRecord`] (with `CommentPointer` root + parent), consume-self
-//! [`CommentBuilder`], `CommentsView` reactive read projection, and
-//! `CommentsDomain` reverse-index for `(parent_event_id → comment_ids)`.
+//! [`CommentBuilder`], `CommentsView` reactive read projection, and a
+//! reverse-index for `(parent_event_id → comment_ids)` (see [`domain`]).
 
 pub mod build;
 pub mod decode;
@@ -19,7 +19,7 @@ pub mod view;
 
 pub use build::{Comment, CommentBuildError, CommentBuilder};
 pub use decode::{try_from_event, try_from_kernel_event, CommentPointer, CommentRecord};
-pub use domain::{decode_and_route, list_by_parent, CommentsDomain, NAMESPACE};
+pub use domain::{decode_and_route, list_by_parent, NAMESPACE};
 pub use kinds::KIND_COMMENT;
 pub use meta_timeline::{
     ModularTimelineDelta, ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState,
@@ -27,11 +27,10 @@ pub use meta_timeline::{
 };
 pub use view::{CommentsDelta, CommentsPayload, CommentsSpec, CommentsState, CommentsView};
 
-// NOTE: `nmp-nip22` exposes its `DomainModule` impl and its view types
-// (`CommentsDomain`, `CommentsView`, `Nip22ModularTimelineView`) as public
-// types. The view types are plain types whose `open` / `on_event_*` /
-// `snapshot` inherent methods are reached via static dispatch — the
-// `ViewModule` trait and the former `register(&mut ModuleRegistry)` entry
-// point were both deleted because no kernel-side registry ever drove them.
-// The live extension path is `KernelEventObserver` — see `nmp_core::substrate`
-// module docs.
+// NOTE: `nmp-nip22` exposes its view types (`CommentsView`,
+// `Nip22ModularTimelineView`) as plain public types whose `open` /
+// `on_event_*` / `snapshot` inherent methods are reached via static
+// dispatch — the `ViewModule` trait and the former
+// `register(&mut ModuleRegistry)` entry point were both deleted because no
+// kernel-side registry ever drove them. The live extension path is
+// `KernelEventObserver` — see `nmp_core::substrate` module docs.

@@ -84,8 +84,9 @@ pub fn classify(kind: u32, has_h_tag: bool) -> KindClass {
     }
 }
 
-/// Sub-class of `KnownGroupEvent` — finer-grained dispatch for known h-tagged
-/// kinds, used by the ingest router to pick the owning `DomainModule`.
+/// Sub-class of `KnownGroupEvent` — finer-grained dispatch for known
+/// h-tagged kinds, used by the ingest router to pick the owning per-kind
+/// handler.
 ///
 /// `Kind11Discussion` vs `Kind11Artifact` requires inspecting tags for the
 /// presence of `["t", "discussion"]` per `kinds.md` §2.1.

@@ -39,8 +39,8 @@
 //! ## Two-layer architecture
 //!
 //! 1. **Substrate module layer** ([`domain`], [`view`]) — mirrors `nmp-nip29`.
-//!    `DomainModule` impls plus plain view types, exported as public types.
-//!    These impls carry NO MDK types — they satisfy the kernel-boundary grep.
+//!    Plain record + view types, exported as public types. These shapes carry
+//!    NO MDK types — they satisfy the kernel-boundary grep.
 //!    All Marmot capabilities (key-package publish, group-scoped ops:
 //!    `CreateGroup`, `InviteMember`, `SendMessage`, etc.) are covered by the
 //!    bespoke `nmp_app_chirp_marmot_dispatch` C cluster (ADR-0025), not the
@@ -86,8 +86,8 @@ pub mod mls_types {
     pub use mdk_core::prelude::{GroupId, MessageProcessingResult, NostrGroupConfigData};
 }
 
-// NOTE: `nmp-marmot` exposes its 4 `DomainModule` impls and its 4 view types
-// as public types under `domain` and `view`. The view types are plain types
+// NOTE: `nmp-marmot` exposes its 4 record types and its 4 view types as
+// public types under `domain` and `view`. The view types are plain types
 // whose `open` / `on_event_*` / `snapshot` inherent methods are reached via
 // static dispatch — the `ViewModule` trait and the former
 // `register(&mut ModuleRegistry)` entry point were both deleted because no

@@ -1,4 +1,4 @@
-//! `ReactionsDomain` — `DomainModule` registration for kinds 7 / 6 / 16.
+//! Reverse-index storage for NIP-25 reactions + NIP-18 reposts (kinds 7 / 6 / 16).
 //!
 //! Per `docs/design/kind-wrappers.md` §3.3 + §6: the kernel does not know
 //! `kind 7 == reaction` (D0). `decode_and_route` is the per-event ingest entry
@@ -20,31 +20,11 @@
 
 use nmp_core::planner::NaddrCoord;
 use nmp_core::store::{DomainHandle, StoreError, StoredEvent};
-use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 
 use crate::decode::{try_from_event, ReactionTarget, ReactionKind, ReactionRecord};
 
 /// Domain-store namespace.
 pub const NAMESPACE: &str = "nmp.reactions";
-
-/// `DomainModule` impl for NIP-25 reactions + NIP-18 reposts.
-pub struct ReactionsDomain;
-
-impl DomainModule for ReactionsDomain {
-    const NAMESPACE: &'static str = NAMESPACE;
-    const SCHEMA_VERSION: u32 = 1;
-
-    fn migrations() -> Vec<DomainMigration> {
-        Vec::new()
-    }
-
-    fn indexes() -> Vec<DomainIndex> {
-        // Reverse indexes are materialised via the composite-key encoding in
-        // `keys::*` (ADR-0001) and queried with `DomainHandle::scan_prefix`;
-        // no backend-maintained secondary indexes are needed.
-        Vec::new()
-    }
-}
 
 /// Composite key encodings inside the `nmp.reactions` namespace.
 ///

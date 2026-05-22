@@ -1,5 +1,5 @@
-//! `RepliesDomain` — `DomainModule` registration for kind:1 with a non-empty
-//! NIP-10 reply marker. Skips notes that are thread roots (no reply pointer).
+//! Domain-store reverse indexes for NIP-01 kind:1 replies (those carrying a
+//! non-empty NIP-10 reply marker — thread roots are skipped).
 //!
 //! Per `docs/design/kind-wrappers.md` §6, callers (apps or
 //! `KernelEventObserver` impls) dispatch kind:1 events to `decode_and_route`;
@@ -7,28 +7,11 @@
 //! read path can enumerate direct replies without re-scanning the event store.
 
 use nmp_core::store::{DomainHandle, StoreError, StoredEvent};
-use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 
 use crate::decode::try_from_event;
 
 /// Domain-store namespace.
 pub const NAMESPACE: &str = "nmp.nip01.replies";
-
-/// `DomainModule` impl for NIP-01 kind-1 replies.
-pub struct RepliesDomain;
-
-impl DomainModule for RepliesDomain {
-    const NAMESPACE: &'static str = "nmp.nip01.replies";
-    const SCHEMA_VERSION: u32 = 1;
-
-    fn migrations() -> Vec<DomainMigration> {
-        Vec::new()
-    }
-
-    fn indexes() -> Vec<DomainIndex> {
-        Vec::new()
-    }
-}
 
 pub mod keys {
     //! Composite-key encoding for the `nmp.nip01.replies` namespace. The
@@ -95,11 +78,6 @@ pub fn list_by_parent(handle: &DomainHandle, parent_id: &str) -> Result<Vec<Stri
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn module_namespace_matches_constant() {
-        assert_eq!(<RepliesDomain as DomainModule>::NAMESPACE, NAMESPACE);
-    }
 
     #[test]
     fn keys_by_parent_is_prefixed_by_by_parent_prefix() {

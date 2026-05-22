@@ -1,4 +1,4 @@
-//! `ArticlesDomain` — `DomainModule` registration for kind:30023.
+//! Domain-store reverse indexes for NIP-23 articles (kind:30023).
 //!
 //! Per `docs/design/kind-wrappers.md` §3.3 + §6: the kernel does not know
 //! `kind 30023 == article` (D0). The `decode_and_route` free function is the
@@ -11,34 +11,11 @@
 //! indexes documented below — never re-decode.
 
 use nmp_core::store::{DomainHandle, StoreError, StoredEvent};
-use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 
 use crate::decode::{try_from_event, ArticleRecord};
 
 /// Domain-store namespace per the task brief: `nmp.nip23.articles`.
 pub const NAMESPACE: &str = "nmp.nip23.articles";
-
-/// `DomainModule` impl for NIP-23 articles.
-pub struct ArticlesDomain;
-
-impl DomainModule for ArticlesDomain {
-    const NAMESPACE: &'static str = NAMESPACE;
-    const SCHEMA_VERSION: u32 = 1;
-
-    fn migrations() -> Vec<DomainMigration> {
-        Vec::new()
-    }
-
-    fn indexes() -> Vec<DomainIndex> {
-        // Reverse indexes (by_author / by_d_tag) are materialised via the
-        // composite-key encoding in `keys::*` — see `decode_and_route`.
-        // The `DomainIndex` registration surface is reserved for secondary
-        // indexes the storage backend itself maintains; this crate writes
-        // its own composite keys per ADR-0001 and queries them via
-        // `DomainHandle::scan_prefix`. No backend index registrations needed.
-        Vec::new()
-    }
-}
 
 /// Key prefixes inside the `nmp.nip23.articles` namespace. All keys are
 /// length-prefixed where the prefix is variable so `scan_prefix` cannot bleed

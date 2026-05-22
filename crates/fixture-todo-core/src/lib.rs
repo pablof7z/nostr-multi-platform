@@ -164,28 +164,6 @@ pub struct TodoRecord {
     pub completed: bool,
 }
 
-pub struct TodoDomainModule;
-
-impl DomainModule for TodoDomainModule {
-    const NAMESPACE: &'static str = "fixture.todo.domain";
-    const SCHEMA_VERSION: u32 = 1;
-
-    fn migrations() -> Vec<DomainMigration> {
-        Vec::new()
-    }
-
-    fn indexes() -> Vec<DomainIndex> {
-        vec![DomainIndex {
-            name: "by_completed",
-            key_fn: |bytes| {
-                serde_json::from_slice::<TodoRecord>(bytes)
-                    .ok()
-                    .map(|todo| todo.completed.to_string().into_bytes())
-            },
-        }]
-    }
-}
-
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum Action {
     Add { id: String, title: String },

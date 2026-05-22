@@ -1,5 +1,5 @@
 //! Substrate — the per-protocol extension contracts (`ActionModule`,
-//! `DomainModule`, `CapabilityModule`).
+//! `CapabilityModule`).
 //!
 //! # Extension mechanism: v1 vs v2
 //!
@@ -50,7 +50,7 @@ pub use action::{
     ActionContext, ActionId, ActionModule, ActionRejection, ActionResult,
 };
 pub use capability::{CapabilityEnvelope, CapabilityModule, CapabilityRequest};
-pub use domain::{DomainIndex, DomainMigration, DomainModule, MigrationTx};
+pub use domain::{DomainMigration, MigrationTx};
 pub use identity::{SignedEvent, SigningError, UnsignedEvent};
 pub use keyring::{
     KeyringCapability, KeyringIdentityWiring, KeyringRequest, KeyringResult, KeyringStatus,
