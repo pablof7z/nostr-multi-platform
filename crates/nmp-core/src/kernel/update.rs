@@ -20,13 +20,12 @@ impl Kernel {
         let emit_started = Instant::now();
         // Wall-clock stamp for the actor-thread liveness heartbeat. `Instant`
         // above is monotonic and cannot be compared to a shell-side clock, so
-        // a separate `SystemTime` reading is required. `unwrap_or_default()`
-        // (not `unwrap()`) keeps this off the panic path (D6: no panic at the
-        // public boundary) — a pre-1970 clock simply yields `0`.
-        let last_tick_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64;
+        // a separate wall-clock reading is required. D7 / D9: the kernel owns
+        // time — route through the injected `Clock` via `now_ms()` so
+        // deterministic replay and tests observe the same `last_tick_ms` the
+        // production tick emitted. `now_ms()` already collapses a pre-epoch
+        // clock to `0` (D6: no panic at the public boundary).
+        let last_tick_ms = self.now_ms();
         self.rev = self.rev.saturating_add(1);
         self.update_sequence = self.update_sequence.saturating_add(1);
 
