@@ -101,7 +101,7 @@ pub enum PublishAction {
     /// through the NIP-65 outbox. Like `PublishNote`, the event is
     /// *not* pre-signed: the actor stamps `created_at` and signs. This is the
     /// `ActionModule`-native path for hosts that need to publish kind:0
-    /// metadata events; PR-F deleted the prior bespoke
+    /// metadata events; the one-door rule deleted the prior bespoke
     /// `nmp_app_publish_unsigned_event` FFI symbol, so this `PublishAction`
     /// variant + `nmp_app_dispatch_action("nmp.publish", ...)` is the only
     /// door for it.
@@ -119,7 +119,7 @@ pub enum PublishAction {
     ///
     /// # Why this exists
     ///
-    /// `nmp_app_publish_unsigned_event` was deleted (PR-F) to enforce the
+    /// `nmp_app_publish_unsigned_event` was deleted to enforce the
     /// dispatch_action seam. Without `PublishRaw`, every new event kind
     /// requires a Rust `ActionModule` impl — a 2-week barrier for app
     /// developers. `PublishRaw` restores the generic publish capability
@@ -198,7 +198,7 @@ impl ActionModule for PublishModule {
         }
     }
 
-    /// PR-G: publish actions settle asynchronously — the actor signs,
+    /// Publish actions settle asynchronously — the actor signs,
     /// hands the event to the publish engine, and the terminal verdict
     /// arrives through `projections["action_results"]` on a later tick.
     /// Per the trait contract this module records `Requested` →

@@ -28,7 +28,7 @@ pub use app::{
 };
 pub use bunker_hook::{register_bunker_hook, BunkerHookFn, BunkerHookRequest};
 pub use ffi::NmpApp;
-// PR-I: `RelayEditRowList` / `RelayEditRowsSlot` are the typed-wrapper
+// `RelayEditRowList` / `RelayEditRowsSlot` are the typed-wrapper
 // counterparts to the bare `Vec<RelayEditRow>` / `Arc<Mutex<Vec<RelayEditRow>>>`
 // they replaced. Per-app crates (e.g. `nmp-app-chirp`) consume the slot via
 // `NmpApp::relay_edit_rows_handle()` and iterate via `guard.as_slice()`, so
@@ -56,7 +56,7 @@ pub use actor::NOSTRCONNECT_DEFAULT_RELAY_URL;
 // Rust-side crate) can call them directly via the Rust rlib dependency,
 // without an `extern "C"` block. The symbols remain `#[no_mangle]` on the
 // ffi:: side and are still reachable from Swift/C unchanged.
-// PR-F (one door per capability): `nmp_app_publish_signed_event`,
+// One door per capability: `nmp_app_publish_signed_event`,
 // `nmp_app_publish_signed_event_to`, and `nmp_app_publish_unsigned_event`
 // were deleted — every user/app-authored event-producing publish now goes
 // through `nmp_app_dispatch_action` under the `nmp.publish` namespace.
@@ -105,7 +105,7 @@ pub use ffi::{
     nmp_app_open_thread,
     nmp_app_open_timeline,
     nmp_app_open_uri,
-    // PR-F deleted `nmp_app_publish_signed_event{,_to}` /
+    // The one-door rule deleted `nmp_app_publish_signed_event{,_to}` /
     // `nmp_app_publish_unsigned_event` — every event-producing publish now
     // goes through `nmp_app_dispatch_action` (`nmp.publish`). The Android
     // JNI shim's matching call sites are removed alongside.

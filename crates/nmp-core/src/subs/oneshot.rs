@@ -17,7 +17,7 @@
 //! request → completion bookkeeping the actor polls. No parallel OneShot
 //! tracker exists.
 //!
-//! ## Delivery model (PD-021)
+//! ## Delivery model
 //!
 //! `nmp-core` has no async runtime and the kernel actor is synchronous, so
 //! delivery is **poll-based**, not callback/future:

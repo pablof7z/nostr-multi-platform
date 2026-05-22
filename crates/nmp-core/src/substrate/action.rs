@@ -3,8 +3,8 @@
 //!
 //! # Theme A discriminator — one door per publish capability
 //!
-//! PR-F (one door per capability) codified the rule that already governed
-//! the FFI surface after the bespoke `nmp_app_publish_signed_event{,_to}` /
+//! The one-door-per-capability rule codifies the governance that emerged
+//! when the bespoke `nmp_app_publish_signed_event{,_to}` /
 //! `nmp_app_publish_unsigned_event` symbols were deleted:
 //!
 //! - **Generic user/app-authored publish-engine events go through
@@ -85,7 +85,7 @@ pub trait ActionModule: Send + Sync + 'static {
         None
     }
 
-    /// PR-G — declare that this module's actions settle ASYNCHRONOUSLY (i.e.
+    /// Declare that this module's actions settle ASYNCHRONOUSLY (i.e.
     /// the dispatch return value does NOT yet carry the terminal outcome;
     /// the actor signs / publishes / awaits an ack / etc., and the result
     /// arrives later through the snapshot path).
@@ -117,7 +117,7 @@ pub trait ActionModule: Send + Sync + 'static {
     /// precedence when both are present.
     ///
     /// Thread `correlation_id` onto any `ActorCommand` whose terminal verdict
-    /// must report the dispatched id (the spinner round-trip — see PR-A).
+    /// must report the dispatched id (the spinner round-trip).
     fn execute(
         action: Self::Action,
         correlation_id: &str,

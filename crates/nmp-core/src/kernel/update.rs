@@ -122,7 +122,7 @@ impl Kernel {
                 last_event_to_emit_ms,
                 max_event_to_emit_ms: self.max_event_to_emit_ms,
                 max_events_per_update: self.max_events_per_update,
-                // T114b — per-dispatch retention audit visibility (PD-021 line-11).
+                // T114b — per-dispatch retention audit visibility.
                 dispatch_drops_total: self.dispatch_drops_total(),
                 claim_drops_total: self.claim_drops_total(),
             },
@@ -293,7 +293,7 @@ impl Kernel {
         if !action_results.is_null() {
             projections.insert("action_results".to_string(), action_results);
         }
-        // PR-G: snapshot mirror of every in-flight action's lifecycle stages,
+        // Snapshot mirror of every in-flight action's lifecycle stages,
         // keyed by `correlation_id`. Unlike `action_results` (drain on emit),
         // `action_stages` is a *copy* — the same correlation_id reappears on
         // every tick until the host calls `nmp_app_ack_action_stage`. The host
@@ -319,7 +319,7 @@ impl Kernel {
             "active_account".to_string(),
             serde_json::to_value(active_account).unwrap_or(serde_json::Value::Null),
         );
-        // PR-I — typed relay projections. The kernel-owned `relay_edit_rows`
+        // Typed relay projections. The kernel-owned `relay_edit_rows`
         // field is the source of truth; the `indexer_set` and `write_set`
         // derivations are role-filtered views over the same rows. Three
         // projection keys ride alongside `accounts` / `active_account`

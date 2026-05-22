@@ -3,7 +3,7 @@
 //! Rust-side `KeyringCapability` contract — the store/retrieve/delete-by-`account_id`
 //! vocabulary the host keychain implementation speaks. Shell implementations
 //! were already built against the *generic* `CapabilityRequest`/`CapabilityEnvelope`
-//! before this typed contract existed (PD-019); the JSON shapes here are
+//! before this typed contract existed; the JSON shapes here are
 //! byte-compatible with those `KeyringRequest`/`KeyringResult` types.
 //!
 //! Doctrine (`docs/product-spec/doctrine.md`):

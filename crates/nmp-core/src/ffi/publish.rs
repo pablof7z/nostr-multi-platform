@@ -1,5 +1,5 @@
 //! Publish-lifecycle control plane — `retry` / `cancel` for a publish
-//! handle. PR-F (one door per capability) DELETED the bespoke
+//! handle. The one-door-per-capability rule DELETED the bespoke
 //! event-producing FFI surface that used to live here
 //! (`nmp_app_publish_unsigned_event`, `nmp_app_publish_signed_event`,
 //! `nmp_app_publish_signed_event_to`). Their job — generic user / app
@@ -23,7 +23,7 @@
 //! These reuse the parent module's validated-argument helpers
 //! (`app_ref`, `c_string_argument`) and the shared `NmpApp` handle.
 //!
-//! ## Theme A discriminator (PR-F)
+//! ## Theme A discriminator
 //!
 //! See `crates/nmp-core/src/substrate/action.rs` for the codified rule:
 //! generic user/app-authored publish-engine events go through

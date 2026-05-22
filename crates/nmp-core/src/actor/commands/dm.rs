@@ -87,9 +87,8 @@
 //! built, so `publish_signed_event` is never called with an empty relay slice
 //! and can never fall through to `PublishTarget::Auto`. This is the call-site
 //! (NIP-17) twin of the `nmp-marmot::projection::publish::publish_to` Marmot
-//! guard PR-K added at the Marmot bridge — every kind:1059 publish surface
-//! refuses to substitute generic Content relays for a recipient's DM-inbox
-//! pin.
+//! guard at the Marmot bridge — every kind:1059 publish surface refuses to
+//! substitute generic Content relays for a recipient's DM-inbox pin.
 
 use nostr::{nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK, EventBuilder, Kind, PublicKey, Tag, Timestamp};
 
@@ -321,8 +320,7 @@ pub(crate) fn send_gift_wrapped_dm(
         // by the time we reach this call `relays` is provably non-empty. That
         // makes the `relays.is_empty()` → `PublishTarget::Auto` fall-through
         // in `publish_signed_event` structurally unreachable for kind:1059 —
-        // the D10 leak the PR-K Marmot guard exists to prevent cannot fire
-        // here.
+        // the D10 leak the Marmot guard exists to prevent cannot fire here.
         //
         // `correlation_id` (when the send originated from `dispatch_action`)
         // is threaded into the publish engine's `correlation_id_override` for
@@ -387,7 +385,7 @@ impl DmRelayNotReady {
 /// D10 fail-closed gate — resolve a receiver's kind:10050 DM-inbox relays or
 /// return a [`DmRelayNotReady`] error.
 ///
-/// This is the call-site (NIP-17) twin of the Marmot `publish_to` PR-K guard:
+/// This is the call-site (NIP-17) twin of the Marmot `publish_to` guard:
 /// every kind:1059 publish surface refuses to substitute generic Content
 /// relays for a recipient's DM-inbox pin. By rejecting the `None` branch
 /// before any gift-wrap is built, `publish_signed_event` is never called with

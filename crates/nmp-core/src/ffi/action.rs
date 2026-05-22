@@ -16,7 +16,7 @@
 //! * For `nmp.publish` / [`PublishAction::Publish`], the validated signed
 //!   event is converted to a [`crate::store::RawEvent`] and handed to the
 //!   actor via [`ActorCommand::PublishSignedEvent`] — the same actor command
-//!   the (PR-F-deleted) bespoke `nmp_app_publish_signed_event*` FFI symbols
+//!   the (now-deleted) bespoke `nmp_app_publish_signed_event*` FFI symbols
 //!   used to use, plus the workspace-internal
 //!   [`crate::NmpApp::publish_signed_explicit`] Marmot seam. The actor
 //!   re-verifies the Schnorr signature + id hash (D4 — only the actor loop
@@ -113,7 +113,7 @@ pub extern "C" fn nmp_app_dispatch_action(
         .into_raw()
 }
 
-/// PR-G — host acknowledgement of a `correlation_id` in the `action_stages`
+/// Host acknowledgement of a `correlation_id` in the `action_stages`
 /// snapshot mirror.
 ///
 /// The kernel projects `action_stages` (a `correlation_id → [StageEntry...]`
@@ -333,9 +333,8 @@ fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str
                     format!(r#"{{"correlation_id":{}}}"#, json_string(&correlation_id))
                 }
                 Err(msg) => {
-                    // PR-G2 — codex MEDIUM finding: an executor that panicked
-                    // or returned `Err` *after* the registry minted a
-                    // correlation_id orphans that id under
+                    // An executor that panicked or returned `Err` *after* the
+                    // registry minted a correlation_id orphans that id under
                     // `MAX_TRACKED_CORRELATIONS` eviction. The host received
                     // the id (in the error envelope below) but the kernel
                     // never produced an `action_stages` entry to ACK.
@@ -344,9 +343,9 @@ fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str
                     // terminal `Failed { reason }` stage under the same
                     // correlation_id. The host then sees the terminal on its
                     // very next snapshot tick and ACKs through the normal
-                    // PR-G lifecycle. This is fire-and-forget — the send is
-                    // non-blocking (D8) and a disconnected actor channel is
-                    // a benign no-op (D6).
+                    // action-stage lifecycle. This is fire-and-forget — the
+                    // send is non-blocking (D8) and a disconnected actor
+                    // channel is a benign no-op (D6).
                     app.send_cmd(crate::actor::ActorCommand::RecordActionFailure {
                         correlation_id: correlation_id.clone(),
                         reason: msg.clone(),
@@ -401,7 +400,7 @@ fn error_json(msg: &str) -> String {
     format!(r#"{{"error":{}}}"#, json_string(msg))
 }
 
-/// PR-G2 — `{"correlation_id":"…","error":"…"}` envelope for the post-mint
+/// `{"correlation_id":"…","error":"…"}` envelope for the post-mint
 /// failure path. The correlation_id was already minted by
 /// [`ActionRegistry::start`] and a `Failed` terminal stage has been queued
 /// to the actor; including the id here lets the host drive the ACK
@@ -496,7 +495,7 @@ mod tests {
         );
     }
 
-    // ─── PR-G: nmp_app_ack_action_stage FFI defensive contract ─────────
+    // ─── nmp_app_ack_action_stage FFI defensive contract ──────────────
     //
     // The ack symbol is fire-and-forget — it sends `AckActionStage` on the
     // actor channel and returns. There is no return envelope to assert. The
@@ -1047,7 +1046,7 @@ mod tests {
         nmp_app_free(app);
     }
 
-    /// PR-G2 — codex MEDIUM "send-then-panic orphan" finding.
+    /// "send-then-panic orphan" finding.
     ///
     /// An executor that panics (or returns `Err`) *after* the registry minted
     /// the correlation_id used to orphan the entry under

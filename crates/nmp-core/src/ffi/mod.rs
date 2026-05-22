@@ -124,7 +124,7 @@ pub use identity::{
 };
 
 // test-support: expose the publish-lifecycle control-plane FFI entry-points
-// (retry/cancel). PR-F (one door per capability) deleted the bespoke
+// (retry/cancel). The one-door-per-capability rule deleted the bespoke
 // event-producing siblings `nmp_app_publish_signed_event` /
 // `nmp_app_publish_signed_event_to` / `nmp_app_publish_unsigned_event` —
 // those are the deleted door. Retry/cancel address a publish *handle* (not
@@ -141,9 +141,10 @@ pub use identity::{
     nmp_app_add_relay, nmp_app_create_new_account, nmp_app_open_timeline, nmp_app_remove_account,
     nmp_app_remove_relay, nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_switch_active,
 };
-// android-ffi: publish-lifecycle control-plane FFI (retry/cancel). PR-F
-// deleted the bespoke event-producing siblings from this module; what
-// remains is the narrow control surface the action seam does not carry.
+// android-ffi: publish-lifecycle control-plane FFI (retry/cancel). The
+// one-door-per-capability rule deleted the bespoke event-producing siblings
+// from this module; what remains is the narrow control surface the action
+// seam does not carry.
 #[cfg(feature = "android-ffi")]
 pub use publish::{nmp_app_cancel_publish, nmp_app_retry_publish};
 // T118 / G3 — android-ffi must also reach the lifecycle symbols; without this
@@ -280,7 +281,7 @@ pub struct NmpApp {
     /// onto the kernel so external Rust callers (e.g. per-app crates) can read
     /// the user's current relay list without crossing FFI.
     ///
-    /// PR-I: the slot is now a typed [`crate::kernel::RelayEditRowsSlot`]
+    /// The slot is a typed [`crate::kernel::RelayEditRowsSlot`]
     /// (`Arc<Mutex<RelayEditRowList>>`) — D14 forbids new bare
     /// `Arc<Mutex<Vec<…>>>` fields on `NmpApp` and the typed wrapper makes
     /// the slot's purpose visible at the declaration site.
@@ -406,7 +407,7 @@ pub struct NmpApp {
     /// original_correlation_id)`: a dedup hit returns the original id in the
     /// `{"correlation_id":...}` envelope so the host's spinner stays bound to
     /// the first dispatch (mirrors the "id stays bound" semantic of the
-    /// PR-G2 `executor_failure_returns_correlation_id_and_enqueues_
+    /// `executor_failure_returns_correlation_id_and_enqueues_
     /// failed_terminal` test).
     ///
     /// Mirrors the [`inflight_bolt11`] pattern but for ALL action namespaces,
@@ -519,7 +520,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // onto the kernel so external Rust callers can read the user's current
     // relay list without crossing FFI.
     //
-    // PR-I: typed slot constructor — see `kernel/relay_projection.rs`.
+    // Typed slot constructor — see `kernel/relay_projection.rs`.
     let relay_edit_rows: crate::kernel::RelayEditRowsSlot =
         crate::kernel::new_relay_edit_rows_slot();
     let actor_relay_edit_rows = Arc::clone(&relay_edit_rows);
@@ -1103,7 +1104,7 @@ impl NmpApp {
     /// projections without asking platform shells to parse `RelayEditRow.role`.
     /// The actor is the sole writer; callers should take quick snapshots only.
     ///
-    /// PR-I: the slot type is now [`crate::kernel::RelayEditRowsSlot`] — a
+    /// The slot type is [`crate::kernel::RelayEditRowsSlot`] — a
     /// newtype `Arc<Mutex<RelayEditRowList>>`. Readers iterate via
     /// `guard.as_slice()` so they never touch the inner `Vec` directly. D14
     /// (`crates/nmp-testing/bin/doctrine-lint/rules/d14.rs`) forbids new bare
@@ -1117,7 +1118,7 @@ impl NmpApp {
     /// projection. Empty when the user has not configured any write relays.
     /// Used by per-app crates so relay resolution stays Rust-owned (D0).
     ///
-    /// PR-I: the underlying slot is now a typed `RelayEditRowList`; the
+    /// The underlying slot is a typed `RelayEditRowList`; the
     /// reader iterates via `as_slice()` so it never touches the inner `Vec`
     /// directly.
     pub fn write_relay_urls(&self) -> Vec<String> {
@@ -1138,7 +1139,7 @@ impl NmpApp {
     /// that want `Auto` routing must use the typed `nmp.publish` action path
     /// with `PublishTarget::Auto`.
     ///
-    /// PR-F (one door per capability) — this is the Rust-typed replacement for
+    /// One door per capability — this is the Rust-typed replacement for
     /// the deleted `nmp_app_publish_signed_event*` `extern "C"` symbols. App
     /// composition crates that retain an `NmpApp` (e.g. `nmp-marmot`'s
     /// `MarmotProjection`) reach the kernel through this method instead of
@@ -1157,11 +1158,11 @@ impl NmpApp {
     /// `Explicit` never share the same empty-vector encoding.
     ///
     /// kind:1059 envelopes additionally hit the kernel-side D10 defensive
-    /// guard added in PR-K3: `commands::publish::publish_signed_event`
-    /// refuses any kind:1059 envelope whose `relays` slice is empty, sets a
-    /// D6 toast on the kernel, and drops the envelope — the same behaviour
-    /// the call-site guard in `commands::dm::send_gift_wrapped_dm` (PR #229)
-    /// gives the NIP-17 send path. The Marmot bridge's own runtime guard in
+    /// guard in `commands::publish::publish_signed_event`: it refuses any
+    /// kind:1059 envelope whose `relays` slice is empty, sets a D6 toast on
+    /// the kernel, and drops the envelope — the same behaviour the
+    /// call-site guard in `commands::dm::send_gift_wrapped_dm` gives the
+    /// NIP-17 send path. The Marmot bridge's own runtime guard in
     /// `nmp-marmot::projection::publish::publish_to` is the matching guard
     /// for the C-ABI symbol path; together they make a kind:1059 Auto-route
     /// structurally impossible regardless of which entry point a caller
@@ -1212,7 +1213,7 @@ impl NmpApp {
         let Ok(guard) = self.relay_edit_rows.lock() else {
             return crate::NOSTRCONNECT_DEFAULT_RELAY_URL.to_string();
         };
-        // PR-I: typed slot — iterate via `as_slice()` so the inner `Vec`
+        // Typed slot — iterate via `as_slice()` so the inner `Vec`
         // never leaks through this consumer.
         crate::actor::nostrconnect_relay_url(
             guard

@@ -7,8 +7,8 @@
 //! insertion time, and exposes a drainable set the actor turns into
 //! [`crate::subs::OneshotApi`] fetches.
 //!
-//! Reference scope (decided in PD-021, documented here so the seam is
-//! discoverable): raw NIP-01 tag forms only —
+//! Reference scope (documented here so the seam is discoverable):
+//! raw NIP-01 tag forms only —
 //! - `p` tag position 1 → referenced pubkey,
 //! - `e` / `q` tag position 1 → referenced event id.
 //!
