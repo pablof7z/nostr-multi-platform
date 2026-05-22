@@ -28,7 +28,7 @@ pub(crate) fn register_dm_runtime(app: &NmpApp) {
         tx: app.actor_sender(),
         state: Mutex::new(DmRuntimeState::default()),
     });
-    app.register_snapshot_projection("nmp.nip17.dm_relay_list", move || controller.snapshot_value());
+    app.register_snapshot_projection("nmp.nip17.dm_relay_list", move || controller.snapshot_json());
 }
 
 fn register_inbox_projection(app: &NmpApp) {
@@ -58,7 +58,7 @@ struct DmRuntimeController {
 }
 
 impl DmRuntimeController {
-    fn snapshot_value(&self) -> serde_json::Value {
+    fn snapshot_json(&self) -> serde_json::Value {
         let active_pubkey = self.active_pubkey();
         let read_relay_urls = self.read_relay_urls();
         {
@@ -71,7 +71,7 @@ impl DmRuntimeController {
             active_pubkey,
             read_relay_urls,
         })
-        .unwrap_or(serde_json::Value::Null)
+        .unwrap_or_else(|_| serde_json::json!({ "active_pubkey": null, "read_relay_urls": [] }))
     }
 
     fn active_pubkey(&self) -> Option<String> {
