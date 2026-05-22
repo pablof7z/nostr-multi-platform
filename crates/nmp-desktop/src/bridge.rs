@@ -34,7 +34,8 @@ impl KernelBridge {
         let reader_latest = Arc::clone(&latest);
         thread::spawn(move || {
             // Actor emits tagged envelopes: {"t":"snapshot","v":{...}} or
-            // {"t":"update","v":{...}}. We only care about snapshot frames.
+            // {"t":"panic","v":{"msg":...}}. We only care about snapshot frames;
+            // panic frames are terminal (D7) and surface elsewhere.
             for line in rx {
                 let env: UpdateEnvelope = match serde_json::from_str(&line) {
                     Ok(e) => e,

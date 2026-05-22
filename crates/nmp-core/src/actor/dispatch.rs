@@ -28,7 +28,7 @@ use super::relay_mgmt::{
     shutdown_relay_worker, spawn_missing_relays,
 };
 use super::session_persistence;
-use super::tick::{emit_kernel_update, emit_now, maybe_emit_after_dispatch};
+use super::tick::{emit_now, maybe_emit_after_dispatch};
 use super::{ActorCommand, RelayControl};
 use crate::capability_socket::CapabilityCallbackSlot;
 
@@ -807,11 +807,11 @@ pub(super) fn dispatch_command(
             Some(Vec::new())
         }
         ActorCommand::Kernel(action) => {
-            let update = dispatch_kernel_action(ctx.kernel, action);
-            // Discrete FFI update: emit as the tagged `{"t":"update","v":…}`
-            // envelope so consumers decode the single `UpdateEnvelope` type
-            // (D6 — the tag is the discriminant, no key sniffing).
-            emit_kernel_update(&update, ctx.update_tx);
+            // The kernel action mutates state; the next periodic snapshot
+            // emission carries any visible effect (e.g. registered interests).
+            // The discrete `{"t":"update","v":…}` frame channel was deleted as
+            // shipped-but-inert — every host bridge only consumed snapshots.
+            let _ = dispatch_kernel_action(ctx.kernel, action);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
