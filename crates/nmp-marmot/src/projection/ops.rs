@@ -337,35 +337,21 @@ fn publish_key_package(
         .service()
         .publish_key_package(relays.clone())
         .map_err(|e| e.to_string())?;
-    // kind:30443 + legacy kind:443 — dual publish path:
-    //   1. kernel fire-and-forget through the shared publish pipeline
-    //   2. direct WebSocket EVENT submit so the simulator path can verify OKs
+    // kind:30443 + legacy kind:443 — both go through the kernel publish
+    // pipeline (fire-and-forget, async). The historical synchronous
+    // tungstenite "direct EVENT submit" path used to live here as a
+    // simulator-path verification fallback but it was a D8 violation: it
+    // blocked the calling thread (kernel actor / Swift worker) on
+    // synchronous TCP + TLS + per-relay 6 s wall-clock waits. The kernel
+    // publish pipeline is the canonical path; no consumer reads the
+    // former `direct_ok` / `send_errors` fields (verified across
+    // ios/, apps/, crates/).
     use nostr::JsonUtil as _;
-    use std::time::Duration as D;
-    const SEND_WALL: D = D::from_secs(6);
     h.publish_explicit(&pubn.event_30443, &relays);
     h.publish_explicit(&pubn.event_443, &relays);
-    let mut ok_count = 0u32;
-    let mut send_errors: Vec<String> = Vec::new();
-    for url in &urls {
-        let j443 = pubn.event_443.as_json();
-        let j30443 = pubn.event_30443.as_json();
-        match crate::projection::fetch::send_event(url, &j30443, SEND_WALL) {
-            Ok(true) => ok_count += 1,
-            Ok(false) => {}
-            Err(e) => send_errors.push(format!("30443 {e}")),
-        }
-        if let Err(e) = crate::projection::fetch::send_event(url, &j443, SEND_WALL) {
-            send_errors.push(format!("443 {e}"));
-        }
-    }
     h.record_key_package(pubn.d_tag.clone(), now_secs);
     Ok(json!({
         "d_tag": pubn.d_tag,
-        "direct_ok": ok_count,
-        // Connection / send failures (D6 — distinct from a relay that was
-        // reached but did not confirm). Empty on a fully clean publish.
-        "send_errors": send_errors,
         "events": [
             pubn.event_30443.as_json(),
             pubn.event_443.as_json(),

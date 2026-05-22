@@ -3852,10 +3852,8 @@ dependencies = [
  "nmp-core",
  "nmp-nip59",
  "nostr",
- "rustls",
  "serde",
  "serde_json",
- "tungstenite",
 ]
 
 [[package]]
