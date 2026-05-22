@@ -49,6 +49,11 @@ struct ModularBlockView: View {
     let items: [String: TimelineItem]
     let mentionProfiles: [String: MentionProfile]
     let onLike: (String) -> Void
+    /// NIP-57 — (eventID, authorPubkey, lnurl) → dispatch the zap. `nil`
+    /// when the embedding host does not wire zap (kept optional so views
+    /// other than the home feed don't need to thread a no-op). The row
+    /// hides the zap button when the author has no kind:0 lnurl.
+    var onZap: ((String, String, String) -> Void)? = nil
 
     @EnvironmentObject private var router: ChirpRouter
 
@@ -72,7 +77,8 @@ struct ModularBlockView: View {
                     mentionProfiles: mentionProfiles,
                     eventCards: cards,
                     timelineItems: items,
-                    onLike: onLike
+                    onLike: onLike,
+                    onZap: onZap
                 )
         } else if let card = cards[id] {
             // Card without a TimelineItem: build a synthetic item so the
@@ -85,7 +91,8 @@ struct ModularBlockView: View {
                 mentionProfiles: mentionProfiles,
                 eventCards: cards,
                 timelineItems: items,
-                onLike: onLike
+                onLike: onLike,
+                onZap: onZap
             )
         } else {
             // Neither cached locally nor available as a kernel item — show
@@ -278,6 +285,11 @@ struct ModularBlockView: View {
             authorPictureUrl: item?.authorPictureUrl,
             authorAvatarInitials: item?.authorAvatarInitials ?? defaultInitials(pubkey: card.authorPubkey),
             authorAvatarColor: item?.authorAvatarColor ?? defaultColor(pubkey: card.authorPubkey),
+            // Inherit lnurl from the cached TimelineItem when present so a
+            // synthetic-from-card row still exposes the zap affordance.
+            // `nil` for cards without a backing item is correct — the row
+            // hides the zap button (no lnurl known yet).
+            authorLnurl: item?.authorLnurl,
             kind: card.kind,
             content: card.content,
             contentPreview: String(card.content.prefix(180)),

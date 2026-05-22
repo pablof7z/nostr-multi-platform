@@ -491,6 +491,12 @@ impl Kernel {
             } else {
                 "placeholder".to_string()
             },
+            // NIP-57 — pre-extracted lightning address / LNURL from the
+            // author's kind:0 (or `None` when no kind:0 has arrived or it
+            // carried no lud16/lud06). Surfaced here so the shell zap
+            // button toggles enabled/disabled without a separate profile
+            // lookup. Thin-shell: Rust decides zapability.
+            author_lnurl: profile.and_then(|p| p.lnurl.clone()),
             kind: event.kind,
             content: truncate(&event.content, 1_200),
             content_preview: if is_repost && event.content.trim().is_empty() {
@@ -558,6 +564,12 @@ impl Kernel {
                 "placeholder".to_string()
             },
             has_profile: profile.is_some(),
+            // NIP-57 — pre-extracted lightning address / LNURL from kind:0
+            // (lud16 preferred over lud06). `None` when no kind:0 has
+            // arrived OR the metadata had no lnurl. The shell shows / hides
+            // the zap affordance based on this field — Rust decides
+            // zapability, Swift renders it (aim.md §6.9).
+            lnurl: profile.and_then(|p| p.lnurl.clone()),
         }
     }
 

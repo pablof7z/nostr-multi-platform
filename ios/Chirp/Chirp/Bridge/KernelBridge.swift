@@ -356,6 +356,41 @@ final class KernelHandle {
         dispatchAction(namespace: "chirp.unfollow", body: ["pubkey": pubkey])
     }
 
+    /// Dispatch a NIP-57 zap through the `nmp.nip57.zap` ActionModule.
+    /// Rust signs the kind:9734 zap request, completes the two-leg LNURL-pay
+    /// round-trip, and (when the `wallet` feature is active) auto-dispatches
+    /// `ActorCommand::WalletPayInvoice` so the bolt11 → NWC pay loop closes
+    /// without a second host round-trip. The shell never sees the bolt11
+    /// or parses LNURL/kind:9734 — thin-shell rule (aim.md §6.9).
+    ///
+    /// `lnurl` is the pre-extracted `authorLnurl` from the timeline item;
+    /// `relays` is the receiver's preferred-relay set (today: the active
+    /// account's read relays, falling back to `relay.damus.io` + `nos.lol`
+    /// when the snapshot's relay list is empty). PR-A: returns the
+    /// synchronous dispatch envelope so the host can drive a spinner keyed
+    /// on the minted correlation_id.
+    @discardableResult
+    func zap(
+        targetEventID: String,
+        authorPubkey: String,
+        lnurl: String,
+        amountMsats: UInt64,
+        relays: [String],
+        comment: String? = nil
+    ) -> DispatchResult {
+        var body: [String: Any] = [
+            "recipient_pubkey": authorPubkey,
+            "amount_msats": amountMsats,
+            "lnurl": lnurl,
+            "relays": relays,
+            "target_event_id": targetEventID,
+        ]
+        if let comment, !comment.isEmpty {
+            body["comment"] = comment
+        }
+        return dispatchAction(namespace: "nmp.nip57.zap", body: body)
+    }
+
     /// Generic dispatch entry-point keyed on a kernel-supplied
     /// `ProfileDispatchSpec`. The shell does NOT pick the namespace or build
     /// the body — Rust authored both inside `profile_action_for` (aim.md
@@ -1749,6 +1784,11 @@ struct ProfileCard: Decodable, Equatable {
     let avatarColor: String
     let source: String
     let hasProfile: Bool
+    /// NIP-57 lightning address (`lud16`) / LNURL (`lud06`) pre-extracted
+    /// from kind:0. `nil` when the user has no lightning address or their
+    /// kind:0 hasn't arrived. The zap button is shown only when this is
+    /// non-nil — Rust decides zapability, Swift renders (thin-shell rule).
+    let lnurl: String?
 }
 
 /// Dispatch spec for a `ProfileAction` that fires a write through
@@ -1793,6 +1833,12 @@ struct TimelineItem: Decodable, Identifiable, Equatable, Hashable {
     let authorPictureUrl: String?
     let authorAvatarInitials: String
     let authorAvatarColor: String
+    /// NIP-57 lightning address (`lud16`) / LNURL (`lud06`) pre-extracted
+    /// from the author's kind:0 metadata. `nil` when the author has no
+    /// lightning address or their kind:0 hasn't arrived yet. The shell
+    /// zap button toggles its enabled/disabled state on this value;
+    /// Swift never parses raw metadata (thin-shell rule, aim.md §6.9).
+    let authorLnurl: String?
     /// Nostr event kind (1 = note, 6 = repost, 7 = reaction, …). The kernel
     /// supplies this so the shell can render kind-conditional UI (e.g. a
     /// "Repost" badge or alternate navigation target) without re-parsing the
@@ -1844,7 +1890,7 @@ extension TimelineItem {
     // would suppress it.
     private enum CodingKeys: String, CodingKey {
         case id, authorPubkey, authorDisplay, authorPictureUrl
-        case authorAvatarInitials, authorAvatarColor
+        case authorAvatarInitials, authorAvatarColor, authorLnurl
         case kind, content, contentPreview, createdAtDisplay, relayCount
         case isRepost, navTargetId, repostInnerContent
     }
@@ -1859,6 +1905,10 @@ extension TimelineItem {
             authorPictureUrl: try c.decodeIfPresent(String.self, forKey: .authorPictureUrl),
             authorAvatarInitials: try c.decode(String.self, forKey: .authorAvatarInitials),
             authorAvatarColor: try c.decode(String.self, forKey: .authorAvatarColor),
+            // NIP-57 — `nil` when the author has no lud16/lud06 OR an older
+            // kernel snapshot pre-dates the field. Mirrors the
+            // forward/backward-compat pattern below (isRepost et al.).
+            authorLnurl: try c.decodeIfPresent(String.self, forKey: .authorLnurl),
             kind: try c.decode(UInt32.self, forKey: .kind),
             content: try c.decode(String.self, forKey: .content),
             contentPreview: try c.decode(String.self, forKey: .contentPreview),
