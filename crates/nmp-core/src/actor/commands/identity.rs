@@ -19,6 +19,7 @@ use crate::kernel::{AccountSummary, Kernel, RelayEditRow};
 use crate::relay::{canonical_relay_url, OutboundMessage};
 use crate::remote_signer::RemoteSignerHandle;
 use crate::substrate::{SignedEvent, UnsignedEvent};
+use crate::util::sort_dedup;
 
 /// NIP-46 bunker handshake progress — the app noun projected onto the snapshot
 /// under `projections["bunker_handshake"]`.
@@ -925,8 +926,7 @@ fn cold_start_publish_targets(kernel: &Kernel, relay_rows: &[RelayEditRow]) -> V
         .map(|row| row.url.clone())
         .chain(kernel.bootstrap_discovery_relays())
         .collect();
-    targets.sort();
-    targets.dedup();
+    sort_dedup(&mut targets);
     targets
 }
 
