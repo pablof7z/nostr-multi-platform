@@ -86,18 +86,11 @@ pub mod mls_types {
     pub use mdk_core::prelude::{GroupId, MessageProcessingResult, NostrGroupConfigData};
 }
 
-// NOTE: `nmp-marmot` exposes its 4 record types and its 4 view types as
-// public types under `domain` and `view`. The view types are plain types
-// whose `open` / `on_event_*` / `snapshot` inherent methods are reached via
-// static dispatch — the `ViewModule` trait and the former
-// `register(&mut ModuleRegistry)` entry point were both deleted because no
-// kernel-side registry ever drove them. The live extension path is
-// `KernelEventObserver` — see `nmp_core::substrate` module docs; the Marmot
-// projection registers one in `projection/`. The previous `ActionModule`
-// impls were deleted (6 group-scoped in PR #200, the last
-// `PublishKeyPackageAction` shortly after); the bespoke
-// `nmp_marmot_dispatch` C cluster (ADR-0025) covers every live
-// Marmot capability today.
+// `nmp-marmot` exposes its 4 record types and 4 view types as public types
+// under `domain` and `view`. View types are plain types reached via static
+// dispatch; the live extension path is `KernelEventObserver` (the Marmot
+// projection registers one in `projection/`). The bespoke `nmp_marmot_dispatch`
+// C cluster (ADR-0025) covers every live Marmot capability.
 
 #[cfg(test)]
 mod tests;
