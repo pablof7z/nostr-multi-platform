@@ -237,6 +237,15 @@ mod tests {
     use nmp_core::substrate::ActionContext;
     use std::cell::RefCell;
 
+    /// Run the typed executor and capture every `ActorCommand` it sends, in order.
+    fn run_execute(input: ZapInput) -> Result<Vec<ActorCommand>, String> {
+        let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+        ZapAction::execute(input, "cid-deadbeef", &|cmd| {
+            captured.borrow_mut().push(cmd);
+        })?;
+        Ok(captured.into_inner())
+    }
+
     const RECIPIENT: &str =
         "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
     const RELAY: &str = "wss://relay.damus.io";
@@ -351,13 +360,9 @@ mod tests {
     /// actor's spawned worker, not as a fabricated "intent recorded" toast.
     #[test]
     fn execute_emits_fetch_lnurl_invoice_with_zap_request() {
-        let captured: RefCell<Option<ActorCommand>> = RefCell::new(None);
-        ZapAction::execute(well_formed_input(), "cid-deadbeef", &|cmd| {
-            *captured.borrow_mut() = Some(cmd);
-        })
-        .expect("execute must succeed for well-formed input");
-        let cmd = captured.into_inner().expect("executor must emit a command");
-        match cmd {
+        let cmds = run_execute(well_formed_input()).expect("execute must succeed for well-formed input");
+        assert_eq!(cmds.len(), 1, "executor must emit exactly one command, got {cmds:?}");
+        match cmds.into_iter().next().unwrap() {
             ActorCommand::FetchLnurlInvoice {
                 unsigned,
                 lnurl_or_address,
@@ -401,12 +406,9 @@ mod tests {
             ),
             ..well_formed_input()
         };
-        let captured: RefCell<Option<ActorCommand>> = RefCell::new(None);
-        ZapAction::execute(input, "cid", &|cmd| {
-            *captured.borrow_mut() = Some(cmd);
-        })
-        .unwrap();
-        let ActorCommand::FetchLnurlInvoice { unsigned, .. } = captured.into_inner().unwrap()
+        let cmds = run_execute(input).unwrap();
+        let ActorCommand::FetchLnurlInvoice { unsigned, .. } =
+            cmds.into_iter().next().expect("executor must emit a command")
         else {
             panic!("expected FetchLnurlInvoice");
         };
@@ -421,12 +423,9 @@ mod tests {
             comment: Some("nice post 🤙".to_string()),
             ..well_formed_input()
         };
-        let captured: RefCell<Option<ActorCommand>> = RefCell::new(None);
-        ZapAction::execute(input, "cid", &|cmd| {
-            *captured.borrow_mut() = Some(cmd);
-        })
-        .unwrap();
-        let ActorCommand::FetchLnurlInvoice { unsigned, .. } = captured.into_inner().unwrap()
+        let cmds = run_execute(input).unwrap();
+        let ActorCommand::FetchLnurlInvoice { unsigned, .. } =
+            cmds.into_iter().next().expect("executor must emit a command")
         else {
             panic!("expected FetchLnurlInvoice");
         };
