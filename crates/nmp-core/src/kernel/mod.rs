@@ -863,8 +863,9 @@ impl Kernel {
     }
 
     /// Resolve the configured bootstrap URLs for a given `RelayRole` from the
-    /// app-provided `relay_edit_rows`.  Empty when the operator has not yet
-    /// configured any relays for that role.
+    /// app-provided `relay_edit_rows`.  When no relays are configured for the
+    /// requested role, falls back to the well-known defaults so that cold-start
+    /// sign-ins always have discovery relays available in production.
     pub(crate) fn bootstrap_urls_for_role(&self, role: RelayRole) -> Vec<String> {
         let matches = |row_role: &str| match role {
             RelayRole::Content => {
@@ -874,20 +875,20 @@ impl Kernel {
             RelayRole::Indexer => crate::actor::has_role(row_role, "indexer"),
             RelayRole::Wallet => false,
         };
-        // `mut` is required only under `#[cfg(test)]` where the fallback
-        // block may reassign `urls`; non-test builds never mutate it.
-        #[cfg_attr(not(test), allow(unused_mut))]
         let mut urls: Vec<String> = self
             .relay_edit_rows
             .iter()
             .filter(|r| matches(&r.role))
             .map(|r| r.url.clone())
             .collect();
-        #[cfg(test)]
         if urls.is_empty() {
             urls = match role {
-                RelayRole::Content => vec!["wss://relay.damus.io".to_string()],
-                RelayRole::Indexer => vec!["wss://purplepag.es".to_string()],
+                RelayRole::Content => {
+                    vec![crate::relay::FALLBACK_CONTENT_RELAY.to_string()]
+                }
+                RelayRole::Indexer => {
+                    vec![crate::relay::FALLBACK_INDEXER_RELAY.to_string()]
+                }
                 RelayRole::Wallet => Vec::new(),
             };
         }

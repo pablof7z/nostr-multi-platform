@@ -36,6 +36,12 @@ pub(crate) const TIMELINE_AUTHOR_LIMIT: usize = 500;
 /// pool or the kernel's `wire_subs` / `persistent_subs` maps.
 pub type RelayUrl = String;
 
+/// Fallback relay URLs used when the host has not yet configured any relays for
+/// a given role.  These are always compiled in (no cfg gate) so that cold-start
+/// sign-ins have discovery relays available in production as well as in tests.
+pub(crate) const FALLBACK_INDEXER_RELAY: &str = "wss://purplepag.es";
+pub(crate) const FALLBACK_CONTENT_RELAY: &str = "wss://relay.damus.io";
+
 #[cfg(any(test, feature = "test-support"))]
 pub(crate) const BOOTSTRAP_DISCOVERY_RELAYS: &[&str] =
     &["wss://relay.damus.io", "wss://purplepag.es"];
