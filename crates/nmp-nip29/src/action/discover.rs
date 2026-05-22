@@ -58,7 +58,6 @@ impl ActionModule for DiscoverGroupsAction {
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        validate_relay_url(&action.relay_url)?;
         let interest = relay_discovery_interest(&action.relay_url);
         send(ActorCommand::PushInterest(interest));
         // PD-036 — `discover_groups` is a subscription-only action: there is
@@ -122,18 +121,28 @@ mod tests {
     }
 
     #[test]
-    fn empty_relay_url_is_rejected() {
-        assert!(run_execute(DiscoverGroupsInput {
-            relay_url: String::new(),
-        })
-        .is_err());
+    fn empty_relay_url_is_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        assert!(matches!(
+            DiscoverGroupsAction::start(
+                &mut ctx,
+                DiscoverGroupsInput { relay_url: String::new() },
+            ),
+            Err(ActionRejection::Invalid(_))
+        ));
     }
 
     #[test]
-    fn non_websocket_scheme_is_rejected() {
-        assert!(run_execute(DiscoverGroupsInput {
-            relay_url: "https://groups.example.com".to_string(),
-        })
-        .is_err());
+    fn non_websocket_scheme_is_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        assert!(matches!(
+            DiscoverGroupsAction::start(
+                &mut ctx,
+                DiscoverGroupsInput {
+                    relay_url: "https://groups.example.com".to_string(),
+                },
+            ),
+            Err(ActionRejection::Invalid(_))
+        ));
     }
 }

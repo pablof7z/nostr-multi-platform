@@ -40,6 +40,19 @@ impl GroupId {
         }
     }
 
+    /// Check that both `host_relay_url` and `local_id` are non-empty.
+    /// All group actions that route to a specific relay must call this in
+    /// `start()` to prevent silent routing to relay `""`.
+    pub fn require_routable(&self) -> Result<(), String> {
+        if self.host_relay_url.is_empty() {
+            return Err("group.host_relay_url must not be empty".into());
+        }
+        if self.local_id.is_empty() {
+            return Err("group.local_id must not be empty".into());
+        }
+        Ok(())
+    }
+
     /// Encode as the NIP-29 URI shape `<host>'<local-id>`.
     ///
     /// `<host>` is the *bare host* part of the relay URL (scheme + `://`
@@ -106,6 +119,24 @@ mod tests {
     #[test]
     fn parse_rejects_empty_local() {
         assert!(GroupId::from_uri("groups.example.com'").is_none());
+    }
+
+    #[test]
+    fn require_routable_passes_when_both_fields_present() {
+        let g = GroupId::new("wss://h", "room");
+        assert!(g.require_routable().is_ok());
+    }
+
+    #[test]
+    fn require_routable_rejects_empty_host_relay_url() {
+        let g = GroupId::new("", "room");
+        assert!(g.require_routable().is_err());
+    }
+
+    #[test]
+    fn require_routable_rejects_empty_local_id() {
+        let g = GroupId::new("wss://h", "");
+        assert!(g.require_routable().is_err());
     }
 
     #[test]
