@@ -37,11 +37,7 @@
 //! via [`crate::projection::publish`] (the workspace-internal pure-Rust
 //! `nmp_core::NmpApp::publish_signed_explicit` kernel API, called against
 //! the retained `&NmpApp`). They no longer rely on a non-existent Swift
-//! relay path. PR-F (one door per capability) replaced the prior
-//! `extern "C"` block + `unsafe` invocation of
-//! `nmp_app_publish_signed_event_to` with this typed Rust call — the
-//! publish module is `unsafe`-free for publish routing, and the bespoke
-//! event-producing FFI surface has been deleted. The op result still
+//! relay path. The publish module is `unsafe`-free for publish routing. The op result still
 //! carries the signed event JSON (`event` / `events` / `evolution_event`
 //! / `welcome_rumors`) but it is now INFORMATIONAL only — publish
 //! already happened (fire-and-forget; success == "submitted to the
@@ -364,8 +360,7 @@ impl<'a> InnerHandle<'a> {
     /// lookup, interest push, key-package fetch) routes through here, so
     /// the soundness argument lives in ONE place and the publish-routing
     /// modules (`projection::publish`, `publish_group_pinned`,
-    /// `publish_explicit`) are themselves `unsafe`-free — satisfying the
-    /// PR-F acceptance criterion verbatim.
+    /// `publish_explicit`) are themselves `unsafe`-free.
     ///
     /// # SAFETY
     ///
@@ -410,9 +405,8 @@ impl<'a> InnerHandle<'a> {
     /// Used for kind:445 (group message / commit) and the kind:1059
     /// gift-wrap inbox-routing approximation.
     ///
-    /// PR-F (one door per capability): this method contains no `unsafe`
-    /// block. The pointer deref happens once inside [`Self::app`]; the
-    /// publish-routing call site is plain safe Rust.
+    /// This method contains no `unsafe` block. The pointer deref happens once
+    /// inside [`Self::app`]; the publish-routing call site is plain safe Rust.
     pub(crate) fn publish_group_pinned(&self, group_id_hex: &str, event: &nostr::Event) {
         let Some(app) = self.app() else {
             return;
@@ -427,7 +421,7 @@ impl<'a> InnerHandle<'a> {
     /// by group and the relays are already known from the envelope, so we
     /// route directly without a `&mut self` cache read/write).
     ///
-    /// PR-F: `unsafe`-free for publish routing (see `publish_group_pinned`).
+    /// `unsafe`-free for publish routing (see `publish_group_pinned`).
     pub(crate) fn publish_explicit(&self, event: &nostr::Event, relays: &[RelayUrl]) {
         let Some(app) = self.app() else {
             return;

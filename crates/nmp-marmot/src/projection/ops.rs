@@ -10,9 +10,7 @@
 //! Every op that produces relay-bound events now publishes them
 //! INTERNALLY via [`crate::projection::publish`] (the workspace-internal
 //! `nmp_core::NmpApp::publish_signed_explicit` kernel API, called against
-//! the retained `&NmpApp`) — there is no Swift relay path. PR-F replaced
-//! the prior `extern "C"` block + `unsafe` invocation of
-//! `nmp_app_publish_signed_event_to` with this typed Rust call. Per-kind
+//! the retained `&NmpApp`) — there is no Swift relay path. Per-kind
 //! routing:
 //!
 //! * **kind:445** (group message / commit / evolution_event / post-join

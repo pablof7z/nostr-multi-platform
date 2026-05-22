@@ -22,18 +22,6 @@
 //! still-open seam (the `KernelEventObserver` fan-out is lossy — no
 //! signature — so MDK cannot ingest from it). This module does not touch
 //! that direction.
-//!
-//! ## Linkage
-//!
-//! Before PR-F this module declared an `extern "C"` block naming
-//! `nmp_app_publish_signed_event_to` and invoked it via `unsafe`. PR-F
-//! deletes that bespoke event-producing FFI surface (every generic
-//! user/app-authored publish goes through `dispatch_action`; Marmot's
-//! MLS-credential-signed and ephemeral-signed events are the named
-//! Theme-A system-authored exception); the kernel API became a typed Rust
-//! method on `NmpApp` instead. Marmot no longer needs an `extern "C"`
-//! block, and this file is now `unsafe`-free for publish routing —
-//! satisfying the PR-F acceptance criterion.
 
 use nmp_core::NmpApp;
 use nostr::{Event, RelayUrl};

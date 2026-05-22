@@ -47,10 +47,6 @@ fn register_inbox_projection(app: &NmpApp) {
 }
 
 struct DmRuntimeController {
-    // PR-I: the kernel relay-edit slot is now a typed
-    // [`RelayEditRowsSlot`] (`Arc<Mutex<RelayEditRowList>>`). We read via
-    // `guard.as_slice()` so the inner `Vec<RelayEditRow>` never leaks
-    // through this consumer's call sites.
     relay_rows: RelayEditRowsSlot,
     local_keys: Arc<Mutex<Option<nostr::Keys>>>,
     tx: Sender<ActorCommand>,
@@ -82,8 +78,6 @@ impl DmRuntimeController {
     }
 
     fn read_relay_urls(&self) -> Vec<String> {
-        // PR-I: typed slot — iterate via `as_slice()` so we never touch
-        // the inner `Vec<RelayEditRow>` directly.
         self.relay_rows
             .lock()
             .map(|rows| read_eligible_relay_urls(rows.as_slice()))
