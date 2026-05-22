@@ -1,13 +1,25 @@
 //! Small, reusable substrate utilities that are not Nostr-specific.
 //!
-//! Currently this is just [`TimeCached`], a generic TTL value wrapper. Per the
-//! nostrdb/notedeck distillation (`docs/design/nostrdb-notedeck-lessons.md`
+//! Currently this module contains [`TimeCached`], a generic TTL value wrapper,
+//! and [`sort_dedup`], a convenience helper for sorted + deduped `Vec`s. Per
+//! the nostrdb/notedeck distillation (`docs/design/nostrdb-notedeck-lessons.md`
 //! §3.12) several runtime facts — per-relay NIP-11 info, mailbox lists,
 //! capability probes, NIP-05 verification results — are expensive to recompute
 //! but tolerate staleness. They all want the same shape: hold a value, hand it
 //! back until a TTL elapses, then recompute on the next read.
 
 use std::time::{Duration, Instant};
+
+/// Sort `v` in place and remove consecutive duplicates.
+///
+/// Equivalent to the two-line idiom `v.sort(); v.dedup();` that appears at
+/// every relay-URL deduplication site in the kernel and actor layers.
+/// Centralising it here eliminates the repeated pattern and makes the intent
+/// explicit at call sites.
+pub fn sort_dedup<T: Ord>(v: &mut Vec<T>) {
+    v.sort();
+    v.dedup();
+}
 
 /// A value of type `T` cached behind a time-to-live.
 ///

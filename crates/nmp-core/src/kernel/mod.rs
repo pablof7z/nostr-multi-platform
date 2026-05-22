@@ -197,6 +197,7 @@ pub(crate) use lifecycle::{LifecyclePhase, LifecycleTransition};
 // `KernelSnapshot` field. The kernel never names the NWC noun.
 use std::sync::atomic::{AtomicU64, Ordering};
 use types::*;
+use crate::util::sort_dedup;
 
 /// Per-pubkey claim consumer-id retention cap (T114b — per-dispatch retention audit).
 ///
@@ -903,8 +904,7 @@ impl Kernel {
             .into_iter()
             .chain(self.bootstrap_urls_for_role(RelayRole::Content))
             .collect();
-        urls.sort();
-        urls.dedup();
+        sort_dedup(&mut urls);
         urls
     }
 
