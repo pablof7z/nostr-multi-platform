@@ -128,18 +128,19 @@ pub(crate) fn publish_unsigned_event_to_relays(
     kernel: &mut Kernel,
     unsigned: UnsignedEvent,
     relays: Vec<crate::publish::RelayUrl>,
+    correlation_id: Option<String>,
     pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
     if identity.active_pubkey().is_none() {
         return toast_no_account(kernel, "publish");
     }
     if let Err(reason) = validate_explicit_relays(&relays) {
-        return fail_invalid_target(kernel, reason, None);
+        return fail_invalid_target(kernel, reason, correlation_id);
     }
     let target = PublishTarget::Explicit { relays };
     // Non-blocking sign: a local key resolves now; a remote (NIP-46) signer
     // returns a `Pending` op parked in `pending_signs` with the explicit
-    // target attached — the actor thread never blocks (D8).
+    // target + correlation_id attached — the actor thread never blocks (D8).
     let mut op = match sign_active_nonblocking(identity, &unsigned) {
         Ok(op) => op,
         Err(reason) => {
@@ -148,15 +149,23 @@ pub(crate) fn publish_unsigned_event_to_relays(
         }
     };
     match op.poll() {
-        Some(Ok(signed)) => kernel.publish_signed_to(&signed, &[], target),
+        Some(Ok(signed)) => {
+            kernel.publish_signed_to_with_correlation(&signed, &[], target, correlation_id)
+        }
         Some(Err(e)) => {
             kernel.set_last_error_toast(Some(format!("sign failed: {e}")));
             Vec::new()
         }
         None => {
             // Remote signer not yet responded — park the op WITH its target
-            // so the pinned routing survives the broker round-trip.
-            pending_signs.push(PendingSign::with_target(op, Vec::new(), target));
+            // and correlation_id so pinned routing + spinner round-trip both
+            // survive the broker round-trip.
+            pending_signs.push(PendingSign::with_target_and_correlation_id(
+                op,
+                Vec::new(),
+                target,
+                correlation_id,
+            ));
             Vec::new()
         }
     }

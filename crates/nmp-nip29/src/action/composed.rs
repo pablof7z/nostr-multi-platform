@@ -52,10 +52,11 @@ impl ActionModule for ReactInGroupAction {
     }
     fn execute(
         action: Self::Action,
-        _correlation_id: &str,
+        correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        send(react_in_group_plan(&action).into_actor_command()?);
+        send(react_in_group_plan(&action)
+            .into_actor_command(Some(correlation_id.to_string()))?);
         Ok(())
     }
 }
@@ -98,10 +99,11 @@ impl ActionModule for CommentInGroupAction {
     }
     fn execute(
         action: Self::Action,
-        _correlation_id: &str,
+        correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        send(comment_in_group_plan(&action).into_actor_command()?);
+        send(comment_in_group_plan(&action)
+            .into_actor_command(Some(correlation_id.to_string()))?);
         Ok(())
     }
 }
