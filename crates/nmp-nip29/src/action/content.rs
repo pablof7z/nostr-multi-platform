@@ -37,14 +37,6 @@ fn post_chat_message_plan(action: &PostChatMessageInput) -> PublishPlan {
     PublishPlan::pinned(&action.group, KIND_CHAT_MESSAGE, action.content.clone(), tags)
 }
 
-/// Map a validated `nmp.nip29.post_chat_message` action JSON to the [`ActorCommand`]
-/// that publishes the kind:9 group chat message.
-pub fn post_chat_message_command(action_json: &str) -> Result<ActorCommand, String> {
-    let input: PostChatMessageInput =
-        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-    post_chat_message_plan(&input).into_actor_command()
-}
-
 pub struct PostChatMessageAction;
 impl ActionModule for PostChatMessageAction {
     /// Wire-schema note: was `nip29.post_chat_message` before the namespace-prefix

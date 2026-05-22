@@ -34,14 +34,6 @@ fn react_in_group_plan(action: &ReactInGroupInput) -> PublishPlan {
     PublishPlan::pinned(&action.group, KIND_REACTION, action.content.clone(), tags)
 }
 
-/// Map a validated `nmp.nip29.react_in_group` action JSON to the [`ActorCommand`]
-/// that publishes the kind:7 in-group reaction.
-pub fn react_in_group_command(action_json: &str) -> Result<ActorCommand, String> {
-    let input: ReactInGroupInput =
-        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-    react_in_group_plan(&input).into_actor_command()
-}
-
 pub struct ReactInGroupAction;
 impl ActionModule for ReactInGroupAction {
     /// Wire-schema note: was `nip29.react_in_group` before the namespace-prefix
@@ -86,14 +78,6 @@ fn comment_in_group_plan(action: &CommentInGroupInput) -> PublishPlan {
         tags.push(vec!["e".into(), parent.clone()]);
     }
     PublishPlan::pinned(&action.group, KIND_COMMENT, action.content.clone(), tags)
-}
-
-/// Map a validated `nmp.nip29.comment_in_group` action JSON to the [`ActorCommand`]
-/// that publishes the kind:1111 in-group comment.
-pub fn comment_in_group_command(action_json: &str) -> Result<ActorCommand, String> {
-    let input: CommentInGroupInput =
-        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-    comment_in_group_plan(&input).into_actor_command()
 }
 
 pub struct CommentInGroupAction;

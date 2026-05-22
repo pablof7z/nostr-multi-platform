@@ -49,14 +49,6 @@ fn join_group_plan(action: &JoinGroupInput) -> PublishPlan {
     PublishPlan::pinned(&action.group, KIND_JOIN_REQUEST, content, tags)
 }
 
-/// Map a validated `nmp.nip29.join` action JSON to the [`ActorCommand`]
-/// that publishes the kind:9021 join request.
-pub fn join_group_command(action_json: &str) -> Result<ActorCommand, String> {
-    let input: JoinGroupInput =
-        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-    join_group_plan(&input).into_actor_command()
-}
-
 pub struct JoinGroupAction;
 impl ActionModule for JoinGroupAction {
     const NAMESPACE: &'static str = "nmp.nip29.join";
@@ -97,6 +89,7 @@ impl ActionModule for JoinGroupAction {
 mod tests {
     use super::*;
     use nmp_core::substrate::UnsignedEvent;
+    use std::cell::RefCell;
 
     fn input() -> JoinGroupInput {
         JoinGroupInput {
@@ -106,10 +99,20 @@ mod tests {
         }
     }
 
+    /// Run the typed executor and capture the single `ActorCommand` it sends.
+    fn run_execute(input: JoinGroupInput) -> Result<ActorCommand, String> {
+        let captured: RefCell<Option<ActorCommand>> = RefCell::new(None);
+        JoinGroupAction::execute(input, "test-cid", &|cmd| {
+            *captured.borrow_mut() = Some(cmd);
+        })?;
+        captured
+            .into_inner()
+            .ok_or_else(|| "executor sent no command".to_string())
+    }
+
     #[test]
     fn well_formed_input_yields_host_pinned_kind_9021_publish_command() {
-        let body = r#"{"group":{"host_relay_url":"wss://groups.example.com","local_id":"room"}}"#;
-        match join_group_command(body).expect("well-formed body parses") {
+        match run_execute(input()).expect("well-formed input executes") {
             ActorCommand::PublishUnsignedEventToRelays { event, relays } => {
                 // Pinned to EXACTLY the host relay — never the NIP-65 outbox.
                 assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
@@ -133,8 +136,12 @@ mod tests {
 
     #[test]
     fn invite_code_lands_as_code_tag() {
-        let body = r#"{"group":{"host_relay_url":"wss://h","local_id":"r"},"invite_code":"secret-1"}"#;
-        let cmd = join_group_command(body).expect("well-formed");
+        let cmd = run_execute(JoinGroupInput {
+            group: GroupId::new("wss://h", "r"),
+            invite_code: Some("secret-1".to_string()),
+            reason: None,
+        })
+        .expect("well-formed");
         let event: UnsignedEvent = match cmd {
             ActorCommand::PublishUnsignedEventToRelays { event, .. } => event,
             other => panic!("expected publish, got {other:?}"),
@@ -148,8 +155,12 @@ mod tests {
 
     #[test]
     fn reason_lands_in_content() {
-        let body = r#"{"group":{"host_relay_url":"wss://h","local_id":"r"},"reason":"please let me in"}"#;
-        let cmd = join_group_command(body).expect("well-formed");
+        let cmd = run_execute(JoinGroupInput {
+            group: GroupId::new("wss://h", "r"),
+            invite_code: None,
+            reason: Some("please let me in".to_string()),
+        })
+        .expect("well-formed");
         let event = match cmd {
             ActorCommand::PublishUnsignedEventToRelays { event, .. } => event,
             other => panic!("expected publish, got {other:?}"),
@@ -158,13 +169,13 @@ mod tests {
     }
 
     #[test]
-    fn missing_host_relay_is_rejected_in_executor() {
-        let body = r#"{"group":{"host_relay_url":"","local_id":"r"}}"#;
-        // The executor builds a `PublishPlan::pinned` regardless and the
-        // empty host gets through — the relay pin lane will reject downstream.
-        // But the typed validator (below) rejects it first.
+    fn missing_host_relay_is_rejected_by_validator() {
         let mut ctx = ActionContext { now_ms: 0 };
-        let action: JoinGroupInput = serde_json::from_str(body).unwrap();
+        let action = JoinGroupInput {
+            group: GroupId::new("", "r"),
+            invite_code: None,
+            reason: None,
+        };
         assert!(matches!(
             JoinGroupAction::start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
@@ -189,10 +200,5 @@ mod tests {
     fn well_formed_passes_validator() {
         let mut ctx = ActionContext { now_ms: 0 };
         assert!(JoinGroupAction::start(&mut ctx, input()).is_ok());
-    }
-
-    #[test]
-    fn malformed_json_is_rejected_by_executor() {
-        assert!(join_group_command(r#"{"no":"group"}"#).is_err());
     }
 }

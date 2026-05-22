@@ -639,8 +639,22 @@ mod tests {
     use super::*;
     use nmp_core::nmp_app_free;
     use nmp_core::nmp_app_new;
-    use nmp_nip29::action::{discover_groups_command, join_group_command, post_chat_message_command};
+    use nmp_nip29::action::{DiscoverGroupsInput, JoinGroupInput, PostChatMessageInput};
     use nmp_nip29::kinds::KIND_CHAT_MESSAGE;
+    use std::cell::RefCell;
+
+    /// Run an `ActionModule`'s typed executor once and capture the single
+    /// `ActorCommand` it sends. Mirrors `nmp_nip17::dm_relay_list`'s test
+    /// pattern — the canonical post-ADR-0027 executor probe.
+    fn run_module_execute<M: ActionModule>(input: M::Action) -> Result<ActorCommand, String> {
+        let captured: RefCell<Option<ActorCommand>> = RefCell::new(None);
+        M::execute(input, "test-cid", &|cmd| {
+            *captured.borrow_mut() = Some(cmd);
+        })?;
+        captured
+            .into_inner()
+            .ok_or_else(|| "executor sent no command".to_string())
+    }
 
     #[test]
     fn register_snapshot_unregister_round_trip() {
@@ -784,8 +798,14 @@ mod tests {
     /// path (ADR-0027) produces the right command end-to-end.
     #[test]
     fn nip29_post_chat_message_executor_emits_host_pinned_publish_command() {
-        let body = r#"{"group":{"host_relay_url":"wss://groups.example.com","local_id":"rust-nostr"},"content":"hello"}"#;
-        let cmd = post_chat_message_command(body).expect("well-formed chat message");
+        let input = PostChatMessageInput {
+            group: GroupId::new("wss://groups.example.com", "rust-nostr"),
+            content: "hello".to_string(),
+            previous_event_id_prefixes: vec![],
+            reply_to_event_id: None,
+        };
+        let cmd = run_module_execute::<PostChatMessageAction>(input)
+            .expect("well-formed chat message");
 
         match cmd {
             ActorCommand::PublishUnsignedEventToRelays { event, relays } => {
@@ -808,16 +828,6 @@ mod tests {
             }
             other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
         }
-    }
-
-    /// A malformed body (missing the required `group`) is rejected — the
-    /// executor never fabricates a command from an unverified shape (D6).
-    #[test]
-    fn nip29_post_chat_message_executor_rejects_malformed_body() {
-        assert!(
-            post_chat_message_command(r#"{"content":"no group"}"#).is_err(),
-            "chat message without `group` must be rejected"
-        );
     }
 
     /// THE GROUP-CHAT CATALOG WIRING PROOF: each of the 3 NIP-29 group-chat
@@ -923,8 +933,11 @@ mod tests {
     /// subscribe-side seam end-to-end.
     #[test]
     fn nip29_discover_executor_emits_host_pinned_push_interest_command() {
-        let body = r#"{"relay_url":"wss://groups.example.com"}"#;
-        let cmd = discover_groups_command(body).expect("well-formed discover body");
+        let input = DiscoverGroupsInput {
+            relay_url: "wss://groups.example.com".to_string(),
+        };
+        let cmd = run_module_execute::<DiscoverGroupsAction>(input)
+            .expect("well-formed discover input");
 
         match cmd {
             ActorCommand::PushInterest(interest) => {
@@ -999,8 +1012,12 @@ mod tests {
     /// optional reason carried as the event content.
     #[test]
     fn nip29_join_executor_emits_kind_9021_with_host_pin() {
-        let body = r#"{"group":{"host_relay_url":"wss://groups.example.com","local_id":"room"},"invite_code":"abc","reason":"please"}"#;
-        let cmd = join_group_command(body).expect("well-formed join body");
+        let input = JoinGroupInput {
+            group: GroupId::new("wss://groups.example.com", "room"),
+            invite_code: Some("abc".to_string()),
+            reason: Some("please".to_string()),
+        };
+        let cmd = run_module_execute::<JoinGroupAction>(input).expect("well-formed join input");
         match cmd {
             ActorCommand::PublishUnsignedEventToRelays { event, relays } => {
                 assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
