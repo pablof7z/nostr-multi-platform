@@ -65,3 +65,22 @@ Use blocking primitives or event-driven patterns instead:
 - **Background persistence**: piggy-back on an existing event tick with a wall-clock gate — do not spawn a parallel sleep loop.
 
 Full rationale: `docs/builder-guide/06-reactivity-contract.md` §Anti-patterns and Doctrine D8.
+
+## Zero-tolerance on hacks, debt, and fragmentation
+
+**No temporary hacks. Ever.** This is a strict, non-negotiable rule enforced pedantically:
+
+- No "for now" workarounds, stubs that stay, or `// TODO: fix this properly` comments left
+  in production code. A staged fix is allowed *only* when a written plan in `BACKLOG.md`
+  documents every stage with a completion deadline. An unplanned, undocumented "temporary"
+  measure is categorically forbidden — there is no such thing as acceptable technical debt.
+- No fragmentation: every concept has exactly one canonical representation and one code path.
+  If two paths exist for the same concern, one must be deleted before the PR merges.
+- Every change must be done by the book, seeking the long-term correct architecture — not the
+  shortest path to a green CI. If the correct fix requires touching 10 files, touch 10 files.
+  If it requires a new crate, create the crate. Never paper over a structural problem with a
+  local patch.
+- "It works" is not an acceptance criterion. "It works and is architecturally correct" is.
+
+The spirit: future maintainers must be able to read any line of this codebase and see a
+deliberate, reasoned decision — not an expedient shortcut that was never revisited.
