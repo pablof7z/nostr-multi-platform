@@ -501,35 +501,29 @@ final class KernelHandle {
         let start = ContinuousClock.now
         let payload = String(cString: pointer)
         let data = Data(payload.utf8)
-        guard let outer = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            kbLog.error("outer JSON parse failed bytes=\(data.count)")
-            return nil
-        }
-        let frameTag = outer["t"] as? String
-        guard frameTag == "snapshot" else {
-            // Panic frames (t=panic) are intercepted earlier in
-            // `nmpUpdateCallback` and never reach this decoder. Anything else
-            // is a wire-format regression — log loudly so it surfaces in CI.
-            kbLog.error("unknown envelope tag=\(frameTag ?? "<nil>") bytes=\(data.count)")
-            return nil
-        }
-        guard let inner = outer["v"] else {
-            kbLog.error("snapshot missing 'v' field")
-            return nil
-        }
-        guard let innerData = try? JSONSerialization.data(withJSONObject: inner) else {
-            kbLog.error("failed to re-serialize inner JSON")
-            return nil
-        }
+        // Single-pass decode: wrap the outer `{"t":…,"v":{…}}` envelope in a
+        // typed struct so one JSONDecoder pass handles both the tag check and
+        // the KernelUpdate decode. The previous triple-parse pattern was:
+        //   1. JSONSerialization.jsonObject → outer [String: Any]
+        //   2. JSONSerialization.data → re-serialise inner back to Data
+        //   3. JSONDecoder.decode → decode KernelUpdate from that Data
+        // At 4 Hz × ~12 KB payload the redundant passes added ~150 KB/s of
+        // avoidable JSON work on the main thread.
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         do {
-            let update = try decoder.decode(KernelUpdate.self, from: innerData)
+            let envelope = try decoder.decode(SnapshotEnvelope.self, from: data)
+            // Panic frames (t=panic) are intercepted earlier in
+            // `nmpUpdateCallback` and never reach this decoder. Anything else
+            // is a wire-format regression — log loudly so it surfaces in CI.
+            guard envelope.t == "snapshot" else {
+                kbLog.error("unknown envelope tag=\(envelope.t) bytes=\(data.count)")
+                return nil
+            }
+            let update = envelope.v
             // Enforce the schema version contract: a mismatch means Rust's
             // field layout changed in a way the host cannot safely interpret.
-            // Return nil so the update is silently dropped (same posture as a
-            // parse error above) rather than feeding misparse data to the UI.
-            // The mismatch is loud-logged so it surfaces in CI and dev builds.
+            // Return nil so the update is dropped rather than misparsed.
             guard update.schemaVersion == KERNEL_SCHEMA_VERSION else {
                 kbLog.error("schema version mismatch: kernel=\(update.schemaVersion) host=\(KERNEL_SCHEMA_VERSION) — snapshot rejected")
                 return nil
@@ -543,10 +537,17 @@ final class KernelHandle {
                 decodeMicros: duration.microseconds
             )
         } catch {
-            kbLog.error("decode error: \(error.localizedDescription) bytes=\(innerData.count)")
+            kbLog.error("envelope decode error: \(error.localizedDescription) bytes=\(data.count)")
             return nil
         }
     }
+}
+
+/// Typed envelope for the outer `{"t":…,"v":{…}}` wire frame so the
+/// snapshot decode path needs only one JSONDecoder pass.
+private struct SnapshotEnvelope: Decodable {
+    let t: String
+    let v: KernelUpdate
 }
 
 private final class KernelUpdateSink {

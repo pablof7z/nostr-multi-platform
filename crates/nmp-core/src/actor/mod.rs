@@ -164,9 +164,12 @@ pub enum ActorCommand {
     SignInNsec {
         secret: zeroize::Zeroizing<String>,
     },
-    /// T66a identity — parse a `bunker://` NIP-46 URI. Transport is NOT yet
-    /// wired (D0 forbids `nmp-core -> nmp-signers`); this validates the URI
-    /// shape and surfaces a `last_error_toast` directing the user to nsec.
+    /// T66a identity — parse a `bunker://` NIP-46 URI, seed the
+    /// `bunker_handshake` snapshot projection with "connecting", and delegate
+    /// the handshake to the registered broker via
+    /// [`crate::bunker_hook::invoke_bunker_connect_hook`]. D0: the broker
+    /// crate (`nmp-signer-broker`) links `nmp-core` + `nmp-signers`; neither
+    /// direction of that import crosses into `nmp-core` itself.
     SignInBunker {
         uri: String,
     },
