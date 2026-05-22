@@ -64,17 +64,10 @@ pub struct Nip65OutboxResolver {
     /// Indexer relay URLs, kept in sync with the kernel's relay config.
     /// Discovery kinds (kind:0, kind:3, kind:1xxxx) fan out to these in
     /// addition to the author's NIP-65 write relays.
-    ///
-    /// PR-I: typed slot ([`IndexerRelaysSlot`] — `Arc<Mutex<RelayUrls>>`) so
-    /// the field's purpose is visible at the declaration and so the D14 lint
-    /// catches any future bare-`Vec` regression on this struct family.
     indexer_relays: IndexerRelaysSlot,
     /// Locally configured write relays for the active account. This covers
     /// the period after onboarding edits relay rows but before the just-sent
     /// kind:10002 comes back from a relay.
-    ///
-    /// PR-I: typed slot ([`LocalWriteRelaysSlot`]). Same rationale as
-    /// `indexer_relays` above.
     local_write_relays: LocalWriteRelaysSlot,
     /// Active account pubkey. Local relay-row fallback applies only to this
     /// pubkey so already-signed events from other authors never route through
@@ -93,9 +86,6 @@ impl Nip65OutboxResolver {
     /// relay list. The kernel holds a clone of the Arc and updates it whenever
     /// relay config changes, so the resolver always sees current URLs.
     ///
-    /// PR-I: `indexer_relays` is now a typed [`IndexerRelaysSlot`]; the
-    /// `local_write_relays` fallback slot is created empty by this
-    /// constructor, exactly matching the pre-PR-I behaviour.
     pub fn new(store: Arc<dyn EventStore>, indexer_relays: IndexerRelaysSlot) -> Self {
         Self::with_local_relays(
             store,
@@ -174,9 +164,6 @@ impl OutboxResolver for Nip65OutboxResolver {
         }
         if out.is_empty() && self.is_active_account(author_pubkey) {
             if let Ok(guard) = self.local_write_relays.lock() {
-                // PR-I: the slot is now a typed `RelayUrls(Vec<String>)`
-                // newtype — iterate via `as_slice()` so we never touch
-                // the inner `Vec` directly.
                 out.extend(guard.as_slice().iter().cloned());
             }
         }
@@ -189,8 +176,6 @@ impl OutboxResolver for Nip65OutboxResolver {
         // (NoTargets), it does not leak onto the indexers.
         if is_discovery_kind(kind) {
             if let Ok(guard) = self.indexer_relays.lock() {
-                // PR-I: same typed-slot affordance as the write-relays
-                // branch above — iterate via `as_slice()`.
                 out.extend(guard.as_slice().iter().cloned());
             }
         }

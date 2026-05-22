@@ -22,7 +22,7 @@ export function reactCommand(targetEventId: string, reaction = "+"): RuntimeComm
 }
 
 export function followCommand(pubkey: string, following: boolean): RuntimeCommand {
-  return command(following ? "chirp.follow" : "chirp.unfollow", { pubkey });
+  return command(following ? "nmp.follow" : "nmp.unfollow", { pubkey });
 }
 
 export function openProfileCommand(pubkey: string): RuntimeCommand {

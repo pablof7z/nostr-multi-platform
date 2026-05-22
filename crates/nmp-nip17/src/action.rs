@@ -1,8 +1,8 @@
 //! `nmp.nip17.send` — the NIP-17 direct-message send [`ActionModule`].
 //!
 //! This is the typed action seam a host wires into the kernel's action
-//! registry (`register_action_module` + `register_action_executor`) so a DM
-//! send reaches the actor through the generic `dispatch_action` path — exactly
+//! registry (`ActionRegistry::register::<SendDmAction>()`) so a DM send
+//! reaches the actor through the generic `dispatch_action` path — exactly
 //! like the NIP-29 `post_chat_message` action.
 //!
 //! # Two halves
@@ -145,6 +145,37 @@ mod tests {
             SendDmAction::start(&mut ctx(), input),
             Err(ActionRejection::Invalid(_))
         ));
+    }
+
+    #[test]
+    fn execute_emits_send_gift_wrapped_dm_with_correct_fields() {
+        use nmp_core::ActorCommand;
+        use std::cell::RefCell;
+
+        let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+        let input = SendDmInput {
+            recipient_pubkey: RECIPIENT.to_string(),
+            content: "hello world".to_string(),
+            reply_to: None,
+        };
+        SendDmAction::execute(input, "cid-dm", &|cmd| {
+            captured.borrow_mut().push(cmd);
+        })
+        .expect("well-formed input executes");
+        let cmds = captured.into_inner();
+        assert_eq!(cmds.len(), 1, "executor must send exactly one command, got {cmds:?}");
+        match cmds.into_iter().next().unwrap() {
+            ActorCommand::SendGiftWrappedDm {
+                rumor,
+                recipient_pubkey,
+                correlation_id,
+            } => {
+                assert_eq!(recipient_pubkey, RECIPIENT, "recipient must round-trip unchanged");
+                assert_eq!(rumor.content, "hello world", "DM content must land in the rumor");
+                assert_eq!(correlation_id.as_deref(), Some("cid-dm"), "correlation_id must thread through");
+            }
+            other => panic!("expected SendGiftWrappedDm, got {other:?}"),
+        }
     }
 
 }

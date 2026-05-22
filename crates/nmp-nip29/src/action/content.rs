@@ -39,9 +39,6 @@ fn post_chat_message_plan(action: &PostChatMessageInput) -> PublishPlan {
 
 pub struct PostChatMessageAction;
 impl ActionModule for PostChatMessageAction {
-    /// Wire-schema note: was `nip29.post_chat_message` before the namespace-prefix
-    /// rename (PR-B). Every protocol crate now uses the `nmp.<nip>.<verb>`
-    /// shape — enforced by doctrine-lint rule D9.
     const NAMESPACE: &'static str = "nmp.nip29.post_chat_message";
     type Action = PostChatMessageInput;
     fn start(
@@ -124,5 +121,37 @@ mod tests {
             PostChatMessageAction::start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
+    }
+
+    #[test]
+    fn execute_emits_host_pinned_kind9_publish_command() {
+        use nmp_core::ActorCommand;
+        use std::cell::RefCell;
+
+        let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+        PostChatMessageAction::execute(input(), "cid-99", &|cmd| {
+            captured.borrow_mut().push(cmd);
+        })
+        .expect("well-formed input executes");
+        let cmds = captured.into_inner();
+        assert_eq!(cmds.len(), 1, "executor must send exactly one command, got {cmds:?}");
+        match cmds.into_iter().next().unwrap() {
+            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id } => {
+                assert_eq!(event.kind, KIND_CHAT_MESSAGE, "must emit kind:9");
+                assert_eq!(
+                    relays,
+                    vec!["wss://groups.example.com".to_string()],
+                    "must be pinned to the group's host relay"
+                );
+                assert!(
+                    event.tags.iter().any(|t| t == &["h".to_string(), "room".to_string()]),
+                    "must carry the ['h', local_id] group tag, got {:?}",
+                    event.tags
+                );
+                assert_eq!(event.content, "hello");
+                assert_eq!(correlation_id.as_deref(), Some("cid-99"));
+            }
+            other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
+        }
     }
 }

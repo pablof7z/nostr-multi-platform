@@ -36,9 +36,6 @@ fn react_in_group_plan(action: &ReactInGroupInput) -> PublishPlan {
 
 pub struct ReactInGroupAction;
 impl ActionModule for ReactInGroupAction {
-    /// Wire-schema note: was `nip29.react_in_group` before the namespace-prefix
-    /// rename (PR-B). Every protocol crate now uses the `nmp.<nip>.<verb>`
-    /// shape — enforced by doctrine-lint rule D9.
     const NAMESPACE: &'static str = "nmp.nip29.react_in_group";
     type Action = ReactInGroupInput;
     fn start(
@@ -90,9 +87,6 @@ fn comment_in_group_plan(action: &CommentInGroupInput) -> PublishPlan {
 
 pub struct CommentInGroupAction;
 impl ActionModule for CommentInGroupAction {
-    /// Wire-schema note: was `nip29.comment_in_group` before the namespace-prefix
-    /// rename (PR-B). Every protocol crate now uses the `nmp.<nip>.<verb>`
-    /// shape — enforced by doctrine-lint rule D9.
     const NAMESPACE: &'static str = "nmp.nip29.comment_in_group";
     type Action = CommentInGroupInput;
     fn start(
@@ -119,6 +113,8 @@ impl ActionModule for CommentInGroupAction {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::kinds::{KIND_COMMENT, KIND_REACTION};
+    use std::cell::RefCell;
 
     fn react_input() -> ReactInGroupInput {
         ReactInGroupInput {
@@ -226,5 +222,63 @@ mod tests {
             CommentInGroupAction::start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
+    }
+
+    #[test]
+    fn react_execute_emits_host_pinned_kind7_publish_command() {
+        let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+        ReactInGroupAction::execute(react_input(), "react-cid", &|cmd| {
+            captured.borrow_mut().push(cmd);
+        })
+        .expect("well-formed input executes");
+        let cmds = captured.into_inner();
+        assert_eq!(cmds.len(), 1, "react executor must send exactly one command, got {cmds:?}");
+        match cmds.into_iter().next().unwrap() {
+            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id } => {
+                assert_eq!(event.kind, KIND_REACTION, "react must emit kind:7");
+                assert_eq!(
+                    relays,
+                    vec!["wss://groups.example.com".to_string()],
+                    "react must be pinned to the group's host relay"
+                );
+                assert!(
+                    event.tags.iter().any(|t| t == &["h".to_string(), "room".to_string()]),
+                    "must carry the ['h', local_id] group tag, got {:?}",
+                    event.tags
+                );
+                assert_eq!(event.content, "+");
+                assert_eq!(correlation_id.as_deref(), Some("react-cid"));
+            }
+            other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn comment_execute_emits_host_pinned_kind1111_publish_command() {
+        let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+        CommentInGroupAction::execute(comment_input(), "comment-cid", &|cmd| {
+            captured.borrow_mut().push(cmd);
+        })
+        .expect("well-formed input executes");
+        let cmds = captured.into_inner();
+        assert_eq!(cmds.len(), 1, "comment executor must send exactly one command, got {cmds:?}");
+        match cmds.into_iter().next().unwrap() {
+            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id } => {
+                assert_eq!(event.kind, KIND_COMMENT, "comment must emit kind:1111");
+                assert_eq!(
+                    relays,
+                    vec!["wss://groups.example.com".to_string()],
+                    "comment must be pinned to the group's host relay"
+                );
+                assert!(
+                    event.tags.iter().any(|t| t == &["h".to_string(), "room".to_string()]),
+                    "must carry the ['h', local_id] group tag, got {:?}",
+                    event.tags
+                );
+                assert_eq!(event.content, "nice");
+                assert_eq!(correlation_id.as_deref(), Some("comment-cid"));
+            }
+            other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
+        }
     }
 }

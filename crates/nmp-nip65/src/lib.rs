@@ -61,7 +61,7 @@
 //! namespace string; it carries no NIP-65 nouns.
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection, UnsignedEvent};
-use nmp_core::ActorCommand;
+use nmp_core::{canonical_relay_url, ActorCommand};
 use serde::{Deserialize, Serialize};
 
 /// NIP-65 kind: the relay list — read/write outbox/inbox advertisement.
@@ -105,41 +105,6 @@ pub struct RelayListEntry {
     pub marker: RelayMarker,
 }
 
-/// Canonicalise a relay URL the same way `nmp-nip17::dm_relay_list` does so
-/// the publish path here is symmetric with the DM relay path: identical
-/// rules, identical drop set.
-///
-/// Rules:
-/// * Trim ASCII whitespace.
-/// * Lowercase scheme and authority (host[:port]).
-/// * Strip a single trailing `/` only when the path is empty.
-/// * Preserve path / query / fragment otherwise.
-/// * Return `None` for a missing scheme separator, a non-`ws`/`wss`
-///   scheme, or a missing authority — the caller drops the URL.
-fn canonicalize_relay_url(raw: &str) -> Option<String> {
-    let s = raw.trim();
-    let sep = s.find("://")?;
-    let scheme = s[..sep].to_ascii_lowercase();
-    if scheme != "ws" && scheme != "wss" {
-        return None;
-    }
-    let rest = &s[sep + 3..];
-    if rest.is_empty() {
-        return None;
-    }
-    let (authority, path_etc) = if let Some(pos) = rest.find(['/', '?', '#']) {
-        (&rest[..pos], &rest[pos..])
-    } else {
-        (rest, "")
-    };
-    if authority.is_empty() {
-        return None;
-    }
-    let authority_lower = authority.to_ascii_lowercase();
-    let path_etc_norm = if path_etc == "/" { "" } else { path_etc };
-    Some(format!("{scheme}://{authority_lower}{path_etc_norm}"))
-}
-
 /// Build a NIP-65 kind:10002 relay-list **unsigned** event from an explicit
 /// list of [`RelayListEntry`] values.
 ///
@@ -149,12 +114,13 @@ fn canonicalize_relay_url(raw: &str) -> Option<String> {
 /// `.unwrap_or("both")` branch); the explicit `"read"` / `"write"` markers
 /// emit the marker verbatim.
 ///
-/// URLs are canonicalised (lowercase scheme+host, trailing-`/` stripped on
-/// empty path) and deduplicated by canonical URL in first-seen order. URLs
-/// that do not parse as `ws://` or `wss://` are dropped — this matches the
-/// ingest parser's `wss://` gate so a build → ingest round-trip is stable.
-/// (`ws://` is accepted by the canonicaliser but will be SKIPPED by the
-/// kernel parser, which requires `wss://`; callers should configure `wss://`.)
+/// URLs are canonicalised via [`nmp_core::canonical_relay_url`] (lowercase
+/// scheme+host, trailing-`/` stripped on empty path) and deduplicated by
+/// canonical URL in first-seen order. URLs that do not parse as `ws://` or
+/// `wss://` are dropped — this matches the ingest parser's `wss://` gate so a
+/// build → ingest round-trip is stable. (`ws://` is accepted by the
+/// canonicaliser but will be SKIPPED by the kernel parser, which requires
+/// `wss://`; callers should configure `wss://`.)
 ///
 /// Dedup is by canonical URL only — two entries for the same host with
 /// different markers collapse to the *first* marker seen. Callers that
@@ -173,7 +139,7 @@ pub fn build_relay_list_event(entries: &[RelayListEntry]) -> UnsignedEvent {
     let mut tags: Vec<Vec<String>> = Vec::with_capacity(entries.len());
     let mut seen = std::collections::HashSet::new();
     for entry in entries {
-        let Some(canonical) = canonicalize_relay_url(&entry.url) else {
+        let Some(canonical) = canonical_relay_url(&entry.url) else {
             continue;
         };
         if !seen.insert(canonical.clone()) {
@@ -536,43 +502,28 @@ mod tests {
     }
 
     #[test]
-    fn execute_enqueues_publish_unsigned_event_with_correlation_id() {
-        use std::cell::Cell;
+    fn execute_emits_kind10002_publish_unsigned_event_command() {
+        use nmp_core::ActorCommand;
+        use std::cell::RefCell;
 
+        let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
         let input = PublishRelayListInput {
             relays: vec![entry("wss://relay.example", RelayMarker::Both)],
         };
-        let saw_publish = Cell::new(false);
-        let saw_correlation_id = Cell::new(false);
-        let saw_kind_10002 = Cell::new(false);
         PublishRelayListAction::execute(input, "test-cid", &|cmd| {
-            if let ActorCommand::PublishUnsignedEvent {
-                ref event,
-                ref correlation_id,
-            } = cmd
-            {
-                saw_publish.set(true);
-                if correlation_id.as_deref() == Some("test-cid") {
-                    saw_correlation_id.set(true);
-                }
-                if event.kind == 10002 {
-                    saw_kind_10002.set(true);
-                }
-            }
+            captured.borrow_mut().push(cmd);
         })
         .expect("execute must not fail");
-        assert!(
-            saw_publish.get(),
-            "expected PublishUnsignedEvent (NIP-65 Auto-outbox)",
-        );
-        assert!(
-            saw_correlation_id.get(),
-            "execute must thread the dispatch correlation_id into the actor command",
-        );
-        assert!(
-            saw_kind_10002.get(),
-            "the unsigned event the actor receives must be kind:10002",
-        );
+        let cmds = captured.into_inner();
+        assert_eq!(cmds.len(), 1, "executor must send exactly one command, got {cmds:?}");
+        match cmds.into_iter().next().unwrap() {
+            ActorCommand::PublishUnsignedEvent { event, correlation_id } => {
+                assert_eq!(event.kind, 10002, "relay list must emit kind:10002");
+                assert_eq!(correlation_id.as_deref(), Some("test-cid"),
+                    "correlation_id must thread through so the host spinner closes");
+            }
+            other => panic!("expected PublishUnsignedEvent, got {other:?}"),
+        }
     }
 
     /// Round-trip shape contract: the tag shape the builder produces here

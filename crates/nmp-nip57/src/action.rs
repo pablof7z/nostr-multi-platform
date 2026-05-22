@@ -1,56 +1,24 @@
 //! `nmp.nip57.zap` — the NIP-57 lightning zap [`ActionModule`].
 //!
-//! # What this PR does
+//! Validates a zap request in [`ZapAction::start`], builds an unsigned
+//! kind:9734 via [`ZapRequest`] (`crate::build`), and dispatches
+//! [`ActorCommand::FetchLnurlInvoice`] (the ADR-0024 LNURL-pay round-trip).
+//! The actor signs the kind:9734, fetches the receiver's LNURL callback, and
+//! surfaces the resulting bolt11 invoice as a `ShowToast` follow-up.
 //!
-//! Wires `nmp.nip57.zap` into the kernel's generic `dispatch_action` seam
-//! end-to-end: validation in [`ZapAction::start`], unsigned kind:9734 build
-//! via [`ZapRequestBuilder`] (`crate::build`), and dispatch to
-//! [`ActorCommand::FetchLnurlInvoice`] (the ADR-0024 minimum-viable
-//! LNURL-pay round-trip). The actor signs the request, fetches the
-//! receiver's LNURL well-known + callback endpoints over HTTP, and surfaces
-//! the resulting bolt11 invoice through a `ShowToast` follow-up.
+//! # Wire routing
 //!
-//! # NIP-57 wire-routing — kind:9734 NEVER reaches relays
+//! NIP-57 § "Appendix C": the signed kind:9734 goes to the LN provider's
+//! LNURL **callback URL** as `nostr=<urlencoded>` — NOT to Nostr relays.
+//! The kind:9735 receipt is what relays receive; the LN provider mints it
+//! after the invoice settles.
 //!
-//! NIP-57 § "Appendix C" routes the signed kind:9734 to the LN provider's
-//! LNURL **callback URL** as a `nostr=<urlencoded>` query parameter — NOT
-//! to Nostr relays. The kind:9735 receipt is what relays see; the LN
-//! provider mints it after the invoice settles. Earlier drafts of this
-//! module documented the relays-routing path as a future option; that
-//! documentation was wrong (the spec is unambiguous) and has been
-//! removed.
-//!
-//! # ADR-0024 minimum-viable observable surface
-//!
-//! The actor surfaces the bolt11 invoice as a [`ActorCommand::ShowToast`]
-//! whose `message` starts with `Zap invoice: lnbc…`. A host can substring
-//! the `lnbc`/`lntb`/`lnbcrt`/`lntbs` prefix and drive its NWC `pay_invoice`
-//! flow (NIP-47, `ActorCommand::WalletPayInvoice`, gated behind the
-//! `wallet` Cargo feature). A snapshot-projection surface
-//! (`last_action_outcomes` per the open-roadmap follow-up) will replace
-//! the toast once it lands; until then the toast is the observable seam.
-//!
-//! # ADR-0026 Phase 1 — local-keys only
+//! # Signing constraint (ADR-0026 Phase 1)
 //!
 //! The actor reads `IdentityRuntime::active_local_keys` to sign the
-//! kind:9734. Bunker (NIP-46 remote-signer) accounts return `None`; the
-//! actor fails closed with a clear toast and a `RecordActionFailure`
-//! against the correlation_id. Remote-signer kind:9734 signing is the
-//! ADR-0026 Phase 2 follow-up, parallel to the NIP-17 DM bunker-send
-//! work documented in `nmp-core/src/actor/commands/dm.rs`.
-//!
-//! # NWC payment — out of scope
-//!
-//! This module dispatches the LNURL fetch and surfaces the bolt11
-//! invoice. It does NOT pay it. Wiring the toast → `WalletPayInvoice`
-//! handoff is the next milestone (the wallet feature is already gated
-//! and wired in `nmp-core`); the seam this PR proves is the LNURL
-//! request half.
-//!
-//! # Namespace
-//!
-//! `nmp.nip57.zap` — consistent with the existing `nmp.nip57.zaps` domain
-//! namespace (`domain.rs`).
+//! kind:9734. Bunker (NIP-46) accounts return `None`; the actor fails closed
+//! with a toast and records `ActionFailure` against the correlation_id.
+//! Remote-signer signing is the ADR-0026 Phase 2 follow-up.
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use nmp_core::ActorCommand;
@@ -154,24 +122,10 @@ impl ActionModule for ZapAction {
         Ok(())
     }
 
-    /// PR-G — this action settles asynchronously: `execute` enqueues
-    /// `FetchLnurlInvoice` and returns immediately; the actor's HTTP worker
-    /// surfaces the bolt11 (or a failure) via a follow-up `ShowToast` /
-    /// `RecordActionFailure`. Hosts that subscribe to `action_stages` will
-    /// see `Requested` (set in the dispatch arm) and a terminal `Failed`
-    /// for any pre-payment error.
-    ///
-    /// # Recording sites are cross-file
-    ///
-    /// The `record_action_stage` and `record_action_failure` calls that
-    /// satisfy the D12 contract live in
-    /// `crates/nmp-core/src/actor/dispatch.rs` (the `FetchLnurlInvoice`
-    /// arm sets `Requested`) and
-    /// `crates/nmp-core/src/actor/commands/zap.rs` (the LNURL handler's
-    /// failure paths set `Failed`). D12 is a per-file grep gate; the
-    /// `doctrine-allow` opt-out below mirrors `PublishModule`'s pattern
-    /// for the same shape (declared in the protocol crate, recorded in
-    /// the actor + engine in `nmp-core`).
+    /// Settles asynchronously: `execute` enqueues `FetchLnurlInvoice` and
+    /// returns immediately; the actor's HTTP worker surfaces the bolt11 (or
+    /// failure) via `ShowToast`/`RecordActionFailure`. Recording sites:
+    /// `actor/dispatch.rs` (Requested), `actor/commands/zap.rs` (Failed).
     fn is_async_completing() -> bool { // doctrine-allow: D12 — recording sites are cross-file (actor/dispatch.rs FetchLnurlInvoice arm sets Requested; actor/commands/zap.rs sets Failed on pre-payment errors)
         true
     }
@@ -236,6 +190,15 @@ mod tests {
     use super::*;
     use nmp_core::substrate::ActionContext;
     use std::cell::RefCell;
+
+    /// Run the typed executor and capture every `ActorCommand` it sends, in order.
+    fn run_execute(input: ZapInput) -> Result<Vec<ActorCommand>, String> {
+        let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+        ZapAction::execute(input, "cid-deadbeef", &|cmd| {
+            captured.borrow_mut().push(cmd);
+        })?;
+        Ok(captured.into_inner())
+    }
 
     const RECIPIENT: &str =
         "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
@@ -351,13 +314,9 @@ mod tests {
     /// actor's spawned worker, not as a fabricated "intent recorded" toast.
     #[test]
     fn execute_emits_fetch_lnurl_invoice_with_zap_request() {
-        let captured: RefCell<Option<ActorCommand>> = RefCell::new(None);
-        ZapAction::execute(well_formed_input(), "cid-deadbeef", &|cmd| {
-            *captured.borrow_mut() = Some(cmd);
-        })
-        .expect("execute must succeed for well-formed input");
-        let cmd = captured.into_inner().expect("executor must emit a command");
-        match cmd {
+        let cmds = run_execute(well_formed_input()).expect("execute must succeed for well-formed input");
+        assert_eq!(cmds.len(), 1, "executor must emit exactly one command, got {cmds:?}");
+        match cmds.into_iter().next().unwrap() {
             ActorCommand::FetchLnurlInvoice {
                 unsigned,
                 lnurl_or_address,
@@ -401,12 +360,9 @@ mod tests {
             ),
             ..well_formed_input()
         };
-        let captured: RefCell<Option<ActorCommand>> = RefCell::new(None);
-        ZapAction::execute(input, "cid", &|cmd| {
-            *captured.borrow_mut() = Some(cmd);
-        })
-        .unwrap();
-        let ActorCommand::FetchLnurlInvoice { unsigned, .. } = captured.into_inner().unwrap()
+        let cmds = run_execute(input).unwrap();
+        let ActorCommand::FetchLnurlInvoice { unsigned, .. } =
+            cmds.into_iter().next().expect("executor must emit a command")
         else {
             panic!("expected FetchLnurlInvoice");
         };
@@ -421,12 +377,9 @@ mod tests {
             comment: Some("nice post 🤙".to_string()),
             ..well_formed_input()
         };
-        let captured: RefCell<Option<ActorCommand>> = RefCell::new(None);
-        ZapAction::execute(input, "cid", &|cmd| {
-            *captured.borrow_mut() = Some(cmd);
-        })
-        .unwrap();
-        let ActorCommand::FetchLnurlInvoice { unsigned, .. } = captured.into_inner().unwrap()
+        let cmds = run_execute(input).unwrap();
+        let ActorCommand::FetchLnurlInvoice { unsigned, .. } =
+            cmds.into_iter().next().expect("executor must emit a command")
         else {
             panic!("expected FetchLnurlInvoice");
         };

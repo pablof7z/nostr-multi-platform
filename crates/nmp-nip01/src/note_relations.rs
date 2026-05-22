@@ -1,9 +1,14 @@
 use std::collections::HashMap;
 
-use nmp_core::substrate::KernelEvent;
+use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
 use serde::{Deserialize, Serialize};
 
 use crate::decode::try_from_kernel_event;
+
+/// Cap for the reply index. At most this many individual reply-event → parent
+/// mappings are tracked; older entries are evicted when the cap is exceeded,
+/// with corresponding count decrements to keep `reply_counts` consistent.
+const REPLY_INDEX_CAP: usize = MAX_PROJECTION_MESSAGES * 4;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct NoteRelationCounts {
@@ -64,10 +69,22 @@ impl RelationCountInterest {
     }
 }
 
-#[derive(Default)]
 pub struct NoteRelationIndex {
+    /// Counts replies per parent event id. Stays accurate because evictions
+    /// from `reply_parent_by_event` decrement the corresponding entry here.
     reply_counts: HashMap<String, u64>,
-    reply_parent_by_event: HashMap<String, String>,
+    /// Bounded map: reply-event-id → parent-event-id. Evicting the oldest
+    /// entry decrements `reply_counts[parent]` to keep counts consistent.
+    reply_parent_by_event: BoundedMessageMap<String, String>,
+}
+
+impl Default for NoteRelationIndex {
+    fn default() -> Self {
+        Self {
+            reply_counts: HashMap::new(),
+            reply_parent_by_event: BoundedMessageMap::new(REPLY_INDEX_CAP),
+        }
+    }
 }
 
 impl NoteRelationIndex {
@@ -85,8 +102,16 @@ impl NoteRelationIndex {
         if self.reply_parent_by_event.contains_key(&event.id) {
             return Vec::new();
         }
-        self.reply_parent_by_event
-            .insert(event.id.clone(), parent.clone());
+        let (_, evicted) = self.reply_parent_by_event
+            .insert_returning_evicted(event.id.clone(), parent.clone());
+        if let Some((_, evicted_parent)) = evicted {
+            if let Some(c) = self.reply_counts.get_mut(&evicted_parent) {
+                *c = c.saturating_sub(1);
+                if *c == 0 {
+                    self.reply_counts.remove(&evicted_parent);
+                }
+            }
+        }
         let count = self.reply_counts.entry(parent.clone()).or_insert(0);
         *count = count.saturating_add(1);
         vec![parent]
@@ -131,6 +156,38 @@ mod tests {
         assert_eq!(
             index.counts_for("root").replies,
             RelationCount::Known { count: 1 }
+        );
+    }
+
+    #[test]
+    fn reply_count_is_decremented_when_bounded_map_evicts_oldest_entry() {
+        // Use a tiny cap so eviction is easy to trigger in a test.
+        const CAP: usize = 2;
+        let mut index = NoteRelationIndex {
+            reply_counts: std::collections::HashMap::new(),
+            reply_parent_by_event: nmp_core::substrate::BoundedMessageMap::new(CAP),
+        };
+
+        // "reply1" and "reply2" both reply to "root".
+        let r1 = event("reply1", vec![vec!["e".into(), "root".into(), String::new(), "reply".into()]]);
+        let r2 = event("reply2", vec![vec!["e".into(), "root".into(), String::new(), "reply".into()]]);
+        // "reply3" replies to "other" — its insertion evicts "reply1" from the bounded map.
+        let r3 = event("reply3", vec![vec!["e".into(), "other".into(), String::new(), "reply".into()]]);
+
+        index.ingest(&r1);
+        index.ingest(&r2);
+        assert_eq!(index.counts_for("root").replies, RelationCount::Known { count: 2 });
+
+        // r3 pushes r1 out: "root" count should drop to 1.
+        index.ingest(&r3);
+        assert_eq!(
+            index.counts_for("root").replies,
+            RelationCount::Known { count: 1 },
+            "evicting an old reply must decrement the parent's count"
+        );
+        assert_eq!(
+            index.counts_for("other").replies,
+            RelationCount::Known { count: 1 },
         );
     }
 

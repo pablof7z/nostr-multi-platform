@@ -85,39 +85,29 @@ pub trait ActionModule: Send + Sync + 'static {
         None
     }
 
-    /// Declare that this module's actions settle ASYNCHRONOUSLY (i.e.
-    /// the dispatch return value does NOT yet carry the terminal outcome;
-    /// the actor signs / publishes / awaits an ack / etc., and the result
-    /// arrives later through the snapshot path).
+    /// Declare that this module's actions settle ASYNCHRONOUSLY — the
+    /// dispatch return value does not yet carry the terminal outcome; the
+    /// actor signs / publishes / awaits an external ack, and the result
+    /// arrives later through `projections["action_stages"]`.
     ///
-    /// Defaults to `false`. A module that overrides this to `true` is
-    /// declaring a contract with the host: the action will produce a
-    /// lifecycle the host can observe through `projections["action_stages"]`
-    /// (`Requested` → `Publishing` → `Accepted`/`Failed`) and MUST record
-    /// stage transitions via `Kernel::record_action_stage` so the mirror
-    /// reflects reality. The doctrine-lint rule **D12** enforces this:
-    /// any file declaring `fn is_async_completing(...) -> bool` with a
-    /// non-`false` body must also contain a `record_action_stage` call,
-    /// otherwise the module ships an empty stage seam.
-    ///
-    /// `PublishModule` returns `true` (the publish actor lifecycle is the
-    /// canonical async-completing example). Synchronous actions — those
-    /// whose result is already committed when `dispatch_action` returns —
-    /// leave the default.
+    /// Defaults to `false`. A module that overrides this to `true` MUST
+    /// record stage transitions (`Requested` → `Publishing` →
+    /// `Accepted`/`Failed`) via `Kernel::record_action_stage`; doctrine-lint
+    /// rule **D12** enforces this statically per file.
     fn is_async_completing() -> bool {
         false
     }
 
-    /// ADR-0027 typed-executor seam: enqueue the `ActorCommand` that the
-    /// validated `action` should drive. Called via `ActionModuleAdapter<M>`
-    /// (see `kernel::action_registry`) when the module is registered through
-    /// `ActionRegistry::register::<M>()` and `has_typed_executor` returns
-    /// `true`. The pre-ADR-0027 closure path (`register_executor`) remains
-    /// available for hosts that haven't migrated yet; the typed path takes
-    /// precedence when both are present.
+    /// Enqueue the `ActorCommand` that the validated `action` should drive.
     ///
-    /// Thread `correlation_id` onto any `ActorCommand` whose terminal verdict
-    /// must report the dispatched id (the spinner round-trip).
+    /// Called via `ActionModuleAdapter<M>` (see `kernel::action_registry`)
+    /// after `start` returns `Ok`. Thread `correlation_id` onto any
+    /// `ActorCommand` whose terminal verdict must report the dispatched id
+    /// (the spinner round-trip).
+    ///
+    /// The pre-ADR-0027 dual-registration path (`register_action_module` /
+    /// `register_action_executor`) was deleted; `execute` is now the sole
+    /// executor seam for any registered module.
     fn execute(
         action: Self::Action,
         correlation_id: &str,

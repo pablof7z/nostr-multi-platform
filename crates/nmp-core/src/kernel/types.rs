@@ -178,8 +178,8 @@ pub(super) struct ProfileCard {
 /// per-verb plumbing).
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub(super) struct ProfileDispatchSpec {
-    /// Action namespace — registered via `register_action_module`. Today:
-    /// `chirp.follow` or `chirp.unfollow`.
+    /// Action namespace — registered via `ActionRegistry::register::<M>()`. Today:
+    /// `nmp.follow` or `nmp.unfollow`.
     pub(super) namespace: &'static str,
     /// Serialised JSON body the action module expects. Rust formats this so
     /// the shell sends bytes the executor already validates.

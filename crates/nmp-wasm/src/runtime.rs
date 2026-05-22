@@ -94,12 +94,12 @@ impl WasmRuntime {
         action: ChirpAction,
         correlation_id: String,
     ) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {
-        let action_type = action.clone().into_dispatch_parts().0;
         match action {
             ChirpAction::PublishNote {
                 content,
                 reply_to_id,
             } => {
+                let action_type = "nmp.publish".to_string();
                 if self.add_note(content, reply_to_id).is_none() {
                     return Ok(vec![self.rejected_action(
                         action_type,
@@ -117,12 +117,10 @@ impl WasmRuntime {
                     },
                 ])
             }
-            other => {
-                Ok(vec![self.unsupported_action(
-                    other.into_dispatch_parts().0,
-                    correlation_id,
-                )])
-            }
+            other => Ok(vec![self.unsupported_action(
+                other.into_dispatch_parts().0,
+                correlation_id,
+            )]),
         }
     }
 

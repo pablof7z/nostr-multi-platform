@@ -63,7 +63,8 @@ impl AppRuntime {
     }
 
     pub fn nostrconnect_uri(&self) -> Result<String> {
-        let callback = CString::new("chirp://nip46").expect("static callback has no NUL");
+        let callback = CString::new("chirp://nip46")
+            .map_err(|_| "callback contains NUL byte".to_string())?;
         let ptr = nmp_app_nostrconnect_uri(self.app_ptr(), ptr::null(), callback.as_ptr());
         take_broker_string(ptr, "nostrconnect uri")
     }

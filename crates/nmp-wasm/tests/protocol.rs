@@ -154,7 +154,7 @@ fn chirp_action_uses_same_generic_worker_event_path() {
 
     match &events[0] {
         WorkerEvent::CapabilityFailure(failure) => {
-            assert_eq!(failure.capability, "chirp.follow");
+            assert_eq!(failure.capability, "nmp.follow");
             assert_eq!(failure.correlation_id, "follow-1");
         }
         other => panic!("expected degraded dispatch failure, got {other:?}"),

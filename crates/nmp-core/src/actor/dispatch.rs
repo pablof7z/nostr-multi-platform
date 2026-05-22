@@ -376,13 +376,8 @@ pub(super) fn dispatch_command(
             target,
             correlation_id,
         } => {
-            // PR-G: record the `Requested` stage the moment the actor
-            // dequeues the dispatched action. This is the kernel-side
-            // entry point of an async action — every other stage is
-            // recorded downstream (`Publishing` at engine accept,
-            // `Accepted` / `Failed` on terminal drain). Skipped for
-            // non-dispatch callers (`correlation_id == None`); there is
-            // no host spinner to inform.
+            // Record Requested at dequeue time. Downstream arms record
+            // Publishing (engine accept) and Accepted/Failed (terminal).
             if let Some(ref cid) = correlation_id {
                 ctx.kernel.record_action_stage(
                     cid,
@@ -429,10 +424,6 @@ pub(super) fn dispatch_command(
                 content,
                 created_at: ctx.kernel.now_secs(),
             };
-            // PR-G — see PublishNote arm above. Same entry-point seam:
-            // record `Requested` against the registry-minted correlation_id
-            // the moment the actor dequeues the dispatched action so the
-            // host spinner has a lifecycle entry from t=0.
             if let Some(ref cid) = correlation_id {
                 ctx.kernel.record_action_stage(
                     cid,
@@ -471,7 +462,6 @@ pub(super) fn dispatch_command(
             fields,
             correlation_id,
         } => {
-            // PR-G — see PublishNote arm above. Same entry-point seam.
             if let Some(ref cid) = correlation_id {
                 ctx.kernel.record_action_stage(
                     cid,
@@ -499,11 +489,6 @@ pub(super) fn dispatch_command(
             if unsigned.created_at == 0 {
                 unsigned.created_at = ctx.kernel.now_secs();
             }
-            // PR-G: record Requested lifecycle when dispatched via an action.
-            // Mirrors the `PublishUnsignedEventToRelays` arm below — without this
-            // an action like `nmp.nip17.publish_relay_list` would hand the host
-            // a correlation_id, never record a terminal stage, and the host
-            // spinner would hang forever.
             if let Some(ref cid) = correlation_id {
                 ctx.kernel.record_action_stage(
                     cid,
@@ -533,7 +518,6 @@ pub(super) fn dispatch_command(
             if event.created_at == 0 {
                 event.created_at = ctx.kernel.now_secs();
             }
-            // PR-G: record Requested lifecycle when dispatched via an action.
             if let Some(ref cid) = correlation_id {
                 ctx.kernel.record_action_stage(
                     cid,
@@ -557,8 +541,6 @@ pub(super) fn dispatch_command(
             target,
             correlation_id,
         } => {
-            // PR-G — see PublishNote arm above. The pre-signed dispatch
-            // path also gets the `Requested` lifecycle entry.
             if let Some(ref cid) = correlation_id {
                 ctx.kernel.record_action_stage(
                     cid,
@@ -580,17 +562,6 @@ pub(super) fn dispatch_command(
             // crypto runs here on the actor thread (D7). `created_at == 0` is
             // re-stamped from the kernel clock inside the handler.
             //
-            // PR-G — when the send originates from `dispatch_action`
-            // (`nmp.nip17.send`), the host received a registry-minted
-            // correlation_id and is waiting on `action_results` / the
-            // action_stages mirror to see the verdict. Record `Requested`
-            // here (mirroring the `PublishSignedEvent` precedent above) so
-            // the lifecycle history starts at dispatch time; the handler's
-            // early-exit failure branches record terminal `Failed` entries
-            // and the per-envelope `publish_signed_event` calls thread the
-            // id into the publish engine's `correlation_id_override` so the
-            // kind:1059 terminal verdict reaches `action_results` under the
-            // dispatched id (not the gift-wrap envelope's event id).
             if let Some(ref cid) = correlation_id {
                 ctx.kernel.record_action_stage(
                     cid,
@@ -767,14 +738,8 @@ pub(super) fn dispatch_command(
             amount_msats,
             correlation_id,
         } => {
-            // PR-G: record the `Requested` stage the moment the actor dequeues
-            // the dispatched action — mirrors the PublishNote arm above. The
-            // terminal `Accepted` / `Failed` lands later in `handle_nwc_text`
-            // when the wallet's kind:23195 response settles, via
-            // `Kernel::record_action_success` / `record_action_failure`.
-            // Skipped for non-dispatch callers (`correlation_id == None`,
-            // which is what the C-ABI `nmp_app_wallet_pay_invoice` path
-            // passes today — no host spinner to inform).
+            // Terminal Accepted/Failed arrives later via handle_nwc_text
+            // when the wallet's kind:23195 response settles.
             if let Some(ref cid) = correlation_id {
                 ctx.kernel.record_action_stage(
                     cid,
@@ -798,9 +763,6 @@ pub(super) fn dispatch_command(
             amount_msats,
             correlation_id,
         } => {
-            // PR-G — record Requested lifecycle when dispatched via an
-            // action (the `nmp.nip57.zap` namespace). Mirrors the existing
-            // `PublishUnsignedEventToRelays` arm.
             if let Some(ref cid) = correlation_id {
                 ctx.kernel.record_action_stage(
                     cid,
@@ -834,59 +796,24 @@ pub(super) fn dispatch_command(
             correlation_id,
             reason,
         } => {
-            // PR-G2 — executor-panic / executor-Err fan-out from the FFI
-            // thread. `record_action_failure` lifts the failure into both
-            // surfaces the host listens on:
-            //
-            //   * `action_stages` → `Failed { reason }` terminal — the
-            //     mirror entry the host's progress indicator polls until
-            //     it ACKs the correlation_id.
-            //   * `action_results` → terminal verdict — the per-tick drain
-            //     that clears the spinner.
-            //
-            // Without this command an executor that minted a
-            // correlation_id but failed before the actor saw an
-            // `ActorCommand` carrying it would orphan the entry: the host
-            // received the id from `nmp_app_dispatch_action`'s envelope
-            // but the kernel never produced a stage to ACK. The next
-            // emit fires promptly via `maybe_emit_after_dispatch` so the
-            // host sees the terminal on its very next tick.
+            // Writes `Failed { reason }` to `action_stages` and a terminal
+            // verdict to `action_results` — both surfaces the host uses to
+            // clear the spinner. Without this, an executor that fails before
+            // emitting an ActorCommand would orphan the correlation_id.
             ctx.kernel.record_action_failure(correlation_id, reason);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
         ActorCommand::RecordActionSuccess { correlation_id } => {
-            // PD-036 — off-thread worker success fan-in (symmetric counterpart
-            // to `RecordActionFailure` above). The NIP-57 zap LNURL-pay worker
-            // is the motivating consumer: after the HTTP round-trip returns a
-            // bolt11 invoice the spawned worker has no `&mut Kernel` and must
-            // round-trip through the actor channel to record the terminal.
-            //
-            // `record_action_success` writes BOTH surfaces — same dual-write
-            // contract `record_action_failure` honours on the failure leg:
-            //
-            //   * `action_stages` → `Accepted` terminal — the mirror entry
-            //     the host's stage observer ACKs.
-            //   * `action_results` → terminal verdict — the per-tick drain
-            //     that closes the spinner.
-            //
-            // Without this command the `nmp.nip57.zap` spinner hangs forever:
-            // `ShowToast` (the human-readable surface the worker already
-            // sends) is NOT the spinner-closing surface — `action_results` is.
-            // The next emit fires promptly via `maybe_emit_after_dispatch`
-            // so the host sees the terminal on its very next tick.
+            // Symmetric counterpart to RecordActionFailure: off-thread workers
+            // (e.g. the LNURL-pay HTTP worker) fan success back through the
+            // actor channel. Writes `Accepted` to `action_stages` and a
+            // terminal verdict to `action_results`.
             ctx.kernel.record_action_success(correlation_id);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
         ActorCommand::AckActionStage(correlation_id) => {
-            // PR-G — host acknowledged that it has consumed a terminal
-            // stage for this correlation_id. Drop the entry from the
-            // `action_stages` mirror so the next snapshot tick no longer
-            // carries it. The kernel sets `changed_since_emit` so the
-            // emission fires promptly; `maybe_emit_after_dispatch` honours
-            // the configured throttle. Idempotent: a duplicate ack from
-            // a host that races a snapshot is a silent no-op.
             ctx.kernel.ack_action_stage(&correlation_id);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())

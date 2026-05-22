@@ -117,7 +117,7 @@ pub extern "C" fn nmp_app_chirp_register(
         return std::ptr::null_mut();
     }
     // Register Chirp's social-verb action namespaces (`chirp.react`,
-    // `chirp.follow`, `chirp.unfollow`) against the kernel's action registry
+    // `nmp.follow`, `nmp.unfollow`) against the kernel's action registry
     // BEFORE taking the shared `&NmpApp` borrow below. This needs `&mut
     // NmpApp` and must run during host init — before `nmp_app_start` and
     // before any `nmp_app_dispatch_action` (D0 — social verbs live in this
@@ -512,8 +512,8 @@ fn c_string_opt(ptr: *const c_char) -> Option<String> {
 ///
 /// JSON schemas (the third arg the host passes to `nmp_app_dispatch_action`):
 /// * `chirp.react`   — `{"target_event_id":"<hex>","reaction":"+"}`
-/// * `chirp.follow`  — `{"pubkey":"<hex>"}`
-/// * `chirp.unfollow`— `{"pubkey":"<hex>"}`
+/// * `nmp.follow`    — `{"pubkey":"<hex>"}`
+/// * `nmp.unfollow`  — `{"pubkey":"<hex>"}`
 ///
 /// Hex-shape validation deliberately stays in the actor's command handlers
 /// (which own the user-facing toasts) — the module validators here only check
@@ -542,7 +542,7 @@ impl ActionModule for ChirpReactModule {
 
 struct ChirpFollowModule;
 impl ActionModule for ChirpFollowModule {
-    const NAMESPACE: &'static str = "chirp.follow";
+    const NAMESPACE: &'static str = "nmp.follow";
     type Action = PubkeyAction;
     fn start(_ctx: &mut ActionContext, _action: Self::Action) -> Result<(), ActionRejection> {
         Ok(())
@@ -560,7 +560,7 @@ impl ActionModule for ChirpFollowModule {
 
 struct ChirpUnfollowModule;
 impl ActionModule for ChirpUnfollowModule {
-    const NAMESPACE: &'static str = "chirp.unfollow";
+    const NAMESPACE: &'static str = "nmp.unfollow";
     type Action = PubkeyAction;
     fn start(_ctx: &mut ActionContext, _action: Self::Action) -> Result<(), ActionRejection> {
         Ok(())
@@ -751,7 +751,7 @@ fn default_reaction() -> String {
     "+".to_string()
 }
 
-/// `chirp.follow` / `chirp.unfollow` action body: `{"pubkey":"<hex>"}`.
+/// `nmp.follow` / `nmp.unfollow` action body: `{"pubkey":"<hex>"}`.
 #[derive(Clone, serde::Deserialize, serde::Serialize)]
 struct PubkeyAction {
     pubkey: String,
@@ -854,8 +854,8 @@ mod tests {
 
         for (namespace, body) in [
             ("chirp.react", r#"{"target_event_id":"abc","reaction":"+"}"#),
-            ("chirp.follow", r#"{"pubkey":"deadbeef"}"#),
-            ("chirp.unfollow", r#"{"pubkey":"deadbeef"}"#),
+            ("nmp.follow", r#"{"pubkey":"deadbeef"}"#),
+            ("nmp.unfollow", r#"{"pubkey":"deadbeef"}"#),
         ] {
             let parsed = dispatch(app, namespace, body);
             let id = parsed
@@ -873,10 +873,10 @@ mod tests {
         );
 
         // Malformed JSON shape is rejected by the host module validator (D6).
-        let parsed = dispatch(app, "chirp.follow", r#"{"not_pubkey":"x"}"#);
+        let parsed = dispatch(app, "nmp.follow", r#"{"not_pubkey":"x"}"#);
         assert!(
             parsed.get("error").is_some(),
-            "wrong-shape chirp.follow must be rejected: {parsed}"
+            "wrong-shape nmp.follow must be rejected: {parsed}"
         );
 
         nmp_app_chirp_unregister(handle);

@@ -187,9 +187,9 @@ impl AppRuntime {
     pub fn follow(&self, pubkey: &str, add: bool) -> Result<()> {
         let action = json!({ "pubkey": pubkey }).to_string();
         let namespace = if add {
-            "chirp.follow"
+            "nmp.follow"
         } else {
-            "chirp.unfollow"
+            "nmp.unfollow"
         };
         self.dispatch_action(namespace, &action)
     }

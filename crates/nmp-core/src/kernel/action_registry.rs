@@ -502,26 +502,22 @@ mod tests {
     #[test]
     fn publish_note_executor_threads_correlation_id_onto_actor_command() {
         use crate::actor::ActorCommand;
-        use std::sync::{Arc, Mutex};
+        use std::cell::RefCell;
 
         let registry = default_registry();
-        let captured: Arc<Mutex<Option<ActorCommand>>> = Arc::new(Mutex::new(None));
-        let captured_in_send = Arc::clone(&captured);
+        let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
 
         let minted_correlation_id = "fe".repeat(16);
         let action_json = r#"{"PublishNote":{"content":"hello","reply_to_id":null,"target":{"Explicit":{"relays":["wss://relay.example"]}}}}"#;
         registry
             .execute("nmp.publish", action_json, &minted_correlation_id, &|cmd| {
-                *captured_in_send.lock().unwrap() = Some(cmd);
+                captured.borrow_mut().push(cmd);
             })
             .expect("publish-note execution should succeed");
 
-        let cmd = captured
-            .lock()
-            .unwrap()
-            .take()
-            .expect("an ActorCommand must be sent");
-        match cmd {
+        let cmds = captured.into_inner();
+        assert_eq!(cmds.len(), 1, "executor must emit exactly one ActorCommand; got {cmds:?}");
+        match cmds.into_iter().next().unwrap() {
             ActorCommand::PublishNote {
                 content,
                 reply_to_id,
@@ -558,11 +554,10 @@ mod tests {
     #[test]
     fn publish_signed_executor_sends_publish_signed_event_command() {
         use crate::actor::ActorCommand;
-        use std::sync::{Arc, Mutex};
+        use std::cell::RefCell;
 
         let registry = default_registry();
-        let captured: Arc<Mutex<Option<ActorCommand>>> = Arc::new(Mutex::new(None));
-        let captured_in_send = Arc::clone(&captured);
+        let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
 
         let action = crate::publish::PublishAction::Publish {
             handle: "h-presigned".to_string(),
@@ -577,17 +572,14 @@ mod tests {
                 &action_json,
                 &minted_correlation_id,
                 &|cmd| {
-                    *captured_in_send.lock().unwrap() = Some(cmd);
+                    captured.borrow_mut().push(cmd);
                 },
             )
             .expect("publish execution should succeed");
 
-        let cmd = captured
-            .lock()
-            .unwrap()
-            .take()
-            .expect("an ActorCommand must be sent");
-        match cmd {
+        let cmds = captured.into_inner();
+        assert_eq!(cmds.len(), 1, "executor must emit exactly one ActorCommand; got {cmds:?}");
+        match cmds.into_iter().next().unwrap() {
             ActorCommand::PublishSignedEvent {
                 target,
                 correlation_id,
@@ -649,27 +641,23 @@ mod tests {
     #[test]
     fn publish_profile_executor_threads_correlation_id_onto_actor_command() {
         use crate::actor::ActorCommand;
-        use std::sync::{Arc, Mutex};
+        use std::cell::RefCell;
 
         let registry = default_registry();
-        let captured: Arc<Mutex<Option<ActorCommand>>> = Arc::new(Mutex::new(None));
-        let captured_in_send = Arc::clone(&captured);
+        let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
 
         let minted_correlation_id = "ab".repeat(16);
         let action_json =
             r#"{"PublishProfile":{"fields":{"name":"Alice","picture":"https://x/y.png"}}}"#;
         registry
             .execute("nmp.publish", action_json, &minted_correlation_id, &|cmd| {
-                *captured_in_send.lock().unwrap() = Some(cmd);
+                captured.borrow_mut().push(cmd);
             })
             .expect("publish-profile execution should succeed");
 
-        let cmd = captured
-            .lock()
-            .unwrap()
-            .take()
-            .expect("an ActorCommand must be sent");
-        match cmd {
+        let cmds = captured.into_inner();
+        assert_eq!(cmds.len(), 1, "executor must emit exactly one ActorCommand; got {cmds:?}");
+        match cmds.into_iter().next().unwrap() {
             ActorCommand::PublishProfile {
                 fields,
                 correlation_id,

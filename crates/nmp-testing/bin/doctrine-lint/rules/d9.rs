@@ -17,7 +17,10 @@
 //!
 //! Protocol/substrate crates only — every `crates/nmp-*/src/` tree. App-layer
 //! crates under `apps/<app>/` legitimately use app-local vocabulary
-//! (`chirp.react`, `chirp.follow`, ...) so they are exempt.
+//! (`chirp.react`, ...) so they are exempt. Note: `nmp.follow` /
+//! `nmp.unfollow` were renamed from `chirp.follow` / `chirp.unfollow` because
+//! NIP-02 follow/unfollow are protocol primitives, not Chirp-specific verbs —
+//! they now live under the substrate `nmp.*` namespace and are not exempt.
 //!
 //! The `nmp-testing` crate is also exempt — it hosts this rule's own fixtures
 //! and test harnesses that intentionally include negative examples.

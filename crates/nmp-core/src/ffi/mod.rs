@@ -754,7 +754,7 @@ impl NmpApp {
     }
 
     /// Register a host-supplied snapshot projection — the output-side
-    /// counterpart to [`Self::register_action_executor`].
+    /// counterpart to [`Self::register_action`].
     ///
     /// The closure runs on **every snapshot tick** (inside the actor's
     /// `make_update`) and its returned JSON value is appended to
@@ -763,7 +763,7 @@ impl NmpApp {
     /// its own snapshot namespace WITHOUT editing `nmp-core`'s sealed social
     /// `KernelSnapshot` fields.
     ///
-    /// Unlike `register_action_executor`, this does NOT require `&mut self`:
+    /// Unlike [`Self::register_action`], this does NOT require `&mut self`:
     /// the registry lives behind a shared `Arc<Mutex<…>>` and the mutation is
     /// a lock-and-push. It is still intended as a host-init call.
     ///
