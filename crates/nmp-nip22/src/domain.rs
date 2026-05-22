@@ -9,21 +9,14 @@ use nmp_core::store::{DomainHandle, StoreError, StoredEvent};
 use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 
 use crate::decode::{try_from_event, CommentPointer};
-use crate::kinds::KIND_COMMENT;
 
 pub const NAMESPACE: &str = "nmp.nip22.comments";
-
-const INGEST_KINDS: &[u32] = &[KIND_COMMENT];
 
 pub struct CommentsDomain;
 
 impl DomainModule for CommentsDomain {
     const NAMESPACE: &'static str = NAMESPACE;
     const SCHEMA_VERSION: u32 = 1;
-
-    fn ingest_kinds() -> &'static [u32] {
-        INGEST_KINDS
-    }
 
     fn migrations() -> Vec<DomainMigration> {
         Vec::new()
@@ -91,11 +84,6 @@ pub fn list_by_parent(handle: &DomainHandle, parent_id: &str) -> Result<Vec<Stri
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn module_ingest_kinds_returns_1111_only() {
-        assert_eq!(CommentsDomain::ingest_kinds(), &[KIND_COMMENT]);
-    }
 
     #[test]
     fn key_distinct_parents_do_not_alias() {

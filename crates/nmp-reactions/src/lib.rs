@@ -29,14 +29,12 @@
 //!   [`reaction_summary`] with per-`(reactor, target)` newest-wins collapse.
 //! - [`view`] — [`view::ReactionSummaryView`] + [`view::RepostsView`].
 //!
-//! ## Phase-1 ingest dispatch gap
+//! ## Ingest dispatch
 //!
 //! Per `kind-wrappers.md` §6 + §8 + PD-008, decoded records are cached in the
-//! domain store at ingest time — `ReactionsDomain` declares
-//! `ingest_kinds() = &[7, 6, 16]` and the kernel dispatch table calls
-//! `decode_and_route` per insert. The kernel-side dispatch table is a separate
-//! Phase 1 deliverable; `decode_and_route` is callable directly today and is
-//! exercised by the integration tests.
+//! domain store at ingest time. Callers (apps or `KernelEventObserver` impls)
+//! dispatch kinds 7 / 6 / 16 to `decode_and_route`, which writes the decoded
+//! [`ReactionRecord`] under the composite reverse indexes described above.
 
 pub mod build;
 pub mod decode;
