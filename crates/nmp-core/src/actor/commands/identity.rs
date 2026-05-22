@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::actor::{canonical_relay_role, has_role};
 use crate::kernel::{AccountSummary, Kernel, RelayEditRow};
-use crate::relay::{canonical_relay_url, chirp_default_relay_bootstrap, OutboundMessage};
+use crate::relay::{canonical_relay_url, default_relay_bootstrap, OutboundMessage};
 use crate::remote_signer::RemoteSignerHandle;
 use crate::substrate::{SignedEvent, UnsignedEvent};
 use crate::util::sort_dedup;
@@ -928,7 +928,7 @@ fn cold_start_publish_targets(kernel: &Kernel, relay_rows: &[RelayEditRow]) -> V
 
 fn relay_rows_from_create_account(relays: &[(String, String)]) -> Vec<RelayEditRow> {
     let source = if relays.is_empty() {
-        chirp_default_relay_bootstrap()
+        default_relay_bootstrap()
             .iter()
             .map(|entry| (entry.url.to_string(), entry.role.to_string()))
             .collect::<Vec<_>>()

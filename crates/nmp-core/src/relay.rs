@@ -20,11 +20,6 @@ pub(crate) const DEFAULT_VISIBLE_LIMIT: usize = 80;
 pub(crate) const DEFAULT_EMIT_HZ: u32 = 4;
 pub(crate) const TIMELINE_AUTHOR_LIMIT: usize = 500;
 
-pub use nmp_chirp_config::{
-    chirp_default_relay_bootstrap, chirp_default_relay_urls, ChirpRelayBootstrapEntry,
-    CHIRP_CONTENT_RELAY_URL, CHIRP_INDEXER_RELAY_URL,
-};
-
 /// A `wss://`/`ws://` URL for a relay, in plain (non-canonicalized) string
 /// form.
 ///
@@ -41,15 +36,32 @@ pub use nmp_chirp_config::{
 /// pool or the kernel's `wire_subs` / `persistent_subs` maps.
 pub type RelayUrl = String;
 
-/// Fallback relay URLs used when the host has not yet configured any relays for
-/// a given role.  These are always compiled in (no cfg gate) so that cold-start
-/// sign-ins have discovery relays available in production as well as in tests.
-pub(crate) const FALLBACK_INDEXER_RELAY: &str = CHIRP_INDEXER_RELAY_URL;
-pub(crate) const FALLBACK_CONTENT_RELAY: &str = CHIRP_CONTENT_RELAY_URL;
+/// Fallback relay URLs used when no host-configured relays are available.
+/// Compiled in unconditionally so cold-start sign-ins have discovery relays.
+pub(crate) const FALLBACK_INDEXER_RELAY: &str = "wss://purplepag.es";
+pub(crate) const FALLBACK_CONTENT_RELAY: &str = "wss://relay.primal.net";
+
+/// Substrate-level relay bootstrap entry: a relay URL paired with its role
+/// string (e.g. `"both,indexer"`, `"indexer"`).
+pub(crate) struct BootstrapRelayEntry {
+    pub url: &'static str,
+    pub role: &'static str,
+}
+
+const RELAY_BOOTSTRAP_DEFAULTS: &[BootstrapRelayEntry] = &[
+    BootstrapRelayEntry { url: FALLBACK_CONTENT_RELAY, role: "both,indexer" },
+    BootstrapRelayEntry { url: FALLBACK_INDEXER_RELAY, role: "indexer" },
+];
+
+/// Substrate-level default relay bootstrap set used when a host passes no
+/// relay configuration during account creation or cold-start sign-in.
+pub(crate) fn default_relay_bootstrap() -> &'static [BootstrapRelayEntry] {
+    RELAY_BOOTSTRAP_DEFAULTS
+}
 
 #[cfg(any(test, feature = "test-support"))]
 pub(crate) const BOOTSTRAP_DISCOVERY_RELAYS: &[&str] =
-    &[CHIRP_CONTENT_RELAY_URL, CHIRP_INDEXER_RELAY_URL];
+    &[FALLBACK_CONTENT_RELAY, FALLBACK_INDEXER_RELAY];
 
 #[cfg(test)]
 pub(crate) const CONTENT_RELAY_URL: &str = BOOTSTRAP_DISCOVERY_RELAYS[0];
