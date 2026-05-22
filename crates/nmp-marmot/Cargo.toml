@@ -3,7 +3,7 @@ name = "nmp-marmot"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
-description = "Marmot Protocol (MLS-over-Nostr) as an NMP protocol crate. Sole importer of mdk-core/openmls; adapts MDK types to NMP Domain/View module contracts. Live capabilities are routed through the bespoke nmp_app_chirp_marmot_dispatch cluster (ADR-0025), not the generic dispatch_action seam. See docs/plan/marmot-mls.md."
+description = "Marmot Protocol (MLS-over-Nostr) as an NMP protocol crate. Sole importer of mdk-core/openmls; adapts MDK types to NMP Domain/View module contracts. Live capabilities are routed through the bespoke nmp_marmot_dispatch C-ABI cluster (ADR-0025), not the generic dispatch_action seam. See docs/plan/marmot-mls.md."
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
