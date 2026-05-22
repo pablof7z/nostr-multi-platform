@@ -1,3 +1,8 @@
+//! `ZapAction` — INTENTIONALLY NOT REGISTERED in production.
+//! The executor stubs with ShowToast (no real HTTP/LNURL round-trip).
+//! Re-register when ADR-0024 (HttpCapability) lands and the executor
+//! can actually complete payment. See: pending_zaps queue design.
+//!
 //! `nmp.nip57.zap` — the NIP-57 lightning zap [`ActionModule`].
 //!
 //! # What this PR does
