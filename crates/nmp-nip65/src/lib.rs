@@ -61,7 +61,7 @@
 //! namespace string; it carries no NIP-65 nouns.
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection, UnsignedEvent};
-use nmp_core::ActorCommand;
+use nmp_core::{canonical_relay_url, ActorCommand};
 use serde::{Deserialize, Serialize};
 
 /// NIP-65 kind: the relay list — read/write outbox/inbox advertisement.
@@ -105,41 +105,6 @@ pub struct RelayListEntry {
     pub marker: RelayMarker,
 }
 
-/// Canonicalise a relay URL the same way `nmp-nip17::dm_relay_list` does so
-/// the publish path here is symmetric with the DM relay path: identical
-/// rules, identical drop set.
-///
-/// Rules:
-/// * Trim ASCII whitespace.
-/// * Lowercase scheme and authority (host[:port]).
-/// * Strip a single trailing `/` only when the path is empty.
-/// * Preserve path / query / fragment otherwise.
-/// * Return `None` for a missing scheme separator, a non-`ws`/`wss`
-///   scheme, or a missing authority — the caller drops the URL.
-fn canonicalize_relay_url(raw: &str) -> Option<String> {
-    let s = raw.trim();
-    let sep = s.find("://")?;
-    let scheme = s[..sep].to_ascii_lowercase();
-    if scheme != "ws" && scheme != "wss" {
-        return None;
-    }
-    let rest = &s[sep + 3..];
-    if rest.is_empty() {
-        return None;
-    }
-    let (authority, path_etc) = if let Some(pos) = rest.find(['/', '?', '#']) {
-        (&rest[..pos], &rest[pos..])
-    } else {
-        (rest, "")
-    };
-    if authority.is_empty() {
-        return None;
-    }
-    let authority_lower = authority.to_ascii_lowercase();
-    let path_etc_norm = if path_etc == "/" { "" } else { path_etc };
-    Some(format!("{scheme}://{authority_lower}{path_etc_norm}"))
-}
-
 /// Build a NIP-65 kind:10002 relay-list **unsigned** event from an explicit
 /// list of [`RelayListEntry`] values.
 ///
@@ -173,7 +138,7 @@ pub fn build_relay_list_event(entries: &[RelayListEntry]) -> UnsignedEvent {
     let mut tags: Vec<Vec<String>> = Vec::with_capacity(entries.len());
     let mut seen = std::collections::HashSet::new();
     for entry in entries {
-        let Some(canonical) = canonicalize_relay_url(&entry.url) else {
+        let Some(canonical) = canonical_relay_url(&entry.url) else {
             continue;
         };
         if !seen.insert(canonical.clone()) {

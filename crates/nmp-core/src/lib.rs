@@ -36,7 +36,8 @@ pub use ffi::NmpApp;
 pub use kernel::{read_eligible_relay_urls, RelayEditRow, RelayEditRowList, RelayEditRowsSlot};
 pub use kernel_reducer::KernelReducer;
 pub use relay::{
-    chirp_default_relay_bootstrap, chirp_default_relay_urls, ChirpRelayBootstrapEntry,
+    canonical_relay_url, chirp_default_relay_bootstrap, chirp_default_relay_urls,
+    ChirpRelayBootstrapEntry,
 };
 pub use remote_signer::RemoteSignerHandle;
 pub use update_envelope::{
