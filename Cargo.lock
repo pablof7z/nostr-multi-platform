@@ -3772,6 +3772,7 @@ dependencies = [
  "nmp-nip29",
  "nmp-nip57",
  "nmp-nip59",
+ "nmp-nip65",
  "nmp-signer-broker",
  "nmp-threading",
  "nmp-wasm",
@@ -3971,6 +3972,14 @@ dependencies = [
  "futures",
  "nmp-signer-iface",
  "nostr",
+]
+
+[[package]]
+name = "nmp-nip65"
+version = "0.1.0"
+dependencies = [
+ "nmp-core",
+ "serde",
 ]
 
 [[package]]

@@ -65,6 +65,77 @@ fn update_local_key_slots(
     }
 }
 
+/// Re-publish the active account's NIP-65 kind:10002 relay list after an
+/// `AddRelay` / `RemoveRelay` mutation, so other clients reading the relay
+/// graph see the same set the user just edited.
+///
+/// # Why
+///
+/// Before this hook, the actor's `AddRelay` / `RemoveRelay` arms mutated
+/// the local `RelayEditRow` projection and dialed / dropped sockets, but
+/// never re-published the user's NIP-65 outbox. The asymmetric leak:
+/// removing a defunct relay never told other clients to stop fanning out
+/// to it; adding a new relay never told contacts to read/write there. The
+/// `nmp.nip65.publish_relay_list` action (`nmp-nip65` crate) closes the
+/// host-dispatched half of the loop; this helper closes the actor-internal
+/// half so the FFI `nmp_app_add_relay` / `nmp_app_remove_relay` paths and
+/// any non-action caller of those `ActorCommand`s also keep NIP-65 in
+/// sync.
+///
+/// # Skip semantics — three guards
+///
+/// 1. **No active account.** A relay edit while signed out is a local
+///    settings change; there is no identity to sign under. `publish_unsigned_event`
+///    would otherwise set an error toast via `toast_no_account`, which is
+///    the wrong observable for a config edit.
+/// 2. **Projection unchanged.** Re-adding an already-present URL with the
+///    same role, or removing a URL that was never present, leaves the
+///    projection identical to its prior state. Republishing kind:10002
+///    in that case would waste a write and bump the timestamp for no
+///    behavioural change. `projection_before` is the snapshot the caller
+///    took *before* the local mutation; equality means "no semantic change".
+/// 3. **No NIP-65-eligible rows.** A projection containing only pure-indexer
+///    rows (or one that becomes empty after the edit) cannot produce a
+///    kind:10002 with `r` tags. `build_relay_list_event_from_edit_rows`
+///    returns `None` in that case, and the function bails before any
+///    publish — an empty kind:10002 is the destructive "clear my NIP-65
+///    metadata" signal in `ingest_relay_list`, and we must never emit
+///    that as a side effect of a relay edit.
+///
+/// # `correlation_id`
+///
+/// `None` — these are actor-internal publishes piggybacked onto a local
+/// mutation, not action-dispatched. Hosts that *want* an observable
+/// terminal verdict dispatch `nmp.nip65.publish_relay_list` directly,
+/// which threads a registry-minted id through `PublishUnsignedEvent`.
+///
+/// # `created_at`
+///
+/// D7 sentinel: the builder sets `created_at = 0`; the actor's
+/// `PublishUnsignedEvent` arm re-stamps it from the kernel clock. This
+/// function never reads the system clock.
+fn maybe_publish_relay_list_after_edit(
+    identity: &mut commands::IdentityRuntime,
+    kernel: &mut Kernel,
+    projection_before: &[crate::kernel::RelayEditRow],
+    pending_signs: &mut Vec<super::pending_sign::PendingSign>,
+) -> Vec<OutboundMessage> {
+    // Guard 1: must have an active signer.
+    if identity.active_pubkey().is_none() {
+        return Vec::new();
+    }
+    // Guard 2: skip on no-op projection change.
+    let projection_after = kernel.relay_edit_rows_snapshot();
+    if projection_after == projection_before {
+        return Vec::new();
+    }
+    // Guard 3: skip when the projection has no NIP-65 expression.
+    let Some(unsigned) = commands::build_relay_list_event_from_edit_rows(projection_after) else {
+        return Vec::new();
+    };
+    commands::publish_unsigned_event(identity, kernel, unsigned, None, pending_signs)
+}
+
 /// Borrowed bundle of the actor loop's mutable runtime state.
 ///
 /// Replaces the 15+ explicit parameters that `dispatch_command` used to take.
@@ -621,6 +692,14 @@ pub(super) fn dispatch_command(
             // the NIP-65 read/write distinction lives in RelayEditRow, not in
             // the transport pool key (T105). ensure_relay_worker is idempotent —
             // a role-edit for an already-connected URL is a harmless no-op.
+            //
+            // T-nip65-auto-publish: snapshot the projection BEFORE the mutation
+            // so we can compare-and-skip the re-publish when the call was a
+            // pure no-op (re-adding the same URL with the same role). Without
+            // this every harmless re-add re-published kind:10002 and burned a
+            // relay write.
+            let projection_before = ctx.kernel.relay_edit_rows_snapshot().to_vec();
+            let mut outbound = Vec::new();
             if let Some(canonical_url) = commands::add_relay(ctx.kernel, &url, &role) {
                 ensure_relay_worker(
                     ctx.relay_controls,
@@ -630,9 +709,15 @@ pub(super) fn dispatch_command(
                     crate::relay::RelayRole::Content,
                     canonical_url,
                 );
+                outbound.extend(maybe_publish_relay_list_after_edit(
+                    ctx.identity,
+                    ctx.kernel,
+                    &projection_before,
+                    ctx.pending_signs,
+                ));
             }
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(Vec::new())
+            Some(outbound)
         }
         ActorCommand::RemoveRelay { url } => {
             // T162 + T-relay-url-normalize: both shutdown_relay_worker and
@@ -643,10 +728,21 @@ pub(super) fn dispatch_command(
             // before the projection row is removed. Idempotent: if no worker exists
             // for the URL, shutdown_relay_worker returns false and the projection
             // mutation still proceeds normally (D6: no silent drops).
+            //
+            // T-nip65-auto-publish: same compare-and-skip as `AddRelay` above.
+            // Removing a URL that was never present is a no-op and must NOT
+            // re-publish kind:10002.
+            let projection_before = ctx.kernel.relay_edit_rows_snapshot().to_vec();
             shutdown_relay_worker(ctx.relay_controls, &url);
             commands::remove_relay(ctx.kernel, &url);
+            let outbound = maybe_publish_relay_list_after_edit(
+                ctx.identity,
+                ctx.kernel,
+                &projection_before,
+                ctx.pending_signs,
+            );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(Vec::new())
+            Some(outbound)
         }
         ActorCommand::OpenTimeline => {
             let outbound = commands::open_timeline(ctx.identity, ctx.kernel, ctx.relays_ready);
@@ -1087,5 +1183,271 @@ pub(super) fn handle_relay_event(
             );
         }
         RelayEvent::Message { .. } => {}
+    }
+}
+
+#[cfg(test)]
+mod nip65_auto_publish_tests {
+    //! End-to-end tests for the NIP-65 auto-publish piggyback on
+    //! `AddRelay` / `RemoveRelay`.
+    //!
+    //! Builder unit tests live next to the builder
+    //! (`actor::commands::relays::tests`). These tests pin the wiring —
+    //! that the dispatch arms actually invoke the builder, gate on the
+    //! active signer, skip no-op edits, and route through
+    //! `publish_unsigned_event` (i.e. the kind:10002 frame lands in the
+    //! outbound `EVENT` stream the same way every other publish does).
+    //!
+    //! Closing the gap the PR title makes load-bearing: without these
+    //! tests, a future refactor that drops the `maybe_publish_relay_list_after_edit`
+    //! call would pass every other unit test silently.
+    //!
+    //! These tests use a known dev nsec — never wired to any real
+    //! relay — to drive `IdentityRuntime` so `active_pubkey()` is `Some`.
+    use super::*;
+    use crate::actor::commands::{
+        add_relay, new_bunker_handshake_slot, remove_relay, sign_in_nsec, IdentityRuntime,
+    };
+    use crate::kernel::Kernel;
+    use crate::relay::DEFAULT_VISIBLE_LIMIT;
+
+    /// Throwaway nsec — generated for tests only, never on the network.
+    /// Same dev key the conformance harness round-trip tests
+    /// (`tests/nip_tag_conformance.rs`) and the remote-signer tests
+    /// (`actor/commands/remote_signer_tests.rs`) use. Reusing it here
+    /// keeps the test fixture surface small.
+    const TEST_NSEC: &str =
+        "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
+
+    fn fresh_kernel() -> Kernel {
+        Kernel::new(DEFAULT_VISIBLE_LIMIT)
+    }
+
+    fn fresh_identity() -> IdentityRuntime {
+        IdentityRuntime::new(new_bunker_handshake_slot())
+    }
+
+    fn signed_in_identity(kernel: &mut Kernel) -> IdentityRuntime {
+        let mut identity = fresh_identity();
+        sign_in_nsec(&mut identity, kernel, TEST_NSEC, false);
+        assert!(
+            identity.active_pubkey().is_some(),
+            "sign_in_nsec must produce an active account",
+        );
+        identity
+    }
+
+    /// Helper: count `["EVENT", { "kind": 10002, ... }]` frames in an
+    /// outbound batch. Mirrors the conformance harness shape check —
+    /// outbound text is a raw wire frame, so we string-search for the
+    /// outer `["EVENT"` and a kind:10002 marker.
+    fn count_kind_10002_frames(outbound: &[crate::relay::OutboundMessage]) -> usize {
+        outbound
+            .iter()
+            .filter(|m| m.text.starts_with("[\"EVENT\""))
+            .filter(|m| {
+                // The wire shape is `["EVENT", {"kind":10002,...}]` (no
+                // SUBSCRIPTION-ID prefix variant — kind:10002 routes
+                // through the Auto outbox, not a REQ).
+                let parsed: serde_json::Value = match serde_json::from_str(&m.text) {
+                    Ok(v) => v,
+                    Err(_) => return false,
+                };
+                parsed
+                    .as_array()
+                    .and_then(|arr| arr.get(1))
+                    .and_then(|ev| ev.get("kind"))
+                    .and_then(serde_json::Value::as_u64)
+                    == Some(10002)
+            })
+            .count()
+    }
+
+    #[test]
+    fn add_relay_with_active_signer_publishes_kind_10002() {
+        // Headline assertion the PR title makes: a real AddRelay edit by a
+        // signed-in user produces a kind:10002 frame.
+        let mut kernel = fresh_kernel();
+        let mut identity = signed_in_identity(&mut kernel);
+        let mut pending = Vec::new();
+
+        // Capture the projection BEFORE the mutation, as the dispatch arm
+        // does, then mutate and call the helper directly.
+        let before = kernel.relay_edit_rows_snapshot().to_vec();
+        let added = add_relay(&mut kernel, "wss://relay.example", "both");
+        assert!(added.is_some(), "add_relay must accept a valid wss:// URL");
+
+        let outbound = maybe_publish_relay_list_after_edit(
+            &mut identity,
+            &mut kernel,
+            &before,
+            &mut pending,
+        );
+        assert!(
+            count_kind_10002_frames(&outbound) >= 1,
+            "AddRelay with an active signer must re-publish kind:10002. \
+             Outbound frames were: {:?}",
+            outbound.iter().map(|m| &m.text).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn add_relay_without_active_signer_does_not_publish() {
+        // Guard 1: a relay edit while signed out must NOT try to publish
+        // (and must NOT set the no-account error toast).
+        let mut kernel = fresh_kernel();
+        let mut identity = fresh_identity();
+        let mut pending = Vec::new();
+
+        let before = kernel.relay_edit_rows_snapshot().to_vec();
+        add_relay(&mut kernel, "wss://relay.example", "both");
+
+        let outbound = maybe_publish_relay_list_after_edit(
+            &mut identity,
+            &mut kernel,
+            &before,
+            &mut pending,
+        );
+        assert_eq!(
+            count_kind_10002_frames(&outbound),
+            0,
+            "without an active signer, no kind:10002 must be published",
+        );
+        assert!(
+            kernel.last_error_toast_snapshot().is_none(),
+            "signed-out relay edits MUST NOT poison the toast slot \
+             (toast_no_account would be wrong observable here)",
+        );
+    }
+
+    #[test]
+    fn add_relay_no_op_does_not_republish() {
+        // Guard 2: re-adding the same URL with the same role is a no-op on
+        // the projection. The dispatch arm MUST skip the re-publish in
+        // that case — otherwise every duplicate FFI call burns a relay
+        // write and bumps the kind:10002 timestamp for nothing.
+        let mut kernel = fresh_kernel();
+        let mut identity = signed_in_identity(&mut kernel);
+        let mut pending = Vec::new();
+
+        // First add — projection changes; this would publish.
+        add_relay(&mut kernel, "wss://relay.example", "both");
+
+        // Second add — identical role, no projection change.
+        let before = kernel.relay_edit_rows_snapshot().to_vec();
+        add_relay(&mut kernel, "wss://relay.example", "both");
+
+        let outbound = maybe_publish_relay_list_after_edit(
+            &mut identity,
+            &mut kernel,
+            &before,
+            &mut pending,
+        );
+        assert_eq!(
+            count_kind_10002_frames(&outbound),
+            0,
+            "re-adding the same URL+role MUST NOT re-publish kind:10002 \
+             (projection unchanged → no semantic change)",
+        );
+    }
+
+    #[test]
+    fn remove_relay_nonexistent_does_not_republish() {
+        // Guard 2 (mirror): removing a URL that was never present is a
+        // no-op on the projection. The dispatch arm MUST skip the
+        // re-publish.
+        let mut kernel = fresh_kernel();
+        let mut identity = signed_in_identity(&mut kernel);
+        let mut pending = Vec::new();
+
+        // Seed one row so the projection is non-empty (otherwise guard 3
+        // would also trip and we couldn't distinguish guard-2 from guard-3).
+        add_relay(&mut kernel, "wss://relay.example", "both");
+
+        let before = kernel.relay_edit_rows_snapshot().to_vec();
+        remove_relay(&mut kernel, "wss://other.example");
+
+        let outbound = maybe_publish_relay_list_after_edit(
+            &mut identity,
+            &mut kernel,
+            &before,
+            &mut pending,
+        );
+        assert_eq!(
+            count_kind_10002_frames(&outbound),
+            0,
+            "removing an absent URL MUST NOT re-publish kind:10002",
+        );
+    }
+
+    #[test]
+    fn remove_relay_existing_does_republish() {
+        // Symmetric to `add_relay_with_active_signer_publishes_kind_10002`:
+        // a real removal that mutates the projection must produce a
+        // kind:10002 reflecting the new (smaller) set. This is the half
+        // the PR is named for — clients reading the relay graph see the
+        // removed relay leave the user's outbox without needing a manual
+        // dispatch.
+        let mut kernel = fresh_kernel();
+        let mut identity = signed_in_identity(&mut kernel);
+        let mut pending = Vec::new();
+
+        // Seed two rows so the post-removal projection still has at least
+        // one NIP-65-eligible row — otherwise guard 3 (don't publish
+        // empty kind:10002) would correctly skip the publish.
+        add_relay(&mut kernel, "wss://keep.example", "both");
+        add_relay(&mut kernel, "wss://drop.example", "both");
+
+        let before = kernel.relay_edit_rows_snapshot().to_vec();
+        remove_relay(&mut kernel, "wss://drop.example");
+
+        let outbound = maybe_publish_relay_list_after_edit(
+            &mut identity,
+            &mut kernel,
+            &before,
+            &mut pending,
+        );
+        assert!(
+            count_kind_10002_frames(&outbound) >= 1,
+            "removing an existing URL must re-publish kind:10002 with \
+             the remaining set. Outbound frames were: {:?}",
+            outbound.iter().map(|m| &m.text).collect::<Vec<_>>(),
+        );
+    }
+
+    #[test]
+    fn empty_projection_after_remove_does_not_republish() {
+        // Guard 3: removing the user's last NIP-65-eligible row leaves
+        // the projection empty. We must NOT publish an empty kind:10002
+        // because `ingest_relay_list` treats that as "clear my NIP-65
+        // metadata" (destructive — see kernel/ingest/relay_list.rs:31).
+        // The user explicitly removing a relay is NOT the same intent as
+        // "wipe my NIP-65 outbox"; that needs its own explicit verb.
+        let mut kernel = fresh_kernel();
+        let mut identity = signed_in_identity(&mut kernel);
+        let mut pending = Vec::new();
+
+        add_relay(&mut kernel, "wss://only.example", "both");
+
+        let before = kernel.relay_edit_rows_snapshot().to_vec();
+        remove_relay(&mut kernel, "wss://only.example");
+        assert!(
+            kernel.relay_edit_rows_snapshot().is_empty(),
+            "test precondition: projection must be empty after removing the only row"
+        );
+
+        let outbound = maybe_publish_relay_list_after_edit(
+            &mut identity,
+            &mut kernel,
+            &before,
+            &mut pending,
+        );
+        assert_eq!(
+            count_kind_10002_frames(&outbound),
+            0,
+            "removing the user's last NIP-65-eligible row MUST NOT \
+             publish an empty kind:10002 (that would clear the \
+             author_relay_lists cache on ingest — destructive)",
+        );
     }
 }

@@ -141,7 +141,7 @@ pub use raw_event_observer::{
 // this through `lib.rs::testing` when `feature = "test-support"` is on.
 #[cfg(any(test, feature = "test-support"))]
 pub use conformance_support::ConformanceHarness;
-pub(super) use relays::{add_relay, remove_relay};
+pub(super) use relays::{add_relay, build_relay_list_event_from_edit_rows, remove_relay};
 #[cfg(feature = "wallet")]
 pub(super) use wallet::{
     handle_nwc_text, wallet_connect, wallet_disconnect, wallet_pay_invoice, WalletRuntime,
