@@ -2,12 +2,25 @@
 
 use crate::error::Result;
 
+#[cfg(not(feature = "mls"))]
 const SHORT: &str = "\
   verbs: set-seed, req, show, set-app-relays, set-indexer, set-dead,
          set-budget, refresh, expand, help, quit
 
-  mls:   load-key, mls-init, mls-status, mls-create, mls-fetch-kp,
-         mls-invite, mls-send, mls-accept, mls-messages
+  id:    create-account, load-key
+
+  variables: $me, $seed, $follows, $relays, $inbox
+  type 'help <verb>' for grammar
+  (rebuild with `--features mls` for MLS / Marmot commands)
+";
+
+#[cfg(feature = "mls")]
+const SHORT: &str = "\
+  verbs: set-seed, req, show, set-app-relays, set-indexer, set-dead,
+         set-budget, refresh, expand, help, quit
+
+  mls:   create-account, load-key, mls-init, mls-status, mls-create,
+         mls-fetch-kp, mls-invite, mls-send, mls-accept, mls-messages
 
   variables: $me, $seed, $follows, $relays, $inbox
   type 'help <verb>' for grammar
@@ -94,17 +107,20 @@ const LOAD_KEY: &str = "\
       load-key fa984bd7...
 ";
 
+#[cfg(feature = "mls")]
 const MLS_INIT: &str = "\
   mls-init
     Publish fresh key packages (kind:30443 + kind:443) to configured relays
     so peers can invite you. Requires load-key first.
 ";
 
+#[cfg(feature = "mls")]
 const MLS_STATUS: &str = "\
   mls-status
     Show local MLS state: groups, pending welcomes, key-package cache.
 ";
 
+#[cfg(feature = "mls")]
 const MLS_CREATE: &str = "\
   mls-create <name>
     Create a new MLS group with the given name.
@@ -112,6 +128,7 @@ const MLS_CREATE: &str = "\
       mls-create \"my group\"
 ";
 
+#[cfg(feature = "mls")]
 const MLS_FETCH_KP: &str = "\
   mls-fetch-kp <npub|hex>
     Fetch and cache key packages for a peer. Run before mls-invite.
@@ -119,6 +136,7 @@ const MLS_FETCH_KP: &str = "\
       mls-fetch-kp npub1...
 ";
 
+#[cfg(feature = "mls")]
 const MLS_INVITE: &str = "\
   mls-invite [<group_id>] <npub|hex>
     Invite a peer into a group. Omit group_id to use the most recent group.
@@ -128,6 +146,7 @@ const MLS_INVITE: &str = "\
       mls-invite abc123 npub1...
 ";
 
+#[cfg(feature = "mls")]
 const MLS_SEND: &str = "\
   mls-send [<group_id>] <message>
     Encrypt and publish a kind:445 message to a group.
@@ -136,11 +155,13 @@ const MLS_SEND: &str = "\
       mls-send abc123 \"hello world\"
 ";
 
+#[cfg(feature = "mls")]
 const MLS_ACCEPT: &str = "\
   mls-accept <welcome_id|group_id>
     Accept a pending welcome and join the group.
 ";
 
+#[cfg(feature = "mls")]
 const MLS_MESSAGES: &str = "\
   mls-messages [<group_id>]
     Print decrypted messages for a group.
@@ -160,13 +181,21 @@ pub fn run(arg: Option<String>) -> Result<()> {
         Some("expand") => EXPAND,
         Some("quit") | Some("exit") => QUIT,
         Some("load-key") => LOAD_KEY,
+        #[cfg(feature = "mls")]
         Some("mls-init") => MLS_INIT,
+        #[cfg(feature = "mls")]
         Some("mls-status") => MLS_STATUS,
+        #[cfg(feature = "mls")]
         Some("mls-create") => MLS_CREATE,
+        #[cfg(feature = "mls")]
         Some("mls-fetch-kp") => MLS_FETCH_KP,
+        #[cfg(feature = "mls")]
         Some("mls-invite") => MLS_INVITE,
+        #[cfg(feature = "mls")]
         Some("mls-send") => MLS_SEND,
+        #[cfg(feature = "mls")]
         Some("mls-accept") => MLS_ACCEPT,
+        #[cfg(feature = "mls")]
         Some("mls-messages") => MLS_MESSAGES,
         Some(other) => {
             println!("  (no help for '{other}'; type 'help' for the verb list)");

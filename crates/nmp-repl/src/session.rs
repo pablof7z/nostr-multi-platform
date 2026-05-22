@@ -23,7 +23,10 @@
 //! cache. `refresh follows` only drops `follows_cache` (variable-expansion
 //! state, independent of the outbox lifecycle).
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeSet, HashSet};
+#[cfg(feature = "mls")]
+use std::collections::HashMap;
+#[cfg(feature = "mls")]
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -79,14 +82,20 @@ pub struct Session {
     // The identity used for MLS ops (KeyPackage signing, gift-wrap, kind:0).
     // Set by `create-account` or `load-key`. Distinct from `seed_hex` (the
     // read-only diagnostic seed); `load-key`/`create-account` ALSO set
-    // `seed_hex` so the prompt + `req` reflect the active identity.
+    // `seed_hex` so the prompt + `req` reflect the active identity. Kept
+    // ungated so the default build's `create-account` / `load-key` can still
+    // adopt an identity for `req`/`show` purposes.
     pub mls_keys: Option<nostr::Keys>,
     // The MDK-driving service (in-memory MLS store). `Arc<Mutex<…>>` because
     // `MarmotService` is `!Sync`-friendly only behind a lock and the wire
-    // helpers borrow the session mutably elsewhere.
+    // helpers borrow the session mutably elsewhere. Gated: pulls in
+    // `nmp-marmot`.
+    #[cfg(feature = "mls")]
     pub mls_service: Option<Arc<Mutex<nmp_marmot::service::MarmotService>>>,
     // Pending welcomes keyed by gift-wrap (kind:1059) event id hex →
-    // (the original gift-wrap Event, group_name, inviter_npub).
+    // (the original gift-wrap Event, group_name, inviter_npub). Only the
+    // gated `mls_*` commands populate or read this map.
+    #[cfg(feature = "mls")]
     pub mls_pending_welcomes: HashMap<String, (nostr::Event, String, String)>,
 }
 
@@ -114,7 +123,9 @@ impl Default for Session {
             verbose: false,
             json: false,
             mls_keys: None,
+            #[cfg(feature = "mls")]
             mls_service: None,
+            #[cfg(feature = "mls")]
             mls_pending_welcomes: HashMap::new(),
         }
     }
