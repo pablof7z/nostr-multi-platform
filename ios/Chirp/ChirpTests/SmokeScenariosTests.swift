@@ -83,7 +83,7 @@ final class SmokeScenariosTests: XCTestCase {
 
     // MARK: - Scenario 2 — kind:3 follow-list change → timeline re-targets
 
-    /// Sign in, publish a kind:3 follow-list mutation via the `chirp.follow`
+    /// Sign in, publish a kind:3 follow-list mutation via the `nmp.follow`
     /// action (routed through `nmp_app_dispatch_action`),
     /// and assert the kernel (a) accepts the kind:3 into the publish queue and
     /// (b) re-plans the timeline (`rev` advances past the follow). Per
