@@ -1,6 +1,8 @@
 import { render } from "solid-js/web";
 import App from "./App";
 import "./connection.css";
+import "./layout.css";
+import "./post.css";
 import "./styles.css";
 
 const root = document.getElementById("root");
