@@ -40,11 +40,7 @@ use std::sync::{Arc, Mutex};
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use nmp_core::{ActorCommand, KernelEventObserver, KernelEventObserverId, NmpApp};
 use nmp_nip29::group_id::GroupId;
-use nmp_nip29::projection::{DiscoveredGroupsProjection, GroupChatProjection};
-use nmp_nip29::action::{
-    CommentInGroupAction, DiscoverGroupsAction, JoinGroupAction,
-    PostChatMessageAction, ReactInGroupAction,
-};
+use nmp_nip29::register::{wire_group_chat, wire_group_discovery};
 use nmp_nip17::{PublishDmRelayListAction, SendDmAction};
 use nmp_nip57::ZapAction;
 use nmp_nip01::meta_timeline::Pubkey;
@@ -272,30 +268,11 @@ pub extern "C" fn nmp_app_chirp_register_group_chat(
         return;
     };
 
-    let projection = Arc::new(GroupChatProjection::new(group_id));
-    let observer_id =
-        app_ref.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
-    if observer_id.0 == 0 {
-        // Observer registration failed (poisoned slot). Don't register the
-        // snapshot closure for a projection that will never receive events,
-        // and don't disturb the previously-installed slot — leave any prior
-        // observer in place rather than clearing it for nothing.
-        return;
-    }
-
-    // Idempotent re-invoke: atomically install the new id and take the prior
-    // id out of the per-app slot, then unregister the prior observer. The
-    // swap-then-unregister order is deliberate (see `swap_nip29_group_chat_
-    // observer`): the new observer is already live when the old one is
-    // dropped, so there is no event-loss gap and a concurrent re-invoke
-    // cannot leak the previous id.
-    if let Some(prev) = app_ref.swap_singleton_event_observer(Some(observer_id)) {
-        app_ref.unregister_event_observer(prev);
-    }
-
-    // Output side: the no-argument snapshot read runs on the actor thread
-    // inside each snapshot tick. The `move` consumes this last `Arc`.
-    app_ref.register_snapshot_projection("nmp.nip29.group_chat", move || projection.snapshot_json());
+    // Delegate the observer + snapshot-projection wiring (and the
+    // singleton-slot idempotency dance) to `nmp_nip29::register::wire_group_chat`.
+    // Thin-shell rule: this FFI symbol only parses C strings and calls the
+    // typed host-wiring helper that lives in the protocol crate.
+    wire_group_chat(app_ref, group_id);
 }
 
 /// Wire a NIP-29 [`DiscoveredGroupsProjection`] for one host relay into `app`.
@@ -354,20 +331,10 @@ pub extern "C" fn nmp_app_chirp_register_group_discovery(
         return;
     };
 
-    let projection = Arc::new(DiscoveredGroupsProjection::new(relay_url));
-    let observer_id =
-        app_ref.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
-    if observer_id.0 == 0 {
-        // Observer registration failed (poisoned slot). Don't register a
-        // snapshot closure for a projection that will never see events.
-        return;
-    }
-
-    // Output side: the no-argument snapshot read runs on the actor thread
-    // inside each snapshot tick. The `move` consumes this last `Arc`.
-    app_ref.register_snapshot_projection("nmp.nip29.discovered_groups", move || {
-        projection.snapshot_json()
-    });
+    // Delegate observer + snapshot-projection wiring to the typed host-wiring
+    // helper in the protocol crate. Thin-shell rule: this FFI symbol only
+    // parses the C string and calls `nmp_nip29::register::wire_group_discovery`.
+    wire_group_discovery(app_ref, relay_url);
 }
 
 /// Wire the NIP-17 DM runtime into `app`.
@@ -635,11 +602,7 @@ fn register_chirp_actions(app: &mut NmpApp) {
 /// [`nmp_app_chirp_register_group_discovery`] below — a
 /// [`DiscoveredGroupsProjection`] scoped to the same relay.
 fn register_nip29_actions(app: &mut NmpApp) {
-    app.register_action::<PostChatMessageAction>();
-    app.register_action::<ReactInGroupAction>();
-    app.register_action::<CommentInGroupAction>();
-    app.register_action::<DiscoverGroupsAction>();
-    app.register_action::<JoinGroupAction>();
+    nmp_nip29::register::register_actions(app);
 }
 
 /// Register the NIP-17 direct-message `ActionModule` (`nmp.nip17.send`) against
@@ -750,7 +713,14 @@ mod tests {
     use super::*;
     use nmp_core::nmp_app_free;
     use nmp_core::nmp_app_new;
-    use nmp_nip29::action::{DiscoverGroupsInput, JoinGroupInput, PostChatMessageInput};
+    // The action types are referenced only by the tests below (via
+    // `<Action>::NAMESPACE` constants and the executor probes). Production code
+    // delegates to `nmp_nip29::register::register_actions`, so this import lives
+    // inside `mod tests` rather than at the file top.
+    use nmp_nip29::action::{
+        CommentInGroupAction, DiscoverGroupsAction, DiscoverGroupsInput, JoinGroupAction,
+        JoinGroupInput, PostChatMessageAction, PostChatMessageInput, ReactInGroupAction,
+    };
     use nmp_nip29::kinds::KIND_CHAT_MESSAGE;
     use std::cell::RefCell;
 
