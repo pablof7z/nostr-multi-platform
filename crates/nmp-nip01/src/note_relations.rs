@@ -107,6 +107,9 @@ impl NoteRelationIndex {
         if let Some((_, evicted_parent)) = evicted {
             if let Some(c) = self.reply_counts.get_mut(&evicted_parent) {
                 *c = c.saturating_sub(1);
+                if *c == 0 {
+                    self.reply_counts.remove(&evicted_parent);
+                }
             }
         }
         let count = self.reply_counts.entry(parent.clone()).or_insert(0);
