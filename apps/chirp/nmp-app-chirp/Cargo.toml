@@ -17,12 +17,12 @@ name = "nmp_app_chirp"
 crate-type = ["staticlib", "rlib"]
 
 [features]
-# Default feature set keeps the current iOS Chirp shell build unchanged: the
-# `justfile` builds `cargo build -p nmp-app-chirp` with NO `--features` flag, so
-# defaults are load-bearing. `marmot` and `wallet` were formally deferred to
-# post-v1; they remain compiled-in for Chirp (which opts in here) while the
-# default kernel build (`nmp-core` defaults) excludes them.
-default = ["marmot", "wallet", "lmdb-backend"]
+# Default feature set for non-iOS builds (tests, CI, `cargo check`).
+# `marmot` is intentionally absent: 5,400 LOC of MLS-over-Nostr is not on the
+# v1 critical path and excluded from the default build to keep CI fast.
+# The `justfile` iOS build targets pass `--features marmot` explicitly so the
+# Chirp iOS shell still links all `nmp_marmot_*` symbols.
+default = ["wallet", "lmdb-backend"]
 # Marmot (MLS-over-Nostr) projection. Gates the `nmp-marmot` dependency, the
 # `src/marmot/` C-ABI shell module, and the `nmp_app_chirp_marmot_*` FFI
 # symbols. Deferred post-v1; off in a no-default-features build.
