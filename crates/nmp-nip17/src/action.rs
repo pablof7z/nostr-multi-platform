@@ -148,35 +148,6 @@ mod tests {
     }
 
     #[test]
-    fn execute_threads_correlation_id_into_send_gift_wrapped_dm() {
-        use nmp_core::ActorCommand;
-        use std::cell::Cell;
-
-        let input = SendDmInput {
-            recipient_pubkey: RECIPIENT.to_string(),
-            content: "hello".to_string(),
-            reply_to: None,
-        };
-        let cid_matched = Cell::new(false);
-        SendDmAction::execute(input, "test-cid-42", &|cmd| {
-            if let ActorCommand::SendGiftWrappedDm {
-                ref correlation_id, ..
-            } = cmd
-            {
-                if correlation_id.as_deref() == Some("test-cid-42") {
-                    cid_matched.set(true);
-                }
-            }
-        })
-        .expect("execute must not fail");
-        assert!(
-            cid_matched.get(),
-            "execute must thread the dispatch correlation_id into SendGiftWrappedDm \
-             so the host spinner can close on action completion"
-        );
-    }
-
-    #[test]
     fn execute_emits_send_gift_wrapped_dm_with_correct_fields() {
         use nmp_core::ActorCommand;
         use std::cell::RefCell;

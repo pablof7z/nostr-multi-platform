@@ -1,56 +1,24 @@
 //! `nmp.nip57.zap` — the NIP-57 lightning zap [`ActionModule`].
 //!
-//! # What this PR does
+//! Validates a zap request in [`ZapAction::start`], builds an unsigned
+//! kind:9734 via [`ZapRequest`] (`crate::build`), and dispatches
+//! [`ActorCommand::FetchLnurlInvoice`] (the ADR-0024 LNURL-pay round-trip).
+//! The actor signs the kind:9734, fetches the receiver's LNURL callback, and
+//! surfaces the resulting bolt11 invoice as a `ShowToast` follow-up.
 //!
-//! Wires `nmp.nip57.zap` into the kernel's generic `dispatch_action` seam
-//! end-to-end: validation in [`ZapAction::start`], unsigned kind:9734 build
-//! via [`ZapRequestBuilder`] (`crate::build`), and dispatch to
-//! [`ActorCommand::FetchLnurlInvoice`] (the ADR-0024 minimum-viable
-//! LNURL-pay round-trip). The actor signs the request, fetches the
-//! receiver's LNURL well-known + callback endpoints over HTTP, and surfaces
-//! the resulting bolt11 invoice through a `ShowToast` follow-up.
+//! # Wire routing
 //!
-//! # NIP-57 wire-routing — kind:9734 NEVER reaches relays
+//! NIP-57 § "Appendix C": the signed kind:9734 goes to the LN provider's
+//! LNURL **callback URL** as `nostr=<urlencoded>` — NOT to Nostr relays.
+//! The kind:9735 receipt is what relays receive; the LN provider mints it
+//! after the invoice settles.
 //!
-//! NIP-57 § "Appendix C" routes the signed kind:9734 to the LN provider's
-//! LNURL **callback URL** as a `nostr=<urlencoded>` query parameter — NOT
-//! to Nostr relays. The kind:9735 receipt is what relays see; the LN
-//! provider mints it after the invoice settles. Earlier drafts of this
-//! module documented the relays-routing path as a future option; that
-//! documentation was wrong (the spec is unambiguous) and has been
-//! removed.
-//!
-//! # ADR-0024 minimum-viable observable surface
-//!
-//! The actor surfaces the bolt11 invoice as a [`ActorCommand::ShowToast`]
-//! whose `message` starts with `Zap invoice: lnbc…`. A host can substring
-//! the `lnbc`/`lntb`/`lnbcrt`/`lntbs` prefix and drive its NWC `pay_invoice`
-//! flow (NIP-47, `ActorCommand::WalletPayInvoice`, gated behind the
-//! `wallet` Cargo feature). A snapshot-projection surface
-//! (`last_action_outcomes` per the open-roadmap follow-up) will replace
-//! the toast once it lands; until then the toast is the observable seam.
-//!
-//! # ADR-0026 Phase 1 — local-keys only
+//! # Signing constraint (ADR-0026 Phase 1)
 //!
 //! The actor reads `IdentityRuntime::active_local_keys` to sign the
-//! kind:9734. Bunker (NIP-46 remote-signer) accounts return `None`; the
-//! actor fails closed with a clear toast and a `RecordActionFailure`
-//! against the correlation_id. Remote-signer kind:9734 signing is the
-//! ADR-0026 Phase 2 follow-up, parallel to the NIP-17 DM bunker-send
-//! work documented in `nmp-core/src/actor/commands/dm.rs`.
-//!
-//! # NWC payment — out of scope
-//!
-//! This module dispatches the LNURL fetch and surfaces the bolt11
-//! invoice. It does NOT pay it. Wiring the toast → `WalletPayInvoice`
-//! handoff is the next milestone (the wallet feature is already gated
-//! and wired in `nmp-core`); the seam this PR proves is the LNURL
-//! request half.
-//!
-//! # Namespace
-//!
-//! `nmp.nip57.zap` — consistent with the existing `nmp.nip57.zaps` domain
-//! namespace (`domain.rs`).
+//! kind:9734. Bunker (NIP-46) accounts return `None`; the actor fails closed
+//! with a toast and records `ActionFailure` against the correlation_id.
+//! Remote-signer signing is the ADR-0026 Phase 2 follow-up.
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use nmp_core::ActorCommand;

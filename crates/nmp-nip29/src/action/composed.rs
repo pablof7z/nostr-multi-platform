@@ -231,56 +231,16 @@ mod tests {
     }
 
     #[test]
-    fn react_execute_threads_correlation_id() {
-        use nmp_core::ActorCommand;
-        use std::cell::Cell;
-
-        let cid_matched = Cell::new(false);
-        ReactInGroupAction::execute(react_input(), "react-cid", &|cmd| {
-            if let ActorCommand::PublishUnsignedEventToRelays {
-                ref correlation_id, ..
-            } = cmd
-            {
-                if correlation_id.as_deref() == Some("react-cid") {
-                    cid_matched.set(true);
-                }
-            }
-        })
-        .expect("well-formed input executes");
-        assert!(cid_matched.get(), "correlation_id must thread through react execute");
-    }
-
-    #[test]
-    fn comment_execute_threads_correlation_id() {
-        use nmp_core::ActorCommand;
-        use std::cell::Cell;
-
-        let cid_matched = Cell::new(false);
-        CommentInGroupAction::execute(comment_input(), "comment-cid", &|cmd| {
-            if let ActorCommand::PublishUnsignedEventToRelays {
-                ref correlation_id, ..
-            } = cmd
-            {
-                if correlation_id.as_deref() == Some("comment-cid") {
-                    cid_matched.set(true);
-                }
-            }
-        })
-        .expect("well-formed input executes");
-        assert!(cid_matched.get(), "correlation_id must thread through comment execute");
-    }
-
-    #[test]
     fn react_execute_emits_host_pinned_kind7_publish_command() {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-        ReactInGroupAction::execute(react_input(), "cid", &|cmd| {
+        ReactInGroupAction::execute(react_input(), "react-cid", &|cmd| {
             captured.borrow_mut().push(cmd);
         })
         .expect("well-formed input executes");
         let cmds = captured.into_inner();
         assert_eq!(cmds.len(), 1, "react executor must send exactly one command, got {cmds:?}");
         match cmds.into_iter().next().unwrap() {
-            ActorCommand::PublishUnsignedEventToRelays { event, relays, .. } => {
+            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id } => {
                 assert_eq!(event.kind, KIND_REACTION, "react must emit kind:7");
                 assert_eq!(
                     relays,
@@ -293,6 +253,7 @@ mod tests {
                     event.tags
                 );
                 assert_eq!(event.content, "+");
+                assert_eq!(correlation_id.as_deref(), Some("react-cid"));
             }
             other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
         }
@@ -301,14 +262,14 @@ mod tests {
     #[test]
     fn comment_execute_emits_host_pinned_kind1111_publish_command() {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-        CommentInGroupAction::execute(comment_input(), "cid", &|cmd| {
+        CommentInGroupAction::execute(comment_input(), "comment-cid", &|cmd| {
             captured.borrow_mut().push(cmd);
         })
         .expect("well-formed input executes");
         let cmds = captured.into_inner();
         assert_eq!(cmds.len(), 1, "comment executor must send exactly one command, got {cmds:?}");
         match cmds.into_iter().next().unwrap() {
-            ActorCommand::PublishUnsignedEventToRelays { event, relays, .. } => {
+            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id } => {
                 assert_eq!(event.kind, KIND_COMMENT, "comment must emit kind:1111");
                 assert_eq!(
                     relays,
@@ -321,6 +282,7 @@ mod tests {
                     event.tags
                 );
                 assert_eq!(event.content, "nice");
+                assert_eq!(correlation_id.as_deref(), Some("comment-cid"));
             }
             other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
         }
