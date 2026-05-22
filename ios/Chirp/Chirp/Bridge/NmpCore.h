@@ -396,27 +396,27 @@ void nmp_app_chirp_register_follow_list(void *app, const char *active_pubkey_or_
 // symbols above.
 //
 // Flow:
-// 1. `nmp_app_chirp_marmot_register(app, secret_key_hex, db_dir)` once the
+// 1. `nmp_marmot_register(app, secret_key_hex, db_dir)` once the
 //    local identity secret is known. `secret_key_hex` is hex OR `nsec…`;
 //    the encrypted MLS SQLite DB is created at
 //    `<db_dir>/marmot-mls-state.sqlite`. Returns an opaque handle, or NULL
 //    on any failure (D6).
-// 2. `nmp_app_chirp_marmot_snapshot(handle)` each render tick → JSON
+// 2. `nmp_marmot_snapshot(handle)` each render tick → JSON
 //    `{ groups, pending_welcomes, key_package }`.
-// 3. `nmp_app_chirp_marmot_group_messages(handle, group_id_hex)` → newest
+// 3. `nmp_marmot_group_messages(handle, group_id_hex)` → newest
 //    200 decrypted messages for one group (JSON array).
-// 4. `nmp_app_chirp_marmot_dispatch(handle, action_json)` → one mutating
+// 4. `nmp_marmot_dispatch(handle, action_json)` → one mutating
 //    op; returns `{"ok":true,…}` / `{"ok":false,"error":"…"}`.
-// 5. Free EVERY returned string via `nmp_app_chirp_marmot_string_free`.
-// 6. `nmp_app_chirp_marmot_unregister(handle)` BEFORE `nmp_app_free(app)`.
+// 5. Free EVERY returned string via `nmp_marmot_string_free`.
+// 6. `nmp_marmot_unregister(handle)` BEFORE `nmp_app_free(app)`.
 //
 // Fire-and-forget: every entry point degrades silently on null pointers,
 // poisoned mutexes, or (de)serialization failure (D6).
-void *nmp_app_chirp_marmot_register(void *app, const char *secret_key_hex, const char *db_dir);
+void *nmp_marmot_register(void *app, const char *secret_key_hex, const char *db_dir);
 /// Register using the actor-owned key — Swift never sees the nsec. Reads
 /// the active local key from the slot the actor writes after identity
 /// mutations. Returns NULL if no local account is active (D6).
-void *nmp_app_chirp_marmot_register_active(void *app, const char *db_dir);
+void *nmp_marmot_register_active(void *app, const char *db_dir);
 /// Rust-owned Chirp identity bootstrap: restore a persisted local secret
 /// through the native keyring capability, sign in through the kernel actor,
 /// and register Marmot. `test_nsec` may be NULL; when non-NULL it overrides
@@ -428,16 +428,16 @@ void *nmp_app_chirp_identity_sign_in_nsec(void *app, const char *secret, const c
 /// Rust-owned removal policy: forget Chirp's persisted local secret and
 /// remove the identity through the kernel actor.
 void nmp_app_chirp_identity_remove_account(void *app, const char *identity_id);
-char *nmp_app_chirp_marmot_snapshot(void *handle);
-char *nmp_app_chirp_marmot_group_messages(void *handle, const char *group_id_hex);
-char *nmp_app_chirp_marmot_dispatch(void *handle, const char *action_json);
-void nmp_app_chirp_marmot_string_free(char *ptr);
-void nmp_app_chirp_marmot_unregister(void *handle);
+char *nmp_marmot_snapshot(void *handle);
+char *nmp_marmot_group_messages(void *handle, const char *group_id_hex);
+char *nmp_marmot_dispatch(void *handle, const char *action_json);
+void nmp_marmot_string_free(char *ptr);
+void nmp_marmot_unregister(void *handle);
 
 /// Trigger the kernel to fetch KeyPackage events (kind:30443/443) for the named
 /// pubkeys from relays. `pubkeys_json` is a JSON array of pubkey strings (hex
 /// or npub). Fire-and-forget; results arrive asynchronously through the Marmot
 /// raw-event tap and appear in `cached_kp_pubkeys`.
-void nmp_app_chirp_marmot_fetch_key_packages(void *handle, const char *pubkeys_json);
+void nmp_marmot_fetch_key_packages(void *handle, const char *pubkeys_json);
 
 #endif

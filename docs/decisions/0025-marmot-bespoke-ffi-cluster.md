@@ -7,10 +7,10 @@ Deciders: NMP team
 ## Context
 
 `apps/chirp/nmp-app-chirp/src/marmot/` exposes a second C-ABI cluster —
-`nmp_app_chirp_marmot_{register,snapshot,group_messages,dispatch,...}` — that
+`nmp_marmot_{register,snapshot,group_messages,dispatch,...}` — that
 operates in parallel with the generic `nmp_app_dispatch_action` /
 `nmp_app_register_snapshot_projection` seam. One symbol in particular,
-`nmp_app_chirp_marmot_dispatch`, is a second action-dispatch envelope: it parses
+`nmp_marmot_dispatch`, is a second action-dispatch envelope: it parses
 an "op envelope" JSON and routes it through `nmp_marmot::projection::ops::dispatch`
 rather than through the `ActionRegistry`.
 
@@ -50,7 +50,7 @@ sees it on the `createAccount` path), `NmpApp` carries a dedicated slot:
 
 - **`NmpApp::marmot_local_nsec: Arc<Mutex<Option<Zeroizing<String>>>>`** — the
   active local account's `nsec1…` in bech32 form, written by the actor after
-  every identity mutation, read by `nmp_app_chirp_marmot_register` via the
+  every identity mutation, read by `nmp_marmot_register` via the
   `NmpApp::marmot_local_nsec()` accessor.
 
 This slot is part of the bounded exception. Hard limits:
@@ -66,7 +66,7 @@ This slot is part of the bounded exception. Hard limits:
 
 - The Marmot cluster remains as-is; no migration onto `dispatch_action` is
   planned.
-- Future feature work touching Marmot must justify any new `nmp_app_chirp_marmot_*`
+- Future feature work touching Marmot must justify any new `nmp_marmot_*`
   symbol against this ADR before landing.
 - The `dispatch_action` namespace census (used by Opus direction reviews) excludes
   Marmot op types by design; that exclusion is now named.

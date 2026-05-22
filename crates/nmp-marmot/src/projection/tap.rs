@@ -12,7 +12,7 @@
 //! accepted inbound kind:1059 / kind:445 into the SAME
 //! [`crate::projection::ops::ingest_signed_event_core`] the back-compat
 //! dispatch op uses — so welcomes / messages received from relays surface
-//! in the next `nmp_app_chirp_marmot_snapshot` with zero Swift change.
+//! in the next `nmp_marmot_snapshot` with zero Swift change.
 //!
 //! ## Linkage
 //!
@@ -23,7 +23,7 @@
 //! `Arc<dyn RawEventObserver>`; the tap holds an `Arc<MarmotProjection>`.
 //! No reference cycle: `MarmotHandle` separately owns the projection and
 //! the returned `RawEventObserverId`; nothing in the projection points
-//! back at the tap. `nmp_app_chirp_marmot_unregister` drops the kernel's
+//! back at the tap. `nmp_marmot_unregister` drops the kernel's
 //! `Arc` (via `unregister_raw_event_observer`), releasing the tap's
 //! projection reference.
 //!

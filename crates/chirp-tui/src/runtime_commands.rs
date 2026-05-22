@@ -7,9 +7,9 @@ use nmp_app_chirp::ffi::{
 };
 use nmp_app_chirp::{
     nmp_app_cancel_bunker_handshake, nmp_app_chirp_identity_sign_in_nsec,
-    nmp_app_chirp_marmot_dispatch, nmp_app_chirp_marmot_register_active,
-    nmp_app_chirp_marmot_snapshot, nmp_app_chirp_marmot_string_free,
-    nmp_app_chirp_marmot_unregister, nmp_app_nostrconnect_uri, nmp_broker_free_string,
+    nmp_marmot_dispatch, nmp_marmot_register_active,
+    nmp_marmot_snapshot, nmp_marmot_string_free,
+    nmp_marmot_unregister, nmp_app_nostrconnect_uri, nmp_broker_free_string,
 };
 use nmp_core::{
     nmp_app_cancel_publish, nmp_app_create_new_account, nmp_app_open_firehose_tag,
@@ -245,7 +245,7 @@ impl AppRuntime {
         }
         let dir = CString::new(marmot_db_dir())
             .map_err(|_| "marmot DB path contains NUL byte".to_string())?;
-        let handle = nmp_app_chirp_marmot_register_active(self.app_ptr(), dir.as_ptr());
+        let handle = nmp_marmot_register_active(self.app_ptr(), dir.as_ptr());
         if handle.is_null() {
             return Err("no active Marmot identity".to_string());
         }
@@ -257,19 +257,19 @@ impl AppRuntime {
         self.marmot_register_active()?;
         let action = CString::new(action.to_string())
             .map_err(|_| "marmot action JSON contains NUL byte".to_string())?;
-        let ptr = nmp_app_chirp_marmot_dispatch(self.marmot.get(), action.as_ptr());
+        let ptr = nmp_marmot_dispatch(self.marmot.get(), action.as_ptr());
         take_marmot_string(ptr, "marmot dispatch")
     }
 
     pub fn marmot_snapshot_text(&self) -> Result<String> {
         self.marmot_register_active()?;
-        let ptr = nmp_app_chirp_marmot_snapshot(self.marmot.get());
+        let ptr = nmp_marmot_snapshot(self.marmot.get());
         take_marmot_string(ptr, "marmot snapshot")
     }
 
     fn unregister_marmot(&self) {
         if !self.marmot.get().is_null() {
-            nmp_app_chirp_marmot_unregister(self.marmot.get());
+            nmp_marmot_unregister(self.marmot.get());
             self.marmot.set(ptr::null_mut());
         }
     }
@@ -289,7 +289,7 @@ fn take_marmot_string(ptr: *mut std::ffi::c_char, label: &str) -> Result<String>
     let text = unsafe { CStr::from_ptr(ptr) }
         .to_string_lossy()
         .into_owned();
-    nmp_app_chirp_marmot_string_free(ptr);
+    nmp_marmot_string_free(ptr);
     Ok(text)
 }
 

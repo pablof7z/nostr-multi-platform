@@ -7,7 +7,7 @@
 //! hatch with a second in-memory service's KeyPackage) → snapshot reflects
 //! the group → send → group_messages returns it.
 //!
-//! The on-disk `nmp_app_chirp_marmot_register` path needs a keyring +
+//! The on-disk `nmp_marmot_register` path needs a keyring +
 //! SQLite file, so the round-trip drives the SAME code the FFI symbols
 //! invoke (`MarmotProjection::snapshot`, `with_inner(ops::dispatch)`,
 //! `ops::group_messages`) against an in-memory `MarmotService`. The
@@ -41,22 +41,22 @@ fn in_memory(keys: Keys) -> MarmotService {
 
 #[test]
 fn null_pointer_paths_are_silent() {
-    assert!(nmp_app_chirp_marmot_register(
+    assert!(nmp_marmot_register(
         std::ptr::null_mut(),
         std::ptr::null(),
         std::ptr::null()
     )
     .is_null());
-    assert!(nmp_app_chirp_marmot_snapshot(std::ptr::null_mut()).is_null());
-    assert!(nmp_app_chirp_marmot_group_messages(std::ptr::null_mut(), std::ptr::null()).is_null());
-    assert!(nmp_app_chirp_marmot_dispatch(std::ptr::null_mut(), std::ptr::null()).is_null());
-    nmp_app_chirp_marmot_string_free(std::ptr::null_mut());
-    nmp_app_chirp_marmot_unregister(std::ptr::null_mut());
+    assert!(nmp_marmot_snapshot(std::ptr::null_mut()).is_null());
+    assert!(nmp_marmot_group_messages(std::ptr::null_mut(), std::ptr::null()).is_null());
+    assert!(nmp_marmot_dispatch(std::ptr::null_mut(), std::ptr::null()).is_null());
+    nmp_marmot_string_free(std::ptr::null_mut());
+    nmp_marmot_unregister(std::ptr::null_mut());
 }
 
 #[test]
 fn register_with_null_app_returns_null() {
-    let h = nmp_app_chirp_marmot_register(std::ptr::null_mut(), std::ptr::null(), std::ptr::null());
+    let h = nmp_marmot_register(std::ptr::null_mut(), std::ptr::null(), std::ptr::null());
     assert!(h.is_null());
 }
 

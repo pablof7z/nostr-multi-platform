@@ -3,10 +3,10 @@ use std::ptr;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use nmp_app_chirp::{
-    nmp_app_chirp_identity_sign_in_nsec, nmp_app_chirp_marmot_dispatch,
-    nmp_app_chirp_marmot_group_messages, nmp_app_chirp_marmot_register_active,
-    nmp_app_chirp_marmot_snapshot, nmp_app_chirp_marmot_string_free,
-    nmp_app_chirp_marmot_unregister, nmp_app_chirp_register, nmp_app_chirp_snapshot,
+    nmp_app_chirp_identity_sign_in_nsec, nmp_marmot_dispatch,
+    nmp_marmot_group_messages, nmp_marmot_register_active,
+    nmp_marmot_snapshot, nmp_marmot_string_free,
+    nmp_marmot_unregister, nmp_app_chirp_register, nmp_app_chirp_snapshot,
     nmp_app_chirp_snapshot_free, nmp_app_chirp_unregister, ChirpHandle, MarmotHandle,
 };
 use nmp_core::{
@@ -79,7 +79,7 @@ impl AppRuntime {
 
     pub fn sign_in_nsec_with_marmot(&mut self, nsec: &str) -> Result<()> {
         if !self.marmot.is_null() {
-            nmp_app_chirp_marmot_unregister(self.marmot);
+            nmp_marmot_unregister(self.marmot);
             self.marmot = ptr::null_mut();
         }
         let secret = CString::new(nsec).map_err(|_| "secret contains NUL byte".to_string())?;
@@ -107,7 +107,7 @@ impl AppRuntime {
         }
         let dir = CString::new(self.marmot_db_dir.clone())
             .map_err(|_| "marmot DB path contains NUL byte".to_string())?;
-        let handle = nmp_app_chirp_marmot_register_active(self.app, dir.as_ptr());
+        let handle = nmp_marmot_register_active(self.app, dir.as_ptr());
         if handle.is_null() {
             return Err("no active Marmot identity; run load-key first".to_string());
         }
@@ -119,7 +119,7 @@ impl AppRuntime {
         if self.marmot.is_null() {
             return Err("Marmot is not initialized; run mls-init first".to_string());
         }
-        let ptr = nmp_app_chirp_marmot_snapshot(self.marmot);
+        let ptr = nmp_marmot_snapshot(self.marmot);
         self.take_marmot_json(ptr, "marmot snapshot")
     }
 
@@ -129,7 +129,7 @@ impl AppRuntime {
         }
         let action = CString::new(action.to_string())
             .map_err(|_| "marmot action JSON contains NUL byte".to_string())?;
-        let ptr = nmp_app_chirp_marmot_dispatch(self.marmot, action.as_ptr());
+        let ptr = nmp_marmot_dispatch(self.marmot, action.as_ptr());
         let value = self.take_marmot_json(ptr, "marmot dispatch")?;
         if value.get("ok").and_then(Value::as_bool) == Some(false) {
             let error = value
@@ -147,7 +147,7 @@ impl AppRuntime {
         }
         let group_id =
             CString::new(group_id_hex).map_err(|_| "group id contains NUL byte".to_string())?;
-        let ptr = nmp_app_chirp_marmot_group_messages(self.marmot, group_id.as_ptr());
+        let ptr = nmp_marmot_group_messages(self.marmot, group_id.as_ptr());
         self.take_marmot_json(ptr, "marmot group messages")
     }
 
@@ -243,7 +243,7 @@ impl AppRuntime {
         let text = unsafe { CStr::from_ptr(ptr) }
             .to_string_lossy()
             .into_owned();
-        nmp_app_chirp_marmot_string_free(ptr);
+        nmp_marmot_string_free(ptr);
         serde_json::from_str(&text).map_err(|e| format!("{label} returned invalid JSON: {e}"))
     }
 }
@@ -257,7 +257,7 @@ impl Default for AppRuntime {
 impl Drop for AppRuntime {
     fn drop(&mut self) {
         if !self.marmot.is_null() {
-            nmp_app_chirp_marmot_unregister(self.marmot);
+            nmp_marmot_unregister(self.marmot);
             self.marmot = ptr::null_mut();
         }
         if !self.chirp.is_null() {

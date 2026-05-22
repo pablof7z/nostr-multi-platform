@@ -43,7 +43,7 @@
 //!    NO MDK types — they satisfy the kernel-boundary grep.
 //!    All Marmot capabilities (key-package publish, group-scoped ops:
 //!    `CreateGroup`, `InviteMember`, `SendMessage`, etc.) are covered by the
-//!    bespoke `nmp_app_chirp_marmot_dispatch` C cluster (ADR-0025), not the
+//!    bespoke `nmp_marmot_dispatch` C cluster (ADR-0025), not the
 //!    generic `dispatch_action` seam. The previous `ActionModule` impls were
 //!    deleted as dormant (zero registry callers); re-add only when a non-bespoke
 //!    caller demands `dispatch_action` routing for a Marmot capability.
@@ -96,7 +96,7 @@ pub mod mls_types {
 // projection registers one in `projection/`. The previous `ActionModule`
 // impls were deleted (6 group-scoped in PR #200, the last
 // `PublishKeyPackageAction` shortly after); the bespoke
-// `nmp_app_chirp_marmot_dispatch` C cluster (ADR-0025) covers every live
+// `nmp_marmot_dispatch` C cluster (ADR-0025) covers every live
 // Marmot capability today.
 
 #[cfg(test)]
