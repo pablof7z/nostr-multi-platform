@@ -27,8 +27,9 @@
 //! * **D6** — poisoned mutexes, missing active pubkeys, and empty follow lists
 //!   all degrade to `{"follows":[]}` rather than panicking.
 //! * **D8** — `on_kernel_event` runs synchronously on the actor thread between
-//!   relay frames. Work is bounded: one kind filter check, one mutex lock, one
-//!   `p`-tag scan, one `HashMap` insert. No I/O, no blocking.
+//!   relay frames. Work is bounded: one kind filter check, two short mutex
+//!   locks (active-pubkey gate + follows map), one `p`-tag scan, one
+//!   `HashMap` insert. No I/O, no blocking.
 //! * **Thin-shell** — all display strings (npub, abbreviated form, initials,
 //!   colour) are computed here. The Swift shell renders only what it receives.
 
@@ -116,6 +117,15 @@ impl FollowListProjection {
     ///   * No kind:3 event for the active account has arrived yet.
     ///   * The active account's kind:3 has zero `p` tags (follows nobody).
     ///   * Any mutex is poisoned (D6).
+    /// Number of entries currently held in the follows map. Test-only
+    /// inspector for the shadow-storage gate invariant: after the author
+    /// guard in `on_kernel_event`, this must be `<= 1` regardless of how
+    /// many distinct authors publish kind:3.
+    #[cfg(test)]
+    fn follows_map_len(&self) -> usize {
+        self.follows.lock().map(|g| g.len()).unwrap_or(0)
+    }
+
     pub fn snapshot_json(&self) -> serde_json::Value {
         let active = match self.active_pubkey.lock() {
             Ok(guard) => guard.as_ref().cloned(),
@@ -149,15 +159,39 @@ impl FollowListProjection {
 impl KernelEventObserver for FollowListProjection {
     /// Called by the kernel once per accepted kind:3 event.
     ///
-    /// Gate by `kind == 3`, then extract all `["p", <pubkey>, …]` tags and
-    /// store them under the event's author. Replaceable: a newer kind:3 from
-    /// the same author overwrites the previous entry (the kernel already
-    /// deduplicates via `Replaced` — this upsert is idempotent). Poisoned
-    /// mutex → silent no-op (D6).
+    /// Gate by `kind == 3` **and** by author == active pubkey, then extract
+    /// all `["p", <pubkey>, …]` tags and store them under the event's author.
+    /// Replaceable: a newer kind:3 from the same author overwrites the
+    /// previous entry (the kernel already deduplicates via `Replaced` — this
+    /// upsert is idempotent). Poisoned mutex → silent no-op (D6).
+    ///
+    /// # Why the author gate
+    ///
+    /// `snapshot_json` only ever reads the active account's entry, so kind:3
+    /// events authored by anyone else (e.g. profiles surfaced in a follow
+    /// feed) would accumulate as dead weight — a shadow-storage leak that
+    /// scales with the social graph. The kernel already stores the active
+    /// account's follow list authoritatively in `seed_contacts`, so any
+    /// non-active-author insert would also be a duplicate index.
+    ///
+    /// On account switch, the kernel re-fetches kind:3 via
+    /// `account_profile_interest`, so the new active account's follow list
+    /// repopulates on its own.
     fn on_kernel_event(&self, event: &KernelEvent) {
         if event.kind != KIND_CONTACT_LIST {
             return;
         }
+
+        // Author gate: skip unless this kind:3 was authored by the active
+        // account. Poisoned mutex or no active account → silent no-op (D6).
+        let active = match self.active_pubkey.lock() {
+            Ok(guard) => guard.as_ref().cloned(),
+            Err(_) => return,
+        };
+        if active.as_deref() != Some(event.author.as_str()) {
+            return;
+        }
+
         let followed: Vec<String> = event
             .tags
             .iter()
@@ -173,6 +207,11 @@ impl KernelEventObserver for FollowListProjection {
         let Ok(mut follows) = self.follows.lock() else {
             return;
         };
+        // The author gate above guarantees this insert is for the active
+        // account. Clear first so stale entries from a previous active
+        // account (e.g. after account switch) don't linger — the map's
+        // invariant is `len() <= 1`, always the current active account.
+        follows.clear();
         follows.insert(event.author.clone(), followed);
     }
 }
@@ -262,6 +301,100 @@ mod tests {
 
         let snap = proj.snapshot_json();
         assert_eq!(snap["follows"].as_array().unwrap().len(), 0);
+        // Shadow-storage gate: Carol's kind:3 must not have been stored at
+        // all — the projection only keeps the active account's list.
+        assert_eq!(proj.follows_map_len(), 0);
+    }
+
+    #[test]
+    fn many_non_active_authors_do_not_grow_map() {
+        // Regression: prior to the author gate, every kind:3 from every
+        // author in the follow feed was inserted, growing the map without
+        // bound. With the gate, the map must hold at most one entry — the
+        // active account's list.
+        let alice = "aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
+        let proj = projection_for(Some(alice));
+
+        // 50 distinct non-active authors publish kind:3.
+        for i in 0..50u8 {
+            let mut author = String::with_capacity(64);
+            // Two-hex byte prefix that varies per iteration, plus a fixed
+            // 62-hex-char tail — produces 50 distinct, valid-looking hex pubkeys
+            // that are all different from `alice`.
+            author.push_str(&format!("{:02x}", i));
+            author.push_str("99887766554433221100ffeeddccbbaa99887766554433221100ffeeddccbb");
+            assert_ne!(author, alice);
+            proj.on_kernel_event(&make_event(&author, &["deadbeef"]));
+        }
+
+        // Active account never published — map must remain empty.
+        assert_eq!(
+            proj.follows_map_len(),
+            0,
+            "non-active authors must not be stored"
+        );
+
+        // Now the active account publishes its kind:3 → exactly one entry.
+        let followed = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
+        proj.on_kernel_event(&make_event(alice, &[followed]));
+        assert!(
+            proj.follows_map_len() <= 1,
+            "map must hold at most the active account's entry, got {}",
+            proj.follows_map_len()
+        );
+        assert_eq!(proj.follows_map_len(), 1);
+
+        // And the snapshot reflects Alice's list.
+        let snap = proj.snapshot_json();
+        let follows = snap["follows"].as_array().unwrap();
+        assert_eq!(follows.len(), 1);
+        assert_eq!(follows[0]["pubkey"].as_str().unwrap(), followed);
+    }
+
+    #[test]
+    fn account_switch_does_not_strand_stale_entry() {
+        // Alice signs in, her kind:3 lands → map = {Alice}. User switches
+        // to Bob (FFI writes the active slot). Bob's kind:3 lands → the
+        // map must hold ONLY Bob; Alice's entry must be cleared. This is
+        // the `<= 1` invariant across account switches.
+        let alice = "aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
+        let bob = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
+        let alice_follow = "cc11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
+        let bob_follow = "dd11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
+
+        let slot = Arc::new(Mutex::new(Some(alice.to_string())));
+        let proj = FollowListProjection::new(Arc::clone(&slot));
+
+        // Alice's kind:3 arrives.
+        proj.on_kernel_event(&make_event(alice, &[alice_follow]));
+        assert_eq!(proj.follows_map_len(), 1);
+
+        // Account switch: FFI rewrites the active slot to Bob.
+        *slot.lock().unwrap() = Some(bob.to_string());
+
+        // Bob's kind:3 arrives — Alice's stale entry must be cleared.
+        proj.on_kernel_event(&make_event(bob, &[bob_follow]));
+        assert_eq!(
+            proj.follows_map_len(),
+            1,
+            "after switch, map must hold only the new active account"
+        );
+
+        let snap = proj.snapshot_json();
+        let follows = snap["follows"].as_array().unwrap();
+        assert_eq!(follows.len(), 1);
+        assert_eq!(follows[0]["pubkey"].as_str().unwrap(), bob_follow);
+    }
+
+    #[test]
+    fn no_active_account_drops_all_inserts() {
+        // With no active pubkey set, even an event that "could" have been
+        // ours (if we later signed in as that author) is dropped. This is
+        // the correct semantics: the kernel re-fetches kind:3 on sign-in.
+        let proj = projection_for(None);
+        let author = "aa11223344556677889900aabbccddeeff00112233445566778899aabbccddee";
+        proj.on_kernel_event(&make_event(author, &["deadbeef"]));
+        assert_eq!(proj.follows_map_len(), 0);
     }
 
     #[test]
