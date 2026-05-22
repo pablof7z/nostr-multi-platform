@@ -10,11 +10,17 @@ use super::errors::VerifyError;
 
 // ─── RawEvent ────────────────────────────────────────────────────────────────
 
-/// Temporary stand-in for `nostr::Event` until the nostr crate is in the workspace.
+/// NIP-01 event wire type used as the store's internal representation.
 ///
 /// Fields match the NIP-01 event object exactly. Signature verification is
-/// skipped for now (insert always trusts the caller). The M3-lmdb task will
-/// swap this for the real type and enable proper sig checks.
+/// enforced by [`VerifiedEvent::try_from_raw`], which uses `nostr::Event::verify()`
+/// (Schnorr signature + event-id hash) before any event enters the store.
+/// The store only accepts `VerifiedEvent`; `RawEvent` is never inserted
+/// directly.
+///
+/// M3-lmdb: when the LMDB store lands, this may be replaced by `nostr::Event`
+/// natively, eliminating the JSON round-trip in `try_from_raw`. Until then
+/// this type is NOT a security gap — verification happens at the boundary.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RawEvent {
     pub id: String,          // lowercase hex
@@ -97,8 +103,9 @@ impl RawEvent {
             .collect()
     }
 
-    /// Validates the event has a plausible structure (non-empty id, pubkey, sig).
-    /// Full cryptographic verification is deferred until the nostr crate is wired in.
+    /// Returns true iff the event has plausible field lengths (non-empty id,
+    /// pubkey, sig). This is a cheap pre-filter only — cryptographic
+    /// verification is done by `VerifiedEvent::try_from_raw`.
     pub fn is_structurally_valid(&self) -> bool {
         self.id.len() == 64 && self.pubkey.len() == 64 && self.sig.len() == 128
     }

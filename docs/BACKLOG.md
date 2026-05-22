@@ -78,6 +78,60 @@ concern violates D4 (single-writer-per-fact).
 **Correct fix:** designate `InterestRegistry` as canonical; migrate all M1 `req()` call sites
 to it; delete the hand-rolled path. See PD-033-C for the user decision that gates this.
 
+### V-05 · D2 enforcement gap — coverage_hook never installed [HIGH · staged fix required]
+
+**Verified:** `crates/nmp-core/src/subs/mod.rs:93-116` — `coverage_hook` (the seam for
+enforcing D2: "negentropy before REQ") is **never installed** in the production kernel.
+`Kernel::with_publish_store` (`kernel/mod.rs:535`) wires `set_watermark_fn` (T129) but
+makes no call to `SubscriptionLifecycle::set_coverage_hook`. Neither `actor::run_actor` nor
+the `nmp-core/src/ffi` app surface installs it either.
+
+**Impact:** D2 is convention-only. Every plan flows straight to a raw `REQ` — no
+negentropy/set-reconciliation pre-pass runs in production. The sentinel test
+`subs::coverage_hook_tests::d2_production_kernel_installs_coverage_hook` is `#[ignore]`d.
+
+**Why the fix is staged:** a coverage-gate policy must depend on `nmp-core`, so a
+`nmp-core → policy-crate` import is both a D0 app-noun leak AND a dep cycle. The
+correct fix requires a higher-level **assembly crate** that can depend on both
+`nmp-core` and the policy crate and installs the hook at kernel-construction time.
+
+**Staged fix plan:**
+- Stage 1: Create `nmp-coverage-gate` crate with the D2 policy logic (negentropy
+  threshold, back-off rules). No `nmp-core` dep.
+- Stage 2: Assembly point (app FFI crate or a new `nmp-app-base` crate) depends on
+  both `nmp-core` and `nmp-coverage-gate`, installs the hook via
+  `SubscriptionLifecycle::set_coverage_hook` at `Kernel::with_publish_store` time.
+- Stage 3: Remove `#[ignore]` from the sentinel test; it becomes a CI gate.
+
+**Deadline:** Stage 1 must land before NMP v1 ships. D2 is a protocol-correctness
+requirement (negentropy reduces relay load and correctly handles large follow lists).
+
+### V-06 · NIP-42 AUTH incompatible with NIP-46 remote signers [MEDIUM · staged fix required]
+
+**Verified:** `crates/nmp-core/src/actor/commands/identity.rs:700` —
+`sync_kernel_auth_signer` clears the auth signer when a remote NIP-46 signer is active
+(`kernel.clear_auth_signer()`). The broker's ephemeral key cannot sign NIP-42 challenges
+as the user's pubkey.
+
+**Impact:** users authenticating via bunker (NIP-46) cannot sign NIP-42 AUTH challenges
+with their own pubkey. They can still connect to and read from relays that accept
+unauthenticated connections, but they cannot pass AUTH-required relay gates as themselves.
+This is a silent failure: no toast, no indicator.
+
+**Why the fix is staged:** the broker must expose a `sign_event(kind:22242)` RPC path;
+then `AuthSignerFn` needs a sync-compatible adapter that round-trips through the broker's
+one-shot channel. This is non-trivial broker work.
+
+**Staged fix plan:**
+- Stage 1: Surface the limitation to the user — when active signer is remote and
+  `clear_auth_signer` runs, emit a relay-status note that AUTH relays are not supported
+  for bunker accounts (replaces silent failure with visible degradation).
+- Stage 2: Broker side — expose `sign_auth_challenge(challenge, relay_url)` RPC.
+- Stage 3: `sync_kernel_auth_signer` — for remote signers, install a
+  `AuthSignerFn`-compatible closure that drives the broker RPC synchronously.
+
+**Deadline:** Stage 1 (visibility) must land before v1. Stages 2-3 are post-v1.
+
 ---
 
 ## Section 2 — In Flight
