@@ -60,16 +60,7 @@ impl ActionModule for JoinGroupAction {
         // The host pin must be present and non-empty (a missing
         // `host_relay_url` would route the request through the NIP-65 outbox
         // — wrong relay, the join would never reach the host).
-        if action.group.host_relay_url.is_empty() {
-            return Err(ActionRejection::Invalid(
-                "join request needs a non-empty group.host_relay_url".into(),
-            ));
-        }
-        if action.group.local_id.is_empty() {
-            return Err(ActionRejection::Invalid(
-                "join request needs a non-empty group.local_id".into(),
-            ));
-        }
+        action.group.require_routable().map_err(ActionRejection::Invalid)?;
         join_group_plan(&action)
             .validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for join request".into()))?;

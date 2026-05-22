@@ -48,6 +48,7 @@ impl ActionModule for PostChatMessageAction {
         _ctx: &mut ActionContext,
         action: Self::Action,
     ) -> Result<(), ActionRejection> {
+        action.group.require_routable().map_err(ActionRejection::Invalid)?;
         if action.content.is_empty() {
             return Err(ActionRejection::Invalid("empty chat message".into()));
         }
@@ -64,5 +65,64 @@ impl ActionModule for PostChatMessageAction {
         send(post_chat_message_plan(&action)
             .into_actor_command(Some(correlation_id.to_string()))?);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn input() -> PostChatMessageInput {
+        PostChatMessageInput {
+            group: GroupId::new("wss://groups.example.com", "room"),
+            content: "hello".to_string(),
+            previous_event_id_prefixes: Vec::new(),
+            reply_to_event_id: None,
+        }
+    }
+
+    #[test]
+    fn well_formed_passes_validator() {
+        let mut ctx = ActionContext::default();
+        assert!(PostChatMessageAction::start(&mut ctx, input()).is_ok());
+    }
+
+    #[test]
+    fn empty_host_relay_url_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        let action = PostChatMessageInput {
+            group: GroupId::new("", "room"),
+            ..input()
+        };
+        assert!(matches!(
+            PostChatMessageAction::start(&mut ctx, action),
+            Err(ActionRejection::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn empty_local_id_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        let action = PostChatMessageInput {
+            group: GroupId::new("wss://h", ""),
+            ..input()
+        };
+        assert!(matches!(
+            PostChatMessageAction::start(&mut ctx, action),
+            Err(ActionRejection::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn empty_content_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        let action = PostChatMessageInput {
+            content: String::new(),
+            ..input()
+        };
+        assert!(matches!(
+            PostChatMessageAction::start(&mut ctx, action),
+            Err(ActionRejection::Invalid(_))
+        ));
     }
 }

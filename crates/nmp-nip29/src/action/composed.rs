@@ -45,6 +45,7 @@ impl ActionModule for ReactInGroupAction {
         _ctx: &mut ActionContext,
         action: Self::Action,
     ) -> Result<(), ActionRejection> {
+        action.group.require_routable().map_err(ActionRejection::Invalid)?;
         react_in_group_plan(&action)
             .validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for in-group reaction".into()))?;
@@ -92,6 +93,7 @@ impl ActionModule for CommentInGroupAction {
         _ctx: &mut ActionContext,
         action: Self::Action,
     ) -> Result<(), ActionRejection> {
+        action.group.require_routable().map_err(ActionRejection::Invalid)?;
         comment_in_group_plan(&action)
             .validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for in-group comment".into()))?;
@@ -105,5 +107,92 @@ impl ActionModule for CommentInGroupAction {
         send(comment_in_group_plan(&action)
             .into_actor_command(Some(correlation_id.to_string()))?);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn react_input() -> ReactInGroupInput {
+        ReactInGroupInput {
+            group: GroupId::new("wss://groups.example.com", "room"),
+            target_event_id: "deadbeef".to_string(),
+            target_author_pubkey: None,
+            content: "+".to_string(),
+        }
+    }
+
+    fn comment_input() -> CommentInGroupInput {
+        CommentInGroupInput {
+            group: GroupId::new("wss://groups.example.com", "room"),
+            root_event_id: None,
+            parent_event_id: None,
+            content: "nice".to_string(),
+        }
+    }
+
+    #[test]
+    fn react_well_formed_passes_validator() {
+        let mut ctx = ActionContext::default();
+        assert!(ReactInGroupAction::start(&mut ctx, react_input()).is_ok());
+    }
+
+    #[test]
+    fn react_empty_host_relay_url_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        let action = ReactInGroupInput {
+            group: GroupId::new("", "room"),
+            ..react_input()
+        };
+        assert!(matches!(
+            ReactInGroupAction::start(&mut ctx, action),
+            Err(ActionRejection::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn react_empty_local_id_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        let action = ReactInGroupInput {
+            group: GroupId::new("wss://h", ""),
+            ..react_input()
+        };
+        assert!(matches!(
+            ReactInGroupAction::start(&mut ctx, action),
+            Err(ActionRejection::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn comment_well_formed_passes_validator() {
+        let mut ctx = ActionContext::default();
+        assert!(CommentInGroupAction::start(&mut ctx, comment_input()).is_ok());
+    }
+
+    #[test]
+    fn comment_empty_host_relay_url_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        let action = CommentInGroupInput {
+            group: GroupId::new("", "room"),
+            ..comment_input()
+        };
+        assert!(matches!(
+            CommentInGroupAction::start(&mut ctx, action),
+            Err(ActionRejection::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn comment_empty_local_id_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        let action = CommentInGroupInput {
+            group: GroupId::new("wss://h", ""),
+            ..comment_input()
+        };
+        assert!(matches!(
+            CommentInGroupAction::start(&mut ctx, action),
+            Err(ActionRejection::Invalid(_))
+        ));
     }
 }
