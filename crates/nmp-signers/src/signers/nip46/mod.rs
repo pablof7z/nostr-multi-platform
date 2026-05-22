@@ -160,13 +160,15 @@ impl Nip46Signer {
         })?;
         let local_sk = SecretKey::from_hex(p.local_secret_hex.as_str())
             .map_err(|e| SignerError::Backend(format!("invalid local secret: {e}")))?;
-        let mut extra = Vec::new();
         let uri = BunkerUri {
             remote_pubkey_hex: p.remote_pubkey_hex.clone(),
             relays: p.relays.clone(),
             secret: p.secret.clone(),
             permissions: p.permissions.clone(),
-            extra: std::mem::take(&mut extra),
+            // Restore from payload — `extra` is the BunkerUri's catch-all for
+            // unrecognised query params (e.g. `name`), which we don't persist;
+            // a restored URI is canonical.
+            extra: Vec::new(),
         };
         Ok(Self {
             uri,

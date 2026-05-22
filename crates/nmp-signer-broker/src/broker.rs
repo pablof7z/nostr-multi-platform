@@ -79,15 +79,20 @@ impl BunkerBroker {
         // Cancel any prior session so a re-submit replaces cleanly.
         self.cancel();
 
-        let me = Arc::clone(self);
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_for_thread = Arc::clone(&cancel);
-        let thread = std::thread::spawn(move || me.run_handshake_thread(uri, cancel_for_thread));
+        let me = Arc::clone(self);
 
-        // Stage the session entry without the transport/signer yet — the
-        // handshake thread fills those in via `install_session` once the
-        // relay client is connected.
+        // Spawn under the lock: the worker's first contention point is its
+        // own `self.active.lock()` inside `install_session`, which will block
+        // until this scope releases the guard. That guarantees the placeholder
+        // is staged before the worker can mutate it — closing the race where a
+        // fast worker could reach `install_session` before staging and have
+        // its real relay/transport silently dropped (since `install_session`
+        // is a mutate-if-Some no-op).
         if let Ok(mut guard) = self.active.lock() {
+            let thread =
+                std::thread::spawn(move || me.run_handshake_thread(uri, cancel_for_thread));
             *guard = Some(ActiveSession {
                 // Placeholder relay reference until the worker swaps it in.
                 // We use an `Arc<NoopRelay>` so the field type stays simple.

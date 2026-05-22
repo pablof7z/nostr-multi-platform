@@ -19,10 +19,13 @@ impl BunkerBroker {
         let me = Arc::clone(self);
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_for_thread = Arc::clone(&cancel);
-        let thread =
-            std::thread::spawn(move || me.run_restore_thread(payload_json, cancel_for_thread));
 
+        // Spawn under the lock so the worker can't reach `install_session`
+        // before the placeholder is staged. See `broker.rs::start_handshake`
+        // for the full ordering argument.
         if let Ok(mut guard) = self.active.lock() {
+            let thread =
+                std::thread::spawn(move || me.run_restore_thread(payload_json, cancel_for_thread));
             *guard = Some(ActiveSession {
                 relay: Arc::new(NoopRelay) as Arc<dyn RelayClient>,
                 cancel,

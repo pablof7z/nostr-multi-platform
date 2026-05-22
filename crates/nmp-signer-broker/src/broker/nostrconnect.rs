@@ -32,7 +32,7 @@ impl BunkerBroker {
             .take(16)
             .map(char::from)
             .collect();
-        let encoded_relay = percent_encode_query_value(&relay_url);
+        let encoded_relay = crate::uri_encode::percent_encode_query_value(&relay_url);
         let name = NOSTRCONNECT_CLIENT_NAME;
         let uri = format!(
             "nostrconnect://{pubkey_hex}?relay={encoded_relay}&secret={secret}&name={name}&perms=sign_event%3A1%2Csign_event%3A7"
@@ -42,11 +42,19 @@ impl BunkerBroker {
         let secret_for_thread = secret.clone();
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_for_thread = Arc::clone(&cancel);
-        let thread = std::thread::spawn(move || {
-            me.run_nostrconnect_thread(relay_url, local_keys, secret_for_thread, cancel_for_thread);
-        });
 
+        // Spawn under the lock so the worker can't reach `install_session`
+        // before the placeholder is staged. See `broker.rs::start_handshake`
+        // for the full ordering argument.
         if let Ok(mut guard) = self.active.lock() {
+            let thread = std::thread::spawn(move || {
+                me.run_nostrconnect_thread(
+                    relay_url,
+                    local_keys,
+                    secret_for_thread,
+                    cancel_for_thread,
+                );
+            });
             *guard = Some(ActiveSession {
                 relay: Arc::new(NoopRelay) as Arc<dyn RelayClient>,
                 cancel,
@@ -157,12 +165,3 @@ impl BunkerBroker {
     }
 }
 
-fn percent_encode_query_value(value: &str) -> String {
-    value
-        .bytes()
-        .flat_map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => vec![b as char],
-            _ => format!("%{b:02X}").chars().collect::<Vec<_>>(),
-        })
-        .collect()
-}

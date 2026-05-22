@@ -132,7 +132,7 @@ pub extern "C" fn nmp_app_nostrconnect_uri(
     };
     let mut uri = broker.start_nostrconnect_handshake(relay);
     if let Some(scheme) = callback {
-        let encoded = percent_encode_query_value(scheme);
+        let encoded = crate::uri_encode::percent_encode_query_value(scheme);
         uri.push_str("&callback=");
         uri.push_str(&encoded);
     }
@@ -157,21 +157,6 @@ fn relay_url_from_arg_or_app(app: *mut NmpApp, relay_url: *const std::os::raw::c
         .unwrap_or_else(|| NOSTRCONNECT_DEFAULT_RELAY_URL.to_string())
 }
 
-/// Percent-encode a URI query-value byte-for-byte using the RFC 3986 unreserved
-/// set (`ALPHA / DIGIT / "-" / "_" / "." / "~"`). Duplicated here (the broker
-/// crate has its own copy in `broker/nostrconnect.rs`) to keep the FFI surface
-/// dependency-light; the substrate / app boundary is what matters, not the
-/// six-line helper.
-fn percent_encode_query_value(value: &str) -> String {
-    value
-        .bytes()
-        .flat_map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => vec![b as char],
-            _ => format!("%{b:02X}").chars().collect::<Vec<_>>(),
-        })
-        .collect()
-}
-
 /// Free a string returned by `nmp_app_nostrconnect_uri`. Null-safe (no-op).
 #[allow(unsafe_code)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -189,26 +174,8 @@ mod tests {
     use super::*;
     use std::ffi::CString;
 
-    #[test]
-    fn percent_encode_passes_unreserved_chars() {
-        let out = percent_encode_query_value("AZaz09-_.~");
-        assert_eq!(
-            out, "AZaz09-_.~",
-            "unreserved RFC 3986 set must be passed verbatim"
-        );
-    }
-
-    #[test]
-    fn percent_encode_quotes_reserved_chars() {
-        // `:`, `/`, `?`, `=`, `&`, `#` are all reserved and must be %-encoded.
-        let out = percent_encode_query_value("chirp://nip46");
-        assert_eq!(out, "chirp%3A%2F%2Fnip46");
-    }
-
-    #[test]
-    fn percent_encode_handles_empty_string() {
-        assert_eq!(percent_encode_query_value(""), "");
-    }
+    // Percent-encoding coverage now lives in `crate::uri_encode::tests`;
+    // these tests cover only the FFI-specific argument plumbing.
 
     #[test]
     fn explicit_relay_arg_still_overrides_kernel_selection() {
