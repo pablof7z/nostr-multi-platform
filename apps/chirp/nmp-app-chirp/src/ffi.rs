@@ -169,6 +169,28 @@ pub extern "C" fn nmp_app_chirp_register(
     let app_ref = unsafe { &*app };
     register_dm_runtime(app_ref);
 
+    // Wire the NIP-57 `ZapsAggregateProjection` — a `KernelEventObserver`
+    // that indexes incoming kind:9735 zap receipts by their `["e", target]`
+    // tag so a timeline surface can show per-row zap counts + total msats
+    // without opening a per-target `ZapsView` for every visible note.
+    //
+    // Pure consumption — registers as an event observer (ingest) and exposes
+    // its `snapshot_json` read under `"nmp.nip57.zaps"` (output). No
+    // action, no handle, no swap slot: `nmp_app_chirp_register` is called
+    // once at app init, so a fire-and-forget registration is sufficient.
+    // Mirrors `register_inbox_projection` in `dm_runtime.rs`.
+    //
+    // D6 — silent skip on a poisoned observer slot. Zap counts are a
+    // non-essential feed affordance; their absence must not fail the whole
+    // Chirp registration. The `ModularTimelineProjection` below remains the
+    // single fatal-on-failure observer (its absence breaks the timeline).
+    let zaps_proj = Arc::new(nmp_nip57::ZapsAggregateProjection::new());
+    let zaps_observer_id = app_ref
+        .register_event_observer(Arc::clone(&zaps_proj) as Arc<dyn KernelEventObserver>);
+    if zaps_observer_id.0 != 0 {
+        app_ref.register_snapshot_projection("nmp.nip57.zaps", move || zaps_proj.snapshot_json());
+    }
+
     let viewer: Pubkey = c_string_opt(viewer_pubkey).unwrap_or_default();
     let spec = ModularTimelineSpec {
         viewer,
