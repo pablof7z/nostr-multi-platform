@@ -39,8 +39,8 @@ use crate::kinds::{KIND_GENERIC_REPOST, KIND_REACTION, KIND_REPOST};
 ///
 /// Per NIP-25, the target is referenced by the **last** `e` tag (an event id)
 /// or, for addressable targets, the last `a` tag (an `naddr` coordinate). The
-/// variant is tagged so the byte key encoding in [`crate::domain::keys`] can
-/// keep event-id targets and address targets in disjoint key spaces.
+/// variant is tagged so that event-id targets and address targets
+/// stay in disjoint key spaces when encoded by any indexing layer.
 #[derive(Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum ReactionTarget {
     /// Reaction/repost of a concrete event, by hex event id.
