@@ -40,7 +40,6 @@
 //! `Relations::react_to(&note)` instead of
 //! `nmp_relations::Reaction::to_event(note.event_id.clone(), note.author.clone())`.
 
-use nmp_core::substrate::UnsignedEvent;
 use nmp_nip01::{Note, NoteBuilder, NoteRecord, RepliesSpec, ThreadSpec};
 use nmp_nip22::{Comment, CommentBuilder, CommentsSpec};
 use nmp_nip57::{ZapRequest, ZapRequestBuilder, ZapsSpec};
@@ -126,30 +125,21 @@ impl Relations {
     /// Forwards to [`Comment::on_event`]. For comments nested under a
     /// parent comment, chain [`CommentBuilder::reply_to_comment`].
     pub fn comment_on(target: &NoteRecord) -> CommentBuilder {
-        Comment::on_event(target.event_id.clone(), target.kind(), target.author.clone())
+        // `NoteRecord` only ever represents a kind-1 short text note — the
+        // root kind is a compile-time constant from `nmp-nip01`, never a
+        // runtime field on the record.
+        Comment::on_event(
+            target.event_id.clone(),
+            nmp_nip01::KIND_SHORT_NOTE,
+            target.author.clone(),
+        )
     }
 }
-
-// Helper so the facade can stay generic over "the kind this event was
-// decoded from". `NoteRecord` doesn't store kind directly because it only
-// ever represents kind 1; we expose it as a method here for the facade.
-trait NoteRecordKind {
-    fn kind(&self) -> u32;
-}
-
-impl NoteRecordKind for NoteRecord {
-    fn kind(&self) -> u32 {
-        nmp_nip01::KIND_SHORT_NOTE
-    }
-}
-
-/// Type alias: the `UnsignedEvent` every facade builder ultimately produces.
-/// Useful for FFI codegen and trait bounds at the app layer.
-pub type FacadeUnsigned = UnsignedEvent;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nmp_core::substrate::UnsignedEvent;
     use nmp_core::tags::Nip10Refs;
 
     const AUTHOR: &str = "deadbeef";

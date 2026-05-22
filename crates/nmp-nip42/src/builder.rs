@@ -10,6 +10,7 @@
 
 use nmp_core::substrate::UnsignedEvent;
 
+use super::error::Nip42Error;
 use super::frame::AuthChallenge;
 
 /// Build the unsigned kind:22242 template for `challenge`. `pubkey` is the
@@ -39,36 +40,47 @@ pub fn build_auth_event(
 /// this is only the structural shape check.
 ///
 /// Catches buggy signers that mutate the template before signing (the
-/// `applesauce` `SignerMismatchError` class).
+/// `applesauce` `SignerMismatchError` class). Every failure variant is the
+/// crate's [`Nip42Error::SignerReturnedInvalid`] so callers can route the
+/// typed error directly into [`crate::flow::HandshakeOutcome`] without
+/// double-wrapping a `String` (D6).
 pub fn validate_signed_for(
     signed: &nmp_core::substrate::SignedEvent,
     challenge: &AuthChallenge,
-) -> Result<(), String> {
+) -> Result<(), Nip42Error> {
     if signed.unsigned.kind != 22242 {
-        return Err(format!(
+        return Err(Nip42Error::SignerReturnedInvalid(format!(
             "signer returned kind {}, expected 22242",
             signed.unsigned.kind
-        ));
+        )));
     }
     if signed.id.len() != 64 || !signed.id.chars().all(|c| c.is_ascii_hexdigit()) {
-        return Err("signer returned malformed event id".to_string());
+        return Err(Nip42Error::SignerReturnedInvalid(
+            "signer returned malformed event id".to_string(),
+        ));
     }
     if signed.sig.is_empty() {
-        return Err("signer returned empty signature".to_string());
+        return Err(Nip42Error::SignerReturnedInvalid(
+            "signer returned empty signature".to_string(),
+        ));
     }
     let echoed = signed.unsigned.tags.iter().any(|tag| {
         tag.first().map(String::as_str) == Some("challenge")
             && tag.get(1).map(String::as_str) == Some(challenge.challenge.as_str())
     });
     if !echoed {
-        return Err("signer returned event missing challenge tag echo".to_string());
+        return Err(Nip42Error::SignerReturnedInvalid(
+            "signer returned event missing challenge tag echo".to_string(),
+        ));
     }
     let relay_echoed = signed.unsigned.tags.iter().any(|tag| {
         tag.first().map(String::as_str) == Some("relay")
             && tag.get(1).map(String::as_str) == Some(challenge.relay_url.as_str())
     });
     if !relay_echoed {
-        return Err("signer returned event missing relay tag echo".to_string());
+        return Err(Nip42Error::SignerReturnedInvalid(
+            "signer returned event missing relay tag echo".to_string(),
+        ));
     }
     Ok(())
 }
@@ -177,6 +189,18 @@ mod tests {
         let mut empty_sig = good_signed(&ch);
         empty_sig.sig = String::new();
         assert!(validate_signed_for(&empty_sig, &ch).is_err());
+    }
+
+    #[test]
+    fn validate_failure_carries_typed_signer_returned_invalid_variant() {
+        // Locks D6 contract — every failure path emits the typed
+        // `SignerReturnedInvalid`, not a bare `String` the caller has to
+        // re-wrap.
+        let ch = fresh_challenge();
+        let mut signed = good_signed(&ch);
+        signed.unsigned.kind = 1;
+        let err = validate_signed_for(&signed, &ch).unwrap_err();
+        assert!(matches!(err, Nip42Error::SignerReturnedInvalid(_)));
     }
 
     #[test]

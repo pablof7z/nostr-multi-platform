@@ -47,11 +47,13 @@
 //!   account-manager wiring, not by a hand-rolled C callback.
 
 pub mod builder;
+pub mod error;
 pub mod flow;
 pub mod frame;
 pub mod state;
 
 pub use builder::build_auth_event;
-pub use flow::{run_handshake, HandshakeOutcome, Nip42Driver, Nip42Error};
+pub use error::Nip42Error;
+pub use flow::{run_handshake, HandshakeOutcome, Nip42Driver};
 pub use frame::{parse_auth_frame, parse_ok_frame, AuthChallenge, AuthOk};
 pub use state::RelayAuthState;
