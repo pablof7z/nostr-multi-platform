@@ -135,7 +135,7 @@ Files, verified against the code at commit `a1dcc568`:
 - **`crates/nmp-nip29/src/action/composed.rs:46, :92`** — `ReactInGroupAction`,
   `CommentInGroupAction`. Move `react_in_group_command` (`:39`) and
   `comment_in_group_command` (`:85`) into the two `execute` methods.
-- **`apps/chirp/nmp-app-chirp/src/ffi.rs:465-507`** — `chirp.react`,
+- **`apps/chirp/nmp-app-chirp/src/ffi.rs:465-507`** — `nmp.nip25.react`,
   `nmp.follow`, `nmp.unfollow` are registered today as **inline
   anonymous closures**, not as typed `ActionModule` impls. Promote each to a
   typed impl: introduce `pub struct ReactModule;`, `FollowModule;`,
