@@ -1,10 +1,13 @@
+use std::cell::Cell;
 use std::ffi::{CStr, CString};
 use std::ptr;
 use std::sync::mpsc::Receiver;
 
+use nmp_app_chirp::ffi::{nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list};
 use nmp_app_chirp::{
-    nmp_app_chirp_register, nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free,
-    nmp_app_chirp_unregister, ChirpHandle,
+    nmp_app_chirp_marmot_unregister, nmp_app_chirp_register, nmp_app_chirp_snapshot,
+    nmp_app_chirp_snapshot_free, nmp_app_chirp_unregister, nmp_signer_broker_init, ChirpHandle,
+    MarmotHandle,
 };
 use nmp_core::{
     nmp_app_claim_profile, nmp_app_dispatch_action, nmp_app_free, nmp_app_free_string,
@@ -23,6 +26,7 @@ const RELATION_COUNT_CLAIMS_UNAVAILABLE: &str =
 pub struct AppRuntime {
     app: *mut NmpApp,
     chirp: *mut ChirpHandle,
+    pub(crate) marmot: Cell<*mut MarmotHandle>,
     update_bridge: Option<Box<NmpUpdateBridge>>,
 }
 
@@ -32,6 +36,7 @@ impl AppRuntime {
         if app.is_null() {
             return Err("nmp_app_new returned null".to_string());
         }
+        nmp_signer_broker_init(app);
 
         let chirp = nmp_app_chirp_register(app, ptr::null());
         if chirp.is_null() {
@@ -41,6 +46,8 @@ impl AppRuntime {
 
         let (mut bridge, rx) = NmpUpdateBridge::channel();
         NmpUpdateBridge::register(app, &mut bridge);
+        nmp_app_chirp_register_dm_inbox(app, ptr::null());
+        nmp_app_chirp_register_follow_list(app, ptr::null());
         nmp_app_start(app, 0, 200, 10);
         nmp_app_open_timeline(app);
 
@@ -48,6 +55,7 @@ impl AppRuntime {
             Self {
                 app,
                 chirp,
+                marmot: Cell::new(ptr::null_mut()),
                 update_bridge: Some(bridge),
             },
             rx,
@@ -139,7 +147,15 @@ impl AppRuntime {
         serde_json::from_str(&text).ok()
     }
 
-    fn dispatch_action(&self, namespace: &str, action_json: &str) -> Result<String> {
+    pub fn dispatch_action_value(&self, namespace: &str, action: &Value) -> Result<String> {
+        self.dispatch_action(namespace, &action.to_string())
+    }
+
+    pub(crate) fn app_ptr(&self) -> *mut NmpApp {
+        self.app
+    }
+
+    pub(crate) fn dispatch_action(&self, namespace: &str, action_json: &str) -> Result<String> {
         let namespace = CString::new(namespace)
             .map_err(|_| "action namespace contains NUL byte".to_string())?;
         let action =
@@ -157,7 +173,7 @@ impl AppRuntime {
         parse_dispatch_envelope(&value)
     }
 
-    fn with_cstr<T>(&self, value: &str, f: impl FnOnce(&CString) -> T) -> Result<T> {
+    pub(crate) fn with_cstr<T>(&self, value: &str, f: impl FnOnce(&CString) -> T) -> Result<T> {
         let c = CString::new(value).map_err(|_| "string contains NUL byte".to_string())?;
         Ok(f(&c))
     }
@@ -200,6 +216,10 @@ impl Drop for AppRuntime {
         if !self.chirp.is_null() {
             nmp_app_chirp_unregister(self.chirp);
             self.chirp = ptr::null_mut();
+        }
+        if !self.marmot.get().is_null() {
+            nmp_app_chirp_marmot_unregister(self.marmot.get());
+            self.marmot.set(ptr::null_mut());
         }
         if !self.app.is_null() {
             nmp_app_free(self.app);

@@ -5,7 +5,9 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::Frame;
 
 use crate::app::{AppState, Mode, Pane};
+use crate::features::FeatureTab;
 use crate::timeline::TimelineRow;
+use crate::ui::feature_panels;
 use crate::ui::help;
 use crate::ui::shared_snapshot_lines::{action_summary, relay_lines};
 
@@ -40,19 +42,21 @@ fn render_title(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
         ),
         Span::raw("  "),
         Span::styled(
-            format!("[{}]", state.tab),
+            format!("[{}]", state.tab.label()),
             Style::default().fg(Color::Yellow),
         ),
-        Span::raw(if state.basic {
-            " [basic]"
-        } else {
-            " [mentions] [dms] [groups]"
-        }),
+        Span::raw("  "),
+        Span::raw(tab_labels(state)),
     ]);
     frame.render_widget(Paragraph::new(title), area);
 }
 
 fn render_body(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
+    if state.tab != FeatureTab::Home {
+        feature_panels::render(frame, area, state);
+        return;
+    }
+
     if state.basic || area.width < 80 {
         render_feed_panel(frame, area, state);
         return;
@@ -172,6 +176,19 @@ fn detail_lines(state: &AppState) -> Vec<Line<'static>> {
 }
 
 fn profile_lines(state: &AppState) -> Vec<Line<'static>> {
+    if let Some(profile) = &state.features.author_profile {
+        let mut lines = vec![
+            Line::from(profile.display.clone()),
+            Line::from(profile.note_count.clone()),
+            Line::from(profile.about.clone()),
+        ];
+        if !profile.action_label.is_empty() {
+            lines.push(Line::from(format!("action: {}", profile.action_label)));
+        }
+        lines.extend(relay_lines(state));
+        return lines;
+    }
+
     let Some(row) = state.selected_row() else {
         return relay_lines(state);
     };
@@ -194,7 +211,12 @@ fn short_id(value: &str) -> String {
 }
 
 fn render_compose(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
-    let (title, body) = if state.mode == Mode::Compose {
+    let (title, body) = if state.mode == Mode::Command {
+        (
+            "Command".to_string(),
+            format!(":{}\nEnter run  Esc cancel", state.command),
+        )
+    } else if state.mode == Mode::Compose {
         let target = state.reply_to.as_deref().map_or("new note", |_| "reply");
         let text = if state.compose.is_empty() {
             format!("{target}: ")
@@ -208,11 +230,29 @@ fn render_compose(frame: &mut Frame<'_>, area: Rect, state: &AppState) {
     } else {
         (
             "Compose".to_string(),
-            "i compose  r reply  + react  f/F follow  ? help".to_string(),
+            "h/c/g/w/s tabs  : command  i compose  r reply  + react  f/F follow  ? help"
+                .to_string(),
         )
     };
     let compose = Paragraph::new(body).block(Block::default().borders(Borders::ALL).title(title));
     frame.render_widget(compose, area);
+}
+
+fn tab_labels(state: &AppState) -> String {
+    if state.basic {
+        return "[basic]".to_string();
+    }
+    crate::features::FeatureTab::ALL
+        .iter()
+        .map(|tab| {
+            if *tab == state.tab {
+                format!("[{}]", tab.label())
+            } else {
+                tab.label().to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn render_status(frame: &mut Frame<'_>, area: Rect, state: &AppState) {

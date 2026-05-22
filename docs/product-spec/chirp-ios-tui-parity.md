@@ -1,0 +1,55 @@
+# Chirp iOS / TUI Feature Parity
+
+This inventory maps every user-facing Chirp iOS feature to the terminal surface.
+Both shells stay thin: Rust owns protocol state, projections, formatting, and
+action policy; the TUI renders projections and dispatches the same shared FFI or
+`nmp_app_dispatch_action` namespaces used by iOS.
+
+| iOS area | iOS feature | TUI surface |
+| --- | --- | --- |
+| Onboarding | Create new identity | `Settings` tab, `:account create <name> [relay...]` |
+| Onboarding | Import `nsec` | `:account import <nsec>` |
+| Onboarding | Import local key with Marmot MLS | `:account import-mls <nsec>` |
+| Onboarding | NIP-46 bunker sign-in | `:account bunker <uri>` |
+| Onboarding | Nostr Connect QR/deep-link URI | `:account nostrconnect` |
+| Onboarding | Cancel bunker handshake | `:account cancel-bunker` |
+| Home | Shared timeline | `Home` tab |
+| Home | Compose note | `i`, then `Ctrl+Enter` |
+| Home | Reply to selected note | `r`, then `Ctrl+Enter` |
+| Home | React to selected note | `+` |
+| Home | Follow/unfollow selected author | `f` / `F` |
+| Navigation | Open thread | `Enter`, or `:search thread <event-id>` |
+| Navigation | Open profile | `p`, or `:search profile <pubkey>` |
+| Navigation | Open firehose tag search | `:search tag <tag>` |
+| Profile | Render kind:0 profile metadata | Profile pane from shared author projection |
+| Profile | Publish kind:0 profile metadata | `:profile set name=<n> about=<text> picture=<url> nip05=<id>` |
+| Chats | NIP-17 inbox projection | `Chats` tab |
+| Chats | Send direct message | `:dm <pubkey> <message>` |
+| Chats | Publish DM relay list | `:dm-relays <relay> [relay...]` |
+| Groups | Discover NIP-29 groups | `Groups` tab, `:group discover <relay>` |
+| Groups | Join NIP-29 group | `:group join <relay> <local-id>` |
+| Groups | Open NIP-29 group chat projection | `:group open <relay> <local-id>` |
+| Groups | Post NIP-29 chat message | `:group post <relay> <local-id> <message>` |
+| Groups | React/reply in NIP-29 group | `:group react ...`, `:group reply ...` |
+| Groups | Marmot MLS active registration | `:mls init` |
+| Groups | Marmot MLS snapshot/actions | `:mls snapshot`, `:mls dispatch <json>` |
+| Wallet | NWC status/balance | `Wallet` tab |
+| Wallet | Connect wallet | `:wallet connect <nostr+walletconnect-uri>` |
+| Wallet | Pay invoice | `:wallet pay <bolt11> [amount_msats]` |
+| Wallet | Disconnect wallet | `:wallet disconnect` |
+| Settings | Account list, active account | `Settings` tab |
+| Settings | Switch/remove account | `:account switch <id>`, `:account remove <id>` |
+| Settings | Relay list/editor | `Settings` tab, `:relay add/remove` |
+| Settings | Publish outbox | `Settings` tab |
+| Settings | Retry/cancel publish handle | `:outbox retry <handle>`, `:outbox cancel <handle>` |
+| Settings | Relay diagnostics/interests | `Settings` tab diagnostics and status bar |
+
+## Notes
+
+- Tab keys mirror iOS top-level navigation: `h` Home, `c` Chats, `g` Groups,
+  `w` Wallet, `s` Settings; `Tab` and `BackTab` cycle.
+- The TUI intentionally uses command mode for forms-heavy iOS flows. This keeps
+  platform code small while preserving every shared Rust capability path.
+- Author kind:0 rendering and note relation counts follow the render-intent
+  model: visible note authors are claimed automatically, and names update when
+  the shared projection emits newer metadata.

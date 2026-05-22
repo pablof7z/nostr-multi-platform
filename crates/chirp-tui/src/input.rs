@@ -1,6 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::{AppRuntime, AppState, Mode, Pane};
+use crate::features::FeatureTab;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputFlow {
@@ -17,10 +18,20 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         handle_compose_key(state, runtime, key);
         return InputFlow::Continue;
     }
+    if state.mode == Mode::Command {
+        handle_command_key(state, runtime, key);
+        return InputFlow::Continue;
+    }
 
     match key.code {
         KeyCode::Char('q') => return InputFlow::Quit,
         KeyCode::Char('?') => state.toggle_help(),
+        KeyCode::Char(':') => state.start_command(),
+        KeyCode::Tab => state.next_tab(),
+        KeyCode::BackTab => state.previous_tab(),
+        KeyCode::Char(ch) if FeatureTab::from_key(ch).is_some() => {
+            state.set_tab(FeatureTab::from_key(ch).expect("checked above"))
+        }
         KeyCode::Char('1') => state.focus(Pane::Feed),
         KeyCode::Char('2') => state.focus(Pane::Detail),
         KeyCode::Char('3') => state.focus(Pane::Profile),
@@ -57,6 +68,22 @@ fn handle_compose_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent)
         KeyCode::Enter => state.push_compose_newline(),
         KeyCode::Char(ch) if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT => {
             state.push_compose_char(ch)
+        }
+        _ => {}
+    }
+}
+
+fn handle_command_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => state.cancel_command(),
+        KeyCode::Backspace => state.backspace_command(),
+        KeyCode::Enter => {
+            if let Some(command) = state.take_command() {
+                crate::commands::execute(&command, state, runtime);
+            }
+        }
+        KeyCode::Char(ch) if key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT => {
+            state.push_command_char(ch)
         }
         _ => {}
     }
