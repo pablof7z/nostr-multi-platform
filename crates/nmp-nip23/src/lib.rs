@@ -14,10 +14,10 @@
 //! - [`build`] — `Article::new(d).title(…)…build(author, ts)` →
 //!   `UnsignedEvent`. Validates required fields per D6 with typed
 //!   `ArticleBuildError`.
-//! - [`domain`] — `ArticlesDomain: DomainModule` for the
-//!   `nmp.nip23.articles` namespace. Owns the `by_author` /
-//!   `by_d_tag(author, d_tag)` composite-key reverse indexes used by the
-//!   view layer. Exposes `decode_and_route` for the kernel ingest dispatch
+//! - [`domain`] — composite-key reverse indexes for kind:30023 under the
+//!   `nmp.nip23.articles` namespace (`by_author` /
+//!   `by_d_tag(author, d_tag)`), used by the view layer. Exposes
+//!   `decode_and_route` for the kernel ingest dispatch
 //!   (Phase 1 — see §6 in the design doc).
 //! - [`view`] — `ArticleListView` + `ArticleDetailView`.
 //!
@@ -37,17 +37,17 @@ pub mod view;
 
 pub use build::{Article, ArticleBuildError, ArticleBuilder};
 pub use decode::{try_from_event, ArticleRecord};
-pub use domain::{decode_and_route, get, list_all, list_by_author, ArticlesDomain, NAMESPACE};
+pub use domain::{decode_and_route, get, list_all, list_by_author, NAMESPACE};
 pub use kinds::KIND_LONG_FORM_ARTICLE;
 pub use view::{
     ArticleAccumulator, ArticleDetailPayload, ArticleDetailSpec, ArticleDetailView,
     ArticleListPayload, ArticleListSpec, ArticleListView, ArticleViewDelta, PublicKey,
 };
 
-// NOTE: `nmp-nip23` exposes its `DomainModule` impl and its view types
-// (`ArticlesDomain`, `ArticleListView`, `ArticleDetailView`) as public types.
-// The view types are plain types whose `open` / `on_event_*` / `snapshot`
-// inherent methods are reached via static dispatch — the `ViewModule` trait
-// and the former `register(&mut ModuleRegistry)` entry point were both
-// deleted because no kernel-side registry ever drove them. The live extension
-// path is `KernelEventObserver` — see `nmp_core::substrate` module docs.
+// NOTE: `nmp-nip23` exposes its view types (`ArticleListView`,
+// `ArticleDetailView`) as plain public types whose `open` / `on_event_*` /
+// `snapshot` inherent methods are reached via static dispatch — the
+// `ViewModule` trait and the former `register(&mut ModuleRegistry)` entry
+// point were both deleted because no kernel-side registry ever drove them.
+// The live extension path is `KernelEventObserver` — see
+// `nmp_core::substrate` module docs.

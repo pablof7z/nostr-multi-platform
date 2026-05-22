@@ -164,9 +164,9 @@ fn view_spec_rs(manifest: &AppManifest) -> String {
 /// `<crate>::Update`, or `<crate>::ViewSpec` (per `module_type`) — so a module
 /// crate must export those exact names at its crate root for the generated
 /// app crate to compile. `fixture-todo-core` honors this; the real NIP crates
-/// (`nmp-nip01` → `RepliesDomain`, `nmp-nip22` → `CommentsSpec`, …) do not, so
-/// codegen has no live NIP-module consumer. Conforming those crates, or
-/// declaring per-module type paths in `nmp.toml`, is the open seam (NMP-145).
+/// (`nmp-nip01`, `nmp-nip22`, …) do not, so codegen has no live NIP-module
+/// consumer. Conforming those crates, or declaring per-module type paths in
+/// `nmp.toml`, is the open seam (NMP-145).
 fn enum_file(
     enum_name: &str,
     kernel_type: &str,

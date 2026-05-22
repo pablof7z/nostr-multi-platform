@@ -1,27 +1,11 @@
-//! `ZapsDomain` — reverse-index of zap receipts (kind:9735) keyed by their
-//! zapped event id (when present).
+//! Reverse-index of zap receipts (kind:9735) keyed by their zapped event id
+//! (when present).
 
 use nmp_core::store::{DomainHandle, StoreError, StoredEvent};
-use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 
 use crate::decode::try_from_event;
 
 pub const NAMESPACE: &str = "nmp.nip57.zaps";
-
-pub struct ZapsDomain;
-
-impl DomainModule for ZapsDomain {
-    const NAMESPACE: &'static str = NAMESPACE;
-    const SCHEMA_VERSION: u32 = 1;
-
-    fn migrations() -> Vec<DomainMigration> {
-        Vec::new()
-    }
-
-    fn indexes() -> Vec<DomainIndex> {
-        Vec::new()
-    }
-}
 
 pub mod keys {
     /// `z\x00<zapped_event_id>\x00<receipt_id>` → empty value.

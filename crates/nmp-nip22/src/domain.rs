@@ -1,31 +1,14 @@
-//! `CommentsDomain` — `DomainModule` registration for kind:1111 (standalone).
+//! Reverse-index storage for NIP-22 comments (kind:1111, standalone).
 //!
-//! Mirrors the reverse-index shape used by `nmp-nip01::RepliesDomain` and
-//! `nmp-nip23::ArticlesDomain`. The key is `(parent_event_id, comment_id)`
-//! so a single prefix scan enumerates direct comments to a parent without
-//! re-touching the event store.
+//! Mirrors the reverse-index shape used by `nmp-nip01` and `nmp-nip23`. The
+//! key is `(parent_event_id, comment_id)` so a single prefix scan enumerates
+//! direct comments to a parent without re-touching the event store.
 
 use nmp_core::store::{DomainHandle, StoreError, StoredEvent};
-use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 
 use crate::decode::{try_from_event, CommentPointer};
 
 pub const NAMESPACE: &str = "nmp.nip22.comments";
-
-pub struct CommentsDomain;
-
-impl DomainModule for CommentsDomain {
-    const NAMESPACE: &'static str = NAMESPACE;
-    const SCHEMA_VERSION: u32 = 1;
-
-    fn migrations() -> Vec<DomainMigration> {
-        Vec::new()
-    }
-
-    fn indexes() -> Vec<DomainIndex> {
-        Vec::new()
-    }
-}
 
 pub mod keys {
     /// `c\x00<parent_id>\x00<comment_id>` → empty value.
