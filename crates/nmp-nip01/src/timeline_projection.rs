@@ -4,11 +4,10 @@
 //! shells also need the per-event render metadata in the same pushed snapshot,
 //! so this projection owns the generic card cache beside the view state.
 
-use std::collections::HashMap;
 use std::sync::Mutex;
 
 use nmp_content::{tokenize_with_kind, ContentTreeWire, RenderMode};
-use nmp_core::substrate::{KernelEvent, ViewContext};
+use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES, ViewContext};
 use nmp_core::KernelEventObserver;
 use nmp_threading::TimelineBlock;
 use serde::{Deserialize, Serialize};
@@ -74,8 +73,8 @@ pub struct ModularTimelineProjection {
 
 struct Inner {
     state: ModularTimelineState,
-    cards: HashMap<String, TimelineEventCard>,
-    profiles: HashMap<String, ProfileDisplay>,
+    cards: BoundedMessageMap<String, TimelineEventCard>,
+    profiles: BoundedMessageMap<String, ProfileDisplay>,
     relations: NoteRelationIndex,
 }
 
@@ -86,8 +85,8 @@ impl ModularTimelineProjection {
         Self {
             inner: Mutex::new(Inner {
                 state,
-                cards: HashMap::new(),
-                profiles: HashMap::new(),
+                cards: BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
+                profiles: BoundedMessageMap::new(MAX_PROJECTION_MESSAGES),
                 relations: NoteRelationIndex::default(),
             }),
         }
