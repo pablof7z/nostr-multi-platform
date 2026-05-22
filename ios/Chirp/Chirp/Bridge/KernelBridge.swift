@@ -1328,9 +1328,28 @@ struct DmInboxSnapshot: Decodable, Equatable {
     /// Set by Rust (V-08) when the active account uses a NIP-46 bunker that
     /// cannot unseal gift-wraps. The host should surface a message instead of
     /// an empty list. `false` when signed in with local keys or not signed in.
-    var remoteSignerUnsupported: Bool = false
+    var remoteSignerUnsupported: Bool
 
     static let empty = DmInboxSnapshot(conversations: [], remoteSignerUnsupported: false)
+
+    // Custom init so `remoteSignerUnsupported` degrades to `false` when the
+    // field is absent (older Rust build that predates V-08). The decoder uses
+    // `.convertFromSnakeCase`, so `remote_signer_unsupported` → property name.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        conversations = try c.decode([DmConversation].self, forKey: .conversations)
+        remoteSignerUnsupported = try c.decodeIfPresent(Bool.self, forKey: .remoteSignerUnsupported) ?? false
+    }
+
+    init(conversations: [DmConversation], remoteSignerUnsupported: Bool = false) {
+        self.conversations = conversations
+        self.remoteSignerUnsupported = remoteSignerUnsupported
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case conversations
+        case remoteSignerUnsupported
+    }
 }
 
 // ─── Diagnostics read model (relay_diagnostics projection) ────────────────
