@@ -68,7 +68,8 @@ pub(crate) enum CloseReason {
     Invalid,
     /// `unsupported:` — relay does not implement the filter; log + give up.
     Unsupported,
-    /// `pow:` — relay demands higher PoW (NIP-13); treated as Error for now.
+    /// `pow:` — relay demands higher PoW (NIP-13); treated as Error (NMP does
+    /// not generate PoW events, so there is no recovery action available).
     Pow,
     /// `duplicate:` — relay says this sub overlaps an existing one; log only.
     Duplicate,

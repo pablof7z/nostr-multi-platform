@@ -40,9 +40,9 @@ impl Kernel {
     /// - One `["p", parent_author]` plus one `p` tag per pubkey the parent was
     ///   already notifying, de-duplicated, stable order.
     ///
-    /// Relay-hint slots stay empty for now; the kernel has no per-event relay
-    /// provenance to thread through. This is a deliberate parity choice with
-    /// the existing builder which also defaults relays to `None`.
+    /// Relay-hint slots stay empty; the kernel has no per-event relay provenance
+    /// to thread through. Deliberate parity with the existing builder which also
+    /// defaults relays to `None`.
     pub(crate) fn reply_tags_for_parent(&self, parent_id: &str) -> Option<Vec<Vec<String>>> {
         let parent = self.events.get(parent_id)?;
         // The parent must itself be a kind:1 note for "reply to it as a note"
