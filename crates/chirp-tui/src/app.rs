@@ -1,6 +1,8 @@
 use serde_json::Value;
 
 use crate::bridge::NmpEvent;
+use crate::feature_snapshot::FeatureSnapshot;
+use crate::features::FeatureTab;
 pub use crate::runtime::AppRuntime;
 use crate::snapshot::{ActionResult, ActionStageRow, InterestRow, RelayRow, RuntimeMetrics};
 use crate::timeline::TimelineRow;
@@ -16,6 +18,7 @@ pub enum Pane {
 pub enum Mode {
     Normal,
     Compose,
+    Command,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,7 +27,7 @@ pub struct AppState {
     pub mode: Mode,
     pub basic: bool,
     pub show_help: bool,
-    pub tab: &'static str,
+    pub tab: FeatureTab,
     pub update_count: u64,
     pub blocks: usize,
     pub cards: usize,
@@ -35,9 +38,11 @@ pub struct AppState {
     pub pending_actions: Vec<String>,
     pub action_stages: Vec<ActionStageRow>,
     pub last_action_result: Option<ActionResult>,
+    pub features: FeatureSnapshot,
     pub selected: usize,
     pub compose: String,
     pub reply_to: Option<String>,
+    pub command: String,
     pub status: String,
 }
 
@@ -48,7 +53,7 @@ impl Default for AppState {
             mode: Mode::Normal,
             basic: false,
             show_help: false,
-            tab: "home",
+            tab: FeatureTab::Home,
             update_count: 0,
             blocks: 0,
             cards: 0,
@@ -59,9 +64,11 @@ impl Default for AppState {
             pending_actions: Vec::new(),
             action_stages: Vec::new(),
             last_action_result: None,
+            features: FeatureSnapshot::default(),
             selected: 0,
             compose: String::new(),
             reply_to: None,
+            command: String::new(),
             status: "starting NMP runtime".to_string(),
         }
     }
@@ -75,6 +82,7 @@ impl AppState {
         self.relays = shared.relays;
         self.interests = shared.interests;
         self.action_stages = shared.action_stages;
+        self.features = FeatureSnapshot::from_payload(&event.payload);
         let applied_action_result = self.apply_action_results(runtime, shared.action_results);
         if let Some(snapshot) = runtime.chirp_snapshot() {
             self.blocks = snapshot
@@ -117,6 +125,19 @@ impl AppState {
         let was_open = self.show_help;
         self.show_help = false;
         was_open
+    }
+
+    pub fn set_tab(&mut self, tab: FeatureTab) {
+        self.tab = tab;
+        self.status = format!("tab {}", tab.label());
+    }
+
+    pub fn next_tab(&mut self) {
+        self.set_tab(self.tab.next());
+    }
+
+    pub fn previous_tab(&mut self) {
+        self.set_tab(self.tab.previous());
     }
 
     pub fn select_next(&mut self) {
@@ -173,6 +194,37 @@ impl AppState {
         self.compose.clear();
         self.reply_to = None;
         self.status = "compose canceled".to_string();
+    }
+
+    pub fn start_command(&mut self) {
+        self.mode = Mode::Command;
+        self.command.clear();
+        self.status = "command mode: type help for Chirp iOS parity commands".to_string();
+    }
+
+    pub fn cancel_command(&mut self) {
+        self.mode = Mode::Normal;
+        self.command.clear();
+        self.status = "command canceled".to_string();
+    }
+
+    pub fn push_command_char(&mut self, ch: char) {
+        self.command.push(ch);
+    }
+
+    pub fn backspace_command(&mut self) {
+        self.command.pop();
+    }
+
+    pub fn take_command(&mut self) -> Option<String> {
+        let input = self.command.trim().to_string();
+        if input.is_empty() {
+            self.status = "command is empty".to_string();
+            return None;
+        }
+        self.command.clear();
+        self.mode = Mode::Normal;
+        Some(input)
     }
 
     pub fn push_compose_char(&mut self, ch: char) {
