@@ -159,7 +159,7 @@ Files, verified against the code at commit `a1dcc568`:
   `RemoveMemberAction`, `UpdateKeysAction`, `PublishKeyPackageAction`. These
   were never registered against any registry; the only references outside
   the crate were `tests.rs`. Per **ADR-0025** the Marmot path is a named,
-  bounded exception that uses the bespoke `nmp_app_chirp_marmot_dispatch`
+  bounded exception that uses the bespoke `nmp_marmot_dispatch`
   envelope — not the generic `dispatch_action` seam. The 6 group-scoped
   impls were deleted in PR #200; `PublishKeyPackageAction` and the entire
   `crates/nmp-marmot/src/action/` directory were deleted shortly after under

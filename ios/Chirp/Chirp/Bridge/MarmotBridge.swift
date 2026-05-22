@@ -7,7 +7,7 @@ import os.log
 //
 // Mirrors `Bridge/ModularTimelineBridge.swift`: a thin extension on
 // `KernelHandle` that owns the lifetime of the opaque
-// `nmp_app_chirp_marmot_register` handle, plus an `@Observable`-style
+// `nmp_marmot_register` handle, plus an `@Observable`-style
 // `ObservableObject` (`MarmotStore`) that receives snapshots from
 // `KernelModel.apply` and wraps each `…_marmot_dispatch` user intent.
 //
@@ -15,7 +15,7 @@ import os.log
 //   • C symbols declared in `Bridge/NmpCore.h` (the project's bridging
 //     header — same place `nmp_app_chirp_*` live).
 //   • `String(cString:)` decode + free EVERY returned pointer via
-//     `nmp_app_chirp_marmot_string_free`.
+//     `nmp_marmot_string_free`.
 //   • D6 resilience: any nil pointer / decode failure → empty state, never
 //     a crash or throw across the bridge.
 //
@@ -298,7 +298,7 @@ extension KernelHandle {
     func registerActiveMarmotIfAvailable() -> Bool {
         guard marmotHandle == nil, let dir = Self.appSupportDir() else { return false }
         let handle: UnsafeMutableRawPointer? = dir.withCString { dirPtr in
-            nmp_app_chirp_marmot_register_active(raw, dirPtr)
+            nmp_marmot_register_active(raw, dirPtr)
         }
         marmotHandle = handle
         return handle != nil
@@ -309,7 +309,7 @@ extension KernelHandle {
     /// MUST run before `nmp_app_free` (FFI contract).
     func unregisterMarmotIfNeeded() {
         if let handle = marmotHandle {
-            nmp_app_chirp_marmot_unregister(handle)
+            nmp_marmot_unregister(handle)
             marmotHandle = nil
         }
     }
@@ -317,8 +317,8 @@ extension KernelHandle {
     /// Decode the current Marmot snapshot. `.empty` on any failure (D6).
     func marmotSnapshot() -> MarmotSnapshot {
         guard let handle = marmotHandle else { return .empty }
-        guard let ptr = nmp_app_chirp_marmot_snapshot(handle) else { return .empty }
-        defer { nmp_app_chirp_marmot_string_free(ptr) }
+        guard let ptr = nmp_marmot_snapshot(handle) else { return .empty }
+        defer { nmp_marmot_string_free(ptr) }
         let payload = String(cString: ptr)
         guard let data = payload.data(using: .utf8) else { return .empty }
         do {
@@ -333,10 +333,10 @@ extension KernelHandle {
     func marmotGroupMessages(groupIDHex: String) -> [MarmotMessage] {
         guard let handle = marmotHandle else { return [] }
         let ptr: UnsafeMutablePointer<CChar>? = groupIDHex.withCString {
-            nmp_app_chirp_marmot_group_messages(handle, $0)
+            nmp_marmot_group_messages(handle, $0)
         }
         guard let ptr else { return [] }
-        defer { nmp_app_chirp_marmot_string_free(ptr) }
+        defer { nmp_marmot_string_free(ptr) }
         let payload = String(cString: ptr)
         guard let data = payload.data(using: .utf8) else { return [] }
         do {
@@ -354,12 +354,12 @@ extension KernelHandle {
     func marmotDispatch(actionJSON: String) -> MarmotOpResult {
         guard let handle = marmotHandle else { return .bridgeUnavailable }
         let ptr: UnsafeMutablePointer<CChar>? = actionJSON.withCString {
-            nmp_app_chirp_marmot_dispatch(handle, $0)
+            nmp_marmot_dispatch(handle, $0)
         }
         guard let ptr else {
             return .failure("dispatch returned null")
         }
-        defer { nmp_app_chirp_marmot_string_free(ptr) }
+        defer { nmp_marmot_string_free(ptr) }
         let payload = String(cString: ptr)
         guard let data = payload.data(using: .utf8) else {
             return .failure("dispatch payload not utf8")
@@ -457,14 +457,14 @@ final class MarmotStore: ObservableObject {
                     return
                 }
                 let ptr: UnsafeMutablePointer<CChar>? = json.withCString {
-                    nmp_app_chirp_marmot_dispatch(handle, $0)
+                    nmp_marmot_dispatch(handle, $0)
                 }
                 guard let ptr else {
                     continuation.resume(returning: .failure("dispatch returned null"))
                     return
                 }
                 let payload = String(cString: ptr)
-                nmp_app_chirp_marmot_string_free(ptr)
+                nmp_marmot_string_free(ptr)
                 guard let d = payload.data(using: .utf8),
                       let result = try? JSONDecoder().decode(MarmotOpResult.self, from: d)
                 else {
@@ -486,9 +486,9 @@ final class MarmotStore: ObservableObject {
         guard let handle = kernel.marmotHandle else { return }
         DispatchQueue.global(qos: .userInitiated).async {
             let ptr: UnsafeMutablePointer<CChar>? = json.withCString {
-                nmp_app_chirp_marmot_dispatch(handle, $0)
+                nmp_marmot_dispatch(handle, $0)
             }
-            if let ptr { nmp_app_chirp_marmot_string_free(ptr) }
+            if let ptr { nmp_marmot_string_free(ptr) }
         }
     }
 

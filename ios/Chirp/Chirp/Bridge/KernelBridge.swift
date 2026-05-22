@@ -16,7 +16,7 @@ final class KernelHandle {
     /// modular-timeline bridge extension manages its lifetime; see
     /// `Bridge/ModularTimelineBridge.swift`.
     var chirpHandle: UnsafeMutableRawPointer?
-    /// Opaque handle returned by `nmp_app_chirp_marmot_register`. The
+    /// Opaque handle returned by `nmp_marmot_register`. The
     /// Marmot bridge extension manages its lifetime; see
     /// `Bridge/MarmotBridge.swift`. Registered lazily once a secret key is
     /// known (nsec sign-in); nil until then (and for bunker sign-in).

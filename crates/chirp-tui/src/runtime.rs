@@ -5,7 +5,7 @@ use std::sync::mpsc::Receiver;
 
 use nmp_app_chirp::ffi::{nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list};
 use nmp_app_chirp::{
-    nmp_app_chirp_marmot_unregister, nmp_app_chirp_register, nmp_app_chirp_snapshot,
+    nmp_marmot_unregister, nmp_app_chirp_register, nmp_app_chirp_snapshot,
     nmp_app_chirp_snapshot_free, nmp_app_chirp_unregister, nmp_signer_broker_init, ChirpHandle,
     MarmotHandle,
 };
@@ -218,7 +218,7 @@ impl Drop for AppRuntime {
             self.chirp = ptr::null_mut();
         }
         if !self.marmot.get().is_null() {
-            nmp_app_chirp_marmot_unregister(self.marmot.get());
+            nmp_marmot_unregister(self.marmot.get());
             self.marmot.set(ptr::null_mut());
         }
         if !self.app.is_null() {

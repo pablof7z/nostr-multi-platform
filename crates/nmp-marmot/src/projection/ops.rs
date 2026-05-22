@@ -43,11 +43,11 @@
 //! `group_id→relays` cache from `Welcome::group_relays`). It now has TWO
 //! callers sharing that one path: the automatic
 //! [`crate::projection::tap`] raw-event observer (registered against the
-//! retained `*mut NmpApp` in `nmp_app_chirp_marmot_register`; the kernel
+//! retained `*mut NmpApp` in `nmp_marmot_register`; the kernel
 //! delivers every accepted inbound signed kind:1059/445 to it) and the
 //! back-compat `{"op":"ingest_signed_event"}` dispatch op. The tap makes
 //! welcomes / messages received from relays surface in the next
-//! `nmp_app_chirp_marmot_snapshot` with no Swift involvement. This was
+//! `nmp_marmot_snapshot` with no Swift involvement. This was
 //! the last open seam.
 //!
 //! ## Pending-commit discipline (mdk-api.md §7.7)
@@ -646,7 +646,7 @@ fn decline_welcome(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> 
 /// `Ok(Some(Value))` carries the per-kind informational payload the
 /// dispatch op echoes. The projection mutation (pending-welcome row,
 /// relay cache, MDK state) is the load-bearing effect — the next
-/// `nmp_app_chirp_marmot_snapshot` reflects it for BOTH callers.
+/// `nmp_marmot_snapshot` reflects it for BOTH callers.
 pub(crate) fn ingest_signed_event_core(
     h: &mut InnerHandle<'_>,
     event: &nostr::Event,
