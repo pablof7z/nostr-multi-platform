@@ -46,6 +46,12 @@ impl ActionModule for ReactInGroupAction {
         action: Self::Action,
     ) -> Result<(), ActionRejection> {
         action.group.require_routable().map_err(ActionRejection::Invalid)?;
+        if action.target_event_id.is_empty() {
+            return Err(ActionRejection::Invalid("target_event_id is empty".into()));
+        }
+        if action.content.is_empty() {
+            return Err(ActionRejection::Invalid("reaction content is empty".into()));
+        }
         react_in_group_plan(&action)
             .validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for in-group reaction".into()))?;
@@ -156,6 +162,32 @@ mod tests {
         let mut ctx = ActionContext::default();
         let action = ReactInGroupInput {
             group: GroupId::new("wss://h", ""),
+            ..react_input()
+        };
+        assert!(matches!(
+            ReactInGroupAction::start(&mut ctx, action),
+            Err(ActionRejection::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn react_empty_target_event_id_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        let action = ReactInGroupInput {
+            target_event_id: String::new(),
+            ..react_input()
+        };
+        assert!(matches!(
+            ReactInGroupAction::start(&mut ctx, action),
+            Err(ActionRejection::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn react_empty_content_rejected_in_start() {
+        let mut ctx = ActionContext::default();
+        let action = ReactInGroupInput {
+            content: String::new(),
             ..react_input()
         };
         assert!(matches!(
