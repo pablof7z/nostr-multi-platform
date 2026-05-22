@@ -53,9 +53,26 @@
 //!   channel send.
 
 use std::ffi::{c_char, CString};
+use std::time::{Duration, Instant};
 
 use super::{app_ref, c_string_argument, NmpApp};
+use crate::stable_hash::stable_hash64;
 use crate::substrate::{ActionContext, ActionRejection, ActionResult};
+
+/// Time-to-live for an `inflight_dispatches` entry — the wall-clock window
+/// during which a same-`(namespace, action_json)` retap collapses to the
+/// original dispatch's `correlation_id` instead of enqueueing a second
+/// `ActorCommand`.
+///
+/// 30s is sized to cover "slow relay round-trip" without locking the user out
+/// of a legitimate retry after a genuine failure. The wallet guard
+/// (`INFLIGHT_BOLT11_TTL = 60s`) uses a longer window because NIP-47
+/// `pay_invoice` typically takes longer to settle and the cost of a
+/// double-pay (real funds moved) is higher than the cost of a duplicated DM
+/// (visible to recipients) — 30s for the dispatch guard hits the median
+/// "the response is in flight" case and the host can drive a real retry
+/// after that.
+pub(crate) const INFLIGHT_DISPATCH_TTL: Duration = Duration::from_secs(30);
 
 /// Dispatch a named action through the action registry.
 ///
@@ -221,10 +238,47 @@ pub extern "C" fn nmp_app_register_action_result_observer(
 /// against the registry, drive its execution through the actor, and return
 /// the JSON result string. Split out so the unit tests can exercise the
 /// dispatch logic without raw pointers.
+///
+/// # Idempotency guard
+///
+/// Before validating the action, the dispatcher computes a stable 64-bit
+/// FNV-1a hash of `(namespace, action_json)` and consults the app's
+/// [`NmpApp::inflight_dispatches`] map. A same-key entry younger than
+/// [`INFLIGHT_DISPATCH_TTL`] short-circuits the call: no `start()`, no
+/// executor, no `ActorCommand` enqueued — the call returns
+/// `{"correlation_id":"<original>"}` carrying the FIRST dispatch's
+/// correlation_id so the host's spinner stays bound to the in-flight action.
+/// This collapses rapid re-taps (the classic DM double-send pathology) into a
+/// single wire-side request without changing the host's accepted-action
+/// contract.
+///
+/// Insertion happens AFTER successful executor dispatch, so a malformed dup
+/// (or a registry-rejected action) does not poison the map — the host can
+/// fix and re-submit immediately. Expired entries are swept lazily on every
+/// call by wall-clock.
 fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str) -> String {
     let Some(app) = app else {
         return error_json("null app");
     };
+    // Idempotency guard: compute the dedup key and check (under one lock
+    // acquisition) whether a same-key entry is still inside the TTL window.
+    // The check happens BEFORE `start()` so a re-tap inside the window does
+    // not even pay the validation cost. The lock is acquired ONLY for the
+    // check (it is released before `start()`), so a poisoned guard (D6)
+    // degrades to "let the dispatch through" — same posture as the wallet
+    // bolt11 guard.
+    let dedup_key = stable_hash64((namespace, action_json));
+    if let Ok(mut guard) = app.inflight_dispatches.lock() {
+        let now = Instant::now();
+        guard.retain(|_, (started, _)| now.duration_since(*started) < INFLIGHT_DISPATCH_TTL);
+        if let Some((_, original_id)) = guard.get(&dedup_key) {
+            // Re-tap inside the TTL window — return the original
+            // correlation_id so the host's spinner stays bound to the first
+            // dispatch. No `RecordActionFailure` is enqueued and no second
+            // `ActorCommand` is sent.
+            return format!(r#"{{"correlation_id":{}}}"#, json_string(original_id));
+        }
+    }
     let mut ctx = ActionContext { now_ms: now_ms() };
     match app.action_registry.start(&mut ctx, namespace, action_json) {
         Ok(correlation_id) => {
@@ -246,6 +300,19 @@ fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str
             // (preferred_action_id already bound it to the event id).
             match execute_action(app, namespace, action_json, &correlation_id) {
                 Ok(()) => {
+                    // Record the inflight entry NOW so a rapid re-tap inside
+                    // the TTL window short-circuits. We insert here (post-
+                    // execute success) rather than after `start()` so a
+                    // dispatch that the executor rejected does not poison the
+                    // map — the host can fix the action and re-submit
+                    // immediately. A poisoned mutex (D6) is a silent skip —
+                    // the dedup gap is acceptable degradation for an
+                    // already-broken process; the alternative of returning an
+                    // error after a successfully-enqueued ActorCommand would
+                    // be a worse correctness story.
+                    if let Ok(mut guard) = app.inflight_dispatches.lock() {
+                        guard.insert(dedup_key, (Instant::now(), correlation_id.clone()));
+                    }
                     // Push the "action accepted and enqueued" signal to the
                     // host's result observer, if one is registered. Built-in
                     // executors are fire-and-forget, so `result_json` is
@@ -1061,6 +1128,232 @@ mod tests {
              (RecordActionFailure); depth_before={depth_before} depth_after={depth_after}"
         );
         nmp_app_free(app);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    //                  Generic dispatch idempotency guard
+    // ──────────────────────────────────────────────────────────────────
+    //
+    // The DM double-send pathology: a user re-taps Send before the gift-wrap
+    // fan-out completes, two batches of kind:1059 envelopes go to the wire,
+    // and recipients see the message twice — there is no on-the-wire dedup
+    // for gift-wraps because each batch is sealed with a fresh ephemeral key.
+    //
+    // The guard mirrors the wallet `inflight_bolt11` pattern but is generic
+    // over (namespace, action_json): a same-action retap inside
+    // `INFLIGHT_DISPATCH_TTL` returns the FIRST dispatch's correlation_id
+    // without enqueueing a second `ActorCommand`. The witnesses below are
+    // (a) the FFI return envelope shape — `correlation_id` MUST match the
+    // first call — and (b) the queue-depth straddle counter — exactly one
+    // `ActorCommand` MUST have been enqueued across two same-action calls.
+
+    /// Two consecutive `dispatch_action_json` calls with the SAME
+    /// `(namespace, action_json)` pair must collapse to a single
+    /// `ActorCommand` enqueue AND return the same `correlation_id` on both
+    /// calls. The second call is the UI double-tap and must be silently
+    /// coalesced into the first.
+    ///
+    /// The `PublishNote` action is used because it mints a fresh
+    /// registry-side correlation_id (a `Publish` action would return the
+    /// event id, which is the same on both calls regardless of dedup — and
+    /// would not prove the guard). A fresh id means a non-deduped second
+    /// call would return a DIFFERENT id; the guard makes them match.
+    #[test]
+    fn duplicate_dispatch_returns_same_correlation_id() {
+        with_app(|app| {
+            let ns = "nmp.publish";
+            let payload =
+                r#"{"PublishNote":{"content":"dedup-test","reply_to_id":null,"target":"Auto"}}"#;
+
+            let out_first = dispatch_action_json(Some(app), ns, payload);
+            let parsed_first: serde_json::Value = serde_json::from_str(&out_first).unwrap();
+            let id_first = parsed_first
+                .get("correlation_id")
+                .and_then(|v| v.as_str())
+                .expect("first dispatch should return correlation_id")
+                .to_string();
+
+            let out_second = dispatch_action_json(Some(app), ns, payload);
+            let parsed_second: serde_json::Value = serde_json::from_str(&out_second).unwrap();
+            let id_second = parsed_second
+                .get("correlation_id")
+                .and_then(|v| v.as_str())
+                .expect("second dispatch should also return correlation_id");
+
+            assert_eq!(
+                id_first, id_second,
+                "a same-action retap inside the TTL window must return the FIRST \
+                 dispatch's correlation_id so the host's spinner stays bound to the \
+                 in-flight action"
+            );
+
+            // The robust witness for "second call short-circuited before
+            // reaching the executor" is the inflight set itself: a rejected
+            // re-tap inserts nothing extra (the key is already present), so
+            // the set size after two same-action calls is exactly one. The
+            // wallet bolt11 test uses this same pattern (the actor thread
+            // runs concurrently and may dequeue between reads, so a depth
+            // delta is not a robust witness).
+            let guard = app.inflight_dispatches.lock().unwrap();
+            assert_eq!(
+                guard.len(),
+                1,
+                "exactly one inflight entry expected after a same-action double-tap; \
+                 a non-deduped second call would have inserted a second key"
+            );
+        });
+    }
+
+    /// Two `dispatch_action_json` calls with DIFFERENT `(namespace,
+    /// action_json)` pairs must both pass through the guard — they are
+    /// independent actions, not a double-tap. Witness: the inflight set
+    /// holds exactly two entries after the second call.
+    #[test]
+    fn distinct_dispatches_both_enqueue() {
+        with_app(|app| {
+            let ns = "nmp.publish";
+            let payload_a =
+                r#"{"PublishNote":{"content":"alpha","reply_to_id":null,"target":"Auto"}}"#;
+            let payload_b =
+                r#"{"PublishNote":{"content":"bravo","reply_to_id":null,"target":"Auto"}}"#;
+
+            let _ = dispatch_action_json(Some(app), ns, payload_a);
+            let _ = dispatch_action_json(Some(app), ns, payload_b);
+
+            let guard = app.inflight_dispatches.lock().unwrap();
+            assert_eq!(
+                guard.len(),
+                2,
+                "two distinct actions must both be tracked inflight; a guard that \
+                 collapsed them would mute legitimate independent sends"
+            );
+        });
+    }
+
+    /// The same `action_json` under a DIFFERENT namespace must NOT be
+    /// considered a duplicate — the dedup key includes the namespace, so a
+    /// host that dispatches the same JSON shape to two different action
+    /// namespaces gets two distinct inflight entries. This guards against a
+    /// hypothetical hash-collision-by-namespace-overlap.
+    #[test]
+    fn same_action_json_under_different_namespace_does_not_dedup() {
+        // Register a permissive test module under a non-`nmp.*` namespace
+        // that accepts any JSON. The shared static `OnceLock` flag is unused
+        // here — we just need the registration to succeed.
+        let app = nmp_app_new();
+        // SAFETY: `nmp_app_new` never returns null.
+        let app_mut = unsafe { &mut *app };
+        app_mut.register_action::<TestTodoModule>();
+
+        // Identical JSON payload under TWO different namespaces — the dedup
+        // key bakes in the namespace via the FNV tuple hash, so these MUST
+        // be tracked independently.
+        let payload = r#"{"create":{"title":"hash-collision-guard"}}"#;
+        let _ = dispatch_action_json(Some(&*app_mut), "test.todo", payload);
+
+        // For the second call to succeed under a different namespace, that
+        // namespace must also be registered. Use `nmp.publish` with a real
+        // PublishNote payload so we exercise the cross-namespace independence
+        // without inventing a second mock module.
+        let pub_payload =
+            r#"{"PublishNote":{"content":"hash-collision-guard","reply_to_id":null,"target":"Auto"}}"#;
+        let _ = dispatch_action_json(Some(&*app_mut), "nmp.publish", pub_payload);
+
+        let guard = app_mut.inflight_dispatches.lock().unwrap();
+        assert_eq!(
+            guard.len(),
+            2,
+            "different namespaces must produce different dedup keys; an entry-count \
+             of 1 would mean the namespace was not part of the key (or the test \
+             actions happened to collide, which the tuple hash makes statistically \
+             impossible)"
+        );
+        drop(guard);
+        nmp_app_free(app);
+    }
+
+    /// An inflight entry older than [`INFLIGHT_DISPATCH_TTL`] must be swept
+    /// before the contains-check, so a legitimate retry after the TTL passes
+    /// through the guard. Same pattern as the wallet test
+    /// `expired_inflight_entry_is_swept_and_retry_passes`: backdate the
+    /// `Instant` directly rather than sleeping for 30s.
+    #[test]
+    fn expired_dispatch_entry_is_swept_and_retry_passes() {
+        with_app(|app| {
+            let ns = "nmp.publish";
+            let payload =
+                r#"{"PublishNote":{"content":"expiry-test","reply_to_id":null,"target":"Auto"}}"#;
+
+            // Seed the inflight set.
+            let out_first = dispatch_action_json(Some(app), ns, payload);
+            let id_first = serde_json::from_str::<serde_json::Value>(&out_first)
+                .unwrap()
+                .get("correlation_id")
+                .and_then(|v| v.as_str())
+                .unwrap()
+                .to_string();
+
+            // Backdate the entry so the sweep on the next call removes it.
+            // Mirror the wallet test's `.expect()` so a hypothetical platform
+            // whose `Instant` epoch sits inside the TTL window fails loudly
+            // instead of silently passing for the wrong reason.
+            {
+                let mut guard = app.inflight_dispatches.lock().unwrap();
+                assert_eq!(guard.len(), 1);
+                let backdated = Instant::now()
+                    .checked_sub(INFLIGHT_DISPATCH_TTL + Duration::from_secs(1))
+                    .expect("Instant::checked_sub(31s) must succeed on every supported platform");
+                for (_, (ts, _)) in guard.iter_mut() {
+                    *ts = backdated;
+                }
+            }
+
+            // Second call: the sweep must drop the expired entry, then the
+            // executor enqueues a fresh dispatch with a NEW correlation_id.
+            // The set still has exactly one entry after — but its
+            // correlation_id is the second dispatch's id, not the first's.
+            let out_second = dispatch_action_json(Some(app), ns, payload);
+            let id_second = serde_json::from_str::<serde_json::Value>(&out_second)
+                .unwrap()
+                .get("correlation_id")
+                .and_then(|v| v.as_str())
+                .unwrap()
+                .to_string();
+
+            assert_ne!(
+                id_first, id_second,
+                "after the TTL elapses, the retry must mint a FRESH correlation_id; \
+                 a match would mean the sweep missed the expired entry"
+            );
+
+            let guard = app.inflight_dispatches.lock().unwrap();
+            assert_eq!(
+                guard.len(),
+                1,
+                "retry after TTL must pass the guard and re-insert exactly one entry"
+            );
+        });
+    }
+
+    /// A dispatch that is REJECTED by the registry (unknown namespace,
+    /// malformed JSON, validation rejection) must NOT pollute the inflight
+    /// set — the host can fix and re-submit immediately. The guard only
+    /// records successfully-enqueued dispatches.
+    #[test]
+    fn rejected_dispatch_does_not_pollute_inflight_set() {
+        with_app(|app| {
+            // Unknown namespace — rejected at `start()`.
+            let _ = dispatch_action_json(Some(app), "nmp.unknown", "{}");
+            // Malformed JSON — rejected at action-shape parsing.
+            let _ = dispatch_action_json(Some(app), "nmp.publish", "{bad json");
+            let guard = app.inflight_dispatches.lock().unwrap();
+            assert!(
+                guard.is_empty(),
+                "rejected dispatches must not be tracked inflight; the host has to \
+                 fix and re-submit, and that re-submission must not be confused for \
+                 a UI double-tap"
+            );
+        });
     }
 
     // ADR-0027 deleted three tests that no longer have a way to be
