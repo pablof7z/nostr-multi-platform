@@ -125,4 +125,28 @@ mod tests {
             Err(ActionRejection::Invalid(_))
         ));
     }
+
+    #[test]
+    fn execute_threads_correlation_id_into_publish_command() {
+        use nmp_core::ActorCommand;
+        use std::cell::Cell;
+
+        let cid_matched = Cell::new(false);
+        PostChatMessageAction::execute(input(), "cid-99", &|cmd| {
+            if let ActorCommand::PublishUnsignedEventToRelays {
+                ref correlation_id, ..
+            } = cmd
+            {
+                if correlation_id.as_deref() == Some("cid-99") {
+                    cid_matched.set(true);
+                }
+            }
+        })
+        .expect("well-formed input executes");
+        assert!(
+            cid_matched.get(),
+            "execute must thread correlation_id into PublishUnsignedEventToRelays \
+             so the host spinner closes on action completion"
+        );
+    }
 }
