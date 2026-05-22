@@ -25,7 +25,9 @@ struct DmListView: View {
 
     var body: some View {
         Group {
-            if store.conversations.isEmpty {
+            if store.remoteSignerUnsupported {
+                bunkerUnsupportedState
+            } else if store.conversations.isEmpty {
                 emptyState
             } else {
                 conversationList
@@ -44,6 +46,7 @@ struct DmListView: View {
                 }
                 .accessibilityLabel("New message")
                 .accessibilityIdentifier("dm-new-message-button")
+                .disabled(store.remoteSignerUnsupported)
             }
         }
         .sheet(isPresented: $showCompose) {
@@ -58,6 +61,17 @@ struct DmListView: View {
                 systemImage: "lock.fill",
                 title: "No chats yet",
                 subtitle: "Your chats are private and end-to-end encrypted."
+            )
+            .frame(minHeight: 360)
+        }
+    }
+
+    private var bunkerUnsupportedState: some View {
+        ScrollView {
+            ChirpPlaceholder(
+                systemImage: "exclamationmark.lock.fill",
+                title: "DMs unavailable",
+                subtitle: "End-to-end encrypted DMs require a local key.\nBunker (NIP-46) accounts cannot decrypt messages yet."
             )
             .frame(minHeight: 360)
         }

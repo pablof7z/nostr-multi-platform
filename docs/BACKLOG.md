@@ -148,12 +148,13 @@ exist" — both are wrong. Silent degradation with no user-visible signal.
   `DmInboxSnapshot`. When `local_keys` is `None`, `snapshot()` sets it `true`. The flag is
   included in the snapshot JSON so Swift can read it. Backward compatible (old decoders
   read `false` for the missing field).
-- Stage 2: Swift `DmConversationsView` — when `remote_signer_unsupported == true`, show
-  "DM inbox unavailable for bunker accounts" instead of an empty list.
+- Stage 2 ✅ DONE: `DmListView` checks `store.remoteSignerUnsupported` and shows a
+  `bunkerUnsupportedState` banner with "DMs unavailable – bunker accounts cannot decrypt
+  messages yet." The compose button is disabled in this state.
 - Stage 3: ADR-0026 Phase 2 follow-up: implement `unwrap_gift_wrap` via remote signer RPC,
   delete the flag.
 
-**Deadline:** Stage 2 should land before v1. Stage 3 is post-v1.
+**Deadline:** Stage 3 is post-v1.
 
 ### V-07 · Zap relay selection in Swift — D0 policy leak [HIGH · immediate fix]
 

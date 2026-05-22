@@ -1325,8 +1325,12 @@ struct FollowListSnapshot: Decodable, Equatable {
 /// projection — Swift does not re-sort.
 struct DmInboxSnapshot: Decodable, Equatable {
     let conversations: [DmConversation]
+    /// Set by Rust (V-08) when the active account uses a NIP-46 bunker that
+    /// cannot unseal gift-wraps. The host should surface a message instead of
+    /// an empty list. `false` when signed in with local keys or not signed in.
+    var remoteSignerUnsupported: Bool = false
 
-    static let empty = DmInboxSnapshot(conversations: [])
+    static let empty = DmInboxSnapshot(conversations: [], remoteSignerUnsupported: false)
 }
 
 // ─── Diagnostics read model (relay_diagnostics projection) ────────────────

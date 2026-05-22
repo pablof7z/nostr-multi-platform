@@ -86,6 +86,10 @@ final class DmInboxStore: ObservableObject {
     /// `DmInboxProjection`. Within each conversation, `messages` is in
     /// chronological order — oldest first, newest last.
     @Published private(set) var conversations: [DmConversation] = []
+    /// Mirrors `DmInboxSnapshot.remoteSignerUnsupported` (V-08 Stage 2). When
+    /// `true` the active account uses a bunker (NIP-46) that cannot decrypt
+    /// gift-wraps. The list view surfaces a banner instead of an empty list.
+    @Published private(set) var remoteSignerUnsupported: Bool = false
 
     private unowned let kernel: KernelHandle
 
@@ -102,6 +106,9 @@ final class DmInboxStore: ObservableObject {
         guard let snapshot else { return }
         if snapshot.conversations != conversations {
             conversations = snapshot.conversations
+        }
+        if snapshot.remoteSignerUnsupported != remoteSignerUnsupported {
+            remoteSignerUnsupported = snapshot.remoteSignerUnsupported
         }
     }
 
