@@ -60,12 +60,11 @@ impl ActionModule for DiscoverGroupsAction {
     ) -> Result<(), String> {
         let interest = relay_discovery_interest(&action.relay_url);
         send(ActorCommand::PushInterest(interest));
-        // PD-036 — `discover_groups` is a subscription-only action: there is
-        // no event published and no async worker, so the "success" surface
-        // is instantaneous (the interest has been pushed to the lifecycle).
-        // Without a terminal `RecordActionSuccess` the host's `dispatch_action`
-        // spinner waits forever on `action_results`. Mirror the NIP-57 zap
-        // worker's success leg (see `crates/nmp-core/src/actor/commands/zap.rs`).
+        // `discover_groups` is a subscription-only action: there is no event
+        // published and no async worker, so the "success" surface is instantaneous
+        // (the interest has been pushed to the lifecycle). Without a terminal
+        // `RecordActionSuccess` the host's `dispatch_action` spinner waits forever
+        // on `action_results`. Mirror the NIP-57 zap worker's success leg.
         send(ActorCommand::RecordActionSuccess {
             correlation_id: correlation_id.to_string(),
         });
@@ -111,7 +110,7 @@ mod tests {
             }
             other => panic!("expected PushInterest, got {other:?}"),
         }
-        // PD-036 — terminal `Accepted` stage is what closes the host spinner.
+        // Terminal `Accepted` stage is what closes the host spinner.
         match &cmds[1] {
             ActorCommand::RecordActionSuccess { correlation_id } => {
                 assert_eq!(correlation_id, "test-cid");

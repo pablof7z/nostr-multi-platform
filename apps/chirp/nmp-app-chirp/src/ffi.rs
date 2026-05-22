@@ -1071,10 +1071,10 @@ mod tests {
     /// THE DISCOVERY EXECUTOR PROOF: the `nmp.nip29.discover` executor maps
     /// a validated `DiscoverGroupsInput` to a concrete
     /// [`ActorCommand::PushInterest`] pinned to the supplied relay, followed
-    /// by an [`ActorCommand::RecordActionSuccess`] terminal (PD-036 — a
+    /// by an [`ActorCommand::RecordActionSuccess`] terminal — a
     /// subscription-only action has no async publish, so the success surface
     /// is instantaneous and must be recorded inline or the host spinner waits
-    /// forever on `action_results`). Mirrors the in-crate shape proof at
+    /// forever on `action_results`. Mirrors the in-crate shape proof at
     /// `crates/nmp-nip29/src/action/discover.rs::well_formed_input_yields_push_interest_then_record_success`.
     #[test]
     fn nip29_discover_executor_emits_host_pinned_push_interest_command() {
@@ -1113,8 +1113,8 @@ mod tests {
             other => panic!("expected PushInterest, got {other:?}"),
         }
 
-        // PD-036 — terminal `RecordActionSuccess` is what closes the host
-        // spinner for this subscription-only action.
+        // Terminal `RecordActionSuccess` is what closes the host spinner for
+        // this subscription-only action.
         match &cmds[1] {
             ActorCommand::RecordActionSuccess { correlation_id } => {
                 assert_eq!(correlation_id, "test-cid");
