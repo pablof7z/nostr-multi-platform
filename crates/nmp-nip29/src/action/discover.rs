@@ -55,12 +55,21 @@ impl ActionModule for DiscoverGroupsAction {
     }
     fn execute(
         action: Self::Action,
-        _correlation_id: &str,
+        correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
         validate_relay_url(&action.relay_url)?;
         let interest = relay_discovery_interest(&action.relay_url);
         send(ActorCommand::PushInterest(interest));
+        // PD-036 — `discover_groups` is a subscription-only action: there is
+        // no event published and no async worker, so the "success" surface
+        // is instantaneous (the interest has been pushed to the lifecycle).
+        // Without a terminal `RecordActionSuccess` the host's `dispatch_action`
+        // spinner waits forever on `action_results`. Mirror the NIP-57 zap
+        // worker's success leg (see `crates/nmp-core/src/actor/commands/zap.rs`).
+        send(ActorCommand::RecordActionSuccess {
+            correlation_id: correlation_id.to_string(),
+        });
         Ok(())
     }
 }
@@ -70,23 +79,27 @@ mod tests {
     use super::*;
     use std::cell::RefCell;
 
-    /// Run the typed executor and capture the single `ActorCommand` it sends.
-    fn run_execute(input: DiscoverGroupsInput) -> Result<ActorCommand, String> {
-        let captured: RefCell<Option<ActorCommand>> = RefCell::new(None);
+    /// Run the typed executor and capture every `ActorCommand` it sends.
+    fn run_execute(input: DiscoverGroupsInput) -> Result<Vec<ActorCommand>, String> {
+        let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
         DiscoverGroupsAction::execute(input, "test-cid", &|cmd| {
-            *captured.borrow_mut() = Some(cmd);
+            captured.borrow_mut().push(cmd);
         })?;
-        captured
-            .into_inner()
-            .ok_or_else(|| "executor sent no command".to_string())
+        Ok(captured.into_inner())
     }
 
     #[test]
-    fn well_formed_input_yields_push_interest_command() {
+    fn well_formed_input_yields_push_interest_then_record_success() {
         let input = DiscoverGroupsInput {
             relay_url: "wss://groups.example.com".to_string(),
         };
-        match run_execute(input).expect("well-formed input executes") {
+        let cmds = run_execute(input).expect("well-formed input executes");
+        assert_eq!(
+            cmds.len(),
+            2,
+            "expected PushInterest followed by RecordActionSuccess, got {cmds:?}"
+        );
+        match &cmds[0] {
             ActorCommand::PushInterest(interest) => {
                 assert_eq!(
                     interest.shape.relay_pin.as_deref(),
@@ -98,6 +111,13 @@ mod tests {
                 assert!(interest.shape.kinds.contains(&39002));
             }
             other => panic!("expected PushInterest, got {other:?}"),
+        }
+        // PD-036 — terminal `Accepted` stage is what closes the host spinner.
+        match &cmds[1] {
+            ActorCommand::RecordActionSuccess { correlation_id } => {
+                assert_eq!(correlation_id, "test-cid");
+            }
+            other => panic!("expected RecordActionSuccess, got {other:?}"),
         }
     }
 
