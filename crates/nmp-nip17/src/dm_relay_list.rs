@@ -207,24 +207,6 @@ impl ActionModule for PublishDmRelayListAction {
     }
 }
 
-/// Executor: build the kind:10050 unsigned event and dispatch
-/// [`ActorCommand::PublishUnsignedEvent`] — kind:10050 is a NIP-65
-/// replaceable event that routes via the author's NIP-65 write-relay outbox.
-///
-/// This helper is the non-action ergonomic shim (e.g. the legacy `nmp-repl`
-/// path); the action seam (`PublishDmRelayListAction::execute`) is where the
-/// correlation_id round-trip happens, so this `None` matches the prior
-/// behaviour (no spinner, no terminal stage).
-pub fn publish_dm_relay_list_command(action_json: &str) -> Result<ActorCommand, String> {
-    let input: PublishDmRelayListInput =
-        serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-    let event = build_dm_relay_list_event(&input.relays);
-    Ok(ActorCommand::PublishUnsignedEvent {
-        event,
-        correlation_id: None,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -386,36 +368,6 @@ mod tests {
             PublishDmRelayListAction::start(&mut ctx(), input),
             Err(ActionRejection::Invalid(_))
         ));
-    }
-
-    #[test]
-    fn command_builds_publish_unsigned_event_auto() {
-        let body = r#"{"relays":["wss://relay.example"]}"#;
-        let cmd = publish_dm_relay_list_command(body).expect("well-formed body");
-        match cmd {
-            ActorCommand::PublishUnsignedEvent {
-                event,
-                correlation_id,
-            } => {
-                assert_eq!(event.kind, 10050);
-                assert_eq!(
-                    event.tags,
-                    vec![vec!["relay".to_string(), "wss://relay.example".to_string()]],
-                );
-                assert_eq!(event.created_at, 0, "D7 sentinel — actor re-stamps");
-                assert!(event.pubkey.is_empty(), "actor derives pubkey at sign time");
-                assert!(
-                    correlation_id.is_none(),
-                    "non-action helper path carries no correlation_id"
-                );
-            }
-            other => panic!("expected PublishUnsignedEvent, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn command_rejects_malformed_json() {
-        assert!(publish_dm_relay_list_command("not json").is_err());
     }
 
     /// Round-trip property: an event the builder produces parses through the
