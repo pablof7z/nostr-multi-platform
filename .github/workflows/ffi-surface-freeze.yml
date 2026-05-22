@@ -1,0 +1,41 @@
+name: ffi-surface-freeze
+
+# Enforces the C-ABI surface freeze: no new per-verb nmp_app_* exports may be
+# added to any PR. The seam migration strategy (ADR-0027 direction) requires
+# all new app verbs to go through dispatch_action("nmp.X.Y", json) instead of
+# new #[no_mangle] pub extern "C" fn nmp_app_* entries.
+#
+# Renames and relocations that delete one symbol and add another (net 0) pass.
+# Genuine new surface requires an ADR; see ci/check-ffi-surface-freeze.sh for
+# the exemption process.
+#
+# This workflow runs only on PRs targeting master (not on direct pushes) since
+# the freeze is about incremental surface growth, not absolute state.
+
+on:
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  ffi-surface-freeze:
+    name: C-ABI surface freeze (no new nmp_app_* exports)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Fetch base branch
+        run: git fetch origin "${{ github.event.pull_request.base.sha }}"
+
+      - name: Check C-ABI surface freeze
+        run: |
+          bash ci/check-ffi-surface-freeze.sh \
+            "${{ github.event.pull_request.base.sha }}" \
+            "${{ github.event.pull_request.head.sha }}"
