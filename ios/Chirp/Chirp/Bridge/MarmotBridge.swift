@@ -425,20 +425,79 @@ final class MarmotStore: ObservableObject {
     // ── Dispatch op wrappers ──────────────────────────────────────────────
     // Each encodes the op envelope and dispatches. The next kernel snapshot
     // pushes the refreshed Marmot view; the UI does not poll from Swift.
+    //
+    // `nmp-marmot` dispatch opens a synchronous WebSocket connection with a
+    // wall-clock timeout per relay (up to 6 s × N relays) — blocking the
+    // main actor is not acceptable. All wrappers move the blocking FFI call
+    // off the main actor via `DispatchQueue.global().async`.
+    //
+    // `KernelHandle` is not `Sendable` so `Task.detached` cannot capture it;
+    // `DispatchQueue.global().async` has no such constraint.
+    //
+    // Two call-site contracts:
+    // • Fire-and-forget (Void return): the outcome arrives as a refreshed
+    //   snapshot on the next kernel tick; callers need no result.
+    // • Result-dependent (async → MarmotOpResult): callers await inside
+    //   `Task { }`, which keeps the continuation on @MainActor for safe
+    //   @State mutation after the await.
 
-    @discardableResult
-    private func dispatch(_ action: [String: Any]) -> MarmotOpResult {
+    /// Encode the op envelope and dispatch it on the global concurrent queue,
+    /// bridging back to the caller via `CheckedContinuation`. JSON encoding is
+    /// done on the calling actor (cheap); only the blocking FFI call crosses to
+    /// the background thread. Never throws across the bridge (D6).
+    private func dispatchAsync(_ action: [String: Any]) async -> MarmotOpResult {
         guard let data = try? JSONSerialization.data(withJSONObject: action),
               let json = String(data: data, encoding: .utf8)
-        else {
-            return .failure("could not encode action")
+        else { return .failure("could not encode action") }
+        let handle = kernel.marmotHandle
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                guard let handle else {
+                    continuation.resume(returning: .bridgeUnavailable)
+                    return
+                }
+                let ptr: UnsafeMutablePointer<CChar>? = json.withCString {
+                    nmp_app_chirp_marmot_dispatch(handle, $0)
+                }
+                guard let ptr else {
+                    continuation.resume(returning: .failure("dispatch returned null"))
+                    return
+                }
+                let payload = String(cString: ptr)
+                nmp_app_chirp_marmot_string_free(ptr)
+                guard let d = payload.data(using: .utf8),
+                      let result = try? JSONDecoder().decode(MarmotOpResult.self, from: d)
+                else {
+                    continuation.resume(returning: .failure("undecodable dispatch result"))
+                    return
+                }
+                continuation.resume(returning: result)
+            }
         }
-        return kernel.marmotDispatch(actionJSON: json)
     }
 
-    @discardableResult
-    func publishKeyPackage() -> MarmotOpResult {
-        dispatch(["op": "publish_key_package"])
+    /// Encode the op envelope and dispatch fire-and-forget on the global
+    /// concurrent queue. The outcome arrives as a refreshed snapshot on the
+    /// next kernel tick.
+    private func dispatchFireAndForget(_ action: [String: Any]) {
+        guard let data = try? JSONSerialization.data(withJSONObject: action),
+              let json = String(data: data, encoding: .utf8)
+        else { return }
+        guard let handle = kernel.marmotHandle else { return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let ptr: UnsafeMutablePointer<CChar>? = json.withCString {
+                nmp_app_chirp_marmot_dispatch(handle, $0)
+            }
+            if let ptr { nmp_app_chirp_marmot_string_free(ptr) }
+        }
+    }
+
+    /// Publish (or rotate) the local MLS key-package.
+    ///
+    /// Fire-and-forget: the refreshed key-package state arrives via the next
+    /// kernel snapshot tick.
+    func publishKeyPackage() {
+        dispatchFireAndForget(["op": "publish_key_package"])
     }
 
     /// True if all of the given npubs have a cached key package locally.
@@ -450,9 +509,8 @@ final class MarmotStore: ObservableObject {
     /// Create a new MLS group. `inviteeText` is the raw text the user
     /// typed; Rust tokenises (whitespace / comma / semicolon / newline)
     /// and validates each entry — Swift does no parsing.
-    @discardableResult
-    func createGroup(name: String, description: String, inviteeText: String) -> MarmotOpResult {
-        return dispatch([
+    func createGroup(name: String, description: String, inviteeText: String) async -> MarmotOpResult {
+        await dispatchAsync([
             "op": "create_group",
             "name": name,
             "description": description,
@@ -463,9 +521,8 @@ final class MarmotStore: ObservableObject {
 
     /// Invite peers to an existing MLS group. `inviteeText` is the raw
     /// user-typed list; tokenisation + validation happen Rust-side.
-    @discardableResult
-    func invite(groupIDHex: String, inviteeText: String) -> MarmotOpResult {
-        return dispatch([
+    func invite(groupIDHex: String, inviteeText: String) async -> MarmotOpResult {
+        await dispatchAsync([
             "op": "invite",
             "group_id_hex": groupIDHex,
             "invitee_text": inviteeText,
@@ -473,43 +530,40 @@ final class MarmotStore: ObservableObject {
         ])
     }
 
-    @discardableResult
-    func send(groupIDHex: String, text: String) -> MarmotOpResult {
-        dispatch(["op": "send", "group_id_hex": groupIDHex, "text": text])
+    func send(groupIDHex: String, text: String) async -> MarmotOpResult {
+        await dispatchAsync(["op": "send", "group_id_hex": groupIDHex, "text": text])
     }
 
-    @discardableResult
-    func leave(groupIDHex: String) -> MarmotOpResult {
-        dispatch(["op": "leave", "group_id_hex": groupIDHex])
+    func leave(groupIDHex: String) async -> MarmotOpResult {
+        await dispatchAsync(["op": "leave", "group_id_hex": groupIDHex])
     }
 
-    @discardableResult
-    func remove(groupIDHex: String, memberNpubs: [String]) -> MarmotOpResult {
-        dispatch(["op": "remove", "group_id_hex": groupIDHex, "member_npubs": memberNpubs])
+    func remove(groupIDHex: String, memberNpubs: [String]) async -> MarmotOpResult {
+        await dispatchAsync(["op": "remove", "group_id_hex": groupIDHex, "member_npubs": memberNpubs])
     }
 
-    @discardableResult
-    func acceptWelcome(welcomeIDHex: String) -> MarmotOpResult {
-        dispatch(["op": "accept_welcome", "welcome_id_hex": welcomeIDHex])
+    /// Accept a pending MLS group invite. Fire-and-forget: the welcome
+    /// disappears from the next snapshot tick.
+    func acceptWelcome(welcomeIDHex: String) {
+        dispatchFireAndForget(["op": "accept_welcome", "welcome_id_hex": welcomeIDHex])
     }
 
-    @discardableResult
-    func declineWelcome(welcomeIDHex: String) -> MarmotOpResult {
-        dispatch(["op": "decline_welcome", "welcome_id_hex": welcomeIDHex])
+    /// Decline a pending MLS group invite. Fire-and-forget: the welcome
+    /// disappears from the next snapshot tick.
+    func declineWelcome(welcomeIDHex: String) {
+        dispatchFireAndForget(["op": "decline_welcome", "welcome_id_hex": welcomeIDHex])
     }
 
     /// Ingest a relay-received signed kind:1059 / kind:445 event. Wired and
     /// ready, but has NO caller in the current Chirp kernel surface — Chirp
     /// does not expose a raw signed-event stream to Swift. See the header
     /// limitation. Present so a future seam can plug in without bridge work.
-    @discardableResult
-    func ingestSignedEvent(_ eventJSON: String) -> MarmotOpResult {
-        dispatch(["op": "ingest_signed_event", "event_json": eventJSON])
+    func ingestSignedEvent(_ eventJSON: String) {
+        dispatchFireAndForget(["op": "ingest_signed_event", "event_json": eventJSON])
     }
 
     /// Publish-failure recovery: clear a group's pending MDK commit.
-    @discardableResult
-    func clearPending(groupIDHex: String) -> MarmotOpResult {
-        dispatch(["op": "clear_pending", "group_id_hex": groupIDHex])
+    func clearPending(groupIDHex: String) {
+        dispatchFireAndForget(["op": "clear_pending", "group_id_hex": groupIDHex])
     }
 }

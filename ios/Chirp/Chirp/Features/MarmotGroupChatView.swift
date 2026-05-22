@@ -151,12 +151,14 @@ struct MarmotGroupChatView: View {
         let text = trimmedDraft
         guard !text.isEmpty else { return }
         sending = true
-        let result = model.marmot.send(groupIDHex: group.idHex, text: text)
-        sending = false
-        if result.ok {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            draft = ""
-            reloadMessages()
+        Task {
+            let result = await model.marmot.send(groupIDHex: group.idHex, text: text)
+            sending = false
+            if result.ok {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                draft = ""
+                reloadMessages()
+            }
         }
     }
 
@@ -182,8 +184,10 @@ struct MarmotGroupChatView: View {
                     Label("Invite members", systemImage: "person.badge.plus")
                 }
                 Button(role: .destructive) {
-                    let result = model.marmot.leave(groupIDHex: group.idHex)
-                    if result.ok { dismiss() }
+                    Task {
+                        let result = await model.marmot.leave(groupIDHex: group.idHex)
+                        if result.ok { dismiss() }
+                    }
                 } label: {
                     Label("Leave group", systemImage: "rectangle.portrait.and.arrow.right")
                 }
