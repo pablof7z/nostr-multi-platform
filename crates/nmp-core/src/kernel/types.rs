@@ -441,11 +441,11 @@ pub(super) struct RelayHealth {
     pub(super) last_close_reason: Option<String>,
     /// T112 — NIP-77 negentropy probe state for this relay, as a diagnostic
     /// string key (`"unknown"` | `"probing"` | `"supported"` | `"unsupported"`).
-    /// Mirrors `nmp_nip77::ProbeState` variant names but stored as a plain
-    /// string so `nmp-core` does not depend on `nmp-nip77` (D0 — no cycle).
-    /// Updated by the actor/observer layer via `Kernel::set_nip77_probe_state`
-    /// whenever the NIP-77 capability probe transitions; see `status.rs` for
-    /// the projection into `RelayStatus::nip77_negentropy`.
+    /// Stored as a plain string so `nmp-core` does not depend on any
+    /// shell-side probe-state type (D0 — no cycle). Updated by the
+    /// actor/observer layer via `Kernel::set_nip77_probe_state` whenever the
+    /// NIP-77 capability probe transitions; see `status.rs` for the
+    /// projection into `RelayStatus::nip77_negentropy`.
     pub(super) nip77_probe_state: String,
 }
 

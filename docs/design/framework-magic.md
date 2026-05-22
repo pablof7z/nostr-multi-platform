@@ -15,7 +15,7 @@ This document is split into focused sub-files to stay under the 300 LOC ceiling 
 - [Replaceable & delete invariants — supersession, parameterized supersession, kind:5, NIP-40](framework-magic/replaceable.md) (C1–C4)
 - [Outbox routing — read fan-out, write fan-out, private events fail closed](framework-magic/outbox.md) (C6, C7)
 - [Subscriptions — dedup, coalesce, auto-close, buffered batches](framework-magic/subs.md) (C8)
-- [Sync & provenance — watermarks, NIP-77 backfill, redelivery merge](framework-magic/sync.md) (C9, C10)
+- [Sync & provenance — watermarks, redelivery merge](framework-magic/sync.md) (C9)
 - [Signers & onboarding — bunker://, nsec creation, Keychain persistence](framework-magic/signers.md) (C11)
 - [Sessions — account switch = state, view rebuild without imperative dance](framework-magic/sessions.md) (C12)
 - [Capabilities & rendering — best-effort placeholders, in-place refinement](framework-magic/capabilities.md) (C13)
@@ -48,7 +48,6 @@ Each row binds a behavior to: the sub-file that specifies it, the test name in `
 | C7 | Outbox write routing: publishes go to author write + `#p`-recipient inbox; private (gift-wrap) events fail closed when recipient inbox is unknown | outbox.md | `c7_publish_routes_outbox_and_private_fails_closed` | **[DONE]** · M6 · `c7_c11.rs:67` | D3; spec §7.3 rows "Publish*"; §3.3 bugs #3, #4 |
 | C8 | Subscription planner deduplicates overlapping interests into one wire REQ per relay, auto-closes on EOSE / last-consumer-drop, and buffers ingress to ≤60Hz per view | subs.md | `c8_subscriptions_coalesce_autoclose_and_buffer` | **[DONE]** · M2 · `c5_c8_c13.rs:133` | spec §7.2; §3.3 bug #2, bug #8 |
 | C9 | Provenance preserved: same event id arriving from N relays merges into one stored event with N-entry provenance set; original `id` and signature untouched | sync.md | `c9_provenance_merges_across_relay_redeliveries` | **[DONE]** · M3 · `c1_c4_c6_c9.rs:279` | aim §6 doctrine 10; spec §7.1 row "Provenance"; §3.3 bug #10 |
-| C10 | Sync watermarks: planner consults `(filter, relay)` coverage before issuing historical REQ; full coverage makes cache-miss authoritative; NIP-77 negentropy is the default backfill where supported | sync.md | `c10_watermark_gates_backfill_and_authoritative_miss` | **[DONE]** · M4 · `c10.rs:34` | D2; spec §7.1 watermarks, §7.8 sync engine |
 | C11 | Signer onboarding: pasted `bunker://` URL parses + connects via NIP-46; "create new nsec" generates, NIP-49-encrypts, and persists via KeyringCapability — both as kernel actions, no app code | signers.md | `c11_bunker_url_and_nsec_creation_complete_via_actions` | **[DONE]** · M6 · `c7_c11.rs:159` (¹) | scope-adj §"Folded into M6"; spec §7.4 |
 | C12 | Account switch is a state transition: dispatching the switch action re-resolves every `ActiveAccount`-scoped view without the app issuing CLOSE/REQ or rebuilding view handles | sessions.md | `c12_account_switch_rebinds_views_without_imperative_dance` | **[DONE]** · M8 · `c12.rs:53` | D4; spec §7.4; §3.3 bug #5; M2 §4 trigger A4 |
 | C13 | Best-effort rendering: every view payload field is non-`Option`; missing data uses defined placeholders (shortened npub, identicon, "just now"); the same payload updates in place when authoritative data arrives | capabilities.md | `c13_view_payload_uses_placeholders_then_refines_in_place` | **[DONE]** · M2/M3 · `c5_c8_c13.rs:238` (²) | D1; spec §7.6 "Best-effort field contract"; aim §4.12 |
@@ -81,13 +80,14 @@ Each row binds a behavior to: the sub-file that specifies it, the test name in `
 7. `c7_publish_routes_outbox_and_private_fails_closed`
 8. `c8_subscriptions_coalesce_autoclose_and_buffer`
 9. `c9_provenance_merges_across_relay_redeliveries`
-10. `c10_watermark_gates_backfill_and_authoritative_miss`
-11. `c11_bunker_url_and_nsec_creation_complete_via_actions`
-12. `c12_account_switch_rebinds_views_without_imperative_dance`
-13. `c13_view_payload_uses_placeholders_then_refines_in_place`
-14. `contract_surface_complete` — **meta-test**; asserts every behavior listed in this index has a corresponding `#[test] fn` in `framework_magic_contract.rs` (ignored or not). Drift between this doc and the test file fails the build.
+10. `c11_bunker_url_and_nsec_creation_complete_via_actions`
+11. `c12_account_switch_rebinds_views_without_imperative_dance`
+12. `c13_view_payload_uses_placeholders_then_refines_in_place`
+13. `contract_surface_complete` — **meta-test**; asserts every behavior listed in this index has a corresponding `#[test] fn` in `framework_magic_contract.rs` (ignored or not). Drift between this doc and the test file fails the build.
 
-All gating milestones have landed, so **no `#[ignore]` remains** — all 14 tests are active (the un-ignore landed in `79e0257`; per-chapter split under `framework_magic_contract/`). The `#[ignore = "pending M_n"]` mechanism is retained for *future* bullets whose milestone has not yet landed (see the "How to add C14" recipe); the meta-test counts ignored tests too, so the historical "doc says 13, code tests 11" drift the cross-cutting (non-milestone-prefixed) file-naming convention guards against still cannot regress — see [test-scaffolding.md](framework-magic/test-scaffolding.md) §1.
+(C10 was removed when the `nmp-nip77` crate was deleted — zero shipping callers. The substrate seam it pinned — `PlanCoverageHook` / `set_coverage_hook` — remains, independently covered by `nmp-core`'s `subs::coverage_hook_tests`.)
+
+All remaining gating milestones have landed, so **no `#[ignore]` remains** — all 13 tests are active (the un-ignore landed in `79e0257`; per-chapter split under `framework_magic_contract/`). The `#[ignore = "pending M_n"]` mechanism is retained for *future* bullets whose milestone has not yet landed (see the "How to add C14" recipe); the meta-test counts ignored tests too, so the historical doc-vs-code drift the cross-cutting (non-milestone-prefixed) file-naming convention guards against still cannot regress — see [test-scaffolding.md](framework-magic/test-scaffolding.md) §1.
 
 ## How this contract evolves
 

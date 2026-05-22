@@ -75,19 +75,19 @@ pub use trigger::{AccountId, CompileTrigger, InvalidateReason, RelayAuthState, S
 pub use unknown_ids::UnknownIds;
 pub use wire::{plan_diff, WireFrame};
 
-/// Post-compile plan-mutation hook (M4 negentropy coverage gate).
+/// Post-compile plan-mutation hook (negentropy coverage gate seam).
 ///
-/// The lifecycle owns the *seam* into which `nmp-nip77`'s
-/// `apply_coverage_filter` is installed by the actor at startup. The hook runs
-/// between `compile()` and `plan_diff()` — i.e. after the M2 compiler
-/// produces the plan but before the wire-emitter diffs against the prior
-/// plan. The hook is free to drop sub-shapes, bump `since`, or otherwise
-/// rewrite the plan; any sub-shape whose `shape` is mutated MUST call
-/// [`crate::planner::SubShape::recompute_hash`] (see the M4 codex review's P1
-/// finding in `docs/perf/codex-reviews/076173d.md`).
+/// The lifecycle owns a *seam* into which an external coverage-gate policy
+/// (e.g. a shell's `apply_coverage_filter` closure) can be installed by the
+/// actor at startup. The hook runs between `compile()` and `plan_diff()` —
+/// i.e. after the M2 compiler produces the plan but before the wire-emitter
+/// diffs against the prior plan. The hook is free to drop sub-shapes, bump
+/// `since`, or otherwise rewrite the plan; any sub-shape whose `shape` is
+/// mutated MUST call [`crate::planner::SubShape::recompute_hash`] (see the
+/// M4 codex review's P1 finding in `docs/perf/codex-reviews/076173d.md`).
 ///
-/// Direction: `nmp-core` defines the seam, `nmp-nip77` installs the policy —
-/// keeping coverage-gate / NIP-77 vocabulary out of `nmp-core` per D0
+/// Direction: `nmp-core` defines the seam; the host shell installs the policy
+/// — keeping coverage-gate / NIP-77 vocabulary out of `nmp-core` per D0
 /// ("kernel never grows app nouns").
 ///
 // TODO(D2): `coverage_hook` is NEVER installed in the production kernel.
@@ -96,23 +96,20 @@ pub use wire::{plan_diff, WireFrame};
 // (`crates/nmp-core/src/kernel/mod.rs:535`): it constructs the
 // `SubscriptionLifecycle` and calls `set_watermark_fn`, but it never calls
 // `SubscriptionLifecycle::set_coverage_hook`. Neither `actor::run_actor` nor
-// the `nmp-core/src/ffi` app surface installs it either. The only real wiring
-// of `nmp_nip77::apply_coverage_filter` lives in
-// `nmp-testing/tests/framework_magic_c10.rs` (a test).
+// the `nmp-core/src/ffi` app surface installs it either.
 //
 // Consequence: the shipping kernel does NOT enforce D2 ("negentropy before
 // REQ") — every plan flows straight to a raw REQ. D2 is therefore
 // CONVENTION-ONLY, not a type-system or assembly invariant.
 //
-// This cannot be fixed structurally from inside `nmp-core`: the hook policy
-// lives in `nmp-nip77`, which already depends on `nmp-core`, so a
-// `nmp-core → nmp-nip77` dep is both a D0 app-noun leak AND a dependency
-// cycle. Enforcing D2 structurally requires a HIGHER-LEVEL assembly crate
-// that can depend on both `nmp-core` and `nmp-nip77` and installs the hook at
-// kernel-construction time. No such crate currently exists. (The sibling
-// `set_watermark_fn` seam is store-backed and lives entirely inside
-// `nmp-core`, so T129 IS wired in `Kernel::with_publish_store` — only this
-// coverage hook remains unwired.)
+// This cannot be fixed structurally from inside `nmp-core`: any coverage-gate
+// policy must depend on `nmp-core`, so a `nmp-core → policy-crate` dep is
+// both a D0 app-noun leak AND a dependency cycle. Enforcing D2 structurally
+// requires a HIGHER-LEVEL assembly crate that can depend on both `nmp-core`
+// and the policy crate and installs the hook at kernel-construction time.
+// (The sibling `set_watermark_fn` seam is store-backed and lives entirely
+// inside `nmp-core`, so T129 IS wired in `Kernel::with_publish_store` — only
+// this coverage hook remains unwired.)
 //
 // Open tracking item: the `#[ignore]`d sentinel test
 // `subs::coverage_hook_tests::d2_production_kernel_installs_coverage_hook`.

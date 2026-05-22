@@ -65,14 +65,14 @@ impl Kernel {
     }
 
     /// T112 — update the NIP-77 probe state for a relay lane. Called by the
-    /// actor/observer layer when the `nmp-nip77` capability probe transitions
-    /// (`ProbeState::Unknown → Probing → Supported/Unsupported`).  The string
-    /// key must match a `ProbeState` variant name in snake_case:
+    /// actor/observer layer when the shell's NIP-77 capability probe
+    /// transitions (`Unknown → Probing → Supported/Unsupported`). The string
+    /// key must match a probe-state variant name in snake_case:
     /// `"unknown"`, `"probing"`, `"supported"`, or `"unsupported"`.
     ///
-    /// `nmp-core` does not import `nmp-nip77` (D0 — cycle would form); the
-    /// caller owns the translation from `ProbeState` to the key string.
-    #[allow(dead_code)] // Wired in by actor observer once nmp-nip77 CapabilityCache is plumbed
+    /// `nmp-core` does not name any shell-side probe types (D0); the caller
+    /// owns the translation from its probe-state enum to the key string.
+    #[allow(dead_code)] // Wired in by actor observer once the shell's CapabilityCache is plumbed
     pub(crate) fn set_nip77_probe_state(&mut self, role: RelayRole, state_key: &str) {
         self.relay_mut(role).nip77_probe_state = state_key.to_string();
     }

@@ -413,7 +413,6 @@ fn protocol_crates_are_doctrine_clean() {
         "nmp-nip42",
         "nmp-nip57",
         "nmp-nip59",
-        "nmp-nip77",
     ];
     let mut args: Vec<String> = vec!["--crate".into(), "nmp-core".into()];
     for c in &nip_crates {

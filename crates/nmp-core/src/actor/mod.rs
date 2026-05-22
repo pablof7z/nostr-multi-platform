@@ -440,10 +440,11 @@ pub enum ActorCommand {
     /// kernel's [`crate::kernel::LifecyclePhase`] state and, on a
     /// meaningful transition (`Background → Foreground`, `Foreground →
     /// Background`, or first phase after boot), fires the registered
-    /// lifecycle observer. The observer is what fans the trigger out to
-    /// `nmp_nip77::TriggerEngine` for `TriggerEvent::Foreground`; nmp-core
-    /// itself does not name nip77 (D0). Idempotent: rapid scene oscillation
-    /// debounces to a single observer call per transition.
+    /// lifecycle observer. The observer is what fans the transition out to
+    /// the shell's sync-trigger engine (typically on a foreground
+    /// transition); nmp-core itself does not name any shell vocabulary (D0).
+    /// Idempotent: rapid scene oscillation debounces to a single observer
+    /// call per transition.
     LifecycleEvent(LifecyclePhase),
     /// PR-G — host acknowledgement of a `correlation_id` in the
     /// `action_stages` snapshot mirror. The actor folds the ack into the
