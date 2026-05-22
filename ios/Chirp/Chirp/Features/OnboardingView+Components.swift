@@ -87,6 +87,8 @@ extension OnboardingView {
                     .accessibilityIdentifier("onboarding-display-name-field")
 
                 Button {
+                    guard !isCreatingAccount else { return }
+                    isCreatingAccount = true
                     let name = displayName.trimmingCharacters(in: .whitespaces)
                     let profile: [String: String] = name.isEmpty ? ["name": "Anonymous"] : ["name": name]
                     model.createAccount(profile: profile)
@@ -97,7 +99,7 @@ extension OnboardingView {
                         .padding(.vertical, 16)
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(false) // always enabled, empty name → "Anonymous"
+                .disabled(isCreatingAccount)
                 .accessibilityIdentifier("onboarding-submit-create-account-button")
             }
             .padding(.horizontal, ChirpSpace.l)

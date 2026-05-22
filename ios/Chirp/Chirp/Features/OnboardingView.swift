@@ -13,6 +13,7 @@ struct OnboardingView: View {
 
     // -- Create --
     @State var displayName = ""
+    @State var isCreatingAccount = false
     @FocusState var nameFieldFocused: Bool
 
     // -- Sign-in: nsec --

@@ -427,6 +427,20 @@ pub struct NmpApp {
     /// D14: `Mutex<HashMap<…>>` is NOT the banned `Arc<Mutex<Vec<…>>>` shape
     /// — same reasoning as `inflight_bolt11` above.
     inflight_dispatches: Mutex<std::collections::HashMap<u64, (std::time::Instant, String)>>,
+    /// Idempotency guard for `nmp_app_create_new_account` (identity.rs).
+    ///
+    /// `nmp_app_create_new_account` bypasses `inflight_dispatches` (which
+    /// covers `dispatch_action` only) and sends `ActorCommand::CreateAccount`
+    /// directly. Without a guard, two rapid taps on the iOS "Create account"
+    /// button mint two distinct keypairs — the second overwrites the first and
+    /// the user loses the original nsec with no diagnostic signal.
+    ///
+    /// This slot holds the `Instant` of the last accepted dispatch. A
+    /// re-call within 30 s (matching `INFLIGHT_DISPATCH_TTL`) is a no-op.
+    /// After the TTL a legitimate retry (e.g. creation silently failed) is
+    /// allowed through. No actor coupling required: the guard lives entirely
+    /// in the FFI layer, same posture as `inflight_dispatches`.
+    pub(crate) creating_account_inflight: Mutex<Option<std::time::Instant>>,
 }
 
 impl Drop for NmpApp {
@@ -679,6 +693,10 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // by `ffi::action::dispatch_action_json` on each accepted dispatch,
         // swept on TTL expiry (no cross-thread coupling).
         inflight_dispatches: Mutex::new(std::collections::HashMap::new()),
+        // create_account idempotency guard: None until first call; set to
+        // `Some(Instant::now())` by `nmp_app_create_new_account` and
+        // re-admits after 30 s (same TTL as `inflight_dispatches`).
+        creating_account_inflight: Mutex::new(None),
     };
 
     // D0 — first internal consumer of the snapshot-projection seam: register
