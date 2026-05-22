@@ -53,3 +53,26 @@ pub use view::{
 // point were both deleted because no kernel-side registry ever drove them.
 // The live extension path is `KernelEventObserver` — see `nmp_core::substrate`
 // module docs.
+
+#[cfg(test)]
+mod namespace_conformance {
+    use nmp_nip01::RelationCountInterest;
+
+    use crate::{ReactionSummaryView, RepostsView};
+
+    #[test]
+    fn reaction_interest_namespace_matches_reaction_summary_view() {
+        assert_eq!(
+            RelationCountInterest::reactions("x").namespace,
+            ReactionSummaryView::NAMESPACE,
+        );
+    }
+
+    #[test]
+    fn repost_interest_namespace_matches_reposts_view() {
+        assert_eq!(
+            RelationCountInterest::reposts("x").namespace,
+            RepostsView::NAMESPACE,
+        );
+    }
+}
