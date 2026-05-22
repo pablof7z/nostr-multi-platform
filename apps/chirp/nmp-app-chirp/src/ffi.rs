@@ -46,6 +46,7 @@ use nmp_nip29::action::{
     PostChatMessageAction, ReactInGroupAction,
 };
 use nmp_nip17::{PublishDmRelayListAction, SendDmAction};
+use nmp_nip57::ZapAction;
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
 use nmp_threading::ModulePolicy;
@@ -148,6 +149,14 @@ pub extern "C" fn nmp_app_chirp_register(
     //
     // SAFETY: same exclusive-borrow rationale as `register_chirp_actions`.
     register_nip17_actions(unsafe { &mut *app });
+
+    // Register the NIP-57 zap `ActionModule` (`nmp.nip57.zap`) against the
+    // kernel. The executor records the zap intent as an observable stub while
+    // `HttpCapability` (ADR-0024) is built out; see `nmp-nip57/src/action.rs`
+    // for the upgrade path. D0-clean: `nmp-core` gains no zap nouns.
+    //
+    // SAFETY: same exclusive-borrow rationale as `register_chirp_actions`.
+    register_nip57_actions(unsafe { &mut *app });
 
     // SAFETY: caller guarantees `app` is a valid pointer allocated by
     // `nmp_app_new` for the duration of this call. We do not hold the
@@ -612,6 +621,25 @@ fn register_nip29_actions(app: &mut NmpApp) {
 fn register_nip17_actions(app: &mut NmpApp) {
     app.register_action::<SendDmAction>();
     app.register_action::<PublishDmRelayListAction>();
+}
+
+/// Register the NIP-57 zap action namespace (`nmp.nip57.zap`) against `app`'s
+/// action registry.
+///
+/// Wires the typed [`ZapAction`] from the `nmp-nip57` protocol crate through
+/// the same host-extensibility seam as the NIP-29 and NIP-17 actions. The
+/// executor is a validated intent stub: `start` checks the input shape (non-
+/// empty recipient, non-zero amount, at least one relay) and `execute` records
+/// the intent via `ShowToast`. The LNURL HTTP fetch + bolt11 payment are
+/// deferred to `HttpCapability` (ADR-0024); see `nmp-nip57/src/action.rs` for
+/// the upgrade path.
+///
+/// JSON schema (the third arg the host passes to `nmp_app_dispatch_action`):
+/// * `nmp.nip57.zap` — `{"recipient_pubkey":"<hex>","amount_msats":21000,"relays":["wss://..."],"target_event_id":"<hex>"?,"comment":"…"?}`
+///
+/// D0-clean: `nmp-core` gains no NIP-57 / zap nouns.
+fn register_nip57_actions(app: &mut NmpApp) {
+    app.register_action::<ZapAction>();
 }
 
 /// `chirp.react` action body: `{"target_event_id":"<hex>","reaction":"+"}`.
