@@ -11,14 +11,11 @@
 //!   authoritative payment amount.
 //! - **ZapsView** — reactive aggregate (total msats, zappers) keyed by a
 //!   zapped event id.
-//! - **Reverse-index domain** — `(zapped_event_id → receipt_ids)`; see
-//!   [`domain`].
 
 pub mod action;
 pub mod bolt11;
 pub mod build;
 pub mod decode;
-pub mod domain;
 pub mod kinds;
 pub mod projection;
 pub mod view;
@@ -26,7 +23,6 @@ pub mod view;
 pub use action::{ZapAction, ZapInput};
 pub use build::{ZapRequest, ZapRequestBuildError, ZapRequestBuilder};
 pub use decode::{try_from_event, try_from_kernel_event, ZapReceiptRecord};
-pub use domain::{decode_and_route, list_by_target, NAMESPACE};
 pub use kinds::{KIND_ZAP_RECEIPT, KIND_ZAP_REQUEST};
 pub use projection::{ZapCount, ZapsAggregateProjection, ZapsAggregateSnapshot};
 pub use view::{ZapEntry, ZapsDelta, ZapsPayload, ZapsSpec, ZapsState, ZapsView};

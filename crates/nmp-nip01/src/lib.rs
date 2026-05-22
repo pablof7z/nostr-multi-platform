@@ -18,12 +18,9 @@
 //!   (parent/child tree with out-of-order arrival buffering).
 //! - [`meta_timeline`] — `Nip10ModularTimelineView` (Twitter-style
 //!   stacked-modules timeline; wraps `nmp_threading::Grouper`).
-//! - [`domain`] — the `nmp.nip01.replies` namespace; a parent-id-keyed
-//!   reverse index of reply event ids.
 
 pub mod build;
 pub mod decode;
-pub mod domain;
 pub mod kinds;
 pub mod meta_timeline;
 mod note_relations;
@@ -33,7 +30,6 @@ pub mod view;
 
 pub use build::{Note, NoteBuildError, NoteBuilder};
 pub use decode::{try_from_event, try_from_kernel_event, NoteRecord};
-pub use domain::{decode_and_route, list_by_parent, NAMESPACE};
 pub use kinds::KIND_SHORT_NOTE;
 pub use meta_timeline::{
     ModularTimelineDelta, ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState,
