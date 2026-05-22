@@ -390,15 +390,31 @@ pub enum ActorCommand {
     React {
         target_event_id: String,
         reaction: String,
+        /// Registry-minted action id when this React originates from
+        /// `nmp_app_dispatch_action` (`chirp.react`). The publish engine
+        /// reports the verdict under this id (via
+        /// `publish_signed_with_correlation`) so the host spinner keyed on
+        /// the dispatch return value can be cleared. Sign-step early exits
+        /// also use it to record a `Failed` terminal via
+        /// `record_action_failure`. Non-dispatch callers pass `None`.
+        correlation_id: Option<String>,
     },
     /// T66a publish — append `pubkey` to the active account's kind:3 follow
     /// set and re-publish it.
     Follow {
         pubkey: String,
+        /// Registry-minted action id when this Follow originates from
+        /// `nmp_app_dispatch_action` (`chirp.follow`). See `React` for the
+        /// spinner round-trip contract.
+        correlation_id: Option<String>,
     },
     /// T66a publish — remove `pubkey` from the kind:3 follow set.
     Unfollow {
         pubkey: String,
+        /// Registry-minted action id when this Unfollow originates from
+        /// `nmp_app_dispatch_action` (`chirp.unfollow`). See `React` for the
+        /// spinner round-trip contract.
+        correlation_id: Option<String>,
     },
     /// T66a relay edit — add a relay row (role: `read` | `write` | `both`).
     AddRelay {

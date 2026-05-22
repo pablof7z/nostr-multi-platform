@@ -456,26 +456,46 @@ pub(super) fn dispatch_command(
         ActorCommand::React {
             target_event_id,
             reaction,
+            correlation_id,
         } => {
             let outbound = commands::react(
                 ctx.identity,
                 ctx.kernel,
                 &target_event_id,
                 &reaction,
+                correlation_id,
                 ctx.pending_signs,
             );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::Follow { pubkey } => {
-            let outbound =
-                commands::follow(ctx.identity, ctx.kernel, &pubkey, true, ctx.pending_signs);
+        ActorCommand::Follow {
+            pubkey,
+            correlation_id,
+        } => {
+            let outbound = commands::follow(
+                ctx.identity,
+                ctx.kernel,
+                &pubkey,
+                true,
+                correlation_id,
+                ctx.pending_signs,
+            );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::Unfollow { pubkey } => {
-            let outbound =
-                commands::follow(ctx.identity, ctx.kernel, &pubkey, false, ctx.pending_signs);
+        ActorCommand::Unfollow {
+            pubkey,
+            correlation_id,
+        } => {
+            let outbound = commands::follow(
+                ctx.identity,
+                ctx.kernel,
+                &pubkey,
+                false,
+                correlation_id,
+                ctx.pending_signs,
+            );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
