@@ -332,35 +332,6 @@ impl super::Kernel {
         &self.relay_edit_rows
     }
 
-    /// Typed getter for the indexer-relay URL set. Derived from the
-    /// kernel-owned `relay_edit_rows` source-of-truth on each call (cold
-    /// path — only the snapshot builder reads this once per tick).
-    ///
-    /// Returns an owned `Vec<String>` rather than a borrow because the
-    /// derivation allocates anyway and the snapshot builder serializes a
-    /// value the kernel will not mutate further this tick.
-    pub(crate) fn indexer_relays(&self) -> Vec<String> {
-        self.relay_edit_rows
-            .iter()
-            .filter(|r| crate::actor::has_role(&r.role, "indexer"))
-            .map(|r| r.url.clone())
-            .collect()
-    }
-
-    /// Typed getter for the local write-relay URL set. Same shape as
-    /// [`Self::indexer_relays`] above: derived from `relay_edit_rows` and
-    /// returned owned. The publish resolver reads this through the shared
-    /// `local_write_relays_handle` slot rather than via this getter (the
-    /// resolver lives one Arc-hop deeper than the kernel); this getter
-    /// exists so the projection builder has a single, kernel-blessed
-    /// definition of "write relay URLs from the edit projection".
-    pub(crate) fn write_relays(&self) -> Vec<String> {
-        self.relay_edit_rows
-            .iter()
-            .filter(|r| crate::actor::has_role(&r.role, "write"))
-            .map(|r| r.url.clone())
-            .collect()
-    }
 }
 
 #[cfg(test)]

@@ -57,12 +57,10 @@ use super::identity_state::RelayEditRow;
 /// and the local-write-relay set that the publish resolver reads on every
 /// publish.
 ///
-/// `Serialize` so the kernel can append the slot contents under the
-/// `relays.indexer_set` / `relays.write_set` keys in `KernelSnapshot::projections`
-/// without an intermediate `Vec<String>` copy. `#[serde(transparent)]` so the
-/// wrapper is invisible on the wire — consumers decode the projection value
-/// as a plain JSON array of strings, exactly as the bare `Vec<String>` would
-/// have serialized before the typed-slot refactor.
+/// `Serialize` so the relay slot contents can be forwarded to the outbox
+/// resolver without an intermediate `Vec<String>` copy. `#[serde(transparent)]`
+/// so the wrapper is invisible on the wire — any future consumer decodes the
+/// value as a plain JSON array of strings.
 ///
 /// The tuple field is **private** (not `pub(crate)`) so even modules
 /// inside `nmp-core` cannot mutate the inner `Vec` directly through `.0`.
