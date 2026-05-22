@@ -438,10 +438,23 @@ pub enum ActorCommand {
     WalletDisconnect,
     /// NIP-47 pay invoice — sign and send a `pay_invoice` kind:23194 request.
     /// D0: gated behind the `wallet` feature — NIP-47 NWC is an app noun.
+    ///
+    /// `correlation_id` is the registry-minted action id when this command
+    /// originates from `nmp_app_dispatch_action` (a future `nmp.zap`
+    /// ActionModule executor — the C-ABI `nmp_app_wallet_pay_invoice` symbol
+    /// that the iOS shell calls today passes `None`). The wallet runtime
+    /// stores `event_id → correlation_id` in its per-connection
+    /// `pending_payments` map when the kind:23194 request is built, then
+    /// drains it in `handle_nwc_text` on the matching kind:23195 response
+    /// and routes the outcome to [`Kernel::record_action_success`] (preimage
+    /// returned) or [`Kernel::record_action_failure`] (`error` object) so
+    /// the host spinner keyed on the dispatch return value can be cleared.
+    /// `None` is a no-op on the response side — nothing is waiting on an id.
     #[cfg(feature = "wallet")]
     WalletPayInvoice {
         bolt11: String,
         amount_msats: Option<u64>,
+        correlation_id: Option<String>,
     },
     /// T118 / G3 — app lifecycle phase transition reported by the host shell
     /// (or any conforming consumer). The actor folds the phase into the

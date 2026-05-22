@@ -9,7 +9,9 @@
 //! The actor wallet runtime (`actor/commands/wallet.rs`) uses:
 //! - [`parse::NwcUri`] to parse a `nostr+walletconnect://` URI
 //! - [`build`] functions to build NIP-44 encrypted event content
-//! - [`decode::try_decode_relay_message_with_id`] to decode kind:23195 responses
+//! - [`decode::try_decode_response_for_request`] to decode kind:23195
+//!   responses and correlate them back to the originating kind:23194 request
+//!   id (via the NIP-47 §3.2 `e` tag)
 //! - [`crypto::client_pubkey_hex`] to derive the client pubkey from the secret
 
 pub mod build;
