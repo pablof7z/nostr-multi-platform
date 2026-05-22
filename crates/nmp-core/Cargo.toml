@@ -36,6 +36,13 @@ android-ffi = []
 [dependencies]
 bech32 = "0.11"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# Insertion-ordered hash map. Powers `substrate::bounded::BoundedMessageMap` —
+# the cap-and-evict-oldest primitive every long-lived per-projection message
+# store now backs onto so memory and per-tick snapshot serialisation are
+# bounded regardless of session length. Version pinned to match the
+# transitively-resolved `indexmap 2.14` already in the lockfile (no new
+# dependency tree branch).
+indexmap = "2.14"
 nmp-nip42-types = { path = "../nmp-nip42-types" }
 # NIP-59 gift-wrap free functions (`gift_wrap` / `unwrap_gift_wrap`). Consumed
 # by the `ActorCommand::SendGiftWrappedDm` arm to seal+wrap NIP-17 DM rumors on

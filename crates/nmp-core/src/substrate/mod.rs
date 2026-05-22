@@ -39,6 +39,7 @@
 //! - a per-app crate registering an observer: `nmp-app-chirp/src/ffi.rs`
 
 mod action;
+mod bounded;
 mod capability;
 mod domain;
 mod identity;
@@ -49,6 +50,7 @@ mod view;
 pub use action::{
     ActionContext, ActionId, ActionModule, ActionRejection, ActionResult,
 };
+pub use bounded::{BoundedMessageMap, MAX_PROJECTION_MESSAGES};
 pub use capability::{CapabilityEnvelope, CapabilityModule, CapabilityRequest};
 pub use domain::{DomainMigration, MigrationTx};
 pub use identity::{SignedEvent, SigningError, UnsignedEvent};
