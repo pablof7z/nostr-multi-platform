@@ -12,11 +12,10 @@
 //! - 444 — Welcome rumor, wrapped in NIP-59 kind:1059 (`MarmotWelcome`).
 //! - 445 — group message / commit / proposal (`MarmotGroup` + `MarmotMessage`).
 //!
-//! `ingest_kinds()` is intentionally left default-empty: inbound Marmot
-//! events require MLS decryption via the service before they become records,
-//! so the kernel does not raw-dispatch these kinds into a domain decoder
-//! (unlike NIP-29's cleartext events). The records are materialised by the
-//! service after `process_message` / `process_welcome`.
+//! Marmot's domain records are materialised by the service after
+//! `process_message` / `process_welcome` — inbound events require MLS
+//! decryption before they become records, so there is no per-event
+//! ingest dispatch into a Marmot decoder (unlike NIP-29's cleartext events).
 
 pub(crate) mod records;
 

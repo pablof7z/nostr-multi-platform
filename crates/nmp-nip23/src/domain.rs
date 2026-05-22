@@ -1,12 +1,10 @@
 //! `ArticlesDomain` — `DomainModule` registration for kind:30023.
 //!
 //! Per `docs/design/kind-wrappers.md` §3.3 + §6: the kernel does not know
-//! `kind 30023 == article` (D0). On ingest, the kernel's dispatch table (Phase
-//! 1 §8) will read `ArticlesDomain::ingest_kinds()` and call `decode_and_route`
-//! to write the decoded `ArticleRecord` to the domain store
-//! `nmp.nip23.articles`. Until the kernel dispatch table lands, the
-//! `decode_and_route` free function is callable directly — exercised by the
-//! integration tests to prove the contract end-to-end.
+//! `kind 30023 == article` (D0). The `decode_and_route` free function is the
+//! per-event ingest entry point — callers (apps or `KernelEventObserver`
+//! impls) dispatch kind:30023 events to it to write the decoded
+//! `ArticleRecord` into the `nmp.nip23.articles` domain store.
 //!
 //! Per PD-008: decoded records are cached in the domain store **at ingest
 //! time** (not on-demand). Reads query the store directly via the reverse
@@ -16,14 +14,9 @@ use nmp_core::store::{DomainHandle, StoreError, StoredEvent};
 use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 
 use crate::decode::{try_from_event, ArticleRecord};
-use crate::kinds::KIND_LONG_FORM_ARTICLE;
 
 /// Domain-store namespace per the task brief: `nmp.nip23.articles`.
 pub const NAMESPACE: &str = "nmp.nip23.articles";
-
-/// Static slice the trait method returns — `&'static [u32]` cannot be built
-/// from a const expression inline without this binding.
-const INGEST_KINDS: &[u32] = &[KIND_LONG_FORM_ARTICLE];
 
 /// `DomainModule` impl for NIP-23 articles.
 pub struct ArticlesDomain;
@@ -31,10 +24,6 @@ pub struct ArticlesDomain;
 impl DomainModule for ArticlesDomain {
     const NAMESPACE: &'static str = NAMESPACE;
     const SCHEMA_VERSION: u32 = 1;
-
-    fn ingest_kinds() -> &'static [u32] {
-        INGEST_KINDS
-    }
 
     fn migrations() -> Vec<DomainMigration> {
         Vec::new()
@@ -215,11 +204,7 @@ fn sort_by_published_desc(records: &mut [ArticleRecord]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn module_ingest_kinds_returns_30023_only() {
-        assert_eq!(ArticlesDomain::ingest_kinds(), &[KIND_LONG_FORM_ARTICLE]);
-    }
+    use crate::kinds::KIND_LONG_FORM_ARTICLE;
 
     #[test]
     fn keys_primary_disambiguates_authors_with_same_d_tag() {

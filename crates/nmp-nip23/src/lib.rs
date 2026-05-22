@@ -21,15 +21,13 @@
 //!   (Phase 1 — see §6 in the design doc).
 //! - [`view`] — `ArticleListView` + `ArticleDetailView`.
 //!
-//! ## Phase-1 ingest dispatch gap
+//! ## Ingest dispatch
 //!
 //! Per `docs/design/kind-wrappers.md` §6 + §8 + PD-008, decoded records are
-//! cached in the domain store **at ingest time** — `ArticlesDomain` declares
-//! `ingest_kinds() = &[30023]` and the kernel dispatch table calls
-//! `decode_and_route` per insert. The kernel-side dispatch table itself is a
-//! separate Phase 1 deliverable; `decode_and_route` is callable directly today
-//! and is exercised by the integration tests, so apps can wire ingest manually
-//! until the kernel routing lands.
+//! cached in the domain store **at ingest time**. Callers (apps or
+//! `KernelEventObserver` impls) dispatch kind:30023 events to
+//! `decode_and_route`, which writes the decoded `ArticleRecord` under the
+//! composite reverse indexes (`by_author` / `by_d_tag(author, d_tag)`).
 
 pub mod build;
 pub mod decode;

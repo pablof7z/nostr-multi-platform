@@ -1,21 +1,18 @@
 //! `RepliesDomain` — `DomainModule` registration for kind:1 with a non-empty
 //! NIP-10 reply marker. Skips notes that are thread roots (no reply pointer).
 //!
-//! On ingest (Phase 1 dispatch table — see kind-wrappers.md §6), the kernel
-//! calls `decode_and_route` per delivered kind:1 event; we write a single
-//! reverse-index entry under the parent event id so the read path can
-//! enumerate direct replies without re-scanning the event store.
+//! Per `docs/design/kind-wrappers.md` §6, callers (apps or
+//! `KernelEventObserver` impls) dispatch kind:1 events to `decode_and_route`;
+//! we write a single reverse-index entry under the parent event id so the
+//! read path can enumerate direct replies without re-scanning the event store.
 
 use nmp_core::store::{DomainHandle, StoreError, StoredEvent};
 use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 
 use crate::decode::try_from_event;
-use crate::kinds::KIND_SHORT_NOTE;
 
 /// Domain-store namespace.
 pub const NAMESPACE: &str = "nmp.nip01.replies";
-
-const INGEST_KINDS: &[u32] = &[KIND_SHORT_NOTE];
 
 /// `DomainModule` impl for NIP-01 kind-1 replies.
 pub struct RepliesDomain;
@@ -23,10 +20,6 @@ pub struct RepliesDomain;
 impl DomainModule for RepliesDomain {
     const NAMESPACE: &'static str = "nmp.nip01.replies";
     const SCHEMA_VERSION: u32 = 1;
-
-    fn ingest_kinds() -> &'static [u32] {
-        INGEST_KINDS
-    }
 
     fn migrations() -> Vec<DomainMigration> {
         Vec::new()
@@ -106,11 +99,6 @@ mod tests {
     #[test]
     fn module_namespace_matches_constant() {
         assert_eq!(<RepliesDomain as DomainModule>::NAMESPACE, NAMESPACE);
-    }
-
-    #[test]
-    fn module_ingest_kinds_returns_kind_1_only() {
-        assert_eq!(RepliesDomain::ingest_kinds(), &[KIND_SHORT_NOTE]);
     }
 
     #[test]

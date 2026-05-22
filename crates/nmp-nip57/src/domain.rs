@@ -5,21 +5,14 @@ use nmp_core::store::{DomainHandle, StoreError, StoredEvent};
 use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 
 use crate::decode::try_from_event;
-use crate::kinds::KIND_ZAP_RECEIPT;
 
 pub const NAMESPACE: &str = "nmp.nip57.zaps";
-
-const INGEST_KINDS: &[u32] = &[KIND_ZAP_RECEIPT];
 
 pub struct ZapsDomain;
 
 impl DomainModule for ZapsDomain {
     const NAMESPACE: &'static str = NAMESPACE;
     const SCHEMA_VERSION: u32 = 1;
-
-    fn ingest_kinds() -> &'static [u32] {
-        INGEST_KINDS
-    }
 
     fn migrations() -> Vec<DomainMigration> {
         Vec::new()
@@ -86,11 +79,6 @@ pub fn list_by_target(handle: &DomainHandle, target_id: &str) -> Result<Vec<Stri
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn module_ingest_kinds_returns_9735_only() {
-        assert_eq!(ZapsDomain::ingest_kinds(), &[KIND_ZAP_RECEIPT]);
-    }
 
     #[test]
     fn key_distinct_targets_do_not_alias() {

@@ -24,7 +24,6 @@ pub const KIND_REPOST: u32 = 6;
 /// the stringified original kind.
 pub const KIND_GENERIC_REPOST: u32 = 16;
 
-/// The complete set of kinds this crate decodes / ingests. Order is the
-/// canonical `[7, 6, 16]` the task brief and the `DomainModule::ingest_kinds`
-/// contract use.
+/// The complete set of kinds this crate decodes / ingests, in canonical
+/// `[7, 6, 16]` order.
 pub const REACTION_KINDS: &[u32] = &[KIND_REACTION, KIND_REPOST, KIND_GENERIC_REPOST];
