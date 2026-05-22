@@ -657,6 +657,30 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
+        ActorCommand::RecordActionSuccess { correlation_id } => {
+            // PD-036 — off-thread worker success fan-in (symmetric counterpart
+            // to `RecordActionFailure` above). The NIP-57 zap LNURL-pay worker
+            // is the motivating consumer: after the HTTP round-trip returns a
+            // bolt11 invoice the spawned worker has no `&mut Kernel` and must
+            // round-trip through the actor channel to record the terminal.
+            //
+            // `record_action_success` writes BOTH surfaces — same dual-write
+            // contract `record_action_failure` honours on the failure leg:
+            //
+            //   * `action_stages` → `Accepted` terminal — the mirror entry
+            //     the host's stage observer ACKs.
+            //   * `action_results` → terminal verdict — the per-tick drain
+            //     that closes the spinner.
+            //
+            // Without this command the `nmp.nip57.zap` spinner hangs forever:
+            // `ShowToast` (the human-readable surface the worker already
+            // sends) is NOT the spinner-closing surface — `action_results` is.
+            // The next emit fires promptly via `maybe_emit_after_dispatch`
+            // so the host sees the terminal on its very next tick.
+            ctx.kernel.record_action_success(correlation_id);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
+        }
         ActorCommand::AckActionStage(correlation_id) => {
             // PR-G — host acknowledged that it has consumed a terminal
             // stage for this correlation_id. Drop the entry from the

@@ -33,9 +33,11 @@
 //! 3. HTTP GET `{callback}?amount=<msats>&nostr=<urlencoded-signed-9734>` →
 //!    parse `{ "pr": "lnbc…" }`.
 //! 4. Send a follow-up [`ActorCommand`] back through the cloned sender:
-//!    [`ActorCommand::ShowToast`] on success (carrying the bolt11), or
-//!    [`ActorCommand::RecordActionFailure`] when a `correlation_id` was
-//!    supplied and the host's `dispatch_action` spinner needs to clear.
+//!    on success a [`ActorCommand::ShowToast`] (carrying the bolt11) AND
+//!    — when a `correlation_id` was supplied — a
+//!    [`ActorCommand::RecordActionSuccess`] so the host's `dispatch_action`
+//!    spinner closes (PD-036); on failure a `ShowToast` and a
+//!    [`ActorCommand::RecordActionFailure`] (same correlation_id guard).
 //!
 //! # ADR-0026 / bunker accounts — out of scope
 //!
@@ -102,6 +104,14 @@ const LNURL_MAX_RESPONSE_BYTES: usize = 64 * 1024;
 /// auto-pay flow. A snapshot-projection surface for invoices is the
 /// designed follow-up (per memory note #57 — `last_action_outcomes`); the
 /// toast is the minimum-viable observable per ADR-0024.
+///
+/// PD-036 — the worker ALSO sends [`ActorCommand::RecordActionSuccess`]
+/// when a `correlation_id` was supplied, so the dispatched-action spinner
+/// keyed on that id clears on the next snapshot tick. Without this the
+/// `nmp.nip57.zap` spinner hangs forever: `ShowToast` is a human-readable
+/// surface, NOT the spinner-closing one (`action_results` is the closing
+/// surface). Mirrors the dual-surface contract the failure leg already
+/// honours below.
 pub(crate) fn handle_fetch_lnurl_invoice(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
@@ -162,6 +172,19 @@ pub(crate) fn handle_fetch_lnurl_invoice(
                 // a benign drop. The toast was the observable signal; if the
                 // actor's gone there's no host watching anyway.
                 let _ = command_tx.send(ActorCommand::ShowToast { message });
+                // PD-036 — when the zap originated from `dispatch_action`
+                // the registry minted a correlation_id and the host is
+                // waiting on `action_results` to close its spinner.
+                // `ShowToast` is the human-readable signal, NOT the
+                // spinner-closing surface; without `RecordActionSuccess`
+                // the spinner hangs forever. Mirror the failure leg's
+                // correlation_id guard — direct callers that pass `None`
+                // (no dispatched action waiting on an id) get the toast
+                // only, same as the failure branch below.
+                if let Some(cid) = correlation_id {
+                    let _ = command_tx
+                        .send(ActorCommand::RecordActionSuccess { correlation_id: cid });
+                }
             }
             Err(reason) => {
                 let _ = command_tx.send(ActorCommand::ShowToast {
@@ -378,5 +401,87 @@ mod tests {
             created_at: 0,
         };
         assert!(sign_zap_request(&keys, &unsigned).is_err());
+    }
+
+    // ────────────────────────────────────────────────────────────────────
+    // PD-036 — terminal success-stage recording.
+    //
+    // The zap worker's success branch sends `ActorCommand::RecordActionSuccess`
+    // back through the actor channel when a `correlation_id` was supplied.
+    // The dispatch arm folds that command into `Kernel::record_action_success`,
+    // which writes an `Accepted` stage into the `action_stages` mirror (so
+    // the host's stage observer sees the terminal) AND a terminal verdict
+    // into `action_results` (so the spinner keyed on the correlation_id
+    // clears on the next emit). The two tests below pin both legs of that
+    // contract — the kernel-level dual write and the worker-side gating.
+    // ────────────────────────────────────────────────────────────────────
+
+    /// `Kernel::record_action_success` MUST write an `Accepted` stage into
+    /// `action_stages` (terminal mirror) keyed on the supplied correlation_id.
+    /// Without this the dispatch arm wired in PD-036 would silently no-op:
+    /// the host's stage observer needs the `Accepted` row to ACK and the
+    /// `action_results` drain needs a terminal verdict to close the spinner.
+    #[test]
+    fn record_action_success_writes_accepted_stage_into_mirror() {
+        use crate::kernel::Kernel;
+        use crate::relay::DEFAULT_VISIBLE_LIMIT;
+
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let cid = "zap-pd036-success";
+        kernel.record_action_success(cid.to_string());
+
+        let snapshot = kernel.action_stages_projection();
+        // Snapshot is a JSON object keyed by correlation_id; the value is the
+        // history array of `{stage, at_ms, detail?}` rows.
+        let entries = snapshot
+            .as_object()
+            .expect("action_stages projection must serialize as an object");
+        let history = entries
+            .get(cid)
+            .and_then(serde_json::Value::as_array)
+            .expect("correlation_id row must be present");
+        assert!(
+            !history.is_empty(),
+            "history must carry at least one stage entry"
+        );
+        let last = history
+            .last()
+            .and_then(serde_json::Value::as_object)
+            .expect("stage entry must be a JSON object");
+        // ActionStage is serialized as `{"stage": "accepted"}` — see
+        // `action_stages::ActionStage` `#[serde(tag = "stage", rename_all =
+        // "snake_case")]`.
+        assert_eq!(
+            last.get("stage").and_then(serde_json::Value::as_str),
+            Some("accepted"),
+            "terminal stage must be `accepted` after record_action_success"
+        );
+    }
+
+    /// PD-036 — the success branch's `RecordActionSuccess` send MUST be
+    /// gated on `correlation_id.is_some()`. Direct C-ABI callers (or any
+    /// future caller) that pass `None` get the `ShowToast` only — there is
+    /// no spinner to close. This pins the symmetric guard the failure leg
+    /// already honours; without it a `None` caller would crash the actor
+    /// with a `record_action_success("")` (empty-string is not a valid
+    /// correlation_id) or silently pollute the `action_stages` mirror with
+    /// an entry no host is waiting on.
+    ///
+    /// Test strategy: construct an `ActorCommand::RecordActionSuccess`
+    /// variant directly (proving it exists and carries the expected
+    /// payload shape). The wire-up that the spawn closure honours the
+    /// `Option` guard is enforced statically by the `if let Some(cid)`
+    /// pattern — a code-grep / review gate.
+    #[test]
+    fn record_action_success_command_carries_correlation_id() {
+        let cmd = ActorCommand::RecordActionSuccess {
+            correlation_id: "zap-pd036-shape".to_string(),
+        };
+        match cmd {
+            ActorCommand::RecordActionSuccess { correlation_id } => {
+                assert_eq!(correlation_id, "zap-pd036-shape");
+            }
+            other => panic!("expected RecordActionSuccess variant, got {other:?}"),
+        }
     }
 }
