@@ -132,6 +132,32 @@ one-shot channel. This is non-trivial broker work.
 
 **Deadline:** Stage 1 (visibility) must land before v1. Stages 2-3 are post-v1.
 
+### V-07 · Zap relay selection in Swift — D0 policy leak [HIGH · immediate fix]
+
+**Verified:** `ios/Chirp/Chirp/Bridge/KernelModel.swift:405-421` — the `zap()` call
+filters `relayEditRows` (the sender's own configured relays) to build the
+`relays` tag for the kind:9734 zap request. This is policy (which relays the LN
+provider should publish the kind:9735 receipt to), not rendering. A hardcoded
+fallback to `wss://relay.damus.io` + `wss://nos.lol` is also embedded in Swift.
+
+**D0 violation:** "if you would write an `if` statement in Swift that decides
+what the app should *do*, that logic belongs in Rust" (AGENTS.md §Architecture).
+
+**Correct fix:**
+- Make `ZapInput.relays` optional (`Option<Vec<String>>` or accept empty vec as
+  "auto-select from recipient's kind:10002").
+- In `handle_fetch_lnurl_invoice` (zap.rs), when relays is empty:
+  1. Look up recipient's mailbox in kernel's `author_relay_lists`.
+  2. Fall back to the actor's configured indexer/content relays.
+  3. Fall back to two compile-time defaults if nothing is available.
+- Remove relay-selection logic from `KernelModel.swift`; pass empty array.
+
+**Deadline:** before v1. This makes zap receipt routing correct: the kind:9734
+`relays` tag tells the LN provider where to broadcast the kind:9735 receipt — the
+correct answer is the RECIPIENT's write/both relays from their kind:10002 (so the
+receipt lands where the recipient listens). Using the sender's own relays is the
+wrong set and produces an under-informed zap flow.
+
 ---
 
 ## Section 2 — In Flight
