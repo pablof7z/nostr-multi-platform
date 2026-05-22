@@ -269,7 +269,18 @@ pub enum ActorCommand {
     ///
     /// Stepping stone toward per-protocol-crate `ActionModule` impls
     /// (`kind-wrappers.md` §8 Phase 1); deprecates kind-by-kind as those land.
-    PublishUnsignedEvent(crate::substrate::UnsignedEvent),
+    ///
+    /// `correlation_id` is the registry-minted action id when this command
+    /// originates from an `ActionModule::execute` call. Threading it lets the
+    /// publish engine report THAT id in `action_results` (via
+    /// `correlation_id_override`) so the host spinner closes on the id it
+    /// received from `dispatch_action`, not on the signed event's id.
+    /// `None` for callers that are not action-dispatched (e.g. direct
+    /// `NmpApp::` Rust API calls, conformance tests).
+    PublishUnsignedEvent {
+        event: crate::substrate::UnsignedEvent,
+        correlation_id: Option<String>,
+    },
     /// Publish an unsigned event to an explicit relay set, bypassing the
     /// NIP-65 outbox resolver. Used by action executors that target a
     /// specific relay pin (e.g. NIP-29 group relays). D4: only the actor

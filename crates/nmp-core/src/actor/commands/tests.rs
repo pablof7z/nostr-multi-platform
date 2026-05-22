@@ -395,7 +395,7 @@ fn publish_unsigned_event_without_account_toasts_and_no_outbound() {
         content: "body".into(),
         created_at: 0,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
     assert!(outbound.is_empty());
     assert!(kernel
         .last_error_toast_snapshot()
@@ -419,7 +419,7 @@ fn publish_unsigned_event_signs_and_publishes_arbitrary_kind() {
         content: "# body".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
     assert!(!outbound.is_empty());
     assert!(outbound[0].text.contains("\"kind\":30023"));
     assert!(outbound[0]
@@ -456,7 +456,7 @@ fn publish_unsigned_event_rejects_oversized_kind_with_toast() {
         content: "should not publish".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
     assert!(
         outbound.is_empty(),
         "oversized kind must produce no outbound frames"
@@ -487,7 +487,7 @@ fn publish_unsigned_event_valid_kind_publishes_normally() {
         content: "valid kind".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
     assert!(
         !outbound.is_empty(),
         "valid kind:1 must produce outbound frames"
@@ -510,7 +510,7 @@ fn publish_unsigned_event_rejects_malformed_tag_with_toast() {
         content: "tag test".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
     assert!(
         outbound.is_empty(),
         "malformed tag must produce no outbound frames"
@@ -544,7 +544,7 @@ fn publish_unsigned_event_valid_tags_pass_through() {
         content: "body".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
     assert!(!outbound.is_empty());
     assert_eq!(kernel.last_error_toast_snapshot(), None);
     assert!(outbound[0].text.contains("\"d\""));
@@ -1653,7 +1653,7 @@ fn profile_update_publishes_kind0_metadata_event() {
         content: r#"{"name":"marcus","display_name":"Marcus Webb"}"#.into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
     assert!(
         !outbound.is_empty(),
         "kind:0 update must produce an EVENT frame"
@@ -1685,7 +1685,7 @@ fn profile_update_without_account_toasts_and_no_outbound() {
         content: r#"{"display_name":"Nobody"}"#.into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, &mut Vec::new());
     assert!(
         outbound.is_empty(),
         "profile update with no active account must produce no outbound frames"

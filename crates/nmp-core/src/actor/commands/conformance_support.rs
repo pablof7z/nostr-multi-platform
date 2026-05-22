@@ -177,8 +177,16 @@ impl ConformanceHarness {
             content: content.to_string(),
             created_at: 1_700_000_000,
         };
-        let outbound =
-            publish_unsigned_event(&self.identity, &mut self.kernel, unsigned, &mut Vec::new());
+        // Conformance harness is non-dispatch — `None` keeps the engine's
+        // `correlation_id_override` `None`-fallback (the publish handle == event
+        // id is reported in `action_results`), preserving prior behaviour.
+        let outbound = publish_unsigned_event(
+            &self.identity,
+            &mut self.kernel,
+            unsigned,
+            None,
+            &mut Vec::new(),
+        );
         last_event_json(&outbound)
     }
 
