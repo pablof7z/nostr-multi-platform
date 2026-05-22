@@ -818,6 +818,16 @@ struct KernelUpdate: Decodable {
     /// `update.discoveredGroups` unchanged.
     var discoveredGroups: DiscoveredGroupsSnapshot? { projections?.discoveredGroups }
 
+    /// NIP-57 zap aggregate read model — `projections["nmp.nip57.zaps"]`.
+    /// Wired by `nmp_app_chirp_register` (PR #288), which constructs a
+    /// `ZapsAggregateProjection` and binds it as both a `KernelEventObserver`
+    /// (ingest of kind:9735 receipts) and the snapshot-projection closure for
+    /// this key. `nil` on a kernel build that predates the registration; an
+    /// empty `totals` map once registered but no receipts have arrived.
+    /// Computed so a future zap-count view binds to `update.zaps?.totals` the
+    /// same way the chat / DM consumers bind to their snapshots.
+    var zaps: ZapsAggregateSnapshot? { projections?.zaps }
+
     /// Diagnostics-screen read model — `projections["relay_diagnostics"]`
     /// (aim.md §4.5 / §6 anti-pattern #1 / §"Where do views live?" cleanup).
     /// One pre-rolled row per known relay URL with every aggregate (active /
@@ -915,6 +925,14 @@ struct SnapshotProjections: Decodable, Equatable {
     // caveat as `groupChat` / `dmInbox`, handled by the explicit
     // `CodingKeys` case below.
     let discoveredGroups: DiscoveredGroupsSnapshot?
+    // NIP-57: the zap-aggregate read projection registered by
+    // `nmp_app_chirp_register` (PR #288). Its snapshot key is the dotted
+    // string `"nmp.nip57.zaps"`. `.convertFromSnakeCase` only splits on `_`,
+    // and this key has none — the post-transform string is identical
+    // (`"nmp.nip57.zaps"`), but the synthesized default for a Swift property
+    // named `zaps` would be the bare string `"zaps"`. The explicit
+    // `CodingKeys` case below is therefore mandatory.
+    let zaps: ZapsAggregateSnapshot?
     // Diagnostics roll-up — `projections["relay_diagnostics"]`. Built-in
     // kernel-owned projection (§4.5 / §6 anti-pattern #1 cleanup): replaces
     // the §"Where do views live?" violations the three diagnostics screens
@@ -980,6 +998,11 @@ struct SnapshotProjections: Decodable, Equatable {
         // `"nmp.nip29.discoveredGroups"` (split on `_` only, `.` opaque) — that
         // is the post-transform string this case must declare.
         case discoveredGroups = "nmp.nip29.discoveredGroups"
+        // `.convertFromSnakeCase` leaves `"nmp.nip57.zaps"` untouched (no `_`),
+        // but declaring `CodingKeys` overrides synthesis entirely, so the raw
+        // value must be the literal dotted kernel key — the synthesized default
+        // would be the bare property name `"zaps"` and never match.
+        case zaps = "nmp.nip57.zaps"
         case relayDiagnostics
         case mentionProfiles
         case settingsHub
@@ -1107,6 +1130,42 @@ struct DiscoveredGroupsSnapshot: Decodable, Equatable {
     let groups: [DiscoveredGroup]
 
     static let empty = DiscoveredGroupsSnapshot(hostRelayUrl: "", groups: [])
+}
+
+// ─── NIP-57 zap aggregate read model ──────────────────────────────────────
+//
+// Mirror of `nmp-nip57`'s `ZapsAggregateSnapshot` / `ZapCount` — the shape
+// the `ZapsAggregateProjection` serialises under the snapshot key
+// `"nmp.nip57.zaps"`. Thin-shell rule: these are pure DTOs. The Rust
+// projection owns ALL protocol logic — kind:9735 receipt decoding, bolt11
+// amount parsing, per-target grouping, and per-receipt dedupe. Swift never
+// re-derives `count` or `totalMsats` from raw events.
+
+/// Aggregate zap totals for a single target event. `totalMsats` sums the
+/// authoritative bolt11 amount of every distinct receipt indexed under the
+/// target; `count` is the number of distinct receipts. A receipt whose
+/// amount could not be parsed contributes `0` msats but still increments
+/// `count` — the zap *happened*, the amount is just unknown.
+///
+/// No explicit `CodingKeys`: the top-level `.convertFromSnakeCase` strategy
+/// (inherited by every nested type) maps the kernel's `"total_msats"` to
+/// `totalMsats` automatically.
+struct ZapCount: Decodable, Equatable {
+    let totalMsats: UInt64
+    let count: UInt32
+}
+
+/// The serialised read-model a timeline-zap-count surface consumes.
+/// `totals` maps a zapped event id (hex) to its running `ZapCount`. The
+/// wrapper struct (rather than a bare map at the top level) mirrors the
+/// Rust shape and leaves room for sibling fields without a breaking
+/// re-shape.
+struct ZapsAggregateSnapshot: Decodable, Equatable {
+    /// `target_event_id (hex) → ZapCount`. Empty when the projection has
+    /// been registered but no kind:9735 receipts have arrived yet.
+    let totals: [String: ZapCount]
+
+    static let empty = ZapsAggregateSnapshot(totals: [:])
 }
 
 // ─── NIP-17 DM inbox read model ───────────────────────────────────────────
