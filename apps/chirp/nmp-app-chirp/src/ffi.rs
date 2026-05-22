@@ -1042,17 +1042,37 @@ mod tests {
 
     /// THE DISCOVERY EXECUTOR PROOF: the `nmp.nip29.discover` executor maps
     /// a validated `DiscoverGroupsInput` to a concrete
-    /// [`ActorCommand::PushInterest`] pinned to the supplied relay — the
-    /// subscribe-side seam end-to-end.
+    /// [`ActorCommand::PushInterest`] pinned to the supplied relay, followed
+    /// by an [`ActorCommand::RecordActionSuccess`] terminal (PD-036 — a
+    /// subscription-only action has no async publish, so the success surface
+    /// is instantaneous and must be recorded inline or the host spinner waits
+    /// forever on `action_results`). Mirrors the in-crate shape proof at
+    /// `crates/nmp-nip29/src/action/discover.rs::well_formed_input_yields_push_interest_then_record_success`.
     #[test]
     fn nip29_discover_executor_emits_host_pinned_push_interest_command() {
         let input = DiscoverGroupsInput {
             relay_url: "wss://groups.example.com".to_string(),
         };
-        let cmd = run_module_execute::<DiscoverGroupsAction>(input)
-            .expect("well-formed discover input");
 
-        match cmd {
+        // PD-036 — `DiscoverGroupsAction::execute` sends *two* commands
+        // (`PushInterest` then `RecordActionSuccess`); the canonical
+        // `run_module_execute` helper above only captures one, so we inline
+        // the multi-command `RefCell<Vec<_>>` capture (same pattern as
+        // `discover.rs::run_execute`).
+        let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+        DiscoverGroupsAction::execute(input, "test-cid", &|cmd| {
+            captured.borrow_mut().push(cmd);
+        })
+        .expect("well-formed discover input");
+        let cmds = captured.into_inner();
+
+        assert_eq!(
+            cmds.len(),
+            2,
+            "expected PushInterest then RecordActionSuccess, got {cmds:?}"
+        );
+
+        match &cmds[0] {
             ActorCommand::PushInterest(interest) => {
                 // Pinned to the relay — Case E (the third routing lane).
                 assert_eq!(
@@ -1073,6 +1093,15 @@ mod tests {
                 );
             }
             other => panic!("expected PushInterest, got {other:?}"),
+        }
+
+        // PD-036 — terminal `RecordActionSuccess` is what closes the host
+        // spinner for this subscription-only action.
+        match &cmds[1] {
+            ActorCommand::RecordActionSuccess { correlation_id } => {
+                assert_eq!(correlation_id, "test-cid");
+            }
+            other => panic!("expected RecordActionSuccess, got {other:?}"),
         }
     }
 
