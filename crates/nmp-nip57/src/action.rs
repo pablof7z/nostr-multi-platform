@@ -34,11 +34,14 @@ use crate::build::ZapRequest;
 ///   "recipient_pubkey": "<hex>",
 ///   "amount_msats": 21000,
 ///   "lnurl": "alice@walletofsatoshi.com",
-///   "relays": ["wss://relay.damus.io"],
+///   "relays": [],
 ///   "target_event_id": "<hex>",
 ///   "comment": "🤙"
 /// }
 /// ```
+///
+/// `relays` is optional (`[]` or omitted) — the actor injects from
+/// `kernel.author_write_relays(recipient_pubkey)` before signing (V-07).
 ///
 /// `lnurl` carries the receiver's LNURL-pay endpoint in any of three
 /// shapes: a lightning address (`user@domain`), a bech32 LNURL
@@ -46,9 +49,9 @@ use crate::build::ZapRequest;
 /// decodes all three per LUD-01/06/16.
 ///
 /// `target_event_id` and `comment` are optional. A zap to a profile (no
-/// target event) omits `target_event_id`. `relays` must have at least one
-/// entry: NIP-57 requires a `relays` tag so the recipient knows where to
-/// look for the kind:9735 receipt.
+/// target event) omits `target_event_id`. `relays` may be empty, in which
+/// case the actor selects from the recipient's kind:10002 (NIP-65) write
+/// relays before signing — that's the only D0-correct answer (V-07).
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ZapInput {
     /// Recipient's Nostr public key, lowercase hex.
@@ -59,8 +62,11 @@ pub struct ZapInput {
     /// bare https URL. Required by NIP-57: a zap intent without the LN
     /// destination cannot fetch the bolt11.
     pub lnurl: String,
-    /// Relay URLs included in the kind:9734 `relays` tag. At least one required
-    /// per NIP-57.
+    /// Relay URLs for the kind:9734 `relays` tag. When empty the actor
+    /// auto-selects from the recipient's kind:10002 (NIP-65) write/both
+    /// relays — relay selection is policy that lives in the kernel, never
+    /// the shell (V-07).
+    #[serde(default)]
     pub relays: Vec<String>,
     /// Optional zapped event id (hex). When set, the kind:9734 carries an `e`
     /// tag pointing at the target note.
@@ -88,8 +94,10 @@ impl ActionModule for ZapAction {
     /// - empty `recipient_pubkey`
     /// - `amount_msats == 0`
     /// - empty `lnurl` (receiver LN destination is required)
-    /// - empty `relays` list (NIP-57 requires at least one relay for receipt
-    ///   discovery; after filtering whitespace-only entries)
+    ///
+    /// `relays` may be empty: the actor auto-selects from the recipient's
+    /// kind:10002 (NIP-65) write list before signing (V-07). Relay choice
+    /// is policy that lives in the kernel, not the shell.
     fn start(
         _ctx: &mut ActionContext,
         action: Self::Action,
@@ -107,16 +115,6 @@ impl ActionModule for ZapAction {
         if action.lnurl.trim().is_empty() {
             return Err(ActionRejection::Invalid(
                 "zap requires the receiver's LNURL-pay endpoint (lightning address, bech32 LNURL, or https URL)".into(),
-            ));
-        }
-        let non_empty_relays: Vec<_> = action
-            .relays
-            .iter()
-            .filter(|r| !r.trim().is_empty())
-            .collect();
-        if non_empty_relays.is_empty() {
-            return Err(ActionRejection::Invalid(
-                "NIP-57 zap requires at least one relay for receipt discovery".into(),
             ));
         }
         Ok(())
@@ -284,28 +282,29 @@ mod tests {
         ));
     }
 
+    /// V-07: empty relays is VALID — the actor injects the recipient's
+    /// NIP-65 write list before signing. The executor still emits
+    /// `FetchLnurlInvoice`; the resulting kind:9734 has no `relays` tag at
+    /// this point (the actor adds it in `handle_fetch_lnurl_invoice`).
     #[test]
-    fn start_rejects_empty_relays() {
+    fn start_accepts_empty_relays_actor_injects() {
         let input = ZapInput {
             relays: vec![],
             ..well_formed_input()
         };
-        assert!(matches!(
-            ZapAction::start(&mut ctx(), input),
-            Err(ActionRejection::Invalid(_))
-        ));
+        assert!(ZapAction::start(&mut ctx(), input).is_ok());
     }
 
+    /// V-07 sibling: whitespace-only relays filter to empty and follow the
+    /// same auto-inject path — accepted at `start`, no `relays` tag emitted
+    /// by the builder (the actor injects from kind:10002 later).
     #[test]
-    fn start_rejects_whitespace_only_relays() {
+    fn start_accepts_whitespace_only_relays_actor_injects() {
         let input = ZapInput {
             relays: vec!["   ".to_string(), "\t".to_string()],
             ..well_formed_input()
         };
-        assert!(matches!(
-            ZapAction::start(&mut ctx(), input),
-            Err(ActionRejection::Invalid(_))
-        ));
+        assert!(ZapAction::start(&mut ctx(), input).is_ok());
     }
 
     /// The executor must emit a `FetchLnurlInvoice` carrying the full
