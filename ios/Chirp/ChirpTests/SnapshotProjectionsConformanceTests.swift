@@ -41,19 +41,12 @@ import XCTest
 /// "fix" it by deleting the `CodingKeys` enum (synthesised decoding would
 /// regress the dotted-key fields). Fix the case's raw value instead.
 ///
-/// ## Known gap (May 2026)
+/// ## Known gap
 ///
-/// Two keys are currently registered in Rust but have no Swift field on
-/// `master`:
-///
-///   - `"nmp.nip57.zaps"` (registered in `nmp_app_chirp_register`, the
-///     `ZapsAggregateProjection` indexes kind:9735 receipts)
-///   - `"nmp.nip17.dm_relay_list"` (registered in `register_dm_runtime`,
-///     mirrors the active account's kind:10050 list)
-///
-/// These are not silent-nil bugs (the Swift fields don't exist at all), but
-/// data is flowing unread. When those fields are added to
-/// `SnapshotProjections`, extend this test to cover them.
+/// None — all 6 registered Rust projections (`nmp.nip29.group_chat`,
+/// `nmp.nip29.discovered_groups`, `nmp.nip17.dm_inbox`, `chirp.follow_list`,
+/// `nmp.nip57.zaps`, `nmp.nip17.dm_relay_list`) have Swift decoders covered
+/// by this conformance test as of this file.
 final class SnapshotProjectionsConformanceTests: XCTestCase {
 
     /// The exact decoder configuration `KernelHandle.decode` uses for the
@@ -91,6 +84,13 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
           },
           "chirp.follow_list": {
             "follows": []
+          },
+          "nmp.nip57.zaps": {
+            "totals": {}
+          },
+          "nmp.nip17.dm_relay_list": {
+            "active_pubkey": null,
+            "read_relay_urls": []
           }
         }
         """
@@ -113,9 +113,15 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
         XCTAssertNotNil(
             projections.followList,
             "SnapshotProjections.followList decoded nil — check CodingKeys.followList raw value matches \"chirp.followList\" (post-convertFromSnakeCase of \"chirp.follow_list\")")
+        XCTAssertNotNil(
+            projections.zaps,
+            "SnapshotProjections.zaps decoded nil — check CodingKeys.zaps raw value matches \"nmp.nip57.zaps\"")
+        XCTAssertNotNil(
+            projections.dmRelayList,
+            "SnapshotProjections.dmRelayList decoded nil — check CodingKeys.dmRelayList raw value matches \"nmp.nip17.dmRelayList\" (post-convertFromSnakeCase of \"nmp.nip17.dm_relay_list\")")
     }
 
-    /// Sanity check: the four projection fields all default to nil when the
+    /// Sanity check: all six projection fields default to nil when the
     /// kernel emits an empty projections map (an older kernel build that
     /// predates the projections, or a fresh actor with no registrations yet).
     /// This is the steady-state any new field MUST tolerate (D1 — never
@@ -127,5 +133,7 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
         XCTAssertNil(projections.discoveredGroups)
         XCTAssertNil(projections.dmInbox)
         XCTAssertNil(projections.followList)
+        XCTAssertNil(projections.zaps)
+        XCTAssertNil(projections.dmRelayList)
     }
 }
