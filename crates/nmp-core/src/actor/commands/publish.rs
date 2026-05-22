@@ -560,13 +560,27 @@ pub(crate) fn react(
     kernel: &mut Kernel,
     target_event_id: &str,
     reaction: &str,
+    correlation_id: Option<String>,
     pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
     let Some(pubkey) = identity.active_pubkey() else {
+        // Broken-promise fix: a dispatched `chirp.react` handed the host a
+        // `correlation_id`; if the publish aborts before the engine ever sees
+        // it, the failure must still reach `action_results` so the host
+        // spinner clears. `record_action_failure` is a no-op for `None`.
+        if let Some(id) = correlation_id.clone() {
+            kernel.record_action_failure(id, "no active account".to_string());
+        }
         return toast_no_account(kernel, "react");
     };
     if !crate::kernel::is_hex_id(target_event_id) {
-        kernel.set_last_error_toast(Some("react: malformed target event id".to_string()));
+        let reason = "react: malformed target event id".to_string();
+        kernel.set_last_error_toast(Some(reason.clone()));
+        // Broken-promise fix: surface the rejection under the dispatch
+        // correlation_id so the host spinner does not hang.
+        if let Some(id) = correlation_id.clone() {
+            kernel.record_action_failure(id, reason);
+        }
         return Vec::new();
     }
     let content = if reaction.trim().is_empty() {
@@ -599,18 +613,39 @@ pub(crate) fn react(
     let mut op = match sign_active_nonblocking(identity, &unsigned) {
         Ok(op) => op,
         Err(reason) => {
-            kernel.set_last_error_toast(Some(reason));
+            kernel.set_last_error_toast(Some(reason.clone()));
+            // Broken-promise fix: a sign-setup failure happens on the actor
+            // thread AFTER `dispatch_action` already returned the
+            // correlation_id — the host is waiting; record the failure.
+            if let Some(id) = correlation_id.clone() {
+                kernel.record_action_failure(id, reason);
+            }
             return Vec::new();
         }
     };
     match op.poll() {
-        Some(Ok(signed)) => kernel.publish_signed(&signed, &[]),
+        // Local key resolved on the spot — publish through the engine with the
+        // dispatch correlation_id so the terminal verdict reports it.
+        Some(Ok(signed)) => kernel.publish_signed_with_correlation(&signed, &[], correlation_id),
         Some(Err(e)) => {
-            kernel.set_last_error_toast(Some(format!("sign failed: {e}")));
+            let reason = format!("sign failed: {e}");
+            kernel.set_last_error_toast(Some(reason.clone()));
+            // Broken-promise fix: a local-key sign error happens after
+            // `dispatch_action` returned the correlation_id — record it.
+            if let Some(id) = correlation_id.clone() {
+                kernel.record_action_failure(id, reason);
+            }
             Vec::new()
         }
         None => {
-            pending_signs.push(PendingSign::new(op, Vec::new()));
+            // Remote signer pending — park the op WITH its correlation_id so
+            // the dispatched reaction still settles under the id the host is
+            // waiting on once the broker turns the sign request around.
+            pending_signs.push(PendingSign::with_correlation_id(
+                op,
+                Vec::new(),
+                correlation_id,
+            ));
             Vec::new()
         }
     }
@@ -623,13 +658,26 @@ pub(crate) fn follow(
     kernel: &mut Kernel,
     pubkey: &str,
     add: bool,
+    correlation_id: Option<String>,
     pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
     let Some(author) = identity.active_pubkey() else {
+        // Broken-promise fix: a dispatched `chirp.follow` / `chirp.unfollow`
+        // handed the host a `correlation_id`; record the failure so the host
+        // spinner clears. `record_action_failure` is a no-op for `None`.
+        if let Some(id) = correlation_id.clone() {
+            kernel.record_action_failure(id, "no active account".to_string());
+        }
         return toast_no_account(kernel, if add { "follow" } else { "unfollow" });
     };
     if !crate::kernel::is_hex_pubkey(pubkey) {
-        kernel.set_last_error_toast(Some("follow: expected 64-hex pubkey".to_string()));
+        let reason = "follow: expected 64-hex pubkey".to_string();
+        kernel.set_last_error_toast(Some(reason.clone()));
+        // Broken-promise fix: surface the rejection under the dispatch
+        // correlation_id so the host spinner does not hang.
+        if let Some(id) = correlation_id.clone() {
+            kernel.record_action_failure(id, reason);
+        }
         return Vec::new();
     }
     let mut follows = kernel.current_follows(&author);
@@ -656,18 +704,39 @@ pub(crate) fn follow(
     let mut op = match sign_active_nonblocking(identity, &unsigned) {
         Ok(op) => op,
         Err(reason) => {
-            kernel.set_last_error_toast(Some(reason));
+            kernel.set_last_error_toast(Some(reason.clone()));
+            // Broken-promise fix: a sign-setup failure happens on the actor
+            // thread AFTER `dispatch_action` already returned the
+            // correlation_id — record it.
+            if let Some(id) = correlation_id.clone() {
+                kernel.record_action_failure(id, reason);
+            }
             return Vec::new();
         }
     };
     match op.poll() {
-        Some(Ok(signed)) => kernel.publish_signed(&signed, &[]),
+        // Local key resolved on the spot — publish through the engine with the
+        // dispatch correlation_id so the terminal verdict reports it.
+        Some(Ok(signed)) => kernel.publish_signed_with_correlation(&signed, &[], correlation_id),
         Some(Err(e)) => {
-            kernel.set_last_error_toast(Some(format!("sign failed: {e}")));
+            let reason = format!("sign failed: {e}");
+            kernel.set_last_error_toast(Some(reason.clone()));
+            // Broken-promise fix: a local-key sign error happens after
+            // `dispatch_action` returned the correlation_id — record it.
+            if let Some(id) = correlation_id.clone() {
+                kernel.record_action_failure(id, reason);
+            }
             Vec::new()
         }
         None => {
-            pending_signs.push(PendingSign::new(op, Vec::new()));
+            // Remote signer pending — park the op WITH its correlation_id so
+            // the dispatched follow/unfollow still settles under the id the
+            // host is waiting on once the broker turns the sign request around.
+            pending_signs.push(PendingSign::with_correlation_id(
+                op,
+                Vec::new(),
+                correlation_id,
+            ));
             Vec::new()
         }
     }

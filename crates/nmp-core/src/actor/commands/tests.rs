@@ -1255,7 +1255,7 @@ fn react_builds_kind7_with_e_and_p_tags() {
     let target_author = "cccc000000000000000000000000000000000000000000000000000000000000";
     kernel.seed_kind1_for_reply_test(&target, target_author, 100, vec![], "reacted-to note");
 
-    let outbound = react(&id, &mut kernel, &target, "❤", &mut Vec::new());
+    let outbound = react(&id, &mut kernel, &target, "❤", None, &mut Vec::new());
     assert!(!outbound.is_empty());
     assert!(outbound[0].text.contains("\"kind\":7"));
     assert!(outbound[0].text.contains(&target));
@@ -1278,7 +1278,7 @@ fn follow_publishes_kind3_with_p_tag() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
     let target = "b".repeat(64);
-    let outbound = follow(&id, &mut kernel, &target, true, &mut Vec::new());
+    let outbound = follow(&id, &mut kernel, &target, true, None, &mut Vec::new());
     assert!(!outbound.is_empty());
     assert!(outbound[0].text.contains("\"kind\":3"));
     assert!(outbound[0].text.contains(&target));
@@ -1297,7 +1297,7 @@ fn react_without_account_toasts_and_no_outbound() {
     // an exception. No EVENT frame, no publish-queue entry.
     let (id, mut kernel) = fresh();
     let target = "a".repeat(64);
-    let outbound = react(&id, &mut kernel, &target, "+", &mut Vec::new());
+    let outbound = react(&id, &mut kernel, &target, "+", None, &mut Vec::new());
     assert!(
         outbound.is_empty(),
         "react with no active account must produce no outbound frames"
@@ -1322,6 +1322,7 @@ fn react_to_malformed_event_id_toasts_and_refuses() {
         &mut kernel,
         "not-a-real-event-id",
         "+",
+        None,
         &mut Vec::new(),
     );
     assert!(
@@ -1348,7 +1349,7 @@ fn react_with_empty_reaction_defaults_to_plus() {
     let target_author = "cccc000000000000000000000000000000000000000000000000000000000000";
     kernel.seed_kind1_for_reply_test(&target, target_author, 100, vec![], "reacted-to note");
 
-    let outbound = react(&id, &mut kernel, &target, "   ", &mut Vec::new());
+    let outbound = react(&id, &mut kernel, &target, "   ", None, &mut Vec::new());
     assert!(!outbound.is_empty(), "react must produce an EVENT frame");
     let event = last_published_event_json(&outbound);
     assert_eq!(event["kind"], 7, "reaction must be kind:7");
@@ -1380,7 +1381,7 @@ fn react_to_uncached_event_omits_p_tag_gracefully() {
     sign_in_with_nip65(&mut id, &mut kernel);
     let target = "d".repeat(64);
 
-    let outbound = react(&id, &mut kernel, &target, "❤", &mut Vec::new());
+    let outbound = react(&id, &mut kernel, &target, "❤", None, &mut Vec::new());
     assert!(
         !outbound.is_empty(),
         "react to an uncached event must still publish a kind:7"
@@ -1436,7 +1437,7 @@ fn react_routes_to_reacted_to_author_inbox_relay() {
         1_700_000_000_000,
     );
 
-    let outbound = react(&id, &mut kernel, &target, "❤", &mut Vec::new());
+    let outbound = react(&id, &mut kernel, &target, "❤", None, &mut Vec::new());
 
     // The reaction must carry the `p` tag (NIP-25 §1) so the engine has a
     // recipient to resolve at all.
@@ -1484,7 +1485,7 @@ fn react_to_uncached_author_skips_inbox_routing_gracefully() {
     sign_in_with_nip65(&mut id, &mut kernel);
     let target = "d".repeat(64); // well-formed id, never seeded → author uncached
 
-    let outbound = react(&id, &mut kernel, &target, "❤", &mut Vec::new());
+    let outbound = react(&id, &mut kernel, &target, "❤", None, &mut Vec::new());
 
     assert!(
         !outbound.is_empty(),
@@ -1536,7 +1537,7 @@ fn unfollow_removes_pubkey_from_contact_list() {
     let drop = "d".repeat(64);
     seed_contact_list(&mut kernel, &author, &[&keep, &drop]);
 
-    let outbound = follow(&id, &mut kernel, &drop, false, &mut Vec::new());
+    let outbound = follow(&id, &mut kernel, &drop, false, None, &mut Vec::new());
     assert!(!outbound.is_empty(), "unfollow must re-publish the kind:3");
     let event = last_published_event_json(&outbound);
     assert_eq!(event["kind"], 3);
@@ -1566,7 +1567,7 @@ fn follow_already_followed_is_idempotent_no_duplicate() {
     let already = "e".repeat(64);
     seed_contact_list(&mut kernel, &author, &[&already]);
 
-    let outbound = follow(&id, &mut kernel, &already, true, &mut Vec::new());
+    let outbound = follow(&id, &mut kernel, &already, true, None, &mut Vec::new());
     assert!(!outbound.is_empty(), "follow must re-publish the kind:3");
     let event = last_published_event_json(&outbound);
     let p_pubkeys: Vec<String> = tags_of(&event)
@@ -1586,7 +1587,7 @@ fn follow_without_account_toasts_and_no_outbound() {
     // D6: follow with no active account → toast naming the `follow` action.
     let (id, mut kernel) = fresh();
     let target = "f".repeat(64);
-    let outbound = follow(&id, &mut kernel, &target, true, &mut Vec::new());
+    let outbound = follow(&id, &mut kernel, &target, true, None, &mut Vec::new());
     assert!(
         outbound.is_empty(),
         "follow with no active account must produce no outbound frames"
@@ -1602,7 +1603,7 @@ fn unfollow_without_account_toasts_with_unfollow_action() {
     // (`unfollow`) — publish.rs:301 picks the action string off `add`.
     let (id, mut kernel) = fresh();
     let target = "f".repeat(64);
-    let outbound = follow(&id, &mut kernel, &target, false, &mut Vec::new());
+    let outbound = follow(&id, &mut kernel, &target, false, None, &mut Vec::new());
     assert!(outbound.is_empty());
     assert!(kernel
         .last_error_toast_snapshot()
@@ -1615,7 +1616,7 @@ fn follow_malformed_pubkey_toasts_and_refuses() {
     // user-visible error (D6 toast), not a silent no-op — and must not panic.
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
-    let outbound = follow(&id, &mut kernel, "xyz", true, &mut Vec::new());
+    let outbound = follow(&id, &mut kernel, "xyz", true, None, &mut Vec::new());
     assert!(
         outbound.is_empty(),
         "follow with a malformed pubkey must produce no outbound frames"

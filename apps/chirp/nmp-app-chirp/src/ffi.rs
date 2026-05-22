@@ -515,8 +515,16 @@ impl ActionModule for ChirpReactModule {
     fn start(_ctx: &mut ActionContext, _action: Self::Action) -> Result<(), ActionRejection> {
         Ok(())
     }
-    fn execute(action: Self::Action, _correlation_id: &str, send: &dyn Fn(ActorCommand)) -> Result<(), String> {
-        send(ActorCommand::React { target_event_id: action.target_event_id, reaction: action.reaction });
+    fn execute(action: Self::Action, correlation_id: &str, send: &dyn Fn(ActorCommand)) -> Result<(), String> {
+        // Thread the registry-minted correlation_id through to the actor so
+        // the publish engine reports the terminal verdict under THIS id (not
+        // the kind:7 event id); the host spinner keyed on the dispatch
+        // return value can then be cleared.
+        send(ActorCommand::React {
+            target_event_id: action.target_event_id,
+            reaction: action.reaction,
+            correlation_id: Some(correlation_id.to_string()),
+        });
         Ok(())
     }
 }
@@ -528,8 +536,13 @@ impl ActionModule for ChirpFollowModule {
     fn start(_ctx: &mut ActionContext, _action: Self::Action) -> Result<(), ActionRejection> {
         Ok(())
     }
-    fn execute(action: Self::Action, _correlation_id: &str, send: &dyn Fn(ActorCommand)) -> Result<(), String> {
-        send(ActorCommand::Follow { pubkey: action.pubkey });
+    fn execute(action: Self::Action, correlation_id: &str, send: &dyn Fn(ActorCommand)) -> Result<(), String> {
+        // Thread the registry-minted correlation_id through so the kind:3
+        // publish terminal verdict reports it; see `ChirpReactModule`.
+        send(ActorCommand::Follow {
+            pubkey: action.pubkey,
+            correlation_id: Some(correlation_id.to_string()),
+        });
         Ok(())
     }
 }
@@ -541,8 +554,13 @@ impl ActionModule for ChirpUnfollowModule {
     fn start(_ctx: &mut ActionContext, _action: Self::Action) -> Result<(), ActionRejection> {
         Ok(())
     }
-    fn execute(action: Self::Action, _correlation_id: &str, send: &dyn Fn(ActorCommand)) -> Result<(), String> {
-        send(ActorCommand::Unfollow { pubkey: action.pubkey });
+    fn execute(action: Self::Action, correlation_id: &str, send: &dyn Fn(ActorCommand)) -> Result<(), String> {
+        // Thread the registry-minted correlation_id through so the kind:3
+        // publish terminal verdict reports it; see `ChirpReactModule`.
+        send(ActorCommand::Unfollow {
+            pubkey: action.pubkey,
+            correlation_id: Some(correlation_id.to_string()),
+        });
         Ok(())
     }
 }

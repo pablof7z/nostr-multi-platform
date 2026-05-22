@@ -147,6 +147,7 @@ impl ConformanceHarness {
             &mut self.kernel,
             target_event_id,
             reaction,
+            None,
             &mut Vec::new(),
         );
         last_event_json(&outbound)
@@ -159,6 +160,7 @@ impl ConformanceHarness {
             &mut self.kernel,
             pubkey,
             add,
+            None,
             &mut Vec::new(),
         );
         last_event_json(&outbound)
