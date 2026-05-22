@@ -42,6 +42,7 @@ pub mod group_id;
 pub mod interest;
 pub mod kinds;
 pub mod projection;
+pub mod register;
 
 pub use group_id::GroupId;
 pub use kinds::{event_is_group_event, group_id_from_tags, GroupEventClass, KindClass};
