@@ -331,6 +331,69 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
+        ActorCommand::PublishRawEvent {
+            kind,
+            tags,
+            content,
+            target,
+            correlation_id,
+        } => {
+            // D7: kernel owns the wall clock. Sentinel `created_at: 0`
+            // tells the helper-equivalent stamp below to fill from
+            // `kernel.now_secs()` — keeps the FixedClock test hook
+            // effective end-to-end (same pattern as PublishUnsignedEvent
+            // below).
+            //
+            // `pubkey` is intentionally left empty: both
+            // `publish_unsigned_event` and `publish_unsigned_event_to_relays`
+            // ignore the caller's `unsigned.pubkey` and write the active
+            // identity's pubkey onto the SignedEvent at sign time. Setting
+            // it here would be dead work.
+            let unsigned = crate::substrate::UnsignedEvent {
+                pubkey: String::new(),
+                kind,
+                tags,
+                content,
+                created_at: ctx.kernel.now_secs(),
+            };
+            // PR-G — see PublishNote arm above. Same entry-point seam:
+            // record `Requested` against the registry-minted correlation_id
+            // the moment the actor dequeues the dispatched action so the
+            // host spinner has a lifecycle entry from t=0.
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
+            // Route on `target`: `Auto` resolves via NIP-65 outbox (D3);
+            // `Explicit { relays }` pins to exactly those relays. Both
+            // helpers handle local-keys (sync sign) and bunker (parked
+            // PendingSign) paths internally — `PublishRaw` inherits the
+            // same identity-kind support as `PublishNote`/`PublishProfile`.
+            let outbound = match target {
+                crate::publish::PublishTarget::Auto => commands::publish_unsigned_event(
+                    ctx.identity,
+                    ctx.kernel,
+                    unsigned,
+                    correlation_id,
+                    ctx.pending_signs,
+                ),
+                crate::publish::PublishTarget::Explicit { relays } => {
+                    commands::publish_unsigned_event_to_relays(
+                        ctx.identity,
+                        ctx.kernel,
+                        unsigned,
+                        relays,
+                        correlation_id,
+                        ctx.pending_signs,
+                    )
+                }
+            };
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(outbound)
+        }
         ActorCommand::PublishProfile {
             fields,
             correlation_id,
