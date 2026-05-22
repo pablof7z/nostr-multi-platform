@@ -393,6 +393,55 @@ fn drain_tick_relay_auth_changed_applies_side_effect() {
     assert!(l.is_auth_paused_for_url(&relay_url), "relay must be paused after ChallengeReceived side effect");
 }
 
+/// `RelayAuthStateChanged{Authenticated}` via drain_tick must flush buffered REQs.
+///
+/// Production auth flushes go through `handle_auth_state_change` (direct path
+/// in `ingest/auth_handlers.rs`). This test covers the trigger path so that if
+/// `RelayAuthStateChanged` is ever enqueued as a trigger the pending REQs are
+/// returned rather than silently dropped.
+#[test]
+fn drain_tick_authenticated_flushes_pending_reqs() {
+    use crate::subs::trigger::RelayAuthState;
+    let mut l = SubscriptionLifecycle::new();
+    let relay_url = "wss://auth-flush.example".to_string();
+    let mailboxes = InMemoryMailboxCache::new();
+
+    // Step 1: make the relay the single app relay and register an interest
+    // so the compile routes a REQ to it.
+    l.set_app_relays(vec![relay_url.clone()]);
+    l.registry_mut().push(follow(1, "aa"));
+
+    // Step 2: pause the relay (ChallengeReceived) and compile — REQs get buffered.
+    l.enqueue_trigger(CompileTrigger::RelayAuthStateChanged {
+        url: relay_url.clone(),
+        state: RelayAuthState::ChallengeReceived,
+    });
+    let paused_frames = l.drain_tick(&mailboxes);
+    let paused_reqs = paused_frames
+        .iter()
+        .filter(|f| matches!(f, WireFrame::Req { relay_url: u, .. } if u == "wss://auth-flush.example"))
+        .count();
+    assert_eq!(
+        paused_reqs, 0,
+        "REQs to a paused relay must not appear in drain_tick output; got {paused_reqs}"
+    );
+
+    // Step 3: authenticate — pending REQs must be flushed in the same tick.
+    l.enqueue_trigger(CompileTrigger::RelayAuthStateChanged {
+        url: relay_url.clone(),
+        state: RelayAuthState::Authenticated,
+    });
+    let flushed_frames = l.drain_tick(&mailboxes);
+    let flushed_reqs = flushed_frames
+        .iter()
+        .filter(|f| matches!(f, WireFrame::Req { relay_url: u, .. } if u == "wss://auth-flush.example"))
+        .count();
+    assert!(
+        flushed_reqs > 0,
+        "Authenticated trigger via drain_tick must flush buffered REQs; got {flushed_reqs}"
+    );
+}
+
 /// T142-U4: N triggers in one tick → exactly 1 compile (D8 coalescing).
 /// Proves the per-tick discipline: N triggers → at most 1 compile.
 #[test]

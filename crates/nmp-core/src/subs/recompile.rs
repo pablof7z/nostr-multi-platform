@@ -186,24 +186,35 @@ impl SubscriptionLifecycle {
         if triggers.is_empty() {
             return Vec::new();
         }
-        // Apply non-recompile-side-effecting triggers first (auth-state). We
-        // do not flush pending REQs here even on Authenticated; the
-        // subsequent recompile will re-walk them as part of the new diff.
+        // Apply auth-state transitions before recompile so the gate's pause
+        // predicate is current when `partition` runs inside `recompile_and_diff`.
+        // On `Authenticated`, `record_transition` also returns any REQs that
+        // were buffered while the relay was paused; collect them so they are
+        // returned alongside the recompile diff. The `plan_diff` inside
+        // `recompile_and_diff` does NOT re-emit those frames (the plan is
+        // unchanged — only auth state changed), so we must extend here.
+        // Production auth flushes go through `handle_auth_state_change` (direct
+        // path in `ingest/auth_handlers.rs`), so this path is exercise-only via
+        // tests and future callers; correctness here prevents silent drops.
+        let mut auth_flushed: Vec<WireFrame> = Vec::new();
         for t in &triggers {
             if let CompileTrigger::RelayAuthStateChanged { url, state } = t {
-                let _ = self.auth_gate.record_transition(url.clone(), state.clone());
+                auth_flushed.extend(self.auth_gate.record_transition(url.clone(), state.clone()));
             }
         }
         match self.recompile_and_diff(mailbox_cache) {
-            Ok(frames) => frames,
+            Ok(mut frames) => {
+                frames.extend(auth_flushed);
+                frames
+            }
             // Benign: no interests registered (e.g. between account switches).
             // Not an error condition — empty diff, nothing to surface.
-            Err(PlannerError::EmptyInterestSet) => Vec::new(),
+            Err(PlannerError::EmptyInterestSet) => auth_flushed,
             // D6: a genuine structural planner error must be observable, never
             // swallowed. Record it; the diff is empty for this tick.
             Err(e) => {
                 self.last_planner_error = Some(e.to_string());
-                Vec::new()
+                auth_flushed
             }
         }
     }
