@@ -59,19 +59,19 @@ pub fn file_is_exempt(path: &Path) -> bool {
     if s.contains("/apps/") || s.starts_with("apps/") {
         return true;
     }
-    // D0's mandate is `nmp-core` specifically — every OTHER protocol crate
-    // under `crates/nmp-*` legitimately uses the domain nouns it owns
-    // (`nmp-nip29` defines `GroupId`; flagging the very crate that defines
-    // it is nonsense). Exempt every `crates/nmp-*/src/...` and
-    // `crates/nmp-*/tests/...` path that is NOT `crates/nmp-core/`. Requiring
-    // the `/src/` or `/tests/` segment keeps test-fixture paths like
+    // D0's mandate is `nmp-core` specifically — every OTHER crate under
+    // `crates/` legitimately uses the domain nouns it owns or imports
+    // (`nmp-nip29` defines `GroupId`; `chirp-repl`/`chirp-tui` are app-layer
+    // consumers; flagging either is nonsense). Exempt every `crates/*/src/...`
+    // and `crates/*/tests/...` path that is NOT `crates/nmp-core/`. The `/src/`
+    // or `/tests/` segment requirement keeps test-fixture paths like
     // `crates/nmp-testing/bin/doctrine-lint/fixtures/...` (intentional
     // negative examples for D0 itself) unaffected.
-    let in_other_nmp_crate_src = (s.contains("/crates/nmp-") || s.starts_with("crates/nmp-"))
+    let in_non_core_crate_src = (s.contains("/crates/") || s.starts_with("crates/"))
         && (s.contains("/src/") || s.contains("/tests/"))
         && !s.contains("/nmp-core/")
         && !s.starts_with("nmp-core/");
-    if in_other_nmp_crate_src {
+    if in_non_core_crate_src {
         return true;
     }
     EXEMPT_FILE_SUFFIXES.iter().any(|suf| s.ends_with(suf))
@@ -154,11 +154,11 @@ mod tests {
     }
 
     #[test]
-    fn exempts_non_nmp_core_protocol_crates() {
-        // D0's mandate is `nmp-core` only — every OTHER protocol crate under
-        // `crates/nmp-*` legitimately uses its own domain nouns. Flagging
-        // `GroupId` inside `nmp-nip29` (the very crate that defines it) is
-        // nonsense.
+    fn exempts_non_nmp_core_crates_src() {
+        // D0's mandate is `nmp-core` only — every OTHER crate under `crates/`
+        // legitimately uses its own domain nouns. This covers protocol crates
+        // (`nmp-nip29`, `nmp-nip17`), app-layer REPLs (`chirp-repl`,
+        // `chirp-tui`), and fixture crates (`fixture-todo-core`).
         assert!(file_is_exempt(&std::path::PathBuf::from(
             "crates/nmp-nip29/src/action/content.rs"
         )));
@@ -168,11 +168,22 @@ mod tests {
         assert!(file_is_exempt(&std::path::PathBuf::from(
             "crates/nmp-marmot/src/projection/mod.rs"
         )));
+        // App-layer CLI crates in `crates/` — not `nmp-*` prefixed, but still
+        // not the kernel substrate. These had false D0 positives before this fix.
+        assert!(file_is_exempt(&std::path::PathBuf::from(
+            "crates/chirp-repl/src/actions.rs"
+        )));
+        assert!(file_is_exempt(&std::path::PathBuf::from(
+            "crates/chirp-tui/src/feature_snapshot.rs"
+        )));
+        assert!(file_is_exempt(&std::path::PathBuf::from(
+            "crates/fixture-todo-core/src/lib.rs"
+        )));
     }
 
     #[test]
-    fn exempts_non_nmp_core_protocol_crate_tests() {
-        // Integration-test files under `crates/nmp-*/tests/` legitimately use
+    fn exempts_non_nmp_core_crates_tests() {
+        // Integration-test files under `crates/*/tests/` legitimately use
         // the domain nouns their crate defines — same exemption as `/src/`.
         // (Before this fix the `/tests/` segment was missing and files like
         // `nmp-nip29/tests/lifecycle.rs` produced 9 false D0 positives.)
@@ -184,6 +195,9 @@ mod tests {
         )));
         assert!(file_is_exempt(&std::path::PathBuf::from(
             "crates/nmp-marmot/tests/round_trip.rs"
+        )));
+        assert!(file_is_exempt(&std::path::PathBuf::from(
+            "crates/chirp-repl/tests/actions_test.rs"
         )));
     }
 

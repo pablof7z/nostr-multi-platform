@@ -30,7 +30,9 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
         KeyCode::Tab => state.next_tab(),
         KeyCode::BackTab => state.previous_tab(),
         KeyCode::Char(ch) if FeatureTab::from_key(ch).is_some() => {
-            state.set_tab(FeatureTab::from_key(ch).expect("checked above"))
+            if let Some(tab) = FeatureTab::from_key(ch) {
+                state.set_tab(tab);
+            }
         }
         KeyCode::Char('1') => state.focus(Pane::Feed),
         KeyCode::Char('2') => state.focus(Pane::Detail),
