@@ -87,16 +87,10 @@ pub struct ProjectionChange {
 #[derive(Clone, Debug, Default)]
 pub struct ViewContext {}
 
-// NOTE: there was once a `ViewModule` trait here — a substrate extension
-// contract for reactive views. It has been removed. No `ViewRegistry` ever
-// shipped: nothing in the kernel, actor, or codegen stored or drove
-// `dyn ViewModule` objects. The per-protocol view types (`RepliesView`,
-// `Nip10ModularTimelineView`, …) still exist and expose their `open` /
-// `on_event_*` / `snapshot` methods as plain inherent methods, reached via
-// static dispatch (`Nip10ModularTimelineView::open(...)`). The one live
-// consumer, `ModularTimelineProjection`, drives those inherent methods
-// directly. `ViewDependencies` below is kept — it is the load-bearing bridge
-// from a view's event needs to the planner's `LogicalInterest`.
+// Per-protocol view types (`RepliesView`, `Nip10ModularTimelineView`, …) expose
+// their `open` / `on_event_*` / `snapshot` methods as plain inherent methods
+// reached via static dispatch. `ViewDependencies` below is the load-bearing
+// bridge from a view's event needs to the planner's `LogicalInterest`.
 
 #[cfg(test)]
 mod tests {
