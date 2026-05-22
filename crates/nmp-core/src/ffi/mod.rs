@@ -365,6 +365,28 @@ pub struct NmpApp {
     /// lower bound when a broker is wired. That is acceptable for the
     /// backpressure gate, which watches for *buildup*, not exact occupancy.
     queue_depth: Arc<AtomicU64>,
+    /// NIP-47 wallet double-tap guard: bolt11 strings the FFI surface has
+    /// already accepted for `pay_invoice` but for which the kind:23195
+    /// response (or a timeout) has not yet cleared. Keyed by the full bolt11
+    /// string — a same-invoice retap maps to the same key, and the FFI
+    /// short-circuits before constructing a second
+    /// `ActorCommand::WalletPayInvoice`.
+    ///
+    /// Lives entirely in the FFI layer (no actor coupling): expiry is wall-
+    /// clock based — entries older than [`wallet::INFLIGHT_BOLT11_TTL`] are
+    /// swept at every `nmp_app_wallet_pay_invoice` call, so a legitimate retry
+    /// after the TTL passes through. The TTL is sized for "the NWC response
+    /// is in flight" — long enough to absorb relay round-trip jitter, short
+    /// enough that a wallet that never responds does not block the user
+    /// forever.
+    ///
+    /// D14: `Mutex<HashMap<…>>` is NOT the banned `Arc<Mutex<Vec<…>>>` shape
+    /// the rule disciplines (a `HashMap` is not a `Vec`, and the slot is not
+    /// shared with the actor — no `Arc`). The simpler primitive is correct
+    /// here: nothing on the actor side reads or writes this slot, so the
+    /// `Arc` clone would be dead shared ownership.
+    #[cfg(feature = "wallet")]
+    inflight_bolt11: Mutex<std::collections::HashMap<String, std::time::Instant>>,
 }
 
 impl Drop for NmpApp {
@@ -608,6 +630,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // G-S4 — the `NmpApp`'s clone of the command-channel depth counter,
         // incremented by `send_cmd`. The actor holds the matching clone.
         queue_depth,
+        // NIP-47 wallet `pay_invoice` double-tap guard. Empty at construction;
+        // populated by `ffi::wallet::nmp_app_wallet_pay_invoice` on each
+        // accepted invoice, swept on TTL expiry (no cross-thread coupling).
+        #[cfg(feature = "wallet")]
+        inflight_bolt11: Mutex::new(std::collections::HashMap::new()),
     };
 
     // D0 — first internal consumer of the snapshot-projection seam: register
