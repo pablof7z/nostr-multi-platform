@@ -3843,7 +3843,6 @@ dependencies = [
  "heed",
  "indexmap",
  "mio",
- "nmp-chirp-config",
  "nmp-nip42-types",
  "nmp-nip59",
  "nmp-nostr-lmdb",
