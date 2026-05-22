@@ -8,6 +8,65 @@ use crate::crypto;
 use crate::types::{MakeInvoiceParams, NwcMethod, PayInvoiceParams};
 use serde_json::{json, Value};
 
+/// Errors surfaced by `nmp-nwc`'s request-build and crypto layer.
+///
+/// One enum spans `build` and `crypto` because `build` delegates straight
+/// through `crypto` for the encrypt step; a separate `BuildError` /
+/// `CryptoError` would force every build call site to add a `From` impl for
+/// the same payload. Mirrors [`crate::ParseError`] — a domain-shaped enum
+/// with a hand-written [`Display`] impl so call sites can keep their
+/// existing `format!("…: {e}")` pattern unchanged after migration.
+///
+/// Note this is distinct from [`crate::NwcError`], which is the
+/// *protocol-level* error returned BY a wallet inside a kind:23195 response
+/// (NIP-47 §3) — `NwcBuildError` is the *local* failure mode raised when we
+/// fail to construct or encrypt a request in the first place.
+///
+/// D6 — all variants carry a descriptive payload so the caller can render a
+/// toast without losing the underlying cause. No variant unwinds across the
+/// FFI seam; every public function returns `Result<_, NwcBuildError>`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NwcBuildError {
+    /// The supplied client secret hex did not parse as a curve-valid
+    /// secp256k1 scalar. Carries the underlying parser message.
+    InvalidClientSecret(String),
+    /// The supplied wallet pubkey hex did not parse as a curve-valid
+    /// secp256k1 x-only pubkey. Carries the underlying parser message.
+    InvalidWalletPubkey(String),
+    /// `nostr`'s NIP-04 encryptor returned `Err`. Carries the underlying
+    /// message.
+    Nip04Encrypt(String),
+    /// `nostr`'s NIP-04 decryptor returned `Err`. Carries the underlying
+    /// message.
+    Nip04Decrypt(String),
+    /// `nostr`'s NIP-44 decryptor returned `Err`. Carries the underlying
+    /// message.
+    Nip44Decrypt(String),
+    /// A NIP-04 payload was rejected by the local shape validator before
+    /// reaching `nostr` (the `?iv=` panic guard — see [`crypto::decrypt`]).
+    /// Carries a human-readable reason.
+    MalformedNip04Payload(String),
+    /// `serde_json` failed to (de)serialize a request body. Carries the
+    /// underlying message.
+    Json(String),
+}
+
+impl std::fmt::Display for NwcBuildError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidClientSecret(msg) => write!(f, "invalid client secret: {msg}"),
+            Self::InvalidWalletPubkey(msg) => write!(f, "invalid wallet pubkey: {msg}"),
+            Self::Nip04Encrypt(msg) => write!(f, "nip04 encrypt: {msg}"),
+            Self::Nip04Decrypt(msg) => write!(f, "nip04 decrypt: {msg}"),
+            Self::Nip44Decrypt(msg) => write!(f, "nip44 decrypt: {msg}"),
+            Self::MalformedNip04Payload(msg) => write!(f, "nip04 decrypt: {msg}"),
+            Self::Json(msg) => write!(f, "json: {msg}"),
+        }
+    }
+}
+
+impl std::error::Error for NwcBuildError {}
+
 /// Build the NIP-44 encrypted content for a kind:23194 request.
 ///
 /// `client_secret_hex`: client secret from the NWC URI.
@@ -19,12 +78,13 @@ pub fn request_content(
     wallet_pubkey_hex: &str,
     method: &NwcMethod,
     params: Value,
-) -> Result<String, String> {
+) -> Result<String, NwcBuildError> {
     let json = json!({
         "method": method.as_str(),
         "params": params,
     });
-    let plaintext = serde_json::to_string(&json).map_err(|e| format!("json: {e}"))?;
+    let plaintext =
+        serde_json::to_string(&json).map_err(|e| NwcBuildError::Json(e.to_string()))?;
     crypto::encrypt(client_secret_hex, wallet_pubkey_hex, &plaintext)
 }
 
@@ -32,7 +92,7 @@ pub fn request_content(
 pub fn get_balance_content(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
-) -> Result<String, String> {
+) -> Result<String, NwcBuildError> {
     request_content(
         client_secret_hex,
         wallet_pubkey_hex,
@@ -45,7 +105,7 @@ pub fn get_balance_content(
 pub fn get_info_content(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
-) -> Result<String, String> {
+) -> Result<String, NwcBuildError> {
     request_content(
         client_secret_hex,
         wallet_pubkey_hex,
@@ -59,9 +119,9 @@ pub fn pay_invoice_content(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
     params: PayInvoiceParams,
-) -> Result<String, String> {
-    let params_value =
-        serde_json::to_value(&params).map_err(|e| format!("serialize params: {e}"))?;
+) -> Result<String, NwcBuildError> {
+    let params_value = serde_json::to_value(&params)
+        .map_err(|e| NwcBuildError::Json(format!("serialize params: {e}")))?;
     request_content(
         client_secret_hex,
         wallet_pubkey_hex,
@@ -75,9 +135,9 @@ pub fn make_invoice_content(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
     params: MakeInvoiceParams,
-) -> Result<String, String> {
-    let params_value =
-        serde_json::to_value(&params).map_err(|e| format!("serialize params: {e}"))?;
+) -> Result<String, NwcBuildError> {
+    let params_value = serde_json::to_value(&params)
+        .map_err(|e| NwcBuildError::Json(format!("serialize params: {e}")))?;
     request_content(
         client_secret_hex,
         wallet_pubkey_hex,
@@ -184,5 +244,21 @@ mod tests {
     #[test]
     fn build_with_invalid_pubkey_errs() {
         assert!(get_balance_content(CLIENT_SECRET, "not-a-pubkey").is_err());
+    }
+
+    /// The typed enum's `Display` impl must produce the same wire-string
+    /// shape the previous `String`-typed surface used, so a caller's
+    /// `format!("...: {e}")` toast text is byte-identical post-migration.
+    #[test]
+    fn display_matches_legacy_string_format() {
+        // Invalid pubkey → "invalid wallet pubkey: <underlying>"
+        let err = get_balance_content(CLIENT_SECRET, "not-a-pubkey").unwrap_err();
+        let rendered = format!("{err}");
+        assert!(
+            rendered.starts_with("invalid wallet pubkey: "),
+            "Display prefix must match legacy String, got: {rendered}"
+        );
+        // The Debug impl is also derived so test fixtures can use it.
+        let _dbg = format!("{err:?}");
     }
 }

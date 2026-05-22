@@ -11,6 +11,7 @@
 //! default to NIP-04 for maximum compatibility; decryption tries NIP-44 first
 //! (cheap detection on the `?iv=` marker) and falls back to NIP-04.
 
+use crate::build::NwcBuildError;
 use nostr::nips::{nip04, nip44};
 use nostr::{Keys, PublicKey, SecretKey};
 
@@ -21,10 +22,10 @@ pub fn encrypt(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
     plaintext: &str,
-) -> Result<String, String> {
+) -> Result<String, NwcBuildError> {
     let sk = parse_secret(client_secret_hex)?;
     let pk = parse_pubkey(wallet_pubkey_hex)?;
-    nip04::encrypt(&sk, &pk, plaintext).map_err(|e| format!("nip04 encrypt: {e}"))
+    nip04::encrypt(&sk, &pk, plaintext).map_err(|e| NwcBuildError::Nip04Encrypt(e.to_string()))
 }
 
 /// Decrypt a kind:23195 response from the wallet pubkey to the NWC client.
@@ -45,16 +46,16 @@ pub fn decrypt(
     client_secret_hex: &str,
     wallet_pubkey_hex: &str,
     payload: &str,
-) -> Result<String, String> {
+) -> Result<String, NwcBuildError> {
     let sk = parse_secret(client_secret_hex)?;
     let pk = parse_pubkey(wallet_pubkey_hex)?;
     // NIP-04 payloads carry an `?iv=` query-string suffix; NIP-44 v2 payloads
     // are pure base64. Use the marker as a cheap discriminator.
     if payload.contains("?iv=") {
         validate_nip04_shape(payload)?;
-        nip04::decrypt(&sk, &pk, payload).map_err(|e| format!("nip04 decrypt: {e}"))
+        nip04::decrypt(&sk, &pk, payload).map_err(|e| NwcBuildError::Nip04Decrypt(e.to_string()))
     } else {
-        nip44::decrypt(&sk, &pk, payload).map_err(|e| format!("nip44 decrypt: {e}"))
+        nip44::decrypt(&sk, &pk, payload).map_err(|e| NwcBuildError::Nip44Decrypt(e.to_string()))
     }
 }
 
@@ -64,22 +65,26 @@ pub fn decrypt(
 /// where the IV base64-decodes to exactly 16 bytes (the AES-CBC block size).
 /// Anything else — extra `?iv=` markers, non-base64, or a wrong-length IV —
 /// is rejected with `Err` so the caller sees a graceful failure.
-fn validate_nip04_shape(payload: &str) -> Result<(), String> {
+fn validate_nip04_shape(payload: &str) -> Result<(), NwcBuildError> {
     let parts: Vec<&str> = payload.split("?iv=").collect();
     if parts.len() != 2 {
-        return Err("nip04 decrypt: malformed payload (expected one ?iv= marker)".to_string());
+        return Err(NwcBuildError::MalformedNip04Payload(
+            "malformed payload (expected one ?iv= marker)".to_string(),
+        ));
     }
     // Ciphertext half must be valid base64 (length is checked downstream).
-    base64_decode(parts[0])
-        .ok_or_else(|| "nip04 decrypt: ciphertext is not valid base64".to_string())?;
+    base64_decode(parts[0]).ok_or_else(|| {
+        NwcBuildError::MalformedNip04Payload("ciphertext is not valid base64".to_string())
+    })?;
     // IV half must base64-decode to exactly one AES block (16 bytes).
-    let iv = base64_decode(parts[1])
-        .ok_or_else(|| "nip04 decrypt: iv is not valid base64".to_string())?;
+    let iv = base64_decode(parts[1]).ok_or_else(|| {
+        NwcBuildError::MalformedNip04Payload("iv is not valid base64".to_string())
+    })?;
     if iv.len() != 16 {
-        return Err(format!(
-            "nip04 decrypt: iv must be 16 bytes, got {}",
+        return Err(NwcBuildError::MalformedNip04Payload(format!(
+            "iv must be 16 bytes, got {}",
             iv.len()
-        ));
+        )));
     }
     Ok(())
 }
@@ -130,18 +135,18 @@ fn base64_decode(s: &str) -> Option<Vec<u8>> {
 }
 
 /// Derive the client public key from the client secret hex.
-pub fn client_pubkey_hex(client_secret_hex: &str) -> Result<String, String> {
+pub fn client_pubkey_hex(client_secret_hex: &str) -> Result<String, NwcBuildError> {
     let sk = parse_secret(client_secret_hex)?;
     let keys = Keys::new(sk);
     Ok(keys.public_key().to_hex())
 }
 
-fn parse_secret(hex: &str) -> Result<SecretKey, String> {
-    SecretKey::from_hex(hex).map_err(|e| format!("invalid client secret: {e}"))
+fn parse_secret(hex: &str) -> Result<SecretKey, NwcBuildError> {
+    SecretKey::from_hex(hex).map_err(|e| NwcBuildError::InvalidClientSecret(e.to_string()))
 }
 
-fn parse_pubkey(hex: &str) -> Result<PublicKey, String> {
-    PublicKey::from_hex(hex).map_err(|e| format!("invalid wallet pubkey: {e}"))
+fn parse_pubkey(hex: &str) -> Result<PublicKey, NwcBuildError> {
+    PublicKey::from_hex(hex).map_err(|e| NwcBuildError::InvalidWalletPubkey(e.to_string()))
 }
 
 #[cfg(test)]
