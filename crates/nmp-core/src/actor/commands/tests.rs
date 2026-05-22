@@ -1116,6 +1116,7 @@ fn publish_unsigned_event_to_relays_signs_and_routes_to_exactly_those() {
         &mut kernel,
         unsigned,
         relays.clone(),
+        None,
         &mut Vec::new(),
     );
 
@@ -1163,7 +1164,7 @@ fn publish_unsigned_event_to_relays_without_account_toasts() {
     };
     let relays: Vec<String> = TEST_GROUP_RELAYS.iter().map(|s| s.to_string()).collect();
     let outbound =
-        publish_unsigned_event_to_relays(&id, &mut kernel, unsigned, relays, &mut Vec::new());
+        publish_unsigned_event_to_relays(&id, &mut kernel, unsigned, relays, None, &mut Vec::new());
 
     assert!(
         outbound.is_empty(),
@@ -1191,7 +1192,7 @@ fn publish_unsigned_event_to_relays_empty_relays_fails_closed() {
         created_at: 1_700_000_000,
     };
     let outbound =
-        publish_unsigned_event_to_relays(&id, &mut kernel, unsigned, Vec::new(), &mut Vec::new());
+        publish_unsigned_event_to_relays(&id, &mut kernel, unsigned, Vec::new(), None, &mut Vec::new());
 
     assert!(
         outbound.is_empty(),
@@ -1224,6 +1225,7 @@ fn publish_unsigned_event_to_relays_invalid_relay_fails_closed() {
         &mut kernel,
         unsigned,
         vec!["https://not-a-nostr-relay.example".to_string()],
+        None,
         &mut Vec::new(),
     );
 

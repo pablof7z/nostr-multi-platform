@@ -808,7 +808,7 @@ mod tests {
             .expect("well-formed chat message");
 
         match cmd {
-            ActorCommand::PublishUnsignedEventToRelays { event, relays } => {
+            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id } => {
                 // Pinned to EXACTLY the group's host relay — never the
                 // author's NIP-65 outbox.
                 assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
@@ -825,6 +825,8 @@ mod tests {
                 assert_eq!(event.content, "hello");
                 // `pubkey` is a placeholder — the actor derives it at sign time.
                 assert!(event.pubkey.is_empty());
+                // correlation_id threads through from the executor.
+                assert!(correlation_id.is_some(), "correlation_id must be threaded through");
             }
             other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
         }
@@ -1019,7 +1021,7 @@ mod tests {
         };
         let cmd = run_module_execute::<JoinGroupAction>(input).expect("well-formed join input");
         match cmd {
-            ActorCommand::PublishUnsignedEventToRelays { event, relays } => {
+            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id } => {
                 assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
                 assert_eq!(event.kind, 9021);
                 assert!(event
@@ -1031,6 +1033,8 @@ mod tests {
                     .iter()
                     .any(|t| t == &vec!["code".to_string(), "abc".to_string()]));
                 assert_eq!(event.content, "please");
+                // correlation_id threads through from the executor.
+                assert!(correlation_id.is_some(), "correlation_id must be threaded through");
             }
             other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
         }

@@ -291,6 +291,14 @@ pub enum ActorCommand {
     PublishUnsignedEventToRelays {
         event: crate::substrate::UnsignedEvent,
         relays: Vec<crate::publish::RelayUrl>,
+        /// Registry-minted `correlation_id` from `dispatch_action`, when this
+        /// command originates from an `ActionModule::execute` call. Threading
+        /// it lets the publish engine report THAT id in `action_results`
+        /// (via `correlation_id_override`) so the host spinner closes on the
+        /// id it received from `dispatch_action`, not on the signed event's id.
+        /// `None` for callers that are not action-dispatched (e.g. direct
+        /// `NmpApp::` Rust API calls).
+        correlation_id: Option<String>,
     },
     /// Generic publish of an **already-signed** event. The kernel verifies
     /// the Schnorr signature + event-id hash, then routes the event verbatim
