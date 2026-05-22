@@ -227,4 +227,44 @@ mod tests {
             Err(ActionRejection::Invalid(_))
         ));
     }
+
+    #[test]
+    fn react_execute_threads_correlation_id() {
+        use nmp_core::ActorCommand;
+        use std::cell::Cell;
+
+        let cid_matched = Cell::new(false);
+        ReactInGroupAction::execute(react_input(), "react-cid", &|cmd| {
+            if let ActorCommand::PublishUnsignedEventToRelays {
+                ref correlation_id, ..
+            } = cmd
+            {
+                if correlation_id.as_deref() == Some("react-cid") {
+                    cid_matched.set(true);
+                }
+            }
+        })
+        .expect("well-formed input executes");
+        assert!(cid_matched.get(), "correlation_id must thread through react execute");
+    }
+
+    #[test]
+    fn comment_execute_threads_correlation_id() {
+        use nmp_core::ActorCommand;
+        use std::cell::Cell;
+
+        let cid_matched = Cell::new(false);
+        CommentInGroupAction::execute(comment_input(), "comment-cid", &|cmd| {
+            if let ActorCommand::PublishUnsignedEventToRelays {
+                ref correlation_id, ..
+            } = cmd
+            {
+                if correlation_id.as_deref() == Some("comment-cid") {
+                    cid_matched.set(true);
+                }
+            }
+        })
+        .expect("well-formed input executes");
+        assert!(cid_matched.get(), "correlation_id must thread through comment execute");
+    }
 }
