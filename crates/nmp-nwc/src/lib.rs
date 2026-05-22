@@ -21,6 +21,7 @@ pub mod kinds;
 pub mod parse;
 pub mod types;
 
+pub use build::NwcBuildError;
 pub use kinds::{KIND_NWC_REQUEST, KIND_NWC_RESPONSE};
 pub use parse::{NwcUri, ParseError};
 pub use types::{
