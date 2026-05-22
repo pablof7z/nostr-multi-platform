@@ -436,9 +436,21 @@ final class MarmotStore: ObservableObject {
         return kernel.marmotDispatch(actionJSON: json)
     }
 
-    @discardableResult
-    func publishKeyPackage() -> MarmotOpResult {
-        dispatch(["op": "publish_key_package"])
+    /// Publish (or rotate) the local MLS key-package.
+    ///
+    /// Dispatched on a background thread via `Task.detached` because
+    /// `send_event` in `nmp-marmot` opens a synchronous WebSocket connection
+    /// with a wall-clock timeout per relay — blocking the main actor for up to
+    /// 6 s × N relays.  The op is fire-and-forget: the refreshed snapshot is
+    /// pushed by the next kernel tick.
+    func publishKeyPackage() {
+        let k = kernel
+        Task.detached(priority: .userInitiated) {
+            guard let data = try? JSONSerialization.data(withJSONObject: ["op": "publish_key_package"]),
+                  let json = String(data: data, encoding: .utf8)
+            else { return }
+            _ = k.marmotDispatch(actionJSON: json)
+        }
     }
 
     /// True if all of the given npubs have a cached key package locally.
