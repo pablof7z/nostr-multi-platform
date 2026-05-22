@@ -471,6 +471,13 @@ pub(super) fn dispatch_command(
             reaction,
             correlation_id,
         } => {
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
             let outbound = commands::react(
                 ctx.identity,
                 ctx.kernel,
@@ -486,6 +493,13 @@ pub(super) fn dispatch_command(
             pubkey,
             correlation_id,
         } => {
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
             let outbound = commands::follow(
                 ctx.identity,
                 ctx.kernel,
@@ -501,6 +515,13 @@ pub(super) fn dispatch_command(
             pubkey,
             correlation_id,
         } => {
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
             let outbound = commands::follow(
                 ctx.identity,
                 ctx.kernel,
