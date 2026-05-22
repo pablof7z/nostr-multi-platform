@@ -10,7 +10,11 @@ cleanup() {
 trap cleanup EXIT
 
 agent-browser --session "$SESSION" open "$URL" >/dev/null
-agent-browser --session "$SESSION" wait --text "Home timeline" >/dev/null
+agent-browser --session "$SESSION" wait --text "Home" >/dev/null
+agent-browser --session "$SESSION" wait --text "Chats" >/dev/null
+agent-browser --session "$SESSION" wait --text "Groups" >/dev/null
+agent-browser --session "$SESSION" wait --text "Wallet" >/dev/null
+agent-browser --session "$SESSION" wait --text "Settings" >/dev/null
 agent-browser --session "$SESSION" wait --text "Start worker" >/dev/null
 agent-browser --session "$SESSION" find role button click --name "Start worker" >/dev/null
 agent-browser --session "$SESSION" wait --text "running" >/dev/null

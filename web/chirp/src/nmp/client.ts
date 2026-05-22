@@ -7,6 +7,7 @@ import {
   type WorkerRequest,
   type ChirpAction,
 } from "./protocol";
+import type { RuntimeCommand } from "./actions";
 
 export type RuntimeSnapshot = {
   status: RuntimeStatus;
@@ -29,6 +30,7 @@ export type NmpClient = {
   subscribe(listener: (snapshot: RuntimeSnapshot) => void): () => void;
   start(): Promise<RuntimeSnapshot>;
   dispatch(actionType: string, payload: unknown): Promise<RuntimeSnapshot>;
+  dispatchCommand(command: RuntimeCommand): Promise<RuntimeSnapshot>;
   dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot>;
 };
 
@@ -76,6 +78,9 @@ abstract class BaseClient implements NmpClient {
 
   abstract start(): Promise<RuntimeSnapshot>;
   abstract dispatch(actionType: string, payload: unknown): Promise<RuntimeSnapshot>;
+  dispatchCommand(command: RuntimeCommand): Promise<RuntimeSnapshot> {
+    return this.dispatch(command.actionType, command.payload);
+  }
   abstract dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot>;
 }
 

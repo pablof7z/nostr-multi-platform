@@ -1,10 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { publishNoteAction } from "./actions";
+import {
+  discoverGroupsCommand,
+  publishNoteAction,
+  reactGroupMessageCommand,
+  replyGroupMessageCommand,
+  sendDmCommand,
+  walletCommand,
+} from "./actions";
 import { createNmpClient } from "./client";
 import { DegradedRuntime } from "./degradedRuntime";
 import type { WorkerEvent, WorkerRequest } from "./protocol";
 import { protocolVersion } from "./protocol";
-import { chirpTimelineFromEnvelope, displayRows, kernelSnapshotFromEnvelope } from "./snapshot";
+import { chirpTimelineFromEnvelope, displayRows, featureSnapshotFromEnvelope, kernelSnapshotFromEnvelope } from "./snapshot";
 
 type WorkerHarness = {
   onmessage: ((message: MessageEvent<WorkerRequest>) => void) | null;
@@ -116,6 +123,33 @@ describe("shared Chirp web semantics", () => {
     });
   });
 
+  it("uses the shared action namespaces for non-home Chirp features", () => {
+    expect(sendDmCommand("pk", "hello")).toEqual({
+      actionType: "nmp.nip17.send",
+      payload: { recipient_pubkey: "pk", content: "hello" },
+    });
+    expect(discoverGroupsCommand("wss://groups.example")).toEqual({
+      actionType: "nmp.nip29.discover",
+      payload: { relay_url: "wss://groups.example" },
+    });
+    expect(walletCommand("pay_invoice", { bolt11: "lnbc1..." })).toEqual({
+      actionType: "nmp.wallet.pay_invoice",
+      payload: { bolt11: "lnbc1..." },
+    });
+    expect(reactGroupMessageCommand("wss://groups.example", "general", "event1")).toEqual({
+      actionType: "nmp.nip29.react_in_group",
+      payload: {
+        group: { host_relay_url: "wss://groups.example", local_id: "general" },
+        target_event_id: "event1",
+        content: "+",
+      },
+    });
+    expect(replyGroupMessageCommand("wss://groups.example", "general", "event1", "reply")).toMatchObject({
+      actionType: "nmp.nip29.comment_in_group",
+      payload: { parent_event_id: "event1", content: "reply" },
+    });
+  });
+
   it("renders rows from Rust snapshot envelopes instead of local feed fixtures", () => {
     const kernel = kernelSnapshotFromEnvelope({
       t: "snapshot",
@@ -159,6 +193,35 @@ describe("shared Chirp web semantics", () => {
         createdAt: undefined,
       },
     ]);
+  });
+
+  it("projects iOS/TUI parity feature snapshots from shared Rust projections", () => {
+    const feature = featureSnapshotFromEnvelope({
+      t: "snapshot",
+      v: {
+        projections: {
+          accounts: [{ id: "alice", display_name: "Alice", npub: "npub1alice", is_active: true }],
+          active_account: "alice",
+          relay_edit_rows: [{ url: "wss://relay.example", role_label: "both" }],
+          relay_diagnostics: [{ url: "wss://relay.example", role: "both,indexer", status: "configured" }],
+          wallet: { status: "ready", balance_msats: 21000 },
+          "nmp.nip17.dm_inbox": {
+            conversations: [{ peer_pubkey: "bob", messages: [{ id: "dm1", content: "hi", is_outgoing: false }] }],
+          },
+          "nmp.nip29.discovered_groups": {
+            groups: [{ host_relay_url: "wss://groups.example", group_id: "general", member_count: 3 }],
+          },
+          publish_outbox: [{ handle: "pub1", status_label: "pending", can_retry: true }],
+        },
+      },
+    });
+
+    expect(feature.accounts[0]).toMatchObject({ id: "alice", display: "Alice", active: true });
+    expect(feature.dmConversations[0].latest).toBe("hi");
+    expect(feature.discoveredGroups[0]).toMatchObject({ groupId: "general", memberCount: 3 });
+    expect(feature.relayDiagnostics[0].status).toBe("configured");
+    expect(feature.wallet.balanceMsats).toBe(21000);
+    expect(feature.outbox[0].canRetry).toBe(true);
   });
 });
 
