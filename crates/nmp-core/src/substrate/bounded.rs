@@ -173,6 +173,36 @@ where
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.map.values()
     }
+
+    /// Return a mutable reference to the value under `key`, inserting
+    /// `default()` if the key is absent.
+    ///
+    /// Eviction contract: if `key` is not present and the map is at capacity,
+    /// the oldest-by-insertion-order entry is evicted before the new one is
+    /// inserted. Re-accessing an existing key updates the value in place
+    /// (no eviction, no position change) — same contract as [`Self::insert`].
+    pub fn entry_or_insert_with<F>(&mut self, key: K, default: F) -> &mut V
+    where
+        F: FnOnce() -> V,
+    {
+        use indexmap::map::Entry;
+        // Only evict when we're about to insert a NEW key at capacity.
+        if !self.map.contains_key(&key) && self.map.len() >= self.capacity {
+            self.map.shift_remove_index(0);
+        }
+        match self.map.entry(key) {
+            Entry::Occupied(e) => e.into_mut(),
+            Entry::Vacant(e) => e.insert(default()),
+        }
+    }
+
+    /// Variant of [`Self::entry_or_insert_with`] for `V: Default`.
+    pub fn entry_or_default(&mut self, key: K) -> &mut V
+    where
+        V: Default,
+    {
+        self.entry_or_insert_with(key, V::default)
+    }
 }
 
 #[cfg(test)]
@@ -376,5 +406,75 @@ mod tests {
         // projection initialises with this value, so it is part of the wire
         // contract of "how big can a projection get in steady state".
         assert_eq!(MAX_PROJECTION_MESSAGES, 10_000);
+    }
+
+    #[test]
+    fn entry_or_insert_with_inserts_when_absent() {
+        let mut map: BoundedMessageMap<String, u32> = BoundedMessageMap::new(4);
+        let v = map.entry_or_insert_with("a".to_string(), || 42);
+        assert_eq!(*v, 42);
+        // Mutate through the returned reference to confirm it really is &mut V.
+        *v = 43;
+        assert_eq!(map.get(&"a".to_string()), Some(&43));
+        assert_eq!(map.len(), 1);
+    }
+
+    #[test]
+    fn entry_or_insert_with_returns_existing_when_present() {
+        let mut map = BoundedMessageMap::new(3);
+        map.insert("a".to_string(), 1);
+        map.insert("b".to_string(), 2);
+        map.insert("c".to_string(), 3);
+
+        // Touching an existing key must NOT call the default and must NOT
+        // change length or eviction order.
+        let v = map.entry_or_insert_with("a".to_string(), || {
+            panic!("default closure must not run for an existing key");
+        });
+        assert_eq!(*v, 1);
+        assert_eq!(map.len(), 3);
+
+        // "a" is still the oldest — inserting "d" still evicts it, proving the
+        // entry call did not shift it to the back.
+        map.insert("d".to_string(), 4);
+        assert!(map.get(&"a".to_string()).is_none());
+        assert_eq!(map.get(&"b".to_string()), Some(&2));
+        assert_eq!(map.get(&"c".to_string()), Some(&3));
+        assert_eq!(map.get(&"d".to_string()), Some(&4));
+    }
+
+    #[test]
+    fn entry_or_insert_with_evicts_oldest_when_full() {
+        let mut map = BoundedMessageMap::new(3);
+        map.insert("a".to_string(), 1);
+        map.insert("b".to_string(), 2);
+        map.insert("c".to_string(), 3);
+
+        // At capacity — entry on a NEW key must evict the oldest ("a").
+        let v = map.entry_or_insert_with("d".to_string(), || 4);
+        assert_eq!(*v, 4);
+        assert_eq!(map.len(), 3, "length must stay at capacity after eviction");
+        assert!(
+            map.get(&"a".to_string()).is_none(),
+            "oldest entry must be evicted",
+        );
+        assert_eq!(map.get(&"b".to_string()), Some(&2));
+        assert_eq!(map.get(&"c".to_string()), Some(&3));
+        assert_eq!(map.get(&"d".to_string()), Some(&4));
+    }
+
+    #[test]
+    fn entry_or_default_convenience() {
+        let mut map: BoundedMessageMap<String, u32> = BoundedMessageMap::new(2);
+        // Absent key — default value is inserted.
+        let v = map.entry_or_default("a".to_string());
+        assert_eq!(*v, 0);
+        *v = 7;
+        assert_eq!(map.get(&"a".to_string()), Some(&7));
+
+        // Present key — existing value is returned, no overwrite.
+        let v = map.entry_or_default("a".to_string());
+        assert_eq!(*v, 7);
+        assert_eq!(map.len(), 1);
     }
 }

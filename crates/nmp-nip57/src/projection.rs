@@ -225,18 +225,9 @@ impl KernelEventObserver for ZapsAggregateProjection {
         let Ok(mut by_target) = self.by_target.lock() else {
             return;
         };
-        // `BoundedMessageMap` has no `entry` API — explicit get_mut / insert
-        // keeps the inner `BTreeMap`'s receipt-id dedupe identical to the
-        // pre-migration `HashMap::entry().or_default().insert()` shape, while
-        // letting the outer cap evict the oldest-by-first-receipt target when
-        // the projection saturates.
-        if let Some(receipts) = by_target.get_mut(&target) {
-            receipts.insert(record.event_id, msats);
-        } else {
-            let mut receipts = BTreeMap::new();
-            receipts.insert(record.event_id, msats);
-            by_target.insert(target, receipts);
-        }
+        by_target
+            .entry_or_insert_with(target, BTreeMap::new)
+            .insert(record.event_id, msats);
     }
 }
 
