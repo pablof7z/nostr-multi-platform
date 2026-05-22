@@ -367,9 +367,7 @@ mod tests {
     use crate::substrate::UnsignedEvent;
 
     fn ctx() -> ActionContext {
-        ActionContext {
-            now_ms: 1_700_000_000_000,
-        }
+        ActionContext::default()
     }
 
     fn signed_event() -> SignedEvent {

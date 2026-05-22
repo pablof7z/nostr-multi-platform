@@ -341,9 +341,7 @@ mod tests {
     use crate::substrate::{SignedEvent, UnsignedEvent};
 
     fn ctx() -> ActionContext {
-        ActionContext {
-            now_ms: 1_700_000_000_000,
-        }
+        ActionContext::default()
     }
 
     /// A `SignedEvent` with non-empty `id`/`sig` — enough to pass

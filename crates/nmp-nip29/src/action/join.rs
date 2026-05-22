@@ -173,7 +173,7 @@ mod tests {
 
     #[test]
     fn missing_host_relay_is_rejected_by_validator() {
-        let mut ctx = ActionContext { now_ms: 0 };
+        let mut ctx = ActionContext::default();
         let action = JoinGroupInput {
             group: GroupId::new("", "r"),
             invite_code: None,
@@ -187,7 +187,7 @@ mod tests {
 
     #[test]
     fn missing_local_id_is_rejected_by_validator() {
-        let mut ctx = ActionContext { now_ms: 0 };
+        let mut ctx = ActionContext::default();
         let action = JoinGroupInput {
             group: GroupId::new("wss://h", ""),
             invite_code: None,
@@ -201,7 +201,7 @@ mod tests {
 
     #[test]
     fn well_formed_passes_validator() {
-        let mut ctx = ActionContext { now_ms: 0 };
+        let mut ctx = ActionContext::default();
         assert!(JoinGroupAction::start(&mut ctx, input()).is_ok());
     }
 }

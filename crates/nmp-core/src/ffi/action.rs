@@ -279,7 +279,7 @@ fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str
             return format!(r#"{{"correlation_id":{}}}"#, json_string(original_id));
         }
     }
-    let mut ctx = ActionContext { now_ms: now_ms() };
+    let mut ctx = ActionContext {};
     match app.action_registry.start(&mut ctx, namespace, action_json) {
         Ok(correlation_id) => {
             // `start()` is a pure validator and the correlation id is the
@@ -416,15 +416,6 @@ fn json_string(s: &str) -> String {
     serde_json::to_string(s).unwrap_or_else(|_| "\"\"".to_string())
 }
 
-/// Current wall-clock time in milliseconds since the Unix epoch, for
-/// [`ActionContext::now_ms`]. A clock before the epoch collapses to `0`.
-fn now_ms() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
 
 #[cfg(test)]
 mod tests {

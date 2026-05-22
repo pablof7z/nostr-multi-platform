@@ -85,9 +85,7 @@ pub struct ProjectionChange {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct ViewContext {
-    pub now_ms: u64,
-}
+pub struct ViewContext {}
 
 // NOTE: there was once a `ViewModule` trait here — a substrate extension
 // contract for reactive views. It has been removed. No `ViewRegistry` ever
