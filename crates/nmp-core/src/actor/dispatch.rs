@@ -353,17 +353,33 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::PublishUnsignedEvent(mut unsigned) => {
+        ActorCommand::PublishUnsignedEvent {
+            event: mut unsigned,
+            correlation_id,
+        } => {
             // D7: apply the same created_at=0 sentinel as PublishUnsignedEventToRelays.
             // A host that builds an UnsignedEvent without setting created_at gets
             // the kernel clock rather than epoch time.
             if unsigned.created_at == 0 {
                 unsigned.created_at = ctx.kernel.now_secs();
             }
+            // PR-G: record Requested lifecycle when dispatched via an action.
+            // Mirrors the `PublishUnsignedEventToRelays` arm below — without this
+            // an action like `nmp.nip17.publish_relay_list` would hand the host
+            // a correlation_id, never record a terminal stage, and the host
+            // spinner would hang forever.
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
             let outbound = commands::publish_unsigned_event(
                 ctx.identity,
                 ctx.kernel,
                 unsigned,
+                correlation_id,
                 ctx.pending_signs,
             );
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);

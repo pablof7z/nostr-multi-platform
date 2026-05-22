@@ -67,9 +67,17 @@ pub(crate) fn publish_unsigned_event(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
     unsigned: UnsignedEvent,
+    correlation_id: Option<String>,
     pending_signs: &mut Vec<PendingSign>,
 ) -> Vec<OutboundMessage> {
     if identity.active_pubkey().is_none() {
+        // Broken-promise fix: a dispatched action handed the host a
+        // `correlation_id`; if the publish aborts before the engine sees it,
+        // the failure must still reach `action_results` so the host spinner
+        // clears. `record_action_failure` is a no-op for `None`.
+        if let Some(id) = correlation_id.clone() {
+            kernel.record_action_failure(id, "no active account".to_string());
+        }
         return toast_no_account(kernel, "publish");
     }
     // Non-blocking sign: a local key resolves now; a remote (NIP-46) signer
@@ -78,19 +86,51 @@ pub(crate) fn publish_unsigned_event(
     let mut op = match sign_active_nonblocking(identity, &unsigned) {
         Ok(op) => op,
         Err(reason) => {
-            kernel.set_last_error_toast(Some(reason));
+            kernel.set_last_error_toast(Some(reason.clone()));
+            // Broken-promise fix: a sign-setup failure happens on the actor
+            // thread AFTER `dispatch_action` already returned the
+            // correlation_id — the host is waiting; record the failure.
+            if let Some(id) = correlation_id.clone() {
+                kernel.record_action_failure(id, reason);
+            }
             return Vec::new();
         }
     };
     match op.poll() {
-        Some(Ok(signed)) => kernel.publish_signed(&signed, &[]),
+        // Local key resolved on the spot. When the publish was action-dispatched
+        // (`correlation_id.is_some()`) the engine must report THAT id in
+        // `action_results` — route through `publish_signed_with_correlation`.
+        // Non-dispatch callers (`correlation_id == None` — `NmpApp::` Rust API,
+        // tests) keep the prior `publish_signed` shape: the engine reports the
+        // event id (== publish handle), which is the documented `None` fallback.
+        // The two paths are run_publish_engine-equivalent (both `PublishTarget::Auto`,
+        // identical p_tags); preserving the named entrypoints documents intent
+        // and keeps `publish_signed` from drifting into dead-code in this lib.
+        Some(Ok(signed)) => match correlation_id {
+            Some(cid) => kernel.publish_signed_with_correlation(&signed, &[], Some(cid)),
+            None => kernel.publish_signed(&signed, &[]),
+        },
         Some(Err(e)) => {
-            kernel.set_last_error_toast(Some(format!("sign failed: {e}")));
+            let reason = format!("sign failed: {e}");
+            kernel.set_last_error_toast(Some(reason.clone()));
+            // Broken-promise fix: a local-key sign error happens after
+            // `dispatch_action` returned the correlation_id — record it.
+            if let Some(id) = correlation_id.clone() {
+                kernel.record_action_failure(id, reason);
+            }
             Vec::new()
         }
         None => {
-            // Remote signer not yet responded — park the op for polling.
-            pending_signs.push(PendingSign::new(op, Vec::new()));
+            // Remote signer pending. Action-dispatched calls park WITH their
+            // correlation_id so the broker turn-around settles under the id
+            // the host is waiting on; non-dispatch calls park plain (matching
+            // the prior `PendingSign::new` shape and keeping that constructor
+            // live in the lib build).
+            let pending = match correlation_id {
+                Some(_) => PendingSign::with_correlation_id(op, Vec::new(), correlation_id),
+                None => PendingSign::new(op, Vec::new()),
+            };
+            pending_signs.push(pending);
             Vec::new()
         }
     }

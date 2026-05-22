@@ -81,10 +81,10 @@ fn builder_output_plugs_directly_into_publish_unsigned_event_command() {
         .content("body")
         .build("placeholder-pk", 1_700_000_200)
         .expect("article builder");
-    let cmd = ActorCommand::PublishUnsignedEvent(unsigned);
+    let cmd = ActorCommand::PublishUnsignedEvent { event: unsigned, correlation_id: None };
     // Confirm the variant carries the kind through unchanged — extracting
     // by pattern-match also doubles as a compile-time shape lock.
-    if let ActorCommand::PublishUnsignedEvent(u) = cmd {
+    if let ActorCommand::PublishUnsignedEvent { event: u, .. } = cmd {
         assert_eq!(u.kind, 30023);
     } else {
         panic!("expected PublishUnsignedEvent variant");

@@ -99,7 +99,15 @@ impl DmRuntimeController {
                 ActorCommand::WithdrawInterest(active_giftwrap_inbox_interest_id())
             }
             DmRuntimeEffect::PublishRelayList { event, .. } => {
-                ActorCommand::PublishUnsignedEvent(event)
+                // This DmRuntime effect is the non-dispatch internal path (the
+                // host-driven Chirp DM runtime), not an `ActionModule::execute`
+                // call. `None` matches the prior behaviour — the action seam
+                // at `nmp_nip17::PublishDmRelayListAction::execute` is where
+                // the correlation_id round-trip happens.
+                ActorCommand::PublishUnsignedEvent {
+                    event,
+                    correlation_id: None,
+                }
             }
         };
         let _ = self.tx.send(cmd);

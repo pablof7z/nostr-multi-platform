@@ -187,13 +187,22 @@ impl ActionModule for PublishDmRelayListAction {
     }
     fn execute(
         action: Self::Action,
-        _correlation_id: &str,
+        correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
         let event = build_dm_relay_list_event(&action.relays);
         // kind:10050 is a NIP-65 replaceable event — route through the
         // author's NIP-65 write-relay outbox, not an explicit relay pin.
-        send(ActorCommand::PublishUnsignedEvent(event));
+        //
+        // Thread the registry-minted `correlation_id` so the publish engine
+        // reports it in `action_results` and the host spinner that fired on
+        // `dispatch_action` can be cleared with a terminal verdict. Without
+        // this the dispatch arm never records `ActionStage::Requested` and
+        // the spinner hangs forever.
+        send(ActorCommand::PublishUnsignedEvent {
+            event,
+            correlation_id: Some(correlation_id.to_string()),
+        });
         Ok(())
     }
 }
@@ -201,11 +210,19 @@ impl ActionModule for PublishDmRelayListAction {
 /// Executor: build the kind:10050 unsigned event and dispatch
 /// [`ActorCommand::PublishUnsignedEvent`] — kind:10050 is a NIP-65
 /// replaceable event that routes via the author's NIP-65 write-relay outbox.
+///
+/// This helper is the non-action ergonomic shim (e.g. the legacy `nmp-repl`
+/// path); the action seam (`PublishDmRelayListAction::execute`) is where the
+/// correlation_id round-trip happens, so this `None` matches the prior
+/// behaviour (no spinner, no terminal stage).
 pub fn publish_dm_relay_list_command(action_json: &str) -> Result<ActorCommand, String> {
     let input: PublishDmRelayListInput =
         serde_json::from_str(action_json).map_err(|e| e.to_string())?;
     let event = build_dm_relay_list_event(&input.relays);
-    Ok(ActorCommand::PublishUnsignedEvent(event))
+    Ok(ActorCommand::PublishUnsignedEvent {
+        event,
+        correlation_id: None,
+    })
 }
 
 #[cfg(test)]
@@ -376,7 +393,10 @@ mod tests {
         let body = r#"{"relays":["wss://relay.example"]}"#;
         let cmd = publish_dm_relay_list_command(body).expect("well-formed body");
         match cmd {
-            ActorCommand::PublishUnsignedEvent(event) => {
+            ActorCommand::PublishUnsignedEvent {
+                event,
+                correlation_id,
+            } => {
                 assert_eq!(event.kind, 10050);
                 assert_eq!(
                     event.tags,
@@ -384,6 +404,10 @@ mod tests {
                 );
                 assert_eq!(event.created_at, 0, "D7 sentinel — actor re-stamps");
                 assert!(event.pubkey.is_empty(), "actor derives pubkey at sign time");
+                assert!(
+                    correlation_id.is_none(),
+                    "non-action helper path carries no correlation_id"
+                );
             }
             other => panic!("expected PublishUnsignedEvent, got {other:?}"),
         }
@@ -432,12 +456,23 @@ mod tests {
             relays: vec!["wss://inbox.example".to_string()],
         };
         let correct = Cell::new(false);
-        PublishDmRelayListAction::execute(input, "", &|cmd| {
-            if matches!(cmd, ActorCommand::PublishUnsignedEvent(_)) {
+        let captured_cid = Cell::new(false);
+        PublishDmRelayListAction::execute(input, "test-cid", &|cmd| {
+            if let ActorCommand::PublishUnsignedEvent {
+                ref correlation_id, ..
+            } = cmd
+            {
                 correct.set(true);
+                if correlation_id.as_deref() == Some("test-cid") {
+                    captured_cid.set(true);
+                }
             }
         })
         .expect("execute must not fail");
         assert!(correct.get(), "expected PublishUnsignedEvent (NIP-65 outbox)");
+        assert!(
+            captured_cid.get(),
+            "execute must thread the dispatch correlation_id into the actor command"
+        );
     }
 }
