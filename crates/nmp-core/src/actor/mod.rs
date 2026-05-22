@@ -291,6 +291,14 @@ pub enum ActorCommand {
     PublishUnsignedEventToRelays {
         event: crate::substrate::UnsignedEvent,
         relays: Vec<crate::publish::RelayUrl>,
+        /// Registry-minted `correlation_id` from `dispatch_action`, when this
+        /// command originates from an `ActionModule::execute` call. Threading
+        /// it lets the publish engine report THAT id in `action_results`
+        /// (via `correlation_id_override`) so the host spinner closes on the
+        /// id it received from `dispatch_action`, not on the signed event's id.
+        /// `None` for callers that are not action-dispatched (e.g. direct
+        /// `NmpApp::` Rust API calls).
+        correlation_id: Option<String>,
     },
     /// Generic publish of an **already-signed** event. The kernel verifies
     /// the Schnorr signature + event-id hash, then routes the event verbatim
@@ -440,10 +448,11 @@ pub enum ActorCommand {
     /// kernel's [`crate::kernel::LifecyclePhase`] state and, on a
     /// meaningful transition (`Background → Foreground`, `Foreground →
     /// Background`, or first phase after boot), fires the registered
-    /// lifecycle observer. The observer is what fans the trigger out to
-    /// `nmp_nip77::TriggerEngine` for `TriggerEvent::Foreground`; nmp-core
-    /// itself does not name nip77 (D0). Idempotent: rapid scene oscillation
-    /// debounces to a single observer call per transition.
+    /// lifecycle observer. The observer is what fans the transition out to
+    /// the shell's sync-trigger engine (typically on a foreground
+    /// transition); nmp-core itself does not name any shell vocabulary (D0).
+    /// Idempotent: rapid scene oscillation debounces to a single observer
+    /// call per transition.
     LifecycleEvent(LifecyclePhase),
     /// PR-G — host acknowledgement of a `correlation_id` in the
     /// `action_stages` snapshot mirror. The actor folds the ack into the

@@ -77,10 +77,11 @@ impl ActionModule for JoinGroupAction {
     }
     fn execute(
         action: Self::Action,
-        _correlation_id: &str,
+        correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        send(join_group_plan(&action).into_actor_command()?);
+        send(join_group_plan(&action)
+            .into_actor_command(Some(correlation_id.to_string()))?);
         Ok(())
     }
 }
@@ -113,7 +114,7 @@ mod tests {
     #[test]
     fn well_formed_input_yields_host_pinned_kind_9021_publish_command() {
         match run_execute(input()).expect("well-formed input executes") {
-            ActorCommand::PublishUnsignedEventToRelays { event, relays } => {
+            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id } => {
                 // Pinned to EXACTLY the host relay — never the NIP-65 outbox.
                 assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
                 assert_eq!(event.kind, KIND_JOIN_REQUEST);
@@ -129,6 +130,8 @@ mod tests {
                 assert_eq!(event.content, "");
                 // Actor fills the pubkey at sign time.
                 assert!(event.pubkey.is_empty());
+                // correlation_id threads through from the executor.
+                assert_eq!(correlation_id.as_deref(), Some("test-cid"));
             }
             other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
         }

@@ -17,7 +17,6 @@ serde_json = "1.0"
 [dev-dependencies]
 nmp-core = { path = "../nmp-core" }
 nmp-nip01 = { path = "../nmp-nip01" }
-nmp-nip77 = { path = "../nmp-nip77" }
 nmp-nip22 = { path = "../nmp-nip22" }
 nmp-nip23 = { path = "../nmp-nip23" }
 nmp-nip42 = { path = "../nmp-nip42" }

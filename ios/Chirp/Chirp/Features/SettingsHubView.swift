@@ -144,8 +144,8 @@ private struct MarmotKeyPackageRow: View {
             // result comes back as a refreshed snapshot. No Swift-owned
             // `busy` flag (the prior `busy = true; …; busy = false` never
             // actually showed because the call returned synchronously — see
-            // audit SH-5). publishKeyPackage() is void (Task.detached) so
-            // there is nothing to discard.
+            // audit SH-5). publishKeyPackage() is fire-and-forget (dispatches
+            // on DispatchQueue.global) so there is nothing to discard.
             Button {
                 model.marmot.publishKeyPackage()
             } label: {

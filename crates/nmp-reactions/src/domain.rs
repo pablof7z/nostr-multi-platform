@@ -1,11 +1,9 @@
 //! `ReactionsDomain` — `DomainModule` registration for kinds 7 / 6 / 16.
 //!
 //! Per `docs/design/kind-wrappers.md` §3.3 + §6: the kernel does not know
-//! `kind 7 == reaction` (D0). On ingest, the kernel's dispatch table (Phase 1
-//! §8) reads `ReactionsDomain::ingest_kinds()` and calls `decode_and_route` to
-//! write the decoded [`ReactionRecord`] to the domain store. Until the kernel
-//! dispatch table lands, `decode_and_route` is callable directly — exercised by
-//! the integration tests to prove the contract end-to-end.
+//! `kind 7 == reaction` (D0). `decode_and_route` is the per-event ingest entry
+//! point — callers (apps or `KernelEventObserver` impls) dispatch kinds 7 / 6 /
+//! 16 to it to write the decoded [`ReactionRecord`] into the domain store.
 //!
 //! ## Not replaceable — idempotency on `event_id`
 //!
@@ -25,12 +23,9 @@ use nmp_core::store::{DomainHandle, StoreError, StoredEvent};
 use nmp_core::substrate::{DomainIndex, DomainMigration, DomainModule};
 
 use crate::decode::{try_from_event, ReactionTarget, ReactionKind, ReactionRecord};
-use crate::kinds::REACTION_KINDS;
 
 /// Domain-store namespace.
 pub const NAMESPACE: &str = "nmp.reactions";
-
-const INGEST_KINDS: &[u32] = REACTION_KINDS;
 
 /// `DomainModule` impl for NIP-25 reactions + NIP-18 reposts.
 pub struct ReactionsDomain;
@@ -38,10 +33,6 @@ pub struct ReactionsDomain;
 impl DomainModule for ReactionsDomain {
     const NAMESPACE: &'static str = NAMESPACE;
     const SCHEMA_VERSION: u32 = 1;
-
-    fn ingest_kinds() -> &'static [u32] {
-        INGEST_KINDS
-    }
 
     fn migrations() -> Vec<DomainMigration> {
         Vec::new()
@@ -328,11 +319,6 @@ fn sort_newest_first(records: &mut [ReactionRecord]) {
 mod tests {
     use super::*;
     use crate::decode::ReactionTarget;
-
-    #[test]
-    fn module_ingest_kinds_returns_7_6_16() {
-        assert_eq!(ReactionsDomain::ingest_kinds(), &[7, 6, 16]);
-    }
 
     #[test]
     fn target_key_disambiguates_event_id_vs_naddr() {

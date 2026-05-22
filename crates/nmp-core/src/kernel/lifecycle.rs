@@ -16,13 +16,14 @@
 //!
 //! ## D0 boundary
 //!
-//! `nmp-nip77` carries `TriggerEvent::Foreground`, but `nmp-core` does NOT
-//! depend on `nmp-nip77` (would be a dep cycle — `nmp-nip77` already consumes
-//! `nmp-core::store`). The kernel therefore exposes a callback observer
-//! (`ffi::lifecycle::nmp_app_set_lifecycle_callback`) that a consumer (the
-//! Pulse/Stress app or an integration test) registers to receive transitions
-//! and fan them out to its own `TriggerEngine`. Mirrors the established
-//! `capability_callback` pattern (`ffi/capability.rs`).
+//! A shell-side sync-trigger engine carries the `Foreground` notion, but
+//! `nmp-core` does NOT depend on any such crate (would be a dep cycle — any
+//! such crate already consumes `nmp-core::store`). The kernel therefore
+//! exposes a callback observer (`ffi::lifecycle::nmp_app_set_lifecycle_callback`)
+//! that a consumer (the Pulse/Stress app or an integration test) registers
+//! to receive transitions and fan them out to its own trigger engine.
+//! Mirrors the established `capability_callback` pattern
+//! (`ffi/capability.rs`).
 //!
 //! ## Idempotence (D6 contract)
 //!

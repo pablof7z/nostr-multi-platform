@@ -356,7 +356,11 @@ pub(super) fn dispatch_command(
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::PublishUnsignedEventToRelays { mut event, relays } => {
+        ActorCommand::PublishUnsignedEventToRelays {
+            mut event,
+            relays,
+            correlation_id,
+        } => {
             // D7: kernel owns the wall clock. Executors in NIP crates set
             // created_at = 0 as a sentinel; we re-stamp here so they never
             // call SystemTime::now() and the FixedClock test hook stays
@@ -364,11 +368,20 @@ pub(super) fn dispatch_command(
             if event.created_at == 0 {
                 event.created_at = ctx.kernel.now_secs();
             }
+            // PR-G: record Requested lifecycle when dispatched via an action.
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
             let outbound = commands::publish_unsigned_event_to_relays(
                 ctx.identity,
                 ctx.kernel,
                 event,
                 relays,
+                correlation_id,
                 ctx.pending_signs,
             );
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);

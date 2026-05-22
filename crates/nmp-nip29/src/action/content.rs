@@ -58,10 +58,11 @@ impl ActionModule for PostChatMessageAction {
     }
     fn execute(
         action: Self::Action,
-        _correlation_id: &str,
+        correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        send(post_chat_message_plan(&action).into_actor_command()?);
+        send(post_chat_message_plan(&action)
+            .into_actor_command(Some(correlation_id.to_string()))?);
         Ok(())
     }
 }
