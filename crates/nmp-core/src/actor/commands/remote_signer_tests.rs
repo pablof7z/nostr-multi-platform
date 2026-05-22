@@ -480,9 +480,11 @@ fn snapshot_carries_nip46_onboarding_projection() {
             });
     }
 
+    let actor_self_tx = cmd_tx.clone();
     thread::spawn(move || {
         run_actor_with_observers(
             cmd_rx,
+            actor_self_tx,
             upd_tx,
             crate::actor::new_lifecycle_observer_slot(),
             crate::actor::new_event_observer_slot(),
@@ -553,7 +555,8 @@ fn dispatch_add_remote_signer_then_progress_surfaces_on_snapshot() {
 
     let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
     let (upd_tx, upd_rx) = mpsc::channel::<String>();
-    thread::spawn(move || run_actor(cmd_rx, upd_tx));
+    let actor_self_tx = cmd_tx.clone();
+    thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
 
     cmd_tx
         .send(ActorCommand::Start {

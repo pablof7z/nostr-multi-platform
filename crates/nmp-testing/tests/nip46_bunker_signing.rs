@@ -168,7 +168,8 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
 
     let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
     let (upd_tx, upd_rx) = mpsc::channel::<String>();
-    let actor_handle = std::thread::spawn(move || run_actor(cmd_rx, upd_tx));
+    let actor_self_tx = cmd_tx.clone();
+    let actor_handle = std::thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
 
     cmd_tx
         .send(ActorCommand::Start {

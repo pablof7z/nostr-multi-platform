@@ -192,7 +192,13 @@ pub mod testing {
     pub fn spawn_actor() -> (mpsc::Sender<ActorCommand>, mpsc::Receiver<String>) {
         let (command_tx, command_rx) = mpsc::channel();
         let (update_tx, update_rx) = mpsc::channel();
-        thread::spawn(move || run_actor(command_rx, update_tx));
+        // Hand the actor a clone of the command sender so dispatch arms
+        // that spawn workers (currently the LNURL-pay round-trip) can
+        // send follow-up `ActorCommand`s back into the loop. The outer
+        // returned `command_tx` is the host's primary handle; this clone
+        // serves only the actor's internal self-feedback path.
+        let actor_command_tx_self = command_tx.clone();
+        thread::spawn(move || run_actor(command_rx, actor_command_tx_self, update_tx));
         (command_tx, update_rx)
     }
 
