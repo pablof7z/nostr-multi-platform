@@ -201,6 +201,12 @@ sub-module stays within the 300-LOC soft limit. Tests stay in `ffi/tests.rs`.
 **Constraint:** all `pub extern "C"` symbols must remain in the top-level namespace so
 the C-ABI export name is unchanged. The split is purely organizational — no logic moves.
 
+**Follow-up (V-09b):** PR #332 landed production files within the 500-LOC ceiling but
+`ffi/tests.rs` is 790 LOC — still above the ceiling. After merge, split `tests.rs` into
+per-module test companions (`tests/register.rs`, `tests/snapshot.rs`, etc.) that live
+alongside their production counterparts. The `dispatch()` + `run_module_execute<M>`
+shared test helpers should move to a `tests/helpers.rs` sub-module first.
+
 ---
 
 ## Section 2 — In Flight
@@ -211,6 +217,7 @@ Work currently on a branch. Agents must not duplicate these tasks.
 |----|-------------|--------|------------------------|
 | B-2 | feat(chirp-web): parity shell | `codex/chirp-web-parity-polish` | 1 |
 | B-3 | fix(zap): auto-select recipient relays V-07 | `worktree-agent-a0dcdab25a3d4995c` | PR #331 open |
+| B-4 | split(ffi): V-09 nmp-app-chirp ffi.rs → sub-modules | `worktree-agent-a5e5b7cfa1e4000ee` | PR #332 open |
 
 > B-1 (`wt-nip17-fix`) and B-3 (agent worktree) no longer exist on remote — merged or
 > abandoned. WIP.md entries for PR-G (action_stages), PR-I (relay slots), chirp-tui-spec,
