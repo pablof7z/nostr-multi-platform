@@ -8,6 +8,34 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
+### PD-037 NEEDS USER ACTION (2026-05-22) — `codex/worker1-nip17-dm-inbox-relays` cherry-pick is a stale re-introduction of dead code; PR not opened
+
+A brief asked me to cherry-pick `6471150e` ("Route NIP-17 inbox through DM relays") and `4ee32000` ("fix(subs): update oneshot_shape_key hash after InterestShape PTagRouting addition") onto a new `merge/worker1-nip17-dm-inbox` branch and open a PR — keeping BOTH `giftwrap_inbox_interest` (account-scoped) AND `active_giftwrap_inbox_interest` in `crates/nmp-nip17/src/inbox.rs`.
+
+Verified by `git show` against `origin/master` (HEAD `0c87365c`): **both source commits are already on master via different paths, and the brief's "keep BOTH functions" resolution would revert today's intentional cleanup.**
+
+- **6471150e's substantive work is already on master via PR #237** (`66d820b5 [codex] Route NIP-17 inbox through DM relays`). `crates/nmp-nip17/src/inbox.rs:417` already sets `interest.shape.p_tag_routing = PTagRouting::Nip17DmRelays` on `active_giftwrap_inbox_interest`. `crates/nmp-core/src/kernel/nip17_dm_inbox_routing_tests.rs` (79 lines) and `crates/nmp-testing/tests/nip17_dm_inbox_routing.rs` (86 lines) both exist on master. `cargo test -p nmp-nip17 --lib` passes 55/55 on the bare-master checkout.
+- **4ee32000's hash bump is already on master** — `crates/nmp-core/src/subs/oneshot.rs:205` already asserts `SubKey(0x3ed4_bcb5_89bf_8034)`, which is precisely the value 4ee32000 introduced.
+- **The non-active `giftwrap_inbox_interest` was deliberately deleted today by PR #300** (`c613d6ac chore(nip17): delete dead JSON helpers + legacy giftwrap interest`, 2026-05-22 14:31). Commit message states: *"the non-active `giftwrap_inbox_interest` (with its private `giftwrap_interest_id` helper) had zero callers anywhere in the workspace — the dispatch path runs through `ActionModule::execute` and Chirp exclusively pushes `active_giftwrap_inbox_interest`."*
+- Independent grep confirms: on master, `nmp_nip17::giftwrap_inbox_interest` has zero callers. There IS a `nmp_marmot::interest::giftwrap_inbox_interest` (`crates/nmp-marmot/src/interest.rs:60`, called from `apps/chirp/nmp-app-chirp/src/marmot/ffi.rs:235`), but that is a separate function in a different crate and not what the brief is asking to re-add.
+- Running `git cherry-pick --no-commit 6471150e` on a fresh `merge/worker1-nip17-dm-inbox` branch off `origin/master` produces only two non-trivial diffs vs master: (a) the dead `giftwrap_inbox_interest` + `giftwrap_interest_id` block in `nmp-nip17/src/inbox.rs` (the conflict the brief described), and (b) a 293-line re-add of `crates/nmp-nip77/src/planner_gate_tests.rs` (the modify/delete case the brief noted). All other auto-merged hunks (`kernel/ingest/dm_relay_list.rs`, `kernel/ingest_tests.rs`, `kernel/mod.rs`, `kernel/outbox.rs`, `planner/...`) produce ZERO net change vs master — they're already there.
+
+Decision: **aborted the cherry-pick, reset the branch to `origin/master` clean, and did NOT open the PR.** Opening it would have produced a "merge PR" whose only effect is to revert PR #300 (an intentional dead-code cleanup landed 6 hours before the brief). This matches MEMORY's "shipped-but-inert features camouflaged by green CI" warning (review #33, #36) — adding a function with zero callers to feed a future host that doesn't exist is exactly the anti-pattern recent reviews keep flagging.
+
+The `merge/worker1-nip17-dm-inbox` branch was created but holds only `origin/master`; it was NOT pushed.
+
+USER ACTION: choose one —
+1. **Confirm the task is stale** (recommended): the work was independently landed via PR #237 + PR #300 — close the worker1 branch on the remote (`origin/codex/worker1-nip17-dm-inbox-relays`) and discard the local `merge/worker1-nip17-dm-inbox` branch. Nothing further to do.
+2. **Re-introduce the account-scoped `giftwrap_inbox_interest`** with a concrete first caller in the same PR (e.g., a Chirp call site that needs an `InterestScope::Account` pin distinct from the active-account variant). Without a caller this is the exact "registered-but-inert" pattern reviews #46/#48 flagged as #1 risk. Identify the caller before re-adding the function.
+3. **Revert PR #300** if the deletion was premature — but this needs the user to surface the use case `c613d6ac` missed, since the deletion commit explicitly states there are zero callers.
+
+Verification commands (file:line evidence):
+- `crates/nmp-nip17/src/inbox.rs:388,406,417` — `active_giftwrap_inbox_interest_id`, `active_giftwrap_inbox_interest`, `PTagRouting::Nip17DmRelays` already wired on master.
+- `crates/nmp-core/src/subs/oneshot.rs:205` — `SubKey(0x3ed4_bcb5_89bf_8034)` already asserted on master.
+- `git log --oneline origin/master -- crates/nmp-nip17/src/inbox.rs | head -5` → `c613d6ac`, `b2ffbfd2`, `66d820b5` (the deletion + the routing PRs are both there).
+
+---
+
 ### PD-034 NEEDS USER ACTION (2026-05-22) — "Register ZapsDomain in Chirp ffi.rs" fix is unimplementable as briefed; deferred
 
 A two-fix brief asked me to land (Fix 1) a Swift trust-failure cleanup on the DM-inbox publish row and (Fix 2) "register `ZapsDomain` in `apps/chirp/nmp-app-chirp/src/ffi.rs` so kind:9735 zap receipts stop being silently dropped." The brief stated `nmp-app-chirp/Cargo.toml` "pulls in `nmp-nip57`" and that `ZapsDomain` simply needed an `app.register_domain::<ZapsDomain>()` call.
