@@ -20,6 +20,7 @@ pub mod build;
 pub mod decode;
 pub mod domain;
 pub mod kinds;
+pub mod projection;
 pub mod view;
 
 pub use action::{ZapAction, ZapInput};
@@ -27,6 +28,7 @@ pub use build::{ZapRequest, ZapRequestBuildError, ZapRequestBuilder};
 pub use decode::{try_from_event, try_from_kernel_event, ZapReceiptRecord};
 pub use domain::{decode_and_route, list_by_target, NAMESPACE};
 pub use kinds::{KIND_ZAP_RECEIPT, KIND_ZAP_REQUEST};
+pub use projection::{ZapCount, ZapsAggregateProjection, ZapsAggregateSnapshot};
 pub use view::{ZapEntry, ZapsDelta, ZapsPayload, ZapsSpec, ZapsState, ZapsView};
 
 // NOTE: `nmp-nip57` exposes `ZapsView` as a plain public type whose `open`
