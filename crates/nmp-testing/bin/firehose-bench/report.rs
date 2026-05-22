@@ -50,9 +50,6 @@ pub(crate) struct ScenarioMetrics {
     pub(crate) cross_account_bleed: Option<u64>,
     pub(crate) action_atomicity_failures: Option<u64>,
     pub(crate) per_account_memory_mb: Option<f64>,
-    pub(crate) nip77_bytes_ratio: Option<f64>,
-    pub(crate) req_only_bytes_mb: Option<f64>,
-    pub(crate) nip77_bytes_mb: Option<f64>,
     pub(crate) decrypt_p99_ms: Option<f64>,
     pub(crate) nse_peak_memory_mb: Option<f64>,
     pub(crate) db_conflicts: Option<u64>,
@@ -77,7 +74,7 @@ pub(crate) fn summarize_observations(report: &FirehoseReport) -> Vec<String> {
     }
     vec![
         "Prototype replay gates pass, but they mainly validate the planned budgets and wrapper/cache lifecycle model, not real I/O behavior.".to_string(),
-        "The highest-risk unmeasured surfaces are durable storage latency, real relay burstiness, UniFFI/platform-shadow memory, and actual NIP-77 support.".to_string(),
+        "The highest-risk unmeasured surfaces are durable storage latency, real relay burstiness, and UniFFI/platform-shadow memory.".to_string(),
         "Next implementation step: replace synthetic storage/relay models with the real actor, relay adapter, storage backend, and generated wrapper shadow.".to_string(),
     ]
 }
@@ -180,9 +177,6 @@ pub(crate) fn compact_metrics(metrics: &ScenarioMetrics) -> String {
     }
     if let Some(value) = metrics.memory_drift_mb {
         parts.push(format!("mem_drift={value:.2}MB"));
-    }
-    if let Some(value) = metrics.nip77_bytes_ratio {
-        parts.push(format!("nip77_ratio={value:.4}"));
     }
     if let Some(value) = metrics.decrypt_p99_ms {
         parts.push(format!("decrypt_p99={value:.2}ms"));
