@@ -502,43 +502,28 @@ mod tests {
     }
 
     #[test]
-    fn execute_enqueues_publish_unsigned_event_with_correlation_id() {
-        use std::cell::Cell;
+    fn execute_emits_kind10002_publish_unsigned_event_command() {
+        use nmp_core::ActorCommand;
+        use std::cell::RefCell;
 
+        let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
         let input = PublishRelayListInput {
             relays: vec![entry("wss://relay.example", RelayMarker::Both)],
         };
-        let saw_publish = Cell::new(false);
-        let saw_correlation_id = Cell::new(false);
-        let saw_kind_10002 = Cell::new(false);
         PublishRelayListAction::execute(input, "test-cid", &|cmd| {
-            if let ActorCommand::PublishUnsignedEvent {
-                ref event,
-                ref correlation_id,
-            } = cmd
-            {
-                saw_publish.set(true);
-                if correlation_id.as_deref() == Some("test-cid") {
-                    saw_correlation_id.set(true);
-                }
-                if event.kind == 10002 {
-                    saw_kind_10002.set(true);
-                }
-            }
+            captured.borrow_mut().push(cmd);
         })
         .expect("execute must not fail");
-        assert!(
-            saw_publish.get(),
-            "expected PublishUnsignedEvent (NIP-65 Auto-outbox)",
-        );
-        assert!(
-            saw_correlation_id.get(),
-            "execute must thread the dispatch correlation_id into the actor command",
-        );
-        assert!(
-            saw_kind_10002.get(),
-            "the unsigned event the actor receives must be kind:10002",
-        );
+        let cmds = captured.into_inner();
+        assert_eq!(cmds.len(), 1, "executor must send exactly one command, got {cmds:?}");
+        match cmds.into_iter().next().unwrap() {
+            ActorCommand::PublishUnsignedEvent { event, correlation_id } => {
+                assert_eq!(event.kind, 10002, "relay list must emit kind:10002");
+                assert_eq!(correlation_id.as_deref(), Some("test-cid"),
+                    "correlation_id must thread through so the host spinner closes");
+            }
+            other => panic!("expected PublishUnsignedEvent, got {other:?}"),
+        }
     }
 
     /// Round-trip shape contract: the tag shape the builder produces here

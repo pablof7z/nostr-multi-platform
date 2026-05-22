@@ -361,32 +361,28 @@ mod tests {
     }
 
     #[test]
-    fn execute_uses_publish_unsigned_event_not_explicit_relays() {
+    fn execute_emits_publish_unsigned_event_for_kind10050() {
         use nmp_core::substrate::ActionModule;
         use nmp_core::ActorCommand;
-        use std::cell::Cell;
+        use std::cell::RefCell;
 
+        let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
         let input = PublishDmRelayListInput {
             relays: vec!["wss://inbox.example".to_string()],
         };
-        let correct = Cell::new(false);
-        let captured_cid = Cell::new(false);
         PublishDmRelayListAction::execute(input, "test-cid", &|cmd| {
-            if let ActorCommand::PublishUnsignedEvent {
-                ref correlation_id, ..
-            } = cmd
-            {
-                correct.set(true);
-                if correlation_id.as_deref() == Some("test-cid") {
-                    captured_cid.set(true);
-                }
-            }
+            captured.borrow_mut().push(cmd);
         })
         .expect("execute must not fail");
-        assert!(correct.get(), "expected PublishUnsignedEvent (NIP-65 outbox)");
-        assert!(
-            captured_cid.get(),
-            "execute must thread the dispatch correlation_id into the actor command"
-        );
+        let cmds = captured.into_inner();
+        assert_eq!(cmds.len(), 1, "executor must send exactly one command, got {cmds:?}");
+        match cmds.into_iter().next().unwrap() {
+            ActorCommand::PublishUnsignedEvent { event, correlation_id } => {
+                assert_eq!(event.kind, 10050, "DM relay list must emit kind:10050");
+                assert_eq!(correlation_id.as_deref(), Some("test-cid"),
+                    "correlation_id must thread through so the host spinner closes");
+            }
+            other => panic!("expected PublishUnsignedEvent, got {other:?}"),
+        }
     }
 }
