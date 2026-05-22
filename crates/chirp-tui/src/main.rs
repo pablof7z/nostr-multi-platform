@@ -48,10 +48,18 @@ fn run(args: Args) -> Result<()> {
     let mut terminal = Terminal::new(backend)?;
 
     let (runtime, nmp_rx) = AppRuntime::new().map_err(|e| eyre!(e))?;
-    for relay in &args.relays {
-        runtime
-            .add_relay(relay, "both,indexer")
-            .map_err(|e| eyre!(e))?;
+    if args.relays.is_empty() {
+        for entry in nmp_chirp_config::chirp_default_relay_bootstrap() {
+            runtime
+                .add_relay(entry.url, entry.role)
+                .map_err(|e| eyre!(e))?;
+        }
+    } else {
+        for relay in &args.relays {
+            runtime
+                .add_relay(relay, "both,indexer")
+                .map_err(|e| eyre!(e))?;
+        }
     }
 
     let (ui_tx, ui_rx) = mpsc::channel();

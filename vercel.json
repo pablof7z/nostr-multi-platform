@@ -1,0 +1,6 @@
+{
+  "installCommand": "cd web/chirp && npm ci",
+  "buildCommand": "cd web/chirp && npm run build",
+  "outputDirectory": "web/chirp/dist",
+  "framework": "vite"
+}

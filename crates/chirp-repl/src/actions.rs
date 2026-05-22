@@ -73,11 +73,18 @@ fn load_key(session: &mut Session, input: &str) -> Result<()> {
 
 fn create_account(session: &mut Session, name: &str) -> Result<()> {
     let profile = json!({ "name": name, "display_name": name }).to_string();
-    let relays = session
+    let mut relays = session
         .relays
         .iter()
         .map(|url| (url.clone(), "both".to_string()))
         .collect::<Vec<_>>();
+    relays.extend(
+        session
+            .indexers
+            .iter()
+            .filter(|url| !session.relays.contains(url))
+            .map(|url| (url.clone(), "indexer".to_string())),
+    );
     let relays_json = serde_json::to_string(&relays).map_err(|e| e.to_string())?;
     session.app.create_account(&profile, &relays_json, false)?;
     session.pubkey_hex = None;

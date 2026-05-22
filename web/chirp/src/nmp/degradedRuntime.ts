@@ -32,6 +32,15 @@ export class DegradedRuntime {
             reason: this.unavailableReason,
           },
         ];
+      case "chirp_action":
+        return [
+          {
+            type: "capability_failure",
+            capability: request.type,
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
       case "capability_result":
         return [
           {

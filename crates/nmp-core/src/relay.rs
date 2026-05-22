@@ -20,6 +20,11 @@ pub(crate) const DEFAULT_VISIBLE_LIMIT: usize = 80;
 pub(crate) const DEFAULT_EMIT_HZ: u32 = 4;
 pub(crate) const TIMELINE_AUTHOR_LIMIT: usize = 500;
 
+pub use nmp_chirp_config::{
+    chirp_default_relay_bootstrap, chirp_default_relay_urls, ChirpRelayBootstrapEntry,
+    CHIRP_CONTENT_RELAY_URL, CHIRP_INDEXER_RELAY_URL,
+};
+
 /// A `wss://`/`ws://` URL for a relay, in plain (non-canonicalized) string
 /// form.
 ///
@@ -39,12 +44,12 @@ pub type RelayUrl = String;
 /// Fallback relay URLs used when the host has not yet configured any relays for
 /// a given role.  These are always compiled in (no cfg gate) so that cold-start
 /// sign-ins have discovery relays available in production as well as in tests.
-pub(crate) const FALLBACK_INDEXER_RELAY: &str = "wss://purplepag.es";
-pub(crate) const FALLBACK_CONTENT_RELAY: &str = "wss://relay.damus.io";
+pub(crate) const FALLBACK_INDEXER_RELAY: &str = CHIRP_INDEXER_RELAY_URL;
+pub(crate) const FALLBACK_CONTENT_RELAY: &str = CHIRP_CONTENT_RELAY_URL;
 
 #[cfg(any(test, feature = "test-support"))]
 pub(crate) const BOOTSTRAP_DISCOVERY_RELAYS: &[&str] =
-    &["wss://relay.damus.io", "wss://purplepag.es"];
+    &[CHIRP_CONTENT_RELAY_URL, CHIRP_INDEXER_RELAY_URL];
 
 #[cfg(test)]
 pub(crate) const CONTENT_RELAY_URL: &str = BOOTSTRAP_DISCOVERY_RELAYS[0];

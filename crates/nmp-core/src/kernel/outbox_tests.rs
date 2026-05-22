@@ -419,7 +419,7 @@ fn t121_thread_hydration_routes_ids_by_resolved_author_write_relays() {
     }
 
     // (2) The expected URL set is exactly relay1 + relay2 + BOOTSTRAP seeds.
-    //     (Two bootstrap seeds today: damus.io + nos.lol. The cold-start id
+    //     (Two bootstrap seeds today: content + indexer. The cold-start id
     //     emits one REQ per seed because `bootstrap_discovery_relays()` is
     //     the seed-list itself, not a single fallback URL.)
     let urls: std::collections::BTreeSet<String> =
