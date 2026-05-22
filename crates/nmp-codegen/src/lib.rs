@@ -1,11 +1,13 @@
 mod ffi_gen;
 mod generate;
 mod manifest;
+pub mod swift;
 
 use std::path::Path;
 
 pub use generate::{generate_modules, GenerationReport};
 pub use manifest::{AppManifest, ModuleSet};
+pub use swift::{emit_codable, SwiftType};
 
 pub fn check_modules(manifest_path: &Path, out_dir: &Path) -> Result<bool, String> {
     let scratch = out_dir.with_extension("nmp-check");
