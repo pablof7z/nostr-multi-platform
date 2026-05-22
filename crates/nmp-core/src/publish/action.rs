@@ -255,7 +255,8 @@ impl ActionModule for PublishModule {
                 }
                 if kind == 3 {
                     return Err(ActionRejection::Invalid(
-                        "kind:3 contact-list publish is not yet supported via PublishRaw".to_string(),
+                        "kind:3 contact-list must be modified via chirp.follow / chirp.unfollow, \
+                         not PublishRaw (the actor owns the follow-list state)".to_string(),
                     ));
                 }
                 validate_publish_target(&target).map_err(ActionRejection::Invalid)?;
