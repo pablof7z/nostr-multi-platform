@@ -8,6 +8,35 @@ Format: one entry per decision. Surface every entry in every status update until
 
 ## Open (need user review)
 
+### PD-034 NEEDS USER ACTION (2026-05-22) — "Register ZapsDomain in Chirp ffi.rs" fix is unimplementable as briefed; deferred
+
+A two-fix brief asked me to land (Fix 1) a Swift trust-failure cleanup on the DM-inbox publish row and (Fix 2) "register `ZapsDomain` in `apps/chirp/nmp-app-chirp/src/ffi.rs` so kind:9735 zap receipts stop being silently dropped." The brief stated `nmp-app-chirp/Cargo.toml` "pulls in `nmp-nip57`" and that `ZapsDomain` simply needed an `app.register_domain::<ZapsDomain>()` call.
+
+**Fix 1 shipped** — `ios/Chirp/Chirp/Features/RelaySettingsView.swift` now drives the "Published ✓" / "Publish failed" / "Publishing…" / button states from `model.terminalActionStage(correlationId:)` instead of flipping a same-tap boolean. Same pattern PR-A/PR-G2 already established for other dispatch verbs (`KernelModel.swift:341-359`).
+
+**Fix 2 was NOT done — every premise in the brief is wrong**, verified by direct file reads:
+
+- `apps/chirp/nmp-app-chirp/Cargo.toml` does **not** depend on `nmp-nip57`. Confirmed in both the Cargo manifest and `Cargo.lock` (`nmp-app-chirp` lists `nmp-nip01`, `-nip17`, `-nip29`, `-nip59`, `-marmot`, `-threading`, `-signer-broker`, `-core`, but no `-nip57`).
+- `NmpApp` has **no** `register_domain` method. The registration seams on `impl NmpApp` (`crates/nmp-core/src/ffi/mod.rs:630-885`) are `register_action`, `register_snapshot_projection`, `register_action_result_observer`, `register_event_observer`, `register_raw_event_observer` — full stop. `DomainModule` (`crates/nmp-core/src/substrate/domain.rs:1`) is a trait with only `NAMESPACE`, `SCHEMA_VERSION`, `migrations()`, `indexes()` — no runtime registry consumes it. This matches MEMORY review #56 ("`DomainModule` 0 live consumers (delete + 4 tests-only NIP crates)").
+- `decode_and_route` for kind:9735 (`crates/nmp-nip57/src/domain.rs:50`) takes a `DomainHandle` directly. There is no `KernelEventObserver` consumer for kind:9735 anywhere in tree — the only callers of `nmp_nip57::decode_and_route` are `nmp-nip57`'s own tests and `nmp-reactions` (also tests-only).
+
+Decision: shipped Fix 1 alone; did **not** stub a registration that has no live seam to attach to. Adding a fake `register_domain` no-op would be worse than the current state — it would camouflage the gap and fail MEMORY's `shipped-but-inert features camouflaged by green CI` warning (review #33, #36).
+
+What the **intent** of Fix 2 ("don't silently drop zap receipts") actually requires is net-new infrastructure, NOT a fix:
+
+1. Add `nmp-nip57` to `nmp-app-chirp/Cargo.toml`.
+2. Build a `KernelEventObserver`-style aggregator over kind:9735 (a real `ZapsView` projection that materializes `(zapped_event_id → total_msats, zappers)` from observed kind:9735 events).
+3. Register it via `app.register_snapshot_projection("nmp.nip57.zaps", …)` in `nmp_app_chirp_register`.
+4. Decode the projection in Swift (`KernelUpdate.zaps`) and surface zap totals/counts in the timeline cards.
+
+That contradicts the brief's "do this in one PR" framing AND MEMORY review #56's verdict ("the NIP-57 `ZapAction` stub must be DE-REGISTERED — `ShowToast` is the wrong terminal for a money verb"). Doing the implementation right is multi-PR — needs an `ADR-0024`-class decision (LNURL HTTP capability, executor wiring) BEFORE the aggregate view is worth shipping (review #54, #57).
+
+USER ACTION: choose one — (a) explicitly approve net-new ZapsView wiring (multi-PR, blocked behind ADR-0024 per reviews #54/#57); (b) accept that kind:9735 silently passes through the kernel today and defer until the v1-zap ADR lands; (c) some other framing (e.g., add a kind:9735 raw-event observer that *only* logs/counts, with no UI consumer yet — but this is exactly the "shipped-but-inert" anti-pattern MEMORY review #33 warns against).
+
+PR shipped: title is `fix(chirp-ios): drive DM-inbox publish UI from action_results terminal` — Fix 2 was DROPPED from scope rather than partial-implemented.
+
+---
+
 ### PD-033 NEEDS USER ACTION (2026-05-21) — `pending_mls_autopublish` cannot be routed through `ActorCommand` as briefed; Fix 2 deferred
 
 A polish brief asked for two `nmp-core` fixes: (1) remove an `eprintln!` from `ffi_guard.rs`, (2) replace the `pending_mls_autopublish: Arc<Mutex<bool>>` field on `NmpApp` with an `ActorCommand::SetPendingMlsAutopublish(bool)` variant, on the stated rationale that the flag "is never read by the actor thread — it's FFI-thread-only mutable state shared via a Mutex as a workaround for ownership, not because it's genuinely shared."

@@ -9,7 +9,15 @@ struct RelaySettingsView: View {
     @State private var sheetURL = ""
     @State private var sheetRole = ""
     @State private var isEditing = false
-    @State private var dmRelayPublished = false
+    /// Correlation id minted by `dispatch_action("nmp.nip17.publish_relay_list", …)`
+    /// — set on tap, cleared either when the user re-publishes or when the
+    /// asynchronous terminal verdict (`projections["action_results"]`)
+    /// surfaces through `model.terminalActionStage(correlationId:)`.
+    /// Without this seam the "Published ✓" label would lie: it would render
+    /// the instant the button was tapped, even if the relay rejected the
+    /// kind:10050 publish — a trust failure on the single switch that
+    /// controls whether the user is reachable over NIP-17 DMs.
+    @State private var publishCid: String?
 
     var body: some View {
         List {
@@ -53,24 +61,9 @@ struct RelaySettingsView: View {
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
 
-                if dmRelayPublished {
-                    Text("Published ✓")
-                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
-                        .foregroundStyle(ChirpColor.positive)
-                        .padding(.vertical, ChirpSpace.s)
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                } else {
-                    Button {
-                        model.publishDmRelayList(relays: model.relayEditRows.map(\.url))
-                        dmRelayPublished = true
-                    } label: {
-                        Label("Publish as DM inboxes", systemImage: "tray.and.arrow.up")
-                    }
-                    .disabled(model.relayEditRows.isEmpty)
+                dmInboxPublishRow
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
-                }
             } header: {
                 ChirpSectionHeader(title: "DM inbox")
                     .padding(.bottom, ChirpSpace.xs)
@@ -99,6 +92,79 @@ struct RelaySettingsView: View {
                 onSave: saveSheet
             )
         }
+    }
+
+    /// The button / status row for "publish kind:10050 DM-inbox relay list".
+    ///
+    /// State machine — driven entirely from the kernel's `action_results`
+    /// terminal verdict, NEVER from a same-tap boolean:
+    ///
+    ///   * no `publishCid`                     → "Publish as DM inboxes" button
+    ///   * `publishCid` set, no terminal yet   → "Publishing…" (disabled spinner row)
+    ///   * terminal `.accepted`                → "Published ✓"
+    ///   * terminal `.failed(reason)`          → red error + button re-enabled
+    @ViewBuilder
+    private var dmInboxPublishRow: some View {
+        if let stage = publishCid.flatMap({ model.terminalActionStage(correlationId: $0)?.stage }) {
+            switch stage {
+            case .accepted:
+                Text("Published ✓")
+                    .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                    .foregroundStyle(ChirpColor.positive)
+                    .padding(.vertical, ChirpSpace.s)
+            case let .failed(reason):
+                VStack(alignment: .leading, spacing: ChirpSpace.xs) {
+                    Text("Publish failed")
+                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .foregroundStyle(Color.red)
+                    if !reason.isEmpty {
+                        Text(reason)
+                            .font(.system(.footnote, design: .rounded))
+                            .foregroundStyle(ChirpColor.textSecondary)
+                    }
+                    publishButton(label: "Try again", systemImage: "arrow.clockwise")
+                }
+                .padding(.vertical, ChirpSpace.s)
+            case .requested, .awaitingCapability, .publishing, .unknown(_):
+                // A non-terminal stage surfaced here is unusual (the snapshot
+                // mirror only feeds terminals into `terminalActionStage`),
+                // but defensively render it as the in-flight spinner so the
+                // user never sees an empty row.
+                publishingRow
+            }
+        } else if publishCid != nil {
+            // Correlation id stashed, but no terminal has landed yet — the
+            // verdict is still in flight (in-flight publish, or a fast next
+            // snapshot that overwrote `actionStages` before SwiftUI re-read).
+            publishingRow
+        } else {
+            publishButton(label: "Publish as DM inboxes", systemImage: "tray.and.arrow.up")
+        }
+    }
+
+    private var publishingRow: some View {
+        HStack(spacing: ChirpSpace.s) {
+            ProgressView().controlSize(.small)
+            Text("Publishing…")
+                .font(.system(.subheadline, design: .rounded))
+                .foregroundStyle(ChirpColor.textSecondary)
+        }
+        .padding(.vertical, ChirpSpace.s)
+    }
+
+    private func publishButton(label: String, systemImage: String) -> some View {
+        Button {
+            let result = model.publishDmRelayList(relays: model.relayEditRows.map(\.url))
+            // PR-A: only stash a correlation id on accept — a synchronous
+            // dispatch rejection has already routed through `track()` into
+            // `lastDispatchError` (the global toast slot). Clearing
+            // `publishCid` here resets the row to the button so the user
+            // can retry without first observing a stale terminal.
+            publishCid = result.correlationId
+        } label: {
+            Label(label, systemImage: systemImage)
+        }
+        .disabled(model.relayEditRows.isEmpty)
     }
 
     private func openAdd() {
