@@ -1,6 +1,14 @@
 # 0001 — FFI update-channel envelope (T103)
 
-Status: **Accepted** · Scope: `nmp-core` actor emit boundary + `nmp-codegen` projection
+Status: **Superseded (in part)** · Scope: `nmp-core` actor emit boundary + `nmp-codegen` projection
+
+> **Update (2026-05-22):** the `t=update` arm (the discrete `WireDelta` /
+> `DeltaEnvelope` channel) was **deleted** as shipped-but-inert. Every host
+> bridge (iOS `KernelBridge.swift`, Android `KernelModel.kt`, desktop
+> `bridge.rs`) explicitly dropped every `t=update` frame with a debug log;
+> there were zero consumers. The remaining contract is just `{"t":"snapshot"}`
+> and `{"t":"panic"}` (the D7 actor-death signal added later); everything
+> below referring to the `Update` arm is historical context only.
 
 ## Problem
 

@@ -67,16 +67,19 @@ fn generated_envelope_models_the_tagged_union() {
         "generated envelope must use the canonical t/v snake_case tagging:\n{envelope}"
     );
     assert!(
-        envelope.contains("Update(nmp_core::DeltaEnvelope)"),
-        "generated envelope must carry the versioned discrete kernel delta:\n{envelope}"
-    );
-    assert!(
         envelope.contains("Snapshot(serde_json::Value)"),
         "generated envelope must carry the opaque snapshot:\n{envelope}"
     );
     assert!(
         envelope.contains("Panic(nmp_core::PanicFrame)"),
         "generated envelope must carry the D7 actor-death panic frame:\n{envelope}"
+    );
+    // The discrete-update arm (`Update(nmp_core::DeltaEnvelope)`) was deleted
+    // as shipped-but-inert — every host bridge only consumed snapshots, and
+    // the kernel no longer emits a discrete frame.
+    assert!(
+        !envelope.contains("DeltaEnvelope"),
+        "generated envelope must NOT carry the deleted Update arm:\n{envelope}"
     );
 
     let lib = fs::read_to_string(out.join("src/lib.rs")).unwrap();

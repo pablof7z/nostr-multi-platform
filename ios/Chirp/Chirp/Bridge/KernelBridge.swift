@@ -501,14 +501,10 @@ final class KernelHandle {
         }
         let frameTag = outer["t"] as? String
         guard frameTag == "snapshot" else {
-            // Discrete update frames (t=update) are intentionally ignored — the
-            // snapshot already carries full projected UI state. Log at debug so
-            // a flood of unhandled frame types is diagnosable without noise.
-            if frameTag == "update" {
-                kbLog.debug("discrete update frame received (not applied by snapshot bridge)")
-            } else {
-                kbLog.error("unknown envelope tag=\(frameTag ?? "<nil>") bytes=\(data.count)")
-            }
+            // Panic frames (t=panic) are intercepted earlier in
+            // `nmpUpdateCallback` and never reach this decoder. Anything else
+            // is a wire-format regression — log loudly so it surfaces in CI.
+            kbLog.error("unknown envelope tag=\(frameTag ?? "<nil>") bytes=\(data.count)")
             return nil
         }
         guard let inner = outer["v"] else {

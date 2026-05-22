@@ -2,9 +2,8 @@
 //! the `emit_interval` utility.  Separated from the main loop so that the D8
 //! invariant ("emit only when state changed") is concentrated in one file.
 
-use crate::app::KernelUpdate;
 use crate::kernel::Kernel;
-use crate::update_envelope::{wrap_snapshot, wrap_update};
+use crate::update_envelope::wrap_snapshot;
 use std::sync::mpsc::Sender;
 use std::time::{Duration, Instant};
 
@@ -92,15 +91,6 @@ pub(super) fn maybe_emit_after_dispatch(
     // `Start` command's `emit_now` will deliver the up-to-date snapshot.
 }
 
-/// Push a discrete [`KernelUpdate`] onto the channel as the tagged
-/// `{"t":"update","v":…}` frame so consumers decode the **one**
-/// [`crate::UpdateEnvelope`] type (D6 — the tag is the discriminant).
-pub(super) fn emit_kernel_update(update: &KernelUpdate, update_tx: &Sender<String>) {
-    if let Some(frame) = wrap_update(update) {
-        let _ = update_tx.send(frame);
-    }
-}
-
 // ── D8 regression test ───────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -143,10 +133,11 @@ mod tests {
         );
     }
 
-    /// End-to-end: a live actor emits BOTH wire shapes on the single channel,
+    /// End-to-end: a live actor emits decodable frames on the single channel,
     /// and every frame decodes as exactly one `UpdateEnvelope` (the canonical
     /// T103 contract). `Start` yields a snapshot frame; `Kernel(OpenView)`
-    /// yields a discrete update frame followed by a snapshot frame.
+    /// no longer emits a discrete frame (WireDelta was deleted as
+    /// shipped-but-inert), but the periodic snapshot still flows.
     #[test]
     fn live_actor_frames_are_all_decodable_envelopes() {
         let (cmd_tx, cmd_rx) = mpsc::channel::<ActorCommand>();
@@ -171,7 +162,6 @@ mod tests {
         thread::sleep(Duration::from_millis(300));
         let _ = cmd_tx.send(ActorCommand::Shutdown);
 
-        let mut updates = 0usize;
         let mut snapshots = 0usize;
         while let Ok(frame) = upd_rx.try_recv() {
             // Every frame MUST decode as the single discriminated type — this
@@ -179,7 +169,6 @@ mod tests {
             match serde_json::from_str::<UpdateEnvelope>(&frame)
                 .unwrap_or_else(|e| panic!("undecodable frame on channel: {e}: {frame}"))
             {
-                UpdateEnvelope::Update(_) => updates += 1,
                 UpdateEnvelope::Snapshot(v) => {
                     // Every snapshot MUST carry a schema version so a shell can
                     // detect a kernel-vs-shell mismatch and degrade (D1). This
@@ -201,10 +190,6 @@ mod tests {
         }
 
         assert!(
-            updates >= 1,
-            "expected ≥1 discrete update frame from Kernel(OpenView); got {updates}"
-        );
-        assert!(
             snapshots >= 1,
             "expected ≥1 snapshot frame from Start/emit; got {snapshots}"
         );
@@ -224,9 +209,7 @@ mod tests {
         thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
 
         // Configure (NOT Start) — running stays false. Then fire a flurry of
-        // view commands. None of these should produce a snapshot frame; the
-        // discrete-update frames (Kernel actions) are emitted regardless and
-        // remain countable below.
+        // view commands. None of these should produce a snapshot frame.
         cmd_tx
             .send(ActorCommand::Configure {
                 visible_limit: 50,
@@ -254,11 +237,9 @@ mod tests {
         let _ = cmd_tx.send(ActorCommand::Shutdown);
 
         let mut snapshots = 0usize;
-        let mut updates = 0usize;
         while let Ok(frame) = upd_rx.try_recv() {
             match serde_json::from_str::<UpdateEnvelope>(&frame) {
                 Ok(UpdateEnvelope::Snapshot(_)) => snapshots += 1,
-                Ok(UpdateEnvelope::Update(_)) => updates += 1,
                 Ok(UpdateEnvelope::Panic(p)) => {
                     panic!("unexpected actor-death frame on the channel: {}", p.msg)
                 }
@@ -273,11 +254,6 @@ mod tests {
             "regression: view-command dispatches emitted {snapshots} snapshot(s) \
              while running=false; expected ≤ 1 (lifecycle Configure only). \
              This is the S2 retention leak — see s2-retention-audit.md."
-        );
-        // No Kernel actions sent → no discrete updates expected.
-        assert_eq!(
-            updates, 0,
-            "expected 0 discrete-update frames; got {updates}"
         );
     }
 

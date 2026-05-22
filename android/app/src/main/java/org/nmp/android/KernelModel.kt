@@ -28,11 +28,10 @@ private const val TAG = "NmpCore"
  * business logic or derived state (D5/D8); decode fails closed (D1).
  *
  * T103 / T107 — wire format: every frame is a tagged envelope
- *   `{"t":"snapshot","v":{…}}` or `{"t":"update","v":{…}}`.
- * This model only processes `t=snapshot` frames; `t=update` (discrete kernel
- * events) are intentionally ignored — the snapshot already carries the full
- * projected state. Non-snapshot frames are logged at DEBUG so a relay of
- * discrete-update frames is observable without flooding logcat.
+ *   `{"t":"snapshot","v":{…}}` or `{"t":"panic","v":{"msg":…}}`.
+ * This model only processes `t=snapshot` frames; the panic arm (D7) is the
+ * actor-death terminal signal and is handled separately. Anything else is a
+ * wire-format regression and is logged at ERROR.
  */
 class KernelModel : ViewModel() {
 
@@ -83,8 +82,9 @@ class KernelModel : ViewModel() {
      * null (drop the frame) on any parse error; log enough context to diagnose
      * the failure without flooding logcat (PD-025 finding 4 — no silent swallow).
      *
-     * Non-snapshot frames (`t=update`) are logged at DEBUG and dropped — the
-     * snapshot projection already carries the full UI state.
+     * Non-snapshot frames are logged at ERROR and dropped — `t=panic` is the
+     * actor-death terminal signal handled separately; anything else is a
+     * wire-format regression.
      */
     private fun decodeSnapshot(payload: String): KernelUpdate? {
         // Step 1: parse the outer envelope.
@@ -96,11 +96,7 @@ class KernelModel : ViewModel() {
         // Step 2: check the discriminator tag.
         val tag = outer["t"]?.jsonPrimitive?.content
         if (tag != "snapshot") {
-            if (tag == "update") {
-                Log.d(TAG, "discrete update frame received (ignored by snapshot model)")
-            } else {
-                Log.e(TAG, "unknown envelope tag=$tag; payload prefix: ${payload.take(200)}")
-            }
+            Log.e(TAG, "unknown envelope tag=$tag; payload prefix: ${payload.take(200)}")
             return null
         }
 
