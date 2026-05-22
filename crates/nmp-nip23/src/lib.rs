@@ -29,16 +29,31 @@
 //! `decode_and_route`, which writes the decoded `ArticleRecord` under the
 //! composite reverse indexes (`by_author` / `by_d_tag(author, d_tag)`).
 
+// NIP-23 surface is feature-gated behind `long-form`. The crate has zero
+// app callers (no ActionModule, no KernelEventObserver, no subscription
+// filter) and is referenced only from test/fixture crates. Gating prevents
+// the inert surface from misleading future contributors while preserving
+// the kind:30023 integration-test path via `--features long-form`.
+#[cfg(feature = "long-form")]
 pub mod build;
+#[cfg(feature = "long-form")]
 pub mod decode;
+#[cfg(feature = "long-form")]
 pub mod domain;
+#[cfg(feature = "long-form")]
 pub mod kinds;
+#[cfg(feature = "long-form")]
 pub mod view;
 
+#[cfg(feature = "long-form")]
 pub use build::{Article, ArticleBuildError, ArticleBuilder};
+#[cfg(feature = "long-form")]
 pub use decode::{try_from_event, ArticleRecord};
+#[cfg(feature = "long-form")]
 pub use domain::{decode_and_route, get, list_all, list_by_author, NAMESPACE};
+#[cfg(feature = "long-form")]
 pub use kinds::KIND_LONG_FORM_ARTICLE;
+#[cfg(feature = "long-form")]
 pub use view::{
     ArticleAccumulator, ArticleDetailPayload, ArticleDetailSpec, ArticleDetailView,
     ArticleListPayload, ArticleListSpec, ArticleListView, ArticleViewDelta, PublicKey,

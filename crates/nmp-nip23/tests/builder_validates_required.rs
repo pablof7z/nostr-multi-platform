@@ -1,3 +1,4 @@
+#![cfg(feature = "long-form")]
 //! `ArticleBuilder` rejects an empty `d` tag with `ArticleBuildError::MissingDTag`.
 
 use nmp_nip23::{Article, ArticleBuildError};

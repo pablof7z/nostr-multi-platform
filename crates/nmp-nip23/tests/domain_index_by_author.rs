@@ -1,3 +1,4 @@
+#![cfg(feature = "long-form")]
 //! Domain-store integration: 3 articles by alice + 1 by bob → `by_author`
 //! reverse index returns 3 for alice, 4 total via the unfiltered list. Proves
 //! that `decode_and_route` writes the indexes the views read at query time.
