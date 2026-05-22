@@ -3,14 +3,13 @@
 //! Per-scenario families:
 //! - `timeline.rs` — cold_start, sustained_firehose, soak
 //! - `other.rs` — profile_thrashing, relay_disconnect_storm, multi_account,
-//!   negentropy_efficiency, background_decryption
+//!   background_decryption
 
 mod other;
 mod timeline;
 
 pub(crate) use other::{
-    background_decryption, multi_account, negentropy_efficiency, profile_thrashing,
-    relay_disconnect_storm,
+    background_decryption, multi_account, profile_thrashing, relay_disconnect_storm,
 };
 pub(crate) use timeline::{cold_start, soak, sustained_firehose};
 
@@ -24,7 +23,6 @@ pub(crate) fn run_scenario(name: &'static str, scale: Scale) -> ScenarioResult {
         "profile_thrashing" => profile_thrashing(scale),
         "relay_disconnect_storm" => relay_disconnect_storm(scale),
         "multi_account" => multi_account(scale),
-        "negentropy_efficiency" => negentropy_efficiency(scale),
         "background_decryption" => background_decryption(scale),
         "soak" => soak(scale),
         _ => unreachable!("selected_scenarios validates names"),

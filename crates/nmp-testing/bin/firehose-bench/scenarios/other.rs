@@ -2,11 +2,10 @@
 //! negentropy_efficiency, background_decryption.
 
 use crate::config::{
-    DISCONNECT_DETECT_GATE_MS, NIP77_BYTES_RATIO_GATE, NSE_DECRYPT_GATE_MS, NSE_MEMORY_GATE_MB,
-    RECONNECT_GATE_MS, Scale,
+    DISCONNECT_DETECT_GATE_MS, NSE_DECRYPT_GATE_MS, NSE_MEMORY_GATE_MB, RECONNECT_GATE_MS, Scale,
 };
 use crate::report::ScenarioMetrics;
-use crate::scenarios::{fake_decrypt, finish_scenario, gate_eq, gate_max, gate_min, round2, round4};
+use crate::scenarios::{fake_decrypt, finish_scenario, gate_eq, gate_max, gate_min, round2};
 use std::time::Instant;
 
 pub(crate) fn profile_thrashing(scale: Scale) -> crate::report::ScenarioResult {
@@ -118,37 +117,6 @@ pub(crate) fn multi_account(scale: Scale) -> crate::report::ScenarioResult {
             gate_max("per_account_memory_mb", per_account_memory_mb, 100.0, None),
         ],
         vec!["The app-kernel API shape should include account scope from v1 even though account switching policy is post-v1.".to_string()],
-    )
-}
-
-pub(crate) fn negentropy_efficiency(scale: Scale) -> crate::report::ScenarioResult {
-    let event_count = match scale {
-        Scale::Quick => 2_000,
-        Scale::Standard => 10_000,
-    };
-    let req_only_bytes_mb = event_count as f64 * 0.018;
-    let nip77_bytes_mb = req_only_bytes_mb * 0.036;
-    let ratio = nip77_bytes_mb / req_only_bytes_mb;
-    let metrics = ScenarioMetrics {
-        nip77_bytes_ratio: Some(round4(ratio)),
-        req_only_bytes_mb: Some(round2(req_only_bytes_mb)),
-        nip77_bytes_mb: Some(round2(nip77_bytes_mb)),
-        trace_records: Some(event_count),
-        ..ScenarioMetrics::default()
-    };
-    finish_scenario(
-        "negentropy_efficiency",
-        "Modeled NIP-77 backfill vs REQ-only fallback for a 30-day timeline.",
-        120,
-        event_count,
-        metrics,
-        vec![gate_max(
-            "nip77_bytes_ratio",
-            ratio,
-            NIP77_BYTES_RATIO_GATE,
-            Some("<= 5% of REQ bytes means >= 95% bytes saved".to_string()),
-        )],
-        vec!["Use real NIP-77 relay support or LocalRelay before treating this as measured protocol efficiency.".to_string()],
     )
 }
 
