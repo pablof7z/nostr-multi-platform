@@ -122,7 +122,14 @@ where
     }
 
     /// Borrow the value for `key`, or `None` if absent.
-    pub fn get(&self, key: &K) -> Option<&V> {
+    ///
+    /// Accepts any `Q` where `K: Borrow<Q>`, so callers can pass `&str` when
+    /// the map is keyed on `String` (mirrors `HashMap::get` ergonomics).
+    pub fn get<Q>(&self, key: &Q) -> Option<&V>
+    where
+        K: std::borrow::Borrow<Q>,
+        Q: std::hash::Hash + Eq + ?Sized,
+    {
         self.map.get(key)
     }
 
@@ -132,19 +139,33 @@ where
     /// eviction order — only [`Self::insert`] adds to the back. This is the
     /// hook the `ZapsAggregateProjection` migration uses to update the inner
     /// receipt map without touching the outer position.
-    pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
+    ///
+    /// Accepts `Q` for the same ergonomic reason as [`Self::get`].
+    pub fn get_mut<Q>(&mut self, key: &Q) -> Option<&mut V>
+    where
+        K: std::borrow::Borrow<Q>,
+        Q: std::hash::Hash + Eq + ?Sized,
+    {
         self.map.get_mut(key)
     }
 
     /// Whether `key` is present.
-    pub fn contains_key(&self, key: &K) -> bool {
+    pub fn contains_key<Q>(&self, key: &Q) -> bool
+    where
+        K: std::borrow::Borrow<Q>,
+        Q: std::hash::Hash + Eq + ?Sized,
+    {
         self.map.contains_key(key)
     }
 
     /// Remove `key`, returning its value if present. The remaining entries
     /// preserve their relative insertion order (this is `shift_remove`, not
     /// `swap_remove`).
-    pub fn remove(&mut self, key: &K) -> Option<V> {
+    pub fn remove<Q>(&mut self, key: &Q) -> Option<V>
+    where
+        K: std::borrow::Borrow<Q>,
+        Q: std::hash::Hash + Eq + ?Sized,
+    {
         self.map.shift_remove(key)
     }
 
@@ -172,6 +193,14 @@ where
     /// Iterate values in insertion order (oldest first).
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.map.values()
+    }
+
+    /// Iterate values mutably in insertion order.
+    ///
+    /// Mutation through this handle does **not** affect eviction order —
+    /// only [`Self::insert`] can move entries to the back.
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
+        self.map.values_mut()
     }
 
     /// Return a mutable reference to the value under `key`, inserting
