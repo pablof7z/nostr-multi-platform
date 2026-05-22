@@ -1,5 +1,9 @@
 # Pending User Decisions
 
+> **SUPERSEDED by [`docs/BACKLOG.md`](../BACKLOG.md)** (2026-05-23).
+> Open PDs are consolidated there (Section 3). This file is kept as an append-only audit log.
+> Do not add new entries here — add to `docs/BACKLOG.md` instead.
+
 Decisions I made autonomously while the user was asleep, with my reasoning. If the user disagrees with any, the noted commit can be reverted or amended.
 
 Format: one entry per decision. Surface every entry in every status update until the user explicitly acknowledges or supersedes.

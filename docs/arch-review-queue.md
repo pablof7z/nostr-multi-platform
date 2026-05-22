@@ -1,5 +1,8 @@
 # Architecture Review Queue
 
+> **SUPERSEDED by [`docs/BACKLOG.md`](BACKLOG.md)** (2026-05-23).
+> Open architectural items are tracked in Sections 1 and 4 there. This file is kept for audit.
+
 Issues found by Opus architectural review agents (2026-05-20). Work through in priority order.
 Status: `[ ]` pending · `[~]` in-progress · `[x]` done
 
