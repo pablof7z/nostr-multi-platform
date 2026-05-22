@@ -9,6 +9,7 @@ struct RelaySettingsView: View {
     @State private var sheetURL = ""
     @State private var sheetRole = ""
     @State private var isEditing = false
+    @State private var dmRelayPublished = false
 
     var body: some View {
         List {
@@ -43,6 +44,36 @@ struct RelaySettingsView: View {
                     ChirpSectionHeader(title: "Configured relays")
                         .padding(.bottom, ChirpSpace.xs)
                 }
+            }
+
+            Section {
+                Text("Advertises your relays as DM inbox so others can reach you via NIP-17.")
+                    .font(.system(.footnote, design: .rounded))
+                    .foregroundStyle(ChirpColor.textSecondary)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+
+                if dmRelayPublished {
+                    Text("Published ✓")
+                        .font(.system(.subheadline, design: .rounded).weight(.semibold))
+                        .foregroundStyle(ChirpColor.positive)
+                        .padding(.vertical, ChirpSpace.s)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                } else {
+                    Button {
+                        model.publishDmRelayList(relays: model.relayEditRows.map(\.url))
+                        dmRelayPublished = true
+                    } label: {
+                        Label("Publish as DM inboxes", systemImage: "tray.and.arrow.up")
+                    }
+                    .disabled(model.relayEditRows.isEmpty)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                }
+            } header: {
+                ChirpSectionHeader(title: "DM inbox")
+                    .padding(.bottom, ChirpSpace.xs)
             }
         }
         .listStyle(.plain)
