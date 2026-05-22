@@ -338,11 +338,13 @@ pub(super) fn dispatch_command(
             target,
             correlation_id,
         } => {
-            // D7: kernel owns the wall clock. Sentinel `created_at: 0`
-            // tells the helper-equivalent stamp below to fill from
-            // `kernel.now_secs()` — keeps the FixedClock test hook
-            // effective end-to-end (same pattern as PublishUnsignedEvent
-            // below).
+            // D7: kernel owns the wall clock. Unlike `PublishUnsignedEvent`
+            // below — whose callers (NIP-crate executors) set the sentinel
+            // `created_at: 0` and rely on the dispatch arm to stamp — this
+            // arm builds the `UnsignedEvent` itself, so we stamp inline
+            // from `kernel.now_secs()` directly. Same effect, no sentinel
+            // round-trip required. The FixedClock test hook plugs into
+            // `kernel.now_secs()`, so end-to-end behaviour is preserved.
             //
             // `pubkey` is intentionally left empty: both
             // `publish_unsigned_event` and `publish_unsigned_event_to_relays`
