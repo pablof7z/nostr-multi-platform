@@ -36,7 +36,6 @@
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::substrate::{ActionContext, ActionId, ActionModule, ActionRejection, ActionResult};
 
@@ -195,6 +194,10 @@ impl ActionRegistry {
         // unwind across the FFI boundary (undefined behaviour); a caught
         // panic surfaces as `ActionRejection::Invalid("action validator
         // panicked")` instead.
+        // Capture `ctx.now_ms` *before* the validator call so the minted id
+        // uses the same clock reading the validator saw. Threading it via
+        // local avoids holding `ctx` across the `catch_unwind` closure.
+        let now_ms = ctx.now_ms;
         let preferred_id = match catch_unwind(AssertUnwindSafe(|| module.start(ctx, action_json))) {
             Ok(result) => result?,
             Err(_) => {
@@ -203,7 +206,7 @@ impl ActionRegistry {
                 ));
             }
         };
-        Ok(preferred_id.unwrap_or_else(new_action_id))
+        Ok(preferred_id.unwrap_or_else(|| new_action_id(now_ms)))
     }
 
     /// Execute the validated action via [`ActionModule::execute`] on the
@@ -300,21 +303,24 @@ impl ActionRegistry {
 
 /// Generate a unique 32-hex-char action correlation id.
 ///
-/// Combines a wall-clock nanosecond stamp with a process-lifetime atomic
-/// counter so two ids minted in the same nanosecond still differ. This is a
-/// correlation handle, not a security token — no cryptographic randomness is
-/// required (the M6 ledger may swap in a UUID later without touching
-/// callers).
-fn new_action_id() -> ActionId {
+/// Combines the caller-supplied wall-clock millisecond stamp (`now_ms`, read
+/// through the injected kernel clock) with a process-lifetime atomic counter
+/// so two ids minted at the same instant still differ. This is a correlation
+/// handle, not a security token — no cryptographic randomness is required
+/// (the M6 ledger may swap in a UUID later without touching callers).
+///
+/// D7: the clock is *injected*, not read. `ActionRegistry::start` takes
+/// `ctx.now_ms` from its `ActionContext` (the FFI dispatch path stamps it
+/// from `kernel::now_ms()`, which routes through the kernel-owned `Clock`),
+/// so deterministic replay sees a deterministic id stem and `FixedClock`
+/// in tests pins the leading hex word.
+fn new_action_id(now_ms: u64) -> ActionId {
     use std::sync::atomic::{AtomicU64, Ordering};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
     let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
-    // 96-bit nanos truncated to the low 64 bits + a 64-bit sequence → 32 hex.
-    format!("{:016x}{:016x}", nanos as u64, seq)
+    // 64-bit `now_ms` + 64-bit sequence → 32 hex. The sequence guarantees
+    // uniqueness within a single millisecond (or under a stuck `FixedClock`).
+    format!("{:016x}{:016x}", now_ms, seq)
 }
 
 /// Build the registry the kernel ships with.
