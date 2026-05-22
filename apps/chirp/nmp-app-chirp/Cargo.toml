@@ -48,6 +48,11 @@ nmp-nip29 = { path = "../../../crates/nmp-nip29" }
 # registers its `SendDmAction` `ActionModule` for the `nmp.nip17.send` verb.
 # D0-clean: `nmp-core` gains no DM nouns.
 nmp-nip17 = { path = "../../../crates/nmp-nip17" }
+# NIP-57 lightning zaps. Chirp registers the crate's `ZapAction` `ActionModule`
+# for the `nmp.nip57.zap` verb. The executor records the zap intent; the LNURL
+# HTTP fetch is deferred to ADR-0024 `HttpCapability`. D0-clean: `nmp-core`
+# gains no zap nouns.
+nmp-nip57 = { path = "../../../crates/nmp-nip57" }
 nmp-threading = { path = "../../../crates/nmp-threading" }
 # Marmot (MLS-over-Nostr). This crate's `src/marmot/` module consumes the
 # typed `MarmotService` translation layer; no MLS type crosses its C-ABI
