@@ -13,7 +13,7 @@
 //! Kinds 7 / 6 / 16 are regular events. NIP-33-style `(author, d_tag)`
 //! supersession does NOT apply. The nip23 "stale redelivery" guard maps here to
 //! plain **duplicate-`event_id` idempotency** — the same event id ingested
-//! twice never double-counts (see [`domain`] and [`view::ReactionAccumulator`]).
+//! twice never double-counts (see [`view::ReactionAccumulator`]).
 //!
 //! ## Module layout
 //!
@@ -24,21 +24,10 @@
 //! - [`build`] — `Reaction::to_event(...)` / `Reaction::to_address(...)` /
 //!   `Repost::of(...)` / `GenericRepost::of(...)` → `UnsignedEvent`, with a
 //!   typed [`ReactionBuildError`] (D6).
-//! - [`domain`] — composite reverse indexes (`by_target`, `by_target_content`,
-//!   `by_reactor`) for kinds 7 / 6 / 16, `event_id` idempotency, and
-//!   [`reaction_summary`] with per-`(reactor, target)` newest-wins collapse.
 //! - [`view`] — [`view::ReactionSummaryView`] + [`view::RepostsView`].
-//!
-//! ## Ingest dispatch
-//!
-//! Per `kind-wrappers.md` §6 + §8 + PD-008, decoded records are cached in the
-//! domain store at ingest time. Callers (apps or `KernelEventObserver` impls)
-//! dispatch kinds 7 / 6 / 16 to `decode_and_route`, which writes the decoded
-//! [`ReactionRecord`] under the composite reverse indexes described above.
 
 pub mod build;
 pub mod decode;
-pub mod domain;
 pub mod kinds;
 pub mod relations;
 pub mod view;
@@ -49,10 +38,6 @@ pub use build::{
 };
 pub use decode::{
     try_from_event, try_from_kernel_event, EmojiRef, ReactionTarget, ReactionKind, ReactionRecord,
-};
-pub use domain::{
-    decode_and_route, get, list_by_reactor, list_for_target, reaction_summary, ReactionSummary,
-    NAMESPACE,
 };
 pub use kinds::{KIND_GENERIC_REPOST, KIND_REACTION, KIND_REPOST, REACTION_KINDS};
 pub use relations::{RelationSpecs, Relations};

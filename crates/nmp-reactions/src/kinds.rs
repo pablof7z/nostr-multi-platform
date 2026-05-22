@@ -12,7 +12,7 @@
 //! Per the NIP wire spec, kinds 7 / 6 / 16 are **regular events** — they are
 //! NOT replaceable. There is no parameterized-replaceable `d`-tag supersession
 //! for these; the analogue of nip23's "stale redelivery" guard is plain
-//! duplicate-`event_id` idempotency (see [`crate::domain`]).
+//! duplicate-`event_id` idempotency (see [`crate::view::ReactionAccumulator`]).
 
 /// NIP-25 reaction kind.
 pub const KIND_REACTION: u32 = 7;
