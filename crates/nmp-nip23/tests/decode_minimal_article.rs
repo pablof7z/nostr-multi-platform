@@ -1,3 +1,4 @@
+#![cfg(feature = "long-form")]
 //! `try_from_event` on a minimal kind:30023 — only `d` tag + content.
 
 mod common;

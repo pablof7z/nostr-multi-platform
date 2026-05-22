@@ -1,3 +1,4 @@
+#![cfg(feature = "long-form")]
 //! `ArticleDetailView` resolves a naddr triple `(kind=30023, author, d_tag)`
 //! to the right `ArticleRecord`.
 //!

@@ -1,3 +1,4 @@
+#![cfg(feature = "long-form")]
 //! A kind:30023 event without a `d` tag fails to decode — NIP-33 requires the
 //! identifier for any parameterized-replaceable event.
 
