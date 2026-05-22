@@ -279,7 +279,16 @@ fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str
             return format!(r#"{{"correlation_id":{}}}"#, json_string(original_id));
         }
     }
-    let mut ctx = ActionContext { now_ms: now_ms() };
+    // D7 — the FFI layer is NOT allowed to read wall time (`SystemTime::now()`
+    // / `chrono::Utc::now()`). `ActionContext::now_ms` was previously sourced
+    // from a local `now_ms()` helper that read the wall clock on every
+    // dispatch — a doctrine violation that survived because every
+    // `ActionModule::start` on master discards `ctx` (the field exists for
+    // future modules that need a kernel-supplied tick). Pass a zero-valued
+    // `ActionContext` here; if/when a module starts consuming `ctx.now_ms`,
+    // the value must come from the kernel's `Clock` seam (see
+    // `crate::kernel::clock`), not from an FFI-side wall-clock read.
+    let mut ctx = ActionContext::default();
     match app.action_registry.start(&mut ctx, namespace, action_json) {
         Ok(correlation_id) => {
             // `start()` is a pure validator and the correlation id is the
@@ -416,15 +425,12 @@ fn json_string(s: &str) -> String {
     serde_json::to_string(s).unwrap_or_else(|_| "\"\"".to_string())
 }
 
-/// Current wall-clock time in milliseconds since the Unix epoch, for
-/// [`ActionContext::now_ms`]. A clock before the epoch collapses to `0`.
-fn now_ms() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
+// D7 — the previous `fn now_ms() -> u64 { SystemTime::now()... }` helper was
+// deleted: it read the wall clock on every `dispatch_action` and the FFI
+// layer is not allowed to do that (`docs/product-spec/doctrine.md` D7 —
+// kernel owns the wall clock). Every `ActionModule::start` on master
+// discards `ctx`, so the field stays dead-but-typed until a module wires
+// the kernel `Clock` seam through `ActionContext`.
 
 #[cfg(test)]
 mod tests {
