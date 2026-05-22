@@ -3813,6 +3813,7 @@ dependencies = [
  "bech32",
  "chrono",
  "heed",
+ "indexmap",
  "mio",
  "nmp-nip42-types",
  "nmp-nip59",

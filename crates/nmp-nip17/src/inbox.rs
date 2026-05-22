@@ -61,7 +61,7 @@ use std::sync::{Arc, Mutex};
 use nmp_core::planner::{
     InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting,
 };
-use nmp_core::substrate::ViewDependencies;
+use nmp_core::substrate::{BoundedMessageMap, ViewDependencies, MAX_PROJECTION_MESSAGES};
 use nmp_core::{KindFilter, RawEventObserver};
 use nostr::{Event, JsonUtil};
 use serde::{Deserialize, Serialize};
@@ -168,10 +168,12 @@ pub struct DmInboxProjection {
     /// signer → every envelope is a silent no-op.
     local_keys: Arc<Mutex<Option<nostr::Keys>>>,
     /// Accepted decrypted messages keyed by inner-rumor event id. The value
-    /// pairs the conversation peer with the message. A `BTreeMap` keyed on id
-    /// makes ingest idempotent — a re-delivered envelope replaces rather than
-    /// duplicates.
-    messages: Mutex<BTreeMap<String, (String, DmMessage)>>,
+    /// pairs the conversation peer with the message. Idempotent — a
+    /// re-delivered envelope replaces rather than duplicates. Bounded by
+    /// [`MAX_PROJECTION_MESSAGES`] so a long-running inbox cannot grow
+    /// unboundedly across a session; once full, the oldest-by-insertion
+    /// rumor is evicted, keeping per-tick snapshot serialisation O(cap).
+    messages: Mutex<BoundedMessageMap<String, (String, DmMessage)>>,
 }
 
 impl DmInboxProjection {
@@ -180,7 +182,7 @@ impl DmInboxProjection {
     pub fn new(local_keys: Arc<Mutex<Option<nostr::Keys>>>) -> Self {
         Self {
             local_keys,
-            messages: Mutex::new(BTreeMap::new()),
+            messages: Mutex::new(BoundedMessageMap::new(MAX_PROJECTION_MESSAGES)),
         }
     }
 

@@ -52,10 +52,9 @@
 //! A correctly-pinned subscription only ever delivers events from the host
 //! relay; this projection trusts that pin and matches on `local_id` alone.
 
-use std::collections::BTreeMap;
 use std::sync::Mutex;
 
-use nmp_core::substrate::KernelEvent;
+use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
 use nmp_core::KernelEventObserver;
 use serde::{Deserialize, Serialize};
 
@@ -128,10 +127,13 @@ pub struct GroupChatProjection {
     /// echo the group identity but is *not* an event-level filter (a
     /// `KernelEvent` carries no relay provenance — see the module docs).
     group_id: GroupId,
-    /// Accepted messages keyed by event id. A `BTreeMap` keyed on id makes the
-    /// observer idempotent: a re-delivered event id replaces rather than
-    /// duplicates. Ordering for the snapshot is applied on read, not here.
-    messages: Mutex<BTreeMap<String, GroupChatMessage>>,
+    /// Accepted messages keyed by event id. Idempotent: re-delivering an event
+    /// replaces the prior value rather than duplicating it. Bounded by
+    /// [`MAX_PROJECTION_MESSAGES`] — once full, the oldest-by-insertion entry
+    /// is evicted, keeping per-projection memory and per-tick snapshot
+    /// serialisation O(cap) rather than O(session). Ordering for the snapshot
+    /// is applied on read, not here.
+    messages: Mutex<BoundedMessageMap<String, GroupChatMessage>>,
 }
 
 impl GroupChatProjection {
@@ -140,7 +142,7 @@ impl GroupChatProjection {
     pub fn new(group_id: GroupId) -> Self {
         Self {
             group_id,
-            messages: Mutex::new(BTreeMap::new()),
+            messages: Mutex::new(BoundedMessageMap::new(MAX_PROJECTION_MESSAGES)),
         }
     }
 

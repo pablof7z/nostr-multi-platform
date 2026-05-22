@@ -77,7 +77,9 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Mutex;
 
-use nmp_core::substrate::{EventId, KernelEvent};
+use nmp_core::substrate::{
+    BoundedMessageMap, EventId, KernelEvent, MAX_PROJECTION_MESSAGES,
+};
 use nmp_core::KernelEventObserver;
 use serde::{Deserialize, Serialize};
 
@@ -136,7 +138,15 @@ pub struct ZapsAggregateProjection {
     /// re-deliveries of the same receipt; the value lets the snapshot derive
     /// both `count` (inner-map len) and `total_msats` (inner-map sum) on
     /// read.
-    by_target: Mutex<HashMap<EventId, BTreeMap<EventId, u64>>>,
+    ///
+    /// The outer map is bounded by [`MAX_PROJECTION_MESSAGES`]: once a busy
+    /// session has been zapped on more than that many distinct target events,
+    /// the oldest-by-first-receipt target is evicted to make room. The inner
+    /// `BTreeMap` (per-receipt dedupe) is naturally bounded by the count of
+    /// distinct zappers on one target — not separately capped because that
+    /// dimension does not grow unboundedly the way "all targets ever seen"
+    /// does.
+    by_target: Mutex<BoundedMessageMap<EventId, BTreeMap<EventId, u64>>>,
 }
 
 impl Default for ZapsAggregateProjection {
@@ -150,7 +160,7 @@ impl ZapsAggregateProjection {
     /// [`KernelEventObserver::on_kernel_event`].
     pub fn new() -> Self {
         Self {
-            by_target: Mutex::new(HashMap::new()),
+            by_target: Mutex::new(BoundedMessageMap::new(MAX_PROJECTION_MESSAGES)),
         }
     }
 
@@ -215,10 +225,18 @@ impl KernelEventObserver for ZapsAggregateProjection {
         let Ok(mut by_target) = self.by_target.lock() else {
             return;
         };
-        by_target
-            .entry(target)
-            .or_default()
-            .insert(record.event_id, msats);
+        // `BoundedMessageMap` has no `entry` API — explicit get_mut / insert
+        // keeps the inner `BTreeMap`'s receipt-id dedupe identical to the
+        // pre-migration `HashMap::entry().or_default().insert()` shape, while
+        // letting the outer cap evict the oldest-by-first-receipt target when
+        // the projection saturates.
+        if let Some(receipts) = by_target.get_mut(&target) {
+            receipts.insert(record.event_id, msats);
+        } else {
+            let mut receipts = BTreeMap::new();
+            receipts.insert(record.event_id, msats);
+            by_target.insert(target, receipts);
+        }
     }
 }
 
