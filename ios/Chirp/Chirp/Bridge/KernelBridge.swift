@@ -4,6 +4,12 @@ import os.log
 
 let kbLog = Logger(subsystem: "io.f7z.chirp", category: "KernelBridge")
 
+/// Mirror of `KERNEL_SCHEMA_VERSION` (Rust: `crates/nmp-core/src/update_envelope.rs`).
+/// Must be bumped in lock-step when the Rust constant changes. A mismatch causes
+/// `KernelBridge.decode()` to reject the snapshot rather than silently misparse
+/// renamed or retyped fields (see `update.rs` contract comment).
+private let KERNEL_SCHEMA_VERSION: UInt32 = 1
+
 /// Thin C-FFI wrapper around the `nmp_core` static library.
 final class KernelHandle {
     let raw: UnsafeMutableRawPointer
@@ -519,6 +525,15 @@ final class KernelHandle {
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         do {
             let update = try decoder.decode(KernelUpdate.self, from: innerData)
+            // Enforce the schema version contract: a mismatch means Rust's
+            // field layout changed in a way the host cannot safely interpret.
+            // Return nil so the update is silently dropped (same posture as a
+            // parse error above) rather than feeding misparse data to the UI.
+            // The mismatch is loud-logged so it surfaces in CI and dev builds.
+            guard update.schemaVersion == KERNEL_SCHEMA_VERSION else {
+                kbLog.error("schema version mismatch: kernel=\(update.schemaVersion) host=\(KERNEL_SCHEMA_VERSION) — snapshot rejected")
+                return nil
+            }
             let duration = start.duration(to: .now)
             kbLog.info("decoded ok rev=\(update.rev) activeAccount=\(update.activeAccount ?? "nil")")
             return KernelUpdateResult(
@@ -679,6 +694,10 @@ struct CreateAccountFFIPayload: Encodable {
 
 struct KernelUpdate: Decodable {
     let rev: UInt64
+    /// Snapshot schema version. Checked in `KernelBridge.decode()` against
+    /// `KERNEL_SCHEMA_VERSION`; a mismatch causes the snapshot to be rejected
+    /// rather than silently misparsed (see `update.rs` contract comment).
+    let schemaVersion: UInt32
     let updateKind: String?
     let running: Bool
     // D0: the views cluster (`profile`, the visible timeline, `author_view`,
