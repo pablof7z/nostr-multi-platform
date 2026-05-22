@@ -44,6 +44,14 @@ pub extern "C" fn nmp_app_wallet_disconnect(app: *mut NmpApp) {
 /// `bolt11`: BOLT-11 invoice string.
 /// `amount_msats_or_null`: pointer to optional payment amount in msats (pass
 /// `nil` to use the invoice's embedded amount).
+///
+/// `correlation_id` is left `None` on this C-ABI path: the iOS shell calls
+/// `nmp_app_wallet_pay_invoice` directly (no ActionModule executor exists
+/// yet for `nmp.zap`), so the kind:23195 response does not need to drain a
+/// dispatched-action promise. A future `ZapAction` executor will construct
+/// the same `ActorCommand::WalletPayInvoice` with `Some(correlation_id)` and
+/// the wallet runtime's `pending_payments` map closes the round-trip into
+/// `action_results` on the matching response.
 #[no_mangle]
 pub extern "C" fn nmp_app_wallet_pay_invoice(
     app: *mut NmpApp,
@@ -61,5 +69,6 @@ pub extern "C" fn nmp_app_wallet_pay_invoice(
     app.send_cmd(ActorCommand::WalletPayInvoice {
         bolt11,
         amount_msats,
+        correlation_id: None,
     });
 }

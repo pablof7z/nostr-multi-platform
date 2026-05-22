@@ -534,9 +534,30 @@ pub(super) fn dispatch_command(
         ActorCommand::WalletPayInvoice {
             bolt11,
             amount_msats,
+            correlation_id,
         } => {
-            let outbound =
-                commands::wallet_pay_invoice(ctx.wallet, ctx.kernel, &bolt11, amount_msats);
+            // PR-G: record the `Requested` stage the moment the actor dequeues
+            // the dispatched action — mirrors the PublishNote arm above. The
+            // terminal `Accepted` / `Failed` lands later in `handle_nwc_text`
+            // when the wallet's kind:23195 response settles, via
+            // `Kernel::record_action_success` / `record_action_failure`.
+            // Skipped for non-dispatch callers (`correlation_id == None`,
+            // which is what the C-ABI `nmp_app_wallet_pay_invoice` path
+            // passes today — no host spinner to inform).
+            if let Some(ref cid) = correlation_id {
+                ctx.kernel.record_action_stage(
+                    cid,
+                    crate::kernel::action_stages::ActionStage::Requested,
+                    None,
+                );
+            }
+            let outbound = commands::wallet_pay_invoice(
+                ctx.wallet,
+                ctx.kernel,
+                &bolt11,
+                amount_msats,
+                correlation_id,
+            );
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
