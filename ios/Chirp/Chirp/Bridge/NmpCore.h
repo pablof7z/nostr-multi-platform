@@ -277,7 +277,7 @@ void nmp_broker_free_string(char *ptr);
 // poisoned mutexes, or serialization failure (D6).
 void *nmp_app_chirp_register(void *app, const char *viewer_pubkey_or_null);
 void nmp_app_chirp_register_group_chat(void *app, const char *group_id_json);
-void nmp_app_chirp_register_dm_inbox(void *app, const char *viewer_pubkey_or_null);
+void nmp_app_chirp_register_dm_inbox(void *app);
 char *nmp_app_chirp_snapshot(void *handle);
 void nmp_app_chirp_snapshot_free(char *ptr);
 void nmp_app_chirp_unregister(void *handle);
@@ -342,9 +342,9 @@ void nmp_app_chirp_register_group_discovery(void *app, const char *host_relay_ur
 // private direct messages. Unlike the NIP-29 group chat there is no group id:
 // the inbox is global (every conversation the local account participates in).
 //
-//   • `viewer_pubkey_or_null` is retained for ABI compatibility and ignored.
-//     Rust derives the active account from the local NIP-17 key slot and owns
-//     the kind:1059 `#p` gift-wrap interest lifecycle itself.
+//   • Takes no viewer pubkey. Rust derives the active account from the local
+//     NIP-17 key slot and owns the kind:1059 `#p` gift-wrap interest
+//     lifecycle itself.
 //   • Returns void — registers no handle, no companion `unregister`. The
 //     decrypted conversations surface on every kernel snapshot tick under
 //     the `projections` key `"nip17.dm_inbox"`, shaped
@@ -354,7 +354,7 @@ void nmp_app_chirp_register_group_discovery(void *app, const char *host_relay_ur
 //   • Fire-and-forget (D6): a null `app` degrades to a silent no-op.
 //   • `app` MUST outlive the registration; it is borrowed only for the
 //     duration of this call.
-void nmp_app_chirp_register_dm_inbox(void *app, const char *viewer_pubkey_or_null);
+void nmp_app_chirp_register_dm_inbox(void *app);
 
 // ── NIP-02 follow list read projection ───────────────────────────────────
 //

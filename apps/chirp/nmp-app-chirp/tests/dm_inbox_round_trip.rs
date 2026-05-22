@@ -26,8 +26,6 @@
 //! The third test documents the gap that prevents a *single* FFI-driven
 //! round-trip from running end-to-end inside this crate today.
 
-use std::ffi::CString;
-
 use nmp_app_chirp::ffi::nmp_app_chirp_register_dm_inbox;
 use nmp_core::{nmp_app_free, nmp_app_new, NmpApp, RawEventObserver};
 use nmp_nip17::{DmInboxProjection, DmInboxSnapshot};
@@ -80,14 +78,12 @@ fn dm_inbox_decrypts_through_the_shared_local_keys_slot() {
     // Generate Alice (sender) and Bob (recipient / viewer) keys.
     let alice = Keys::generate();
     let bob = Keys::generate();
-    let bob_pubkey_hex = bob.public_key().to_hex();
 
     // Register the DM inbox through the FFI symbol exactly as Swift does
     // at startup. This is the load-bearing call: it captures
     // `app.nip17_local_keys()` into the projection it stores in the
     // raw-event-observer slot AND the snapshot registry.
-    let viewer = CString::new(bob_pubkey_hex.as_str()).unwrap();
-    nmp_app_chirp_register_dm_inbox(app, viewer.as_ptr());
+    nmp_app_chirp_register_dm_inbox(app);
 
     // Write Bob's keys into the SAME shared slot the FFI registration
     // captured. In production the actor mutates this slot on every
@@ -169,7 +165,7 @@ fn dm_inbox_snapshot_json_round_trips_through_dm_inbox_snapshot() {
     let bob = Keys::generate();
 
     // Register through the FFI path (same as Swift does at startup).
-    nmp_app_chirp_register_dm_inbox(app, std::ptr::null());
+    nmp_app_chirp_register_dm_inbox(app);
 
     // Same slot the FFI registration captured.
     // SAFETY: app came from nmp_app_new() and is live for this call.
@@ -227,7 +223,7 @@ fn dm_inbox_snapshot_json_round_trips_through_dm_inbox_snapshot() {
 /// 1. Build `nmp_app` via `nmp_app_new()`.
 /// 2. Generate Alice's and Bob's keys; write Bob's into
 ///    `app.nip17_local_keys()` (or sign Bob in via the actor).
-/// 3. Call `nmp_app_chirp_register_dm_inbox(app, bob_pubkey_cstr)`.
+/// 3. Call `nmp_app_chirp_register_dm_inbox(app)`.
 /// 4. Construct a kind:1059 gift-wrap from Alice to Bob via
 ///    `nmp_nip59::gift_wrap` and inject it through a public test-support
 ///    path that drives `kernel.handle_event` (the ONLY path that fans out
@@ -284,8 +280,7 @@ fn dm_inbox_full_round_trip_through_ffi() {
     // SAFETY: app came from nmp_app_new() and is live for this call.
     *unsafe { (*app).nip17_local_keys() }.lock().unwrap() = Some(bob.clone());
 
-    let bob_pubkey = CString::new(bob.public_key().to_hex()).unwrap();
-    nmp_app_chirp_register_dm_inbox(app, bob_pubkey.as_ptr());
+    nmp_app_chirp_register_dm_inbox(app);
 
     let _envelope = gift_wrapped_dm(&alice, &bob.public_key(), "round-trip", 100);
     // FIXME(nip17-e2e-test-seam): inject `_envelope` through a path that
