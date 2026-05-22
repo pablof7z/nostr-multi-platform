@@ -26,7 +26,7 @@ fn web_chirp_action_contract_dispatches_against_registered_app_actions() {
                 target_event_id: "abc".to_string(),
                 reaction: "+".to_string(),
             },
-            "chirp.react",
+            "nmp.nip25.react",
         ),
         (
             ChirpAction::Follow {

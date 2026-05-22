@@ -117,7 +117,7 @@ impl ChirpAction {
                 target_event_id,
                 reaction,
             } => (
-                "chirp.react".to_string(),
+                "nmp.nip25.react".to_string(),
                 serde_json::json!({
                     "target_event_id": target_event_id,
                     "reaction": reaction,

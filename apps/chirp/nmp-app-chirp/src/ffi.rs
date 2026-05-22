@@ -521,7 +521,7 @@ fn c_string_opt(ptr: *const c_char) -> Option<String> {
 
 struct ChirpReactModule;
 impl ActionModule for ChirpReactModule {
-    const NAMESPACE: &'static str = "chirp.react";
+    const NAMESPACE: &'static str = "nmp.nip25.react";
     type Action = ReactAction;
     fn start(_ctx: &mut ActionContext, _action: Self::Action) -> Result<(), ActionRejection> {
         Ok(())
@@ -853,7 +853,7 @@ mod tests {
         assert!(!handle.is_null());
 
         for (namespace, body) in [
-            ("chirp.react", r#"{"target_event_id":"abc","reaction":"+"}"#),
+            ("nmp.nip25.react", r#"{"target_event_id":"abc","reaction":"+"}"#),
             ("nmp.follow", r#"{"pubkey":"deadbeef"}"#),
             ("nmp.unfollow", r#"{"pubkey":"deadbeef"}"#),
         ] {
@@ -865,11 +865,11 @@ mod tests {
             assert_eq!(id.len(), 32, "{namespace}: correlation id should be 32 hex");
         }
 
-        // `chirp.react` defaults `reaction` to `"+"` when absent.
-        let parsed = dispatch(app, "chirp.react", r#"{"target_event_id":"abc"}"#);
+        // `nmp.nip25.react` defaults `reaction` to `"+"` when absent.
+        let parsed = dispatch(app, "nmp.nip25.react", r#"{"target_event_id":"abc"}"#);
         assert!(
             parsed.get("correlation_id").is_some(),
-            "chirp.react without reaction should default and succeed: {parsed}"
+            "nmp.nip25.react without reaction should default and succeed: {parsed}"
         );
 
         // Malformed JSON shape is rejected by the host module validator (D6).

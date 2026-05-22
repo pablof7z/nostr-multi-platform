@@ -304,7 +304,7 @@ final class KernelHandle {
     }
 
     /// Dispatch a Chirp social-verb action through the generic
-    /// `nmp_app_dispatch_action` path. `namespace` is one of `chirp.react` /
+    /// `nmp_app_dispatch_action` path. `namespace` is one of `nmp.nip25.react` /
     /// `nmp.follow` / `nmp.unfollow` — registered by `nmp-app-chirp` at
     /// `nmp_app_chirp_register` time. `body` is the action JSON object.
     ///
@@ -342,7 +342,7 @@ final class KernelHandle {
     @discardableResult
     func react(targetEventID: String, reaction: String) -> DispatchResult {
         dispatchAction(
-            namespace: "chirp.react",
+            namespace: "nmp.nip25.react",
             body: ["target_event_id": targetEventID, "reaction": reaction])
     }
 

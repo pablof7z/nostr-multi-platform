@@ -129,7 +129,7 @@ fn chirp_action_react_defaults_to_like_without_host_policy() {
     };
     let dispatch = action.into_action_dispatch();
 
-    assert_eq!(dispatch.action_type, "chirp.react");
+    assert_eq!(dispatch.action_type, "nmp.nip25.react");
     assert_eq!(
         dispatch.payload,
         json!({

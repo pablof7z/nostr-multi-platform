@@ -113,7 +113,7 @@ impl AppRuntime {
 
     pub fn react(&self, event_id: &str, reaction: &str) -> Result<String> {
         let action = json!({ "target_event_id": event_id, "reaction": reaction }).to_string();
-        self.dispatch_action("chirp.react", &action)
+        self.dispatch_action("nmp.nip25.react", &action)
     }
 
     pub fn follow(&self, pubkey: &str, add: bool) -> Result<String> {
