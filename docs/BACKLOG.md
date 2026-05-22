@@ -132,6 +132,32 @@ one-shot channel. This is non-trivial broker work.
 
 **Deadline:** Stage 1 (visibility) must land before v1. Stages 2-3 are post-v1.
 
+### V-08 · DM inbox silent failure for bunker accounts [MEDIUM · staged fix required]
+
+**Verified:** `crates/nmp-nip17/src/inbox.rs:205` — `DmInboxProjection::snapshot()` returns
+`DmInboxSnapshot::empty()` when `local_keys` is `None` (i.e. the active account uses a
+remote NIP-46 signer). A host cannot distinguish "no signer yet" from "remote signer
+that cannot unseal gift-wraps."
+
+**Impact:** bunker (NIP-46) users see an empty DM inbox with no explanation. The host
+must choose between "show loading indicator forever" or "show empty state as if no DMs
+exist" — both are wrong. Silent degradation with no user-visible signal.
+
+**Staged fix plan:**
+- Stage 1: Add `remote_signer_unsupported: bool` field to `DmInboxSnapshot` (default
+  `false`). When `local_keys` is `None`, set it `true` and return early with
+  `DmInboxSnapshot { remote_signer_unsupported: true, conversations: vec![], unread_count: 0 }`.
+  Wire the flag into the NMP snapshot JSON so Swift can read it.
+- Stage 2: Swift `DmConversationsView` — when `remote_signer_unsupported == true`, show
+  "DM inbox unavailable for bunker accounts" instead of an empty list.
+- Stage 3: ADR-0026 Phase 2 follow-up: implement `unwrap_gift_wrap` via remote signer RPC,
+  delete the flag.
+
+**Deadline:** Stage 1 must land before v1. Stage 2 is a fast follow. Stage 3 is post-v1.
+
+**Schema note:** `DmInboxSnapshot` is serde-stable — widening with `#[serde(default)]`
+is a backward-compatible additive change (decoders that don't know the new field ignore it).
+
 ### V-07 · Zap relay selection in Swift — D0 policy leak [HIGH · immediate fix]
 
 **Verified:** `ios/Chirp/Chirp/Bridge/KernelModel.swift:405-421` — the `zap()` call

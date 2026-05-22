@@ -696,12 +696,22 @@ pub(super) fn sync_kernel(identity: &IdentityRuntime, kernel: &mut Kernel) {
     // NIP-42 auth signer binding. Remote signers (NIP-46) cannot sign NIP-42
     // challenges with the user's pubkey today — the broker's ephemeral key
     // would sign as itself, not as the user. Clear the auth signer when a
-    // remote is active and rely on the broker to surface auth-required state.
-    // TODO(nip46-nip42): wrap the remote signer behind AuthSignerFn so NIP-42
-    // can sign through the bunker (separate follow-up — needs broker-side
-    // sign_event RPC plus a sync-style adapter compatible with AuthSignerFn).
+    // remote is active. V-06 Stage 1: toast on the transition so the user
+    // knows AUTH-required relays are degraded (replaces silent failure).
+    // V-06 Stage 2/3: broker-side sign_auth_challenge RPC + AuthSignerFn
+    // adapter (post-v1, tracked in BACKLOG).
     if let Some(active_id) = active.as_ref() {
         if identity.remote_signers.contains_key(active_id) {
+            // Toast only on the transition from having auth capability to
+            // losing it, not on every sync call (which runs frequently).
+            if kernel.has_auth_signer() {
+                kernel.set_last_error_toast(Some(
+                    "Relays requiring NIP-42 authentication are not supported \
+                     with bunker accounts yet. AUTH-required relays will be \
+                     accessed unauthenticated."
+                        .to_string(),
+                ));
+            }
             kernel.clear_auth_signer();
             return;
         }

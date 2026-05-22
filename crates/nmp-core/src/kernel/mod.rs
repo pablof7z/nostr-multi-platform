@@ -1051,6 +1051,11 @@ impl Kernel {
         self.auth_signers.remove(&RelayRole::Indexer);
     }
 
+    /// Returns `true` if at least one relay role has an auth signer bound.
+    pub(crate) fn has_auth_signer(&self) -> bool {
+        !self.auth_signers.is_empty()
+    }
+
     /// Bind the shared relay-edit rows slot so the FFI layer can read
     /// relay-edit rows without reaching into kernel internals.
     ///
