@@ -1,8 +1,8 @@
 //! `nmp.nip17.send` — the NIP-17 direct-message send [`ActionModule`].
 //!
 //! This is the typed action seam a host wires into the kernel's action
-//! registry (`register_action_module` + `register_action_executor`) so a DM
-//! send reaches the actor through the generic `dispatch_action` path — exactly
+//! registry (`ActionRegistry::register::<SendDmAction>()`) so a DM send
+//! reaches the actor through the generic `dispatch_action` path — exactly
 //! like the NIP-29 `post_chat_message` action.
 //!
 //! # Two halves

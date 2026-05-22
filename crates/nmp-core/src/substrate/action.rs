@@ -108,16 +108,16 @@ pub trait ActionModule: Send + Sync + 'static {
         false
     }
 
-    /// ADR-0027 typed-executor seam: enqueue the `ActorCommand` that the
-    /// validated `action` should drive. Called via `ActionModuleAdapter<M>`
-    /// (see `kernel::action_registry`) when the module is registered through
-    /// `ActionRegistry::register::<M>()` and `has_typed_executor` returns
-    /// `true`. The pre-ADR-0027 closure path (`register_executor`) remains
-    /// available for hosts that haven't migrated yet; the typed path takes
-    /// precedence when both are present.
+    /// Enqueue the `ActorCommand` that the validated `action` should drive.
     ///
-    /// Thread `correlation_id` onto any `ActorCommand` whose terminal verdict
-    /// must report the dispatched id (the spinner round-trip — see PR-A).
+    /// Called via `ActionModuleAdapter<M>` (see `kernel::action_registry`)
+    /// after `start` returns `Ok`. Thread `correlation_id` onto any
+    /// `ActorCommand` whose terminal verdict must report the dispatched id
+    /// (the spinner round-trip — see PR-A).
+    ///
+    /// The pre-ADR-0027 dual-registration path (`register_action_module` /
+    /// `register_action_executor`) was deleted; `execute` is now the sole
+    /// executor seam for any registered module.
     fn execute(
         action: Self::Action,
         correlation_id: &str,
