@@ -279,8 +279,15 @@ fn dispatch_action_json(app: Option<&NmpApp>, namespace: &str, action_json: &str
             return format!(r#"{{"correlation_id":{}}}"#, json_string(original_id));
         }
     }
+    let dispatch_now_ms = {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0)
+    };
     let mut ctx = ActionContext {};
-    match app.action_registry.start(&mut ctx, namespace, action_json) {
+    match app.action_registry.start(&mut ctx, dispatch_now_ms, namespace, action_json) {
         Ok(correlation_id) => {
             // `start()` is a pure validator and the correlation id is the
             // handle the caller acts on.
