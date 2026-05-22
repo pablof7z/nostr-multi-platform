@@ -172,6 +172,26 @@ pub(crate) fn handle_fetch_lnurl_invoice(
                 // a benign drop. The toast was the observable signal; if the
                 // actor's gone there's no host watching anyway.
                 let _ = command_tx.send(ActorCommand::ShowToast { message });
+                // ADR-0024 follow-up — auto-dispatch WalletPayInvoice when
+                // the wallet feature is active so the bolt11 → NWC pay loop
+                // closes without a second host round-trip. `correlation_id`
+                // on the wallet pay is `None`: the wallet payment is a
+                // *separate* async operation whose outcome surfaces as its
+                // own `ShowToast` from the NWC handler, not a failure of
+                // the zap correlation_id (the zap "succeeded" the moment
+                // the LNURL provider returned a valid invoice). Sent
+                // BEFORE `RecordActionSuccess` so a host observing the
+                // success can never double-tap before the WalletPayInvoice
+                // is enqueued — `Sender::send` is microseconds-non-blocking,
+                // so the host-visible ordering is preserved either way,
+                // but the strict pre-success ordering keeps the
+                // dispatch-then-pay invariant readable.
+                #[cfg(feature = "wallet")]
+                let _ = command_tx.send(ActorCommand::WalletPayInvoice {
+                    bolt11: bolt11.clone(),
+                    amount_msats: Some(amount_msats),
+                    correlation_id: None,
+                });
                 // PD-036 — when the zap originated from `dispatch_action`
                 // the registry minted a correlation_id and the host is
                 // waiting on `action_results` to close its spinner.

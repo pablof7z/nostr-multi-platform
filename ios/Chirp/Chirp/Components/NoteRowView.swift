@@ -21,6 +21,11 @@ struct NoteRowView: View {
     var eventCards: [String: ChirpEventCard] = [:]
     var timelineItems: [String: TimelineItem] = [:]
     let onLike: (String) -> Void
+    /// NIP-57 — (eventID, authorPubkey, lnurl) → dispatch the zap. Optional
+    /// so callers that don't surface zap (e.g. thread / profile views that
+    /// have not yet been wired) can omit it. The actions row hides the zap
+    /// button when this is `nil` OR `item.authorLnurl == nil`.
+    var onZap: ((String, String, String) -> Void)? = nil
 
     @EnvironmentObject private var router: ChirpRouter
 
@@ -45,6 +50,7 @@ struct NoteRowView: View {
                 NoteActionsRow(
                     item: item,
                     onLike: onLike,
+                    onZap: onZap,
                     likeTapped: $likeTapped,
                     showReply: $showReply
                 )
@@ -188,6 +194,11 @@ struct NoteRowView: View {
 struct NoteActionsRow: View {
     let item: TimelineItem
     let onLike: (String) -> Void
+    /// NIP-57 — invoked when the user taps the zap bolt. Hidden when this is
+    /// `nil` (no zap wiring from the host) OR `item.authorLnurl == nil`
+    /// (the author has no kind:0 lud16/lud06). Rust pre-computes
+    /// `authorLnurl` so the row never parses metadata (thin-shell rule).
+    var onZap: ((String, String, String) -> Void)? = nil
     @Binding var likeTapped: Bool
     @Binding var showReply: Bool
 
@@ -215,14 +226,41 @@ struct NoteActionsRow: View {
 
             Spacer()
 
-            actionButton(
-                icon: "bolt",
-                label: "Zap"
-            ) {
-                // Zap command not yet on kernel surface — no-op.
-            }
+            zapButton
         }
         .padding(.horizontal, 4)
+    }
+
+    // ── Zap (NIP-57) ─────────────────────────────────────────────────────
+
+    /// Yellow bolt when the author has a kind:0 lightning address AND the
+    /// host wired `onZap`; greyed/static when either is missing. The
+    /// disabled state still renders so the row layout stays stable
+    /// regardless of whether the author has published lud16/lud06.
+    @ViewBuilder
+    private var zapButton: some View {
+        if let onZap, let lnurl = item.authorLnurl {
+            Button {
+                onZap(item.id, item.authorPubkey, lnurl)
+                UIImpactFeedbackGenerator(style: .soft).impactOccurred()
+            } label: {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(.yellow)
+                    .frame(minWidth: 44, minHeight: 32, alignment: .center)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Zap")
+            .accessibilityIdentifier("note-zap-button")
+        } else {
+            // No lnurl OR no host wiring — keep the affordance visible so
+            // row layout doesn't shift, but disabled and muted.
+            Image(systemName: "bolt")
+                .font(.system(size: 15, weight: .regular))
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 44, minHeight: 32, alignment: .center)
+                .accessibilityHidden(true)
+        }
     }
 
     // ── Like with haptic feedback ────────────────────────────────────────

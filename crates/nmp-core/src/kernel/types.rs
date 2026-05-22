@@ -69,6 +69,12 @@ pub(super) struct Profile {
     pub(super) about: String,
     pub(super) avatar_initials: String,
     pub(super) avatar_color: String,
+    /// NIP-57 lightning address (`lud16`) or LNURL (`lud06`) from this
+    /// pubkey's kind:0 metadata. `None` when no kind:0 has arrived or the
+    /// metadata had no lnurl. Pre-extracted at parse time (see
+    /// `nostr::parse_profile`) so derived projections (`TimelineItem`,
+    /// `ProfileCard`) don't re-traverse raw event JSON.
+    pub(super) lnurl: Option<String>,
 }
 
 // ── Timeline and view payloads ────────────────────────────────────────────────
@@ -92,6 +98,12 @@ pub(super) struct TimelineItem {
     pub(super) author_avatar_initials: String,
     pub(super) author_avatar_color: String,
     pub(super) author_avatar_source: String,
+    /// NIP-57 lightning address (`lud16`) or LNURL (`lud06`) from the
+    /// author's kind:0 metadata. `None` when the author has no lightning
+    /// address or their kind:0 hasn't arrived yet. Pre-extracted so the
+    /// shell zap button doesn't need to cross-reference a separate profile
+    /// lookup — thin-shell rule, Rust decides zapability.
+    pub(super) author_lnurl: Option<String>,
     /// Nostr event kind (e.g. 1 = note, 6 = repost, 7 = reaction). Carried so
     /// the shell can render kind-conditional UI (badges, navigation targets)
     /// without re-parsing the raw event JSON in `content`. D1 / thin-shell:
@@ -148,6 +160,12 @@ pub(super) struct ProfileCard {
     /// True when a kind:0 metadata event has been received for this pubkey.
     /// False means the profile card is a placeholder pending relay response.
     pub(super) has_profile: bool,
+    /// Pre-extracted lightning address (`lud16`) / LNURL (`lud06`) from this
+    /// pubkey's kind:0 metadata. `None` when no kind:0 has arrived or the
+    /// user has no lightning address. The zap button in the shell is
+    /// enabled/disabled based on this field — Rust decides zapability,
+    /// Swift renders it (thin-shell rule, aim.md §6.9).
+    pub(super) lnurl: Option<String>,
 }
 
 /// Dispatch spec for a `ProfileAction` that fires a real write.

@@ -563,6 +563,7 @@ fn c13_kernel_timeline_item_d1_picture_url_placeholder_and_refinement() {
         about: String::new(),
         avatar_initials: "c1".to_string(),
         avatar_color: avatar_color(C13_PK),
+        lnurl: None,
     });
 
     let event_after = kernel.events.get(C13_ID).expect("event must still be in cache");
@@ -622,6 +623,7 @@ fn d1_avatar_source_reflects_picture_selection_not_profile_presence() {
             about: String::new(),
             avatar_initials: "c1".to_string(),
             avatar_color: avatar_color(C13_PK),
+            lnurl: None,
         });
 
         let event = kernel.events.get(C13_ID).expect("event must be in cache");
