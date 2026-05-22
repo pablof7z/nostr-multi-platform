@@ -68,8 +68,15 @@ pub use snapshot::nmp_app_register_snapshot_projection;
 // shell consumes the same `#[no_mangle] extern "C"` symbols directly via
 // the static lib — the `pub use` only affects Rust-side reach.
 #[cfg(any(test, feature = "test-support"))]
+// `nmp_app_is_alive` is reached by the in-crate `ffi::lifecycle::tests`
+// module by its `super::` path, so the facade re-export is only consumed by
+// out-of-crate integration tests / test-support clients — same pattern as
+// `nmp_app_register_action_result_observer` above. The `allow(unused)` keeps
+// `cargo test -p nmp-core --lib` clean.
+#[allow(unused_imports)]
 pub use lifecycle::{
-    nmp_app_lifecycle_background, nmp_app_lifecycle_foreground, nmp_app_set_lifecycle_callback,
+    nmp_app_is_alive, nmp_app_lifecycle_background, nmp_app_lifecycle_foreground,
+    nmp_app_set_lifecycle_callback,
 };
 
 // T146 — kernel event observer FFI exposed through the test-support facade
@@ -168,7 +175,8 @@ pub use action::{nmp_app_dispatch_action, nmp_app_register_action_result_observe
 // cdylib CGU.
 #[cfg(feature = "android-ffi")]
 pub use lifecycle::{
-    nmp_app_lifecycle_background, nmp_app_lifecycle_foreground, nmp_app_set_lifecycle_callback,
+    nmp_app_is_alive, nmp_app_lifecycle_background, nmp_app_lifecycle_foreground,
+    nmp_app_set_lifecycle_callback,
 };
 #[cfg(feature = "android-ffi")]
 pub use snapshot::nmp_app_register_snapshot_projection;

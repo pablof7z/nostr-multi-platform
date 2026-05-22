@@ -61,6 +61,23 @@ final class KernelModel: ObservableObject {
     @Published var visibleLimit: UInt32 = 80
     @Published var emitHz: UInt32 = 4
 
+    /// D7 actor-death surface — flips to `true` exactly once when the Rust
+    /// supervisor emits an `{"t":"panic",...}` update frame (the actor thread
+    /// died inside `catch_unwind`) OR when the foreground-resume probe
+    /// (`nmp_app_is_alive`, ADR-0028) reports the actor as not running. The
+    /// kernel is terminally dead for this process from that point: every
+    /// FFI command is a silent no-op, no further snapshots will arrive, and
+    /// the only recovery is a process restart. `RootShell` reads this flag
+    /// and overlays the red "Background service stopped — please relaunch"
+    /// banner unconditionally on top of every other view.
+    ///
+    /// Set once, never cleared in-process. A future restart-actor path (if
+    /// any) would clear it, but the current disposition is "tell the user
+    /// to relaunch" — restart-in-process is unsafe because the kernel's
+    /// event store / MLS DB / NIP-77 watermarks are in an unknown state
+    /// after a panic.
+    @Published private(set) var kernelIsDead: Bool = false
+
     // ── Computed projections — read through `snapshot` ────────────────────
 
     var isRunning: Bool { snapshot?.running ?? false }
@@ -158,15 +175,53 @@ final class KernelModel: ObservableObject {
         if let v = ProcessInfo.processInfo.environment["NMP_EMIT_HZ"].flatMap(UInt32.init) {
             emitHz = v
         }
-        kernel.listen { [weak self] result in
+        kernel.listen({ [weak self] result in
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 MainActor.assumeIsolated { self.apply(result: result) }
             }
-        }
+        }, onPanic: { [weak self] in
+            // D7 actor-death — the C callback runs on the Rust listener
+            // thread; bounce onto the main runloop so the @Published flip
+            // happens on the actor (@MainActor). The Rust supervisor only
+            // emits the panic frame once, but `markKernelDead` is idempotent
+            // (a stuck-at-true latch) so a stray re-invoke is safe.
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                MainActor.assumeIsolated { self.markKernelDead() }
+            }
+        })
         // Register the keychain capability handler before start() so the
         // kernel can route capability requests from the first tick.
         kernel.registerCapabilityHandler(capabilities)
+    }
+
+    /// Set the actor-death flag. Idempotent: a second call is a no-op so the
+    /// foreground-resume probe and the push-side panic frame cannot
+    /// double-flip (or flicker on / off, which would be worse — the banner
+    /// must stay up once raised).
+    private func markKernelDead() {
+        if kernelIsDead { return }
+        kmLog.fault("kernelIsDead set — actor thread terminated")
+        kernelIsDead = true
+    }
+
+    /// Probe the actor liveness through the FFI (`nmp_app_is_alive`,
+    /// ADR-0028) and flip `kernelIsDead` if the actor is gone. Pulled by the
+    /// `ChirpApp` scenePhase observer on every `.active` transition: if the
+    /// app was backgrounded across an actor panic, the Swift listener thread
+    /// may have already exited (the channel closed) and the push-side panic
+    /// frame is unreachable. The probe lets the host learn the same fact
+    /// on resume so the red banner still shows.
+    func checkAlive() {
+        // If we already know the kernel is dead, the FFI call is unnecessary
+        // (and the `nmp_app_is_alive` symbol on a freshly-`nmp_app_free`'d
+        // pointer would be UB — though the current `KernelHandle` keeps the
+        // pointer alive for its lifetime, so this is belt + braces).
+        if kernelIsDead { return }
+        if !kernel.isAlive() {
+            markKernelDead()
+        }
     }
 
     var onboardingRelayOverride: String? {

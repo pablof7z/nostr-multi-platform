@@ -75,10 +75,32 @@ final class KernelHandle {
             nmpCapabilityCallback)
     }
 
-    func listen(_ handler: @escaping (KernelUpdateResult) -> Void) {
-        let sink = KernelUpdateSink(handler: handler)
+    /// Wire the Rust update callback. `handler` runs on every snapshot frame;
+    /// `onPanic` runs exactly once if/when the actor thread dies and the Rust
+    /// supervisor emits an `{"t":"panic",...}` envelope on the update channel
+    /// (D7 actor-death contract — see `crates/nmp-core/src/update_envelope.rs`).
+    /// After `onPanic` fires the kernel is terminally dead for this process:
+    /// no further snapshots will arrive and every subsequent FFI command is a
+    /// silent no-op. The host (`KernelModel`) flips its `kernelIsDead`
+    /// `@Published` flag and shows the red banner from `RootShell`.
+    func listen(
+        _ handler: @escaping (KernelUpdateResult) -> Void,
+        onPanic: @escaping () -> Void = {}
+    ) {
+        let sink = KernelUpdateSink(handler: handler, onPanic: onPanic)
         updateSink = sink
         nmp_app_set_update_callback(raw, Unmanaged.passUnretained(sink).toOpaque(), nmpUpdateCallback)
+    }
+
+    /// Actor-liveness probe (D7 pull-side, ADR-0028). Returns `true` when the
+    /// Rust actor thread is still running, `false` when it has terminated
+    /// (panic, clean Shutdown, or null app). Pairs with the panic envelope
+    /// signal `listen(_:onPanic:)` subscribes to: the host calls this on
+    /// scenePhase = .active to catch the case where the push-side panic
+    /// frame was missed (the app was backgrounded long enough for the Swift
+    /// listener thread to exit before the host had a chance to react).
+    func isAlive() -> Bool {
+        nmp_app_is_alive(raw) == 1
     }
 
     func start(visibleLimit: UInt32 = 80, emitHz: UInt32 = 4) {
@@ -483,8 +505,21 @@ final class KernelHandle {
 
 private final class KernelUpdateSink {
     let handler: (KernelUpdateResult) -> Void
-    init(handler: @escaping (KernelUpdateResult) -> Void) {
+    /// D7 actor-death hook. Runs exactly once when the Rust supervisor closure
+    /// emits the `{"t":"panic",...}` envelope on the update channel before
+    /// the actor thread (and the channel itself) drops. The host uses this to
+    /// flip a `@Published` flag and show a fatal-error banner; the closure is
+    /// the only Swift-side path that learns about an actor-thread panic from
+    /// the update callback (since `nmpUpdateCallback` is a C `let` and cannot
+    /// capture `self`).
+    let onPanic: () -> Void
+
+    init(
+        handler: @escaping (KernelUpdateResult) -> Void,
+        onPanic: @escaping () -> Void
+    ) {
         self.handler = handler
+        self.onPanic = onPanic
     }
 }
 
@@ -509,12 +544,18 @@ private let nmpCapabilityCallback: NmpCapabilityCallback = { context, requestJSO
 private let nmpUpdateCallback: NmpUpdateCallback = { context, pointer in
     guard let context, let pointer else { return }
     let payload = String(cString: pointer)
+    let sink = Unmanaged<KernelUpdateSink>.fromOpaque(context).takeUnretainedValue()
+    // D7 actor-death contract: the Rust supervisor emits exactly one
+    // `{"t":"panic","v":{"msg":...}}` envelope before the channel closes.
+    // The substring scan matches the wire shape pinned by the kernel test
+    // `panic_frame_contains_panic_tag_substring` — that test is the source
+    // of truth and is the contract this branch consumes.
     if payload.contains("\"t\":\"panic\"") {
         kbLog.fault("NMP_ACTOR_PANIC detected bytes=\(payload.utf8.count)")
+        sink.onPanic()
         return
     }
     guard let result = KernelHandle.decode(pointer: pointer) else { return }
-    let sink = Unmanaged<KernelUpdateSink>.fromOpaque(context).takeUnretainedValue()
     sink.handler(result)
 }
 

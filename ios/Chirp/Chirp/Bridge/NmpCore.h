@@ -127,6 +127,20 @@ void nmp_app_lifecycle_background(void *app);
 typedef void (*NmpLifecycleCallback)(void *context, uint32_t phase);
 void nmp_app_set_lifecycle_callback(void *app, void *context, NmpLifecycleCallback callback);
 
+// Actor-liveness probe (D7 pull-side sibling of the push-side panic frame
+// the update channel emits on actor-thread death). Returns `1` when the
+// kernel's actor thread is still running, `0` when it has terminated —
+// panic, clean Shutdown, or "never started" all collapse to `0`. A null
+// `app` is `0` (no kernel to be alive). Pairs with the `{"t":"panic",...}`
+// update frame the channel emits on death: the panic frame is the push
+// signal Swift sees on `nmp_app_set_update_callback`; this probe is the
+// pull sibling, queryable on `applicationWillEnterForeground` so a host
+// that was backgrounded across the panic frame's arrival (and never saw
+// it) still learns the kernel is gone. The host treats every non-`1`
+// response as "kernel dead — surface a fatal error". Observability only;
+// the kernel is not influenced by this call.
+uint8_t nmp_app_is_alive(void *app);
+
 // ── T151 — capability socket, generic publish, URI routing ───────────────
 //
 // `nmp_app_set_capability_callback` registers the native handler that the
