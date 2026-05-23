@@ -8,7 +8,7 @@
 //! ## Action layout
 //!
 //! - `content` — `PostChatMessage` (kind:9).
-//! - `composed` — `ReactInGroup` (kind:7+h), `CommentInGroup` (kind:1111+h).
+//! - `composed` — `ReactInGroup` (kind:7+h).
 //! - `discover` — `DiscoverGroups` (no publish; pushes a metadata interest).
 //! - `join` — `JoinGroup` (kind:9021, user-management request).
 //!
@@ -22,9 +22,7 @@ mod discover;
 mod join;
 mod publish_plan;
 
-pub use composed::{
-    CommentInGroupAction, CommentInGroupInput, ReactInGroupAction, ReactInGroupInput,
-};
+pub use composed::{ReactInGroupAction, ReactInGroupInput};
 pub use content::{PostChatMessageAction, PostChatMessageInput};
 pub use discover::{DiscoverGroupsAction, DiscoverGroupsInput};
 pub use join::{JoinGroupAction, JoinGroupInput};

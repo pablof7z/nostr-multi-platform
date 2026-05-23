@@ -25,7 +25,7 @@
 //!   `TofuSignerCache` (metadata-signer trust).
 //! - [`interest`] — helpers for constructing pinned `LogicalInterest`s.
 //! - [`projection`] — `GroupChatProjection`: the read-side of a group-chat
-//!   screen (a `KernelEventObserver` projecting kind 9/11/1111 events).
+//!   screen (a `KernelEventObserver` projecting kind 9/11 events).
 //!
 //! All inputs to actions carry a typed `GroupId` so the publish planner gets a
 //! typed `PublishPlan::pin_to: Some(host)` carrier and never derives routing

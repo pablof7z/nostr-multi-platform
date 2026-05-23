@@ -59,7 +59,7 @@ use nmp_core::KernelEventObserver;
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
-use crate::kinds::{h_tag_value, KIND_CHAT_MESSAGE, KIND_COMMENT, KIND_DISCUSSION_OR_ARTIFACT};
+use crate::kinds::{h_tag_value, KIND_CHAT_MESSAGE, KIND_DISCUSSION_OR_ARTIFACT};
 
 /// One rendered group-chat message in a [`GroupChatSnapshot`].
 ///
@@ -76,7 +76,7 @@ pub struct GroupChatMessage {
     pub content: String,
     /// Event `created_at` (unix seconds).
     pub created_at: u64,
-    /// Event kind — one of 9 (chat), 11 (thread), 1111 (comment).
+    /// Event kind — one of 9 (chat), 11 (thread).
     pub kind: u32,
 }
 
@@ -120,7 +120,7 @@ impl GroupChatSnapshot {
 ///
 /// Construct with the target [`GroupId`]; register the same `Arc` as a
 /// [`KernelEventObserver`] (ingest) and capture it in a snapshot-projection
-/// closure (output). Only events whose kind is 9 / 11 / 1111 **and** whose
+/// closure (output). Only events whose kind is 9 / 11 **and** whose
 /// `["h", …]` tag value equals the group's `local_id` are retained.
 pub struct GroupChatProjection {
     /// The group this projection reads. Only `local_id` is matched against
@@ -154,7 +154,7 @@ impl GroupChatProjection {
     }
 
     /// Whether `event` belongs in this projection: a chat-content kind
-    /// (9 / 11 / 1111) carrying an `["h", local_id]` tag matching this group.
+    /// (9 / 11) carrying an `["h", local_id]` tag matching this group.
     ///
     /// Moderation kinds (9000–9009), user-management (9021/9022), and
     /// relay-signed metadata (39000–39003) are deliberately excluded — this is
@@ -162,7 +162,7 @@ impl GroupChatProjection {
     fn accepts(&self, event: &KernelEvent) -> bool {
         let kind_ok = matches!(
             event.kind,
-            KIND_CHAT_MESSAGE | KIND_DISCUSSION_OR_ARTIFACT | KIND_COMMENT
+            KIND_CHAT_MESSAGE | KIND_DISCUSSION_OR_ARTIFACT
         );
         if !kind_ok {
             return false;
@@ -276,7 +276,7 @@ mod tests {
     }
 
     #[test]
-    fn thread_and_comment_kinds_are_retained() {
+    fn thread_kind_is_retained() {
         let proj = GroupChatProjection::new(group());
         proj.on_kernel_event(&event(
             "thread",
@@ -284,13 +284,11 @@ mod tests {
             10,
             h_tag("rust-nostr"),
         ));
-        proj.on_kernel_event(&event("comment", KIND_COMMENT, 20, h_tag("rust-nostr")));
 
         let snap = proj.snapshot();
-        assert_eq!(snap.messages.len(), 2);
+        assert_eq!(snap.messages.len(), 1);
         let kinds: Vec<u32> = snap.messages.iter().map(|m| m.kind).collect();
         assert!(kinds.contains(&KIND_DISCUSSION_OR_ARTIFACT));
-        assert!(kinds.contains(&KIND_COMMENT));
     }
 
     #[test]
@@ -359,7 +357,12 @@ mod tests {
     fn snapshot_json_contains_the_messages() {
         let proj = GroupChatProjection::new(group());
         proj.on_kernel_event(&event("e1", KIND_CHAT_MESSAGE, 100, h_tag("rust-nostr")));
-        proj.on_kernel_event(&event("e2", KIND_COMMENT, 200, h_tag("rust-nostr")));
+        proj.on_kernel_event(&event(
+            "e2",
+            KIND_DISCUSSION_OR_ARTIFACT,
+            200,
+            h_tag("rust-nostr"),
+        ));
 
         let json = proj.snapshot_json();
         let messages = json
