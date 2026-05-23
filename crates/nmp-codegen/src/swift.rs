@@ -25,6 +25,8 @@ use std::path::Path;
 
 use serde::Deserialize;
 
+use crate::swift_projections_registry::{SnapshotProjectionEntry, SNAPSHOT_PROJECTIONS};
+
 /// Parsed shape of the document `dump_projection_schemas` writes.
 #[derive(Debug, Deserialize)]
 struct ProjectionSchemaDocument {
@@ -184,7 +186,141 @@ pub fn render_swift(document_json: &str) -> Result<String, SwiftEmitError> {
         render_type(entry, &mut out)?;
         out.push('\n');
     }
+    // V6 Stage 2 — append the `SnapshotProjections` registry struct +
+    // `CodingKeys` enum. Driven by the static slice in
+    // [`crate::swift_projections_registry`] rather than a schemars schema,
+    // because the registry is a list of (json_key, swift_field, swift_type)
+    // triples — there is no Rust type to reflect (the projection values
+    // come from many different crates, including app-layer ones).
+    render_snapshot_projections(SNAPSHOT_PROJECTIONS, &mut out);
     Ok(out)
+}
+
+/// Render the V6 Stage 2 `SnapshotProjections` struct and its `CodingKeys`
+/// enum to `out`, driven by the [`SNAPSHOT_PROJECTIONS`] registry.
+///
+/// Output shape, drop-in for the hand-written declaration in
+/// `ios/Chirp/Chirp/Bridge/KernelBridge.swift`:
+///
+/// ```swift
+/// internal struct SnapshotProjections: Decodable, Equatable {
+///     let wallet: WalletStatusData?
+///     // ... one line per entry ...
+///
+///     enum CodingKeys: String, CodingKey {
+///         case wallet
+///         case bunkerHandshake
+///         case groupChat = "nmp.nip29.groupChat"
+///         // ... case per entry, raw value only when post-transform key
+///         //     differs from the Swift field name ...
+///     }
+/// }
+/// ```
+///
+/// Visibility is `internal` (no modifier) to match the hand-written
+/// declaration's visibility verbatim — the conformance test in
+/// `SnapshotProjectionsConformanceTests.swift` accesses the type via
+/// `@testable import Chirp`, which exposes `internal` symbols. Bumping to
+/// `public` would change the symbol-table surface area unnecessarily.
+fn render_snapshot_projections(entries: &[SnapshotProjectionEntry], out: &mut String) {
+    out.push_str("// MARK: - SnapshotProjections\n");
+    out.push_str("// Source: crates/nmp-codegen/src/swift_projections_registry.rs (Stage 2 registry)\n");
+    out.push_str("//\n");
+    out.push_str("// The kernel's host-extensible `projections` map. Each entry mirrors one\n");
+    out.push_str("// registered snapshot-projection key. Every member is optional so a stale\n");
+    out.push_str("// kernel build that predates a projection still decodes (D1 forward-compat).\n");
+    out.push_str("//\n");
+    out.push_str("// The `CodingKeys` enum below uses post-`.convertFromSnakeCase` raw values\n");
+    out.push_str("// (the iOS shell's `KernelHandle.decode` sets that strategy). Cases whose\n");
+    out.push_str("// raw value matches the Swift property name carry no explicit literal.\n");
+    out.push_str("struct SnapshotProjections: Decodable, Equatable {\n");
+
+    for entry in entries {
+        out.push_str(&format!(
+            "    let {}: {}?\n",
+            entry.swift_field, entry.swift_type
+        ));
+    }
+
+    out.push('\n');
+    out.push_str("    enum CodingKeys: String, CodingKey {\n");
+    for entry in entries {
+        let post_transform = post_convert_from_snake_case(entry.json_key);
+        if post_transform == entry.swift_field {
+            out.push_str(&format!("        case {}\n", entry.swift_field));
+        } else {
+            out.push_str(&format!(
+                "        case {} = \"{}\"\n",
+                entry.swift_field, post_transform
+            ));
+        }
+    }
+    out.push_str("    }\n");
+    out.push_str("}\n");
+}
+
+/// Apple's `JSONDecoder.KeyDecodingStrategy.convertFromSnakeCase` algorithm.
+///
+/// The strategy transforms an incoming JSON key BEFORE matching it against
+/// any `CodingKey.stringValue`. The transform per Apple's docs:
+///
+/// 1. Capture all leading underscores (preserved verbatim on the output).
+/// 2. Capture all trailing underscores (preserved verbatim on the output).
+/// 3. Split the middle on each `_`, lowercase the first run, uppercase the
+///    first letter of every subsequent run.
+///
+/// What the docs leave implicit and what bit the iOS shell historically:
+///
+/// - **`.` is opaque.** `.convertFromSnakeCase` does NOT split on `.`; it
+///   only touches `_`. So `"nmp.nip29.group_chat"` becomes
+///   `"nmp.nip29.groupChat"`, NOT `"nmp.Nip29.GroupChat"`. The dot-separated
+///   prefix passes through unchanged, and only the `group_chat` tail
+///   camelises.
+/// - **Single-word inputs are returned unchanged.** `"wallet"` → `"wallet"`,
+///   `"profile"` → `"profile"`. Apple's algorithm has nothing to do, so the
+///   strategy is a no-op for any key without `_`.
+///
+/// This implementation handles both observed shapes (`snake_case` and
+/// `nmp.<nip>.snake_case`) plus the pure-camel pass-through case. It is
+/// NOT a complete reimplementation of Apple's full edge-case set (leading
+/// and trailing underscores in particular) — none of the registry keys
+/// carry those, and the docstring on
+/// [`crate::swift_projections_registry::SnapshotProjectionEntry`] tells the
+/// next contributor to validate any new key shape here before adding it.
+fn post_convert_from_snake_case(key: &str) -> String {
+    // Single-word fast path: no `_`, the strategy returns the input
+    // unchanged. Covers `wallet`, `profile`, `timeline`, etc.
+    if !key.contains('_') {
+        return key.to_string();
+    }
+    // The `.` is opaque to `.convertFromSnakeCase`. Split on `.` first,
+    // transform each segment independently, rejoin. A bare snake_case
+    // key (no `.`) hits the same path with a single segment.
+    let segments: Vec<String> = key.split('.').map(camelize_snake_segment).collect();
+    segments.join(".")
+}
+
+/// Transform one `.`-delimited segment of a key (or the whole key when it
+/// has no `.`s). Splits on `_`, lowercases the first run, uppercases the
+/// first letter of every subsequent run. The implementation matches
+/// Apple's reference for the inner `_`-handling step of
+/// `.convertFromSnakeCase`.
+fn camelize_snake_segment(segment: &str) -> String {
+    let mut parts = segment.split('_');
+    let mut out = parts.next().unwrap_or("").to_string();
+    for part in parts {
+        if part.is_empty() {
+            // Consecutive `__` is preserved as nothing — Apple's algorithm
+            // collapses empty runs. None of the registry keys hit this.
+            continue;
+        }
+        let mut chars = part.chars();
+        if let Some(first) = chars.next() {
+            out.extend(first.to_uppercase());
+            out.push_str(chars.as_str());
+        }
+    }
+    out
 }
 
 /// Render one type into `out`.
@@ -619,5 +755,159 @@ mod tests {
         let result = check_swift(one_type_document(), &out).expect("check");
         assert!(!result.up_to_date);
         assert_eq!(result.first_diff_line, None);
+    }
+
+    // ── V6 Stage 2 ──────────────────────────────────────────────────────────
+    //
+    // Tests for the `SnapshotProjections` registry render. These cover the
+    // three load-bearing pieces independently — the
+    // `.convertFromSnakeCase` algorithm, single-entry rendering, and the
+    // full-registry render that the CI gate diffs against the committed
+    // file.
+
+    #[test]
+    fn post_convert_handles_single_word_pass_through() {
+        // No `_`, no `.` → strategy is a no-op. Covers `wallet`, `profile`,
+        // `timeline`, `accounts`, etc.
+        assert_eq!(post_convert_from_snake_case("wallet"), "wallet");
+        assert_eq!(post_convert_from_snake_case("profile"), "profile");
+        assert_eq!(post_convert_from_snake_case("zaps"), "zaps");
+    }
+
+    #[test]
+    fn post_convert_camelises_snake_case() {
+        // Standard snake_case → camelCase. Covers the bulk of the
+        // built-in projection keys.
+        assert_eq!(post_convert_from_snake_case("bunker_handshake"), "bunkerHandshake");
+        assert_eq!(post_convert_from_snake_case("publish_queue"), "publishQueue");
+        assert_eq!(post_convert_from_snake_case("active_account"), "activeAccount");
+        assert_eq!(post_convert_from_snake_case("relay_diagnostics"), "relayDiagnostics");
+    }
+
+    #[test]
+    fn post_convert_leaves_dots_opaque() {
+        // `.` is NOT a separator for `.convertFromSnakeCase`; only `_` is.
+        // The dotted host-registered keys camelise per segment.
+        assert_eq!(
+            post_convert_from_snake_case("nmp.nip29.group_chat"),
+            "nmp.nip29.groupChat"
+        );
+        assert_eq!(
+            post_convert_from_snake_case("nmp.nip17.dm_inbox"),
+            "nmp.nip17.dmInbox"
+        );
+        assert_eq!(
+            post_convert_from_snake_case("nmp.nip29.discovered_groups"),
+            "nmp.nip29.discoveredGroups"
+        );
+        assert_eq!(
+            post_convert_from_snake_case("nmp.nip17.dm_relay_list"),
+            "nmp.nip17.dmRelayList"
+        );
+        // `nmp.follow_list` — only the tail `follow_list` carries an `_`.
+        assert_eq!(
+            post_convert_from_snake_case("nmp.follow_list"),
+            "nmp.followList"
+        );
+        // `nmp.nip57.zaps` — no `_` anywhere. Strategy returns it
+        // unchanged. The renderer must STILL emit an explicit raw value
+        // because declaring `CodingKeys` overrides synthesis — the
+        // synthesised default for the Swift property `zaps` would be the
+        // bare string `"zaps"`, which doesn't match the dotted kernel key.
+        assert_eq!(
+            post_convert_from_snake_case("nmp.nip57.zaps"),
+            "nmp.nip57.zaps"
+        );
+    }
+
+    #[test]
+    fn render_snapshot_projections_emits_one_field_and_one_case_per_entry() {
+        // Three-entry hand-rolled registry covers the three case shapes:
+        // single-word (`wallet`), snake_case → camelCase (`bunker_handshake`),
+        // and dotted (`nmp.nip29.group_chat`).
+        let entries = vec![
+            SnapshotProjectionEntry {
+                json_key: "wallet",
+                swift_field: "wallet",
+                swift_type: "WalletStatusData",
+            },
+            SnapshotProjectionEntry {
+                json_key: "bunker_handshake",
+                swift_field: "bunkerHandshake",
+                swift_type: "BunkerHandshake",
+            },
+            SnapshotProjectionEntry {
+                json_key: "nmp.nip29.group_chat",
+                swift_field: "groupChat",
+                swift_type: "GroupChatSnapshot",
+            },
+        ];
+        let mut out = String::new();
+        render_snapshot_projections(&entries, &mut out);
+
+        // Struct header + per-field optional declaration.
+        assert!(out.contains("struct SnapshotProjections: Decodable, Equatable {"));
+        assert!(out.contains("    let wallet: WalletStatusData?\n"));
+        assert!(out.contains("    let bunkerHandshake: BunkerHandshake?\n"));
+        assert!(out.contains("    let groupChat: GroupChatSnapshot?\n"));
+
+        // CodingKeys enum.
+        assert!(out.contains("    enum CodingKeys: String, CodingKey {\n"));
+        // `wallet`: post-transform equals the Swift field → no raw value.
+        assert!(out.contains("        case wallet\n"));
+        // `bunker_handshake`: post-transform `bunkerHandshake` matches the
+        // Swift field → no raw value.
+        assert!(out.contains("        case bunkerHandshake\n"));
+        assert!(
+            !out.contains("case bunkerHandshake = \"bunker_handshake\""),
+            "snake_case keys whose camelCase post-transform matches the Swift field MUST not carry an explicit raw value"
+        );
+        // `nmp.nip29.group_chat`: post-transform `nmp.nip29.groupChat`
+        // differs from the Swift field `groupChat` → explicit raw value.
+        assert!(out.contains("        case groupChat = \"nmp.nip29.groupChat\"\n"));
+    }
+
+    #[test]
+    fn render_snapshot_projections_emits_explicit_raw_for_dotted_no_underscore_key() {
+        // The `zaps` trap: `nmp.nip57.zaps` has no `_`, so the strategy
+        // returns it unchanged. The synthesised default for property
+        // `zaps` would be `"zaps"`, which doesn't match the dotted key.
+        // The renderer MUST emit an explicit `= "nmp.nip57.zaps"` raw
+        // value because post-transform `"nmp.nip57.zaps"` != swift field
+        // `"zaps"`.
+        let entries = vec![SnapshotProjectionEntry {
+            json_key: "nmp.nip57.zaps",
+            swift_field: "zaps",
+            swift_type: "ZapsAggregateSnapshot",
+        }];
+        let mut out = String::new();
+        render_snapshot_projections(&entries, &mut out);
+        assert!(
+            out.contains("        case zaps = \"nmp.nip57.zaps\"\n"),
+            "dotted no-underscore key MUST emit explicit raw value; got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn render_swift_appends_snapshot_projections_section_after_pilot_types() {
+        // The full pipeline: a Stage 1 document renders the seven pilot
+        // types AND the Stage 2 SnapshotProjections at the bottom. The
+        // CI gate diffs the whole file, so the section order is
+        // load-bearing.
+        let out = render_swift(one_type_document()).expect("renders");
+        // Stage 1 output is still there.
+        assert!(out.contains("public struct Sample: Decodable, Equatable, Identifiable {"));
+        // Stage 2 SnapshotProjections is appended after.
+        assert!(out.contains("struct SnapshotProjections: Decodable, Equatable {"));
+        let sample_pos = out
+            .find("public struct Sample:")
+            .expect("Stage 1 Sample present");
+        let snap_pos = out
+            .find("struct SnapshotProjections:")
+            .expect("Stage 2 SnapshotProjections present");
+        assert!(
+            snap_pos > sample_pos,
+            "Stage 2 SnapshotProjections must follow Stage 1 types"
+        );
     }
 }

@@ -202,8 +202,27 @@ pub(crate) use identity_state::{
 // (no in-crate consumer outside `codegen_schema`). Crate-private
 // encapsulation is preserved either way — nothing outside `nmp-core`
 // can name these types.
+// V6 Stage 1's `codegen-schema` feature originally added a
+// `pub(crate) use types::{LogicalInterestStatus, Metrics, RelayStatus,
+// WireSubscriptionStatus}` re-export here so `crate::codegen_schema` could
+// reach those types through `crate::kernel::*`. That re-export collided
+// (E0252) with the always-on `use types::{...}` further down — fully
+// breaking the `codegen-drift` CI workflow on master from #358 onward
+// (every push since 2026-05-23 10:39 went red). The fix: use `pub(crate)
+// use … as …` aliases instead. The aliases bind a different identifier
+// than the plain `use` below, sidestepping E0252, and `codegen_schema`
+// imports through the aliases. The module `kernel::types` itself is
+// private to `kernel` (`mod types;` line 125), so we cannot import the
+// types directly from their canonical path either — the re-export is
+// the only path out.
 #[cfg(feature = "codegen-schema")]
-pub(crate) use types::{LogicalInterestStatus, Metrics, RelayStatus, WireSubscriptionStatus};
+pub(crate) use types::LogicalInterestStatus as LogicalInterestStatusForCodegen;
+#[cfg(feature = "codegen-schema")]
+pub(crate) use types::Metrics as MetricsForCodegen;
+#[cfg(feature = "codegen-schema")]
+pub(crate) use types::RelayStatus as RelayStatusForCodegen;
+#[cfg(feature = "codegen-schema")]
+pub(crate) use types::WireSubscriptionStatus as WireSubscriptionStatusForCodegen;
 pub use identity_state::{read_eligible_relay_urls, RelayEditRow};
 // Host-extensible snapshot output — reachable from the `ffi` module for the
 // `nmp_app_register_snapshot_projection` C-ABI entry point.
