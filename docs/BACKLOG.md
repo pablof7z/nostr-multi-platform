@@ -4,7 +4,7 @@
 > the ordered feature backlog. Supersedes `docs/perf/pending-user-decisions.md` (append-only
 > history log, kept for audit), `docs/arch-review-queue.md`, and `WIP.md`.
 >
-> Verified against HEAD **88a9fc4d** (2026-05-23). Update this file in every PR that touches
+> Verified against HEAD **4984f0f7** (2026-05-23). Update this file in every PR that touches
 > an item listed here.
 
 ---
@@ -202,12 +202,9 @@ the 500-LOC ceiling. All 32 lib tests pass.
 
 Work currently on a branch. Agents must not duplicate these tasks.
 
-| Item | Branch | Notes |
-|------|--------|-------|
-| NIP-29 KernelEventObserver fan-out | `fix/nip29-event-observer-fanout` | Fix `_` wildcard arm in `handle_event` — GroupChatProjection + DiscoveredGroupsProjection deaf |
-| V-05 Stage 1 nmp-coverage-gate | `feat/nmp-coverage-gate-stage1` | Create pure-policy crate with CoverageGate struct |
+*No work currently in flight.*
 
-> B-1–B-8 all merged to master (PRs #331–#337, #340–#344). WIP.md superseded by this file.
+> B-1–B-8, NIP-29 observer fix, and V-05 Stage 1 all merged (PRs #331–#337, #340–#346). WIP.md superseded by this file.
 
 ---
 
