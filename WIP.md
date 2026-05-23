@@ -9,17 +9,20 @@
 
 ## Active
 
-- 2026-05-24 — feat(nmp-wasm): V-01 Stage 3c — wire `nmp.publish` (text note) through NIP-07 sign + publish engine — PR #386 (CI running) — `/Users/pablofernandez/Work/nostr-multi-platform/.claude/worktrees/agent-aa9ae265f0e256cc3`
-- 2026-05-24 — feat(nmp-codegen): F-05 Stage 3 partial — add `TimelineItem` to Swift Decodable codegen pilot — PR #387 (CI running) — `/Users/pablofernandez/Work/nostr-multi-platform/.claude/worktrees/agent-a90223d4f4c9873ea`
-- 2026-05-24 — feat(planner): PD-033-C Stage 2 precursor — Case C bootstrap-content #p fallback (unblocks self-zap-receipts migration in Stage 2 proper) — PR #389 (CI running) — `/Users/pablofernandez/Work/nostr-multi-platform/.claude/worktrees/agent-adff1381808c9be39`
-- 2026-05-24 — test(nmp-core): v1 exit criterion #8 — snapshot perf CI regression gate over 1k-event firehose — PR #391 (CI running) — `/Users/pablofernandez/Work/nostr-multi-platform/.claude/worktrees/agent-ad1c7af3b47e21793`
-- 2026-05-24 — feat(nmp-nip02): lift Follow / Unfollow / React ActionModules from `nmp-app-chirp` into a reusable protocol crate (Opus review #10 30-day call) — `/Users/pablofernandez/Work/nostr-multi-platform/.claude/worktrees/agent-a58a3f968db195365`
-- 2026-05-24 — fix(nmp-nip29): remove kind:1111 / NIP-22 — wrong crate boundary — `/Users/pablofernandez/Work/nostr-multi-platform/.claude/worktrees/agent-a7ed9661404518eef`
+- 2026-05-24 — refactor(nmp-core): V-12 extract relay tests to subfile — PR #397 (CI re-running after transient linker failure) — `worktree-agent-aa27fbef86cb6506e`
+- 2026-05-24 — docs(PD-039): bespoke FFI deprecation calendar — PR #392 (fixing merge conflict after PR #390) — `worktree-agent-a3b4217a51cf2c6aa`
 
 ## Recent history (verified merged or abandoned as of 2026-05-24)
-- 2026-05-24 — feat(nmp-wasm): V-01 Stage 3c — multi-role bootstrap parsing (relay_pool.rs) — PR #384 merged
+
+- 2026-05-24 — feat(nmp-nip02): lift Follow/Unfollow/React ActionModules from nmp-app-chirp — PR #390 merged
+- 2026-05-24 — fix(nmp-nip29): remove kind:1111 / NIP-22 wrong crate boundary — PR #393 merged
+- 2026-05-24 — refactor(nmp-core): V-12 extract relay_mgmt/dm/publish-state tests — PRs #394, #395, #396 merged
+- 2026-05-24 — refactor(nmp-core): V-12 extract raw_event_observer/outbox tests — PRs #398, #399 merged
+- 2026-05-24 — refactor(nmp-nostr-lmdb): V-12 extract lib tests — PR #400 merged
+- 2026-05-24 — refactor(nmp-core): V-12 extract zap tests — PR #401 merged
+- 2026-05-24 — refactor(nmp-core): V-12 extract action_stages/selection/bounded/nip65/publish-action tests — PR #388 merged
+- 2026-05-24 — test(nmp-core): snapshot perf CI regression gate — PR #391 merged
+- 2026-05-24 — feat(planner): PD-033-C Stage 2 precursor (Case C bootstrap-content #p fallback) — PR #389 merged
+- 2026-05-24 — feat(nmp-codegen): F-05 Stage 3 partial (generate Swift TimelineItem) — PR #387 merged
+- 2026-05-24 — feat(nmp-wasm): V-01 Stage 3c — wire kind:1 publish through NIP-07 (closed: superseded by PR #385) — PR #386 closed
 - 2026-05-23 — fix(nmp-content): require bech32 "1" separator in bolt11 regex — committed to master (f68dbf52)
-- 2026-05-21 22:17 EEST — fix(chirp-repl): resolve author names in home snapshot output — `/Users/pablofernandez/Work/nostr-multi-platform-chirp-repl-author-names`
-- 2026-05-21 — feat(chirp-tui): product spec + build orchestration for full ratatui TUI — `/Users/pablofernandez/Work/nostr-multi-platform/worktrees/chirp-tui-spec`
-- 2026-05-21 — feat(action_stages): PR-G action_stages substrate with ack-based retention + D12 lint — `/Users/pablofernandez/Work/nostr-multi-platform/.claude/worktrees/agent-aae1ac38483d73a85`
-- 2026-05-21 — feat(projections): PR-I promote relay slots to typed projections + D14 lint — `/Users/pablofernandez/Work/nostr-multi-platform/.claude/worktrees/agent-ab65e45ce5d4e8f15`
