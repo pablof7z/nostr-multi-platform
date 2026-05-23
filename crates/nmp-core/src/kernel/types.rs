@@ -87,8 +87,18 @@ pub(super) struct Profile {
 /// no kind:0 has arrived.  The `author_avatar_source` field (`"kind0"` |
 /// `"placeholder"`) lets the UI decide how to render without branching on
 /// `Option`.
+// V6 Stage 3 — Swift `TimelineItem` Decodable codegen. Widened from
+// `pub(super)` to `pub(crate)` so the feature-gated
+// `pub(crate) use ... as TimelineItemForCodegen` re-export in
+// `kernel/mod.rs` can lift the type out of `kernel`'s parent-module
+// visibility ceiling and reach `crate::codegen_schema::dump_pilot_schemas`.
+// Crate-private encapsulation is preserved — `TimelineItem` is still
+// invisible outside `nmp-core` (no `pub use` further up). Mirrors the
+// Stage 1 pattern used for `RelayStatus`, `Metrics`,
+// `WireSubscriptionStatus`, and `LogicalInterestStatus`.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-pub(super) struct TimelineItem {
+#[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
+pub(crate) struct TimelineItem {
     pub(super) id: String,
     pub(super) author_pubkey: String,
     pub(super) author_display: String,

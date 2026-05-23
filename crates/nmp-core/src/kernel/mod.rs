@@ -234,6 +234,14 @@ pub(crate) use types::LogicalInterestStatus as LogicalInterestStatusForCodegen;
 pub(crate) use types::Metrics as MetricsForCodegen;
 #[cfg(feature = "codegen-schema")]
 pub(crate) use types::RelayStatus as RelayStatusForCodegen;
+// V6 Stage 3 — `TimelineItem` joins the Stage 1 alias set. Same E0252 reason
+// as the four pilot types above: `mod types` is private to `kernel`, so the
+// only way to reach `TimelineItem` from `crate::codegen_schema` is through
+// this re-export, and the `as ForCodegen` rename sidesteps a collision with
+// the plain `use types::{... TimelineItem ...}` at the bottom of the imports
+// block in this file.
+#[cfg(feature = "codegen-schema")]
+pub(crate) use types::TimelineItem as TimelineItemForCodegen;
 #[cfg(feature = "codegen-schema")]
 pub(crate) use types::WireSubscriptionStatus as WireSubscriptionStatusForCodegen;
 pub use identity_state::{read_eligible_relay_urls, RelayEditRow};

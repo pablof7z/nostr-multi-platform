@@ -341,10 +341,29 @@ fn render_type(entry: &TypeEntry, out: &mut String) -> Result<(), SwiftEmitError
     if entry.id_field.is_some() {
         conformances.insert("Identifiable".to_string());
     }
-    let conformances: Vec<&str> = ["Decodable", "Equatable", "Identifiable", "Hashable"]
-        .into_iter()
-        .filter(|c| conformances.contains(*c))
-        .collect();
+    // The ordered emit list. Anything not in this array is silently dropped
+    // from the conformance clause — entries here act as the allowlist AND
+    // the emit order. `Sendable` is appended last because Apple convention
+    // groups conformances by Codable → Equality → Identity → Hashing →
+    // Concurrency; the generated header reads top-down in that order.
+    //
+    // ── Sendable rationale ────────────────────────────────────────────────
+    // Every generated type is an immutable value-typed `struct` with
+    // `let` fields whose types are either themselves Sendable primitives
+    // (`String`, `Bool`, integer family, `Optional<T>`) or other generated
+    // types. So every generated struct is conceptually Sendable, and
+    // declaring it explicitly is required for `public` Swift types —
+    // unlike `internal` types, Apple does NOT infer Sendable for public
+    // structs (SE-0302 §"Sendable type inference"), and a consumer that
+    // composes the generated type into a non-Sendable wrapper (e.g.
+    // `NoteRenderContext` holding `[String: TimelineItem]` in a
+    // `static let`) hard-fails under strict concurrency. The fix is at
+    // the source: every generated struct opts in to Sendable explicitly.
+    let conformances: Vec<&str> =
+        ["Decodable", "Equatable", "Identifiable", "Hashable", "Sendable"]
+            .into_iter()
+            .filter(|c| conformances.contains(*c))
+            .collect();
     let conformances_clause = conformances.join(", ");
 
     out.push_str(&format!(

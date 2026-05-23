@@ -27,9 +27,9 @@
 //! function and prints the result. The crate-private types never escape;
 //! only their JSON schemas do.
 //!
-//! ## Stage 1 scope
+//! ## Pilot scope
 //!
-//! Seven flat-record projection types (no nested registry-map
+//! Eight flat-record projection types (no nested registry-map
 //! complication). Each carries `#[derive(JsonSchema)]` in its defining
 //! file, gated by the same `codegen-schema` feature:
 //!
@@ -40,11 +40,15 @@
 //! 5. `AccountSummary` — Accounts screen row.
 //! 6. `RelayEditRow` — Relays settings row.
 //! 7. `RelayRoleOption` — relay-role picker option.
+//! 8. `TimelineItem` — timeline/thread row (V6 Stage 3 partial — F-05).
+//!    Last pure flat-record holdout in `KernelBridge.swift`; the remaining
+//!    Stage 3 types (`KernelSnapshot`, the tagged-enum `TimelineBlock` family,
+//!    `Nip46Onboarding`, etc.) need emitter extensions (host-map override,
+//!    tagged enum, legacy-default flag) before they can land.
 //!
-//! Stage 2 (the dotted-projection-key registry — `SnapshotProjections`)
-//! and Stage 3 (the remaining ~30 hand-written Decodables, plus
-//! `TimelineBlock`'s tagged-enum case) are deferred per
-//! `docs/architecture-audit/v6-codegen-plan.md` §6c, §6d.
+//! Stage 2 (the dotted-projection-key registry — `SnapshotProjections`) is
+//! live; the remaining Stage 3 work is deferred per
+//! `docs/architecture-audit/v6-codegen-plan.md` §6d.
 
 use schemars::{schema_for, JsonSchema};
 use serde::Serialize;
@@ -62,6 +66,7 @@ use crate::actor::RelayRoleOption;
 use crate::kernel::{
     AccountSummary, LogicalInterestStatusForCodegen as LogicalInterestStatus,
     MetricsForCodegen as Metrics, RelayEditRow, RelayStatusForCodegen as RelayStatus,
+    TimelineItemForCodegen as TimelineItem,
     WireSubscriptionStatusForCodegen as WireSubscriptionStatus,
 };
 
@@ -121,12 +126,20 @@ fn schema_value<T: JsonSchema>() -> Value {
 /// comment. Add to the end; do not reorder.
 #[must_use]
 pub fn dump_pilot_schemas() -> ProjectionSchemaDocument {
+    // Every generated type opts in to `Sendable` explicitly: the structs
+    // are immutable value types whose fields are all themselves Sendable,
+    // but public Swift structs do NOT auto-infer Sendable (unlike
+    // `internal` ones), so a consumer that composes a generated type into
+    // a non-Sendable wrapper inside a `static let` would hard-fail strict
+    // concurrency. Declaring it at the source pre-empts that landmine for
+    // every present and future consumer; see the Sendable rationale block
+    // in `nmp-codegen/src/swift.rs::render_type`.
     let types = vec![
         TypeEntry {
             rust_path: "nmp_core::kernel::types::Metrics",
             swift_name: "KernelMetrics",
             id_field: None,
-            conformances: &["Decodable", "Equatable"],
+            conformances: &["Decodable", "Equatable", "Sendable"],
             schema: schema_value::<Metrics>(),
         },
         TypeEntry {
@@ -135,43 +148,74 @@ pub fn dump_pilot_schemas() -> ProjectionSchemaDocument {
             // Relay rows are keyed by URL on the iOS side — preserves the
             // existing `var id: String { relayUrl }` pattern.
             id_field: Some("relayUrl"),
-            conformances: &["Decodable", "Equatable"],
+            conformances: &["Decodable", "Equatable", "Sendable"],
             schema: schema_value::<RelayStatus>(),
         },
         TypeEntry {
             rust_path: "nmp_core::kernel::types::LogicalInterestStatus",
             swift_name: "LogicalInterestStatus",
             id_field: Some("key"),
-            conformances: &["Decodable", "Equatable"],
+            conformances: &["Decodable", "Equatable", "Sendable"],
             schema: schema_value::<LogicalInterestStatus>(),
         },
         TypeEntry {
             rust_path: "nmp_core::kernel::types::WireSubscriptionStatus",
             swift_name: "WireSubscriptionStatus",
             id_field: Some("wireId"),
-            conformances: &["Decodable", "Equatable"],
+            conformances: &["Decodable", "Equatable", "Sendable"],
             schema: schema_value::<WireSubscriptionStatus>(),
         },
         TypeEntry {
             rust_path: "nmp_core::kernel::identity_state::AccountSummary",
             swift_name: "AccountSummary",
             id_field: Some("id"),
-            conformances: &["Decodable", "Equatable"],
+            conformances: &["Decodable", "Equatable", "Sendable"],
             schema: schema_value::<AccountSummary>(),
         },
         TypeEntry {
             rust_path: "nmp_core::kernel::identity_state::RelayEditRow",
             swift_name: "RelayEditRow",
             id_field: Some("url"),
-            conformances: &["Decodable", "Equatable"],
+            conformances: &["Decodable", "Equatable", "Sendable"],
             schema: schema_value::<RelayEditRow>(),
         },
         TypeEntry {
             rust_path: "nmp_core::actor::relay_roles::RelayRoleOption",
             swift_name: "RelayRoleOption",
             id_field: Some("value"),
-            conformances: &["Decodable", "Equatable"],
+            conformances: &["Decodable", "Equatable", "Sendable"],
             schema: schema_value::<RelayRoleOption>(),
+        },
+        TypeEntry {
+            // V6 Stage 3 partial (F-05). The Swift hand-written struct in
+            // `ios/Chirp/Chirp/Bridge/KernelBridge.swift` carries
+            // `Identifiable`, `Equatable`, and `Hashable` plus a custom
+            // `init(from:)` with three `decodeIfPresent ?? default`
+            // fallbacks (`isRepost`, `navTargetId`, `repostInnerContent`).
+            // Those fallbacks are dead — the Rust kernel always emits the
+            // fields (D1 contract documented on the type) — so the
+            // generated struct drops the custom decoder and the call
+            // sites lose nothing. The optional `author_picture_url ??
+            // identicon` fallback at `ModularBlockView.swift:175` is at a
+            // CHAIN site (`item?.authorPictureUrl`, where `item` is
+            // `TimelineItem?`); the chain stays `String?` regardless of
+            // the field's optionality, so that consumer is unaffected.
+            // The synthetic `ModularBlockView.syntheticItem` call site
+            // (line ~285) DOES need a small update — see the PR.
+            //
+            // `Sendable` is the load-bearing addition for this type
+            // specifically: `NoteRenderContext` (in
+            // `ios/Chirp/Chirp/Components/NoteEntityViews.swift`) holds
+            // `[String: TimelineItem]` and exposes a `static let empty`,
+            // which strict-concurrency rejects on a non-Sendable value
+            // type. Without explicit `Sendable` on `TimelineItem` the
+            // Chirp build fails the moment this struct elevates from
+            // `internal` (hand-written) to `public` (generated).
+            rust_path: "nmp_core::kernel::types::TimelineItem",
+            swift_name: "TimelineItem",
+            id_field: Some("id"),
+            conformances: &["Decodable", "Equatable", "Hashable", "Sendable"],
+            schema: schema_value::<TimelineItem>(),
         },
     ];
 
@@ -191,13 +235,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pilot_document_has_seven_entries_in_stable_order() {
-        // Stage 1 pilot ships these seven types — and only these. Stage 2
-        // expansion (the dotted-projection-key registry) goes in a
-        // separate vector; this test guards the Stage 1 set from
-        // accidental reordering / silent additions, both of which would
-        // change the generated Swift byte-for-byte and break the
-        // `--check` CI gate.
+    fn pilot_document_has_eight_entries_in_stable_order() {
+        // The pilot ships these eight types — and only these. The Stage 2
+        // dotted-projection-key registry (`SnapshotProjections`) lives in
+        // a separate vector in `nmp-codegen`; this test guards the
+        // flat-record set from accidental reordering / silent additions,
+        // both of which would change the generated Swift byte-for-byte
+        // and break the `--check` CI gate.
+        //
+        // V6 Stage 3 partial (F-05) added `TimelineItem` to the tail.
         let document = dump_pilot_schemas();
         assert_eq!(document.version, 1, "schema document version is stable");
         let swift_names: Vec<_> = document.types.iter().map(|t| t.swift_name).collect();
@@ -211,6 +257,7 @@ mod tests {
                 "AccountSummary",
                 "RelayEditRow",
                 "RelayRoleOption",
+                "TimelineItem",
             ],
             "pilot type order is load-bearing for the Swift emitter"
         );

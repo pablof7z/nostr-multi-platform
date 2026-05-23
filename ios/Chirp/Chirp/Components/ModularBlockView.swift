@@ -278,25 +278,40 @@ struct ModularBlockView: View {
         // `EmbeddedNostrEventCard`, not a row), so we feed neutral defaults
         // that match the Rust fallback for kind:1 — no inner-event parsing
         // here either.
+        //
+        // V6 Stage 3 partial (F-05): `TimelineItem` is now generated. The
+        // three formerly-optional fallbacks (`authorPictureUrl`, etc.) are
+        // non-optional in the generated shape, so the synthetic builder
+        // provides explicit fallbacks here instead of relying on the
+        // hand-written struct's `decodeIfPresent ??` defaults. Mirrors the
+        // Rust `identicon:<prefix>` placeholder contract (D1).
         TimelineItem(
-            id: card.id,
-            authorPubkey: card.authorPubkey,
-            authorDisplay: item?.authorDisplay ?? "\(card.authorPubkey.prefix(8))…",
-            authorPictureUrl: item?.authorPictureUrl,
-            authorAvatarInitials: item?.authorAvatarInitials ?? defaultInitials(pubkey: card.authorPubkey),
             authorAvatarColor: item?.authorAvatarColor ?? defaultColor(pubkey: card.authorPubkey),
+            authorAvatarInitials: item?.authorAvatarInitials ?? defaultInitials(pubkey: card.authorPubkey),
+            // `authorAvatarSource` was never decoded by the hand-written
+            // struct; for a synthetic card we mirror the Rust placeholder
+            // discriminator (`"kind0"` when the source item already carried
+            // a kind:0-backed avatar, `"placeholder"` otherwise).
+            authorAvatarSource: item?.authorAvatarSource ?? "placeholder",
+            authorDisplay: item?.authorDisplay ?? "\(card.authorPubkey.prefix(8))…",
             // Inherit lnurl from the cached TimelineItem when present so a
             // synthetic-from-card row still exposes the zap affordance.
             // `nil` for cards without a backing item is correct — the row
             // hides the zap button (no lnurl known yet).
             authorLnurl: item?.authorLnurl,
-            kind: card.kind,
+            // `identicon:<prefix>` mirrors the Rust D1 placeholder URI
+            // contract: the field is non-optional and always renderable.
+            authorPictureUrl: item?.authorPictureUrl
+                ?? "identicon:\(card.authorPubkey.prefix(8))",
+            authorPubkey: card.authorPubkey,
             content: card.content,
             contentPreview: String(card.content.prefix(180)),
             createdAtDisplay: relativeTime(card: card),
-            relayCount: 0,
+            id: card.id,
             isRepost: false,
+            kind: card.kind,
             navTargetId: card.id,
+            relayCount: 0,
             repostInnerContent: ""
         )
     }
