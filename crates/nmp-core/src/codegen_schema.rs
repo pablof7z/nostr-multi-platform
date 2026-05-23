@@ -101,8 +101,7 @@ pub struct ProjectionSchemaDocument {
 /// `serde_json::to_value` lift each schema into the document without
 /// naming `schemars::schema::RootSchema` everywhere.
 fn schema_value<T: JsonSchema>() -> Value {
-    serde_json::to_value(schema_for!(T))
-        .expect("schemars-generated schema is always serde_json-serialisable")
+    serde_json::to_value(schema_for!(T)).unwrap_or(serde_json::Value::Null)
 }
 
 /// Build the full pilot-set schema document.
@@ -175,8 +174,7 @@ pub fn dump_pilot_schemas() -> ProjectionSchemaDocument {
 /// the document shape without re-implementing the serialisation step.
 #[must_use]
 pub fn dump_pilot_schemas_json() -> String {
-    serde_json::to_string_pretty(&dump_pilot_schemas())
-        .expect("ProjectionSchemaDocument is serialisable")
+    serde_json::to_string_pretty(&dump_pilot_schemas()).unwrap_or_default()
 }
 
 #[cfg(test)]
