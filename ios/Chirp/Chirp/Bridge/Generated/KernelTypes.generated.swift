@@ -41,6 +41,7 @@ public struct KernelMetrics: Decodable, Equatable {
     public let generatedEvents: UInt64
     public let insertedCount: Int
     public let lastEventToEmitMs: UInt64?
+    public let makeUpdateUs: UInt64
     public let maxEventToEmitMs: UInt64
     public let maxEventsPerUpdate: UInt64
     public let noteEvents: UInt64
@@ -49,6 +50,7 @@ public struct KernelMetrics: Decodable, Equatable {
     public let payloadBytes: Int
     public let profileEvents: UInt64
     public let removedCount: Int
+    public let serializeUs: UInt64
     public let storeToPayloadRatio: Double
     public let storedEvents: Int
     public let targetProfileLoadedMs: UInt64?
@@ -85,6 +87,7 @@ public struct KernelMetrics: Decodable, Equatable {
         case generatedEvents = "generated_events"
         case insertedCount = "inserted_count"
         case lastEventToEmitMs = "last_event_to_emit_ms"
+        case makeUpdateUs = "make_update_us"
         case maxEventToEmitMs = "max_event_to_emit_ms"
         case maxEventsPerUpdate = "max_events_per_update"
         case noteEvents = "note_events"
@@ -93,6 +96,7 @@ public struct KernelMetrics: Decodable, Equatable {
         case payloadBytes = "payload_bytes"
         case profileEvents = "profile_events"
         case removedCount = "removed_count"
+        case serializeUs = "serialize_us"
         case storeToPayloadRatio = "store_to_payload_ratio"
         case storedEvents = "stored_events"
         case targetProfileLoadedMs = "target_profile_loaded_ms"
