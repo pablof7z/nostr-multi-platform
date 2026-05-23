@@ -78,6 +78,8 @@ impl std::fmt::Display for ParseError {
     }
 }
 
+impl std::error::Error for ParseError {}
+
 impl NwcUri {
     /// Parse a `nostr+walletconnect://` URI string. The scheme match is
     /// case-insensitive — wallet UIs / mobile deeplink handlers sometimes emit
