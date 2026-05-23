@@ -21,6 +21,7 @@ pub fn help() {
     println!("  read:         sync-follows, home, profile <npub>, thread <note>, search #tag");
     println!("  write:        compose <text>, reply <note> <text>, react <note> [reaction]");
     println!("  social graph: follow <npub>, unfollow <npub>");
+    println!("  dms:          send-dm <npub|nprofile|hex> <text> (alias: dm)");
     println!("  mls:          mls-init, mls-status, mls-create, mls-invite");
     println!("                mls-accept, mls-send, mls-messages");
     println!("  diagnostics:  diagnostics, parity");
@@ -32,6 +33,7 @@ pub fn parity() {
     println!("  {GREEN}Compose{RESET}:         compose <text>");
     println!("  {GREEN}Replies{RESET}:         reply <note|nevent|id> <text>");
     println!("  {GREEN}Reactions{RESET}:       react <note|nevent|id> [+, -, emoji]");
+    println!("  {GREEN}NIP-17 DMs{RESET}:      send-dm <npub|nprofile|hex> <text>");
     println!("  {GREEN}Profiles{RESET}:        profile <npub|nprofile|hex>");
     println!("  {GREEN}Threads{RESET}:         thread <note|nevent|id>");
     println!("  {GREEN}Search{RESET}:          search #tag");
