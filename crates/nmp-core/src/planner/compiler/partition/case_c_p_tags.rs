@@ -12,12 +12,11 @@
 //! ## PD-033-C planner extension (precursor to Stage 2 — `#p` bootstrap)
 //!
 //! The sibling [`route_bootstrap_content_inbox`] helper handles the cold-start
-//! case where the kernel-driven self-zap-receipts subscription
-//! (`kernel/requests/startup.rs`: `kind:9735 #p=[self_pk]` on
-//! `RelayRole::Content`) needs to fly BEFORE the active account's kind:10002
-//! arrives. Pre-PD-033-C the M1 `req(Content, …)` helper unconditionally
-//! emitted the REQ on `bootstrap_urls_for_role(RelayRole::Content)`; the
-//! planner mirror routes the equivalent `LogicalInterest` shape to
+//! case where any host-driven `Tailing + Global + #p (Nip65ReadRelays)`
+//! subscription must fly BEFORE the active account's kind:10002 arrives.
+//! Without it the planner would emit no relay entries until kind:10002
+//! arrives — the relevant projection would receive nothing on cold-start
+//! sign-ins. The planner routes the equivalent `LogicalInterest` shape to
 //! `bootstrap_content_relays` exactly when:
 //!
 //! - `lifecycle == Tailing`
@@ -84,11 +83,11 @@ pub(super) fn route(
 /// `bootstrap_content_relays` when every tagged pubkey lacks a cached
 /// NIP-65 inbox.
 ///
-/// Mirrors M1's `req(RelayRole::Content, …)` cold-start emission for the
-/// kernel's self-zap-receipts subscription (`kind:9735 #p=[self_pk]`,
-/// `kernel/requests/startup.rs`). Without this, deleting the M1 helper would
-/// silently lose every #p-tagged Tailing REQ until kind:10002 arrives —
-/// breaking the F-04 zap-receipts contract on cold-start sign-ins.
+/// Cold-start fallback for any host-driven `Tailing + Global +
+/// Nip65ReadRelays + #p` subscription. Without it, every such interest
+/// would silently emit no relay entries until kind:10002 arrives — the
+/// relevant projection (e.g. NIP-57 zap receipts, NIP-25 reactions
+/// addressed to the user) would receive nothing on cold-start sign-ins.
 ///
 /// Gating happens at the dispatcher ([`super::partition_interest`]); this
 /// helper assumes the caller has already verified:

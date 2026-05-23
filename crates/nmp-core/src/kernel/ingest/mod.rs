@@ -409,47 +409,17 @@ impl Kernel {
                 }
                 self.changed_since_emit = true;
             }
-            9735 => {
-                // F-04: NIP-57 zap receipt. ZapsAggregateProjection is registered
-                // as a KernelEventObserver, so it can only learn about a kind:9735
-                // event if this arm fans it out via `notify_event_observers`.
-                // Pre-F-04 the `_` wildcard below only called `verify_and_persist`
-                // — the receipt landed in the store but never reached the
-                // projection, so per-note zap counts never updated. The D4
-                // store-outcome gate is preserved (same shape as kinds 0/3/10002/
-                // 10050): only an Inserted | Replaced outcome means the receipt
-                // is canonical and worth observer fan-out — duplicates are
-                // already-known and replays from a sibling relay would
-                // double-count the projection's per-note tally.
-                use crate::store::InsertOutcome;
-                let outcome = self.verify_and_persist(relay_url, &event);
-                if matches!(
-                    outcome,
-                    Some(InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. })
-                ) {
-                    let kernel_event = crate::substrate::KernelEvent {
-                        id: event.id.clone(),
-                        author: event.pubkey.clone(),
-                        kind: event.kind,
-                        created_at: event.created_at,
-                        tags: event.tags.clone(),
-                        content: event.content.clone(),
-                    };
-                    self.notify_event_observers(&kernel_event);
-                }
-                self.changed_since_emit = true;
-            }
             _ => {
-                // F-04 (wildcard arm): kinds not handled by an explicit match
-                // arm above (e.g. NIP-29 chat kinds 9/11/1111, NIP-29 group
-                // metadata kinds 39000/39001/39002, gift-wraps kind:1059, …)
-                // still reach `KernelEventObserver`s through this seam. Pre-fix
-                // the wildcard called only `verify_and_persist`, so projections
-                // like `GroupChatProjection` and `DiscoveredGroupsProjection`
-                // registered as observers were structurally deaf. Mirror the
-                // exact shape of the explicit kind:9735 arm above: gate fan-out
-                // on the store outcome (`Inserted | Replaced` only — D4 dedup
-                // so duplicate sibling-relay deliveries do not double-notify).
+                // Wildcard arm: every kind not handled by an explicit match
+                // arm above (zap receipts, NIP-29 chat kinds, NIP-29 group
+                // metadata, gift-wraps kind:1059, …) reaches
+                // `KernelEventObserver`s through this seam. Pre-fix the
+                // wildcard called only `verify_and_persist`, so projections
+                // like `GroupChatProjection`, `DiscoveredGroupsProjection`,
+                // and the NIP-57 zap-aggregate projection registered as
+                // observers were structurally deaf. Gate fan-out on the
+                // store outcome (`Inserted | Replaced` only — D4 dedup so
+                // duplicate sibling-relay deliveries do not double-notify).
                 use crate::store::InsertOutcome;
                 let outcome = self.verify_and_persist(relay_url, &event);
                 if matches!(
