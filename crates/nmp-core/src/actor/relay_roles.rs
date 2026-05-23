@@ -66,17 +66,11 @@ pub(crate) fn relay_role_options() -> Vec<RelayRoleOption> {
 }
 
 pub(crate) fn relay_role_label(role: &str) -> String {
-    role_metadata(role)
-        .map(|metadata| metadata.label)
-        .unwrap_or(role)
-        .to_string()
+    role_metadata(role).map_or(role, |m| m.label).to_string()
 }
 
 pub(crate) fn relay_role_tint(role: &str) -> String {
-    role_metadata(role)
-        .map(|metadata| metadata.tint)
-        .unwrap_or("accent")
-        .to_string()
+    role_metadata(role).map_or("accent", |m| m.tint).to_string()
 }
 
 /// True when `role` semantically includes `needle`.
@@ -142,8 +136,7 @@ where
 {
     rows.into_iter()
         .find(|(_, role)| has_role(role, "write"))
-        .map(|(url, _)| url.to_string())
-        .unwrap_or_else(|| NOSTRCONNECT_DEFAULT_RELAY_URL.to_string())
+        .map_or_else(|| NOSTRCONNECT_DEFAULT_RELAY_URL.to_string(), |(url, _)| url.to_string())
 }
 
 fn role_metadata(role: &str) -> Option<&'static RelayRoleMetadata> {

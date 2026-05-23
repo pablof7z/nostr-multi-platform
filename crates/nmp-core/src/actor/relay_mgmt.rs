@@ -225,9 +225,7 @@ fn take_non_duplicate_queued(
     queued
         .into_iter()
         .filter(|message| {
-            publish_message_key(message)
-                .map(|key| !current_keys.contains(&key))
-                .unwrap_or(true)
+            publish_message_key(message).map_or(true, |key| !current_keys.contains(&key))
         })
         .collect()
 }

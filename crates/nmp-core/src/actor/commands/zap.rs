@@ -250,7 +250,7 @@ pub(crate) fn handle_fetch_lnurl_invoice(
 ///   in the signed-JSON path.
 fn inject_recipient_relays(kernel: &Kernel, unsigned: &mut UnsignedEvent) {
     let relays_present = unsigned.tags.iter().any(|t| {
-        t.first().map(|k| k == "relays").unwrap_or(false) && t.len() > 1
+        t.first().is_some_and(|k| k == "relays") && t.len() > 1
     });
     if relays_present {
         return;
@@ -258,7 +258,7 @@ fn inject_recipient_relays(kernel: &Kernel, unsigned: &mut UnsignedEvent) {
     let recipient: String = unsigned
         .tags
         .iter()
-        .find(|t| t.first().map(|k| k == "p").unwrap_or(false))
+        .find(|t| t.first().is_some_and(|k| k == "p"))
         .and_then(|t| t.get(1))
         .cloned()
         .unwrap_or_default();

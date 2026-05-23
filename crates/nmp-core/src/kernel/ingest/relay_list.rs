@@ -56,14 +56,14 @@ impl Kernel {
         // belt-and-suspenders check that mirrors the store's supersession
         // logic exactly (strict `>` on timestamp; same-ts resolved by
         // lexicographically smaller event id wins).
-        let should_replace = self
-            .author_relay_lists
-            .get(&event.pubkey)
-            .map(|current| {
-                relay_list.created_at > current.created_at
-                    || (relay_list.created_at == current.created_at && event.id < current.event_id)
-            })
-            .unwrap_or(true);
+        let should_replace =
+            self.author_relay_lists
+                .get(&event.pubkey)
+                .map_or(true, |current| {
+                    relay_list.created_at > current.created_at
+                        || (relay_list.created_at == current.created_at
+                            && event.id < current.event_id)
+                });
         if should_replace {
             self.log(format!(
                 "NIP-65 {} read={} write={} both={}",

@@ -366,7 +366,7 @@ impl Kernel {
             .map(|profile| {
                 profile.event_id.len()
                     + profile.display.len()
-                    + profile.picture_url.as_ref().map(String::len).unwrap_or(0)
+                    + profile.picture_url.as_ref().map_or(0, String::len)
                     + profile.nip05.len()
                     + profile.about.len()
                     + 96

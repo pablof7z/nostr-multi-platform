@@ -38,9 +38,6 @@ impl Kernel {
     }
 
     fn timeline_created_at(&self, id: &str) -> u64 {
-        self.events
-            .get(id)
-            .map(|event| event.created_at)
-            .unwrap_or(0)
+        self.events.get(id).map_or(0, |event| event.created_at)
     }
 }

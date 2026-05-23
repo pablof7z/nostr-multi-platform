@@ -188,8 +188,7 @@ impl Kernel {
                 .author_view
                 .selected_author
                 .as_ref()
-                .map(|interest| interest.key == event.pubkey)
-                .unwrap_or(false)
+                .is_some_and(|interest| interest.key == event.pubkey)
             || sub_id.starts_with("author-notes-")
             || sub_id.starts_with("thread-ids-")
             || sub_id.starts_with("thread-replies-")
@@ -283,7 +282,6 @@ impl Kernel {
         has_active_contacts
             || self
                 .contacts_deadline
-                .map(|deadline| Instant::now() >= deadline)
-                .unwrap_or(false)
+                .is_some_and(|deadline| Instant::now() >= deadline)
     }
 }

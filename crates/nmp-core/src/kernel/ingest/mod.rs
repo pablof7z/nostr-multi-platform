@@ -197,8 +197,7 @@ impl Kernel {
                         .wire
                         .subs
                         .get(&wire_key)
-                        .map(|sub| sub.relay_url.to_string())
-                        .unwrap_or_else(|| relay_url.to_string());
+                        .map_or_else(|| relay_url.to_string(), |sub| sub.relay_url.to_string());
                     outbound.push(OutboundMessage {
                         role,
                         relay_url: close_url,
@@ -220,8 +219,7 @@ impl Kernel {
                 let notice = array
                     .get(1)
                     .and_then(Value::as_str)
-                    .map(|s| truncate(s, 180))
-                    .unwrap_or_else(|| "notice".to_string());
+                    .map_or_else(|| "notice".to_string(), |s| truncate(s, 180));
                 let relay = self.relay_mut(role);
                 relay.counters.notices_rx = relay.counters.notices_rx.saturating_add(1);
                 relay.last_notice = Some(notice.clone());

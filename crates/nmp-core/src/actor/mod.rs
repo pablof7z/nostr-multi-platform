@@ -990,9 +990,9 @@ pub fn run_actor_with_observers(
                 // D6: a poisoned bunker-handshake mutex recovers via
                 // `into_inner` rather than panicking inside the snapshot tick.
                 let slot = projection_slot.lock().unwrap_or_else(|e| e.into_inner());
-                slot.as_ref()
-                    .map(|dto| serde_json::to_value(dto).unwrap_or(serde_json::Value::Null))
-                    .unwrap_or(serde_json::Value::Null)
+                slot.as_ref().map_or(serde_json::Value::Null, |dto| {
+                    serde_json::to_value(dto).unwrap_or(serde_json::Value::Null)
+                })
             });
         }
     }

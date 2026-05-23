@@ -106,8 +106,7 @@ pub(super) fn diff_items(
         .filter(|item| {
             previous_by_id
                 .get(item.id.as_str())
-                .map(|previous| *previous != *item)
-                .unwrap_or(false)
+                .is_some_and(|previous| *previous != *item)
         })
         .cloned()
         .collect::<Vec<_>>();
@@ -155,7 +154,7 @@ pub(super) fn parse_relay_list(
         let Some(url) = tag.get(1).filter(|url| url.starts_with("wss://")) else {
             continue;
         };
-        let marker = tag.get(2).map(String::as_str).unwrap_or("both");
+        let marker = tag.get(2).map_or("both", String::as_str);
         let key = format!("{url}:{marker}");
         if !seen.insert(key) {
             continue;

@@ -188,8 +188,7 @@ impl Kernel {
                 self.last_emitted_items.len(),
                 serialized.len(),
                 last_event_to_emit_ms
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| "none".to_string()),
+                    .map_or_else(|| "none".to_string(), |value| value.to_string()),
                 self.max_event_to_emit_ms
             ));
         }

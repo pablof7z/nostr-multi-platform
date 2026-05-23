@@ -17,8 +17,7 @@ impl Kernel {
         let state = self
             .nip42_drivers
             .get(&role)
-            .map(|d| d.state.clone())
-            .unwrap_or(crate::subs::RelayAuthState::NotRequired);
+            .map_or(crate::subs::RelayAuthState::NotRequired, |d| d.state.clone());
         matches!(
             state,
             crate::subs::RelayAuthState::ChallengeReceived
