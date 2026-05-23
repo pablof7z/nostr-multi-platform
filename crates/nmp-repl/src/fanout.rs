@@ -238,6 +238,7 @@ pub fn run_discovery(probes: &[(String, String, String)]) -> Vec<(String, Mailbo
 /// Launch the content worker pool. One job per relay; each job carries that
 /// relay's content REQs (already shaped by the lifecycle). Returns the event
 /// receiver, the worker count, and the global wall deadline.
+#[must_use] 
 pub fn launch(
     per_relay: &BTreeMap<String, Vec<ContentReq>>,
     wall: Duration,

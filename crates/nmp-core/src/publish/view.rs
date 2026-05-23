@@ -126,11 +126,13 @@ pub struct PublishStatusView;
 impl PublishStatusView {
     pub const NAMESPACE: &'static str = "nmp.publish.status";
 
+    #[must_use] 
     pub fn key(_spec: &PublishStatusSpec) -> String {
         // Single global publish status view per app session.
         "nmp.publish.status:global".to_string()
     }
 
+    #[must_use] 
     pub fn dependencies(_spec: &PublishStatusSpec) -> ViewDependencies {
         // Publish status is driven by the engine via projection changes, not
         // by kernel-event subscription. The dependency surface is therefore
@@ -141,6 +143,7 @@ impl PublishStatusView {
         }
     }
 
+    #[must_use] 
     pub fn open(
         _ctx: &ViewContext,
         spec: PublishStatusSpec,
@@ -168,6 +171,7 @@ impl PublishStatusView {
         }
     }
 
+    #[must_use] 
     pub fn snapshot(_ctx: &ViewContext, state: &PublishStatusState) -> PublishStatusSnapshot {
         state.snapshot.clone()
     }

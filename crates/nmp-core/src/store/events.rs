@@ -411,6 +411,7 @@ impl<'a, S: EventStore + ?Sized> ClaimGuard<'a, S> {
     }
 
     /// The `ClaimerId` this guard will release on drop.
+    #[must_use] 
     pub fn claimer(&self) -> ClaimerId {
         self.claimer
     }

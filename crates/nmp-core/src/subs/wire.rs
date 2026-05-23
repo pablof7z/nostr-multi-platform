@@ -62,6 +62,7 @@ pub enum WireFrame {
 /// the initial-compile case (prior = None → all REQs) and the teardown case
 /// (next = None → all CLOSEs). `next_interests` is consulted to determine
 /// lifecycle metadata for the REQ frames.
+#[must_use] 
 pub fn plan_diff(
     prior: Option<&CompiledPlan>,
     next: Option<&CompiledPlan>,

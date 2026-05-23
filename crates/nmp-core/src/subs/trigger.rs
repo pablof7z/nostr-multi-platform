@@ -148,6 +148,7 @@ impl CompileTrigger {
     /// classify triggers as they fan them into the inbox without re-encoding
     /// the rule.
     #[allow(dead_code)]
+    #[must_use] 
     pub fn requires_recompile(&self) -> bool {
         !matches!(self, Self::RelayReconnected { .. })
     }

@@ -83,6 +83,7 @@ impl Drop for LocalKeySigner {
 
 impl LocalKeySigner {
     /// Generate a fresh keypair via OS RNG.
+    #[must_use] 
     pub fn generate() -> Self {
         Self::from_secret_key(SecretKey::generate())
     }

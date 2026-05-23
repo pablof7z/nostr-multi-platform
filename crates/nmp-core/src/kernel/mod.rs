@@ -1045,7 +1045,7 @@ impl Kernel {
         self.auth_signers.insert(
             RelayRole::Content,
             RelayAuthCredentials {
-                signer: signer.clone(),
+                signer: Arc::clone(&signer),
                 pubkey_hex: pubkey_hex.clone(),
             },
         );

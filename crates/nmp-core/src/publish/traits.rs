@@ -138,6 +138,7 @@ pub struct ReplayDispatcher {
 }
 
 impl ReplayDispatcher {
+    #[must_use] 
     pub fn new() -> Self {
         Self::default()
     }
@@ -195,6 +196,7 @@ pub struct QueueDispatcher {
 }
 
 impl QueueDispatcher {
+    #[must_use] 
     pub fn new() -> Self {
         Self::default()
     }
@@ -263,6 +265,7 @@ pub struct InMemoryPublishStore {
 }
 
 impl InMemoryPublishStore {
+    #[must_use] 
     pub fn new() -> Self {
         Self::default()
     }

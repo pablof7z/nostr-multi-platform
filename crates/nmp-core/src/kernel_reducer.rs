@@ -39,6 +39,7 @@ pub struct KernelReducer {
 impl KernelReducer {
     /// Construct a fresh reducer with the default visible-limit. Equivalent
     /// to what the actor loop uses at startup.
+    #[must_use] 
     pub fn new() -> Self {
         Self {
             kernel: Kernel::new(DEFAULT_VISIBLE_LIMIT),

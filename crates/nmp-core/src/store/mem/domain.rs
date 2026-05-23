@@ -19,8 +19,8 @@ pub(super) fn domain_open(
     let data = st
         .domain_data
         .entry(namespace)
-        .or_insert_with(|| Arc::new(Mutex::new(HashMap::new())))
-        .clone();
+        .or_insert_with(|| Arc::new(Mutex::new(HashMap::new())));
+    let data = Arc::clone(data);
     Ok(DomainHandle {
         inner: DomainHandleInner::Mem { namespace, data },
     })
@@ -48,11 +48,13 @@ pub(super) fn run_migrations(
     }
 
     // Get or create domain data arc.
-    let data_arc = st
-        .domain_data
-        .entry(namespace)
-        .or_insert_with(|| Arc::new(Mutex::new(HashMap::new())))
-        .clone();
+    let data_arc = {
+        let arc = st
+            .domain_data
+            .entry(namespace)
+            .or_insert_with(|| Arc::new(Mutex::new(HashMap::new())));
+        Arc::clone(arc)
+    };
 
     // Apply migrations in order.
     for m in migrations {

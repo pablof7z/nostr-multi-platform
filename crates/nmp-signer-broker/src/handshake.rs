@@ -79,6 +79,7 @@ const STEP_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Build the REQ frame the broker uses to subscribe to inbound responses
 /// addressed to `local_pubkey_hex`.
+#[must_use] 
 pub fn build_req_frame(sub_id: &str, local_pubkey_hex: &str) -> String {
     let since = SystemTime::now()
         .duration_since(UNIX_EPOCH)

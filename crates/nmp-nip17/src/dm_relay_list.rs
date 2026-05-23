@@ -71,6 +71,7 @@ const KIND_DM_RELAY_LIST: u32 = 10050;
 /// - has an empty `pubkey` — the actor derives it from the signing keys at
 ///   sign time (this mirrors NIP-29 actions; the build half of the send is
 ///   pubkey-agnostic).
+#[must_use] 
 pub fn build_dm_relay_list_event(relay_urls: &[String]) -> UnsignedEvent {
     let mut tags: Vec<Vec<String>> = Vec::with_capacity(relay_urls.len());
     let mut seen = std::collections::HashSet::new();

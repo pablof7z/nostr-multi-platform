@@ -19,6 +19,7 @@ use nostr::{nips::nip19::ToBech32, PublicKey};
 /// Convert a hex pubkey to a bech32 `npub1…` string.
 ///
 /// On any parse or encode error the raw hex is returned verbatim (D6).
+#[must_use] 
 pub fn to_npub(pubkey_hex: &str) -> String {
     match PublicKey::parse(pubkey_hex) {
         Ok(pk) => pk.to_bech32().unwrap_or_else(|_| pubkey_hex.to_string()),
@@ -30,6 +31,7 @@ pub fn to_npub(pubkey_hex: &str) -> String {
 ///
 /// If `pubkey_hex` is already an `npub1…` string it is abbreviated directly;
 /// otherwise it is converted first. Falls back to raw hex on any error (D6).
+#[must_use] 
 pub fn short_npub(pubkey_hex: &str) -> String {
     let npub = to_npub(pubkey_hex);
     abbreviate(&npub, 10, 6)
@@ -41,6 +43,7 @@ pub fn short_npub(pubkey_hex: &str) -> String {
 /// `"npub1"` prefix — and uppercases them. These are bech32 chars, so always
 /// ASCII. Falls back gracefully when the `npub1` prefix is absent (e.g. raw
 /// hex fallback from a parse error in `to_npub`).
+#[must_use] 
 pub fn avatar_initials(npub: &str) -> String {
     let body = npub.strip_prefix("npub1").unwrap_or(npub);
     let chars: Vec<char> = body.chars().take(2).collect();
@@ -57,6 +60,7 @@ pub fn avatar_initials(npub: &str) -> String {
 /// Uses the same djb2 algorithm as `nmp-marmot/src/projection/display.rs` so
 /// colours are consistent across surfaces: djb2 over the **last 6 bytes** of
 /// the pubkey hex string in natural order.
+#[must_use] 
 pub fn avatar_color_hex(pubkey_hex: &str) -> String {
     let bytes = pubkey_hex.as_bytes();
     let start = bytes.len().saturating_sub(6);

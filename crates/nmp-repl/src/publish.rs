@@ -137,6 +137,7 @@ fn await_raw_ok(sock: &mut ws::Sock, event_id: &str, deadline: Instant) -> Optio
 ///
 /// `filter_json` is the bare filter object (NOT wrapped); this builds
 /// `["REQ", <sub>, <filter>]`. Used by `mls-fetch-kp`.
+#[must_use] 
 pub fn fetch_events(relay_url: &str, filter_json: &Value, wall: Duration) -> Vec<Value> {
     let sub = format!("repl-mls-{}", now_secs());
     let mut out = Vec::new();

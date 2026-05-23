@@ -30,6 +30,7 @@ impl SubscriptionLifecycle {
     /// frames are appended *outside* `current_plan` (see
     /// [`Self::recompile_and_diff`]), so the returned vec is content-only by
     /// construction.
+    #[must_use] 
     pub fn current_plan_frames(&self) -> Vec<WireFrame> {
         let Some(plan) = self.current_plan.as_ref() else {
             return Vec::new();
@@ -65,6 +66,7 @@ impl SubscriptionLifecycle {
     /// whole plan. Recomputing this caller-side would mean re-walking the
     /// mailbox cache against the interest author set; the plan already did
     /// that work, so prefer this accessor.
+    #[must_use] 
     pub fn current_plan_unroutable(&self) -> std::collections::BTreeSet<String> {
         self.current_plan
             .as_ref()

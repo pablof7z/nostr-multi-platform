@@ -83,10 +83,12 @@ impl Default for InMemoryPool {
 }
 
 impl InMemoryPool {
+    #[must_use] 
     pub fn new() -> Self {
         Self::with_cap(DEFAULT_DEFERRED_CAP)
     }
 
+    #[must_use] 
     pub fn with_cap(cap: usize) -> Self {
         Self {
             deferred: HashMap::new(),
@@ -97,6 +99,7 @@ impl InMemoryPool {
     }
 
     /// Read the sent log for a relay. Test-only; preserves order.
+    #[must_use] 
     pub fn sent_log(&self, relay_url: &str) -> Vec<String> {
         self.sent_log
             .get(relay_url)

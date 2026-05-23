@@ -159,6 +159,7 @@ pub struct DmInboxSnapshot {
 impl DmInboxSnapshot {
     /// An empty inbox — what a fresh projection (or a poisoned mutex, D6)
     /// reports.
+    #[must_use] 
     pub fn empty() -> Self {
         Self {
             conversations: Vec::new(),
@@ -199,6 +200,7 @@ impl DmInboxProjection {
     }
 
     /// The kind filter to register this observer with — kind:1059 only.
+    #[must_use] 
     pub fn kind_filter() -> KindFilter {
         KindFilter::from_kinds([KIND_GIFT_WRAP])
     }
@@ -405,6 +407,7 @@ impl RawEventObserver for DmInboxProjection {
 /// The id is intentionally independent of the pubkey so an account switch
 /// replaces the prior `#p` filter instead of accumulating one long-lived
 /// subscription per account.
+#[must_use] 
 pub fn active_giftwrap_inbox_interest_id() -> InterestId {
     InterestId(nmp_core::stable_hash::stable_hash64(
         "nip17.giftwrap.active",
@@ -423,6 +426,7 @@ pub fn active_giftwrap_inbox_interest_id() -> InterestId {
 /// [`PTagRouting::Nip17DmRelays`]; if the kind:10050 list is unknown or empty,
 /// the compiler emits no subscription instead of falling back to public NIP-65
 /// read relays.
+#[must_use] 
 pub fn active_giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
     let deps = ViewDependencies {
         kinds: vec![KIND_GIFT_WRAP],

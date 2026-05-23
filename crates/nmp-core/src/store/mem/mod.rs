@@ -149,6 +149,7 @@ pub struct MemEventStore {
 }
 
 impl MemEventStore {
+    #[must_use] 
     pub fn new() -> Self {
         Self {
             state: Mutex::new(MemState::new()),

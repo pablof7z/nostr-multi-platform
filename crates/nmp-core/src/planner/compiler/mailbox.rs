@@ -41,6 +41,7 @@ impl MailboxSnapshot {
     }
 
     /// True iff the snapshot has at least one inbox relay (read or both).
+    #[must_use] 
     pub fn has_inbox_relays(&self) -> bool {
         !self.read_relays.is_empty() || !self.both_relays.is_empty()
     }
@@ -105,6 +106,7 @@ pub struct InMemoryMailboxCache {
 }
 
 impl InMemoryMailboxCache {
+    #[must_use] 
     pub fn new() -> Self {
         Self::default()
     }

@@ -102,11 +102,13 @@ impl KindFilter {
 
     /// `true` if `kind` should be delivered: either the filter is empty
     /// (match all) or `kind` is explicitly listed.
+    #[must_use] 
     pub fn matches(&self, kind: u32) -> bool {
         self.0.is_empty() || self.0.contains(&kind)
     }
 
     /// `true` when no kinds are listed (match-everything).
+    #[must_use] 
     pub fn is_all(&self) -> bool {
         self.0.is_empty()
     }

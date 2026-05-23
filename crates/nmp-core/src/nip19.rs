@@ -156,6 +156,7 @@ fn nibble(b: u8) -> Result<u8, Nip19Error> {
     }
 }
 
+#[must_use] 
 pub fn bytes_to_hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }

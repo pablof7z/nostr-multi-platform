@@ -49,6 +49,7 @@ pub struct UnknownIds {
 
 impl UnknownIds {
     /// Empty collector.
+    #[must_use] 
     pub fn new() -> Self {
         Self::default()
     }
@@ -138,11 +139,13 @@ impl UnknownIds {
     }
 
     /// Number of pending unknown ids (event ids + pubkeys). Diagnostics/tests.
+    #[must_use] 
     pub fn pending_len(&self) -> usize {
         self.event_ids.len() + self.pubkeys.len()
     }
 
     /// True when nothing is pending.
+    #[must_use] 
     pub fn is_empty(&self) -> bool {
         self.event_ids.is_empty() && self.pubkeys.is_empty()
     }

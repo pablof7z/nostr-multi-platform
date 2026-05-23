@@ -116,7 +116,7 @@ impl Kernel {
         let Some((signer, active_pubkey)) = self
             .auth_signers
             .get(&role)
-            .map(|c| (c.signer.clone(), c.pubkey_hex.clone()))
+            .map(|c| (Arc::clone(&c.signer), c.pubkey_hex.clone()))
         else {
             self.log(format!(
                 "AUTH challenge from {} but no signer bound for this role — staying in ChallengeReceived",

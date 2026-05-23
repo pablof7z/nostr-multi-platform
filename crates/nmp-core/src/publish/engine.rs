@@ -556,6 +556,7 @@ impl PublishEngine {
     }
 
     /// Snapshot accessor for views / FFI.
+    #[must_use] 
     pub fn snapshot(&self) -> &PublishStatusSnapshot {
         &self.view.snapshot
     }
@@ -608,6 +609,7 @@ impl PublishEngine {
 
     /// Test/diagnostic accessor — returns the per-relay state map for a
     /// handle, or empty if the publish completed and was evicted.
+    #[must_use] 
     pub fn per_relay(&self, handle: &PublishHandle) -> BTreeMap<RelayUrl, PerRelayState> {
         self.in_flight
             .get(handle)

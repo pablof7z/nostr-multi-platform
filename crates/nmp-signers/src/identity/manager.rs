@@ -92,6 +92,7 @@ impl Default for AccountManager {
 
 impl AccountManager {
     /// Empty manager.
+    #[must_use] 
     pub fn new() -> Self {
         Self {
             accounts: HashMap::new(),
@@ -103,6 +104,7 @@ impl AccountManager {
     }
 
     /// Override the add-time post-condition timeout (test convenience).
+    #[must_use] 
     pub fn with_post_condition_timeout(mut self, timeout: Duration) -> Self {
         self.post_condition_timeout = timeout;
         self
@@ -212,21 +214,25 @@ impl AccountManager {
     }
 
     /// Active id.
+    #[must_use] 
     pub fn active(&self) -> Option<IdentityId> {
         self.active.clone()
     }
 
     /// All ids, in insertion order.
+    #[must_use] 
     pub fn accounts(&self) -> Vec<IdentityId> {
         self.order.clone()
     }
 
     /// Signer for a specific id.
+    #[must_use] 
     pub fn signer_for(&self, id: &IdentityId) -> Option<Arc<dyn Signer>> {
         self.accounts.get(id).cloned()
     }
 
     /// Signer for the active id, if any.
+    #[must_use] 
     pub fn signer_active(&self) -> Option<Arc<dyn Signer>> {
         self.active.as_ref().and_then(|id| self.signer_for(id))
     }
@@ -238,6 +244,7 @@ impl AccountManager {
     }
 
     /// Number of registered observers (test introspection).
+    #[must_use] 
     pub fn observer_count(&self) -> usize {
         self.observers.len()
     }

@@ -49,6 +49,7 @@ impl ViewDependencies {
     ///
     /// `lifecycle` — `Tailing` for live subscriptions, `OneShot` for historical
     ///   fetch-and-close requests.
+    #[must_use] 
     pub fn into_logical_interest(
         &self,
         id: InterestId,

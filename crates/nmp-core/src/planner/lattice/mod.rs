@@ -64,6 +64,7 @@ pub enum MergeOutcome {
 /// independently to filter over-delivered events.
 ///
 /// Design: §3.3 Rules 1–9
+#[must_use] 
 pub fn merge(
     a: &InterestShape,
     b: &InterestShape,

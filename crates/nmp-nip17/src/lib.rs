@@ -99,6 +99,7 @@ pub struct DmInput {
 ///
 /// `created_at` is set to `0` — the D7 sentinel. The actor re-stamps it from
 /// the kernel clock before wrapping; this crate never reads the system clock.
+#[must_use] 
 pub fn build_dm_rumor(input: &DmInput, sender_pubkey: &str) -> UnsignedEvent {
     let mut tags: Vec<Vec<String>> = vec![vec![
         "p".to_string(),

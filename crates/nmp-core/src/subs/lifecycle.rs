@@ -32,6 +32,7 @@ impl SubscriptionLifecycle {
     /// production, or an `InMemoryMailboxCache` constructed inline in tests.
     /// This eliminates the dual source-of-truth seam the planner-side cache
     /// previously created (T105 made `Kernel::author_relay_lists` authoritative).
+    #[must_use] 
     pub fn new() -> Self {
         Self {
             registry: InterestRegistry::new(),
@@ -60,6 +61,7 @@ impl SubscriptionLifecycle {
     /// T140 (D6) — the most recent genuine planner error surfaced by
     /// [`Self::drain_tick`], or `None` if none has occurred. Benign
     /// `EmptyInterestSet` is never recorded here. Read by diagnostics / tests.
+    #[must_use] 
     pub fn last_planner_error(&self) -> Option<&str> {
         self.last_planner_error.as_deref()
     }
@@ -73,6 +75,7 @@ impl SubscriptionLifecycle {
     }
 
     /// Read-only view of the probed set (diagnostics / tests).
+    #[must_use] 
     pub fn probed_mailboxes(&self) -> &BTreeSet<String> {
         &self.probed_mailboxes
     }
@@ -112,6 +115,7 @@ impl SubscriptionLifecycle {
     }
 
     /// Read-only access to the dead-relay set (diagnostics).
+    #[must_use] 
     pub fn dead_relays(&self) -> &BTreeSet<RelayUrl> {
         &self.dead_relays
     }
@@ -170,6 +174,7 @@ impl SubscriptionLifecycle {
     }
 
     /// Compile counter (one increment per planner invocation).
+    #[must_use] 
     pub fn compile_count(&self) -> u64 {
         self.compile_count
     }

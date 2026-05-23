@@ -258,6 +258,7 @@ pub(super) fn sweep_inflight_timeouts(
 
 /// Coarse outcome computed from the current per-relay states. Used by the
 /// ledger to record a single verdict for the publish.
+#[must_use] 
 pub fn outcome_of(per_relay: &BTreeMap<RelayUrl, PerRelayState>) -> PublishOutcome {
     let mut accepted = Vec::new();
     let mut failed = Vec::new();

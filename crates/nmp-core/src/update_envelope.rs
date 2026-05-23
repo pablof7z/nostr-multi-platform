@@ -84,6 +84,7 @@ pub enum UpdateEnvelope {
 ///
 /// D6: if the snapshot string is somehow not valid JSON the frame is dropped
 /// (`None`) rather than panicking.
+#[must_use] 
 pub fn wrap_snapshot(snapshot_json: String) -> Option<String> {
     let raw = RawValue::from_string(snapshot_json).ok()?;
     serde_json::to_string(&WireEnvelope::Snapshot(&raw)).ok()

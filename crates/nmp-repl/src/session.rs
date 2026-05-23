@@ -132,6 +132,7 @@ impl Default for Session {
 }
 
 impl Session {
+    #[must_use] 
     pub fn new() -> Self {
         Self::default()
     }

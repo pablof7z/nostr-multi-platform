@@ -49,6 +49,7 @@ pub struct InterestRegistry {
 }
 
 impl InterestRegistry {
+    #[must_use] 
     pub fn new() -> Self {
         Self::default()
     }
@@ -113,6 +114,7 @@ impl InterestRegistry {
 
     /// Owner refcount for a `(scope, key)` slot (diagnostics / tests).
     #[allow(dead_code)]
+    #[must_use] 
     pub fn owner_count(&self, scope: &SubScope, key: &SubKey) -> usize {
         self.slots
             .get(&(scope.clone(), *key))
@@ -145,17 +147,20 @@ impl InterestRegistry {
     /// Snapshot of all active interests, deterministically ordered by
     /// `(scope, key)`. Dedup across owners: exactly one interest per
     /// `(scope, key)` regardless of how many owners are attached.
+    #[must_use] 
     pub fn iter_active(&self) -> Vec<LogicalInterest> {
         self.slots.values().map(|s| s.interest.clone()).collect()
     }
 
     /// Count of registered `(scope, key)` slots.
     #[allow(dead_code)]
+    #[must_use] 
     pub fn len(&self) -> usize {
         self.slots.len()
     }
 
     #[allow(dead_code)]
+    #[must_use] 
     pub fn is_empty(&self) -> bool {
         self.slots.is_empty()
     }

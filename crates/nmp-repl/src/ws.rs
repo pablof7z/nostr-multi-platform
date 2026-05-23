@@ -177,6 +177,7 @@ fn parse_envelope(text: &str) -> Frame {
 /// Normalise a relay URL. Strips trailing slashes (except the "://" one),
 /// trims whitespace, rejects non-ws schemes. Lifted from
 /// `outbox_perf.rs:415`.
+#[must_use] 
 pub fn normalize_url(s: &str) -> String {
     let trimmed = s.trim();
     if !(trimmed.starts_with("wss://") || trimmed.starts_with("ws://")) {
@@ -226,6 +227,7 @@ pub fn summarize_filter(filter_json: &str) -> String {
 
 /// Truncate `s` to at most `n` chars, appending an ellipsis if truncated.
 /// Used by the renderer; lifted from `outbox_perf.rs:653`.
+#[must_use] 
 pub fn truncate(s: &str, n: usize) -> String {
     if s.chars().count() <= n {
         s.to_string()

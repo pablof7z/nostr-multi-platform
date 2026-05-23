@@ -71,6 +71,7 @@ pub struct OneshotApi {
 
 impl OneshotApi {
     /// Empty coordinator.
+    #[must_use] 
     pub fn new() -> Self {
         Self::default()
     }
@@ -133,6 +134,7 @@ impl OneshotApi {
     }
 
     /// True iff `token` is registered and has been completed.
+    #[must_use] 
     pub fn is_complete(&self, token: OneshotToken) -> bool {
         self.pending.get(&token).is_some_and(|p| p.completed)
     }
@@ -170,6 +172,7 @@ impl OneshotApi {
     }
 
     /// Number of in-flight (registered) oneshots. Diagnostics/tests.
+    #[must_use] 
     pub fn in_flight(&self) -> usize {
         self.pending.len()
     }

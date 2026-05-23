@@ -139,6 +139,7 @@ impl RelayEditRow {
 /// This is the canonical relay-role filter for any Rust host/app module that
 /// needs the user's configured inbox/read relay set. Keeping it here avoids
 /// platform shells re-parsing `RelayEditRow.role` tokens.
+#[must_use] 
 pub fn read_eligible_relay_urls(rows: &[RelayEditRow]) -> Vec<String> {
     rows.iter()
         .filter(|r| crate::actor::has_role(&r.role, "read"))

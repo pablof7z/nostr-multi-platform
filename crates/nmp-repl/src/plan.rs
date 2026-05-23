@@ -21,6 +21,7 @@ use crate::error::{ReplError, Result};
 use crate::session::Session;
 
 /// Does this filter reference `$follows` anywhere it matters?
+#[must_use] 
 pub fn needs_follows(filter: &FilterAst) -> bool {
     let mut nf = false;
     let mut scan = |vals: &[Value]| {

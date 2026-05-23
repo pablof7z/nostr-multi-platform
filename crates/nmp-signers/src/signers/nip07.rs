@@ -50,6 +50,7 @@ impl Nip07Signer {
     /// This is the canonical construction path for both production (after a
     /// wasm `window.nostr.getPublicKey()` round-trip) and restore-from-storage
     /// flows.
+    #[must_use] 
     pub fn from_cached_pubkey(pubkey: PublicKey) -> Self {
         Self {
             cached_pubkey: pubkey,
@@ -80,6 +81,7 @@ impl Nip07Signer {
     }
 
     /// Whether the current build can actually talk to the extension.
+    #[must_use] 
     pub const fn nip07_supported() -> bool {
         cfg!(all(target_arch = "wasm32", feature = "wasm"))
     }

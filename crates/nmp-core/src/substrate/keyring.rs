@@ -58,6 +58,7 @@ pub enum KeyringRequest {
 
 impl KeyringRequest {
     /// The `account_id` this request is keyed by, regardless of variant.
+    #[must_use] 
     pub fn account_id(&self) -> &str {
         match self {
             Self::Store { account_id, .. }
@@ -86,6 +87,7 @@ pub struct KeyringResult {
 
 impl KeyringResult {
     /// Successful operation; `secret` is `Some` only for a `retrieve` hit.
+    #[must_use] 
     pub fn ok(secret: Option<String>) -> Self {
         Self {
             status: KeyringStatus::Ok,
@@ -95,6 +97,7 @@ impl KeyringResult {
     }
 
     /// `retrieve` of an absent key — distinct from an error (D6 data).
+    #[must_use] 
     pub fn not_found() -> Self {
         Self {
             status: KeyringStatus::NotFound,
@@ -104,6 +107,7 @@ impl KeyringResult {
     }
 
     /// Platform-level failure carrying the native status code.
+    #[must_use] 
     pub fn error(os_status: i32) -> Self {
         Self {
             status: KeyringStatus::Error,
@@ -178,6 +182,7 @@ impl KeyringIdentityWiring {
     /// Decode the [`CapabilityEnvelope`] the capability handed back into a
     /// typed [`KeyringResult`]. A malformed envelope is itself reported as a
     /// `KeyringResult::error` (D6: never an exception across the boundary).
+    #[must_use] 
     pub fn decode_result(envelope: &CapabilityEnvelope) -> KeyringResult {
         serde_json::from_str(&envelope.result_json)
             .unwrap_or_else(|_| KeyringResult::error(MALFORMED_RESULT))

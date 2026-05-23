@@ -177,6 +177,7 @@ pub struct InterestShape {
 
 impl InterestShape {
     /// Convenience constructor for a tailing author+kind timeline interest.
+    #[must_use] 
     pub fn timeline_for(authors: BTreeSet<Pubkey>) -> Self {
         Self {
             authors,
@@ -189,6 +190,7 @@ impl InterestShape {
     ///
     /// Fetches all indexer-relevant replaceable events for the author:
     /// kind:0 (profile), kind:3 (contact list), kind:10002 (NIP-65 relay list).
+    #[must_use] 
     pub fn profile_for(pubkey: Pubkey) -> Self {
         Self {
             authors: [pubkey].into_iter().collect(),
