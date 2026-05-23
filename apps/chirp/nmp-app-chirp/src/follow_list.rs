@@ -109,7 +109,7 @@ impl FollowListProjection {
         }
     }
 
-    /// The snapshot JSON for the `"chirp.follow_list"` projection key.
+    /// The snapshot JSON for the `"nmp.follow_list"` projection key.
     ///
     /// Returns the active account's follow list as
     /// `{"follows": [<FollowEntry>, …]}`. An empty array when:

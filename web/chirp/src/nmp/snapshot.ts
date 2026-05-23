@@ -77,7 +77,7 @@ export function featureSnapshotFromEnvelope(envelope: unknown): FeatureSnapshot 
     dmConversations: dmFrom(source),
     groupMessages: messagesFrom(projection(source, "nmp.nip29.group_chat")),
     discoveredGroups: groupsFrom(source),
-    followCount: array(objectRecord(projection(source, "chirp.follow_list"))?.follows).length,
+    followCount: array(objectRecord(projection(source, "nmp.follow_list"))?.follows).length,
     settingsHub: settingsHubFrom(source.settings_hub ?? source.settingsHub),
     authorProfile: profileFrom(source.author_view ?? source.authorView),
     thread: threadFrom(source.thread_view ?? source.threadView),

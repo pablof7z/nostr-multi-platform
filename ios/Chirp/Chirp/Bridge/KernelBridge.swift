@@ -880,7 +880,7 @@ struct KernelUpdate: Decodable {
     /// gift-wrap envelopes have arrived. Computed so the `DmInboxStore`
     /// consumer keeps reading `update.dmInbox` unchanged.
     var dmInbox: DmInboxSnapshot? { projections?.dmInbox }
-    /// NIP-02 follow list — `projections["chirp.follow_list"]`.
+    /// NIP-02 follow list — `projections["nmp.follow_list"]`.
     var followList: FollowListSnapshot? { projections?.followList }
 
     /// NIP-29 group-discovery read model —
@@ -1323,7 +1323,7 @@ struct DmConversation: Decodable, Identifiable, Equatable {
 // ─── NIP-02 follow list read model ───────────────────────────────────────────
 //
 // Mirror of `nmp-app-chirp`'s `FollowListProjection` — the shape it serialises
-// under the snapshot key `"chirp.follow_list"`. All display strings are
+// under the snapshot key `"nmp.follow_list"`. All display strings are
 // computed in Rust; Swift renders what it receives (thin-shell rule).
 
 /// One entry in the active account's follow list.
