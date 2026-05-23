@@ -48,7 +48,7 @@ impl From<&nmp_chirp_config::ChirpRelayBootstrapEntry> for RelayBootstrapEntry {
 
 fn default_relay_bootstrap() -> Vec<RelayBootstrapEntry> {
     nmp_chirp_config::chirp_default_relay_bootstrap()
-        .into_iter()
+        .iter()
         .map(Into::into)
         .collect()
 }

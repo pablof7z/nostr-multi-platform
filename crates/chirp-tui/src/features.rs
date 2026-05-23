@@ -1,5 +1,6 @@
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum FeatureTab {
+    #[default]
     Home,
     Chats,
     Groups,
@@ -58,11 +59,6 @@ impl FeatureTab {
     }
 }
 
-impl Default for FeatureTab {
-    fn default() -> Self {
-        Self::Home
-    }
-}
 
 pub struct IosFeature {
     pub area: &'static str,

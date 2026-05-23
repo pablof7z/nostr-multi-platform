@@ -326,7 +326,7 @@ fn settings_hub_from(value: Option<&Value>) -> SummaryLine {
 fn projection<'a>(projections: &'a Value, key: &str) -> Option<&'a Value> {
     projections
         .get(key)
-        .or_else(|| projections.get(&key.replace("_", "")))
+        .or_else(|| projections.get(key.replace("_", "").as_str()))
 }
 
 fn first_nonempty(value: &Value, keys: &[&str]) -> String {
