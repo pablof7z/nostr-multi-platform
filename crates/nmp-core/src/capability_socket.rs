@@ -79,3 +79,82 @@ pub(crate) fn capability_error_envelope(request_json: &str, reason: &str) -> Str
     })
     .unwrap_or_else(|_| "{}".to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    extern "C" fn echo_handler(
+        _ctx: *mut c_void,
+        req: *const c_char,
+    ) -> *mut c_char {
+        // Echo the request back as the response — simplest valid handler.
+        let s = unsafe { std::ffi::CStr::from_ptr(req) }
+            .to_string_lossy()
+            .into_owned();
+        CString::new(s).unwrap().into_raw()
+    }
+
+    extern "C" fn null_handler(
+        _ctx: *mut c_void,
+        _req: *const c_char,
+    ) -> *mut c_char {
+        std::ptr::null_mut()
+    }
+
+    fn install(slot: &CapabilityCallbackSlot, cb: CapabilityCallback) {
+        *slot.lock().unwrap() = Some(CapabilityCallbackRegistration {
+            context: 0,
+            callback: cb,
+        });
+    }
+
+    #[test]
+    fn no_handler_returns_error_envelope() {
+        let slot = new_capability_callback_slot();
+        let out = dispatch_capability(&slot, r#"{"namespace":"test","correlation_id":"c1"}"#);
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["namespace"], "test");
+        assert_eq!(v["correlation_id"], "c1");
+        assert!(v["result_json"].as_str().unwrap().contains("no-capability-handler"));
+    }
+
+    #[test]
+    fn null_return_becomes_error_envelope() {
+        let slot = new_capability_callback_slot();
+        install(&slot, null_handler);
+        let out = dispatch_capability(&slot, r#"{"namespace":"ns","correlation_id":"c2"}"#);
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert!(v["result_json"].as_str().unwrap().contains("handler-returned-null"));
+    }
+
+    #[test]
+    fn working_handler_response_is_returned() {
+        let slot = new_capability_callback_slot();
+        install(&slot, echo_handler);
+        let req = r#"{"namespace":"ks","correlation_id":"c3"}"#;
+        let out = dispatch_capability(&slot, req);
+        // echo_handler returns the request JSON verbatim.
+        assert_eq!(out, req);
+    }
+
+    #[test]
+    fn error_envelope_echoes_namespace_and_correlation_id() {
+        let req = r#"{"namespace":"myns","correlation_id":"abc"}"#;
+        let out = capability_error_envelope(req, "test-reason");
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["namespace"], "myns");
+        assert_eq!(v["correlation_id"], "abc");
+        assert!(v["result_json"].as_str().unwrap().contains("test-reason"));
+    }
+
+    #[test]
+    fn error_envelope_degrades_on_unparseable_input() {
+        let out = capability_error_envelope("not-json", "bad-input");
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        // namespace and correlation_id default to empty string
+        assert_eq!(v["namespace"], "");
+        assert_eq!(v["correlation_id"], "");
+        assert!(v["result_json"].as_str().unwrap().contains("bad-input"));
+    }
+}
