@@ -1,3 +1,10 @@
+//! `nmp-core` — the NMP kernel and substrate layer.
+//!
+//! Owns the single-actor event loop, relay worker threads, subscription
+//! planner, snapshot emission, and the C-ABI FFI entry points for native
+//! shells.  NIP-specific logic lives in sibling crates (`nmp-nip01`, etc.)
+//! that depend on the substrate interfaces exported here.
+
 mod actor;
 mod app;
 pub mod bunker_hook;
