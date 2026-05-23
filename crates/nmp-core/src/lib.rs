@@ -2,7 +2,14 @@ mod actor;
 mod app;
 pub mod bunker_hook;
 mod capability_socket;
+// ffi: C-ABI entry points for Swift/Kotlin native shells.
+// Gated on `native` — wasm32 uses wasm-bindgen, not C-ABI.
+#[cfg(feature = "native")]
 mod ffi;
+// ffi_guard: pure catch_unwind wrapper. Not I/O-bound; kept always-on
+// because actor/commands/* use it on the native side (also actor is always
+// compiled until Phase 1c decoupling). If actor is gated in a future PR,
+// ffi_guard can be folded into the native gate alongside it.
 mod ffi_guard;
 mod keepalive;
 mod kernel;
@@ -27,6 +34,7 @@ pub use app::{
     VIEW_ADDRESSABLE, VIEW_PROFILE, VIEW_THREAD,
 };
 pub use bunker_hook::{register_bunker_hook, BunkerHookFn, BunkerHookRequest};
+#[cfg(feature = "native")]
 pub use ffi::NmpApp;
 pub use kernel::{read_eligible_relay_urls, RelayEditRow, RelayEditRowList, RelayEditRowsSlot};
 pub use kernel_reducer::KernelReducer;
@@ -56,7 +64,7 @@ pub use actor::NOSTRCONNECT_DEFAULT_RELAY_URL;
 // `nmp_app_retry_publish` / `nmp_app_cancel_publish` survive as the
 // publish-lifecycle control plane (no event production; the D11 lint
 // whitelists them).
-#[cfg(any(test, feature = "test-support"))]
+#[cfg(all(any(test, feature = "test-support"), feature = "native"))]
 pub use ffi::{
     nmp_app_ack_action_stage, nmp_app_add_relay, nmp_app_cancel_publish, nmp_app_claim_profile,
     nmp_app_close_author, nmp_app_close_thread, nmp_app_configure, nmp_app_create_new_account,
@@ -75,6 +83,7 @@ pub use ffi::{
 // calls these through the rlib dependency — this is what causes rustc to
 // include the symbol bodies in CGU files. Without Rust-path references the
 // rlib is consumed at compile time but the symbols stay `U` in the cdylib.
+// android-ffi implies native (see [features] in Cargo.toml).
 #[cfg(feature = "android-ffi")]
 pub use ffi::{
     nmp_app_add_relay,
@@ -125,7 +134,8 @@ pub use ffi::{
 
 // D0: NIP-47 NWC is an app noun — the `nmp_app_wallet_*` FFI symbols are
 // gated behind the `wallet` Cargo feature. Re-exported via Rust paths for
-// the Android JNI shim only when both features are on.
+// the Android JNI shim only when both features are on. `wallet` implies
+// `native` implies `android-ffi` already has the `ffi` module available.
 #[cfg(all(feature = "android-ffi", feature = "wallet"))]
 pub use ffi::{nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wallet_pay_invoice};
 

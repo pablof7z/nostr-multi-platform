@@ -9,33 +9,58 @@ name = "nmp_core"
 crate-type = ["staticlib", "rlib"]
 
 [features]
-# Default feature set is EMPTY. NIP-47 NWC (`wallet`) was formally deferred to
-# post-v1, so the default kernel build excludes it — the v1 minimal-surface-area
-# doctrine. Consumers that ship the wallet UI (the iOS Chirp shell via
-# `nmp-app-chirp`) opt in explicitly: `nmp-app-chirp` forwards its own `wallet`
-# feature to `nmp-core/wallet`. The D0 proof is that the kernel still compiles
-# with default features: NIP-47 NWC is an app noun, not a kernel primitive, so
-# `nmp-core` must not *require* `nmp-nwc` — it merely *permits* it.
-default = []
+# `native` gates all I/O-bound code: the C-ABI FFI layer, the actor thread,
+# relay_worker (tungstenite TCP), LMDB store backend, and the sync HTTP client
+# (ureq/LNURL fetcher). Enabled by default so existing native consumers see no
+# change. Disable with `default-features = false` to compile only the pure
+# kernel types and substrate traits for wasm32 or other no-std-io targets.
+#
+# Phase 1b (V-01): feature shape established. Phase 1c work remaining:
+# - kernel/mod.rs:145 imports `tungstenite::Message` (introduce RelayFrame enum)
+# - kernel uses crate::actor::{ActorCommand,has_role,KernelEventObserverSlot,…}
+#   (move relay_roles.rs to relay.rs; gate observer-slot fields with cfg)
+# - publish/action.rs:11 uses ActorCommand (needs decoupling or native gate)
+# - kernel/mod.rs:166,549 uses crate::store::{EventStore,MemEventStore,LmdbEventStore}
+# Until Phase 1c lands, `--no-default-features` fails with cascade errors;
+# the native (default) build is unaffected.
+default = ["native"]
+# I/O layer — native platforms (Linux, macOS, iOS, Android).
+# Gates: tungstenite, ureq, mio, rustls, heed, nostr-database, nmp-nostr-lmdb,
+# and the chrono/clock feature (wall-clock reads via the OS).
+native = [
+    "dep:tungstenite",
+    "dep:ureq",
+    "dep:mio",
+    "dep:rustls",
+    "dep:heed",
+    "dep:nostr-database",
+    "dep:nmp-nostr-lmdb",
+    "chrono/clock",
+]
 # NIP-47 Nostr Wallet Connect support. Gates the `nmp-nwc` protocol dependency,
 # the `WalletStatus` snapshot projection, the `WalletRuntime` actor command arm,
 # and the `nmp_app_wallet_*` FFI symbols. D0: nmp-core never *owns* an app noun;
 # wallet state is opt-in protocol glue, not part of the protocol-neutral kernel.
-wallet = ["dep:nmp-nwc"]
+# wallet requires native (NWC relay connection uses the actor thread).
+wallet = ["dep:nmp-nwc", "native"]
 # Expose actor internals for live-bench harnesses and integration test binaries.
 # Never enable in production builds.
 test-support = []
 # Enable the LMDB-backed EventStore. Pulls in the NMP-local nostr-lmdb fork
 # (with env-injection seam) + heed + nostr-database. ADR-0011, ADR-0012.
-lmdb-backend = ["dep:nmp-nostr-lmdb", "dep:heed", "dep:nostr-database"]
+# lmdb-backend implies native (LMDB requires OS file I/O).
+lmdb-backend = ["dep:nmp-nostr-lmdb", "dep:heed", "dep:nostr-database", "native"]
 # Re-export all FFI entry-points via Rust paths so nmp-android-ffi can call them
 # through the rlib dependency (extern "C" declarations are opaque to Rust CGU
 # compilation — the android-ffi feature is the portable fix).
-android-ffi = []
+# android-ffi implies native (the FFI layer is C-ABI, native-only).
+android-ffi = ["native"]
 
 [dependencies]
 bech32 = "0.11"
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# `clock` feature reads the OS wall-clock; gated behind `native` so wasm32
+# builds compile (wasm has no OS clock without a js-sys shim).
+chrono = { version = "0.4", default-features = false }
 # Insertion-ordered hash map. Powers `substrate::bounded::BoundedMessageMap` —
 # the cap-and-evict-oldest primitive every long-lived per-projection message
 # store now backs onto so memory and per-tick snapshot serialisation are
@@ -55,11 +80,16 @@ nostr = { workspace = true, features = ["nip44", "nip59"] }
 # kernel never owns app nouns, so `nmp-core` must compile without it.
 nmp-nwc = { path = "../nmp-nwc", optional = true }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
-mio = { version = "1", features = ["os-ext", "os-poll"] }
-rustls = { workspace = true, default-features = false, features = ["ring"] }
+# native-only I/O deps — optional, gated behind the `native` feature.
+# mio: OS event loop (epoll/kqueue) used by relay_worker for non-blocking I/O.
+mio = { version = "1", features = ["os-ext", "os-poll"], optional = true }
+# rustls: TLS for relay WebSocket connections (native relay_worker only).
+rustls = { workspace = true, default-features = false, features = ["ring"], optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["raw_value"] }
-tungstenite = { workspace = true, default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+# tungstenite: native WebSocket over TCP (relay_worker and actor). optional=true
+# so wasm32 builds (which use web_sys::WebSocket) compile without it.
+tungstenite = { workspace = true, default-features = false, features = ["handshake", "rustls-tls-webpki-roots"], optional = true }
 # Sync HTTP client used by the LNURL fetcher worker spawned from the
 # `ActorCommand::FetchLnurlInvoice` arm (NIP-57 zaps, ADR-0024 minimum-viable
 # path). `tls` rides the same rustls graph the rest of nmp-core uses
@@ -67,8 +97,8 @@ tungstenite = { workspace = true, default-features = false, features = ["handsha
 # for the LNURL-pay endpoint responses. No async runtime is introduced — the
 # worker runs on `std::thread::spawn` and sends a follow-up `ActorCommand`
 # back to the actor through a cloned `Sender<ActorCommand>` (D8: no blocking
-# on the actor thread).
-ureq = { version = "2", default-features = false, features = ["tls", "json"] }
+# on the actor thread). optional=true — native-only (wasm uses fetch() instead).
+ureq = { version = "2", default-features = false, features = ["tls", "json"], optional = true }
 # Lightweight logging facade. Used by the NIP-17 DM send path to emit a
 # diagnostic `warn!` when the recipient's kind:10050 DM-relay list is not yet
 # cached and the send falls back to the configured Content relays — making the
