@@ -366,7 +366,7 @@ pub extern "C" fn nmp_app_chirp_register_follow_list(
 
     // The shared slot the projection and the FFI both hold: the projection
     // reads it at snapshot time, the caller updates it on account switch.
-    let active_pubkey_slot: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(pubkey_opt));
+    let active_pubkey_slot = Arc::new(Mutex::new(pubkey_opt));
 
     let projection = Arc::new(FollowListProjection::new(Arc::clone(&active_pubkey_slot)));
 

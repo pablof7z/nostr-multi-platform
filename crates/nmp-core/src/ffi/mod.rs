@@ -260,9 +260,42 @@ pub(crate) fn new_storage_path_slot() -> StoragePathSlot {
     Arc::new(Mutex::new(None))
 }
 
+/// Typed slot for the C-ABI update callback registration.
+///
+/// Written by [`nmp_app_set_update_callback`]; read by the actor thread's
+/// update-listener closure. Module-private: `UpdateCallbackRegistration` is
+/// also module-private so the alias cannot be wider.
+type UpdateCallbackSlot = Arc<Mutex<Option<UpdateCallbackRegistration>>>;
+
+/// Typed slot for the previously-installed NIP-17 DM-inbox raw-event observer id.
+///
+/// Used by the idempotent [`NmpApp::swap_nip17_dm_inbox_observer`] seam so
+/// per-app crates can re-register on account-switch without stacking observers.
+pub(crate) type DmInboxObserverIdSlot = Arc<Mutex<Option<RawEventObserverId>>>;
+
+/// Typed slot for the singleton kernel-event observer id.
+///
+/// Used by the idempotent [`NmpApp::swap_singleton_event_observer`] seam so
+/// per-app crates can re-register on account-switch without stacking observers.
+pub(crate) type SingletonEventObserverIdSlot = Arc<Mutex<Option<KernelEventObserverId>>>;
+
+fn new_update_callback_slot() -> UpdateCallbackSlot {
+    Arc::new(Mutex::new(None))
+}
+
+/// Construct a fresh, empty [`DmInboxObserverIdSlot`].
+pub(crate) fn new_dm_inbox_observer_id_slot() -> DmInboxObserverIdSlot {
+    Arc::new(Mutex::new(None))
+}
+
+/// Construct a fresh, empty [`SingletonEventObserverIdSlot`].
+pub(crate) fn new_singleton_event_observer_id_slot() -> SingletonEventObserverIdSlot {
+    Arc::new(Mutex::new(None))
+}
+
 pub struct NmpApp {
     tx: Sender<ActorCommand>,
-    update_callback: Arc<Mutex<Option<UpdateCallbackRegistration>>>,
+    update_callback: UpdateCallbackSlot,
     capability_callback: CapabilityCallbackSlot,
     /// T118 / G3 — lifecycle observer slot. Shared `Arc` with the actor
     /// thread: registrations through [`lifecycle::nmp_app_set_lifecycle_callback`]
@@ -298,7 +331,7 @@ pub struct NmpApp {
     /// Protocol-named (not chirp-named) because it tracks a NIP-17 surface;
     /// any host wiring a single DM-inbox per app shares this contract. A
     /// multi-inbox host would need a handle-returning variant instead.
-    nip17_dm_inbox_observer_id: Arc<Mutex<Option<RawEventObserverId>>>,
+    nip17_dm_inbox_observer_id: DmInboxObserverIdSlot,
     /// Singleton kernel-event observer-id slot used by per-app crates that
     /// register exactly one auxiliary `KernelEventObserver` per app and want
     /// the registration to be idempotent across re-invokes — see
@@ -314,7 +347,7 @@ pub struct NmpApp {
     /// first internal consumer is `nmp-app-chirp`'s per-app group-chat
     /// registration. A host that wants to keep N projections live in
     /// parallel still needs a handle-returning variant.
-    singleton_event_observer_id: Arc<Mutex<Option<KernelEventObserverId>>>,
+    singleton_event_observer_id: SingletonEventObserverIdSlot,
     /// Shared relay-edit rows handle. Cloned to the actor thread and bound
     /// onto the kernel so external Rust callers (e.g. per-app crates) can read
     /// the user's current relay list without crossing FFI.
@@ -515,8 +548,7 @@ impl Drop for NmpApp {
 pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     let (command_tx, command_rx) = mpsc::channel();
     let (update_tx, update_rx) = mpsc::channel();
-    let update_callback: Arc<Mutex<Option<UpdateCallbackRegistration>>> =
-        Arc::new(Mutex::new(None));
+    let update_callback = new_update_callback_slot();
     let listener_callback = Arc::clone(&update_callback);
     // T118 / G3 — shared lifecycle observer slot. The FFI side
     // (`nmp_app_set_lifecycle_callback`) writes registrations through one
@@ -544,10 +576,8 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // the actor never reads these; only the FFI side calls the swap
     // accessors. Owned by `NmpApp`, dropped with it (so the slot dies with
     // the app — no global aliasing across `nmp_app_free`).
-    let nip17_dm_inbox_observer_id: Arc<Mutex<Option<RawEventObserverId>>> =
-        Arc::new(Mutex::new(None));
-    let singleton_event_observer_id: Arc<Mutex<Option<KernelEventObserverId>>> =
-        Arc::new(Mutex::new(None));
+    let nip17_dm_inbox_observer_id = new_dm_inbox_observer_id_slot();
+    let singleton_event_observer_id = new_singleton_event_observer_id_slot();
     // Host-extensible snapshot output slot. Same shared-`Arc` pattern: the
     // `NmpApp` keeps one clone (Rust + C-ABI registration entry points), the
     // actor thread carries another and binds it onto the kernel
