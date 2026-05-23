@@ -13,6 +13,7 @@ pub struct JoinedHostsCache {
 }
 
 impl JoinedHostsCache {
+    #[must_use] 
     pub fn new() -> Self {
         Self::default()
     }
@@ -32,6 +33,7 @@ impl JoinedHostsCache {
     /// All host relays carrying at least one group for `pubkey`. Used by
     /// `JoinedGroups::dependencies()` to fan out one `LogicalInterest` per
     /// host (`routing.md` §4.3 / §3.2 "Strategy C").
+    #[must_use] 
     pub fn hosts_for(&self, pubkey: &str) -> Vec<RelayUrl> {
         self.by_pubkey
             .get(pubkey)
@@ -39,6 +41,7 @@ impl JoinedHostsCache {
             .unwrap_or_default()
     }
 
+    #[must_use] 
     pub fn groups_for(&self, pubkey: &str, host: &str) -> Vec<String> {
         self.by_pubkey
             .get(pubkey)

@@ -57,6 +57,7 @@ pub enum KindClass {
 
 /// Classify a (kind, has_h_tag) pair. The `h` tag is the routing key and the
 /// ownership discriminator (kinds.md §4); the kind is the dispatch.
+#[must_use] 
 pub fn classify(kind: u32, has_h_tag: bool) -> KindClass {
     match kind {
         KIND_GROUP_METADATA | KIND_GROUP_ADMINS | KIND_GROUP_MEMBERS | KIND_GROUP_ROLES => {
@@ -103,6 +104,7 @@ pub enum GroupEventClass {
 
 /// Refine a `KIND_DISCUSSION_OR_ARTIFACT` (kind 11) event by inspecting whether
 /// it carries `["t","discussion"]`.
+#[must_use] 
 pub fn classify_kind11(tags: &[Vec<String>]) -> GroupEventClass {
     let has_discussion_marker = tags
         .iter()
@@ -115,6 +117,7 @@ pub fn classify_kind11(tags: &[Vec<String>]) -> GroupEventClass {
 }
 
 /// Pick the owning `GroupEventClass` for a `KnownGroupEvent`.
+#[must_use] 
 pub fn group_event_class(kind: u32, tags: &[Vec<String>]) -> Option<GroupEventClass> {
     match kind {
         KIND_CHAT_MESSAGE => Some(GroupEventClass::Chat),
@@ -128,6 +131,7 @@ pub fn group_event_class(kind: u32, tags: &[Vec<String>]) -> Option<GroupEventCl
 }
 
 /// Convenience: is this an h-tagged group event of any class?
+#[must_use] 
 pub fn event_is_group_event(kind: u32, tags: &[Vec<String>]) -> bool {
     let has_h = tags.iter().any(|t| t.len() >= 2 && t[0] == "h");
     !matches!(classify(kind, has_h), KindClass::NotGroup)
@@ -135,6 +139,7 @@ pub fn event_is_group_event(kind: u32, tags: &[Vec<String>]) -> bool {
 
 /// Pull the `h` tag value (the `local_id`) from an event's tags. Returns
 /// `None` if no `h` tag exists.
+#[must_use] 
 pub fn h_tag_value(tags: &[Vec<String>]) -> Option<&str> {
     tags.iter()
         .find(|t| t.len() >= 2 && t[0] == "h")
@@ -142,6 +147,7 @@ pub fn h_tag_value(tags: &[Vec<String>]) -> Option<&str> {
 }
 
 /// Pull the `d` tag value (parameterized-replaceable key for 39000–39003).
+#[must_use] 
 pub fn d_tag_value(tags: &[Vec<String>]) -> Option<&str> {
     tags.iter()
         .find(|t| t.len() >= 2 && t[0] == "d")
@@ -155,6 +161,7 @@ pub fn d_tag_value(tags: &[Vec<String>]) -> Option<&str> {
 /// `host_relay_url` MUST be the provenance relay — the relay that produced the
 /// event in our subscription stream. NIP-29 group identity is the pair
 /// `(host, local_id)` (group_id.rs); the relay is the trust anchor.
+#[must_use] 
 pub fn group_id_from_tags(host_relay_url: &RelayUrl, tags: &[Vec<String>]) -> Option<GroupId> {
     let local = h_tag_value(tags).or_else(|| d_tag_value(tags))?;
     Some(GroupId::new(host_relay_url.clone(), local.to_string()))

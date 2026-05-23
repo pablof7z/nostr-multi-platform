@@ -107,6 +107,7 @@ pub struct GroupChatSnapshot {
 impl GroupChatSnapshot {
     /// An empty snapshot — what a freshly-constructed projection (or a poisoned
     /// internal mutex, D6) reports.
+    #[must_use] 
     pub fn empty() -> Self {
         Self {
             messages: Vec::new(),
@@ -139,6 +140,7 @@ pub struct GroupChatProjection {
 impl GroupChatProjection {
     /// Construct a projection scoped to `group_id`. The message store starts
     /// empty; events arrive via [`KernelEventObserver::on_kernel_event`].
+    #[must_use] 
     pub fn new(group_id: GroupId) -> Self {
         Self {
             group_id,

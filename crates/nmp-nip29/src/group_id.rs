@@ -59,6 +59,7 @@ impl GroupId {
     /// stripped, trailing slash stripped). Per the NIP-29 spec, the encoded
     /// form is intended to be human-shareable; callers wanting the full
     /// `wss://` form should use `host_relay_url` directly.
+    #[must_use] 
     pub fn to_uri(&self) -> String {
         let host = strip_ws_scheme(&self.host_relay_url);
         format!("{host}'{}", self.local_id)

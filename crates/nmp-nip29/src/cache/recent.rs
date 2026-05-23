@@ -10,6 +10,7 @@ use crate::group_id::GroupId;
 pub type EventIdPrefix = String;
 
 /// Truncate a hex event id to its first 8 chars for `previous`-tag emission.
+#[must_use] 
 pub fn previous_tag_prefix(event_id: &str) -> EventIdPrefix {
     event_id.chars().take(8).collect()
 }
@@ -27,6 +28,7 @@ pub struct RecentEntry {
 }
 
 impl RecentGroupEvents {
+    #[must_use] 
     pub fn new() -> Self {
         Self::default()
     }
@@ -45,6 +47,7 @@ impl RecentGroupEvents {
         }
     }
 
+    #[must_use] 
     pub fn previous_tags_for(&self, group: &GroupId, n: usize) -> Vec<EventIdPrefix> {
         let Some(entries) = self.per_group.get(group) else {
             return Vec::new();
@@ -58,8 +61,9 @@ impl RecentGroupEvents {
             .collect()
     }
 
+    #[must_use] 
     pub fn len_for(&self, group: &GroupId) -> usize {
-        self.per_group.get(group).map(|d| d.len()).unwrap_or(0)
+        self.per_group.get(group).map_or(0, |d| d.len())
     }
 }
 

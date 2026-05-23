@@ -44,6 +44,7 @@ pub enum TrustCheckOutcome {
 }
 
 impl TofuSignerCache {
+    #[must_use] 
     pub fn new() -> Self {
         Self::default()
     }

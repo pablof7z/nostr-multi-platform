@@ -26,6 +26,7 @@ pub struct RelayPin {
 }
 
 impl RelayPin {
+    #[must_use] 
     pub fn for_group(group: &GroupId) -> Self {
         Self {
             relay_url: group.host_relay_url.clone(),

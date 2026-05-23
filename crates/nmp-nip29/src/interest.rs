@@ -44,6 +44,7 @@ pub fn host_pinned_interest(
 
 /// Build a one-shot interest for the relay-signed metadata snapshot of a single
 /// group (39000-39003, filtered by `d` tag).
+#[must_use] 
 pub fn metadata_interest(id: u64, group: &GroupId) -> LogicalInterest {
     ViewDependencies {
         kinds: vec![
@@ -75,6 +76,7 @@ pub fn metadata_interest(id: u64, group: &GroupId) -> LogicalInterest {
 /// `InterestId` is derived deterministically from `host_relay_url` so a
 /// repeated discover on the same relay is idempotent (the kernel de-dupes by
 /// id and the REQ filter is identical).
+#[must_use] 
 pub fn relay_discovery_interest(host_relay_url: &str) -> LogicalInterest {
     let id = InterestId(nmp_core::stable_hash::stable_hash64((
         "nip29.discover",
@@ -100,6 +102,7 @@ pub fn relay_discovery_interest(host_relay_url: &str) -> LogicalInterest {
 /// events embed members as `p` tags), so we encode the membership filter as
 /// a `#p` tag dimension — the relay returns all 39001/39002 mentioning the
 /// user, which is the correct surface.
+#[must_use] 
 pub fn joined_groups_for_host(
     id: u64,
     user_pubkey: &str,

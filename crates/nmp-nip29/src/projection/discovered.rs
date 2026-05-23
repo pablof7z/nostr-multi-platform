@@ -128,7 +128,7 @@ impl LatestEvent {
     /// `true` iff `incoming` should supersede `self` per NIP-33 replaceable
     /// semantics — strictly newer `created_at`, ties broken by id descending
     /// (so the choice is total and deterministic).
-    fn supersedes(&self, incoming: &LatestEvent) -> bool {
+    fn supersedes(&self, incoming: &Self) -> bool {
         if incoming.created_at != self.created_at {
             incoming.created_at > self.created_at
         } else {
