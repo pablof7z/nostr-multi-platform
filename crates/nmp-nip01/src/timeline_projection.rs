@@ -94,6 +94,7 @@ impl ModularTimelineProjection {
         }
     }
 
+    #[must_use]
     pub fn snapshot(&self) -> ModularTimelineSnapshot {
         let Ok(inner) = self.inner.lock() else {
             return ModularTimelineSnapshot::empty();

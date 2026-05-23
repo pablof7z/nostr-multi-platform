@@ -171,6 +171,7 @@ impl ZapsAggregateProjection {
     /// D6: a poisoned mutex degrades to [`ZapsAggregateSnapshot::empty`]
     /// rather than panicking — this can run on the actor thread inside a
     /// snapshot tick, where a panic would unwind the kernel.
+    #[must_use]
     pub fn snapshot(&self) -> ZapsAggregateSnapshot {
         let Ok(by_target) = self.by_target.lock() else {
             return ZapsAggregateSnapshot::empty();

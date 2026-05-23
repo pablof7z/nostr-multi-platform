@@ -179,6 +179,7 @@ impl GroupChatProjection {
     /// D6: a poisoned mutex degrades to [`GroupChatSnapshot::empty`] rather
     /// than panicking — this can run on the actor thread inside a snapshot
     /// tick, where a panic would unwind the kernel.
+    #[must_use]
     pub fn snapshot(&self) -> GroupChatSnapshot {
         let Ok(messages) = self.messages.lock() else {
             return GroupChatSnapshot::empty();
