@@ -4,7 +4,7 @@
 > the ordered feature backlog. Supersedes `docs/perf/pending-user-decisions.md` (append-only
 > history log, kept for audit), `docs/arch-review-queue.md`, and `WIP.md`.
 >
-> Verified against HEAD **2bcc09e5** (2026-05-23). Update this file in every PR that touches
+> Verified against HEAD **596bba29** (2026-05-23). Update this file in every PR that touches
 > an item listed here.
 
 ---
@@ -50,10 +50,11 @@ makes the eventual fix harder.
 - Phase 1a ✅ DONE: `native` Cargo feature added to `nmp-core` gating tungstenite, ureq,
   heed, nostr-database, mio, rustls, chrono/clock. `mod ffi` gated behind
   `#[cfg(feature = "native")]`. Default build unchanged. (commit `5e36e158`)
-- Phase 1b ✅ DEFERRED (pending Phase 1c): `nmp-core = { default-features = false }` dep in
-  `nmp-wasm/Cargo.toml` is commented out until Phase 1c removes the tungstenite cascade errors.
-- Phase 1c IN PROGRESS: introduce `RelayFrame` enum; gate `actor/` and `relay_worker/` behind
-  `#[cfg(feature = "native")]`; verify `cargo check -p nmp-core --no-default-features` passes.
+- Phase 1b ✅ DONE (PR #343): `nmp-core = { default-features = false }` dep wired in
+  `nmp-wasm/Cargo.toml`. `cargo check -p nmp-wasm` (native) passes; wasm32 target blocked by
+  secp256k1-sys C build (tracked separately — needs pure-Rust secp backend or further feature-gating).
+- Phase 1c ✅ DONE (PR #341): `RelayFrame` enum introduced; `actor/` and `relay_worker/` gated
+  behind `#[cfg(feature = "native")]`; `cargo check -p nmp-core --no-default-features` passes.
 - Stage 2: replace stub relay transport with `gloo-net`/`web-sys` WebSocket.
 - Stage 3: port persistence to IndexedDB-backed `nostr-database` impl.
 
@@ -202,10 +203,10 @@ Work currently on a branch. Agents must not duplicate these tasks.
 
 | ID | Description | Branch | Status |
 |----|-------------|--------|--------|
-| B-5 | feat(nmp-core): Phase 1c — RelayFrame enum decouples kernel from tungstenite | `fix/v01-phase1c-relay-frame` | PR #341 pending CI |
-| B-7 | fix(nmp-core): route kind:9735 to KernelEventObserver + #p bootstrap subscription (F-04) | agent in worktree | In progress |
+| B-7 | fix(nmp-core): route kind:9735 to KernelEventObserver + #p bootstrap subscription (F-04) | agent in worktree | PR #342 pending CI merge |
+| B-8 | test(nmp-app-chirp): DM inbox FFI round-trip — unignore dm_inbox_full_round_trip_through_ffi | `worktree-agent-ae8ca2fe461608b8a` | PR #344 pending CI merge |
 
-> B-1–B-4 all merged to master (PRs #331–#337). B-6 merged PR #340. WIP.md superseded by this file.
+> B-1–B-4 all merged to master (PRs #331–#337). B-5 merged PR #341. B-6 merged PR #340. Phase 1b merged PR #343. WIP.md superseded by this file.
 
 ---
 
@@ -240,13 +241,14 @@ Confirm and delete, or identify what remains.
 Ordered by blocking priority. Items earlier in the list unblock items below them. An
 autonomous agent picks the topmost item not already in Section 2.
 
-### F-01 · Fix V-01 Phase 1c — gate actor/relay_worker, pass no-default-features [V1 BLOCKER]
+### F-01 · Fix V-01 Phase 1b/1c — wire nmp-wasm to nmp-core proper [V1 BLOCKER]
 
-Phase 1a (native feature gate) done. Phase 1c complete — PR #341 pending CI merge.
-Once Phase 1c lands, wire nmp-wasm to nmp-core proper (`NmpApp` constructed,
-`dispatch_action` reachable, stub runtime deleted).
+Phase 1a, 1b, 1c all done (PRs #341, #343). `nmp-wasm` now depends on
+`nmp-core` (default-features = false). Next: wire `NmpApp` into `WasmRuntime`
+and delete the stub runtime. Blocked on secp256k1-sys wasm32 C build (pure-Rust
+secp backend or further feature-gating needed).
 
-No `chirp-web` feature work until Phase 1c lands.
+No `chirp-web` feature work until stub runtime is deleted.
 
 ### F-02 · DM cold-start receive-side verification [V1 BLOCKER]
 
