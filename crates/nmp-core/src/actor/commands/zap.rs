@@ -288,7 +288,7 @@ fn sign_zap_request(keys: &Keys, unsigned: &UnsignedEvent) -> Result<String, Str
         .tags
         .iter()
         .map(|t| {
-            Tag::parse(t.iter().map(|s| s.as_str()).collect::<Vec<_>>())
+            Tag::parse(t.iter().map(std::string::String::as_str).collect::<Vec<_>>())
                 .map_err(|e| format!("tag parse: {e}"))
         })
         .collect::<Result<Vec<_>, _>>()?;

@@ -18,7 +18,7 @@ impl Kernel {
         let should_replace = self
             .local_profile_intents
             .get(&signed.unsigned.pubkey)
-            .map_or(true, |existing| existing.created_at <= profile.created_at);
+            .is_none_or(|existing| existing.created_at <= profile.created_at);
         if should_replace {
             self.local_profile_intents
                 .insert(signed.unsigned.pubkey.clone(), profile);

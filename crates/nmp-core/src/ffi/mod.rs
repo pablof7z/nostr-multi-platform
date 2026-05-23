@@ -1338,7 +1338,7 @@ impl NmpApp {
             content: event.content.clone(),
             sig: event.sig.to_string(),
         };
-        let relays: Vec<crate::publish::RelayUrl> = relays.iter().map(|r| r.to_string()).collect();
+        let relays: Vec<crate::publish::RelayUrl> = relays.iter().map(std::string::ToString::to_string).collect();
         self.send_cmd(ActorCommand::PublishSignedEvent {
             raw,
             target: crate::publish::PublishTarget::Explicit { relays },

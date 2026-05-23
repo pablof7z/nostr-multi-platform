@@ -264,7 +264,7 @@ pub(crate) struct Nip46OnboardingDto {
 pub(crate) fn build_nip46_onboarding_dto(
     slot: &BunkerHandshakeSlot,
 ) -> Nip46OnboardingDto {
-    let raw = slot.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let raw = slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
     let (stage_kind, progress_message) = match raw {
         Some(dto) => (Some(BunkerStageKind::from_wire(&dto.stage)), dto.message),
         None => (None, None),
@@ -356,7 +356,7 @@ impl IdentityRuntime {
         let mut slot = self
             .bunker_handshake
             .lock()
-            .unwrap_or_else(|e| e.into_inner());
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         *slot = value;
     }
 
@@ -427,7 +427,7 @@ impl IdentityRuntime {
         self.active
             .as_ref()
             .and_then(|id| self.remote_signers.get(id))
-            .map(|arc| arc.as_ref())
+            .map(std::convert::AsRef::as_ref)
     }
 
     /// Like [`active_remote`] but returns a cloned `Arc` so the caller can
@@ -793,7 +793,7 @@ pub(crate) fn create_account(
     // without waiting for the published kind:3 to round-trip from relays.
     let follows = DEFAULT_FOLLOWS
         .iter()
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
         .collect::<Vec<_>>();
     kernel.prepopulate_seed_contacts(id.clone(), follows);
 

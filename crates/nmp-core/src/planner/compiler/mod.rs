@@ -197,7 +197,7 @@ impl<'a> SubscriptionCompiler<'a> {
             let mut role_tags: BTreeSet<RoutingSource> = BTreeSet::new();
             // Shape + lifecycle + all source lanes + originating interest id.
             let shaped: Vec<(InterestShape, InterestLifecycle, BTreeSet<RoutingSource>, InterestId)> =
-                entries.into_iter().map(|entry| entry.into_shape()).collect();
+                entries.into_iter().map(partition::RelayEntry::into_shape).collect();
 
             let mut sub_shapes: Vec<(InterestShape, InterestLifecycle, Vec<InterestId>)> =
                 Vec::new();

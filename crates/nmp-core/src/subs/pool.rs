@@ -124,7 +124,7 @@ impl ConnectionPool for InMemoryPool {
     }
 
     fn deferred_count(&self, relay_url: &str) -> usize {
-        self.deferred.get(relay_url).map_or(0, |q| q.len())
+        self.deferred.get(relay_url).map_or(0, std::collections::VecDeque::len)
     }
 
     fn drain_deferred(&mut self, relay_url: &str) -> Vec<String> {

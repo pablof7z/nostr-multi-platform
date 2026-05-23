@@ -188,7 +188,7 @@ pub fn filter_json_for(shape: &InterestShape) -> String {
         parts.push(format!("\"authors\":[{}]", arr.join(",")));
     }
     if !shape.kinds.is_empty() {
-        let arr: Vec<String> = shape.kinds.iter().map(|k| k.to_string()).collect();
+        let arr: Vec<String> = shape.kinds.iter().map(std::string::ToString::to_string).collect();
         parts.push(format!("\"kinds\":[{}]", arr.join(",")));
     }
     if !shape.event_ids.is_empty() {

@@ -126,7 +126,7 @@ pub(crate) fn canonical_relay_role(role: &str) -> Option<String> {
 fn role_tokens(role: &str) -> impl Iterator<Item = String> + '_ {
     role.split(|c: char| c == ',' || c == '+' || c.is_whitespace())
         .filter(|token| !token.is_empty())
-        .map(|token| token.to_ascii_lowercase())
+        .map(str::to_ascii_lowercase)
 }
 
 /// Choose the relay for a client-initiated NIP-46 `nostrconnect://` flow.

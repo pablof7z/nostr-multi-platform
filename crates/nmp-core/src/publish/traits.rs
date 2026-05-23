@@ -149,12 +149,12 @@ impl ReplayDispatcher {
         // structurally sound to read/write.
         self.scripts
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .insert(relay_url.to_string(), acks);
     }
 
     pub fn sent_frames(&self) -> Vec<(RelayUrl, String)> {
-        self.sent.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        self.sent.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
     }
 }
 
@@ -162,9 +162,9 @@ impl RelayDispatcher for ReplayDispatcher {
     fn dispatch(&self, relay_url: &str, frame: &str) -> Vec<RelayAck> {
         self.sent
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push((relay_url.to_string(), frame.to_string()));
-        let mut scripts = self.scripts.lock().unwrap_or_else(|e| e.into_inner());
+        let mut scripts = self.scripts.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(queue) = scripts.get_mut(relay_url) {
             if !queue.is_empty() {
                 return vec![queue.remove(0)];
@@ -205,7 +205,7 @@ impl QueueDispatcher {
         // D2: recover from a poisoned lock rather than panic — this seam is
         // driven by the single actor thread and a panic here would take the
         // kernel down. The queued frames remain a valid `Vec` regardless.
-        std::mem::take(&mut *self.queued.lock().unwrap_or_else(|e| e.into_inner()))
+        std::mem::take(&mut *self.queued.lock().unwrap_or_else(std::sync::PoisonError::into_inner))
     }
 }
 
@@ -213,7 +213,7 @@ impl RelayDispatcher for QueueDispatcher {
     fn dispatch(&self, relay_url: &str, frame: &str) -> Vec<RelayAck> {
         self.queued
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .push((relay_url.to_string(), frame.to_string()));
         // Async path: no synchronous ack. The engine's
         // `dispatch_pending` tolerates an empty ack vector — every relay
@@ -273,7 +273,7 @@ impl PublishStore for InMemoryPublishStore {
         // D2: poison recovery — never panic at this shared store boundary.
         self.rows
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .insert(record.handle.clone(), record.clone());
         Ok(())
     }
@@ -281,7 +281,7 @@ impl PublishStore for InMemoryPublishStore {
     fn delete(&self, handle: &PublishHandle) -> Result<(), PublishStoreError> {
         self.rows
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .remove(handle);
         Ok(())
     }
@@ -290,7 +290,7 @@ impl PublishStore for InMemoryPublishStore {
         Ok(self
             .rows
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .values()
             .filter(|record| {
                 record

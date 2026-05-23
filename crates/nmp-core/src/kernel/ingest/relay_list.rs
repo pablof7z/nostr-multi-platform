@@ -59,7 +59,7 @@ impl Kernel {
         let should_replace =
             self.author_relay_lists
                 .get(&event.pubkey)
-                .map_or(true, |current| {
+                .is_none_or(|current| {
                     relay_list.created_at > current.created_at
                         || (relay_list.created_at == current.created_at
                             && event.id < current.event_id)

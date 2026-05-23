@@ -10,7 +10,7 @@ impl Kernel {
     /// mirroring the store's supersession logic.
     pub(in crate::kernel) fn ingest_profile(&mut self, event: NostrEvent) {
         let candidate = parse_profile(&event);
-        let should_replace = self.profiles.get(&event.pubkey).map_or(true, |current| {
+        let should_replace = self.profiles.get(&event.pubkey).is_none_or(|current| {
             candidate.created_at > current.created_at
                 || (candidate.created_at == current.created_at
                     && candidate.event_id < current.event_id)

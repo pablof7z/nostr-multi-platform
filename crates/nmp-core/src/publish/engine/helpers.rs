@@ -128,7 +128,7 @@ pub(super) fn is_complete(in_flight: &InFlight) -> bool {
     in_flight
         .per_relay
         .values()
-        .all(|state| state.is_terminal())
+        .all(super::super::state::PerRelayState::is_terminal)
 }
 
 pub(super) fn for_each_terminal(

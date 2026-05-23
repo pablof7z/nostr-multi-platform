@@ -989,7 +989,7 @@ pub fn run_actor_with_observers(
             registry.register("bunker_handshake", move || {
                 // D6: a poisoned bunker-handshake mutex recovers via
                 // `into_inner` rather than panicking inside the snapshot tick.
-                let slot = projection_slot.lock().unwrap_or_else(|e| e.into_inner());
+                let slot = projection_slot.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                 slot.as_ref().map_or(serde_json::Value::Null, |dto| {
                     serde_json::to_value(dto).unwrap_or(serde_json::Value::Null)
                 })
@@ -1203,7 +1203,7 @@ pub fn run_actor_with_observers(
                     if let Err(panic_payload) = result {
                         let msg = panic_payload
                             .downcast_ref::<&str>()
-                            .map(|s| s.to_string())
+                            .map(std::string::ToString::to_string)
                             .or_else(|| panic_payload.downcast_ref::<String>().cloned())
                             .unwrap_or_else(|| "unknown panic".to_string());
                         kernel.log(format!("actor: relay event handler panicked: {msg}"));
