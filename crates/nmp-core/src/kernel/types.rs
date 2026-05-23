@@ -261,8 +261,14 @@ pub(super) struct ThreadViewPayload {
 }
 
 // ── Relay health and wire subscription state ──────────────────────────────────
+// V6 Stage 1 — visibility widened from `pub(super)` to `pub(crate)` so the
+// feature-gated `crate::codegen_schema` re-export can name the type (Rust's
+// `pub(super)` is parent-module-only and cannot be re-exported beyond it
+// even with `pub(crate) use`). Crate-private encapsulation is preserved —
+// nothing outside `nmp-core` can see the type. See `crate::codegen_schema`.
 #[derive(Clone, Debug, Serialize)]
-pub(super) struct RelayStatus {
+#[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
+pub(crate) struct RelayStatus {
     pub(super) role: String,
     pub(super) relay_url: String,
     pub(super) connection: String,
@@ -293,8 +299,11 @@ pub(super) struct RelayStatus {
     pub(super) last_close_reason: Option<String>,
 }
 
+// V6 Stage 1 — visibility widened from `pub(super)` to `pub(crate)` for
+// `crate::codegen_schema` re-export. See `RelayStatus` above.
 #[derive(Clone, Debug, Serialize)]
-pub(super) struct WireSubscriptionStatus {
+#[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
+pub(crate) struct WireSubscriptionStatus {
     pub(super) wire_id: String,
     pub(super) relay_url: String,
     pub(super) filter_summary: String,
@@ -307,8 +316,11 @@ pub(super) struct WireSubscriptionStatus {
     pub(super) close_reason: Option<String>,
 }
 
+// V6 Stage 1 — visibility widened from `pub(super)` to `pub(crate)` for
+// `crate::codegen_schema` re-export. See `RelayStatus` above.
 #[derive(Clone, Debug, Serialize)]
-pub(super) struct LogicalInterestStatus {
+#[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
+pub(crate) struct LogicalInterestStatus {
     pub(super) key: String,
     pub(super) state: String,
     pub(super) refcount: u32,
@@ -611,8 +623,11 @@ pub(super) struct WireSubscriptionState {
 }
 
 // ── Metrics snapshot ──────────────────────────────────────────────────────────
+// V6 Stage 1 — visibility widened from `pub(super)` to `pub(crate)` for
+// `crate::codegen_schema` re-export. See `RelayStatus` above.
 #[derive(Clone, Debug, Serialize)]
-pub(super) struct Metrics {
+#[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
+pub(crate) struct Metrics {
     pub(super) generated_events: u64,
     pub(super) note_events: u64,
     pub(super) profile_events: u64,

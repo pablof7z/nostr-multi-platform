@@ -5,6 +5,7 @@
 pub const NOSTRCONNECT_DEFAULT_RELAY_URL: &str = "wss://relay.damus.io";
 
 #[derive(Clone, Debug, serde::Serialize, PartialEq, Eq)]
+#[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
 pub(crate) struct RelayRoleOption {
     pub(crate) value: String,
     pub(crate) label: String,
