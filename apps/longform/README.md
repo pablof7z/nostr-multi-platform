@@ -70,24 +70,12 @@ in this crate. The thesis holds for read-only consumption apps.
 
 ### 1. Lifecycle FFI symbols not reachable from Rust without a test-only feature
 
-**The blocker.** `nmp_app_new`, `nmp_app_start`, and friends are only
-re-exported from `nmp_core::*` under `cfg(any(test, feature = "test-support"))`
-or `cfg(feature = "android-ffi")`. See `crates/nmp-core/src/lib.rs:73-87` and
-`94-140`. A third-party crate that wants to build the app in pure Rust (e.g.
-for tests, for a server-side reader, for a chirp-tui-style harness) has
-**no door in** — except to enable a Cargo feature named `test-support`, which
-is exactly what `apps/fixture/nmp-app-fixture/Cargo.toml` already does.
-
-Workaround in this crate: `nmp-core = { …, features = ["test-support"] }`.
-
-**Suggested substrate fix** — add a `cfg(feature = "native")` re-export of the
-lifecycle entry points (`nmp_app_new`, `nmp_app_free`, `nmp_app_start`,
-`nmp_app_set_update_callback`, `nmp_app_free_string`) at the crate root, OR
-add a typed Rust constructor `NmpApp::start(config) -> NmpAppHandle` that
-encapsulates the leaked-`*mut NmpApp` pattern. The current `impl NmpApp`
-block (`ffi/mod.rs:830-1366`) has no `new`/`start` — only setters and
-delegates — so a third-party app has to reach into a feature-gated
-C-ABI namespace.
+**[RESOLVED]** `nmp_app_new`, `nmp_app_start`, `nmp_app_free`, and
+`nmp_app_free_string` are now re-exported under `#[cfg(feature = "native")]`
+at `crates/nmp-core/src/lib.rs:86-97`. The `native` feature is the default,
+so a plain `nmp-core = { path = "…" }` dep is now sufficient for a third-party
+app crate — no `test-support` workaround needed. This crate's `Cargo.toml`
+has been updated accordingly.
 
 ### 2. NIP-23 `(author, d_tag)` dedup is up to the projection
 
@@ -139,11 +127,10 @@ test, and the docs ARE the test artifact.
 - Zero references to iOS / Swift code.
 - Zero modifications to `nmp-core` or any protocol crate.
 - Four substrate seams, all stable, all documented.
-- One feature-flag workaround (`features = ["test-support"]`) because the
-  lifecycle symbols are gated.
+- Zero feature-flag workarounds — lifecycle symbols are now under the default
+  `native` feature (Finding #1 resolved).
 - Two ergonomic improvements (replaceable-event dedup helper, one-shot fetch
   pattern) that would have made the code 20 lines shorter.
 
-The framework thesis survives the spike. The follow-up is to close the
-lifecycle-symbol gap so the next second-app builder doesn't have to enable a
-"test-support" feature in production.
+The framework thesis survives the spike. All original findings are either
+resolved (lifecycle-symbol gap) or documented as known follow-ups.
