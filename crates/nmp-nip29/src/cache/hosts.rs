@@ -8,7 +8,7 @@ use crate::group_id::{GroupId, RelayUrl};
 
 #[derive(Clone, Debug, Default)]
 pub struct JoinedHostsCache {
-    /// pubkey -> host_relay_url -> set of local_ids
+    /// pubkey -> `host_relay_url` -> set of `local_ids`
     by_pubkey: BTreeMap<String, BTreeMap<RelayUrl, BTreeSet<String>>>,
 }
 

@@ -7,10 +7,10 @@
 //!
 //! ## Action layout
 //!
-//! - `content` — PostChatMessage (kind:9).
-//! - `composed` — ReactInGroup (kind:7+h), CommentInGroup (kind:1111+h).
-//! - `discover` — DiscoverGroups (no publish; pushes a metadata interest).
-//! - `join` — JoinGroup (kind:9021, user-management request).
+//! - `content` — `PostChatMessage` (kind:9).
+//! - `composed` — `ReactInGroup` (kind:7+h), `CommentInGroup` (kind:1111+h).
+//! - `discover` — `DiscoverGroups` (no publish; pushes a metadata interest).
+//! - `join` — `JoinGroup` (kind:9021, user-management request).
 //!
 //! NIP-29 ships its relay-group chat surface plus discovery + join in v1.
 //! Group administration (9000-9009 admin actions) remains out of scope for

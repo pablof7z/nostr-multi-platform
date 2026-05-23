@@ -43,6 +43,10 @@ impl GroupId {
     /// Check that both `host_relay_url` and `local_id` are non-empty.
     /// All group actions that route to a specific relay must call this in
     /// `start()` to prevent silent routing to relay `""`.
+    ///
+    /// # Errors
+    ///
+    /// Returns a string describing the missing field if either is empty.
     pub fn require_routable(&self) -> Result<(), String> {
         if self.host_relay_url.is_empty() {
             return Err("group.host_relay_url must not be empty".into());
@@ -68,7 +72,7 @@ impl GroupId {
     /// Parse from the NIP-29 URI shape `<host>'<local-id>`.
     ///
     /// Returns `None` if the string does not contain exactly one `'`, has an
-    /// empty host or local id, or the local_id contains characters outside
+    /// empty host or local id, or the `local_id` contains characters outside
     /// the NIP-29 charset `[a-z0-9-_]+`. The host is rewrapped as
     /// `wss://<host>` since the URI form omits the scheme.
     pub fn from_uri(s: &str) -> Option<Self> {

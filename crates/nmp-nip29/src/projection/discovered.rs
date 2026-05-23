@@ -129,10 +129,10 @@ impl LatestEvent {
     /// semantics — strictly newer `created_at`, ties broken by id descending
     /// (so the choice is total and deterministic).
     fn supersedes(&self, incoming: &Self) -> bool {
-        if incoming.created_at != self.created_at {
-            incoming.created_at > self.created_at
-        } else {
+        if incoming.created_at == self.created_at {
             incoming.id > self.id
+        } else {
+            incoming.created_at > self.created_at
         }
     }
 }
@@ -172,7 +172,7 @@ impl DiscoveredGroupsProjection {
 
     /// Whether `event` belongs in this projection: one of the three metadata
     /// kinds AND a `["d", _]` tag is present.
-    fn accepts(&self, event: &KernelEvent) -> bool {
+    fn accepts(event: &KernelEvent) -> bool {
         let kind_ok = matches!(
             event.kind,
             KIND_GROUP_METADATA | KIND_GROUP_ADMINS | KIND_GROUP_MEMBERS
@@ -268,9 +268,8 @@ fn has_marker_tag(tags: &[Vec<String>], key: &str) -> bool {
 
 /// Count of `["p", _]` tags in `tags`.
 fn count_p_tags(tags: &[Vec<String>]) -> u32 {
-    tags.iter()
-        .filter(|t| t.len() >= 2 && t[0] == "p")
-        .count() as u32
+    let n = tags.iter().filter(|t| t.len() >= 2 && t[0] == "p").count();
+    u32::try_from(n).unwrap_or(u32::MAX)
 }
 
 impl KernelEventObserver for DiscoveredGroupsProjection {
@@ -281,7 +280,7 @@ impl KernelEventObserver for DiscoveredGroupsProjection {
     /// Cheap and panic-free, per the `KernelEventObserver` contract: a single
     /// uncontended lock + map insert. A poisoned mutex is a silent no-op (D6).
     fn on_kernel_event(&self, event: &KernelEvent) {
-        if !self.accepts(event) {
+        if !Self::accepts(event) {
             return;
         }
         // `accepts` confirmed `d_tag_value` is `Some`; unwrap is safe.

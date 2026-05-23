@@ -17,7 +17,7 @@
 //!
 //! The actor reads `IdentityRuntime::active_local_keys` to sign the
 //! kind:9734. Bunker (NIP-46) accounts return `None`; the actor fails closed
-//! with a toast and records `ActionFailure` against the correlation_id.
+//! with a toast and records `ActionFailure` against the `correlation_id`.
 //! Remote-signer signing is the ADR-0026 Phase 2 follow-up.
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};

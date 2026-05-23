@@ -55,7 +55,7 @@ pub enum KindClass {
     NotGroup,
 }
 
-/// Classify a (kind, has_h_tag) pair. The `h` tag is the routing key and the
+/// Classify a (kind, `has_h_tag`) pair. The `h` tag is the routing key and the
 /// ownership discriminator (kinds.md §4); the kind is the dispatch.
 #[must_use] 
 pub fn classify(kind: u32, has_h_tag: bool) -> KindClass {
@@ -160,7 +160,7 @@ pub fn d_tag_value(tags: &[Vec<String>]) -> Option<&str> {
 ///
 /// `host_relay_url` MUST be the provenance relay — the relay that produced the
 /// event in our subscription stream. NIP-29 group identity is the pair
-/// `(host, local_id)` (group_id.rs); the relay is the trust anchor.
+/// `(host, local_id)` (`group_id.rs`); the relay is the trust anchor.
 #[must_use] 
 pub fn group_id_from_tags(host_relay_url: &RelayUrl, tags: &[Vec<String>]) -> Option<GroupId> {
     let local = h_tag_value(tags).or_else(|| d_tag_value(tags))?;

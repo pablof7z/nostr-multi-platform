@@ -61,6 +61,11 @@ impl PublishPlan {
     /// per routing.md §5: any event carrying `["h", _]` MUST have
     /// `pin_to.is_some()`, otherwise reject with `MissingHostPinForGroupEvent`.
     /// This is the privacy-leak prevention guard.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`PublishPlanError::MissingHostPinForGroupEvent`] if the event
+    /// has an `["h", _]` tag but no relay pin is set.
     pub fn validate_no_unpinned_h(&self) -> Result<(), PublishPlanError> {
         let has_h = self.tags.iter().any(|t| t.len() >= 2 && t[0] == "h");
         if has_h && self.pin_to.is_none() {
@@ -97,6 +102,10 @@ impl PublishPlan {
     /// the publish engine reports THAT id in `projections["action_results"]`
     /// so the host spinner closes on the id it received from `dispatch_action`,
     /// not on the signed event's id. Pass `None` for non-dispatch callers.
+    ///
+    /// # Errors
+    ///
+    /// Returns a string error if `pin_to` is `None` (no relay pin set).
     pub fn into_actor_command(self, correlation_id: Option<String>) -> Result<nmp_core::ActorCommand, String> {
         use nmp_core::substrate::UnsignedEvent;
         use nmp_core::ActorCommand;

@@ -130,7 +130,7 @@ impl ZapsAggregateSnapshot {
 /// registration time). Register the same `Arc` as a [`KernelEventObserver`]
 /// (ingest) and capture it in a snapshot-projection closure (output).
 ///
-/// Internally the per-target state is `BTreeMap<EventId, u64>` (receipt_id →
+/// Internally the per-target state is `BTreeMap<EventId, u64>` (`receipt_id` →
 /// msats), which gives free dedupe on `receipt_id` (the same receipt being
 /// re-delivered across relays does not double-count) and a deterministic
 /// iteration order for any future receipt-level introspection.
@@ -178,7 +178,7 @@ impl ZapsAggregateProjection {
         let totals: HashMap<EventId, ZapCount> = by_target
             .iter()
             .map(|(target, receipts)| {
-                let count = receipts.len() as u32;
+                let count = u32::try_from(receipts.len()).unwrap_or(u32::MAX);
                 let total_msats = receipts.values().sum();
                 (
                     target.clone(),
@@ -209,7 +209,7 @@ impl KernelEventObserver for ZapsAggregateProjection {
     /// zaps) are silently ignored — the decoder enforces both checks.
     /// Receipts with a parseable `e` tag accumulate under that target; a
     /// re-delivery of the same `receipt_id` replaces rather than duplicates
-    /// (BTreeMap key dedupe).
+    /// (`BTreeMap` key dedupe).
     ///
     /// Cheap and panic-free, per the `KernelEventObserver` contract: one
     /// decode + one uncontended lock + two map inserts. A poisoned mutex is

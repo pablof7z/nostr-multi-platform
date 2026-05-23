@@ -141,7 +141,7 @@ impl ZapsView {
     #[must_use] 
     pub fn snapshot(_c: &ViewContext, state: &ZapsState) -> ZapsPayload {
         let total_msats = state.by_id.values().map(|e| e.msats).sum();
-        let zap_count = state.by_id.len() as u32;
+        let zap_count = u32::try_from(state.by_id.len()).unwrap_or(u32::MAX);
         let zappers: Vec<ZapEntry> = state.by_id.values().cloned().collect();
         ZapsPayload {
             target_id: state.target.clone(),

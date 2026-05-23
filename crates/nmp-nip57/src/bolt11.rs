@@ -13,7 +13,7 @@
 //! - `n` → 10⁻⁹ BTC
 //! - `p` → 10⁻¹² BTC
 //!
-//! Result in **millisats** (1 BTC = 100_000_000_000 msat). Sub-msat amounts
+//! Result in **millisats** (1 BTC = `100_000_000_000` msat). Sub-msat amounts
 //! (e.g. `1p` = 0.001 msat) round down. Returns `None` on missing/empty
 //! amount, unknown multiplier, or any parse failure.
 

@@ -63,7 +63,7 @@ impl RecentGroupEvents {
 
     #[must_use] 
     pub fn len_for(&self, group: &GroupId) -> usize {
-        self.per_group.get(group).map_or(0, |d| d.len())
+        self.per_group.get(group).map_or(0, std::collections::VecDeque::len)
     }
 }
 

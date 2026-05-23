@@ -32,7 +32,7 @@ fn post_chat_message_plan(action: &PostChatMessageInput) -> PublishPlan {
         tags.push(vec!["previous".into(), previous_tag_prefix(prefix)]);
     }
     if let Some(reply) = &action.reply_to_event_id {
-        tags.push(vec!["e".into(), reply.clone(), "".into(), "reply".into()]);
+        tags.push(vec!["e".into(), reply.clone(), String::new(), "reply".into()]);
     }
     PublishPlan::pinned(&action.group, KIND_CHAT_MESSAGE, action.content.clone(), tags)
 }

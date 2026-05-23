@@ -35,7 +35,7 @@ pub struct DmRuntimeState {
 }
 
 impl DmRuntimeState {
-    /// Diff the new (active_pubkey, read_relay_urls) tuple against the last
+    /// Diff the new (`active_pubkey`, `read_relay_urls`) tuple against the last
     /// applied view and return the minimal list of effects the host must
     /// apply this tick.
     ///

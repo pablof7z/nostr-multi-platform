@@ -9,7 +9,7 @@
 //!   builds one. Surface: [`ZapReceiptRecord`] + [`try_from_event`] decoder,
 //!   plus a minimal [`bolt11::amount_msats`] HRP parser for the
 //!   authoritative payment amount.
-//! - **ZapsView** — reactive aggregate (total msats, zappers) keyed by a
+//! - **`ZapsView`** — reactive aggregate (total msats, zappers) keyed by a
 //!   zapped event id.
 
 pub mod action;

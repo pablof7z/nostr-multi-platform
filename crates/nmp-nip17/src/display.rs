@@ -48,7 +48,7 @@ pub fn avatar_initials(npub: &str) -> String {
     let body = npub.strip_prefix("npub1").unwrap_or(npub);
     let chars: Vec<char> = body.chars().take(2).collect();
     match chars.as_slice() {
-        [a, b] => format!("{}{}", a, b).to_uppercase(),
+        [a, b] => format!("{a}{b}").to_uppercase(),
         [a] => a.to_uppercase().to_string(),
         _ => "?".to_string(),
     }
