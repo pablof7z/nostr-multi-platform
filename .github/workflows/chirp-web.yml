@@ -46,11 +46,12 @@ jobs:
       # secp256k1-sys's build.rs invokes `cc` to compile C code for wasm32.
       # On Ubuntu the default `cc` is GCC, which has no wasm32 backend; pinning
       # `CC_wasm32_unknown_unknown=clang` makes cc-rs use the system clang
-      # (clang-14+ on ubuntu-latest, which ships with wasm32 support).
+      # (clang-14+ on ubuntu-latest, which ships with wasm32 support). On Linux
+      # the GNU `ar` understands wasm object files so we let cc-rs default to
+      # it (homebrew LLVM ships `llvm-ar`, ubuntu-latest does not).
       - name: Check wasm target
         env:
           CC_wasm32_unknown_unknown: clang
-          AR_wasm32_unknown_unknown: llvm-ar
         run: cargo check -p nmp-wasm --target wasm32-unknown-unknown
 
       - name: Install Node
