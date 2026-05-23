@@ -94,6 +94,7 @@ impl SubscriptionLifecycle {
     /// The actor owns the heuristic for what counts as "dead" — typically
     /// N consecutive connect failures within a window. This lifecycle just
     /// respects the actor's decision.
+    #[must_use]
     pub fn mark_relay_dead(&mut self, url: RelayUrl) -> bool {
         let inserted = self.dead_relays.insert(url.clone());
         if inserted {
@@ -105,6 +106,7 @@ impl SubscriptionLifecycle {
 
     /// Clear a relay's dead mark. The next recompile lets the selector pick
     /// it again. Returns true iff the relay's state changed.
+    #[must_use]
     pub fn mark_relay_alive(&mut self, url: &RelayUrl) -> bool {
         let removed = self.dead_relays.remove(url);
         if removed {
