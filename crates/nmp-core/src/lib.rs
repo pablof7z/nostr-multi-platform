@@ -59,10 +59,12 @@ pub use update_envelope::{
 pub use actor::ActorCommand;
 pub use actor::NOSTRCONNECT_DEFAULT_RELAY_URL;
 
-// Re-export the FFI entry-points so the ffi-stress harness (and any other
-// Rust-side crate) can call them directly via the Rust rlib dependency,
+// Re-export the FFI entry-points so any native (non-WASM) Rust-side crate
+// — including third-party app crates such as `nmp-app-fixture` and any
+// future `nmp-app-*` — can call them directly via the Rust rlib dependency,
 // without an `extern "C"` block. The symbols remain `#[no_mangle]` on the
 // ffi:: side and are still reachable from Swift/C unchanged.
+//
 // One door per capability: `nmp_app_publish_signed_event`,
 // `nmp_app_publish_signed_event_to`, and `nmp_app_publish_unsigned_event`
 // were deleted — every user/app-authored event-producing publish now goes
@@ -70,73 +72,52 @@ pub use actor::NOSTRCONNECT_DEFAULT_RELAY_URL;
 // `nmp_app_retry_publish` / `nmp_app_cancel_publish` survive as the
 // publish-lifecycle control plane (no event production; the D11 lint
 // whitelists them).
-#[cfg(all(any(test, feature = "test-support"), feature = "native"))]
+//
+// Gated on `native` (the default feature) so wasm32 (`--no-default-features`)
+// continues to compile without these symbols. The `android-ffi` and
+// `test-support` features both already imply `native`, so they inherit this
+// surface; the deltas they add are the small blocks below.
+#[cfg(feature = "native")]
 pub use ffi::{
-    nmp_app_ack_action_stage, nmp_app_add_relay, nmp_app_cancel_publish, nmp_app_claim_profile,
-    nmp_app_close_author, nmp_app_close_thread, nmp_app_configure, nmp_app_create_new_account,
-    nmp_app_dispatch_action, nmp_app_dispatch_capability, nmp_app_free, nmp_app_free_string,
-    nmp_app_inject_pre_verified_events, nmp_app_inject_signed_event_json,
-    nmp_app_inject_signed_events, nmp_app_lifecycle_background, nmp_app_lifecycle_foreground,
-    nmp_app_new, nmp_app_open_author, nmp_app_open_firehose_tag, nmp_app_open_thread,
-    nmp_app_open_timeline, nmp_app_open_uri, nmp_app_read_projection_json,
-    nmp_app_register_event_observer, nmp_app_register_raw_event_observer, nmp_app_release_profile,
-    nmp_app_remove_relay, nmp_app_retry_publish, nmp_app_set_capability_callback,
-    nmp_app_set_lifecycle_callback, nmp_app_set_storage_path, nmp_app_set_update_callback,
-    nmp_app_signin_nsec, nmp_app_start, nmp_app_unregister_event_observer,
-    nmp_app_unregister_raw_event_observer,
+    nmp_app_add_relay, nmp_app_cancel_publish, nmp_app_claim_profile, nmp_app_close_author,
+    nmp_app_close_thread, nmp_app_configure, nmp_app_create_new_account, nmp_app_dispatch_action,
+    nmp_app_dispatch_capability, nmp_app_free, nmp_app_free_string, nmp_app_lifecycle_background,
+    nmp_app_lifecycle_foreground, nmp_app_new, nmp_app_open_author, nmp_app_open_firehose_tag,
+    nmp_app_open_thread, nmp_app_open_timeline, nmp_app_open_uri, nmp_app_register_event_observer,
+    nmp_app_register_raw_event_observer, nmp_app_release_profile, nmp_app_remove_relay,
+    nmp_app_retry_publish, nmp_app_set_capability_callback, nmp_app_set_lifecycle_callback,
+    nmp_app_set_storage_path, nmp_app_set_update_callback, nmp_app_signin_nsec, nmp_app_start,
+    nmp_app_unregister_event_observer, nmp_app_unregister_raw_event_observer,
 };
 
-// android-ffi: expose the full FFI surface via Rust paths. nmp-android-ffi
-// calls these through the rlib dependency — this is what causes rustc to
-// include the symbol bodies in CGU files. Without Rust-path references the
-// rlib is consumed at compile time but the symbols stay `U` in the cdylib.
-// android-ffi implies native (see [features] in Cargo.toml).
+// test-support delta: live-bench harnesses and integration test binaries need
+// a few extra entry points that production app crates do not — pre-verified
+// event injection (used by the S3/S4/S5 throughput harnesses), per-action
+// stage acks (used by action-FSM tests), and read-side projection JSON dumps
+// (used to assert reducer output without going through the snapshot
+// callback). Kept gated on test-support so they don't pollute the
+// production-app re-export surface.
+//
+// `test-support` implies the `native` superset above (it requires `native`
+// in practice — every symbol below lives in `ffi::`, and `ffi::` is gated on
+// `native`). The 32 overlap symbols are exposed through the `native` block.
+#[cfg(all(any(test, feature = "test-support"), feature = "native"))]
+pub use ffi::{
+    nmp_app_ack_action_stage, nmp_app_inject_pre_verified_events,
+    nmp_app_inject_signed_event_json, nmp_app_inject_signed_events, nmp_app_read_projection_json,
+};
+
+// android-ffi delta: the Android JNI shim (`nmp-android-ffi`) needs four
+// extra entry points the standard native re-export above does not yet expose
+// — account removal, bunker sign-in, full-actor stop, and active-account
+// switch. The rest of the Android JNI surface is inherited from the
+// `native` block above (android-ffi implies native). Re-exporting through
+// the rlib is what causes rustc to include the symbol bodies in CGU files;
+// without Rust-path references the rlib is consumed at compile time but the
+// symbols stay `U` in the cdylib.
 #[cfg(feature = "android-ffi")]
 pub use ffi::{
-    nmp_app_add_relay,
-    nmp_app_cancel_publish,
-    nmp_app_claim_profile,
-    nmp_app_close_author,
-    nmp_app_close_thread,
-    nmp_app_configure,
-    nmp_app_create_new_account,
-    nmp_app_dispatch_action,
-    nmp_app_dispatch_capability,
-    nmp_app_free,
-    nmp_app_free_string,
-    // T118 / G3 — lifecycle symbols must be reachable from the Android JNI
-    // shim too; same rationale as every other entry in this block.
-    nmp_app_lifecycle_background,
-    nmp_app_lifecycle_foreground,
-    nmp_app_new,
-    nmp_app_open_author,
-    nmp_app_open_firehose_tag,
-    nmp_app_open_thread,
-    nmp_app_open_timeline,
-    nmp_app_open_uri,
-    // The one-door rule deleted `nmp_app_publish_signed_event{,_to}` /
-    // `nmp_app_publish_unsigned_event` — every event-producing publish now
-    // goes through `nmp_app_dispatch_action` (`nmp.publish`). The Android
-    // JNI shim's matching call sites are removed alongside.
-    // T146 — kernel event observer FFI for Android JNI.
-    nmp_app_register_event_observer,
-    // Raw signed-event tap FFI for Android JNI.
-    nmp_app_register_raw_event_observer,
-    nmp_app_release_profile,
-    nmp_app_remove_account,
-    nmp_app_remove_relay,
-    nmp_app_retry_publish,
-    nmp_app_set_capability_callback,
-    nmp_app_set_lifecycle_callback,
-    nmp_app_set_storage_path,
-    nmp_app_set_update_callback,
-    nmp_app_signin_bunker,
-    nmp_app_signin_nsec,
-    nmp_app_start,
-    nmp_app_stop,
-    nmp_app_switch_active,
-    nmp_app_unregister_event_observer,
-    nmp_app_unregister_raw_event_observer,
+    nmp_app_remove_account, nmp_app_signin_bunker, nmp_app_stop, nmp_app_switch_active,
 };
 
 // D0: NIP-47 NWC is an app noun — the `nmp_app_wallet_*` FFI symbols are
