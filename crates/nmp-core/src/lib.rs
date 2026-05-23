@@ -61,8 +61,18 @@ pub use bunker_hook::{register_bunker_hook, BunkerHookFn, BunkerHookRequest};
 #[cfg(feature = "native")]
 pub use ffi::NmpApp;
 pub use kernel::{read_eligible_relay_urls, RelayEditRow, RelayEditRowList, RelayEditRowsSlot};
+// V-01 Stage 3 — the wire-transport-agnostic frame enum the kernel ingests.
+// Promoted to the public surface so the wasm32 `BrowserRelayDriver` in
+// `nmp-wasm` can construct frames from `web_sys::MessageEvent` / `CloseEvent`.
+// Substrate-grade (D0): no app/protocol nouns.
+pub use kernel::RelayFrame;
 pub use kernel_reducer::KernelReducer;
 pub use relay::canonical_relay_url;
+// V-01 Stage 3 — the per-frame outbound type (`role`, `relay_url`, `text`) the
+// kernel produces and any transport (native `relay_worker`, wasm
+// `BrowserRelayDriver`) consumes. Fields stay `pub(crate)` so the kernel
+// remains the single writer; external callers read via accessors.
+pub use relay::{OutboundMessage, RelayRole};
 pub use remote_signer::RemoteSignerHandle;
 pub use update_envelope::{
     panic_message, wrap_panic, wrap_snapshot, PanicFrame, UpdateEnvelope, WireEnvelope,
