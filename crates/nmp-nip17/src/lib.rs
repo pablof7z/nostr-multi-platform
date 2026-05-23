@@ -127,6 +127,11 @@ pub fn build_dm_rumor(input: &DmInput, sender_pubkey: &str) -> UnsignedEvent {
     }
 }
 
+pub fn register_actions(app: &mut nmp_core::NmpApp) {
+    app.register_action::<SendDmAction>();
+    app.register_action::<PublishDmRelayListAction>();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
