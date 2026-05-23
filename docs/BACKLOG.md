@@ -378,12 +378,32 @@ NWC `pay_invoice` fires → kind:9735 receipt ingested and reflected in `nmp.nip
 ### F-05 · nmp-codegen Swift Decodables pilot [V1 QUALITY]
 
 `crates/nmp-codegen` (1,212 LOC) has a working `generate_modules` CLI. `KernelBridge.swift`
-is 1,988 LOC of handwritten counterpart types — a maintenance surface that diverges on every
+was 1,988 LOC of handwritten counterpart types — a maintenance surface that diverges on every
 snapshot field change.
 
-**Pilot deliverable:** generate Swift `Codable` structs for `TimelineBlock` and `KernelUpdate`
-from the `nmp.toml` manifest; delete the handwritten counterparts in `KernelBridge.swift`.
-Proves the loop before extending to the full bridge.
+**Status:** Stage 1 (7 flat-record types) **DONE**. Stage 2 (`SnapshotProjections` registry)
+**DONE**. Stage 3 partial — `TimelineItem` migrated to the generated header (this PR);
+the handwritten Swift counterpart + custom decoder were deleted. The synthetic-construction
+call site in `ModularBlockView` was updated to feed the now-non-optional `authorPictureUrl`
+/ `authorAvatarSource` directly.
+
+**Remaining Stage 3 work (all blocked on emitter extensions):**
+
+- `KernelSnapshot` (Swift `KernelUpdate`, `KernelBridge.swift:721`): needs a per-field
+  Swift-type override mechanism so the `HashMap<String, serde_json::Value>` `projections`
+  field can render as the existing generated `SnapshotProjections?` rather than an
+  `[String: AnyDecodable]`. Also depends on the `legacy_default` flag (v6 plan §4d) for
+  `updateKind` / `relayStatus`-style backward-compat optionality and on a place to host the
+  20+ computed accessors (`var walletStatus`, `var profile`, etc.) that currently live on
+  the hand-written struct (move them to an `extension KernelUpdate` in
+  `KernelBridge.swift`).
+- Tagged-enum support (`TimelineBlock` family in `TimelineBlock.swift`, `ActionStage`,
+  `Nip46Onboarding.StageKind`): the emitter currently rejects non-flat-record schemas with
+  `Unsupported`; needs the `oneOf` / `anyOf` rendering path.
+- `legacy_default` override flag (v6 plan §4d) for forward/backward-compat fields the
+  current Rust shape requires but older snapshots omitted.
+
+These are each their own architectural step and merit separate PRs.
 
 ### F-06 · ~~CI lint: freeze C-ABI surface~~ CLOSED — see Appendix
 

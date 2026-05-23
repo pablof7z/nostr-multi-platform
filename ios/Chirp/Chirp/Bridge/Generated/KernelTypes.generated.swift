@@ -19,7 +19,7 @@ import Foundation
 
 // MARK: - KernelMetrics
 // Source: nmp_core::kernel::types::Metrics
-public struct KernelMetrics: Decodable, Equatable {
+public struct KernelMetrics: Decodable, Equatable, Sendable {
     public let actorQueueDepth: UInt32
     public let bytesRx: UInt64
     public let bytesTx: UInt64
@@ -68,7 +68,7 @@ public struct KernelMetrics: Decodable, Equatable {
 
 // MARK: - RelayStatus
 // Source: nmp_core::kernel::types::RelayStatus
-public struct RelayStatus: Decodable, Equatable, Identifiable {
+public struct RelayStatus: Decodable, Equatable, Identifiable, Sendable {
     public let activeWireSubscriptions: Int
     public let auth: String
     public let bytesRx: UInt64
@@ -91,7 +91,7 @@ public struct RelayStatus: Decodable, Equatable, Identifiable {
 
 // MARK: - LogicalInterestStatus
 // Source: nmp_core::kernel::types::LogicalInterestStatus
-public struct LogicalInterestStatus: Decodable, Equatable, Identifiable {
+public struct LogicalInterestStatus: Decodable, Equatable, Identifiable, Sendable {
     public let cacheCoverage: String
     public let key: String
     public let refcount: UInt32
@@ -104,7 +104,7 @@ public struct LogicalInterestStatus: Decodable, Equatable, Identifiable {
 
 // MARK: - WireSubscriptionStatus
 // Source: nmp_core::kernel::types::WireSubscriptionStatus
-public struct WireSubscriptionStatus: Decodable, Equatable, Identifiable {
+public struct WireSubscriptionStatus: Decodable, Equatable, Identifiable, Sendable {
     public let closeReason: String?
     public let eoseAtMs: UInt64?
     public let eventsRx: UInt64
@@ -121,7 +121,7 @@ public struct WireSubscriptionStatus: Decodable, Equatable, Identifiable {
 
 // MARK: - AccountSummary
 // Source: nmp_core::kernel::identity_state::AccountSummary
-public struct AccountSummary: Decodable, Equatable, Identifiable {
+public struct AccountSummary: Decodable, Equatable, Identifiable, Sendable {
     public let displayName: String
     public let id: String
     public let isActive: Bool
@@ -135,7 +135,7 @@ public struct AccountSummary: Decodable, Equatable, Identifiable {
 
 // MARK: - RelayEditRow
 // Source: nmp_core::kernel::identity_state::RelayEditRow
-public struct RelayEditRow: Decodable, Equatable, Identifiable {
+public struct RelayEditRow: Decodable, Equatable, Identifiable, Sendable {
     public let role: String
     public let roleLabel: String
     public let roleTint: String
@@ -146,13 +146,34 @@ public struct RelayEditRow: Decodable, Equatable, Identifiable {
 
 // MARK: - RelayRoleOption
 // Source: nmp_core::actor::relay_roles::RelayRoleOption
-public struct RelayRoleOption: Decodable, Equatable, Identifiable {
+public struct RelayRoleOption: Decodable, Equatable, Identifiable, Sendable {
     public let isDefault: Bool
     public let label: String
     public let tint: String
     public let value: String
 
     public var id: String { value }
+}
+
+// MARK: - TimelineItem
+// Source: nmp_core::kernel::types::TimelineItem
+public struct TimelineItem: Decodable, Equatable, Identifiable, Hashable, Sendable {
+    public let authorAvatarColor: String
+    public let authorAvatarInitials: String
+    public let authorAvatarSource: String
+    public let authorDisplay: String
+    public let authorLnurl: String?
+    public let authorPictureUrl: String
+    public let authorPubkey: String
+    public let content: String
+    public let contentPreview: String
+    public let createdAtDisplay: String
+    public let id: String
+    public let isRepost: Bool
+    public let kind: UInt32
+    public let navTargetId: String
+    public let relayCount: UInt32
+    public let repostInnerContent: String
 }
 
 // MARK: - SnapshotProjections

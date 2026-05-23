@@ -1768,100 +1768,33 @@ struct AuthorProfileSnapshot: Decodable, Equatable {
     let primaryAction: ProfileAction?
 }
 
-struct TimelineItem: Decodable, Identifiable, Equatable, Hashable {
-    let id: String
-    let authorPubkey: String
-    let authorDisplay: String
-    let authorPictureUrl: String?
-    let authorAvatarInitials: String
-    let authorAvatarColor: String
-    /// NIP-57 lightning address (`lud16`) / LNURL (`lud06`) pre-extracted
-    /// from the author's kind:0 metadata. `nil` when the author has no
-    /// lightning address or their kind:0 hasn't arrived yet. The shell
-    /// zap button toggles its enabled/disabled state on this value;
-    /// Swift never parses raw metadata (thin-shell rule, aim.md §6.9).
-    let authorLnurl: String?
-    /// Nostr event kind (1 = note, 6 = repost, 7 = reaction, …). The kernel
-    /// supplies this so the shell can render kind-conditional UI (e.g. a
-    /// "Repost" badge or alternate navigation target) without re-parsing the
-    /// raw event JSON in `content`. Thin-shell rule: the kind is the
-    /// authoritative protocol signal — never inferred from content shape.
-    ///
-    /// Prefer `isRepost` for branching the UI. The raw `kind` is retained for
-    /// diagnostics and forward-compatible decoders that need the full integer
-    /// (e.g. `NoteContentView`'s typed `MediaKind` switch is unrelated and
-    /// stays put). The thin-shell rule is enforced by the `isRepost` bool —
-    /// the view layer must NOT `switch` on this integer to derive display
-    /// state. See `aim.md §6.9` (Chirp thin-shell).
-    let kind: UInt32
-    let content: String
-    let contentPreview: String
-    let createdAtDisplay: String
-    let relayCount: UInt32
-    /// `true` when this row represents a NIP-18 repost (kind:6). Rust
-    /// pre-computes this so the view layer never re-derives protocol
-    /// semantics from `kind`. Decoded with `#[serde(default)]` semantics on
-    /// the kernel side — a pre-existing snapshot without the field decodes
-    /// as `false`.
-    let isRepost: Bool
-    /// Event id to navigate to when the row is tapped. For a kind:1 note
-    /// this is `id`; for a kind:6 repost it is the inner kind:1's id when
-    /// the NIP-18 embedded JSON is well-formed, falling back to `id` when
-    /// the inner event is missing/malformed. The shell binds this verbatim —
-    /// it MUST NOT parse `content` to find the inner event id.
-    let navTargetId: String
-    /// Inner-note text rendered inside a kind:6 repost cell. Empty string
-    /// for kind:1 rows (the cell uses `content` directly). For kind:6 it is
-    /// the inner event's `content` string when the NIP-18 embedded JSON
-    /// parses, or `""` when it is missing/malformed. The shell uses this
-    /// verbatim — no JSON parsing in Swift.
-    let repostInnerContent: String
-}
-
-extension TimelineItem {
-    // Decoder is tolerant of forward/backward schema drift so an older
-    // kernel snapshot (no `is_repost` etc.) still decodes — falls back to
-    // `false` / `""` / `id`, mirroring the Rust fallbacks bit-for-bit. The
-    // outer `KernelSnapshot` decoder runs with `.convertFromSnakeCase`, so
-    // JSON `is_repost` → property `isRepost` (post-transform name) without
-    // an explicit raw value.
-    //
-    // The decoder lives in an `extension` so the auto-synthesized memberwise
-    // initializer is preserved for synthetic construction sites (e.g.
-    // `ModularBlockView.syntheticItem`) — adding `init(from:)` to the body
-    // would suppress it.
-    private enum CodingKeys: String, CodingKey {
-        case id, authorPubkey, authorDisplay, authorPictureUrl
-        case authorAvatarInitials, authorAvatarColor, authorLnurl
-        case kind, content, contentPreview, createdAtDisplay, relayCount
-        case isRepost, navTargetId, repostInnerContent
-    }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        let id = try c.decode(String.self, forKey: .id)
-        self.init(
-            id: id,
-            authorPubkey: try c.decode(String.self, forKey: .authorPubkey),
-            authorDisplay: try c.decode(String.self, forKey: .authorDisplay),
-            authorPictureUrl: try c.decodeIfPresent(String.self, forKey: .authorPictureUrl),
-            authorAvatarInitials: try c.decode(String.self, forKey: .authorAvatarInitials),
-            authorAvatarColor: try c.decode(String.self, forKey: .authorAvatarColor),
-            // NIP-57 — `nil` when the author has no lud16/lud06 OR an older
-            // kernel snapshot pre-dates the field. Mirrors the
-            // forward/backward-compat pattern below (isRepost et al.).
-            authorLnurl: try c.decodeIfPresent(String.self, forKey: .authorLnurl),
-            kind: try c.decode(UInt32.self, forKey: .kind),
-            content: try c.decode(String.self, forKey: .content),
-            contentPreview: try c.decode(String.self, forKey: .contentPreview),
-            createdAtDisplay: try c.decode(String.self, forKey: .createdAtDisplay),
-            relayCount: try c.decode(UInt32.self, forKey: .relayCount),
-            isRepost: try c.decodeIfPresent(Bool.self, forKey: .isRepost) ?? false,
-            navTargetId: try c.decodeIfPresent(String.self, forKey: .navTargetId) ?? id,
-            repostInnerContent: try c.decodeIfPresent(String.self, forKey: .repostInnerContent) ?? ""
-        )
-    }
-}
+// `TimelineItem` moved to `Generated/KernelTypes.generated.swift` (V6
+// Stage 3 partial, plan §6d — F-05). Rust source:
+// `nmp-core/src/kernel/types.rs::TimelineItem`. Field docs live alongside
+// the Rust definitions.
+//
+// The generated struct tightens three field-level shapes the hand-written
+// version had loosened for "older kernel snapshot" tolerance. The Rust
+// kernel always emits all of them — the `decodeIfPresent ?? default`
+// fallbacks were dead code, and the schema source of truth now sits on
+// the Rust side where it belongs:
+//
+// 1. `authorPictureUrl` was `String?`; is now `String` (Rust D1 contract:
+//    the field is always non-empty — either the kind:0 picture URL or an
+//    `identicon:<prefix>` placeholder URI).
+// 2. `isRepost`, `navTargetId`, `repostInnerContent` were
+//    `decodeIfPresent ?? false / id / ""`; the generated decoder hard-fails
+//    if any is absent. Rust `kernel/types.rs::TimelineItem` defines them
+//    as non-Option and `kernel/update.rs::timeline_items` populates them
+//    on every tick — the fallback was dead.
+// 3. `authorAvatarSource` is added as a non-optional `String`. The Rust
+//    field is `pub(super) author_avatar_source: String` (kind:0 ↔
+//    placeholder discriminator); the hand-written struct never decoded
+//    it, so consumers had no way to read the avatar provenance. Adding it
+//    is purely additive.
+//
+// The synthetic-construction call site `ModularBlockView.syntheticItem`
+// is updated to provide the new mandatory fields directly.
 
 // `KernelMetrics` and `RelayStatus` moved to
 // `Generated/KernelTypes.generated.swift` (V6 Stage 1, plan §6b). Rust
