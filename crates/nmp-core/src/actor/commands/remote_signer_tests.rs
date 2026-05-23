@@ -502,6 +502,9 @@ fn snapshot_carries_nip46_onboarding_projection() {
             Arc::new(AtomicU64::new(0)),
             // D2 — test wiring; no coverage hook installed.
             Arc::new(std::sync::Mutex::new(None)),
+            // MLS-op handler slot — test wiring; this remote-signer test does
+            // not exercise the `DispatchMlsOp` path.
+            crate::substrate::new_mls_op_handler_slot(),
         );
     });
 

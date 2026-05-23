@@ -79,6 +79,8 @@ use serde_json::{json, Value};
 
 use crate::service::MarmotService;
 
+use crate::projection::action::MarmotActionModule;
+use crate::projection::handler::MarmotMlsOpHandler;
 use crate::projection::state::MarmotProjection;
 use crate::projection::tap::MarmotIngestTap;
 
@@ -206,6 +208,23 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
             }
         };
 
+    // Step 1: register the substrate-generic `MarmotActionModule` against
+    // the kernel's action registry. This is the SOLE-entry-point
+    // replacement for the bespoke `nmp_marmot_dispatch` C-ABI symbol — once
+    // it lands, hosts can reach every Marmot write through
+    // `nmp_app_dispatch_action("nmp.marmot", action_json)` instead of the
+    // legacy symbol. Registration is idempotent (replaces any prior entry
+    // under the same namespace), so a second `register_with_keys` (account
+    // switch) is safe. Takes `&mut NmpApp` and must run BEFORE any other
+    // `&NmpApp` borrow below.
+    //
+    // SAFETY: the caller guarantees `app` is a valid pointer from
+    // `nmp_app_new`. No other reference aliases `app` at this point — the
+    // `&*app` borrow on the next line is taken only after this exclusive
+    // borrow is dropped. Mirrors the `register_chirp_actions(unsafe { &mut
+    // *app })` pattern in `apps/chirp/nmp-app-chirp/src/ffi/register.rs`.
+    unsafe { &mut *app }.register_action::<MarmotActionModule>();
+
     // SAFETY: caller guarantees `app` is non-null and valid.
     let app_ref = unsafe { &*app };
     let projection = Arc::new(MarmotProjection::new(service));
@@ -225,6 +244,22 @@ pub(crate) fn register_with_keys(app: *mut NmpApp, keys: Keys, db_path: &str) ->
         app_ref.unregister_event_observer(observer_id);
         return std::ptr::null_mut();
     }
+
+    // Step 2: install the substrate-generic MLS-op handler against the
+    // same `MarmotProjection` the observer + tap registered above are
+    // tied to. The actor's `DispatchMlsOp` arm pulls this handler from
+    // the slot whenever the `MarmotActionModule::execute` body emits the
+    // command — so every `nmp.marmot` dispatch reaches the SAME shared
+    // projection state the bespoke `nmp_marmot_dispatch` symbol already
+    // mutates (one source of truth; D4).
+    //
+    // A second `register_with_keys` (account switch, re-register) installs
+    // a fresh handler over the new projection; `set_mls_op_handler`
+    // replaces the prior slot entry atomically.
+    app_ref.set_mls_op_handler(
+        Arc::new(MarmotMlsOpHandler::new(Arc::clone(&projection)))
+            as Arc<dyn nmp_core::substrate::MlsOpHandler>,
+    );
 
     // D7: the gift-wrap inbox subscription (kind:1059 `#p` filter, deterministic
     // id, account scope) is protocol policy — it lives in `nmp-marmot`, not in

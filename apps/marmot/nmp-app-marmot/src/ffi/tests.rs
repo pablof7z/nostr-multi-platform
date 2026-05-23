@@ -490,3 +490,199 @@ fn raw_tap_malformed_and_unsupported_are_silent() {
     assert!(snap.pending_welcomes.is_empty());
     assert!(snap.groups.is_empty());
 }
+
+// ── ADR-0025 retirement / PR 1: dispatch_action → MarmotMlsOpHandler ────
+//
+// PR 1 in the ADR-0025 retirement plan wires the substrate-generic seam
+// alongside the bespoke `nmp_marmot_dispatch` symbol. The proof points:
+//
+//   1. `MarmotActionModule` registered against `NmpApp::register_action`
+//      and `MarmotMlsOpHandler` installed via `NmpApp::set_mls_op_handler`
+//      are reachable through the kernel's `dispatch_action` path: a
+//      `nmp_app_dispatch_action("nmp.marmot", action_json)` call routes
+//      to the same `ops::dispatch` handler the bespoke
+//      `nmp_marmot_dispatch` symbol reaches.
+//   2. Both paths share ONE `MarmotProjection` — a dispatch through the
+//      generic path mutates state visible to a subsequent snapshot read
+//      through the bespoke path. PR 3 deletes the bespoke path; until
+//      then the test guarantees the two are NOT separate state stores.
+
+use crate::projection::action::{MarmotActionModule, MARMOT_ACTION_NAMESPACE};
+use crate::projection::handler::MarmotMlsOpHandler;
+
+/// PR 1 end-to-end PROOF.
+///
+/// Builds the EXACT wiring `register_with_keys` does (minus the C-ABI
+/// shell) directly on a fresh `NmpApp`:
+///
+/// * register `MarmotActionModule` against the action registry;
+/// * install `MarmotMlsOpHandler::new(projection)` into the MLS-op slot.
+///
+/// Then dispatches the legacy `{"op": "publish_key_package", "relays":
+/// [...]}` envelope through `nmp_app_dispatch_action("nmp.marmot",
+/// envelope_json)` and asserts:
+///
+/// * the dispatcher returns a `correlation_id` (the action was accepted);
+/// * the `MarmotProjection::snapshot` reflects the published key package
+///   (the handler ran and mutated shared state — the SAME state the
+///   bespoke `nmp_marmot_dispatch` symbol mutates).
+///
+/// The actor dispatch arm runs the handler on its own thread; we poll
+/// the projection's snapshot under a 2 s wall-clock cap, exactly the
+/// pattern the `dispatch_mls_op_*` nmp-core tests use.
+#[test]
+fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
+    let alice_keys = Keys::generate();
+    let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys.clone())));
+
+    let app = nmp_core::nmp_app_new();
+    // SAFETY: nmp_app_new never returns null; pointer is valid until nmp_app_free.
+    let app_mut = unsafe { &mut *app };
+
+    // The two-line wiring `register_with_keys` performs for the
+    // dispatch_action seam:
+    app_mut.register_action::<MarmotActionModule>();
+    let handler =
+        Arc::new(MarmotMlsOpHandler::new(Arc::clone(&proj))) as Arc<dyn nmp_core::substrate::MlsOpHandler>;
+    app_mut.set_mls_op_handler(handler);
+
+    // Dispatch the legacy envelope through the generic seam. The JSON
+    // shape is byte-identical with what iOS already sends to the bespoke
+    // `nmp_marmot_dispatch` symbol — proving the migration is a one-line
+    // call-site change per op, not a re-encode.
+    let envelope_json = r#"{"op":"publish_key_package","relays":["wss://t.relay"]}"#;
+    let namespace_c = CString::new(MARMOT_ACTION_NAMESPACE).unwrap();
+    let envelope_c = CString::new(envelope_json).unwrap();
+    let out_ptr =
+        nmp_core::nmp_app_dispatch_action(app, namespace_c.as_ptr(), envelope_c.as_ptr());
+    assert!(!out_ptr.is_null(), "dispatch_action must return a non-null envelope (D6)");
+    // SAFETY: the dispatcher returns a freshly-allocated NUL-terminated
+    // string the caller must release via `nmp_app_free_string`.
+    let out = unsafe { CStr::from_ptr(out_ptr) }
+        .to_string_lossy()
+        .into_owned();
+    let parsed: serde_json::Value = serde_json::from_str(&out)
+        .unwrap_or_else(|e| panic!("dispatch return must be valid JSON; got `{out}`: {e}"));
+    let id = parsed
+        .get("correlation_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or_else(|| panic!("dispatch envelope must carry a correlation_id; got: {out}"));
+    assert_eq!(id.len(), 32, "correlation_id must be 32 hex chars; got: {id}");
+    nmp_core::nmp_app_free_string(out_ptr);
+
+    // The handler ran on the actor thread; poll the projection's
+    // snapshot for the published key-package mutation. 2 s deadline
+    // mirrors the nmp-core dispatch_mls_op tests.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    let mut published = false;
+    while std::time::Instant::now() < deadline {
+        if proj.snapshot(1_000).key_package.published {
+            published = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(
+        published,
+        "dispatch_action(nmp.marmot, publish_key_package) must route through \
+         MarmotMlsOpHandler and mutate the projection state visible to snapshot \
+         (the SAME state the bespoke nmp_marmot_dispatch symbol mutates)"
+    );
+
+    nmp_core::nmp_app_free(app);
+}
+
+/// Parity test: the generic seam and the bespoke seam mutate ONE shared
+/// `MarmotProjection`. A `create_group` through `dispatch_action` produces
+/// a group that a subsequent `nmp_marmot_snapshot`-equivalent read sees —
+/// no duplicate state store, no parallel mutex. This is the precondition
+/// PR 3 (delete `nmp_marmot_dispatch`) relies on: both paths must already
+/// be operating on the same state by the time the bespoke path is deleted.
+#[test]
+fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
+    let alice_keys = Keys::generate();
+    let bob_keys = Keys::generate();
+    let bob = in_memory(bob_keys.clone());
+    let bob_kp_json = bob
+        .publish_key_package(vec![nostr::RelayUrl::parse("wss://t.relay").unwrap()])
+        .expect("bob kp")
+        .event_30443
+        .as_json();
+
+    let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys.clone())));
+
+    let app = nmp_core::nmp_app_new();
+    // SAFETY: nmp_app_new never returns null.
+    let app_mut = unsafe { &mut *app };
+    app_mut.register_action::<MarmotActionModule>();
+    let handler =
+        Arc::new(MarmotMlsOpHandler::new(Arc::clone(&proj))) as Arc<dyn nmp_core::substrate::MlsOpHandler>;
+    app_mut.set_mls_op_handler(handler);
+
+    // Generic seam: create the group via dispatch_action.
+    let envelope = json!({
+        "op": "create_group",
+        "name": "PR 1 parity",
+        "description": "shared projection proof",
+        "relays": ["wss://t.relay"],
+        "invitee_npubs": [bob_keys.public_key().to_hex()],
+        "signed_key_package_events_json": [bob_kp_json],
+    })
+    .to_string();
+    let namespace_c = CString::new(MARMOT_ACTION_NAMESPACE).unwrap();
+    let envelope_c = CString::new(envelope).unwrap();
+    let out_ptr =
+        nmp_core::nmp_app_dispatch_action(app, namespace_c.as_ptr(), envelope_c.as_ptr());
+    assert!(!out_ptr.is_null());
+    // SAFETY: out_ptr came from nmp_app_dispatch_action (D6 contract).
+    let out = unsafe { CStr::from_ptr(out_ptr) }
+        .to_string_lossy()
+        .into_owned();
+    let returned_id = serde_json::from_str::<serde_json::Value>(&out)
+        .ok()
+        .and_then(|v| v.get("correlation_id").and_then(|c| c.as_str()).map(str::to_owned))
+        .expect("dispatch must return correlation_id");
+    nmp_core::nmp_app_free_string(out_ptr);
+
+    // Poll for the create_group to complete on the actor thread.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    let mut group: Option<String> = None;
+    while std::time::Instant::now() < deadline {
+        let snap = proj.snapshot(1_000);
+        if let Some(g) = snap.groups.first() {
+            group = Some(g.id_hex.clone());
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let group_id_hex = group.unwrap_or_else(|| {
+        panic!(
+            "create_group through dispatch_action must mutate the same \
+             projection the bespoke seam reads (correlation_id={returned_id})"
+        )
+    });
+
+    // Bespoke seam (via ops::dispatch — the SAME entry point
+    // nmp_marmot_dispatch reaches): send a message into the just-created
+    // group. If the generic and bespoke seams were separate stores, this
+    // would fail with `unknown group_id`.
+    let r = proj
+        .with_inner(|h| {
+            ops::dispatch(
+                h,
+                &json!({
+                    "op": "send",
+                    "group_id_hex": &group_id_hex,
+                    "text": "parity proof",
+                }),
+                1_001,
+            )
+        })
+        .expect("projection mutex should not be poisoned");
+    assert_eq!(
+        r["ok"], json!(true),
+        "the bespoke seam must see the group created through the generic seam: {r}"
+    );
+
+    nmp_core::nmp_app_free(app);
+}

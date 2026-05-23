@@ -1,8 +1,50 @@
 # ADR-0025 — Marmot Bespoke FFI Cluster: Named Exception
 
-Date: 2026-05-21  
-Status: Accepted  
+Date: 2026-05-21
+Status: Superseded (write path) — read path retained, write path migrating to `dispatch_action`. See "Retirement plan" below.
 Deciders: NMP team
+
+## Update (2026-05-23) — retirement plan
+
+The "permanent, bounded exception" framing has been replaced with a staged
+retirement. The substrate-generic [`MlsOpHandler`](../../crates/nmp-core/src/substrate/mls_op_handler.rs)
+seam landed in `nmp-core` and proves the architectural pre-condition the
+original "stateful handle" argument missed: MLS state can live in the
+app crate behind a shared `Arc` slot while the **wire envelope** (the
+JSON action body, the same shape `nmp_marmot_dispatch` already speaks)
+crosses through the kernel's generic `dispatch_action` seam. Stage
+status:
+
+* **PR 1 (landed — this commit).** `nmp_core::substrate::MlsOpHandler` +
+  `NmpApp::set_mls_op_handler` + `ActorCommand::DispatchMlsOp` actor arm
+  + `MarmotActionModule` registered under `"nmp.marmot"` +
+  `MarmotMlsOpHandler` installed by `register_with_keys`. Both paths
+  are live: `nmp_app_dispatch_action("nmp.marmot", action_json)`
+  routes to the same `ops::dispatch` handler `nmp_marmot_dispatch`
+  reaches; the same `MarmotProjection` instance backs both. iOS
+  unchanged (still calls `nmp_marmot_dispatch`).
+* **PR 2 (next).** iOS `MarmotBridge.swift` migrates each
+  `dispatchAsync(...)`/`dispatchFireAndForget(...)` call from
+  `nmp_marmot_dispatch(handle, json)` to
+  `nmp_app_dispatch_action(app, "nmp.marmot", json)` (one line per
+  call site, no payload change). Result handling moves from the
+  synchronous `MarmotOpResult` return to the `correlation_id` +
+  `register_action_result_observer` push (or a snapshot projection
+  keyed by `correlation_id`) for the 5 ops whose returns iOS uses
+  (`createGroup`, `invite`, `send`, `leave`, `remove` — the other 5
+  are already fire-and-forget).
+* **PR 3 (final).** Delete `nmp_marmot_dispatch` from
+  `apps/marmot/nmp-app-marmot/src/ffi.rs`, delete the corresponding
+  Swift `marmotDispatch` wrapper, retire this ADR. The kept Marmot
+  C-ABI symbols (`nmp_marmot_register{,_active}`, `_snapshot`,
+  `_group_messages`, `_string_free`, `_unregister`) are read-side /
+  stateful-handle lifecycle — they are NOT a `dispatch_action`
+  violation; they are kernel-shaped observer/projection registrations.
+
+The original `mls_local_nsec` raw-nsec slot (the *secondary*
+ADR-0025 exception) is unaffected by this retirement: it is a
+read-only credential seam, not a write seam, and the "NIP-17 must
+not copy this pattern" hard limit stays in force.
 
 ## Context
 
