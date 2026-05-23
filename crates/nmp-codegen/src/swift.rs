@@ -1,0 +1,623 @@
+//! V6 Stage 1 — Swift `Decodable` emitter.
+//!
+//! Reads a `ProjectionSchemaDocument` (the JSON the `dump_projection_schemas`
+//! binary writes) and renders Swift `struct` declarations conforming to
+//! `Decodable` (plus Equatable / Identifiable when registry metadata asks).
+//!
+//! Stage 1 covers flat-record types only — every pilot schema decodes as a
+//! JSON Schema `object` with scalar / nullable-scalar / array-of-scalar
+//! properties. Tagged enums (`ActionStage`, `TimelineBlock`) and the
+//! dotted-projection-key registry (`SnapshotProjections`) are Stage 2/3 work
+//! and are explicitly out of scope here. Any pilot schema that doesn't match
+//! the flat-record shape returns a [`SwiftEmitError::Unsupported`] so the
+//! CI gate fails loudly rather than emitting silent wrong-shape Swift.
+//!
+//! ## Output determinism
+//!
+//! The emitter is byte-deterministic. Type order matches the input
+//! document; field order matches the input schema's `properties` object
+//! (which `nmp-core::codegen_schema` sorts alphabetically via schemars).
+//! That stability is what makes the `--check` CI gate possible — running
+//! the emitter twice on the same input produces byte-identical output.
+
+use std::collections::BTreeSet;
+use std::path::Path;
+
+use serde::Deserialize;
+
+/// Parsed shape of the document `dump_projection_schemas` writes.
+#[derive(Debug, Deserialize)]
+struct ProjectionSchemaDocument {
+    version: u32,
+    types: Vec<TypeEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TypeEntry {
+    rust_path: String,
+    swift_name: String,
+    #[serde(default)]
+    id_field: Option<String>,
+    conformances: Vec<String>,
+    schema: TypeSchema,
+}
+
+/// Subset of JSON Schema (draft-07) the emitter actually decodes. `schemars`
+/// produces strictly richer schemas (`$schema`, `description`, `minimum`,
+/// `format` for distinguishing `u32`/`u64`); we ignore everything we don't
+/// need so future schemars upgrades don't break the decode.
+#[derive(Debug, Deserialize)]
+struct TypeSchema {
+    #[serde(rename = "type", default)]
+    ty: Option<serde_json::Value>,
+    #[serde(default)]
+    title: Option<String>,
+    /// Map of field-name → field-schema. `serde_json::Map` with
+    /// `preserve_order` feature on keeps insertion order; schemars emits
+    /// alphabetically, so the iteration order is deterministic regardless.
+    #[serde(default)]
+    properties: serde_json::Map<String, serde_json::Value>,
+    /// JSON-Schema `required` list — fields not in here are optional.
+    #[serde(default)]
+    required: Vec<String>,
+}
+
+/// What went wrong during Swift emission. Carries enough context that a
+/// regression in Stage 1 (Rust type took on a non-flat field shape) names
+/// the offending Swift type and Rust path.
+///
+/// Keeps `nmp-codegen` dependency-free of `thiserror` to match the existing
+/// crate posture (every other module uses `String` errors). The hand-rolled
+/// `Display` + `Error` impls below give Stage 1 callers `?` propagation
+/// without dragging in a new dep tree.
+#[derive(Debug)]
+pub enum SwiftEmitError {
+    /// The input JSON did not decode as a [`ProjectionSchemaDocument`].
+    ParseFailed { reason: String },
+    /// The schema document version doesn't match the emitter's supported
+    /// set. Bump emitter + document together when this trips.
+    UnsupportedDocumentVersion { found: u32, expected: u32 },
+    /// One pilot type's schema isn't a flat object — Stage 1 deliberately
+    /// rejects this so the dotted-key / tagged-enum work goes through
+    /// Stage 2 / 3 instead of being silently emitted wrong here.
+    Unsupported {
+        swift_name: String,
+        rust_path: String,
+        reason: String,
+    },
+    /// Filesystem operations behind `generate_swift` / `check_swift`.
+    Io(std::io::Error),
+}
+
+impl std::fmt::Display for SwiftEmitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ParseFailed { reason } => {
+                write!(f, "failed to parse projection schema document: {reason}")
+            }
+            Self::UnsupportedDocumentVersion { found, expected } => write!(
+                f,
+                "projection schema document version {found} unsupported by this nmp-codegen \
+                 build (expected version {expected}). Regenerate by re-running \
+                 `cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas`."
+            ),
+            Self::Unsupported {
+                swift_name,
+                rust_path,
+                reason,
+            } => write!(
+                f,
+                "cannot emit Swift for `{swift_name}` ({rust_path}): {reason}. \
+                 Stage 1 only supports flat-record schemas; tagged enums and \
+                 nested registries are Stage 2/3 scope per \
+                 docs/architecture-audit/v6-codegen-plan.md."
+            ),
+            Self::Io(err) => write!(f, "io: {err}"),
+        }
+    }
+}
+impl std::error::Error for SwiftEmitError {}
+impl From<std::io::Error> for SwiftEmitError {
+    fn from(err: std::io::Error) -> Self {
+        Self::Io(err)
+    }
+}
+
+/// Stage 1 supports exactly version 1 of the schema document. The Rust
+/// side bumps this in lockstep with any change to the document shape.
+const SUPPORTED_DOCUMENT_VERSION: u32 = 1;
+
+/// Header comment emitted at the top of every generated file. The
+/// regeneration command must stay accurate — CI fails on a stale
+/// generated file, so anyone hitting the failure needs the exact
+/// command to reproduce the regeneration locally.
+const HEADER: &str = "\
+// ─────────────────────────────────────────────────────────────────────────────
+// THIS FILE IS GENERATED. DO NOT EDIT BY HAND.
+//
+// Regenerate via:
+//   cargo run -p nmp-core --features codegen-schema \\
+//       --bin dump_projection_schemas \\
+//       | cargo run -p nmp-codegen -- gen swift --stdin --out <path>
+//
+// Source of truth: the Rust projection types listed in the per-struct
+// provenance comments below. The CI gate (`.github/workflows/codegen-drift.yml`)
+// fails any PR whose generated Swift differs from a fresh run.
+//
+// Stage 1 pilot — 7 flat-record types (V6, docs/architecture-audit/
+// v6-codegen-plan.md §6b). Stage 2 expands to the dotted-projection-key
+// registry; Stage 3 sweeps the remaining hand-written Decodables.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import Foundation
+";
+
+/// Generate the Swift source for the given schema-document JSON.
+///
+/// Returns the rendered Swift as a `String`. Caller is responsible for
+/// writing it to disk (the indirection lets [`check_swift`] diff against
+/// the committed file without going through the filesystem).
+///
+/// # Errors
+/// - [`SwiftEmitError::ParseFailed`] if `document_json` isn't valid
+///   `ProjectionSchemaDocument`.
+/// - [`SwiftEmitError::UnsupportedDocumentVersion`] if the document version
+///   doesn't match this emitter.
+/// - [`SwiftEmitError::Unsupported`] if any type has a non-flat-record
+///   schema.
+pub fn render_swift(document_json: &str) -> Result<String, SwiftEmitError> {
+    let document: ProjectionSchemaDocument = serde_json::from_str(document_json)
+        .map_err(|err| SwiftEmitError::ParseFailed {
+            reason: err.to_string(),
+        })?;
+
+    if document.version != SUPPORTED_DOCUMENT_VERSION {
+        return Err(SwiftEmitError::UnsupportedDocumentVersion {
+            found: document.version,
+            expected: SUPPORTED_DOCUMENT_VERSION,
+        });
+    }
+
+    let mut out = String::from(HEADER);
+    out.push('\n');
+    for entry in &document.types {
+        render_type(entry, &mut out)?;
+        out.push('\n');
+    }
+    Ok(out)
+}
+
+/// Render one type into `out`.
+fn render_type(entry: &TypeEntry, out: &mut String) -> Result<(), SwiftEmitError> {
+    require_flat_object(entry)?;
+
+    // Provenance comment — source-of-truth line per plan §5c.
+    out.push_str(&format!(
+        "// MARK: - {}\n// Source: {}\n",
+        entry.swift_name, entry.rust_path
+    ));
+
+    // Conformance clause. `Identifiable` is appended automatically when
+    // `id_field` is `Some` so the registry never has to repeat itself.
+    let mut conformances: BTreeSet<String> =
+        entry.conformances.iter().cloned().collect();
+    if entry.id_field.is_some() {
+        conformances.insert("Identifiable".to_string());
+    }
+    let conformances: Vec<&str> = ["Decodable", "Equatable", "Identifiable", "Hashable"]
+        .into_iter()
+        .filter(|c| conformances.contains(*c))
+        .collect();
+    let conformances_clause = conformances.join(", ");
+
+    out.push_str(&format!(
+        "public struct {}: {} {{\n",
+        entry.swift_name, conformances_clause
+    ));
+
+    // Identifiable `id` accessor — when `id_field` is set AND the struct
+    // doesn't already have a literal `id` field, render the computed
+    // property. When the field IS literally named `id`, Swift's
+    // synthesised Identifiable conformance picks it up automatically and
+    // no extra property is needed (it would be a duplicate-declaration
+    // error).
+    let required: BTreeSet<&str> = entry.schema.required.iter().map(String::as_str).collect();
+    let mut field_decls: Vec<String> = Vec::with_capacity(entry.schema.properties.len());
+    for (raw_name, raw_schema) in &entry.schema.properties {
+        let swift_field = snake_to_camel(raw_name);
+        let is_required = required.contains(raw_name.as_str());
+        let swift_type = swift_type_for(raw_schema).ok_or_else(|| SwiftEmitError::Unsupported {
+            swift_name: entry.swift_name.clone(),
+            rust_path: entry.rust_path.clone(),
+            reason: format!(
+                "field `{raw_name}` has unsupported schema shape: {raw_schema}"
+            ),
+        })?;
+        let optional_suffix = if is_required { "" } else { "?" };
+        field_decls.push(format!(
+            "    public let {swift_field}: {swift_type}{optional_suffix}"
+        ));
+    }
+    for decl in &field_decls {
+        out.push_str(decl);
+        out.push('\n');
+    }
+
+    if let Some(id_field) = entry.id_field.as_deref() {
+        if id_field != "id" {
+            out.push('\n');
+            out.push_str(&format!(
+                "    public var id: String {{ {id_field} }}\n"
+            ));
+        }
+    }
+
+    // Emit a `CodingKeys` enum mapping camelCase Swift fields back to the
+    // snake_case JSON keys schemars produced. This makes the Decodable
+    // synthesised by Swift match the wire shape exactly — without relying
+    // on `JSONDecoder.keyDecodingStrategy = .convertFromSnakeCase` at the
+    // call site (which the existing KernelHandle.decode already configures,
+    // but inlining the mapping makes the type self-contained and means a
+    // single field's wire name can be overridden in the registry later).
+    //
+    // Only emitted when at least one field's snake_case name differs from
+    // its Swift identifier — otherwise the synthesised CodingKeys is
+    // already correct and emitting an explicit one is noise.
+    let needs_coding_keys = entry
+        .schema
+        .properties
+        .keys()
+        .any(|raw| snake_to_camel(raw) != *raw);
+    if needs_coding_keys {
+        out.push('\n');
+        out.push_str("    private enum CodingKeys: String, CodingKey {\n");
+        for raw_name in entry.schema.properties.keys() {
+            let camel = snake_to_camel(raw_name);
+            if camel == *raw_name {
+                out.push_str(&format!("        case {camel}\n"));
+            } else {
+                out.push_str(&format!("        case {camel} = \"{raw_name}\"\n"));
+            }
+        }
+        out.push_str("    }\n");
+    }
+
+    out.push_str("}\n");
+    Ok(())
+}
+
+/// Ensure the entry's schema is a flat object with `properties`. Anything
+/// else (a tagged enum's `oneOf`, an array root, a `$ref`) returns
+/// `Unsupported`.
+fn require_flat_object(entry: &TypeEntry) -> Result<(), SwiftEmitError> {
+    let ty = entry.schema.ty.as_ref().ok_or_else(|| SwiftEmitError::Unsupported {
+        swift_name: entry.swift_name.clone(),
+        rust_path: entry.rust_path.clone(),
+        reason: "schema root has no `type` field (likely an enum or $ref)".to_string(),
+    })?;
+    let is_object = match ty {
+        serde_json::Value::String(s) => s == "object",
+        _ => false,
+    };
+    if !is_object {
+        return Err(SwiftEmitError::Unsupported {
+            swift_name: entry.swift_name.clone(),
+            rust_path: entry.rust_path.clone(),
+            reason: format!("schema root `type` is {ty}, expected \"object\""),
+        });
+    }
+    let _ = entry.schema.title.as_deref();
+    Ok(())
+}
+
+/// Convert one field schema to a Swift base type. Returns `None` for
+/// shapes the Stage 1 emitter doesn't know about (the caller turns that
+/// into [`SwiftEmitError::Unsupported`] with field-name context).
+fn swift_type_for(raw: &serde_json::Value) -> Option<String> {
+    let schema = raw.as_object()?;
+    // `type` may be a string ("integer") OR an array (["integer", "null"]
+    // for an Option). We treat the array case as nullable-of-the-non-null
+    // tag — the caller's `required` check is the canonical source of
+    // optionality, so we strip "null" here and let optionality come from
+    // the `required` list.
+    let type_kind = match schema.get("type")? {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Array(tags) => tags
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .find(|s| *s != "null")?
+            .to_string(),
+        _ => return None,
+    };
+
+    let format = schema.get("format").and_then(serde_json::Value::as_str);
+
+    match type_kind.as_str() {
+        "string" => Some("String".to_string()),
+        "boolean" => Some("Bool".to_string()),
+        "integer" => Some(map_integer_format(format).to_string()),
+        "number" => Some("Double".to_string()),
+        "array" => {
+            let items = schema.get("items")?;
+            let inner = swift_type_for(items)?;
+            Some(format!("[{inner}]"))
+        }
+        // `object` at field level means a nested struct / map. Stage 1
+        // doesn't render either — that's Stage 2/3 work.
+        _ => None,
+    }
+}
+
+/// Map a JSON Schema integer `format` (`int32`, `uint64`, …) to the Swift
+/// integer type Chirp's existing hand-written types use. The existing
+/// convention (KernelBridge.swift) maps Rust `u32`→`UInt32`,
+/// `u64`/`u128`/`usize`→`UInt64`, `i32`/`i64`→`Int`. The `uint128`
+/// collapse is deliberate: Swift has no `UInt128` Decodable shape (it's
+/// not in Foundation's `Codable` synthesis path); millisecond-epoch
+/// timestamps the kernel emits as `u128` fit in `UInt64` for the next
+/// ~580 million years, and the hand-written code has used this mapping
+/// since day one.
+fn map_integer_format(format: Option<&str>) -> &'static str {
+    match format {
+        Some("uint8") | Some("uint16") | Some("uint32") => "UInt32",
+        Some("uint64") | Some("uint128") => "UInt64",
+        // `usize` (schemars emits `format: "uint"`) maps to `Int` to match
+        // the Swift convention for `Array.count`-style counters in the
+        // existing hand-written Decodables.
+        Some("uint") => "Int",
+        Some("int8") | Some("int16") | Some("int32") | Some("int64") | Some("int") => "Int",
+        // No format hint → safest default that fits any positive integer
+        // schemars produces.
+        _ => "Int",
+    }
+}
+
+/// snake_case → camelCase. `relay_url` → `relayUrl`. Leading underscores
+/// are preserved as-is (none appear in the pilot set; included for
+/// robustness against future fields like `_internal`).
+fn snake_to_camel(snake: &str) -> String {
+    let mut out = String::with_capacity(snake.len());
+    let mut upper_next = false;
+    for ch in snake.chars() {
+        if ch == '_' {
+            upper_next = true;
+        } else if upper_next {
+            out.extend(ch.to_uppercase());
+            upper_next = false;
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+/// Outcome of a `--check` run.
+#[derive(Debug)]
+pub struct SwiftCheckOutcome {
+    /// `true` when the on-disk file matches the freshly-rendered output.
+    pub up_to_date: bool,
+    /// First differing line (1-based) when not up-to-date; `None` when
+    /// up-to-date OR when the file doesn't exist yet.
+    pub first_diff_line: Option<usize>,
+}
+
+/// Write the rendered Swift to `out_path`, replacing whatever was there.
+///
+/// # Errors
+/// As [`render_swift`], plus filesystem I/O failures.
+pub fn generate_swift(document_json: &str, out_path: &Path) -> Result<(), SwiftEmitError> {
+    let rendered = render_swift(document_json)?;
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(out_path, rendered)?;
+    Ok(())
+}
+
+/// Diff a freshly-rendered output against the file at `out_path`.
+///
+/// # Errors
+/// As [`render_swift`]. A missing file returns `up_to_date = false` with
+/// `first_diff_line = None`, not an error — the CI gate treats "file
+/// doesn't exist" the same as "file is stale".
+pub fn check_swift(document_json: &str, out_path: &Path) -> Result<SwiftCheckOutcome, SwiftEmitError> {
+    let rendered = render_swift(document_json)?;
+    let actual = match std::fs::read_to_string(out_path) {
+        Ok(s) => s,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(SwiftCheckOutcome {
+                up_to_date: false,
+                first_diff_line: None,
+            });
+        }
+        Err(err) => return Err(SwiftEmitError::Io(err)),
+    };
+    if actual == rendered {
+        return Ok(SwiftCheckOutcome {
+            up_to_date: true,
+            first_diff_line: None,
+        });
+    }
+    let first_diff_line = actual
+        .lines()
+        .zip(rendered.lines())
+        .position(|(a, b)| a != b)
+        .map(|p| p + 1);
+    Ok(SwiftCheckOutcome {
+        up_to_date: false,
+        first_diff_line,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Minimal one-type document — covers the "no nested objects, mixed
+    /// optional/required, snake↔camel transform" case.
+    fn one_type_document() -> &'static str {
+        r#"{
+          "version": 1,
+          "types": [
+            {
+              "rust_path": "nmp_core::demo::Sample",
+              "swift_name": "Sample",
+              "id_field": "id",
+              "conformances": ["Decodable", "Equatable"],
+              "schema": {
+                "type": "object",
+                "title": "Sample",
+                "properties": {
+                  "id": { "type": "string" },
+                  "open_views": { "type": "integer", "format": "uint32", "minimum": 0 },
+                  "first_event_ms": { "type": ["integer", "null"], "format": "uint128" },
+                  "relay_urls": { "type": "array", "items": { "type": "string" } },
+                  "denied": { "type": "boolean" }
+                },
+                "required": ["id", "open_views", "denied", "relay_urls"]
+              }
+            }
+          ]
+        }"#
+    }
+
+    #[test]
+    fn renders_one_type_with_required_and_optional_fields() {
+        let out = render_swift(one_type_document()).expect("renders");
+        // Per-field expectations — assert the exact lines rather than
+        // matching against a golden file, so test failures point at the
+        // emitter rule that broke.
+        assert!(out.contains("public struct Sample: Decodable, Equatable, Identifiable {"));
+        // `id` field with literal name — synthesised Identifiable picks
+        // it up; no extra `var id: String { id }` should appear.
+        assert!(out.contains("    public let id: String\n"));
+        assert!(
+            !out.contains("public var id: String { id }"),
+            "literal `id` field should NOT get a computed accessor"
+        );
+        assert!(out.contains("    public let openViews: UInt32\n"));
+        // Optional field — `first_event_ms` is NOT in required, so `?`.
+        assert!(out.contains("    public let firstEventMs: UInt64?\n"));
+        // Array of strings.
+        assert!(out.contains("    public let relayUrls: [String]\n"));
+        assert!(out.contains("    public let denied: Bool\n"));
+        // CodingKeys must remap the four snake_case keys.
+        assert!(out.contains("case openViews = \"open_views\""));
+        assert!(out.contains("case firstEventMs = \"first_event_ms\""));
+        assert!(out.contains("case relayUrls = \"relay_urls\""));
+        // `id` / `denied` are already camelCase ⇒ no `= "..."` clause.
+        assert!(out.contains("        case id\n"));
+        assert!(out.contains("        case denied\n"));
+    }
+
+    #[test]
+    fn identifiable_with_non_id_field_emits_computed_accessor() {
+        let doc = r#"{
+          "version": 1,
+          "types": [
+            {
+              "rust_path": "demo::Row",
+              "swift_name": "Row",
+              "id_field": "key",
+              "conformances": ["Decodable", "Equatable"],
+              "schema": {
+                "type": "object",
+                "properties": { "key": { "type": "string" } },
+                "required": ["key"]
+              }
+            }
+          ]
+        }"#;
+        let out = render_swift(doc).expect("renders");
+        assert!(out.contains("public struct Row: Decodable, Equatable, Identifiable {"));
+        assert!(out.contains("public var id: String { key }"));
+    }
+
+    #[test]
+    fn rejects_unknown_document_version() {
+        let doc = r#"{ "version": 999, "types": [] }"#;
+        let err = render_swift(doc).expect_err("must reject unknown version");
+        assert!(matches!(
+            err,
+            SwiftEmitError::UnsupportedDocumentVersion { found: 999, expected: 1 }
+        ));
+    }
+
+    #[test]
+    fn rejects_non_object_root() {
+        // Stage 1 must NOT silently render a tagged enum (its root schema
+        // is `oneOf`, no `"type": "object"`). The error must name the
+        // type so a future Stage 2/3 author knows what to migrate.
+        let doc = r#"{
+          "version": 1,
+          "types": [
+            {
+              "rust_path": "demo::Tag",
+              "swift_name": "Tag",
+              "id_field": null,
+              "conformances": ["Decodable", "Equatable"],
+              "schema": { "oneOf": [{ "type": "object" }] }
+            }
+          ]
+        }"#;
+        let err = render_swift(doc).expect_err("rejects non-object root");
+        match err {
+            SwiftEmitError::Unsupported { swift_name, .. } => {
+                assert_eq!(swift_name, "Tag");
+            }
+            other => panic!("expected Unsupported, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn snake_to_camel_handles_common_shapes() {
+        assert_eq!(snake_to_camel("relay_url"), "relayUrl");
+        assert_eq!(snake_to_camel("first_event_ms"), "firstEventMs");
+        assert_eq!(snake_to_camel("id"), "id");
+        assert_eq!(snake_to_camel("a_b_c"), "aBC");
+        // Already camelCase passes through unchanged.
+        assert_eq!(snake_to_camel("alreadyCamel"), "alreadyCamel");
+    }
+
+    #[test]
+    fn integer_format_mapping_matches_chirp_convention() {
+        assert_eq!(map_integer_format(Some("uint32")), "UInt32");
+        assert_eq!(map_integer_format(Some("uint64")), "UInt64");
+        // `usize` (schemars `uint`) is the Swift-side `Int` for counts.
+        assert_eq!(map_integer_format(Some("uint")), "Int");
+        // `u128` collapses to `UInt64` — see `map_integer_format` doc.
+        assert_eq!(map_integer_format(Some("uint128")), "UInt64");
+        assert_eq!(map_integer_format(Some("int64")), "Int");
+        // Unknown format → Int (safe default for any integer schemars emits).
+        assert_eq!(map_integer_format(None), "Int");
+    }
+
+    #[test]
+    fn check_swift_returns_up_to_date_on_match() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("out.swift");
+        generate_swift(one_type_document(), &out).expect("write");
+        let result = check_swift(one_type_document(), &out).expect("check");
+        assert!(result.up_to_date);
+        assert_eq!(result.first_diff_line, None);
+    }
+
+    #[test]
+    fn check_swift_flags_stale_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("out.swift");
+        std::fs::write(&out, "// stale\n").expect("write");
+        let result = check_swift(one_type_document(), &out).expect("check");
+        assert!(!result.up_to_date);
+        assert_eq!(result.first_diff_line, Some(1));
+    }
+
+    #[test]
+    fn check_swift_treats_missing_file_as_stale() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let out = dir.path().join("never_written.swift");
+        let result = check_swift(one_type_document(), &out).expect("check");
+        assert!(!result.up_to_date);
+        assert_eq!(result.first_diff_line, None);
+    }
+}

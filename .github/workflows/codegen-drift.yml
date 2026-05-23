@@ -1,0 +1,40 @@
+name: codegen-drift
+
+# V6 Stage 1 — Swift `Decodable` emitter drift gate. The Rust projection
+# types in `nmp-core` (plus the seven NIP-crate projection types in
+# Stage 2/3) are the single source of truth for the Swift `Decodable`
+# mirrors at `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift`.
+# This workflow runs the emitter in `--check` mode and fails any PR whose
+# generated Swift differs from a fresh run.
+#
+# Regenerate locally with:
+#   cargo run -p nmp-core --features codegen-schema \
+#       --bin dump_projection_schemas \
+#       | cargo run -p nmp-codegen -- gen swift
+#
+# See `docs/architecture-audit/v6-codegen-plan.md` §5d and `crates/
+# nmp-codegen/src/swift.rs` for the emitter itself.
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  swift-codegen-drift:
+    name: Swift codegen drift (KernelTypes.generated.swift vs Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Compile + run the schema dump bin once; pipe its output into the
+      # emitter's `--check` mode. The bin requires the `codegen-schema`
+      # feature; the emitter does not (it is a plain Rust binary).
+      - name: Check Swift codegen is up to date
+        run: |
+          cargo run --quiet -p nmp-core --features codegen-schema \
+              --bin dump_projection_schemas \
+            | cargo run --quiet -p nmp-codegen -- gen swift --check

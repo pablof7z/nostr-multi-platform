@@ -183,6 +183,14 @@ pub use relay_roles::NOSTRCONNECT_DEFAULT_RELAY_URL;
 pub(crate) use relay_roles::{
     canonical_relay_role, has_role, relay_role_label, relay_role_options, relay_role_tint,
 };
+// V6 Stage 1 — Swift codegen pilot. `RelayRoleOption` is `pub(crate)` in
+// `relay_roles`; re-exported here so `crate::codegen_schema` can hand it
+// to `schemars::schema_for!` from the schema-dump binary. The type stays
+// crate-private; the re-export is `pub(crate)`, the bin runs inside the
+// crate. Gated to the codegen-schema build so non-codegen builds don't
+// trip the unused-import lint (no in-crate consumer outside codegen_schema).
+#[cfg(feature = "codegen-schema")]
+pub(crate) use relay_roles::RelayRoleOption;
 // `nostrconnect_relay_url` is consumed by `ffi/mod.rs` (native only).
 #[cfg(feature = "native")]
 pub(crate) use relay_roles::nostrconnect_relay_url;

@@ -191,6 +191,16 @@ pub(crate) use identity_state::{
     new_active_account_slot, AccountSummary, ActiveAccountSlot, PublishQueueEntry, RelayAckOutcome,
     SettingsHubSummary,
 };
+// V6 Stage 1 — Swift codegen pilot. The four projection types below are
+// `pub(crate) struct`s in `types` (widened from `pub(super)` so the
+// re-export can lift them out of `kernel`); the `codegen-schema` build
+// hands them to `schemars::schema_for!` from `crate::codegen_schema`.
+// Feature-gated so non-codegen builds don't trip the unused-import lint
+// (no in-crate consumer outside `codegen_schema`). Crate-private
+// encapsulation is preserved either way — nothing outside `nmp-core`
+// can name these types.
+#[cfg(feature = "codegen-schema")]
+pub(crate) use types::{LogicalInterestStatus, Metrics, RelayStatus, WireSubscriptionStatus};
 pub use identity_state::{read_eligible_relay_urls, RelayEditRow};
 // Host-extensible snapshot output — reachable from the `ffi` module for the
 // `nmp_app_register_snapshot_projection` C-ABI entry point.

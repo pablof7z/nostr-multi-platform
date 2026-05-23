@@ -1,6 +1,12 @@
 mod actor;
 mod app;
 pub mod bunker_hook;
+// V6 Stage 1 — Swift `Decodable` emitter input surface. Feature-gated:
+// `cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas`
+// dumps one JSON schema per pilot projection type for `nmp-codegen gen swift`
+// to consume. Off by default — shipped artifacts never link `schemars`.
+#[cfg(feature = "codegen-schema")]
+pub mod codegen_schema;
 mod capability_socket;
 // ffi: C-ABI entry points for Swift/Kotlin native shells.
 // Gated on `native` — wasm32 uses wasm-bindgen, not C-ABI.
