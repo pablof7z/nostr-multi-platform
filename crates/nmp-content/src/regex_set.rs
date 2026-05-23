@@ -77,7 +77,9 @@ fn url() -> &'static Regex {
 
 fn bolt11() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
-    R.get_or_init(|| Regex::new(r"(?i)\blnbc[0-9a-z]{50,}").expect("bolt11 regex compiles")) // doctrine-allow: D6 — compile-time-constant regex literal; malformed pattern is a programmer error, not an operational FFI failure
+    // Requires the bech32 "1" separator (mandatory in all valid bolt11 invoices) so
+    // plain strings like "lnbcaaaa…" (no separator) don't false-positive as invoices.
+    R.get_or_init(|| Regex::new(r"(?i)\blnbc[0-9a-z]*1[0-9a-z]{50,}").expect("bolt11 regex compiles")) // doctrine-allow: D6 — compile-time-constant regex literal; malformed pattern is a programmer error, not an operational FFI failure
 }
 
 fn bolt12() -> &'static Regex {
