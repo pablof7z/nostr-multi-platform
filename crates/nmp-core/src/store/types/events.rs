@@ -160,7 +160,7 @@ impl VerifiedEvent {
                 VerifyError::InvalidSignature
             }
         })?;
-        Ok(VerifiedEvent(raw))
+        Ok(Self(raw))
     }
 
     /// Bypass verification — only available in test and integration-test builds.

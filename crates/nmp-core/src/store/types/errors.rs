@@ -23,9 +23,9 @@ pub enum VerifyError {
 impl std::fmt::Display for VerifyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            VerifyError::Serialization(s) => write!(f, "verification serialization error: {s}"),
-            VerifyError::InvalidId => write!(f, "event id mismatch"),
-            VerifyError::InvalidSignature => write!(f, "invalid Schnorr signature"),
+            Self::Serialization(s) => write!(f, "verification serialization error: {s}"),
+            Self::InvalidId => write!(f, "event id mismatch"),
+            Self::InvalidSignature => write!(f, "invalid Schnorr signature"),
         }
     }
 }
@@ -63,15 +63,15 @@ pub enum StoreError {
 impl std::fmt::Display for StoreError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            StoreError::Io(s) => write!(f, "backend i/o: {s}"),
-            StoreError::Corrupt(s) => write!(f, "backend corruption: {s}"),
-            StoreError::Encoding(s) => write!(f, "encoding: {s}"),
-            StoreError::SchemaTooNew { namespace, on_disk, expected } =>
+            Self::Io(s) => write!(f, "backend i/o: {s}"),
+            Self::Corrupt(s) => write!(f, "backend corruption: {s}"),
+            Self::Encoding(s) => write!(f, "encoding: {s}"),
+            Self::SchemaTooNew { namespace, on_disk, expected } =>
                 write!(f, "schema too new: {namespace} on-disk={on_disk} expected={expected}"),
-            StoreError::MigrationFailed { namespace, from, to, reason } =>
+            Self::MigrationFailed { namespace, from, to, reason } =>
                 write!(f, "schema migration failed: {namespace} v{from}->{to}: {reason}"),
-            StoreError::UnknownNamespace(s) => write!(f, "unknown namespace: {s}"),
-            StoreError::OverPinned { claimer, requested, ceiling } =>
+            Self::UnknownNamespace(s) => write!(f, "unknown namespace: {s}"),
+            Self::OverPinned { claimer, requested, ceiling } =>
                 write!(f, "claim ceiling exceeded: claimer={claimer:?} requested={requested} ceiling={ceiling}"),
         }
     }

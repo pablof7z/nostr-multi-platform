@@ -42,7 +42,7 @@ pub struct SubKey(pub u64);
 impl SubKey {
     /// Hash any single `Hash`-able value into a `SubKey`.
     pub fn new(value: impl Hash) -> Self {
-        SubKey(stable_hash64(value))
+        Self(stable_hash64(value))
     }
 
     /// Start an incremental builder seeded with `seed`. Fold further parts in
@@ -88,7 +88,7 @@ pub struct SubOwnerKey(pub u64);
 impl SubOwnerKey {
     /// Hash any single `Hash`-able value into a `SubOwnerKey`.
     pub fn new(value: impl Hash) -> Self {
-        SubOwnerKey(stable_hash64(value))
+        Self(stable_hash64(value))
     }
 }
 

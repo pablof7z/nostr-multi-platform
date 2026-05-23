@@ -149,7 +149,7 @@ impl CompileTrigger {
     /// the rule.
     #[allow(dead_code)]
     pub fn requires_recompile(&self) -> bool {
-        !matches!(self, CompileTrigger::RelayReconnected { .. })
+        !matches!(self, Self::RelayReconnected { .. })
     }
 }
 

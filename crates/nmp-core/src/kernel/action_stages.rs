@@ -113,7 +113,7 @@ impl ActionStage {
     /// per-crate dead-code lint cannot see the live usage.
     #[allow(dead_code)]
     pub fn is_terminal(&self) -> bool {
-        matches!(self, ActionStage::Accepted | ActionStage::Failed { .. })
+        matches!(self, Self::Accepted | Self::Failed { .. })
     }
 }
 

@@ -98,16 +98,16 @@ impl LifecyclePhase {
     /// Transitioning *from* `Inactive` to a concrete phase is treated as
     /// the first observed phase event — `Inactive → Foreground` IS an
     /// `EnteredForeground`, covering the boot-into-foreground case.
-    pub(crate) fn transition_from(self, prev: LifecyclePhase) -> Option<LifecycleTransition> {
+    pub(crate) fn transition_from(self, prev: Self) -> Option<LifecycleTransition> {
         match (prev, self) {
             // Idempotence: same → same is always a no-op.
             (a, b) if a == b => None,
             // Transitioning TO Inactive is a no-op (iOS interstitial state).
-            (_, LifecyclePhase::Inactive) => None,
+            (_, Self::Inactive) => None,
             // Any → Foreground (when prev wasn't Foreground): trigger fan-out.
-            (_, LifecyclePhase::Foreground) => Some(LifecycleTransition::EnteredForeground),
+            (_, Self::Foreground) => Some(LifecycleTransition::EnteredForeground),
             // Any → Background (when prev wasn't Background): symmetric hook.
-            (_, LifecyclePhase::Background) => Some(LifecycleTransition::EnteredBackground),
+            (_, Self::Background) => Some(LifecycleTransition::EnteredBackground),
         }
     }
 }

@@ -60,9 +60,9 @@ impl KeyringRequest {
     /// The `account_id` this request is keyed by, regardless of variant.
     pub fn account_id(&self) -> &str {
         match self {
-            KeyringRequest::Store { account_id, .. }
-            | KeyringRequest::Retrieve { account_id }
-            | KeyringRequest::Delete { account_id } => account_id,
+            Self::Store { account_id, .. }
+            | Self::Retrieve { account_id }
+            | Self::Delete { account_id } => account_id,
         }
     }
 }
@@ -87,7 +87,7 @@ pub struct KeyringResult {
 impl KeyringResult {
     /// Successful operation; `secret` is `Some` only for a `retrieve` hit.
     pub fn ok(secret: Option<String>) -> Self {
-        KeyringResult {
+        Self {
             status: KeyringStatus::Ok,
             secret,
             os_status: None,
@@ -96,7 +96,7 @@ impl KeyringResult {
 
     /// `retrieve` of an absent key — distinct from an error (D6 data).
     pub fn not_found() -> Self {
-        KeyringResult {
+        Self {
             status: KeyringStatus::NotFound,
             secret: None,
             os_status: None,
@@ -105,7 +105,7 @@ impl KeyringResult {
 
     /// Platform-level failure carrying the native status code.
     pub fn error(os_status: i32) -> Self {
-        KeyringResult {
+        Self {
             status: KeyringStatus::Error,
             secret: None,
             os_status: Some(os_status),

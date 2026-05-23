@@ -69,7 +69,7 @@ impl Kernel {
     /// `profiles` are borrowed `&` — disjoint fields, so the caller passes
     /// `&event.tags` (no clone) from the ingest path.
     pub(in crate::kernel) fn collect_unknown_refs(&mut self, tags: &[Vec<String>]) {
-        let Kernel {
+        let Self {
             unknown_ids,
             events,
             profiles,
