@@ -41,12 +41,17 @@
 //! 1. **Substrate module layer** ([`domain`], [`view`]) — mirrors `nmp-nip29`.
 //!    Plain record + view types, exported as public types. These shapes carry
 //!    NO MDK types — they satisfy the kernel-boundary grep.
-//!    All Marmot capabilities (key-package publish, group-scoped ops:
-//!    `CreateGroup`, `InviteMember`, `SendMessage`, etc.) are covered by the
-//!    bespoke `nmp_marmot_dispatch` C cluster (ADR-0025), not the
-//!    generic `dispatch_action` seam. The previous `ActionModule` impls were
-//!    deleted as dormant (zero registry callers); re-add only when a non-bespoke
-//!    caller demands `dispatch_action` routing for a Marmot capability.
+//!    Marmot write capabilities (key-package publish, group-scoped ops:
+//!    `CreateGroup`, `Invite`, `Send`, `Leave`, `Remove`, etc.) are dispatched
+//!    through the substrate-generic [`projection::action::MarmotActionModule`]
+//!    registered under the `"nmp.marmot"` namespace — the host calls
+//!    `nmp_app_dispatch_action("nmp.marmot", action_json)` and the
+//!    [`projection::handler::MarmotMlsOpHandler`] installed via
+//!    `NmpApp::set_mls_op_handler` runs the op against the live
+//!    `MarmotProjection`. The legacy bespoke `nmp_marmot_dispatch` C cluster
+//!    (ADR-0025) is still live in this PR and reaches the SAME projection;
+//!    PR 2 migrates iOS to the generic seam and PR 3 deletes the legacy
+//!    symbol (see the ADR-0025 retirement plan).
 //! 2. **Service layer** ([`service::MarmotService`]) — the real MDK-driving
 //!    API. Holds an `MDK<S>` + `nostr::Keys`. This is what the in-crate
 //!    round-trip tests exercise and what a headless integration-test driver
@@ -113,8 +118,11 @@ pub mod mls_types {
 // `nmp-marmot` exposes its 4 record types and 4 view types as public types
 // under `domain` and `view`. View types are plain types reached via static
 // dispatch; the live extension path is `KernelEventObserver` (the Marmot
-// projection registers one in `projection/`). The bespoke `nmp_marmot_dispatch`
-// C cluster (ADR-0025) covers every live Marmot capability.
+// projection registers one in `projection/`). Write capabilities are
+// dispatched through `projection::action::MarmotActionModule` registered
+// under the `"nmp.marmot"` namespace; the bespoke `nmp_marmot_dispatch` C
+// cluster (ADR-0025) is still live in this PR and reaches the SAME
+// projection — see the ADR-0025 retirement plan for the staged migration.
 
 #[cfg(test)]
 mod tests;

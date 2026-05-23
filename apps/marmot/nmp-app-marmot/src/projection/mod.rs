@@ -18,7 +18,9 @@
 //!   ingest seam (drives accepted kind:1059/445 events through the shared
 //!   `ops::ingest_signed_event_core`).
 
+pub mod action;
 pub mod display;
+pub mod handler;
 pub mod ops;
 pub mod payload;
 pub mod publish;

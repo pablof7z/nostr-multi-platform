@@ -15,6 +15,7 @@ use zeroize::Zeroizing;
 
 use crate::ffi::{MlsLocalNsecSlot, Nip17LocalKeysSlot};
 use crate::kernel::Kernel;
+use crate::substrate::MlsOpHandlerSlot;
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole};
 use crate::relay_worker::{tungstenite_message_to_relay_frame, RelayEvent};
 use crate::subs::PlanCoverageHook;
@@ -193,6 +194,12 @@ pub(super) struct ActorContext<'a> {
     /// the hook on the rebuilt kernel (mirrors initial install in
     /// `run_actor_with_observers`).
     pub(super) coverage_hook_slot: &'a Arc<Mutex<Option<PlanCoverageHook>>>,
+    /// Host-installed [`crate::substrate::MlsOpHandler`] slot. Read by the
+    /// [`ActorCommand::DispatchMlsOp`] arm to route the action body to the
+    /// owner of the app-side MLS state (today: `nmp-app-marmot`). `None`
+    /// means no handler was installed before the dispatch — the arm records
+    /// a `Failed` terminal stage for the correlation id.
+    pub(super) mls_op_handler: &'a MlsOpHandlerSlot,
 }
 
 pub(super) fn dispatch_command(
@@ -849,6 +856,72 @@ pub(super) fn dispatch_command(
             // via this command. The FFI layer only has a channel sender; this
             // arm is the single path from the FFI to `set_last_error_toast`.
             ctx.kernel.set_last_error_toast(Some(message));
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
+        }
+        ActorCommand::DispatchMlsOp {
+            action_json,
+            correlation_id,
+        } => {
+            // Substrate-generic seam for stateful, app-owned op handlers
+            // (today: `nmp-app-marmot`'s MLS service). The handler was installed
+            // via `NmpApp::set_mls_op_handler` during host init.
+            //
+            // Record `Requested` first so the host's spinner sees the action
+            // entered the actor lane even if the handler is absent or panics
+            // (mirrors the `WalletPayInvoice` / `FetchLnurlInvoice` arms).
+            ctx.kernel.record_action_stage(
+                &correlation_id,
+                crate::kernel::action_stages::ActionStage::Requested,
+                None,
+            );
+            // Pull the handler clone OUT of the slot before calling `handle`
+            // so the outer mutex is not held across the SQLite-bound work
+            // (D8 — long-running ops must not block the slot writer).
+            let handler = ctx
+                .mls_op_handler
+                .lock()
+                .ok()
+                .and_then(|guard| guard.as_ref().cloned());
+            let result = match handler {
+                Some(handler) => {
+                    // D6 — wrap in catch_unwind so a buggy handler that panics
+                    // does NOT unwind across the FFI boundary; mirror
+                    // `ActionRegistry::execute`'s pattern.
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        handler.handle(&action_json, &correlation_id)
+                    }))
+                    .unwrap_or_else(|_| {
+                        serde_json::json!({
+                            "ok": false,
+                            "error": "MLS op handler panicked"
+                        })
+                    })
+                }
+                None => serde_json::json!({
+                    "ok": false,
+                    "error": "no MLS op handler installed"
+                }),
+            };
+            // Route the envelope to the action_results/action_stages mirror.
+            // Convention (matches the rest of the substrate dispatch ops):
+            // `{"ok": true, ...}` → success; anything else → failure with the
+            // `error` field as the reason (defaulting to a static string when
+            // missing so the host always sees something renderable).
+            let ok = result
+                .get("ok")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            if ok {
+                ctx.kernel.record_action_success(correlation_id);
+            } else {
+                let reason = result
+                    .get("error")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("MLS op failed without an error message")
+                    .to_string();
+                ctx.kernel.record_action_failure(correlation_id, reason);
+            }
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
