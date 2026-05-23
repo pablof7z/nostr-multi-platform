@@ -57,7 +57,7 @@ pub use event_observer::{nmp_app_register_event_observer, nmp_app_unregister_eve
 #[cfg(feature = "native")]
 pub use identity::{
     nmp_app_add_relay, nmp_app_create_new_account, nmp_app_open_timeline, nmp_app_remove_relay,
-    nmp_app_signin_nsec,
+    nmp_app_remove_account, nmp_app_signin_bunker, nmp_app_signin_nsec, nmp_app_switch_active,
 };
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
@@ -105,19 +105,10 @@ pub use testing::{
 };
 
 // ── android-ffi delta ────────────────────────────────────────────────────
-// The Android JNI shim (`nmp-android-ffi`) needs four extra entry points
-// the standard native re-export above does not yet expose — account
-// removal, bunker sign-in, full-actor stop (handled by `nmp_app_free` in
-// the standard flow), and active-account switch. The rest of the Android
-// JNI surface is inherited from the `native` block above (android-ffi
-// implies native). Re-exporting through the rlib is what causes rustc to
-// include the symbol bodies in CGU files for the cdylib; without these
-// Rust-path references the symbols stay `U` in the cdylib and the JNI link
-// step fails (the `cargo check (android-ffi)` CI job never links).
-#[cfg(feature = "android-ffi")]
-pub use identity::{
-    nmp_app_remove_account, nmp_app_signin_bunker, nmp_app_switch_active,
-};
+// `nmp_app_remove_account`, `nmp_app_signin_bunker`, and `nmp_app_switch_active`
+// were historically gated here; they are lifecycle essentials every native app
+// needs and are now included unconditionally in the `native` block above.
+// The android-ffi identity block is intentionally removed.
 #[cfg(all(feature = "android-ffi", feature = "wallet"))]
 pub use wallet::{nmp_app_wallet_connect, nmp_app_wallet_disconnect, nmp_app_wallet_pay_invoice};
 

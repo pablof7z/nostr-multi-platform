@@ -17,15 +17,7 @@ license.workspace = true
 crate-type = ["staticlib", "rlib"]
 
 [dependencies]
-# `nmp_app_signin_bunker`, `nmp_app_switch_active`, `nmp_app_remove_account`,
-# `nmp_app_lifecycle_*`, and the wallet symbols are only re-exported via
-# Rust paths under the `android-ffi` feature (see crates/nmp-core/src/lib.rs
-# lines 117-119). Enabling the feature here is what causes rustc to include
-# those `#[no_mangle]` symbol bodies in the CGUs that end up inside
-# `libnmp_app_notes.a` (without a Rust-path reference the symbols stay `U`
-# in the archive and the iOS link step fails). The feature is misnamed for
-# historical reasons; it has no Android-specific code paths.
-nmp-core = { path = "../../../crates/nmp-core", features = ["android-ffi"] }
+nmp-core = { path = "../../../crates/nmp-core" }
 # NIP-46 signer broker. Re-exports `nmp_signer_broker_init`,
 # `nmp_app_nostrconnect_uri`, `nmp_app_cancel_bunker_handshake`, and
 # `nmp_broker_free_string` — the bunker sign-in surface the iOS shell needs.
