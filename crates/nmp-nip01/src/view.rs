@@ -66,8 +66,7 @@ impl RepliesState {
             .refs
             .reply
             .as_ref()
-            .map(|r| r.id == self.target)
-            .unwrap_or(false)
+            .is_some_and(|r| r.id == self.target)
     }
 
     fn insert(&mut self, event: &KernelEvent) -> Option<RepliesDelta> {
@@ -113,10 +112,12 @@ pub struct RepliesView;
 impl RepliesView {
     pub const NAMESPACE: &'static str = "nmp.nip01.replies";
 
+    #[must_use] 
     pub fn key(spec: &RepliesSpec) -> EventId {
         spec.target.clone()
     }
 
+    #[must_use] 
     pub fn dependencies(spec: &RepliesSpec) -> ViewDependencies {
         ViewDependencies {
             kinds: vec![KIND_SHORT_NOTE],
@@ -125,6 +126,7 @@ impl RepliesView {
         }
     }
 
+    #[must_use] 
     pub fn open(_ctx: &ViewContext, spec: RepliesSpec) -> (RepliesState, RepliesPayload) {
         let state = RepliesState {
             target: spec.target.clone(),
@@ -162,6 +164,7 @@ impl RepliesView {
         s.replace(old, e)
     }
 
+    #[must_use] 
     pub fn snapshot(_c: &ViewContext, state: &RepliesState) -> RepliesPayload {
         // Sort-on-read: the chronological order is materialised here, once
         // per snapshot, rather than re-sorted on every insert/replace.
@@ -335,8 +338,7 @@ impl ThreadState {
             let child_count = state
                 .children_of
                 .get(id)
-                .map(|s| s.len() as u32)
-                .unwrap_or(0);
+                .map_or(0, |s| s.len() as u32);
             out.push(ThreadNode {
                 id: id.clone(),
                 author: event.author.clone(),
@@ -397,10 +399,12 @@ pub struct ThreadView;
 impl ThreadView {
     pub const NAMESPACE: &'static str = "nmp.nip01.thread";
 
+    #[must_use] 
     pub fn key(spec: &ThreadSpec) -> EventId {
         spec.root_event.clone()
     }
 
+    #[must_use] 
     pub fn dependencies(spec: &ThreadSpec) -> ViewDependencies {
         ViewDependencies {
             kinds: vec![KIND_SHORT_NOTE],
@@ -409,6 +413,7 @@ impl ThreadView {
         }
     }
 
+    #[must_use] 
     pub fn open(_ctx: &ViewContext, spec: ThreadSpec) -> (ThreadState, ThreadPayload) {
         let state = ThreadState {
             root: spec.root_event.clone(),
@@ -450,6 +455,7 @@ impl ThreadView {
         s.insert(e)
     }
 
+    #[must_use] 
     pub fn snapshot(_c: &ViewContext, state: &ThreadState) -> ThreadPayload {
         ThreadPayload {
             root_event: state.root.clone(),

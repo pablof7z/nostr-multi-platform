@@ -59,6 +59,7 @@ pub struct ModularTimelineSnapshot {
 }
 
 impl ModularTimelineSnapshot {
+    #[must_use] 
     pub fn empty() -> Self {
         Self {
             blocks: Vec::new(),
@@ -79,6 +80,7 @@ struct Inner {
 }
 
 impl ModularTimelineProjection {
+    #[must_use] 
     pub fn new(spec: ModularTimelineSpec) -> Self {
         let ctx = ViewContext::default();
         let (state, _payload) = Nip10ModularTimelineView::open(&ctx, spec);

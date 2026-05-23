@@ -23,10 +23,12 @@ pub const CHIRP_RELAY_BOOTSTRAP: &[ChirpRelayBootstrapEntry] = &[
     },
 ];
 
+#[must_use] 
 pub fn chirp_default_relay_bootstrap() -> &'static [ChirpRelayBootstrapEntry] {
     CHIRP_RELAY_BOOTSTRAP
 }
 
+#[must_use] 
 pub fn chirp_default_relay_urls() -> Vec<String> {
     CHIRP_RELAY_BOOTSTRAP
         .iter()

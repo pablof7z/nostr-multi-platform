@@ -31,12 +31,14 @@ pub struct NoteRecord {
 impl NoteRecord {
     /// True when the note has no NIP-10 root/reply markers — it's a thread
     /// root itself, not a reply. Mirrors applesauce `Note.isRoot`.
+    #[must_use] 
     pub fn is_root(&self) -> bool {
         self.refs.is_root()
     }
 
     /// True when the note replies to something. Mirrors applesauce
     /// `Note.isReply`.
+    #[must_use] 
     pub fn is_reply(&self) -> bool {
         self.refs.is_reply()
     }
@@ -45,6 +47,7 @@ impl NoteRecord {
 /// Decode a stored event into a [`NoteRecord`].
 ///
 /// Returns `None` when `event.kind != 1`.
+#[must_use] 
 pub fn try_from_event(event: &StoredEvent) -> Option<NoteRecord> {
     let raw = event.raw.as_ref();
     decode_borrowed(&raw.id, &raw.pubkey, raw.kind, raw.created_at, &raw.tags, &raw.content)
@@ -55,6 +58,7 @@ pub fn try_from_event(event: &StoredEvent) -> Option<NoteRecord> {
 ///
 /// Hot path: every kind-1 event delivered to a `RepliesView`/`ThreadView`
 /// runs through here.
+#[must_use] 
 pub fn try_from_kernel_event(event: &KernelEvent) -> Option<NoteRecord> {
     decode_borrowed(
         &event.id,

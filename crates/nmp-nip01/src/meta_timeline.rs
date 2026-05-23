@@ -69,6 +69,7 @@ pub struct ModularTimelineSpec {
 }
 
 impl ModularTimelineSpec {
+    #[must_use] 
     pub fn effective_kinds(&self) -> Vec<u32> {
         if self.kinds.is_empty() {
             vec![KIND_SHORT_NOTE]
@@ -93,9 +94,9 @@ pub enum ModularTimelineDelta {
 impl From<GroupDelta> for ModularTimelineDelta {
     fn from(d: GroupDelta) -> Self {
         match d {
-            GroupDelta::BlockInserted(i) => ModularTimelineDelta::BlockInserted(i),
-            GroupDelta::BlockReplaced(i) => ModularTimelineDelta::BlockReplaced(i),
-            GroupDelta::BlockRemoved(i) => ModularTimelineDelta::BlockRemoved(i),
+            GroupDelta::BlockInserted(i) => Self::BlockInserted(i),
+            GroupDelta::BlockReplaced(i) => Self::BlockReplaced(i),
+            GroupDelta::BlockRemoved(i) => Self::BlockRemoved(i),
         }
     }
 }
@@ -130,6 +131,7 @@ pub struct Nip10ModularTimelineView;
 impl Nip10ModularTimelineView {
     pub const NAMESPACE: &'static str = "nmp.nip01.modular_timeline";
 
+    #[must_use] 
     pub fn key(spec: &ModularTimelineSpec) -> String {
         // One open view per (viewer, author-set, kinds) tuple.
         let mut k = format!("{}|", spec.viewer);
@@ -151,6 +153,7 @@ impl Nip10ModularTimelineView {
         k
     }
 
+    #[must_use] 
     pub fn dependencies(spec: &ModularTimelineSpec) -> ViewDependencies {
         ViewDependencies {
             kinds: spec.effective_kinds(),
@@ -159,6 +162,7 @@ impl Nip10ModularTimelineView {
         }
     }
 
+    #[must_use] 
     pub fn open(
         _ctx: &ViewContext,
         spec: ModularTimelineSpec,
@@ -208,6 +212,7 @@ impl Nip10ModularTimelineView {
         s.grouper.on_replace(old, e).map(Into::into)
     }
 
+    #[must_use] 
     pub fn snapshot(
         _c: &ViewContext,
         state: &ModularTimelineState,

@@ -18,6 +18,7 @@ pub struct NoteRelationCounts {
 }
 
 impl NoteRelationCounts {
+    #[must_use] 
     pub fn for_note(event_id: &str, replies: u64) -> Self {
         Self {
             replies: RelationCount::known(replies),
@@ -35,10 +36,12 @@ pub enum RelationCount {
 }
 
 impl RelationCount {
+    #[must_use] 
     pub fn known(count: u64) -> Self {
         Self::Known { count }
     }
 
+    #[must_use] 
     pub fn loading(interest: RelationCountInterest) -> Self {
         Self::Loading { interest }
     }
@@ -52,6 +55,7 @@ pub struct RelationCountInterest {
 }
 
 impl RelationCountInterest {
+    #[must_use] 
     pub fn reactions(event_id: &str) -> Self {
         Self {
             namespace: "nmp.reactions.summary".to_string(),
@@ -60,6 +64,7 @@ impl RelationCountInterest {
         }
     }
 
+    #[must_use] 
     pub fn reposts(event_id: &str) -> Self {
         Self {
             namespace: "nmp.reactions.reposts".to_string(),

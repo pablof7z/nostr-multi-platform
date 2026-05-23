@@ -26,6 +26,7 @@ pub struct ProfileDisplay {
 }
 
 impl AuthorDisplay {
+    #[must_use] 
     pub fn fallback(pubkey: &str) -> Self {
         let npub = encode_npub(pubkey).unwrap_or_else(|_| short_key(pubkey));
         Self {
@@ -36,6 +37,7 @@ impl AuthorDisplay {
         }
     }
 
+    #[must_use] 
     pub fn from_profile(pubkey: &str, profile: Option<&ProfileDisplay>) -> Self {
         let Some(profile) = profile else {
             return Self::fallback(pubkey);
@@ -76,12 +78,11 @@ pub fn profile_from_event(event: &KernelEvent) -> Option<ProfileDisplay> {
 
 pub fn should_replace(current: Option<&ProfileDisplay>, candidate: &ProfileDisplay) -> bool {
     current
-        .map(|profile| {
+        .is_none_or(|profile| {
             candidate.created_at > profile.created_at
                 || (candidate.created_at == profile.created_at
                     && candidate.event_id < profile.event_id)
         })
-        .unwrap_or(true)
 }
 
 fn string_field(value: &serde_json::Value, key: &str) -> Option<String> {
