@@ -917,7 +917,8 @@ impl NmpApp {
     /// `&str` + [`serde_json::Value`]. The matching `ActionModule` lives in
     /// the app crate and serializes its typed action into the same JSON
     /// envelope the handler parses back out — exactly the same JSON
-    /// translation layer the bespoke `nmp_marmot_dispatch` symbol used.
+    /// translation layer the legacy `nmp_marmot_dispatch` symbol used
+    /// (deleted in ADR-0025 PR 3, 2026-05-23).
     ///
     /// The slot is `Arc<Mutex<Option<Arc<dyn MlsOpHandler>>>>` shared with
     /// the actor thread (handed to `run_actor_with_observers` at

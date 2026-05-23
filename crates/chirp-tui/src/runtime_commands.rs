@@ -7,7 +7,7 @@ use nmp_app_chirp::ffi::{
 };
 use nmp_app_chirp::{
     nmp_app_cancel_bunker_handshake, nmp_app_chirp_identity_sign_in_nsec,
-    nmp_marmot_dispatch, nmp_marmot_register_active,
+    nmp_marmot_register_active,
     nmp_marmot_snapshot, nmp_marmot_string_free,
     nmp_marmot_unregister, nmp_app_nostrconnect_uri, nmp_broker_free_string,
 };
@@ -256,10 +256,25 @@ impl AppRuntime {
 
     pub fn marmot_dispatch_json(&self, action: Value) -> Result<String> {
         self.marmot_register_active()?;
-        let action = CString::new(action.to_string())
-            .map_err(|_| "marmot action JSON contains NUL byte".to_string())?;
-        let ptr = nmp_marmot_dispatch(self.marmot.get(), action.as_ptr());
-        take_marmot_string(ptr, "marmot dispatch")
+        // ADR-0025 PR 3 (2026-05-23): the legacy bespoke `nmp_marmot_dispatch`
+        // C-ABI symbol was deleted. iOS routes Marmot ops through
+        // `nmp_app_dispatch_action("nmp.marmot", …)`, but that path returns
+        // only `{"correlation_id":"…"}` — the rich per-op envelope the TUI
+        // surfaces to the operator (`ok`, per-op detail) is dropped. The
+        // Rust-native `MarmotHandle::dispatch` accessor reaches the SAME
+        // `ops::dispatch` entry point both seams use, without any C-ABI in
+        // the loop. See `crates/chirp-repl/src/app.rs::marmot_dispatch` for
+        // the parallel migration.
+        //
+        // SAFETY: `marmot_register_active` guarantees `self.marmot.get()` is
+        // non-null (it returns `Err` otherwise); the handle was boxed by
+        // `nmp_marmot_register*` and remains valid until `unregister_marmot`.
+        // The TUI runs each command from the single async runtime task that
+        // owns `AppRuntime`, so no other thread mutates the pointer.
+        let handle_ptr = self.marmot.get();
+        let handle = unsafe { &*handle_ptr };
+        let value = handle.dispatch(&action);
+        Ok(value.to_string())
     }
 
     pub fn marmot_snapshot_text(&self) -> Result<String> {

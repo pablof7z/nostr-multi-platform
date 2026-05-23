@@ -7,9 +7,10 @@
 //!
 //! `nmp-core` defines [`MlsOpHandler::handle`](nmp_core::substrate::MlsOpHandler::handle)
 //! as `(&str, &str) -> serde_json::Value` — exactly the JSON-in / JSON-out
-//! shape the bespoke `nmp_marmot_dispatch` envelope already speaks, with
-//! `correlation_id` added so the actor's `DispatchMlsOp` arm can record the
-//! terminal verdict in the kernel's `action_stages` mirror.
+//! shape the legacy bespoke `nmp_marmot_dispatch` envelope spoke (deleted
+//! in ADR-0025 PR 3, 2026-05-23), with `correlation_id` added so the
+//! actor's `DispatchMlsOp` arm can record the terminal verdict in the
+//! kernel's `action_stages` mirror.
 //!
 //! This handler:
 //!
@@ -40,13 +41,14 @@
 //!
 //! `MlsOpHandler::handle` runs INLINE on the actor thread (the
 //! `DispatchMlsOp` dispatch arm). The handler acquires the projection's
-//! `Mutex<Inner>` via `with_inner`; the only other caller of that mutex is
-//! the existing bespoke `nmp_marmot_dispatch` FFI symbol (which runs on
-//! the iOS dispatch thread). For PR 1 both call paths are live, so the
-//! mutex briefly contends across threads — this is no worse than the
-//! current `nmp_marmot_dispatch` + `KernelEventObserver::on_kernel_event`
-//! contention the same mutex already absorbs. PR 3 deletes the bespoke
-//! path; from then on the actor thread is the sole writer (D4).
+//! `Mutex<Inner>` via `with_inner`. After ADR-0025 PR 3 (2026-05-23,
+//! deleted the legacy bespoke `nmp_marmot_dispatch` C-ABI symbol), the
+//! actor thread is the sole HOST writer (D4) — the only other caller of
+//! that mutex is the in-process Rust-native [`crate::ffi::MarmotHandle::dispatch`]
+//! accessor (REPL / TUI / integration tests), which runs from the
+//! caller's own thread. In production (Chirp iOS) only the actor thread
+//! writes; the `MarmotHandle::dispatch` path is not on the production
+//! hot path.
 
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -60,11 +62,13 @@ use crate::projection::state::MarmotProjection;
 /// `MlsOpHandler` impl that delegates to a shared [`MarmotProjection`].
 ///
 /// Holds an `Arc<MarmotProjection>` — the same `Arc` the FFI register path
-/// installs into the [`crate::ffi::MarmotHandle`]. PR 1's wiring clones it
-/// once into the handler and once into the handle, so the projection
-/// outlives BOTH the bespoke FFI path and the substrate-generic path
-/// (handler dropped → `Arc` count -1; handle dropped → `Arc` count -1; only
-/// the final drop frees `MarmotProjection`).
+/// installs into the [`crate::ffi::MarmotHandle`]. The register-with-keys
+/// wiring clones it once into the handler and once into the handle, so
+/// the projection outlives BOTH the host substrate-generic dispatch path
+/// (kernel actor → this handler) and the in-process Rust-native accessor
+/// path ([`crate::ffi::MarmotHandle::dispatch`]) — handler dropped → `Arc`
+/// count -1; handle dropped → `Arc` count -1; only the final drop frees
+/// `MarmotProjection`.
 pub struct MarmotMlsOpHandler {
     projection: Arc<MarmotProjection>,
 }
@@ -110,7 +114,9 @@ impl MlsOpHandler for MarmotMlsOpHandler {
         // (3) Invoke the existing dispatch entry point under the
         // projection's mutex. `with_inner` returns `None` if the mutex is
         // poisoned — D6 surface as a soft-fail envelope (matches the
-        // bespoke `nmp_marmot_dispatch` symbol's behaviour).
+        // soft-fail envelope the legacy bespoke `nmp_marmot_dispatch`
+        // symbol returned pre-PR-3, and the envelope
+        // `MarmotHandle::dispatch` returns today).
         let now_secs = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_secs())

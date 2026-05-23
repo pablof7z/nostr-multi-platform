@@ -49,7 +49,6 @@ fn null_pointer_paths_are_silent() {
     .is_null());
     assert!(nmp_marmot_snapshot(std::ptr::null_mut()).is_null());
     assert!(nmp_marmot_group_messages(std::ptr::null_mut(), std::ptr::null()).is_null());
-    assert!(nmp_marmot_dispatch(std::ptr::null_mut(), std::ptr::null()).is_null());
     nmp_marmot_string_free(std::ptr::null_mut());
     nmp_marmot_unregister(std::ptr::null_mut());
 }
@@ -491,26 +490,31 @@ fn raw_tap_malformed_and_unsupported_are_silent() {
     assert!(snap.groups.is_empty());
 }
 
-// ── ADR-0025 retirement / PR 1: dispatch_action → MarmotMlsOpHandler ────
+// ── ADR-0025 retirement / dispatch_action → MarmotMlsOpHandler ─────────
 //
-// PR 1 in the ADR-0025 retirement plan wires the substrate-generic seam
-// alongside the bespoke `nmp_marmot_dispatch` symbol. The proof points:
+// The substrate-generic Marmot dispatch seam (the SOLE host entry point
+// after ADR-0025 PR 3, 2026-05-23, deleted the legacy bespoke
+// `nmp_marmot_dispatch` C-ABI symbol). The proof points:
 //
 //   1. `MarmotActionModule` registered against `NmpApp::register_action`
 //      and `MarmotMlsOpHandler` installed via `NmpApp::set_mls_op_handler`
 //      are reachable through the kernel's `dispatch_action` path: a
 //      `nmp_app_dispatch_action("nmp.marmot", action_json)` call routes
-//      to the same `ops::dispatch` handler the bespoke
-//      `nmp_marmot_dispatch` symbol reaches.
-//   2. Both paths share ONE `MarmotProjection` — a dispatch through the
-//      generic path mutates state visible to a subsequent snapshot read
-//      through the bespoke path. PR 3 deletes the bespoke path; until
-//      then the test guarantees the two are NOT separate state stores.
+//      to the same `ops::dispatch` handler the legacy bespoke symbol
+//      used to reach (and that `MarmotHandle::dispatch` — the surviving
+//      Rust-native in-process accessor — still reaches today).
+//   2. Both the host (generic) seam and the in-process Rust-native seam
+//      (`MarmotHandle::dispatch` / direct `ops::dispatch`) share ONE
+//      `MarmotProjection` — a dispatch through the generic path mutates
+//      state visible to a subsequent read through the Rust-native path.
+//      This is the property the ADR-0025 PR 3 deletion relied on, and the
+//      property a future second Marmot host (post-Chirp) must continue to
+//      satisfy.
 
 use crate::projection::action::{MarmotActionModule, MARMOT_ACTION_NAMESPACE};
 use crate::projection::handler::MarmotMlsOpHandler;
 
-/// PR 1 end-to-end PROOF.
+/// End-to-end PROOF of the dispatch_action → MarmotMlsOpHandler path.
 ///
 /// Builds the EXACT wiring `register_with_keys` does (minus the C-ABI
 /// shell) directly on a fresh `NmpApp`:
@@ -525,7 +529,9 @@ use crate::projection::handler::MarmotMlsOpHandler;
 /// * the dispatcher returns a `correlation_id` (the action was accepted);
 /// * the `MarmotProjection::snapshot` reflects the published key package
 ///   (the handler ran and mutated shared state — the SAME state the
-///   bespoke `nmp_marmot_dispatch` symbol mutates).
+///   Rust-native [`MarmotHandle::dispatch`] accessor mutates, and the
+///   SAME state the legacy bespoke `nmp_marmot_dispatch` symbol used to
+///   mutate before ADR-0025 PR 3 deleted it).
 ///
 /// The actor dispatch arm runs the handler on its own thread; we poll
 /// the projection's snapshot under a 2 s wall-clock cap, exactly the
@@ -547,9 +553,10 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
     app_mut.set_mls_op_handler(handler);
 
     // Dispatch the legacy envelope through the generic seam. The JSON
-    // shape is byte-identical with what iOS already sends to the bespoke
-    // `nmp_marmot_dispatch` symbol — proving the migration is a one-line
-    // call-site change per op, not a re-encode.
+    // shape is byte-identical with what iOS used to send to the legacy
+    // bespoke `nmp_marmot_dispatch` symbol — kept stable so the iOS
+    // migration in ADR-0025 PR 2 was a one-line call-site change per op,
+    // not a re-encode.
     let envelope_json = r#"{"op":"publish_key_package","relays":["wss://t.relay"]}"#;
     let namespace_c = CString::new(MARMOT_ACTION_NAMESPACE).unwrap();
     let envelope_c = CString::new(envelope_json).unwrap();
@@ -586,18 +593,23 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
         published,
         "dispatch_action(nmp.marmot, publish_key_package) must route through \
          MarmotMlsOpHandler and mutate the projection state visible to snapshot \
-         (the SAME state the bespoke nmp_marmot_dispatch symbol mutates)"
+         (the SAME state MarmotHandle::dispatch mutates — i.e. the SAME state \
+         the legacy bespoke nmp_marmot_dispatch symbol used to mutate, pre-PR-3)"
     );
 
     nmp_core::nmp_app_free(app);
 }
 
-/// Parity test: the generic seam and the bespoke seam mutate ONE shared
-/// `MarmotProjection`. A `create_group` through `dispatch_action` produces
-/// a group that a subsequent `nmp_marmot_snapshot`-equivalent read sees —
-/// no duplicate state store, no parallel mutex. This is the precondition
-/// PR 3 (delete `nmp_marmot_dispatch`) relies on: both paths must already
-/// be operating on the same state by the time the bespoke path is deleted.
+/// Parity test: the host (generic `dispatch_action`) seam and the
+/// in-process Rust-native seam (direct `projection::ops::dispatch`, the
+/// same code path `MarmotHandle::dispatch` reaches) mutate ONE shared
+/// `MarmotProjection`. A `create_group` through `dispatch_action`
+/// produces a group that a subsequent in-process `ops::dispatch` read
+/// sees — no duplicate state store, no parallel mutex. This was the
+/// precondition ADR-0025 PR 3 relied on when deleting the legacy bespoke
+/// `nmp_marmot_dispatch` symbol; it remains the precondition the
+/// REPL/TUI tests rely on now that the Rust-native accessor is the
+/// substitute for the deleted C symbol.
 #[test]
 fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
     let alice_keys = Keys::generate();
@@ -662,10 +674,12 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
         )
     });
 
-    // Bespoke seam (via ops::dispatch — the SAME entry point
-    // nmp_marmot_dispatch reaches): send a message into the just-created
-    // group. If the generic and bespoke seams were separate stores, this
-    // would fail with `unknown group_id`.
+    // In-process Rust-native seam (via ops::dispatch — the SAME entry
+    // point MarmotHandle::dispatch reaches, and the SAME entry point the
+    // legacy bespoke `nmp_marmot_dispatch` symbol used to reach pre-PR-3):
+    // send a message into the just-created group. If the generic seam and
+    // the Rust-native seam were separate stores, this would fail with
+    // `unknown group_id`.
     let r = proj
         .with_inner(|h| {
             ops::dispatch(
@@ -681,7 +695,9 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
         .expect("projection mutex should not be poisoned");
     assert_eq!(
         r["ok"], json!(true),
-        "the bespoke seam must see the group created through the generic seam: {r}"
+        "the in-process Rust-native seam (ops::dispatch / \
+         MarmotHandle::dispatch) must see the group created through the \
+         generic dispatch_action seam: {r}"
     );
 
     nmp_core::nmp_app_free(app);

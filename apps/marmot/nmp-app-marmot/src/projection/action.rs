@@ -1,27 +1,30 @@
 //! `MarmotAction` + `MarmotActionModule` — the typed [`ActionModule`] surface
-//! that routes Marmot writes through `nmp_app_dispatch_action` instead of
-//! the bespoke `nmp_marmot_dispatch` C-ABI symbol.
+//! that routes Marmot writes through `nmp_app_dispatch_action`. This is the
+//! architecturally-correct replacement for the legacy bespoke
+//! `nmp_marmot_dispatch` C-ABI symbol (deleted in ADR-0025 PR 3,
+//! 2026-05-23 — the ADR-0025 exception is fully retired).
 //!
 //! # Where this fits
 //!
 //! Marmot has two op streams reaching `MarmotService`:
 //!
-//! * **the bespoke FFI cluster** (`nmp_marmot_dispatch` in [`crate::ffi`])
-//!   — the C-ABI symbol iOS calls today. ADR-0025 named this a temporary
-//!   exception to the `dispatch_action` seam; this `MarmotActionModule`
-//!   is the architecturally-correct replacement.
-//! * **the substrate-generic seam** (this module) — registers a typed
-//!   [`ActionModule`] under the `"nmp.marmot"` namespace; the host calls
+//! * **the substrate-generic seam** (this module, the SOLE host entry
+//!   point) — registers a typed [`ActionModule`] under the `"nmp.marmot"`
+//!   namespace; the host calls
 //!   `nmp_app_dispatch_action("nmp.marmot", action_json)`; the actor's
-//!   [`crate::ffi::set_mls_op_handler`]-installed
-//!   [`crate::projection::handler::MarmotMlsOpHandler`] runs the op against
-//!   the live `MarmotProjection`.
+//!   `set_mls_op_handler`-installed
+//!   [`crate::projection::handler::MarmotMlsOpHandler`] runs the op
+//!   against the live `MarmotProjection`. Returns a `correlation_id`
+//!   synchronously; the terminal verdict surfaces on `action_stages`.
+//! * **the Rust-native accessor** ([`crate::ffi::MarmotHandle::dispatch`])
+//!   — for in-process callers (REPL / TUI / integration tests) that need
+//!   the full synchronous per-op envelope (`events`, `welcome_rumors`,
+//!   `evolution_event`, …). Not a C-ABI symbol. Reaches the SAME
+//!   [`crate::projection::ops::dispatch`] code path.
 //!
 //! Both paths reach the SAME [`crate::projection::ops::dispatch`] code so the
-//! behaviour is identical — only the entry door changes. PR 1 wires this
-//! module alongside the bespoke FFI; PR 2 migrates iOS to call the
-//! `nmp_app_dispatch_action` path; PR 3 deletes `nmp_marmot_dispatch` and
-//! retires ADR-0025.
+//! behaviour is identical — only the entry door (and the level of detail
+//! returned to the caller) differs.
 //!
 //! # JSON shape — isomorphic with the bespoke envelope
 //!
@@ -35,9 +38,10 @@
 //! {"op": "publish_key_package"}
 //! ```
 //!
-//! iOS doesn't need to re-encode — flipping the dispatch call from
-//! `nmp_marmot_dispatch(json)` to `nmp_app_dispatch_action("nmp.marmot",
-//! json)` is a one-line change at every call site.
+//! iOS doesn't re-encode — the ADR-0025 PR 2 migration from the legacy
+//! `nmp_marmot_dispatch(json)` symbol to `nmp_app_dispatch_action("nmp.marmot",
+//! json)` was a one-line call-site change per op (and PR 3 then deleted
+//! the legacy symbol entirely).
 //!
 //! # `start()` validates shape; the handler does the work
 //!

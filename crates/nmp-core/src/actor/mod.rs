@@ -744,8 +744,9 @@ pub enum ActorCommand {
     DispatchMlsOp {
         /// JSON-encoded action body. The handler parses this into its own
         /// typed action enum. No MLS type crosses the FFI boundary — this
-        /// is the same translation layer the bespoke
-        /// `nmp_marmot_dispatch` envelope used.
+        /// is the same translation layer the legacy bespoke
+        /// `nmp_marmot_dispatch` envelope used (deleted in ADR-0025 PR 3,
+        /// 2026-05-23).
         action_json: String,
         /// Registry-minted dispatch correlation id (32 hex chars). Threaded
         /// into the handler for inclusion in the result envelope and into

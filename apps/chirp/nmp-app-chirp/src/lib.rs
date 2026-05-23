@@ -69,7 +69,7 @@ pub use nmp_signer_broker::{
 pub use nmp_marmot::fetch::nmp_marmot_fetch_key_packages;
 #[cfg(feature = "marmot")]
 pub use nmp_marmot::ffi::{
-    nmp_marmot_dispatch, nmp_marmot_group_messages,
+    nmp_marmot_group_messages,
     nmp_marmot_register, nmp_marmot_register_active,
     nmp_marmot_snapshot, nmp_marmot_string_free,
     nmp_marmot_unregister, MarmotHandle,
