@@ -67,6 +67,7 @@ pub struct AppActionDispatch {
 }
 
 impl AppActionDispatch {
+    #[must_use] 
     pub fn into_action_dispatch(self) -> ActionDispatch {
         let (action_type, payload) = self.action.into_dispatch_parts();
         ActionDispatch {
@@ -99,6 +100,7 @@ pub enum AppAction {
 }
 
 impl AppAction {
+    #[must_use] 
     pub fn into_dispatch_parts(self) -> (String, Value) {
         match self {
             Self::PublishNote {

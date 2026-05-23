@@ -81,7 +81,7 @@ pub(crate) enum CloseReason {
 impl CloseReason {
     /// Stable diagnostic key for surfaces (e.g. `RelayStatus.last_error`,
     /// log lines). Matches the NIP-01 prefix verbatim (sans trailing colon).
-    pub(crate) fn as_key(&self) -> &'static str {
+    pub(crate) fn as_key(self) -> &'static str {
         match self {
             Self::AuthRequired => "auth-required",
             Self::Restricted => "restricted",
@@ -110,7 +110,7 @@ impl CloseReason {
     ///   malformed (NIP-01 §A).
     /// - `Error | Unsupported | Pow | Unknown` → `permanent` — retrying the
     ///   same REQ against the same relay will not help.
-    pub(crate) fn error_category(&self) -> Option<&'static str> {
+    pub(crate) fn error_category(self) -> Option<&'static str> {
         match self {
             Self::AuthRequired => Some(ERR_AUTH_REQUIRED),
             Self::Restricted | Self::Blocked | Self::Shadowbanned => Some(ERR_POLICY_DENIED),

@@ -87,6 +87,7 @@ impl RowRelationCounts {
         }
     }
 
+    #[must_use] 
     pub fn summary(&self) -> String {
         format!(
             "reply {}  react {}  repost {}",

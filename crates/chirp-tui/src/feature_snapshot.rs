@@ -18,6 +18,7 @@ pub struct FeatureSnapshot {
 }
 
 impl FeatureSnapshot {
+    #[must_use] 
     pub fn from_payload(payload: &str) -> Self {
         let Ok(value) = serde_json::from_str::<Value>(payload) else {
             return Self::default();
@@ -29,6 +30,7 @@ impl FeatureSnapshot {
         Self::from_projections(projections)
     }
 
+    #[must_use] 
     pub fn from_projections(projections: Option<&Value>) -> Self {
         let Some(projections) = projections else {
             return Self::default();
@@ -50,6 +52,7 @@ impl FeatureSnapshot {
         }
     }
 
+    #[must_use] 
     pub fn is_empty(&self) -> bool {
         self.accounts.is_empty()
             && self.outbox.is_empty()

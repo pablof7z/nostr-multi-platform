@@ -166,6 +166,7 @@ impl AppState {
         self.selected = self.rows.len().saturating_sub(1);
     }
 
+    #[must_use] 
     pub fn selected_row(&self) -> Option<&TimelineRow> {
         self.rows.get(self.selected)
     }

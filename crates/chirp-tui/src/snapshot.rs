@@ -10,6 +10,7 @@ pub struct SharedSnapshot {
 }
 
 impl SharedSnapshot {
+    #[must_use] 
     pub fn from_payload(payload: &str) -> Self {
         let Ok(value) = serde_json::from_str::<Value>(payload) else {
             return Self::default();

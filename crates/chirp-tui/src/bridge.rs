@@ -13,6 +13,7 @@ pub struct NmpUpdateBridge {
 }
 
 impl NmpUpdateBridge {
+    #[must_use] 
     pub fn channel() -> (Box<Self>, Receiver<NmpEvent>) {
         let (tx, rx) = mpsc::channel();
         (Box::new(Self { tx }), rx)

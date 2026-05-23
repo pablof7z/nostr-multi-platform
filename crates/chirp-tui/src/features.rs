@@ -17,6 +17,7 @@ impl FeatureTab {
         Self::Settings,
     ];
 
+    #[must_use] 
     pub fn label(self) -> &'static str {
         match self {
             Self::Home => "home",
@@ -27,6 +28,7 @@ impl FeatureTab {
         }
     }
 
+    #[must_use] 
     pub fn title(self) -> &'static str {
         match self {
             Self::Home => "Home",
@@ -37,6 +39,7 @@ impl FeatureTab {
         }
     }
 
+    #[must_use] 
     pub fn from_key(ch: char) -> Option<Self> {
         match ch {
             'h' => Some(Self::Home),
@@ -48,11 +51,13 @@ impl FeatureTab {
         }
     }
 
+    #[must_use] 
     pub fn next(self) -> Self {
         let idx = Self::ALL.iter().position(|tab| *tab == self).unwrap_or(0);
         Self::ALL[(idx + 1) % Self::ALL.len()]
     }
 
+    #[must_use] 
     pub fn previous(self) -> Self {
         let idx = Self::ALL.iter().position(|tab| *tab == self).unwrap_or(0);
         Self::ALL[(idx + Self::ALL.len() - 1) % Self::ALL.len()]
