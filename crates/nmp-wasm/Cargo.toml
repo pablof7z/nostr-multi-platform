@@ -9,6 +9,11 @@ description = "Browser-facing NMP worker protocol and wasm runtime facade."
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+# nmp-core with no default features: only the pure kernel types and substrate
+# traits are compiled (no actor thread, no tungstenite, no LMDB). Phase 1b of
+# V-01 (docs/plans/WASM.md): wasm-core dep established; Phase 1c will reduce
+# --no-default-features compile errors so the wasm32 check passes cleanly.
+nmp-core = { path = "../nmp-core", default-features = false }
 nmp-chirp-config = { path = "../nmp-chirp-config" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

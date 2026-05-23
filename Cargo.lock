@@ -4115,6 +4115,7 @@ version = "0.1.0"
 dependencies = [
  "js-sys",
  "nmp-chirp-config",
+ "nmp-core",
  "serde",
  "serde_json",
  "wasm-bindgen",
