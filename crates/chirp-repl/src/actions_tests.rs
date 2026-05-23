@@ -34,6 +34,11 @@ fn app_commands_dispatch_without_live_relays() {
     .unwrap();
     run(&mut session, Command::Follow(PUBKEY_HEX.into())).unwrap();
     run(&mut session, Command::Unfollow(PUBKEY_HEX.into())).unwrap();
+    run(
+        &mut session,
+        Command::SendDm(PUBKEY_HEX.into(), "hi dm".into()),
+    )
+    .unwrap();
 }
 
 #[test]

@@ -28,6 +28,7 @@ pub fn run(session: &mut Session, command: Command) -> Result<bool> {
         Command::React(id, reaction) => react(session, &id, &reaction)?,
         Command::Follow(pubkey) => follow(session, &pubkey, true)?,
         Command::Unfollow(pubkey) => follow(session, &pubkey, false)?,
+        Command::SendDm(recipient, text) => send_dm(session, &recipient, &text)?,
         Command::MlsInit => mls_init(session)?,
         Command::MlsStatus => mls_status(session)?,
         Command::MlsCreate(name, invitees) => mls_create(session, &name, &invitees)?,
@@ -141,6 +142,13 @@ fn follow(session: &mut Session, input: &str, add: bool) -> Result<()> {
     } else {
         "queued unfollow through NmpApp"
     });
+    Ok(())
+}
+
+fn send_dm(session: &mut Session, recipient: &str, text: &str) -> Result<()> {
+    let recipient = normalize_pubkey(recipient)?;
+    session.app.send_dm(&recipient, text)?;
+    render::status_ok("queued NIP-17 gift-wrapped DM through NmpApp");
     Ok(())
 }
 

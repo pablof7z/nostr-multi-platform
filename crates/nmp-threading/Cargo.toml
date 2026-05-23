@@ -3,7 +3,7 @@ name = "nmp-threading"
 version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
-description = "Reply-convention-agnostic timeline grouping algorithm. Owns ThreadPointer / ParentResolver / ModulePolicy / TimelineBlock / Grouper, consumed by per-NIP wrapper view modules (NIP-10 in nmp-nip01, NIP-22 in nmp-nip22). No app nouns, no kind semantics."
+description = "Reply-convention-agnostic timeline grouping algorithm. Owns ThreadPointer / ParentResolver / ModulePolicy / TimelineBlock / Grouper, consumed by per-NIP wrapper view modules (NIP-10 in nmp-nip01). No app nouns, no kind semantics."
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }

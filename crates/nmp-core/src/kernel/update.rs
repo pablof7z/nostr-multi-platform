@@ -763,10 +763,9 @@ impl Kernel {
 /// helper that this function replaces.
 ///
 /// Pure, allocation-bounded, no I/O — safe to call on every snapshot tick.
-/// `nmp-reactions::decode` (kind:6 / kind:16) deliberately keeps the embedded
-/// string verbatim (see `decode.rs:67-71`); this is a display-layer extractor
-/// owned by the kernel so the Swift thin-shell does not have to parse Nostr
-/// event JSON in the view layer (aim.md §6.9, Chirp thin-shell rule).
+/// This is a display-layer extractor owned by the kernel so the Swift
+/// thin-shell does not have to parse Nostr event JSON in the view layer
+/// (aim.md §6.9, Chirp thin-shell rule).
 fn parse_repost_inner(raw: &str) -> (Option<String>, Option<String>) {
     let trimmed = raw.trim();
     if !trimmed.starts_with('{') {

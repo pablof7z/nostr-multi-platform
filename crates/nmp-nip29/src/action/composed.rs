@@ -2,8 +2,7 @@
 //!
 //! These are the "host-pinned variant of an otherwise cross-protocol action"
 //! per `kinds.md` §4. They live here because the routing concern (the `h`
-//! tag) is the discriminator; the corresponding non-`h` actions live in
-//! `nmp-nip25` / `nmp-nip22`.
+//! tag) is the discriminator.
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use nmp_core::ActorCommand;

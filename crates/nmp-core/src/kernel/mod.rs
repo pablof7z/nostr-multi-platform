@@ -1168,6 +1168,55 @@ impl Kernel {
         self.wire.persistent.contains(&(key, sub_id.to_string()))
     }
 
+    /// Single-writer insert into `self.wire.subs` (PD-033-C Stage 0).
+    ///
+    /// Every row written to the wire-sub bookkeeping map MUST flow through
+    /// this helper. There are two callers today (`Kernel::req_for_relay` and
+    /// `Kernel::register_planner_wire_frames` — the M1/M2 dual writers named
+    /// in `docs/architecture-audit/pd033c-plan.md` §1.2); stages 1–6 of the
+    /// migration retire M1, leaving `register_planner_wire_frames` as the
+    /// sole caller. Funneling both callers through one body up-front turns
+    /// "two writers" into "two callers of one writer" so the rest of the
+    /// migration is a mechanical grep — see PD-033-C §5 Stage 0.
+    ///
+    /// `initial_state` is supplied by the caller so the helper preserves the
+    /// pre-existing per-caller invariants without growing branches: M1 stamps
+    /// `"auth_paused"` when `relay_auth_paused(role)` is true at REQ-emission
+    /// time (see PD-033-C §4.1 — a latent gap M2 does not yet honor); M2
+    /// stamps `"opening"`. Resolving that asymmetry is Stage 6 territory,
+    /// **not** Stage 0 — this helper is a pure behavior-preserving extraction.
+    ///
+    /// T-relay-url-normalize: `relay_url` is the already-canonical key half
+    /// (matches the `(CanonicalRelayUrl, String)` `wire.subs` key type) — the
+    /// helper does NOT canonicalize again; that is the caller's contract so
+    /// the same canonical value reaches both the map key and the stored
+    /// `WireSub.relay_url` field without a redundant parse.
+    pub(crate) fn insert_wire_sub(
+        &mut self,
+        role: RelayRole,
+        relay_url: CanonicalRelayUrl,
+        sub_id: String,
+        filter_summary: String,
+        initial_state: &str,
+    ) {
+        self.wire.subs.insert(
+            (relay_url.clone(), sub_id.clone()),
+            WireSub {
+                id: sub_id,
+                role,
+                relay_url,
+                filter_summary,
+                state: initial_state.to_string(),
+                events_rx: 0,
+                opened_at: Instant::now(),
+                last_event_at: None,
+                eose_at: None,
+                close_reason: None,
+            },
+        );
+        self.changed_since_emit = true;
+    }
+
     pub(crate) fn start(&mut self) {
         if self.timing.started_at.is_none() {
             self.timing.started_at = Some(Instant::now());

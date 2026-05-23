@@ -2,6 +2,7 @@
 members = [
     "apps/chirp/nmp-app-chirp",
     "apps/fixture/nmp-app-fixture",
+    "apps/longform/nmp-app-longform",
     "crates/fixture-todo-core",
     "crates/chirp-tui",
     "crates/chirp-repl",
@@ -15,7 +16,6 @@ members = [
     "apps/marmot/nmp-app-marmot",
     "crates/nmp-nip01",
     "crates/nmp-nip17",
-    "crates/nmp-nip22",
     "crates/nmp-nip29",
     "crates/nmp-nip42",
     "crates/nmp-nip42-types",
@@ -24,7 +24,6 @@ members = [
     "crates/nmp-nip65",
     "crates/nmp-nostr-lmdb",
     "crates/nmp-nwc",
-    "crates/nmp-reactions",
     "crates/nmp-repl",
     "crates/nmp-signer-broker",
     "crates/nmp-signer-iface",
@@ -67,7 +66,7 @@ version = "0.1.0"
 #   nmp-core, nmp-nip01, nmp-marmot, nmp-signers.
 #   Still copy-pasting versions: nmp-nip59, nmp-nwc, nmp-nostr-lmdb,
 #   nmp-signer-broker, nmp-testing, nmp-repl, nmp-content, nmp-relations,
-#   nmp-threading, nmp-nip22/23/29/42/57, nmp-cli, nmp-codegen, etc.
+#   nmp-threading, nmp-nip23/29/42/57, nmp-cli, nmp-codegen, etc.
 [workspace.dependencies]
 nostr = "0.44"
 serde = "1.0"

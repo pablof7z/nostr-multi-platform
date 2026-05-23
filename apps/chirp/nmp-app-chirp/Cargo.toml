@@ -23,10 +23,16 @@ crate-type = ["staticlib", "rlib"]
 # The `justfile` iOS build targets pass `--features marmot` explicitly so the
 # Chirp iOS shell still links all `nmp_marmot_*` symbols.
 default = ["wallet", "lmdb-backend"]
-# Marmot (MLS-over-Nostr) projection. Gates the `nmp-marmot` dependency, the
-# `src/marmot/` C-ABI shell module, and the `nmp_marmot_*` FFI symbols.
+# Marmot (MLS-over-Nostr) projection. Activates the `nmp-marmot` dependency
+# AND its `ffi` feature, which compiles the relocated C-ABI shell
+# (`apps/marmot/nmp-app-marmot/src/ffi.rs` + siblings) and the
+# `nmp_marmot_*` symbols. PD-033-A: the shell lives in `nmp-marmot` so the
+# crate is a standalone buildable target for a future Marmot-only app;
+# Chirp picks up the symbols transparently via rlib linkage. The
+# `keyring-core` / `apple-native-keyring-store` deps moved to
+# `nmp-marmot`'s `ffi` feature (no need to duplicate them here).
 # Deferred post-v1; off in a no-default-features build.
-marmot = ["dep:nmp-marmot", "dep:keyring-core", "dep:apple-native-keyring-store"]
+marmot = ["dep:nmp-marmot", "nmp-marmot/ffi"]
 # NIP-47 Nostr Wallet Connect. Forwards to `nmp-core/wallet` so the kernel
 # compiles the `nmp_app_wallet_*` FFI symbols the iOS shell links. Deferred
 # post-v1; off in a no-default-features build.
@@ -71,10 +77,11 @@ nmp-nip57 = { path = "../../../crates/nmp-nip57" }
 # above `nmp-core` in the dep graph).
 nmp-coverage-gate = { path = "../../../crates/nmp-coverage-gate" }
 nmp-threading = { path = "../../../crates/nmp-threading" }
-# Marmot (MLS-over-Nostr). This crate's `src/marmot/` module consumes the
-# typed `MarmotService` translation layer; no MLS type crosses its C-ABI
-# (`group_id` is hex, errors are strings). Optional + feature-gated (`marmot`):
-# deferred post-v1, so the default-off build excludes it.
+# Marmot (MLS-over-Nostr). The C-ABI shell now lives inside this crate
+# (`apps/marmot/nmp-app-marmot/src/ffi.rs`, gated by `nmp-marmot/ffi`); no
+# MLS type crosses the FFI (`group_id` is hex, errors are strings).
+# Optional + feature-gated (`marmot`): deferred post-v1, so the default-off
+# build excludes it.
 nmp-marmot = { path = "../../marmot/nmp-app-marmot", optional = true }
 # `nostr` reconstructs typed `Event` / `Keys` / `PublicKey` / `RelayUrl`
 # values from the C-ABI JSON and builds the kind:444 message rumor.
@@ -84,29 +91,20 @@ nostr = { version = "0.44", default-features = false, features = ["std"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 zeroize.workspace = true
-# Keyring for encrypted Marmot MLS DB. `mdk-sqlite-storage` requires a
-# platform-specific keyring store to be initialized before use.
-keyring-core = { version = "1", optional = true }
-
-[target.'cfg(any(target_os = "ios", target_os = "tvos", target_os = "watchos", target_os = "visionos"))'.dependencies]
-apple-native-keyring-store = { version = "1.0", features = ["protected"], optional = true }
+# (The `keyring-core` + `apple-native-keyring-store` deps were relocated to
+# `nmp-marmot`'s `ffi` feature alongside `src/marmot/` — see the `marmot`
+# feature above. Chirp no longer references them directly.)
 
 [dev-dependencies]
 # Test-support gates expose `nmp_app_new` / `nmp_app_free` (and the
 # `nmp_app_register_event_observer` FFI symbol via Rust path) so the FFI
 # smoke tests in `src/ffi.rs` can spin up a real `NmpApp` rather than mocking
-# the slot. Matches the pattern in the other protocol crates (`nmp-nip01`,
-# `nmp-nip22`, `nmp-relations`).
+# the slot. Matches the pattern in the other protocol crates (e.g. `nmp-nip01`).
 nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
 nmp-wasm = { path = "../../../crates/nmp-wasm" }
-# `test-utils` gates `MdkSqliteStorage::new_in_memory` so the Marmot FFI
-# smoke tests can spin up a real `MarmotService` without a keyring /
-# on-disk SQLite file (mirrors `crates/nmp-marmot/src/tests.rs`).
-mdk-sqlite-storage = { version = "0.8.0", features = ["test-utils"] }
-# The Marmot FFI smoke tests build a `NostrGroupConfigData` to drive the
-# real `create_group` round-trip. Logic moved to `nmp-marmot`, so this is
-# now a dev-only dependency (Chirp ships zero MLS types in production).
-mdk-core = "0.8.0"
+# (The `mdk-sqlite-storage` + `mdk-core` dev-deps were relocated alongside
+# the Marmot FFI smoke tests to `nmp-marmot`'s `src/ffi/tests.rs`; Chirp no
+# longer references any MLS types directly.)
 # `nmp-nip59` supplies the `gift_wrap` primitive used in the DM-inbox
 # round-trip tests so the test fixtures construct kind:1059 envelopes through
 # the same production path the inbox unwraps (mirroring the unit tests in

@@ -254,6 +254,25 @@ final class KernelModel: ObservableObject {
         startedKernel = true
         capabilities.start()
         kernel.start(visibleLimit: visibleLimit, emitHz: emitHz)
+        // Cold-launch Marmot fallback. `nmp_app_chirp_identity_restore` only
+        // returns a Marmot handle when Chirp's own keyring entry
+        // (`chirp.marmot.cached_secret`) holds the nsec — but `createAccount`
+        // and `switchActive` persist the nsec through the kernel's
+        // `nmp.identity.local_nsec.<pubkey>` slot (see
+        // `crates/nmp-core/src/actor/session_persistence.rs`), not through
+        // Chirp's app-level slot. On cold launch of an existing account the
+        // kernel actor restores the identity from its own keyring, so the
+        // Chirp-keyring read returns `None` and the synchronous Marmot
+        // register on this thread is skipped. Pre-arming
+        // `marmotRegistrationRequested` lets the existing `apply()` fallback
+        // call `registerActiveMarmotIfAvailable()` on the first tick where
+        // `activeAccount` flips from nil → restored pubkey; by then the actor
+        // has populated `mls_local_nsec` so the active-key registration path
+        // succeeds. Idempotent w.r.t. the Rust path: when
+        // `nmp_app_chirp_identity_restore` *does* succeed (account first
+        // signed in via `signInNsec`),  `registerActiveMarmotIfAvailable()`
+        // guards on `marmotHandle == nil` and is a no-op.
+        marmotRegistrationRequested = true
         kernel.restoreChirpIdentity(testNsec: ProcessInfo.processInfo.environment["NMP_TEST_NSEC"])
     }
 

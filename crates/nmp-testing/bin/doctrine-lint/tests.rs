@@ -407,7 +407,6 @@ fn protocol_crates_are_doctrine_clean() {
     let nip_crates = [
         "nmp-nip01",
         "nmp-nip17",
-        "nmp-nip22",
         "nmp-nip23",
         "nmp-nip29",
         "nmp-nip42",

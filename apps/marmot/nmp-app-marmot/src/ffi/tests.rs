@@ -15,9 +15,10 @@
 //! tests below.
 
 use super::*;
-use nmp_marmot::projection::tap::MarmotIngestTap;
-use nmp_marmot::projection::{ops, state::MarmotProjection};
+use crate::projection::tap::MarmotIngestTap;
+use crate::projection::{ops, state::MarmotProjection};
 
+use crate::service::MarmotService;
 use mdk_core::prelude::NostrGroupConfigData;
 use mdk_sqlite_storage::MdkSqliteStorage;
 use nmp_core::substrate::{
@@ -25,7 +26,6 @@ use nmp_core::substrate::{
     KeyringResult,
 };
 use nmp_core::RawEventObserver;
-use nmp_marmot::service::MarmotService;
 use nostr::{JsonUtil, Keys};
 use serde_json::json;
 use std::ffi::{c_char, CStr, CString};

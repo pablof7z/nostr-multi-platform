@@ -18,6 +18,7 @@ pub enum Command {
     React(String, String),
     Follow(String),
     Unfollow(String),
+    SendDm(String, String),
     MlsInit,
     MlsStatus,
     MlsCreate(String, Vec<String>),
@@ -72,6 +73,12 @@ pub fn parse(line: &str) -> Result<Command, String> {
         }
         "follow" => one(rest, "follow <npub|nprofile|hex>").map(Command::Follow),
         "unfollow" => one(rest, "unfollow <npub|nprofile|hex>").map(Command::Unfollow),
+        "send-dm" | "dm" => {
+            if rest.len() < 2 {
+                return Err("send-dm <npub|nprofile|hex> <text>".into());
+            }
+            Ok(Command::SendDm(rest[0].into(), rest[1..].join(" ")))
+        }
         "mls-init" => no_args(rest, Command::MlsInit, "mls-init"),
         "mls-status" => no_args(rest, Command::MlsStatus, "mls-status"),
         "mls-create" => {
@@ -175,6 +182,14 @@ mod tests {
             parse("react note1abc").unwrap(),
             Command::React("note1abc".into(), "+".into())
         );
+        assert_eq!(
+            parse("send-dm npub1abc hello there").unwrap(),
+            Command::SendDm("npub1abc".into(), "hello there".into())
+        );
+        assert_eq!(
+            parse("dm npub1abc hi").unwrap(),
+            Command::SendDm("npub1abc".into(), "hi".into())
+        );
     }
 
     #[test]
@@ -211,6 +226,8 @@ mod tests {
         assert!(parse("profile").is_err());
         assert!(parse("reply note1abc").is_err());
         assert!(parse("react").is_err());
+        assert!(parse("send-dm").is_err());
+        assert!(parse("send-dm npub1abc").is_err());
         assert!(parse("set-relays https://bad.example").is_err());
         assert!(parse("unknown").is_err());
     }

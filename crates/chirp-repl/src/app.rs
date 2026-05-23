@@ -194,6 +194,12 @@ impl AppRuntime {
         self.dispatch_action(namespace, &action)
     }
 
+    pub fn send_dm(&self, recipient_pubkey: &str, content: &str) -> Result<()> {
+        let action =
+            json!({ "recipient_pubkey": recipient_pubkey, "content": content }).to_string();
+        self.dispatch_action("nmp.nip17.send", &action)
+    }
+
     #[must_use] 
     pub fn chirp_snapshot(&self) -> Option<Value> {
         if self.chirp.is_null() {

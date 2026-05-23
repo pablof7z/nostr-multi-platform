@@ -1,10 +1,7 @@
 //! `ThreadPointer` — what a reply / comment is anchored to.
 //!
 //! Three variants cover every NIP-10 / NIP-22 anchor shape: a Nostr event id,
-//! a parameterized-replaceable address, or an external URI. `nmp-nip22`
-//! aliases its historic `CommentPointer` to this type — serde shape is
-//! preserved byte-for-byte so the wire / storage representation does not
-//! change.
+//! a parameterized-replaceable address, or an external URI.
 
 use serde::{Deserialize, Serialize};
 

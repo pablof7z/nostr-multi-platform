@@ -3761,10 +3761,6 @@ dependencies = [
 name = "nmp-app-chirp"
 version = "0.1.0"
 dependencies = [
- "apple-native-keyring-store",
- "keyring-core",
- "mdk-core",
- "mdk-sqlite-storage",
  "nmp-core",
  "nmp-coverage-gate",
  "nmp-marmot",
@@ -3788,6 +3784,15 @@ name = "nmp-app-fixture"
 version = "0.1.0"
 dependencies = [
  "fixture-todo-core",
+ "nmp-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "nmp-app-longform"
+version = "0.1.0"
+dependencies = [
  "nmp-core",
  "serde",
  "serde_json",
@@ -3882,6 +3887,8 @@ dependencies = [
 name = "nmp-marmot"
 version = "0.1.0"
 dependencies = [
+ "apple-native-keyring-store",
+ "keyring-core",
  "mdk-core",
  "mdk-sqlite-storage",
  "nmp-core",
@@ -3909,16 +3916,6 @@ dependencies = [
  "nmp-core",
  "nmp-nip59",
  "nostr",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "nmp-nip22"
-version = "0.1.0"
-dependencies = [
- "nmp-core",
- "nmp-threading",
  "serde",
  "serde_json",
 ]
@@ -4005,18 +4002,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nmp-relations"
-version = "0.1.0"
-dependencies = [
- "nmp-core",
- "nmp-nip01",
- "nmp-nip22",
- "nmp-nip57",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "nmp-repl"
 version = "0.1.0"
 dependencies = [
@@ -4078,10 +4063,8 @@ dependencies = [
  "nmp-core",
  "nmp-marmot",
  "nmp-nip01",
- "nmp-nip22",
  "nmp-nip42",
  "nmp-nip57",
- "nmp-relations",
  "nmp-signer-broker",
  "nmp-signer-iface",
  "nmp-signers",

@@ -5,7 +5,6 @@ pub enum ViewSpec {
 }
 
 impl ViewSpec {
-    #[must_use] 
     pub fn namespace(&self) -> &'static str {
         match self {
             Self::Kernel(_) => "kernel",

@@ -35,8 +35,6 @@
 mod dm_runtime;
 pub mod ffi;
 pub mod follow_list;
-#[cfg(feature = "marmot")]
-pub mod marmot;
 
 pub use ffi::{
     nmp_app_chirp_register, nmp_app_chirp_snapshot, nmp_app_chirp_snapshot_free,
@@ -55,25 +53,29 @@ pub use nmp_signer_broker::{
 //
 // A second FFI projection over the same kernel substrate. Mirrors the
 // timeline symbols' naming / lifetime / free conventions. The iOS agent
-// links these alongside the timeline symbols. Chirp owns ONLY the C-ABI
-// shell ([`marmot::ffi`]); all business logic lives in
-// `nmp_marmot::projection` (the reusable-from-any-host proof). The Rust
-// type re-exports below resolve to that canonical home.
+// links these alongside the timeline symbols.
+//
+// PD-033-A relocation: the C-ABI shell now lives in the `nmp-marmot` crate
+// (`apps/marmot/nmp-app-marmot/src/ffi.rs` + siblings) so the crate is a
+// standalone buildable target for a future Marmot-only app. Chirp pulls it
+// in via the `nmp-marmot/ffi` feature; the `#[no_mangle] nmp_marmot_*`
+// symbols flow through `libnmp_app_chirp.a` automatically via rlib linkage
+// (iOS still links exactly one staticlib).
 //
 // Gated behind the `marmot` feature: MLS-over-Nostr was formally deferred to
 // post-v1. Chirp opts in via its default feature set; a no-default-features
-// build excludes the whole projection (dependency, module, and FFI symbols).
+// build excludes the whole projection (dependency, modules, and FFI symbols).
 #[cfg(feature = "marmot")]
-pub use marmot::fetch::nmp_marmot_fetch_key_packages;
+pub use nmp_marmot::fetch::nmp_marmot_fetch_key_packages;
 #[cfg(feature = "marmot")]
-pub use marmot::ffi::{
+pub use nmp_marmot::ffi::{
     nmp_marmot_dispatch, nmp_marmot_group_messages,
     nmp_marmot_register, nmp_marmot_register_active,
     nmp_marmot_snapshot, nmp_marmot_string_free,
     nmp_marmot_unregister, MarmotHandle,
 };
 #[cfg(feature = "marmot")]
-pub use marmot::identity::{
+pub use nmp_marmot::identity::{
     nmp_app_chirp_identity_remove_account, nmp_app_chirp_identity_restore,
     nmp_app_chirp_identity_sign_in_nsec,
 };
