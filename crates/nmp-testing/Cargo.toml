@@ -34,7 +34,7 @@ tungstenite = { version = "0.24", default-features = false, features = ["handsha
 # nmp-marmot drives MarmotService; test-utils gates new_unencrypted / new_in_memory.
 # mdk-core exposes MessageProcessingResult + NostrGroupConfigData + GroupId for assertions.
 # tempfile provides ephemeral SQLite paths for state-fork (post-compromise test).
-nmp-marmot = { path = "../nmp-marmot" }
+nmp-marmot = { path = "../../apps/marmot/nmp-app-marmot" }
 mdk-core = "0.8.0"
 mdk-sqlite-storage = { version = "0.8.0", features = ["test-utils"] }
 tempfile = "3"

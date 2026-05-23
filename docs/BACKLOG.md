@@ -55,16 +55,14 @@ makes the eventual fix harder.
 
 No chirp-web features may be added until Stage 1 lands.
 
-### V-02 · nmp-marmot in crates/ — application subsystem misplaced [HIGH · staged fix allowed]
+### V-02 · nmp-marmot in crates/ — application subsystem misplaced [DONE]
 
 **Verified:** `crates/nmp-marmot/` exists (~4,096 LOC). ADR-0025 explicitly states Marmot
 opts out of the NMP substrate seam. It is an application feature, not a protocol primitive.
 Protocol crates live in `crates/`; application feature bundles belong in `apps/`.
 
-**Fix path:**
-1. Create `apps/marmot/nmp-app-marmot/` with its own `Cargo.toml`
-2. Move `crates/nmp-marmot/src/` → `apps/marmot/nmp-app-marmot/src/`
-3. Update workspace `Cargo.toml` and all dependents
+Moved to `apps/marmot/nmp-app-marmot/` — crate name unchanged (`nmp-marmot`). All dependent
+path references updated (nmp-repl, nmp-app-chirp, nmp-testing). All `cargo check` passes.
 
 ### V-03 · ~~wallet_status app noun in nmp-core~~ CLOSED — see Appendix
 
@@ -189,9 +187,9 @@ Proves the loop before extending to the full bridge.
 
 ### F-06 · ~~CI lint: freeze C-ABI surface~~ CLOSED — see Appendix
 
-### F-07 · Fix V-02 — move nmp-marmot to apps/ [CLEANUP]
+### F-07 · Fix V-02 — move nmp-marmot to apps/ [DONE]
 
-See V-02 fix path. Can be done in parallel with F-05.
+Completed — see V-02. Moved to `apps/marmot/nmp-app-marmot/`.
 
 ---
 
