@@ -54,11 +54,11 @@ pub enum HandshakeError {
 impl std::fmt::Display for HandshakeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            HandshakeError::Cancelled => f.write_str("cancelled"),
-            HandshakeError::Timeout(s) => write!(f, "timeout: {s}"),
-            HandshakeError::BunkerError(s) => write!(f, "bunker error: {s}"),
-            HandshakeError::Protocol(s) => write!(f, "protocol error: {s}"),
-            HandshakeError::Transport(s) => write!(f, "transport error: {s}"),
+            Self::Cancelled => f.write_str("cancelled"),
+            Self::Timeout(s) => write!(f, "timeout: {s}"),
+            Self::BunkerError(s) => write!(f, "bunker error: {s}"),
+            Self::Protocol(s) => write!(f, "protocol error: {s}"),
+            Self::Transport(s) => write!(f, "transport error: {s}"),
         }
     }
 }
@@ -302,9 +302,7 @@ fn await_response(
         if let Some(err) = rpc.get("error") {
             if !err.is_null() {
                 let msg = err
-                    .as_str()
-                    .map(str::to_string)
-                    .unwrap_or_else(|| err.to_string());
+                    .as_str().map_or_else(|| err.to_string(), str::to_string);
                 return Err(HandshakeError::BunkerError(msg));
             }
         }
@@ -478,23 +476,16 @@ fn await_nostrconnect_connect(
         {
             continue;
         }
-        let signer_pk = match nostr::PublicKey::from_hex(&signer_pubkey_hex) {
-            Ok(pk) => pk,
-            Err(_) => continue,
-        };
+        let Ok(signer_pk) = nostr::PublicKey::from_hex(&signer_pubkey_hex) else { continue };
 
         let Some(ciphertext) = event.get("content").and_then(|v| v.as_str()) else {
             continue;
         };
 
         // Decrypt with local_keys.secret + signer_pk.
-        let plaintext = match nip44::decrypt(
-            local_keys.secret_key(),
-            &signer_pk,
-            ciphertext.as_bytes(),
-        ) {
-            Ok(s) => s,
-            Err(_) => continue, // not for us or malformed — skip.
+        let Ok(plaintext) = nip44::decrypt(local_keys.secret_key(), &signer_pk, ciphertext.as_bytes())
+        else {
+            continue; // not for us or malformed — skip.
         };
 
         let rpc: serde_json::Value = match serde_json::from_str(&plaintext) {
@@ -512,10 +503,7 @@ fn await_nostrconnect_connect(
             None => continue,
         };
 
-        let params = match rpc.get("params").and_then(|v| v.as_array()) {
-            Some(p) => p,
-            None => continue,
-        };
+        let Some(params) = rpc.get("params").and_then(|v| v.as_array()) else { continue };
 
         // params[1] must match expected_secret.
         let received_secret = params

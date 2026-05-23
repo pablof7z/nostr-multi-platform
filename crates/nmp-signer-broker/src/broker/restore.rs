@@ -67,10 +67,8 @@ impl BunkerBroker {
                 return;
             }
         };
-        let (relay, inbound_rx) = match self.connect_session(&payload.relays, &local_keys, &cancel)
-        {
-            Some(parts) => parts,
-            None => return,
+        let Some((relay, inbound_rx)) = self.connect_session(&payload.relays, &local_keys, &cancel) else {
+            return;
         };
         let transport = BrokerTransport::new(Arc::clone(&relay), local_keys, remote_pubkey);
         self.install_session(Arc::clone(&relay), Arc::clone(&transport));
@@ -116,18 +114,15 @@ impl BunkerBroker {
             }
         }
 
-        let relay = match relay_result {
-            Some(relay) => relay,
-            None => {
-                self.emit_progress(
-                    "failed",
-                    Some(&format!(
-                        "could not connect to any bunker relay: {}",
-                        last_err.unwrap_or_else(|| "unknown".to_string())
-                    )),
-                );
-                return None;
-            }
+        let Some(relay) = relay_result else {
+            self.emit_progress(
+                "failed",
+                Some(&format!(
+                    "could not connect to any bunker relay: {}",
+                    last_err.unwrap_or_else(|| "unknown".to_string())
+                )),
+            );
+            return None;
         };
 
         let req_frame = build_req_frame(BUNKER_SUB_ID, &local_keys.public_key().to_hex());

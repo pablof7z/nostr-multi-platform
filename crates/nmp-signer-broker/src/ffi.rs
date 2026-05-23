@@ -152,9 +152,7 @@ fn relay_url_from_arg_or_app(app: *mut NmpApp, relay_url: *const std::os::raw::c
             }
         }
     }
-    unsafe_app_ref::app_ref(app)
-        .map(NmpApp::nostrconnect_relay_url)
-        .unwrap_or_else(|| NOSTRCONNECT_DEFAULT_RELAY_URL.to_string())
+    unsafe_app_ref::app_ref(app).map_or_else(|| NOSTRCONNECT_DEFAULT_RELAY_URL.to_string(), NmpApp::nostrconnect_relay_url)
 }
 
 /// Free a string returned by `nmp_app_nostrconnect_uri`. Null-safe (no-op).

@@ -209,18 +209,15 @@ impl BunkerBroker {
                 }
             }
         }
-        let relay = match relay_result {
-            Some(r) => r,
-            None => {
-                self.emit_progress(
-                    "failed",
-                    Some(&format!(
-                        "could not connect to any bunker relay: {}",
-                        last_err.unwrap_or_else(|| "unknown".to_string())
-                    )),
-                );
-                return;
-            }
+        let Some(relay) = relay_result else {
+            self.emit_progress(
+                "failed",
+                Some(&format!(
+                    "could not connect to any bunker relay: {}",
+                    last_err.unwrap_or_else(|| "unknown".to_string())
+                )),
+            );
+            return;
         };
 
         // Subscribe (REQ).
