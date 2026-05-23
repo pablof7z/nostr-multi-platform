@@ -6,11 +6,11 @@ license = { workspace = true }
 description = "Marmot Protocol (MLS-over-Nostr) as an NMP protocol crate. Sole importer of mdk-core/openmls; adapts MDK types to NMP Domain/View module contracts. Live capabilities are routed through the bespoke nmp_app_chirp_marmot_dispatch cluster (ADR-0025), not the generic dispatch_action seam. See docs/plan/marmot-mls.md."
 
 [dependencies]
-nmp-core = { path = "../nmp-core" }
+nmp-core = { path = "../../../crates/nmp-core" }
 # nmp-nip59 supplies the NIP-59 gift-wrap free functions used to deliver MLS
 # Welcome (kind:444) rumors. nmp-marmot is the SOLE importer of mdk-core /
 # openmls; nip59 is a sibling protocol crate carrying no MLS types.
-nmp-nip59 = { path = "../nmp-nip59" }
+nmp-nip59 = { path = "../../../crates/nmp-nip59" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # nostr 0.44 — version pinned via [workspace.dependencies]; mdk-core 0.8.0
@@ -20,6 +20,6 @@ mdk-core = "0.8.0"
 mdk-sqlite-storage = "0.8.0"
 
 [dev-dependencies]
-nmp-core = { path = "../nmp-core", features = ["test-support"] }
+nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
 # test-utils gates MdkSqliteStorage::new_in_memory / new_unencrypted.
 mdk-sqlite-storage = { version = "0.8.0", features = ["test-utils"] }
