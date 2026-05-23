@@ -16,7 +16,15 @@ default = []
 wasm = []
 
 [dependencies]
-nmp-core = { path = "../nmp-core" }
+# `default-features = false` to keep `nmp-signers` usable from `nmp-wasm` —
+# nmp-core's `native` feature (default-on) pulls tungstenite / ureq / heed /
+# nostr-database, none of which build on wasm32. The only nmp-core items
+# nmp-signers names are `substrate::{SignedEvent, UnsignedEvent}` and
+# `RemoteSignerHandle`, all of which are always-on (not gated behind `native`).
+# Native-side consumers (nmp-testing, nmp-content-fixtures, nmp-signer-broker,
+# nmp-core itself) still see `native` via Cargo feature unification because
+# they pull nmp-core directly with default features.
+nmp-core = { path = "../nmp-core", default-features = false }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 # `nip04`/`nip44`: NIP-46 RPC payload crypto. `nip49`: encrypted nsec storage.
 # `nip46` is deliberately NOT enabled — `nostr`'s `NostrConnectURI::Bunker` lacks
@@ -33,3 +41,21 @@ zeroize = { workspace = true, features = ["serde"] }
 [dev-dependencies]
 # No proc-macro fuzz crate — we keep the dep surface small and roll our own
 # deterministic generator (see `fuzz/bunker_uri.rs`).
+
+# V-01 Stage 3b — wasm32-only deps for the real `Nip07Signer::sign()` that
+# bridges into `window.nostr.signEvent(...)`. The wasm feature gate inside
+# `signers/nip07.rs` (`cfg(all(target_arch = "wasm32", feature = "wasm"))`)
+# means these are only *named* on wasm32 builds; on native they are dead
+# weight that cargo skips. Versions match the rest of the workspace's wasm
+# stack so feature unification keeps one copy of each crate in the graph.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3.98"
+wasm-bindgen = "0.2.121"
+# Drive the `window.nostr.signEvent(...)` Promise without blocking the wasm
+# event loop. `spawn_local` parks the await on the JS task queue; the result
+# is forwarded into the `mpsc::Receiver` the `SignerOp::Pending(rx)` carries
+# back to the caller. No tokio (this is pure Promise glue).
+wasm-bindgen-futures = "0.4.71"
+# `Window` is the entry point for `window.nostr.*`; no other web-sys items
+# are needed for NIP-07 (the extension hangs off `window`, not a DOM node).
+web-sys = { version = "0.3.98", features = ["Window"] }

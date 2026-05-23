@@ -10,6 +10,20 @@ pub enum WorkerRequest {
     #[serde(rename = "chirp_action")]
     AppAction(AppActionDispatch),
     CapabilityResult(CapabilityResult),
+    /// V-01 Stage 3b — install a signer for app-level write actions.
+    ///
+    /// The browser host runs the asynchronous half of the handshake itself
+    /// (e.g. `await window.nostr.getPublicKey()` for NIP-07) and supplies the
+    /// already-known pubkey hex in this request. The wasm runtime then
+    /// constructs the matching [`nmp_signers::Signer`] synchronously and
+    /// stores it in its signer slot. Subsequent app-level writes that need
+    /// signing (PublishNote, React, Follow, Unfollow) call into the slot's
+    /// `sign()` method, which on wasm32 dispatches the actual signing call
+    /// (`window.nostr.signEvent(...)`) through `wasm-bindgen-futures`.
+    ///
+    /// `kind`: `"nip07"` — the only kind wired in Stage 3b. Other kinds
+    /// return [`WorkerEvent::CapabilityFailure`] with `unsupported_signer_kind`.
+    SetSigner(SetSigner),
     Stop { correlation_id: String },
 }
 
@@ -147,6 +161,28 @@ pub struct CapabilityResult {
     pub capability: String,
     pub correlation_id: String,
     pub payload: Value,
+}
+
+/// Payload for [`WorkerRequest::SetSigner`].
+///
+/// `kind` is the discriminator the runtime uses to select a [`nmp_signers::Signer`]
+/// constructor. Stage 3b ships `"nip07"` only; other kinds are honestly rejected
+/// rather than silently dropped.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SetSigner {
+    /// Backend kind. Currently must be `"nip07"`.
+    pub kind: String,
+    /// Hex-encoded public key the host already obtained from the backend.
+    ///
+    /// For NIP-07 this is the result of `await window.nostr.getPublicKey()`.
+    /// Supplied by the host so the wasm runtime's install path stays
+    /// synchronous — the async getPublicKey() round-trip happens in JS, before
+    /// the request is sent.
+    pub pubkey_hex: String,
+    /// Correlation id echoed back in [`WorkerEvent::ActionAccepted`] (or
+    /// [`WorkerEvent::CapabilityFailure`] on failure) so the host can match
+    /// the outcome to the request that triggered it.
+    pub correlation_id: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

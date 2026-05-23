@@ -1,6 +1,6 @@
 use nmp_wasm::{
-    AppAction, AppActionDispatch, ClientHello, RelayBootstrapEntry, RuntimeStatus, StartConfig,
-    WasmRuntime, WorkerEvent, WorkerRequest,
+    AppAction, AppActionDispatch, ClientHello, RelayBootstrapEntry, RuntimeStatus, SetSigner,
+    StartConfig, WasmRuntime, WorkerEvent, WorkerRequest,
 };
 use serde_json::json;
 
@@ -156,6 +156,14 @@ fn chirp_action_uses_same_generic_worker_event_path() {
         WorkerEvent::CapabilityFailure(failure) => {
             assert_eq!(failure.capability, "nmp.follow");
             assert_eq!(failure.correlation_id, "follow-1");
+            // Stage 3b: no signer installed → `signer_not_installed`. The
+            // host pattern-matches on this prefix to surface a "sign in to
+            // publish" banner.
+            assert!(
+                failure.reason.starts_with("signer_not_installed"),
+                "expected signer_not_installed prefix, got: {}",
+                failure.reason
+            );
         }
         other => panic!("expected degraded dispatch failure, got {other:?}"),
     }
@@ -219,7 +227,7 @@ fn start_emits_canonical_snapshot_envelope_from_real_kernel() {
 }
 
 #[test]
-fn publish_note_returns_browser_driver_missing_until_stage_3() {
+fn publish_note_without_signer_returns_signer_not_installed() {
     let mut runtime = WasmRuntime::new();
 
     let events = runtime
@@ -232,20 +240,142 @@ fn publish_note_returns_browser_driver_missing_until_stage_3() {
         }))
         .unwrap();
 
-    // No actor → no publish path. Honest failure rather than fabricated
-    // success. The reason carries a stable prefix host UIs can pattern-match
-    // for the degraded-mode banner.
+    // V-01 Stage 3b: with no signer installed, app-level writes fail with
+    // `signer_not_installed` (more precise than the Stage 3
+    // `browser_actor_driver_missing` blanket — see runtime.rs comment for
+    // the two-state model).
     match &events[0] {
         WorkerEvent::CapabilityFailure(failure) => {
             assert_eq!(failure.capability, "nmp.publish");
             assert_eq!(failure.correlation_id, "pub-1");
             assert!(
-                failure.reason.starts_with("browser_actor_driver_missing"),
-                "expected browser_actor_driver_missing prefix, got: {}",
+                failure.reason.starts_with("signer_not_installed"),
+                "expected signer_not_installed prefix, got: {}",
                 failure.reason
             );
         }
         other => panic!("expected CapabilityFailure, got {other:?}"),
+    }
+}
+
+#[test]
+fn publish_note_after_set_signer_returns_publish_path_not_wired() {
+    let mut runtime = WasmRuntime::new();
+
+    // Install a nip07 signer with a real (test-fixture) pubkey hex. On
+    // native this constructs a stub that returns `Unsupported` from sign();
+    // we don't reach sign() in this assertion — the runtime stops at the
+    // publish-path-not-wired error because Stage 3b ships the signer slot,
+    // not the publish path.
+    let set_events = runtime
+        .handle(WorkerRequest::SetSigner(SetSigner {
+            kind: "nip07".to_string(),
+            pubkey_hex:
+                "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
+                    .to_string(),
+            correlation_id: "set-1".to_string(),
+        }))
+        .unwrap();
+    match &set_events[0] {
+        WorkerEvent::ActionAccepted { action_type, correlation_id } => {
+            assert_eq!(action_type, "nmp.set_signer");
+            assert_eq!(correlation_id, "set-1");
+        }
+        other => panic!("expected ActionAccepted, got {other:?}"),
+    }
+
+    // Now the same app-level write surfaces the *second* honest error: the
+    // signer is installed but the publish path is not wired yet. Hosts can
+    // distinguish "you need to sign in" from "the runtime can't publish
+    // yet" by pattern-matching the reason prefix.
+    let events = runtime
+        .handle(WorkerRequest::AppAction(AppActionDispatch {
+            action: AppAction::PublishNote {
+                content: "hello from web".to_string(),
+                reply_to_id: None,
+            },
+            correlation_id: "pub-1".to_string(),
+        }))
+        .unwrap();
+    match &events[0] {
+        WorkerEvent::CapabilityFailure(failure) => {
+            assert_eq!(failure.capability, "nmp.publish");
+            assert!(
+                failure.reason.starts_with("publish_path_not_wired"),
+                "expected publish_path_not_wired prefix, got: {}",
+                failure.reason
+            );
+        }
+        other => panic!("expected CapabilityFailure, got {other:?}"),
+    }
+}
+
+#[test]
+fn set_signer_with_unknown_kind_returns_unsupported_signer_kind() {
+    let mut runtime = WasmRuntime::new();
+    let events = runtime
+        .handle(WorkerRequest::SetSigner(SetSigner {
+            kind: "magic".to_string(),
+            pubkey_hex: String::new(),
+            correlation_id: "set-1".to_string(),
+        }))
+        .unwrap();
+    match &events[0] {
+        WorkerEvent::CapabilityFailure(failure) => {
+            assert_eq!(failure.capability, "nmp.set_signer");
+            assert_eq!(failure.correlation_id, "set-1");
+            assert!(
+                failure.reason.starts_with("unsupported_signer_kind"),
+                "expected unsupported_signer_kind prefix, got: {}",
+                failure.reason
+            );
+        }
+        other => panic!("expected CapabilityFailure, got {other:?}"),
+    }
+}
+
+#[test]
+fn set_signer_with_garbage_hex_returns_invalid_signer_pubkey() {
+    let mut runtime = WasmRuntime::new();
+    let events = runtime
+        .handle(WorkerRequest::SetSigner(SetSigner {
+            kind: "nip07".to_string(),
+            pubkey_hex: "not-hex".to_string(),
+            correlation_id: "set-1".to_string(),
+        }))
+        .unwrap();
+    match &events[0] {
+        WorkerEvent::CapabilityFailure(failure) => {
+            assert_eq!(failure.capability, "nmp.set_signer");
+            assert!(
+                failure.reason.starts_with("invalid_signer_pubkey"),
+                "expected invalid_signer_pubkey prefix, got: {}",
+                failure.reason
+            );
+        }
+        other => panic!("expected CapabilityFailure, got {other:?}"),
+    }
+}
+
+#[test]
+fn set_signer_serde_round_trip_through_json() {
+    // The wasm-bindgen `handle_json` entry point deserialises every
+    // WorkerRequest from JSON, so the SetSigner variant must round-trip
+    // through serde with the snake-cased tag the JS host sends.
+    let request: WorkerRequest = serde_json::from_value(json!({
+        "type": "set_signer",
+        "kind": "nip07",
+        "pubkey_hex": "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+        "correlation_id": "set-1",
+    }))
+    .unwrap();
+
+    match request {
+        WorkerRequest::SetSigner(set) => {
+            assert_eq!(set.kind, "nip07");
+            assert_eq!(set.correlation_id, "set-1");
+        }
+        other => panic!("expected SetSigner, got {other:?}"),
     }
 }
 
@@ -285,14 +415,14 @@ fn kernel_namespaced_dispatch_routes_through_real_reducer() {
 }
 
 #[test]
-fn app_namespaced_dispatch_returns_browser_driver_missing() {
+fn app_namespaced_dispatch_without_signer_returns_signer_not_installed() {
     use nmp_wasm::ActionDispatch;
     let mut runtime = WasmRuntime::new();
 
-    // `nmp.publish` is an *app* action — it produces a signed event. Without
-    // the actor + relay worker this cannot complete; the runtime returns
-    // CapabilityFailure rather than fabricating a snapshot the way the stub
-    // did.
+    // `nmp.publish` is an *app* action — it produces a signed event. With
+    // no signer slot filled, the runtime returns the Stage 3b
+    // signer-precise error rather than fabricating a snapshot the way the
+    // pre-Stage-2 stub did.
     let events = runtime
         .handle(WorkerRequest::Dispatch(ActionDispatch {
             action_type: "nmp.publish".to_string(),
@@ -304,7 +434,7 @@ fn app_namespaced_dispatch_returns_browser_driver_missing() {
     match &events[0] {
         WorkerEvent::CapabilityFailure(failure) => {
             assert_eq!(failure.capability, "nmp.publish");
-            assert!(failure.reason.starts_with("browser_actor_driver_missing"));
+            assert!(failure.reason.starts_with("signer_not_installed"));
         }
         other => panic!("expected CapabilityFailure, got {other:?}"),
     }

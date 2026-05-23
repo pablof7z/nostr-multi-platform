@@ -4057,12 +4057,16 @@ dependencies = [
 name = "nmp-signers"
 version = "0.1.0"
 dependencies = [
+ "js-sys",
  "nmp-core",
  "nmp-signer-iface",
  "nostr",
  "serde",
  "serde_json",
  "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
  "zeroize",
 ]
 
@@ -4105,9 +4109,13 @@ dependencies = [
  "js-sys",
  "nmp-chirp-config",
  "nmp-core",
+ "nmp-signer-iface",
+ "nmp-signers",
+ "nostr",
  "serde",
  "serde_json",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
 ]
 
