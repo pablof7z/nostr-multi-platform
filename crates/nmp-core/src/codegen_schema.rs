@@ -52,8 +52,9 @@ use serde_json::Value;
 
 use crate::actor::RelayRoleOption;
 use crate::kernel::{
-    AccountSummary, LogicalInterestStatus, Metrics, RelayEditRow, RelayStatus,
-    WireSubscriptionStatus,
+    AccountSummary, LogicalInterestStatusForCodegen as LogicalInterestStatus,
+    MetricsForCodegen as Metrics, RelayEditRow, RelayStatusForCodegen as RelayStatus,
+    WireSubscriptionStatusForCodegen as WireSubscriptionStatus,
 };
 
 /// Per-type metadata the JSON schema alone cannot carry (Swift-side type

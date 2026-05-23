@@ -202,8 +202,21 @@ pub(crate) use identity_state::{
 // (no in-crate consumer outside `codegen_schema`). Crate-private
 // encapsulation is preserved either way — nothing outside `nmp-core`
 // can name these types.
+// The same four names are imported (always-on) on the local `use types::{...}`
+// line below for the kernel module body's own use. Aliasing the re-export
+// avoids the E0252 duplicate-binding rustc trips when both lines are active
+// (the `codegen-schema` build needs both: the local `use` for kernel-module
+// code, and the `pub(crate) use` so `codegen_schema.rs` can name the types
+// through `crate::kernel::Metrics` etc.). The aliases are crate-private —
+// no external API surface change.
 #[cfg(feature = "codegen-schema")]
-pub(crate) use types::{LogicalInterestStatus, Metrics, RelayStatus, WireSubscriptionStatus};
+pub(crate) use types::LogicalInterestStatus as LogicalInterestStatusForCodegen;
+#[cfg(feature = "codegen-schema")]
+pub(crate) use types::Metrics as MetricsForCodegen;
+#[cfg(feature = "codegen-schema")]
+pub(crate) use types::RelayStatus as RelayStatusForCodegen;
+#[cfg(feature = "codegen-schema")]
+pub(crate) use types::WireSubscriptionStatus as WireSubscriptionStatusForCodegen;
 pub use identity_state::{read_eligible_relay_urls, RelayEditRow};
 // Host-extensible snapshot output — reachable from the `ffi` module for the
 // `nmp_app_register_snapshot_projection` C-ABI entry point.
